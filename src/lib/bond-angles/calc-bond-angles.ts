@@ -152,7 +152,7 @@ export function compute_bond_angles(
   // so images would only add work — they carry no bond records of their own.
   const search_structure =
     auto_expand && strategy !== `explicit_only`
-      ? expand_structure_for_pbc(structure, strategy, options.pbc)
+      ? expand_structure_for_pbc(structure, options.pbc)
       : structure
 
   const bonds = compute_bonds(search_structure, strategy, { center_count: n_original })

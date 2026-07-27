@@ -295,9 +295,9 @@ describe(`image atom behavior`, () => {
     const image_atoms = find_image_atoms(supercell)
 
     expect(image_atoms.length).toBeGreaterThan(0)
-    // bond-completing images (find_image_atoms phase 2) add boundary-crossing
-    // neighbors; Ba's large covalent radius in this tiny 4 Å cell yields many
-    expect(image_atoms.length).toBeLessThan(supercell.sites.length * 5)
+    // bond-completing images (find_image_atoms phase 2) add boundary-crossing neighbors at
+    // both ends of each bond; Ba's large covalent radius in this tiny 4 Å cell yields many
+    expect(image_atoms.length).toBeLessThan(supercell.sites.length * 12)
   })
 
   test(`handles edge cases correctly`, () => {

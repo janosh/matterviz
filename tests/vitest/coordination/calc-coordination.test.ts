@@ -45,7 +45,7 @@ test.each([
 })
 
 describe(`calc_coordination_nums`, () => {
-  test.each([`electroneg_ratio`, `solid_angle`] as const)(
+  test.each([`electroneg_ratio`] as const)(
     `computes per-element coordination (%s)`,
     (strategy) => {
       const result = calc_coordination_nums(simple_cubic, strategy)

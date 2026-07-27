@@ -683,7 +683,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Method for determining bonds between atoms`,
       enum: {
         electroneg_ratio: `Electronegativity Ratio`,
-        solid_angle: `Solid Angle`,
         explicit_only: `Explicit Bonds Only`,
       },
     },

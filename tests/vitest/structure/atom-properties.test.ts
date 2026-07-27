@@ -87,8 +87,8 @@ describe(`Coordination`, () => {
     expect(typeof values[1] === `number` && values[1] > (values[0] as number)).toBe(true)
   })
 
-  test.each([`electroneg_ratio`, `solid_angle`] as const)(`%s strategy`, (strategy) => {
-    const { values } = ap.get_coordination_colors(co_pair(), strategy)
+  test(`electroneg_ratio strategy`, () => {
+    const { values } = ap.get_coordination_colors(co_pair(), `electroneg_ratio`)
     expect(values.some((val) => typeof val === `number` && val > 0)).toBe(true)
   })
 
@@ -175,7 +175,7 @@ describe(`Coordination`, () => {
       expect(check(values)).toBe(true)
     })
 
-    test.each([`electroneg_ratio`, `solid_angle`] as const)(
+    test.each([`electroneg_ratio`] as const)(
       `works with %s strategy`,
       (strategy) => {
         const sites: { abc: Vec3 }[] = [{ abc: [0, 0, 0] }, { abc: [0.3, 0, 0] }]
@@ -188,7 +188,7 @@ describe(`Coordination`, () => {
     // CoordinationBarPlot and the 3D viewer both call calc_structure_coordination, so
     // their boundary-atom CN must agree and must exceed the raw-cell count (regression:
     // the bar plot previously ran on the raw cell and undercounted boundary atoms).
-    test.each([`electroneg_ratio`, `solid_angle`] as const)(
+    test.each([`electroneg_ratio`] as const)(
       `calc_structure_coordination expands PBC and matches viewer CN (%s)`,
       (strategy) => {
         const structure = make_cubic_structure(nacl_corner_sites, 5)

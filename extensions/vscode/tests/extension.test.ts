@@ -1700,7 +1700,7 @@ describe(`MatterViz Extension`, () => {
       [`background_color`, `#111111`],
 
       // String enums
-      [`structure.bonding_strategy`, `solid_angle`],
+      [`structure.bonding_strategy`, `explicit_only`],
       [`structure.camera_projection`, `orthographic`],
       [`color_scheme`, `Jmol`],
       [`composition.color_scheme`, `Alloy`],

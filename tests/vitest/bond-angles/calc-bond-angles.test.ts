@@ -196,7 +196,11 @@ describe(`periodic image expansion`, () => {
   test.each([
     [`mp-1`, 56, 0],
     [`mp-2`, 264, 12],
-    [`mp-1234`, 1200, 303],
+    // LuAl2 is a MgCu2-type Laves phase: Al-Al (2.727 Å) is the shortest bond in the
+    // structure and forms the tetrahedral B-site network. It used to be suppressed by a
+    // flat same-species penalty, which is now applied only to contacts that sit behind a
+    // shorter one, so those angles are counted (303 -> 339 without expansion).
+    [`mp-1234`, 1200, 339],
   ])(`%s has %s angles with image expansion but only %s without`, (id, expanded, bare) => {
     const structure = fixture(id)
     expect(compute_bond_angles(structure)).toHaveLength(expanded)
@@ -485,9 +489,15 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     expect(root.textContent).toContain(message)
   })
 
+  // 180 is the inclusive upper bound in resolve_angle_bins, so it must still plot
+  test(`accepts a bin_width of exactly 180`, async () => {
+    const root = await mount_plot({ structures: rocksalt, bin_width: 180 })
+    expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+  })
+
   // bin_width is a public prop and resolve_angle_bins throws on anything outside (0, 180],
   // so an unguarded binning derived would take the whole render down with it
-  test.each([0, -2, 500, NaN])(
+  test.each([0, -2, 500, 180.0001, NaN, Infinity])(
     `reports bin_width=%s as an error instead of crashing the render`,
     async (bin_width) => {
       // the error StatusMessage is a sibling of the mount root, so read the whole container

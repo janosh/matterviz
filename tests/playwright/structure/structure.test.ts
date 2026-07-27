@@ -761,7 +761,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test bonding strategy change
     const bonding_strategy_select = strategy_label.locator(`select`)
-    await bonding_strategy_select.selectOption(`solid_angle`)
+    await bonding_strategy_select.selectOption(`explicit_only`)
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
@@ -1566,7 +1566,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Get initial value
       const initial_value = await strategy_select.inputValue()
-      const new_value = initial_value === `solid_angle` ? `voronoi` : `solid_angle`
+      const new_value =
+        initial_value === `explicit_only` ? `electroneg_ratio` : `explicit_only`
       await strategy_select.selectOption(new_value)
 
       // Verify change

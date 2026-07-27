@@ -720,7 +720,7 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
   ])
 }
 
-// Build a BondPair between two sites (shared by electroneg_ratio and solid_angle)
+// Build a BondPair between two sites
 const make_bond = (
   sites: Site[],
   idx_1: number,
@@ -828,7 +828,12 @@ function collect_candidates(
   return scratch_neighbors
 }
 
-export const BONDING_STRATEGIES = { electroneg_ratio, solid_angle, explicit_only } as const
+// Relative slack for "is this contact in the atom's first shell?". Distances within
+// 0.1% of the shortest normalized contact count as the same shell, so float noise
+// between symmetry-equivalent bonds can't flip one of them into the penalized branch.
+const SHELL_TOL = 1.001
+
+export const BONDING_STRATEGIES = { electroneg_ratio, explicit_only } as const
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 export type BondingAlgo = (typeof BONDING_STRATEGIES)[BondingStrategy]
 
@@ -864,6 +869,13 @@ export function electroneg_ratio(
     max_distance_ratio = 2.0, // Max distance as multiple of sum of covalent radii
     min_bond_dist = 0.4, // Minimum bond distance in Angstroms
     metal_metal_penalty = 0.7, // Strength penalty for metal-metal bonds
+    // Penalty for contacts between two cation-like atoms (metals less electronegative
+    // than an anion-former in the composition). Cs-Cs in CsCl and Sr-Ti in SrTiO3 pass
+    // the distance model easily, but they are second-shell contacts across the anion
+    // sublattice, not bonds - the same distinction is_anion_vertex draws in polyhedra.ts.
+    // Elemental metals and intermetallics have no anion-former, so their homoatomic
+    // contacts are untouched.
+    cation_cation_penalty = 0.3,
     metal_nonmetal_bonus = 1.5, // Strength bonus for metal-nonmetal bonds
     similar_electronegativity_bonus = 1.2, // Bonus for similar electronegativity
     same_species_penalty = 0.5, // Penalty for bonds between same element
@@ -896,10 +908,25 @@ export function electroneg_ratio(
   const elem_ids = new Int32Array(n_sites) // same-species check via integer ids
   const orig_idxs = new Int32Array(n_sites)
   const elem_id_lookup = new Map<string, number>()
+  // Highest electronegativity among anion-formers (nonmetals/metalloids) present. Atoms
+  // below it are cation-like; -Infinity in an all-metal composition, so nothing is.
+  let max_anion_en = -Infinity
+  for (const site of sites) {
+    const elem = get_majority_element(site)
+    const data = elem ? element_by_symbol.get(elem) : undefined
+    if (!data?.nonmetal && !data?.metalloid) continue
+    const en = data.electronegativity
+    if (en != null && en > max_anion_en) max_anion_en = en
+  }
+  const cation_flags = new Uint8Array(n_sites)
   for (let idx = 0; idx < n_sites; idx++) {
     const elem = get_majority_element(sites[idx])
     const data = elem ? element_by_symbol.get(elem) : undefined
     electronegs[idx] = data?.electronegativity ?? 2.0
+    // Metal only, like is_anion_vertex in polyhedra.ts: "less electronegative than the
+    // most electronegative element present" alone would brand C and H as cations in an
+    // organic molecule and delete every C-H bond.
+    cation_flags[idx] = data?.metal && electronegs[idx] < max_anion_en ? 1 : 0
     metal_flags[idx] = data?.metal ? 1 : 0
     nonmetal_flags[idx] = data?.nonmetal ? 1 : 0
     radii[idx] = (elem ? covalent_radii.get(elem) : undefined) ?? 0
@@ -947,6 +974,7 @@ export function electroneg_ratio(
     base_strength: number
     orig_idx_a: number
     orig_idx_b: number
+    same_species: boolean
   }
 
   const potential_bonds: PotentialBond[] = []
@@ -993,15 +1021,21 @@ export function electroneg_ratio(
       } else if (electroneg_diff < 0.5) {
         bond_strength *= similar_electronegativity_bonus
       }
+      if (cation_flags[idx_a] === 1 && cation_flags[idx_b] === 1) {
+        bond_strength *= cation_cation_penalty
+      }
 
       const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
       const electroneg_weight = 1.0 - 0.3 * electroneg_balance
       let strength = bond_strength * dist_weight * electroneg_weight
 
-      if (elem_id_a === elem_ids[idx_b]) strength *= same_species_penalty
+      // same_species_penalty is deferred to the second pass, where `closest` is known:
+      // it must fire for a second-shell contact like Na-Na in NaCl but NOT when the
+      // homoatomic contact IS the atom's primary bond (elemental metals, diamond)
+      const same_species = elem_id_a === elem_ids[idx_b]
 
       // If raw strength is already too low, we can skip early
-      // (penalty will only reduce it further)
+      // (penalties will only reduce it further)
       if (strength <= strength_threshold) continue
 
       // Use precomputed original-site indices to handle supercell and image atoms
@@ -1025,6 +1059,7 @@ export function electroneg_ratio(
         base_strength: strength,
         orig_idx_a,
         orig_idx_b,
+        same_species,
       })
     }
   }
@@ -1039,6 +1074,7 @@ export function electroneg_ratio(
       base_strength,
       orig_idx_a,
       orig_idx_b,
+      same_species,
     } = bond
 
     const closest_dist_a = closest[orig_idx_a]
@@ -1046,6 +1082,18 @@ export function electroneg_ratio(
     const norm_dist = dist / expected_dist
 
     let strength = base_strength
+
+    // A homoatomic contact is spurious only when the atom has a SHORTER contact of some
+    // other kind - Na-Na in NaCl sits in the second shell behind Na-Cl. In an elemental
+    // metal or diamond the homoatomic contact IS the primary bond (norm_dist == closest),
+    // and penalizing it there stacked with metal_metal_penalty to leave a 0.35 ceiling
+    // against a 0.3 threshold, so fcc Al and Pb rendered with no bonds at all.
+    if (
+      same_species &&
+      norm_dist > closest_dist_a * SHELL_TOL &&
+      norm_dist > closest_dist_b * SHELL_TOL
+    )
+      strength *= same_species_penalty
 
     // Apply penalty if this bond is much longer (relative to radii) than the closest known bond
     if (norm_dist > closest_dist_a) {
@@ -1060,79 +1108,5 @@ export function electroneg_ratio(
     }
   }
 
-  return apply_explicit_bond_metadata(structure, bonds)
-}
-
-// Solid angle-based bonding using geometric proximity heuristics.
-// Inspired by Voronoi tessellation without having to actually compute Voronoi cells.
-// This algorithm computes bond strength based on the solid angle subtended by atoms
-// and their distance penalty. Bonds are only created if the computed strength exceeds
-// the strength_threshold parameter.
-export function solid_angle(
-  structure: AnyStructure,
-  {
-    min_solid_angle = 0.01,
-    min_face_area = 0.05,
-    max_distance = 5.0,
-    min_bond_dist = 0.4,
-    strength_threshold = 0.05,
-    center_count = Infinity, // see electroneg_ratio: limit bond centers to first N sites
-  } = {},
-): BondPair[] {
-  const { sites } = structure
-  if (sites.length < 2) return []
-
-  const bonds: BondPair[] = []
-  const min_dist_sq = min_bond_dist ** 2
-  const max_dist_sq = max_distance ** 2
-  const n_sites = sites.length
-  const positions = flatten_positions(sites)
-  const spatial = setup_spatial_grid(positions, n_sites, max_distance)
-  // see electroneg_ratio: the half shell needs every site to act as a center
-  const full_scan = center_count >= n_sites - 1
-  const n_center = full_scan ? n_sites : Math.min(center_count, n_sites - 1)
-  const half_shell = full_scan && spatial !== null
-  // Covalent radius per site, resolved once instead of once per candidate pair
-  const radii = sites.map((site) => {
-    const elem = get_majority_element(site)
-    return (elem ? covalent_radii.get(elem) : undefined) ?? 0
-  })
-
-  for (let idx_a = 0; idx_a < n_center; idx_a++) {
-    const radius_a = radii[idx_a]
-    if (!radius_a) continue
-    const x1 = positions[idx_a * 3]
-    const y1 = positions[idx_a * 3 + 1]
-    const z1 = positions[idx_a * 3 + 2]
-
-    for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
-      const radius_b = radii[idx_b]
-      if (!radius_b) continue
-
-      const dx = positions[idx_b * 3] - x1
-      const dy = positions[idx_b * 3 + 1] - y1
-      const dz = positions[idx_b * 3 + 2] - z1
-      const dist_sq = dx * dx + dy * dy + dz * dz
-      if (dist_sq < min_dist_sq || dist_sq > max_dist_sq) continue
-      // sqrt only once the pair is inside the cutoff: most candidates are rejected above
-      const dist = Math.sqrt(dist_sq)
-
-      const avg_radius = (radius_a + radius_b) / 2.0
-      const face_area = Math.PI * avg_radius * avg_radius
-      const bond_solid_angle = face_area / dist_sq
-
-      if (bond_solid_angle < min_solid_angle || face_area < min_face_area) continue
-
-      const dist_penalty = Math.exp(-((dist / (radius_a + radius_b) - 1) ** 2) / 0.4)
-      const angle_strength = Math.min(bond_solid_angle / (4.0 * Math.PI), 1.0)
-      const strength = angle_strength * dist_penalty
-
-      // min/max keeps the ascending endpoint convention (half-shell can reach a lower index)
-      if (strength > strength_threshold) {
-        const [lo, hi] = [Math.min(idx_a, idx_b), Math.max(idx_a, idx_b)]
-        bonds.push(make_bond(sites, lo, hi, dist, strength))
-      }
-    }
-  }
   return apply_explicit_bond_metadata(structure, bonds)
 }

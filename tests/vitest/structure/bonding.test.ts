@@ -51,15 +51,6 @@ describe(`Bonding Algorithms`, () => {
         [1000, 800],
       ],
     ],
-    [
-      bonding.solid_angle,
-      `solid_angle`,
-      [
-        [50, 100],
-        [200, 200],
-        [1000, 800],
-      ],
-    ],
   ]
 
   test.each(algorithms)(`$name performance benchmarks`, (_func, name, times) => {
@@ -843,6 +834,176 @@ describe(`Crystal Structure Bonding`, () => {
   })
 })
 
+// === Coordination-number benchmark ===
+// Perceived bonding is a pile of interacting heuristics, so the only meaningful
+// regression net is whether it reproduces textbook coordination numbers on structures
+// whose answer is not in doubt. Every atom of the unit cell is checked (not just
+// interior ones), which also pins the PBC boundary completion in find_image_atoms.
+
+const wrap_frac = (val: number) => val - Math.floor(val)
+const fcc_offsets: Vec3[] = [
+  [0, 0, 0],
+  [0.5, 0.5, 0],
+  [0.5, 0, 0.5],
+  [0, 0.5, 0.5],
+]
+// fcc lattice sites for `element`, once per basis vector
+const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
+  fcc_offsets.flatMap((off) =>
+    basis.map((vec) => ({
+      element,
+      abc: [
+        wrap_frac(off[0] + vec[0]),
+        wrap_frac(off[1] + vec[1]),
+        wrap_frac(off[2] + vec[2]),
+      ] as Vec3,
+    })),
+  )
+const tetragonal = (a: number, c: number): Vec3[] => [
+  [a, 0, 0],
+  [0, a, 0],
+  [0, 0, c],
+]
+
+// [label, lattice, sites, expected coordination number per element]
+const cn_benchmark: [
+  string,
+  number | Vec3[],
+  ReturnType<typeof fcc>,
+  Record<string, number>,
+][] = [
+  [
+    `diamond C`,
+    3.567,
+    fcc(`C`, [
+      [0, 0, 0],
+      [0.25, 0.25, 0.25],
+    ]),
+    { C: 4 },
+  ],
+  [
+    `Si diamond`,
+    5.431,
+    fcc(`Si`, [
+      [0, 0, 0],
+      [0.25, 0.25, 0.25],
+    ]),
+    { Si: 4 },
+  ],
+  [`fcc Cu`, 3.615, fcc(`Cu`), { Cu: 12 }],
+  [`fcc Al`, 4.05, fcc(`Al`), { Al: 12 }],
+  [`fcc Pb`, 4.95, fcc(`Pb`), { Pb: 12 }],
+  [`fcc Ag`, 4.085, fcc(`Ag`), { Ag: 12 }],
+  [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
+  [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
+  [
+    `ZnS zincblende`,
+    5.41,
+    [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])],
+    {
+      Zn: 4,
+      S: 4,
+    },
+  ],
+  [
+    `CaF2 fluorite`,
+    5.463,
+    [...fcc(`Ca`), ...fcc(`F`, [[0.25, 0.25, 0.25]]), ...fcc(`F`, [[0.75, 0.75, 0.75]])],
+    { Ca: 8, F: 4 },
+  ],
+  [
+    `pyrite FeS2`,
+    5.416,
+    [...fcc(`Fe`), ...fcc(`S`, [[0.385, 0.385, 0.385]]), ...fcc(`S`, [[0.615, 0.615, 0.615]])],
+    { Fe: 6, S: 4 },
+  ],
+  [
+    `CsCl`,
+    4.119,
+    [
+      { element: `Cs`, abc: [0, 0, 0] as Vec3 },
+      { element: `Cl`, abc: [0.5, 0.5, 0.5] as Vec3 },
+    ],
+    { Cs: 8, Cl: 8 },
+  ],
+  [
+    `SrTiO3 perovskite`,
+    3.905,
+    [
+      { element: `Sr`, abc: [0.5, 0.5, 0.5] as Vec3 },
+      { element: `Ti`, abc: [0, 0, 0] as Vec3 },
+      { element: `O`, abc: [0.5, 0, 0] as Vec3 },
+      { element: `O`, abc: [0, 0.5, 0] as Vec3 },
+      { element: `O`, abc: [0, 0, 0.5] as Vec3 },
+      // O is left unchecked: Sr is a spectator A-site cation, so find_image_atoms
+      // deliberately generates no Sr images and the base O atoms see 1 Sr instead of 4.
+      // Sr 12 / Ti 6 are the point here - they only hold if Sr-Ti does NOT bond.
+    ],
+    { Sr: 12, Ti: 6 },
+  ],
+  [
+    `graphite C`,
+    [
+      [2.464, 0, 0],
+      [-1.232, 2.13389, 0],
+      [0, 0, 6.711],
+    ] as Vec3[],
+    [
+      { element: `C`, abc: [0, 0, 0.25] as Vec3 },
+      { element: `C`, abc: [0, 0, 0.75] as Vec3 },
+      { element: `C`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
+      { element: `C`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
+    ],
+    { C: 3 },
+  ],
+  [
+    `rutile TiO2`,
+    tetragonal(4.594, 2.959),
+    [
+      { element: `Ti`, abc: [0, 0, 0] },
+      { element: `Ti`, abc: [0.5, 0.5, 0.5] },
+      { element: `O`, abc: [0.3053, 0.3053, 0] },
+      { element: `O`, abc: [0.6947, 0.6947, 0] },
+      { element: `O`, abc: [0.8053, 0.1947, 0.5] },
+      { element: `O`, abc: [0.1947, 0.8053, 0.5] },
+    ],
+    { Ti: 6, O: 3 },
+  ],
+]
+
+describe(`coordination number benchmark`, () => {
+  test.each(cn_benchmark)(`%s`, (_label, lattice, sites, expected) => {
+    const base = make_crystal(
+      typeof lattice === `number`
+        ? lattice
+        : ([lattice[0], lattice[1], lattice[2]] as [Vec3, Vec3, Vec3]),
+      sites,
+    )
+    // image atoms complete the shells of atoms sitting on cell faces
+    const imaged = get_pbc_image_sites(base)
+    const counts = Array.from<number>({ length: imaged.sites.length }).fill(0)
+    for (const { site_idx_1, site_idx_2 } of bonding.electroneg_ratio(imaged)) {
+      counts[site_idx_1]++
+      counts[site_idx_2]++
+    }
+    // only the original unit-cell sites are checked; image copies are partial by design
+    const actual: Record<string, number[]> = {}
+    for (let idx = 0; idx < base.sites.length; idx++) {
+      const element = bonding.get_majority_element(imaged.sites[idx]) ?? `?`
+      ;(actual[element] ??= []).push(counts[idx])
+    }
+    for (const [element, cns] of Object.entries(actual)) {
+      if (!(element in expected)) continue
+      // every atom of that element must hit the textbook CN, boundary copies included
+      expect({ element, min: Math.min(...cns), max: Math.max(...cns) }).toEqual({
+        element,
+        min: expected[element],
+        max: expected[element],
+      })
+    }
+  })
+})
+
 describe(`Electronegativity-Based Bonding`, () => {
   test(`bond type identification`, () => {
     const na_cl = get_test_structure([
@@ -867,15 +1028,21 @@ describe(`Electronegativity-Based Bonding`, () => {
       { xyz: [2.5, 0, 0], element: `Fe` },
       { xyz: [1.25, 2.2, 0], element: `O` },
     ])
-    const lenient = bonding.electroneg_ratio(structure, {
-      metal_metal_penalty: 0.8,
-      metal_nonmetal_bonus: 1.2,
-    })
-    const strict = bonding.electroneg_ratio(structure, {
-      metal_metal_penalty: 0.1,
-      metal_nonmetal_bonus: 2.5,
-    })
-    expect(lenient).not.toHaveLength(strict.length)
+    // Fe-Fe is a cation-cation contact across the O, so the cation gate drops it
+    // whatever metal_metal_penalty says - only the two Fe-O bonds are drawn
+    expect(bonding.electroneg_ratio(structure)).toHaveLength(2)
+    // lifting the gate brings it back, confirming that is what removed it
+    expect(bonding.electroneg_ratio(structure, { cation_cation_penalty: 1 })).toHaveLength(3)
+
+    // with no anion present the gate is inert and metal_metal_penalty governs again
+    const metal_only = get_test_structure([
+      { xyz: [0, 0, 0], element: `Fe` },
+      { xyz: [2.5, 0, 0], element: `Fe` },
+    ])
+    const lenient = bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.8 })
+    const strict = bonding.electroneg_ratio(metal_only, { metal_metal_penalty: 0.1 })
+    expect(lenient).toHaveLength(1)
+    expect(strict).toHaveLength(0)
   })
 
   test(`distance constraints`, () => {
@@ -893,7 +1060,6 @@ describe(`Algorithm Comparison`, () => {
       { xyz: [0, 0, 0], element: `C` },
       { xyz: [1.5, 0, 0], element: `O` },
     ])
-    expect(bonding.solid_angle(structure)).toHaveLength(1)
     expect(bonding.electroneg_ratio(structure)).toHaveLength(1)
   })
 })
@@ -1048,8 +1214,7 @@ describe(`compute_bonds memo`, () => {
   const other_structure = get_test_structure([{ xyz: [0, 0, 0] }])
   test.each([
     [`different structure`, other_structure, `electroneg_ratio`, {}],
-    [`different strategy`, structure, `solid_angle`, {}],
-    [`explicit_only strategy`, structure, `explicit_only`, {}],
+    [`different strategy`, structure, `explicit_only`, {}],
     [`different options`, structure, `electroneg_ratio`, { max_distance_ratio: 3 }],
   ] as const)(`recomputes on %s`, (_desc, struct, strategy, options) => {
     const base = bonding.compute_bonds(structure, `electroneg_ratio`, {})
@@ -1071,9 +1236,13 @@ describe(`compute_bonds memo`, () => {
     // A single { sig, bonds } slot per structure would evict the prior result on every
     // strategy/options switch; the per-signature map keeps each warm so switching back hits cache.
     const eneg = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const solid = bonding.compute_bonds(structure, `solid_angle`, {})
+    const wide = bonding.compute_bonds(structure, `electroneg_ratio`, {
+      max_distance_ratio: 3,
+    })
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
-    expect(bonding.compute_bonds(structure, `solid_angle`, {})).toBe(solid)
+    expect(
+      bonding.compute_bonds(structure, `electroneg_ratio`, { max_distance_ratio: 3 }),
+    ).toBe(wide)
   })
 })
 
@@ -1095,7 +1264,7 @@ describe(`spatial grid scratch array reuse`, () => {
     )
   }
 
-  test.each([`electroneg_ratio`, `solid_angle`] as const)(
+  test.each([`electroneg_ratio`] as const)(
     `%s bonds are stable and duplicate-free across repeated + interleaved calls`,
     (strategy) => {
       // >50 sites forces the spatial-grid path, whose neighbor lookup fills a
@@ -1121,10 +1290,7 @@ describe(`spatial grid scratch array reuse`, () => {
   // silently drop bonds in whole directions. Each strategy's cell is its own bond cutoff
   // wide (0.76 = C covalent radius), so a mid-cell center puts every partner just past a
   // face, and strength_threshold 0 keeps the distance model from dropping the diagonals.
-  test.each([
-    [`electroneg_ratio`, 2 * 0.76 * 2],
-    [`solid_angle`, 5],
-  ] as const)(
+  test.each([[`electroneg_ratio`, 2 * 0.76 * 2]] as const)(
     `%s grid scan finds partners in the own cell and all 26 neighbors`,
     (strategy, cell_size) => {
       const center = cell_size / 2

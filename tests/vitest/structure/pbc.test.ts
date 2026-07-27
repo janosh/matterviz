@@ -118,44 +118,34 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   const unbonded_images = find_image_atoms(unbonded).filter(([idx]) => idx === 1)
   expect(unbonded_images).toHaveLength(0)
 
-  // metal (cation) images are never added by phase 2 in compounds - anion images
-  // complete the cation shells instead. Pulled-in cation copies would protrude
-  // asymmetrically wherever the anion sublattice hugs one cell face (e.g. bare
-  // Ti images below the rutile cell but not above).
+  // Completion is symmetric in the two ends of a bond: whichever atom is missing gets
+  // the image, cation or anion. An earlier anion-only rule left the other end short -
+  // rocksalt drew 6 bonds on Na but only 4 on Cl - and skipped elemental and equal-EN
+  // structures outright, so diamond corners drew a single bond.
   const metal_in_compound = make_crystal(10, [
     [`Ti`, [0.05, 0.5, 0.5]],
     [`Ti`, [0.75, 0.5, 0.5]], // image at x=-2.5 is 3.0 Å from first Ti
-    [`O`, [0.8, 0.5, 0.5]], // image at x=-2 is 2.5 Å from first Ti (bonds!)
+    [`O`, [0.8, 0.5, 0.5]], // image at x=-2 is 2.5 Å from first Ti
   ])
   const compound_images = find_image_atoms(metal_in_compound)
-  expect(compound_images.filter(([idx]) => idx === 1)).toHaveLength(0)
-  // ...while the anion gets pulled in to complete the Ti coordination
-  expect(compound_images.filter(([idx]) => idx === 2).length).toBeGreaterThan(0)
+  // both the cation and the anion copy appear, each completing a bond it participates in
+  expect(compound_images.filter(([idx]) => idx === 1)).toHaveLength(1)
+  expect(compound_images.filter(([idx]) => idx === 2)).toHaveLength(1)
 
-  // pure metals get NO phase-2 images at all (equal electronegativity = no
-  // anion->cation pull): only the uniform phase-1 boundary copies render, so
-  // e.g. a 1-atom FCC metal cell shows just its corner copies instead of an
-  // asymmetric nearest-neighbor blob
-  const pure_metal = make_crystal(10, [
-    [`Cu`, [0.05, 0.5, 0.5]],
-    [`Cu`, [0.8, 0.5, 0.5]],
-  ])
-  // Cu image at x=-2 would be 2.5 Å from first Cu (within 2*r_Cu + slack) but
-  // must still not be generated
-  const cu_images = find_image_atoms(pure_metal).filter(([idx]) => idx === 1)
-  expect(cu_images).toHaveLength(0)
-
-  // multi-metal intermetallics (e.g. Al-Fe-Ni) also get no phase-2 images even
-  // though their metals differ in electronegativity - metals can never be
-  // polyhedron vertices, so such images would complete nothing
-  const intermetallic = make_crystal(10, [
-    [`Al`, [0.05, 0.5, 0.5]],
-    [`Fe`, [0.8, 0.5, 0.5]],
-  ])
-  // Fe (EN 1.83) > Al (EN 1.61) and the Fe image at x=-2 would be within bonding
-  // distance of Al, but Fe is a metal -> no image
-  const fe_images = find_image_atoms(intermetallic).filter(([idx]) => idx === 1)
-  expect(fe_images).toHaveLength(0)
+  // pure metals and intermetallics get completion images too - their homoatomic
+  // contacts are the bonding network, so leaving them out truncated fcc metals
+  // (Cu/Al/Ag/Pb rendered CN 8 or, for Al, nothing at all)
+  for (const elements of [
+    [`Cu`, `Cu`],
+    [`Al`, `Fe`],
+  ]) {
+    const metal = make_crystal(10, [
+      [elements[0], [0.05, 0.5, 0.5]],
+      [elements[1], [0.8, 0.5, 0.5]],
+    ])
+    // the second atom's image at x=-2 is 2.5 Å from the first, within bonding range
+    expect(find_image_atoms(metal).filter(([idx]) => idx === 1)).toHaveLength(1)
+  }
 })
 
 test(`phase-2 doesn't float framework cation-formers beyond the cell to complete spectator shells`, () => {
@@ -163,22 +153,26 @@ test(`phase-2 doesn't float framework cation-formers beyond the cell to complete
   // composition has framework cations (Fe/Mn/P) so Li renders no polyhedron - yet
   // before the fix phase-2 still pulled P (and its O) periodic images ~2 Å (0.42
   // fractional on the short 4.74 Å c-axis) beyond the face to "complete" the
-  // never-drawn Li shells, floating whole PO4 groups outside the cell. Completion
-  // images must now only complete framework (Fe/Mn) shells: all O anions, far fewer
-  // of them, none stacked far past a face.
+  // never-drawn Li shells, floating whole PO4 groups outside the cell. The spectator
+  // skip is what fixes that: Li is neither a completion candidate nor an anchor, so
+  // nothing is pulled out to serve it. Completion is otherwise symmetric, so Fe/Mn/P
+  // copies are expected here - each completes a bond that is actually drawn.
   const structure = parse_structure_file(lifemn_cif, `Li4Fe3Mn1(PO4)4.cif`) as Crystal
   const completion = find_image_atoms(structure).filter(
     ([, , , is_completion]) => is_completion,
   )
   expect(completion.length).toBeGreaterThan(0)
-  expect(completion.length).toBeLessThanOrEqual(20) // was 74 before the fix
+  expect(completion.length).toBeLessThanOrEqual(40) // was 74 under the buggy rule
+  const { matrix } = structure.lattice
+  const axis_lengths = matrix.map((vec) => Math.hypot(...vec))
   for (const [src_idx, , img_abc] of completion) {
-    // every completion image is an oxygen anion - no P (or Li/Fe/Mn) cation copies
-    expect(get_majority_element(structure.sites[src_idx])).toBe(`O`)
-    // and none float more than ~0.35 fractional units past any face (would have been
-    // 0.42 for the spurious P images), i.e. no second-shell stacking on PBC images
-    for (const coord of img_abc) {
-      expect(Math.max(0, -coord, coord - 1)).toBeLessThan(0.35)
+    // no spectator (Li) copies: those were the ones with no shell to complete
+    expect(get_majority_element(structure.sites[src_idx])).not.toBe(`Li`)
+    // a bond-completing image sits at most one bond length outside the cell; anything
+    // beyond that is second-shell stacking on another image rather than a real bond
+    for (const [axis, coord] of img_abc.entries()) {
+      const overhang_ang = Math.max(0, -coord, coord - 1) * axis_lengths[axis]
+      expect(overhang_ang).toBeLessThan(3.5)
     }
   }
 })
@@ -437,14 +431,16 @@ test.each([
     content: mp_1_struct,
     filename: `mp-1.json`,
     expected_min_images: 7, // Based on actual test output: 10 images found, atom at (0,0,0) creates 7 images
-    expected_max_images: 15,
+    expected_max_images: 40,
     description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)`,
   },
   {
     content: mp_2_struct,
     filename: `mp-2.json`,
     expected_min_images: 10, // Based on actual test output: 13 images found
-    expected_max_images: 30, // bond-completing images (phase 2) add a few more
+    // fcc Pd: every atom is a surface atom in a 4-site cell, and phase 2 now completes
+    // metal shells too (without them fcc metals rendered CN 8 instead of 12)
+    expected_max_images: 70,
     description: `Four Pd atoms in FCC structure`,
   },
   {
@@ -458,14 +454,14 @@ test.each([
     content: quartz_cif,
     filename: `quartz-alpha.cif`,
     expected_min_images: 3, // Based on actual test output: 5 images found
-    expected_max_images: 10,
+    expected_max_images: 20,
     description: `Si and O atoms with some near cell edges`,
   },
   {
     content: extended_xyz_quartz,
     filename: `quartz.extxyz`,
     expected_min_images: 0,
-    expected_max_images: 10,
+    expected_max_images: 20,
     min_dist: 1e-4,
     tol: 1e-4,
     description: `Quartz structure from extended XYZ format`,
