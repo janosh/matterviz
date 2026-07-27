@@ -535,18 +535,22 @@ test.describe(`Bond component`, () => {
 
       const len_before_reset = await history_length()
       await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
-      // Poll for reset's own push and then for the sequence to stop growing, so what gets
-      // recorded is the settled value. Neither step asserts what that value is — a reset
-      // that pushes nothing at all just runs out the budget and is reported as such.
-      const settle_deadline = Date.now() + 10_000
-      let history_len = len_before_reset
-      while (Date.now() < settle_deadline) {
-        await page.waitForTimeout(150)
-        const current_len = await history_length()
-        if (current_len > len_before_reset && current_len === history_len) break
-        history_len = current_len
-      }
-      steps.reset_pushed_update = history_len > len_before_reset
+      // Wait for the bonds effect's post-reset push and for the sequence to stop growing, so
+      // the recorded value is the settled one. Only lengths are polled, never the value, so
+      // the diagnostic still asserts nothing about the order. A reset that pushes nothing
+      // times out into the catch below, which records the same history.
+      let prev_len = len_before_reset
+      await expect
+        .poll(
+          async () => {
+            const len = await history_length()
+            const settled = len > len_before_reset && len === prev_len
+            prev_len = len
+            return settled
+          },
+          { intervals: [150], timeout: 10_000 },
+        )
+        .toBe(true)
       steps.after_reset = await read_history()
     } catch (error) {
       steps.aborted_at = String(error).split(`\n`)[0]
