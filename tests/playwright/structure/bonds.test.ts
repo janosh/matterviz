@@ -546,6 +546,7 @@ test.describe(`Bond component`, () => {
       steps.reopened_menu_text = await menu.textContent().catch(() => `unreadable`)
 
       const len_before_reset = await history_length()
+      steps.reset_clicked_at = await page.evaluate(() => Math.round(performance.now()))
       await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
       // Wait for the bonds effect's post-reset push and for the sequence to stop growing, so
       // the recorded value is the settled one. Only lengths are polled, never the value, so
