@@ -102,12 +102,17 @@ export const create_trajectory_frame = (
   metadata,
 })
 
-// Shared utility to read ndarray data from binary format
+// Shared utility to read ndarray data from binary format.
+// `base_offset` is the absolute file position of `view`'s first byte: ULM stores
+// array positions as absolute file offsets, so reading from a slice of the file
+// (desktop frame streaming) needs the slice origin subtracted.
 export const read_ndarray_from_view = (
   view: DataView,
   ref: { ndarray: unknown[] },
+  base_offset: number = 0,
 ): number[][] => {
-  const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
+  const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
+  const array_offset = absolute_offset - base_offset
   const total = shape.reduce((product, dim_size) => product * dim_size, 1)
 
   const readers: Record<string, { bytes: number; read: (pos: number) => number }> = {
@@ -120,7 +125,9 @@ export const read_ndarray_from_view = (
   if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
 
   if (!Number.isInteger(array_offset) || array_offset < 0) {
-    throw new Error(`Invalid array_offset: expected non-negative integer, got ${array_offset}`)
+    throw new Error(
+      `Invalid array_offset: expected non-negative integer, got ${array_offset}${base_offset ? ` (absolute ${absolute_offset} minus base ${base_offset})` : ``}`,
+    )
   }
   if (array_offset + total * reader.bytes > view.byteLength) {
     throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)

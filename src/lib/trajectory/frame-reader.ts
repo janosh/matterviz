@@ -77,10 +77,17 @@ class PositionAccumulator {
   private coords_unwrapped: boolean | null = null
   private frame_count = 0
 
+  // Frames already collected. Callers report progress against this rather than the source
+  // frame number, which advances by frame_stride and would couple the interval to it.
+  get collected_frames(): number {
+    return this.frame_count
+  }
+
   constructor(
     private readonly n_frames: number,
     private readonly n_atoms: number,
     max_bytes: number = DEFAULT_POSITION_STREAM_MAX_BYTES,
+    private readonly frame_stride = 1,
   ) {
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)
@@ -168,6 +175,11 @@ class PositionAccumulator {
   ): void {
     // A lone atom cannot be permuted, and without a cell there is no scale to compare to
     if (!lattice || this.frame_count < 1 || this.n_atoms < 2) return
+    // Sub-sampled unwrapped coordinates carry no signal: their displacement is not folded
+    // into the cell, so it grows as sqrt(stride) without bound and a clean diffusive run
+    // trips the threshold on its own (a 20 A cell at stride 100 is enough). Nothing needs
+    // unwrapping here either, so MSD stays exact — the check just has nothing left to say.
+    if (this.coords_unwrapped && this.frame_stride > 1) return
     // cart_to_frac is linear, so it maps a Cartesian step straight to a fractional one
     const cart_to_frac = math.create_cart_to_frac(lattice)
     const pbc = this.pbc ?? [true, true, true]
@@ -249,12 +261,9 @@ export async function accumulate_positions(
   if (!first_frame) throw new Error(`accumulate_positions: could not read frame 0`)
   const collected = Math.ceil(total_frames / frame_stride)
   const n_atoms = first_frame.structure.sites.length
-  const accumulator = new PositionAccumulator(collected, n_atoms, max_bytes)
+  const accumulator = new PositionAccumulator(collected, n_atoms, max_bytes, frame_stride)
   accumulator.add_frame(first_frame, 0)
 
-  // Counting SOURCE frame numbers would make the report interval depend on the stride:
-  // with stride 3 only every 1500th source frame is both collected and a multiple of 500
-  let n_collected = 1
   for (
     let frame_number = frame_stride;
     frame_number < total_frames;
@@ -269,9 +278,8 @@ export async function accumulate_positions(
       )
     }
     accumulator.add_frame(frame, frame_number)
-    n_collected++
 
-    if (n_collected % 500 === 0) {
+    if (accumulator.collected_frames % 500 === 0) {
       report(frame_number, `Reading positions: ${frame_number}/${total_frames}`)
     }
   }
@@ -508,13 +516,9 @@ export class TrajFrameReader implements FrameLoader {
       if (frame_number >= n_items) return null
 
       const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
-      const { frame, numbers } = decode_ase_frame(
-        view,
-        data,
-        frame_offset,
-        frame_number,
-        this.global_numbers,
-      )
+      const { frame, numbers } = decode_ase_frame(view, data, frame_offset, frame_number, {
+        fallback_numbers: this.global_numbers,
+      })
       this.global_numbers = numbers
       return frame
     } catch (error) {

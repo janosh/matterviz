@@ -16,33 +16,56 @@ export const read_ase_header = (view: DataView): { n_items: number; offsets_pos:
   offsets_pos: Number(view.getBigInt64(40, true)),
 })
 
+export interface AseFrameOptions {
+  // Atomic numbers from an earlier frame. ASE writes `numbers` only once, so
+  // every frame after the first relies on this.
+  fallback_numbers?: number[]
+  // Rejects a corrupt JSON length field before it becomes a huge allocation.
+  max_json_length?: number
+  // Absolute file position of `buffer`'s first byte, for callers that read only
+  // one frame's byte range instead of the whole file (desktop streaming). ULM
+  // stores ndarray positions as absolute file offsets, so they need the slice
+  // origin subtracted before they can index into `buffer`.
+  base_offset?: number
+}
+
 // Decode a single ASE/ULM frame (JSON header + optional ndarray payloads) into a
 // TrajectoryFrame. Returns the atomic numbers actually used so callers can cache them
 // as fallback for later frames that omit `numbers` (ASE stores them only once).
+//
+// `frame_offset` is absolute like the ndarray offsets, so it is rebased the same way.
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,
-  fallback_numbers?: number[],
-  max_json_length?: number,
+  { fallback_numbers, max_json_length, base_offset = 0 }: AseFrameOptions = {},
 ): { frame: TrajectoryFrame; numbers: number[] } {
-  const json_length = Number(view.getBigInt64(frame_offset, true))
+  const local_frame_offset = frame_offset - base_offset
+  if (local_frame_offset < 0 || local_frame_offset + 8 > buffer.byteLength) {
+    throw new Error(
+      `frame offset ${frame_offset} lies outside the ${buffer.byteLength} byte slice at ${base_offset}`,
+    )
+  }
+  const json_length = Number(view.getBigInt64(local_frame_offset, true))
   if (max_json_length !== undefined && json_length > max_json_length) {
     throw new Error(`frame JSON too large: ${json_length} bytes`)
   }
   const frame_data = JSON.parse(
-    new TextDecoder().decode(new Uint8Array(buffer, frame_offset + 8, json_length)),
+    new TextDecoder().decode(new Uint8Array(buffer, local_frame_offset + 8, json_length)),
   )
+
+  const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
+    read_ndarray_from_view(view, ref, base_offset)
 
   const positions_ref = frame_data[`positions.`] ?? frame_data.positions
   const positions = positions_ref?.ndarray
-    ? read_ndarray_from_view(view, positions_ref)
+    ? read_ndarray(positions_ref)
     : (positions_ref as number[][])
 
   const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
   const numbers: number[] = numbers_ref?.ndarray
-    ? read_ndarray_from_view(view, numbers_ref).flat()
+    ? read_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
 
   if (!numbers || !positions) {
@@ -98,14 +121,10 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
 
   for (let idx = 0; idx < n_items; idx++) {
     try {
-      const { frame, numbers } = decode_ase_frame(
-        view,
-        buffer,
-        frame_offsets[idx],
-        idx,
-        global_numbers,
-        MAX_SAFE_STRING_LENGTH,
-      )
+      const { frame, numbers } = decode_ase_frame(view, buffer, frame_offsets[idx], idx, {
+        fallback_numbers: global_numbers,
+        max_json_length: MAX_SAFE_STRING_LENGTH,
+      })
       global_numbers = numbers
       frames.push(frame)
     } catch (error) {
