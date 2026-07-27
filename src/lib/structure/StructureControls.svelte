@@ -177,19 +177,26 @@
     structure && `lattice` in structure ? structure.lattice.matrix : null,
   )
 
-  let zone_axis_error = $state(``)
-  function fly_to_zone_axis() {
-    if (!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)) return
-    const indices = [...zone_axis_indices] as Vec3
-    try {
-      // A degenerate cell (and, in hkl mode, any singular one) throws out of
-      // zone_axis_direction — report that rather than let it escape the click handler.
-      // The scene clears this as it starts the flight, so re-clicking the same axis flies again
-      fly_to_request = zone_axis_direction(lattice_matrix, indices, zone_axis_mode)
-      zone_axis_error = ``
-    } catch (exc) {
-      zone_axis_error = to_error(exc).message
+  // Resolved eagerly rather than on click so a degenerate cell (or, in hkl mode, any
+  // singular one) disables the button and explains why, instead of throwing out of the
+  // handler. Derived, so the message clears itself as soon as the indices or mode change.
+  let zone_axis = $derived.by(() => {
+    if (!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)) {
+      return { direction: null, error: `` }
     }
+    try {
+      const indices = [...zone_axis_indices] as Vec3
+      return {
+        direction: zone_axis_direction(lattice_matrix, indices, zone_axis_mode),
+        error: ``,
+      }
+    } catch (exc) {
+      return { direction: null, error: to_error(exc).message }
+    }
+  })
+  // The scene clears this as it starts the flight, so re-clicking the same axis flies again
+  const fly_to_zone_axis = () => {
+    if (zone_axis.direction) fly_to_request = zone_axis.direction
   }
 
   // Unique majority elements in the structure, for polyhedra center toggles.
@@ -667,17 +674,15 @@
       <button
         type="button"
         onclick={fly_to_zone_axis}
-        disabled={!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)}
+        disabled={!zone_axis.direction}
         title={lattice_matrix
           ? `Point the camera along this crystallographic direction`
           : `Needs a lattice — molecules have no crystallographic directions`}
       >
         View
       </button>
-      {#if zone_axis_error}
-        <span style="color: var(--error-color, #e74c3c); font-size: 0.9em"
-          >{zone_axis_error}</span
-        >
+      {#if zone_axis.error}
+        <span class="control-error">{zone_axis.error}</span>
       {/if}
     </div>
   </SettingsSection>
@@ -893,7 +898,7 @@
       <!-- `!== null` (not truthiness) so the union discriminates: an empty error string
         would leave the else branch un-narrowed and rmsd possibly undefined -->
       {#if displacement_summary.error !== null}
-        <span class="displacement-error">{displacement_summary.error}</span>
+        <span class="control-error">{displacement_summary.error}</span>
       {:else}
         <div class="displacement-readout">
           <span>RMSD <strong>{format_num(displacement_summary.rmsd, `.4~f`)} Å</strong></span>
@@ -1375,7 +1380,7 @@
     width: 100%;
     justify-content: space-between;
   }
-  .displacement-error {
+  .control-error {
     color: var(--error-color, #e74c3c);
     font-size: 0.9em;
   }

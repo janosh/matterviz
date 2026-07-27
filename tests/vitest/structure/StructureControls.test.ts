@@ -66,8 +66,11 @@ describe(`StructureControls`, () => {
     expect(supercell_inputs).toHaveLength(0)
   })
 
-  // zone_axis_direction throws on a degenerate cell (and, in hkl mode, on any singular one
-  // via matrix_inverse_3x3). That must surface next to the button, not escape the handler.
+  // zone_axis_direction throws on a cell it cannot resolve a direction in. Resolving it in
+  // a $derived means the button is disabled and the reason shown BEFORE any click, so the
+  // throw can never escape the handler. The hkl/singular variant of the same throw is
+  // covered directly in scene/camera-orientation.test.ts — the mode is just an argument to
+  // the identical guarded call, and happy-dom cannot drive a Svelte <select> binding.
   // oxfmt-ignore
   test.each([
     [`a well-formed cell`, cubic_matrix(10), null],
@@ -75,24 +78,22 @@ describe(`StructureControls`, () => {
   ] as [string, Matrix3x3, RegExp | null][])(
     `zone axis View button on %s`,
     async (_name, matrix, expected_error) => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
-        controls_open: true,
-      },
-    })
-    await tick()
-    const view_button = [...document.querySelectorAll(`button`)].find((btn) =>
-      btn.textContent?.trim() === `View`
-    )
-    if (!view_button) throw new Error(`no zone-axis View button rendered`)
-    // must not throw: a degenerate cell has to surface as text, not escape the handler
-    view_button.click()
-    await tick()
-    const error_text = document.querySelector(`.zone-axis span[style*="error-color"]`)
-    if (expected_error) expect(error_text?.textContent).toMatch(expected_error)
-    else expect(error_text).toBeNull()
+      mount(StructureControls, {
+        target: document.body,
+        props: {
+          structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
+          controls_open: true,
+        },
+      })
+      await tick()
+      const view_button = [...document.querySelectorAll(`button`)].find((btn) =>
+        btn.textContent?.trim() === `View`
+      )
+      if (!view_button) throw new Error(`no zone-axis View button rendered`)
+      const error_text = document.querySelector(`.zone-axis .control-error`)
+      expect(view_button.disabled).toBe(expected_error !== null)
+      if (expected_error) expect(error_text?.textContent).toMatch(expected_error)
+      else expect(error_text).toBeNull()
     },
   )
 
