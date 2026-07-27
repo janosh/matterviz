@@ -1785,6 +1785,8 @@ class RdfPlot(MatterViz):
         pbc: Any | None = None,
         show_reference_line: bool | None = None,
         structures: dict | None = None,
+        x_axis: dict | None = None,
+        y_axis: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1822,6 +1824,10 @@ class RdfPlot(MatterViz):
             mv_props["show_reference_line"] = show_reference_line
         if structures is not None:
             mv_props["structures"] = structures
+        if x_axis is not None:
+            mv_props["x_axis"] = x_axis
+        if y_axis is not None:
+            mv_props["y_axis"] = y_axis
 
         super().__init__(
             id=id,
