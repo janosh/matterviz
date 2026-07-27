@@ -77,10 +77,20 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   const dot_ac = a_vec[0] * c_vec[0] + a_vec[1] * c_vec[1] + a_vec[2] * c_vec[2]
   const dot_bc = b_vec[0] * c_vec[0] + b_vec[1] * c_vec[1] + b_vec[2] * c_vec[2]
 
-  // Convert to angles in degrees
-  const alpha = Math.acos(dot_bc / (b * c)) * RAD_TO_DEG
-  const beta = Math.acos(dot_ac / (a * c)) * RAD_TO_DEG
-  const gamma = Math.acos(dot_ab / (a * b)) * RAD_TO_DEG
+  // Convert to angles in degrees. Two ways this yields NaN without the guard: parallel
+  // vectors, where the dot product and the two hypot calls round differently and the
+  // ratio exceeds 1 (a_vec = b_vec = (1,1,1) gives 1.0000000000000002), and a zero-length
+  // vector giving 0/0 - which is exactly what 2D/slab/molecule parse paths produce. The
+  // NaN then propagates silently into every derived quantity. angle_between_vectors in
+  // measure.ts already clamps the same computation; these must not disagree.
+  const safe_angle = (dot: number, len_1: number, len_2: number): number => {
+    const denom = len_1 * len_2
+    if (denom === 0) return 90 // degenerate axis: report orthogonal rather than NaN
+    return Math.acos(Math.max(-1, Math.min(1, dot / denom))) * RAD_TO_DEG
+  }
+  const alpha = safe_angle(dot_bc, b, c)
+  const beta = safe_angle(dot_ac, a, c)
+  const gamma = safe_angle(dot_ab, a, b)
 
   return { a, b, c, alpha, beta, gamma, volume }
 }
@@ -241,6 +251,8 @@ export function unwrap_positions(
 
   // Copy frame 0 verbatim so the output never aliases the input
   const unwrapped: Vec3[][] = [frames[0].map((pos): Vec3 => [pos[0], pos[1], pos[2]])]
+  // Most recent non-null cell, used for frames whose own lattice entry is missing
+  let last_lattice: Matrix3x3 | null = per_frame_lattices?.[0] ?? fixed_lattice
 
   for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {
     const prev_frame = frames[frame_idx - 1]
@@ -252,10 +264,16 @@ export function unwrap_positions(
           `frame ${frame_idx}); unwrapping needs a fixed atom ordering across frames`,
       )
     }
-    const lattice = per_frame_lattices ? per_frame_lattices[frame_idx] : fixed_lattice
-    if (lattice != null) {
-      assert_finite_3x3(lattice, `unwrap_positions frame ${frame_idx} lattice`)
+    const frame_lattice = per_frame_lattices ? per_frame_lattices[frame_idx] : fixed_lattice
+    if (frame_lattice != null) {
+      assert_finite_3x3(frame_lattice, `unwrap_positions frame ${frame_idx} lattice`)
+      last_lattice = frame_lattice
     }
+    // Carry the last known cell into frames whose own lattice is missing: a null entry
+    // mid-trajectory is a parse gap, not an aperiodic frame, and its neighbours ARE
+    // wrapped, so a plain difference there admits a jump of up to one box length that
+    // then propagates through the whole cumulative unwrap.
+    const lattice = frame_lattice ?? last_lattice
     // Hoisted out of the atom loop; reuses the cached converters for a fixed cell
     const converters = lattice
       ? (fixed_converters ?? create_lattice_converters(lattice))
@@ -537,10 +555,33 @@ export function cell_to_lattice_matrix(
   const cos_gamma = Math.cos(gamma_rad)
   const sin_gamma = Math.sin(gamma_rad)
 
-  // Calculate volume factor for triclinic system
-  const vol_factor = Math.sqrt(
-    1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma,
-  )
+  // Calculate volume factor for triclinic system. The radicand goes negative whenever the
+  // angle triple violates the triclinic inequality, and sin_gamma is zero at gamma 0/180.
+  // Both used to sail through as NaN: (3,3,3,170,170,170) returned a c vector of
+  // [-2.95, -33.77, NaN] - already nonsense at c_y, which should have length 3 - so one
+  // mistyped CIF angle turned every derived Cartesian coordinate into NaN with no
+  // diagnostic anywhere. Fail here instead, naming the offending parameters.
+  const radicand =
+    1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
+  const cell_desc = `a=${a} b=${b} c=${c} alpha=${alpha} beta=${beta} gamma=${gamma}`
+  // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
+  // "a and b are collinear" is the more actionable of the two diagnoses
+  // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
+  // an exact test and surface as the less useful "not realizable" error below
+  if (Math.abs(sin_gamma) < 1e-12) {
+    throw new Error(
+      `Cell has gamma=${gamma}° (${cell_desc}), making the a and b axes collinear and the ` +
+        `cell degenerate. Lattice vectors are undefined.`,
+    )
+  }
+  if (radicand < 0) {
+    throw new Error(
+      `Cell angles do not describe a realizable lattice (${cell_desc}): the triclinic ` +
+        `volume factor 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ is ${radicand}, which ` +
+        `must be >= 0. Check for a mistyped angle.`,
+    )
+  }
+  const vol_factor = Math.sqrt(radicand)
 
   // Standard crystallographic lattice vectors
   const c_x = c * cos_beta

@@ -239,6 +239,38 @@ test.each([
   expect(result.volume).toBeCloseTo(expected.volume, 1)
 })
 
+// acos of a ratio that floating point pushed past 1, and division by a zero-length axis,
+// both used to return NaN and propagate silently into every derived quantity. A zero third
+// vector is exactly what 2D/slab/molecule parse paths produce.
+test.each([
+  [
+    `parallel a and b`,
+    [
+      [1, 1, 1],
+      [1, 1, 1],
+      [0, 0, 1],
+    ],
+    { gamma: 0 },
+  ],
+  [
+    `zero-length c`,
+    [
+      [3, 0, 0],
+      [0, 3, 0],
+      [0, 0, 0],
+    ],
+    { alpha: 90, beta: 90, gamma: 90 },
+  ],
+])(`calc_lattice_params stays finite for degenerate cells: %s`, (_label, matrix, expected) => {
+  const result = math.calc_lattice_params(matrix as math.Matrix3x3)
+  for (const key of [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`] as const) {
+    expect(Number.isFinite(result[key]), `${key} = ${result[key]}`).toBe(true)
+  }
+  for (const [key, want] of Object.entries(expected)) {
+    expect(result[key as `alpha`]).toBeCloseTo(want, 6)
+  }
+})
+
 describe(`pbc_dist`, () => {
   test(`hexagonal lattice PBC wrapping`, () => {
     // oxfmt-ignore
@@ -543,6 +575,22 @@ describe(`tensor conversion utilities`, () => {
         expect(matrix).toEqual(
           expected.map((row) => row.map((val) => expect.closeTo(val, 6))),
         )
+      },
+    )
+
+    // A radicand below zero means the angle triple describes no realizable lattice, and
+    // sin(gamma) = 0 means a and b are collinear. Both used to sail through as NaN:
+    // (3,3,3,170,170,170) returned a c vector of [-2.95, -33.77, NaN], already nonsense at
+    // c_y for a vector that should have length 3, so one mistyped CIF angle turned every
+    // derived Cartesian coordinate into NaN with no diagnostic.
+    it.each([
+      [`angles violating the triclinic inequality`, [3, 3, 3, 170, 170, 170], /realizable/],
+      [`gamma = 0 (collinear a and b)`, [3, 3, 3, 90, 90, 0], /degenerate/],
+      [`gamma = 180 (collinear a and b)`, [3, 3, 3, 90, 90, 180], /degenerate/],
+    ] as [string, [number, number, number, number, number, number], RegExp][])(
+      `throws on %s`,
+      (_name, cell_params, message) => {
+        expect(() => math.cell_to_lattice_matrix(...cell_params)).toThrow(message)
       },
     )
 

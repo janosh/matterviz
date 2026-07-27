@@ -144,6 +144,32 @@ describe(`periodic unwrapping`, () => {
     expect(calc_msd(build_positions(wrapped_frames)).unwrapped).toBe(false)
   })
 
+  it(`a single frame missing its lattice does not corrupt the unwrap`, () => {
+    // The unwrap decision is global, but the per-frame step used to fall back to a plain
+    // coordinate difference wherever that frame's lattice was null. Its neighbours are
+    // still wrapped, so that difference is a jump of up to one box length — and because
+    // the unwrap accumulates, one null cell poisoned every later frame. Measured before
+    // the fix on this exact input: 445 Å² at lag 10 against a true 900 Å².
+    // The null cell has to land on a frame where the atom actually crossed a face —
+    // elsewhere the raw difference coincides with the minimum image and hides the bug.
+    const crossing_frame = wrapped_frames.findIndex(
+      (frame, frame_idx) =>
+        frame_idx > 0 &&
+        Math.abs(frame[0][0] - wrapped_frames[frame_idx - 1][0][0]) > box_length / 2,
+    )
+    expect(crossing_frame).toBeGreaterThan(0)
+
+    const reference = calc_msd(build_positions(wrapped_frames, { lattice: box }))
+    const with_gap = build_positions(wrapped_frames, { lattice: box })
+    if (!with_gap.lattice_matrices) throw new Error(`expected per-frame lattices`)
+    with_gap.lattice_matrices = with_gap.lattice_matrices.map((mat, frame_idx) =>
+      frame_idx === crossing_frame ? null : mat,
+    )
+    const gapped = calc_msd(with_gap)
+    expect(gapped.unwrapped).toBe(true)
+    expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
+  })
+
   // A slab is periodic in x/y and open along z. Folding the free axis into the 10 A cell
   // turns a real +6 A hop into -4 A, reporting 16 A² where the answer is 36 A².
   const slab_frames = [[[0, 0, 0]], [[0, 0, 6]]]

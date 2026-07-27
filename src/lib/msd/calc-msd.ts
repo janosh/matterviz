@@ -125,11 +125,17 @@ function unwrap_flat_positions(
   let converters: LatticeConverters | null = null
 
   for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
-    const lattice = lattice_matrices?.[frame_idx] ?? null
-    if (lattice && lattice !== cached_lattice) {
-      cached_lattice = lattice
-      converters = create_lattice_converters(lattice)
+    const frame_lattice = lattice_matrices?.[frame_idx] ?? null
+    if (frame_lattice && frame_lattice !== cached_lattice) {
+      cached_lattice = frame_lattice
+      converters = create_lattice_converters(frame_lattice)
     }
+    // Carry the last known cell into frames whose own lattice is missing. A null entry
+    // mid-trajectory is a parse gap, not a genuinely aperiodic frame: the neighbouring
+    // frames ARE wrapped, so taking the plain coordinate difference there admits a jump
+    // of up to one box length, and because the unwrap accumulates it corrupts every later
+    // frame too. One null cell in a 21-frame run reported MSD 445 Å² against a true 900.
+    const lattice = frame_lattice ?? cached_lattice
     const prev_base = (frame_idx - 1) * n_atoms * 3
     const base = frame_idx * n_atoms * 3
     for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -139,7 +145,7 @@ function unwrap_flat_positions(
         from[axis] = positions[prev_off + axis]
         to[axis] = positions[off + axis]
       }
-      // A frame with no cell had nothing wrapped, so its step is the plain difference
+      // Plain difference only before any cell has been seen - nothing was wrapped yet
       const step =
         lattice && converters
           ? min_image_displacement(from, to, lattice, converters, pbc)
