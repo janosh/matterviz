@@ -611,12 +611,12 @@
   // Reports this component's own view of the edit arrays. The scene writes them back through
   // bind:, so if the scene applies an edit and this never fires, the write-back is the problem.
   $effect(() => {
-    bond_trace(`structure_edit_state`, trace_id, {
+    bond_trace(`structure_edit_state`, trace_id, () => ({
       added: added_bonds.length,
       removed: removed_bonds.length,
       overrides: bond_order_overrides.length,
       has_bond_edits,
-    })
+    }))
   })
 
   const clone_bonds = (edit_bonds: StructureBond[]): StructureBond[] =>
@@ -680,16 +680,18 @@
 
   function emit_bonds(next_bonds: StructureBond[] | undefined) {
     const signature = bond_signature(next_bonds)
-    bond_trace(`emit_bonds`, trace_id, {
+    bond_trace(`emit_bonds`, trace_id, () => ({
       signature,
       deduped: signature === last_emitted_bond_signature,
-    })
+    }))
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
     // untrack: emit_bonds runs inside effects that write bonds, so reading it as a tracked
     // dependency would make those effects retrigger themselves.
-    bond_trace(`emit_readback`, trace_id, { readback: untrack(() => bond_signature(bonds)) })
+    bond_trace(`emit_readback`, trace_id, () => ({
+      readback: untrack(() => bond_signature(bonds)),
+    }))
     on_bonds_change?.(next_bonds)
   }
 
@@ -760,12 +762,12 @@
     const context = current_bond_edit_context()
     if (!bond_edit_context_changed(snapshot.context, context)) return
     untrack(() => {
-      bond_trace(`context_changed_drops_snapshot`, trace_id, {
+      bond_trace(`context_changed_drops_snapshot`, trace_id, () => ({
         snapshot_bonds: bond_signature(snapshot.bonds),
         was_signature: snapshot.context.source_bond_signature,
         now_signature: context.source_bond_signature,
         same_structure: snapshot.context.structure_identity === structure,
-      })
+      }))
       emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
       clear_bond_edits()
       bond_edit_snapshot = undefined
@@ -774,7 +776,9 @@
 
   $effect(() => {
     if (!has_bond_edits) {
-      bond_trace(`no_edits`, trace_id, { snapshot_defined: bond_edit_snapshot !== undefined })
+      bond_trace(`no_edits`, trace_id, () => ({
+        snapshot_defined: bond_edit_snapshot !== undefined,
+      }))
       if (bond_edit_snapshot === undefined) return
       emit_bonds(resolve_bond_edit_reset_bonds(bond_edit_snapshot))
       bond_edit_snapshot = undefined
@@ -785,10 +789,10 @@
         bonds: current_source_bonds(),
         context: current_bond_edit_context(),
       }
-      bond_trace(`snapshot_taken`, trace_id, {
+      bond_trace(`snapshot_taken`, trace_id, () => ({
         bonds: bond_signature(bond_edit_snapshot.bonds),
         prop_bonds: bond_signature(bonds),
-      })
+      }))
     }
     const edited_bonds = merge_bond_edits(
       bond_edit_snapshot.bonds ?? [],

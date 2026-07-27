@@ -188,7 +188,7 @@
     if (typeof window === `undefined`) return
     // Whether this parent effect re-runs at all after a child emit is the open question, so
     // record the run in the same trace the child writes to.
-    bond_trace(`page_mirror`, `page`, { bonds: JSON.stringify(bonds) })
+    bond_trace(`page_mirror`, `page`, () => ({ bonds: JSON.stringify(bonds) }))
     bond_history.push($state.snapshot(bonds))
     ;(globalThis as Record<string, unknown>).structure_bond_history = bond_history
     ;(globalThis as Record<string, unknown>).structure_bonds = bonds
