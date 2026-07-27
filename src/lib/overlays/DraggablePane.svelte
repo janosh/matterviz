@@ -3,7 +3,7 @@
   import type { IconName } from '$lib/icons'
   import { DragControlTab } from '$lib/overlays'
   import { onDestroy, type Snippet } from 'svelte'
-  import { draggable, tooltip } from 'svelte-multiselect/attachments'
+  import { draggable, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {

@@ -35,8 +35,8 @@
   import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
-  import Select from 'svelte-multiselect'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import Select from 'svelte-widgets'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   let {
     controls_open = $bindable(false),

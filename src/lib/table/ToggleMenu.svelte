@@ -3,7 +3,7 @@
   import { portal } from '$lib/overlays/portal'
   import { sanitize_html } from '$lib/sanitize'
   import { type Label, strip_html } from '$lib/table'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
+  import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import { slide } from 'svelte/transition'
 
   let {
@@ -224,7 +224,7 @@
   open={column_panel_open}
   {@attach click_outside({
     callback: () => (column_panel_open = false),
-    exclude: [dropdown_selector],
+    inside: [dropdown_selector],
   })}
 >
   <summary

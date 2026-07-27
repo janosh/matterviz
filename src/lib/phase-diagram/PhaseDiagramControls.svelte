@@ -8,7 +8,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { LeverRuleMode, PhaseDiagramConfig, PhaseDiagramData } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 

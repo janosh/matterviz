@@ -19,9 +19,9 @@
   import type { RouteEntry } from '$site/state.svelte'
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
-  import { CmdPalette, CopyButton, GitHubCorner, Nav } from 'svelte-multiselect'
-  import { tooltip } from 'svelte-multiselect/attachments'
-  import { heading_anchors } from 'svelte-multiselect/heading-anchors'
+  import { CommandMenu, CopyButton, GitHubCorner, Nav } from 'svelte-widgets'
+  import { tooltip } from 'svelte-widgets/attachments'
+  import { heading_anchors } from 'svelte-widgets/heading-anchors'
 
   let { children }: { children?: Snippet<[]> } = $props()
 
@@ -92,7 +92,7 @@
 </script>
 
 <!-- z-index: above nav dropdown and Structure control toggles -->
-<CmdPalette
+<CommandMenu
   bind:open={cmd_palette_open}
   {actions}
   aria_label="Search the MatterViz site"

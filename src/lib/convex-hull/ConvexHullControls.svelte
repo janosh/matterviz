@@ -6,7 +6,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { get_entry_category, marker_path_data } from './helpers'
   import type {

@@ -31,7 +31,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'

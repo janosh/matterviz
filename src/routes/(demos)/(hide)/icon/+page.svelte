@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { IconName } from '$lib'
   import { Icon, ICON_DATA } from '$lib'
-  import { fuzzy_match } from 'svelte-multiselect'
-  import { highlight_matches } from 'svelte-multiselect/attachments'
+  import { fuzzy_match } from 'svelte-widgets'
+  import { highlight_matches } from 'svelte-widgets/attachments'
 
   let filter_text = $state(``)
   let copied_text = $state<string | null>(null)

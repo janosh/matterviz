@@ -19,7 +19,7 @@ describe(`ColorScaleSelect`, () => {
       },
     })
 
-    // Check initial state rendered by svelte-multiselect
+    // Check initial state rendered by svelte-widgets
     const initial_selection = doc_query(`.selected`)
     expect(initial_selection?.textContent?.trim()).toBe(`Viridis`)
   })

@@ -5,7 +5,7 @@
   // NOTE Trajectory.svelte intentionally keeps its own controls: its bar is a full playback strip (nav/step/FPS/info+export panes/view-mode) rather than this floating top-right cluster. It already shares FullscreenButton + sync_fullscreen.
   import type { Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import FullscreenButton from './FullscreenButton.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

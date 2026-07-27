@@ -18,7 +18,7 @@
   import pkg from '$root/package.json'
   import { normalize_static_url } from '$site/state.svelte'
   import { error } from '@sveltejs/kit'
-  import { PrevNext } from 'svelte-multiselect'
+  import { PrevNext } from 'svelte-widgets'
 
   const assert_chemical_element = (value: unknown): ChemicalElement => {
     const elem = value as Partial<ChemicalElement> | null

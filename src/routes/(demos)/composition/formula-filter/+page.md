@@ -11,7 +11,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
 ```svelte example
 <script lang="ts">
   import { Formula, FormulaFilter, get_alphabetical_formula } from 'matterviz/composition'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   // Seed history so the dropdown is visible on focus
   const history_key = `formula-filter-demo`

@@ -4,7 +4,7 @@
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
+  import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import { fade } from 'svelte/transition'
 
   let {

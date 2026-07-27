@@ -1,6 +1,6 @@
 <script lang="ts">
   import { OptimadeStructureViewer } from '$site'
-  import { FileDetails } from 'svelte-multiselect'
+  import { FileDetails } from 'svelte-widgets'
   import optimade_viewer_src from '$site/OptimadeStructureViewer.svelte?raw'
 
   let structure_id = $state(`mp-756175`)

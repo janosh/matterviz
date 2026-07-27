@@ -9,7 +9,7 @@
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids } from './sampling'

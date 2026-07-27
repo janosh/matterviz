@@ -13,8 +13,8 @@
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
-  import { CopyButton } from 'svelte-multiselect'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { CopyButton } from 'svelte-widgets'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   const default_trajectory_file = `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
   // Track the currently loaded trajectory separately from the fixed initial data URL.

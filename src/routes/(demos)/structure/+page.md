@@ -6,7 +6,7 @@
   import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
   import { Structure, type StructureHandlerData } from 'matterviz'
-  import Select from 'svelte-multiselect'
+  import Select from 'svelte-widgets'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import FilePicker from '$lib/FilePicker.svelte'

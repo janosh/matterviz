@@ -312,7 +312,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.2.2",
-    "svelte-multiselect": "^11.8.0",
+    "svelte-widgets": "^1.0.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

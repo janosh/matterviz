@@ -12,7 +12,7 @@
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
+  import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 

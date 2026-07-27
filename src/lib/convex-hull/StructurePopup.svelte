@@ -9,7 +9,7 @@
   import type { StructurePopupContext, StructurePopupStats } from './types'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { click_outside, draggable } from 'svelte-multiselect/attachments'
+  import { click_outside, draggable } from 'svelte-widgets/attachments'
 
   let {
     structure,
@@ -52,8 +52,14 @@
 
 <svelte:window onkeydown={(event) => event.key === `Escape` && onclose?.()} />
 
+<!-- dismiss_on release, not the default press: the popup is draggable, so a press that
+starts outside must not close it before the drag even begins -->
 <div
-  {@attach click_outside({ enabled: close_on_outside, callback: () => onclose?.() })}
+  {@attach click_outside({
+    enabled: close_on_outside,
+    dismiss_on: `release`,
+    callback: () => onclose?.(),
+  })}
   {@attach draggable({
     handle_selector: `.drag-handle`,
   })}
