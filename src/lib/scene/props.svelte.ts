@@ -94,30 +94,25 @@ export function build_orbit_props(opts: {
   }
 }
 
-// Camera keys the viewer places for itself: StructureScene auto-frames the structure when
-// these are unset and the orbit controls move the camera from there.
+// Camera keys StructureScene places for itself, auto-framing the structure while they hold a
+// sentinel — `undefined`, or an all-zero position — and writing its choice back into the model.
 const VIEWER_PLACED_SCENE_KEYS = new Set([`camera_position`, `camera_target`])
 
-// `undefined` and an all-zero position are the "you choose" sentinels that ask StructureScene
-// to auto-frame; it writes the placement it picks back into the model.
 const is_unplaced_camera = (value: unknown): boolean =>
   value === undefined || (Array.isArray(value) && value.every((coord) => coord === 0))
 
-// Shallow-merge caller-supplied scene props into the viewer's local model. The mirror re-runs
-// on every reactive pass, so copying a sentinel over a placement the viewer already computed
-// would snap the view back to its default and discard any orbit or auto-rotation. Real
-// coordinates always apply: a caller passing them is deliberately moving the camera, and
-// letting them through only on the first pass left both keys unsettable after mount.
+// Shallow-merge caller-supplied scene props into the viewer's local model. This re-runs on
+// every reactive pass, so a sentinel must never land on a placement the viewer already made:
+// that snaps the view back to its default and discards any orbit or auto-rotation. Real
+// coordinates always apply — passing them is how a caller moves the camera.
 export function mirror_scene_props(model: object, incoming: object): void {
   const model_record = model as Record<string, unknown>
   for (const [key, value] of Object.entries(incoming)) {
-    if (
+    const keeps_placement =
       VIEWER_PLACED_SCENE_KEYS.has(key) &&
       is_unplaced_camera(value) &&
       // untracked so mirroring never takes a dependency on what it writes
       !is_unplaced_camera(untrack(() => model_record[key]))
-    )
-      continue
-    model_record[key] = value
+    if (!keeps_placement) model_record[key] = value
   }
 }
