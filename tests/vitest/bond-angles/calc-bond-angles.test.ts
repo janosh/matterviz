@@ -15,6 +15,7 @@ import type { ElementSymbol } from '$lib/element'
 import type { Molecule } from '$lib/structure'
 import { calc_structure_coordination } from '$lib/structure/atom-properties'
 import { structure_map } from '$site/structures'
+import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, mount_sized } from '../setup'
 
@@ -483,6 +484,19 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     const root = await mount_plot({ structures: {}, allow_file_drop })
     expect(root.textContent).toContain(message)
   })
+
+  // bin_width is a public prop and resolve_angle_bins throws on anything outside (0, 180],
+  // so an unguarded binning derived would take the whole render down with it
+  test.each([0, -2, 500, NaN])(
+    `reports bin_width=%s as an error instead of crashing the render`,
+    async (bin_width) => {
+      // the error StatusMessage is a sibling of the mount root, so read the whole container
+      const container = (await mount_plot({ structures: rocksalt, bin_width })).parentElement
+      await tick()
+      expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
+      expect(container?.querySelector(`svg`)).toBeNull()
+    },
+  )
 })
 
 // The mounted plot only shows that bars exist, so the weighting maths is asserted against

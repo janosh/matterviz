@@ -232,9 +232,17 @@
       if (typeof orbit_controls.update === `function`) orbit_controls.update()
       camera_position = read_camera_position() ?? camera_position
       camera_target = read_orbit_target()
+      self_written = { position: camera_position, target: camera_target }
     }
     on_camera_reset?.({ structure, camera_has_moved: false, camera_position, camera_target })
   }
+
+  // The pose this pane last wrote into the bindable props. Anything else that shows up there
+  // was put there by the caller, which is how apply_caller_pose below tells the two apart.
+  let self_written: { position?: Vec3; target?: Vec3 } = {}
+  const same_pose = (pose_a?: Vec3, pose_b?: Vec3): boolean =>
+    pose_a === pose_b ||
+    Boolean(pose_a && pose_b && pose_a.every((coord, idx) => coord === pose_b[idx]))
 
   // Track camera movement: keep camera_target in sync with the orbit controls and emit
   // on_camera_move (primary pane only) while the controls are active.
@@ -247,6 +255,7 @@
       const target = read_orbit_target()
       camera_position = pos
       camera_target = target
+      self_written = { position: pos, target }
       on_camera_move?.({
         structure,
         camera_has_moved: true,
@@ -263,6 +272,28 @@
       // e.g. a structure swap mid-drag, where the pose is about to be reset anyway.
       if (!camera_is_moving) sync()
     }
+  })
+
+  // A caller that sets camera_position/camera_target is moving the camera deliberately, so
+  // push the pose onto the live camera and orbit target rather than leaving it to the
+  // declarative <T.PerspectiveCamera position>: while the controls are settling (damping,
+  // auto-rotate) the move sync above writes the live pose straight back over the prop, and
+  // the caller's value is lost. Poses this pane wrote itself are skipped, or applying them
+  // would fight the very controls that produced them.
+  $effect(() => {
+    const [next_position, next_target] = [camera_position, camera_target]
+    untrack(() => {
+      if (!camera || !orbit_controls?.target) return
+      const move_camera =
+        !same_pose(next_position, self_written.position) &&
+        next_position.some((coord) => coord !== 0)
+      const move_target = next_target && !same_pose(next_target, self_written.target)
+      if (!move_camera && !move_target) return
+      if (move_camera) camera.position.set(...next_position)
+      if (move_target && next_target) orbit_controls.target.set(...next_target)
+      orbit_controls.update?.()
+      self_written = { position: read_camera_position(), target: read_orbit_target() }
+    })
   })
 
   // Reset on parent request (reset-all button bumps reset_token for every pane)

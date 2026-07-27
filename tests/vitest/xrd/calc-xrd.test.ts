@@ -372,7 +372,7 @@ describe(`radiation types`, () => {
   // (b_M + b_X) — a near-cancellation — while all-odd hkl see (b_M − b_X), a reinforcement.
   // X-rays, which only ever see positive electron density, show the opposite ordering.
   test.each([
-    // [label, a, cation, anion, xray I(200)/I(111), neutron I(200)/I(111)]
+    // [label, a_len, cation, anion]
     [`TiC`, 4.328, `Ti`, `C`],
     [`MnO`, 4.445, `Mn`, `O`],
     // b_Ti + b_Al = −3.438 + 3.449 = 0.011 fm, a 99.7% cancellation: the strongest X-ray

@@ -6,6 +6,7 @@
     path_spline,
     reaction_coordinate,
   } from '$lib/neb'
+  import { download } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '$site/neb'
 
@@ -36,15 +37,10 @@
       step.long / step.short > worst.long / worst.short ? step : worst,
     )
 
-  const download_fixture = () => {
-    const url = URL.createObjectURL(new Blob([li_mgo_hop_json], { type: `application/json` }))
-    const link = Object.assign(document.createElement(`a`), {
-      href: url,
-      download: LI_MGO_HOP_FILENAME,
-    })
-    link.click()
-    URL.revokeObjectURL(url)
-  }
+  // $lib/io's download attaches the anchor before clicking it, which the hand-rolled
+  // detached-anchor version here did not — Firefox ignores a click on a detached <a>
+  const download_fixture = () =>
+    download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)
 </script>
 
 <h1>Reaction Paths (NEB)</h1>

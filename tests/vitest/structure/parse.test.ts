@@ -327,12 +327,14 @@ describe(`XYZ Parser`, () => {
     expect(result.sites[0].species[0].element).toBe(`H`)
   })
 
-  // Fortran `D` and Mathematica `*^` exponents both mean e0 in extended-XYZ Lattice strings
+  // Fortran `D` and Mathematica `*^` exponents both mean e0 in extended-XYZ Lattice strings.
+  // Padding inside the quotes splits into empty tokens that would push the count past 9.
   it.each([
     `4.0 0.0 0.0 0.0 4.0 0.0 0.0 0.0 4.0`,
     `4.0D0 0.0D0 0.0D0 0.0D0 4.0D0 0.0D0 0.0D0 0.0D0 4.0D0`,
     `4.0*^0 0.0*^0 0.0*^0 0.0*^0 4.0*^0 0.0*^0 0.0*^0 0.0*^0 4.0*^0`,
-  ])(`parses extended XYZ Lattice in scientific notation %#`, (latt) => {
+    ` \t4 0 0 0 4 0 0 0 4 `,
+  ])(`parses an extended XYZ Lattice value %#`, (latt) => {
     const result = parse_xyz(`1\nLattice="${latt}"\nH 1 1 1\n`)
     assert(result?.lattice, `Failed to parse scientific notation lattice`)
     expect(result.lattice.a).toBeCloseTo(4, 12)
@@ -2199,6 +2201,18 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[4].abc, [0.5, 0.5, 0.5], 3)
   })
 
+  test(`PDB CONECT with a blank central serial is skipped, not shifted`, () => {
+    // Columns 7-11 empty: filtering a combined serial list would promote serial 2 into the
+    // central slot and bond 2-3, an atom pair the file never connects
+    const atoms = [1, 2, 3].map((serial) => pdb_atom_line(serial, ` C  `, [serial, 0, 0], `C`))
+    const blank_central = `CONECT         2    3`
+    const result = parse_structure_file(
+      [...atoms, blank_central, `CONECT    1    2`].join(`\n`),
+      `conect.pdb`,
+    )
+    expect(bond_tuples(result)).toEqual([[0, 1, 1]])
+  })
+
   test(`PDB placeholder CRYST1 cell is ignored`, () => {
     // MD and docking tools write a 1 1 1 90 90 90 P1 cell for aperiodic systems
     const cryst1 = `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1`
@@ -2303,6 +2317,25 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.2, 0, 0], 8)
   })
 
+  test(`mmCIF drops rows that stop short of the coordinate columns`, () => {
+    // A value wrapping onto a continuation line leaves a short row. Reading coordinates off
+    // it throws, which used to abort the whole parse rather than skip the one atom.
+    const content = mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`])
+    const result = parse_structure_file(content, `wrapped.mmcif`)
+    expect(result.sites.map((site) => site.xyz[0])).toEqual([1, 3])
+  })
+
+  test(`mmCIF keeps a row missing only a trailing non-coordinate column`, () => {
+    // Real mmCIF writers omit trailing columns; the coordinates are still aligned, so
+    // thresholding on the full header count would fail the whole file over it
+    const tags = [`type_symbol`, `Cartn_x`, `Cartn_y`, `Cartn_z`, `occupancy`]
+      .map((tag) => `_atom_site.${tag}`)
+      .join(`\n`)
+    // second row omits occupancy, so it is one token short of the header count
+    const content = `data_x\nloop_\n${tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`
+    expect(parse_structure_file(content, `short.mmcif`).sites).toHaveLength(2)
+  })
+
   test(`mmCIF fractional coordinates wrap into the unit cell`, () => {
     const content = mmcif_cell(4.0, `fract`, [`Na 1.25 0.0 0.0`, `Cl 0.5 0.5 0.5`])
     const result = parse_structure_file(content, `test.mmcif`)
@@ -2323,8 +2356,18 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_sites_reconstruct(result)
   })
 
-  test(`LAMMPS dump shifts coordinates by the box origin like the data path`, () => {
-    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n-2.0 2.0\n-2.0 2.0\n-2.0 2.0\nITEM: ATOMS id element x y z\n1 Cu -1.0 0.0 1.0`
+  // Absolute columns need the -2..2 box origin shifted off; the scaled variants are cell
+  // fractions that frac_to_cart already places relative to it, so shifting them again
+  // would put the atom at [3, 4, 5]
+  test.each([
+    [`x y z`, `-1.0 0.0 1.0`],
+    [`xu yu zu`, `-1.0 0.0 1.0`],
+    [`xs ys zs`, `0.25 0.5 0.75`],
+    [`xsu ysu zsu`, `0.25 0.5 0.75`],
+    // both present: xsu wins over the absolute triple, so x y z is ignored entirely
+    [`x y z xsu ysu zsu`, `-1.0 0.0 1.0 0.25 0.5 0.75`],
+  ])(`LAMMPS dump %s columns land at the same cell position`, (columns, coords) => {
+    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n-2.0 2.0\n-2.0 2.0\n-2.0 2.0\nITEM: ATOMS id element ${columns}\n1 Cu ${coords}`
     const result = parse_structure_file(content, `offset.dump`)
     expect(result.sites).toHaveLength(1)
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
@@ -2518,6 +2561,8 @@ describe(`malformed molecular / LAMMPS input records a failure reason`, () => {
     [`PDB with an unparsable CRYST1`, `bad-cell.pdb`, `CRYST1    abc    5.640    5.640  90.00  90.00  90.00 P 1\nATOM      1  N   MOL A   1       0.000   0.000   0.000  1.00  0.00           N\n`, /CRYST1 record has invalid cell parameters/],
     [`MOL declaring more atoms than it has`, `short.mol`, `x\n\n\n  5  0  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0\n`, /atom block truncated/],
     [`MOL with a truncated bond block`, `bonds.mol`, `x\n\n\n  2  3  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\n  1  2  1  0\nM  END\n`, /bond block invalid or truncated/],
+    // bond line cut off after its two atom ids: the blank type field must not read as 0
+    [`MOL with a bond line missing its type`, `notype.mol`, `x\n\n\n  2  1  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\n  1  2\nM  END\n`, /bond block invalid or truncated/],
     [`MOL2 without an ATOM section`, `empty.mol2`, `@<TRIPOS>MOLECULE\nx\n 0 0 0 0 0\nSMALL\nNO_CHARGES\n`, /no @<TRIPOS>ATOM section/],
     [`mmCIF without coordinate columns`, `no-coords.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.label_atom_id\nC C1\n`, /missing coordinates/],
     [`LAMMPS data without an Atoms section`, `empty.lmp`, `# header only\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n`, /no Atoms section/],

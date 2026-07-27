@@ -113,7 +113,7 @@ export const parse_mmcif = (content: string): ParsedStructure | null =>
     const lines = content.split(/\r?\n/)
 
     let headers: string[] = []
-    const data_rows: string[][] = []
+    let data_rows: string[][] = []
     for (const loop of iter_cif_loops(lines)) {
       const is_atom_site = (header: string) =>
         header.trim().toLowerCase().startsWith(`_atom_site.`)
@@ -161,6 +161,20 @@ export const parse_mmcif = (content: string): ParsedStructure | null =>
       )
     }
 
+    // A row too short to reach its coordinate columns wrapped a quoted/semicolon value onto
+    // a continuation line; multi-line CIF records are not supported, so the atom is dropped.
+    // Trailing columns may be absent without shifting the coordinates, so the threshold is
+    // the last coordinate index rather than the full header count.
+    const last_coord_col = Math.max(...coord_indices)
+    const n_raw_rows = data_rows.length
+    data_rows = data_rows.filter((row) => row.length > last_coord_col)
+    if (data_rows.length < n_raw_rows) {
+      diag_warn(
+        `mmCIF: skipped ${n_raw_rows - data_rows.length} _atom_site row(s) that stop short ` +
+          `of the coordinate columns (multi-line records are not supported)`,
+      )
+    }
+
     // Only the first model of an NMR / MD ensemble is parsed (see multi-model policy)
     const model_col = indices.model
     const first_model = model_col === undefined ? undefined : data_rows[0]?.[model_col]
@@ -193,7 +207,10 @@ export const parse_mmcif = (content: string): ParsedStructure | null =>
       )
     }
     if (rows.length === 0) {
-      diag_error(`mmCIF _atom_site loop has no atoms left after model/altloc filtering`)
+      diag_error(
+        `mmCIF _atom_site loop has no usable atoms left: every row was dropped as too ` +
+          `short, from a later model, or an alternate conformer`,
+      )
       return null
     }
 

@@ -361,8 +361,11 @@ export const parse_xyz = (content: string): ParsedStructure | null =>
       return null
     }
 
-    // The comment line (line 2) carries the cell of an extended XYZ file
+    // The comment line (line 2) carries the cell of an extended XYZ file. Trimmed first:
+    // padding inside the quotes splits into empty tokens, pushing the count past 9 and
+    // silently dropping the cell.
     const lattice_values = (/Lattice="(?<lattice>[^"]+)"/.exec(lines[1])?.[1] ?? ``)
+      .trim()
       .split(/\s+/)
       .map(parse_coordinate)
     const lattice =

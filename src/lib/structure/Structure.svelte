@@ -357,11 +357,9 @@
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
-  let camera_seeded = false // camera keys mirror only while seeding, see mirror_scene_props
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
-      mirror_scene_props(scene_props, scene_props_in, !camera_seeded)
-      camera_seeded = true
+      mirror_scene_props(scene_props, scene_props_in)
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
       Object.assign(lattice_props, lattice_props_in)

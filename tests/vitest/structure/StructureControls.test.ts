@@ -1,8 +1,9 @@
 import type { AnyStructure } from '$lib'
+import type { Matrix3x3 } from '$lib/math'
 import { StructureControls } from '$lib/structure'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, simple_structure } from '../setup'
+import { cubic_matrix, doc_query, make_crystal, simple_structure } from '../setup'
 
 describe(`StructureControls`, () => {
   test.each([
@@ -64,6 +65,36 @@ describe(`StructureControls`, () => {
     const supercell_inputs = document.querySelectorAll(`input[placeholder="1x1x1"]`)
     expect(supercell_inputs).toHaveLength(0)
   })
+
+  // zone_axis_direction throws on a degenerate cell (and, in hkl mode, on any singular one
+  // via matrix_inverse_3x3). That must surface next to the button, not escape the handler.
+  // oxfmt-ignore
+  test.each([
+    [`a well-formed cell`, cubic_matrix(10), null],
+    [`a cell with a zero c vector`, [[10, 0, 0], [0, 10, 0], [0, 0, 0]], /Degenerate uvw direction/],
+  ] as [string, Matrix3x3, RegExp | null][])(
+    `zone axis View button on %s`,
+    async (_name, matrix, expected_error) => {
+    mount(StructureControls, {
+      target: document.body,
+      props: {
+        structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
+        controls_open: true,
+      },
+    })
+    await tick()
+    const view_button = [...document.querySelectorAll(`button`)].find((btn) =>
+      btn.textContent?.trim() === `View`
+    )
+    if (!view_button) throw new Error(`no zone-axis View button rendered`)
+    // must not throw: a degenerate cell has to surface as text, not escape the handler
+    view_button.click()
+    await tick()
+    const error_text = document.querySelector(`.zone-axis span[style*="error-color"]`)
+    if (expected_error) expect(error_text?.textContent).toMatch(expected_error)
+    else expect(error_text).toBeNull()
+    },
+  )
 
   test(`handles undefined structure`, () => {
     const cmp = mount(StructureControls, {

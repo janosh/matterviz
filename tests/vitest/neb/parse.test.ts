@@ -181,6 +181,22 @@ describe(`dropped files`, () => {
     expect(analyze_barrier(paths[`dropped images`]).reaction_energy).toBeCloseTo(0.3, 12)
   })
 
+  // The single-frame XYZ branch reads the comment at line index 1, so it has to trim the
+  // content first like parse_xyz_reaction_path does — otherwise a leading blank line
+  // shifts the comment out from under it and the energy reads as missing
+  test.each([``, `\n`, `  \n\n`])(
+    `a loose single-frame XYZ keeps its comment energy after %j of leading whitespace`,
+    (lead) => {
+      const xyz = (x_val: number, energy: number) =>
+        `${lead}1\nenergy=${energy}\nLi ${x_val} 0.0 0.0`
+      const paths = parse_dropped_paths([
+        { content: xyz(0, -10), filename: `a.xyz` },
+        { content: xyz(1, -9.2), filename: `b.xyz` },
+      ])
+      expect(paths[`dropped images`].images.map((image) => image.energy)).toEqual([-10, -9.2])
+    },
+  )
+
   // oxfmt-ignore
   test.each([
     [`no files at all`, [], /got no files/],
@@ -392,6 +408,16 @@ describe(`NebViewer`, () => {
     expect(viewer.querySelector<HTMLButtonElement>(`[title="Previous image"]`)?.disabled).toBe(
       true,
     )
+  })
+
+  // the stepper's range input has no visible <label>, so it needs an accessible name
+  test(`the image slider is reachable by its accessible name`, async () => {
+    const viewer = await mount_viewer({ paths: reaction_paths })
+    const slider = viewer.querySelector<HTMLInputElement>(
+      `.stepper input[aria-label="Image slider"]`,
+    )
+    expect(slider?.type).toBe(`range`)
+    expect(slider?.max).toBe(`6`)
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {

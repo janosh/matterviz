@@ -207,7 +207,9 @@ export function spectrum_from_phonon_data(
   const { qpoint_index, ...spectrum_options } = options
   const resolved_index =
     qpoint_index ?? data.qpoints.findIndex((qpt) => is_gamma_point(qpt.q_position))
-  if (resolved_index < 0) {
+  // Only the Gamma search can legitimately come back empty; an explicit negative index is a
+  // caller error and falls through to the out-of-range message below
+  if (qpoint_index === undefined && resolved_index < 0) {
     const listed = data.qpoints.map((qpt) => qpt.q_position.join(`,`)).join(`; `)
     throw new Error(`spectrum_from_phonon_data: no Gamma point among q-points [${listed}]`)
   }
@@ -271,13 +273,12 @@ export interface BroadenOptions {
 // widths. Line shapes are area-normalised, so the integrated intensity of each stick is
 // preserved (up to the +/-20 FWHM truncation window and grid discretisation).
 //
-// broaden_peaks carries two hard-coded XRD constants that are wrong here: it drops sticks
-// with intensity < 1e-5 (fine for XRD intensities normalised to 100, arbitrary in e^2/amu
-// where a whole spectrum can sit below it) and skips sticks further than 5 x-units outside
-// `range` (a buffer in DEGREES of 2-theta). Neither is a knob, so both are neutralised on
-// this side: intensities are scaled to a maximum of 1 before the call and back after,
-// turning the floor into a relative 1e-5 cut, and the grid is extended by whole steps to
-// cover every stick, then cropped so callers get exactly the range they asked for.
+// broaden_peaks drops sticks below an absolute intensity of 1e-5, which suits XRD
+// intensities normalised to 100 but is arbitrary in e^2/amu, where a whole spectrum can sit
+// under it. It is not a knob, so it is neutralised here: intensities are scaled to a maximum
+// of 1 before the call and back after, turning the floor into a relative 1e-5 cut. The grid
+// is also extended by whole steps to cover every stick and cropped back afterwards, so a
+// stick outside `range` lands on the grid whatever broaden_peaks' own reach test decides.
 export function broaden_spectrum(
   sticks: SpectrumCurve,
   options: BroadenOptions = {},
@@ -295,6 +296,13 @@ export function broaden_spectrum(
 
   const width_at = fwhm_fn ?? (() => fwhm)
   const widths = sticks.x.map(width_at)
+  // fwhm_fn is caller-supplied, so its output needs the same check the constant path gets:
+  // a zero or NaN width turns step_size into 0/NaN and n_points into Infinity/NaN below
+  for (const width of widths) {
+    if (!Number.isFinite(width) || width <= 0) {
+      throw new Error(`broaden_spectrum: fwhm must be > 0 and finite, got ${width}`)
+    }
+  }
   const max_width = Math.max(...widths)
   const [min_stick, max_stick] = [Math.min(...sticks.x), Math.max(...sticks.x)]
   const [range_lo, range_hi] =

@@ -1101,7 +1101,9 @@ export function solid_angle(
   for (let idx_a = 0; idx_a < n_center; idx_a++) {
     const radius_a = radii[idx_a]
     if (!radius_a) continue
-    const [x1, y1, z1] = sites[idx_a].xyz
+    const x1 = positions[idx_a * 3]
+    const y1 = positions[idx_a * 3 + 1]
+    const z1 = positions[idx_a * 3 + 2]
 
     for (const idx_b of collect_candidates(idx_a, n_sites, positions, spatial, half_shell)) {
       const radius_b = radii[idx_b]
@@ -1111,9 +1113,9 @@ export function solid_angle(
       const dy = positions[idx_b * 3 + 1] - y1
       const dz = positions[idx_b * 3 + 2] - z1
       const dist_sq = dx * dx + dy * dy + dz * dz
-      const dist = Math.sqrt(dist_sq)
-
       if (dist_sq < min_dist_sq || dist_sq > max_dist_sq) continue
+      // sqrt only once the pair is inside the cutoff: most candidates are rejected above
+      const dist = Math.sqrt(dist_sq)
 
       const avg_radius = (radius_a + radius_b) / 2.0
       const face_area = Math.PI * avg_radius * avg_radius

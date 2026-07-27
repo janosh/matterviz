@@ -13,16 +13,22 @@ test(`structure picker selects one structure and toggles many`, async ({ page })
     await single_target.click()
     await expect(single_target).toHaveClass(/selected/)
   }).toPass()
+  // the highlight is a class, so assistive tech needs aria-pressed to see it too
+  await expect(single_target).toHaveAttribute(`aria-pressed`, `true`)
   // single-select moves the highlight instead of accumulating it
   await expect(single_picker.locator(`button.selected`)).toHaveCount(1)
 
   // multi-select adds on click and removes on a second click
   const tiles = page.locator(`.selected-structures-grid .structure-tile`)
+  const multi_target = multi_picker.getByTitle(`mp-1`, { exact: true })
   await expect(tiles).toHaveCount(3)
-  await multi_picker.getByTitle(`mp-1`, { exact: true }).click()
+  await expect(multi_target).toHaveAttribute(`aria-pressed`, `false`)
+  await multi_target.click()
   await expect(tiles).toHaveCount(4)
-  await multi_picker.getByTitle(`mp-1`, { exact: true }).click()
+  await expect(multi_target).toHaveAttribute(`aria-pressed`, `true`)
+  await multi_target.click()
   await expect(tiles).toHaveCount(3)
+  await expect(multi_target).toHaveAttribute(`aria-pressed`, `false`)
 })
 
 test(`keeps the multi-structure layout bounded and responsive`, async ({ page }) => {

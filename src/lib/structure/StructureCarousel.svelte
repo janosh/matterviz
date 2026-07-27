@@ -204,6 +204,11 @@
     if (next === current) return false
     if (is_horizontal) track.scrollLeft = next
     else track.scrollTop = next
+    // Re-read: the browser clamps the assignment to the scrollable range, which on_wheel
+    // cannot predict while scrollWidth is still unmeasured (it passes Infinity as its own
+    // limit). Without this, a clamped write reports movement and swallows the event.
+    const applied = is_horizontal ? track.scrollLeft : track.scrollTop
+    if (applied === current) return false
     on_scroll()
     return true
   }

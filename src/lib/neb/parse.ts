@@ -241,8 +241,10 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
     const structure = parse_any_structure(content, filename)
     loose.push({
       structure,
+      // content is trimmed like parse_xyz_reaction_path does it, else a leading blank
+      // line pushes the comment out of index 1 and the energy reads as missing
       energy: is_xyz(filename)
-        ? xyz_comment_energy(content.split(/\r?\n/)[1] ?? ``, filename)
+        ? xyz_comment_energy(content.trim().split(/\r?\n/)[1] ?? ``, filename)
         : structure_energy(structure, filename),
       label: filename,
     })

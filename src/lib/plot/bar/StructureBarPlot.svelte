@@ -91,9 +91,16 @@
 
 {#if series.length === 0}
   <StatusMessage
-    message={allow_file_drop
-      ? `Drag and drop structure files here to compute ${subject}`
-      : `No ${empty_subject} to display`}
+    message={loading
+      ? `Reading dropped file…`
+      : allow_file_drop
+        ? `Drag and drop structure files here to compute ${subject}`
+        : `No ${empty_subject} to display`}
+    ondrop={handle_file_drop}
+    {...drag_over_handlers({
+      allow: () => allow_file_drop,
+      set_dragover: (over) => (dragover = over),
+    })}
   />
 {:else}
   <BarPlot

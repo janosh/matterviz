@@ -50,12 +50,31 @@
   let error_msg = $state<string | undefined>(undefined)
   let progress = $state<ParseProgress | null>(null)
 
-  let total_frames = $derived(trajectory ? trajectory_total_frames(trajectory) : 0)
-  let is_lazy = $derived(trajectory ? !has_all_frames_in_memory(trajectory) : false)
+  // trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
+  // and has_all_frames_in_memory/suggest_msd_frame_stride both route through it. Uncaught,
+  // that takes down the render, so the message rides back with the values instead.
+  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived.by(() => {
+    const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
+    if (!trajectory) return { ...blank, setup_error: undefined }
+    try {
+      return {
+        total_frames: trajectory_total_frames(trajectory),
+        is_lazy: !has_all_frames_in_memory(trajectory),
+        suggested_stride: suggest_msd_frame_stride(trajectory),
+        setup_error: undefined,
+      }
+    } catch (exc) {
+      return { ...blank, setup_error: to_error(exc).message }
+    }
+  })
   let loaded_frames = $derived(trajectory?.frames.length ?? 0)
-  let suggested_stride = $derived(trajectory ? suggest_msd_frame_stride(trajectory) : null)
   let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
-  let collected_frames = $derived(Math.ceil(total_frames / Math.max(1, frame_stride)))
+  // <input type="number"> hands back null when cleared and happily yields fractions, so
+  // normalise once — every consumer of the stride needs a positive integer
+  let safe_stride = $derived(
+    Number.isFinite(frame_stride) && frame_stride >= 1 ? Math.floor(frame_stride) : 1,
+  )
+  let collected_frames = $derived(Math.ceil(total_frames / safe_stride))
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
 
   // Drop stale positions/curves whenever the underlying trajectory is swapped out
@@ -72,7 +91,7 @@
   // MsdOptions.dt is time per COLLECTED frame, so striding has to be folded in here —
   // otherwise entering the real MD timestep with stride 5 reports D five times too large
   // with correct-looking units.
-  let dt_collected = $derived(dt_source * Math.max(1, frame_stride))
+  let dt_collected = $derived(dt_source * safe_stride)
   let msd_options = $derived<MsdOptions>({
     ...(use_dt ? { dt: dt_collected, time_unit } : {}),
     max_lag_fraction,
@@ -87,7 +106,7 @@
     try {
       positions = await collect_msd_positions(trajectory, {
         raw_data,
-        frame_stride,
+        frame_stride: safe_stride,
         on_progress: (parse_progress) => (progress = parse_progress),
       })
     } catch (exc) {
@@ -118,7 +137,9 @@
   {#if !trajectory}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
-    {#if is_lazy}
+    {#if setup_error}
+      <StatusMessage type="error" message={setup_error} style="font-size: 0.8em" />
+    {:else if is_lazy}
       <StatusMessage
         type="warning"
         message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. MSD streams the full payload{raw_data

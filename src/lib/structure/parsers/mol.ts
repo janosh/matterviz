@@ -40,9 +40,13 @@ const mol_element = (raw_symbol: string, atom_idx: number): ElementSymbol =>
 // Returns [] when neither reading yields `count` integers.
 const read_int_fields = (line: string, count: number, width = 3): number[] => {
   const fixed = Array.from({ length: count }, (_, field_idx) =>
-    Number(line.slice(field_idx * width, (field_idx + 1) * width).trim()),
+    line.slice(field_idx * width, (field_idx + 1) * width).trim(),
   )
-  if (fixed.every(Number.isInteger)) return fixed
+  // A missing field slices to '', and Number('') is 0, which Number.isInteger accepts — a
+  // bond line truncated after its two atom ids would read as a valid bond of type 0
+  if (fixed.every((field) => field !== `` && Number.isInteger(Number(field)))) {
+    return fixed.map(Number)
+  }
   const tokens = line.trim().split(/\s+/).slice(0, count).map(Number)
   return tokens.length === count && tokens.every(Number.isInteger) ? tokens : []
 }

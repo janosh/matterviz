@@ -46,6 +46,7 @@ CO₂ has an inversion centre, so no mode can be both IR and Raman active. Switc
 <script lang="ts">
   import { IrRamanSpectrum } from '$lib/spectral'
   import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
+  import type { SpectrumKind } from '$lib/spectral'
   import raman_data from '$site/phonons/ir-raman/CO2-raman-tensors.json'
   import born_file from '$site/phonons/ir-raman/CO2.BORN?raw'
   import yaml_file from '$site/phonons/ir-raman/CO2-gamma.yaml?raw'
@@ -56,7 +57,7 @@ CO₂ has an inversion centre, so no mode can be both IR and Raman active. Switc
     { raman_tensors: raman_data.raman_tensors },
   )
 
-  let kind = $state('ir')
+  let kind = $state<SpectrumKind>('ir')
 </script>
 
 <label style="display: block; margin-bottom: 0.5em">

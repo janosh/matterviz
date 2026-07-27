@@ -384,8 +384,8 @@ describe(`input validation`, () => {
     expect(run).toThrow(pattern)
   })
 
-  it(`throws when the atom count changes mid-trajectory`, () => {
-    // unwrap_positions owns this check; MSD must let it surface, not swallow it
+  it(`throws when the position buffer disagrees with n_frames x n_atoms`, () => {
+    // unwrap_flat_positions owns this check; MSD must let it surface, not swallow it
     const positions = build_positions([on_x_axis(0, 1), on_x_axis(0.1, 1.1)])
     // frame 1 loses an atom
     const broken = { ...positions, n_atoms: 2, positions: positions.positions.slice(0, 9) }

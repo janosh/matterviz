@@ -51,6 +51,9 @@
       })
       .catch((err) => {
         if (this_request !== request_id) return
+        // drop the stale curves, else `series` stays non-empty and the empty-state
+        // StatusMessage that owns the error display never renders
+        result = undefined
         error_msg = to_error(err).message
       })
       .finally(() => {

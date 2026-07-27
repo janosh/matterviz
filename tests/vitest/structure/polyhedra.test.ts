@@ -1,6 +1,10 @@
-import type { Vec3 } from '$lib'
+import type { AnyStructure, Vec3 } from '$lib'
 import type { BondPair } from '$lib/structure'
-import { electroneg_ratio, is_spectator_center } from '$lib/structure/bonding'
+import {
+  electroneg_ratio,
+  is_spectator_center,
+  structure_bond_to_bond_pair,
+} from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   build_adjacency,
@@ -26,6 +30,16 @@ const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
 // Bonds from a center site to each listed neighbor site
 const bonds_from = (center: number, neighbor_idxs: number[]): BondPair[] =>
   neighbor_idxs.map((idx) => make_bond(center, idx))
+
+// Real-geometry bond from site 0 to `site_idx`, optionally to a periodic image of it.
+// Unlike make_bond above, positions and length come from the structure.
+const image_bond = (structure: AnyStructure, site_idx: number, cell_shift?: Vec3): BondPair =>
+  structure_bond_to_bond_pair(structure, {
+    site_idx_1: 0,
+    site_idx_2: site_idx,
+    order: 1,
+    ...(cell_shift && { cell_shift }),
+  })
 
 const add_vec = (origin: Vec3, off: readonly number[]): Vec3 => [
   origin[0] + off[0],
@@ -220,18 +234,41 @@ describe(`convex_hull_3d`, () => {
   })
 })
 
+// Neighbor site indices of `center`, sorted (adjacency order is bond order)
+const neighbor_idxs = (adjacency: ReturnType<typeof build_adjacency>, center: number) =>
+  (adjacency.get(center) ?? [])
+    .map((neighbor) => neighbor.site_idx)
+    .toSorted((idx_a, idx_b) => idx_a - idx_b)
+
 describe(`build_adjacency`, () => {
   test(`symmetric adjacency from bond pairs`, () => {
     const adjacency = build_adjacency([make_bond(0, 1), make_bond(1, 2), make_bond(0, 2)])
-    expect(adjacency.get(0)).toEqual(new Set([1, 2]))
-    expect(adjacency.get(1)).toEqual(new Set([0, 2]))
-    expect(adjacency.get(2)).toEqual(new Set([0, 1]))
+    expect(neighbor_idxs(adjacency, 0)).toEqual([1, 2])
+    expect(neighbor_idxs(adjacency, 1)).toEqual([0, 2])
+    expect(neighbor_idxs(adjacency, 2)).toEqual([0, 1])
+    // proximity-perceived bonds carry no cell_shift, so vertices stay at site positions
+    expect(adjacency.get(0)?.every((nbr) => nbr.offset === null)).toBe(true)
   })
 
   test(`ignores self-bonds and dedupes repeated pairs`, () => {
     const adjacency = build_adjacency([make_bond(0, 0), make_bond(0, 1), make_bond(1, 0)])
-    expect(adjacency.get(0)).toEqual(new Set([1]))
-    expect(adjacency.get(0)?.has(0)).toBe(false)
+    expect(neighbor_idxs(adjacency, 0)).toEqual([1])
+  })
+
+  test(`same site through different cell shifts counts as separate neighbors`, () => {
+    const structure = make_crystal(3.6, [
+      { element: `Ti`, abc: [0, 0, 0] },
+      { element: `O`, abc: [0.5, 0, 0] },
+    ])
+    const adjacency = build_adjacency([
+      image_bond(structure, 1),
+      image_bond(structure, 1, [-1, 0, 0]),
+    ])
+    expect(neighbor_idxs(adjacency, 0)).toEqual([1, 1])
+    // Ti (at x=0) sees the in-cell O at +1.8 Å (no offset) and its image at -1.8 Å
+    expect(adjacency.get(0)?.map((nbr) => nbr.offset)).toEqual([null, [-1.8, 0, 0]])
+    // reverse direction negates the displacement, so O (at x=1.8) sees a Ti at +3.6 Å
+    expect(adjacency.get(1)?.map((nbr) => nbr.offset)).toEqual([null, [1.8, 0, 0]])
   })
 })
 
@@ -333,7 +370,7 @@ describe(`compute_polyhedra`, () => {
     // Truncation check: boundary Na sites exist but don't render
     const adjacency = build_adjacency(bonds)
     const is_truncated_na = (idx: number) =>
-      supercell.sites[idx].species[0].element === `Na` && (adjacency.get(idx)?.size ?? 0) < 6
+      supercell.sites[idx].species[0].element === `Na` && (adjacency.get(idx)?.length ?? 0) < 6
     expect(supercell.sites.some((_site, idx) => is_truncated_na(idx))).toBe(true)
     const rendered = new Set(polyhedra.map((poly) => poly.center_site_idx))
     for (const idx of supercell.sites.keys()) {
@@ -362,6 +399,83 @@ describe(`compute_polyhedra`, () => {
         expect(poly.vertices[v_idx]).toEqual(with_images.sites[site_idx].xyz)
       }
     }
+  })
+
+  test(`explicit bonds with cell_shift close polyhedra across the cell boundary`, () => {
+    // Ti near the x=0 face, octahedrally coordinated by 6 O at 1.8 Å. The 6th O sits in
+    // the -x neighbor cell, reachable only through a bond cell_shift. Placing that vertex
+    // at the in-cell O instead put it 4.2 Å away, where the distance_factor trim dropped
+    // it and left a square pyramid of half the volume.
+    const structure = make_crystal(6, [
+      { element: `Ti`, abc: [0.1, 0.5, 0.5] },
+      { element: `O`, abc: [0.4, 0.5, 0.5] },
+      { element: `O`, abc: [0.1, 0.8, 0.5] },
+      { element: `O`, abc: [0.1, 0.2, 0.5] },
+      { element: `O`, abc: [0.1, 0.5, 0.8] },
+      { element: `O`, abc: [0.1, 0.5, 0.2] },
+      { element: `O`, abc: [0.8, 0.5, 0.5] },
+    ])
+    const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) =>
+      image_bond(structure, site_idx, site_idx === 6 ? [-1, 0, 0] : undefined),
+    )
+    for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
+
+    const [poly, ...rest] = compute_polyhedra(structure, bonds)
+    expect(rest).toHaveLength(0)
+    expect(poly.vertices).toHaveLength(6)
+    expect(poly.faces).toHaveLength(8)
+    expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12) // regular octahedron
+    // the 6th corner sits at the -x image of site 6, not at its in-cell position
+    expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
+  })
+
+  test(`one neighbor site bonded through two cell shifts counts twice`, () => {
+    // Rocksalt-like: Ti at the origin has CN 6 via only 3 O sites, each bonded twice
+    // (in-cell at +a/2 and through the -1 image at -a/2). Collapsing the two bonds onto
+    // one neighbor left CN 3, below min_neighbors, so nothing rendered at all.
+    const structure = make_crystal(3.6, [
+      { element: `Ti`, abc: [0, 0, 0] },
+      { element: `O`, abc: [0.5, 0, 0] },
+      { element: `O`, abc: [0, 0.5, 0] },
+      { element: `O`, abc: [0, 0, 0.5] },
+    ])
+    // each O bonded twice: in-cell, then through the -1 image along its own axis
+    const bonds = [1, 2, 3].flatMap((site_idx) => [
+      image_bond(structure, site_idx),
+      image_bond(
+        structure,
+        site_idx,
+        [0, 1, 2].map((axis) => (axis === site_idx - 1 ? -1 : 0)) as Vec3,
+      ),
+    ])
+    for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
+
+    const [poly, ...rest] = compute_polyhedra(structure, bonds)
+    expect(rest).toHaveLength(0)
+    expect(poly.vertices).toHaveLength(6)
+    expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12)
+  })
+
+  test(`one physical neighbor reached twice is counted once`, () => {
+    // The proximity search finds a boundary Na-Cl bond against an appended image atom;
+    // a file's bond block can state the same bond as a cell_shift against the BASE Cl.
+    // Both land on one position, so the hull dedupes the vertex - but counting it twice
+    // inflated the CN that gates max_neighbors and the boundary-completeness check.
+    const structure = get_pbc_image_sites(make_rocksalt())
+    const bonds = electroneg_ratio(structure)
+    // site 0 is Na at the origin; site 4 is the Cl at +a/2 along x, restated as its -x image
+    const dupe = image_bond(structure, 4, [-1, 0, 0])
+    expect(dupe.bond_length).toBeCloseTo(2.82, 12) // same 2.82 Å bond, not a new neighbor
+
+    // max_neighbors 6 exposes the intermediate count: an inflated 7 trips the cap and
+    // the octahedron vanishes, so both bond lists must give the same CN-6 polyhedron
+    const at_cap = (bond_list: BondPair[]) =>
+      compute_polyhedra(structure, bond_list, { max_neighbors: 6 }).find(
+        (poly) => poly.center_site_idx === 0,
+      )
+    expect(at_cap(bonds)?.vertices).toHaveLength(6)
+    expect(at_cap([...bonds, dupe])?.vertices).toHaveLength(6)
+    expect(at_cap([...bonds, dupe])?.volume).toBeCloseTo(at_cap(bonds)?.volume ?? 0, 12)
   })
 
   test(`duplicate center positions are deduped`, () => {

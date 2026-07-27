@@ -421,11 +421,25 @@ describe(`broaden_spectrum`, () => {
     expect(Math.max(...curve.y) / expected).toBeCloseTo(1, 3)
   })
 
+  // A caller-supplied fwhm_fn gets the same check as the constant: an unusable width makes
+  // step_size 0 or NaN, so n_points goes Infinity/NaN and the grid loop never terminates
   it.each([
     [`zero fwhm`, { fwhm: 0 }, /fwhm must be > 0/],
     [`negative fwhm`, { fwhm: -3 }, /fwhm must be > 0/],
+    [`an fwhm_fn returning 0`, { fwhm_fn: () => 0 }, /fwhm must be > 0.*got 0/],
+    [`an fwhm_fn returning a negative`, { fwhm_fn: () => -2 }, /got -2/],
+    [`an fwhm_fn returning NaN`, { fwhm_fn: () => NaN }, /got NaN/],
+    [`an fwhm_fn returning Infinity`, { fwhm_fn: () => Infinity }, /got Infinity/],
   ])(`throws on %s`, (_name, options, pattern) => {
     expect(() => broaden_spectrum({ x: [100], y: [1] }, options)).toThrow(pattern)
+  })
+
+  // ...but only the bad one: a width model that fails at a single peak must still name it
+  it(`rejects an fwhm_fn that goes bad at only one of several sticks`, () => {
+    const fwhm_fn = (center: number) => (center === 2000 ? 0 : 10)
+    expect(() => broaden_spectrum({ x: [500, 2000], y: [1, 1] }, { fwhm_fn })).toThrow(
+      /fwhm must be > 0 and finite, got 0/,
+    )
   })
 
   it(`throws on mismatched stick arrays and returns empty for no sticks`, () => {
@@ -510,9 +524,10 @@ it(`spectrum_from_phonon_data throws when no Gamma point is present`, () => {
   expect(() => spectrum_from_phonon_data(shifted, nacl_born_data)).toThrow(/no Gamma point/)
 })
 
-it(`spectrum_from_phonon_data throws on an out-of-range q-point index`, () => {
-  const opts = { qpoint_index: 5 }
-  const compute = () => spectrum_from_phonon_data(nacl_data, nacl_born_data, opts)
+// A negative index used to fall into the Gamma-search branch and report "no Gamma point",
+// which says nothing about the index the caller actually passed
+it.each([5, -1])(`spectrum_from_phonon_data throws on q-point index %i`, (qpoint_index) => {
+  const compute = () => spectrum_from_phonon_data(nacl_data, nacl_born_data, { qpoint_index })
   expect(compute).toThrow(/out of range/)
 })
 
@@ -538,14 +553,20 @@ const UNIT_TENSOR = `1 0 0 0 1 0 0 0 1\n`
 
 describe(`parse_phonon_modes`, () => {
   it.each([
-    [`CO2`, co2_data, [`C`, `O`, `O`], CO2_FREQS],
-    [`NaCl`, nacl_data, [`Na`, `Cl`], NACL_FREQS],
+    // oxfmt-ignore
+    [`CO2`, co2_data, [`C`, `O`, `O`], CO2_FREQS,
+      [[12, 0, 0], [0, 12, 0], [0, 0, 12]]],
+    // oxfmt-ignore
+    [`NaCl`, nacl_data, [`Na`, `Cl`], NACL_FREQS,
+      [[0, 2.82, 2.82], [2.82, 0, 2.82], [2.82, 2.82, 0]]],
   ])(
     `%s: parses 3N modes with normalised eigenvectors in declared order`,
-    (_name, data, symbols, expected_freqs) => {
+    (_name, data, symbols, expected_freqs, expected_lattice) => {
       const n_atoms = symbols.length
       expect(data.n_atoms).toBe(n_atoms)
       expect(data.atoms.map((atom) => atom.symbol)).toEqual(symbols)
+      // row order and orientation, which the Matrix3x3 cast cannot check
+      expect(data.lattice).toEqual(expected_lattice)
       expect(data.qpoints).toHaveLength(1)
 
       const { modes, q_position } = data.qpoints[0]
@@ -595,6 +616,12 @@ phonon:
     [`extra eigenvector atom`, `${H_BAND}${eig_x(1, 2)}`, /over 1 atoms, got 2 atom blocks/],
     [`negative mass`, `${h_cell(1, -1)}${Q_BAND}`, /invalid 'mass'/],
     [`band count`, `${H_BAND}${eig_x()}`, /lists 1 bands but a 1-atom cell has 3N = 3 modes/],
+    // A 2-row lattice would otherwise be cast to Matrix3x3 unchecked
+    [
+      `2-row lattice`,
+      `lattice:\n- [1,0,0]\n- [0,1,0]\n${H_BAND}${eig_x()}${MORE_FREQS}`,
+      /'lattice' has 2 rows, expected 3/,
+    ],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_phonon_modes(content)).toThrow(pattern)
   })

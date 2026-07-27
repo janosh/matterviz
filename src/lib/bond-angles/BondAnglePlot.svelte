@@ -5,6 +5,7 @@
   import { to_structure_entries } from '$lib/plot/core/structure-input'
   import type { StructureEntry } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps } from '$lib/plot/core/types'
+  import { to_error } from '$lib/utils'
   import {
     bin_bond_angles,
     compute_bond_angles,
@@ -46,17 +47,28 @@
     })),
   )
 
-  const entries_with_data = $derived(
-    entries_with_triplets.map((entry) => ({
-      ...entry,
-      data: bin_bond_angles(entry.triplets, {
-        bin_width,
-        split_by_triplet: split_mode === `by_triplet`,
-      }),
-    })),
-  )
+  // bin_width is public, so a caller can hand us 0, NaN or 500; resolve_angle_bins rejects
+  // those by throwing, which would take down the whole render. The failure rides back with
+  // the results because writing to a prop from inside a $derived is state_unsafe_mutation.
+  const binned = $derived.by(() => {
+    try {
+      const entries = entries_with_triplets.map((entry) => ({
+        ...entry,
+        data: bin_bond_angles(entry.triplets, {
+          bin_width,
+          split_by_triplet: split_mode === `by_triplet`,
+        }),
+      }))
+      return { entries, failure: undefined }
+    } catch (exc) {
+      return { entries: [], failure: to_error(exc).message }
+    }
+  })
+  $effect(() => {
+    error_msg = binned.failure
+  })
 
-  const bar_series = $derived(to_angle_bar_series(entries_with_data, split_mode, normalize))
+  const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))
 
   const angle_axis = {
     label: `Bond Angle (°)`,

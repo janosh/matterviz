@@ -254,7 +254,6 @@ describe(`measure: angles`, () => {
 // [0, 360) range to the signed (-180, 180] range used here) and cross-checked against an
 // independent projection-formula implementation. Both agreed with dihedral_angle to a max
 // absolute error of 1.14e-13 degrees over 20 geometries (~1 ulp at the 180-degree scale).
-const DIHEDRAL_TOL_DEG = 1e-9
 
 describe(`measure: dihedral angles`, () => {
   const open_boundary = (points: Vec3[]): number =>
@@ -344,7 +343,9 @@ describe(`measure: dihedral angles`, () => {
     const rad = dihedral_angle(p1, p2, p3, p4, null, undefined, `radians`)
     expect(rad).toBeCloseTo(Math.PI / 2, 12)
     const degrees = dihedral_angle(p1, p2, p3, p4, null)
-    expect((rad * 180) / Math.PI).toBeCloseTo(degrees, DIHEDRAL_TOL_DEG)
+    // digit COUNT, not a tolerance: 12 digits is 5e-13, just above the 1.14e-13 error
+    // bound documented above. Passing 1e-9 here would mean 10^-1e-9/2, i.e. half a degree
+    expect((rad * 180) / Math.PI).toBeCloseTo(degrees, 12)
   })
 
   test(`gives the same torsion whichever end of the chain it starts from`, () => {

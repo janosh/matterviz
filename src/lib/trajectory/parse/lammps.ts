@@ -16,7 +16,7 @@ const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`
 // fractional and need the cell to become Cartesian. `unwrapped` means LAMMPS already
 // removed the periodic images, so consumers (e.g. math.unwrap_positions) must not
 // re-apply the minimum image convention. x/y/z and xs/ys/zs are wrapped into the box.
-const POS_COL_VARIANTS = [
+export const POS_COL_VARIANTS = [
   { keys: [`xu`, `yu`, `zu`], scaled: false, unwrapped: true },
   { keys: [`xsu`, `ysu`, `zsu`], scaled: true, unwrapped: true },
   { keys: [`xs`, `ys`, `zs`], scaled: true, unwrapped: false },

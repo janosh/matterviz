@@ -598,20 +598,18 @@ describe(`Selective dynamics`, () => {
     [`every axis frozen (F F F)`, [false, false, false], `fixed`],
     [`property absent`, undefined, `unknown`],
     [`property explicitly null`, null, `unknown`],
+    // POSCAR literals and 0/1 spell the same triple, so they are coerced rather than rejected
+    [`POSCAR string flags (T T F)`, [`T`, `T`, `F`], `partially fixed`],
+    [`lowercase words`, [`false`, `false`, `false`], `fixed`],
+    [`numeric flags`, [1, 1, 1], `free`],
+    // ...anything else is `unknown`: this runs per site during render, so it must not throw
+    [`four booleans`, [true, false, true, false], `unknown`],
+    [`two booleans`, [true, false], `unknown`],
+    [`a bare string`, `T T F`, `unknown`],
+    [`an empty array`, [], `unknown`],
+    [`unrecognized flag words`, [`yes`, `no`, `maybe`], `unknown`],
   ])(`categorizes %s as %s`, (_name, value, expected) => {
     expect(ap.categorize_selective_dynamics(value)).toBe(expected)
-  })
-
-  test.each([
-    [`four booleans`, [true, false, true, false]],
-    [`two booleans`, [true, false]],
-    [`string flags`, [`T`, `T`, `F`]],
-    [`a bare string`, `T T F`],
-    [`an empty array`, []],
-  ])(`throws on a malformed value with %s`, (_name, value) => {
-    expect(() => ap.categorize_selective_dynamics(value)).toThrow(
-      /selective_dynamics must be 3 booleans/,
-    )
   })
 
   test(`gives partially constrained atoms their own color, distinct from free and fixed`, () => {

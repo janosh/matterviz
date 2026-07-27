@@ -217,6 +217,25 @@ describe(`StructureCarousel`, () => {
     expect(track.scrollLeft).toBe(0)
   })
 
+  test(`leaves the wheel event alone when the browser clamps the scroll away`, () => {
+    mount_carousel({ items: many_items, layout: `horizontal` })
+
+    const track = doc_query(`.structure-carousel-track`)
+    // scrollWidth is unmeasured here, so on_wheel skips its own clamp and hands the browser
+    // an out-of-range offset. happy-dom stores whatever it is given, so pin scrollLeft at 0
+    // to emulate the clamp a real browser applies.
+    Object.defineProperty(track, `scrollLeft`, {
+      configurable: true,
+      get: () => 0,
+      set: () => {},
+    })
+
+    const wheel = new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 })
+    track.dispatchEvent(wheel)
+
+    expect(wheel.defaultPrevented).toBe(false)
+  })
+
   // card width (= height 200 in horizontal layout, = card block-size vertically) + 8px gap
   const stride = 208
   const mock_track_size = (track: HTMLElement, horizontal: boolean): void => {

@@ -4,7 +4,8 @@ import { element_by_symbol } from '$lib/element/data'
 // is_elem_symbol lives in the Svelte-free leaf module; $lib/element re-exports Svelte components
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element'
-import ATOMIC_SCATTERING_PARAMS from '$lib/xrd/atomic_scattering_params.json' with { type: 'json' }
+// relative (not $lib/) since svelte-package leaves aliased JSON imports unresolved in dist/
+import ATOMIC_SCATTERING_PARAMS from '../xrd/atomic_scattering_params.json' with { type: 'json' }
 import NEUTRON_SCATTERING_LENGTHS from './neutron-scattering-lengths.json' with { type: 'json' }
 
 // Deuterium is not a member of ELEM_SYMBOLS (which lists chemical elements only), but neutrons

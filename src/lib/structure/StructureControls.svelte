@@ -32,6 +32,7 @@
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
+  import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
@@ -176,11 +177,19 @@
     structure && `lattice` in structure ? structure.lattice.matrix : null,
   )
 
+  let zone_axis_error = $state(``)
   function fly_to_zone_axis() {
     if (!lattice_matrix || !is_valid_zone_axis(zone_axis_indices)) return
     const indices = [...zone_axis_indices] as Vec3
-    // The scene clears this as it starts the flight, so re-clicking the same axis flies again
-    fly_to_request = zone_axis_direction(lattice_matrix, indices, zone_axis_mode)
+    try {
+      // A degenerate cell (and, in hkl mode, any singular one) throws out of
+      // zone_axis_direction — report that rather than let it escape the click handler.
+      // The scene clears this as it starts the flight, so re-clicking the same axis flies again
+      fly_to_request = zone_axis_direction(lattice_matrix, indices, zone_axis_mode)
+      zone_axis_error = ``
+    } catch (exc) {
+      zone_axis_error = to_error(exc).message
+    }
   }
 
   // Unique majority elements in the structure, for polyhedra center toggles.
@@ -665,6 +674,11 @@
       >
         View
       </button>
+      {#if zone_axis_error}
+        <span style="color: var(--error-color, #e74c3c); font-size: 0.9em"
+          >{zone_axis_error}</span
+        >
+      {/if}
     </div>
   </SettingsSection>
 

@@ -73,6 +73,8 @@
   // Pad the grid well beyond the outermost peak so tails are not clipped, and keep the
   // low-frequency edge at zero, as vibrational spectra are conventionally drawn.
   let plot_range = $derived.by((): Vec2 => {
+    // extent([]) is [undefined, undefined], which would make the whole range NaN
+    if (sticks.x.length === 0) return [0, 1]
     const [min_x, max_x] = extent(sticks.x) as [number, number]
     const pad = Math.max(8 * fwhm, (max_x - min_x) * 0.1, 1e-6)
     return [Math.max(0, min_x - pad), max_x + pad]

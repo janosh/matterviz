@@ -106,14 +106,19 @@ export const parse_pdb = (content: string): ParsedStructure | null =>
       // CONECT records live outside MODEL blocks and reference atom serials, so they are
       // collected regardless of which model is being read
       if (record === `CONECT`) {
-        const serials = [
-          num_field(line, 6, 11),
+        // Read on its own: filtering a combined list first lets a blank central column
+        // promote the first partner into the central slot, bonding the wrong pair
+        const central = num_field(line, 6, 11)
+        if (!Number.isFinite(central)) {
+          diag_warn(`PDB CONECT record has no central atom serial: '${line}'`)
+          continue
+        }
+        const partners = [
           num_field(line, 11, 16),
           num_field(line, 16, 21),
           num_field(line, 21, 26),
           num_field(line, 26, 31),
         ].filter(Number.isFinite)
-        const [central, ...partners] = serials
         // PDB carries no bond orders: repeated CONECT entries are how some writers encode
         // multiplicity, but that is not part of the spec, so every bond is recorded single
         for (const partner of partners) {

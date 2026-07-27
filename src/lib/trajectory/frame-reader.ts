@@ -252,6 +252,9 @@ export async function accumulate_positions(
   const accumulator = new PositionAccumulator(collected, n_atoms, max_bytes)
   accumulator.add_frame(first_frame, 0)
 
+  // Counting SOURCE frame numbers would make the report interval depend on the stride:
+  // with stride 3 only every 1500th source frame is both collected and a multiple of 500
+  let n_collected = 1
   for (
     let frame_number = frame_stride;
     frame_number < total_frames;
@@ -266,8 +269,9 @@ export async function accumulate_positions(
       )
     }
     accumulator.add_frame(frame, frame_number)
+    n_collected++
 
-    if (frame_number % 500 === 0) {
+    if (n_collected % 500 === 0) {
       report(frame_number, `Reading positions: ${frame_number}/${total_frames}`)
     }
   }

@@ -77,14 +77,23 @@ export function broaden_peaks(
     const x0 = peak_pos[peak_idx]
     const intensity = peak_int[peak_idx]
 
-    // Skip peaks too faint to register, and those whose tails cannot reach the grid
+    // Skip peaks too faint to register
     if (intensity < 1e-5) continue
-    if (x0 < min_angle - 5 || x0 > max_angle + 5) continue
 
     const fwhm = fwhm_fn(x0)
+    // The width now gates the skip test below, not just the profile, so an unusable one
+    // silently drops the peak (negative) or contributes nothing (0, NaN, Infinity) instead
+    // of failing. step_size and range are validated the same way above.
+    if (!Number.isFinite(fwhm) || fwhm <= 0) {
+      throw new Error(`fwhm_fn must return > 0 and finite, got ${fwhm} at peak ${x0}`)
+    }
     // Lorentzian tails are long, so a narrow window truncates them visibly; 20 * FWHM is
     // wide enough that the residual is below plotting resolution.
     const window = 20 * fwhm
+    // Skip peaks whose tails cannot reach the grid. The margin is the peak's own window, not
+    // a fixed number of x-units: cm^-1 spectra run FWHM of tens, where an off-grid peak
+    // still contributes visibly.
+    if (x0 + window < min_angle || x0 - window > max_angle) continue
     const start_idx = Math.max(0, Math.floor((x0 - window - min_angle) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_angle) / step_size))
 

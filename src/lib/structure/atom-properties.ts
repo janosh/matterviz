@@ -331,19 +331,26 @@ export const SELECTIVE_DYNAMICS_CATEGORIES = [
 export type SelectiveDynamicsCategory = (typeof SELECTIVE_DYNAMICS_CATEGORIES)[number]
 
 // `true` means the atom may relax along that axis (POSCAR `T`), `false` means frozen (`F`).
-// Every parser MatterViz ships writes exactly three booleans or nothing at all, so anything
-// else is a hand-authored structure object and throws rather than growing a legend category.
+// Every parser MatterViz ships writes three booleans, but hand-authored and third-party
+// structures spell the same triple as `T`/`F` (the POSCAR literal) or 0/1, so those are
+// coerced too. Anything else lands in `unknown`: this runs per site while rendering, where
+// throwing would blank the whole structure over one malformed property.
+const to_relax_flag = (flag: unknown): boolean | undefined => {
+  if (typeof flag === `boolean`) return flag
+  if (typeof flag !== `string` && typeof flag !== `number`) return undefined
+  const key = String(flag).trim().toLowerCase()
+  if ([`t`, `true`, `1`].includes(key)) return true
+  if ([`f`, `false`, `0`].includes(key)) return false
+  return undefined
+}
+
+// Array.isArray also rejects the undefined/null of a site that never declared the property
 export function categorize_selective_dynamics(value: unknown): SelectiveDynamicsCategory {
-  if (value === undefined || value === null) return `unknown`
-  if (
-    !Array.isArray(value) ||
-    value.length !== 3 ||
-    value.some((flag) => typeof flag !== `boolean`)
-  ) {
-    throw new Error(`selective_dynamics must be 3 booleans, got ${JSON.stringify(value)}`)
-  }
-  if (value.every(Boolean)) return `free`
-  if (value.some(Boolean)) return `partially fixed`
+  if (!Array.isArray(value) || value.length !== 3) return `unknown`
+  const flags = value.map(to_relax_flag)
+  if (flags.includes(undefined)) return `unknown`
+  if (flags.every(Boolean)) return `free`
+  if (flags.some(Boolean)) return `partially fixed`
   return `fixed`
 }
 

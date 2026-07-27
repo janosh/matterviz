@@ -10,7 +10,7 @@ import type * as math from '$lib/math'
 import type { Site } from '$lib/structure'
 import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
-import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
+import { parse_lammps_trajectory, POS_COL_VARIANTS } from '$lib/trajectory/parse/lammps'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -289,9 +289,10 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
 
 // Lower corner of a dump's simulation box, or null when there is nothing to shift by:
 // an unreadable ITEM: BOX BOUNDS block (parse_lammps_trajectory reports that), a box that
-// already starts at the origin, or scaled `xs ys zs` columns, which are relative to the
-// origin already. Triclinic dumps write the axis-aligned bounding box, so the tilt
-// overhang comes back off to recover the origin (https://docs.lammps.org/Howto_triclinic.html).
+// already starts at the origin, or scaled columns (`xs ys zs`, `xsu ysu zsu`), which are
+// cell fractions that frac_to_cart has already placed relative to the origin. Triclinic
+// dumps write the axis-aligned bounding box, so the tilt overhang comes back off to
+// recover the origin (https://docs.lammps.org/Howto_triclinic.html).
 const dump_box_origin = (frame_lines: string[]): Vec3 | null => {
   const box_idx = frame_lines.findIndex((line) => /^\s*ITEM:\s*BOX BOUNDS/i.test(line))
   if (box_idx === -1) return null
@@ -300,7 +301,13 @@ const dump_box_origin = (frame_lines: string[]): Vec3 | null => {
       .find((line) => /^\s*ITEM:\s*ATOMS\b/i.test(line))
       ?.toLowerCase()
       .split(/\s+/) ?? []
-  if (!columns.includes(`xu`) && columns.includes(`xs`)) return null
+  // Which column set the trajectory parser actually read is decided by POS_COL_VARIANTS
+  // order, so ask it rather than testing for one name — a dump carrying only xsu/ysu/zsu
+  // would otherwise be shifted twice.
+  const pos_variant = POS_COL_VARIANTS.find(({ keys }) =>
+    keys.every((key) => columns.includes(key)),
+  )
+  if (pos_variant?.scaled) return null
   const bounds = frame_lines
     .slice(box_idx + 1, box_idx + 4)
     .map((line) => line.trim().split(/\s+/).map(Number))

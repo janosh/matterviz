@@ -74,6 +74,7 @@
         : null}
     <button
       class:selected={sel_idx >= 0}
+      aria-pressed={sel_idx >= 0}
       onclick={() => toggle(struct_id)}
       title={struct_id}
       style:background-color={color ? hex_with_alpha(color, 0.15) : null}

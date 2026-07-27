@@ -184,9 +184,11 @@ describe(`broaden_peaks`, () => {
     },
   )
 
-  test(`fwhm_fn is evaluated once per surviving peak, at its center`, () => {
+  test(`fwhm_fn is evaluated once per peak above the intensity cut, at its center`, () => {
     const seen: number[] = []
-    // 1e-6 is below the 1e-5 intensity cut; 200 is outside [10, 60] plus the 5 deg buffer
+    // 1e-6 is below the 1e-5 intensity cut, so peak 35 never reaches the width model. Peak
+    // 200 does: whether its tails reach [10, 60] is decided by its own FWHM, so the width
+    // has to be known before it can be skipped
     const pattern = { x: [20, 35, 200, 40], y: [100, 1e-6, 100, 50] }
     broaden_peaks(
       pattern,
@@ -198,7 +200,17 @@ describe(`broaden_peaks`, () => {
       [10, 60],
       0.05,
     )
-    expect(seen).toEqual([20, 40])
+    expect(seen).toEqual([20, 200, 40])
+  })
+
+  test(`an off-range peak still contributes when its own FWHM reaches the grid`, () => {
+    // cm^-1 spectra run FWHM of tens, so a stick 30 units past the edge sits well inside its
+    // own 20 x FWHM window. The former fixed 5-unit margin discarded it outright.
+    const result = broaden_peaks({ x: [1030], y: [100] }, () => 20, 0.5, [900, 1000], 1)
+    const max_y = Math.max(...result.y)
+    expect(max_y).toBeGreaterThan(0)
+    // Only the rising flank is on the grid, so the last point is the strongest
+    expect(result.y.indexOf(max_y)).toBe(result.y.length - 1)
   })
 
   test(`position-dependent fwhm_fn broadens each peak by its own width`, () => {
@@ -226,5 +238,13 @@ describe(`broaden_peaks`, () => {
     expect(() =>
       broaden_peaks({ x: [20], y: [100] }, fwhm_fn, 0.5, range as Vec2, step),
     ).toThrow(err)
+  })
+
+  // The width decides both the profile and whether the peak is in reach of the grid, so an
+  // unusable one used to drop the peak (negative) or add nothing (0, NaN, Infinity) in silence
+  test.each([0, -2, NaN, Infinity])(`rejects an fwhm_fn returning %p`, (bad_width) => {
+    expect(() =>
+      broaden_peaks({ x: [20], y: [100] }, () => bad_width, 0.5, [10, 80], 0.02),
+    ).toThrow(`fwhm_fn must return > 0 and finite, got ${bad_width} at peak 20`)
   })
 })

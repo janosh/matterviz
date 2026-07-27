@@ -180,6 +180,9 @@ export function parse_phonon_modes(content: string): PhononModeData {
 
   const to_lattice_row = (row: unknown, row_idx: number) =>
     to_vec3(row, `phonopy YAML lattice row ${row_idx}`)
+  if (Array.isArray(parsed.lattice) && parsed.lattice.length !== 3) {
+    throw new Error(`phonopy YAML 'lattice' has ${parsed.lattice.length} rows, expected 3`)
+  }
   const lattice = Array.isArray(parsed.lattice)
     ? (parsed.lattice.map(to_lattice_row) as Matrix3x3)
     : null

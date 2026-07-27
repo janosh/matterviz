@@ -161,8 +161,10 @@
           .filter(({ y_val }) => y_val > threshold)
           .toSorted((peak_a, peak_b) => peak_b.y_val - peak_a.y_val)
           .slice(0, max_peaks)
-        // Drop a label sitting within 3% of the x-range of one already kept, else they overlap
-        const min_spacing = (Math.max(...xs) - Math.min(...xs)) * 0.03
+        // Drop a label sitting within 3% of the x-range of one already kept, else they
+        // overlap. Taken off the shared domain rather than spreading `xs`, which can be a
+        // multi-thousand-point pre-broadened profile even in stick view (see angle_range).
+        const min_spacing = (angle_range[1] - angle_range[0]) * 0.03
         for (const { idx } of candidates) {
           const too_close = selected_indices.some(
             (kept_idx) => Math.abs(xs[kept_idx] - xs[idx]) < min_spacing,

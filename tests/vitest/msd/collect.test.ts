@@ -247,17 +247,27 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
     )
   })
 
-  it(`reports progress while sweeping`, async () => {
-    const xyz = synthetic_drift_xyz(1200, 2)
-    const trajectory = await indexed(xyz)
-    const stages: string[] = []
-    await collect_msd_positions(trajectory, {
-      raw_data: xyz,
-      on_progress: (progress) => stages.push(progress.stage),
-    })
-    expect(stages.length).toBeGreaterThan(0)
-    expect(stages[0]).toMatch(/Reading positions/)
-  })
+  // The interval counts COLLECTED frames, not source frame numbers: with stride 3 only
+  // every 1500th source frame is both collected and a multiple of 500, so a source-number
+  // interval would report a third as often for no reason the caller can see
+  it.each([
+    [1, 3], // 1500 collected frames -> reports at 500, 1000, 1500
+    [3, 1], // 500 collected frames -> one report
+  ])(
+    `reports progress every 500 collected frames at stride %i`,
+    async (frame_stride, expected_reports) => {
+      const xyz = synthetic_drift_xyz(1500, 2)
+      const trajectory = await indexed(xyz)
+      const stages: string[] = []
+      await collect_msd_positions(trajectory, {
+        raw_data: xyz,
+        frame_stride,
+        on_progress: (progress) => stages.push(progress.stage),
+      })
+      expect(stages).toHaveLength(expected_reports)
+      expect(stages[0]).toMatch(/Reading positions/)
+    },
+  )
 
   it(`suggests a frame stride that fits the budget`, () => {
     const trajectory = { ...make_drift_trajectory(10), total_frames: 100_000 }
@@ -391,6 +401,20 @@ describe(`MsdPlot`, () => {
   ])(`shows the right empty/filled state (%s)`, async (_label, props, expected) => {
     expect(await mount_plot(props)).toContain(expected)
   })
+
+  // The empty state owns the message area, so a failed recompute has to drop the previous
+  // curves — otherwise `series` stays non-empty and the error is never rendered
+  it(`replaces stale curves with the error when a recompute fails`, async () => {
+    const stale = calc_msd(drift_positions(20))
+    // max_lag_fraction outside (0, 1] makes calc_msd (and so the worker) reject
+    const text = await mount_plot({
+      result: stale,
+      positions: drift_positions(20),
+      msd_options: { max_lag_fraction: 5 },
+    })
+    expect(text).toContain(`max_lag_fraction must be in (0, 1]`)
+    expect(text).not.toContain(`R²`)
+  })
 })
 
 describe(`TrajectoryMsdPane`, () => {
@@ -414,5 +438,31 @@ describe(`TrajectoryMsdPane`, () => {
     document.querySelector<HTMLButtonElement>(`.msd-controls button`)?.click()
     await settle()
     expect(document.body.textContent).toContain(`no frame_loader`)
+  })
+
+  // trajectory_total_frames throws here, and is_lazy/the stride suggestion both route
+  // through it, so an unguarded derived would take the whole pane down
+  it(`renders the pane when the frame count cannot be determined`, async () => {
+    const text = await mount_pane({ ...in_memory, is_indexed: true })
+    expect(text).toContain(`Mean Squared Displacement`)
+    expect(text).toContain(`reports no total_frames`)
+  })
+
+  // <input type="number"> yields null when cleared, which used to leak into the byte
+  // estimate and the collected-frame count as NaN
+  it.each([``, `0`, `2.5`])(`normalises a frame stride of %j`, async (raw_stride) => {
+    await mount_pane(in_memory)
+    // the only whole-number input in the pane; the others step in fractions
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.msd-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the MSD pane`)
+    stride_input.value = raw_stride
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    const hint = document.querySelector(`.msd-controls p.hint`)?.textContent ?? ``
+    expect(hint).not.toContain(`NaN`)
+    // stride 2.5 floors to 2, everything invalid falls back to 1
+    expect(hint).toContain(`${raw_stride === `2.5` ? 10 : 20} frames`)
   })
 })

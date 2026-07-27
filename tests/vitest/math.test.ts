@@ -1684,11 +1684,28 @@ describe(`apply_transformation_matrix`, () => {
       /must have integer entries, got \[1\.5\]/],
     [`singular (repeated row)`, [[1, 1, 0], [1, 1, 0], [0, 0, 1]],
       /is singular \(determinant 0\)/],
+    // row 3 = row 1 + row 2, so exactly singular, but a float determinant rounds it to 1024
+    [`singular despite a non-zero float determinant`,
+      [[123456789, 987654321, 5], [987654321, 123456789, 7], [1111111110, 1111111110, 12]],
+      /is singular \(determinant 0\)/],
     [`all-zero`, [[0, 0, 0], [0, 0, 0], [0, 0, 0]], /is singular \(determinant 0\)/],
     [`NaN entry`, [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]], /must be a finite 3x3 matrix/],
   ] as [string, math.Matrix3x3, RegExp][])(`throws for %s`, (_name, transform, error) => {
     expect(() => math.apply_transformation_matrix(transform, diag_lattice)).toThrow(error)
     expect(() => math.transformation_cell_multiplicity(transform)).toThrow(error)
+  })
+
+  // |det| = 1e19 rounds through Number(), so the count is refused rather than misreported.
+  // Only this boundary needs a number: the two callers that validate and discard the
+  // determinant keep working, hermite_normal_form included.
+  it(`refuses a cell multiplicity beyond the safe integer range`, () => {
+    // oxfmt-ignore
+    const huge: math.Matrix3x3 = [[1e6, 0, 0], [0, 1e6, 0], [0, 0, 1e7]]
+    expect(() => math.transformation_cell_multiplicity(huge)).toThrow(
+      /\|determinant\| 10000000000000000000, beyond the safe integer range/,
+    )
+    expect(math.apply_transformation_matrix(huge, diag_lattice)).toBeDefined()
+    expect(math.hermite_normal_form(huge).hnf).toEqual(huge)
   })
 
   it(`throws for a malformed lattice matrix`, () => {

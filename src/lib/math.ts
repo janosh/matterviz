@@ -569,9 +569,12 @@ export function det_3x3(matrix: Matrix3x3): number {
 // Validate an integer 3x3 matrix and return its determinant. Entries must be integers
 // (fractional entries do not map a lattice onto a commensurate lattice) and the
 // determinant must be non-zero (a singular matrix collapses the cell to zero volume and
-// leaves a Hermite pivot undefined). det is exact here because the entries are safe
-// integers, so comparing it to 0 needs no tolerance.
-function validate_int_matrix_3x3(matrix: Matrix3x3, name: string): number {
+// leaves a Hermite pivot undefined). BigInt because each cofactor term multiplies three
+// entries, so a float determinant stops being exact past entries of cbrt(2^53) ~ 2e5 and
+// rounds some singular matrices to non-zero, handing hermite_normal_form a zero pivot.
+// Stays a bigint on the way out: only transformation_cell_multiplicity needs a number, and
+// narrowing here would also reject the large-determinant matrices hermite_normal_form handles.
+function validate_int_matrix_3x3(matrix: Matrix3x3, name: string): bigint {
   assert_finite_3x3(matrix, name)
   const non_integer = matrix.flat().filter((val) => !Number.isSafeInteger(val))
   if (non_integer.length > 0) {
@@ -580,8 +583,14 @@ function validate_int_matrix_3x3(matrix: Matrix3x3, name: string): number {
         `in ${JSON.stringify(matrix)}`,
     )
   }
-  const det = det_3x3(matrix)
-  if (det === 0) {
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix.map((row) =>
+    row.map(BigInt),
+  )
+  const det =
+    m00 * (m11 * m22 - m12 * m21) -
+    m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20)
+  if (det === 0n) {
     throw new Error(`${name} is singular (determinant 0): ${JSON.stringify(matrix)}`)
   }
   return det
@@ -603,8 +612,20 @@ export function apply_transformation_matrix(
 
 // Number of primitive cells inside a cell transformed by P, i.e. |det(P)|. This is
 // the factor the site count grows by under apply_transformation_matrix.
-export const transformation_cell_multiplicity = (transform: Matrix3x3): number =>
-  Math.abs(validate_int_matrix_3x3(transform, `Transformation matrix`))
+export function transformation_cell_multiplicity(transform: Matrix3x3): number {
+  const det = validate_int_matrix_3x3(transform, `Transformation matrix`)
+  const abs_det = det < 0n ? -det : det
+  const multiplicity = Number(abs_det)
+  // The determinant is exact, so this conversion is the only place that precision can be
+  // lost. A rounded count would misreport how many site copies the transform takes.
+  if (!Number.isSafeInteger(multiplicity)) {
+    throw new RangeError(
+      `Transformation matrix has |determinant| ${abs_det}, beyond the safe integer ` +
+        `range: ${JSON.stringify(transform)}`,
+    )
+  }
+  return multiplicity
+}
 
 // Greatest common divisor of two integers, taken on absolute values. gcd(0, 0) = 0.
 export function gcd(val_a: number, val_b: number): number {
