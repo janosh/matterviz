@@ -219,7 +219,9 @@
             max={Math.max(n_images - 1, 0)}
             value={image_idx}
             oninput={(event) => go_to_image(Number(event.currentTarget.value))}
-            aria-label="Image slider"
+            aria-label="NEB image"
+            aria-valuetext="{current_image?.label ?? `image ${image_idx}`} ({image_idx +
+              1} of {n_images})"
           />
           <span>
             {current_image?.label ?? `image ${image_idx}`} ({image_idx + 1}/{n_images})

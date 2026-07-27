@@ -410,14 +410,17 @@ describe(`NebViewer`, () => {
     )
   })
 
-  // the stepper's range input has no visible <label>, so it needs an accessible name
+  // The stepper's range input has no visible <label>. The name omits "slider" (role=slider
+  // already announces that) and valuetext carries the label a bare index would not convey.
   test(`the image slider is reachable by its accessible name`, async () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
     const slider = viewer.querySelector<HTMLInputElement>(
-      `.stepper input[aria-label="Image slider"]`,
+      `.stepper input[aria-label="NEB image"]`,
     )
     expect(slider?.type).toBe(`range`)
     expect(slider?.max).toBe(`6`)
+    // mirrors the visible stepper caption so both convey the same position
+    expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 0 (1 of 7)`)
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {
