@@ -60,7 +60,11 @@
   // got created throws from inside the effect teardown, and that abandons the rest of
   // Svelte's flush: atom meshes keep the previous element's counts and bonds render
   // colorless. Software WebGPU hits exactly this by rejecting the sphere upload.
+  // Both reads capture the initial value on purpose - the effect below owns every later
+  // change, keyed on built_segments so an unchanged value is a no-op
+  // svelte-ignore state_referenced_locally
   let geometry = $state.raw(new SphereGeometry(0.5, sphere_segments, sphere_segments))
+  // svelte-ignore state_referenced_locally
   let built_segments = sphere_segments
   $effect(() => {
     if (sphere_segments === built_segments) return

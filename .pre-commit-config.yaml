@@ -66,7 +66,8 @@ repos:
           - --ignore-words-list
           # statics: static (single-point) calculations
           # conect: PDB bond-connectivity record name; trough: a dip in a curve
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough'
+          # skelton: Jonathan Michael Skelton, author of the cited Phonopy-Spectroscopy
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
