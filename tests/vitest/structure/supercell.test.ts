@@ -289,6 +289,45 @@ describe(`integration tests`, () => {
   })
 })
 
+describe(`supercell coordinate and label consistency`, () => {
+  // `abc` is wrapped into [0,1) but `xyz` is built by translation, so for input
+  // coordinates outside the cell the two used to describe positions a whole lattice
+  // vector apart — consumers reading `abc` (PBC images, symmetry) then disagreed with
+  // those reading `xyz` (rendering, bonding) about which cell the atom occupies.
+  test.each([[-0.05], [1.0], [0.3], [2.75]])(
+    `abc matches xyz for input abc[0] = %s`,
+    (first_coord) => {
+      const base = make_crystal(4, [{ element: `H`, abc: [first_coord, 0.25, 0.25] as Vec3 }])
+      const cell = make_supercell(base, [2, 1, 1])
+      const cart_to_frac = math.create_cart_to_frac(cell.lattice.matrix)
+      for (const site of cell.sites) {
+        const frac = cart_to_frac(site.xyz)
+        for (const [axis, coord] of site.abc.entries()) {
+          expect(coord).toBeCloseTo(frac[axis], 12)
+        }
+      }
+    },
+  )
+
+  // `_${ii}${jj}${kk}` stops being injective once an index reaches two digits: in a
+  // [12,12,2] supercell (1,10,0) and (11,0,0) both render as "_1100"
+  test.each([
+    [[2, 2, 2], `_100`],
+    [[10, 1, 1], `_100`],
+    [[12, 12, 2], `_1_0_0`],
+    [[11, 1, 1], `_1_0_0`],
+  ] as [[number, number, number], string][])(
+    `%s supercell labels stay unique`,
+    (scaling, second_suffix) => {
+      const base = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+      const cell = make_supercell(base, scaling)
+      const labels = cell.sites.map((site) => site.label)
+      expect(new Set(labels).size).toBe(labels.length)
+      expect(labels[1]).toBe(`${base.sites[0].label}${second_suffix}`)
+    },
+  )
+})
+
 describe(`image atom behavior`, () => {
   test(`supercells generate image atoms correctly`, () => {
     const supercell = make_supercell(sample_structure, [2, 2, 2])

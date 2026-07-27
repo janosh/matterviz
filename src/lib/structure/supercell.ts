@@ -162,6 +162,32 @@ export function make_supercell(
     }
     return coords
   })
+  // How many whole supercells the wrap moved each coordinate. Zero unless the input `abc`
+  // lay outside [0,1) — but when it did, `abc` was wrapped while `xyz` below was not, so
+  // the two described cells a lattice vector apart and consumers reading `abc` (PBC image
+  // generation, symmetry) disagreed with those reading `xyz` (rendering, bonding) about
+  // where the atom is. Applied to `xyz` so both always name the same position.
+  const frac_shift = supercell_scaling.map((scale, axis) => {
+    const shifts = new Float64Array(n_sites * scale)
+    if (!to_unit_cell) return shifts
+    for (let cell_idx = 0; cell_idx < scale; cell_idx++) {
+      for (let site_idx = 0; site_idx < n_sites; site_idx++) {
+        const flat_idx = cell_idx * n_sites + site_idx
+        const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
+        shifts[flat_idx] = wrapped_frac[axis][flat_idx] - coord
+      }
+    }
+    return shifts
+  })
+  const any_frac_shift = frac_shift.some((axis_shifts) =>
+    axis_shifts.some((shift) => shift !== 0),
+  )
+  // Supercell lattice rows, needed to turn a fractional wrap back into a Cartesian offset
+  const [sup_a, sup_b, sup_c] = [
+    [ax * scale_x, ay * scale_x, az * scale_x],
+    [bx * scale_y, by * scale_y, bz * scale_y],
+    [cx * scale_z, cy * scale_z, cz * scale_z],
+  ]
 
   // Identical for every image of a base site, so build once and share the reference —
   // supercell sites already share their base site's `species` array the same way.
@@ -170,12 +196,18 @@ export function make_supercell(
     orig_unit_cell_idx: site_idx,
   }))
 
+  const needs_label_separator = supercell_scaling.some((scale) => scale > 10)
+
   // Loop order: k, j, i to match typical pymatgen/standard ordering
   for (let kk = 0; kk < scale_z; kk++) {
     for (let jj = 0; jj < scale_y; jj++) {
       for (let ii = 0; ii < scale_x; ii++) {
-        // 1x1x1 short-circuits above, so every site gets a cell-index suffix
-        const label_suffix = `_${ii}${jj}${kk}`
+        // 1x1x1 short-circuits above, so every site gets a cell-index suffix. Bare
+        // concatenation stops being injective once an index reaches two digits — a
+        // [12,12,2] supercell gave 288 sites but only 284 distinct labels, since
+        // (1,10,0) and (11,0,0) both render as "_1100" — so separate the indices when
+        // any axis can produce one. Small supercells keep the compact form.
+        const label_suffix = needs_label_separator ? `_${ii}_${jj}_${kk}` : `_${ii}${jj}${kk}`
 
         // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
         const tx = ii * ax + jj * bx + kk * cx
@@ -184,10 +216,21 @@ export function make_supercell(
 
         for (let site_idx = 0; site_idx < n_sites; site_idx++) {
           const site = sites[site_idx]
+          let [wx, wy, wz] = [0, 0, 0]
+          if (any_frac_shift) {
+            const [shift_a, shift_b, shift_c] = [
+              frac_shift[0][ii * n_sites + site_idx],
+              frac_shift[1][jj * n_sites + site_idx],
+              frac_shift[2][kk * n_sites + site_idx],
+            ]
+            wx = shift_a * sup_a[0] + shift_b * sup_b[0] + shift_c * sup_c[0]
+            wy = shift_a * sup_a[1] + shift_b * sup_b[1] + shift_c * sup_c[1]
+            wz = shift_a * sup_a[2] + shift_b * sup_b[2] + shift_c * sup_c[2]
+          }
 
           new_sites[write_idx++] = {
             species: site.species,
-            xyz: [site.xyz[0] + tx, site.xyz[1] + ty, site.xyz[2] + tz],
+            xyz: [site.xyz[0] + tx + wx, site.xyz[1] + ty + wy, site.xyz[2] + tz + wz],
             abc: [
               wrapped_frac[0][ii * n_sites + site_idx],
               wrapped_frac[1][jj * n_sites + site_idx],
