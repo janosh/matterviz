@@ -43,6 +43,7 @@
   import InstancedAtoms from './InstancedAtoms.svelte'
   import SiteLabels from './SiteLabels.svelte'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  import { bond_trace } from '$lib/structure/bond-trace'
   import { get_orig_site_idx, get_property_colors } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
   import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
@@ -669,6 +670,11 @@
   }
 
   function open_bond_context_menu(bond: BondPair, event?: BondContextMenuEvent) {
+    bond_trace(`open_bond_context_menu`, {
+      can_edit: can_edit_bond(bond),
+      site_idx_1: bond.site_idx_1,
+      site_idx_2: bond.site_idx_2,
+    })
     if (!can_edit_bond(bond)) return
     bond_context_target = {
       site_idx_1: bond.site_idx_1,
@@ -686,6 +692,7 @@
   })
 
   function apply_bond_edit_result(result: BondEditResult, close_menu = true) {
+    bond_trace(`apply_bond_edit_result`, { changed: result.changed })
     if (!result.changed) return
     on_bond_edit_start?.()
     added_bonds = result.state.added_bonds
@@ -752,6 +759,14 @@
     cell_shift?: Vec3,
   ) {
     const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
+    bond_trace(`set_bond_order`, {
+      order,
+      site_idx_1,
+      site_idx_2,
+      can_edit: can_edit_bond(target),
+      editable_pairs: editable_perceived_bond_pairs.length,
+      filtered_pairs: filtered_bond_pairs.length,
+    })
     if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_set_bond_order(
@@ -765,6 +780,7 @@
 
   function set_context_bond_order(order: BondOrder) {
     const menu = bond_context_target ?? bond_context_menu
+    bond_trace(`set_context_bond_order`, { order, has_menu: Boolean(menu) })
     if (!menu) return
     set_bond_order(menu.site_idx_1, menu.site_idx_2, order, menu.cell_shift)
   }

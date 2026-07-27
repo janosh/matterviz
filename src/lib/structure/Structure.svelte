@@ -47,6 +47,7 @@
     get_pbc_image_sites,
     get_structure_vector_keys,
   } from '$lib/structure'
+  import { bond_trace } from '$lib/structure/bond-trace'
   import { push_edit, step_history } from '$lib/structure/edit-history'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { make_supercell, parse_supercell_scaling } from '$lib/structure/supercell'
@@ -681,25 +682,6 @@
   const current_source_bonds = (): StructureBond[] | undefined =>
     bonds ?? structure?.properties?.bonds
 
-  // The pre-edit bonds to snapshot and later restore. `bonds` is our own output channel, so
-  // whenever it still carries the last value we emitted, it may be an edited set rather than
-  // source state. Snapshotting that would make reset restore the edits it is meant to undo,
-  // which is only reachable when a bond rebuild lands after an edit and invalidates the
-  // snapshot context, forcing a re-snapshot. Mirrors current_source_bond_signature below.
-  const pristine_source_bonds = (): StructureBond[] | undefined => {
-    const source_bonds = current_source_bonds()
-    if (bond_signature(source_bonds) !== last_emitted_bond_signature) return source_bonds
-    return structure?.properties?.bonds
-  }
-
-  // TEMPORARY (#418): the bond-edit reset regression only reproduces on CI's software
-  // renderer, so the trace has to ship to be read. Inert unless a caller opts in by setting
-  // globalThis.matterviz_bond_trace to an array. Remove once the cause is pinned.
-  const bond_trace = (event: string, detail: Record<string, unknown>) => {
-    const sink = (globalThis as Record<string, unknown>).matterviz_bond_trace
-    if (Array.isArray(sink)) sink.push({ event, ...detail })
-  }
-
   const current_source_bond_signature = (): string => {
     const raw_signature = bond_signature(current_source_bonds())
     if (raw_signature !== last_emitted_bond_signature) return raw_signature
@@ -783,13 +765,12 @@
     }
     if (bond_edit_snapshot === undefined) {
       bond_edit_snapshot = {
-        bonds: pristine_source_bonds(),
+        bonds: current_source_bonds(),
         context: current_bond_edit_context(),
       }
       bond_trace(`snapshot_taken`, {
         bonds: bond_signature(bond_edit_snapshot.bonds),
         prop_bonds: bond_signature(bonds),
-        guard_tripped: bond_signature(current_source_bonds()) === last_emitted_bond_signature,
       })
     }
     const edited_bonds = merge_bond_edits(
