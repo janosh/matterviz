@@ -29,11 +29,16 @@ import type {
   SpectrumCurve,
   VibrationalMode,
 } from '$lib/spectral'
+// The one XRD import: broaden_spectrum delegates to it, and that delegation is under test
+import { broaden_peaks } from '$lib/xrd/broadening'
 import co2_born from '$site/phonons/ir-raman/CO2.BORN?raw'
-import co2_yaml from '$site/phonons/ir-raman/CO2-gamma.yaml?raw'
-import co2_raman_json from '$site/phonons/ir-raman/CO2-raman-tensors.json'
+import co2_yaml from '$site/phonons/ir-raman/CO2-gamma.yaml.gz?raw'
+import co2_raman_json from '$site/phonons/ir-raman/CO2-raman-tensors.json.gz'
 import nacl_born from '$site/phonons/ir-raman/NaCl.BORN?raw'
-import nacl_yaml from '$site/phonons/ir-raman/NaCl-gamma.yaml?raw'
+import nacl_yaml from '$site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
+import sio2_born from '$site/phonons/ir-raman/SiO2.BORN?raw'
+import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -42,7 +47,7 @@ const co2_born_data = parse_born(co2_born)
 const nacl_data = parse_phonon_modes(nacl_yaml)
 const nacl_born_data = parse_born(nacl_born)
 const nacl_masses = nacl_data.atoms.map((atom) => atom.mass)
-const co2_raman_tensors = co2_raman_json.raman_tensors as Matrix3x3[]
+const co2_raman_tensors = co2_raman_json.raman_tensors
 
 // Nested array literals are always exploded one row per line by the formatter, so build
 // 3-row literals through a call instead.
@@ -65,6 +70,13 @@ const co2_spectrum = spectrum_from_phonon_data(co2_data, co2_born_data, {
   raman_tensors: co2_raman_tensors,
 })
 const nacl_spectrum = spectrum_from_phonon_data(nacl_data, nacl_born_data)
+
+// alpha-quartz: the only fixture carrying real polarizability derivatives. Point group 32
+// splits the 27 modes into A1 (Raman only), A2 (IR only) and doubly degenerate E (both).
+const sio2_data = parse_phonon_modes(sio2_yaml)
+const sio2_spectrum = spectrum_from_phonon_data(sio2_data, parse_born(sio2_born), {
+  raman_tensors: sio2_raman_json.raman_tensors,
+})
 
 describe(`eigenvector mass-weighting convention`, () => {
   // HONEST CAVEAT: these two tests are circular as evidence about phonopy. Both fixtures
@@ -103,15 +115,23 @@ describe(`eigenvector mass-weighting convention`, () => {
 
 describe(`acoustic mode identification`, () => {
   it.each([
-    [`CO2`, co2_spectrum, CO2_ACOUSTIC],
-    [`NaCl`, nacl_spectrum, [0, 1, 2]],
+    // Per-fixture frequency bound: CO2 declares its translations at literal 0 THz, while
+    // NaCl comes from real force constants and leaves ~2e-7 THz (6e-6 cm^-1) of residual.
+    [`CO2`, co2_spectrum, CO2_ACOUSTIC, 1e-12],
+    [`NaCl`, nacl_spectrum, [0, 1, 2], 1e-5],
   ])(
     `%s: the three zero-frequency Gamma modes are acoustic and IR-silent`,
-    (_name, spec, expected) => {
+    (_name, spec, expected, freq_bound) => {
       const acoustic = spec.modes.filter((mode) => mode.is_acoustic)
       const indices = acoustic.map((mode) => mode.mode_idx)
       expect(indices.toSorted((lo, hi) => lo - hi)).toEqual(expected)
       for (const mode of acoustic) {
+        // Both bounds sit five or more orders under the smallest optical branch either
+        // fixture carries (2 THz for CO2, 5.05 THz for NaCl), so this pins "zero-frequency"
+        // rather than the classifier's own ACOUSTIC_FREQ_THRESHOLD, which would be circular.
+        expect(Math.abs(mode.frequency), `mode ${mode.mode_idx} frequency`).toBeLessThan(
+          freq_bound,
+        )
         // Exactly zero up to f64 round-off: sum_kappa Z*_kappa = 0 and every atom of an
         // acoustic mode has the same displacement, so the dipole derivative cancels term by
         // term. Bound is well below the smallest optical intensity (~4e-2).
@@ -145,7 +165,8 @@ describe(`IR intensities against closed-form results`, () => {
       // I = Z*^2 (1/M_Na + 1/M_Cl) = Z*^2 / mu with no free parameters.
       expect(mode.ir_intensity).toBeCloseTo(expected, 12)
     }
-    expect(expected).toBeCloseTo(0.0867618, 6)
+    // magnitude pin, from PBEsol Z*(Na) = 1.08875538 and mu = 13.945 amu
+    expect(expected).toBeCloseTo(0.084997, 6)
   })
 
   // NOT a mass-weighting discriminator, despite the mass factors in the formula: for a
@@ -196,6 +217,31 @@ describe(`selection rules`, () => {
 
   it.each(CO2_UNGERADE)(`CO2 ungerade mode %i is IR active`, (mode_idx) => {
     expect(co2_spectrum.modes[mode_idx].ir_intensity).toBeGreaterThan(1e-2)
+  })
+
+  // The real-data counterpart of the CO2 selection-rule checks below. Point group 32 has no
+  // inversion centre, so mutual exclusion does not apply — but A2 modes still carry IR
+  // intensity with zero Raman activity, and the split has to survive the whole pipeline.
+  it(`alpha-quartz A2 modes are IR-active and Raman-silent`, () => {
+    const optical = sio2_spectrum.modes.filter((mode) => !mode.is_acoustic)
+    expect(optical).toHaveLength(24)
+    const raman_silent = optical.filter((mode) => (mode.raman_activity ?? 0) === 0)
+    // the four A2 modes; every other optical mode is A1 or E and carries Raman activity
+    expect(raman_silent.map((mode) => mode.mode_idx)).toEqual([9, 15, 18, 23])
+    // ...and those indices are exactly the A2 entries in the irrep labels, which come from
+    // phonopy's own symmetry analysis rather than from the Raman file that omitted them
+    const labels = sio2_raman_json.mode_labels
+    expect(labels.flatMap((label, idx) => (label === `A2` ? [idx] : []))).toEqual([
+      9, 15, 18, 23,
+    ])
+    for (const mode of raman_silent) expect(mode.ir_intensity).toBeGreaterThan(1e-3)
+    // ...and no optical mode is silent in both channels, which would mean a dropped mode
+    for (const mode of optical) {
+      expect(
+        mode.ir_intensity + (mode.raman_activity ?? 0),
+        `mode ${mode.mode_idx}`,
+      ).toBeGreaterThan(0)
+    }
   })
 
   it(`CO2 obeys mutual exclusion: no mode is both IR and Raman active`, () => {
@@ -484,6 +530,45 @@ describe(`broaden_spectrum`, () => {
     expect(mismatched).toThrow(/2 positions but 1 intensities/)
     expect(broaden_spectrum({ x: [], y: [] })).toEqual({ x: [], y: [] })
   })
+
+  // broaden_spectrum used to rescale intensities to max 1 and widen/crop the grid to work
+  // around broaden_peaks' XRD-flavoured constants. Both are gone, so it must now be a plain
+  // delegation - exactly equal, not merely close, since nothing rescales on the way through.
+  it(`passes sticks straight through to broaden_peaks`, () => {
+    const sticks = { x: [820, 1106, 1180], y: [0.4, 1.7, 0.9] }
+    const [range, step_size, shape_factor]: [Vec2, number, number] = [[900, 1100], 0.5, 0.5]
+    const via_spectrum = broaden_spectrum(sticks, { fwhm: 12, shape_factor, range, step_size })
+    const direct = broaden_peaks(sticks, () => 12, shape_factor, range, step_size)
+    expect(via_spectrum.y).toEqual(direct.y)
+    expect(via_spectrum.x).toEqual(direct.x)
+    // sticks outside `range` still paint their tails across it (820 and 1180 are both
+    // within 20 x FWHM of the window), which is what the old grid extension existed for
+    expect(Math.max(...via_spectrum.y)).toBeGreaterThan(0)
+  })
+
+  // An absolute 1e-5 floor erased spectra outright: IR intensities in e^2/amu routinely sit
+  // below it, and pre-scaling to max 1 was the workaround. Broadening is linear in intensity
+  // and the floor is relative now, so scaling every stick scales the curve by exactly that
+  // factor. Under the old floor the 1e-9 curve came back all zeros and this reads 1.
+  it(`broadens to the same profile whatever the intensities are scaled to`, () => {
+    const curve_at = (scale: number) =>
+      broaden_spectrum(
+        { x: [1000, 1200], y: [2 * scale, scale] },
+        { fwhm: 10, range: [900, 1300], step_size: 1 },
+      )
+    const reference = curve_at(1)
+    expect(Math.max(...reference.y)).toBeGreaterThan(0)
+
+    for (const scale of [1e-9, 1e9]) {
+      const scaled = curve_at(scale)
+      const max_rel_err = Math.max(
+        ...reference.y.map((val, idx) =>
+          val === 0 ? 0 : Math.abs(scaled.y[idx] / scale - val) / val,
+        ),
+      )
+      expect(max_rel_err, `scale ${scale}`).toBeLessThan(1e-12)
+    }
+  })
 })
 
 // Also pins the conversion factors themselves, so the IR/Raman work cannot have shifted
@@ -569,7 +654,15 @@ const CM_TO_THZ = 0.0299792458
 const CO2_FREQS = [0, 0, 0, 2, 2, 667, 667, 1333, 2349].map((freq, idx) =>
   idx < 5 ? freq : freq * CM_TO_THZ,
 )
-const NACL_FREQS = [0, 0, 0, ...Array(3).fill(164 * CM_TO_THZ)]
+// Exactly as the fixture declares them, since this test pins declared order. PhononDB
+// PBEsol puts the triply-degenerate TO mode at 5.0527 THz = 168.5 cm^-1 against ~164
+// measured (normal PBEsol agreement for a rocksalt halide); the three translations carry
+// ~1e-7 THz of force-constant residual rather than the literal 0 a synthetic file can use.
+// oxfmt-ignore
+const NACL_FREQS = [
+  -0.0000001723, -0.0000000824, 0.0000000659,
+  5.0527260362, 5.0527260362, 5.0527260362,
+]
 
 // Minimal 1-atom phonopy YAML, spliced together per error case.
 const h_cell = (natom = 1, mass = 1) =>
@@ -591,7 +684,7 @@ describe(`parse_phonon_modes`, () => {
       [[12, 0, 0], [0, 12, 0], [0, 0, 12]]],
     // oxfmt-ignore
     [`NaCl`, nacl_data, [`Na`, `Cl`], NACL_FREQS,
-      [[0, 2.82, 2.82], [2.82, 0, 2.82], [2.82, 2.82, 0]]],
+      [[0, 2.79977964, 2.79977964], [2.79977964, 0, 2.79977964], [2.79977964, 2.79977964, 0]]],
   ])(
     `%s: parses 3N modes with normalised eigenvectors in declared order`,
     (_name, data, symbols, expected_freqs, expected_lattice) => {
@@ -663,7 +756,7 @@ phonon:
 describe(`parse_born`, () => {
   it.each([
     [`CO2`, co2_born_data, 3, 14.4, 1.15, [0.6, 0.6, 1.3]],
-    [`NaCl`, nacl_born_data, 2, 14.4, 2.34, [1.1, 1.1, 1.1]],
+    [`NaCl`, nacl_born_data, 2, 14.399652, 2.56544675, [1.08875538, 1.08875538, 1.08875538]],
   ])(
     `%s: reads factor, dielectric and one sum-rule-obeying Z* tensor per atom`,
     (_name, born, n_atoms, factor, eps_xx, first_charge_diag) => {

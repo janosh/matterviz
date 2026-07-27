@@ -14,7 +14,11 @@ Three inputs are needed:
 
 Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dynamical matrix, normalised to `sum |e|² = 1`, so the physical displacement of atom κ is `e_κ / sqrt(M_κ)`. `parse_phonon_modes` verifies the normalisation and rejects files that violate it.
 
-> The two fixtures used below are **synthetic**. Their eigenvectors are exact — every mode of a two-atom cell and of a linear symmetric triatomic is fixed by symmetry alone — and their frequencies are experimental, but no DFT run produced them. See the header comments in the YAML files.
+> **NaCl** is real first-principles data: Γ-point modes and Born effective charges from [PhononDB](https://github.com/atztogo/phonondb) (PBEsol, [dataset](https://mdr.nims.go.jp/concern/datasets/gf06g7088), DOI [10.48505/nims.4197](https://doi.org/10.48505/nims.4197)), solved from the published force constants with phonopy. Its TO mode lands at 168.5 cm⁻¹ against ~164 cm⁻¹ measured.
+>
+> **α-quartz** is real too: Γ modes, Born charges and polarizability derivatives from the [Phonopy-Spectroscopy](https://github.com/skelton-group/Phonopy-Spectroscopy/tree/master/example/a-SiO2) VASP example (MIT, © 2017 Jonathan Michael Skelton). Its `Raman-Tensors.yaml` lists only the Raman-active modes, so the four IR-active A₂ modes and the three acoustic branches are zero-filled to give one tensor per mode.
+>
+> Every fixture rendered on this page is first-principles output. A synthetic CO₂ fixture is still kept in the test suite as an analytic oracle — a linear symmetric triatomic is the one case where IR intensities have a closed form to check the code against — but it is not shown here.
 
 ## Infrared spectrum of NaCl
 
@@ -25,7 +29,7 @@ Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is 
   import { IrRamanSpectrum } from '$lib/spectral'
   import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
   import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/NaCl-gamma.yaml?raw'
+  import yaml_file from '$site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -38,18 +42,18 @@ Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is 
 
 The three acoustic modes are identified at Γ and excluded from the stick spectrum: with `sum_κ Z*_κ = 0` and every atom displaced identically, their dipole derivative cancels exactly.
 
-## Mutual exclusion in centrosymmetric CO₂
+## IR and Raman selection rules in α-quartz
 
-CO₂ has an inversion centre, so no mode can be both IR and Raman active. Switch between the two spectra in the controls pane (hover the plot to reveal it): the ν₂ bend at 667 cm⁻¹ and ν₃ antisymmetric stretch at 2349 cm⁻¹ appear only in the IR, the ν₁ symmetric stretch at 1333 cm⁻¹ only in the Raman.
+α-quartz (SiO₂, P3₁2₁) has point group 32, where A₁ modes are Raman-active but IR-silent, A₂ modes are IR-active but Raman-silent, and the doubly degenerate E modes are both. Switch between the two spectra in the controls pane (hover the plot to reveal it): four A₂ modes carry IR intensity and no Raman activity, and they are the only ones missing from the Raman trace.
 
 ```svelte example
 <script lang="ts">
   import { IrRamanSpectrum } from '$lib/spectral'
   import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
   import type { SpectrumKind } from '$lib/spectral'
-  import raman_data from '$site/phonons/ir-raman/CO2-raman-tensors.json'
-  import born_file from '$site/phonons/ir-raman/CO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/CO2-gamma.yaml?raw'
+  import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -79,8 +83,8 @@ IR spectra are conventionally plotted as transmittance, with absorption bands po
 <script lang="ts">
   import { IrRamanSpectrum } from '$lib/spectral'
   import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
-  import born_file from '$site/phonons/ir-raman/CO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/CO2-gamma.yaml?raw'
+  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -106,9 +110,9 @@ Every computed quantity is available per mode, so the raw numbers can be tabulat
   import { format_num } from '$lib/labels'
   import { convert_frequencies } from '$lib/spectral'
   import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
-  import raman_data from '$site/phonons/ir-raman/CO2-raman-tensors.json'
-  import born_file from '$site/phonons/ir-raman/CO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/CO2-gamma.yaml?raw'
+  import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
