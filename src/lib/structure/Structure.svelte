@@ -687,7 +687,9 @@
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
-    bond_trace(`emit_readback`, trace_id, { readback: bond_signature(bonds) })
+    // untrack: emit_bonds runs inside effects that write bonds, so reading it as a tracked
+    // dependency would make those effects retrigger themselves.
+    bond_trace(`emit_readback`, trace_id, { readback: untrack(() => bond_signature(bonds)) })
     on_bonds_change?.(next_bonds)
   }
 
