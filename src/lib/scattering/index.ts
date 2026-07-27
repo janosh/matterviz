@@ -37,16 +37,14 @@ export const XRAY_GAUSSIAN_PREFACTOR = 41.78214
 // precision so it does not become the dominant error term in f_e.
 const MOTT_BETHE_PREFACTOR = 0.02393366096322682
 
-// Mott–Bethe: f_e(s) = MOTT_BETHE_PREFACTOR · (Z − f_x(s)) / s², in Angstrom.
-// Substituting the X-ray form factor above gives Z − f_x(s) = XRAY_GAUSSIAN_PREFACTOR · s² ·
-// Σ aᵢ·exp(−bᵢ·s²), so the s² cancels EXACTLY and no division by s ever happens:
+// Mott–Bethe: f_e(s) = MOTT_BETHE_PREFACTOR · (Z − f_x(s)) / s², in Angstrom. Substituting
+// the X-ray form factor gives Z − f_x(s) = XRAY_GAUSSIAN_PREFACTOR · s² · Σ aᵢ·exp(−bᵢ·s²),
+// so the s² cancels EXACTLY and nothing ever divides by s:
 //   f_e(s) = MOTT_BETHE_PREFACTOR · XRAY_GAUSSIAN_PREFACTOR · Σ aᵢ·exp(−bᵢ·s²)
-// This matters because a literal transcription of Mott–Bethe divides by s² and blows up at
-// s -> 0 (forward scattering), whereas the true f_e(0) = C · Σ aᵢ is finite and positive.
-// C = 0.02393366096322682 · 41.78214 = 0.9999995730780779, i.e. 41.78214 is the reciprocal of
-// the Mott–Bethe prefactor to 4.3e-7 relative — the aᵢ are Doyle–Turner electron-scattering
-// amplitudes that pymatgen converts into X-ray factors. We multiply the two constants instead of
-// hard-coding 1 so the physics stays auditable and the tiny offset is not silently invented.
+// A literal transcription divides by s² and blows up at s -> 0, where the true
+// f_e(0) = C · Σ aᵢ is finite. C = 0.9999995730780779, i.e. 41.78214 is the reciprocal of
+// the Mott–Bethe prefactor to 4.3e-7 — the aᵢ are Doyle–Turner electron amplitudes pymatgen
+// converts into X-ray factors. Kept as a product so that offset is not invented as 1.
 export const ELECTRON_FORM_FACTOR_CONST = MOTT_BETHE_PREFACTOR * XRAY_GAUSSIAN_PREFACTOR
 
 const assert_valid_s = (s_val: number): void => {
@@ -58,13 +56,18 @@ const assert_valid_s = (s_val: number): void => {
 }
 
 // Σ aᵢ·exp(−bᵢ·s²), shared by the X-ray and electron form factors
-const gaussian_sum = (element: ScatteringSpecies, s_sq: number): number => {
+const require_gaussian_params = (element: ScatteringSpecies) => {
   const params = GAUSSIAN_PARAMS[element]
   if (!params) {
     throw new Error(
       `No atomic scattering coefficients for ${element}. Extend ATOMIC_SCATTERING_PARAMS.`,
     )
   }
+  return params
+}
+
+const gaussian_sum = (element: ScatteringSpecies, s_sq: number): number => {
+  const params = require_gaussian_params(element)
   let total = 0
   for (const [amplitude, decay] of params) total += amplitude * Math.exp(-decay * s_sq)
   return total
@@ -98,7 +101,10 @@ const turning_point_cache = new Map<ScatteringSpecies, number>()
 export const gaussian_turning_point = (element: ScatteringSpecies): number => {
   const cached = turning_point_cache.get(element)
   if (cached !== undefined) return cached
-  const params = GAUSSIAN_PARAMS[element] ?? []
+  // Without this an unknown species gets an all-zero slope, and the bisection below
+  // "converges" on ~1e-24 and caches it, so this exported function hands back a number
+  // where gaussian_sum would have said which element is missing
+  const params = require_gaussian_params(element)
   const slope = (u_val: number) => {
     let total = 0
     for (const [amplitude, decay] of params) {

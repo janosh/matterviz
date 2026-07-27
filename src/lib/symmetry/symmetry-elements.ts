@@ -292,10 +292,8 @@ type RotationInfo = {
   // Plane-equation normal for mirrors/glides, as an integer COVECTOR: the plane is
   // {x : normal_eq·x = const}. This is the −1 eigenvector of Wᵀ, not of W. `axis` above is
   // the −1 eigenvector of W, i.e. the normal DIRECTION in direct space; the two are
-  // parallel only when the metric happens to leave `axis` an eigenvector (essentially
-  // cubic, or axis-aligned normals). Keying the plane offset off `axis` therefore gave an
-  // offset with the wrong period under lattice translation, splitting one family of
-  // hexagonal/monoclinic/triclinic mirrors into several. Null for non-planar kinds.
+  // parallel only when the metric leaves `axis` an eigenvector (essentially cubic), so
+  // keying a plane offset off `axis` gets the wrong period. Null for non-planar kinds.
   normal_eq: Vec3 | null
   // Two integer covectors spanning the annihilator of `axis`, used to key axis lines. See
   // line_covectors. Null for inversion centers (no axis).
@@ -306,13 +304,9 @@ type RotationInfo = {
 // lattice {n ∈ ℤ³ : n·axis = 0}. Together they coordinatize a line's position modulo
 // lattice translations: nᵢ·x is constant along the line (since nᵢ·axis = 0) and shifts by
 // an integer under x → x + lattice vector, so (n₁·x mod 1, n₂·x mod 1) is exactly the
-// lattice-invariant identity of the line.
-//
-// The previous key used the perpendicular foot x₀ − axis(x₀·axis)/|axis|² wrapped mod 1.
-// Under a lattice translation n that foot moves by n − axis(n·axis)/|axis|², which is not
-// an integer vector, so lattice-equivalent parallel lines got distinct keys — the two 2₁
-// screws at (¼,¾,·) and (¾,¼,·) of a cubic [110] axis differ by (1,0,0) along the axis
-// yet were both emitted.
+// lattice-invariant identity of the line. A perpendicular foot wrapped mod 1 does NOT
+// work here: it is not lattice-covariant, so parallel lines one translation apart key
+// differently.
 //
 // Found by search rather than an extended-gcd construction: crystallographic axes have
 // tiny components, the result is cached per axis, and cross(n₁,n₂) = ±axis is a cheap
@@ -344,15 +338,13 @@ function line_covectors(axis: Vec3): [Vec3, Vec3] {
         first[2] * second[0] - first[0] * second[2],
         first[0] * second[1] - first[1] * second[0],
       ]
-      if (cross.every((val, idx) => val === axis[idx] || val === -axis[idx])) {
-        // guard against a mixed-sign match, which is not a scalar multiple
-        const sign =
-          cross[axis.findIndex((val) => val !== 0)] / axis[axis.findIndex((val) => val !== 0)]
-        if (cross.every((val, idx) => val === sign * axis[idx])) {
-          const pair: [Vec3, Vec3] = [first, second]
-          covector_cache.set(cache_key, pair)
-          return pair
-        }
+      // cross === ±axis exactly. Testing each sign as a whole rules out a mixed-sign
+      // match like (1, -1, 0) against (1, 1, 0), which is not a scalar multiple.
+      const is_multiple = (sign: number) => cross.every((val, idx) => val === sign * axis[idx])
+      if (is_multiple(1) || is_multiple(-1)) {
+        const pair: [Vec3, Vec3] = [first, second]
+        covector_cache.set(cache_key, pair)
+        return pair
       }
     }
   }

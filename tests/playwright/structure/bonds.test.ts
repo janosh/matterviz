@@ -368,38 +368,77 @@ const rendered_instance_counts = (page: Page) =>
     return counts
   })
 
+// Hide the first legend element and show it again, asserting the scene sheds instances
+// while hidden and comes back to exactly what it started with.
+const run_hide_restore_cycle = async (page: Page) => {
+  await page.goto(`/test/structure?data_url=/structures/mp-756175.json`, {
+    waitUntil: `networkidle`,
+  })
+  await wait_for_3d_canvas(page, `#test-structure`)
+  await set_scene_props(page, { show_bonds: `always` })
+  type Counts = Awaited<ReturnType<typeof rendered_instance_counts>>
+  const expect_counts = (matcher: (counts: Counts) => void) =>
+    expect(async () => matcher(await rendered_instance_counts(page))).toPass({
+      timeout: 15_000,
+    })
+
+  let all_visible: Counts = { bonds: 0, atoms: 0 }
+  await expect_counts((counts) => {
+    all_visible = counts
+    expect(counts.bonds).toBeGreaterThan(0)
+  })
+
+  const legend_item = page.locator(`#test-structure .atom-legend .legend-item`).first()
+  const toggle = legend_item.locator(`button.toggle-visibility`)
+  await legend_item.hover()
+  await toggle.click()
+  await expect(legend_item.locator(`label`)).toHaveClass(/hidden/)
+  await expect_counts((counts) => {
+    expect(counts.bonds).toBeLessThan(all_visible.bonds)
+    expect(counts.atoms).toBeLessThan(all_visible.atoms)
+  })
+
+  await toggle.click()
+  await expect(legend_item.locator(`label`)).not.toHaveClass(/hidden/)
+  await expect_counts((counts) => expect(counts).toEqual(all_visible))
+}
+
 test.describe(`Bond component`, () => {
   test(`hiding an element drops its bonds from the scene`, async ({ page }) => {
-    await page.goto(`/test/structure?data_url=/structures/mp-756175.json`, {
-      waitUntil: `networkidle`,
-    })
-    await wait_for_3d_canvas(page, `#test-structure`)
-    await set_scene_props(page, { show_bonds: `always` })
-    type Counts = Awaited<ReturnType<typeof rendered_instance_counts>>
-    const expect_counts = (matcher: (counts: Counts) => void) =>
-      expect(async () => matcher(await rendered_instance_counts(page))).toPass({
-        timeout: 15_000,
-      })
+    await run_hide_restore_cycle(page)
+  })
 
-    let all_visible: Counts = { bonds: 0, atoms: 0 }
-    await expect_counts((counts) => {
-      all_visible = counts
-      expect(counts.bonds).toBeGreaterThan(0)
+  // Same cycle with the atom sphere's 5292-byte position upload (21x21 vertices of vec3
+  // floats) refused the way CI's software WebGPU refuses it under memory pressure.
+  // three.webgpu then holds no GPU buffer for that attribute, so disposing the geometry
+  // throws out of the Svelte effect teardown that triggered it and abandons the rest of
+  // the flush: atoms stay at the hidden element's counts and the rebuilt bond mesh never
+  // gets its instance colors. Nothing about that is renderer-specific once an upload
+  // fails, so the recovery is asserted on every platform.
+  test(`element toggle survives a refused atom geometry upload`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const gpu_device = (
+        globalThis as unknown as {
+          GPUDevice?: {
+            prototype: {
+              createBuffer: (desc: { size: number; mappedAtCreation?: boolean }) => unknown
+            }
+          }
+        }
+      ).GPUDevice
+      if (!gpu_device) return
+      const create_buffer = gpu_device.prototype.createBuffer
+      gpu_device.prototype.createBuffer = function (desc: {
+        size: number
+        mappedAtCreation?: boolean
+      }) {
+        if (desc.size === 5292 && desc.mappedAtCreation) {
+          throw new RangeError(`createBuffer failed, size (${desc.size}) is too large`)
+        }
+        return create_buffer.call(this, desc)
+      }
     })
-
-    const legend_item = page.locator(`#test-structure .atom-legend .legend-item`).first()
-    const toggle = legend_item.locator(`button.toggle-visibility`)
-    await legend_item.hover()
-    await toggle.click()
-    await expect(legend_item.locator(`label`)).toHaveClass(/hidden/)
-    await expect_counts((counts) => {
-      expect(counts.bonds).toBeLessThan(all_visible.bonds)
-      expect(counts.atoms).toBeLessThan(all_visible.atoms)
-    })
-
-    await toggle.click()
-    await expect(legend_item.locator(`label`)).not.toHaveClass(/hidden/)
-    await expect_counts((counts) => expect(counts).toEqual(all_visible))
+    await run_hide_restore_cycle(page)
   })
 
   test(`renders bonds from multiple angles and zoom levels without errors`, async ({

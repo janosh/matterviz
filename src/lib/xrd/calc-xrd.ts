@@ -421,10 +421,11 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda.
   // Upper default is 90°, matching pymatgen's XRDCalculator: the powder Lorentz factor
-  // 1/(sin²θ·|cosθ|) diverges as 2θ → 180°, and the clamp below turns that into a ~1e10
-  // spike that becomes the normalization maximum and pushes every real peak under
-  // scaled_intensity_tol. A cubic cell with a = λ used to return one artifact peak at
-  // 180° with its true 60° reflection dropped. Pass an explicit range to go past 90°.
+  // 1/(sin²θ·|cosθ|) diverges as 2θ → 180°. The exact singularity is skipped below, but a
+  // reflection landing just short of it still reports a huge intensity that becomes the
+  // normalization maximum and pushes every real peak under scaled_intensity_tol — a cubic
+  // cell with a = 1.000000001·λ puts one at 179.995° and scales its true 60° reflection to
+  // 0.04. Only this default keeps that class out; pass an explicit range to go past 90°.
   const two_theta_range: Vec2 | null =
     options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 90])
   const [min_radius, max_radius] =
@@ -461,13 +462,18 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const asin_arg = (wavelength * g_norm) / 2
     // asin domain can exceed 1 by FP error — clamp to avoid NaN
     const clamped_asin_arg = Math.min(1, Math.max(-1, asin_arg))
+    // Exact back-reflection is unobservable and its Lorentz denominator is genuinely 0, so
+    // the clamp below would invent a ~2e12 intensity that then takes the normalization max
+    // and drops every real reflection. Only a range reaching 180 enumerates it.
+    if (clamped_asin_arg >= 1) continue
     const theta = Math.asin(clamped_asin_arg)
 
     const sin_theta = Math.sin(theta)
     const cos_theta = Math.cos(theta)
-    const denom_raw = sin_theta * sin_theta * Math.abs(cos_theta)
-    // Clamp denominator away from zero to avoid Inf/NaN when 2θ → 180° (cosθ → 0)
-    const denom = Math.max(denom_raw, 1e-12)
+    // No clamp needed: theta = 0 is excluded by the g_norm check and theta = 90 by the
+    // back-reflection skip, and the largest asin argument below 1 still leaves a
+    // denominator of 1.5e-8, so this cannot reach zero.
+    const denom = sin_theta * sin_theta * Math.abs(cos_theta)
     // Only X-rays pick up a polarization factor: the incident beam is partially polarized by
     // the scattering event itself, giving Lp = (1 + cos²2θ)/(sin²θ·|cosθ|). Nuclear neutron
     // scattering is isotropic and electron scattering off the Coulomb potential has no

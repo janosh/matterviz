@@ -24,8 +24,8 @@ import { make_crystal, read_maybe_gz } from '../setup'
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 
 // Shared helper for test suites
-const make_simple_cubic_structure = (a_len: number): Crystal =>
-  make_crystal(a_len, [{ element: `H`, abc: [0, 0, 0], label: `H1` }])
+const make_simple_cubic_structure = (a_len: number, element: ElementSymbol = `H`): Crystal =>
+  make_crystal(a_len, [{ element, abc: [0, 0, 0], label: `${element}1` }])
 
 // Rock-salt MX: cation FCC at (0,0,0), anion on the octahedral sites. All-odd reflections
 // scatter as (f_M − f_X) and all-even ones as (f_M + f_X), which makes it the cleanest
@@ -122,10 +122,16 @@ describe(`compute_xrd_pattern edge cases`, () => {
     [`CuKa`, 1.54184],
     [`MoKa`, 0.71073],
   ] as const)(
-    `asin clamping yields finite values and 2θ≈180° at boundary (%s)`,
+    `exact back-reflection is excluded so real peaks keep the normalization (%s)`,
     (anode, wavelength) => {
-      // a = λ/2 puts the (100) reflection exactly on the Ewald limit, i.e. 2θ = 180°
-      const structure = make_simple_cubic_structure(wavelength / 2)
+      // a = λ puts (200) exactly on the Ewald limit (2θ = 180°) alongside real reflections
+      // at 60/90/120°. sin²θ·|cosθ| is 0 there, so the denominator clamp used to report
+      // ~2e12 for it — taking the normalization max and pushing every real peak under
+      // scaled_intensity_tol. Reachable only because two_theta_range: null opts out of the
+      // 90° default. Si, not the default H: hydrogen's form factor floors to 0 by
+      // s = 1.4 A^-1, which zeroes the artifact for MoKa before the Lorentz factor applies
+      // and would leave that row testing nothing.
+      const structure = make_simple_cubic_structure(wavelength, `Si`)
 
       const pattern = compute_xrd_pattern(structure, {
         wavelength: anode,
@@ -138,16 +144,21 @@ describe(`compute_xrd_pattern edge cases`, () => {
         expect(Number.isFinite(pattern.x[idx])).toBe(true)
         expect(Number.isFinite(pattern.y[idx])).toBe(true)
       }
-      const max_angle = Math.max(...pattern.x)
-      expect(Math.abs(max_angle - 180)).toBeLessThan(1e-6)
+      expect(pattern.x.every((angle) => angle < 180 - 1e-6)).toBe(true)
+      // (100) survives AND anchors the 0..100 scale. Asserting the max is 100 on its own
+      // would prove nothing: `scaled` normalizes to 100 whichever peak wins, artifact included
+      const at_60 = pattern.x.findIndex((angle) => Math.abs(angle - 60) < 1e-6)
+      expect(at_60).toBeGreaterThanOrEqual(0)
+      expect(pattern.y[at_60]).toBe(100)
     },
   )
 
   test(`default two_theta_range stops short of the Lorentz singularity`, () => {
-    // The powder Lorentz factor 1/(sin²θ·|cosθ|) diverges at 2θ = 180°, and the clamp in
-    // the intensity loop turns that into a ~1e10 spike which becomes the normalization
-    // maximum and pushes every real peak under scaled_intensity_tol. With a = λ the (100)
-    // reflection sits at 60°; a [0, 180] default returned only a 180° artifact instead.
+    // The powder Lorentz factor 1/(sin²θ·|cosθ|) diverges as 2θ → 180°. The back-reflection
+    // skip only catches the exact singularity, so a reflection landing a hair short of it
+    // still reports a huge intensity that takes the normalization maximum — perturbing a by
+    // one part in 1e9 puts a peak at 179.995° with every real peak scaled to ~0.04. The 90°
+    // default is what actually keeps that class out. With a = λ the (100) peak sits at 60°.
     const structure = make_simple_cubic_structure(1.54184)
     const pattern = compute_xrd_pattern(structure)
     expect(pattern.x).toHaveLength(1)

@@ -1,6 +1,7 @@
 import type { RadiationType, ScatteringSpecies } from '$lib/scattering'
 import {
   electron_form_factor,
+  gaussian_turning_point,
   neutron_scattering_length,
   pdf_scattering_weights,
   scattering_length,
@@ -147,9 +148,12 @@ describe(`electron_form_factor`, () => {
   test.each([`Es`, `Fm`, `Og`] as ScatteringSpecies[])(
     `throws naming %s when Gaussian params are absent`,
     (element) => {
-      expect(() => electron_form_factor(element, 0.3)).toThrow(
-        new RegExp(`No atomic scattering coefficients for ${element}\\b`),
-      )
+      const missing = new RegExp(`No atomic scattering coefficients for ${element}\\b`)
+      expect(() => electron_form_factor(element, 0.3)).toThrow(missing)
+      // gaussian_turning_point is exported on its own. An absent parameter set makes its
+      // slope identically zero, so the bisection "converges" on ~1e-24 and caches it —
+      // a plausible-looking number instead of the error every other entry point gives.
+      expect(() => gaussian_turning_point(element)).toThrow(missing)
     },
   )
 

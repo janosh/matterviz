@@ -50,6 +50,8 @@ export function pseudo_voigt(x: number, x0: number, fwhm: number, eta: number): 
 // Accumulates pseudo-Voigt peaks onto a uniform grid, with the FWHM model supplied by the
 // caller. Bragg-angle broadening (Caglioti) is only one such model — vibrational spectra need
 // constant or frequency-dependent widths, for which the Caglioti formula is meaningless.
+// Unit-agnostic: the faint-peak cut is a fraction of the tallest peak and the reach test
+// uses each peak's own width, so callers need not adapt either to their x or intensity scale.
 export function broaden_peaks(
   pattern: XrdPattern, // Discrete peaks
   fwhm_fn: (peak_center: number) => number, // FWHM model evaluated at each peak center
@@ -65,20 +67,48 @@ export function broaden_peaks(
   if (!Number.isFinite(min_angle) || !Number.isFinite(max_angle) || max_angle <= min_angle) {
     throw new Error(`range must be finite and max > min`)
   }
+  // Ragged input is silent otherwise: a short y makes every grid point NaN, and a long one
+  // lets the intensity floor be set by a peak that has no position and so never renders,
+  // erasing the real ones
+  if (pattern.x.length !== pattern.y.length) {
+    throw new Error(
+      `pattern has ${pattern.x.length} positions but ${pattern.y.length} intensities`,
+    )
+  }
 
   const n_steps = Math.ceil((max_angle - min_angle) / step_size)
-  const xs = new Float32Array(n_steps)
-  const ys = new Float32Array(n_steps)
+  // f64, not f32: at cm^-1 values in the thousands f32 resolves to ~2.4e-4, which shows up
+  // as grid-dependent noise whenever the same sticks are broadened over two different spans
+  const xs = new Float64Array(n_steps)
+  const ys = new Float64Array(n_steps)
   for (let idx = 0; idx < n_steps; idx++) xs[idx] = min_angle + idx * step_size
 
   const { x: peak_pos, y: peak_int } = pattern
+
+  // Relative to the tallest peak, not absolute: e^2/amu IR intensities can sit entirely
+  // below any fixed cut. Taken over the whole input rather than the part inside `range`, so
+  // the cut does not shift when the caller narrows the window. Looped, not spread: a
+  // supercell pattern carries thousands of reflections.
+  let tallest = 0
+  for (const intensity of peak_int) {
+    // Both are silent otherwise: one NaN makes every grid point NaN, and one Infinity puts
+    // the floor at Infinity, dropping every real peak for an empty curve
+    if (!Number.isFinite(intensity)) {
+      throw new TypeError(`pattern intensities must be finite, got ${intensity}`)
+    }
+    if (intensity > tallest) tallest = intensity
+  }
+  const intensity_floor = 1e-5 * tallest
 
   for (let peak_idx = 0; peak_idx < peak_pos.length; peak_idx++) {
     const x0 = peak_pos[peak_idx]
     const intensity = peak_int[peak_idx]
 
-    // Skip peaks too faint to register
-    if (intensity < 1e-5) continue
+    // <=, not <: an all-zero pattern puts the floor at 0, and a strict < would then walk
+    // every peak's full window accumulating zeros (measured 597ms for 5000 sticks on a
+    // 5000-point grid, against 0.3ms). Dropping a peak sitting exactly on the floor is
+    // immaterial — it is 1e-5 of the tallest.
+    if (intensity <= intensity_floor) continue
 
     const fwhm = fwhm_fn(x0)
     // The width now gates the skip test below, not just the profile, so an unusable one
@@ -88,7 +118,10 @@ export function broaden_peaks(
       throw new Error(`fwhm_fn must return > 0 and finite, got ${fwhm} at peak ${x0}`)
     }
     // Lorentzian tails are long, so a narrow window truncates them visibly; 20 * FWHM is
-    // wide enough that the residual is below plotting resolution.
+    // wide enough that the residual is below plotting resolution. Deliberately NOT bounded
+    // by the grid span: start_idx/end_idx below are already clamped, so even a diverging
+    // fwhm_fn costs only one pass, while a span-derived window makes the same sticks
+    // broaden to different values depending on how much of them the caller asked to plot.
     const window = 20 * fwhm
     // Skip peaks whose tails cannot reach the grid. The margin is the peak's own window, not
     // a fixed number of x-units: cm^-1 spectra run FWHM of tens, where an off-grid peak

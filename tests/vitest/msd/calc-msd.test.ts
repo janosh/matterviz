@@ -169,6 +169,27 @@ describe(`periodic unwrapping`, () => {
     expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
   })
 
+  it(`a null lattice at frame 1 falls back to the frame-0 cell`, () => {
+    // The unwrap loop starts at frame 1, so frame 0's cell is only ever reachable as a seed.
+    // Offsetting the drift puts the first face crossing between frames 0 and 1, the one
+    // arrangement where an unseeded cache shows up: elsewhere the plain difference already
+    // coincides with the minimum image and hides it. wrapped_frames first crosses at frame
+    // 6, so nulling ITS frame 1 proves nothing.
+    const shifted = Array.from({ length: n_frames }, (_unused, frame_idx) => {
+      const raw = box_length - drift / 2 + drift * frame_idx
+      return [[raw - box_length * Math.floor(raw / box_length), 0.5, 0.5]]
+    })
+    expect(shifted[1][0][0]).toBeLessThan(shifted[0][0][0]) // wrapped between frames 0 and 1
+
+    const reference = calc_msd(build_positions(shifted, { lattice: box }))
+    const with_gap = build_positions(shifted, { lattice: box })
+    if (!with_gap.lattice_matrices) throw new Error(`expected per-frame lattices`)
+    with_gap.lattice_matrices[1] = null
+    const gapped = calc_msd(with_gap)
+    expect(gapped.unwrapped).toBe(true)
+    expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
+  })
+
   // A slab is periodic in x/y and open along z. Folding the free axis into the 10 A cell
   // turns a real +6 A hop into -4 A, reporting 16 A² where the answer is 36 A².
   const slab_frames = [[[0, 0, 0]], [[0, 0, 6]]]

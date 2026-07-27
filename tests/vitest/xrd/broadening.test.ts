@@ -67,20 +67,51 @@ describe(`compute_broadened_pattern`, () => {
     expect(integral).toBeLessThan(101)
   })
 
-  test(`ignores peaks outside range (+/- 5 deg buffer)`, () => {
-    // 10 is well below 40-5=35 and 90 well above 60+5=65, so only 50 may contribute
+  test(`ignores peaks whose own window cannot reach the range`, () => {
+    // Caglioti gives FWHM 0.14° at 2θ=10 and 0.20° at 90, so their 20·FWHM windows end at
+    // 12.7 and start at 86 — neither reaches [40, 60] and only the 50 peak may contribute
     const pattern = { x: [10, 50, 90], y: [100, 100, 100] }
     const result = compute_broadened_pattern(pattern, DEFAULT_BROADENING, [40, 60], 0.1)
 
     expect(Math.max(...result.y)).toBeGreaterThan(0)
     expect(result.x[0]).toBe(40)
     expect(result.x.at(-1)).toBeCloseTo(60 - 0.1)
+    // the 50 peak's own window spans only 47.2..52.8, so both grid ends stay at zero
+    // unless one of the far peaks leaked in
+    expect(result.y[0]).toBe(0)
+    expect(result.y.at(-1)).toBe(0)
   })
 
-  test(`ignores negligible peaks (< 1e-5 intensity)`, () => {
-    const faint = { x: [20], y: [1e-6] }
-    const result = compute_broadened_pattern(faint, DEFAULT_BROADENING, [10, 30], 0.1)
-    expect(Math.max(...result.y)).toBe(0)
+  // The truncation window is a property of the peak, not of the grid, so the same sticks
+  // must broaden to the same values wherever they are sampled. Bounding the window by the
+  // grid span made the tails depend on how wide a range the caller asked for, by 4e-5 on
+  // this input — the same defect class the f64 grid change was made to remove.
+  test(`grid values do not depend on how much of the spectrum is requested`, () => {
+    const sticks = { x: [820, 1106, 1180], y: [0.4, 1.7, 0.9] }
+    const broaden = (range: Vec2) => broaden_peaks(sticks, () => 12, 0.5, range, 0.5)
+    const wide = broaden([700, 1300])
+    const wide_at = new Map(wide.x.map((x_val, idx) => [x_val, wide.y[idx]]))
+    const narrow = broaden([900, 1100])
+    for (const [idx, x_val] of narrow.x.entries()) {
+      expect(narrow.y[idx], `x = ${x_val}`).toBe(wide_at.get(x_val))
+    }
+  })
+
+  // The faint-peak cut is a fraction of the tallest peak, not a fixed intensity, so it means
+  // the same thing whatever the pattern is normalised to. An absolute floor silently erased
+  // whole IR spectra, whose e^2/amu intensities can sit below any constant.
+  test(`drops peaks negligible against the tallest, keeps a uniformly faint pattern`, () => {
+    const broaden = (y: number[], x: number[] = [20, 25]) =>
+      compute_broadened_pattern({ x, y }, DEFAULT_BROADENING, [10, 30], 0.1)
+    const at_25 = (curve: { x: number[]; y: number[] }) =>
+      curve.y[curve.x.findIndex((x_val) => x_val >= 24.9)]
+
+    // the 1e-6 relative peak contributes nothing beside the tall one, though on its own it
+    // renders fine — so the ratio is doing the work, not the position
+    expect(at_25(broaden([100, 100 * 1e-6]))).toBe(0)
+    expect(at_25(broaden([100], [25]))).toBeGreaterThan(0)
+    // ...and scaling the whole pattern down keeps it: only the ratio matters
+    expect(Math.max(...broaden([1e-9, 1e-9]).y)).toBeGreaterThan(0)
   })
 
   test(`superposition of overlapping peaks`, () => {
@@ -94,12 +125,12 @@ describe(`compute_broadened_pattern`, () => {
     expect(max_y).toBeGreaterThan(0)
   })
 
-  // Regression guard for the fwhm_fn injection refactor. Expectations below were captured by
-  // running the pre-refactor implementation (hardcoded Caglioti call inside the accumulation
-  // loop); the refactor must not perturb a single grid value. n_nonzero, sum and max together
-  // cover every one of the 4650 grid points, so no per-point probe list is needed. Tolerance
-  // is relative 1e-12 — ~5 orders tighter than float32 eps (1.2e-7), which is the accumulator
-  // precision, so any real change in arithmetic or ordering trips it.
+  // Regression guard for the fwhm_fn injection refactor and the f32 -> f64 grid change.
+  // n_nonzero, sum and max together cover every one of the 4650 grid points, so no per-point
+  // probe list is needed. n_nonzero is unchanged from the f32 era (2440 and 172), i.e. the
+  // same peaks reach the same points; only the accumulated values moved, by ~4e-7 relative,
+  // which is f32 eps (1.2e-7) as expected. Tolerance is relative 1e-12, ~4 orders above f64
+  // eps, so any real change in arithmetic or ordering still trips it.
   const rel_tol = 1e-12
 
   test.each([
@@ -114,8 +145,8 @@ describe(`compute_broadened_pattern`, () => {
       step_size: 0.02,
       n_steps: 3750,
       n_nonzero: 2440,
-      sum: 1.2518083198396023e4,
-      max: 5.904863891601563e2,
+      sum: 1.2518077747329109e4,
+      max: 5.9048636119055686e2,
     },
     {
       label: `broad Lorentz-heavy params over [25, 70] at 0.05 deg`,
@@ -125,8 +156,8 @@ describe(`compute_broadened_pattern`, () => {
       step_size: 0.05,
       n_steps: 900,
       n_nonzero: 172,
-      sum: 4.62437543053925e3,
-      max: 1.2326004638671875e3,
+      sum: 4.6243623456644464e3,
+      max: 1.2326004596246166e3,
     },
   ])(
     `$label reproduces pre-refactor values`,
@@ -186,9 +217,9 @@ describe(`broaden_peaks`, () => {
 
   test(`fwhm_fn is evaluated once per peak above the intensity cut, at its center`, () => {
     const seen: number[] = []
-    // 1e-6 is below the 1e-5 intensity cut, so peak 35 never reaches the width model. Peak
-    // 200 does: whether its tails reach [10, 60] is decided by its own FWHM, so the width
-    // has to be known before it can be skipped
+    // The cut is 1e-5 of the tallest peak, i.e. 1e-3 here, so peak 35 never reaches the
+    // width model. Peak 200 does: whether its tails reach [10, 60] is decided by its own
+    // FWHM, so the width has to be known before it can be skipped
     const pattern = { x: [20, 35, 200, 40], y: [100, 1e-6, 100, 50] }
     broaden_peaks(
       pattern,
@@ -229,15 +260,46 @@ describe(`broaden_peaks`, () => {
   })
 
   test.each([
-    { step: 0, range: [10, 80], err: `step_size must be > 0 and finite` },
-    { step: 0.02, range: [50, 40], err: `range must be finite and max > min` },
-  ])(`validates inputs before touching fwhm_fn ($err)`, ({ step, range, err }) => {
+    { step: 0, range: [10, 80], pattern: { x: [20], y: [100] }, err: `step_size must be > 0` },
+    {
+      step: 0.02,
+      range: [50, 40],
+      pattern: { x: [20], y: [100] },
+      err: `range must be finite and max > min`,
+    },
+    // A short y otherwise NaNs the whole grid; a long one lets the relative floor be set by
+    // an intensity with no position, which silently drops the peaks that do have one
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [20, 40], y: [100] },
+      err: `2 positions but 1 intensities`,
+    },
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [20], y: [1, 1e9] },
+      err: `1 positions but 2 intensities`,
+    },
+    // NaN poisons every grid point; Infinity puts the relative floor at Infinity and drops
+    // the real peaks with it, so both come back looking like "nothing to plot"
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [20, 40], y: [100, NaN] },
+      err: `intensities must be finite, got NaN`,
+    },
+    {
+      step: 0.02,
+      range: [10, 80],
+      pattern: { x: [20, 40], y: [100, Infinity] },
+      err: `intensities must be finite, got Infinity`,
+    },
+  ])(`validates inputs before touching fwhm_fn ($err)`, ({ step, range, pattern, err }) => {
     const fwhm_fn = () => {
       throw new Error(`fwhm_fn must not be called`)
     }
-    expect(() =>
-      broaden_peaks({ x: [20], y: [100] }, fwhm_fn, 0.5, range as Vec2, step),
-    ).toThrow(err)
+    expect(() => broaden_peaks(pattern, fwhm_fn, 0.5, range as Vec2, step)).toThrow(err)
   })
 
   // The width decides both the profile and whether the peak is in reach of the grid, so an

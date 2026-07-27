@@ -53,12 +53,23 @@
     invalidate()
   })
 
-  let geometry = $state.raw<SphereGeometry | null>(null)
+  // Rebuilt only when the segment count really changes. The prop's signal fires on
+  // unrelated scene updates (hiding an element, editing bonds, ...) with an unchanged
+  // value, and an effect keyed on it alone would dispose + re-upload the sphere on every
+  // one of them. Beyond the wasted uploads, disposing a geometry whose GPU buffer never
+  // got created throws from inside the effect teardown, and that abandons the rest of
+  // Svelte's flush: atom meshes keep the previous element's counts and bonds render
+  // colorless. Software WebGPU hits exactly this by rejecting the sphere upload.
+  let geometry = $state.raw(new SphereGeometry(0.5, sphere_segments, sphere_segments))
+  let built_segments = sphere_segments
   $effect(() => {
-    const geo = new SphereGeometry(0.5, sphere_segments, sphere_segments)
-    geometry = geo
-    return () => geo.dispose()
+    if (sphere_segments === built_segments) return
+    built_segments = sphere_segments
+    const prev = untrack(() => geometry)
+    geometry = new SphereGeometry(0.5, sphere_segments, sphere_segments)
+    prev.dispose()
   })
+  $effect(() => () => geometry.dispose()) // unmount-only, cleanups run untracked
 
   // Recreate the mesh only when capacity must change (instanceMatrix buffer size
   // is fixed at construction); data updates just rewrite the buffers below.
@@ -72,7 +83,11 @@
       mesh = null
       return
     }
-    const next = new InstancedMesh(untrack(() => geometry) ?? undefined, material, count)
+    const next = new InstancedMesh(
+      untrack(() => geometry),
+      material,
+      count,
+    )
     next.frustumCulled = false
     // export.ts reads per-instance colors (instead of the material color) when set
     next.userData.per_instance_color = true
@@ -83,7 +98,7 @@
   $effect(() => () => mesh?.dispose())
 
   $effect(() => {
-    if (mesh && geometry && mesh.geometry !== geometry) {
+    if (mesh && mesh.geometry !== geometry) {
       mesh.geometry = geometry
       invalidate()
     }

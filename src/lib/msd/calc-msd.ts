@@ -120,9 +120,14 @@ function unwrap_flat_positions(
   unwrapped.set(positions.subarray(0, n_atoms * 3))
   const from: Vec3 = [0, 0, 0]
   const to: Vec3 = [0, 0, 0]
-  // A fixed cell hands back the same matrix every frame; only NPT rebuilds the inverse
-  let cached_lattice: Matrix3x3 | null = null
-  let converters: LatticeConverters | null = null
+  // A fixed cell hands back the same matrix every frame; only NPT rebuilds the inverse.
+  // Seeded from frame 0 because the loop starts at 1: without it, a null lattice at frame 1
+  // has no cell to fall back on and takes the plain difference the fallback below exists to
+  // avoid.
+  let cached_lattice: Matrix3x3 | null = lattice_matrices?.[0] ?? null
+  let converters: LatticeConverters | null = cached_lattice
+    ? create_lattice_converters(cached_lattice)
+    : null
 
   for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
     const frame_lattice = lattice_matrices?.[frame_idx] ?? null

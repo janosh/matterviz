@@ -8,8 +8,8 @@ import {
 import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import { li_mgo_hop_json, LI_MGO_HOP_FILENAME, reaction_paths } from '$site/neb'
-import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test } from 'vitest'
 import { make_crystal, resize_element } from '../setup'
 
 const CELL = 4
@@ -284,20 +284,33 @@ const sized = async (root: HTMLElement | null, label: string): Promise<HTMLEleme
   return root
 }
 
-// Both mounters clear the body first so a test can mount twice and still query the
-// component it just made rather than the leftovers of the previous mount.
-const mount_plot = (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
+// Both mounters tear down what came before so a test can mount twice and still query the
+// component it just made. Clearing innerHTML alone drops the nodes but leaves the previous
+// component's effects, timers and window listeners running, which makes tests order-dependent.
+let mounted_components: ReturnType<typeof mount>[] = []
+
+const reset_mounts = async (): Promise<void> => {
+  await Promise.all(mounted_components.map((component) => unmount(component)))
+  mounted_components = []
   document.body.innerHTML = ``
+}
+
+afterEach(reset_mounts)
+
+const mount_plot = async (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
+  await reset_mounts()
   const style = `width: 500px; height: 340px`
-  mount(NebPlot, { target: document.body, props: { ...props, style } })
+  mounted_components.push(
+    mount(NebPlot, { target: document.body, props: { ...props, style } }),
+  )
   return sized(document.querySelector<HTMLElement>(`.scatter`), `NebPlot`)
 }
 
 const mount_viewer = async (
   props: ComponentProps<typeof NebViewer> = {},
 ): Promise<HTMLElement> => {
-  document.body.innerHTML = ``
-  mount(NebViewer, { target: document.body, props })
+  await reset_mounts()
+  mounted_components.push(mount(NebViewer, { target: document.body, props }))
   await tick()
   return sized(document.querySelector<HTMLElement>(`.neb-viewer`), `NebViewer`)
 }

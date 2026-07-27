@@ -1440,9 +1440,19 @@ describe(`MatterViz Extension`, () => {
         { scheme: `file`, fsPath: `/test/structure.cif` },
         false,
       ],
-    ])(`document-open callback is a no-op for %s`, (_label, uri, auto_render) => {
-      stub_auto_render(auto_render)
-      expect(() => get_open_document_callback()({ uri })).not.toThrow()
+    ])(`document-open callback is a no-op for %s`, async (_label, uri, auto_render) => {
+      // should_auto_render only inspects the filename, so an eligible name still schedules
+      // the 100ms render timer; the auto_render config is read inside it. Without advancing
+      // past the delay this asserts nothing about the disabled case.
+      vi.useFakeTimers()
+      try {
+        stub_auto_render(auto_render)
+        expect(() => get_open_document_callback()({ uri })).not.toThrow()
+        await vi.advanceTimersByTimeAsync(200)
+        expect(mock_vscode.window.createWebviewPanel).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     test(`should use basenames for auto-render eligibility and report read errors`, async () => {

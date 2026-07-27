@@ -162,27 +162,20 @@ export function compute_bond_angles(
   const element_of = sites.map((site) => get_majority_element(site) ?? UNKNOWN_ELEMENT)
 
   // Both bonding strategies emit each unordered pair once (they skip idx_b <= idx_a), so a
-  // naive pass over BondPair[] leaves every centre's neighbour list half full and loses most
-  // angles. Register each bond from BOTH ends. Storing the DISPLACEMENT instead of just the
-  // neighbour index is what makes explicit bonds with a cell_shift work: BondPair.pos_2
-  // already carries the shift, and the reverse direction is simply its negation.
+  // naive pass leaves every centre's neighbour list half full. Register each bond from BOTH
+  // ends, storing the DISPLACEMENT rather than the neighbour index: BondPair.pos_2 already
+  // carries any cell_shift, and the reverse direction is just its negation.
   //
-  // These displacements are raw pos_2 - pos_1, deliberately NOT wrapped through
-  // min_image_displacement/displacement_pbc. Image atoms already sit at their true Cartesian
-  // positions, so minimum-imaging would fold distinct neighbours onto each other: in a
-  // two-atom chain with a = 4 and a bond length of exactly a/2 = 2, the centre's two
-  // partners sit at +2 and -2, both of which minimum-image to -2, turning the correct
-  // {180: 2} into {0: 1, 180: 1}.
+  // Displacements are raw pos_2 - pos_1, deliberately NOT minimum-imaged. Image atoms
+  // already sit at their true Cartesian positions, so folding would collapse distinct
+  // neighbours: in a 2-atom chain with a = 4 and bond length a/2, the centre's partners at
+  // +2 and -2 both fold to -2, turning the correct {180: 2} into {0: 1, 180: 1}.
   //
-  // Deduplication: only ORIGINAL atoms are angle centres (image atoms are skipped below), so
-  // an angle at atom X is recorded exactly once even though periodic copies of X exist in
-  // the search structure. The seen-key additionally drops repeats of the same (centre,
-  // ORIGINAL neighbour, displacement), which apply_explicit_bond_metadata introduces when an
-  // explicit record with a cell_shift names the same physical bond a proximity search
-  // already found against an image copy — same displacement, different search-site index.
-  // The displacement is rounded to 1e-6 Å because the two paths build it differently
-  // (frac_to_cart(frac + shift) vs xyz + shift · lattice_vec) and disagree at ~1e-15; 1e-6 is
-  // six orders below any real neighbour separation, so distinct images stay distinct.
+  // Only ORIGINAL atoms are centres, so each angle is recorded once despite periodic copies.
+  // The seen-key additionally drops the duplicate apply_explicit_bond_metadata creates when
+  // an explicit cell_shift record names a bond proximity already found against an image —
+  // same displacement, different search index. Rounded to 1e-6 Å because the two paths build
+  // it differently and disagree at ~1e-15, still six orders below any real separation.
   type Neighbor = { site_idx: number; orig_idx: number; vec: Vec3 }
   const adjacency = new SvelteMap<number, Neighbor[]>()
   const seen = new SvelteSet<string>()

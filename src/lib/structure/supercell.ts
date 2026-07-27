@@ -162,9 +162,11 @@ export function make_supercell(
     }
     return coords
   })
-  // How many whole supercells the wrap moved each coordinate. Zero unless the input `abc`
-  // lay outside [0,1) — but when it did, `abc` was wrapped while `xyz` below was not, so
-  // the two described cells a lattice vector apart and consumers reading `abc` (PBC image
+  // How far the wrap moved each coordinate, in units of the ORIGINAL lattice vector (the
+  // supercell-fractional shift times `scale`), so the Cartesian offset below is just the
+  // shift against the already-destructured lattice rows. Zero unless the input `abc` lay
+  // outside [0,1) — but when it did, `abc` was wrapped while `xyz` was not, so the two
+  // described cells a lattice vector apart and consumers reading `abc` (PBC image
   // generation, symmetry) disagreed with those reading `xyz` (rendering, bonding) about
   // where the atom is. Applied to `xyz` so both always name the same position.
   const frac_shift = supercell_scaling.map((scale, axis) => {
@@ -174,7 +176,7 @@ export function make_supercell(
       for (let site_idx = 0; site_idx < n_sites; site_idx++) {
         const flat_idx = cell_idx * n_sites + site_idx
         const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
-        shifts[flat_idx] = wrapped_frac[axis][flat_idx] - coord
+        shifts[flat_idx] = (wrapped_frac[axis][flat_idx] - coord) * scale
       }
     }
     return shifts
@@ -182,12 +184,6 @@ export function make_supercell(
   const any_frac_shift = frac_shift.some((axis_shifts) =>
     axis_shifts.some((shift) => shift !== 0),
   )
-  // Supercell lattice rows, needed to turn a fractional wrap back into a Cartesian offset
-  const [sup_a, sup_b, sup_c] = [
-    [ax * scale_x, ay * scale_x, az * scale_x],
-    [bx * scale_y, by * scale_y, bz * scale_y],
-    [cx * scale_z, cy * scale_z, cz * scale_z],
-  ]
 
   // Identical for every image of a base site, so build once and share the reference —
   // supercell sites already share their base site's `species` array the same way.
@@ -223,9 +219,9 @@ export function make_supercell(
               frac_shift[1][jj * n_sites + site_idx],
               frac_shift[2][kk * n_sites + site_idx],
             ]
-            wx = shift_a * sup_a[0] + shift_b * sup_b[0] + shift_c * sup_c[0]
-            wy = shift_a * sup_a[1] + shift_b * sup_b[1] + shift_c * sup_c[1]
-            wz = shift_a * sup_a[2] + shift_b * sup_b[2] + shift_c * sup_c[2]
+            wx = shift_a * ax + shift_b * bx + shift_c * cx
+            wy = shift_a * ay + shift_b * by + shift_c * cy
+            wz = shift_a * az + shift_b * bz + shift_c * cz
           }
 
           new_sites[write_idx++] = {

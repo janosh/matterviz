@@ -306,10 +306,13 @@ describe(`VSCode Download Integration`, () => {
   // `load` also fills in `result` from the real Blob for end-to-end correctness.
   const stub_file_reader = (outcome: `load` | `error`) => {
     vi.useFakeTimers()
-    let listener: (() => void) | undefined
-    let result: string | null = null
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
+      // Per instance, not per stub: overlapping downloads would otherwise share one
+      // listener and result, so the second read would clobber the first
+      let listener: (() => void) | undefined
+      let result: string | null = null
+
       this.readAsDataURL = vi.fn((blob: Blob) => {
         setTimeout(() => {
           void (async () => {

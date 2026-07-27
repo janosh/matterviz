@@ -277,12 +277,7 @@ export interface BroadenOptions {
 // widths. Line shapes are area-normalised, so the integrated intensity of each stick is
 // preserved (up to the +/-20 FWHM truncation window and grid discretisation).
 //
-// broaden_peaks drops sticks below an absolute intensity of 1e-5, which suits XRD
-// intensities normalised to 100 but is arbitrary in e^2/amu, where a whole spectrum can sit
-// under it. It is not a knob, so it is neutralised here: intensities are scaled to a maximum
-// of 1 before the call and back after, turning the floor into a relative 1e-5 cut. The grid
-// is also extended by whole steps to cover every stick and cropped back afterwards, so a
-// stick outside `range` lands on the grid whatever broaden_peaks' own reach test decides.
+// broaden_peaks is unit-agnostic (see its contract), so sticks go through unscaled.
 export function broaden_spectrum(
   sticks: SpectrumCurve,
   options: BroadenOptions = {},
@@ -331,10 +326,6 @@ export function broaden_spectrum(
     options.range ?? ([min_stick - 10 * max_width, max_stick + 10 * max_width] as Vec2)
   const step_size = options.step_size ?? min_width / 20
 
-  const max_intensity = Math.max(...sticks.y)
-  const scale = max_intensity > 0 ? 1 / max_intensity : 1
-  const lo_steps = Math.max(0, Math.ceil((range_lo - min_stick) / step_size))
-  const hi_steps = Math.max(0, Math.ceil((max_stick - range_hi) / step_size))
   const n_points = Math.ceil((range_hi - range_lo) / step_size)
   // Every width can be individually sane while their RATIO is not: the grid spans
   // 10*max_width past the sticks in steps of min_width/20, so a soft mode 9 orders below
@@ -347,17 +338,7 @@ export function broaden_spectrum(
     )
   }
 
-  const broad = broaden_peaks(
-    { x: sticks.x, y: sticks.y.map((intensity) => intensity * scale) },
-    width_at,
-    shape_factor,
-    [range_lo - lo_steps * step_size, range_hi + hi_steps * step_size],
-    step_size,
-  )
-  return {
-    x: broad.x.slice(lo_steps, lo_steps + n_points),
-    y: broad.y.slice(lo_steps, lo_steps + n_points).map((val) => val / scale),
-  }
+  return broaden_peaks(sticks, width_at, shape_factor, [range_lo, range_hi], step_size)
 }
 
 // Scale a curve so its maximum is 1. Used for the transmittance presentation, which inverts

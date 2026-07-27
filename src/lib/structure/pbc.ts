@@ -13,27 +13,23 @@ import type { ParsedStructure } from './parse'
 export type Pbc = readonly [boolean, boolean, boolean]
 
 // Distance slack added to the covalent-radii sum when deciding whether a candidate image
-// atom bonds a base atom (VESTA-like additive bond-search criterion). Must cover the
-// longest bond the perception strategies actually draw, or a drawn bond loses its far
-// atom at the cell boundary: metallic bonds run well past the covalent-radii sum, and at
-// 0.4 Å fcc Al (2.864 Å vs 2.42 Å sum) and Pb (3.50 vs 2.92) were truncated. Additive
-// rather than multiplicative on purpose - a ratio large enough for Pb would make a 5 Å
-// Na-Na second-neighbour contact look like a bond, since Na's radius is large.
+// atom bonds a base atom (VESTA-like additive criterion). Must cover the longest bond the
+// perception strategies draw, else a drawn bond loses its far atom at the cell boundary:
+// metallic bonds run past the radii sum, fcc Al at 2.864 Å against a 2.42 Å sum, Pb 3.50
+// vs 2.92. Additive not multiplicative — a ratio big enough for Pb would make a 5 Å Na-Na
+// second neighbour look bonded, since Na's radius is large.
 const BOND_SLACK = 0.7 // Å
 // Below this separation two sites are overlapping copies, not a bond (matches
 // the min_bond_dist default in bonding.ts)
 const MIN_BOND_DIST = 0.4 // Å
 
-// Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0
-// and rounding to 15 digits to suppress floating-point noise.
-// NOTE on epsilon: this is the tightest of three intentionally different wrap
-// helpers. Coordinates here come almost straight from file parsing, so float
-// error is tiny and a 1e-10 snap + toFixed(15) preserves maximal precision.
-// Compare wrap_frac @1e-9 [[src/lib/symmetry/index.ts:80]] (post moyo
-// standardization + matrix transforms) and wrap_point @1e-8
-// [[src/lib/symmetry/symmetry-elements.ts:214]] (feeds symmetry-element dedup
-// keys). Do not unify: loosening this epsilon changes snapping near cell
-// boundaries for parsed structures.
+// Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0 and rounding
+// to 15 digits to suppress floating-point noise.
+// NOTE on epsilon: the tightest of three intentionally different wrap helpers. Coordinates
+// here come almost straight from file parsing, so a 1e-10 snap + toFixed(15) preserves
+// maximal precision. Compare wrap_frac @1e-9 [[src/lib/symmetry/index.ts:80]] (post-moyo)
+// and wrap_point @1e-8 [[src/lib/symmetry/symmetry-elements.ts:214]] (feeds dedup keys).
+// Do not unify: loosening this changes snapping near cell boundaries for parsed structures.
 export const wrap_frac_coord = (coord: number): number => {
   const wrapped = coord - Math.floor(coord)
   if (wrapped >= 1 - 1e-10) return 0

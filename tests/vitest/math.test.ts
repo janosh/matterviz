@@ -1598,6 +1598,10 @@ describe(`unwrap_positions`, () => {
       error: /unwrap_positions lattice must be a finite 3x3 matrix/ },
     { name: `per-frame lattice, named by frame index`, lattices: [cubic_10, cubic_10, ragged],
       error: /frame 2 lattice must be a finite 3x3 matrix, got \[\[1,2,3\],\[4,5\],\[7,8,9\]\]/ },
+    // The unwrap loop starts at frame 1, so frame 0's own cell is only ever read as the
+    // fallback for later frames without one - it has to be checked before that, not skipped
+    { name: `frame-0 per-frame lattice`, lattices: [with_nan, null, null],
+      error: /frame 0 lattice must be a finite 3x3 matrix/ },
   ])(`throws on a malformed $name`, ({ lattices, error }) => {
     const frames: Vec3[][] = [[[1, 1, 1]], [[2, 2, 2]], [[3, 3, 3]]]
     expect(() => math.unwrap_positions(frames, lattices)).toThrow(error)

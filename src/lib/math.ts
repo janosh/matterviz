@@ -84,13 +84,10 @@ export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume
   // NaN then propagates silently into every derived quantity. angle_between_vectors in
   // measure.ts needs the same [-1, 1] clamp for the same reason.
   //
-  // Its zero-length sentinel is 0, not 90, and that difference is deliberate: it measures
-  // angles between bond vectors, where a zero-length vector has no direction and 0 is the
-  // natural "no angle" answer. Cell angles have to stay a self-consistent CELL. A slab
-  // (c = 0) reported as alpha = beta = 0 drives the triclinic volume factor
-  // 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ to -1, so cell_to_lattice_matrix rejects it
-  // as unrealizable and the cell no longer round-trips; 90 keeps the radicand at 1 and
-  // recovers the original slab. The two functions must agree on the clamp, not the sentinel.
+  // Its zero-length sentinel is 0, not 90, and the difference is deliberate: for bond
+  // vectors 0 means "no direction", but a slab reported as alpha = beta = 0 drives the
+  // triclinic volume radicand 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ to -1, so
+  // cell_to_lattice_matrix rejects the cell. 90 keeps it at 1 and round-trips.
   const safe_angle = (dot: number, len_1: number, len_2: number): number => {
     const denom = len_1 * len_2
     if (denom === 0) return 90 // degenerate axis: orthogonal keeps the cell round-trippable
@@ -259,8 +256,15 @@ export function unwrap_positions(
 
   // Copy frame 0 verbatim so the output never aliases the input
   const unwrapped: Vec3[][] = [frames[0].map((pos): Vec3 => [pos[0], pos[1], pos[2]])]
+  // Frame 0's own cell is never seen by the per-frame check below, since the loop starts at
+  // 1, yet later frames with a missing lattice fall back to it. Unchecked, a NaN here would
+  // propagate through every one of them.
+  const frame_0_lattice = per_frame_lattices?.[0] ?? null
+  if (frame_0_lattice != null) {
+    assert_finite_3x3(frame_0_lattice, `unwrap_positions frame 0 lattice`)
+  }
   // Most recent non-null cell, used for frames whose own lattice entry is missing
-  let last_lattice: Matrix3x3 | null = per_frame_lattices?.[0] ?? fixed_lattice
+  let last_lattice: Matrix3x3 | null = frame_0_lattice ?? fixed_lattice
 
   for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {
     const prev_frame = frames[frame_idx - 1]
