@@ -112,6 +112,7 @@ export type {
 } from './isosurface'
 export * from './labels'
 export * from './layout'
+export * from './lineshape'
 export * from './math'
 export * from './msd'
 export * from './neb'

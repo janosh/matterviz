@@ -1,6 +1,6 @@
+import { broaden_peaks } from '$lib/lineshape'
 import type { Vec2 } from '$lib/math'
 import {
-  broaden_peaks,
   caglioti_fwhm,
   compute_broadened_pattern,
   DEFAULT_BROADENING,

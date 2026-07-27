@@ -155,4 +155,4 @@ Every computed quantity is available per mode, so the raw numbers can be tabulat
 ## Traps this component deliberately avoids
 
 - **`normalize_dos` is not used.** It assumes any frequency above 100 must be in cm⁻¹ and silently divides by 33.36. Vibrational spectra routinely reach 4000 cm⁻¹, so IR/Raman data uses its own `VibrationalSpectrum` type and never touches the DOS normalisation path.
-- **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from the XRD module with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
+- **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from `$lib/lineshape` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.

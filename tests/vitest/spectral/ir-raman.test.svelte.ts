@@ -29,8 +29,8 @@ import type {
   SpectrumCurve,
   VibrationalMode,
 } from '$lib/spectral'
-// The one XRD import: broaden_spectrum delegates to it, and that delegation is under test
-import { broaden_peaks } from '$lib/xrd/broadening'
+// broaden_spectrum delegates to it, and that delegation is under test
+import { broaden_peaks } from '$lib/lineshape'
 import co2_born from '$site/phonons/ir-raman/CO2.BORN?raw'
 import co2_yaml from '$site/phonons/ir-raman/CO2-gamma.yaml.gz?raw'
 import co2_raman_json from '$site/phonons/ir-raman/CO2-raman-tensors.json.gz'

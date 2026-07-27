@@ -142,6 +142,10 @@
       "types": "./dist/layout/index.d.ts",
       "default": "./dist/layout/index.js"
     },
+    "./lineshape": {
+      "types": "./dist/lineshape.d.ts",
+      "default": "./dist/lineshape.js"
+    },
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"

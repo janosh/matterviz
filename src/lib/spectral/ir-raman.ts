@@ -7,7 +7,7 @@
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { broaden_peaks } from '$lib/xrd/broadening'
+import { broaden_peaks } from '$lib/lineshape'
 import { SvelteSet } from 'svelte/reactivity'
 import { ACOUSTIC_FREQ_THRESHOLD, convert_frequencies } from './helpers'
 import type {
