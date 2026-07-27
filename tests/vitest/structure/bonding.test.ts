@@ -1,11 +1,12 @@
 import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '$lib'
 import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondEditState } from '$lib/structure/bonding'
+import { bond_trace, new_trace_id } from '$lib/structure/bond-trace'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../setup'
 
 // Simple helper for tests that only need xyz coordinates
@@ -1293,4 +1294,46 @@ test(`pack_cell_key is injective in a dense block and safe-integer at ±512 rang
   ]) {
     expect(Number.isSafeInteger(bonding.pack_cell_key(x, y, z))).toBe(true)
   }
+})
+
+// TEMPORARY (#418): delete alongside src/lib/structure/bond-trace.ts
+describe(`bond_trace`, () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).matterviz_bond_trace
+  })
+
+  test(`is inert unless a caller installs an array sink`, () => {
+    // Call sites serialize bond lists to build detail, so an inert trace must not run the
+    // thunk at all: doing that work and discarding it slowed every e2e shard threefold.
+    let detail_calls = 0
+    const detail = () => ({ foo: ++detail_calls })
+
+    expect(() => bond_trace(`evt`, `id0`, detail)).not.toThrow()
+    ;(globalThis as Record<string, unknown>).matterviz_bond_trace = `not an array`
+    expect(() => bond_trace(`evt`, `id0`, detail)).not.toThrow()
+    expect(detail_calls).toBe(0)
+    ;(globalThis as Record<string, unknown>).matterviz_bond_trace = []
+    bond_trace(`evt`, `id0`, detail)
+    expect(detail_calls).toBe(1)
+  })
+
+  test(`detail cannot overwrite the event, id and t schema fields`, () => {
+    const sink: Record<string, unknown>[] = []
+    ;(globalThis as Record<string, unknown>).matterviz_bond_trace = sink
+    bond_trace(`emit_bonds`, `scene0`, () => ({ event: `spoofed`, id: `spoofed`, t: -1, n: 3 }))
+
+    expect(sink).toHaveLength(1)
+    const [record] = sink
+    expect(record.event).toBe(`emit_bonds`)
+    expect(record.id).toBe(`scene0`)
+    expect(record.t).toBeGreaterThanOrEqual(0)
+    expect(record.n).toBe(3)
+  })
+
+  test(`new_trace_id increments per call and keeps the caller's prefix`, () => {
+    const [first, second] = [new_trace_id(`scene`), new_trace_id(`struct`)]
+    expect(first).toMatch(/^scene\d+$/u)
+    expect(second).toMatch(/^struct\d+$/u)
+    expect(Number(second.slice(6))).toBe(Number(first.slice(5)) + 1)
+  })
 })
