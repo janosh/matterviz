@@ -3,7 +3,7 @@
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
   import { portal } from '$lib/overlays/portal'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { untrack } from 'svelte'
   import Structure from './Structure.svelte'
 
   type Layout = `horizontal` | `vertical`
@@ -13,7 +13,12 @@
     layout?: Layout
     height?: number
     min_card_width?: number
-    max_rendered_items?: number
+    // Vertical layout only: caps the track at this many cards tall. Horizontal
+    // tracks take their width from the host container instead.
+    visible_rows?: number
+    // Cards kept mounted beyond each viewport edge, so a scroll shorter than
+    // this reveals structures that are already rendered.
+    overscan?: number
     resizable?: boolean
     show_controls?: ShowControlsProp
     empty_message?: string
@@ -31,7 +36,8 @@
     layout = `horizontal`,
     height = 360,
     min_card_width = 190,
-    max_rendered_items = 8,
+    visible_rows = 8,
+    overscan = 3,
     resizable = false,
     show_controls,
     empty_message = `No structures`,
@@ -63,78 +69,79 @@
   const wheel_line_height_px = 16
   // px per arrow-key press when resizing via keyboard
   const keyboard_resize_step_px = 16
+  const is_horizontal = $derived(layout === `horizontal`)
   const effective_height = $derived(
-    layout === `horizontal` && resizable ? (resized_height ?? height) : height,
+    is_horizontal && resizable ? (resized_height ?? height) : height,
   )
   const effective_width = $derived(
-    layout === `vertical` && resizable
+    !is_horizontal && resizable
       ? (resized_width ?? (carousel_width > 0 ? carousel_width : min_card_width))
       : min_card_width,
   )
-  const card_width = $derived(layout === `horizontal` ? effective_height : effective_width)
-  const max_rendered = $derived(Math.max(1, Math.floor(max_rendered_items)))
-  const visible_item_count = $derived(Math.min(items.length, max_rendered))
+  const card_width = $derived(is_horizontal ? effective_height : effective_width)
   // stride follows the scroll axis: card inline-size horizontally, block-size vertically
-  const item_stride = $derived((layout === `horizontal` ? card_width : effective_height) + gap)
-  const total_scroll_extent = $derived(
-    items.length === 0 ? 0 : items.length * item_stride - gap,
-  )
-  const track_width = $derived(
-    Math.max(1, visible_item_count) * card_width + Math.max(0, visible_item_count - 1) * gap,
-  )
+  const item_stride = $derived((is_horizontal ? card_width : effective_height) + gap)
+  const scroll_extent = $derived(items.length === 0 ? 0 : items.length * item_stride - gap)
   const first_visible_idx = $derived(Math.max(0, Math.floor(scroll_pos / item_stride)))
-  // Cards per viewport page, measured along the scroll axis: inline-size for
-  // horizontal layout, block-size for vertical (mixing axes here previously
-  // made vertical prefetch thresholds depend on the carousel's WIDTH)
-  const measured_page_size = $derived.by(() => {
-    const viewport_size = layout === `horizontal` ? carousel_width : carousel_height
-    return viewport_size > 0 ? Math.floor((viewport_size + gap) / item_stride) : 1
-  })
-  const page_size = $derived(Math.max(1, Math.min(visible_item_count, measured_page_size)))
+  // Whole cards per viewport page. Both measurements follow the scroll axis:
+  // taking the cross axis would size a vertical page from the carousel's WIDTH.
+  // Falls back to one card until the carousel has been measured.
+  const viewport_size = $derived(is_horizontal ? carousel_width : carousel_height)
+  const page_size = $derived(Math.max(1, Math.floor((viewport_size + gap) / item_stride)))
   const max_page_start = $derived(Math.max(0, items.length - page_size))
   const page_start = $derived(Math.min(max_page_start, first_visible_idx))
   const page_end = $derived(Math.min(items.length, page_start + page_size))
-  // How many card ELEMENTS exist (canvas mount timing is live_ids' job below).
-  // Horizontal: the visible page plus one card per edge — an unaligned scroll
-  // position shows partial cards at BOTH edges, and measured_page_size floors,
-  // so up to page_size + 2 cards can intersect the viewport. Vertical tracks
-  // size their viewport to max_rendered cards (see max-block-size CSS), so
-  // there the page itself is the budget.
-  const rendered_count = $derived(
-    layout === `horizontal`
-      ? Math.min(items.length, page_size + 2, max_rendered)
-      : Math.min(items.length, max_rendered),
-  )
+  // Render window: every card intersecting the viewport — the whole page plus a
+  // partial card at either edge, since an unaligned offset shows both and
+  // page_size floors — padded by `overscan` per side, clamped so a negative one
+  // can't push the window past the first visible card.
+  const overscan_cards = $derived(Math.max(0, Math.floor(overscan)))
+  const window_size = $derived(Math.min(items.length, page_size + 2 + 2 * overscan_cards))
   const window_start = $derived(
-    Math.min(Math.max(0, items.length - rendered_count), first_visible_idx),
+    Math.max(0, Math.min(first_visible_idx - overscan_cards, items.length - window_size)),
   )
   const rendered_items = $derived(
-    items.slice(window_start, window_start + rendered_count).map((item, offset) => ({
+    items.slice(window_start, window_start + window_size).map((item, offset) => ({
       item,
       idx: window_start + offset,
     })),
   )
+  // Bringing up a card's canvas costs ~100ms of browser-internal WebGPU setup,
+  // enough to stall a fling, so the mounted range trails the render window while
+  // a scroll is in flight: cards entering mid-scroll show as label shells until
+  // it settles (a scroll shorter than the overscan never shows one). The range
+  // still catches up once it covers nothing on screen — a viewport of pure
+  // shells is worse than the stall skipping it avoids.
+  const scroll_settle_ms = 150
+  let settle_timer: ReturnType<typeof setTimeout> | undefined
+  let is_scrolling = $state(false)
+  let mount_start = $state(0)
+  let mount_end = $state(0)
+  $effect(() => {
+    const [live_start, live_end] = untrack(() => [mount_start, mount_end])
+    const shows_a_visible_card =
+      live_end > first_visible_idx && live_start < first_visible_idx + page_size
+    if (is_scrolling && shows_a_visible_card) return
+    mount_start = window_start
+    mount_end = window_start + window_size
+  })
   const carousel_style = $derived(
     [
-      `--structure-carousel-columns: ${max_rendered}`,
-      `--structure-carousel-card-width: ${card_width}px`,
       `--structure-carousel-height: ${effective_height}px`,
-      `--structure-carousel-gap: ${gap}px`,
-      `--structure-carousel-track-width: ${track_width}px`,
-      layout === `horizontal`
-        ? `inline-size: min(100%, var(--structure-carousel-track-width))`
-        : ``,
-      layout === `vertical` && resized_width ? `inline-size: ${resized_width}px` : ``,
-      resizable ? `max-inline-size: 100%` : ``,
-      resizable ? `min-block-size: ${min_resize_size}px` : ``,
+      // shrink to the cards when they don't fill the host; an empty carousel
+      // keeps one card's width so its message has somewhere to sit
+      is_horizontal ? `inline-size: min(100%, ${Math.max(card_width, scroll_extent)}px)` : ``,
+      !is_horizontal && resized_width ? `inline-size: ${resized_width}px` : ``,
+      resizable ? `max-inline-size: 100%; min-block-size: ${min_resize_size}px` : ``,
     ]
       .filter(Boolean)
       .join(`; `),
   )
+  const rows_block_size = $derived(Math.max(1, Math.floor(visible_rows)) * item_stride - gap)
   const track_style = $derived(
-    layout === `horizontal`
+    is_horizontal
       ? `overflow-x: auto; overflow-y: hidden; block-size: ${effective_height}px`
-      : `overflow-x: hidden; overflow-y: auto;`,
+      : `overflow-x: hidden; overflow-y: auto; max-block-size: ${rows_block_size}px`,
   )
   // Horizontal spacers/cards take their height from the track's CONTENT box
   // (spacer min-block-size 100%, cards inset-block: 0) instead of a fixed
@@ -142,77 +149,67 @@
   // content box, and fixed-height cards would get their bottom edge — where
   // the atom legend sits — clipped by exactly the scrollbar's height.
   const spacer_style = $derived(
-    layout === `horizontal`
-      ? `inline-size: ${total_scroll_extent}px`
-      : `block-size: ${total_scroll_extent}px; inline-size: ${card_width}px`,
+    is_horizontal
+      ? `inline-size: ${scroll_extent}px`
+      : `block-size: ${scroll_extent}px; inline-size: ${card_width}px`,
   )
   const card_style = (idx: number): string => {
-    const [x_shift, y_shift] =
-      layout === `horizontal` ? [idx * item_stride, 0] : [0, idx * item_stride]
-    const cross_size =
-      layout === `horizontal` ? `inset-block: 0` : `block-size: ${effective_height}px`
+    const [x_shift, y_shift] = is_horizontal ? [idx * item_stride, 0] : [0, idx * item_stride]
+    const cross_size = is_horizontal ? `inset-block: 0` : `block-size: ${effective_height}px`
     return `inline-size: ${card_width}px; ${cross_size}; transform: translate3d(${x_shift}px, ${y_shift}px, 0);`
   }
   const structure_scene_props = { gizmo: false }
 
+  // Ask the host for more items once fewer than a page of them trail the render
+  // window. Both call sites are needed: the effect covers mount, resize and
+  // items arriving, while the scroll call retries an unfulfilled ask at the end
+  // of the list, where the window can no longer slide to re-run the effect.
+  // Empty carousels stay quiet — the host owns the initial load.
   const prefetch = (): void => {
+    const trailing_items = items.length - window_start - window_size
+    if (!on_prefetch_more || items.length === 0 || trailing_items > page_size) return
     const now = performance.now()
-    if (
-      !on_prefetch_more ||
-      (items.length === last_prefetch_item_count &&
-        now - last_prefetch_ms < prefetch_cooldown_ms)
-    ) {
-      return
-    }
+    const in_cooldown =
+      items.length === last_prefetch_item_count &&
+      now - last_prefetch_ms < prefetch_cooldown_ms
+    if (in_cooldown) return
     last_prefetch_ms = now
     last_prefetch_item_count = items.length
     on_prefetch_more()
   }
-
-  // Cards entering the render window mid-scroll render instantly as label
-  // shells and get their GPU canvas (tracked in live_ids) later: mounting a
-  // Threlte scene (device setup + pipeline compile) takes long enough that a
-  // burst of simultaneous mounts stalls fast flings — the main source of
-  // scroll jank. While scrolling, at most one card is promoted to live per
-  // promote_interval_ms so structures still fill in mid-scroll without
-  // stacking several mounts into one frame; once scrolling settles, all
-  // remaining shells mount. Cards leaving the window always lose live status
-  // (window eviction destroys their canvas regardless) so re-entering cards go
-  // through the same throttle instead of burst-remounting from stale ids.
-  const scroll_settle_ms = 150
-  const promote_interval_ms = 200
-  let is_scrolling = $state(false)
-  let settle_timer: ReturnType<typeof setTimeout> | undefined
-  let last_promote_ms = Number.NEGATIVE_INFINITY
-  const live_ids = new SvelteSet<string>()
-  $effect(() => {
-    const window_ids = new Set(rendered_items.map(({ item }) => item.id))
-    for (const id of live_ids) if (!window_ids.has(id)) live_ids.delete(id)
-    if (!is_scrolling) {
-      for (const id of window_ids) live_ids.add(id)
-    } else {
-      const now = performance.now()
-      const entering = rendered_items.find(({ item }) => !live_ids.has(item.id))
-      if (!entering || now - last_promote_ms < promote_interval_ms) return
-      last_promote_ms = now
-      live_ids.add(entering.item.id)
-    }
-  })
+  $effect(prefetch)
 
   const on_scroll = (): void => {
     if (!track) return
     is_scrolling = true
     clearTimeout(settle_timer)
     settle_timer = setTimeout(() => (is_scrolling = false), scroll_settle_ms)
-    scroll_pos = layout === `horizontal` ? track.scrollLeft : track.scrollTop
-    // first_visible_idx re-derives from the scroll offset just written above
-    const remaining_items = Math.max(0, items.length - first_visible_idx - page_size)
-    // Prefetch when within two pages (or one render window) of the end.
-    if (remaining_items <= Math.max(max_rendered, page_size * 2)) prefetch()
+    scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
+    prefetch() // window_start re-derives from the offset just written
+  }
+
+  const max_scroll = (): number => {
+    if (!track) return 0
+    const [content, viewport] = is_horizontal
+      ? [track.scrollWidth, track.clientWidth]
+      : [track.scrollHeight, track.clientHeight]
+    return Math.max(0, content - viewport)
+  }
+
+  // Returns false when already at `next`, so a wheel/arrow event at a scroll
+  // boundary falls through to the surrounding page instead of being swallowed.
+  const scroll_to = (next: number): boolean => {
+    if (!track) return false
+    const current = is_horizontal ? track.scrollLeft : track.scrollTop
+    if (next === current) return false
+    if (is_horizontal) track.scrollLeft = next
+    else track.scrollTop = next
+    on_scroll()
+    return true
   }
 
   const on_wheel = (event: WheelEvent): void => {
-    if (!track || layout !== `horizontal` || event.ctrlKey || items.length <= page_size) return
+    if (!track || !is_horizontal || event.ctrlKey || items.length <= page_size) return
     const dominant_delta =
       Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
     if (dominant_delta === 0) return
@@ -222,27 +219,28 @@
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? track.clientWidth
           : 1
-    const delta = dominant_delta * delta_scale
-    // unclamped above when max is 0 (track not yet measured); browser clamps anyway
-    const max_scroll_left = Math.max(0, track.scrollWidth - track.clientWidth) || Infinity
-    const next_scroll_left = Math.min(max_scroll_left, Math.max(0, track.scrollLeft + delta))
-    // already at the first/last card: leave the event alone so parent scroll
-    // containers can handle it instead of swallowing a no-op
-    if (next_scroll_left === track.scrollLeft) return
+    // unclamped while the track is unmeasured (max 0); the browser clamps anyway
+    const limit = max_scroll() || Infinity
+    const next = Math.min(limit, Math.max(0, track.scrollLeft + dominant_delta * delta_scale))
+    if (!scroll_to(next)) return
     event.preventDefault()
     event.stopPropagation()
-    track.scrollLeft = next_scroll_left
-    on_scroll()
+  }
+
+  // Pager and arrow keys land on a definite target with no momentum behind them,
+  // so there is no fling to stay clear of: mount the new page right away.
+  const settle_now = (): void => {
+    clearTimeout(settle_timer)
+    is_scrolling = false
   }
 
   const scroll_page = (direction: -1 | 1): void => {
-    if (!track) return
     const target_start = Math.min(
       max_page_start,
       Math.max(0, first_visible_idx + direction * page_size),
     )
-    track.scrollLeft = target_start * item_stride
-    on_scroll()
+    scroll_to(target_start * item_stride)
+    settle_now()
   }
 
   // Keyboard scrolling for the focused track: main-axis arrows move one card,
@@ -252,30 +250,24 @@
   // fall through to the page, matching the wheel handler.
   const on_track_keydown = (event: KeyboardEvent): void => {
     if (!track || event.target !== track) return
-    const horizontal = layout === `horizontal`
-    const [back_key, fwd_key] = horizontal
+    const [back_key, fwd_key] = is_horizontal
       ? [`ArrowLeft`, `ArrowRight`]
       : [`ArrowUp`, `ArrowDown`]
-    const max_scroll = horizontal
-      ? Math.max(0, track.scrollWidth - track.clientWidth)
-      : Math.max(0, track.scrollHeight - track.clientHeight)
-    const current = horizontal ? track.scrollLeft : track.scrollTop
+    const limit = max_scroll()
+    const current = is_horizontal ? track.scrollLeft : track.scrollTop
     const deltas: Record<string, number> = {
       [back_key]: -item_stride,
       [fwd_key]: item_stride,
       PageUp: -page_size * item_stride,
       PageDown: page_size * item_stride,
       Home: -current,
-      End: max_scroll - current,
+      End: limit - current,
     }
     const delta = deltas[event.key]
     if (delta === undefined) return
-    const next_scroll = Math.min(max_scroll, Math.max(0, current + delta))
-    if (next_scroll === current) return // boundary: let the page handle it
+    if (!scroll_to(Math.min(limit, Math.max(0, current + delta)))) return
     event.preventDefault()
-    if (horizontal) track.scrollLeft = next_scroll
-    else track.scrollTop = next_scroll
-    on_scroll()
+    settle_now()
   }
 
   const stop_resize = (): void => {
@@ -306,27 +298,24 @@
     )
   }
 
-  const resize_by = (delta: number): void => {
-    if (layout === `horizontal`) set_resized_size(`height`, effective_height + delta)
-    else set_resized_size(`width`, card_width + delta)
-  }
-
   const on_resize_keydown = (event: KeyboardEvent): void => {
-    const [grow, shrink] =
-      layout === `horizontal` ? [`ArrowDown`, `ArrowUp`] : [`ArrowRight`, `ArrowLeft`]
+    const [grow, shrink] = is_horizontal
+      ? [`ArrowDown`, `ArrowUp`]
+      : [`ArrowRight`, `ArrowLeft`]
     if (event.key !== grow && event.key !== shrink) return
     event.preventDefault()
-    resize_by(event.key === grow ? keyboard_resize_step_px : -keyboard_resize_step_px)
+    const step = event.key === grow ? keyboard_resize_step_px : -keyboard_resize_step_px
+    if (is_horizontal) set_resized_size(`height`, effective_height + step)
+    else set_resized_size(`width`, card_width + step)
   }
 
   const start_resize = (event: PointerEvent): void => {
     if (!resizable) return
     event.preventDefault()
     event.stopPropagation()
-    resize_drag =
-      layout === `horizontal`
-        ? { axis: `height`, start_position: event.clientY, start_size: effective_height }
-        : { axis: `width`, start_position: event.clientX, start_size: card_width }
+    resize_drag = is_horizontal
+      ? { axis: `height`, start_position: event.clientY, start_size: effective_height }
+      : { axis: `width`, start_position: event.clientX, start_size: card_width }
     ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
     window.addEventListener(`pointermove`, on_resize_move)
     window.addEventListener(`pointerup`, stop_resize)
@@ -338,7 +327,7 @@
   // reliably turn a mouse wheel into horizontal carousel movement.
   $effect(() => {
     const node = track
-    if (!node || layout !== `horizontal`) return
+    if (!node || !is_horizontal) return
     node.addEventListener(`wheel`, on_wheel, { capture: true, passive: false })
     return () => node.removeEventListener(`wheel`, on_wheel, true)
   })
@@ -382,7 +371,7 @@
                 <span>{item.subtitle}</span>
               {/if}
             </GlassChip>
-            {#if live_ids.has(item.id) || !is_scrolling}
+            {#if idx >= mount_start && idx < mount_end}
               <!-- Fill-the-card overrides for Structure's standalone defaults
                 (height 500px, min-width 300px — both larger than a card). -->
               <Structure
@@ -398,7 +387,7 @@
         {/each}
       </div>
     </div>
-    {#if layout === `horizontal` && items.length > page_size}
+    {#if is_horizontal && items.length > page_size}
       <nav
         aria-label="Structure pages"
         class="structure-carousel-pager"
@@ -425,21 +414,21 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions (focusable separator is a valid ARIA pattern: arrow keys resize, pointer drags) -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
-      aria-label={layout === `horizontal` ? `Resize carousel height` : `Resize carousel width`}
-      aria-orientation={layout === `horizontal` ? `horizontal` : `vertical`}
-      aria-valuemin={layout === `horizontal` ? min_resize_size : min_card_width}
+      aria-label={is_horizontal ? `Resize carousel height` : `Resize carousel width`}
+      aria-orientation={is_horizontal ? `horizontal` : `vertical`}
+      aria-valuemin={is_horizontal ? min_resize_size : min_card_width}
       aria-valuemax={Math.round(
-        layout === `horizontal`
+        is_horizontal
           ? Math.max(effective_height, carousel_height)
           : Math.max(card_width, carousel_width),
       )}
-      aria-valuenow={Math.round(layout === `horizontal` ? effective_height : card_width)}
+      aria-valuenow={Math.round(is_horizontal ? effective_height : card_width)}
       class={`structure-carousel-resize-handle ${layout}`}
       onkeydown={on_resize_keydown}
       onpointerdown={start_resize}
       role="separator"
       tabindex="0"
-      title={layout === `horizontal`
+      title={is_horizontal
         ? `Drag to resize carousel height`
         : `Drag to resize carousel width`}
     ></div>
@@ -473,12 +462,6 @@
   .structure-carousel-track:focus-visible {
     outline: 2px solid var(--accent-color, Highlight);
     outline-offset: -2px;
-  }
-  .horizontal .structure-carousel-track {
-    inline-size: min(100%, var(--structure-carousel-track-width));
-  }
-  .vertical .structure-carousel-track {
-    max-block-size: calc(var(--structure-carousel-height) * var(--structure-carousel-columns));
   }
   .structure-carousel-spacer {
     position: relative;

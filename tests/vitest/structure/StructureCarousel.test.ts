@@ -40,20 +40,20 @@ const mount_carousel = (
 const card_labels = (): (string | null)[] =>
   [...document.querySelectorAll(`.structure-card strong`)].map((node) => node.textContent)
 
+// cards holding a mounted viewer, as opposed to bare label shells
+const live_cards = (): number => document.querySelectorAll(`.structure-card .structure`).length
+
+const many_labels = (from: number, to: number): string[] =>
+  many_items.slice(from, to).map((item) => item.label)
+
 describe(`StructureCarousel`, () => {
   test(`renders structures in a horizontal carousel`, () => {
-    mount_carousel({
-      items,
-      layout: `horizontal`,
-      height: 210,
-      min_card_width: 180,
-      max_rendered_items: items.length,
-    })
+    mount_carousel({ items, layout: `horizontal`, height: 210, min_card_width: 180 })
 
     const carousel = doc_query(`.structure-carousel`)
     expect(carousel.classList.contains(`horizontal`)).toBe(true)
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(5)
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(5)
+    expect(live_cards()).toBe(5)
     expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).toContain(
       `--struct-min-width: 0`,
     )
@@ -62,13 +62,8 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card .structure`).getAttribute(`style`)).not.toContain(
       `--struct-legend-font`,
     )
-    expect(carousel.getAttribute(`style`)).toContain(`--structure-carousel-card-width:`)
-    expect(carousel.getAttribute(`style`)).toContain(
-      `--structure-carousel-track-width: 1082px`,
-    )
-    expect(carousel.getAttribute(`style`)).toContain(
-      `inline-size: min(100%, var(--structure-carousel-track-width))`,
-    )
+    // 5 cards of 210px (card width follows the height) + 4 gaps
+    expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 1082px)`)
     expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
       `overflow-x: auto`,
     )
@@ -77,76 +72,113 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card strong`).textContent).toBe(`Structure 0`)
   })
 
-  test(`shrinks horizontal viewport to loaded structures when fewer than render limit`, () => {
+  test(`shrinks horizontal viewport to loaded structures when they don't fill it`, () => {
     mount_carousel({ items: items.slice(0, 3), layout: `horizontal`, height: 160 })
 
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-track-width: 496px`,
+      `inline-size: min(100%, 496px)`,
     )
     expect(document.querySelectorAll(`.structure-card`)).toHaveLength(3)
   })
 
-  test(`widens to the full budget without mounting offscreen contexts`, async () => {
+  test(`mounts the visible page plus overscan so scrolling reveals live cards`, async () => {
+    // 800px viewport / 368px stride = 2 whole cards, plus a partial card at each
+    // edge, plus 3 overscan cards per side = 10
     mount_carousel({ items: many_items, layout: `horizontal`, min_card_width: 180 })
 
+    expect(card_labels()).toEqual(many_labels(0, 10))
+    expect(live_cards()).toBe(10)
+    // the carousel now spans all 40 cards (capped to the host by min(100%, ...))
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-columns: 8`,
+      `inline-size: min(100%, 14712px)`,
     )
-    expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-track-width: 2936px`,
-    )
-    expect(card_labels()).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`])
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
 
     const track = doc_query(`.structure-carousel-track`)
-    track.scrollLeft = 1800
-    track.dispatchEvent(new Event(`scroll`))
-    flushSync()
+    const scroll_to = (scroll_left: number): void => {
+      track.scrollLeft = scroll_left
+      track.dispatchEvent(new Event(`scroll`))
+      flushSync()
+    }
 
-    expect(card_labels()).toEqual([`Many 4`, `Many 5`, `Many 6`, `Many 7`])
-    // entering cards render as label shells during the scroll, promoted to a
-    // live WebGL canvas one at a time (throttled, so mid-fling mounts don't
-    // stack into one frame): exactly one canvas right after the scroll event,
-    // the rest once scrolling settles
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(1)
-    await vi.waitFor(() =>
-      expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4),
-    )
+    // scrolling one card on stays entirely within the overscan: same cards, all
+    // still live, so nothing mounts mid-scroll
+    scroll_to(368)
+    expect(card_labels()).toEqual(many_labels(0, 10))
+    expect(live_cards()).toBe(10)
+
+    // past the overscan the window slides; the card entering it renders as a
+    // label shell until the scroll settles, keeping GPU setup out of the fling
+    scroll_to(1800) // first visible card is 4
+    expect(card_labels()).toEqual(many_labels(1, 11))
+    expect(live_cards()).toBe(9)
+    await vi.waitFor(() => expect(live_cards()).toBe(10))
   })
 
-  test(`starts conservatively before its width is measured`, () => {
-    mount_carousel({ items: many_items }, false)
+  test.each([
+    [0, 4],
+    [3, 10],
+    [6, 16],
+    [-1, 4], // clamped to 0: a negative pad would skip the first visible card
+  ])(
+    `overscan=%i mounts %i cards around the two-card viewport`,
+    (overscan: number, expected_cards: number) => {
+      mount_carousel({ items: many_items, overscan })
 
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(3)
-    flushSync()
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
-  })
+      expect(live_cards()).toBe(expected_cards)
+      expect(card_labels()[0]).toBe(`Many 0`)
+    },
+  )
 
-  test(`supports a larger width budget without mounting offscreen contexts`, () => {
-    mount_carousel({ items: many_items, max_rendered_items: 12 })
-
-    expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-columns: 12`,
-    )
-    expect(document.querySelectorAll(`.structure-card .structure`)).toHaveLength(4)
-  })
-
-  test(`renders the entering card at the right edge mid-scroll (no blank space)`, () => {
+  // The mounted range trails the render window during a scroll so GPU setup
+  // stays out of a fling, but it must never fall so far behind that the whole
+  // viewport is label shells. Discrete jumps skip the delay entirely.
+  test(`keeps live cards on screen through a sustained scroll`, () => {
     mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
     const track = doc_query(`.structure-carousel-track`)
-    track.scrollLeft = 100 // unaligned: partial cards at BOTH viewport edges
-    track.dispatchEvent(new Event(`scroll`))
-    flushSync()
 
-    // 800px viewport at offset 100 with 208px stride intersects cards 0-4;
-    // all five must render or the right edge shows blank space while scrolling
-    expect(card_labels()).toEqual([`Many 0`, `Many 1`, `Many 2`, `Many 3`, `Many 4`])
+    const live_counts = [live_cards()]
+    for (const offset of [416, 1040, 2080, 4160]) {
+      track.scrollLeft = offset
+      track.dispatchEvent(new Event(`scroll`))
+      flushSync()
+      live_counts.push(live_cards())
+    }
+    // dips as the window outruns the mounted range, but never empties
+    expect(Math.min(...live_counts)).toBeGreaterThan(0)
+    expect(live_counts.at(-1)).toBe(11)
   })
 
-  test(`captures a nested viewer wheel and requests more structures immediately`, () => {
-    vi.spyOn(performance, `now`).mockReturnValue(100)
-    const on_prefetch_more = vi.fn()
-    mount_carousel({ items, layout: `horizontal`, on_prefetch_more })
+  test.each([
+    [
+      `pager`,
+      () => doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`).click(),
+    ],
+    [`End key`, () => press(doc_query(`.structure-carousel-track`), `End`)],
+    [`ArrowRight`, () => press(doc_query(`.structure-carousel-track`), `ArrowRight`)],
+  ])(`%s jumps mount their new page without waiting to settle`, (_label, jump) => {
+    mount_carousel({ items: many_items, layout: `horizontal`, height: 200 })
+    mock_track_size(doc_query(`.structure-carousel-track`), true)
+
+    for (let repeat = 0; repeat < 5; repeat++) {
+      jump()
+      flushSync()
+      expect(live_cards()).toBe(11) // every card in the window, no shells
+    }
+  })
+
+  test(`assumes a one-card viewport until the carousel is measured`, () => {
+    mount_carousel({ items: many_items }, false)
+
+    // 1 visible card + 2 edges + 2*3 overscan, all still label shells
+    expect(document.querySelectorAll(`.structure-card`)).toHaveLength(9)
+    expect(live_cards()).toBe(0)
+
+    flushSync()
+    expect(live_cards()).toBe(10)
+  })
+
+  test(`captures a nested viewer wheel so the carousel scrolls, not the page`, () => {
+    mount_carousel({ items, layout: `horizontal` })
 
     const track = doc_query(`.structure-carousel-track`)
     const structure = doc_query(`.structure-card .structure`)
@@ -160,7 +192,6 @@ describe(`StructureCarousel`, () => {
 
     expect(wheel.defaultPrevented).toBe(true)
     expect(track.scrollLeft).toBe(80)
-    expect(on_prefetch_more).toHaveBeenCalledTimes(1)
   })
 
   test(`leaves wheel events for parent scrollers at scroll boundaries`, () => {
@@ -272,12 +303,14 @@ describe(`StructureCarousel`, () => {
     (prefetch_cooldown_ms: number) => {
       const now_spy = vi.spyOn(performance, `now`).mockReturnValue(0)
       const on_prefetch_more = vi.fn()
+      // the render window covers all 5 items, so the host is asked on mount
       mount_carousel({
         items,
         layout: `horizontal`,
         on_prefetch_more,
         prefetch_cooldown_ms,
       })
+      expect(on_prefetch_more).toHaveBeenCalledTimes(1)
 
       const track = doc_query(`.structure-carousel-track`)
       const scroll = (): void => {
@@ -285,9 +318,6 @@ describe(`StructureCarousel`, () => {
           new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 }),
         )
       }
-      scroll()
-      expect(on_prefetch_more).toHaveBeenCalledTimes(1)
-
       // Within the cooldown (same item count): suppressed
       now_spy.mockReturnValue(prefetch_cooldown_ms - 1)
       scroll()
@@ -303,13 +333,14 @@ describe(`StructureCarousel`, () => {
   test(`vertical layout prefetches from scrollTop when nearing the end`, () => {
     vi.spyOn(performance, `now`).mockReturnValue(100)
     const on_prefetch_more = vi.fn()
-    // height=200 → vertical item_stride = 208; unmeasured viewport → page_size 1;
-    // prefetch threshold = max(max_rendered=3, page_size*2) = 3 remaining items
+    // height=200 → vertical item_stride = 208; unmeasured viewport → page_size 1,
+    // so the render window is 1 + 2 edges + 2*3 overscan = 9 cards and the host
+    // is asked once fewer than page_size = 1 items trail it
     mount_carousel({
       items: many_items,
       layout: `vertical`,
       height: 200,
-      max_rendered_items: 3,
+      visible_rows: 3,
       on_prefetch_more,
     })
 
@@ -318,10 +349,19 @@ describe(`StructureCarousel`, () => {
     track.dispatchEvent(new Event(`scroll`))
     expect(on_prefetch_more).not.toHaveBeenCalled()
 
-    // first_visible_idx = floor(7488 / 208) = 36 → remaining = 40 - 36 - 1 = 3
+    // first_visible_idx = floor(7488 / 208) = 36 → window covers items 31-39
     track.scrollTop = 7488
     track.dispatchEvent(new Event(`scroll`))
     expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+  })
+
+  test(`caps the vertical track at visible_rows cards`, () => {
+    mount_carousel({ items: many_items, layout: `vertical`, height: 200, visible_rows: 3 })
+
+    // 3 cards of 200px + 2 gaps, so exactly three fit with none part-cut
+    expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+      `max-block-size: 616px`,
+    )
   })
 
   test(`offers page controls that move by the visible card count`, () => {
@@ -362,7 +402,7 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card .cell-select .dropdown`)).not.toBeNull()
   })
 
-  test(`attaches wheel prefetch after structures load into an empty carousel`, () => {
+  test(`attaches the wheel handler to a track that appears after mount`, () => {
     const on_prefetch_more = vi.fn()
     const harness = mount(StructureCarouselHarness, {
       target: document.body,
@@ -370,14 +410,18 @@ describe(`StructureCarousel`, () => {
     })
     flushSync()
     expect(document.querySelector(`.structure-carousel-track`)).toBeNull()
+    // an empty carousel stays quiet: the host owns the initial load
+    expect(on_prefetch_more).not.toHaveBeenCalled()
 
     harness.show_items()
     flushSync()
-    doc_query(`.structure-carousel-track`).dispatchEvent(
+    expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+
+    const track = doc_query(`.structure-carousel-track`)
+    track.dispatchEvent(
       new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 }),
     )
-
-    expect(on_prefetch_more).toHaveBeenCalledTimes(1)
+    expect(track.scrollLeft).toBe(80)
   })
 
   test.each([
@@ -390,20 +434,13 @@ describe(`StructureCarousel`, () => {
     const carousel = doc_query(`.structure-carousel`)
     expect(carousel.classList.contains(layout)).toBe(true)
     if (layout === `horizontal`) {
-      expect(carousel.getAttribute(`style`)).toContain(
-        `--structure-carousel-track-width: 160px`,
-      )
+      expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 160px)`)
     }
     expect(doc_query(`.empty-carousel`).textContent).toBe(message)
   })
 
   test(`stacks vertical cards along the y axis`, () => {
-    mount_carousel({
-      items,
-      layout: `vertical`,
-      min_card_width: 200,
-      max_rendered_items: items.length,
-    })
+    mount_carousel({ items, layout: `vertical`, min_card_width: 200 })
 
     const card_styles = [...document.querySelectorAll(`.structure-card`)].map(
       (card) => card.getAttribute(`style`) ?? ``,
@@ -421,11 +458,12 @@ describe(`StructureCarousel`, () => {
     )
   })
 
-  test(`sizes horizontal cards from carousel height`, () => {
+  test(`sizes horizontal cards from carousel height, not min_card_width`, () => {
     mount_carousel({ items, layout: `horizontal`, height: 180, min_card_width: 220 })
 
+    // 5 cards of 180px + 4 gaps, i.e. min_card_width=220 does not widen them
     expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `--structure-carousel-card-width: 180px`,
+      `inline-size: min(100%, 932px)`,
     )
     expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
       `block-size: 180px`,
@@ -441,8 +479,8 @@ describe(`StructureCarousel`, () => {
     if (layout === `vertical`) {
       // vertical card width initializes async from the measured host width
       await vi.waitFor(() => {
-        expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-          `--structure-carousel-card-width: 800px`,
+        expect(doc_query(`.structure-carousel-spacer`).getAttribute(`style`)).toContain(
+          `inline-size: 800px`,
         )
       })
     }
@@ -466,21 +504,22 @@ describe(`StructureCarousel`, () => {
       { layout: `horizontal`, height: 210, min_card_width: 180 },
       true,
       [10, 90],
-      [`--structure-carousel-height: 290px`, `--structure-carousel-card-width: 290px`],
+      // cards widen with the height: 5 cards of 290px + 4 gaps
+      [`--structure-carousel-height: 290px`, `inline-size: min(100%, 1482px)`],
     ],
     [
       `resizes vertical card width from the side handle`,
       { layout: `vertical` },
       false, // mount unflushed so the async width measurement is exercised
       [800, 680],
-      [`--structure-carousel-card-width: 680px`, `inline-size: 680px`],
+      [`inline-size: 680px`],
     ],
     [
       `respects min_card_width when shrinking vertical card width`,
       { layout: `vertical`, min_card_width: 320 },
       true,
       [800, 100],
-      [`--structure-carousel-card-width: 320px`, `inline-size: 320px`],
+      [`inline-size: 320px`],
     ],
   ] as const)(`%s`, async (_desc, extra_props, flush, [from, to], style_fragments) => {
     mount_carousel({ items, resizable: true, ...extra_props }, flush)
