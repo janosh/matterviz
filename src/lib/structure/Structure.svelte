@@ -680,6 +680,17 @@
   const current_source_bonds = (): StructureBond[] | undefined =>
     bonds ?? structure?.properties?.bonds
 
+  // The pre-edit bonds to snapshot and later restore. `bonds` is our own output channel, so
+  // whenever it still carries the last value we emitted, it may be an edited set rather than
+  // source state. Snapshotting that would make reset restore the edits it is meant to undo,
+  // which is only reachable when a bond rebuild lands after an edit and invalidates the
+  // snapshot context, forcing a re-snapshot. Mirrors current_source_bond_signature below.
+  const pristine_source_bonds = (): StructureBond[] | undefined => {
+    const source_bonds = current_source_bonds()
+    if (bond_signature(source_bonds) !== last_emitted_bond_signature) return source_bonds
+    return structure?.properties?.bonds
+  }
+
   const current_source_bond_signature = (): string => {
     const raw_signature = bond_signature(current_source_bonds())
     if (raw_signature !== last_emitted_bond_signature) return raw_signature
@@ -755,7 +766,7 @@
       return
     }
     bond_edit_snapshot ??= {
-      bonds: current_source_bonds(),
+      bonds: pristine_source_bonds(),
       context: current_bond_edit_context(),
     }
     const edited_bonds = merge_bond_edits(
