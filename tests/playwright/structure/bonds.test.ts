@@ -520,6 +520,11 @@ test.describe(`Bond component`, () => {
       page.evaluate(() => (globalThis as Record<string, unknown>).structure_bond_history)
     const history_length = async () =>
       ((await read_history()) as unknown[] | undefined)?.length ?? 0
+    // Opt in to Structure.svelte's bond trace. The prop sequence alone cannot say why a reset
+    // emitted nothing; the trace shows whether the snapshot was dropped before the click.
+    await page.evaluate(() => {
+      ;(globalThis as Record<string, unknown>).matterviz_bond_trace = []
+    })
 
     const steps: Record<string, unknown> = {}
     try {
@@ -556,6 +561,9 @@ test.describe(`Bond component`, () => {
       steps.aborted_at = String(error).split(`\n`)[0]
       steps.history_at_abort = await read_history().catch(() => `unreadable`)
     }
+    steps.trace = await page
+      .evaluate(() => (globalThis as Record<string, unknown>).matterviz_bond_trace)
+      .catch(() => `unreadable`)
     console.info(`BOND_EDIT_DIAGNOSTIC ${JSON.stringify(steps)}`)
   })
 

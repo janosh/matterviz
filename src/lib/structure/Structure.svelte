@@ -668,6 +668,7 @@
 
   function emit_bonds(next_bonds: StructureBond[] | undefined) {
     const signature = bond_signature(next_bonds)
+    bond_trace(`emit_bonds`, { signature, deduped: signature === last_emitted_bond_signature })
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
@@ -689,6 +690,14 @@
     const source_bonds = current_source_bonds()
     if (bond_signature(source_bonds) !== last_emitted_bond_signature) return source_bonds
     return structure?.properties?.bonds
+  }
+
+  // TEMPORARY (#418): the bond-edit reset regression only reproduces on CI's software
+  // renderer, so the trace has to ship to be read. Inert unless a caller opts in by setting
+  // globalThis.matterviz_bond_trace to an array. Remove once the cause is pinned.
+  const bond_trace = (event: string, detail: Record<string, unknown>) => {
+    const sink = (globalThis as Record<string, unknown>).matterviz_bond_trace
+    if (Array.isArray(sink)) sink.push({ event, ...detail })
   }
 
   const current_source_bond_signature = (): string => {
@@ -752,6 +761,12 @@
     const context = current_bond_edit_context()
     if (!bond_edit_context_changed(snapshot.context, context)) return
     untrack(() => {
+      bond_trace(`context_changed_drops_snapshot`, {
+        snapshot_bonds: bond_signature(snapshot.bonds),
+        was_signature: snapshot.context.source_bond_signature,
+        now_signature: context.source_bond_signature,
+        same_structure: snapshot.context.structure_identity === structure,
+      })
       emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
       clear_bond_edits()
       bond_edit_snapshot = undefined
@@ -760,14 +775,22 @@
 
   $effect(() => {
     if (!has_bond_edits) {
+      bond_trace(`no_edits`, { snapshot_defined: bond_edit_snapshot !== undefined })
       if (bond_edit_snapshot === undefined) return
       emit_bonds(resolve_bond_edit_reset_bonds(bond_edit_snapshot))
       bond_edit_snapshot = undefined
       return
     }
-    bond_edit_snapshot ??= {
-      bonds: pristine_source_bonds(),
-      context: current_bond_edit_context(),
+    if (bond_edit_snapshot === undefined) {
+      bond_edit_snapshot = {
+        bonds: pristine_source_bonds(),
+        context: current_bond_edit_context(),
+      }
+      bond_trace(`snapshot_taken`, {
+        bonds: bond_signature(bond_edit_snapshot.bonds),
+        prop_bonds: bond_signature(bonds),
+        guard_tripped: bond_signature(current_source_bonds()) === last_emitted_bond_signature,
+      })
     }
     const edited_bonds = merge_bond_edits(
       bond_edit_snapshot.bonds ?? [],
