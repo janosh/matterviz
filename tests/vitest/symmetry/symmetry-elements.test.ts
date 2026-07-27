@@ -12,6 +12,7 @@ import {
   symmetry_elements_from_ops,
 } from '$lib/symmetry'
 import type { SymmetryElement } from '$lib/symmetry'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
@@ -278,14 +279,59 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   // Exact in-cell counts (hand-verified vs ITA diagrams) pin element_locus_key dedup and
   // invariant_translations' in-plane invariance check; each kills a distinct mutation:
   // - P4mm=14: dropping the plane-offset wrap splits lattice-equivalent mirrors
-  // - R-3m=94: locus-key fmt precision 4→1 collides/shifts trigonal loci
+  // - R-3m=84: locus-key fmt precision 4→1 collides/shifts trigonal loci
   // - Cm=4: weakening invariant_translations' some()→every() invariance test
   test.each([
     [`P4mm`, 99, 14],
-    [`R-3m`, 166, 94],
+    [`R-3m`, 166, 84],
     [`Cm`, 8, 4],
   ])(`%s (#%i) has exactly %i distinct in-cell elements`, (_, spg, expected) => {
     expect(elements_for(spg)).toHaveLength(expected)
+  })
+
+  // R-3m is the metric-sensitive case: in the hexagonal setting the plane-equation normal
+  // is G·axis, not axis, and keying the offset off the direct-space normal used the wrong
+  // period. The hexagonal cell holds 3 primitive rhombohedral cells, so every element
+  // family appears 3 times in it and each per-kind count must be divisible by 3. Keying
+  // off `axis` gave rotation:2 = 22, screw:2_1 = 20, m = 5 and g = 5 — orbits split
+  // inconsistently — against 18/18/3/3 once the covariant normal is used.
+  test(`R-3m (#166) element counts respect the 3-fold R-centering multiplicity`, () => {
+    const by_kind = count_by(elements_for(166), `label`)
+    expect(by_kind).toEqual({
+      '3': 3,
+      '2': 18,
+      '3_1': 6,
+      '3_2': 6,
+      '2_1': 18,
+      '-3': 3,
+      m: 3,
+      g: 3,
+      '-1': 24,
+    })
+    for (const [label, count] of Object.entries(by_kind)) {
+      expect(count % 3, `${label} count ${count} is not a multiple of 3`).toBe(0)
+    }
+  })
+
+  test(`hexagonal mirror x, x-y, z: lattice-equivalent planes collapse to one family`, () => {
+    // The direct-space normal (elem.axis) of this mirror is (0, 1, 0), but the plane
+    // EQUATION normal is the −1 eigenvector of Wᵀ, proportional to (−1, 2, 0). Keying the
+    // offset off the former halved the period, so the planes through (0, 0, 0) and
+    // (0, 1/2, 0) — one lattice translation apart — were emitted as two families, as were
+    // those through (0, 1/4, 0) and (0, 3/4, 0). Four planes where there are two.
+    const mirror: Matrix3x3 = [
+      [1, 0, 0],
+      [1, -1, 0],
+      [0, 0, 1],
+    ]
+    const elements = symmetry_elements_from_ops(
+      [IDENTITY, mirror].map((rot) => ({
+        rotation: col_major(rot),
+        translation: [0, 0, 0],
+      })) as MoyoDataset[`operations`],
+    )
+    const planes = elements.filter((el) => el.kind === `mirror` || el.kind === `glide`)
+    expect(planes).toHaveLength(2)
   })
 
   test(`R-3m (#166) emits a g-glide: rhombohedral diagonal glides reduce to no a/b/c/n/d letter in the hexagonal-axes basis, so glide_letter must fall back to "g"`, () => {
