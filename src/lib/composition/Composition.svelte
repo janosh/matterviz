@@ -2,7 +2,7 @@
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import Icon from '$lib/Icon.svelte'
-  import type { IconName } from '$lib/icons'
+  import { ICON_DATA, type IconName } from '$lib/icons'
   import { untrack } from 'svelte'
   import { ContextMenu } from 'svelte-widgets'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
@@ -46,12 +46,16 @@
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
 
+  // ContextMenu widens action.icon to string; narrow it rather than asserting
+  const is_icon_name = (val: unknown): val is IconName =>
+    typeof val === `string` && val in ICON_DATA
+
   const mode_actions = (
     [
       [`pie`, `Circle`, `Pie Chart`],
-      [`bubble`, `Circle`, `Bubble Chart`],
+      [`bubble`, `ScatterPlot`, `Bubble Chart`],
       [`bar`, `Graph`, `Bar Chart`],
-    ] as const
+    ] as const satisfies readonly (readonly [CompositionChartMode, IconName, string])[]
   ).map(([id, icon, label]) => ({
     id,
     icon,
@@ -63,7 +67,7 @@
     [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
   ).map((id) => ({
     id,
-    icon: `ColorPalette`,
+    icon: `ColorPalette` satisfies IconName,
     label: id,
     action: () => (current_color_scheme = id),
   }))
@@ -74,7 +78,7 @@
       [`copy_data`, `Copy`, `Copy Data`],
       [`export_svg`, `Download`, `Export SVG`],
       [`export_png`, `Download`, `Export PNG`],
-    ] as const
+    ] as const satisfies readonly (readonly [string, IconName, string])[]
   ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
 
   const context_menu_actions = $derived([
@@ -135,8 +139,8 @@ path below, which has no pointer position to read -->
     class={[`composition`, rest.class]}
   />
   {#snippet item({ action })}
-    {#if typeof action.icon === `string`}
-      <Icon icon={action.icon as IconName} />
+    {#if is_icon_name(action.icon)}
+      <Icon icon={action.icon} />
     {/if}
     <span>{action.label}</span>
   {/snippet}

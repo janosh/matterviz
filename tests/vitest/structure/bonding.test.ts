@@ -1320,7 +1320,12 @@ describe(`bond_trace`, () => {
   test(`detail cannot overwrite the event, id and t schema fields`, () => {
     const sink: Record<string, unknown>[] = []
     ;(globalThis as Record<string, unknown>).matterviz_bond_trace = sink
-    bond_trace(`emit_bonds`, `scene0`, () => ({ event: `spoofed`, id: `spoofed`, t: -1, n: 3 }))
+    bond_trace(`emit_bonds`, `scene0`, () => ({
+      event: `spoofed`,
+      id: `spoofed`,
+      t: -1,
+      n: 3,
+    }))
 
     expect(sink).toHaveLength(1)
     const [record] = sink
