@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IconName } from '$lib/icons'
+  import type { IconName } from 'svelte-widgets'
   import { SubpageGrid } from '$lib/layout'
 
   const subpages: {

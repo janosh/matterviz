@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { sanitize_html } from '$lib/sanitize'
   import type { AxisConfig, DataSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'

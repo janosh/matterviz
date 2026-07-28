@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { onDestroy, type Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -57,15 +56,15 @@
 
 <DraggablePane
   bind:show={export_pane_open}
-  open_icon="Cross"
-  closed_icon="Export"
-  {icon_style}
   pane_props={{
     ...rest,
     ...pane_props,
     class: `export-pane ${rest.class ?? ``} ${pane_props?.class ?? ``}`.trim(),
   }}
   {toggle_props}
+  open_icon="Cross"
+  closed_icon="Export"
+  {icon_style}
 >
   {#each sections as section, sec_idx (section.title ?? sec_idx)}
     {#if section.title}

@@ -1,10 +1,8 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import Icon from '$lib/Icon.svelte'
-  import { ICON_DATA, type IconName } from '$lib/icons'
+  import { ContextMenu, Icon, icon_data, type IconName } from 'svelte-widgets'
   import { untrack } from 'svelte'
-  import { ContextMenu } from 'svelte-widgets'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
   import { get_electro_neg_formula } from './format'
@@ -48,7 +46,7 @@
 
   // ContextMenu widens action.icon to string; narrow it rather than asserting
   const is_icon_name = (val: unknown): val is IconName =>
-    typeof val === `string` && val in ICON_DATA
+    typeof val === `string` && val in icon_data
 
   const mode_actions = (
     [

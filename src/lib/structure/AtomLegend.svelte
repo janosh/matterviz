@@ -2,7 +2,7 @@
   import { contrast_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'

@@ -1,6 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
-  import type { IconName } from '$lib/icons'
+  import { Icon, type IconName } from 'svelte-widgets'
 
   interface Props {
     title: string

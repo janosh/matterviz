@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { download } from '$lib/io/fetch'
   import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'

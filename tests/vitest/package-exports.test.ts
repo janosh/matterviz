@@ -60,7 +60,6 @@ describe(`package.json exports`, () => {
     `./file-viewer/eligibility`,
     `./file-viewer/host-protocol`,
     `./file-viewer/host-transfer`,
-    `./icons`,
     `./isosurface/parse-vaspwave`,
     `./json-path`,
     `./marching-cubes`,

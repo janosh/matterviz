@@ -110,10 +110,6 @@
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
     },
-    "./icons": {
-      "types": "./dist/icons.d.ts",
-      "default": "./dist/icons.js"
-    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js"

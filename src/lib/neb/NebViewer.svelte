@@ -2,7 +2,7 @@
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
   import { StatusMessage } from '$lib/feedback'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'

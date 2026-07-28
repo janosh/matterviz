@@ -4,14 +4,19 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import * as io from '$lib/io'
   import { handle_and_prevent } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import {
+    FullscreenButton,
+    fullscreen_icons,
+    type FullscreenToggleProp,
+    toggle_fullscreen,
+  } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
@@ -1372,10 +1377,11 @@
             <!-- Fullscreen button - rightmost position -->
             {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
               <FullscreenButton
-                {fullscreen}
-                toggle={fullscreen_toggle}
-                {wrapper}
-                aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                bind:fullscreen
+                icons={fullscreen_icons}
+                children={typeof fullscreen_toggle === `function`
+                  ? fullscreen_toggle
+                  : undefined}
                 class="fullscreen-button"
               />
             {/if}

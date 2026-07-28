@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'

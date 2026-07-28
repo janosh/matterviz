@@ -26,8 +26,6 @@
 
 <DraggablePane
   bind:show={controls_open}
-  closed_icon="Settings"
-  open_icon="Cross"
   toggle_props={{
     title: `${controls_open ? `Close` : `Open`} ${title} controls`,
     ...toggle_props,
@@ -41,6 +39,8 @@
     class: `${controls_class}-controls-pane ${pane_props?.class ?? ``}`,
     style: `--pane-padding: 12px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
   }}
+  open_icon="Cross"
+  closed_icon="Settings"
 >
   {@render children?.()}
 </DraggablePane>

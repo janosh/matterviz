@@ -5,10 +5,15 @@
   import { sanitize_html } from '$lib/sanitize'
   import type { ElementSymbol } from '$lib/element'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
-  import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
+  import {
+    FullscreenButton,
+    fullscreen_icons,
+    set_fullscreen_bg,
+    setup_fullscreen_effect,
+  } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -564,7 +569,11 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <FullscreenButton {fullscreen} toggle={fullscreen_toggle} {wrapper} />
+      <FullscreenButton
+        bind:fullscreen
+        icons={fullscreen_icons}
+        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+      />
     {/if}
 
     {#if controls_config.visible(`controls`)}
@@ -725,7 +734,13 @@
     border: 2px dashed var(--accent-color, #1976d2) !important;
   }
   /* Styles for control buttons rendered via header_controls snippet
-     (.fullscreen-btn is FullscreenButton's built-in class) */
+     (.fullscreen-btn is FullscreenButton's built-in class). Its padding and background go
+     through the library's custom properties: a plain rule ties on specificity with the
+     component's own scoped one, leaving source order to decide the winner. */
+  :global(.convex-hull-2d) {
+    --fullscreen-btn-padding: 4px;
+    --fullscreen-btn-bg: transparent;
+  }
   :global(.convex-hull-2d :is(.control-btn, .fullscreen-btn)) {
     background: transparent;
     border: none;

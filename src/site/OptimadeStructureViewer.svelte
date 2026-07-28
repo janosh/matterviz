@@ -1,7 +1,7 @@
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
   import { page } from '$app/state'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import {
     decode_structure_id,
     detect_provider_from_slug,

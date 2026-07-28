@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
@@ -161,8 +160,8 @@
     class: `convex-hull-controls-toggle`,
     ...toggle_props,
   }}
-  closed_icon="Settings"
   open_icon="Cross"
+  closed_icon="Settings"
   {...rest}
 >
   <h4>

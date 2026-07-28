@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
   import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Label, RowData } from '$lib/table'

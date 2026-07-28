@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { IconName } from '$lib'
-  import { Icon, ICON_DATA } from '$lib'
+  import { Icon, icon_data, type IconName } from 'svelte-widgets'
   import { fuzzy_match } from 'svelte-widgets/utils'
   import { highlight_matches } from 'svelte-widgets/attachments'
 
@@ -13,7 +12,7 @@
     setTimeout(() => (copied_text = null), 1500)
   }
 
-  const icon_names = Object.keys(ICON_DATA) as IconName[]
+  const icon_names = Object.keys(icon_data) as IconName[]
 
   let filtered_icons = $derived(
     icon_names.filter((name) => !filter_text || fuzzy_match(filter_text, name)),
@@ -23,7 +22,7 @@
 <h1>Icon Gallery</h1>
 
 <p>
-  The <a href="https://github.com/janosh/matterviz/blob/main/src/lib/Icon.svelte#L28"
+  The <a href="https://github.com/janosh/svelte-widgets/blob/main/src/lib/Icon.svelte"
     ><code>Icon</code></a
   >
   component renders SVG icons from a built-in library of
@@ -54,8 +53,8 @@
     <div class="icon-card">
       <button
         class="svg-btn"
-        class:copied={copied_text === ICON_DATA[icon_name].path}
-        onclick={() => copy(ICON_DATA[icon_name].path)}
+        class:copied={copied_text === icon_data[icon_name].path}
+        onclick={() => copy(icon_data[icon_name].path)}
         title="Click to copy SVG path"
       >
         <Icon icon={icon_name} style="font-size: 2em" />
@@ -84,7 +83,7 @@
 <pre class="language-svelte">
 <code
     >{`${`<`}script>
-  import { Icon } from '$lib'
+  import { Icon } from 'svelte-widgets'
 ${`<`}/script>
 
 <!-- Using built-in icon -->
@@ -92,9 +91,7 @@ ${`<`}/script>
 
 <!-- With custom size -->
 <Icon icon="Settings" style="font-size: 2em" />
-
-<!-- Custom SVG path -->
-<Icon path="M12 2L2 7l10 5 10-5-10-5z" viewBox="0 0 24 24" />`}</code
+<Icon icon="Settings" style="--icon-size: 32px" />`}</code
   ></pre>
 
 <style>

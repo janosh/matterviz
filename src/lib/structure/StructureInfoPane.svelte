@@ -2,11 +2,10 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Site } from '$lib/structure'
@@ -15,7 +14,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { create_clipboard_feedback } from '$lib/overlays'
+  import { create_clipboard_feedback, DraggablePane } from '$lib/overlays'
 
   type SiteDetail = {
     label: string
@@ -399,13 +398,13 @@
     title: `${pane_open ? `Close` : `Open`} structure info`,
     ...toggle_props,
   }}
-  open_icon="Cross"
-  closed_icon="Info"
   pane_props={{
     ...pane_props,
     class: `structure-info-pane ${pane_props?.class ?? ``}`,
     style: `--pane-padding: 4pt; --pane-gap: 2pt; ${pane_props?.style ?? ``}`,
   }}
+  open_icon="Cross"
+  closed_icon="Info"
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>

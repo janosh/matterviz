@@ -1,10 +1,9 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -130,6 +129,8 @@
     ...pane_props,
     style: `--pane-max-height: 80cqh; ${pane_props?.style ?? ``}`,
   }}
+  open_icon="Cross"
+  closed_icon="Settings"
 >
   <!-- Camera Controls -->
   <SettingsSection

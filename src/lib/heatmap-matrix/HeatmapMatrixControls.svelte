@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ComponentProps, Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type {
@@ -82,120 +81,122 @@
   ].join(`; `)
 </script>
 
-<DraggablePane
-  bind:show={controls_open}
-  {show_pane}
-  pane_props={{
-    ...pane_props,
-    class: `heatmap-controls ${pane_props?.class ?? ``}`.trim(),
-    style: merge_styles(default_pane_style, pane_props?.style),
-  }}
-  toggle_props={{
-    ...toggle_props,
-    title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
-    class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
-    style: merge_styles(default_toggle_style, toggle_props?.style),
-  }}
-  closed_icon="Settings"
-  open_icon="Cross"
->
-  <label>
-    Ordering
-    <select bind:value={ordering}>
-      {#each orderings as ord (ord)}
-        <option value={ord}>{ORDERING_LABELS[ord]}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    Search
-    <input bind:value={search_query} placeholder="Filter labels/keys" />
-  </label>
-  <div class="pane-row">
+<!-- gated here so the toggle goes with the pane; DraggablePane has no prop for it -->
+{#if show_pane}
+  <DraggablePane
+    bind:show={controls_open}
+    pane_props={{
+      ...pane_props,
+      class: `heatmap-controls ${pane_props?.class ?? ``}`.trim(),
+      style: merge_styles(default_pane_style, pane_props?.style),
+    }}
+    toggle_props={{
+      ...toggle_props,
+      title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
+      class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
+      style: merge_styles(default_toggle_style, toggle_props?.style),
+    }}
+    open_icon="Cross"
+    closed_icon="Settings"
+  >
     <label>
-      Normalize
-      <select bind:value={normalize}>
-        <option value="linear">linear</option>
-        <option value="log">log</option>
+      Ordering
+      <select bind:value={ordering}>
+        {#each orderings as ord (ord)}
+          <option value={ord}>{ORDERING_LABELS[ord]}</option>
+        {/each}
       </select>
     </label>
     <label>
-      Domain
-      <select bind:value={domain_mode}>
-        <option value="auto">auto</option>
-        <option value="robust">robust</option>
-        <option value="fixed">fixed</option>
-      </select>
+      Search
+      <input bind:value={search_query} placeholder="Filter labels/keys" />
     </label>
-  </div>
-  <div class="pane-row">
-    <label>
-      <input type="checkbox" bind:checked={show_legend} />
-      Legend
-    </label>
-    {#if show_legend}
+    <div class="pane-row">
       <label>
-        Position
-        <select bind:value={legend_position}>
-          <option value="right">right</option>
-          <option value="bottom">bottom</option>
+        Normalize
+        <select bind:value={normalize}>
+          <option value="linear">linear</option>
+          <option value="log">log</option>
         </select>
       </label>
-    {/if}
-  </div>
-  <div class="pane-row">
-    <label>
-      Symmetric
-      <select bind:value={symmetric}>
-        <option value={false}>off</option>
-        <option value="lower">lower</option>
-        <option value="upper">upper</option>
-      </select>
-    </label>
-    <label>
-      Theme
-      <select bind:value={theme}>
-        <option value="default">default</option>
-        <option value="light">light</option>
-        <option value="dark">dark</option>
-        <option value="publication">publication</option>
-      </select>
-    </label>
-  </div>
-  <div class="pane-row">
-    <label>
-      <input
-        type="checkbox"
-        checked={!!show_values}
-        onchange={(evt) => {
-          if (evt.currentTarget.checked) {
-            show_values = stashed_format || true
-          } else {
-            stashed_format = typeof show_values === `string` ? show_values : null
-            show_values = false
-          }
-        }}
-      />
-      Values
-    </label>
-    <label>
-      <input type="checkbox" bind:checked={show_row_summaries} />
-      Row sums
-    </label>
-    <label>
-      <input type="checkbox" bind:checked={show_col_summaries} />
-      Col sums
-    </label>
-  </div>
-  <div class="pane-row">
-    {#each export_formats as export_format (export_format)}
-      <button type="button" onclick={() => onexport?.(export_format)}>
-        Export {export_format.toUpperCase()}
-      </button>
-    {/each}
-  </div>
-  {@render children?.({ controls_open })}
-</DraggablePane>
+      <label>
+        Domain
+        <select bind:value={domain_mode}>
+          <option value="auto">auto</option>
+          <option value="robust">robust</option>
+          <option value="fixed">fixed</option>
+        </select>
+      </label>
+    </div>
+    <div class="pane-row">
+      <label>
+        <input type="checkbox" bind:checked={show_legend} />
+        Legend
+      </label>
+      {#if show_legend}
+        <label>
+          Position
+          <select bind:value={legend_position}>
+            <option value="right">right</option>
+            <option value="bottom">bottom</option>
+          </select>
+        </label>
+      {/if}
+    </div>
+    <div class="pane-row">
+      <label>
+        Symmetric
+        <select bind:value={symmetric}>
+          <option value={false}>off</option>
+          <option value="lower">lower</option>
+          <option value="upper">upper</option>
+        </select>
+      </label>
+      <label>
+        Theme
+        <select bind:value={theme}>
+          <option value="default">default</option>
+          <option value="light">light</option>
+          <option value="dark">dark</option>
+          <option value="publication">publication</option>
+        </select>
+      </label>
+    </div>
+    <div class="pane-row">
+      <label>
+        <input
+          type="checkbox"
+          checked={!!show_values}
+          onchange={(evt) => {
+            if (evt.currentTarget.checked) {
+              show_values = stashed_format || true
+            } else {
+              stashed_format = typeof show_values === `string` ? show_values : null
+              show_values = false
+            }
+          }}
+        />
+        Values
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={show_row_summaries} />
+        Row sums
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={show_col_summaries} />
+        Col sums
+      </label>
+    </div>
+    <div class="pane-row">
+      {#each export_formats as export_format (export_format)}
+        <button type="button" onclick={() => onexport?.(export_format)}>
+          Export {export_format.toUpperCase()}
+        </button>
+      {/each}
+    </div>
+    {@render children?.({ controls_open })}
+  </DraggablePane>
+{/if}
 
 <style>
   :global(.heatmap-controls) {

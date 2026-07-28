@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { format_num } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -108,12 +107,12 @@
     class: `convex-hull-info-toggle`,
     ...toggle_props,
   }}
-  open_icon="Cross"
-  closed_icon="Info"
   pane_props={{
     ...pane_props,
     class: `convex-hull-info-pane ${pane_props?.class ?? ``}`,
   }}
+  open_icon="Cross"
+  closed_icon="Info"
   {...rest}
 >
   <ConvexHullStats

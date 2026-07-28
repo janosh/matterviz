@@ -1,9 +1,8 @@
 import type { ComponentProps } from 'svelte'
+import type { DraggablePane } from 'svelte-widgets'
 import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/clipboard'
-import type DraggablePane from './DraggablePane.svelte'
 
-export { ContextMenu } from 'svelte-widgets'
-export { default as DraggablePane } from './DraggablePane.svelte'
+export { ContextMenu, DraggablePane } from 'svelte-widgets'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as GlassChip } from './GlassChip.svelte'
 export { portal } from 'svelte-widgets/attachments'

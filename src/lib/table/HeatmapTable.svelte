@@ -1,11 +1,10 @@
 <script lang="ts">
   import { luminance, watch_dark_mode } from '$lib/colors'
-  import Icon from '$lib/Icon.svelte'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ContextMenu } from 'svelte-widgets'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { ContextMenu, Icon } from 'svelte-widgets'
+  import { DraggablePane } from '$lib/overlays'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
     CellColor,
@@ -1560,13 +1559,13 @@
     {#if show_controls}
       <DraggablePane
         bind:show={controls_open}
-        closed_icon="Settings"
-        open_icon="Cross"
         toggle_props={{ title: `${controls_open ? `Close` : `Open`} table controls` }}
         position="fixed"
         pane_props={{
           style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
         }}
+        open_icon="Cross"
+        closed_icon="Settings"
       >
         <SettingsSection
           title="Heatmap"

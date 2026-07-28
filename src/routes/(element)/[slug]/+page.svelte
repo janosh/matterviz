@@ -8,7 +8,6 @@
     ElementTile,
   } from '$lib/element'
   import type { ChemicalElement } from '$lib/element'
-  import Icon from '$lib/Icon.svelte'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { PeriodicTable, PropertySelect } from '$lib/periodic-table'
   import type { D3InterpolateName } from '$lib/colors'
@@ -18,7 +17,7 @@
   import pkg from '$root/package.json'
   import { normalize_static_url } from '$site/state.svelte'
   import { error } from '@sveltejs/kit'
-  import { PrevNext } from 'svelte-widgets'
+  import { Icon, PrevNext } from 'svelte-widgets'
 
   const assert_chemical_element = (value: unknown): ChemicalElement => {
     const elem = value as Partial<ChemicalElement> | null

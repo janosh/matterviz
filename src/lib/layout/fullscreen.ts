@@ -1,6 +1,9 @@
 import { get_page_background } from '$lib/colors'
 import type { Snippet } from 'svelte'
 
+// svelte-widgets defaults to Expand/Collapse; viewers use these glyphs
+export const fullscreen_icons = { enter: `Fullscreen`, exit: `ExitFullscreen` } as const
+
 // Fullscreen-toggle button prop shared by viewer chromes: hide (false), default icon
 // button (true), or a custom snippet rendering the button content
 export type FullscreenToggleProp = Snippet<[{ fullscreen: boolean }]> | boolean

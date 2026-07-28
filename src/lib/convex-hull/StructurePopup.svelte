@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
   import { get_electro_neg_formula } from '$lib/composition'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { DragControlTab, GlassChip } from '$lib/overlays'
   import { sanitize_formula } from '$lib/sanitize'

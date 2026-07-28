@@ -4,7 +4,7 @@
     get_electro_neg_formula,
     get_reduced_formula,
   } from '$lib/composition'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { escape_html } from '$lib/utils'

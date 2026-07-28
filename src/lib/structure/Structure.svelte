@@ -5,7 +5,7 @@
   import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import * as io from '$lib/io'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
