@@ -518,8 +518,15 @@ test.describe(`Bond component`, () => {
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     const read_history = () =>
       page.evaluate(() => (globalThis as Record<string, unknown>).structure_bond_history)
-    const history_length = async () =>
-      ((await read_history()) as unknown[] | undefined)?.length ?? 0
+    // A missing mirror must not read as an empty history: the poll below would see a length
+    // that never grows and blame the component for absent instrumentation.
+    const history_length = async () => {
+      const history = await read_history()
+      if (!Array.isArray(history)) {
+        throw new TypeError(`structure_bond_history is ${typeof history}, not an array`)
+      }
+      return history.length
+    }
     // Opt in to Structure.svelte's bond trace. The prop sequence alone cannot say why a reset
     // emitted nothing; the trace shows whether the snapshot was dropped before the click.
     await page.evaluate(() => {

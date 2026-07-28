@@ -63,7 +63,6 @@ describe(`package.json exports`, () => {
     `./icons`,
     `./isosurface/parse-vaspwave`,
     `./json-path`,
-    `./keyboard`,
     `./marching-cubes`,
     `./optimade`,
     `./sanitize`,

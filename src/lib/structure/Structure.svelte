@@ -7,7 +7,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import * as io from '$lib/io'
-  import { handle_and_prevent } from '$lib/keyboard'
+  import { handle_and_prevent, to_error } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
@@ -79,7 +79,6 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
-  import { to_error } from '$lib/utils'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -785,12 +784,15 @@
       return
     }
     if (bond_edit_snapshot === undefined) {
-      bond_edit_snapshot = {
+      // hold the snapshot in a local: the trace thunk runs later, where TS cannot know the
+      // field is still assigned
+      const snapshot = {
         bonds: current_source_bonds(),
         context: current_bond_edit_context(),
       }
+      bond_edit_snapshot = snapshot
       bond_trace(`snapshot_taken`, trace_id, () => ({
-        bonds: bond_signature(bond_edit_snapshot.bonds),
+        bonds: bond_signature(snapshot.bonds),
         prop_bonds: bond_signature(bonds),
       }))
     }

@@ -130,10 +130,6 @@
       "types": "./dist/json-path.d.ts",
       "default": "./dist/json-path.js"
     },
-    "./keyboard": {
-      "types": "./dist/keyboard.d.ts",
-      "default": "./dist/keyboard.js"
-    },
     "./labels": {
       "types": "./dist/labels.d.ts",
       "default": "./dist/labels.js"
