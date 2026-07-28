@@ -11,12 +11,7 @@
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
-  import {
-    FullscreenButton,
-    fullscreen_icons,
-    type FullscreenToggleProp,
-    toggle_fullscreen,
-  } from '$lib/layout'
+  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
@@ -1378,7 +1373,6 @@
             {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
               <FullscreenButton
                 bind:fullscreen
-                icons={fullscreen_icons}
                 children={typeof fullscreen_toggle === `function`
                   ? fullscreen_toggle
                   : undefined}

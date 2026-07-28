@@ -304,11 +304,10 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.2.2",
-    "svelte-widgets": "^1.0.0",
+    "svelte-widgets": "^1.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@janosh/vite-config": "github:janosh/dotfiles",
     "@playwright/test": "^1.62.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/package": "^2.5.8",

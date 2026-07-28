@@ -11,7 +11,6 @@
   import { format_num } from '$lib/labels'
   import {
     FullscreenButton,
-    fullscreen_icons,
     SettingsSection,
     type FullscreenToggleProp,
     toggle_fullscreen,
@@ -2133,7 +2132,6 @@
     {#if fullscreen_toggle}
       <FullscreenButton
         bind:fullscreen
-        icons={fullscreen_icons}
         children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
       />
     {/if}

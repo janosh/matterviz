@@ -8,12 +8,7 @@
   import { Icon } from 'svelte-widgets'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
-  import {
-    FullscreenButton,
-    fullscreen_icons,
-    set_fullscreen_bg,
-    setup_fullscreen_effect,
-  } from '$lib/layout'
+  import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -571,7 +566,6 @@
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
       <FullscreenButton
         bind:fullscreen
-        icons={fullscreen_icons}
         children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
       />
     {/if}

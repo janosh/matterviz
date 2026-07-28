@@ -13,6 +13,11 @@
   }
 
   const icon_names = Object.keys(icon_data) as IconName[]
+  // a glyph is either one path `d` or its own markup, so copy whichever it carries
+  const icon_svg = (name: IconName): string => {
+    const entry = icon_data[name]
+    return `markup` in entry ? entry.markup : entry.d
+  }
 
   let filtered_icons = $derived(
     icon_names.filter((name) => !filter_text || fuzzy_match(filter_text, name)),
@@ -53,8 +58,8 @@
     <div class="icon-card">
       <button
         class="svg-btn"
-        class:copied={copied_text === icon_data[icon_name].path}
-        onclick={() => copy(icon_data[icon_name].path)}
+        class:copied={copied_text === icon_svg(icon_name)}
+        onclick={() => copy(icon_svg(icon_name))}
         title="Click to copy SVG path"
       >
         <Icon icon={icon_name} style="font-size: 2em" />

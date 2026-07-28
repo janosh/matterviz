@@ -309,7 +309,10 @@ type WidgetSpec = {
   component: unknown
   drive: readonly DrivenProp[]
   base_drive?: readonly DrivenProp[]
-  interactions?: (model: AnyModel) => { props: Record<string, unknown>; cleanup?: () => void }
+  interactions?: (model: AnyModel) => {
+    props: Record<string, unknown>
+    cleanup?: () => void
+  }
   // Model traits written by interaction callbacks (not derivable from drive specs);
   // listed so WIDGET_MODEL_KEYS reflects the full Python<->JS trait contract.
   interaction_model_keys?: readonly string[]
@@ -654,6 +657,9 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
     const model_keys = driven_props.flatMap(({ deps }) => deps)
     return [
       widget_type,
+      // built right here, so sorting in place mutates nothing a caller can see, and
+      // toSorted needs lib es2023 which this package has no tsconfig to set
+      // oxlint-disable-next-line unicorn/no-array-sort
       [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].sort(),
     ]
   }),

@@ -1,4 +1,4 @@
-import { config } from '@janosh/vite-config'
+import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -34,7 +34,10 @@ const moyo_wasm_cdn_plugin: Plugin = {
   },
   transform(code: string, id: string) {
     if (id.includes(`@spglib/moyo-wasm`) && code.includes(moyo_glue_url)) {
-      return { code: code.replace(moyo_glue_url, JSON.stringify(moyo_wasm_cdn)), map: null }
+      return {
+        code: code.replace(moyo_glue_url, JSON.stringify(moyo_wasm_cdn)),
+        map: null,
+      }
     }
     return null
   },
@@ -70,8 +73,12 @@ const plugins = [
   svelte() as unknown,
 ] as PluginOption[]
 
+// match the root matterviz printWidth: both checks cover these files, so a narrower
+// width here would have each `vp check --fix` undo the other's formatting
+const config = make_config({ fmt: { printWidth: 95 } })
+
 export default defineConfig({
-  ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
+  ...config, // shared lint/fmt/build
   resolve: {
     // Array form so `three` matches exactly — a string alias prefix-matches and would
     // rewrite three/webgpu, three/tsl and three/examples/* too.

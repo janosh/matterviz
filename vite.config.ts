@@ -1,4 +1,4 @@
-import { config } from '@janosh/vite-config'
+import { make_config } from 'svelte-widgets/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -121,8 +121,10 @@ const plugins = [
   (process.env.VITEST ? mock_vscode() : null) as unknown,
 ] as PluginOption[]
 
+const config = make_config()
+
 export default defineConfig({
-  ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
+  ...config, // shared lint/fmt/build
   plugins,
   fmt: {
     ...config.fmt,
