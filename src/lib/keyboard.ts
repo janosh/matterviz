@@ -12,16 +12,3 @@ export const handle_and_prevent =
   (event: KeyboardEvent): void => {
     if (handle(event)) event.preventDefault()
   }
-
-// Wrap a handler for a `<svelte:window onkeydown>` binding: forward keydowns to a
-// viewer only while it's hovered and focus is on <body>. This lets shortcuts work
-// without first clicking the viewer, while keeping multiple viewers on one page
-// from all responding and never hijacking keys from a focused input/pane.
-// Suppresses the browser default when the handler reports it handled the key.
-export const forward_window_keydown = (is_hovered: () => boolean, handle: KeydownHandler) => {
-  const run = handle_and_prevent(handle)
-  return (event: KeyboardEvent): void => {
-    const active = document.activeElement
-    if (is_hovered() && (!active || active === document.body)) run(event)
-  }
-}

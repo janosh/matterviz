@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
+  import Icon from '$lib/Icon.svelte'
+  import type { IconName } from '$lib/icons'
   import { untrack } from 'svelte'
-  import { ContextMenu } from '$lib/overlays'
+  import { ContextMenu } from 'svelte-widgets'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
   import { get_electro_neg_formula } from './format'
@@ -42,55 +44,44 @@
   // Call the composition change callback in an effect, not in the derived
   $effect(() => on_composition_change?.(parsed))
 
-  let context_menu = $state({ open: false, x: 0, y: 0 })
+  let context_menu_at = $state<{ x: number; y: number } | null>(null)
 
-  function handle_right_click(event: MouseEvent) {
-    // open context menu
-    event.preventDefault()
-    context_menu.open = false // Close any existing context menu first
-    context_menu.x = event.pageX
-    context_menu.y = event.pageY
-    // Use a small delay to ensure the prev context menu closes happens before opening new one
-    setTimeout(() => (context_menu.open = true), 0)
-  }
+  const mode_actions = (
+    [
+      [`pie`, `Circle`, `Pie Chart`],
+      [`bubble`, `Circle`, `Bubble Chart`],
+      [`bar`, `Graph`, `Bar Chart`],
+    ] as const
+  ).map(([id, icon, label]) => ({
+    id,
+    icon,
+    label,
+    action: () => (current_mode = id),
+  }))
 
-  const mode_options = [
-    { value: `pie`, icon: `Circle`, label: `Pie Chart` },
-    { value: `bubble`, icon: `Circle`, label: `Bubble Chart` },
-    { value: `bar`, icon: `Graph`, label: `Bar Chart` },
-  ] as const
-
-  const color_scheme_options = (
+  const color_scheme_actions = (
     [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
-  ).map((value) => ({ value, icon: `ColorPalette`, label: value }))
+  ).map((id) => ({
+    id,
+    icon: `ColorPalette`,
+    label: id,
+    action: () => (current_color_scheme = id),
+  }))
 
-  const export_options = [
-    { value: `copy_formula`, icon: `Copy`, label: `Copy Formula` },
-    { value: `copy_data`, icon: `Copy`, label: `Copy Data` },
-    { value: `export_svg`, icon: `Download`, label: `Export SVG` },
-    { value: `export_png`, icon: `Download`, label: `Export PNG` },
-  ] as const
+  const export_actions = (
+    [
+      [`copy_formula`, `Copy`, `Copy Formula`],
+      [`copy_data`, `Copy`, `Copy Data`],
+      [`export_svg`, `Download`, `Export SVG`],
+      [`export_png`, `Download`, `Export PNG`],
+    ] as const
+  ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
 
-  const sec_titles = {
-    display_mode: `Display Mode`,
-    color_scheme: `Color Scheme`,
-    export: `Export`,
-  } as const
-
-  const context_menu_sections = [
-    { title: sec_titles.display_mode, options: mode_options },
-    { title: sec_titles.color_scheme, options: color_scheme_options },
-    { title: sec_titles.export, options: export_options },
-  ] as const
-
-  function handle_context_menu_select(section_title: string, option: { value: string }) {
-    if (section_title === sec_titles.display_mode) {
-      current_mode = option.value as CompositionChartMode
-    } else if (section_title === sec_titles.color_scheme) {
-      current_color_scheme = option.value as ColorSchemeName
-    } else if (section_title === sec_titles.export) handle_export(option.value)
-    context_menu.open = false
-  }
+  const context_menu_actions = $derived([
+    { title: `Display Mode`, selected: current_mode, actions: mode_actions },
+    { title: `Color Scheme`, selected: current_color_scheme, actions: color_scheme_actions },
+    { title: `Export`, actions: export_actions },
+  ])
 
   // Handle export actions
   function handle_export(export_type: string) {
@@ -116,41 +107,37 @@
   }
 </script>
 
-<Component
-  composition={parsed}
-  color_scheme={current_color_scheme}
-  bind:svg_node
-  oncontextmenu={handle_right_click}
-  role="button"
-  tabindex={0}
-  onkeydown={(event: KeyboardEvent) => {
-    if ([`Enter`, ` `].includes(event.key)) {
-      event.preventDefault()
-      const target = event.currentTarget
-      if (!(target instanceof Element)) return
-      const rect = target.getBoundingClientRect()
-      context_menu.x = window.scrollX + rect.left + rect.width / 2
-      context_menu.y = window.scrollY + rect.top + rect.height / 2
-      context_menu.open = true
-    }
-  }}
-  aria-label="Open context menu (Right-click or Enter/Space)"
-  aria-haspopup="menu"
-  aria-expanded={context_menu.open}
-  {...rest}
-  class={[`composition`, rest.class]}
-/>
-
-{#if context_menu.open}
-  <ContextMenu
-    sections={context_menu_sections}
-    selected_values={{
-      [sec_titles.display_mode]: current_mode,
-      [sec_titles.color_scheme]: current_color_scheme,
+<!-- the chart itself is the right-click region; `at` is also set from the keyboard
+path below, which has no pointer position to read -->
+<ContextMenu bind:at={context_menu_at} actions={context_menu_actions}>
+  <Component
+    composition={parsed}
+    color_scheme={current_color_scheme}
+    bind:svg_node
+    role="button"
+    tabindex={0}
+    onkeydown={(event: KeyboardEvent) => {
+      if ([`Enter`, ` `].includes(event.key)) {
+        event.preventDefault()
+        const target = event.currentTarget
+        if (!(target instanceof Element)) return
+        const rect = target.getBoundingClientRect()
+        context_menu_at = {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        }
+      }
     }}
-    on_select={handle_context_menu_select}
-    position={context_menu}
-    visible={context_menu.open}
-    on_close={() => (context_menu.open = false)}
+    aria-label="Open context menu (Right-click or Enter/Space)"
+    aria-haspopup="menu"
+    aria-expanded={context_menu_at !== null}
+    {...rest}
+    class={[`composition`, rest.class]}
   />
-{/if}
+  {#snippet item({ action })}
+    {#if typeof action.icon === `string`}
+      <Icon icon={action.icon as IconName} />
+    {/if}
+    <span>{action.label}</span>
+  {/snippet}
+</ContextMenu>

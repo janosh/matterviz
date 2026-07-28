@@ -52,8 +52,8 @@
 
 <svelte:window onkeydown={(event) => event.key === `Escape` && onclose?.()} />
 
-<!-- dismiss_on release, not the default press: the popup is draggable, so a press that
-starts outside must not close it before the drag even begins -->
+<!-- dismiss_on release, not the default press: this floats over a pannable convex-hull
+plot, so starting a pan behind it must not make it vanish under the cursor -->
 <div
   {@attach click_outside({
     enabled: close_on_outside,

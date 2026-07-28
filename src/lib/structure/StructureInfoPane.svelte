@@ -89,7 +89,7 @@
   let site_window_start = $state(0)
   let site_cards_el = $state<HTMLDivElement>()
 
-  const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
+  const copy_to_clipboard = (label: string, value: string, key: string): Promise<boolean> =>
     copy(`${label}: ${value}`, key)
 
   function copy_info_item(item: InfoItem) {

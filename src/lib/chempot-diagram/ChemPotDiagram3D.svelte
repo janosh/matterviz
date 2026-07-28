@@ -11,7 +11,7 @@
   import { format_num } from '$lib/labels'
   import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import type { FullscreenToggleProp } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
@@ -1596,7 +1596,7 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--chempot-3d-bg-fullscreen`,
+    get_bg_css_var: () => `--chempot-3d-bg-fullscreen`,
   })
 
   dispose_on_change(() =>

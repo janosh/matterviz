@@ -57,7 +57,7 @@ describe(`Trajectory keyboard shortcuts`, () => {
 
   test(`suppresses the browser default only for keys it handles`, async () => {
     const viewer = await mount_trajectory()
-    viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     // handled (nav keys + Cmd/Ctrl+Arrow) suppress default; plain typing keys and
     // Cmd/Ctrl browser shortcuts (find/tab/jump) keep theirs
@@ -87,7 +87,7 @@ describe(`Trajectory keyboard shortcuts`, () => {
   // handled), and whose default mount has fullscreen on (which would handle f).
   test(`keeps browser default when a shortcut's inner condition fails`, async () => {
     const viewer = await mount_trajectory(undefined, { fullscreen_toggle: false })
-    viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
 
     for (const init of [{ key: `f` }, { key: `=` }, { key: `+` }, { key: `-` }]) {
@@ -98,7 +98,7 @@ describe(`Trajectory keyboard shortcuts`, () => {
   test(`Cmd/Ctrl modifier is ignored for navigation except arrows (first/last)`, async () => {
     const state = { current_step_idx: 0 }
     const viewer = await mount_trajectory(state)
-    viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
 
     press_window_key({ key: `1`, ctrlKey: true }) // browser shortcut → no navigation

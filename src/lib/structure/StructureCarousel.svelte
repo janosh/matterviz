@@ -2,7 +2,7 @@
   import type { ShowControlsProp } from '$lib/controls'
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
-  import { portal } from '$lib/overlays/portal'
+  import { portal } from 'svelte-widgets/attachments'
   import { untrack } from 'svelte'
   import Structure from './Structure.svelte'
 

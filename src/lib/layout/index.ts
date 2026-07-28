@@ -1,5 +1,5 @@
 export * from './fullscreen'
-export * from './fullscreen.svelte'
+export { sync_fullscreen } from 'svelte-widgets/fullscreen'
 export { default as FullscreenButton } from './FullscreenButton.svelte'
 export { default as FullscreenToggle } from './FullscreenToggle.svelte'
 export { default as InfoCard } from './InfoCard.svelte'

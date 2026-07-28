@@ -75,7 +75,7 @@
       : `min-width: 0; margin-inline: 0`,
   )
 
-  const copy_to_clipboard = (label: string, value: string, key: string): Promise<void> =>
+  const copy_to_clipboard = (label: string, value: string, key: string): Promise<boolean> =>
     copy(`${label}: ${value}`, key)
   function handle_copy_keydown(
     event: KeyboardEvent,

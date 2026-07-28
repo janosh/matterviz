@@ -375,6 +375,11 @@
           <div
             class="remap-dropdown"
             {@attach click_outside({
+              // This menu is opened and toggled shut by a right-click on the swatch, and
+              // a right-click fires pointerdown but never click. On the `press` default
+              // the opening press dismisses immediately and oncontextmenu reopens it, so
+              // the swatch could never close it again.
+              dismiss_on: `release`,
               callback: () => {
                 remap_menu_open = null
                 remap_search = ``

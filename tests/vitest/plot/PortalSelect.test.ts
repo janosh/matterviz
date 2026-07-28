@@ -1,7 +1,7 @@
 // Tests for PortalSelect component
 import { PortalSelect } from '$lib/plot'
-import { mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 type Option = { key: string; label: string; unit?: string }
 const options: Option[] = [
@@ -78,6 +78,48 @@ describe(`PortalSelect`, () => {
     void unmount(comp)
   })
 
-  // Note: Dropdown interaction tests (open/close, selection, keyboard nav)
-  // require a real browser environment and are covered in Playwright e2e tests.
+  test(`opens a portalled listbox, selects an option, then closes`, async () => {
+    const on_select = vi.fn()
+    const comp = mount(PortalSelect, {
+      target: document.body,
+      props: { options, selected_key: `energy`, on_select },
+    })
+    await tick() // let bind:this land before the handler reads the trigger
+    get_trigger()?.click()
+    await tick()
+
+    // portalled to <body>, not left inside the component's own subtree
+    const dropdown = document.body.querySelector(`.portal-select-dropdown`)
+    expect(dropdown?.parentElement).toBe(document.body)
+    expect(dropdown?.getAttribute(`role`)).toBe(`listbox`)
+    const items = [...(dropdown?.querySelectorAll(`button`) ?? [])]
+    expect(items.map((btn) => btn.textContent?.trim())).toEqual([
+      `Energy (eV)`,
+      `Volume (Å³)`,
+      `Pressure`,
+    ])
+    expect(items[0].getAttribute(`aria-selected`)).toBe(`true`)
+
+    // select() awaits on_select before closing, so the teardown lands a microtask later
+    items[1].click()
+    await vi.waitFor(() =>
+      expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull(),
+    )
+    expect(on_select).toHaveBeenCalledWith(`volume`, `energy`)
+    expect(get_trigger()?.getAttribute(`aria-expanded`)).toBe(`false`)
+    void unmount(comp)
+  })
+
+  test(`a press outside closes the dropdown`, async () => {
+    const comp = mount(PortalSelect, { target: document.body, props: { options } })
+    await tick() // let bind:this land before the handler reads the trigger
+    get_trigger()?.click()
+    await tick()
+    expect(document.body.querySelector(`.portal-select-dropdown`)).not.toBeNull()
+
+    document.body.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    await tick()
+    expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull()
+    void unmount(comp)
+  })
 })

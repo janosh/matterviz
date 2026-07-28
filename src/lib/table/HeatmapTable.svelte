@@ -4,9 +4,9 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import ContextMenu from '$lib/overlays/ContextMenu.svelte'
+  import { ContextMenu } from 'svelte-widgets'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
-  import { portal } from '$lib/overlays/portal'
+  import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
     CellColor,
     CellSnippet,
@@ -31,7 +31,6 @@
   import { sanitize_html } from '$lib/sanitize'
   import { normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
@@ -1057,15 +1056,24 @@
     return `<span style="font-size: 0.8em;">${active.ascending ? `↓` : `↑`}${badge}</span>`
   }
 
-  // Context menu state for column right-click (headers and body cells)
+  // Context menu state for column right-click (headers and body cells). `at` is what
+  // opens/closes the menu; `context_menu_col` says which column its actions apply to.
   let context_menu_col = $state<string | null>(null)
-  let context_menu_pos = $state({ x: 0, y: 0 })
+  let context_menu_at = $state<{ x: number; y: number } | null>(null)
+
+  // toggling off re-selects nothing, so the section's radios all read unchecked
+  const toggle_better = (direction: `higher` | `lower`) => {
+    if (!context_menu_col) return
+    if (better_overrides.get(context_menu_col) === direction) {
+      better_overrides.delete(context_menu_col)
+    } else better_overrides.set(context_menu_col, direction)
+  }
 
   const better_section = {
     title: `Gradient direction`,
-    options: [
-      { value: `higher`, label: `▲ Higher is better` },
-      { value: `lower`, label: `▼ Lower is better` },
+    actions: [
+      { id: `higher`, label: `▲ Higher is better`, action: () => toggle_better(`higher`) },
+      { id: `lower`, label: `▼ Lower is better`, action: () => toggle_better(`lower`) },
     ],
   }
 
@@ -1073,11 +1081,7 @@
     event.preventDefault()
     event.stopPropagation()
     context_menu_col = col_id
-    const rect = container_el?.getBoundingClientRect()
-    context_menu_pos = {
-      x: event.clientX - (rect?.left ?? 0),
-      y: event.clientY - (rect?.top ?? 0),
-    }
+    context_menu_at = { x: event.clientX, y: event.clientY }
   }
 
   // ---- Cell range selection: drag selects a rectangle of cells, Shift/Cmd+
@@ -1241,16 +1245,21 @@
   let context_menu_column = $derived(
     visible_columns.find((col) => get_col_id(col) === context_menu_col),
   )
-  let context_menu_sections = $derived([
+  let context_menu_actions = $derived([
     {
       title: `Copy`,
-      options: [
-        { value: `copy_column`, label: `Copy column (${sorted_data.length} values)` },
+      actions: [
+        {
+          id: `copy_column`,
+          label: `Copy column (${sorted_data.length} values)`,
+          action: () => context_menu_col && copy_column_values(context_menu_col),
+        },
         ...(selected_cell_keys.size > 0
           ? [
               {
-                value: `copy_selection`,
+                id: `copy_selection`,
                 label: `Copy selection (${selected_cell_keys.size} cells)`,
+                action: copy_selected_cells,
               },
             ]
           : []),
@@ -1258,26 +1267,9 @@
     },
     // Gradient direction only applies to heatmap-colored columns
     ...(allow_better_toggle && context_menu_column?.color_scale != null
-      ? [better_section]
+      ? [{ ...better_section, selected: better_overrides.get(context_menu_col ?? ``) ?? `` }]
       : []),
   ])
-
-  function handle_context_menu_select(section_title: string, option: { value: string }) {
-    if (section_title === `Copy`) {
-      if (option.value === `copy_column` && context_menu_col) {
-        copy_column_values(context_menu_col)
-      } else if (option.value === `copy_selection`) {
-        copy_selected_cells()
-      }
-    } else if (context_menu_col) {
-      const current = better_overrides.get(context_menu_col)
-      if (current === option.value) better_overrides.delete(context_menu_col)
-      else {
-        better_overrides.set(context_menu_col, option.value as `higher` | `lower`)
-      }
-    }
-    context_menu_col = null
-  }
 
   // Row selection via an ID-indexed Set so per-row checks are O(1) instead of
   // linear scans over selected_rows (matters for large virtualized datasets)
@@ -1443,7 +1435,7 @@
   onmouseleave={() => {
     show_column_dropdown = false
     show_export_dropdown = false
-    context_menu_col = null
+    context_menu_at = null
   }}
 >
   <!-- Control buttons: render inline above the table, or teleport into a host
@@ -2036,25 +2028,24 @@
     </div>
   {/if}
 
+  <!-- empty region snippet: the right-click targets are the column headers and cells,
+  which record which column was hit, so the menu must not also trigger off <body> -->
   <ContextMenu
-    sections={context_menu_sections}
-    selected_values={{
-      'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? ``,
-    }}
-    position={context_menu_pos}
-    visible={context_menu_col !== null}
-    on_close={() => (context_menu_col = null)}
+    bind:at={context_menu_at}
+    actions={context_menu_actions}
+    on_select={() => (context_menu_col = null)}
     style={[
-      `--surface-bg: light-dark(#fff, #1e1e1e)`,
-      `--border-color: light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
-      `--text-color: light-dark(#333, #eee)`,
-      `--text-color-muted: light-dark(#888, #999)`,
-      `--surface-bg-hover: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
-      `--accent-color: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
-      `z-index: 200`,
+      `--context-menu-bg: light-dark(#fff, #1e1e1e)`,
+      `--context-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--context-menu-section-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `color: light-dark(#333, #eee)`,
+      `--context-menu-item-hover-bg: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
+      `--context-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
+      `--context-menu-z-index: 200`,
     ].join(`; `)}
-    on_select={handle_context_menu_select}
-  />
+  >
+    {#snippet children()}{/snippet}
+  </ContextMenu>
 </div>
 
 <style>
