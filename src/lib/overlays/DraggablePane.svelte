@@ -42,8 +42,13 @@
       node: pane,
       inside: [toggle_btn],
       dismiss_on: `release`,
-      callback: () => {
-        if (press_started_inside) return
+      callback: ({ event }) => {
+        // detail is 0 for keyboard and programmatic clicks, which carry no pointerdown of
+        // their own and would otherwise inherit the verdict from an unrelated press
+        const started_inside =
+          press_started_inside && event instanceof MouseEvent && event.detail > 0
+        press_started_inside = false
+        if (started_inside) return
         show = false
         on_close?.({ via: `pointer` })
       },

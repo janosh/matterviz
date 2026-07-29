@@ -183,8 +183,9 @@ describe(`StructureControls reactive props`, () => {
     if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
     return { target, state, pane }
   }
-  const fire = (node: Element, type: string) =>
-    node.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true }))
+  // detail 1 marks a pointer-driven click; 0 is what keyboard and programmatic clicks report
+  const fire = (node: Element, type: string, detail = 1) =>
+    node.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true, detail }))
   const press = (node: Element) => fire(node, `pointerdown`)
   const release = (node: Element) => fire(node, `click`)
 
@@ -212,6 +213,15 @@ describe(`StructureControls reactive props`, () => {
     release(document.body)
     await tick()
     expect(state.controls_open).toBe(true)
+
+    // a press inside can end with no click at all (released off-screen, OS-claimed drag).
+    // That verdict must not then swallow a keyboard Enter, which reports detail 0.
+    state.controls_open = true
+    await tick()
+    press(pane)
+    fire(outside, `click`, 0)
+    await tick()
+    expect(state.controls_open).toBe(false)
   })
 
   // The corner grip is the only visible affordance for undoing a manual resize, so it has
