@@ -5,7 +5,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 const create_drop_event = (file: File): DragEvent => {
   const drag_event = new DragEvent(`drop`, { bubbles: true })
   Object.defineProperty(drag_event, `dataTransfer`, {
-    value: { files: [file], getData: () => `` },
+    value: { files: [file], items: [], getData: () => `` }, // items: entry API, empty = flat list
   })
   return drag_event
 }
@@ -34,6 +34,7 @@ test(`custom file drop handler receives content and bypasses default parsing`, a
   await vi.waitFor(() => {
     expect(on_file_drop).toHaveBeenCalledWith(content, file.name, {
       source_filename: file.name,
+      file,
     })
     expect(document.body.textContent).toContain(`Loading Fermi surface...`)
   })

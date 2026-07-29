@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
@@ -146,23 +147,18 @@
   // Use editor override first (clears rebuilt_data path), then rebuilt, then data prop
   const effective_data = $derived(data_override ?? rebuilt_data ?? data)
 
-  // Handle SVG file drop directly on the component
-  function handle_svg_drop(event: DragEvent) {
-    event.preventDefault()
-    const file = event.dataTransfer?.files[0]
-    if (!file || (!file.name.endsWith(`.svg`) && file.type !== `image/svg+xml`)) {
-      return
-    }
-    const reader = new FileReader()
-    reader.addEventListener(`load`, () => {
-      try {
-        diagram_input = parse_phase_diagram_svg(reader.result as string)
-      } catch (error) {
-        console.error(`Failed to parse dropped SVG:`, error)
-      }
-    })
-    reader.readAsText(file)
-  }
+  // Handle SVG file drop directly on the component. The shared handler reads the file,
+  // expands dropped folders and serializes overlapping drops; only the SVG filter and the
+  // parse are specific to this diagram.
+  const handle_svg_drop = create_file_drop_handler({
+    allow: () => true,
+    on_drop: (content, filename, { file }) => {
+      if (!filename.endsWith(`.svg`) && file?.type !== `image/svg+xml`) return
+      if (typeof content !== `string`) return
+      diagram_input = parse_phase_diagram_svg(content)
+    },
+    on_error: (msg) => console.error(`Failed to parse dropped SVG:`, msg),
+  })
 
   // Merge config with centralized defaults using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))

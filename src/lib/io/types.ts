@@ -7,24 +7,26 @@ export interface FileInfo {
   category_icon?: string
 }
 
-/** Stable source identity for content whose logical filename may change after decompression. */
+// Stable source identity for content whose logical filename may change after decompression.
 export interface FileLoadMeta {
-  /** Original basename before decompression, suitable for rebuilding a source URL. */
+  // Original basename before decompression, suitable for rebuilding a source URL.
   source_filename: string
-  /** Requested URL, when content came from a URL rather than a local file. */
+  // Requested URL, when content came from a URL rather than a local file.
   source_url?: string
+  // The dropped File, when content came from one. Carries size and webkitRelativePath.
+  file?: File
 }
 
-/** Receives parsed content, its logical filename, and stable source identity. */
+// Receives parsed content, its logical filename, and stable source identity.
 export type FileLoadCallback = (
   content: string | ArrayBuffer,
   filename: string,
   metadata: FileLoadMeta,
 ) => Promise<void> | void
 
-/** Common file-load event fields separating logical names from source identity. */
+// Common file-load event fields separating logical names from source identity.
 export interface FileLoadData extends Partial<FileLoadMeta> {
-  /** Logical filename used for parsing/display; do not use it to rebuild the source URL. */
+  // Logical filename used for parsing/display; do not use it to rebuild the source URL.
   filename?: string
 }
 
