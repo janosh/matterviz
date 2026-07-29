@@ -84,19 +84,19 @@
     update_positions()
   })
 
-  const portal_action = (el: HTMLElement) => {
+  const portal_to_dom = (el: HTMLElement) => {
     if (!dom) return
     dom.append(el)
-    return { destroy: () => el.remove() }
+    return () => el.remove()
   }
 </script>
 
 <T is={anchor} />
 
-<div bind:this={container} class="site-labels-overlay" use:portal_action>
-  {#each entries as entry (entry.site_idx)}
+<div bind:this={container} class="site-labels-overlay" {@attach portal_to_dom}>
+  {#each entries as { site_idx } (site_idx)}
     <div class="site-label">
-      {@render label({ site_idx: entry.site_idx })}
+      {@render label({ site_idx })}
     </div>
   {/each}
 </div>

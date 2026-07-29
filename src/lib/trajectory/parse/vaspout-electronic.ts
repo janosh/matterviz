@@ -118,7 +118,7 @@ const reciprocal_lattice = (lattice: Matrix3x3 | null): Matrix3x3 => {
   try {
     if (lattice) recip = transpose_3x3_matrix(matrix_inverse_3x3(lattice))
   } catch {
-    /* singular lattice: keep identity */
+    // singular lattice: keep identity
   }
   return recip.map((row) => row.map((val) => val * 2 * Math.PI)) as Matrix3x3
 }

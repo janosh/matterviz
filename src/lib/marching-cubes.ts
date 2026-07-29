@@ -462,7 +462,7 @@ function marching_cubes_raw(
     try {
       normal_transform = matrix_inverse_3x3(k_lattice)
     } catch {
-      /* keep null */
+      // keep null
     }
   }
 

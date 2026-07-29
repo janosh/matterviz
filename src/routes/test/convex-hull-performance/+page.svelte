@@ -103,7 +103,7 @@
     is_generating = false
   }
 
-  function track_render(_node: HTMLElement): { destroy: () => void } {
+  const track_render = (_node: HTMLElement) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (render_start > 0) {
@@ -112,7 +112,6 @@
         }
       })
     })
-    return { destroy: () => {} }
   }
 
   $effect(() => {
@@ -234,7 +233,7 @@
   <Spinner text="Generating {entry_count} entries..." />
 {:else if generated_entries.length > 0}
   {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
-    <div style="height: min(70vh, 800px)" use:track_render>
+    <div style="height: min(70vh, 800px)" {@attach track_render}>
       {#if dimension === `2d`}
         <ConvexHull2D
           entries={generated_entries}

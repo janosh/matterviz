@@ -192,7 +192,7 @@
   files={structure_files}
   show_category_filters
   on_drag_end={() => {
-    /* noop to avoid TS complaining */
+    // noop to avoid TS complaining
   }}
   style="margin-bottom: 3em"
 />
