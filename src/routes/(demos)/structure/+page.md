@@ -6,7 +6,7 @@
   import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
   import { Structure, type StructureHandlerData } from 'matterviz'
-  import Select from 'svelte-multiselect'
+  import Select from 'svelte-widgets'
   import { structure_files } from '$site/structures'
   import { molecule_files } from '$site/molecules'
   import FilePicker from '$lib/FilePicker.svelte'
@@ -162,7 +162,7 @@ than being read as unconstrained. The mode is disabled for structures where no s
 declares the property.
 
 Like the other property modes, this feeds the atom legend, so clicking a category hides
-those atoms — a quick way to isolate the relaxing adlayer of a slab.
+those atoms. Handy for isolating the relaxing adlayer of a slab.
 
 ## Dihedral (Torsion) Measurement
 
@@ -194,7 +194,7 @@ easing and pole handling as the orientation gizmo's axis handles.
 ## Comparing Two Structures
 
 Pass a `reference_structure` alongside `structure` to overlay per-atom displacement
-arrows — useful for showing what a relaxation actually moved. Displacements use the
+arrows showing what a relaxation moved. Displacements use the
 minimum image convention, so an atom that relaxed across a cell face draws a short arrow
 rather than one spanning the whole box. Sites pair up by index, so a mismatched atom count
 or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
@@ -250,7 +250,7 @@ the RMSD through the bindable `displacement_rmsd` prop.
 
 ## Different Crystal Systems
 
-Showcasing structures with different crystal systems.
+Structures from several crystal systems.
 
 ```svelte example
 <script lang="ts">
@@ -298,7 +298,7 @@ Showcasing structures with different crystal systems.
 
 ## Load Structure from String
 
-You can load structures directly from text content using the `structure_string` prop, supporting various formats (CIF, POSCAR, XYZ, JSON, etc.).
+Load structures from text with `structure_string` (CIF, POSCAR, XYZ, JSON, …).
 
 ```svelte example
 <script lang="ts">

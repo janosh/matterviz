@@ -20,7 +20,7 @@
   const analysis = analyze_barrier(direct)
   const spline = path_spline(direct)
 
-  // Same path measured both ways — the gap is the whole point of the minimum-image convention
+  // Same path measured both ways; the gap is the whole point of the minimum-image convention
   const min_image_coords = reaction_coordinate(direct)
   const cartesian_coords = reaction_coordinate(direct, { metric: `cartesian` })
   const min_image_length = min_image_coords.at(-1) as number
@@ -38,7 +38,7 @@
     )
 
   // $lib/io's download attaches the anchor before clicking it, which the hand-rolled
-  // detached-anchor version here did not — Firefox ignores a click on a detached <a>
+  // detached-anchor version here did not; Firefox ignores a click on a detached <a>
   const download_fixture = () =>
     download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)
 </script>
@@ -110,7 +110,7 @@
   <p>
     Reaction paths are read from <code>matterviz-reaction-path</code> JSON. Drop a file onto
     the viewer above, or drop a multi-frame extended-XYZ file (what
-    <code>ase.io.write("neb.xyz", images)</code> writes) — energies come from the
+    <code>ase.io.write("neb.xyz", images)</code> writes). Energies come from the
     <code>energy=</code> key on each comment line and forces from a
     <code>forces</code> block in <code>Properties=</code>. Loose single-structure files dropped
     together are assembled into one path in drop order and must each carry a numeric

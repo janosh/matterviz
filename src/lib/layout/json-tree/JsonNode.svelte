@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { build_path } from '$lib/json-path'
   import { getContext, onMount } from 'svelte'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component

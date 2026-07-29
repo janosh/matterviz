@@ -50,7 +50,7 @@
       .filter(({ rows }) => rows.length > 0)
   })
 
-  const copy_row = (card_title: string, row: InfoPaneRow, row_idx: number): Promise<void> =>
+  const copy_row = (card_title: string, row: InfoPaneRow, row_idx: number): Promise<boolean> =>
     copy(`${row.label}: ${row.value}`, row_key(card_title, row, row_idx))
 </script>
 

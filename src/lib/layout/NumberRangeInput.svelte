@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   // Paired number + range input bound to the same value, wrapped in a flex <label>.
   // The label text/markup is passed as children (supports inline units like <small>Å</small>).

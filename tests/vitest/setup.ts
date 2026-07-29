@@ -162,7 +162,7 @@ export async function assertHoverScopedShortcut(opts: {
   fire()
   expect(took_effect(), `not hovered → ignored`).toBe(false)
 
-  viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+  viewer.dispatchEvent(new PointerEvent(`pointerenter`))
   await tick()
   fire()
   expect(took_effect(), `hovered → fires without a prior click`).toBe(true)
@@ -180,10 +180,10 @@ export async function assertHoverScopedShortcut(opts: {
   fire()
   expect(took_effect(), `focus back on <body> → resumes`).toBe(true)
 
-  viewer.dispatchEvent(new MouseEvent(`mouseleave`))
+  viewer.dispatchEvent(new PointerEvent(`pointerleave`))
   await tick()
   fire()
-  expect(took_effect(), `mouse left → stops firing`).toBe(false)
+  expect(took_effect(), `pointer left → stops firing`).toBe(false)
 }
 
 export async function resize_element(

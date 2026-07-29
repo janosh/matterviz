@@ -43,11 +43,11 @@
   let show_sym_elements = $state(false)
   // List unoccupied Wyckoff positions of the space group in the table
   let show_unoccupied_wyckoff = $state(false)
-  // Per-kind overlay visibility — starts with rotation axes only to avoid overplotting
+  // Per-kind overlay visibility; starts with rotation axes only to avoid overplotting
   let show_sym_kinds = $state<ShowSymmetryKinds>({ ...DEFAULT_SHOW_SYM_KINDS })
   // Cell type of the top example viewer (bound to its controls). moyo operations live in
   // the input-cell (original) frame, so only overlay the elements while that frame is
-  // rendered — switching cell type re-expresses the lattice and would misplace them.
+  // rendered; switching cell type re-expresses the lattice and would misplace them.
   let top_ex_cell_type = $state<CellType>(`original`)
   const sym_elements = $derived(
     show_sym_elements && top_ex_cell_type === `original` && top_ex_sym_data
@@ -192,7 +192,7 @@
   files={structure_files}
   show_category_filters
   on_drag_end={() => {
-    /* noop to avoid TS complaining */
+    // noop to avoid TS complaining
   }}
   style="margin-bottom: 3em"
 />

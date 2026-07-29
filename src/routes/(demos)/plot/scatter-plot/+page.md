@@ -218,7 +218,7 @@ For anything the built-ins don't cover, a per-side `snippet` draws the strip fro
 
 ## Line Interpolation Curves
 
-The connecting line between points chooses its interpolation via `line_style.curve`. The default `monotone` smooths through points, while `linear` draws perfectly straight segments — the honest choice for most scientific data (no spline overshoot between samples). Toggle the curve below on a deliberately sharp signal to see the difference:
+The connecting line between points chooses its interpolation via `line_style.curve`. The default `monotone` smooths through points, while `linear` draws perfectly straight segments (usually the better choice for scientific data: no spline overshoot between samples). Toggle the curve below on a deliberately sharp signal to see the difference:
 
 ```svelte example
 <script lang="ts">
@@ -256,7 +256,7 @@ The connecting line between points chooses its interpolation via `line_style.cur
 
 ## Custom Point Styling and Tooltips
 
-Demonstrate various point styles, custom tooltips, and hover effects:
+Point styles, custom tooltips, and hover effects:
 
 ```svelte example
 <script lang="ts">
@@ -409,7 +409,7 @@ Hovered point:
 
 ## Per-Point Custom Styling with Marker Symbols and Sizing
 
-This example demonstrates how to apply different styles _and sizes_ to individual points within a single series, including different marker symbols. The size of each point is determined by its distance from the center of the spiral, controlled by the `size_values` prop.
+Per-point styles, sizes, and marker symbols in one series. Point size follows distance from the spiral center via `size_values`.
 
 ```svelte example
 <script lang="ts">
@@ -526,7 +526,7 @@ This example demonstrates how to apply different styles _and sizes_ to individua
 
 ## Categorized Data and Custom Axis Tick Intervals
 
-This example shows categorized data with color coding, custom tick intervals, and demonstrates handling negative values:
+Categorized data with color coding, custom tick intervals, and negative values:
 
 ```svelte example
 <script lang="ts">
@@ -614,7 +614,7 @@ This example shows categorized data with color coding, custom tick intervals, an
 
 ## Time-Based Data with Custom Formatting
 
-Using time data on the x-axis with custom formatting. This example also demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
+Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels inside the plot for a tighter layout:
 
 ```svelte example
 <script lang="ts">
@@ -708,7 +708,7 @@ Using time data on the x-axis with custom formatting. This example also demonstr
 
 ## Points with Shared Coordinates
 
-This example demonstrates how points with identical coordinates can still be individually identified and interacted with:
+Points that share coordinates stay separately identifiable and interactive:
 
 ```svelte example
 <script lang="ts">
@@ -771,7 +771,7 @@ This example demonstrates how points with identical coordinates can still be ind
 
 ## Text Annotations for Scatter Points
 
-This example shows how to add permanent text labels to your scatter points:
+Permanent text labels on scatter points:
 
 ```svelte example
 <script lang="ts">
@@ -834,7 +834,7 @@ You can position labels in different directions relative to each point:
 
 ## Interactive Log-Scaled Axes
 
-ScatterPlot supports logarithmic scaling for data that spans multiple orders of magnitude. This example combines multiple datasets and allows you to dynamically switch between linear and logarithmic scales for both the X and Y axes using the checkboxes below. Observe how the appearance of the data changes, particularly for power-law relationships which appear as straight lines on log-log plots.
+Log scales for data spanning many orders of magnitude. Use the checkboxes to switch X and Y between linear and log; power laws become straight lines on a log-log plot.
 
 ```svelte example
 <script lang="ts">
@@ -1016,7 +1016,7 @@ ScatterPlot supports logarithmic scaling for data that spans multiple orders of 
 
 ## Arcsinh Scale: Handling Negative Values and Wide Ranges
 
-The **arcsinh scale** (`scale_type='arcsinh'`) is ideal for data spanning positive, negative, and zero values with wide dynamic range. Unlike log scale which can't handle non-positive values, arcsinh behaves linearly near zero and logarithmically for large absolute values—perfect for data like formation energies, charge densities, or financial metrics.
+The **arcsinh scale** (`scale_type='arcsinh'`) covers positive, negative, and zero values with a wide dynamic range. Log cannot take non-positive values; arcsinh is roughly linear near zero and logarithmic for large absolute values (formation energies, charge densities, and similar signed data).
 
 The configurable `threshold` parameter controls the transition point: smaller values make the transition sharper, larger values extend the linear region.
 
@@ -1213,7 +1213,7 @@ The configurable `threshold` parameter controls the transition point: smaller va
 
 ## Combined Interactive Scatter Plot with Custom Controls
 
-This example combines multiple features including different display modes, custom styling, various marker types, interactive controls for axis customization, and hover styling. It demonstrates the new grid customization options with independent X and Y grid controls and custom grid styling. Click the gear icon in the top-right corner to open a control pane with point size, line width, colors, and styling options:
+Mixed display modes, markers, hover styling, and independent X/Y grid controls. Open the gear icon (top-right) for point size, line width, colors, and other style options:
 
 ```svelte example
 <script lang="ts">
@@ -1436,7 +1436,7 @@ This example combines multiple features including different display modes, custo
 
 ## Automatic Color Bar Placement
 
-This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data. Point labels also auto-place to repel off each other and their markers (`auto_placement: true`), and are hidden in crowded regions via `label_placement_config={{ max_neighbors: { count, radius } }}` so dense quadrants stay readable.
+The color bar picks the corner with the least data density (top-left, top-right, bottom-left, bottom-right). Move the quadrant sliders and watch it relocate. Point labels auto-place away from each other and their markers (`auto_placement: true`), and hide in crowds via `label_placement_config={{ max_neighbors: { count, radius } }}`.
 
 ```svelte example
 <script lang="ts">
@@ -1557,17 +1557,13 @@ This example demonstrates how the color bar automatically positions itself in on
 
 ## Automatic Label Placement
 
-When points are clustered closely together, manually positioning labels can become tedious and result in overlaps. The `ScatterPlot` component offers an automatic label placement algorithm based on simulated annealing (SA). It optimizes label positions to minimize overlaps while keeping labels close to their data points, avoiding markers, and respecting plot boundaries.
+When points cluster tightly, manual labels overlap. Set `auto_placement: true` on a point's `point_label` to place labels with simulated annealing (SA):
 
-To enable this feature, set `auto_placement: true` within the `point_label` object for the desired points. The system automatically:
-
-- **Prevents label overlaps** using rectangular collision detection
-- **Avoids marker overlap** by penalizing labels that cover data point markers
-- **Draws leader lines** — dotted lines connecting displaced labels to their anchor points
-- **Respects font sizes** by accurately calculating label dimensions
-- **Stays within bounds** by constraining labels to the plot area
-
-This example demonstrates automatic placement with both clustered points (showing collision avoidance) and isolated markers (showing how labels position near their markers):
+- rectangular collision checks between labels
+- penalty when a label covers a marker
+- dotted leader lines from displaced labels back to their points
+- label sizes from real font metrics
+- labels constrained to the plot area
 
 ```svelte example
 <script lang="ts">
@@ -1678,19 +1674,11 @@ This example demonstrates automatic placement with both clustered points (showin
 </div>
 ```
 
-**Key behaviors:**
-
-- **Dense clusters** (purple): Labels spread out via simulated annealing to avoid overlap
-- **Isolated markers** (orange): Labels position near markers with proper spacing
-- **Leader lines**: Displaced labels show dotted leader lines back to their data point
-- **Different font sizes**: The system accurately accounts for label dimensions (11px, 13px, 16px)
-- **Boundary awareness**: Labels near plot edges stay within the visible area
-
 ## Tuning Label Placement
 
 The label placement algorithm exposes configuration via `label_placement_config` on `ScatterPlot`. You can tune the number of simulated annealing iterations (`sa_iterations`), the maximum label count before falling back to simple offsets (`max_labels`), the minimum displacement before a leader line is drawn (`leader_line_threshold`), and the energy function weights that control the tradeoff between overlap avoidance, anchor proximity, and boundary respect.
 
-This example lets you interactively adjust the SA iterations and leader line threshold to see how they affect placement quality:
+Adjust SA iterations and the leader-line threshold to see how placement changes:
 
 ```svelte example
 <script lang="ts">
@@ -1780,11 +1768,11 @@ This example lets you interactively adjust the SA iterations and leader line thr
 
 - **Low iterations** (100–500): Labels may still overlap, especially in the dense transition metal and lanthanide rows
 - **High iterations** (2000+): Labels find non-overlapping positions with leader lines connecting them to their markers
-- **Leader line threshold**: Controls when the dotted connecting line appears — set to 0 to always show them, or increase to only show for labels displaced far from their anchor
+- **Leader line threshold**: Controls when the dotted connecting line appears. Set to 0 to always show them, or increase to only show for labels displaced far from their anchor
 
 ## External Vertical Color Bar with Dynamic Controls
 
-This example shows how to place the color bar vertically on the right side of the plot, outside the main plotting area, and make it span the full height available. It also demonstrates how to dynamically change the color scheme and toggle between linear and log color scales.
+Vertical color bar on the right, outside the plot, spanning the full height. Change the color scheme and switch between linear and log color scales below.
 
 ```svelte example
 <script lang="ts">
@@ -1867,7 +1855,7 @@ type.
 
 ## Line Clipping with Fixed Ranges
 
-This example demonstrates how lines are clipped when they extend beyond the fixed `x_axis.range` and `y_axis.range` provided to the `ScatterPlot`. Lines originating and ending outside the plot area are cut off at the plot boundaries on all four sides (top, bottom, left, right). This verifies the `clipPath` functionality.
+Lines that leave the fixed `x_axis.range` / `y_axis.range` are clipped at the plot edges on all four sides (`clipPath`).
 
 ```svelte example
 <script lang="ts">
@@ -1958,7 +1946,7 @@ This example demonstrates how lines are clipped when they extend beyond the fixe
 
 ## Legend Grouping
 
-When comparing results from multiple methods or categories, you can organize legend items into collapsible groups using the `legend_group` property. This is particularly useful for comparing DFT methods, ML potentials, or experimental data. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group.
+Group legend items with `legend_group` (e.g. DFT methods, ML potentials, experiment). Click the group header to toggle all series in the group, or the chevron (▶) to collapse/expand.
 
 ```svelte example
 <script lang="ts">
@@ -2108,7 +2096,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
 
 ## Fill Between Series and Error Bands
 
-The `fill_regions` prop enables filling areas between boundaries defined by series, constants, functions, or raw data arrays. The `error_bands` prop provides a convenient shorthand for showing uncertainty ranges around data series. Both support hover interactions and appear in the legend.
+`fill_regions` fills areas between boundaries given as series, constants, functions, or raw arrays. `error_bands` is a shorthand for uncertainty ranges around a series. Both support hover and show in the legend.
 
 ```svelte example
 <script lang="ts">
@@ -2193,7 +2181,7 @@ The `fill_regions` prop enables filling areas between boundaries defined by seri
 
 ## Conditional Fills and Function Boundaries
 
-Use the `where` condition to fill only where a condition is true—for example, highlighting regions where one series exceeds another. Boundaries can also be defined as functions for dynamic fills like confidence intervals or thresholds.
+Use the `where` condition to fill only where a condition is true, e.g. highlighting regions where one series exceeds another. Boundaries can also be defined as functions for dynamic fills like confidence intervals or thresholds.
 
 ```svelte example
 <script lang="ts">
@@ -2269,7 +2257,7 @@ Use the `where` condition to fill only where a condition is true—for example, 
 
 ## Fill Between Series with Mismatched X-Values
 
-A key feature of the fill-between API is automatic interpolation when series have different x-values. This example demonstrates filling between two series with completely different sampling points—the fill utility automatically aligns them using linear interpolation.
+When series have different x-values, fill-between interpolates automatically. Here two series sit on different grids; the fill utility aligns them with linear interpolation.
 
 ```svelte example
 <script lang="ts">
@@ -2323,7 +2311,7 @@ x-coordinates. The fill region correctly interpolates between them:
 
 ## Non-Overlapping Series with Extrapolation
 
-When series have non-overlapping x-ranges, the fill utility extrapolates using the nearest available values. This example shows three scenarios: partial overlap, no overlap, and one series contained within another.
+When series have non-overlapping x-ranges, the fill utility extrapolates from the nearest values. Three cases: partial overlap, no overlap, and one series inside another.
 
 ```svelte example
 <script lang="ts">
@@ -2389,7 +2377,7 @@ When series have non-overlapping x-ranges, the fill utility extrapolates using t
 
 ## Fill with Different Curve Types
 
-The `curve` property controls how the fill area is interpolated between data points. This example compares different curve types side-by-side, showing how each affects the fill shape.
+`curve` controls how the fill area interpolates between points. Side-by-side comparison of curve types:
 
 ```svelte example
 <script lang="ts">
@@ -2455,7 +2443,7 @@ The `curve` property controls how the fill area is interpolated between data poi
 
 ## Reference Lines: Horizontal, Vertical, and Diagonal
 
-Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to your plots. These are useful for thresholds, targets, parity lines, and annotations. Lines support custom styling, annotations, z-index positioning, hover effects, and click handlers.
+`ref_lines` adds horizontal, vertical, and diagonal reference lines (thresholds, targets, parity, annotations), with custom style, annotations, z-index, hover, and click handlers.
 
 ```svelte example
 <script lang="ts">
@@ -2709,7 +2697,7 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
   import { ScatterPlot } from 'matterviz'
 
   // Data zig-zags across y=5.5 so odd-x points sit ON the reference band while the connecting
-  // line repeatedly crosses it — maximizing overlap so the chosen layer is visually obvious
+  // line repeatedly crosses it, maximizing overlap so the chosen layer is visually obvious
   const series = [
     {
       x: [1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -2759,7 +2747,7 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
 
 ## Reference Lines with Time Axes
 
-Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO strings for time values:
+Reference lines work with time-based x-axes. Use Date objects or ISO strings for time values:
 
 ```svelte example
 <script lang="ts">
@@ -3045,7 +3033,7 @@ Reference lines work seamlessly with time-based x-axes. Use Date objects or ISO 
 
 ## Interactive Color Dimension with Dynamic ColorBar
 
-This example demonstrates combining **interactive axis labels** with an **interactive ColorBar** for full 3-axis exploration. The built-in ColorBar supports property and color scale selection via dropdowns. Users can switch:
+Interactive axis labels plus an interactive ColorBar for 3-axis exploration. ColorBar dropdowns pick property and color scale. You can switch:
 
 - **X-axis property** (click x-axis label)
 - **Y-axis property** (click y-axis label)
@@ -3257,7 +3245,7 @@ All changes trigger lazy data loading with simulated network delays.
 
 ## Stress Test: Many Interpolated Fills
 
-This example creates multiple fill regions between series with varying sample densities to stress test the interpolation algorithm:
+Several fill regions between series at different sample densities, to stress-test interpolation:
 
 ```svelte example
 <script lang="ts">
@@ -3438,7 +3426,7 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
 
 ## Dual X-Axes (X2)
 
-Plot two series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. For inversely related quantities like wavelength (nm) and photon energy (eV) where E = 1240/λ, invert the x2 range so the axes align correctly — high energy at short wavelength (left) and low energy at long wavelength (right).
+Plot two series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. For inversely related quantities like wavelength (nm) and photon energy (eV) where E = 1240/λ, invert the x2 range so the axes align correctly: high energy at short wavelength (left) and low energy at long wavelength (right).
 
 ```svelte example
 <script lang="ts">
@@ -3457,7 +3445,7 @@ Plot two series with independent x-scales on the same chart. The primary x-axis 
     point_style: { fill: `#7c3aed`, radius: 5 },
   }
 
-  // Same spectrum plotted against energy (top x2-axis, eV) — E = 1240 / λ
+  // Same spectrum plotted against energy (top x2-axis, eV); E = 1240 / λ
   const energy_series = {
     x: wavelengths.map((wl) => 1240 / wl),
     y: intensity,

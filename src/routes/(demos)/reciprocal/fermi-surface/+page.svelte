@@ -30,20 +30,20 @@
     style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.4rem 1.5rem; margin: 0; padding: 0; list-style: none; font-size: 0.9rem"
   >
     <li>
-      <strong>🔷 BXSF</strong> &ndash; <a href="http://www.xcrysden.org/">XCrySDen</a>/<a
+      <strong>🔷 BXSF</strong>: <a href="http://www.xcrysden.org/">XCrySDen</a>/<a
         href="https://www.quantum-espresso.org/">Quantum ESPRESSO</a
       > files
     </li>
     <li>
-      <strong>🔶 FRMSF</strong> &ndash;
+      <strong>🔶 FRMSF</strong>:
       <a href="https://mitsuaki1987.github.io/fermisurfer/">FermiSurfer</a> format
     </li>
-    <li><strong>🎨 Property Coloring</strong> &ndash; band, velocity, or spin</li>
-    <li><strong>✂️ Slicing</strong> &ndash; 2D cross-sections along any plane</li>
-    <li><strong>🔬 Brillouin Zone</strong> &ndash; 1st BZ overlay with axes</li>
-    <li><strong>📊 Real-time</strong> &ndash; adjust μ and see changes instantly</li>
+    <li><strong>🎨 Property Coloring</strong>: band, velocity, or spin</li>
+    <li><strong>✂️ Slicing</strong>: 2D cross-sections along any plane</li>
+    <li><strong>🔬 Brillouin Zone</strong>: 1st BZ overlay with axes</li>
+    <li><strong>📊 Real-time</strong>: adjust μ and see changes instantly</li>
     <li>
-      <strong>💬 Hover Tooltips</strong> &ndash; k-coordinates in Cartesian &amp; fractional
+      <strong>💬 Hover Tooltips</strong>: k-coordinates in Cartesian &amp; fractional
     </li>
   </ul>
 </section>

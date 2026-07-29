@@ -7,7 +7,7 @@
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { Vec2 } from '$lib/math'
   import type { AxisKey, PlotControlsProps } from '$lib/plot/core/types'
   import { normalize_y2_sync } from '$lib/plot/core/interactions'

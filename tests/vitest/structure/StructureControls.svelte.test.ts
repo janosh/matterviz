@@ -168,6 +168,81 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props.polyhedra_excluded_elements).toEqual([])
   })
 
+  // The next two cover the temporary wrapper in $lib/overlays/DraggablePane.svelte and come
+  // out together once a svelte-widgets release carries the upstream fixes.
+  const mount_open_pane = async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const state = $state({ controls_open: true })
+    mount(StructureControls, {
+      target,
+      props: bind_props({ structure: simple_structure }, state),
+    })
+    await tick()
+    const pane = target.querySelector(`.controls-pane`)
+    if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
+    return { target, state, pane }
+  }
+  // detail 1 marks a pointer-driven click; 0 is what keyboard and programmatic clicks report
+  const fire = (node: Element, type: string, detail = 1) =>
+    node.dispatchEvent(new MouseEvent(type, { bubbles: true, composed: true, detail }))
+  const press = (node: Element) => fire(node, `pointerdown`)
+  const release = (node: Element) => fire(node, `click`)
+
+  // The pane dismisses on the click, not on the press that precedes it. A press-time close
+  // lands before the click's default action, so an outside control that drives
+  // `controls_open` (the test route's checkbox) gets its own state rewritten by the close
+  // and then flipped straight back by its own click — the pane opens but never closes.
+  test(`outside dismissal waits for the click, not the press`, async () => {
+    const { state, pane } = await mount_open_pane()
+    const outside = document.createElement(`button`)
+    document.body.append(outside)
+
+    press(outside)
+    await tick()
+    expect(state.controls_open).toBe(true)
+    release(outside)
+    await tick()
+    expect(state.controls_open).toBe(false)
+
+    // a drag or resize starts on the pane and can release past its edge, and the browser
+    // then fires the click on a common ancestor — outside, but not a dismissal
+    state.controls_open = true
+    await tick()
+    press(pane)
+    release(document.body)
+    await tick()
+    expect(state.controls_open).toBe(true)
+
+    // a download fires a synthetic click on an anchor appended to <body>: outside the pane,
+    // detail 0. It reaches the capture-phase listener before the anchor's own
+    // stopPropagation, so only a real pointer click may dismiss.
+    state.controls_open = true
+    await tick()
+    press(outside) // clear the inside verdict, so only the detail check can save the pane
+    fire(outside, `click`, 0)
+    await tick()
+    expect(state.controls_open).toBe(true)
+  })
+
+  // The corner grip is the only visible affordance for undoing a manual resize, so it has
+  // to be hit-testable — svelte-widgets renders it as inert decoration — and its
+  // double-click has to drop the inline size the resize wrote.
+  test(`resize grip takes pointer events and double-click clears the manual size`, async () => {
+    const { target, pane } = await mount_open_pane()
+    const grip = target.querySelector(`.resize-grip`)
+    if (!(grip instanceof SVGElement)) throw new Error(`resize grip not rendered`)
+    expect(grip.style.pointerEvents).toBe(`auto`)
+
+    // what `resizable` leaves behind after a corner drag
+    pane.style.width = `600px`
+    pane.style.height = `400px`
+    fire(grip, `dblclick`)
+    await tick()
+    expect(pane.style.width).toBe(``)
+    expect(pane.style.height).toBe(``)
+  })
+
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
     const target = document.createElement(`div`)
     document.body.append(target)

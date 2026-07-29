@@ -76,9 +76,15 @@ describe(`Composition component`, () => {
   test(`opens context menu on right click`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await tick()
     expect(doc_query(`.context-menu`)).toBeInstanceOf(HTMLElement)
-    expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
+    expect(doc_query(`.section-title`).textContent).toBe(`Display Mode`)
+    // the active mode is a checked radio, so a screen reader announces the selection
+    const pie = doc_query(`[role="menuitemradio"]`)
+    expect([pie.textContent?.trim(), pie.getAttribute(`aria-checked`)]).toEqual([
+      `Pie Chart`,
+      `true`,
+    ])
   })
 
   test(`context menu lists display modes, color schemes, and export options`, async () => {

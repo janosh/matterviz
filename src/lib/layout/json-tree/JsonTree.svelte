@@ -1,10 +1,10 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { download } from '$lib/io/fetch'
   import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'
   import { setContext, tick } from 'svelte'
-  import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
+  import { highlight_matches, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'

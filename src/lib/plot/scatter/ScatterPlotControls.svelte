@@ -10,7 +10,7 @@
   import { unique_id } from '$lib/plot/core/utils'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
   const uid = unique_id(`scatter-ctrl`)

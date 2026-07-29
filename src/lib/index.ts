@@ -40,8 +40,6 @@ export * from './feedback'
 export * from './fermi-surface'
 export { default as FilePicker } from './FilePicker.svelte'
 export * from './heatmap-matrix'
-export { default as Icon } from './Icon.svelte'
-export * from './icons'
 export * from './io'
 export { default as MillerIndexInput } from './MillerIndexInput.svelte'
 // Explicit exports to avoid name clash with fermi-surface's Isosurface type

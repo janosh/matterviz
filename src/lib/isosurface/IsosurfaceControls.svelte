@@ -3,13 +3,13 @@
   // Single-isovalue mode preserves the classic UI; explicit-layers mode groups
   // surfaces under their geometry-source volume and exposes cross-volume scalar
   // coloring (color source, colormap, value range) per surface.
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import { ColorScaleSelect } from '$lib/plot'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, DEFAULT_ISO_COLORMAP, ISO_COLORMAPS } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids } from './sampling'

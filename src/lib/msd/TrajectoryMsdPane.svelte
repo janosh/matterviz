@@ -1,8 +1,7 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_bytes, format_num } from '$lib/labels'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
@@ -133,9 +132,9 @@
     ...toggle_props,
     class: `trajectory-msd-toggle ${toggle_props?.class ?? ``}`,
   }}
+  pane_props={{ ...pane_props, class: `trajectory-msd-pane ${pane_props?.class ?? ``}` }}
   open_icon="Cross"
   closed_icon="Orbit"
-  pane_props={{ ...pane_props, class: `trajectory-msd-pane ${pane_props?.class ?? ``}` }}
   {...rest}
 >
   <h4 style="margin-top: 0">Mean Squared Displacement</h4>

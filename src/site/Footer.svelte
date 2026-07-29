@@ -1,33 +1,21 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
   import pkg from '$root/package.json'
+  import { Footer } from 'svelte-widgets'
 </script>
 
-<footer>
-  <a href="{pkg.repository}/blob/main/license">
-    <Icon icon="License" /> License
-  </a>
-  <strong>&ensp;&bull;&ensp;</strong>
-  <a href="/acknowledgements">
-    <Icon icon="HandsClapping" /> Acknowledgements
-  </a>
-  <strong>&ensp;&bull;&ensp;</strong>
-  <a href="{pkg.repository}/blob/main/contributing.md">
-    <Icon icon="RepoFork" /> Contributing
-  </a>
+<Footer
+  links={[
+    { href: `${pkg.repository}/blob/main/license`, label: `License`, icon: `License` },
+    { href: `/acknowledgements`, label: `Acknowledgements`, icon: `HandsClapping` },
+    {
+      href: `${pkg.repository}/blob/main/contributing.md`,
+      label: `Contributing`,
+      icon: `RepoFork`,
+    },
+  ]}
+>
   <small>
     &copy; <a href="https://github.com/janosh">Janosh Riebesell</a>
     2022
   </small>
-</footer>
-
-<style>
-  footer {
-    margin: 2em 0 0;
-    text-align: center;
-  }
-  footer small {
-    display: block;
-    margin-top: 1em;
-  }
-</style>
+</Footer>

@@ -2,6 +2,7 @@
 import { decompress_file } from './decompress'
 import { dropped_file_url, load_from_url } from './url-drop'
 import { to_error } from '$lib/utils'
+import { files_from_data_transfer } from 'svelte-widgets/file-drop'
 import type { FileLoadCallback } from './types'
 
 export interface FileDropOptions {
@@ -35,11 +36,13 @@ export const drag_over_handlers = (opts: {
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
-  async function process_batch(url: string | undefined, files: File[]) {
+  async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
     try {
       // One failing item must not abort the rest of the batch
       const failures: string[] = []
+      // rejects on a symlink cycle or an oversized tree, which the catch below reports
+      const files = await read
       if (url) {
         try {
           await load_from_url(url, opts.on_drop)
@@ -58,8 +61,9 @@ export const create_file_drop_handler = (
       for (const file of files) {
         try {
           const { content, filename } = await decompress_file(file)
-          if (content) await opts.on_drop(content, filename, { source_filename: file.name })
-          else failures.push(`${file.name}: file is empty`)
+          if (content) {
+            await opts.on_drop(content, filename, { source_filename: file.name, file })
+          } else failures.push(`${file.name}: file is empty`)
         } catch (exc) {
           failures.push(`${file.name}: ${to_error(exc).message}`)
         }
@@ -82,11 +86,15 @@ export const create_file_drop_handler = (
   return (event: DragEvent): Promise<void> => {
     event.preventDefault()
     if (!opts.allow()) return Promise.resolve()
-    // DataTransfer contents are only readable during drop-event dispatch, so
-    // capture them before deferring to the queue
+    // DataTransfer is only readable during dispatch, and files_from_data_transfer reads
+    // webkitGetAsEntry before its first await, so start it here to expand dropped folders
+    // in time — DataTransfer.files alone reports a folder as one zero-byte file.
     const url = dropped_file_url(event)
-    const files = Array.from(event.dataTransfer?.files ?? [])
-    queue = queue.then(() => process_batch(url, files)).catch(() => undefined)
+    const read = event.dataTransfer
+      ? files_from_data_transfer(event.dataTransfer)
+      : Promise.resolve<File[]>([])
+    read.catch(() => undefined) // stays unhandled until the queue gets to it otherwise
+    queue = queue.then(() => process_batch(url, read)).catch(() => undefined)
     return queue
   }
 }

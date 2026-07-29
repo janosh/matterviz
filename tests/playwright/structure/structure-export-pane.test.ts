@@ -209,7 +209,7 @@ test.describe(`StructureExportPane Tests`, () => {
         await expect(label_span).toBeVisible()
         await label_span.hover()
 
-        // Wait for tooltip to appear (svelte-multiselect custom-tooltip)
+        // Wait for tooltip to appear (svelte-widgets custom-tooltip)
         const tooltip_elem = structure.locator(`.custom-tooltip`)
         await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
 

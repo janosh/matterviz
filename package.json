@@ -110,10 +110,6 @@
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
     },
-    "./icons": {
-      "types": "./dist/icons.d.ts",
-      "default": "./dist/icons.js"
-    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js"
@@ -129,10 +125,6 @@
     "./json-path": {
       "types": "./dist/json-path.d.ts",
       "default": "./dist/json-path.js"
-    },
-    "./keyboard": {
-      "types": "./dist/keyboard.d.ts",
-      "default": "./dist/keyboard.js"
     },
     "./labels": {
       "types": "./dist/labels.d.ts",
@@ -312,11 +304,10 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.2.2",
-    "svelte-multiselect": "^11.8.0",
+    "svelte-widgets": "^1.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@janosh/vite-config": "github:janosh/dotfiles",
     "@playwright/test": "^1.62.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/package": "^2.5.8",

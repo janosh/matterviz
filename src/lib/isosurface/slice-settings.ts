@@ -4,7 +4,7 @@ import type { VolumeSliceMode } from './slice-rendering'
 
 export type VolumeSlicePlaneMode = `hkl` | `cartesian`
 
-/** User-configurable plane sampling and rendering options for a volumetric slice. */
+// User-configurable plane sampling and rendering options for a volumetric slice.
 export interface VolumeSliceSettings {
   plane_mode: VolumeSlicePlaneMode
   miller_indices: Vec3
@@ -33,7 +33,7 @@ export const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   symmetric: `auto`,
 }
 
-/** Return independent slice settings so nested vectors never leak across viewers. */
+// Return independent slice settings so nested vectors never leak across viewers.
 export function create_volume_slice_settings(
   overrides: Partial<VolumeSliceSettings> = {},
 ): VolumeSliceSettings {

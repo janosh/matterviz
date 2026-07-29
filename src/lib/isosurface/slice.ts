@@ -31,7 +31,7 @@ const UNIT_CELL_RANGE: DisplayRange = [
 export const volume_center = (volume: VolumetricData): Vec3 =>
   math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
 
-/** Resolve a Cartesian slice point, defaulting to the volume center or origin. */
+// Resolve a Cartesian slice point, defaulting to the volume center or origin.
 export const resolve_slice_cartesian_point = (
   point: Vec3 | undefined,
   volume?: VolumetricData,
@@ -183,7 +183,7 @@ const resolve_resolution = (
   return counts
 }
 
-/** Sample a scalar volume on an arbitrary absolute Cartesian plane. */
+// Sample a scalar volume on an arbitrary absolute Cartesian plane.
 export function sample_plane_slice(
   volume: VolumetricData,
   plane: CartesianPlane,

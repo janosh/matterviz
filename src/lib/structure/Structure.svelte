@@ -5,9 +5,9 @@
   import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import * as io from '$lib/io'
-  import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
+  import { handle_and_prevent, to_error } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
@@ -24,7 +24,7 @@
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
@@ -56,7 +56,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
+  import { click_outside, forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -78,7 +78,6 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
-  import { to_error } from '$lib/utils'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -606,7 +605,6 @@
   let has_bond_edits = $derived(
     added_bonds.length > 0 || removed_bonds.length > 0 || bond_order_overrides.length > 0,
   )
-
   const clone_bonds = (edit_bonds: StructureBond[]): StructureBond[] =>
     edit_bonds.map((bond) => ({
       ...bond,
@@ -754,9 +752,11 @@
       bond_edit_snapshot = undefined
       return
     }
-    bond_edit_snapshot ??= {
-      bonds: current_source_bonds(),
-      context: current_bond_edit_context(),
+    if (bond_edit_snapshot === undefined) {
+      bond_edit_snapshot = {
+        bonds: current_source_bonds(),
+        context: current_bond_edit_context(),
+      }
     }
     const edited_bonds = merge_bond_edits(
       bond_edit_snapshot.bonds ?? [],
@@ -1743,15 +1743,10 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--struct-bg-fullscreen`,
+    get_bg_css_var: () => `--struct-bg-fullscreen`,
     on_change: (val) => on_fullscreen_change?.({ structure, fullscreen: val }),
   })
 </script>
-
-<!-- Forward shortcuts to the hovered viewer when focus is on <body> (see
-  forward_window_keydown). Edit modes are excluded so destructive keys
-  (delete/undo) still require focus, not just a hovering mouse. -->
-<svelte:window onkeydown={forward_window_keydown(() => hovered, handle_hover_keydown)} />
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
@@ -1765,8 +1760,8 @@
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
+  onpointerenter={() => (hovered = true)}
+  onpointerleave={() => (hovered = false)}
   onfocusin={() => (focused = true)}
   onfocusout={(event) => {
     if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
@@ -1781,6 +1776,7 @@
   onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
+  {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}

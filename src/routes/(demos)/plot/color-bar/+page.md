@@ -1,6 +1,6 @@
 # Color Bar
 
-Here's a `ColorBar` with tick labels, using the new `tick_side` prop:
+ColorBar with tick labels; compare `tick_side`:
 
 ```svelte example
 <script lang="ts">
@@ -297,7 +297,7 @@ The `ColorBar` now supports interactive dropdowns for switching properties and c
 />
 ```
 
-Here's an example with vertical orientation and title on different sides:
+Vertical orientation with the title on different sides:
 
 ```svelte example
 <script lang="ts">
@@ -370,7 +370,7 @@ Here's an example with vertical orientation and title on different sides:
 
 ## Large Value Ranges (Linear and Log)
 
-Demonstrating the color bar with large numeric ranges, using both linear and logarithmic scales (`scale_type='log'`). Log scales require a positive range (both min and max > 0). Scientific notation is used for tick labels via `tick_format='.0e'`.
+Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a positive range (min and max > 0). Tick labels use scientific notation via `tick_format='.0e'`.
 
 ```svelte example
 <script lang="ts">
@@ -422,7 +422,7 @@ Demonstrating the color bar with large numeric ranges, using both linear and log
 
 ## Arcsinh Scale: Symmetric Ranges Including Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both positive and negative values—something log scale cannot do. The gradient smoothly transitions through zero, with symmetric ticks like -1000, -100, -10, 0, 10, 100, 1000.
+The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both positive and negative values, which log scale cannot do. The gradient smoothly transitions through zero, with symmetric ticks like -1000, -100, -10, 0, 10, 100, 1000.
 
 ```svelte example
 <script lang="ts">

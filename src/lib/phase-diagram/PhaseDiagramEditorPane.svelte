@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
@@ -69,9 +68,6 @@
 
 <DraggablePane
   bind:show={editor_open}
-  open_icon="Cross"
-  closed_icon="Edit"
-  {icon_style}
   persistent
   pane_props={{ class: `pd-editor-pane` }}
   toggle_props={{
@@ -80,6 +76,9 @@
     ...caller_toggle_props,
   }}
   max_width="600px"
+  open_icon="Cross"
+  closed_icon="Edit"
+  {icon_style}
 >
   {#if rejection_msg}
     <div class="rejection-flash">{rejection_msg}</div>

@@ -7,7 +7,7 @@
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import { extent } from 'd3-array'
   import type { ComponentProps } from 'svelte'
-  import { tooltip as attach_tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,

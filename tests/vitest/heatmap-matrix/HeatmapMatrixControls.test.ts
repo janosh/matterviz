@@ -68,13 +68,17 @@ describe(`HeatmapMatrixControls`, () => {
     expect(toggle.style.cssText).toContain(`pointer-events: auto`)
   })
 
-  test(`toggle title shows hint when closed, empty when open`, async () => {
+  // CSS elsewhere keys off pane-open (e.g. hover-visible control bars stay visible)
+  test(`toggle flips title hint and the pane-open class`, async () => {
     mount_controls({ controls_open: false })
     const toggle = get_toggle()
+    const pane = doc_query(`.draggable-pane`)
     expect(toggle.getAttribute(`title`)).toBe(`Heatmap controls`)
+    expect(pane.classList.contains(`pane-open`)).toBe(false)
     toggle.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     await tick()
     expect(toggle.getAttribute(`title`)).toBe(``)
+    expect(pane.classList.contains(`pane-open`)).toBe(true)
   })
 
   test(`pane_props class is merged with heatmap-controls`, () => {

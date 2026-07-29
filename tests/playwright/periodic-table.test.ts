@@ -10,7 +10,7 @@ import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
   // Open the heatmap multiselect dropdown, retrying the click until the options
-  // list appears. Under CI contention svelte-multiselect may not be hydrated when
+  // list appears. Under CI contention svelte-widgets may not be hydrated when
   // the first click lands (so it no-ops); re-clicking once interactive opens it.
   // Returns the options list locator. Short inner timeout lets toPass re-click.
   const open_heatmap_select = async (page: Page) => {

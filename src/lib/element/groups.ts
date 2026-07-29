@@ -26,7 +26,7 @@ const to_group = ([value, label, category]: (typeof category_groups)[number]) =>
   includes: (element: ChemicalElement) => element.category === category,
 })
 
-/** Overlapping element filters; a single element can belong to multiple groups. */
+// Overlapping element filters; a single element can belong to multiple groups.
 export const element_groups: readonly ElementGroup[] = [
   { value: `all`, label: `All`, tooltip: `Show all elements`, includes: () => true },
   ...category_groups.slice(0, 5).map(to_group),

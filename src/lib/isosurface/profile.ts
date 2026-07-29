@@ -21,7 +21,7 @@ export interface IsosurfaceProfileEvent {
 
 export type IsosurfaceProfiler = (event: IsosurfaceProfileEvent) => void
 
-/** Record a stage whose duration was measured elsewhere. */
+// Record a stage whose duration was measured elsewhere.
 export function record_profile(
   profiler: IsosurfaceProfiler | undefined,
   stage: IsosurfaceProfileStage,
@@ -31,7 +31,7 @@ export function record_profile(
   profiler?.({ stage, duration_ms, meta })
 }
 
-/** Time a synchronous pipeline stage only when an internal profiler is attached. */
+// Time a synchronous pipeline stage only when an internal profiler is attached.
 export function profile_stage<Result>(
   profiler: IsosurfaceProfiler | undefined,
   stage: IsosurfaceProfileStage,

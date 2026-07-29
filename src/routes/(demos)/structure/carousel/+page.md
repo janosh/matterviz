@@ -1,6 +1,6 @@
 # StructureCarousel
 
-A scrollable strip of 3D structure viewers. Only cards near the viewport hold live canvases — the visible page plus `overscan` cards per side (default 3) — while spacer-based virtualization keeps scroll geometry correct for any item count. The overscan doubles as a prefetch: any scroll shorter than it reveals structures that are already rendered.
+A scrollable strip of 3D structure viewers. Only cards near the viewport hold live canvases (the visible page plus `overscan` cards per side, default 3), while spacer-based virtualization keeps scroll geometry correct for any item count. The overscan doubles as a prefetch: any scroll shorter than it reveals structures that are already rendered.
 
 Bringing up a canvas costs enough GPU setup to stall a fling, so cards that enter the viewport mid-scroll show their label chip alone and gain their structure once the scroll settles. Pager and keyboard jumps skip that delay, and the mounted cards always keep up enough that the viewport never goes entirely blank.
 
@@ -28,9 +28,9 @@ Each item pairs a `structure` with a `label`/`subtitle` chip. `resizable` adds a
 
 ## Infinite loading with a portaled pager
 
-`on_prefetch_more` fires once fewer than a page of items trail the render window — on mount and resize as well as while scrolling. `prefetch_cooldown_ms` throttles repeat asks only while the item count is unchanged, so a host that appends is asked again straight away and keeps being asked until the window is full: batch generously, or a host handing back one item at a time will be called once per item.
+`on_prefetch_more` fires once fewer than a page of items trail the render window (on mount and resize as well as while scrolling). `prefetch_cooldown_ms` throttles repeat asks only while the item count is unchanged, so a host that appends is asked again straight away and keeps being asked until the window is full: batch generously, or a host handing back one item at a time will be called once per item.
 
-`pager_target` teleports the pager out of the cards into any host element — here a panel title bar.
+`pager_target` teleports the pager out of the cards into any host element (here a panel title bar).
 
 ```svelte example
 <script lang="ts">

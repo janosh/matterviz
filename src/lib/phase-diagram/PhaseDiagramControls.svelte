@@ -1,14 +1,13 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import NumberRangeInput from '$lib/layout/NumberRangeInput.svelte'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { LeverRuleMode, PhaseDiagramConfig, PhaseDiagramData } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
@@ -112,8 +111,8 @@
     class: `phase-diagram-controls-toggle`,
     ...toggle_props,
   }}
-  closed_icon="Settings"
   open_icon="Cross"
+  closed_icon="Settings"
   {...rest}
 >
   <h4 style="margin: 0 0 8pt 0">{title}</h4>

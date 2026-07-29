@@ -1,9 +1,9 @@
-import { config } from '@janosh/vite-config'
+import { make_config } from 'svelte-widgets/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
+import { vite_plugin as live_examples } from 'svelte-widgets/live-examples'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
@@ -121,8 +121,10 @@ const plugins = [
   (process.env.VITEST ? mock_vscode() : null) as unknown,
 ] as PluginOption[]
 
+const config = make_config()
+
 export default defineConfig({
-  ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
+  ...config, // shared lint/fmt/build
   plugins,
   fmt: {
     ...config.fmt,

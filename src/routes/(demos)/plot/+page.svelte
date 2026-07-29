@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IconName } from '$lib/icons'
+  import type { IconName } from 'svelte-widgets'
   import { SubpageGrid } from '$lib/layout'
 
   const subpages: {
@@ -47,7 +47,7 @@
     {
       href: `/plot/violin`,
       title: `Violin Plot`,
-      description: `KDE density shapes (optionally with inner box) — one-sided, two-sided, and split violins.`,
+      description: `KDE density shapes (optionally with inner box): one-sided, two-sided, and split violins.`,
       icon: `Graph`,
     },
     {

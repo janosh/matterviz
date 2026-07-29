@@ -1,9 +1,8 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
-  import { portal } from '$lib/overlays/portal'
+  import { Icon } from 'svelte-widgets'
+  import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import { type Label, strip_html } from '$lib/table'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import { slide } from 'svelte/transition'
 
   let {
@@ -224,7 +223,7 @@
   open={column_panel_open}
   {@attach click_outside({
     callback: () => (column_panel_open = false),
-    exclude: [dropdown_selector],
+    inside: [dropdown_selector],
   })}
 >
   <summary

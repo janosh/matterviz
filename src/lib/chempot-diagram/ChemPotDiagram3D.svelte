@@ -9,12 +9,16 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
-  import type { FullscreenToggleProp } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import {
+    FullscreenButton,
+    SettingsSection,
+    type FullscreenToggleProp,
+    toggle_fullscreen,
+  } from '$lib/layout'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane } from '$lib/overlays'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import { create_renderer, page_visibility, webgpu_available } from '$lib/scene'
   import { sanitize_html } from '$lib/sanitize'
@@ -1596,7 +1600,7 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--chempot-3d-bg-fullscreen`,
+    get_bg_css_var: () => `--chempot-3d-bg-fullscreen`,
   })
 
   dispose_on_change(() =>
@@ -1909,13 +1913,13 @@
     />
     <DraggablePane
       bind:show={formula_picker_open}
-      open_icon="Cross"
-      closed_icon="Filter"
       pane_props={{ class: `chempot-formula-pane` }}
       toggle_props={{
         class: `chempot-formula-toggle`,
         title: `Formula overlays`,
       }}
+      open_icon="Cross"
+      closed_icon="Filter"
     >
       <h4>Formula Overlays</h4>
       <div class="overlay-actions">
@@ -2126,7 +2130,10 @@
     </ScatterPlot3DControls>
 
     {#if fullscreen_toggle}
-      <FullscreenButton {fullscreen} toggle={fullscreen_toggle} {wrapper} />
+      <FullscreenButton
+        bind:fullscreen
+        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+      />
     {/if}
   </section>
   {#if show_temperature_slider && temperature !== undefined}

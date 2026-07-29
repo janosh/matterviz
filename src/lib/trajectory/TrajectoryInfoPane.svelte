@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -263,9 +262,9 @@
     ...toggle_props,
     class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
+  pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
   open_icon="Cross"
   closed_icon="Info"
-  pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>

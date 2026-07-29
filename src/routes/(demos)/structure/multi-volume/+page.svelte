@@ -106,7 +106,7 @@
     {
       id: `glycine-esp`,
       title: `Density × ESP (glycine)`,
-      description: `Glycine electron-density surface colored by ESP: red = nucleophilic (carboxyl O), blue = electrophilic (amine/hydroxyl H). The ESP cube renders no surface of its own — it's purely a color source.`,
+      description: `Glycine electron-density surface colored by ESP: red = nucleophilic (carboxyl O), blue = electrophilic (amine/hydroxyl H). The ESP cube renders no surface of its own; it is purely a color source.`,
       files: [`glycine-density.cube.gz`, `glycine-esp.cube.gz`],
       layers: (volumes) => [
         colored_layer(volumes, 0, 1, {
@@ -118,7 +118,7 @@
     {
       id: `caffeine-homo-lumo`,
       title: `HOMO + LUMO together (caffeine)`,
-      description: `Two real Psi4 orbital cubes at once: HOMO in blue/red, LUMO in green/purple, each with ± lobes — four transparent surfaces from independent volumes in one scene.`,
+      description: `Two real Psi4 orbital cubes at once: HOMO in blue/red, LUMO in green/purple, each with ± lobes, giving four transparent surfaces from independent volumes in one scene.`,
       files: [`caffeine-HOMO.cube.gz`, `caffeine-LUMO.cube.gz`],
       layers: () => [
         {
@@ -170,7 +170,7 @@
     {
       id: `hbn-elf`,
       title: `Density × ELF, non-orthogonal (hBN)`,
-      description: `hBN with two density surfaces: an outer shell colored by ELF from a second file plus an inner solid shell — world-coordinate sampling on a non-orthogonal lattice, 3×3×1.`,
+      description: `hBN with two density surfaces: an outer shell colored by ELF from a second file plus an inner solid shell, with world-coordinate sampling on the non-orthogonal lattice (3×3×1).`,
       files: [`hBN-CHGCAR.gz`, `hBN-ELFCAR.gz`],
       supercell: `3x3x1`,
       layers: (volumes) => [
@@ -236,7 +236,7 @@
 
       const start = performance.now()
       const { struct, volumes } = await load_files(scenario.files)
-      if (!is_current()) return // stale load — a newer one took over
+      if (!is_current()) return // stale load; a newer one took over
       structure = struct
       volumetric_data = volumes
       isosurface_settings = {
@@ -265,7 +265,7 @@
   const add_or_replace_file = (name: string) =>
     run_load(async (is_current) => {
       const parsed = await fetch_volumetric(name)
-      if (!is_current()) return // stale load — a newer one took over
+      if (!is_current()) return // stale load; a newer one took over
       const incoming = label_file_volumes(parsed.volumes, name)
       const current_lattice =
         structure && `lattice` in structure ? structure.lattice.matrix : undefined
@@ -315,7 +315,7 @@
   // and tracking it would rerun this effect against the stale URL, reloading
   // the previous scenario and discarding the click as a stale load.
   // An unknown or absent param falls back to the first scenario only while
-  // nothing is loaded (fresh mount / bad link) — clear_scenario() drops the
+  // nothing is loaded (fresh mount / bad link); clear_scenario() drops the
   // param after user imports, and reloading a preset then would wipe the
   // user's custom scene.
   $effect(() => {
@@ -341,7 +341,7 @@
   Load several volumetric datasets into one scene, render isosurfaces from each simultaneously,
   and color any surface by sampling another volume's scalar field at its vertices (e.g. an
   electron-density surface colored by electrostatic potential). Drop multiple <code>.cube</code
-  >/<code>CHGCAR</code>-family files onto the viewer at once — files describing the same cell
+  >/<code>CHGCAR</code>-family files onto the viewer at once: files describing the same cell
   are appended as extra volumes rather than replacing the scene.
 </p>
 
@@ -359,7 +359,7 @@
   {/each}
 </section>
 
-<h3 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h3>
+<h2 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h2>
 <FilePicker
   files={volumetric_files}
   active_files={[
@@ -437,42 +437,42 @@
 {/if}
 
 <section class="features">
-  <h2>What this demonstrates</h2>
+  <h2>Features</h2>
   <ul>
     <li>
-      <strong>Multi-volume registration</strong> &ndash; several cube/CHGCAR files coexist as independent
-      volumes in one scene
+      <strong>Multi-volume registration</strong>: several cube/CHGCAR files coexist as
+      independent volumes in one scene
     </li>
     <li>
-      <strong>Simultaneous surfaces</strong> &ndash; every volume can show isosurfaces at once; switching
-      the edited volume hides nothing
+      <strong>Simultaneous surfaces</strong>: every volume can show isosurfaces at once;
+      switching the edited volume hides nothing
     </li>
     <li>
-      <strong>Cross-volume coloring</strong> &ndash; each surface can sample any loaded volume for
+      <strong>Cross-volume coloring</strong>: each surface can sample any loaded volume for
       per-vertex colors with a configurable colormap and value range
     </li>
     <li>
-      <strong>Hidden color sources</strong> &ndash; a volume with no surfaces of its own still colors
+      <strong>Hidden color sources</strong>: a volume with no surfaces of its own still colors
       other surfaces
     </li>
     <li>
-      <strong>Grid compatibility checks</strong> &ndash; strictly matching grids sample exactly;
+      <strong>Grid compatibility checks</strong>: strictly matching grids sample exactly;
       mismatched grids resample in shared coordinates with a ⚠ diagnostic
     </li>
     <li>
-      <strong>Periodic continuity</strong> &ndash; colors wrap seamlessly across cell boundaries
-      and supercell tiles
+      <strong>Periodic continuity</strong>: colors wrap across cell boundaries and supercell
+      tiles
     </li>
     <li>
-      <strong>Fractional display ranges</strong> &ndash; VESTA-style non-integer supercells repeat
+      <strong>Fractional display ranges</strong>: VESTA-style non-integer supercells repeat
       surfaces periodically and clip them exactly at fractional bounds
     </li>
     <li>
-      <strong>Fast recolor</strong> &ndash; changing colormap or range remaps cached vertex scalars
+      <strong>Fast recolor</strong>: changing colormap or range remaps cached vertex scalars
       without rerunning marching cubes
     </li>
     <li>
-      <strong>Multi-file import</strong> &ndash; drop several files at once; same-cell files append,
+      <strong>Multi-file import</strong>: drop several files at once; same-cell files append,
       new systems replace
     </li>
   </ul>

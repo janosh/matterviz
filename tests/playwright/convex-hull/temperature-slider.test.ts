@@ -63,7 +63,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       // Hover to trigger tooltip
       await temp_slider.hover()
 
-      // Tooltip should appear (using the tooltip from svelte-multiselect)
+      // Tooltip should appear (using the tooltip from svelte-widgets)
       const tooltip = page.locator(`.tooltip, [role="tooltip"]`)
       // Give tooltip time to appear
       await expect(tooltip.first())

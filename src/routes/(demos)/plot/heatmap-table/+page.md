@@ -364,7 +364,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 ## Drag-and-Drop Column Reordering
 
-Columns can be reordered by dragging within the same group. Useful for comparing specific metrics side-by-side:
+Drag columns to reorder them within a group (handy for side-by-side metrics):
 
 ```svelte example
 <script lang="ts">
@@ -408,7 +408,7 @@ Columns can be reordered by dragging within the same group. Useful for comparing
 
 ## Large Table with Scrolling
 
-A comprehensive ML model benchmark comparison with sticky first column. Scroll horizontally to compare models across different datasets:
+ML model benchmark with a sticky first column. Scroll horizontally to compare models across datasets:
 
 ```svelte example
 <script lang="ts">
@@ -559,7 +559,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
 </script>
 
 <p style="color: var(--text-muted); margin-bottom: 0.5em; font-size: 0.9em">
-  Click column headers to sort — values are sorted by the primary number, ignoring the ±
+  Click column headers to sort. Values are sorted by the primary number, ignoring the ±
   uncertainty
 </p>
 
@@ -568,7 +568,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
 
 ## Color Scales
 
-Explore different D3 color scales, scale types (linear vs logarithmic), and the `better` prop which controls whether high or low values get the "good" end of the scale. Log scale is useful for properties spanning many orders of magnitude like electrical conductivity:
+Try D3 color scales, linear vs log scale types, and the `better` prop (which end of the scale counts as "good"). Log scale suits properties spanning many orders of magnitude, e.g. electrical conductivity:
 
 ```svelte example
 <script lang="ts">
@@ -631,7 +631,7 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
       color_scale: selected_scale,
       scale_type,
       format: `.2e`,
-      description: `Electrical conductivity — try log scale!`,
+      description: `Electrical conductivity (try log scale!)`,
     },
     {
       label: `κ (W/m·K)`,

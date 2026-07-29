@@ -2,7 +2,7 @@
   import type { ChemicalElement } from '$lib/element'
   import { ELEM_HEATMAP_LABELS } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
-  import Select from 'svelte-multiselect'
+  import Select from 'svelte-widgets'
 
   const options = Object.keys(ELEM_HEATMAP_LABELS)
   let {

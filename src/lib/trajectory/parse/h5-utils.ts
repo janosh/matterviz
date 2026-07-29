@@ -121,7 +121,7 @@ export async function with_h5_file<T>(
     try {
       FS.unlink(temp_filename)
     } catch {
-      /* temp file cleanup is best-effort */
+      // temp file cleanup is best-effort
     }
   }
 }

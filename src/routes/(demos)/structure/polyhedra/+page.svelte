@@ -151,7 +151,7 @@
   over-long bonds don't inflate e.g. PO₄ tetrahedra). To keep the structural framework
   readable, spectator A-site cations (alkali metals, Ca/Sr/Ba), very high-coordination hulls
   (CN &gt; 8), and weakly-bound lone-pair cations (e.g. Bi³⁺) are skipped whenever framework
-  polyhedra exist — toggle any element back on via the Centers checkboxes in the controls pane.
+  polyhedra exist. Toggle any element back on via the Centers checkboxes in the controls pane.
   Vertices come from the same bond graph as the rendered bonds, so polyhedra respect the
   bonding strategy, bond edits, and hidden elements, and boundary-truncated copies in
   supercells are skipped automatically.
