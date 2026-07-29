@@ -157,7 +157,9 @@
       if (typeof content !== `string`) return
       diagram_input = parse_phase_diagram_svg(content)
     },
-    on_error: (msg) => console.error(`Failed to parse dropped SVG:`, msg),
+    // covers reading, decompressing and the parse above, since on_drop is awaited inside
+    // the handler's per-file try — hence the generic wording
+    on_error: (msg) => console.error(`Phase diagram file drop failed:`, msg),
   })
 
   // Merge config with centralized defaults using shared helper
