@@ -6,7 +6,7 @@ import { bind_props } from '../setup'
 const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
   mount(HeatmapTable, { target: document.body, props })
 
-/** Trimmed text of every cell in the given column. */
+// Trimmed text of every cell in the given column.
 const col_values = (col_name: string): (string | undefined)[] =>
   [...document.querySelectorAll(`td[data-col="${col_name}"]`)].map((cell) =>
     cell.textContent?.trim(),
