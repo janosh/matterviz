@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { bond_trace } from '$lib/structure/bond-trace'
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
   import type { BondEditMode, BondOrder, MeasureMode, StructureBond } from '$lib/structure'
@@ -179,18 +178,8 @@
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
 
-  // structure_bond_history records every value `bonds` takes, not just the latest. Diagnostic
-  // for the CI-only bond-edit regression (see the note in bonds.test.ts): the reset path
-  // snapshots `bonds` the first tick an edit exists, so the sequence shows whether the
-  // snapshot could have been taken before or after the edit landed.
-  const bond_history: unknown[] = []
   $effect(() => {
     if (typeof window === `undefined`) return
-    // Whether this parent effect re-runs at all after a child emit is the open question, so
-    // record the run in the same trace the child writes to.
-    bond_trace(`page_mirror`, `page`, () => ({ bonds: JSON.stringify(bonds) }))
-    bond_history.push($state.snapshot(bonds))
-    ;(globalThis as Record<string, unknown>).structure_bond_history = bond_history
     ;(globalThis as Record<string, unknown>).structure_bonds = bonds
   })
 

@@ -1,7 +1,7 @@
 import { renderer_registry, scene_registry } from '$lib/io/export'
 import { useThrelte } from '@threlte/core'
 import type { Camera, Scene } from 'three/webgpu'
-import { WebGPURenderer } from 'three/webgpu'
+import { WebGPUBackend, WebGPURenderer } from 'three/webgpu'
 
 // Gates <Canvas> mounting: false under SSR and in happy-dom unit tests (no navigator.gpu),
 // true in real browsers and in Playwright, which gets a secure context over localhost.
@@ -12,6 +12,43 @@ export const webgpu_available = (): boolean =>
 // upstream (three skips reason === 'destroyed'), so any call is a real eviction or reset.
 export type DeviceLostInfo = Parameters<WebGPURenderer[`onDeviceLost`]>[0]
 
+// three's shipped types stop at Backend's public surface, so spell out the DataMap methods the
+// destroyAttribute override below reaches for.
+type AttributeData = { buffer?: { destroy: () => void } }
+type BufferAttributeKey = { isInterleavedBufferAttribute?: boolean; data?: object }
+type AttributeBackend = {
+  get: (key: object) => AttributeData
+  delete: (key: object) => unknown
+  destroyAttribute: (attribute: BufferAttributeKey) => void
+}
+
+let destroy_attribute_guarded = false
+
+// three 0.185's WebGPUAttributeUtils.destroyAttribute() calls data.buffer.destroy() unguarded.
+// If that attribute's createBuffer was refused earlier — CI's software WebGPU rejects uploads as
+// small as 480 bytes under memory pressure — the backend entry exists but holds no buffer, so
+// disposing the geometry throws a TypeError. That throw surfaces in a Threlte <T> effect
+// teardown, and Svelte runs teardowns outside the try/catch that routes to error boundaries: it
+// escapes mid-flush, the batch carrying pending writes is dropped, and its root is left dirty,
+// which makes Batch#schedule bail forever after. The whole page stops reacting, which is what
+// wedged the edit-bonds e2e tests on CI. Drop the dead entry instead of throwing.
+function guard_destroy_attribute(): void {
+  if (destroy_attribute_guarded) return
+  destroy_attribute_guarded = true
+  const backend_proto = WebGPUBackend.prototype as unknown as AttributeBackend
+  const destroy_attribute = backend_proto.destroyAttribute
+  backend_proto.destroyAttribute = function (
+    this: AttributeBackend,
+    attribute: BufferAttributeKey,
+  ) {
+    const key =
+      attribute.isInterleavedBufferAttribute && attribute.data ? attribute.data : attribute
+    if (this.get(key).buffer !== undefined) return destroy_attribute.call(this, attribute)
+    // three throws before reaching its own delete(), so the dead entry would leak otherwise
+    this.delete(attribute)
+  }
+}
+
 // Shared factory for every Threlte <Canvas> in the library. WebGPURenderer acquires its device
 // asynchronously and render() *throws* before init() resolves, but Threlte's setAnimationLoop
 // awaits it — only render() calls outside the loop (PNG/video capture) need their own await.
@@ -19,6 +56,7 @@ export function create_renderer(
   canvas: HTMLCanvasElement,
   { on_device_lost }: { on_device_lost?: (info: DeviceLostInfo) => void } = {},
 ): WebGPURenderer {
+  guard_destroy_attribute()
   const renderer = new WebGPURenderer({
     canvas,
     alpha: true,

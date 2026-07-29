@@ -43,7 +43,6 @@
   import InstancedAtoms from './InstancedAtoms.svelte'
   import SiteLabels from './SiteLabels.svelte'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { bond_trace, new_trace_id } from '$lib/structure/bond-trace'
   import { get_orig_site_idx, get_property_colors } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
   import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
@@ -496,7 +495,6 @@
   let frozen_centroid = $state<Vec3 | null>(null)
 
   let bond_context_menu = $state<BondContextMenu | null>(null)
-  const trace_id = new_trace_id(`scene`)
   // Threlte/HTML pointer events can close the visible menu before a button
   // handler runs, so keep the target bond separately for menu actions.
   let bond_context_target: BondContextMenu | null = null
@@ -671,11 +669,6 @@
   }
 
   function open_bond_context_menu(bond: BondPair, event?: BondContextMenuEvent) {
-    bond_trace(`open_bond_context_menu`, trace_id, () => ({
-      can_edit: can_edit_bond(bond),
-      site_idx_1: bond.site_idx_1,
-      site_idx_2: bond.site_idx_2,
-    }))
     if (!can_edit_bond(bond)) return
     bond_context_target = {
       site_idx_1: bond.site_idx_1,
@@ -693,16 +686,11 @@
   })
 
   function apply_bond_edit_result(result: BondEditResult, close_menu = true) {
-    bond_trace(`apply_bond_edit_result`, trace_id, () => ({ changed: result.changed }))
     if (!result.changed) return
     on_bond_edit_start?.()
     added_bonds = result.state.added_bonds
     removed_bonds = result.state.removed_bonds
     bond_order_overrides = result.state.bond_order_overrides
-    bond_trace(`scene_wrote_edits`, trace_id, () => ({
-      overrides: bond_order_overrides.length,
-      readback: result.state.bond_order_overrides.length,
-    }))
     if (close_menu) close_bond_context_menu()
   }
 
@@ -764,14 +752,6 @@
     cell_shift?: Vec3,
   ) {
     const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
-    bond_trace(`set_bond_order`, trace_id, () => ({
-      order,
-      site_idx_1,
-      site_idx_2,
-      can_edit: can_edit_bond(target),
-      editable_pairs: editable_perceived_bond_pairs.length,
-      filtered_pairs: filtered_bond_pairs.length,
-    }))
     if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_set_bond_order(
@@ -785,7 +765,6 @@
 
   function set_context_bond_order(order: BondOrder) {
     const menu = bond_context_target ?? bond_context_menu
-    bond_trace(`set_context_bond_order`, trace_id, () => ({ order, has_menu: Boolean(menu) }))
     if (!menu) return
     set_bond_order(menu.site_idx_1, menu.site_idx_2, order, menu.cell_shift)
   }

@@ -6,13 +6,6 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
-// Known open bug, CI only: once the edit state is discarded (undo, reset or source change) the
-// UI resets correctly while the emitted `bonds` keeps the merged value, read out of the CI
-// trace. Suspect is the early return in Structure.svelte's bond-edit effect when no snapshot
-// remains, but falling back to the structure's own bonds there turns 1 local failure into 10,
-// so the fix has to be narrower. Not reproducible locally, where all four still pass.
-const UNDO_STALE_BONDS_IN_CI = `bond undo leaves stale bonds on CI, see comment above`
-
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
   let non_white = 0
@@ -488,100 +481,10 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // These five regressed in #417 on CI's software WebGPU only, and were skipped there until
-  // the diagnostic below identified the cause. Reproducing needs a slow bond rebuild: on a
-  // real GPU all eight edit-bonds tests pass locally in 38s, even with
-  // --use-webgpu-adapter=swiftshader forced, so a fix can only be judged on CI. Note the
-  // DEFAULT headless run on macOS is useless for any 3D test — chrome-headless-shell pins
-  // ANGLE to swiftshader-webgl while WebGPU still asks for a real adapter, so the renderer
-  // never inits and 15 of this file's 17 tests fail for unrelated reasons. Use --headed.
-  //
-  // Cause: Structure.svelte snapshots pre-edit bonds from the `bonds` prop, which is also its
-  // own output channel. A rebuild landing after an edit invalidates the snapshot context and
-  // forces a re-snapshot, which then captures the edited bonds as if they were source state,
-  // so reset restores the edits instead of undoing them. #417 made rebuilds much heavier
-  // (BOND_SLACK 0.4 -> 0.7 A, find_image_atoms phase 2 completing both ends, a costlier
-  // electroneg_ratio), which is what opened the window on a software renderer.
-
-  // Runs everywhere and asserts nothing about the outcome, so it stays green while printing
-  // the one sequence that separates the competing explanations of the skips above. The test
-  // route records every value the bindable `bonds` prop takes; reset restores a snapshot of
-  // that prop taken the first tick an edit exists. A trailing `order: 1` means reset worked
-  // and the regression is elsewhere. A trailing `order: 2` means the snapshot already held
-  // the edit, confirming the ordering hypothesis. Delete this once the skips come off.
-  test(`DIAGNOSTIC: bond value sequence through a set-order-then-reset cycle`, async ({
-    page,
-  }) => {
-    test.setTimeout(120_000) // first test in the file, so it eats the cold vite compile
-    await goto_structure_page(page)
-    await dispatch_two_atom_bond_structure(page, 1)
-    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-    const read_history = () =>
-      page.evaluate(() => (globalThis as Record<string, unknown>).structure_bond_history)
-    // A missing mirror must not read as an empty history: the poll below would see a length
-    // that never grows and blame the component for absent instrumentation.
-    const history_length = async () => {
-      const history = await read_history()
-      if (!Array.isArray(history)) {
-        throw new TypeError(`structure_bond_history is ${typeof history}, not an array`)
-      }
-      return history.length
-    }
-    // Opt in to Structure.svelte's bond trace. The prop sequence alone cannot say why a reset
-    // emitted nothing; the trace shows whether the snapshot was dropped before the click.
-    await page.evaluate(() => {
-      ;(globalThis as Record<string, unknown>).matterviz_bond_trace = []
-    })
-
-    const steps: Record<string, unknown> = {}
-    try {
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-      steps.after_edit_mode = await read_history()
-
-      await click_canvas_center(page, canvas, `right`)
-      const menu = page.locator(`#test-structure .bond-context-menu`)
-      await expect(menu).toBeVisible({ timeout: 15_000 })
-      await menu.getByRole(`button`, { name: `Double` }).click()
-      await expect(menu).toBeHidden()
-      steps.after_set_double = await read_history()
-
-      // Reopen the menu before resetting. This is the only step the failing test does that an
-      // earlier version of this diagnostic skipped, and that version passed on the same CI run
-      // where the test failed, so the reopen is what makes the reset go wrong.
-      await click_canvas_center(page, canvas, `right`)
-      await expect(menu).toBeVisible({ timeout: 15_000 })
-      steps.reopened_menu_text = await menu.textContent().catch(() => `unreadable`)
-
-      const len_before_reset = await history_length()
-      steps.reset_clicked_at = await page.evaluate(() => Math.round(performance.now()))
-      await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
-      // Wait for the bonds effect's post-reset push and for the sequence to stop growing, so
-      // the recorded value is the settled one. Only lengths are polled, never the value, so
-      // the diagnostic still asserts nothing about the order. A reset that pushes nothing
-      // times out into the catch below, which records the same history.
-      let prev_len = len_before_reset
-      await expect
-        .poll(
-          async () => {
-            const len = await history_length()
-            const settled = len > len_before_reset && len === prev_len
-            prev_len = len
-            return settled
-          },
-          { intervals: [150], timeout: 10_000 },
-        )
-        .toBe(true)
-      steps.after_reset = await read_history()
-    } catch (error) {
-      steps.aborted_at = String(error).split(`\n`)[0]
-      steps.history_at_abort = await read_history().catch(() => `unreadable`)
-    }
-    steps.trace = await page
-      .evaluate(() => (globalThis as Record<string, unknown>).matterviz_bond_trace)
-      .catch(() => `unreadable`)
-    console.info(`BOND_EDIT_DIAGNOSTIC ${JSON.stringify(steps)}`)
-  })
-
+  // Running this file locally: the DEFAULT headless run on macOS is useless for any 3D test —
+  // chrome-headless-shell pins ANGLE to swiftshader-webgl while WebGPU still asks for a real
+  // adapter, so the renderer never inits and most of this file fails for unrelated reasons.
+  // Use --headed, or headless with --enable-unsafe-swiftshader --use-webgpu-adapter=swiftshader.
   test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
@@ -636,7 +539,6 @@ test.describe(`Bond component`, () => {
   test(`edit-bonds add mode creates selected-order bond between unbonded atoms`, async ({
     page,
   }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -664,7 +566,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds add mode handles image atom bonds`, async ({ page }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_image_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -805,7 +706,6 @@ test.describe(`Bond component`, () => {
   test(`bond redo history is cleared after source changes and edit-atoms`, async ({
     page,
   }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -861,7 +761,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
