@@ -105,7 +105,7 @@ const mount_volumetric = (
 const create_drop_event = (files: File[]): DragEvent => {
   const drag_event = new DragEvent(`drop`)
   Object.defineProperty(drag_event, `dataTransfer`, {
-    value: { files, getData: () => `` },
+    value: { files, items: [], getData: () => `` }, // items: entry API, empty = flat list
   })
   return drag_event
 }
@@ -286,7 +286,7 @@ describe(`Structure`, () => {
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
 
-    viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
   })
@@ -311,7 +311,7 @@ describe(`Structure`, () => {
       `edit-atoms`,
     )
 
-    doc_query(`.structure`).dispatchEvent(new MouseEvent(`mouseenter`))
+    doc_query(`.structure`).dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     // hovered (not focused) + edit mode → window forwarder ignores the key
     press_window_key({ key: `i`, ctrlKey: true })

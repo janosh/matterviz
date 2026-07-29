@@ -5,7 +5,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import * as io from '$lib/io'
   import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
@@ -323,7 +323,7 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--bz-bg-fullscreen`,
+    get_bg_css_var: () => `--bz-bg-fullscreen`,
     on_change: (val) =>
       on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen: val }),
   })

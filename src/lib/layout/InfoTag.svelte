@@ -1,8 +1,9 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
+  import { create_clipboard_feedback } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { InfoTagSize, InfoTagVariant } from './index'
 
@@ -33,14 +34,13 @@
     children?: Snippet<[]> // Additional content to render inside the tag
   } & Omit<HTMLAttributes<HTMLSpanElement>, `onclick` | `onkeydown`> = $props()
 
-  let just_copied = $state(false)
+  // one key, since a tag copies a single value; `copied` handles the timed reset
+  const { copied, copy } = create_clipboard_feedback()
 
   async function copy_to_clipboard(): Promise<void> {
     const to_copy = copy_value ?? value
     if (to_copy === undefined) return
-    await navigator.clipboard.writeText(String(to_copy))
-    just_copied = true
-    setTimeout(() => (just_copied = false), 1000)
+    await copy(String(to_copy), `value`)
   }
 
   function handle_click(event: MouseEvent): void {
@@ -75,7 +75,7 @@
 >
   {@html sanitize_html(label)}
   <em>{@html sanitize_html(value)}</em>
-  {#if just_copied}
+  {#if copied.has(`value`)}
     <Icon
       icon="Check"
       style="color: var(--success-color, #10b981); width: 12px; height: 12px"

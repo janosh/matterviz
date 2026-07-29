@@ -239,27 +239,27 @@
   <h2>Features</h2>
   <ul>
     <li>
-      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong> &ndash; VASP charge density, partial charge
+      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong>: VASP charge density, partial charge
       density, ELF, and local potential
     </li>
     <li>
-      <strong>.cube</strong> &ndash; Gaussian/CP2K molecular orbitals, electron density, ESP
+      <strong>.cube</strong>: Gaussian/CP2K molecular orbitals, electron density, ESP
     </li>
     <li>
-      <strong>Dual lobes</strong> &ndash; Positive and negative isosurfaces with independent colors
+      <strong>Dual lobes</strong>: Positive and negative isosurfaces with independent colors
     </li>
     <li>
-      <strong>Interactive controls</strong> &ndash; Adjust isovalue, opacity, colors, and wireframe
+      <strong>Interactive controls</strong>: Adjust isovalue, opacity, colors, and wireframe
     </li>
     <li>
-      <strong>Transparency</strong> &ndash; Two-pass rendering for correct transparent surfaces
+      <strong>Transparency</strong>: Two-pass rendering for correct transparent surfaces
     </li>
-    <li><strong>Drag & drop</strong> &ndash; Load your own volumetric data files</li>
+    <li><strong>Drag & drop</strong>: Load your own volumetric data files</li>
     <li>
-      <strong>Spin-polarized</strong> &ndash; Switch between charge density and magnetization volumes
+      <strong>Spin-polarized</strong>: Switch between charge density and magnetization volumes
     </li>
     <li>
-      <strong>Cross-section</strong> &ndash; HKL and arbitrary Cartesian filled/contour maps
+      <strong>Cross-section</strong>: HKL and arbitrary Cartesian filled/contour maps
     </li>
   </ul>
 </section>

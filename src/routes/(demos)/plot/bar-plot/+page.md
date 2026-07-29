@@ -2,7 +2,7 @@
 
 ## Crystal Structure Analysis
 
-A simple bar plot showing lattice parameters across different crystal systems. Use the controls (gear icon) to toggle orientation, modes, and grid display. This example also demonstrates rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
+Lattice parameters across crystal systems. Gear controls cover orientation, modes, and grid; the plot also uses rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
 
 ```svelte example
 <script lang="ts">
@@ -91,7 +91,7 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 <BarPlot series={band_gaps} {mode} {orientation} {x_axis} {y_axis} style="height: 400px" />
 ```
 
-Note how series can have **different categories** -- DFT (PBE) includes CdTe while GW only covers three materials. Missing categories render as zero-height bars in stacked mode, and are simply absent in grouped mode.
+Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
 ## Mode Comparison: Band Gap Measurements
 
@@ -248,7 +248,7 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 
 ## Element Abundance in Earth's Crust
 
-Horizontal bar charts work well for categorical data with long labels. This example demonstrates `tick.label.inside` which positions tick labels inside the plot area for a more compact design:
+Horizontal bars suit long category labels. `tick.label.inside` puts tick labels inside the plot for a tighter layout:
 
 ```svelte example
 <script lang="ts">
@@ -383,7 +383,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
 ## Arcsinh Scale: Large Range with Positive and Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges including negative values—ideal for formation energies, binding energies, or financial data. Unlike log scale, it smoothly transitions through zero.
+The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges including negative values (formation energies, binding energies). Unlike log scale, it smoothly transitions through zero.
 
 ```svelte example
 <script lang="ts">
@@ -552,7 +552,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
 ## Spectroscopy Data with Zoom
 
-Interactive zoom and pan for exploring large datasets. Click and drag to zoom, double-click to reset. This example demonstrates **color scaling** on line markers using `color_values` and `color_scale`:
+Zoom and pan on a larger dataset (drag to zoom, double-click to reset). Line markers use **color scaling** via `color_values` and `color_scale`:
 
 ```svelte example
 <script lang="ts">
@@ -1270,7 +1270,7 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
 
 ## Dual X-Axes (X2)
 
-Plot two bar series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing measurements in different units that share the same y-axis — for example, temperature in Celsius vs Fahrenheit.
+Plot two bar series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing measurements in different units that share the same y-axis (e.g. temperature in Celsius vs Fahrenheit).
 
 ```svelte example
 <script lang="ts">

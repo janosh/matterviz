@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import pkg from '$root/package.json'
 
   let online = $state<boolean>(true)

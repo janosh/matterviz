@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { get_alphabetical_formula } from '$lib/composition/format'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
   import {

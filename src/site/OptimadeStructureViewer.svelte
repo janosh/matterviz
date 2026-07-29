@@ -1,7 +1,7 @@
 <script lang="ts">
   import { sanitize_html } from '$lib/sanitize'
   import { page } from '$app/state'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import {
     decode_structure_id,
     detect_provider_from_slug,
@@ -17,7 +17,7 @@
   import { optimade_to_crystal } from '$lib/structure/parse'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   let {
     structure_id: init_structure_id,

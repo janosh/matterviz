@@ -201,7 +201,7 @@
   <h2>X-ray vs neutron vs electron</h2>
   <p>
     All three probes share the same Bragg geometry, so the peaks sit at identical 2θ for a
-    given wavelength — only the relative intensities change. Neutrons scatter off nuclei, and
+    given wavelength; only the relative intensities change. Neutrons scatter off nuclei, and
     the negative <code>b_coh</code> of H, Li, Ti, V and Mn can invert which reflection is strongest.
     Electrons use Mott–Bethe form factors; a real electron pattern would use a wavelength near 0.025
     Å, but the shared wavelength here keeps the comparison aligned.
@@ -234,8 +234,8 @@
       1 / electron_wavelength(accelerating_voltage),
       `.4~`,
     )}
-    1/Å — nearly flat across the pattern, which is why a whole plane of reflections lights up at
-    once.
+    1/Å. At that radius the Ewald sphere is nearly flat across the pattern, so a whole plane of reflections
+    lights up at once.
   </p>
   <div class="demo-controls">
     <MillerIndexInput bind:value={zone_axis} />

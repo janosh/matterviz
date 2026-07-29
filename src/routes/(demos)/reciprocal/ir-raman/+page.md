@@ -1,6 +1,6 @@
 # IR and Raman Spectra
 
-The `IrRamanSpectrum` component renders vibrational spectra from phonon modes at Γ. Infrared intensities are computed here from Born effective charges and phonon eigenvectors. Raman activities are **not** computed from eigenvectors — they require polarizability derivatives that phonopy does not produce, so they must be supplied as per-mode tensors or precomputed activities.
+The `IrRamanSpectrum` component renders vibrational spectra from phonon modes at Γ. Infrared intensities are computed here from Born effective charges and phonon eigenvectors. Raman activities are **not** computed from eigenvectors. They need polarizability derivatives that phonopy does not produce, so supply per-mode tensors or precomputed activities.
 
 ## Where the data comes from
 
@@ -18,7 +18,7 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 >
 > **α-quartz** is real too: Γ modes, Born charges and polarizability derivatives from the [Phonopy-Spectroscopy](https://github.com/skelton-group/Phonopy-Spectroscopy/tree/master/example/a-SiO2) VASP example (MIT, © 2017 Jonathan Michael Skelton). Its `Raman-Tensors.yaml` lists only the Raman-active modes, so the four IR-active A₂ modes and the three acoustic branches are zero-filled to give one tensor per mode.
 >
-> Every fixture rendered on this page is first-principles output. A synthetic CO₂ fixture is still kept in the test suite as an analytic oracle — a linear symmetric triatomic is the one case where IR intensities have a closed form to check the code against — but it is not shown here.
+> Every fixture rendered on this page is first-principles output. A synthetic CO₂ fixture remains in the test suite as an analytic oracle (a linear symmetric triatomic is the one case with a closed-form IR intensity check), but it is not shown here.
 
 ## Infrared spectrum of NaCl
 

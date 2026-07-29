@@ -41,11 +41,11 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; branch a
 
 ## Crystal-structure taxonomy (5 levels)
 
-Deeply nested trees are easiest to build from path rows via `sunburst_from_paths` (plotly-express style). This crystal-structure taxonomy spans five levels — crystal system &rarr; point group &rarr; space group &rarr; structure prototype &rarr; compound (with illustrative entry counts) — colored by crystal system with `level_lighten` brightening each ring outward. Several features combine here:
+Deeply nested trees are easiest to build from path rows via `sunburst_from_paths` (plotly-express style). This crystal-structure taxonomy spans five levels: crystal system &rarr; point group &rarr; space group &rarr; structure prototype &rarr; compound (illustrative entry counts). Color follows crystal system; `level_lighten` brightens each ring outward. Features here:
 
 - when zoomed, a clickable breadcrumb trail (top-left) jumps straight to any ancestor; <kbd>Escape</kbd> zooms out one level and double-clicking empty background resets to the root
 - the bindable `zoom_root_id` tracks the current drill-down root (and powers the reset button)
-- `max_depth` limits how many rings show below the zoom root (like plotly's `maxdepth`) — switch to 3 rings and zooming reveals deeper levels progressively
+- `max_depth` limits how many rings show below the zoom root (like plotly's `maxdepth`). Switch to 3 rings and zooming reveals deeper levels progressively
 - a custom `tooltip` snippet renders the `label_path` breadcrumb plus share-of-parent
 - labels auto-hide on arcs too small to fit them, so zooming in reveals more labels; arrow keys move keyboard focus between siblings (left/right), children (down) and parents (up)
 - the controls pane (gear icon, top-right) holds SVG/PNG export buttons
@@ -146,7 +146,7 @@ Deeply nested trees are easiest to build from path rows via `sunburst_from_paths
 
 ## Plotly-trace input and value modes
 
-`sunburst_from_labels_parents` consumes plotly trace arrays (`labels`/`parents`/`values` plus optional `ids`), the format produced by pymatviz sunburst exports. `value_mode` controls how those values are interpreted (plotly's `branchvalues`): `total` treats every value as authoritative — children summing to less than their parent leave a visible gap — while `leaf-sum` (default) ignores parent values and `remainder` adds a parent's own value on top of its children. Toggle the mode to see the gaps appear and disappear. `sort="descending"` orders siblings by value, and the legend lists depth-1 categories (clicking an entry mutes that subtree).
+`sunburst_from_labels_parents` consumes plotly trace arrays (`labels`/`parents`/`values` plus optional `ids`), the format produced by pymatviz sunburst exports. `value_mode` controls how those values are interpreted (plotly's `branchvalues`): `total` treats every value as authoritative (children summing to less than their parent leave a visible gap), while `leaf-sum` (default) ignores parent values and `remainder` adds a parent's own value on top of its children. Toggle the mode to see the gaps appear and disappear. `sort="descending"` orders siblings by value, and the legend lists depth-1 categories (clicking an entry mutes that subtree).
 
 ```svelte example
 <script lang="ts">
@@ -176,7 +176,7 @@ Deeply nested trees are easiest to build from path rows via `sunburst_from_paths
 
 ## Icicle charts with value gaps
 
-Passing `shape="icicle"` renders the same partition as stacked horizontal rows — well suited to deep hierarchies where outer sunburst rings get too thin to label. Rows don't have to be fully filled: with `value_mode="total"` each node's value is authoritative, so a parent whose children don't add up to its own value leaves a gap (the uncatalogued remainder). Here every level carries such a remainder, so the chart is a ragged staircase rather than a solid block. All interactions are shared (click a row to zoom in, breadcrumbs or <kbd>Escape</kbd> to zoom out, hover for tooltips, plus the controls pane).
+Passing `shape="icicle"` renders the same partition as stacked horizontal rows, which suits deep hierarchies where outer sunburst rings get too thin to label. Rows don't have to be fully filled: with `value_mode="total"` each node's value is authoritative, so a parent whose children don't add up to its own value leaves a gap (the uncatalogued remainder). Here every level carries such a remainder, so the chart is a ragged staircase rather than a solid block. All interactions are shared (click a row to zoom in, breadcrumbs or <kbd>Escape</kbd> to zoom out, hover for tooltips, plus the controls pane).
 
 ```svelte example
 <script lang="ts">
@@ -235,7 +235,7 @@ Chalcogenides/Tellurides/Sb₂Te₃,14
 
 ## Metric coloring
 
-Pass `color_values` to color arcs by a numeric metric on a continuous d3 colormap instead of categorical inheritance — e.g. energy above hull per compound. Arcs whose accessor returns `null` (here: the branch levels) keep their categorical color, and a `ColorBar` shows the scale (pass `colorbar={null}` to hide it, or `color_range` to fix the domain).
+Pass `color_values` to color arcs by a numeric metric on a continuous d3 colormap instead of categorical inheritance (e.g. energy above hull per compound). Arcs whose accessor returns `null` (here: the branch levels) keep their categorical color, and a `ColorBar` shows the scale (pass `colorbar={null}` to hide it, or `color_range` to fix the domain).
 
 ```svelte example
 <script lang="ts">
@@ -275,7 +275,7 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
 ## Spacegroup sunburst
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails — `min_fraction` groups every spacegroup below a threshold share into one "Other" slice per crystal system, and `label_text` switches labels to include percentages.
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" slice per crystal system, and `label_text` switches labels to include percentages.
 
 ```svelte example
 <script lang="ts">

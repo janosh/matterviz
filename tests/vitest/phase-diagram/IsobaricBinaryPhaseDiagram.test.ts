@@ -187,6 +187,36 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       .filter((fill) => fill?.startsWith(`url(`))
     expect(fills).toEqual(ids.map((id) => `url(#${id})`))
   })
+
+  // the SVG drop routes through the shared file-drop handler rather than a FileReader, so
+  // it inherits folder expansion and the drop queue. Pin that dropped content still reaches
+  // the parser, and that an unrelated file is ignored rather than reported.
+  test(`dropped SVG reaches the parser, other files are ignored`, async () => {
+    const wrapper = await mount_diagram()
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const drop = async (file: File) => {
+      const event = new DragEvent(`drop`, { bubbles: true })
+      // defineProperty, not Object.assign: dataTransfer is an accessor on the prototype
+      Object.defineProperty(event, `dataTransfer`, {
+        value: { files: [file], items: [], getData: () => `` },
+      })
+      wrapper.dispatchEvent(event)
+      await tick()
+    }
+
+    await drop(new File([`not an svg`], `notes.txt`, { type: `text/plain` }))
+    await vi.waitFor(() => expect(console_error).not.toHaveBeenCalled())
+
+    // a contentless SVG throws inside parse_phase_diagram_svg, and the shared handler
+    // reports it against the dropped filename — which is what proves the parse ran on it
+    await drop(
+      new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
+        type: `image/svg+xml`,
+      }),
+    )
+    await vi.waitFor(() => expect(console_error.mock.calls[0]?.[1]).toContain(`pd.svg`))
+    console_error.mockRestore()
+  })
 })
 
 describe(`format_hover_info_text`, () => {

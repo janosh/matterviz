@@ -3,14 +3,14 @@ import type { Config } from '@sveltejs/kit'
 import { mdsvex } from 'mdsvex'
 import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
-import { heading_ids } from 'svelte-multiselect/heading-anchors'
-import { mdsvex_transform, starry_night_highlighter } from 'svelte-multiselect/live-examples'
+import { heading_ids } from 'svelte-widgets/heading-anchors'
+import { mdsvex_transform, starry_night_highlighter } from 'svelte-widgets/live-examples'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
 })
 const defaults = {
-  Wrapper: [`svelte-multiselect`, `CodeExample`],
+  Wrapper: [`svelte-widgets`, `CodeExample`],
   repo: pkg.repository,
   hideStyle: true,
   collapsible: true,

@@ -2,7 +2,7 @@
   import { contrast_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
@@ -12,7 +12,7 @@
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
+  import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
@@ -375,6 +375,11 @@
           <div
             class="remap-dropdown"
             {@attach click_outside({
+              // This menu is opened and toggled shut by a right-click on the swatch, and
+              // a right-click fires pointerdown but never click. On the `press` default
+              // the opening press dismisses immediately and oncontextmenu reopens it, so
+              // the swatch could never close it again.
+              dismiss_on: `release`,
               callback: () => {
                 remap_menu_open = null
                 remap_search = ``

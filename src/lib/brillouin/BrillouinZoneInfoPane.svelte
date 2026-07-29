@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'
@@ -104,10 +104,10 @@
 {#if structure && bz_data}
   <DraggablePane
     bind:show={pane_open}
-    closed_icon="Info"
-    open_icon="Cross"
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
     pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
+    open_icon="Cross"
+    closed_icon="Info"
   >
     <InfoPaneCards
       cards={pane_data.map(({ title, items }) => ({ title, rows: items }))}

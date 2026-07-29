@@ -1,7 +1,7 @@
 # Violin Plot
 
-A violin plot is the same chart as a [box plot](/plot/box-plot) — one raw `y[]` distribution per
-series on a categorical axis — but draws a smoothed kernel-density estimate (KDE) of the
+A violin plot is the same chart as a [box plot](/plot/box-plot) (one raw `y[]` distribution per
+series on a categorical axis), but draws a smoothed kernel-density estimate (KDE) of the
 distribution instead of (or in addition to) the quartile box. `Violin` is a thin wrapper around
 `BoxPlot` with `kind="violin"`; everything (orientation, pan/zoom, legend, dual axes, tooltips,
 controls) is shared.
@@ -10,7 +10,7 @@ controls) is shared.
 
 Pass one series per distribution. Bandwidth defaults to Silverman's rule; override per series or
 globally via `bandwidth` (`'silverman'`, `'scott'`, or a number). Opt into `marginals` to add a
-value-axis distribution strip (a per-series `histogram` here) — the same `marginals` API shared
+value-axis distribution strip (a per-series `histogram` here). The same `marginals` API works
 across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example

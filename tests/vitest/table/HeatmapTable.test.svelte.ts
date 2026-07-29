@@ -6,7 +6,7 @@ import { bind_props } from '../setup'
 const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
   mount(HeatmapTable, { target: document.body, props })
 
-/** Trimmed text of every cell in the given column. */
+// Trimmed text of every cell in the given column.
 const col_values = (col_name: string): (string | undefined)[] =>
   [...document.querySelectorAll(`td[data-col="${col_name}"]`)].map((cell) =>
     cell.textContent?.trim(),
@@ -2013,6 +2013,14 @@ describe(`HeatmapTable`, () => {
       expect(options.some((text) => text?.includes(`Copy column`))).toBe(true)
       // no color_scale on Model -> no gradient-direction section
       expect(options.some((text) => text?.includes(`Higher is better`))).toBe(false)
+
+      // right-clicking another column while the menu is open must retarget it, not
+      // leave it dismissed: the pointerdown of that right-click is an outside press
+      const score_header = document.querySelectorAll(`th`)[1]
+      score_header?.dispatchEvent(pointer(`pointerdown`, { button: 2 }))
+      score_header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+      expect(document.querySelector(`.context-menu`)).not.toBeNull()
     })
 
     it(`clears selection when the rendered data changes`, async () => {

@@ -8,7 +8,8 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
 
 ```svelte example
 <script lang="ts">
-  import { Icon, InfoTag } from 'matterviz'
+  import { InfoTag } from 'matterviz'
+  import { Icon } from 'svelte-widgets'
 
   const sizes = [`sm`, `md`, `lg`] as const
   const tags = [
@@ -147,7 +148,8 @@ Combine tags with icons to display material properties with dynamic styling:
 
 ```svelte example
 <script lang="ts">
-  import { Icon, InfoTag } from 'matterviz'
+  import { InfoTag } from 'matterviz'
+  import { Icon } from 'svelte-widgets'
 
   const materials = [
     {

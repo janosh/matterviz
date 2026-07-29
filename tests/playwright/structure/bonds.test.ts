@@ -6,13 +6,6 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
-// Known open bug, CI only: once the edit state is discarded (undo, reset or source change) the
-// UI resets correctly while the emitted `bonds` keeps the merged value, read out of the CI
-// trace. Suspect is the early return in Structure.svelte's bond-edit effect when no snapshot
-// remains, but falling back to the structure's own bonds there turns 1 local failure into 10,
-// so the fix has to be narrower. Not reproducible locally, where all four still pass.
-const UNDO_STALE_BONDS_IN_CI = `bond undo leaves stale bonds on CI, see comment above`
-
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
   let non_white = 0
@@ -488,24 +481,11 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // TEMPORARY. The five edit-bonds tests skipped below regressed on this branch and block
-  // its merge. They pass on main's CI and fail here deterministically over three full runs,
-  // so this is not shard-3 flakiness. Symptoms: "Reset selection and bond edits" leaves the
-  // bond at order 2 instead of restoring 1, the mode shortcuts land on `delete` where `add`
-  // is expected, and deleting a bond to an image atom leaves it in place. The two image-atom
-  // cases were merely flaky at first and hardened into failures once their siblings were
-  // skipped. Structure.svelte's bond-edit logic is untouched (only `dihedral` joined the
-  // measure-mode list), so the suspect is the bonding rewrite — reset restores a snapshot
-  // taken from current_source_bonds(), and what perception returns for the test's 2-atom C/O
-  // structure moved. Not fixed here because it does not reproduce locally: all eight
-  // edit-bonds tests fail on this machine at an earlier point (.bond-context-menu never
-  // appears on right-click) identically on main, so there is nothing to iterate against.
-  // Whoever owns bonding.ts should reproduce with:
-  //   npx playwright test tests/playwright/structure/bonds.test.ts -g "edit-bonds"
-  const BOND_EDIT_REGRESSION = `Bond-edit reset/shortcut regression, see note above`
-
+  // Running this file locally: the DEFAULT headless run on macOS is useless for any 3D test —
+  // chrome-headless-shell pins ANGLE to swiftshader-webgl while WebGPU still asks for a real
+  // adapter, so the renderer never inits and most of this file fails for unrelated reasons.
+  // Use --headed, or headless with --enable-unsafe-swiftshader --use-webgpu-adapter=swiftshader.
   test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
-    test.skip(IS_CI, BOND_EDIT_REGRESSION)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -559,7 +539,6 @@ test.describe(`Bond component`, () => {
   test(`edit-bonds add mode creates selected-order bond between unbonded atoms`, async ({
     page,
   }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -587,7 +566,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds add mode handles image atom bonds`, async ({ page }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_image_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -629,7 +607,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds shortcuts switch modes and keyboard undo redo`, async ({ page }) => {
-    test.skip(IS_CI, BOND_EDIT_REGRESSION)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -670,7 +647,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds delete mode still supports right-click order editing`, async ({ page }) => {
-    test.skip(IS_CI, BOND_EDIT_REGRESSION)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -688,7 +664,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds delete mode removes bonds to image atoms`, async ({ page }) => {
-    test.skip(IS_CI, BOND_EDIT_REGRESSION)
     const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_bond_structure(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -709,7 +684,6 @@ test.describe(`Bond component`, () => {
   test(`edit-bonds delete mode removes manually added bonds to image atoms`, async ({
     page,
   }) => {
-    test.skip(IS_CI, BOND_EDIT_REGRESSION)
     const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_unbonded_structure(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -732,7 +706,6 @@ test.describe(`Bond component`, () => {
   test(`bond redo history is cleared after source changes and edit-atoms`, async ({
     page,
   }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -788,7 +761,6 @@ test.describe(`Bond component`, () => {
   })
 
   test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
-    test.skip(IS_CI, UNDO_STALE_BONDS_IN_CI)
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)

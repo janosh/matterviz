@@ -45,8 +45,8 @@
   pair of its bonded neighbours. Splitting by triplet type separates the coordination
   environments: a silicate shows a sharp tetrahedral <code>O-Si-O</code> peak near 109.5°
   alongside a much broader <code>Si-O-Si</code> linkage distribution. Angles that close through a
-  periodic boundary are included — the cell is expanded with image atoms before the bond search,
-  so boundary atoms are not under-coordinated.
+  periodic boundary are included. The cell is expanded with image atoms before the bond search, so
+  boundary atoms are not under-coordinated.
 </p>
 
 <div class="bleed-1400">

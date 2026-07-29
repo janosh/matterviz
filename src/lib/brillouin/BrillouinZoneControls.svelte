@@ -1,6 +1,6 @@
 <script lang="ts">
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
 
   let {
@@ -34,10 +34,10 @@
 
 <DraggablePane
   bind:show={controls_open}
-  open_icon="Cross"
-  closed_icon="Settings"
   pane_props={{ class: `bz-controls` }}
   toggle_props={{ class: `controls-toggle`, title: `Brillouin zone controls` }}
+  open_icon="Cross"
+  closed_icon="Settings"
 >
   <SettingsSection
     title="Brillouin Zone Controls"

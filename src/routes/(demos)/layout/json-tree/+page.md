@@ -253,7 +253,7 @@ Sorted keys, custom root label, and headerless mode:
 
 ## Interactions
 
-All built-in — no props needed:
+All built-in, no props needed:
 
 - **Right-click** any node → context menu with Copy value, Copy path, Expand/Collapse children, Pin path
 - **Click a closed key** → expands it. **Click an open key** → copies value

@@ -216,7 +216,7 @@
   const magnetic_marker_legend = [`△ FM (ferromagnetic)`, `◆ FiM (ferrimagnetic)`, `■ AFM (antiferromagnetic)`, `● NM (non-magnetic)`]
 
   // Custom category demo: synthetic crystallinity labels on the Co-O binary show the
-  // generic entry_category API — the magnetic preset uses the exact same machinery
+  // generic entry_category API; the magnetic preset uses the exact same machinery
   const crystallinity_category: EntryCategoryConfig = {
     label: `Structure`,
     property: `crystallinity`,
@@ -237,53 +237,53 @@
   const get_entry_href = (entry: ConvexHullEntry): string | null =>
     entry.entry_id ? `#${entry.entry_id}` : null
   const ternary_features = [
-    `<b>Barycentric coordinates</b> — composition mapped to an equilateral triangle base`,
+    `<b>Barycentric coordinates</b>: composition mapped to an equilateral triangle base`,
     `<b>Formation energy</b> on the z-axis, with convex hull faces between stable points`,
   ]
   const quaternary_features = [
-    `<b>Tetrahedral projection</b> — 4D composition coordinates mapped into 3D space`,
-    `<b>Color-coded stability</b> — each point colored by energy above hull`,
-    `<b>Drag & drop</b> — load your own JSON data onto any diagram`,
+    `<b>Tetrahedral projection</b>: 4D composition coordinates mapped into 3D space`,
+    `<b>Color-coded stability</b>: each point colored by energy above hull`,
+    `<b>Drag & drop</b>: load your own JSON data onto any diagram`,
   ]
   const binary_features = [
-    `<b>Formation energy vs. composition</b> — stable phases lie on the lower convex hull`,
+    `<b>Formation energy vs. composition</b>: stable phases lie on the lower convex hull`,
   ]
   const stats_features = [
-    `<b>Live-bound stats</b> — phase counts, energy ranges, and hull distances update with the diagram`,
-    `<b>Row highlighting</b> — click a table row to highlight it (<code>highlighted_entry_id</code> + <code>on_entry_click</code>)`,
-    `<b>Clickable IDs</b> — <code>entry_href</code> callback turns the ID column into links`,
-    `<b>Poly column</b> — shows polymorph count per reduced formula`,
-    `<b>Polymorphs filter</b> — dropdown to isolate entries sharing a composition`,
-    `<b>Subsystem coverage</b> — grid of binary element pairs with entry counts`,
-    `<b>CSV/JSON export</b> — download table data`,
+    `<b>Live-bound stats</b>: phase counts, energy ranges, and hull distances update with the diagram`,
+    `<b>Row highlighting</b>: click a table row to highlight it (<code>highlighted_entry_id</code> + <code>on_entry_click</code>)`,
+    `<b>Clickable IDs</b>: <code>entry_href</code> callback turns the ID column into links`,
+    `<b>Poly column</b>: shows polymorph count per reduced formula`,
+    `<b>Polymorphs filter</b>: dropdown to isolate entries sharing a composition`,
+    `<b>Subsystem coverage</b>: grid of binary element pairs with entry counts`,
+    `<b>CSV/JSON export</b>: download table data`,
   ]
   const side_by_side_features = [
-    `<b><code>layout="side-by-side"</code></b> — stats and table visible simultaneously, no toggle needed`,
+    `<b><code>layout="side-by-side"</code></b>: stats and table visible simultaneously, no toggle needed`,
   ]
   const highlighted_features = [
-    `<b>Visual effects</b> — pulse, glow, or size changes on selected entries`,
-    `<b>Tooltip badge</b> — hover to see "★ Highlighted" on marked entries`,
-    `<b>Cross-dimensional</b> — works on 2D, 3D, and 4D diagrams`,
+    `<b>Visual effects</b>: pulse, glow, or size changes on selected entries`,
+    `<b>Tooltip badge</b>: hover to see "★ Highlighted" on marked entries`,
+    `<b>Cross-dimensional</b>: works on 2D, 3D, and 4D diagrams`,
   ]
   const magnetic_features = [
-    `<b>Shape-coded orderings</b> — entries with <code>magnetic_ordering</code> render as △ FM, ◆ FiM, ■ AFM, ● NM (built-in default <code>entry_category</code>)`,
-    `<b>Filter toggles</b> — show/hide magnetic subsets via the controls pane (bindable <code>hidden_categories</code>)`,
-    `<b>Generic API</b> — pass a custom <code>EntryCategoryConfig</code> to shape-code any classification (right plot: crystallinity; works equally for metal/semiconductor/insulator, defect types, ...)`,
-    `<b>Manual override</b> — a per-entry <code>marker</code> field always takes precedence over category shapes`,
+    `<b>Shape-coded orderings</b>: entries with <code>magnetic_ordering</code> render as △ FM, ◆ FiM, ■ AFM, ● NM (built-in default <code>entry_category</code>)`,
+    `<b>Filter toggles</b>: show/hide magnetic subsets via the controls pane (bindable <code>hidden_categories</code>)`,
+    `<b>Generic API</b>: pass a custom <code>EntryCategoryConfig</code> to shape-code any classification (right plot: crystallinity; works equally for metal/semiconductor/insulator, defect types, ...)`,
+    `<b>Manual override</b>: a per-entry <code>marker</code> field always takes precedence over category shapes`,
   ]
   const temp_features = [
-    `<b>Temperature slider</b> — appears when entries include <code>temperatures</code> + <code>free_energies</code> arrays`,
-    `<b>Live hull recomputation</b> — phase stability changes are visible as you drag the slider`,
-    `<b>Order-disorder transitions</b> — high-entropy polymorphs stabilize at elevated temperatures`,
+    `<b>Temperature slider</b>: appears when entries include <code>temperatures</code> + <code>free_energies</code> arrays`,
+    `<b>Live hull recomputation</b>: phase stability changes are visible as you drag the slider`,
+    `<b>Order-disorder transitions</b>: high-entropy polymorphs stabilize at elevated temperatures`,
   ]
   const gas_features = [
-    `<b>Chemical potential</b> — μ(T, P) = μ°(T) + RT·ln(P) for gas-phase elements (O, N, H, ...)`,
-    `<b>Pressure controls</b> — adjust partial pressures to simulate reducing/oxidizing conditions`,
-    `<b>Multi-gas support</b> — O<sub>2</sub>, N<sub>2</sub>, H<sub>2</sub>, CO, CO<sub>2</sub>, H<sub>2</sub>O, F<sub>2</sub>`,
+    `<b>Chemical potential</b>: μ(T, P) = μ°(T) + RT·ln(P) for gas-phase elements (O, N, H, ...)`,
+    `<b>Pressure controls</b>: adjust partial pressures to simulate reducing/oxidizing conditions`,
+    `<b>Multi-gas support</b>: O<sub>2</sub>, N<sub>2</sub>, H<sub>2</sub>, CO, CO<sub>2</sub>, H<sub>2</sub>O, F<sub>2</sub>`,
   ]
   const quinary_stats_features = [
-    `<b>Standalone stats</b> — use <code>ConvexHullStats</code> without rendering a hull`,
-    `<b>High-dimensional support</b> — computed via <code>process_hull_for_stats()</code>, ideal for 5+ element systems`,
+    `<b>Standalone stats</b>: use <code>ConvexHullStats</code> without rendering a hull`,
+    `<b>High-dimensional support</b>: computed via <code>process_hull_for_stats()</code> for systems with 5+ elements`,
   ]
   const quinary_options = $derived(
     Object.keys(quinary_files)
@@ -562,7 +562,7 @@
       <p class="section-note">
         Currently hidden orderings: {hidden_orderings.length > 0
           ? hidden_orderings.join(`, `)
-          : `none`} (synthetic demo data — categories assigned by entry ID hash. Missing pure element
+          : `none`} (synthetic demo data; categories assigned by entry ID hash. Missing pure element
         references are automatically added with E<sub>form</sub> = 0 eV/atom.)
       </p>
       <div class="ternary-grid">

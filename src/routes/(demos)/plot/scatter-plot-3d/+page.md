@@ -138,7 +138,7 @@ Add a surface defined by a z = f(x, y) function. The surface is colored by the z
 
 ## Parametric Surface
 
-Create surfaces using parametric equations. This example shows a torus:
+A torus built from parametric equations:
 
 ```svelte example
 <script lang="ts">

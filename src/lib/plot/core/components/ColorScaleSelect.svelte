@@ -2,7 +2,7 @@
   import { ColorBar } from '$lib/plot'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
-  import Select from 'svelte-multiselect'
+  import Select from 'svelte-widgets'
   import type { D3InterpolateName } from '$lib/colors'
 
   let {

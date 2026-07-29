@@ -75,7 +75,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 
 ## Chemical system treemap
 
-`chem_sys_sunburst_data` builds the arity &rarr; chemical-system hierarchy from a list of formulas and/or chemical systems (one entry per occurrence) — the counterpart to pymatviz's `chem_sys_treemap`, sharing its data builder with the sunburst version. Entries are normalized to alphabetical element order, so `Li2O`, `LiO` and `O-Li` all count toward `Li-O`. Zoom into an arity group to compare its systems at full size.
+`chem_sys_sunburst_data` builds the arity &rarr; chemical-system hierarchy from formulas and/or chemical systems (one entry per occurrence). It is the counterpart to pymatviz's `chem_sys_treemap` and shares its data builder with the sunburst version. Entries are normalized to alphabetical element order, so `Li2O`, `LiO` and `O-Li` all count toward `Li-O`. Zoom into an arity group to compare its systems at full size.
 
 ```svelte example
 <script lang="ts">
@@ -111,7 +111,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 
 ## Spacegroup treemap
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from spacegroup numbers or Hermann-Mauguin symbols (one entry per structure). Real spacegroup distributions have long tails — `min_fraction` groups every spacegroup below a threshold share into one "Other" cell per crystal system. Header strips label each crystal system, so no legend is needed.
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from spacegroup numbers or Hermann-Mauguin symbols (one entry per structure). Real spacegroup distributions have long tails. `min_fraction` groups every spacegroup below a threshold share into one "Other" cell per crystal system. Header strips label each crystal system, so no legend is needed.
 
 ```svelte example
 <script lang="ts">
@@ -173,7 +173,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell are
 
 ## Metric coloring and deep zoom
 
-Pass `color_values` to color cells by a numeric metric on a continuous d3 colormap instead of categorical inheritance — e.g. energy above hull per compound (cells returning `null` keep their categorical color, and a `ColorBar` shows the scale). Deep trees built from path rows via `sunburst_from_paths` zoom level by level: `max_depth` limits how many levels render below the current root, so drilling down progressively reveals structure prototypes and compounds.
+Pass `color_values` to color cells by a numeric metric on a continuous d3 colormap instead of categorical inheritance (e.g. energy above hull per compound; cells returning `null` keep their categorical color, and a `ColorBar` shows the scale). Deep trees built from path rows via `sunburst_from_paths` zoom level by level: `max_depth` limits how many levels render below the current root, so drilling down progressively reveals structure prototypes and compounds.
 
 ```svelte example
 <script lang="ts">

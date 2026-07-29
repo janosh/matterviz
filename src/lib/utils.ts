@@ -70,3 +70,14 @@ export function decode_url_safe_base64(encoded: string): string | undefined {
     return undefined
   }
 }
+
+// Viewer keyboard convention: a handler returns `true` when it handled the event, so
+// handle_and_prevent can suppress the browser default (page scroll, find, ...) in one place
+// instead of scattered preventDefault() calls in every `onkeydown` binding.
+export type KeydownHandler = (event: KeyboardEvent) => boolean
+
+export const handle_and_prevent =
+  (handle: KeydownHandler) =>
+  (event: KeyboardEvent): void => {
+    if (handle(event)) event.preventDefault()
+  }

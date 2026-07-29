@@ -70,7 +70,7 @@ Assign callback functions directly to element properties (like `on_file_load` ab
 
 ## Dash (Plotly) Integration
 
-For Python data science workflows, MatterViz provides a [Dash](https://dash.plotly.com) extension that wraps all components as native Dash components with full callback support.
+For Python workflows, the [Dash](https://dash.plotly.com) extension wraps MatterViz components as native Dash components with callback support.
 
 | Resource        | Link                                                                                                   |
 | --------------- | ------------------------------------------------------------------------------------------------------ |

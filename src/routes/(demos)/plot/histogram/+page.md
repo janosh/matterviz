@@ -2,7 +2,7 @@
 
 ## Basic Histogram
 
-This example demonstrates bar styling options including `border_radius` for rounded corners and `stroke_color`/`stroke_width` for bar borders. The `marginals` prop adds a cumulative-distribution (CDF) strip on top — it accepts `histogram`, `kde`, `cdf`, or `rug` on any side and works on every 2D plot (see the [full reference](/plot/scatter-plot#marginal-distributions)):
+Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_width` for borders. The `marginals` prop adds a cumulative-distribution (CDF) strip on top. It accepts `histogram`, `kde`, `cdf`, or `rug` on any side and works on every 2D plot (see the [full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example
 <script lang="ts">
@@ -85,7 +85,7 @@ This example demonstrates bar styling options including `border_radius` for roun
 
 ## Dual Y-Axes for Different Sample Sizes
 
-When comparing distributions with vastly different sample sizes, use **dual y-axes** for independent scaling. This example shows test scores from two cohorts with 1000 vs 200 samples:
+When sample sizes differ a lot, use **dual y-axes** for independent scaling. Test scores from two cohorts (1000 vs 200 samples):
 
 ```svelte example
 <script lang="ts">
@@ -315,7 +315,7 @@ Y: {#each [`linear`, `log`] as scale (scale)}
 
 ## Arcsinh Scale: Handling Data with Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both positive and negative values with large dynamic range. Unlike log scale, arcsinh handles zero and negative values smoothly, transitioning from linear behavior near zero to logarithmic behavior for large absolute values.
+The **arcsinh scale** (`scale_type='arcsinh'`) covers positive and negative values with a large dynamic range. Unlike log, it handles zero and negatives: roughly linear near zero, logarithmic for large absolute values.
 
 ```svelte example
 <script lang="ts">
@@ -1255,7 +1255,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
 
 ## Dual X-Axes (X2)
 
-Plot two distributions with independent x-scales on the same histogram. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing the same physical quantity measured in different units — for example, mass in kilograms vs pounds.
+Plot two distributions with independent x-scales on the same histogram. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing the same physical quantity measured in different units (e.g. mass in kilograms vs pounds).
 
 ```svelte example
 <script lang="ts">

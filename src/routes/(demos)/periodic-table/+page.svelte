@@ -164,7 +164,7 @@
   <code>'element-category'</code> (default: category colors for a plain table, gray for a
   heatmap); <code>label</code> and <code>style</code> further decorate missing tiles (e.g.
   <code>style="opacity: 0.4"</code> to dim them). Note <code>0</code> is a real value mapped
-  through the color scale — only absent / <code>null</code> entries count as missing.
+  through the color scale. Only absent / <code>null</code> entries count as missing.
 </p>
 
 <PeriodicTable

@@ -10,13 +10,18 @@ vi.mock(`$lib/io/url-drop`, () => ({
   load_from_url: vi.fn(),
 }))
 
-const make_event = (files: File[] = []) =>
+// empty items means no directories, so files_from_data_transfer uses the flat list
+const make_event = (files: File[] = [], items: unknown[] = []) =>
   ({
     preventDefault: vi.fn(),
-    dataTransfer: { files, getData: vi.fn() },
+    dataTransfer: { files, items, getData: vi.fn() },
   }) as unknown as DragEvent
+// a local drop also carries the File itself, for size and webkitRelativePath; a URL drop
+// has no File to carry
 const source_meta = (source_filename: string, source_url?: string) =>
-  source_url ? { source_filename, source_url } : { source_filename }
+  source_url
+    ? { source_filename, source_url }
+    : { source_filename, file: expect.any(File) as File }
 
 describe(`create_file_drop_handler`, () => {
   let on_drop: FileDropOptions[`on_drop`]
@@ -31,8 +36,12 @@ describe(`create_file_drop_handler`, () => {
     vi.mocked(dropped_file_url).mockReturnValue(undefined)
   })
 
-  const run = async (opts: Partial<FileDropOptions> = {}, files: File[] = []) => {
-    const event = make_event(files)
+  const run = async (
+    opts: Partial<FileDropOptions> = {},
+    files: File[] = [],
+    items: unknown[] = [],
+  ) => {
+    const event = make_event(files, items)
     const defaults: FileDropOptions = {
       allow: () => true,
       on_drop,
@@ -93,6 +102,25 @@ describe(`create_file_drop_handler`, () => {
     await run({}, [file])
     expect(decompress_file).toHaveBeenCalledWith(file)
     expect(on_drop).toHaveBeenCalledWith(`data`, `f.cif`, source_meta(`f.cif.gz`))
+  })
+
+  // DataTransfer.files reports a dropped folder as one zero-byte File named after it, so
+  // the handler goes through the entry API instead. Expansion itself is svelte-widgets'
+  // to test; this only pins that we route through it.
+  test(`expands a dropped folder rather than loading the folder itself`, async () => {
+    const inner = new File([`a`], `a.cif`)
+    vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: inner.name })
+    // splice drains it, which is how readEntries signals the end: an empty second batch
+    const batch = [{ isFile: true, file: (ok: (arg: File) => void) => ok(inner) }]
+    const entry = {
+      isDirectory: true,
+      createReader: () => ({
+        readEntries: (resolve: (arg: unknown[]) => void) => resolve(batch.splice(0)),
+      }),
+    }
+    await run({}, [new File([], `structures`)], [{ webkitGetAsEntry: () => entry }])
+
+    expect(on_drop).toHaveBeenCalledWith(`data`, `a.cif`, source_meta(`a.cif`))
   })
 
   test(`does nothing when no files and no URL error`, async () => {
@@ -237,6 +265,10 @@ describe(`create_file_drop_handler`, () => {
   })
 })
 
+// DataTransfer.files stops at the top level: drop a directory and it reports one
+// zero-byte File named after the directory, which used to surface as "file is empty".
+// The entry API is the only way inside, so these go through the real expansion rather
+// than a mock of it.
 describe(`drag_over_handlers`, () => {
   test.each([
     { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },

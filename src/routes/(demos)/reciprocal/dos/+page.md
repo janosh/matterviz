@@ -29,7 +29,7 @@ Electronic DOS from pymatgen `CompleteDos` objects render directly. Spin-polariz
 <Dos doses={shift_to_fermi(dos_spin_polarization)} />
 ```
 
-The built-in toolbar (hover to reveal) lets you toggle between spin modes:
+The toolbar appears on hover and toggles spin modes:
 
 - **↕ Mirror**: Spin-up above, spin-down below zero
 - **≡ Overlay**: Both spins on positive axis

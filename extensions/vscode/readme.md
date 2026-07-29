@@ -2,7 +2,7 @@
 
 [matterviz vscode extension]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 
-**MatterViz** offers a VSCode extension for rendering crystal structures and molecular dynamics (MD) or geometry optimization trajectories directly in the editor to speed up typical materials science/computational chemistry workflows.
+**MatterViz** is a VSCode extension that renders crystal structures and MD / geometry-optimization trajectories in the editor.
 
 ## ✨ Features
 
@@ -10,7 +10,7 @@
 
 - **Crystal Structures**: Visualize CIF, POSCAR, VASP, and other crystallographic formats
 - **Molecular Systems**: Display XYZ, JSON, and YAML molecular structures
-- **Interactive 3D Viewer**: Rotate, zoom, and explore structures with intuitive controls
+- **Interactive 3D Viewer**: Rotate, zoom, and explore structures
 - **Atomic Properties**: View element information, bonding, and structural details
 
 ### 🎬 **Trajectory Analysis**
@@ -173,7 +173,7 @@ If you encounter any issues with MatterViz, you can use the built-in bug reporti
    - Your OS and version
    - VSCode/Cursor version
    - MatterViz version
-   - Whether you're in a remote session
+   - Remote vs local session
    - Files currently being rendered
    - System resources and memory usage
    - Extension configuration

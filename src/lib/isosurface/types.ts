@@ -34,7 +34,7 @@ export interface VolumetricData {
   source_filename?: string
 }
 
-/** Reset an out-of-range active volume index while preserving valid or empty states. */
+// Reset an out-of-range active volume index while preserving valid or empty states.
 export const normalize_active_volume_idx = (
   active_volume_idx: number,
   volume_count: number,

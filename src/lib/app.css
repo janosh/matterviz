@@ -37,6 +37,7 @@
   --z-index-viewer-label: 1;
   --z-index-viewer-chip: 2;
   --z-index-viewer-pane: 10;
+  --pane-z-index: var(--z-index-viewer-pane);
   --z-index-viewer-dropdown: 100;
   --z-index-viewer-tooltip: 1000;
 
@@ -46,6 +47,121 @@
   --z-index-overlay-nav: 100000001;
   --z-index-overlay-dialog: 100000002;
   --z-index-overlay-options: 100000003;
+}
+
+/* === Draggable pane chrome ===
+   DraggablePane comes from svelte-widgets, so these rules cannot live in a
+   matterviz component's scoped <style>. Deliberately unlayered: they used to be
+   Svelte component styles, which are unlayered too, and putting them in
+   @layer matterviz-components would let any unlayered host rule beat them. */
+.draggable-pane {
+  /* own compositing layer, or WKWebView paints the canvas over this */
+  will-change: transform;
+}
+.hover-visible:has(.draggable-pane.pane-open) {
+  opacity: 1;
+  pointer-events: auto;
+}
+body.fullscreen .draggable-pane {
+  position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
+  top: 3.3em !important;
+  right: 1em !important;
+  left: auto !important;
+}
+.draggable-pane h4 {
+  margin: var(--pane-h4-margin, 2pt 0);
+  font-size: var(--pane-h4-font-size, 0.95em);
+}
+.draggable-pane hr {
+  border: none;
+  background: var(--pane-hr-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
+  margin: var(--pane-hr-margin, 4pt 0);
+  height: 1px;
+}
+.draggable-pane section > div {
+  text-align: right; /* right align long line-breaking trajectory file names */
+}
+.draggable-pane :where(label) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pane-label-gap, 2pt);
+}
+.draggable-pane :where(input[type='text']) {
+  flex: 1;
+  padding: var(--pane-input-padding, 4px 6px);
+  margin: var(--pane-input-margin, 0 0 0 5pt);
+}
+.draggable-pane input[type='text'].invalid {
+  border-color: var(--error-color, #ff6b6b);
+  background: rgba(255, 107, 107, 0.1);
+}
+.draggable-pane input[type='text'].invalid:focus {
+  outline-color: var(--error-color, #ff6b6b);
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+}
+.draggable-pane input[type='range'] {
+  margin-left: 4pt;
+  width: 100px;
+  flex-shrink: 0;
+  flex: 1;
+  min-width: 60px;
+}
+.draggable-pane input[type='color'] {
+  width: 2.5em;
+  height: 1.3em;
+  margin: 0 5pt;
+}
+.draggable-pane input[type='number'] {
+  box-sizing: border-box;
+  text-align: center;
+  width: 3.5em;
+  margin: 0 3pt;
+  flex-shrink: 0;
+}
+.draggable-pane input::-webkit-inner-spin-button {
+  display: none;
+}
+.draggable-pane :where(button) {
+  background-color: var(
+    --pane-btn-bg,
+    var(--btn-bg, light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.1)))
+  );
+}
+.draggable-pane .pane-content :where(button) {
+  font-size: 1em;
+  padding: var(--pane-btn-padding, 3px 6px);
+}
+.draggable-pane :where(button:hover) {
+  background-color: var(
+    --pane-btn-bg-hover,
+    var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.2)))
+  );
+}
+.draggable-pane select {
+  margin: 0 0 0 5pt;
+  flex: 1;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 0.8em;
+}
+.draggable-pane .pane-row {
+  display: flex;
+  gap: 8pt;
+  align-items: center;
+}
+.draggable-pane .pane-grid {
+  display: grid;
+  gap: 8pt;
+  align-items: center;
+}
+.draggable-pane .control-group {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+}
+/* Labels containing range inputs should fill available width */
+.draggable-pane label:has(input[type='range']) {
+  flex: 1;
 }
 
 /* App-shell styles: page layout, typography, headings, navigation.
@@ -115,7 +231,7 @@
   body main > :where(h1, h2, h3, h4, h5, h6) {
     text-align: center;
   }
-  /* style heading anchors added by heading_anchors attachment from svelte-multiselect */
+  /* style heading anchors added by heading_anchors attachment from svelte-widgets */
   :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
     transition: 0.3s;
     margin-left: 4pt;

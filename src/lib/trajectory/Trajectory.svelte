@@ -4,15 +4,15 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import * as io from '$lib/io'
-  import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
+  import { handle_and_prevent } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
-  import { sync_fullscreen } from '$lib/layout/fullscreen.svelte'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
@@ -23,7 +23,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onMount, untrack } from 'svelte'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import { full_data_extractor } from './extract'
@@ -1101,12 +1101,10 @@
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
-    bg_css_var: `--traj-bg-fullscreen`,
+    get_bg_css_var: () => `--traj-bg-fullscreen`,
     on_change: (val) => on_fullscreen_change?.({ trajectory, fullscreen: val }),
   })
 </script>
-
-<svelte:window onkeydown={forward_window_keydown(() => hovered, onkeydown)} />
 
 <div
   class:dragover
@@ -1123,8 +1121,8 @@
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
-  onmouseenter={() => (hovered = true)}
-  onmouseleave={() => (hovered = false)}
+  onpointerenter={() => (hovered = true)}
+  onpointerleave={() => (hovered = false)}
   ondrop={handle_file_drop}
   {...io.drag_over_handlers({
     allow: () => allow_file_drop,
@@ -1137,6 +1135,7 @@
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
     show_plot &&
     show_structure}
+  {@attach forward_window_keydown({ handle: onkeydown })}
 >
   {#if loading}
     {@const text = parsing_progress
@@ -1373,10 +1372,10 @@
             <!-- Fullscreen button - rightmost position -->
             {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
               <FullscreenButton
-                {fullscreen}
-                toggle={fullscreen_toggle}
-                {wrapper}
-                aria-label="{fullscreen ? `Exit` : `Enter`} fullscreen"
+                bind:fullscreen
+                children={typeof fullscreen_toggle === `function`
+                  ? fullscreen_toggle
+                  : undefined}
                 class="fullscreen-button"
               />
             {/if}

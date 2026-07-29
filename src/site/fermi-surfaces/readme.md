@@ -21,12 +21,12 @@ This directory contains example Fermi surface data files for testing and demonst
 
 ## Edge Cases
 
-- **Large grids**: `cu_fs` (31³), `mgb2_vfz` (57k points) — performance
-- **Non-cubic**: `mgb2_vfz` (40×40×36) — anisotropic handling
-- **Multi-band**: `ni_fs` (4 bands) — band selector UI
-- **Spin-polarized**: `ni_fsup`/`ni_fsdw` — spin channel handling
-- **Color data**: `pb_vf3D`, `mgb2_vfz`, `srvo3_orb` — property visualization
-- **Pre-meshed**: `fs_BaFe2As2_*` — IFermi JSON parsing
+- **Large grids** (performance): `cu_fs` (31³), `mgb2_vfz` (57k points)
+- **Non-cubic** (anisotropic handling): `mgb2_vfz` (40×40×36)
+- **Multi-band** (band selector UI): `ni_fs` (4 bands)
+- **Spin-polarized** (spin channels): `ni_fsup`/`ni_fsdw`
+- **Color data** (property visualization): `pb_vf3D`, `mgb2_vfz`, `srvo3_orb`
+- **Pre-meshed** (IFermi JSON): `fs_BaFe2As2_*`
 
 ## Adding Files
 

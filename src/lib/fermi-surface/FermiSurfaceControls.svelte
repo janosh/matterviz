@@ -1,6 +1,6 @@
 <script lang="ts">
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
   import type { Snippet } from 'svelte'
@@ -131,10 +131,10 @@
 
 <DraggablePane
   bind:show={controls_open}
-  open_icon="Cross"
-  closed_icon="Settings"
   pane_props={{ class: `fermi-controls` }}
   toggle_props={{ class: `controls-toggle`, title: `Fermi surface controls` }}
+  open_icon="Cross"
+  closed_icon="Settings"
 >
   <SettingsSection
     title="Chemical Potential"

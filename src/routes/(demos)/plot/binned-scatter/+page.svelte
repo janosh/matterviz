@@ -287,7 +287,7 @@
       <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
       <li>
         The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
-        data and the colorbar — zoom around and watch it relocate.
+        data and the colorbar. Zoom around and watch it relocate.
       </li>
     </ul>
   </section>

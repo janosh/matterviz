@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AnyStructure } from '$lib/structure'
   import { get_electro_neg_formula } from '$lib/composition'
-  import Icon from '$lib/Icon.svelte'
+  import { Icon } from 'svelte-widgets'
   import { format_num } from '$lib/labels'
   import { DragControlTab, GlassChip } from '$lib/overlays'
   import { sanitize_formula } from '$lib/sanitize'
@@ -9,7 +9,7 @@
   import type { StructurePopupContext, StructurePopupStats } from './types'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { click_outside, draggable } from 'svelte-multiselect/attachments'
+  import { click_outside, draggable } from 'svelte-widgets/attachments'
 
   let {
     structure,
@@ -52,8 +52,14 @@
 
 <svelte:window onkeydown={(event) => event.key === `Escape` && onclose?.()} />
 
+<!-- dismiss_on release, not the default press: this floats over a pannable convex-hull
+plot, so starting a pan behind it must not make it vanish under the cursor -->
 <div
-  {@attach click_outside({ enabled: close_on_outside, callback: () => onclose?.() })}
+  {@attach click_outside({
+    enabled: close_on_outside,
+    dismiss_on: `release`,
+    callback: () => onclose?.(),
+  })}
   {@attach draggable({
     handle_selector: `.drag-handle`,
   })}

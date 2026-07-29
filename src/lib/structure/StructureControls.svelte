@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
@@ -14,7 +14,6 @@
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import type { ZoneAxisMode } from '$lib/scene'
   import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
   import type { VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
@@ -35,8 +34,8 @@
   import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
-  import Select from 'svelte-multiselect'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import Select from 'svelte-widgets'
+  import { tooltip } from 'svelte-widgets/attachments'
 
   let {
     controls_open = $bindable(false),
@@ -386,7 +385,7 @@
 
 <DraggablePane
   bind:show={controls_open}
-  resizable="both"
+  resize="both"
   pane_props={{
     ...pane_props,
     class: `controls-pane ${pane_props?.class ?? ``}`,
@@ -397,6 +396,8 @@
     ...toggle_props,
     class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
+  open_icon="Cross"
+  closed_icon="Settings"
   {...rest}
 >
   {#if volumetric_data?.length}

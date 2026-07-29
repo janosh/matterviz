@@ -24,7 +24,7 @@ const get_slice_lut = (colormap: D3InterpolateName): Uint8ClampedArray => {
   return lut
 }
 
-/** Resolve an explicit or automatic slice color range. */
+// Resolve an explicit or automatic slice color range.
 export function resolve_slice_color_range(
   slice: Pick<SliceResult, `min` | `max`>,
   color_range?: Vec2,
@@ -38,7 +38,7 @@ export function resolve_slice_color_range(
   return [slice.min, slice.max]
 }
 
-/** Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask. */
+// Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask.
 export function slice_to_rgba(
   slice: Pick<SliceResult, `data` | `mask` | `width` | `height`>,
   colormap: D3InterpolateName,
@@ -78,7 +78,7 @@ export function slice_to_rgba(
   return pixels
 }
 
-/** Resolve a contour count or explicit threshold list against a color range. */
+// Resolve a contour count or explicit threshold list against a color range.
 export function resolve_contour_thresholds(
   color_range: Vec2,
   contour_levels: number | number[],

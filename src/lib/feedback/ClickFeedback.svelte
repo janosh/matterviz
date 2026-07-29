@@ -1,6 +1,5 @@
 <script lang="ts">
-  import Icon from '$lib/Icon.svelte'
-  import type { IconName } from '$lib/icons'
+  import { Icon, type IconName } from 'svelte-widgets'
 
   // Generic feedback component that shows a transient icon at a specific position.
   // Commonly used for copy-to-clipboard feedback, but can display icons for

@@ -1,43 +1,23 @@
 import type { ComponentProps } from 'svelte'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/clipboard'
 import type DraggablePane from './DraggablePane.svelte'
 
-export { default as ContextMenu } from './ContextMenu.svelte'
+export { ContextMenu } from 'svelte-widgets'
 export { default as DraggablePane } from './DraggablePane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as GlassChip } from './GlassChip.svelte'
-export * from './portal'
+export { portal } from 'svelte-widgets/attachments'
 
 // Attribute types of DraggablePane's toggle button / pane div, for components forwarding
 // toggle_props/pane_props
 export type PaneToggleProps = ComponentProps<typeof DraggablePane>[`toggle_props`]
 export type PaneProps = ComponentProps<typeof DraggablePane>[`pane_props`]
 
-// Reactive clipboard-copy feedback shared by info panes. `copy(text, key)` writes
-// `text` to the clipboard and flags `key` as recently-copied in the returned reactive
-// `copied` set for `duration` ms, so UIs can show a transient "copied" checkmark.
-export function create_clipboard_feedback(duration = 1000): {
-  copied: SvelteSet<string>
-  copy: (text: string, key: string) => Promise<void>
-} {
-  const copied = new SvelteSet<string>()
-  const timers = new SvelteMap<string, ReturnType<typeof setTimeout>>()
-  const copy = async (text: string, key: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(text)
-      copied.add(key)
-      // reset any in-flight timer so a re-copy gets the full feedback duration
-      clearTimeout(timers.get(key))
-      timers.set(
-        key,
-        setTimeout(() => {
-          copied.delete(key)
-          timers.delete(key)
-        }, duration),
-      )
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
-  return { copied, copy }
-}
+// Reactive clipboard-copy feedback shared by info panes. `copy(text, key)` writes `text` and
+// flags `key` as recently-copied in the reactive `copied` set, so UIs can show a transient
+// checkmark. The library helper rejects a failed write; every caller here is a button sitting
+// in a pane that must survive a denied clipboard, so default to logging instead.
+export const create_clipboard_feedback = (
+  duration = 1000,
+  on_error = (error: unknown) => console.error(`Failed to copy to clipboard:`, error),
+) => widget_clipboard_feedback(duration, on_error)

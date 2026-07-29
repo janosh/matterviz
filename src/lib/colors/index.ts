@@ -152,12 +152,11 @@ export function pick_contrast_color(options: ContrastOptions = {}) {
   return light_bg ? choices[0] : choices[1] // dark text for light backgrounds, light for dark
 }
 
-// Svelte attachment that automatically picks dark or light text color to maximize contrast with node's background color
-export const contrast_color =
-  (options: ContrastOptions = {}) =>
-  (node: HTMLElement) => {
-    node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
-  }
+// Attachment that picks dark or light text to maximize contrast with the node's
+// background. Ours only differs in reading `getComputedStyle` output, which is always
+// `rgb()`, so the library's regex parser covers it — `pick_contrast_color` below keeps
+// d3's full parser because color-scale output reaches it as hex/named/hsl too.
+export { contrast_color } from 'svelte-widgets/attachments'
 
 const is_valid_bg = (bg: string): boolean => bg !== `` && bg !== NO_BG && bg !== `transparent`
 

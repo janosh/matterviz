@@ -4,7 +4,7 @@
 
 ## Basic Usage
 
-Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switch orientation, whisker mode, and toggle outliers/mean. Opt into `marginals` to pair each box with the full distribution shape on the value axis (a per-series KDE here) — the same `marginals` API shared across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)):
+Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switch orientation, whisker mode, and toggle outliers/mean. Opt into `marginals` to pair each box with the full distribution shape on the value axis (a per-series KDE here). The same `marginals` API works across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)):
 
 ```svelte example
 <script lang="ts">
@@ -128,7 +128,7 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 
 ## Precomputed Quantiles (5-percentile bridge)
 
-`BoxPlot` always computes quantiles from raw data, but you rarely need to ship a full distribution to the browser. Because the quantile interpolation is type-7 (linear), passing exactly five values `[p05, p25, p50, p75, p95]` as the `y` array with `whisker_mode: 'minmax'` reproduces a box whose whiskers sit at the 5th/95th percentiles and whose quartiles/median land exactly on the supplied values — the same trick Plotly box plots use, with a tiny payload.
+`BoxPlot` always computes quantiles from raw data, but you rarely need to ship a full distribution to the browser. Because the quantile interpolation is type-7 (linear), passing exactly five values `[p05, p25, p50, p75, p95]` as the `y` array with `whisker_mode: 'minmax'` reproduces a box whose whiskers sit at the 5th/95th percentiles and whose quartiles/median land exactly on the supplied values (the same trick Plotly box plots use, with a tiny payload).
 
 ```svelte example
 <script lang="ts">
@@ -157,7 +157,7 @@ Set `show_value_labels` to print the median (or mean, via `value_label_stat`) ab
 
 ## Horizontal Orientation
 
-Set `orientation="horizontal"` to lay boxes out along the value axis (categories on the y-axis). The `marginals` strip transposes with the plot — the per-series KDE flips from the right (vertical) to the top (horizontal) so it always summarizes the value axis:
+Set `orientation="horizontal"` to lay boxes out along the value axis (categories on the y-axis). The `marginals` strip transposes with the plot: the per-series KDE flips from the right (vertical) to the top (horizontal) so it always summarizes the value axis:
 
 ```svelte example
 <script lang="ts">
