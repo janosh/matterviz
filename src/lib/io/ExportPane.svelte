@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import {
+    create_clipboard_feedback,
+    DraggablePane,
+    type PaneProps,
+    type PaneToggleProps,
+  } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
   import { sanitize_html } from '$lib/sanitize'
-  import { onDestroy, type Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -35,23 +40,19 @@
     else png_dpi = Math.round(Math.min(max_dpi, Math.max(min_dpi, png_dpi)))
   }
 
-  // Copy-to-clipboard with temporary ✅ feedback; copy_text runs only on click
-  let copied_key = $state<string | null>(null)
-  let copied_timeout: ReturnType<typeof setTimeout> | undefined
-  async function handle_copy(item: ExportItem, key: string): Promise<void> {
+  // Copy-to-clipboard with temporary ✅ feedback. Clicks don't overlap, so one label
+  // is enough to name the failing item in the shared handler's error report.
+  let copying_label = ``
+  const { copied, copy } = create_clipboard_feedback(1000, (error) => {
+    console.error(`Failed to copy ${copying_label} to clipboard`, error)
+  })
+  const handle_copy = (item: ExportItem, key: string) => {
     if (item.disabled) return
     const text = item.copy_text?.()
     if (!text) return
-    try {
-      await navigator.clipboard.writeText(text)
-      copied_key = key
-      clearTimeout(copied_timeout)
-      copied_timeout = setTimeout(() => (copied_key = null), 1000)
-    } catch (error) {
-      console.error(`Failed to copy ${item.label} to clipboard`, error)
-    }
+    copying_label = item.label
+    void copy(text, key)
   }
-  onDestroy(() => clearTimeout(copied_timeout))
 </script>
 
 <DraggablePane
@@ -107,7 +108,7 @@
               aria-label="Copy {item.label} to clipboard"
               title="Copy {item.label} to clipboard"
             >
-              {copied_key === copy_key ? `✅` : `📋`}
+              {copied.has(copy_key) ? `✅` : `📋`}
             </button>
           {/if}
           {#if item.show_dpi}
