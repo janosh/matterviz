@@ -17,9 +17,9 @@ function default_download(data: DownloadData, filename: string, type: string) {
   link.style.display = `none`
   link.href = url
   link.download = filename
-  // keep the synthetic download click from bubbling to document-level handlers
-  // (e.g. DraggablePane's click-outside) that would dismiss an open pane the export
-  // button lives in
+  // keep the synthetic download click from bubbling to document-level handlers that would
+  // dismiss an open pane the export button lives in. Only stops bubble-phase listeners —
+  // click-outside runs on capture, so DraggablePane ignores detail-0 clicks instead.
   link.addEventListener(`click`, (evt) => evt.stopPropagation())
   try {
     document.body.append(link)

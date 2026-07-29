@@ -359,7 +359,7 @@
   {/each}
 </section>
 
-<h3 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h3>
+<h2 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h2>
 <FilePicker
   files={volumetric_files}
   active_files={[

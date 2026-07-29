@@ -214,14 +214,15 @@ describe(`StructureControls reactive props`, () => {
     await tick()
     expect(state.controls_open).toBe(true)
 
-    // a press inside can end with no click at all (released off-screen, OS-claimed drag).
-    // That verdict must not then swallow a keyboard Enter, which reports detail 0.
+    // a download fires a synthetic click on an anchor appended to <body>: outside the pane,
+    // detail 0. It reaches the capture-phase listener before the anchor's own
+    // stopPropagation, so only a real pointer click may dismiss.
     state.controls_open = true
     await tick()
-    press(pane)
+    press(outside) // clear the inside verdict, so only the detail check can save the pane
     fire(outside, `click`, 0)
     await tick()
-    expect(state.controls_open).toBe(false)
+    expect(state.controls_open).toBe(true)
   })
 
   // The corner grip is the only visible affordance for undoing a manual resize, so it has

@@ -43,12 +43,12 @@
       inside: [toggle_btn],
       dismiss_on: `release`,
       callback: ({ event }) => {
-        // detail is 0 for keyboard and programmatic clicks, which carry no pointerdown of
-        // their own and would otherwise inherit the verdict from an unrelated press
-        const started_inside =
-          press_started_inside && event instanceof MouseEvent && event.detail > 0
-        press_started_inside = false
-        if (started_inside) return
+        // Only a real pointer click dismisses. The synthetic click that fires a download
+        // (detail 0, anchor appended to <body>) reaches this capture-phase listener before
+        // the anchor's own stopPropagation can stop it, and would close the very pane the
+        // export button sits in. Escape still closes for keyboard users.
+        const from_pointer = event instanceof MouseEvent && event.detail > 0
+        if (press_started_inside || !from_pointer) return
         show = false
         on_close?.({ via: `pointer` })
       },
