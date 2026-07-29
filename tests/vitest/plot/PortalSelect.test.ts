@@ -122,4 +122,25 @@ describe(`PortalSelect`, () => {
     expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull()
     void unmount(comp)
   })
+
+  // Escape lives on click_outside({ escape: true }), not handle_keydown — keep a pin so a
+  // future trim of that option cannot silently drop keyboard dismiss
+  test(`Escape closes the dropdown and returns focus to the trigger`, async () => {
+    const comp = mount(PortalSelect, {
+      target: document.body,
+      props: { options, selected_key: `energy` },
+    })
+    await tick()
+    const trigger = get_trigger()
+    trigger?.focus()
+    trigger?.click()
+    await tick()
+    expect(document.body.querySelector(`.portal-select-dropdown`)).not.toBeNull()
+
+    document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    await tick()
+    expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+    void unmount(comp)
+  })
 })

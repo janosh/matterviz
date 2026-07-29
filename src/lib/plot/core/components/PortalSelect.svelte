@@ -59,8 +59,8 @@
     close_dropdown()
   }
 
-  // Arrow/Enter navigation stays on window: the selected option is focused on open, but
-  // with no selection focus remains on the trigger, which is outside the portalled list
+  // Arrow/Enter stay on window (focus may be on the trigger, outside the portalled list).
+  // Escape is handled by click_outside({ escape: true }) below — not duplicated here.
   function handle_keydown(evt: KeyboardEvent) {
     if (!dropdown_el) return
     const buttons = [...dropdown_el.querySelectorAll(`button`)]
