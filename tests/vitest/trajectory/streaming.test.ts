@@ -138,6 +138,10 @@ describe(`Trajectory Streaming`, () => {
       await settle_frame_load()
     }
     await tick()
+    // Site cards are the probe for which frame is displayed, and the info pane only
+    // renders them while open, so open it before asserting on them.
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
 
     document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
     flushSync()
