@@ -19,6 +19,26 @@ test.describe(`BarPlot Component Tests`, () => {
     // Axes render with some ticks
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
+
+    const bounds = await plot.locator(`svg[role="application"]`).evaluate((svg) => {
+      const clip_rect = svg.querySelector<SVGRectElement>(`clipPath rect`)
+      const bar_paths = svg.querySelectorAll<SVGGraphicsElement>(`path[aria-label^="bar "]`)
+      const first_bar = bar_paths.item(0)
+      const last_bar = bar_paths.item(bar_paths.length - 1)
+      if (!clip_rect || !first_bar || !last_bar)
+        throw new Error(`Missing bar or clip geometry`)
+      const first_box = first_bar.getBBox()
+      const last_box = last_bar.getBBox()
+      const clip_x = clip_rect.x.baseVal.value
+      return {
+        clip_x,
+        clip_right: clip_x + clip_rect.width.baseVal.value,
+        first_x: first_box.x,
+        last_right: last_box.x + last_box.width,
+      }
+    })
+    expect(bounds.first_x).toBeGreaterThanOrEqual(bounds.clip_x - 0.001)
+    expect(bounds.last_right).toBeLessThanOrEqual(bounds.clip_right + 0.001)
   })
 
   test(`legend renders for multiple series and toggles visibility`, async ({ page }) => {
@@ -119,12 +139,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const bar = plot.locator(`svg path[aria-label^="bar "]`).first()
     await expect(bar).toBeVisible()
 
-    const box = await bar.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    // Bar hover is driven by `onmousemove`, so explicitly move the mouse.
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await bar.hover()
 
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 5000 })

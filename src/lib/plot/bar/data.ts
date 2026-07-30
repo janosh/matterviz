@@ -177,7 +177,41 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   ): Vec2 => {
     const points = series_list.flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
     if (points.length === 0) return [0, 1]
-    return get_nice_data_range(points, (pt) => pt.x, limit, scale_type, range_padding, is_time)
+    const range = get_nice_data_range(
+      points,
+      (point) => point.x,
+      limit,
+      scale_type,
+      range_padding,
+      is_time,
+    )
+    let min_bar_edge = Number.POSITIVE_INFINITY
+    let max_bar_edge = Number.NEGATIVE_INFINITY
+    const is_log = get_scale_type_name(scale_type) === `log`
+
+    // Numeric category ranges are based on bar centers, so include each bar's
+    // outer edges to keep the first and last bars inside the chart clip.
+    for (const series of series_list) {
+      if (series.render_mode === `line`) continue
+      series.x.forEach((x_val, bar_idx) => {
+        const bar_width = Array.isArray(series.bar_width)
+          ? (series.bar_width[bar_idx] ?? 0.5)
+          : (series.bar_width ?? 0.5)
+        const half_width = Math.abs(bar_width) / 2
+        const left_edge = x_val - half_width
+        const right_edge = x_val + half_width
+        if (Number.isFinite(left_edge) && (!is_log || left_edge > 0)) {
+          min_bar_edge = Math.min(min_bar_edge, left_edge)
+        }
+        if (Number.isFinite(right_edge) && (!is_log || right_edge > 0)) {
+          max_bar_edge = Math.max(max_bar_edge, right_edge)
+        }
+      })
+    }
+    return [
+      limit[0] === null ? Math.min(range[0], min_bar_edge) : range[0],
+      limit[1] === null ? Math.max(range[1], max_bar_edge) : range[1],
+    ]
   }
 
   // Categorical x axes use a fixed range centered on integer indices
