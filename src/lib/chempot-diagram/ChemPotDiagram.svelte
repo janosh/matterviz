@@ -174,7 +174,7 @@
     {:else}
       <div class="projection-grid">
         {#each ternary_combos as combo (combo.join(`|`))}
-          <div class="projection-cell">
+          <div style="min-width: 0">
             <h4 class="projection-label">{combo.join(`-`)} projection</h4>
             <ChemPotDiagram3D
               {entries}
@@ -258,9 +258,6 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 0.4em;
-  }
-  .projection-cell {
-    min-width: 0;
   }
   .projection-label {
     margin: 0 0 0.3em;

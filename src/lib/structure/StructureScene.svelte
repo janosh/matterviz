@@ -2291,8 +2291,8 @@
               </span>
             {/each}
           </div>
-          <div class="coordinates fractional">abc: ({abc})</div>
-          <div class="coordinates cartesian">xyz: ({xyz}) Å</div>
+          <div class="coordinates">abc: ({abc})</div>
+          <div class="coordinates">xyz: ({xyz}) Å</div>
           {#if bond_neighbors.length > 0}
             <div class="coordinates">Bonds: {bond_neighbors.length}{bond_summary}</div>
           {/if}

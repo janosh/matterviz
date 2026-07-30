@@ -75,7 +75,7 @@ plot, so starting a pan behind it must not make it vanish under the cursor -->
   {/if}
   <div class="structure-popup-content">
     {#if top_left || stats}
-      <GlassChip class="structure-stats">
+      <GlassChip>
         {#if top_left}
           {@render top_left(context)}
         {:else if stats}

@@ -359,7 +359,9 @@
   {/each}
 </section>
 
-<h2 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h2>
+<h2 style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85">
+  Mix your own (same-cell files append as extra volumes)
+</h2>
 <FilePicker
   files={volumetric_files}
   active_files={[
@@ -504,11 +506,6 @@
     font-size: 0.72em;
     opacity: 0.75;
     line-height: 1.35;
-  }
-  .picker-heading {
-    margin: 0.5em 0 0.3em;
-    font-size: 0.9rem;
-    opacity: 0.85;
   }
   .scenario-label {
     position: absolute;

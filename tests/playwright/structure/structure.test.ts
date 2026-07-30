@@ -562,6 +562,8 @@ test.describe(`Structure Component Tests`, () => {
     const handles = await sweep_gizmo_handles(canvas)
     expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
+    const read_camera_position = () =>
+      page.evaluate(() => (globalThis as Record<string, unknown>).camera_position)
     let camera_position: unknown
     for (const candidate of candidates) {
       if (!candidate) continue
@@ -573,14 +575,9 @@ test.describe(`Structure Component Tests`, () => {
       await page.mouse.click(candidate.x, candidate.y)
       try {
         await expect
-          .poll(
-            () => page.evaluate(() => (globalThis as Record<string, unknown>).camera_position),
-            { timeout: 1500 },
-          )
+          .poll(read_camera_position, { timeout: 1500 })
           .toEqual([expect.any(Number), expect.any(Number), expect.any(Number)])
-        camera_position = await page.evaluate(
-          () => (globalThis as Record<string, unknown>).camera_position,
-        )
+        camera_position = await read_camera_position()
         break
       } catch {
         // A sweep can include edge pixels that only hover a handle; try its center candidate.

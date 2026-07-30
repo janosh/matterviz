@@ -4,6 +4,9 @@ import type { AxisConfig } from '$lib/plot/core/types'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
+export const sides_equal = (left: Required<Sides>, right: Required<Sides>): boolean =>
+  left.t === right.t && left.b === right.b && left.l === right.l && left.r === right.r
+
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20
 // Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)

@@ -29,7 +29,7 @@
     />
 
     {#if hover_data.property_value != null}
-      <div class="property-row">
+      <div style="margin-top: 4px; font-size: 0.9em">
         {hover_data.property_name || `Property`}: {format_num(
           hover_data.property_value,
           `.4~`,
@@ -69,10 +69,6 @@
   .spin-badge.spin-down {
     background: #377eb8;
     color: white;
-  }
-  .property-row {
-    margin-top: 4px;
-    font-size: 0.9em;
   }
   .nearest-note {
     opacity: 0.6;

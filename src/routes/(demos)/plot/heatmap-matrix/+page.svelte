@@ -237,7 +237,7 @@
   />
 </div>
 {#if dblclick_info}
-  <p class="dblclick-info">Last double-click: {dblclick_info}</p>
+  <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
 {/if}
 
 <!-- Demo 3: Arbitrary non-element axes -->
@@ -297,9 +297,5 @@
     overflow-y: hidden;
     max-width: 100%;
     margin: 1em 0;
-  }
-  .dblclick-info {
-    margin-top: 0.5em;
-    font-size: 0.9em;
   }
 </style>

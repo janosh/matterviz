@@ -431,7 +431,6 @@
       title="Layout"
       current_values={{ multi_view }}
       on_reset={() => (multi_view = false)}
-      class="layout-settings"
     >
       <label class:disabled={multi_view_blocked}>
         <input

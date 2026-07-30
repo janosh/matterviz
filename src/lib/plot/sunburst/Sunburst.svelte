@@ -635,7 +635,7 @@
     {#if show_breadcrumbs && breadcrumb_arcs.length > 0}
       <nav class="breadcrumbs" aria-label="zoom path">
         {#each breadcrumb_arcs as crumb, crumb_idx (crumb.node_idx)}
-          {#if crumb_idx > 0}<span class="breadcrumb-sep" aria-hidden="true">›</span>{/if}
+          {#if crumb_idx > 0}<span style="opacity: 0.6" aria-hidden="true">›</span>{/if}
           <button
             type="button"
             class="breadcrumb"
@@ -923,9 +923,6 @@
     cursor: default;
     font-weight: bold;
     background: transparent;
-  }
-  .breadcrumb-sep {
-    opacity: 0.6;
   }
   .sunburst :global(.pane-toggle),
   .sunburst .header-controls {

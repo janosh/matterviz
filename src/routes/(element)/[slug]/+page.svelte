@@ -153,7 +153,7 @@
   />
 </section>
 
-<p class="summary">{@html sanitize_html(element.summary)}</p>
+<p>{@html sanitize_html(element.summary)}</p>
 
 <section class="flex-wrap">
   <PeriodicTable

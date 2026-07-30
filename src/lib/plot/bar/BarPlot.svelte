@@ -83,6 +83,7 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
@@ -349,14 +350,7 @@
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
-    // Only update if padding actually changed (prevents infinite loop)
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()

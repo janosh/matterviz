@@ -112,14 +112,14 @@
 </p>
 
 <div class="symmetry-grid bleed-1400">
-  <div class="symmetry-info">
+  <div>
     {#if !wasm_ready}
       <div class="loading-placeholder">
         <div class="loading-spinner"></div>
         <p>Loading symmetry analysis...</p>
       </div>
     {:else if error}
-      <pre class="error" style="color: var(--error-color)">{error}</pre>
+      <pre style="color: var(--error-color)">{error}</pre>
     {:else if top_ex_sym_data}
       <SymmetryStats
         sym_data={top_ex_sym_data}

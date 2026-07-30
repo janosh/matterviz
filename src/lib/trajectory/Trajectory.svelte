@@ -1267,7 +1267,6 @@
           <!-- Frame rate control: shown for any multi-frame trajectory so speed can be set before play -->
           {#if total_frames > 1 && controls_config.visible(`fps`)}
             <label
-              class="fps-section"
               style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
             >
               FPS
@@ -1433,7 +1432,7 @@
                 scatter_props.legend?.on_toggle?.(series_idx)
               },
             }}
-            class={[`plot`, scatter_props.class]}
+            class={scatter_props.class}
           >
             {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
@@ -1458,7 +1457,7 @@
               histogram_props.on_series_toggle?.(series_idx)
             }}
             style="height: 100%"
-            class={[`plot`, histogram_props.class]}
+            class={histogram_props.class}
             --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({

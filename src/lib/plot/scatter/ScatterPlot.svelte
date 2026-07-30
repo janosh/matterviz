@@ -104,6 +104,7 @@
     calc_auto_padding,
     filter_padding,
     full_footprint_or,
+    sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
@@ -400,13 +401,7 @@
           })
         : filter_padding(padding, default_padding)
 
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   // === Auto-move legend/colorbar outside the plot when interior overlap is unavoidable ===

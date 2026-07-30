@@ -27,6 +27,7 @@
     full_footprint_or,
     measure_max_tick_width,
     point_in_rect,
+    sides_equal,
     y_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
@@ -326,14 +327,7 @@
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
     const current_pad = untrack(() => base_pad)
-    if (
-      current_pad.t !== new_pad.t ||
-      current_pad.b !== new_pad.b ||
-      current_pad.l !== new_pad.l ||
-      current_pad.r !== new_pad.r
-    ) {
-      base_pad = new_pad
-    }
+    if (!sides_equal(current_pad, new_pad)) base_pad = new_pad
   })
   let density_bins = $derived({
     x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),

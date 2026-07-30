@@ -20,7 +20,7 @@
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
   <div class="bz-tooltip-content">
     {#if hover_data.is_ibz || hover_data.bz_order > 1}
-      <div class="bz-tooltip-title">
+      <div style="margin-bottom: 4px">
         {#if hover_data.is_ibz}<strong>Irreducible BZ</strong>{/if}
         {#if hover_data.bz_order > 1}
           <span class="bz-tooltip-badge">{ordinal(hover_data.bz_order)}</span>
@@ -31,13 +31,13 @@
       cartesian={hover_data.position_cartesian}
       fractional={hover_data.position_fractional}
     />
-    <div class="bz-tooltip-row">
-      <span class="bz-tooltip-label">BZ Volume:</span>
+    <div style="display: flex; gap: 4px">
+      <span style="opacity: 0.8; min-width: 75px">BZ Volume:</span>
       <span>{format_num(hover_data.bz_volume, `.4~`)} Å⁻³</span>
     </div>
     {#if hover_data.is_ibz && hover_data.ibz_volume != null}
-      <div class="bz-tooltip-row">
-        <span class="bz-tooltip-label">IBZ Volume:</span>
+      <div style="display: flex; gap: 4px">
+        <span style="opacity: 0.8; min-width: 75px">IBZ Volume:</span>
         <span>{format_num(hover_data.ibz_volume, `.4~`)} Å⁻³</span>
       </div>
       {#if hover_data.symmetry_multiplicity != null}
@@ -53,9 +53,6 @@
   .bz-tooltip-content {
     max-width: var(--bz-tooltip-max-width, 250px);
   }
-  .bz-tooltip-title {
-    margin-bottom: 4px;
-  }
   .bz-tooltip-badge {
     font-size: 0.85em;
     padding: 1px 4px;
@@ -66,14 +63,6 @@
   }
   .bz-tooltip-badge:not(:first-child) {
     margin-left: 6px;
-  }
-  .bz-tooltip-row {
-    display: flex;
-    gap: 4px;
-  }
-  .bz-tooltip-label {
-    opacity: 0.8;
-    min-width: 75px;
   }
   .bz-tooltip-symmetry {
     margin-top: 2px;

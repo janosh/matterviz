@@ -454,7 +454,7 @@
 
   {#if show_sites_section}
     <hr />
-    <section class="sites-section">
+    <section>
       <div class="sites-header">
         <h4>Sites</h4>
         {#if sites_need_toggle}

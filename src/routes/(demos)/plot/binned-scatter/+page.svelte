@@ -274,7 +274,7 @@
   {/if}
 </BinnedScatterPlot>
 
-<section class="notes">
+<section>
   <h2>What to Try</h2>
   <ul>
     <li>Click a density bin or point to open the draggable <code>StructurePopup</code>.</li>

@@ -1942,7 +1942,7 @@
             action: () => void
           }[],
         )}
-          <div class="undo-redo-container">
+          <div style="display: flex">
             {#each buttons as { icon, title, stack, action } (icon)}
               <button
                 type="button"
@@ -2476,9 +2476,6 @@
   .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
-  }
-  .undo-redo-container {
-    display: flex;
   }
   .edit-mode-toolbar {
     position: absolute;

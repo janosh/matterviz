@@ -368,7 +368,7 @@
     />
   {/if}
   {#if show_filter && legend_filter && filtered_grouped_series.length === 0}
-    <span class="legend-empty">No legend items</span>
+    <span style="padding: var(--plot-legend-item-padding, 1px 8px 1px 3px); opacity: 0.7">No legend items</span>
   {/if}
   {#each filtered_grouped_series as { group_name, items, all_items } (group_name ?? `__ungrouped__`)}
     {#if group_name !== null && has_groups}
@@ -492,10 +492,6 @@
     background: color-mix(in srgb, var(--plot-legend-bg-color, Canvas) 88%, currentColor);
     color: inherit;
     font: inherit;
-  }
-  .legend-empty {
-    padding: var(--plot-legend-item-padding, 1px 8px 1px 3px);
-    opacity: 0.7;
   }
   .legend-item.indented {
     padding: var(--plot-legend-item-padding, 0 8px 1px 3px);

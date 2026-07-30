@@ -211,7 +211,7 @@
 {#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
   <input
     type="number"
-    class="range-input"
+    style="width: 4.5em"
     step="any"
     placeholder="auto"
     value={explicit_range ? Number(explicit_range[bound].toPrecision(4)) : ``}
@@ -470,7 +470,7 @@
     >
       <span>Isovalue:</span>
       <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
-      <span class="value">{format_num(settings.isovalue, `.3~g`)}</span>
+      <span>{format_num(settings.isovalue, `.3~g`)}</span>
     </label>
 
     <!-- Opacity + colors on one row -->
@@ -489,7 +489,7 @@
           bind:value={settings.opacity}
           style="width: 60px"
         />
-        <span class="value">{format_num(settings.opacity, `.2f`)}</span>
+        <span>{format_num(settings.opacity, `.2f`)}</span>
       </label>
       <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
         <span>+ Color</span>
@@ -723,9 +723,6 @@
       font: inherit;
       color: inherit;
     }
-  }
-  .range-input {
-    width: 4.5em;
   }
   .color-range {
     display: flex;
