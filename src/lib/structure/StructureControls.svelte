@@ -1117,8 +1117,9 @@
           type="text"
           bind:value={supercell_scaling}
           placeholder="1x1x1"
-          style:border={supercell_input_valid ? undefined : `1px dashed red`}
-          style:opacity={supercell_loading ? 0.5 : 1}
+          style="border: {supercell_input_valid
+            ? undefined
+            : `1px dashed red`}; opacity: {supercell_loading ? 0.5 : 1}"
           disabled={supercell_loading}
           inputmode="text"
           autocomplete="off"

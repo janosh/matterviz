@@ -535,8 +535,7 @@
       <aside
         bind:this={tooltip_el}
         class="tooltip"
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         <strong>
           {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}

@@ -87,8 +87,7 @@
       <circle
         r={shell_radius}
         {...shell_svg_props}
-        style:stroke-width={active ? 2 : 1}
-        style:stroke={active ? `yellow` : base_fill}
+        style="stroke-width: {active ? 2 : 1}; stroke: {active ? `yellow` : base_fill}"
       />
 
       <!-- electrons -->

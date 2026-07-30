@@ -585,9 +585,9 @@
       onkeydown={handle_svg_keydown}
       ondblclick={handle_double_click}
       tabindex="0"
-      style:display="block"
-      style:cursor={effective_hover_info ? `crosshair` : `default`}
-      style:touch-action="none"
+      style="display: block; cursor: {effective_hover_info
+        ? `crosshair`
+        : `default`}; touch-action: none"
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
     >
@@ -869,8 +869,7 @@
         bind:this={tooltip_el}
         class="tooltip-container"
         class:locked={locked_hover_info}
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
@@ -898,8 +897,7 @@
     {#if copy_feedback_visible}
       <div
         class="copy-feedback"
-        style:left="{copy_feedback_pos.x}px"
-        style:top="{copy_feedback_pos.y}px"
+        style="left: {copy_feedback_pos.x}px; top: {copy_feedback_pos.y}px"
       >
         ✓ Copied
       </div>

@@ -474,13 +474,6 @@
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    if (width && height && show_y2 && ticks.y2.length > 0) {
-      const inside = y2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
-    }
     if (
       base_pad.t !== new_pad.t ||
       base_pad.b !== new_pad.b ||
@@ -642,8 +635,8 @@
   })
 
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller

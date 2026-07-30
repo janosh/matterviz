@@ -1,4 +1,4 @@
-import { format_value } from '$lib/labels'
+import { format_value_or_num } from '$lib/labels'
 import { euclidean_dist } from '$lib/math'
 import type { AxisConfig } from '$lib/plot/core/types'
 
@@ -36,9 +36,13 @@ export function y_axis_label_x(
   const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
-  return (
-    Math.max(title_center, pad_l - tick_extent - LABEL_GAP_DEFAULT - AXIS_LABEL_HEIGHT / 2) +
-    (axis.label_shift?.x ?? 0)
+  return Math.max(
+    title_center,
+    pad_l -
+      tick_extent -
+      LABEL_GAP_DEFAULT -
+      AXIS_LABEL_HEIGHT / 2 +
+      (axis.label_shift?.x ?? 0),
   )
 }
 
@@ -56,7 +60,10 @@ export function y2_axis_label_x(
     LABEL_GAP_DEFAULT +
     AXIS_LABEL_HEIGHT / 2 +
     (axis.label_shift?.x ?? 0)
-  return width - pad_r + tick_shift + label_offset
+  return Math.min(
+    width - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2,
+    width - pad_r + tick_shift + label_offset,
+  )
 }
 
 // Filter undefined values from padding to prevent overriding defaults when spreading
@@ -134,15 +141,12 @@ export interface AutoPaddingConfig {
 }
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
-export const measure_max_tick_width = (
-  ticks: (string | number)[],
-  format: string = ``,
-): number =>
+export const measure_max_tick_width = (ticks: (string | number)[], format?: string): number =>
   ticks.length === 0
     ? 0
     : Math.max(
         ...ticks.map((tick) => {
-          const label = typeof tick === `string` ? tick : format_value(tick, format)
+          const label = typeof tick === `string` ? tick : format_value_or_num(tick, format)
           return measure_text_width(label, `12px sans-serif`)
         }),
       )
@@ -168,28 +172,36 @@ export const calc_auto_padding = ({
     if (ticks.length === 0 && !has_title) return default_side
     const inside = axis.tick?.label?.inside ?? false
     const tick_shift = axis.tick?.label?.shift?.x ?? 0
-    const tick_width = inside ? 0 : measure_max_tick_width(ticks, axis.format ?? ``)
-    const tick_offset = inside
+    const has_outside_ticks = ticks.length > 0 && !inside
+    const tick_width = has_outside_ticks ? measure_max_tick_width(ticks, axis.format) : 0
+    const tick_offset = !has_outside_ticks
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
     const title_band = has_title ? AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER : 0
+    const title_gap = has_title && has_outside_ticks ? label_gap : 0
     const title_shift = axis.label_shift?.x ?? 0
     const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
     return Math.max(
       default_side,
-      tick_width + label_gap + title_band + tick_offset + title_shift_outward,
+      tick_width + title_gap + title_band + tick_offset + title_shift_outward,
     )
+  }
+  const top_pad = (): number => {
+    const ticks = x2_axis.tick_values ?? []
+    if (ticks.length === 0) return default_padding.t
+    const has_title = has_axis_title(x2_axis)
+    const inside = x2_axis.tick?.label?.inside ?? false
+    const has_outside_ticks = !inside
+    const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
+    const tick_band = has_outside_ticks ? TICK_LABEL_HEIGHT + 8 + Math.max(0, -tick_shift) : 0
+    const title_band = has_title ? AXIS_LABEL_HEIGHT : 0
+    const title_gap = has_title && has_outside_ticks ? label_gap : 0
+    const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
+    return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
   }
 
   return {
-    t:
-      padding.t ??
-      ((x2_axis.tick_values ?? []).length > 0
-        ? Math.max(
-            default_padding.t,
-            TICK_LABEL_HEIGHT + label_gap + (has_axis_title(x2_axis) ? AXIS_LABEL_HEIGHT : 0),
-          )
-        : default_padding.t),
+    t: padding.t ?? top_pad(),
     b: padding.b ?? default_padding.b,
     l: padding.l ?? side_pad(y_axis, default_padding.l, `left`),
     r: padding.r ?? side_pad(y2_axis, default_padding.r, `right`),

@@ -322,7 +322,7 @@
         ? calc_auto_padding({
             padding: padding_config,
             default_padding: DEFAULT_PLOT_PADDING,
-            y_axis: { ...y_axis, tick_values: y_ticks },
+            y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
     const current_pad = untrack(() => base_pad)
@@ -1093,8 +1093,7 @@
         {#if label_position}
           <div
             class="point-label"
-            style:left={`${label_position.x}px`}
-            style:top={`${label_position.y}px`}
+            style="left: {label_position.x}px; top: {label_position.y}px"
           >
             {@render point_labels_settings.render(payload)}
           </div>
@@ -1107,8 +1106,8 @@
     <div
       bind:this={colorbar_element}
       class="color-bar"
-      style:left={`${colorbar_tween.coords.current.x}px`}
-      style:top={`${colorbar_tween.coords.current.y}px`}
+      style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
+        .y}px"
     >
       <ColorBar
         {...color_bar_props}
@@ -1123,8 +1122,8 @@
     <div
       bind:this={annotation_element}
       class="annotation"
-      style:left={`${annotation_tween.coords.current.x}px`}
-      style:top={`${annotation_tween.coords.current.y}px`}
+      style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords.current
+        .y}px"
     >
       {@render annotation({ height, width, fullscreen })}
     </div>

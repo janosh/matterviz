@@ -348,24 +348,6 @@
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    // Expand right padding if y2 ticks are shown (only for vertical orientation)
-    if (width && height && show_y2 && ticks.y2.length > 0) {
-      // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
-      // When ticks are inside, they don't contribute to padding
-      const inside = y2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
-    }
-    // Expand top padding if x2 ticks are shown (only for vertical orientation)
-    if (width && height && show_x2 && ticks.x2.length > 0) {
-      const inside = x2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : Math.abs(x2_axis.tick?.label?.shift?.y ?? 0) + 5
-      const tick_height = inside ? 0 : 16
-      const label_space = x2_axis.label ? 20 : 0
-      new_pad.t = Math.max(new_pad.t, tick_shift + tick_height + 30 + label_space)
-    }
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
@@ -567,8 +549,8 @@
   // Cache measured tick-label widths so expensive canvas text measurement
   // only runs when ticks/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller

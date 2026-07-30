@@ -2,7 +2,6 @@ import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
   camera_position_for_target,
-  constrain_ortho_zoom,
   DEFAULT_FIT_PADDING,
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
@@ -275,6 +274,7 @@ describe(`structure_fit_frame`, () => {
     const diatomic = { sites: [site(`H`, [-1, 0, 0]), site(`H`, [1, 0, 0])] }
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
+    expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 / 0.85, 10)
     expect(fit).toBeCloseTo(2 * (1 + 0.25 * 0.7) * DEFAULT_FIT_PADDING, 10)
     expect(
       structure_fit_frame(
@@ -353,26 +353,17 @@ describe(`camera helpers`, () => {
     [10, 800, 400, FIT_ZOOM_REF_PX, 40],
     [8, 500, 500, FIT_ZOOM_REF_PX * 2, 125],
     [10, 460, 460, FIT_ZOOM_REF_PX, 46],
+    [100, 200, 200, FIT_ZOOM_REF_PX, 2],
   ] as const)(`ortho_zoom extent=%i %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
     expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
 
+  const vertical_half_fov = Math.PI / 36
+  const tall_horizontal_half_fov = Math.atan(Math.tan(vertical_half_fov) / 2)
   test.each([
-    [`unbounded`, 100, undefined, undefined, 100],
-    [`minimum`, 100, 200, 500, 200],
-    [`maximum`, 100, 10, 50, 50],
-    [`non-positive bounds`, 100, 0, 0, 100],
-  ] satisfies [string, number, number | undefined, number | undefined, number][])(
-    `constrain ortho zoom: %s`,
-    (_scenario, zoom, min_zoom, max_zoom, expected) => {
-      expect(constrain_ortho_zoom(zoom, min_zoom, max_zoom)).toBe(expected)
-    },
-  )
-
-  test.each([
-    [`square`, 400, 400, 10, 5 / Math.tan(Math.PI / 36)],
-    [`wide`, 800, 400, 10, 5 / Math.tan(Math.PI / 36)],
-    [`tall`, 400, 800, 10, 10 / Math.tan(Math.PI / 36)],
+    [`square`, 400, 400, 10, 5 / Math.sin(vertical_half_fov)],
+    [`wide`, 800, 400, 10, 5 / Math.sin(vertical_half_fov)],
+    [`tall`, 400, 800, 10, 5 / Math.sin(tall_horizontal_half_fov)],
   ] as const)(
     `perspective distance uses limiting FOV for a %s viewport`,
     (_name, width, height, fov, expected) => {

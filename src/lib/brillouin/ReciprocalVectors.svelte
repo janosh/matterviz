@@ -32,7 +32,7 @@
   />
   <!-- Vector label beyond tip -->
   <extras.HTML center position={label_position}>
-    <span style:color={vector_colors[idx]} style:font-size="1.2em">
+    <span style="color: {vector_colors[idx]}; font-size: 1.2em">
       {vector_labels[idx]}
     </span>
   </extras.HTML>

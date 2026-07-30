@@ -23,6 +23,7 @@
   const { invalidate } = useThrelte()
 
   let mesh: InstancedMesh | undefined = $state()
+  let allocated_mesh: InstancedMesh | undefined
   // Reusable buffers to avoid reallocation on every update
   let colors_start = new Float32Array(0)
   let colors_end = new Float32Array(0)
@@ -31,6 +32,11 @@
   // Derived, not state+effect: an effect would first render at capacity 0 and build twice.
   let peak_capacity = 0
   let capacity = $derived((peak_capacity = Math.max(peak_capacity, group.instances.length)))
+  $effect(() => {
+    if (!mesh || mesh === allocated_mesh) return
+    allocated_mesh?.dispose()
+    allocated_mesh = mesh
+  })
 
   // Appearance knobs live in uniforms so tweaking them mutates the existing material rather
   // than rebuilding the node graph (a $derived would leak a material per lighting change).
@@ -119,6 +125,10 @@
   $effect(() => () => bond_material.dispose())
 </script>
 
-<T.InstancedMesh args={[undefined, bond_material, capacity]} bind:ref={mesh}>
+<T.InstancedMesh
+  args={[undefined, bond_material, capacity]}
+  bind:ref={mesh}
+  frustumCulled={false}
+>
   <T.CylinderGeometry args={[group.thickness, group.thickness, 1, 8]} />
 </T.InstancedMesh>

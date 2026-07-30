@@ -152,6 +152,15 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
   })
 
+  test(`explicit right padding is not overridden by y2 auto-padding`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
+      padding: { r: 10 },
+      y2_axis: { label: `Secondary` },
+    })
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(330)
+  })
+
   test(`default padding grows for wide y-axis ticks`, async () => {
     const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,

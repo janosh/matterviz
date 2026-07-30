@@ -112,16 +112,6 @@ export const ortho_zoom_for_extent = (
 ): number =>
   (initial_zoom * Math.min(width, height)) / (Math.max(1, fit_extent) * FIT_ZOOM_REF_PX)
 
-export const constrain_ortho_zoom = (
-  zoom: number,
-  min_zoom?: number,
-  max_zoom?: number,
-): number => {
-  if (min_zoom !== undefined && min_zoom > 0) zoom = Math.max(min_zoom, zoom)
-  if (max_zoom !== undefined && max_zoom > 0) zoom = Math.min(max_zoom, zoom)
-  return zoom
-}
-
 export const perspective_distance_for_extent = (
   fit_extent: number,
   width: number,
@@ -141,7 +131,9 @@ export const perspective_distance_for_extent = (
   const vertical_fov = (vertical_fov_degrees * Math.PI) / 180
   const horizontal_fov = 2 * Math.atan(Math.tan(vertical_fov / 2) * (width / height))
   const limiting_fov = Math.min(vertical_fov, horizontal_fov)
-  return fit_extent / 2 / Math.tan(limiting_fov / 2)
+  // fit_extent is a sphere diameter. The closest point on the sphere must remain inside
+  // the limiting view cone, so the center distance is radius / sin(half_fov).
+  return fit_extent / 2 / Math.sin(limiting_fov / 2)
 }
 
 // Explicit view_dir is unit-normalized; missing/zero keeps the unnormalized default.

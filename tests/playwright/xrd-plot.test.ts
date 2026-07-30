@@ -27,16 +27,16 @@ test.describe(`XrdPlot Component Tests`, () => {
 
   test(`tooltip includes hkl and d-spacing when available`, async ({ page }) => {
     const plot = page.locator(`#single-pattern .bar-plot`)
-    // Bars are rendered as path elements inside .bar-series
-    const first_bar = plot.locator(`svg .bar-series path`).first()
-    await expect(first_bar).toBeVisible()
-    await first_bar.hover({ force: true })
+    // The first peak lies on the y-axis; use the unobstructed second peak.
+    const bar = plot.locator(`svg .bar-series path`).nth(1)
+    await expect(bar).toBeVisible()
+    await bar.hover()
 
-    // Tooltip has class plot-tooltip
     const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible({ timeout: 3000 })
-    // hkl and d are conditional; just assert the always-present 2θ row
-    await expect(tooltip).toContainText(`2θ:`)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(`2θ: 30°`)
+    await expect(tooltip).toContainText(`hkl: 110`)
+    await expect(tooltip).toContainText(`d: 2.98 Å`)
   })
 
   test(`legend appears for multiple patterns and toggles series`, async ({ page }) => {

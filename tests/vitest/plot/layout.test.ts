@@ -18,7 +18,7 @@ import {
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
-import { describe, expect, it, test } from 'vitest'
+import { describe, expect, it, test, vi } from 'vitest'
 
 describe(`layout utility functions`, () => {
   describe(`rectangle helpers`, () => {
@@ -387,6 +387,20 @@ describe(`layout utility functions`, () => {
       expect(measure_text_width(`hello`)).toBe(0)
       expect(measure_max_tick_width([1, 2, 3])).toBe(0)
     })
+
+    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+      const measured_labels: string[] = []
+      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: (label: string) => {
+          measured_labels.push(label)
+          return { width: label.length }
+        },
+      } as unknown as CanvasRenderingContext2D)
+      expect(measure_max_tick_width([4500])).toBe(4)
+      expect(measured_labels).toEqual([`4.5k`])
+      context_spy.mockRestore()
+    })
   })
 
   describe(`calc_auto_padding`, () => {
@@ -413,13 +427,13 @@ describe(`layout utility functions`, () => {
       expect(result[side]).toBeGreaterThanOrEqual(defaults[side])
     })
 
-    it(`right padding includes label gap and outside tick offset`, () => {
+    it(`right padding excludes title gap when the axis has no title`, () => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
         y2_axis: { tick_values: [1] },
       })
-      expect(result.r).toBe(LABEL_GAP_DEFAULT + 8)
+      expect(result.r).toBe(8)
     })
 
     it(`explicit padding overrides auto-computed padding`, () => {
@@ -453,7 +467,7 @@ describe(`layout utility functions`, () => {
       expect(result.t).toBe(defaults.t)
     })
 
-    it(`x2 label adds exactly AXIS_LABEL_HEIGHT (>0) to top padding`, () => {
+    it(`x2 label adds its title band and gap to top padding`, () => {
       expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(0)
       const without = calc_auto_padding({
         padding: {},
@@ -465,7 +479,16 @@ describe(`layout utility functions`, () => {
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
         x2_axis: { tick_values: [1, 2], label: `Energy` },
       })
-      expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
+      expect(with_label.t - without.t).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
+    })
+
+    it(`top padding accounts for an outward x2 tick shift`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1], tick: { label: { shift: { y: -10 } } } },
+      })
+      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10 + AXIS_LABEL_OUTER)
     })
 
     // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
@@ -480,7 +503,9 @@ describe(`layout utility functions`, () => {
         ...base,
         [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
       })
-      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+      expect(with_label[side] - without[side]).toBe(
+        LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER,
+      )
     })
 
     it(`left pad grows when y label_shift pushes the title outward`, () => {
@@ -506,7 +531,7 @@ describe(`layout utility functions`, () => {
           options: [{ key: `energy`, label: `Energy` }],
         },
       })
-      expect(result.r).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER + 8)
+      expect(result.r).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
       expect(y2_axis_label_x({}, 400, result.r, 0)).toBe(
         400 - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2,
       )
@@ -540,11 +565,11 @@ describe(`layout utility functions`, () => {
       expect(y_axis_label_x({}, pad_l, 0)).toBe(AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2)
     })
 
-    it(`label_shift.x nudges the left title further out`, () => {
+    it(`clamps a left title shift to the reserved outer margin`, () => {
       const tick_w = 30
       const pad_l = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
       expect(y_axis_label_x({ label_shift: { x: -14 } }, pad_l, tick_w)).toBe(
-        AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2 - 14,
+        AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2,
       )
     })
 
@@ -552,9 +577,8 @@ describe(`layout utility functions`, () => {
       const tick_w = 30
       const pad_r = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
       const width = 400
-      // y2 also adds an 8px tick_shift for outside labels
       expect(y2_axis_label_x({}, width, pad_r, tick_w)).toBe(
-        width - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2 + 8,
+        width - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2,
       )
     })
   })

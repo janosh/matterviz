@@ -119,6 +119,22 @@ describe(`BarPlot`, () => {
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
+  test(`explicit top/right padding is not overridden by secondary-axis auto-padding`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [
+        basic,
+        { ...basic, label: `Y2`, y_axis: `y2` },
+        { ...basic, label: `X2`, x_axis: `x2` },
+      ],
+      padding: { r: 10, t: 10 },
+      x2_axis: { label: `Top` },
+      y2_axis: { label: `Secondary` },
+    })
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
+    expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
+  })
+
   test(`default padding grows for wide y-axis ticks`, async () => {
     const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,

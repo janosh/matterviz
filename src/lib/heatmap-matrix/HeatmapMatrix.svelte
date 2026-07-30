@@ -1217,8 +1217,7 @@
         {:else}
           <div
             class="cell empty"
-            style:grid-column={cell_grid_col(x_idx)}
-            style:grid-row={cell_grid_row(y_idx)}
+            style="grid-column: {cell_grid_col(x_idx)}; grid-row: {cell_grid_row(y_idx)}"
           ></div>
         {/if}
       {/each}
@@ -1228,8 +1227,7 @@
       {#each vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
         <div
           class="summary summary-row"
-          style:grid-column={visible_col_count + 2}
-          style:grid-row={cell_grid_row(y_idx)}
+          style="grid-column: {visible_col_count + 2}; grid-row: {cell_grid_row(y_idx)}"
         >
           {#if row_summaries.get(y_idx) !== null}
             {format_num(row_summaries.get(y_idx) ?? 0)}
@@ -1242,8 +1240,7 @@
       {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
         <div
           class="summary summary-col"
-          style:grid-column={cell_grid_col(x_idx)}
-          style:grid-row={visible_row_count + 2}
+          style="grid-column: {cell_grid_col(x_idx)}; grid-row: {visible_row_count + 2}"
         >
           {#if col_summaries.get(x_idx) !== null}
             {format_num(col_summaries.get(x_idx) ?? 0)}

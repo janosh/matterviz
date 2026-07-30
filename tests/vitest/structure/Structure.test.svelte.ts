@@ -646,6 +646,7 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
   await tick()
   const inputs = auto_rotate_inputs()
   expect(inputs).toHaveLength(2)
+  expect(Number(inputs[0].value)).toBe(1.5)
   expect(Number(inputs[1].value)).toBe(default_auto_rotate)
 })
 

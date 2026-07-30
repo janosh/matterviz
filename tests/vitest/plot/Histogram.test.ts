@@ -285,6 +285,24 @@ describe(`Histogram`, () => {
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
+  test(`explicit top/right padding is not overridden by secondary-axis auto-padding`, async () => {
+    mount_histogram({
+      series: [
+        { x: [], y: [1, 2, 3], label: `Main` },
+        { x: [], y: [10, 20, 30], label: `Y2`, y_axis: `y2` },
+        { x: [], y: [100, 200, 300], label: `X2`, x_axis: `x2` },
+      ],
+      mode: `overlay`,
+      padding: { r: 10, t: 10 },
+      x2_axis: { label: `Top` },
+      y2_axis: { label: `Secondary` },
+    })
+    await resize_element(get_plot(), 400, 300)
+    const clip_rect = document.querySelector(`clipPath rect`)
+    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
+    expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
+  })
+
   test(`default padding grows for wide y-axis ticks`, async () => {
     const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,

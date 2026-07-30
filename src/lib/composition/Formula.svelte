@@ -169,12 +169,7 @@
     left: `translate(-100%, -50%)`,
     right: `translateY(-50%)`,
   }}
-  <div
-    class="tooltip"
-    style:left="{x}px"
-    style:top="{y}px"
-    style:transform={transforms[tooltip_side]}
-  >
+  <div class="tooltip" style="left: {x}px; top: {y}px; transform: {transforms[tooltip_side]}">
     <ElementTile
       element={hovered_elem_data}
       bg_color={tile_color}

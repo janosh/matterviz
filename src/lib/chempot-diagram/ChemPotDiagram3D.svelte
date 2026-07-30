@@ -1882,8 +1882,9 @@
   bind:clientHeight={container_height}
   class="chempot-diagram-3d"
   class:fullscreen
-  style:width={fullscreen ? `100vw` : `100%`}
-  style:height={fullscreen ? `100vh` : `${render_height}px`}
+  style="width: {fullscreen ? `100vw` : `100%`}; height: {fullscreen
+    ? `100vh`
+    : `${render_height}px`}"
   role="application"
   tabindex="0"
   onkeydown={(event) => {
@@ -2376,8 +2377,7 @@
       <aside
         bind:this={tooltip_el}
         class="phase-tooltip"
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         <h4>
           {#each formula_label_segments(hover_info.formula) as segment}

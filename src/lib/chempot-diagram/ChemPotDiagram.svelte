@@ -127,8 +127,7 @@
       class="chempot-error"
       role="alert"
       aria-live="polite"
-      style:width="{width}px"
-      style:height="{height}px"
+      style="width: {width}px; height: {height}px"
     >
       <h3>Unsupported Chemical System</h3>
       <p>
@@ -193,8 +192,7 @@
     <aside
       bind:this={tooltip_el}
       class="chempot-tooltip"
-      style:left="{tooltip_pos.x}px"
-      style:top="{tooltip_pos.y}px"
+      style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
     >
       <h4>
         {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}

@@ -42,7 +42,6 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
     y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
@@ -353,39 +352,6 @@
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
-    // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
-    if (
-      width &&
-      height &&
-      y2_series.length > 0 &&
-      current_ticks_y2.length > 0 &&
-      final_y2_axis.label
-    ) {
-      const inside = final_y2_axis.tick?.label?.inside ?? false
-      // When ticks are inside, they don't contribute to padding
-      const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_thickness = Math.round(12 * 1.2)
-      new_pad.r = Math.max(
-        new_pad.r,
-        tick_width_contribution + LABEL_GAP_DEFAULT + tick_shift + label_thickness,
-      )
-    }
-
-    // Add x2 axis label space (mirroring y2 logic for top padding)
-    if (
-      width &&
-      height &&
-      x2_series.length > 0 &&
-      current_ticks_x2.length > 0 &&
-      final_x2_axis.label
-    ) {
-      const inside = final_x2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : Math.abs(final_x2_axis.tick?.label?.shift?.y ?? 0) + 8
-      const label_thickness = Math.round(12 * 1.2)
-      new_pad.t = Math.max(new_pad.t, tick_shift + LABEL_GAP_DEFAULT + label_thickness)
-    }
-
     // Only update if padding actually changed
     if (
       base_pad.t !== new_pad.t ||
@@ -525,8 +491,8 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, final_y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, final_y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format),
   })
 
   let legend_data = $derived(prepare_legend_data(series))

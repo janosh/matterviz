@@ -32,7 +32,7 @@
   } from '$lib/structure'
   import {
     atomic_radii,
-    constrain_ortho_zoom,
+    camera_position_for_target,
     Cylinder,
     get_all_site_vectors,
     get_center_of_mass,
@@ -41,7 +41,6 @@
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
     structure_fit_frame,
-    camera_position_for_target,
     VECTOR_PALETTE,
   } from '$lib/structure'
   import ArrowInstances from './ArrowInstances.svelte'
@@ -412,14 +411,21 @@
   })
   $effect(() => () => fly_to.release())
 
-  // Explicit camera poses do not run auto-placement, so capture their initial target here.
+  // Keep reset centered on the current structure without moving the live camera between
+  // trajectory frames. On first mount, an explicit camera pose retains its supplied target.
+  let target_structure = $state.raw<AnyStructure | null | undefined>()
+  let has_target_structure = $state(false)
   $effect(() => {
-    if (
-      rotation_target_ref === undefined &&
-      camera_position.some((coordinate) => coordinate !== 0)
-    ) {
-      rotation_target_ref = camera_target ?? rotation_target
-    }
+    const current_structure = structure
+    const current_fit_target = fit_frame.center
+    if (has_target_structure && current_structure === target_structure) return
+    const is_initial_structure = !has_target_structure
+    target_structure = current_structure
+    has_target_structure = true
+    rotation_target_ref =
+      is_initial_structure && camera_position.some((coordinate) => coordinate !== 0)
+        ? (camera_target ?? rotation_target)
+        : current_fit_target
   })
 
   // Track initial computed zoom for reset
@@ -1072,12 +1078,10 @@
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
 
-  const zoom_for = (extent: number) =>
-    constrain_ortho_zoom(
-      ortho_zoom_for_extent(extent, width, height, initial_zoom),
-      min_zoom,
-      max_zoom,
-    )
+  const zoom_for = (extent: number) => {
+    const fit_zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
+    return max_zoom !== undefined && max_zoom > 0 ? Math.min(max_zoom, fit_zoom) : fit_zoom
+  }
 
   let computed_zoom = $state(untrack(() => initial_zoom))
   // Resize uses untracked fit_extent (trajectory must not jump zoom). Reset→[0,0,0]
@@ -1100,12 +1104,11 @@
     ) {
       stored_initial_zoom = undefined
       computed_zoom = zoom_for(fit_extent)
-      const distance = perspective_distance_for_extent(
-        Math.max(1, fit_extent),
-        width,
-        height,
-        fov,
-      )
+      // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
+      const distance =
+        camera_projection === `perspective`
+          ? perspective_distance_for_extent(Math.max(1, fit_extent), width, height, fov)
+          : Math.max(1, fit_extent) * 2
       const target = camera_target ?? fit_frame.center
       if (camera_target === undefined) camera_target = target
       rotation_target_ref = target
@@ -1862,7 +1865,11 @@
       zoom_to_cursor,
       pan_speed,
       max_zoom,
-      min_zoom,
+      // The initial fit may need to zoom below the interaction floor for large structures.
+      min_zoom:
+        camera_projection === `orthographic` && min_zoom !== undefined
+          ? Math.min(min_zoom, computed_zoom)
+          : min_zoom,
       auto_rotate,
       rotation_damping,
       set_camera_is_moving: (moving) => (camera_is_moving = moving),
@@ -1896,10 +1903,8 @@
       <button
         type="button"
         class="atom-label"
-        style:font-size="{site_label_size * 0.85}em"
-        style:background={site_label_bg_color}
-        style:padding="{site_label_padding}px"
-        style:color={site_label_color}
+        style="font-size: {site_label_size *
+          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color}"
         onpointerdown={(event) => {
           event.preventDefault()
           event.stopImmediatePropagation()

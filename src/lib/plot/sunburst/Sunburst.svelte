@@ -730,8 +730,9 @@
                   transform={lbl.transform}
                   fill={info.label_fill}
                   fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
-                  style:cursor={info.clickable ? `pointer` : `text`}
-                  style:font-size={lbl.font_scale === 1 ? undefined : `${lbl.font_scale}em`}
+                  style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
+                    ? ``
+                    : `; font-size: ${lbl.font_scale}em`}"
                 >
                   {lbl.text}
                 </text>
@@ -750,8 +751,9 @@
             role={zoomed ? `button` : undefined}
             tabindex={zoomed ? 0 : undefined}
             aria-label={zoomed ? `zoom out to ${zoom_out_label}` : undefined}
-            style:cursor={zoomed ? `pointer` : `default`}
-            style:pointer-events={zoomed ? `auto` : `none`}
+            style="cursor: {zoomed ? `pointer` : `default`}; pointer-events: {zoomed
+              ? `auto`
+              : `none`}"
             onclick={zoom_out}
             onkeydown={handle_center_keydown}
           />

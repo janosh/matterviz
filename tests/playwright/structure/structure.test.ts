@@ -545,6 +545,7 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
+    test.skip(IS_CI, `WebGPU gizmo hit testing is unavailable in headless CI`)
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
     const canvas = page.locator(`#test-structure canvas`)
@@ -559,21 +560,37 @@ test.describe(`Structure Component Tests`, () => {
     )
 
     const handles = await sweep_gizmo_handles(canvas)
-    if (handles.length === 0 && IS_CI) return
     expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
-    let camera_moved = false
+    let camera_position: unknown
     for (const candidate of candidates) {
       if (!candidate) continue
       await page.mouse.move(candidate.x, candidate.y)
       await page.waitForTimeout(100)
-      const before_click = await canvas.screenshot()
+      await page.evaluate(() => {
+        delete (globalThis as Record<string, unknown>).camera_position
+      })
       await page.mouse.click(candidate.x, candidate.y)
-      await page.waitForTimeout(600)
-      camera_moved = !(await canvas.screenshot()).equals(before_click)
-      if (camera_moved) break
+      try {
+        await expect
+          .poll(
+            () => page.evaluate(() => (globalThis as Record<string, unknown>).camera_position),
+            { timeout: 1500 },
+          )
+          .toEqual([expect.any(Number), expect.any(Number), expect.any(Number)])
+        camera_position = await page.evaluate(
+          () => (globalThis as Record<string, unknown>).camera_position,
+        )
+        break
+      } catch {
+        // A sweep can include edge pixels that only hover a handle; try its center candidate.
+      }
     }
-    expect(camera_moved).toBe(true)
+    expect(camera_position).toEqual([
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+    ])
   })
 
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
