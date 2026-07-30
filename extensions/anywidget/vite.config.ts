@@ -7,11 +7,12 @@ import { gunzipSync } from 'node:zlib'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 
-// Load moyo (spglib) symmetry WASM from jsDelivr instead of inlining it as base64.
-// Symmetry/spacegroup analysis needs network; widget rendering itself does not.
+// Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
+// globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
 const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.json`).version
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
+const moyo_wasm_source = `globalThis.matterviz_moyo_wasm_url ?? ${JSON.stringify(moyo_wasm_cdn)}`
 
 let json_gz_is_build = false
 
@@ -20,7 +21,7 @@ const moyo_wasm_cdn_plugin: Plugin = {
   enforce: `pre` as const,
   transform(code: string, id: string) {
     if (!id.includes(`@spglib/moyo-wasm`)) return null
-    const transformed = code.replace(moyo_glue_url, JSON.stringify(moyo_wasm_cdn))
+    const transformed = code.replace(moyo_glue_url, moyo_wasm_source)
     return transformed === code ? null : { code: transformed, map: null }
   },
 }
