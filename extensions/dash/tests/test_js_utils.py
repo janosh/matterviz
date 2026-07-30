@@ -234,5 +234,5 @@ class TestBuiltBundle:
     def test_moyo_wasm_is_embedded_without_bare_specifier(self) -> None:
         """Moyo WASM should be bundled before UMD replaces import.meta."""
         source = BUNDLE_PATH.read_text()
-        assert "@spglib/moyo-wasm/moyo_wasm_bg.wasm" not in source
+        assert "moyo_wasm_bg.wasm" not in source
         assert "data:application/wasm;base64," in source
