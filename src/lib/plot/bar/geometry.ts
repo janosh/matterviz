@@ -98,6 +98,6 @@ export function compute_bar_rect(opts: {
     : [Math.min(v0, v1), Math.min(c0, c1)]
   const [rect_w, rect_h] = is_vertical
     ? [Math.max(1, Math.abs(c1 - c0)), Math.max(0, Math.abs(v1 - v0))]
-    : [Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]
+    : [val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]
   return { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h }
 }
