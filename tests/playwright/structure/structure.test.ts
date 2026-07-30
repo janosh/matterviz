@@ -502,6 +502,9 @@ test.describe(`Structure Component Tests`, () => {
         )
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       }
+      for (let frame_idx = 0; frame_idx < 2; frame_idx++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
     })
     expect(perspective_fit_errors).toEqual([])
   })
@@ -1756,7 +1759,9 @@ test.describe(`Element Visibility Toggle`, () => {
       `/test/structure?data_url=/structures/mp-1207297-Ac2Br2O1-tetragonal.json`,
     )
     const canvas = page.locator(`#test-structure canvas`)
-    const item_count = await page.locator(`#test-structure .atom-legend .legend-item`).count()
+    const legend_items = page.locator(`#test-structure .atom-legend .legend-item`)
+    await expect(legend_items.nth(1)).toBeAttached()
+    const item_count = await legend_items.count()
     expect(item_count).toBeGreaterThanOrEqual(2)
 
     const initial_screenshot = await canvas.screenshot()

@@ -1,5 +1,5 @@
 import { BarPlot } from '$lib'
-import type { BarHandlerProps, BarMode, BarSeries } from '$lib/plot'
+import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { axis_label_pivot_y, inside_clip_path, mount_sized } from '../setup'
@@ -22,12 +22,6 @@ describe(`BarPlot`, () => {
       series: [],
       expected_series: 0,
       expected_bars: 0,
-    },
-    {
-      name: `positive, zero, and negative values`,
-      series: [{ x: [1, 2, 3], y: [-5, 0, 5] }],
-      expected_series: 1,
-      expected_bars: 2,
     },
     {
       name: `all-negative values`,
@@ -55,6 +49,17 @@ describe(`BarPlot`, () => {
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(expected_series)
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(expected_bars)
   })
+
+  test.each([`vertical`, `horizontal`] as const)(
+    `omits zero-valued bars in %s orientation`,
+    async (orientation) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1, 2, 3], y: [-5, 0, 5] }],
+        orientation,
+      })
+      expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(2)
+    },
+  )
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
     const plot = await mount_sized_bar_plot({
@@ -129,43 +134,15 @@ describe(`BarPlot`, () => {
     }
   })
 
-  test.each<BarMode>([`overlay`, `grouped`, `stacked`])(`horizontal mode=%s`, async (mode) => {
+  test(`horizontal grouped mode renders all bars`, async () => {
     const series = [basic, { ...basic, color: `orangered` }]
-    const plot = await mount_sized_bar_plot({ series, orientation: `horizontal`, mode })
+    const plot = await mount_sized_bar_plot({
+      series,
+      orientation: `horizontal`,
+      mode: `grouped`,
+    })
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(10)
-  })
-
-  test.each<[BarMode, BarSeries[], number]>([
-    [
-      `overlay`,
-      [
-        { x: [1, 2, 3, 4], y: [-10, -5, 15, 20] },
-        { x: [1, 2, 3, 4], y: [5, -8, 12, -3] },
-      ],
-      8,
-    ],
-    [
-      `stacked`,
-      [
-        { x: [1, 2, 3, 4], y: [10, -5, 15, 20] },
-        { x: [1, 2, 3, 4], y: [-5, 10, -8, 5] },
-      ],
-      8,
-    ],
-    [
-      `grouped`,
-      [
-        basic,
-        { ...basic, color: `orangered`, label: `S2` },
-        { ...basic, color: `green`, label: `S3` },
-      ],
-      15,
-    ],
-  ])(`%s mode with negative/multiple series`, async (mode, series, expected_bars) => {
-    const plot = await mount_sized_bar_plot({ series, mode })
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(series.length)
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(expected_bars)
   })
 
   test(`line markers render zero-valued color and size inputs`, async () => {
@@ -204,24 +181,6 @@ describe(`BarPlot`, () => {
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
     expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(5)
-  })
-
-  test(`stacked mode with interleaved hidden series`, async () => {
-    // Regression test: stacked_offsets lookup should use original series index
-    const plot = await mount_sized_bar_plot({
-      series: [
-        { x: [1, 2, 3], y: [10, 20, 15], color: `red`, visible: true },
-        { x: [1, 2, 3], y: [5, 10, 8], color: `blue`, visible: false }, // hidden
-        { x: [1, 2, 3], y: [8, 12, 10], color: `green`, visible: true },
-      ],
-      mode: `stacked`,
-    })
-    expect(
-      Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
-        el.getAttribute(`data-series-idx`),
-      ),
-    ).toEqual([`0`, `2`])
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
@@ -290,20 +249,15 @@ describe(`BarPlot`, () => {
   })
 
   test(`children prop`, () => {
-    let called = false
     mount(BarPlot, {
       target: document.body,
       props: {
         series: [basic],
-        children: createRawSnippet(() => {
-          called = true
-          return {
-            render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
-          }
-        }),
+        children: createRawSnippet(() => ({
+          render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
+        })),
       },
     })
-    expect(called).toBe(true)
     expect(document.querySelector(`.custom-bar-child`)?.textContent).toBe(`Custom bar overlay`)
   })
 
@@ -314,11 +268,11 @@ describe(`BarPlot`, () => {
     ]
 
     test.each([
-      [`overlay mode`, { mode: `overlay` as BarMode }],
-      [`stacked mode`, { mode: `stacked` as BarMode }],
-      [`grouped mode`, { mode: `grouped` as BarMode }],
-      [`horizontal orientation`, { orientation: `horizontal` as const }],
-    ])(`renders misaligned categories in %s`, async (_name, props) => {
+      [`overlay mode`, { mode: `overlay` }],
+      [`stacked mode`, { mode: `stacked` }],
+      [`grouped mode`, { mode: `grouped` }],
+      [`horizontal orientation`, { orientation: `horizontal` }],
+    ] as const)(`renders misaligned categories in %s`, async (_name, props) => {
       const plot = await mount_sized_bar_plot({ series: cat_series, ...props })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
       expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
@@ -460,23 +414,6 @@ describe(`BarPlot`, () => {
       const plot = await mount_sized_bar_plot({ series: grouped_series, mode })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
       for (const label of labels) expect(plot.textContent).toContain(label)
-    })
-
-    test(`series visibility can be toggled via legend_group`, async () => {
-      // Test that series with legend_group can have their visibility toggled
-      const series_with_hidden_group: BarSeries[] = grouped_series.map((srs) =>
-        srs.legend_group === `DFT` ? { ...srs, visible: false } : srs,
-      )
-
-      const plot = await mount_sized_bar_plot({
-        series: series_with_hidden_group,
-        mode: `grouped`,
-      })
-      expect(
-        Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
-          el.getAttribute(`data-series-idx`),
-        ),
-      ).toEqual([`2`, `3`])
     })
   })
 

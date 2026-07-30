@@ -748,7 +748,6 @@
             bind:this={center_el}
             class="center-circle"
             r={hole_r}
-            fill="var(--sunburst-center-bg, transparent)"
             role={zoomed ? `button` : undefined}
             tabindex={zoomed ? 0 : undefined}
             aria-label={zoomed ? `zoom out to ${zoom_out_label}` : undefined}
@@ -993,6 +992,9 @@
     font-weight: bold;
     -webkit-user-select: text;
     user-select: text;
+  }
+  .center-circle {
+    fill: var(--sunburst-center-bg, transparent);
   }
   .center-label .center-value {
     font-weight: normal;

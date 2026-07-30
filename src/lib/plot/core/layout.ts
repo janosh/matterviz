@@ -197,7 +197,9 @@ export const calc_auto_padding = ({
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
     const tick_band = has_outside_ticks ? TICK_LABEL_HEIGHT + 8 + Math.max(0, -tick_shift) : 0
-    const title_band = has_title ? AXIS_LABEL_HEIGHT : 0
+    const title_band = has_title
+      ? AXIS_LABEL_HEIGHT + Math.max(0, x2_axis.label_shift?.y ?? 0)
+      : 0
     const title_gap = has_title && has_outside_ticks ? label_gap : 0
     const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
     return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)

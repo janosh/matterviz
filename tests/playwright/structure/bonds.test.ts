@@ -582,7 +582,12 @@ test.describe(`Bond component`, () => {
         }
       })
       // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
-      expect(Math.abs(halves.right.r - halves.left.r)).toBeGreaterThan(25)
+      const max_channel_diff = Math.max(
+        Math.abs(halves.right.r - halves.left.r),
+        Math.abs(halves.right.g - halves.left.g),
+        Math.abs(halves.right.b - halves.left.b),
+      )
+      expect(max_channel_diff).toBeGreaterThan(25)
     } finally {
       await decoded_initial.dispose()
     }

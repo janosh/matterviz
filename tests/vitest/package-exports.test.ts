@@ -113,10 +113,16 @@ describe(`package.json exports`, () => {
     )
   })
 
-  test(`built symmetry delegates default WASM resolution to wasm-bindgen`, () => {
+  test(`symmetry builds retain default and overridable WASM resolution`, () => {
     const source = readFileSync(join(repo_root, `dist/symmetry/index.js`), `utf8`)
     expect(source).toContain(`init(wasm_url ? { module_or_path: wasm_url } : undefined)`)
     expect(source).not.toContain(`moyo_wasm_bg.wasm`)
+    const widget_config = readFileSync(
+      `${repo_root}/extensions/anywidget/vite.config.ts`,
+      `utf8`,
+    )
+    expect(widget_config).toContain(`globalThis.matterviz_moyo_wasm_url ??`)
+    expect(widget_config).toContain(`code.replace(moyo_glue_url, moyo_wasm_source)`)
   })
 
   test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {

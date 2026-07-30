@@ -22,7 +22,7 @@ test.describe(`Multi-volume isosurface demo`, () => {
       await wait_for_scenario(page, `${DEMO_URL}?scenario=${id}`)
       await expect(page.locator(`.stats-bar`)).toContainText(`Volumes: 2`)
       if (surfaces) await expect(page.locator(`.stats-bar`)).toContainText(surfaces)
-      await wait_for_3d_canvas(page, `.viewer-pane`)
+      await wait_for_3d_canvas(page, `.structure`)
       await expect(page.locator(`.status-message.error`)).toHaveCount(0)
     })
   }

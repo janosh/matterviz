@@ -45,8 +45,9 @@
   const color_saturation = uniform(0.5)
   const color_brightness = uniform(0.7)
 
-  // Blend atom colors along cylinder Y via varyings (fragment InstancedBufferAttribute reads
-  // mid-mix under WebGPU; positionLocal is world Y after instance()). Lambert is fixed-dir.
+  // Blend atom colors along pre-transform cylinder Y via varyings. Instancing mutates
+  // positionLocal, while positionGeometry stays in the cylinder's local [-0.5, 0.5] range.
+  // Fragment InstancedBufferAttribute reads mid-mix under WebGPU. Lambert is fixed-dir.
   const color_start = attribute(`instanceColorStart`, `vec3`).toVarying(`vBondColorStart`)
   const color_end = attribute(`instanceColorEnd`, `vec3`).toVarying(`vBondColorEnd`)
   const cylinder_t = positionGeometry.y.add(0.5).toVarying(`vBondCylinderT`)

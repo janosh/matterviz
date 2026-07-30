@@ -75,7 +75,7 @@ test.describe(`Isosurface page`, () => {
       await select_view_layout(page, `2D cross-section`)
       const slice = page.getByTestId(`volume-slice`)
       const canvas = slice.locator(`canvas`)
-      const viewer = page.locator(`.viewer-pane .structure`)
+      const viewer = page.locator(`.structure`)
       const colorbar = slice.locator(`.slice-colorbar`)
       await wait_for_canvas_rendered(canvas)
 
