@@ -43,6 +43,7 @@
     DEFAULT_PLOT_PADDING,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
@@ -866,12 +867,7 @@
       {height}
       show_grid={display.y_grid}
       tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-      label_x={Math.max(
-        12,
-        pad.l -
-          (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-          LABEL_GAP_DEFAULT,
-      ) + (final_y_axis.label_shift?.x ?? 0)}
+      label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
       label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
       axis_loading={axis_loading === `y`}
       on_axis_change={(key) => handle_axis_change(`y`, key)}

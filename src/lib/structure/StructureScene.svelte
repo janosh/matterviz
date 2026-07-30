@@ -37,6 +37,9 @@
     get_center_of_mass,
     get_structure_vector_keys,
     Lattice,
+    ortho_zoom_for_extent,
+    structure_fit_frame,
+    camera_position_for_target,
     VECTOR_PALETTE,
   } from '$lib/structure'
   import ArrowInstances from './ArrowInstances.svelte'
@@ -1004,16 +1007,29 @@
   // Negated target for the inner un-translate group (recomputed only on target change)
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
 
+  // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
   let structure_size = $derived.by(() => {
     if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
     if (!structure?.sites?.length) return 10
-
     const ranges = [0, 1, 2].map((axis_idx) => {
       const coords = structure.sites.map((site) => site.xyz[axis_idx])
       return Math.max(...coords) - Math.min(...coords)
     })
     return Math.max(1, ...ranges)
   })
+
+  // Content AABB fit for ortho zoom / look-at. Frozen while dragging atoms.
+  let last_fit_frame = { center: [0, 0, 0] as Vec3, extent: 10 }
+  let fit_frame = $derived.by(() => {
+    if (dragging_atoms) return last_fit_frame
+    return (last_fit_frame = structure_fit_frame(structure, {
+      atom_radius_scale: show_atoms ? atom_radius : 0,
+      same_size_atoms,
+      element_radius_overrides,
+      site_radius_overrides,
+    }))
+  })
+  let fit_extent = $derived(fit_frame.extent)
 
   // Characteristic inter-atomic spacing: cube root of volume per atom.
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
@@ -1049,46 +1065,33 @@
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
 
-  // Using $state because this is mutated in an effect based on viewport/structure size
+  const zoom_for = (extent: number) => {
+    let zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
+    if (min_zoom && min_zoom > 0) zoom = Math.max(min_zoom, zoom)
+    if (max_zoom && max_zoom > 0) zoom = Math.min(max_zoom, zoom)
+    return zoom
+  }
+
   let computed_zoom = $state(untrack(() => initial_zoom))
-  // structure_size is read untracked so structure changes don't re-zoom the user's view;
-  // zoom only re-frames on a genuine viewport resize. Skip same-value width/height
-  // re-fires (a wrapping component can transiently re-emit clientWidth/Height during a
-  // structure swap) so they don't sneak in a re-zoom with the new structure_size.
+  // Resize uses untracked fit_extent (trajectory must not jump zoom). Reset→[0,0,0]
+  // reframes from live fit in effect.pre. Skip same-value width/height re-fires.
   let last_zoom_dims: [number, number] = [0, 0]
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
     if (width === last_zoom_dims[0] && height === last_zoom_dims[1]) return
     last_zoom_dims = [width, height]
-    const structure_max_dim = Math.max(
-      1,
-      untrack(() => structure_size),
-    )
-    const viewer_min_dim = Math.min(width, height)
-    const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
-    let new_zoom = initial_zoom * scale_factor
-    if (min_zoom && min_zoom > 0) new_zoom = Math.max(min_zoom, new_zoom)
-    if (max_zoom && max_zoom > 0) new_zoom = Math.min(max_zoom, new_zoom)
-    computed_zoom = new_zoom
+    computed_zoom = zoom_for(untrack(() => fit_extent))
   })
 
   $effect.pre(() => {
-    // Simple initial camera auto-position: proportional to structure size and fov
+    // Auto-place at content center; missing/zero camera_direction → default angled view.
     if (camera_position.every((val) => val === 0) && structure) {
       stored_initial_zoom = undefined
-      const distance = Math.max(1, structure_size) * (60 / fov)
-      // When a view direction is given (multi-side view), place the camera
-      // target-relative along it; otherwise use the default angled position.
-      // normalize_vec returns [0,0,0] for an absent or zero-length direction (arrays are
-      // truthy, so a plain `camera_direction ?` check would miss [0,0,0]); treat that as
-      // "no direction" and fall back to the default, since placing the camera on the
-      // rotation target would be a degenerate zero-length view.
-      const view_dir: Vec3 = camera_direction
-        ? math.normalize_vec(camera_direction, [0, 0, 0])
-        : [0, 0, 0]
-      camera_position = view_dir.some((val) => val !== 0)
-        ? math.add(rotation_target, math.scale(view_dir, distance))
-        : [distance, distance * 0.3, distance * 0.8]
+      if (width > 0 && height > 0) computed_zoom = zoom_for(fit_extent)
+      const distance = Math.max(1, fit_extent) * (60 / fov)
+      const target = fit_frame.center
+      if (camera_target === undefined) camera_target = target
+      camera_position = camera_position_for_target(target, distance, camera_direction)
     }
   })
   // Whether a never|always|crystals|molecules setting applies to the current structure
@@ -1355,7 +1358,9 @@
       return []
     return compute_polyhedra(structure, filtered_bond_pairs, {
       min_neighbors: polyhedra_min_neighbors,
-      // Sliders have overlapping ranges and can cross; widen rather than render none.
+      // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
+      // be dragged past each other. Widening the cap instead of honoring an empty window
+      // keeps polyhedra on screen rather than silently rendering none.
       max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,

@@ -62,7 +62,7 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
@@ -965,12 +965,7 @@
         tick_label={(tick) =>
           get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
         tick_color={cat_axis === `y` ? (tick) => slot_colors.get(tick) : undefined}
-        label_x={Math.max(
-          12,
-          pad.l -
-            (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-            LABEL_GAP_DEFAULT,
-        ) + (y_axis.label_shift?.x ?? 0)}
+        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
       />
 

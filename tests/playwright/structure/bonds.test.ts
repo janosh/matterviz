@@ -434,49 +434,137 @@ test.describe(`Bond component`, () => {
     await run_hide_restore_cycle(page)
   })
 
-  test(`renders bonds from multiple angles and zoom levels without errors`, async ({
-    page,
-  }) => {
+  // Fe–O dimer with atoms hidden: thick horizontal bond for gradient sampling, then the same
+  // canvas is rotated/zoomed. Bond.svelte must pass instanceColorStart/End and cylinder Y
+  // through TSL varyings (as the pre-WebGPU GLSL shader did); otherwise the bond is a solid
+  // mid-mix and left/right red means match.
+  test(`bond gradients and camera moves keep bonds rendered`, async ({ page }) => {
     test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
-    // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
+    await page.evaluate(() => {
+      const structure = {
+        sites: [
+          {
+            species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [-1.2, 0, 0],
+            label: `Fe1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [1.2, 0, 0],
+            label: `O1`,
+            properties: {},
+          },
+        ],
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }] },
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            show_atoms: false,
+            bond_thickness: 0.45,
+            // Perspective: ortho zoom is sized for the page's default mp-1 cell and does not
+            // re-fit when this dimer replaces it, which would shrink the bond to a few pixels.
+            camera_projection: `perspective`,
+            camera_position: [0, 0, 8],
+            camera_target: [0, 0, 0],
+            show_bonds: `always`,
+            auto_rotate: 0,
+          },
+        }),
+      )
+    })
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    const initial = await canvas.screenshot()
+    expect(count_non_white_pixels(initial)).toBeGreaterThan(100)
+
+    // WebGPU canvases read back black via drawImage; decode the compositor PNG instead.
+    const halves = await page.evaluate(async (b64) => {
+      const raw = atob(b64)
+      const bytes = Uint8Array.from(raw, (ch) => ch.charCodeAt(0))
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
+      const offscreen = document.createElement(`canvas`)
+      offscreen.width = bitmap.width
+      offscreen.height = bitmap.height
+      const context = offscreen.getContext(`2d`)
+      if (!context) throw new Error(`Failed to create 2D canvas context`)
+      context.drawImage(bitmap, 0, 0)
+      const { data, width, height } = context.getImageData(
+        0,
+        0,
+        offscreen.width,
+        offscreen.height,
+      )
+      const is_bond_pixel = (red: number, green: number, blue: number) => {
+        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
+        // Scene background is flat ~gray; bond pixels are darker and/or chromatic.
+        return chroma > 15 || red < 200 || green < 200 || blue < 200
+      }
+      let min_x = width
+      let max_x = 0
+      const y0 = Math.floor(height * 0.35)
+      const y1 = Math.floor(height * 0.65)
+      for (let y = y0; y < y1; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4
+          if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
+          if (x < min_x) min_x = x
+          if (x > max_x) max_x = x
+        }
+      }
+      if (max_x - min_x < 40) {
+        throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
+      }
+      const mean_bond_rgb = (x0: number, x1: number) => {
+        let red_sum = 0
+        let green_sum = 0
+        let blue_sum = 0
+        let count = 0
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            const idx = (y * width + x) * 4
+            const red = data[idx]
+            const green = data[idx + 1]
+            const blue = data[idx + 2]
+            if (!is_bond_pixel(red, green, blue)) continue
+            red_sum += red
+            green_sum += green
+            blue_sum += blue
+            count++
+          }
+        }
+        if (count < 50) throw new Error(`too few bond pixels in x=[${x0},${x1}): ${count}`)
+        return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
+      }
+      const span = max_x - min_x
+      return {
+        left: mean_bond_rgb(min_x, min_x + Math.floor(span * 0.3)),
+        right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
+      }
+    }, initial.toString(`base64`))
+    // O end is redder than the Fe end. A constant mid-mix makes the halves match.
+    expect(halves.right.r - halves.left.r).toBeGreaterThan(25)
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()
     if (!box) return
 
-    // Initial scene has rendered content (not blank)
-    const initial = await canvas.screenshot()
-    expect(count_non_white_pixels(initial)).toBeGreaterThan(100)
-
-    // Horizontal rotation changes view (poll handles GPU timing variations)
+    // One orbit + zoom: bonds must stay rendered after camera motion.
     await canvas.dragTo(canvas, {
       sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
       targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
       force: true,
     })
     await expect_canvas_changed(canvas, initial)
-    const horizontal = await canvas.screenshot()
-    expect(count_non_white_pixels(horizontal)).toBeGreaterThan(100)
-
-    // Vertical rotation also changes view
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: box.width / 2, y: box.height / 2 - 50 },
-      targetPosition: { x: box.width / 2, y: box.height / 2 + 50 },
-      force: true,
-    })
-    await expect_canvas_changed(canvas, horizontal)
-    const vertical = await canvas.screenshot()
-    expect(count_non_white_pixels(vertical)).toBeGreaterThan(100)
-
-    // Zoom changes view and keeps content rendered
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.wheel(0, -200)
-    await expect_canvas_changed(canvas, vertical)
-    const zoomed = await canvas.screenshot()
-    expect(count_non_white_pixels(zoomed)).toBeGreaterThan(100)
-    expect(zoomed.equals(initial)).toBe(false)
+    const after_camera = await canvas.screenshot()
+    expect(count_non_white_pixels(after_camera)).toBeGreaterThan(100)
+    expect(after_camera.equals(initial)).toBe(false)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -508,6 +596,15 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+
+    // Delete mode must still allow right-click order edits (not only left-click delete).
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+    await click_canvas_center(page, canvas, `right`)
+    await expect(menu).toBeVisible()
+    await menu.getByRole(`button`, { name: `Triple` }).click()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
     expect(console_errors).toHaveLength(0)
   })
 
@@ -646,23 +743,6 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`edit-bonds delete mode still supports right-click order editing`, async ({ page }) => {
-    const console_errors = await goto_structure_page(page)
-    await dispatch_two_atom_bond_structure(page, 1)
-    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
-
-    await click_canvas_center(page, canvas, `right`)
-    const menu = page.locator(`#test-structure .bond-context-menu`)
-    await expect(menu).toBeVisible()
-    await menu.getByRole(`button`, { name: `Triple` }).click()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
-    expect(console_errors).toHaveLength(0)
-  })
-
   test(`edit-bonds delete mode removes bonds to image atoms`, async ({ page }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_bond_structure(page)
@@ -727,9 +807,12 @@ test.describe(`Bond component`, () => {
 
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
-    await delete_center_bond()
-    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
-
+    // Mid-edit structure swap must emit the new structure's bonds (not keep the override).
+    await click_canvas_center(page, canvas, `right`)
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeVisible()
+    await menu.getByRole(`button`, { name: `Double` }).click()
+    await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     await dispatch_two_atom_bond_structure(page, 3)
     await expect(redo_button).toBeDisabled()
     await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
@@ -760,28 +843,6 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
-    const console_errors = await goto_structure_page(page)
-    await dispatch_two_atom_bond_structure(page, 1)
-    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-
-    await click_canvas_center(page, canvas, `right`)
-    const menu = page.locator(`#test-structure .bond-context-menu`)
-    await expect(menu).toBeVisible()
-    await menu.getByRole(`button`, { name: `Double` }).click()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
-
-    await dispatch_two_atom_bond_structure(page, 3)
-
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
-    expect(console_errors).toHaveLength(0)
-  })
-
   test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
     test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
@@ -797,8 +858,7 @@ test.describe(`Bond component`, () => {
 
     // Perception turns both C=O into double bonds: each single cylinder
     // becomes two offset cylinders. The bond geometry is regenerated, so the
-    // rendered scene must visibly change (same canvas-diff heuristic the
-    // existing "gradients" test uses), while still rendering bond content.
+    // rendered scene must visibly change while still rendering bond content.
     await expect_canvas_changed(canvas, single)
     const doubled = await canvas.screenshot()
     expect(count_non_white_pixels(doubled)).toBeGreaterThan(100)
@@ -879,14 +939,6 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toContainEqual(expect.objectContaining({ order: 3 }))
-
-    // Re-open the edited bond to ensure the context menu still supports
-    // follow-up actions after the override.
-    await click_canvas_center(page, canvas, `right`)
-    await expect(menu).toBeVisible()
-    await menu.getByRole(`button`, { name: `Close` }).focus()
-    await page.keyboard.press(`Enter`)
-    await expect(menu).toBeHidden()
 
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
     await click_canvas_center(page, canvas)

@@ -1,5 +1,6 @@
 import {
   AXIS_LABEL_HEIGHT,
+  AXIS_LABEL_OUTER,
   calc_auto_padding,
   centered_rect,
   compute_element_placement,
@@ -14,6 +15,8 @@ import {
   rect_within_rect,
   sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
+  y_axis_label_x,
+  y2_axis_label_x,
 } from '$lib/plot/core/layout'
 import { describe, expect, it, test } from 'vitest'
 
@@ -465,19 +468,60 @@ describe(`layout utility functions`, () => {
       expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
     })
 
-    // y/y2 axis titles must reserve their rotated width too, else a wide tick label (e.g.
-    // "-789.389") pushes the title into the ticks (mirrors the x2 reservation above)
+    // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
+    // label (e.g. "-789.389") pushes the title into the ticks (mirrors the x2 case).
     it.each([
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
-    ] as const)(`%s reserves AXIS_LABEL_HEIGHT for the %s title`, (side, axis_key) => {
+    ] as const)(`%s reserves title band + outer air for the %s title`, (side, axis_key) => {
       const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
       const without = calc_auto_padding({ ...base, [axis_key]: { tick_values: [1, 2] } })
       const with_label = calc_auto_padding({
         ...base,
         [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
       })
-      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT)
+      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+    })
+
+    it(`left pad grows when y label_shift pushes the title outward`, () => {
+      const base = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y_axis: { tick_values: [1, 10], label: `E` },
+      }
+      const unshifted = calc_auto_padding(base)
+      const shifted = calc_auto_padding({
+        ...base,
+        y_axis: { ...base.y_axis, label_shift: { x: -14 } },
+      })
+      expect(shifted.l - unshifted.l).toBe(14)
+    })
+  })
+
+  describe(`y_axis_label_x / y2_axis_label_x`, () => {
+    // Auto-padding: outer | title | gap | ticks. Title center at OUTER + AH/2.
+    it(`centers the left title in its band with outer air`, () => {
+      const tick_w = 30
+      const pad_l = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
+      expect(y_axis_label_x({}, pad_l, tick_w)).toBe(AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2)
+    })
+
+    it(`label_shift.x nudges the left title further out`, () => {
+      const tick_w = 30
+      const pad_l = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
+      expect(y_axis_label_x({ label_shift: { x: -14 } }, pad_l, tick_w)).toBe(
+        AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2 - 14,
+      )
+    })
+
+    it(`centers the right title in its band with outer air`, () => {
+      const tick_w = 30
+      const pad_r = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
+      const width = 400
+      // y2 also adds an 8px tick_shift for outside labels
+      expect(y2_axis_label_x({}, width, pad_r, tick_w)).toBe(
+        width - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2 + 8,
+      )
     })
   })
 })

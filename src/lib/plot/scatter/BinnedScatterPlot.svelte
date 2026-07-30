@@ -24,8 +24,8 @@
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
-    LABEL_GAP_DEFAULT,
     point_in_rect,
+    y_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -1016,7 +1016,7 @@
       {height}
       show_grid
       tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={Math.max(12, pad.l - LABEL_GAP_DEFAULT)}
+      label_x={y_axis_label_x(y_axis, pad.l, 0)}
       label_y={pad.t + plot_height / 2}
     />
 

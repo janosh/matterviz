@@ -776,7 +776,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     initial_zoom: {
       value: 50,
-      description: `Initial zoom level for orthographic projection (ignored for perspective)`,
+      description: `Relative orthographic zoom scale (50 = fit structure bounding sphere to the shorter viewport edge; ignored for perspective)`,
       minimum: 0.1,
       maximum: 200,
     },
@@ -824,7 +824,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     auto_rotate: {
       // Off by default: a permanently spinning scene is hard to read, keeps the render loop
-      // running every frame, and fights the user the moment they orbit.
+      // running every frame (no on-demand rendering, so it costs battery on every embed),
+      // and fights the user the moment they orbit.
       value: 0,
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,

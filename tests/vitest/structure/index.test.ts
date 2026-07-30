@@ -1,12 +1,18 @@
 import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
+  camera_position_for_target,
+  DEFAULT_FIT_PADDING,
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
+  FIT_ZOOM_REF_PX,
   get_all_site_vectors,
   get_structure_vector_keys,
   is_vector_key,
+  ortho_zoom_for_extent,
+  structure_fit_frame,
   VECTOR_PALETTE,
+  type StructureFitOpts,
 } from '$lib/structure'
 import { glob_text, structure_files, structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
@@ -225,6 +231,127 @@ describe(`get_center_of_mass`, () => {
     const structure = create_simple_structure(sites)
     const result = struct_utils.get_center_of_mass(structure)
     expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
+  })
+})
+
+// Content AABB framing (camera-fit.ts) — look-at center + padded sphere extent for zoom.
+describe(`structure_fit_frame`, () => {
+  const site = (element: ElementSymbol, xyz: Vec3): Site => ({
+    species: [{ element, occu: 1, oxidation_state: 0 }],
+    abc: [0, 0, 0],
+    xyz,
+    label: element,
+    properties: {},
+  })
+  const cubic = (a: number, sites: Site[]): AnyStructure => ({
+    sites,
+    lattice: {
+      matrix: [
+        [a, 0, 0],
+        [0, a, 0],
+        [0, 0, a],
+      ],
+      a,
+      b: a,
+      c: a,
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: a ** 3,
+      pbc: [true, true, true],
+    },
+  })
+  const extent = (...args: Parameters<typeof structure_fit_frame>) =>
+    structure_fit_frame(...args).extent
+
+  test.each([undefined, null, { sites: [] }])(`empty → extent 10 for %j`, (input) => {
+    expect(extent(input)).toBe(10)
+  })
+
+  test(`molecule / cell framing`, () => {
+    const diatomic = { sites: [site(`H`, [-1, 0, 0]), site(`H`, [1, 0, 0])] }
+    const { center, extent: fit } = structure_fit_frame(diatomic)
+    center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
+    expect(fit).toBeCloseTo(2 * (1 + 0.25 * 0.7) * DEFAULT_FIT_PADDING, 10)
+    expect(
+      structure_fit_frame(
+        { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] },
+        { atom_radius_scale: 0, padding: 1 },
+      ).center,
+    ).toEqual([2, 0, 0])
+    expect(extent(diatomic, { padding: 2, atom_radius_scale: 0 })).toBeCloseTo(
+      extent(diatomic, { padding: 1, atom_radius_scale: 0 }) * 2,
+      10,
+    )
+
+    const a = 4.21
+    const empty = structure_fit_frame(cubic(a, []), { atom_radius_scale: 0 })
+    empty.center.forEach((coord) => expect(coord).toBeCloseTo(a / 2, 10))
+    expect(empty.extent).toBeCloseTo(a * Math.sqrt(3) * DEFAULT_FIT_PADDING, 10)
+    const with_atom = extent(cubic(a, [site(`Mg`, [0, 0, 0])]), { atom_radius_scale: 0.7 })
+    expect(with_atom).toBeGreaterThan(empty.extent)
+    expect(with_atom).toBeLessThan((a * Math.sqrt(3) + 2.1) * DEFAULT_FIT_PADDING * 1.2)
+
+    const { sites: _dropped, ...no_sites } = cubic(2, [])
+    expect(extent(no_sites as AnyStructure, { atom_radius_scale: 0, padding: 1 })).toBeCloseTo(
+      2 * Math.sqrt(3),
+      10,
+    )
+  })
+
+  test.each([
+    [
+      `atom centers only`,
+      { sites: [site(`Mg`, [-2, 0, 0]), site(`Mg`, [2, 0, 0])] },
+      { atom_radius_scale: 0 },
+      4 * DEFAULT_FIT_PADDING,
+    ],
+    [
+      `same_size unit radius`,
+      { sites: [site(`H`, [0, 0, 0])] },
+      { same_size_atoms: true, atom_radius_scale: 2, padding: 1 },
+      4,
+    ],
+    [
+      `site override`,
+      { sites: [site(`H`, [0, 0, 0])] },
+      { site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1, padding: 1 },
+      10,
+    ],
+    [
+      `same_size ignores site override`,
+      { sites: [site(`H`, [0, 0, 0])] },
+      {
+        same_size_atoms: true,
+        site_radius_overrides: new Map([[0, 5]]),
+        atom_radius_scale: 1,
+        padding: 1,
+      },
+      2,
+    ],
+  ] satisfies [string, AnyStructure, StructureFitOpts, number][])(
+    `%s`,
+    (_label, structure, opts, expected) => {
+      expect(extent(structure, opts)).toBeCloseTo(expected, 10)
+    },
+  )
+})
+
+describe(`camera helpers`, () => {
+  test.each([
+    [`default`, undefined, [10, 3, 8]],
+    [`zero → default`, [0, 0, 0] as Vec3, [10, 3, 8]],
+    [`+X normalized`, [3, 0, 0] as Vec3, [10, 0, 0]],
+  ])(`camera_position %s`, (_name, view_dir, expected) => {
+    expect(camera_position_for_target([0, 0, 0], 10, view_dir)).toEqual(expected)
+  })
+
+  test.each([
+    [10, 800, 400, FIT_ZOOM_REF_PX, 40],
+    [8, 500, 500, FIT_ZOOM_REF_PX * 2, 125],
+    [10, 460, 460, FIT_ZOOM_REF_PX, 46],
+  ] as const)(`ortho_zoom extent=%i %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
+    expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
 })
 

@@ -6,13 +6,39 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20
+// Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)
+export const TICK_LABEL_HEIGHT = 16
+// Estimated thickness of a rotated y-axis title (font-size ~14px + margin) — also the
+// band auto-padding reserves beyond the tick+gap for that title.
+export const AXIS_LABEL_HEIGHT = 20
+// Air between the plot's outer edge and the y-title glyph box. Matches the slack under
+// the x-title (default pad.b 60 − AXIS_TITLE_OFFSET 36 − ~half the title ≈ 14).
+export const AXIS_LABEL_OUTER = 12
+// Distance from an x/x2 axis baseline to the title center.
+export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
 // Default plot padding (px) reserved for axis ticks/labels, shared by
 // Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
 
-// X position for a right-side (y2) axis label: past the plot edge plus tick shift and
-// measured tick-label width (both zero when tick labels render inside the plot)
+// Left y-title x: auto-padding reserves [outer | title | gap | ticks] from the plot edge
+// inward. The title is *centered* on label_x, so that center sits in the middle of the
+// title band (not on the gap/title boundary, which jammed glyphs into the gap).
+export function y_axis_label_x(
+  axis: AxisConfig,
+  pad_l: number,
+  max_tick_width: number,
+): number {
+  const inside = axis.tick?.label?.inside ?? false
+  const tick_extent = inside ? 0 : max_tick_width
+  const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
+  return (
+    Math.max(title_center, pad_l - tick_extent - LABEL_GAP_DEFAULT - AXIS_LABEL_HEIGHT / 2) +
+    (axis.label_shift?.x ?? 0)
+  )
+}
+
+// Right y2-title x: mirror of y_axis_label_x (title center in its band, past the outer air).
 export function y2_axis_label_x(
   axis: AxisConfig,
   width: number,
@@ -22,7 +48,10 @@ export function y2_axis_label_x(
   const inside = axis.tick?.label?.inside ?? false
   const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0) + 8
   const label_offset =
-    (inside ? 0 : max_tick_width) + LABEL_GAP_DEFAULT + (axis.label_shift?.x ?? 0)
+    (inside ? 0 : max_tick_width) +
+    LABEL_GAP_DEFAULT +
+    AXIS_LABEL_HEIGHT / 2 +
+    (axis.label_shift?.x ?? 0)
   return width - pad_r + tick_shift + label_offset
 }
 
@@ -111,13 +140,6 @@ export const measure_max_tick_width = (ticks: (string | number)[], format: strin
         }),
       )
 
-// Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)
-export const TICK_LABEL_HEIGHT = 16
-// Estimated height of an axis label (font-size ~14px + margin)
-export const AXIS_LABEL_HEIGHT = 20
-// Distance from an x/x2 axis baseline to the title center.
-export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
-
 export const calc_auto_padding = ({
   padding,
   default_padding,
@@ -132,14 +154,19 @@ export const calc_auto_padding = ({
   const side_pad = (
     axis: AxisConfig & { tick_values?: (string | number)[] },
     default_side: number,
+    // Extra outward room when label_shift pushes the title past the default gap
+    // (negative x on the left axis, positive x on the right).
+    shift_outward = 0,
   ) => {
     const ticks = axis.tick_values ?? []
     if (ticks.length === 0) return default_side
+    const title_band = axis.label ? AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER : 0
     return Math.max(
       default_side,
       measure_max_tick_width(ticks, axis.format ?? ``) +
         label_gap +
-        (axis.label ? AXIS_LABEL_HEIGHT : 0),
+        title_band +
+        Math.max(0, shift_outward),
     )
   }
 
@@ -153,8 +180,8 @@ export const calc_auto_padding = ({
           )
         : default_padding.t),
     b: padding.b ?? default_padding.b,
-    l: padding.l ?? side_pad(y_axis, default_padding.l),
-    r: padding.r ?? side_pad(y2_axis, default_padding.r),
+    l: padding.l ?? side_pad(y_axis, default_padding.l, -(y_axis.label_shift?.x ?? 0)),
+    r: padding.r ?? side_pad(y2_axis, default_padding.r, y2_axis.label_shift?.x ?? 0),
   }
 }
 
