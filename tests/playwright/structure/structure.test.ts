@@ -1165,20 +1165,24 @@ test.describe(`Structure Event Handler Tests`, () => {
         if (event_calls) event_calls.length = 0
       })
 
+    const get_event_calls = (page: Page): Promise<{ event: string; data?: unknown }[]> =>
+      page.evaluate(
+        () =>
+          ((globalThis as Record<string, unknown>).event_calls as {
+            event: string
+            data?: unknown
+          }[]) || [],
+      )
+
     const check_event_triggered = async (
       page: Page,
       event_name: string,
       expected_props: string[],
     ) => {
-      const event_calls = await page.evaluate(
-        () => ((globalThis as Record<string, unknown>).event_calls as unknown[]) || [],
-      )
-      const events = event_calls.filter(
-        (call) => (call as Record<string, unknown>).event === event_name,
-      )
+      const events = (await get_event_calls(page)).filter((call) => call.event === event_name)
       expect(events.length, event_name).toBeGreaterThan(0)
 
-      const event = events[0] as Record<string, unknown>
+      const event = events[0]
       for (const prop of expected_props) {
         expect(event.data as Record<string, unknown>, event_name).toHaveProperty(prop)
       }
@@ -1276,7 +1280,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       }).toPass({ timeout: get_canvas_timeout() })
     })
 
-    test(`pressing r resets the camera`, async ({ page }) => {
+    test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {
       test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
       const canvas = page.locator(`#test-structure canvas`).first()
       const box = await canvas.boundingBox()
@@ -1289,6 +1293,10 @@ test.describe(`Structure Event Handler Tests`, () => {
       // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
       // hover()'s actionability check trips on the overlays the drag leaves behind
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.keyboard.press(`Shift+R`)
+      expect(
+        (await get_event_calls(page)).filter((call) => call.event === `on_camera_reset`),
+      ).toHaveLength(0)
       await page.keyboard.press(`r`)
       await expect(async () => {
         await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])

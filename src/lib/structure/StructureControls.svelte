@@ -74,7 +74,7 @@
     polyhedra_rendered_elements = [],
     displacement_summary = null,
     on_reset_camera,
-    reset_text = `Reset camera (or double-click)`,
+    reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
     pane_props = {},
     toggle_props = {},

@@ -162,7 +162,7 @@
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
-    reset_text = `Reset camera (or double-click)`,
+    reset_text = `Reset view (r, or double-click)`,
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable({
       mode: DEFAULTS.structure.atom_color_mode,
@@ -1569,8 +1569,8 @@
       }
     }
 
-    // Plain `r` (Cmd/Ctrl+R is browser reload). Same shortcut as ConvexHull viewers.
-    if (key === `r` && plain && reset_camera_available) {
+    // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free).
+    if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
       reset_all_cameras()
       return true
     }
@@ -1858,7 +1858,7 @@
                   }}
                 >
                   <Icon icon="Reset" />
-                  <span>Reset view</span>
+                  <span>Reset view <kbd>r</kbd></span>
                 </button>
               {/if}
             </div>

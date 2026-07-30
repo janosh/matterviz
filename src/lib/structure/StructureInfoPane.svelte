@@ -55,7 +55,7 @@
     },
     {
       label: `Keyboard`,
-      value: `Press f for fullscreen, i to toggle this pane, r to reset the camera`,
+      value: `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
     },
   ]
 
