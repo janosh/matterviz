@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BondGroupWithGradients } from '$lib/structure'
-  import { T } from '@threlte/core'
-  import { attribute, dot, mix, normalView, positionLocal, uniform, vec3 } from 'three/tsl'
+  import { T, useThrelte } from '@threlte/core'
+  import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import type { InstancedMesh } from 'three/webgpu'
   import {
     Color,
@@ -20,10 +20,17 @@
     brightness?: number
   } = $props()
 
+  const { invalidate } = useThrelte()
+
   let mesh: InstancedMesh | undefined = $state()
   // Reusable buffers to avoid reallocation on every update
   let colors_start = new Float32Array(0)
   let colors_end = new Float32Array(0)
+
+  // Grow-only: three caches TSL materials by mesh uuid, so recreating on shrink is expensive.
+  // Derived, not state+effect: an effect would first render at capacity 0 and build twice.
+  let peak_capacity = 0
+  let capacity = $derived((peak_capacity = Math.max(peak_capacity, group.instances.length)))
 
   // Appearance knobs live in uniforms so tweaking them mutates the existing material rather
   // than rebuilding the node graph (a $derived would leak a material per lighting change).
@@ -32,15 +39,13 @@
   const color_saturation = uniform(0.5)
   const color_brightness = uniform(0.7)
 
-  // Each instance carries the colors of the two atoms it connects; blend them along the
-  // unit-height cylinder's local Y (-0.5..0.5 remapped to 0..1), then desaturate and darken to
-  // keep bonds distinct from atoms. Lighting is a fixed-direction Lambert term rather than the
-  // scene lights, so bond shading responds only to the explicit ambient/directional settings.
-  const gradient = mix(
-    attribute(`instanceColorStart`, `vec3`),
-    attribute(`instanceColorEnd`, `vec3`),
-    positionLocal.y.add(0.5),
-  )
+  // Blend atom colors along cylinder Y via varyings (fragment InstancedBufferAttribute reads
+  // mid-mix under WebGPU; positionLocal is world Y after instance()). Lambert is fixed-dir.
+  const color_start = attribute(`instanceColorStart`, `vec3`).toVarying(`vBondColorStart`)
+  const color_end = attribute(`instanceColorEnd`, `vec3`).toVarying(`vBondColorEnd`)
+  const cylinder_t = positionGeometry.y.add(0.5).toVarying(`vBondCylinderT`)
+  // @ts-expect-error — toVarying typed as VaryingNode<string>; runtime keeps float/vec3
+  const gradient = mix(color_start, color_end, cylinder_t)
   const luma = dot(gradient, vec3(0.299, 0.587, 0.114))
   const tinted = mix(vec3(luma), gradient, color_saturation).mul(color_brightness)
   const diffuse = dot(normalView, vec3(1, 1, 1).normalize()).max(0)
@@ -94,6 +99,7 @@
     }
 
     mesh.count = count
+    invalidate() // on-demand rendering: nothing else requests a frame for these writes
   })
 
   // Colors are uploaded in linear space; the renderer applies tone mapping and sRGB output.
@@ -107,11 +113,12 @@
     directional_intensity.value = group.directional_light ?? 0.3
     color_saturation.value = saturation
     color_brightness.value = brightness
+    invalidate()
   })
 
   $effect(() => () => bond_material.dispose())
 </script>
 
-<T.InstancedMesh args={[undefined, bond_material, group.instances.length]} bind:ref={mesh}>
+<T.InstancedMesh args={[undefined, bond_material, capacity]} bind:ref={mesh}>
   <T.CylinderGeometry args={[group.thickness, group.thickness, 1, 8]} />
 </T.InstancedMesh>

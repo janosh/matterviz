@@ -47,7 +47,7 @@
     },
     {
       label: `Camera Reset`,
-      value: `Double-click anywhere to reset camera to default view`,
+      value: `Press r, double-click the canvas, or use Reset view in the Camera settings`,
     },
     {
       label: `Colors`,
@@ -55,7 +55,7 @@
     },
     {
       label: `Keyboard`,
-      value: `Press 'f' for fullscreen, 'i' to toggle this pane`,
+      value: `Press f for fullscreen, i to toggle this pane, r to reset the camera`,
     },
   ]
 
@@ -194,7 +194,8 @@
   }
 
   let pane_data = $derived.by(() => {
-    if (!structure) return []
+    // Skip while closed — DraggablePane keeps children mounted (display:none).
+    if (!pane_open || !structure) return []
     const sections: { title: string; items: InfoItem[] }[] = []
 
     // Structure Info
@@ -308,7 +309,7 @@
     sites_allowed_by_threshold && atom_count >= atom_count_thresholds[0],
   )
   let site_cards_visible = $derived(
-    sites_allowed_by_threshold && (!sites_need_toggle || sites_expanded),
+    pane_open && sites_allowed_by_threshold && (!sites_need_toggle || sites_expanded),
   )
 
   let site_cards = $derived.by((): SiteCard[] => {
@@ -362,7 +363,7 @@
   )
   let sites_hidden_by_threshold = $derived(sites_need_toggle && !sites_expanded)
   let show_sites_section = $derived(
-    site_cards.length > 0 || sites_hidden_by_threshold || sites_need_toggle,
+    pane_open && (site_cards.length > 0 || sites_hidden_by_threshold || sites_need_toggle),
   )
 
   $effect(() => {
@@ -386,8 +387,7 @@
       ?.scrollIntoView({ block: `nearest` })
   })
 
-  // Compute Wyckoff positions from symmetry data
-  let wyckoff_positions = $derived(wyckoff_positions_from_moyo(sym_data))
+  let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
 </script>
 
 <DraggablePane

@@ -60,6 +60,15 @@ describe(`StructureInfoPane`, () => {
     },
   )
 
+  // Closed pane stays mounted (display:none); site cards must not rebuild while closed.
+  test.each([
+    [false, 0],
+    [true, 3],
+  ])(`pane_open=%s renders %i site cards`, (pane_open, n_cards) => {
+    mount_info_pane({ structure: get_dummy_structure(`H`, 3, true), pane_open })
+    expect(document.querySelectorAll(`.site-card`)).toHaveLength(n_cards)
+  })
+
   test(`omits sites section entirely above max threshold`, () => {
     const structure = get_dummy_structure(`H`, 600, true)
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })

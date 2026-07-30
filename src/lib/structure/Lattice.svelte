@@ -8,6 +8,7 @@
   import Arrow from './Arrow.svelte'
   import Cylinder from './Cylinder.svelte'
   import { T } from '@threlte/core'
+  import { untrack } from 'svelte'
   import { BoxGeometry, EdgesGeometry, Matrix4, Vector3 } from 'three/webgpu'
 
   let {
@@ -39,20 +40,23 @@
     matrix ? math.scale(math.add(...matrix), 0.5) : [0, 0, 0],
   )
 
-  // Build the sheared box geometry in an effect so the previous one is disposed on
-  // matrix change / unmount (same disposal pattern as the polyhedra in StructureScene).
+  // Key on cell numbers (not array identity) so equal NEB/trajectory matrices skip rebuild.
+  let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
   let box_geometry = $state<BoxGeometry | null>(null)
   $effect(() => {
-    if (!matrix) {
+    void matrix_key
+    const cell = untrack(() => matrix)
+    if (!cell) {
       box_geometry = null
       return
     }
-    const shear_matrix = new Matrix4().makeBasis(
-      new Vector3(...matrix[0]),
-      new Vector3(...matrix[1]),
-      new Vector3(...matrix[2]),
+    const geo = new BoxGeometry(1, 1, 1).applyMatrix4(
+      new Matrix4().makeBasis(
+        new Vector3(...cell[0]),
+        new Vector3(...cell[1]),
+        new Vector3(...cell[2]),
+      ),
     )
-    const geo = new BoxGeometry(1, 1, 1).applyMatrix4(shear_matrix)
     box_geometry = geo
     return () => geo.dispose()
   })
@@ -105,7 +109,7 @@
   {/if}
 
   {#if show_cell_vectors}
-    {#each matrix as vec, idx (vec)}
+    {#each matrix as vec, idx (idx)}
       <Arrow
         position={vector_origin}
         vector={vec}

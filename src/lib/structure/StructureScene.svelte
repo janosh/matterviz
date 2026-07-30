@@ -2044,11 +2044,9 @@
         />
       {/if}
 
-      <!-- Instanced bond rendering with gradient colors -->
-      {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
-        {#key group.instances.length}
-          <Bond {group} />
-        {/key}
+      <!-- Single group today; Bond grows capacity — remount rebuilds TSL. -->
+      {#each instanced_bond_groups as group (`bonds`)}
+        <Bond {group} />
       {/each}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one

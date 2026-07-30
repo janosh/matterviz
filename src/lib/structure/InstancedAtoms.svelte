@@ -75,13 +75,16 @@
   })
   $effect(() => () => geometry.dispose()) // unmount-only, cleanups run untracked
 
-  // Recreate the mesh only when capacity must change (instanceMatrix buffer size
-  // is fixed at construction); data updates just rewrite the buffers below.
+  // Grow-only capacity (three caches TSL by mesh uuid); shrink via mesh.count.
   let mesh = $state.raw<InstancedMesh | null>(null)
   $effect(() => {
     const count = atoms.length
     const prev = untrack(() => mesh)
-    if (prev && prev.count === count) return
+    if (prev && prev.instanceMatrix.count >= count && count > 0) {
+      prev.count = count
+      invalidate()
+      return
+    }
     prev?.dispose()
     if (count === 0) {
       mesh = null
