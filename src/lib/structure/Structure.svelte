@@ -2259,8 +2259,11 @@
 
     {#if symmetry_error}
       <div class="symmetry-error">
-        <span>{symmetry_error}</span>
-        <button onclick={() => (symmetry_error = undefined)} aria-label="Dismiss"> × </button>
+        {symmetry_error}
+        <button
+          onclick={() => (symmetry_error = undefined)}
+          aria-label="Dismiss symmetry warning">×</button
+        >
       </div>
     {/if}
   {:else if structure}
@@ -2413,28 +2416,32 @@
   }
   .symmetry-error {
     position: absolute;
-    bottom: 1rem;
-    right: 1rem;
+    bottom: 0.5rem;
+    right: 0.5rem;
     background: rgba(255, 165, 0, 0.95);
     color: #000;
-    padding: 0.75rem 1rem;
+    padding: 0.4rem 1.65rem 0.4rem 0.55rem;
     border-radius: var(--border-radius, 3pt);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    display: flex;
-    gap: 1rem;
     max-width: min(90%, 400px);
-    font-size: 0.9rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
     z-index: var(--z-index-viewer-tooltip, 1000);
   }
-  .symmetry-error span {
-    flex: 1;
-  }
   .symmetry-error button {
-    background: transparent;
-    border: none;
-    font-size: 1.5rem;
-    line-height: 1;
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    display: grid;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
     padding: 0;
+    background: rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    font-size: 0.7rem;
+    line-height: 1;
     cursor: pointer;
     opacity: 0.7;
   }

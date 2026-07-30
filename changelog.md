@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.4.4](https://github.com/janosh/matterviz/compare/v0.4.3...v0.4.4)
+
+> 30 July 2026
+
+### 🚀 New Features
+
+- Add MSD/diffusion, PDF, bond-angle, neutron/electron XRD, SAED, NEB, and IR/Raman analysis https://github.com/janosh/matterviz/pull/417
+- Parse PDB, MOL/SDF, MOL2, mmCIF, and LAMMPS files; add selective-dynamics colors, dihedrals, zone-axis views, and displacement overlays https://github.com/janosh/matterviz/pull/417
+- Add interactive volumetric cross-sections with HKL planes and live offset sampling https://github.com/janosh/matterviz/pull/415
+- Add site-wide Pagefind documentation search https://github.com/janosh/matterviz/commit/702d917283414d26feb193c0a4ecef98d46acc9b
+
+### 🛠 Enhancements
+
+- Move 3D rendering to WebGPU and accelerate RDF, bonding, XRD, parsers, and render hot loops https://github.com/janosh/matterviz/pull/416
+- Support flat typed-array scalar grids in marching cubes https://github.com/janosh/matterviz/pull/414
+- Improve responsive structure controls, URL state, public APIs, Sunburst gaps, and colorbar layout https://github.com/janosh/matterviz/pull/413
+- Cut structure-viewer render churn and improve camera framing, reset controls, and plot-axis padding https://github.com/janosh/matterviz/pull/419
+
+### 🐛 Bug Fixes
+
+- Fix bonding, diffraction, MSD unwrapping, supercells, symmetry elements, and malformed analysis/parser inputs https://github.com/janosh/matterviz/pull/417
+- Clean up renderer, canvas, stream, and recorder resources after failed exports https://github.com/janosh/matterviz/pull/415
+- Fix bond-edit resets and portaled widget interactions https://github.com/janosh/matterviz/pull/418
+- Fix WebGPU gradients and camera state, bundled Moyo WASM, and plot clipping/interactions https://github.com/janosh/matterviz/pull/419
+
+### 💡 Refactoring
+
+- Replace local UI widget copies with `svelte-widgets` 1.1 https://github.com/janosh/matterviz/pull/418
+- Make releases artifact-first, retry-safe, and tag-last https://github.com/janosh/matterviz/commit/53d508778bad2994197c316cc7fe9c6e76b7452f
+
 ## [v0.4.3](https://github.com/janosh/matterviz/compare/v0.4.2...v0.4.3)
 
 > 15 July 2026

@@ -1,167 +1,128 @@
 name: Publish
 
-# On a new vX.Y.Z tag: gate on lint + unit tests, then publish in parallel the
-# `matterviz` npm package, the `matterviz-anywidget` npm bundle, and the VS Code extension
-# to Open VSX (the VS Code Marketplace is uploaded manually -- see below). workflow_dispatch
-# (re)publishes a given version by building that version's tag -- use it to publish an
-# already-pushed tag that never reached a registry (run from the default branch so this
-# workflow file is current).
+# Manually build every release artifact, publish the verified artifacts, then create the tag
+# and GitHub release. A tag therefore certifies a completed release instead of triggering one.
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
 # The VS Code Marketplace is NOT auto-published (the publisher's Azure org can't issue a
-# publish PAT/identity): the vscode job uploads a `matterviz-vsix` artifact to upload by hand
-# at https://marketplace.visualstudio.com/manage.
+# publish PAT/identity): upload the VSIX from the GitHub release by hand at
+# https://marketplace.visualstudio.com/manage.
 # Required repo secrets:
 #   OVSX_PAT - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       version:
-        description: Version to (re)publish, e.g. 0.4.0 (its tag must already be pushed unless dry_run)
+        description: Version to publish, e.g. 0.4.0
         required: true
         type: string
       dry_run:
-        description: Dry run -- build, package & validate everything, but do not publish
+        description: Build and validate everything without publishing or tagging
         type: boolean
         default: true
 
 permissions:
   contents: read
 
-# one publish per version, but never cancel an in-flight one (a half-published release is
-# worse). Normalize to `v<version>` so a tag push (ref_name `v0.4.0`) and a manual run
-# (input `0.4.0`) for the same release share one group.
+# One publish per version, but never cancel an in-flight one: a half-published release is worse.
 concurrency:
-  group: publish-${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
+  group: publish-v${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
-  version:
+  prepare:
+    name: Validate release
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
-      ref: ${{ steps.resolve.outputs.ref }} # exact commit every other job checks out
     steps:
-      - id: resolve
-        # input via env (not ${{ }}) to avoid shell injection; validate before use
+      - name: Checkout release commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate version and tag
+        id: resolve
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
           DRY_RUN: ${{ inputs.dry_run }}
-        shell: bash
         run: |
-          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            version="$INPUT_VERSION"
-          else
-            version="${GITHUB_REF#refs/tags/}"
-          fi
-          version="${version#v}" # strip optional leading v from tags / manual input alike
+          version="${INPUT_VERSION#v}"
           # plain X.Y.Z only: a prerelease would land on the npm 'latest' tag (no --tag passed)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo "Invalid version: $version (expected X.Y.Z)"; exit 1; }
-          # Build & publish the exact tagged commit (vX.Y.Z), so a manual run (re)publishes an
-          # already-pushed tag rather than whatever the workflow ran from. Fall back to the
-          # triggering ref for a dry run of a not-yet-tagged version.
-          tag="refs/tags/v$version"
-          if git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1; then
-            ref="$tag"
-          elif [ "$DRY_RUN" = true ]; then
-            ref="$GITHUB_REF"
-            echo "::notice::tag $tag not found -- dry-run building $GITHUB_REF"
-          else
-            echo "::error::tag $tag does not exist -- push it first, or run with dry_run=true"; exit 1
+
+          if [ "$DRY_RUN" != true ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::releases must run from main, got $GITHUB_REF"; exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-  # === Gate: publish only if lint + unit tests pass for the published commit ===
-  lint:
-    needs: version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.version.outputs.ref }}
-      # ext deps so type-aware lint / svelte-check resolve their imports in CI
-      - uses: ./.github/actions/setup
-        with:
-          extensions: vscode anywidget
-      - uses: j178/prek-action@v2
-
-  test:
-    needs: version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.version.outputs.ref }}
-      - uses: ./.github/actions/setup
-      - name: Unit tests
-        run: pnpm exec vp test --run
-
-  # === Gate: no package uploads unless the release version matches its tag ===
-  # A single job all publishers depend on, so a version/tag mismatch blocks every upload
-  # (not just the one whose own check failed). anywidget injects its version, so only the
-  # bumped manifests are checked here; gating anywidget on this still blocks it on a mismatch.
-  verify:
-    needs: version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.version.outputs.ref }}
-      # skip on dry runs: a not-yet-tagged dry run builds a ref whose version differs
-      - name: Verify package versions match the tag
-        if: ${{ !inputs.dry_run }}
-        env:
-          EXPECTED: ${{ needs.version.outputs.version }}
-        run: |
-          for pkg in package.json extensions/vscode/package.json; do
-            actual=$(node -p "require('./$pkg').version")
-            [ "$actual" = "$EXPECTED" ] || { echo "$pkg ($actual) != release ($EXPECTED) -- bump it in the release commit"; exit 1; }
+          for package_file in package.json extensions/anywidget/package.json extensions/vscode/package.json; do
+            actual_version=$(node -p "require('./$package_file').version")
+            [ "$actual_version" = "$version" ] || {
+              echo "::error::$package_file version $actual_version != release $version"; exit 1; }
           done
 
-  # === Publish: matterviz component library to npm ===
-  npm:
-    needs: [version, verify, lint, test]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # npm OIDC trusted publishing + provenance
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.version.outputs.ref }}
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Build component library
-        run: pnpm package:dist
-      # OIDC trusted publishing (no token): npm >= 11.5.1 + id-token:write authenticate via
-      # the npmjs Trusted Publisher configured for this repo/workflow; provenance is automatic
-      - name: Publish to npm
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          if [ "$DRY_RUN" = true ]; then
-            npx --yes npm@latest publish --ignore-scripts --access public --dry-run
-          else
-            npx --yes npm@latest publish --ignore-scripts --access public
+          tag_ref="refs/tags/v$version"
+          tag_sha=$(git rev-list -n 1 "$tag_ref" 2>/dev/null || true)
+          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            if [ "$DRY_RUN" = true ]; then
+              echo "::notice::$tag_ref points to $tag_sha; dry-run continues without changing it"
+            else
+              echo "::error::$tag_ref already points to $tag_sha, not $GITHUB_SHA"; exit 1
+            fi
+          elif [ -n "$tag_sha" ]; then
+            echo "::notice::$tag_ref already points to this commit; treating this run as recovery"
           fi
 
-  # === Publish: VS Code extension to Open VSX (Marketplace upload is manual) ===
-  vscode:
-    needs: [version, verify, lint, test]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: Code quality
+    needs: prepare
+    uses: ./.github/workflows/lint.yml
+
+  tests:
+    name: Test suite
+    needs: prepare
+    uses: ./.github/workflows/test.yml
+
+  # === Build every immutable release artifact before publishing anything ===
+  package_matterviz:
+    name: Build matterviz npm package
+    needs: [prepare, lint, tests]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
+      - name: Build and package component library
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          pnpm package:dist
+          mkdir -p release
+          npm pack --ignore-scripts --pack-destination release
+          test -s "release/matterviz-$RELEASE_VERSION.tgz"
+      - name: Upload matterviz package
+        uses: actions/upload-artifact@v7
         with:
-          ref: ${{ needs.version.outputs.ref }}
-          persist-credentials: false
-      # root install too: the webview build bundles ../../src/lib (three/d3/etc.)
-      - uses: ./.github/actions/setup
+          name: matterviz-npm-${{ needs.prepare.outputs.version }}
+          path: release/matterviz-${{ needs.prepare.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  package_vscode:
+    name: Build VS Code extension
+    needs: [prepare, lint, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
         with:
           extensions: vscode
       - name: Build extension
@@ -169,60 +130,187 @@ jobs:
       - name: Package VSIX
         working-directory: extensions/vscode
         run: npx @vscode/vsce package --no-dependencies -o matterviz.vsix
-      # the Marketplace needs a publish PAT/Azure identity the publisher's org can't issue,
-      # so upload the .vsix for manual upload at https://marketplace.visualstudio.com/manage
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v7
         with:
-          name: matterviz-vsix
+          name: matterviz-vsix-${{ needs.prepare.outputs.version }}
           path: extensions/vscode/matterviz.vsix
-      # ovsx has no dry-run; the package step above exercises the build, so a dry run skips this
-      - name: Publish to Open VSX
-        if: ${{ !inputs.dry_run }}
-        working-directory: extensions/vscode
-        run: npx ovsx publish matterviz.vsix --pat "$OVSX_PAT"
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          if-no-files-found: error
+          retention-days: 7
 
-  # === Publish: prebuilt matterviz-anywidget bundle to npm ===
-  anywidget:
-    needs: [version, verify, lint, test]
+  package_anywidget:
+    name: Build anywidget npm package
+    needs: [prepare, lint, tests]
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # npm OIDC trusted publishing + provenance
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.version.outputs.ref }}
-          persist-credentials: false
-      - uses: ./.github/actions/setup
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
         with:
           extensions: anywidget
-      - name: 'Build component library (resolves the file: dependency)'
+      - name: Build component library dependency
         run: pnpm package:dist
-      - name: Build + size-gate bundle
+      - name: Build, size-gate, and package anywidget bundle
         working-directory: extensions/anywidget
         env:
-          PUBLISH_VERSION: ${{ needs.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # version isn't bumped by the release commit, so set it here
-          npm version "$PUBLISH_VERSION" --no-git-tag-version --allow-same-version
           pnpm run build
-          # sanity-gate before publishing (runtime coverage lives in pymatviz's tests)
           test -s build/matterviz.js && test -s build/matterviz.css
           js_bytes=$(wc -c < build/matterviz.js)
-          # >1MB: all components present; <5MB: h5wasm/moyo WASM didn't creep back in
-          test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
-          test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- WASM re-bundled?"; exit 1; }
-      # OIDC trusted publishing (needs its own Trusted Publisher config for matterviz-anywidget)
-      - name: Publish to npm
-        working-directory: extensions/anywidget
+          test "$js_bytes" -gt 1000000 || {
+            echo "bundle too small ($js_bytes B)"; exit 1; }
+          # Fresh builds are ~5.37 MB; Moyo's base64 WASM adds ~0.98 MB.
+          test "$js_bytes" -lt 6000000 || {
+            echo "bundle too large ($js_bytes B) -- unexpected dependency bundled?"; exit 1; }
+          mkdir -p release
+          npm pack --ignore-scripts --pack-destination release
+          test -s "release/matterviz-anywidget-$RELEASE_VERSION.tgz"
+      - name: Upload anywidget package
+        uses: actions/upload-artifact@v7
+        with:
+          name: matterviz-anywidget-npm-${{ needs.prepare.outputs.version }}
+          path: extensions/anywidget/release/matterviz-anywidget-${{ needs.prepare.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  # === Publish only after every artifact has built successfully ===
+  publish_npm:
+    name: Publish ${{ matrix.package_name }} to npm
+    needs: [prepare, package_matterviz, package_anywidget, package_vscode]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package_name: [matterviz, matterviz-anywidget]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download ${{ matrix.package_name }} package
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.package_name }}-npm-${{ needs.prepare.outputs.version }}
+          path: release
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Publish or verify npm package
         env:
+          PACKAGE_NAME: ${{ matrix.package_name }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          tarball="./release/$PACKAGE_NAME-$RELEASE_VERSION.tgz"
           if [ "$DRY_RUN" = true ]; then
-            npx --yes npm@latest publish --ignore-scripts --access public --dry-run
-          else
-            npx --yes npm@latest publish --ignore-scripts --access public
+            npx --yes npm@latest publish "$tarball" --ignore-scripts --access public --dry-run
+            exit 0
           fi
+
+          published_integrity=$(npm view "$PACKAGE_NAME@$RELEASE_VERSION" dist.integrity 2>/dev/null || true)
+          if [ -n "$published_integrity" ]; then
+            local_integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)"
+            [ "$published_integrity" = "$local_integrity" ] || {
+              echo "::error::$PACKAGE_NAME@$RELEASE_VERSION exists with different content"; exit 1; }
+            echo "::notice::$PACKAGE_NAME@$RELEASE_VERSION already matches; skipping publish"
+            exit 0
+          fi
+
+          npx --yes npm@latest publish "$tarball" --ignore-scripts --access public
+
+  publish_open_vsx:
+    name: Publish VS Code extension to Open VSX
+    needs: [prepare, package_matterviz, package_anywidget, package_vscode]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@v8
+        with:
+          name: matterviz-vsix-${{ needs.prepare.outputs.version }}
+          path: release
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Publish or verify Open VSX extension
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            echo "Open VSX has no dry-run; the validated VSIX will not be uploaded"
+            exit 0
+          fi
+
+          compare_dir=$(mktemp -d)
+          published_url="https://open-vsx.org/api/janosh/matterviz/$RELEASE_VERSION/file/janosh.matterviz-$RELEASE_VERSION.vsix"
+          published_status=$(curl --silent --show-error --location --retry 3 \
+            --output "$compare_dir/published.vsix" --write-out '%{http_code}' "$published_url")
+          if [ "$published_status" = 200 ]; then
+            mkdir "$compare_dir/local" "$compare_dir/published"
+            unzip -q release/matterviz.vsix -d "$compare_dir/local"
+            unzip -q "$compare_dir/published.vsix" -d "$compare_dir/published"
+            if ! diff --recursive --brief "$compare_dir/local" "$compare_dir/published"; then
+              echo "::error::Open VSX matterviz $RELEASE_VERSION exists with different content"; exit 1
+            fi
+            echo "::notice::Open VSX matterviz $RELEASE_VERSION already matches; skipping publish"
+            exit 0
+          fi
+          [ "$published_status" = 404 ] || {
+            echo "::error::Open VSX returned HTTP $published_status for matterviz $RELEASE_VERSION"; exit 1; }
+
+          npx --yes ovsx publish release/matterviz.vsix
+
+  # gh release create creates the tag at the exact release commit if it does not exist.
+  finalize:
+    name: Create tag and GitHub release
+    needs: [prepare, publish_npm, publish_open_vsx]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Summarize dry run
+        if: ${{ inputs.dry_run }}
+        run: echo "All v${{ needs.prepare.outputs.version }} artifacts built and validated; nothing published or tagged"
+      - name: Download VSIX
+        uses: actions/download-artifact@v8
+        if: ${{ !inputs.dry_run }}
+        with:
+          name: matterviz-vsix-${{ needs.prepare.outputs.version }}
+          path: release
+      - name: Create or verify tag and GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          tag="v$RELEASE_VERSION"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$RELEASE_SHA" --generate-notes \
+              "release/matterviz.vsix#MatterViz VS Code extension"
+            exit 0
+          fi
+
+          has_vscode_asset=$(gh release view "$tag" --json assets \
+            --jq 'any(.assets[]; .name == "matterviz.vsix")')
+          if [ "$has_vscode_asset" != true ]; then
+            gh release upload "$tag" release/matterviz.vsix
+            exit 0
+          fi
+
+          mkdir -p existing_release
+          gh release download "$tag" --pattern matterviz.vsix --dir existing_release
+          if ! cmp -s release/matterviz.vsix existing_release/matterviz.vsix; then
+            mkdir existing_release/local_contents existing_release/published_contents
+            unzip -q release/matterviz.vsix -d existing_release/local_contents
+            unzip -q existing_release/matterviz.vsix -d existing_release/published_contents
+            diff --recursive --brief \
+              existing_release/local_contents existing_release/published_contents || {
+                echo "::error::$tag already has a different matterviz.vsix"; exit 1; }
+          fi
+          echo "::notice::$tag and its VSIX already exist with the expected content"

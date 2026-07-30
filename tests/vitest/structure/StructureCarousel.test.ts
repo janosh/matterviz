@@ -177,21 +177,60 @@ describe(`StructureCarousel`, () => {
     expect(live_cards()).toBe(10)
   })
 
-  test(`captures a nested viewer wheel so the carousel scrolls, not the page`, () => {
+  // happy-dom's WheelEvent silently drops MouseEventInit modifier flags, so the
+  // shift/ctrl branches need them defined on the instance to be reachable.
+  const wheel_event = (init: WheelEventInit): WheelEvent => {
+    const { shiftKey = false, ctrlKey = false, ...deltas } = init
+    const event = new WheelEvent(`wheel`, { bubbles: true, cancelable: true, ...deltas })
+    Object.defineProperties(event, {
+      shiftKey: { value: shiftKey },
+      ctrlKey: { value: ctrlKey },
+    })
+    return event
+  }
+
+  // Capture runs before the nested canvas, so the carousel decides which wheels
+  // it owns. Taking a vertical one stole zoom from the structure viewer.
+  test.each([
+    { name: `trackpad swipe`, init: { deltaX: 80 }, scrolled: 80, taken: true },
+    {
+      name: `shift+wheel, deltaX`,
+      init: { deltaX: 80, shiftKey: true },
+      scrolled: 80,
+      taken: true,
+    },
+    // Firefox reports shift+wheel on deltaY; that is horizontal intent too
+    {
+      name: `shift+wheel, deltaY`,
+      init: { deltaY: 80, shiftKey: true },
+      scrolled: 80,
+      taken: true,
+    },
+    { name: `plain vertical wheel`, init: { deltaY: 80 }, scrolled: 0, taken: false },
+    {
+      name: `diagonal, mostly vertical`,
+      init: { deltaX: 10, deltaY: 80 },
+      scrolled: 0,
+      taken: false,
+    },
+    {
+      name: `ctrl+wheel (page zoom)`,
+      init: { deltaX: 80, ctrlKey: true },
+      scrolled: 0,
+      taken: false,
+    },
+  ])(`$name over a nested viewer: taken=$taken`, ({ init, scrolled, taken }) => {
     mount_carousel({ items, layout: `horizontal` })
 
     const track = doc_query(`.structure-carousel-track`)
     const structure = doc_query(`.structure-card .structure`)
     structure.addEventListener(`wheel`, (event) => event.stopPropagation())
-    const wheel = new WheelEvent(`wheel`, {
-      bubbles: true,
-      cancelable: true,
-      deltaY: 80,
-    })
+    const wheel = wheel_event(init)
     structure.dispatchEvent(wheel)
 
-    expect(wheel.defaultPrevented).toBe(true)
-    expect(track.scrollLeft).toBe(80)
+    // Left un-prevented means the viewer's orbit controls still get to zoom.
+    expect(wheel.defaultPrevented).toBe(taken)
+    expect(track.scrollLeft).toBe(scrolled)
   })
 
   test(`leaves wheel events for parent scrollers at scroll boundaries`, () => {
@@ -209,7 +248,7 @@ describe(`StructureCarousel`, () => {
     const wheel = new WheelEvent(`wheel`, {
       bubbles: true,
       cancelable: true,
-      deltaY: -80,
+      deltaX: -80,
     })
     track.dispatchEvent(wheel)
 
@@ -230,7 +269,7 @@ describe(`StructureCarousel`, () => {
       set: () => {},
     })
 
-    const wheel = new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 })
+    const wheel = new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 })
     track.dispatchEvent(wheel)
 
     expect(wheel.defaultPrevented).toBe(false)
@@ -334,7 +373,7 @@ describe(`StructureCarousel`, () => {
       const track = doc_query(`.structure-carousel-track`)
       const scroll = (): void => {
         track.dispatchEvent(
-          new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 }),
+          new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
         )
       }
       // Within the cooldown (same item count): suppressed
@@ -438,7 +477,7 @@ describe(`StructureCarousel`, () => {
 
     const track = doc_query(`.structure-carousel-track`)
     track.dispatchEvent(
-      new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: 80 }),
+      new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaX: 80 }),
     )
     expect(track.scrollLeft).toBe(80)
   })

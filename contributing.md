@@ -54,20 +54,20 @@ git checkout -b bug-fix-for-something
 
 ## Making a Release
 
-1. Update version in `package.json` (follows [semver](https://semver.org)).
+1. Update the version in `package.json`, `extensions/anywidget/package.json`, and `extensions/vscode/package.json` (follows [semver](https://semver.org)).
 1. Generate changelog:
 
    ```sh
    npx tsx https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts
    ```
 
-1. Commit and tag:
+1. Commit and push the release commit:
 
    ```sh
-   git add package.json changelog.md readme.md
+   git add package.json extensions/anywidget/package.json extensions/vscode/package.json changelog.md readme.md
    git commit -m "v1.2.3"
-   git tag v1.2.3
-   git push && git push --tags
+   git push
    ```
 
-1. [Create GitHub release](https://github.com/janosh/matterviz/releases/new).
+1. Run the [Publish workflow](https://github.com/janosh/matterviz/actions/workflows/publish.yml) from `main` with the release version and `dry_run` disabled. It builds and validates all artifacts, publishes to npm and Open VSX, then creates the tag and GitHub release.
+1. Upload the `matterviz.vsix` asset from the GitHub release to the [VS Code Marketplace](https://marketplace.visualstudio.com/manage).

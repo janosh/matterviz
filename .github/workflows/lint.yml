@@ -1,48 +1,59 @@
-name: Lint
+name: Code Quality
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
 jobs:
   prek:
+    name: Lint and type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v6
       # install extension deps too: vscode is type-aware linted by root oxlint
       # (needs e.g. @types/vscode), anywidget is checked by root svelte-check
       # (needs its matterviz/* subpath imports to resolve, else TS2882)
-      - uses: ./.github/actions/setup
+      - name: Install dependencies
+        uses: ./.github/actions/setup
         with:
           extensions: vscode anywidget
-      - uses: j178/prek-action@v2
+      - name: Run prek checks
+        uses: j178/prek-action@v2
 
       # The root tsconfig excludes extensions/, and `vite build` strips types without
       # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
       # extension imports $lib types directly (file-viewer/eligibility, io/decompress,
       # trajectory/format-detect), so a change to a shared type broke it silently -
       # e.g. making HostFileRequest.filename required produced four errors nothing caught.
-      - name: Type check VSCode extension against $lib
+      - name: Type-check VS Code extension
         run: pnpm -C extensions/vscode run typecheck
 
   knip:
+    name: Check unused code
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup
+      - name: Install dependencies
+        uses: ./.github/actions/setup
 
       - name: Check for unused dependencies and exports
         run: pnpm run knip
 
   publint:
+    name: Validate npm package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup
+      - name: Install dependencies
+        uses: ./.github/actions/setup
 
-      - name: Lint published package (exports/types)
+      - name: Validate package exports and types
         run: pnpm run publint

@@ -1,6 +1,7 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
 import { DEFAULTS } from '$lib/settings'
+import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
@@ -137,6 +138,44 @@ describe(`Structure`, () => {
       /state_proxy_equality_mismatch|effect_update_depth/i.test(warn),
     )
     expect(proxy_warns).toEqual([])
+  })
+
+  test(`shows a compact symmetry warning with a corner dismiss button`, async () => {
+    vi.stubEnv(`VITEST`, ``)
+    vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValueOnce(undefined)
+    vi.spyOn(symmetry, `analyze_structure_symmetry`).mockRejectedValueOnce(
+      new Error(`WASM unavailable`),
+    )
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    try {
+      mount_structure({ structure })
+      await vi.waitFor(() =>
+        expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
+      )
+
+      const warning = doc_query(`.symmetry-error`)
+      expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
+      const warning_style = getComputedStyle(warning)
+      expect(warning_style.fontSize).toBe(`12px`)
+      expect(warning_style.paddingTop).toBe(`6.4px`)
+
+      const dismiss = doc_query<HTMLButtonElement>(`.symmetry-error button`)
+      expect(dismiss.getAttribute(`aria-label`)).toBe(`Dismiss symmetry warning`)
+      const dismiss_style = getComputedStyle(dismiss)
+      expect(dismiss_style.position).toBe(`absolute`)
+      expect(dismiss_style.display).toBe(`grid`)
+      expect(dismiss_style.placeItems).toBe(`center`)
+      expect(dismiss_style.borderRadius).toBe(`50%`)
+      expect(dismiss_style.width).toBe(`16px`)
+      expect(dismiss_style.height).toBe(`16px`)
+
+      dismiss.click()
+      flushSync()
+      expect(document.querySelector(`.symmetry-error`)).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+      vi.restoreAllMocks()
+    }
   })
 
   test(`switches a volumetric structure between shared 3D and slice views`, async () => {

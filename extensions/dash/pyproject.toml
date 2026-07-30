@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "matterviz-dash-components"
-version = "0.4.3"
+version = "0.4.4"
 description = "Plotly Dash wrapper for MatterViz (Svelte) components"
 readme = "readme.md"
 license = "MIT"

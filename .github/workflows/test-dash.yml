@@ -25,23 +25,27 @@ on:
 
 jobs:
   test-dash:
+    name: Test Dash extension
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: extensions/dash
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout source
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      - uses: actions/setup-python@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -63,7 +67,7 @@ jobs:
         run: python scripts/sync_typed_wrappers.py --matterviz-dist ../../dist
 
       # Auto-commit typed.py if it changed (skip for fork PRs - no write access)
-      - name: Commit typed.py changes
+      - name: Commit generated wrapper updates
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
           cd ../..
@@ -82,9 +86,9 @@ jobs:
         run: pnpm run build
 
       # Run Python unit tests (fast, no browser)
-      - name: Run unit tests
+      - name: Run Python unit tests
         run: pytest tests/test_wrappers.py tests/test_js_utils.py -v
 
       # Run Playwright integration tests
-      - name: Run Playwright tests
+      - name: Run Playwright integration tests
         run: playwright install chromium && pytest tests/playwright/ -v --tb=short

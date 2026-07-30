@@ -213,10 +213,18 @@
     return true
   }
 
+  // A plain vertical wheel belongs to whatever the pointer is over — the nested
+  // structure viewer zooms with it — so only horizontal intent may scroll the
+  // carousel: a trackpad swipe, where deltaX dominates, or shift+wheel, which
+  // Chrome and Safari already report as deltaX but Firefox leaves on deltaY.
+  const horizontal_wheel_delta = (event: WheelEvent): number => {
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return event.deltaX
+    return event.shiftKey ? event.deltaY : 0
+  }
+
   const on_wheel = (event: WheelEvent): void => {
     if (!track || !is_horizontal || event.ctrlKey || items.length <= page_size) return
-    const dominant_delta =
-      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    const dominant_delta = horizontal_wheel_delta(event)
     if (dominant_delta === 0) return
     const delta_scale =
       event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -327,9 +335,10 @@
     window.addEventListener(`pointercancel`, stop_resize)
   }
 
-  // Capture before the nested Structure canvas sees the wheel. Orbit controls
-  // otherwise consume the event, and Svelte's normal bubble listener cannot
-  // reliably turn a mouse wheel into horizontal carousel movement.
+  // Capture before the nested Structure canvas sees the wheel: orbit controls
+  // consume the whole event, so a bubble listener would never see a trackpad
+  // swipe over a card. Vertical wheels are handed straight back (see
+  // horizontal_wheel_delta) so those same controls can still zoom.
   $effect(() => {
     const node = track
     if (!node || !is_horizontal) return

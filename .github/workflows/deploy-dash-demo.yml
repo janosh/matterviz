@@ -1,4 +1,4 @@
-name: Deploy Dash Demo to HF Spaces
+name: Deploy Dash Demo to Hugging Face Spaces
 
 on:
   push:
@@ -12,22 +12,24 @@ on:
 
 jobs:
   deploy:
+    name: Deploy Dash demo
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout deployment files
+        uses: actions/checkout@v6
 
-      - name: Push to Hugging Face Spaces
+      - name: Sync Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           cd /tmp
-          git clone https://user:${HF_TOKEN}@huggingface.co/spaces/janoshr/matterviz-dash hf-space
+          git clone "https://user:${HF_TOKEN}@huggingface.co/spaces/janoshr/matterviz-dash" hf-space
           cd hf-space
 
           # Copy deployment files
-          cp $GITHUB_WORKSPACE/extensions/dash/Dockerfile .
-          cp $GITHUB_WORKSPACE/extensions/dash/hugging_face_demo_app.py .
-          cp $GITHUB_WORKSPACE/extensions/dash/hf_space_readme.md README.md
+          cp "$GITHUB_WORKSPACE/extensions/dash/Dockerfile" .
+          cp "$GITHUB_WORKSPACE/extensions/dash/hugging_face_demo_app.py" .
+          cp "$GITHUB_WORKSPACE/extensions/dash/hf_space_readme.md" README.md
 
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
