@@ -408,7 +408,16 @@
   let auto_ranges = $derived.by(() => {
     const cat_count = slot_list.length
     const cat_range: Vec2 = cat_count > 0 ? [-0.5, cat_count - 0.5] : [0, 1]
-
+    const vertical = orientation === `vertical`
+    const initial_pad = filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const value_axis_pixels = vertical
+      ? height - initial_pad.t - initial_pad.b
+      : width - initial_pad.l - initial_pad.r
+    const outlier_extent = outlier_state.radius + outlier_state.stroke_width / 2
+    const outlier_range_padding =
+      value_axis_pixels > 2 * outlier_extent
+        ? outlier_extent / (value_axis_pixels - 2 * outlier_extent)
+        : 0.05
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (
       boxes: Box[],
@@ -417,9 +426,17 @@
     ): Vec2 => {
       const pts = value_points(boxes)
       if (pts.length === 0) return [0, 1]
-      return get_nice_data_range(pts, (pt) => pt.y, limit, scale_type, range_padding, false)
+      const has_outliers =
+        show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
+      return get_nice_data_range(
+        pts,
+        (point) => point.y,
+        limit,
+        scale_type,
+        has_outliers ? Math.max(range_padding, outlier_range_padding) : range_padding,
+        false,
+      )
     }
-    const vertical = orientation === `vertical`
     const value_primary = calc_value_range(
       primary_boxes,
       (vertical ? y_axis.range : x_axis.range) ?? [null, null],
