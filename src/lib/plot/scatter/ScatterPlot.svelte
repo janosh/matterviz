@@ -389,9 +389,7 @@
   // Update padding when format or ticks change
   $effect(() => {
     const new_pad =
-      width &&
-      height &&
-      (y_tick_values.length > 0 || y2_tick_values.length > 0 || x2_tick_values.length > 0)
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding,

@@ -227,6 +227,7 @@
         max={max_hull_dist_in_data}
         step="0.01"
         bind:value={max_hull_dist_show_phases}
+        aria-label="Points threshold (eV/atom)"
         style="border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))"
       />
       <span style="white-space: nowrap">eV/atom</span>
@@ -458,9 +459,7 @@
           />
           <span>°</span>
         </label>
-        <label
-          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
-        >
+        <label {@attach tooltip({ content: `Azimuth rotation around z-axis` })}>
           <span>Azim</span>
           <input
             type="number"
@@ -475,9 +474,7 @@
         </label>
       {:else}
         <!-- Quaternary camera controls (rotation_x/rotation_y) -->
-        <label
-          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
-        >
+        <label {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}>
           <span>φ</span>
           <input
             type="number"
@@ -491,9 +488,7 @@
             style="width: 3em"
           />
         </label>
-        <label
-          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
-        >
+        <label {@attach tooltip({ content: `Horizontal rotation (left/right)` })}>
           <span>θ</span>
           <input
             type="number"

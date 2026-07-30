@@ -544,8 +544,32 @@ test.describe(`Structure Component Tests`, () => {
     }
   })
 
+  test(`invalid FOVs do not break perspective auto-placement`, async ({ page }) => {
+    const perspective_fit_errors: string[] = []
+    page.on(`pageerror`, ({ message }) => {
+      if (message.includes(`Invalid perspective fit`)) {
+        perspective_fit_errors.push(message)
+      }
+    })
+    await page.evaluate(async () => {
+      for (const fov of [200, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
+        window.dispatchEvent(
+          new CustomEvent(`set-scene-props`, {
+            detail: {
+              camera_position: [0, 0, 0],
+              camera_projection: `perspective`,
+              fov,
+            },
+          }),
+        )
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
+    })
+    expect(perspective_fit_errors).toEqual([])
+  })
+
   test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
-    test.skip(IS_CI, `WebGPU gizmo hit testing is unavailable in headless CI`)
+    test.skip(IS_CI, `SwiftShader lacks reliable gizmo hit testing`)
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
     const canvas = page.locator(`#test-structure canvas`)

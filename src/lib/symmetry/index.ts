@@ -9,8 +9,6 @@ import init, { analyze_cell } from '@spglib/moyo-wasm'
 import { mat3_from_flat_col_major } from './symmetry-elements'
 import { wyckoff_letter } from './wyckoff-db'
 
-const moyo_wasm_url = new URL('@spglib/moyo-wasm/moyo_wasm_bg.wasm', import.meta.url).href
-
 export * from './cell-transform'
 export * from './spacegroups'
 export * from './symmetry-elements'
@@ -118,10 +116,8 @@ function make_frac_coord_mapper(
 export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   if (initialized) return
 
-  // Use provided URL (e.g. from VSCode webview data), otherwise use the bundled URL
-  const url = wasm_url ?? moyo_wasm_url
-
-  await init({ module_or_path: url })
+  // wasm-bindgen resolves the default WASM relative to its glue module.
+  await init(wasm_url ? { module_or_path: wasm_url } : undefined)
   initialized = true
 }
 

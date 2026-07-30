@@ -82,7 +82,7 @@
   } from '$lib/plot/core/utils/label-placement'
   import type { LabelSize } from '$lib/plot/core/utils/label-placement'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { onMount, tick, untrack } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type {
@@ -182,7 +182,7 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  let base_pad = $state(untrack(() => filter_padding(padding_config, DEFAULT_PLOT_PADDING)))
+  let base_pad = $derived(filter_padding(padding_config, DEFAULT_PLOT_PADDING))
   let pad = $derived(add_sides(base_pad, reserve_marginal_pad(resolved_marginals)))
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
@@ -326,8 +326,7 @@
             y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
-    const current_pad = untrack(() => base_pad)
-    if (!sides_equal(current_pad, new_pad)) base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
   let density_bins = $derived({
     x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),

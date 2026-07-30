@@ -466,7 +466,7 @@
   $effect(() => {
     // dynamic padding from tick label widths
     const new_pad =
-      width && height && ticks.y.length > 0
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
@@ -1159,6 +1159,7 @@
                   text-anchor={vertical ? `middle` : `start`}
                   dominant-baseline={vertical ? `auto` : `central`}
                   class="value-label"
+                  style="font-size: 11px"
                   fill={color}
                 >
                   {value_label_for(stats)}
@@ -1364,8 +1365,5 @@
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     font-size: var(--scatter-font-size);
-  }
-  .value-label {
-    font-size: 11px;
   }
 </style>

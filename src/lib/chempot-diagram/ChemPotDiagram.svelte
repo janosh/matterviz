@@ -121,7 +121,7 @@
   {/each}
 {/snippet}
 
-<div class="chempot-diagram-wrapper">
+<div style="position: relative">
   {#if n_display < 2}
     <div
       class="chempot-error"
@@ -246,9 +246,6 @@
 </div>
 
 <style>
-  .chempot-diagram-wrapper {
-    position: relative;
-  }
   .projection-info {
     margin: 0 0 0.5em;
     font-size: 0.9em;

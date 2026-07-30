@@ -135,6 +135,15 @@ describe(`BarPlot`, () => {
     expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
   })
 
+  test(`title-only y2 axis expands right padding`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
+      y_axis: { ticks: [] },
+      y2_axis: { label: `Secondary`, ticks: [] },
+    })
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(308)
+  })
+
   test(`default padding grows for wide y-axis ticks`, async () => {
     const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,

@@ -191,10 +191,10 @@ export const calc_auto_padding = ({
   }
   const top_pad = (): number => {
     const ticks = x2_axis.tick_values ?? []
-    if (ticks.length === 0) return default_padding.t
     const has_title = has_axis_title(x2_axis)
+    if (ticks.length === 0 && !has_title) return default_padding.t
     const inside = x2_axis.tick?.label?.inside ?? false
-    const has_outside_ticks = !inside
+    const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
     const tick_band = has_outside_ticks ? TICK_LABEL_HEIGHT + 8 + Math.max(0, -tick_shift) : 0
     const title_band = has_title ? AXIS_LABEL_HEIGHT : 0

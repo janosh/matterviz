@@ -227,7 +227,7 @@
   {:else if quaternary_loading}
     <Spinner text="Loading Li-Co-Ni-O data..." style="--spinner-size: 1.2em" />
   {:else if quaternary_error}
-    <p class="error">{quaternary_error}</p>
+    <p style="color: red">{quaternary_error}</p>
   {:else if all_entries.length > 0}
     <ChemPotDiagram
       entries={all_entries}
@@ -309,9 +309,6 @@
   p {
     max-width: 70ch;
     line-height: 1.5;
-  }
-  .error {
-    color: red;
   }
   .deferred-diagram {
     max-width: min(100%, 900px);

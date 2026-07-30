@@ -25,7 +25,7 @@ export type StructureFitOpts = {
 
 export type StructureFitFrame = { center: Vec3; extent: number }
 
-const EMPTY_FRAME: StructureFitFrame = { center: [0, 0, 0], extent: 10 }
+const empty_frame = (): StructureFitFrame => ({ center: [0, 0, 0], extent: 10 })
 
 const element_radius = (
   element: ElementSymbol,
@@ -54,10 +54,10 @@ export function structure_fit_frame(
   structure: AnyStructure | null | undefined,
   opts: StructureFitOpts = {},
 ): StructureFitFrame {
-  if (!structure) return EMPTY_FRAME
+  if (!structure) return empty_frame()
   const sites = structure.sites ?? []
   const lattice = `lattice` in structure ? structure.lattice : null
-  if (!sites.length && !lattice) return EMPTY_FRAME
+  if (!sites.length && !lattice) return empty_frame()
 
   const scale = opts.atom_radius_scale ?? 0.7
   const samples: [Vec3, number][] = sites.map((site, site_idx) => [
@@ -89,7 +89,7 @@ export function structure_fit_frame(
       max[axis] = Math.max(max[axis], point[axis] + radius)
     }
   }
-  if (!Number.isFinite(min[0])) return EMPTY_FRAME
+  if (!Number.isFinite(min[0])) return empty_frame()
 
   const center = opts.center ?? math.add(min, math.scale(math.subtract(max, min), 0.5))
   let radius_sq = 0

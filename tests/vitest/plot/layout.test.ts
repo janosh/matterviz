@@ -469,16 +469,20 @@ describe(`layout utility functions`, () => {
 
     it(`x2 label adds its title band and gap to top padding`, () => {
       expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(0)
+      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
+      const no_ticks = calc_auto_padding({
+        ...base,
+        x2_axis: { tick_values: [], label: `Energy` },
+      })
       const without = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...base,
         x2_axis: { tick_values: [1, 2] },
       })
       const with_label = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...base,
         x2_axis: { tick_values: [1, 2], label: `Energy` },
       })
+      expect(no_ticks.t).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
       expect(with_label.t - without.t).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
     })
 

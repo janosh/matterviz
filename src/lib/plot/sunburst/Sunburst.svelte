@@ -748,6 +748,7 @@
             bind:this={center_el}
             class="center-circle"
             r={hole_r}
+            fill="var(--sunburst-center-bg, transparent)"
             role={zoomed ? `button` : undefined}
             tabindex={zoomed ? 0 : undefined}
             aria-label={zoomed ? `zoom out to ${zoom_out_label}` : undefined}
@@ -977,9 +978,6 @@
       color-mix(in srgb, var(--sunburst-arc-stroke, var(--plot-bg, white)) 30%, transparent)
     );
     stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
-  }
-  .center-circle {
-    fill: var(--sunburst-center-bg, transparent);
   }
   .arc-label {
     text-anchor: middle;

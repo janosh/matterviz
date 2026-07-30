@@ -117,7 +117,7 @@
         </tr>
       {/each}
       {#each unoccupied_rows as db_pos (db_pos.letter)}
-        <tr class="unoccupied" title="Wyckoff position not occupied in this structure">
+        <tr style="opacity: 0.5" title="Wyckoff position not occupied in this structure">
           <td>{db_pos.multiplicity}{db_pos.letter}</td>
           <td>&mdash;</td>
           <td>&mdash;</td>
@@ -155,8 +155,5 @@
   }
   .wyckoff-row.selected:hover {
     background-color: color-mix(in srgb, var(--active-color) 35%, transparent);
-  }
-  .unoccupied {
-    opacity: 0.5;
   }
 </style>

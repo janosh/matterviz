@@ -7,8 +7,9 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
-const count_canvas_content_pixels = (page: Page, screenshot: Buffer): Promise<number> =>
-  page.evaluate(async (base64_png) => {
+// WebGPU canvases read back black via drawImage, so decode the compositor PNG in-page.
+const decode_canvas_png = (page: Page, screenshot: Buffer) =>
+  page.evaluateHandle(async (base64_png) => {
     const raw = atob(base64_png)
     const bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0))
     const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
@@ -36,17 +37,31 @@ const count_canvas_content_pixels = (page: Page, screenshot: Buffer): Promise<nu
         corner_indices.reduce((sum, pixel_idx) => sum + data[pixel_idx + channel], 0) /
         corner_indices.length,
     )
-    let content_pixels = 0
-    for (let pixel_idx = 0; pixel_idx < data.length; pixel_idx += 4) {
-      const max_channel_delta = Math.max(
-        Math.abs(data[pixel_idx] - background[0]),
-        Math.abs(data[pixel_idx + 1] - background[1]),
-        Math.abs(data[pixel_idx + 2] - background[2]),
-      )
-      if (max_channel_delta > 12) content_pixels += 1
-    }
-    return content_pixels
+    return { data, width, height, background }
   }, screenshot.toString(`base64`))
+
+const count_canvas_content_pixels = async (
+  page: Page,
+  screenshot: Buffer,
+): Promise<number> => {
+  const decoded_png = await decode_canvas_png(page, screenshot)
+  try {
+    return await decoded_png.evaluate(({ data, background }) => {
+      let content_pixels = 0
+      for (let pixel_idx = 0; pixel_idx < data.length; pixel_idx += 4) {
+        const max_channel_delta = Math.max(
+          Math.abs(data[pixel_idx] - background[0]),
+          Math.abs(data[pixel_idx + 1] - background[1]),
+          Math.abs(data[pixel_idx + 2] - background[2]),
+        )
+        if (max_channel_delta > 12) content_pixels += 1
+      }
+      return content_pixels
+    })
+  } finally {
+    await decoded_png.dispose()
+  }
+}
 
 // CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio
 // bonding strategy auto-detects two C-O connectivity bonds. With
@@ -510,89 +525,67 @@ test.describe(`Bond component`, () => {
     })
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     const initial = await canvas.screenshot()
-    expect(await count_canvas_content_pixels(page, initial)).toBeGreaterThan(100)
-
-    // WebGPU canvases read back black via drawImage; decode the compositor PNG instead.
-    const halves = await page.evaluate(async (b64) => {
-      const raw = atob(b64)
-      const bytes = Uint8Array.from(raw, (ch) => ch.charCodeAt(0))
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
-      const offscreen = document.createElement(`canvas`)
-      offscreen.width = bitmap.width
-      offscreen.height = bitmap.height
-      const context = offscreen.getContext(`2d`)
-      if (!context) throw new Error(`Failed to create 2D canvas context`)
-      context.drawImage(bitmap, 0, 0)
-      const { data, width, height } = context.getImageData(
-        0,
-        0,
-        offscreen.width,
-        offscreen.height,
-      )
-      const corner_indices = [
-        0,
-        (width - 1) * 4,
-        (height - 1) * width * 4,
-        (height * width - 1) * 4,
-      ]
-      const background = [0, 1, 2].map(
-        (channel) =>
-          corner_indices.reduce((sum, pixel_idx) => sum + data[pixel_idx + channel], 0) /
-          corner_indices.length,
-      )
-      const is_bond_pixel = (red: number, green: number, blue: number) => {
-        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
-        const background_delta = Math.max(
-          Math.abs(red - background[0]),
-          Math.abs(green - background[1]),
-          Math.abs(blue - background[2]),
-        )
-        return chroma > 15 || background_delta > 12
-      }
-      let min_x = width
-      let max_x = 0
-      const y0 = Math.floor(height * 0.35)
-      const y1 = Math.floor(height * 0.65)
-      for (let y = y0; y < y1; y++) {
-        for (let x = 0; x < width; x++) {
-          const idx = (y * width + x) * 4
-          if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
-          if (x < min_x) min_x = x
-          if (x > max_x) max_x = x
+    const decoded_initial = await decode_canvas_png(page, initial)
+    try {
+      const halves = await decoded_initial.evaluate(({ data, width, height, background }) => {
+        const is_bond_pixel = (red: number, green: number, blue: number) => {
+          const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
+          const background_delta = Math.max(
+            Math.abs(red - background[0]),
+            Math.abs(green - background[1]),
+            Math.abs(blue - background[2]),
+          )
+          return chroma > 15 || background_delta > 12
         }
-      }
-      if (max_x - min_x < 40) {
-        throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
-      }
-      const mean_bond_rgb = (x0: number, x1: number) => {
-        let red_sum = 0
-        let green_sum = 0
-        let blue_sum = 0
-        let count = 0
+        let min_x = width
+        let max_x = 0
+        const y0 = Math.floor(height * 0.35)
+        const y1 = Math.floor(height * 0.65)
         for (let y = y0; y < y1; y++) {
-          for (let x = x0; x < x1; x++) {
+          for (let x = 0; x < width; x++) {
             const idx = (y * width + x) * 4
-            const red = data[idx]
-            const green = data[idx + 1]
-            const blue = data[idx + 2]
-            if (!is_bond_pixel(red, green, blue)) continue
-            red_sum += red
-            green_sum += green
-            blue_sum += blue
-            count++
+            if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
+            if (x < min_x) min_x = x
+            if (x > max_x) max_x = x
           }
         }
-        if (count < 50) throw new Error(`too few bond pixels in x=[${x0},${x1}): ${count}`)
-        return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
-      }
-      const span = max_x - min_x
-      return {
-        left: mean_bond_rgb(min_x, min_x + Math.floor(span * 0.3)),
-        right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
-      }
-    }, initial.toString(`base64`))
-    // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
-    expect(Math.abs(halves.right.r - halves.left.r)).toBeGreaterThan(25)
+        if (max_x - min_x < 40) {
+          throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
+        }
+        const mean_bond_rgb = (x0: number, x1: number) => {
+          let red_sum = 0
+          let green_sum = 0
+          let blue_sum = 0
+          let count = 0
+          for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+              const idx = (y * width + x) * 4
+              const red = data[idx]
+              const green = data[idx + 1]
+              const blue = data[idx + 2]
+              if (!is_bond_pixel(red, green, blue)) continue
+              red_sum += red
+              green_sum += green
+              blue_sum += blue
+              count++
+            }
+          }
+          if (count < 50) {
+            throw new Error(`too few bond pixels in x=[${x0},${x1}): ${count}`)
+          }
+          return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
+        }
+        const span = max_x - min_x
+        return {
+          left: mean_bond_rgb(min_x, min_x + Math.floor(span * 0.3)),
+          right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
+        }
+      })
+      // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
+      expect(Math.abs(halves.right.r - halves.left.r)).toBeGreaterThan(25)
+    } finally {
+      await decoded_initial.dispose()
+    }
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()

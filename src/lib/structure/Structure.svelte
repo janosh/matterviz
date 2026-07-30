@@ -1942,7 +1942,7 @@
             action: () => void
           }[],
         )}
-          <div style="display: flex">
+          <div class="undo-redo-container" style="display: flex">
             {#each buttons as { icon, title, stack, action } (icon)}
               <button
                 type="button"

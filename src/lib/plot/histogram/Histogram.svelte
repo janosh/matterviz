@@ -343,7 +343,7 @@
     const current_ticks_y2 = untrack(() => ticks.y2)
 
     const new_pad =
-      width && height && current_ticks_y.length > 0
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,

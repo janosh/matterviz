@@ -18,7 +18,7 @@
   } from '$lib/scene'
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
   import type {
@@ -1077,6 +1077,12 @@
   // This prevents z-fighting and disappearing objects when zooming in close on large supercells
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
+  const { minimum: min_fov = 5, maximum: max_fov = 150 } = SETTINGS_CONFIG.structure.fov
+  let effective_fov = $derived(
+    Number.isFinite(fov) && fov > 0
+      ? Math.min(max_fov, Math.max(min_fov, fov))
+      : DEFAULTS.structure.fov,
+  )
 
   const zoom_for = (extent: number) => {
     const fit_zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
@@ -1107,7 +1113,12 @@
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
         camera_projection === `perspective`
-          ? perspective_distance_for_extent(Math.max(1, fit_extent), width, height, fov)
+          ? perspective_distance_for_extent(
+              Math.max(1, fit_extent),
+              width,
+              height,
+              effective_fov,
+            )
           : Math.max(1, fit_extent) * 2
       const target = camera_target ?? fit_frame.center
       if (camera_target === undefined) camera_target = target
@@ -1941,7 +1952,7 @@
 <SceneCamera
   {camera_projection}
   position={camera_position}
-  {fov}
+  fov={effective_fov}
   zoom={computed_zoom}
   near={camera_near}
   far={camera_far}
@@ -2276,7 +2287,7 @@
           []}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
-          <div class="elements">
+          <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
               {@const element_name =
                 element_by_symbol.get(element as ElementSymbol)?.name ?? ``}
@@ -2507,9 +2518,6 @@
     font: inherit;
     padding: var(--struct-atom-label-padding, 0 3px);
     white-space: nowrap;
-  }
-  .elements {
-    margin-bottom: var(--canvas-tooltip-elements-margin);
   }
   .species {
     display: inline-block;

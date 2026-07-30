@@ -468,6 +468,7 @@
   <div
     class="atom-legend property-legend atom-color-legend"
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
+    style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt))"
     {...rest}
   >
     {@render mode_selector_snippet()}
@@ -726,10 +727,6 @@
     }
   }
 
-  /* Property Legend Styles */
-  .property-legend {
-    font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt));
-  }
   .mode-selector {
     position: relative;
     display: flex;

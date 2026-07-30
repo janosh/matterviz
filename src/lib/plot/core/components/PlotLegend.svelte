@@ -368,7 +368,9 @@
     />
   {/if}
   {#if show_filter && legend_filter && filtered_grouped_series.length === 0}
-    <span style="padding: var(--plot-legend-item-padding, 1px 8px 1px 3px); opacity: 0.7">No legend items</span>
+    <span style="padding: var(--plot-legend-item-padding, 1px 8px 1px 3px); opacity: 0.7"
+      >No legend items</span
+    >
   {/if}
   {#each filtered_grouped_series as { group_name, items, all_items } (group_name ?? `__ungrouped__`)}
     {#if group_name !== null && has_groups}
@@ -526,9 +528,6 @@
   .legend-item.fill-item .legend-marker {
     width: var(--plot-legend-fill-marker-width, 20px);
   }
-  .legend-label {
-    display: inline-block;
-  }
   /* Group header styles */
   .legend-group-header {
     display: flex;
@@ -565,8 +564,5 @@
   }
   .group-chevron:hover {
     color: var(--accent-color, #4a90d9);
-  }
-  .group-label {
-    display: inline-block;
   }
 </style>

@@ -99,7 +99,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     const before = await get_visible_unstable()
 
     // Set threshold to 0
-    const number_input = controls.locator(`input.threshold-input`).first()
+    const number_input = controls.getByLabel(`Points threshold (eV/atom)`)
     // pd2d IS the scatter element (has class "scatter convex-hull-2d")
     const markers = pd2d.locator(`path.marker`)
     const count_before = await markers.count()

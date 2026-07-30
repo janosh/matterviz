@@ -626,7 +626,7 @@
 
       <!-- Grid lines -->
       {#if show_grid}
-        <g class="grid">
+        <g class="grid" style="pointer-events: none">
           {@render grid_lines(x_ticks, true)}
           {@render grid_lines(y_ticks, false)}
         </g>
@@ -665,7 +665,7 @@
 
       <!-- Region labels -->
       {#if show_labels}
-        <g class="region-labels">
+        <g class="region-labels" style="pointer-events: none">
           {#each transformed_regions as region (region.id)}
             {@const line_height = merged_config.font_size * 1.2}
             <g
@@ -963,9 +963,6 @@
       filter: brightness(1.1);
     }
   }
-  .special-points {
-    pointer-events: auto;
-  }
   .special-point-hit-area {
     cursor: pointer;
     pointer-events: auto;
@@ -977,12 +974,9 @@
     pointer-events: none; /* Let hit-area handle events */
   }
   /* Grouped pointer-events: none */
-  .region-label,
   .tie-line,
   .tooltip-container,
-  .copy-feedback,
-  .grid,
-  .region-labels {
+  .copy-feedback {
     pointer-events: none;
   }
   .region-label {

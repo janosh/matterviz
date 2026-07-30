@@ -13,25 +13,6 @@ const strip_node_imports_plugin = (): Plugin => ({
   },
 })
 
-const moyo_wasm_url_expr =
-  `new URL('@spglib/moyo-wasm/moyo_wasm_bg.wasm', import.meta.url).href`
-
-// The published package uses a bare-specifier URL for Webpack compatibility. Vite cannot
-// lower that expression in a UMD build, so turn it back into a Vite asset import locally.
-const bundle_moyo_wasm_plugin = (): Plugin => ({
-  name: `bundle-moyo-wasm`,
-  enforce: `pre`,
-  transform(code: string) {
-    if (!code.includes(moyo_wasm_url_expr)) return null
-    return {
-      code:
-        `import __matterviz_moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url';\n` +
-        code.replace(moyo_wasm_url_expr, `__matterviz_moyo_wasm_url`),
-      map: null,
-    }
-  },
-})
-
 // Plugin to deduplicate large inline WASM base64 strings
 // moyo-wasm uses wasm-bindgen which inlines WASM as data URLs
 const deduplicate_wasm_plugin = (): Plugin => ({
@@ -78,7 +59,6 @@ export default defineConfig({
   // to vite's own PluginOption[] to keep defineConfig's overload check shallow.
   plugins: [
     strip_node_imports_plugin(),
-    bundle_moyo_wasm_plugin(),
     deduplicate_wasm_plugin(),
     svelte({
       compilerOptions: {

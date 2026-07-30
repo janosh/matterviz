@@ -1266,9 +1266,7 @@
 
           <!-- Frame rate control: shown for any multi-frame trajectory so speed can be set before play -->
           {#if total_frames > 1 && controls_config.visible(`fps`)}
-            <label
-              style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
-            >
+            <label class="fps-section">
               FPS
               <input
                 type="range"
@@ -1614,6 +1612,13 @@
     gap: clamp(0.25rem, 1.5cqw, 0.5rem);
     flex: 1;
     min-width: 0;
+  }
+  .fps-section {
+    display: flex;
+    align-items: center;
+    gap: 5pt;
+    margin-inline: 6pt;
+    font-size: 0.9em;
   }
   .step-input {
     border: 1px solid rgba(99, 179, 237, 0.3);

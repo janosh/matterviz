@@ -267,6 +267,8 @@ describe(`structure_fit_frame`, () => {
 
   test.each([undefined, null, { sites: [] }])(`empty → extent 10 for %j`, (input) => {
     expect(extent(input)).toBe(10)
+    structure_fit_frame(input).center[0] = 5
+    expect(structure_fit_frame(input).center).toEqual([0, 0, 0])
   })
 
   test(`molecule / cell framing`, () => {
