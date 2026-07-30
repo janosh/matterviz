@@ -1355,7 +1355,8 @@
       return []
     return compute_polyhedra(structure, filtered_bond_pairs, {
       min_neighbors: polyhedra_min_neighbors,
-      max_neighbors: polyhedra_max_neighbors,
+      // Sliders have overlapping ranges and can cross; widen rather than render none.
+      max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,
     })

@@ -34,7 +34,7 @@
   import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
-  import Select from 'svelte-widgets'
+  import Select, { Icon } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
 
   let {
@@ -73,6 +73,8 @@
     multi_view_unavailable_reason = undefined,
     polyhedra_rendered_elements = [],
     displacement_summary = null,
+    on_reset_camera,
+    reset_text = `Reset camera (or double-click)`,
     fly_to_request = $bindable(undefined),
     pane_props = {},
     toggle_props = {},
@@ -103,6 +105,8 @@
     polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
     // Displacement-vs-reference readout, bound out of the scene; null hides the whole section
     displacement_summary?: DisplacementSummary | null
+    on_reset_camera?: () => void // undefined while camera at home (hides button)
+    reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
@@ -315,10 +319,15 @@
 
     if (!external_color_changed) scene_props.site_label_color = site_label_hex_color
     if (!external_bg_changed) {
-      scene_props.site_label_bg_color = `color-mix(in srgb, ${site_label_bg_hex_color} ${format_num(
-        site_label_background_opacity,
-        `.1~%`,
-      )}, transparent)`
+      // Fully transparent round-trips as `transparent`, else merely mounting the controls
+      // rewrites that default into an equivalent color-mix nobody asked for.
+      scene_props.site_label_bg_color =
+        site_label_background_opacity === 0
+          ? `transparent`
+          : `color-mix(in srgb, ${site_label_bg_hex_color} ${format_num(
+              site_label_background_opacity,
+              `.1~%`,
+            )}, transparent)`
     }
 
     last_synced_site_label_color = scene_props.site_label_color
@@ -573,6 +582,12 @@
       `rotation`,
     ])}
   >
+    {#if on_reset_camera}
+      <button type="button" class="reset-camera" title={reset_text} onclick={on_reset_camera}>
+        <Icon icon="Reset" />
+        <span>Reset view <kbd>r</kbd></span>
+      </button>
+    {/if}
     <label>
       <span
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.camera_projection.description })}
@@ -593,41 +608,46 @@
       title={SETTINGS_CONFIG.structure.auto_rotate.description}
       >Auto-rotate speed</NumberRangeInput
     >
-    <NumberRangeInput
-      min={0}
-      max={2}
-      step={0.05}
-      bind:value={scene_props.rotate_speed}
-      title={SETTINGS_CONFIG.structure.rotate_speed.description}>Rotate speed</NumberRangeInput
-    >
-    <NumberRangeInput
-      min={0.1}
-      max={0.8}
-      step={0.02}
-      bind:value={scene_props.zoom_speed}
-      title={SETTINGS_CONFIG.structure.zoom_speed.description}>Zoom speed</NumberRangeInput
-    >
-    <NumberRangeInput
-      min={0}
-      max={2}
-      step={0.01}
-      bind:value={scene_props.pan_speed}
-      title={SETTINGS_CONFIG.structure.pan_speed.description}>Pan speed</NumberRangeInput
-    >
     <label
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
     >
       <input type="checkbox" bind:checked={scene_props.zoom_to_cursor} />
       <span>Zoom to cursor</span>
     </label>
-    <NumberRangeInput
-      min={0.01}
-      max={0.3}
-      step={0.01}
-      bind:value={scene_props.rotation_damping}
-      title={SETTINGS_CONFIG.structure.rotation_damping.description}
-      >Rotation damping</NumberRangeInput
-    >
+    <!-- Collapsed: four sliders almost nobody moves, crowding out settings people do reach for -->
+    <details class="advanced">
+      <summary>Pointer sensitivity</summary>
+      <NumberRangeInput
+        min={0}
+        max={2}
+        step={0.05}
+        bind:value={scene_props.rotate_speed}
+        title={SETTINGS_CONFIG.structure.rotate_speed.description}
+        >Rotate speed</NumberRangeInput
+      >
+      <NumberRangeInput
+        min={0.1}
+        max={0.8}
+        step={0.02}
+        bind:value={scene_props.zoom_speed}
+        title={SETTINGS_CONFIG.structure.zoom_speed.description}>Zoom speed</NumberRangeInput
+      >
+      <NumberRangeInput
+        min={0}
+        max={2}
+        step={0.01}
+        bind:value={scene_props.pan_speed}
+        title={SETTINGS_CONFIG.structure.pan_speed.description}>Pan speed</NumberRangeInput
+      >
+      <NumberRangeInput
+        min={0.01}
+        max={0.3}
+        step={0.01}
+        bind:value={scene_props.rotation_damping}
+        title={SETTINGS_CONFIG.structure.rotation_damping.description}
+        >Rotation damping</NumberRangeInput
+      >
+    </details>
 
     Axis Rotation
     <div class="rotation-axes">
@@ -1342,6 +1362,35 @@
 </DraggablePane>
 
 <style>
+  .reset-camera {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5pt;
+    padding: 3pt;
+    cursor: pointer;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    color: inherit;
+    kbd {
+      padding: 0 4px;
+      border-radius: 2pt;
+      background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+  }
+  .advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 6pt;
+    summary {
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    &[open] summary {
+      margin-bottom: 6pt;
+    }
+  }
   .rotation-axes {
     display: flex;
     gap: 10pt;

@@ -516,7 +516,7 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
-    // camera starts at its default position, so the reset button has nothing to offer yet
+    // Reset lives in the controls pane and is hidden at the default camera
     await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
 
     const initial_screenshot = await canvas.screenshot()
@@ -548,6 +548,14 @@ test.describe(`Structure Component Tests`, () => {
   test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
+    // Opt back into auto-rotation (off by default): the fly-to lands the camera exactly on an
+    // axis, where the gizmo's handles collapse behind its center and the re-sweep finds none.
+    // A slow drift keeps them separable, which is what this assertion has always relied on.
+    await page.evaluate(() =>
+      globalThis.dispatchEvent(
+        new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 0.2 } }),
+      ),
+    )
     const canvas = page.locator(`#test-structure canvas`)
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`canvas has no bounding box`)
@@ -1259,9 +1267,29 @@ test.describe(`Structure Event Handler Tests`, () => {
         targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
       })
       await clear_events(page)
-      const reset_btn = page.locator(`#test-structure button.reset-camera`)
+      await open_structure_control_pane(page)
+      const reset_btn = page.locator(`#test-structure .controls-pane button.reset-camera`)
       await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
       await reset_btn.click()
+      await expect(async () => {
+        await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
+      }).toPass({ timeout: get_canvas_timeout() })
+    })
+
+    test(`pressing r resets the camera`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      const canvas = page.locator(`#test-structure canvas`).first()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
+      })
+      await clear_events(page)
+      // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
+      // hover()'s actionability check trips on the overlays the drag leaves behind
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.keyboard.press(`r`)
       await expect(async () => {
         await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
       }).toPass({ timeout: get_canvas_timeout() })

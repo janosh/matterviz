@@ -1,4 +1,9 @@
-import { build_structure_props_from_settings, DEFAULTS, merge } from '$lib/settings'
+import {
+  build_structure_props_from_settings,
+  DEFAULTS,
+  merge,
+  SETTINGS_CONFIG,
+} from '$lib/settings'
 import { describe, expect, test } from 'vitest'
 
 describe(`Settings`, () => {
@@ -51,19 +56,29 @@ describe(`Settings`, () => {
       expect(DEFAULTS).toEqual(original)
     })
 
+    // Locks the shipped structure-viewer defaults. The clone test below deliberately does
+    // not, since it compares DEFAULTS against values read from DEFAULTS.
+    test(`structure viewer ships the intended defaults`, () => {
+      expect(DEFAULTS.structure.auto_rotate).toBe(0) // no perpetual spin / render loop
+      expect(DEFAULTS.structure.zoom_to_cursor).toBe(true)
+      expect(DEFAULTS.structure.site_label_bg_color).toBe(`transparent`)
+      expect(SETTINGS_CONFIG.structure.fov.minimum).toBe(5) // below the default of 10
+    })
+
     test(`structuredClone prevents mutations from affecting DEFAULTS`, () => {
       // Regression test for "fast spinning" bug: $state(DEFAULTS.structure) without cloning
       // shared the object reference, so mutations leaked between component instances.
-      // After browser back/forward navigation, auto_rotate was 150 instead of 0.2.
+      // After browser back/forward navigation, auto_rotate was 150 instead of the default.
+      // Captured rather than hard-coded so shipped defaults can change freely.
+      const { auto_rotate, rotate_speed } = DEFAULTS.structure
       const cloned = structuredClone(DEFAULTS.structure)
 
       // Simulate the mutation that caused the bug (150 = png_dpi value that leaked)
       cloned.auto_rotate = 150
       cloned.rotate_speed = 0.2
 
-      // DEFAULTS must remain at original values
-      expect(DEFAULTS.structure.auto_rotate).toBe(0.2)
-      expect(DEFAULTS.structure.rotate_speed).toBe(1.0)
+      expect(DEFAULTS.structure.auto_rotate).toBe(auto_rotate)
+      expect(DEFAULTS.structure.rotate_speed).toBe(rotate_speed)
     })
   })
 

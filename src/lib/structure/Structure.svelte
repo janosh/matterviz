@@ -1193,6 +1193,12 @@
   // SvelteSet is already reactive; do NOT wrap in $state (double-proxying breaks it)
   const moved_panes = new SvelteSet<number>()
   let any_camera_moved = $derived(moved_panes.size > 0)
+  // Camera pose only — Camera section / plain `r` / double-click (not canvas chrome).
+  let reset_camera_available = $derived(
+    display_mode === `structure` &&
+      any_camera_moved &&
+      controls_config.visible(`reset-camera`),
+  )
 
   // Side-pane camera state is irrelevant whenever responsive sizing collapses to one pane.
   $effect(() => {
@@ -1563,6 +1569,12 @@
       }
     }
 
+    // Plain `r` (Cmd/Ctrl+R is browser reload). Same shortcut as ConvexHull viewers.
+    if (key === `r` && plain && reset_camera_available) {
+      reset_all_cameras()
+      return true
+    }
+
     // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
       toggle_fullscreen(wrapper)
@@ -1788,25 +1800,11 @@
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
-    {#snippet reset_camera_btn()}
-      {#if display_mode === `structure` && any_camera_moved && controls_config.visible(`reset-camera`)}
-        <button
-          class="reset-camera"
-          onclick={reset_all_cameras}
-          title={reset_text}
-          aria-label={reset_text}
-        >
-          <!-- Target/Focus icon for reset camera -->
-          <Icon icon="Reset" />
-        </button>
-      {/if}
-    {/snippet}
     <ViewerChrome
       {controls_config}
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      before={reset_camera_btn}
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-right: calc(1ex - 5px); --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
@@ -1848,6 +1846,21 @@
                   </button>
                 {/if}
               {/each}
+              {#if reset_camera_available}
+                <button
+                  type="button"
+                  class="view-mode-option reset-camera"
+                  title={reset_text}
+                  aria-keyshortcuts="r"
+                  onclick={() => {
+                    reset_all_cameras()
+                    view_layout_menu_open = false
+                  }}
+                >
+                  <Icon icon="Reset" />
+                  <span>Reset view</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -2108,6 +2121,8 @@
           {sym_data}
           {polyhedra_rendered_elements}
           {displacement_summary}
+          on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
+          {reset_text}
           bind:fly_to_request
         />
       {/if}
