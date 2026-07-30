@@ -418,7 +418,7 @@
   />
 </svelte:head>
 
-<main class="demo-container full-bleed">
+<div class="full-bleed">
   {#snippet feature_list(feature_items: string[])}
     <ul class="feature-list">
       {#each feature_items as feature_item (feature_item)}
@@ -670,7 +670,7 @@
       {/if}
     </section>
   {/if}
-</main>
+</div>
 
 <style>
   .demo-section {

@@ -96,18 +96,16 @@
       height={AXIS_LABEL_CONTAINER.height}
       style="overflow: visible; pointer-events: none"
     >
-      <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-        <InteractiveAxisLabel
-          {label}
-          {options}
-          {selected_key}
-          {loading}
-          {axis_type}
-          {color}
-          {on_select}
-          class="axis-label {axis_type}-label"
-        />
-      </div>
+      <InteractiveAxisLabel
+        {label}
+        {options}
+        {selected_key}
+        {loading}
+        {axis_type}
+        {color}
+        {on_select}
+        class="axis-label {axis_type}-label"
+      />
     </foreignObject>
   {/if}
 </g>

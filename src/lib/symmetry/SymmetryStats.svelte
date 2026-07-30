@@ -245,9 +245,7 @@
       </details>
     {/if}
   {:else}
-    <div class="no-data">
-      <p>No symmetry data available</p>
-    </div>
+    <div class="no-data">No symmetry data available</div>
   {/if}
 </div>
 
@@ -308,8 +306,5 @@
     background: var(--sym-stats-no-data-bg, var(--surface-bg, #f5f5f5));
     border-radius: var(--sym-stats-no-data-border-radius, 4pt);
     color: var(--sym-stats-no-data-color, var(--text-muted, #666));
-  }
-  .no-data p {
-    margin: 0;
   }
 </style>

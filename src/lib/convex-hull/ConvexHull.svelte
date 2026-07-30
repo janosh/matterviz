@@ -123,30 +123,36 @@
 {:else}
   <!-- Error state for unsupported dimensionalities -->
   <div class="convex-hull-error">
-    <div style="text-align: center; padding: 2em; color: var(--convex-hull-text-color, #666)">
-      <h3 style="margin: 0 0 1em 0">Unsupported Chemical System</h3>
-      <p style="margin: 0">
-        Convex hulls require 2, 3, or 4 elements. Found {element_count} element{element_count ===
-        1
-          ? ``
-          : `s`}:
-      </p>
-      <p style="margin: 0.5em 0 0 0; font-weight: bold">
-        {elements.join(`, `)}
-      </p>
-    </div>
+    <h3>Unsupported Chemical System</h3>
+    <p>
+      Convex hulls require 2, 3, or 4 elements. Found {element_count} element{element_count ===
+      1
+        ? ``
+        : `s`}:
+    </p>
+    <strong>{elements.join(`, `)}</strong>
   </div>
 {/if}
 
 <style>
   .convex-hull-error {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
     height: var(--convex-hull-height, 500px);
+    padding: 2em;
+    text-align: center;
+    color: var(--convex-hull-text-color, #666);
     border: 1px solid var(--convex-hull-border-color, #ccc);
     border-radius: var(--border-radius, 3pt);
     background: var(--convex-hull-bg, transparent);
+    h3 {
+      margin: 0 0 1em;
+    }
+    p {
+      margin: 0 0 0.5em;
+    }
   }
 </style>

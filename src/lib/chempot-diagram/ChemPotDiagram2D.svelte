@@ -542,7 +542,7 @@
           {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}
         </strong>
         {#if locked_hover_formula === hover_info.formula}
-          <div>Pinned · Press Esc to unlock</div>
+          <br />Pinned · Press Esc to unlock
         {/if}
       </aside>
     {/if}

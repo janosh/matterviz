@@ -143,16 +143,18 @@
       >
         {element}</span
       >
-      <span class="script-wrapper"
-        >{#if has_oxidation}
-          <sup class="oxi">{format_oxi_state(oxidation_state)}</sup>
-        {/if}
-        {#if amount !== 1}
-          <sub class="amt" class:no-sup={!has_oxidation}
-            >{format_num(amount, amount_format)}</sub
-          >
-        {/if}
-      </span>
+      {#if has_oxidation || amount !== 1}
+        <span class="script-wrapper"
+          >{#if has_oxidation}
+            <sup class="oxi">{format_oxi_state(oxidation_state)}</sup>
+          {/if}
+          {#if amount !== 1}
+            <sub class="amt" class:no-sup={!has_oxidation}
+              >{format_num(amount, amount_format)}</sub
+            >
+          {/if}
+        </span>
+      {/if}
     </span>
   {/each}
 </svelte:element>
@@ -238,9 +240,6 @@
     align-items: flex-start;
     margin-left: var(--formula-script-margin-left, -0.15em);
     line-height: var(--formula-script-line-height, 0.6);
-  }
-  .script-wrapper:empty {
-    display: none;
   }
   .amt,
   .oxi {

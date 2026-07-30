@@ -40,7 +40,7 @@
     matrix ? math.scale(math.add(...matrix), 0.5) : [0, 0, 0],
   )
 
-  // Key on cell numbers (not array identity) so equal NEB/trajectory matrices skip rebuild.
+  // Gate box-geometry rebuilds on cell numbers, not matrix identity.
   let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
   let box_geometry = $state<BoxGeometry | null>(null)
   $effect(() => {
@@ -109,6 +109,7 @@
   {/if}
 
   {#if show_cell_vectors}
+    <!-- Stable A/B/C slot keys preserve Arrow instances; vector props update reactively. -->
     {#each matrix as vec, idx (idx)}
       <Arrow
         position={vector_origin}

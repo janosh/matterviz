@@ -130,14 +130,12 @@
       style:width="{width}px"
       style:height="{height}px"
     >
-      <div>
-        <h3>Unsupported Chemical System</h3>
-        <p>
-          Chemical potential diagrams require at least 2 elements. Found {n_display}
-          element{n_display === 1 ? `` : `s`}:
-          {display_elements.join(`, `) || `none`}
-        </p>
-      </div>
+      <h3>Unsupported Chemical System</h3>
+      <p>
+        Chemical potential diagrams require at least 2 elements. Found {n_display}
+        element{n_display === 1 ? `` : `s`}:
+        {display_elements.join(`, `) || `none`}
+      </p>
     </div>
   {:else if n_display === 2}
     <ChemPotDiagram2D
@@ -166,10 +164,8 @@
     </p>
     {#if grid_error}
       <div class="chempot-error" role="alert">
-        <div>
-          <h3>Grid computation failed</h3>
-          <p>{grid_error}</p>
-        </div>
+        <h3>Grid computation failed</h3>
+        <p>{grid_error}</p>
       </div>
     {:else if !grid_cache_ready}
       <Spinner
@@ -276,16 +272,16 @@
   }
   .chempot-error {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+    padding: 2em;
+    text-align: center;
+    color: var(--text-color, #666);
     border: 1px solid var(--border-color, #ccc);
     border-radius: var(--border-radius, 3pt);
     background: var(--bg-color, transparent);
-  }
-  .chempot-error > div {
-    text-align: center;
-    padding: 2em;
-    color: var(--text-color, #666);
   }
   .chempot-error h3 {
     margin: 0 0 1em;
