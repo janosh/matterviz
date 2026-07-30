@@ -1,7 +1,7 @@
 import { Histogram, type Vec2 } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { axis_label_pivot_y, resize_element } from '../setup'
 
 function mount_histogram(props: Record<string, unknown>) {
@@ -283,6 +283,25 @@ describe(`Histogram`, () => {
     // used to push the y2 title 60px below center
     const pivot_y = (selector: string) => axis_label_pivot_y(document, selector)
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
+  })
+
+  test(`default padding grows for wide y-axis ticks`, async () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({ width: 120 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      mount_histogram({
+        series: [{ x: [], y: [1, 2, 3], label: `Main` }],
+        y_axis: { label: `Count` },
+      })
+      await resize_element(get_plot(), 400, 300)
+      expect(
+        Number(document.querySelector(`clipPath rect`)?.getAttribute(`x`)),
+      ).toBeGreaterThan(60)
+    } finally {
+      context_spy.mockRestore()
+    }
   })
 
   test(`legend=null suppresses the legend even with show_legend=true`, async () => {

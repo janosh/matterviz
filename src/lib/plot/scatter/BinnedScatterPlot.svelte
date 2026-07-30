@@ -20,10 +20,12 @@
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
+    calc_auto_padding,
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
+    measure_max_tick_width,
     point_in_rect,
     y_axis_label_x,
   } from '$lib/plot/core/layout'
@@ -79,7 +81,7 @@
   } from '$lib/plot/core/utils/label-placement'
   import type { LabelSize } from '$lib/plot/core/utils/label-placement'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type {
@@ -179,14 +181,8 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  // Unlike the other 2D plots this one doesn't auto-grow padding for tick labels, so this
-  // shared default is its final pad (merged with any user `padding`), not just a floor.
-  let pad = $derived(
-    add_sides(
-      filter_padding(padding_config, DEFAULT_PLOT_PADDING),
-      reserve_marginal_pad(resolved_marginals),
-    ),
-  )
+  let base_pad = $state(untrack(() => filter_padding(padding_config, DEFAULT_PLOT_PADDING)))
+  let pad = $derived(add_sides(base_pad, reserve_marginal_pad(resolved_marginals)))
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
       x: srs.x,
@@ -319,6 +315,26 @@
       default_count: 6,
     }),
   )
+  let y_tick_width = $derived(measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`))
+  $effect(() => {
+    const new_pad =
+      width > 0 && height > 0
+        ? calc_auto_padding({
+            padding: padding_config,
+            default_padding: DEFAULT_PLOT_PADDING,
+            y_axis: { ...y_axis, tick_values: y_ticks },
+          })
+        : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
+    const current_pad = untrack(() => base_pad)
+    if (
+      current_pad.t !== new_pad.t ||
+      current_pad.b !== new_pad.b ||
+      current_pad.l !== new_pad.l ||
+      current_pad.r !== new_pad.r
+    ) {
+      base_pad = new_pad
+    }
+  })
   let density_bins = $derived({
     x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),
     y: Math.max(8, Math.ceil(plot_height / density_settings.bin_px)),
@@ -1016,7 +1032,7 @@
       {height}
       show_grid
       tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={y_axis_label_x(y_axis, pad.l, 0)}
+      label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
       label_y={pad.t + plot_height / 2}
     />
 

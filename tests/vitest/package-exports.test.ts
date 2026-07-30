@@ -113,6 +113,14 @@ describe(`package.json exports`, () => {
     )
   })
 
+  test(`built symmetry resolves moyo WASM without Vite-only import suffixes`, () => {
+    const source = readFileSync(join(repo_root, `dist/symmetry/index.js`), `utf8`)
+    expect(source).toContain(
+      `new URL('@spglib/moyo-wasm/moyo_wasm_bg.wasm', import.meta.url).href`,
+    )
+    expect(source).not.toContain(`moyo_wasm_bg.wasm?url`)
+  })
+
   test(`embedded theme side effects stay isolated from the normal theme barrel`, () => {
     const source = readFileSync(join(lib_dir, `theme/index.ts`), `utf8`)
     expect(source).not.toContain(`./embedded`)

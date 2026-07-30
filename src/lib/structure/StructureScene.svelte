@@ -32,12 +32,14 @@
   } from '$lib/structure'
   import {
     atomic_radii,
+    constrain_ortho_zoom,
     Cylinder,
     get_all_site_vectors,
     get_center_of_mass,
     get_structure_vector_keys,
     Lattice,
     ortho_zoom_for_extent,
+    perspective_distance_for_extent,
     structure_fit_frame,
     camera_position_for_target,
     VECTOR_PALETTE,
@@ -410,9 +412,14 @@
   })
   $effect(() => () => fly_to.release())
 
-  // Expose rotation target for external reset
+  // Explicit camera poses do not run auto-placement, so capture their initial target here.
   $effect(() => {
-    rotation_target_ref = rotation_target
+    if (
+      rotation_target_ref === undefined &&
+      camera_position.some((coordinate) => coordinate !== 0)
+    ) {
+      rotation_target_ref = camera_target ?? rotation_target
+    }
   })
 
   // Track initial computed zoom for reset
@@ -1065,12 +1072,12 @@
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
 
-  const zoom_for = (extent: number) => {
-    let zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
-    if (min_zoom && min_zoom > 0) zoom = Math.max(min_zoom, zoom)
-    if (max_zoom && max_zoom > 0) zoom = Math.min(max_zoom, zoom)
-    return zoom
-  }
+  const zoom_for = (extent: number) =>
+    constrain_ortho_zoom(
+      ortho_zoom_for_extent(extent, width, height, initial_zoom),
+      min_zoom,
+      max_zoom,
+    )
 
   let computed_zoom = $state(untrack(() => initial_zoom))
   // Resize uses untracked fit_extent (trajectory must not jump zoom). Reset→[0,0,0]
@@ -1085,12 +1092,23 @@
 
   $effect.pre(() => {
     // Auto-place at content center; missing/zero camera_direction → default angled view.
-    if (camera_position.every((val) => val === 0) && structure) {
+    if (
+      camera_position.every((coordinate) => coordinate === 0) &&
+      structure &&
+      width > 0 &&
+      height > 0
+    ) {
       stored_initial_zoom = undefined
-      if (width > 0 && height > 0) computed_zoom = zoom_for(fit_extent)
-      const distance = Math.max(1, fit_extent) * (60 / fov)
-      const target = fit_frame.center
+      computed_zoom = zoom_for(fit_extent)
+      const distance = perspective_distance_for_extent(
+        Math.max(1, fit_extent),
+        width,
+        height,
+        fov,
+      )
+      const target = camera_target ?? fit_frame.center
       if (camera_target === undefined) camera_target = target
+      rotation_target_ref = target
       camera_position = camera_position_for_target(target, distance, camera_direction)
     }
   })

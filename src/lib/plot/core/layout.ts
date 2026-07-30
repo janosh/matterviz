@@ -21,6 +21,9 @@ export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 // Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
 
+const has_axis_title = (axis: AxisConfig): boolean =>
+  axis.label ? true : Boolean(axis.options?.length)
+
 // Left y-title x: auto-padding reserves [outer | title | gap | ticks] from the plot edge
 // inward. The title is *centered* on label_x, so that center sits in the middle of the
 // title band (not on the gap/title boundary, which jammed glyphs into the gap).
@@ -30,7 +33,8 @@ export function y_axis_label_x(
   max_tick_width: number,
 ): number {
   const inside = axis.tick?.label?.inside ?? false
-  const tick_extent = inside ? 0 : max_tick_width
+  const tick_shift = inside ? 0 : (axis.tick?.label?.shift?.x ?? 0)
+  const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
   return (
     Math.max(title_center, pad_l - tick_extent - LABEL_GAP_DEFAULT - AXIS_LABEL_HEIGHT / 2) +
@@ -68,7 +72,7 @@ export const filter_padding = (
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
 
-export function measure_text_width(text: string, font: string = `12px sans-serif`) {
+export function measure_text_width(text: string, font: string = `12px sans-serif`): number {
   if (typeof document === `undefined`) return 0
   measurement_canvas ??= document.createElement(`canvas`)
   const ctx = measurement_canvas.getContext(`2d`)
@@ -130,7 +134,10 @@ export interface AutoPaddingConfig {
 }
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
-export const measure_max_tick_width = (ticks: (string | number)[], format: string = ``) =>
+export const measure_max_tick_width = (
+  ticks: (string | number)[],
+  format: string = ``,
+): number =>
   ticks.length === 0
     ? 0
     : Math.max(
@@ -148,25 +155,29 @@ export const calc_auto_padding = ({
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
-  // Padding for a vertical-axis side (y/y2): when ticks render, reserve widest tick label + gap +
-  // the rotated axis-title width (mirrors the `t` branch's AXIS_LABEL_HEIGHT) so a wide tick label
-  // can't overlap the title. With no tick labels (e.g. no y2 series) reserve nothing extra.
+  // Padding for a vertical-axis side (y/y2): reserve outside tick offsets, the widest tick,
+  // title gap, rotated title width, and outer air. Titles can render from interactive options
+  // without a literal label, and still need their band when an axis intentionally has no ticks.
   const side_pad = (
     axis: AxisConfig & { tick_values?: (string | number)[] },
     default_side: number,
-    // Extra outward room when label_shift pushes the title past the default gap
-    // (negative x on the left axis, positive x on the right).
-    shift_outward = 0,
-  ) => {
+    side: `left` | `right`,
+  ): number => {
     const ticks = axis.tick_values ?? []
-    if (ticks.length === 0) return default_side
-    const title_band = axis.label ? AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER : 0
+    const has_title = has_axis_title(axis)
+    if (ticks.length === 0 && !has_title) return default_side
+    const inside = axis.tick?.label?.inside ?? false
+    const tick_shift = axis.tick?.label?.shift?.x ?? 0
+    const tick_width = inside ? 0 : measure_max_tick_width(ticks, axis.format ?? ``)
+    const tick_offset = inside
+      ? 0
+      : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
+    const title_band = has_title ? AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER : 0
+    const title_shift = axis.label_shift?.x ?? 0
+    const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
     return Math.max(
       default_side,
-      measure_max_tick_width(ticks, axis.format ?? ``) +
-        label_gap +
-        title_band +
-        Math.max(0, shift_outward),
+      tick_width + label_gap + title_band + tick_offset + title_shift_outward,
     )
   }
 
@@ -176,12 +187,12 @@ export const calc_auto_padding = ({
       ((x2_axis.tick_values ?? []).length > 0
         ? Math.max(
             default_padding.t,
-            TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
+            TICK_LABEL_HEIGHT + label_gap + (has_axis_title(x2_axis) ? AXIS_LABEL_HEIGHT : 0),
           )
         : default_padding.t),
     b: padding.b ?? default_padding.b,
-    l: padding.l ?? side_pad(y_axis, default_padding.l, -(y_axis.label_shift?.x ?? 0)),
-    r: padding.r ?? side_pad(y2_axis, default_padding.r, y2_axis.label_shift?.x ?? 0),
+    l: padding.l ?? side_pad(y_axis, default_padding.l, `left`),
+    r: padding.r ?? side_pad(y2_axis, default_padding.r, `right`),
   }
 }
 

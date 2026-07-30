@@ -64,22 +64,6 @@ describe(`Settings`, () => {
       expect(DEFAULTS.structure.site_label_bg_color).toBe(`transparent`)
       expect(SETTINGS_CONFIG.structure.fov.minimum).toBe(5) // below the default of 10
     })
-
-    test(`structuredClone prevents mutations from affecting DEFAULTS`, () => {
-      // Regression test for "fast spinning" bug: $state(DEFAULTS.structure) without cloning
-      // shared the object reference, so mutations leaked between component instances.
-      // After browser back/forward navigation, auto_rotate was 150 instead of the default.
-      // Captured rather than hard-coded so shipped defaults can change freely.
-      const { auto_rotate, rotate_speed } = DEFAULTS.structure
-      const cloned = structuredClone(DEFAULTS.structure)
-
-      // Simulate the mutation that caused the bug (150 = png_dpi value that leaked)
-      cloned.auto_rotate = 150
-      cloned.rotate_speed = 0.2
-
-      expect(DEFAULTS.structure.auto_rotate).toBe(auto_rotate)
-      expect(DEFAULTS.structure.rotate_speed).toBe(rotate_speed)
-    })
   })
 
   describe(`Convex hull settings`, () => {

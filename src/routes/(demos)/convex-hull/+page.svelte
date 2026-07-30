@@ -660,15 +660,13 @@
         </select>
       </div>
       {#if quinary_stats_result?.phase_stats}
-        <div class="quinary-stats-example">
-          <ConvexHullStats
-            phase_stats={quinary_stats_result.phase_stats}
-            stable_entries={quinary_stats_result.stable_entries}
-            unstable_entries={quinary_stats_result.unstable_entries}
-            layout="side-by-side"
-            style="width: min(100%, 980px); margin: 0 auto"
-          />
-        </div>
+        <ConvexHullStats
+          phase_stats={quinary_stats_result.phase_stats}
+          stable_entries={quinary_stats_result.stable_entries}
+          unstable_entries={quinary_stats_result.unstable_entries}
+          layout="side-by-side"
+          style="width: min(100%, 980px); margin: 0 auto 2rem"
+        />
       {/if}
     </section>
   {/if}
@@ -808,10 +806,6 @@
     color: inherit;
     font-size: 0.9rem;
     cursor: pointer;
-  }
-  .quinary-stats-example {
-    width: 100%;
-    margin: 0 auto 2rem auto;
   }
   .gas-grid {
     display: grid;

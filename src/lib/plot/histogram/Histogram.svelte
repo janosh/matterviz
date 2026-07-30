@@ -93,7 +93,7 @@
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
     range_padding = 0,
-    padding = DEFAULT_PLOT_PADDING,
+    padding = {},
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = {},

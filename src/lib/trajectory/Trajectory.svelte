@@ -1409,9 +1409,10 @@
 
       {#if show_plot}
         {#if plot_metadata_loading}
-          <div class="plot-metadata-loading plot">
-            <Spinner text="Sampling trajectory plot data..." style="--spinner-size: 1.4em" />
-          </div>
+          <Spinner
+            text="Sampling trajectory plot data..."
+            style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
+          />
         {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
@@ -1559,15 +1560,6 @@
       grid-template-columns: 1fr !important;
       grid-template-rows: 1fr !important;
     }
-  }
-  .plot-metadata-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6em;
-    min-height: 0;
-    color: var(--text-muted, currentColor);
-    background: var(--surface-bg);
   }
   .trajectory-controls {
     display: flex;

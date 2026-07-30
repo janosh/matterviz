@@ -31,7 +31,7 @@
       }),
   }
 
-  const trajectory: TrajectoryType = { frames: [frame(0)], total_frames: 2, frame_loader }
+  const trajectory: TrajectoryType = { frames: [], total_frames: 2, frame_loader }
 
   let current_step_idx = $state(0)
 </script>
@@ -45,6 +45,7 @@
 <button type="button" data-testid="resolve-1" onclick={() => pending_loads.get(1)?.(frame(1))}>
   Resolve 1
 </button>
+<output data-testid="pending-loads">{[...pending_loads.keys()].toSorted().join(`,`)}</output>
 <Trajectory
   {trajectory}
   bind:current_step_idx

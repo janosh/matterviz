@@ -413,13 +413,13 @@ describe(`layout utility functions`, () => {
       expect(result[side]).toBeGreaterThanOrEqual(defaults[side])
     })
 
-    it(`right padding includes label_gap even with zero-width ticks`, () => {
+    it(`right padding includes label gap and outside tick offset`, () => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
         y2_axis: { tick_values: [1] },
       })
-      expect(result.r).toBe(LABEL_GAP_DEFAULT)
+      expect(result.r).toBe(LABEL_GAP_DEFAULT + 8)
     })
 
     it(`explicit padding overrides auto-computed padding`, () => {
@@ -496,6 +496,35 @@ describe(`layout utility functions`, () => {
       })
       expect(shifted.l - unshifted.l).toBe(14)
     })
+
+    it(`reserves a title band for interactive options without a literal label`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y2_axis: {
+          tick_values: [],
+          options: [{ key: `energy`, label: `Energy` }],
+        },
+      })
+      expect(result.r).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER + 8)
+      expect(y2_axis_label_x({}, 400, result.r, 0)).toBe(
+        400 - AXIS_LABEL_OUTER - AXIS_LABEL_HEIGHT / 2,
+      )
+    })
+
+    it(`right pad grows with an outward y2 tick-label shift`, () => {
+      const base = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y2_axis: { tick_values: [1, 10], label: `E` },
+      }
+      const unshifted = calc_auto_padding(base)
+      const shifted = calc_auto_padding({
+        ...base,
+        y2_axis: { ...base.y2_axis, tick: { label: { shift: { x: 20 } } } },
+      })
+      expect(shifted.r - unshifted.r).toBe(20)
+    })
   })
 
   describe(`y_axis_label_x / y2_axis_label_x`, () => {
@@ -504,6 +533,11 @@ describe(`layout utility functions`, () => {
       const tick_w = 30
       const pad_l = tick_w + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER
       expect(y_axis_label_x({}, pad_l, tick_w)).toBe(AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2)
+    })
+
+    it(`accounts for the outside tick-label offset when measured width is zero`, () => {
+      const pad_l = 60
+      expect(y_axis_label_x({}, pad_l, 0)).toBe(AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2)
     })
 
     it(`label_shift.x nudges the left title further out`, () => {

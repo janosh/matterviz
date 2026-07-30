@@ -71,7 +71,7 @@
     const count = arrows.length
     const prev = untrack(() => shaft_mesh)
     const heads = untrack(() => head_mesh)
-    if (prev && heads && count > 0 && prev.instanceMatrix.count >= count) {
+    if (prev && heads && prev.instanceMatrix.count >= count) {
       prev.count = count
       heads.count = count
       invalidate()

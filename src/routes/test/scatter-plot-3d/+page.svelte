@@ -21,17 +21,17 @@
 
 <h1>ScatterPlot3D Test Page</h1>
 
-<div id="test-scatter-3d" style="height: 500px; width: 100%">
-  <ScatterPlot3D
-    series={[helix]}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
-    z_axis={{ label: `Z` }}
-    gizmo={true}
-    bind:camera_position
-    bind:wrapper
-  />
-</div>
+<ScatterPlot3D
+  id="test-scatter-3d"
+  style="height: 500px; width: 100%"
+  series={[helix]}
+  x_axis={{ label: `X` }}
+  y_axis={{ label: `Y` }}
+  z_axis={{ label: `Z` }}
+  gizmo={true}
+  bind:camera_position
+  bind:wrapper
+/>
 
 <!-- Expose camera position for test assertions -->
 <div data-testid="camera-position" style="margin-top: 1em">

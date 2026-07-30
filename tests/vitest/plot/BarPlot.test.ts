@@ -119,6 +119,24 @@ describe(`BarPlot`, () => {
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
+  test(`default padding grows for wide y-axis ticks`, async () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({ width: 120 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      const plot = await mount_sized_bar_plot({
+        series: [basic],
+        y_axis: { label: `Value` },
+      })
+      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
+        60,
+      )
+    } finally {
+      context_spy.mockRestore()
+    }
+  })
+
   test.each<[Orientation, BarMode]>([
     [`vertical`, `overlay`],
     [`horizontal`, `overlay`],

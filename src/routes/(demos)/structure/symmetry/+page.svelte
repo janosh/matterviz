@@ -206,9 +206,7 @@
     <div class="example-section">
       <h3>Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
-        <div>
-          <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-        </div>
+        <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
         <Structure
           data_url="/structures/{source_filename}"
           show_controls={true}

@@ -219,100 +219,82 @@
   <title>Binned Scatter Plot Demo</title>
 </svelte:head>
 
-<main>
-  <header>
-    <h1>Binned Scatter Plot</h1>
-    <p>
-      Dense scatter rendering with adaptive density bins, point picking, size scaling, a
-      structure popup on material clicks, and per-family marginal distributions (top histogram
-      + right KDE) that track zoom/pan.
-    </p>
-  </header>
+<h1>Binned Scatter Plot</h1>
+<p>
+  Dense scatter rendering with adaptive density bins, point picking, size scaling, a structure
+  popup on material clicks, and per-family marginal distributions (top histogram + right KDE)
+  that track zoom/pan.
+</p>
 
-  <div class="controls">
-    <label>
-      Render mode
-      <select bind:value={render_mode}>
-        <option value="points">Points</option>
-        <option value="density">Density bins</option>
-      </select>
-    </label>
-  </div>
+<label class="render-mode">
+  Render mode
+  <select bind:value={render_mode}>
+    <option value="points">Points</option>
+    <option value="density">Density bins</option>
+  </select>
+</label>
 
-  <BinnedScatterPlot
-    {series}
-    {x_axis}
-    {y_axis}
-    {density}
-    marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
-    tooltip={point_tooltip}
-    bind:render_mode
-    bind:wrapper={plot_host}
-    {selected_point_id}
-    on_point_click={handle_point_click}
-    class="plot-card"
-  >
-    {#snippet annotation()}
-      {@const n_points = series.reduce((sum, srs) => sum + srs.x.length, 0)}
-      <div class="stats-badge">
-        <strong>{n_points.toLocaleString()}</strong> materials<br />
-        {family_configs.length} families
-      </div>
-    {/snippet}
-    {#if clicked_point}
-      <StructurePopup
-        structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
-        place_right={popup_place_right}
-        stats={{
-          id: clicked_point.material_id,
-          formula: clicked_point.formula,
-          e_form: clicked_point.e_form,
-          e_above_hull: clicked_point.e_above_hull,
-        }}
-        onclose={clear_selection}
-        style={popup_place_right
-          ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
-          : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}
-        width={popup_width}
-        height={360}
-      />
-    {/if}
-  </BinnedScatterPlot>
+<BinnedScatterPlot
+  {series}
+  {x_axis}
+  {y_axis}
+  {density}
+  marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
+  tooltip={point_tooltip}
+  bind:render_mode
+  bind:wrapper={plot_host}
+  {selected_point_id}
+  on_point_click={handle_point_click}
+  style="height: 640px"
+>
+  {#snippet annotation()}
+    {@const n_points = series.reduce((sum, srs) => sum + srs.x.length, 0)}
+    <div class="stats-badge">
+      <strong>{n_points.toLocaleString()}</strong> materials<br />
+      {family_configs.length} families
+    </div>
+  {/snippet}
+  {#if clicked_point}
+    <StructurePopup
+      structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
+      place_right={popup_place_right}
+      stats={{
+        id: clicked_point.material_id,
+        formula: clicked_point.formula,
+        e_form: clicked_point.e_form,
+        e_above_hull: clicked_point.e_above_hull,
+      }}
+      onclose={clear_selection}
+      style={popup_place_right
+        ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
+        : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}
+      width={popup_width}
+      height={360}
+    />
+  {/if}
+</BinnedScatterPlot>
 
-  <section class="notes">
-    <h2>What to Try</h2>
-    <ul>
-      <li>Click a density bin or point to open the draggable <code>StructurePopup</code>.</li>
-      <li>Switch to point mode to see the same materials rendered individually.</li>
-      <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
-      <li>
-        The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
-        data and the colorbar. Zoom around and watch it relocate.
-      </li>
-    </ul>
-  </section>
-</main>
+<section class="notes">
+  <h2>What to Try</h2>
+  <ul>
+    <li>Click a density bin or point to open the draggable <code>StructurePopup</code>.</li>
+    <li>Switch to point mode to see the same materials rendered individually.</li>
+    <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
+    <li>
+      The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
+      data and the colorbar. Zoom around and watch it relocate.
+    </li>
+  </ul>
+</section>
 
 <style>
-  main {
-    padding: 1.5rem;
-  }
-  .controls {
+  .render-mode {
     display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
     margin: 1rem 0;
   }
-  :global(.binned-scatter.plot-card) {
-    position: relative;
-    box-sizing: border-box;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    background: var(--surface-bg);
-    padding: 1rem;
-    height: 640px;
-  }
-  :global(.binned-scatter.plot-card .plot-tooltip) {
+  :global(.binned-scatter .plot-tooltip) {
     display: grid;
     gap: 0.15rem;
   }

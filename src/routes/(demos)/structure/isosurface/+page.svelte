@@ -170,48 +170,29 @@
   style="margin-bottom: 0.5em"
 />
 
-<div
-  class="viewer-container"
-  class:dragover-hint={dragover_hint}
-  role="region"
-  aria-label="Isosurface viewer - drop volumetric files here"
-  ondragenter={(event: DragEvent) => {
-    event.preventDefault()
-    dragover_hint = true
-  }}
-  ondragleave={(event: DragEvent & { currentTarget: HTMLElement }) => {
-    // Only clear if leaving the container (not entering a child)
-    const related = event.relatedTarget
-    if (!(related instanceof Node) || !event.currentTarget.contains(related)) {
-      dragover_hint = false
-    }
-  }}
-  ondrop={() => (dragover_hint = false)}
+<Structure
+  bind:structure
+  bind:volumetric_data
+  bind:isosurface_settings
+  bind:active_volume_idx
+  bind:display_mode
+  bind:loading
+  bind:error_msg
+  bind:dragover={dragover_hint}
+  show_controls="always"
+  on_file_drop={handle_dropped_file}
+  style="height: 500px"
 >
   <DragOverlay
     visible={dragover_hint}
     message="Drop CHGCAR, AECCAR, ELFCAR, LOCPOT, PARCHG, or .cube"
   />
-  <div class="viewer-pane">
-    <Structure
-      bind:structure
-      bind:volumetric_data
-      bind:isosurface_settings
-      bind:active_volume_idx
-      bind:display_mode
-      bind:loading
-      bind:error_msg
-      show_controls="always"
-      on_file_drop={handle_dropped_file}
-    >
-      {#if active_file}
-        <p class="filename-label">
-          {active_file.replace(/\.gz$/, ``)}
-        </p>
-      {/if}
-    </Structure>
-  </div>
-</div>
+  {#if active_file}
+    <p class="filename-label">
+      {active_file.replace(/\.gz$/, ``)}
+    </p>
+  {/if}
+</Structure>
 
 {#if error_msg}
   <StatusMessage message={error_msg} type="error" />
@@ -271,17 +252,6 @@
   p {
     margin-bottom: 1em;
     max-width: 60em;
-  }
-  .viewer-container {
-    position: relative;
-    min-height: 500px;
-  }
-  .viewer-pane {
-    position: relative;
-    height: 500px;
-    :global(.matterviz-structure) {
-      height: 100%;
-    }
   }
   .filename-label {
     position: absolute;

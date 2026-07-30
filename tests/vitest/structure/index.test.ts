@@ -2,6 +2,7 @@ import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
   camera_position_for_target,
+  constrain_ortho_zoom,
   DEFAULT_FIT_PADDING,
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
@@ -10,6 +11,7 @@ import {
   get_structure_vector_keys,
   is_vector_key,
   ortho_zoom_for_extent,
+  perspective_distance_for_extent,
   structure_fit_frame,
   VECTOR_PALETTE,
   type StructureFitOpts,
@@ -269,6 +271,7 @@ describe(`structure_fit_frame`, () => {
   })
 
   test(`molecule / cell framing`, () => {
+    expect(DEFAULT_FIT_PADDING).toBeGreaterThan(1)
     const diatomic = { sites: [site(`H`, [-1, 0, 0]), site(`H`, [1, 0, 0])] }
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
@@ -353,6 +356,29 @@ describe(`camera helpers`, () => {
   ] as const)(`ortho_zoom extent=%i %ix%i in=%i → %i`, (ext, w, h, zoom_in, expected) => {
     expect(ortho_zoom_for_extent(ext, w, h, zoom_in)).toBeCloseTo(expected, 10)
   })
+
+  test.each([
+    [`unbounded`, 100, undefined, undefined, 100],
+    [`minimum`, 100, 200, 500, 200],
+    [`maximum`, 100, 10, 50, 50],
+    [`non-positive bounds`, 100, 0, 0, 100],
+  ] satisfies [string, number, number | undefined, number | undefined, number][])(
+    `constrain ortho zoom: %s`,
+    (_scenario, zoom, min_zoom, max_zoom, expected) => {
+      expect(constrain_ortho_zoom(zoom, min_zoom, max_zoom)).toBe(expected)
+    },
+  )
+
+  test.each([
+    [`square`, 400, 400, 10, 5 / Math.tan(Math.PI / 36)],
+    [`wide`, 800, 400, 10, 5 / Math.tan(Math.PI / 36)],
+    [`tall`, 400, 800, 10, 10 / Math.tan(Math.PI / 36)],
+  ] as const)(
+    `perspective distance uses limiting FOV for a %s viewport`,
+    (_name, width, height, fov, expected) => {
+      expect(perspective_distance_for_extent(10, width, height, fov)).toBeCloseTo(expected, 10)
+    },
+  )
 })
 
 const make_site = (properties?: Record<string, unknown>): Site =>

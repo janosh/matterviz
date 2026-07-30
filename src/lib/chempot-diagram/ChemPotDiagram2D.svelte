@@ -460,9 +460,10 @@
 {/snippet}
 
 {#if diagram_computing}
-  <div class="computing-state">
-    <Spinner text="Computing chemical potential domains..." style="--spinner-size: 1.2em" />
-  </div>
+  <Spinner
+    text="Computing chemical potential domains..."
+    style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
+  />
 {:else if !diagram_data}
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
@@ -588,12 +589,6 @@
     align-items: center;
     gap: 4pt;
     margin-left: 4pt;
-  }
-  .computing-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
   }
   .error-state {
     display: flex;

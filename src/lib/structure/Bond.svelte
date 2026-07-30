@@ -70,10 +70,10 @@
     const matrix = new Matrix4()
     const temp_color = new Color()
 
-    // Reallocate buffers if instance count changed
-    if (colors_start.length !== count * 3) {
-      colors_start = new Float32Array(count * 3)
-      colors_end = new Float32Array(count * 3)
+    // Grow color buffers with mesh capacity; shrinking only lowers mesh.count.
+    if (colors_start.length < capacity * 3) {
+      colors_start = new Float32Array(capacity * 3)
+      colors_end = new Float32Array(capacity * 3)
     }
 
     // Update instance matrices and colors

@@ -80,7 +80,7 @@
   $effect(() => {
     const count = atoms.length
     const prev = untrack(() => mesh)
-    if (prev && prev.instanceMatrix.count >= count && count > 0) {
+    if (prev && prev.instanceMatrix.count >= count) {
       prev.count = count
       invalidate()
       return

@@ -390,9 +390,12 @@
 {:else}
   <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
     {#if error_msg}
-      <div class="error-overlay">
-        <StatusMessage bind:message={error_msg} type="error" dismissible />
-      </div>
+      <StatusMessage
+        bind:message={error_msg}
+        type="error"
+        dismissible
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%"
+      />
     {/if}
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
@@ -508,16 +511,5 @@
   }
   :global(.xrd-empty-state .message) {
     max-width: 80%;
-  }
-  .error-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 10;
-    max-width: 80%;
-  }
-  .error-overlay :global(.message) {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 </style>

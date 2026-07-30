@@ -152,6 +152,24 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
   })
 
+  test(`default padding grows for wide y-axis ticks`, async () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({ width: 120 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      const plot = await mount_sized_box_plot({
+        series: [basic],
+        y_axis: { label: `Value` },
+      })
+      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
+        60,
+      )
+    } finally {
+      context_spy.mockRestore()
+    }
+  })
+
   test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
     // vertical orientation: the secondary value axis is y2; x is categorical and x2 is a
     // sentinel, so rect-zoom must not write back an x2 range. Mount directly (the helper

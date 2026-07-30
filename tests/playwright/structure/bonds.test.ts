@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
+import type { Buffer } from 'node:buffer'
 import {
   dispatch_cancelable_keydown,
   expect_canvas_changed,
@@ -6,17 +7,46 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
-// Get non-white pixel count to detect if content is rendered.
-function count_non_white_pixels(buffer: Uint8Array): number {
-  let non_white = 0
-  for (let idx = 0; idx < buffer.length; idx += 4) {
-    const red = buffer[idx]
-    const green = buffer[idx + 1]
-    const blue = buffer[idx + 2]
-    if (red < 250 || green < 250 || blue < 250) non_white++
-  }
-  return non_white
-}
+const count_canvas_content_pixels = (page: Page, screenshot: Buffer): Promise<number> =>
+  page.evaluate(async (base64_png) => {
+    const raw = atob(base64_png)
+    const bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
+    const offscreen = document.createElement(`canvas`)
+    offscreen.width = bitmap.width
+    offscreen.height = bitmap.height
+    const context = offscreen.getContext(`2d`)
+    if (!context) throw new Error(`Failed to create 2D canvas context`)
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    const { data, width, height } = context.getImageData(
+      0,
+      0,
+      offscreen.width,
+      offscreen.height,
+    )
+    const corner_indices = [
+      0,
+      (width - 1) * 4,
+      (height - 1) * width * 4,
+      (height * width - 1) * 4,
+    ]
+    const background = [0, 1, 2].map(
+      (channel) =>
+        corner_indices.reduce((sum, pixel_idx) => sum + data[pixel_idx + channel], 0) /
+        corner_indices.length,
+    )
+    let content_pixels = 0
+    for (let pixel_idx = 0; pixel_idx < data.length; pixel_idx += 4) {
+      const max_channel_delta = Math.max(
+        Math.abs(data[pixel_idx] - background[0]),
+        Math.abs(data[pixel_idx + 1] - background[1]),
+        Math.abs(data[pixel_idx + 2] - background[2]),
+      )
+      if (max_channel_delta > 12) content_pixels += 1
+    }
+    return content_pixels
+  }, screenshot.toString(`base64`))
 
 // CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio
 // bonding strategy auto-detects two C-O connectivity bonds. With
@@ -480,7 +510,7 @@ test.describe(`Bond component`, () => {
     })
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     const initial = await canvas.screenshot()
-    expect(count_non_white_pixels(initial)).toBeGreaterThan(100)
+    expect(await count_canvas_content_pixels(page, initial)).toBeGreaterThan(100)
 
     // WebGPU canvases read back black via drawImage; decode the compositor PNG instead.
     const halves = await page.evaluate(async (b64) => {
@@ -499,10 +529,25 @@ test.describe(`Bond component`, () => {
         offscreen.width,
         offscreen.height,
       )
+      const corner_indices = [
+        0,
+        (width - 1) * 4,
+        (height - 1) * width * 4,
+        (height * width - 1) * 4,
+      ]
+      const background = [0, 1, 2].map(
+        (channel) =>
+          corner_indices.reduce((sum, pixel_idx) => sum + data[pixel_idx + channel], 0) /
+          corner_indices.length,
+      )
       const is_bond_pixel = (red: number, green: number, blue: number) => {
         const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
-        // Scene background is flat ~gray; bond pixels are darker and/or chromatic.
-        return chroma > 15 || red < 200 || green < 200 || blue < 200
+        const background_delta = Math.max(
+          Math.abs(red - background[0]),
+          Math.abs(green - background[1]),
+          Math.abs(blue - background[2]),
+        )
+        return chroma > 15 || background_delta > 12
       }
       let min_x = width
       let max_x = 0
@@ -546,8 +591,8 @@ test.describe(`Bond component`, () => {
         right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
       }
     }, initial.toString(`base64`))
-    // O end is redder than the Fe end. A constant mid-mix makes the halves match.
-    expect(halves.right.r - halves.left.r).toBeGreaterThan(25)
+    // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
+    expect(Math.abs(halves.right.r - halves.left.r)).toBeGreaterThan(25)
 
     const box = await canvas.boundingBox()
     expect(box).toBeTruthy()
@@ -560,11 +605,12 @@ test.describe(`Bond component`, () => {
       force: true,
     })
     await expect_canvas_changed(canvas, initial)
+    const after_drag = await canvas.screenshot()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.wheel(0, -200)
+    await expect_canvas_changed(canvas, after_drag)
     const after_camera = await canvas.screenshot()
-    expect(count_non_white_pixels(after_camera)).toBeGreaterThan(100)
-    expect(after_camera.equals(initial)).toBe(false)
+    expect(await count_canvas_content_pixels(page, after_camera)).toBeGreaterThan(100)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -851,7 +897,7 @@ test.describe(`Bond component`, () => {
 
     // auto_bond_order OFF (default): C-O bonds render as single cylinders.
     const single = await canvas.screenshot()
-    const single_pixels = count_non_white_pixels(single)
+    const single_pixels = await count_canvas_content_pixels(page, single)
     expect(single_pixels).toBeGreaterThan(100)
 
     await set_scene_props(page, { auto_bond_order: true })
@@ -861,7 +907,7 @@ test.describe(`Bond component`, () => {
     // rendered scene must visibly change while still rendering bond content.
     await expect_canvas_changed(canvas, single)
     const doubled = await canvas.screenshot()
-    expect(count_non_white_pixels(doubled)).toBeGreaterThan(100)
+    expect(await count_canvas_content_pixels(page, doubled)).toBeGreaterThan(100)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -900,14 +946,14 @@ test.describe(`Bond component`, () => {
     // aromatic mode: all 6 ring bonds rendered with the 1.5 representation
     // (asymmetric-radius double cylinders).
     const aromatic = await canvas.screenshot()
-    expect(count_non_white_pixels(aromatic)).toBeGreaterThan(100)
+    expect(await count_canvas_content_pixels(page, aromatic)).toBeGreaterThan(100)
 
     // Switch to Kekulé: ring bonds become alternating single (1 cylinder)
     // and double (2 equal cylinders) -> the rendered bond pattern differs.
     await set_scene_props(page, { aromatic_display: `kekule` })
     await expect_canvas_changed(canvas, aromatic)
     const kekule = await canvas.screenshot()
-    expect(count_non_white_pixels(kekule)).toBeGreaterThan(100)
+    expect(await count_canvas_content_pixels(page, kekule)).toBeGreaterThan(100)
 
     expect(console_errors).toHaveLength(0)
   })

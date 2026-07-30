@@ -6,9 +6,10 @@ import type { AnyStructure, Crystal } from '$lib/structure'
 import { merge_split_partial_sites } from '$lib/structure/partial-occupancy'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
-import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
 import { mat3_from_flat_col_major } from './symmetry-elements'
 import { wyckoff_letter } from './wyckoff-db'
+
+const moyo_wasm_url = new URL('@spglib/moyo-wasm/moyo_wasm_bg.wasm', import.meta.url).href
 
 export * from './cell-transform'
 export * from './spacegroups'
@@ -117,7 +118,7 @@ function make_frac_coord_mapper(
 export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   if (initialized) return
 
-  // Use provided URL (e.g. from VSCode webview data), otherwise use Vite-bundled URL
+  // Use provided URL (e.g. from VSCode webview data), otherwise use the bundled URL
   const url = wasm_url ?? moyo_wasm_url
 
   await init({ module_or_path: url })

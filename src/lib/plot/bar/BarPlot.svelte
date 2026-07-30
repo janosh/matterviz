@@ -119,7 +119,7 @@
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     range_padding = 0,
-    padding = DEFAULT_PLOT_PADDING,
+    padding = {},
     legend = {},
     show_legend,
     bar = {},

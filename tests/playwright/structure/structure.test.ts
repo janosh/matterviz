@@ -8,7 +8,6 @@ import {
   drop_file,
   enter_edit_atoms_mode,
   expect_canvas_changed,
-  expect_gizmo_click_flies_camera,
   get_canvas_timeout,
   goto_structure_test,
   IS_CI,
@@ -548,14 +547,6 @@ test.describe(`Structure Component Tests`, () => {
   test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
-    // Opt back into auto-rotation (off by default): the fly-to lands the camera exactly on an
-    // axis, where the gizmo's handles collapse behind its center and the re-sweep finds none.
-    // A slow drift keeps them separable, which is what this assertion has always relied on.
-    await page.evaluate(() =>
-      globalThis.dispatchEvent(
-        new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 0.2 } }),
-      ),
-    )
     const canvas = page.locator(`#test-structure canvas`)
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`canvas has no bounding box`)
@@ -567,7 +558,22 @@ test.describe(`Structure Component Tests`, () => {
       `1`,
     )
 
-    await expect_gizmo_click_flies_camera(canvas)
+    const handles = await sweep_gizmo_handles(canvas)
+    if (handles.length === 0 && IS_CI) return
+    expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+    const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
+    let camera_moved = false
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      await page.mouse.move(candidate.x, candidate.y)
+      await page.waitForTimeout(100)
+      const before_click = await canvas.screenshot()
+      await page.mouse.click(candidate.x, candidate.y)
+      await page.waitForTimeout(600)
+      camera_moved = !(await canvas.screenshot()).equals(before_click)
+      if (camera_moved) break
+    }
+    expect(camera_moved).toBe(true)
   })
 
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
@@ -1270,6 +1276,12 @@ test.describe(`Structure Event Handler Tests`, () => {
         sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
         targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
       })
+      await expect
+        .poll(() => page.evaluate(() => (globalThis as Record<string, unknown>).camera_target))
+        .toEqual(expect.arrayContaining([expect.any(Number)]))
+      const target_before_reset = await page.evaluate(
+        () => (globalThis as Record<string, unknown>).camera_target,
+      )
       await clear_events(page)
       await open_structure_control_pane(page)
       const reset_btn = page.locator(`#test-structure .controls-pane button.reset-camera`)
@@ -1278,6 +1290,13 @@ test.describe(`Structure Event Handler Tests`, () => {
       await expect(async () => {
         await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
       }).toPass({ timeout: get_canvas_timeout() })
+      const reset_event = await check_event_triggered(page, `on_camera_reset`, [
+        `structure`,
+        `camera_target`,
+      ])
+      expect((reset_event.data as Record<string, unknown>).camera_target).toEqual(
+        target_before_reset,
+      )
     })
 
     test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {

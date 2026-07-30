@@ -7,7 +7,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 
-export const DEFAULT_FIT_PADDING = 0.85
+// Occupy at most 85% of the shorter viewport edge.
+export const DEFAULT_FIT_PADDING = 1 / 0.85
 // Paired with DEFAULTS.structure.initial_zoom (50): default zoom = min(w,h) / fit_extent.
 export const FIT_ZOOM_REF_PX = 50
 // Unnormalized — keeps legacy offset [d, 0.3d, 0.8d] (do not unit-normalize).
@@ -110,6 +111,38 @@ export const ortho_zoom_for_extent = (
   initial_zoom: number,
 ): number =>
   (initial_zoom * Math.min(width, height)) / (Math.max(1, fit_extent) * FIT_ZOOM_REF_PX)
+
+export const constrain_ortho_zoom = (
+  zoom: number,
+  min_zoom?: number,
+  max_zoom?: number,
+): number => {
+  if (min_zoom !== undefined && min_zoom > 0) zoom = Math.max(min_zoom, zoom)
+  if (max_zoom !== undefined && max_zoom > 0) zoom = Math.min(max_zoom, zoom)
+  return zoom
+}
+
+export const perspective_distance_for_extent = (
+  fit_extent: number,
+  width: number,
+  height: number,
+  vertical_fov_degrees: number,
+): number => {
+  if (
+    !(fit_extent > 0) ||
+    !(width > 0) ||
+    !(height > 0) ||
+    !(vertical_fov_degrees > 0 && vertical_fov_degrees < 180)
+  ) {
+    throw new Error(
+      `Invalid perspective fit: extent=${fit_extent}, viewport=${width}x${height}, fov=${vertical_fov_degrees}`,
+    )
+  }
+  const vertical_fov = (vertical_fov_degrees * Math.PI) / 180
+  const horizontal_fov = 2 * Math.atan(Math.tan(vertical_fov / 2) * (width / height))
+  const limiting_fov = Math.min(vertical_fov, horizontal_fov)
+  return fit_extent / 2 / Math.tan(limiting_fov / 2)
+}
 
 // Explicit view_dir is unit-normalized; missing/zero keeps the unnormalized default.
 export const camera_position_for_target = (

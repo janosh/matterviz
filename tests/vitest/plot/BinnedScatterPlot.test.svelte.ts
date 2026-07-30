@@ -67,6 +67,8 @@ const svg_num = (element: Element, attr_name: string): number =>
 
 function mock_canvas_context(overrides: Partial<CanvasRenderingContext2D> = {}) {
   const ctx = {
+    font: ``,
+    measureText: vi.fn(() => ({ width: 0 })),
     setTransform: vi.fn(),
     clearRect: vi.fn(),
     save: vi.fn(),
@@ -976,6 +978,22 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(getComputedStyle(doc_query(`.point-labels .point-label`)).fontSize).toBe(`20px`)
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
+  })
+
+  test(`auto-grows left padding for wide y-axis ticks`, async () => {
+    mock_canvas_context({
+      measureText: () => ({ width: 120 }) as TextMetrics,
+    })
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      y_axis: { label: `Energy` },
+      density: hidden_density,
+      style: `width: 800px; height: 600px`,
+    })
+    await settle()
+
+    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
+    expect(svg_num(clip_rect, `x`)).toBeGreaterThan(60)
   })
 
   test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {
