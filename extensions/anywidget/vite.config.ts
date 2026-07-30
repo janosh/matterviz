@@ -8,38 +8,25 @@ import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr on demand instead of inlining
-// it as base64 -- twice (once via symmetry/index.ts's `?url` import, once via the
-// wasm-bindgen glue's dead `new URL(..., import.meta.url)` default). Drops ~1.9 MB.
+// it as base64 twice (once from matterviz, once from wasm-bindgen glue). Drops ~1.9 MB.
 // Symmetry/spacegroup analysis needs network; widget rendering itself does not.
 const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.json`).version
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
+const matterviz_moyo_url =
+  `new URL('@spglib/moyo-wasm/moyo_wasm_bg.wasm', import.meta.url).href`
 
 let json_gz_is_build = false
 
 const moyo_wasm_cdn_plugin: Plugin = {
   name: `moyo-wasm-cdn`,
   enforce: `pre` as const,
-  resolveId(source: string) {
-    if (source.includes(`@spglib/moyo-wasm`) && source.endsWith(`.wasm?url`)) {
-      return `\0moyo-wasm-cdn-url`
-    }
-    return null
-  },
-  load(id: string) {
-    if (id === `\0moyo-wasm-cdn-url`) {
-      return `export default ${JSON.stringify(moyo_wasm_cdn)}`
-    }
-    return null
-  },
   transform(code: string, id: string) {
-    if (id.includes(`@spglib/moyo-wasm`) && code.includes(moyo_glue_url)) {
-      return {
-        code: code.replace(moyo_glue_url, JSON.stringify(moyo_wasm_cdn)),
-        map: null,
-      }
+    let transformed = code.replace(matterviz_moyo_url, JSON.stringify(moyo_wasm_cdn))
+    if (id.includes(`@spglib/moyo-wasm`)) {
+      transformed = transformed.replace(moyo_glue_url, JSON.stringify(moyo_wasm_cdn))
     }
-    return null
+    return transformed === code ? null : { code: transformed, map: null }
   },
 }
 

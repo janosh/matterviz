@@ -16,6 +16,11 @@ import pytest
 REACT_TS_PATH = (
     Path(__file__).parent.parent / "src" / "lib" / "components" / "MatterViz.react.ts"
 )
+BUNDLE_PATH = (
+    Path(__file__).parent.parent
+    / "matterviz_dash_components"
+    / "matterviz_dash_components.min.js"
+)
 
 
 def run_js_test(js_code: str) -> dict:
@@ -221,3 +226,13 @@ class TestConvertDashPropsToMatterviz:
         # Missing keys should not appear in result
         assert result["hasNonexistent"] is False
         assert result["hasAlsoMissing"] is False
+
+
+class TestBuiltBundle:
+    """Test production bundle invariants."""
+
+    def test_moyo_wasm_is_embedded_without_bare_specifier(self) -> None:
+        """Moyo WASM should be bundled before UMD replaces import.meta."""
+        source = BUNDLE_PATH.read_text()
+        assert "@spglib/moyo-wasm/moyo_wasm_bg.wasm" not in source
+        assert "data:application/wasm;base64," in source
