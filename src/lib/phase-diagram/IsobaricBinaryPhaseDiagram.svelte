@@ -585,9 +585,9 @@
       onkeydown={handle_svg_keydown}
       ondblclick={handle_double_click}
       tabindex="0"
-      style:display="block"
-      style:cursor={effective_hover_info ? `crosshair` : `default`}
-      style:touch-action="none"
+      style="display: block; cursor: {effective_hover_info
+        ? `crosshair`
+        : `default`}; touch-action: none"
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press Ctrl/Cmd+Shift+E to export."
     >
@@ -626,7 +626,7 @@
 
       <!-- Grid lines -->
       {#if show_grid}
-        <g class="grid">
+        <g class="grid" style="pointer-events: none">
           {@render grid_lines(x_ticks, true)}
           {@render grid_lines(y_ticks, false)}
         </g>
@@ -665,7 +665,7 @@
 
       <!-- Region labels -->
       {#if show_labels}
-        <g class="region-labels">
+        <g class="region-labels" style="pointer-events: none">
           {#each transformed_regions as region (region.id)}
             {@const line_height = merged_config.font_size * 1.2}
             <g
@@ -869,8 +869,7 @@
         bind:this={tooltip_el}
         class="tooltip-container"
         class:locked={locked_hover_info}
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
@@ -898,8 +897,7 @@
     {#if copy_feedback_visible}
       <div
         class="copy-feedback"
-        style:left="{copy_feedback_pos.x}px"
-        style:top="{copy_feedback_pos.y}px"
+        style="left: {copy_feedback_pos.x}px; top: {copy_feedback_pos.y}px"
       >
         ✓ Copied
       </div>
@@ -965,9 +963,6 @@
       filter: brightness(1.1);
     }
   }
-  .special-points {
-    pointer-events: auto;
-  }
   .special-point-hit-area {
     cursor: pointer;
     pointer-events: auto;
@@ -979,12 +974,9 @@
     pointer-events: none; /* Let hit-area handle events */
   }
   /* Grouped pointer-events: none */
-  .region-label,
   .tie-line,
   .tooltip-container,
-  .copy-feedback,
-  .grid,
-  .region-labels {
+  .copy-feedback {
     pointer-events: none;
   }
   .region-label {

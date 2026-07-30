@@ -66,6 +66,7 @@ describe(`WyckoffTable`, () => {
 
     const header_cells = () =>
       Array.from(document.querySelectorAll(`thead th`)).map((cell) => cell.textContent)
+    const unoccupied_selector = `tbody tr[title^="Wyckoff position not occupied"]`
 
     test(`renders without ITA columns when no db_positions given`, () => {
       mount(WyckoffTable, {
@@ -94,7 +95,7 @@ describe(`WyckoffTable`, () => {
       expect(first_row.textContent).toContain(`m-3m`)
       // occupied letters only — unoccupied hidden by default
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
-      expect(document.querySelectorAll(`tbody tr.unoccupied`)).toHaveLength(0)
+      expect(document.querySelectorAll(unoccupied_selector)).toHaveLength(0)
     })
 
     test(`show_unoccupied lists empty Wyckoff positions as muted non-interactive rows`, () => {
@@ -102,7 +103,7 @@ describe(`WyckoffTable`, () => {
         target: document.body,
         props: { wyckoff_positions: occupied, db_positions, show_unoccupied: true },
       })
-      const unoccupied_rows = Array.from(document.querySelectorAll(`tbody tr.unoccupied`))
+      const unoccupied_rows = Array.from(document.querySelectorAll(unoccupied_selector))
       expect(unoccupied_rows.map((row) => row.textContent?.trim().slice(0, 2))).toEqual([
         `1b`,
         `3d`,

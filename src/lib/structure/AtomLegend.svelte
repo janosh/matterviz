@@ -268,7 +268,7 @@
               mode_menu_open = false
             }}
           >
-            <span>{titles[value as keyof typeof titles] || label}</span>
+            {titles[value as keyof typeof titles] || label}
           </button>
         {/each}
       </div>
@@ -439,7 +439,7 @@
                   class="remap-option reset"
                   onclick={() => remap_element(elem as ElementSymbol, elem as ElementSymbol)}
                 >
-                  <span>Reset to {elem}</span>
+                  Reset to {elem}
                 </button>
               {/if}
               {#each filtered_elements as target_elem (target_elem)}
@@ -468,13 +468,12 @@
   <div
     class="atom-legend property-legend atom-color-legend"
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
+    style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt))"
     {...rest}
   >
     {@render mode_selector_snippet()}
     {#if legend_title}
-      <div class="legend-header">
-        <h4>{legend_title}</h4>
-      </div>
+      <h4 class="legend-header">{legend_title}</h4>
     {/if}
     {#if atom_color_config.scale_type === `continuous` && property_colors && is_discrete_numeric}
       <div class="discrete-colorbar">
@@ -728,10 +727,6 @@
     }
   }
 
-  /* Property Legend Styles */
-  .property-legend {
-    font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt));
-  }
   .mode-selector {
     position: relative;
     display: flex;
@@ -807,7 +802,7 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .mode-option span {
+  .mode-option {
     white-space: nowrap;
   }
   /* Discrete color bar: contiguous integer-labeled segments (e.g. coordination numbers) */
@@ -846,7 +841,7 @@
   .category-label.hidden {
     opacity: 0.4;
   }
-  .legend-header h4 {
+  .legend-header {
     margin: 0;
     font-size: 1em;
     font-weight: 600;

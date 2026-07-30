@@ -158,12 +158,29 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges(series, { category_count: 3 }).x).toEqual([-0.5, 2.5])
   })
 
+  test(`categorical range expands for bars wider than one slot`, () => {
+    const series = [bar({ x: [0, 1, 2], y: [1, 2, 3], bar_width: 2 })]
+    expect(auto_ranges(series, { category_count: 3 }).x).toEqual([-1, 3])
+    expect(auto_ranges(series, { category_count: 3, orientation: `horizontal` }).y).toEqual([
+      -1, 3,
+    ])
+  })
+
+  test(`numeric category range includes the outer bar edges`, () => {
+    const series = [bar({ x: [1, 7], bar_width: 0.5 })]
+    expect(auto_ranges(series).x).toEqual([0.75, 7.25])
+    expect(auto_ranges(series, { x_range: [1, 7] }).x).toEqual([1, 7])
+    expect(auto_ranges([bar({ x: [1, 7], bar_width: 4, render_mode: `line` })]).x).toEqual([
+      1, 7,
+    ])
+  })
+
   test(`horizontal orientation swaps category and value axes`, () => {
     const series = [bar({ x: [0, 10], y: [1, 5] })]
-    expect(auto_ranges(series)).toMatchObject({ x: [0, 10], y: [0, 5] })
+    expect(auto_ranges(series)).toMatchObject({ x: [-0.25, 10.25], y: [0, 5] })
     expect(auto_ranges(series, { orientation: `horizontal` })).toMatchObject({
       x: [0, 5],
-      y: [0, 10],
+      y: [-0.25, 10.25],
     })
   })
 
@@ -174,7 +191,7 @@ describe(`compute_bar_auto_ranges`, () => {
   test(`x2 series get their own range; x stays sentinel without x1 series`, () => {
     const x2_srs = bar({ x: [100, 200], y: [1, 2], x_axis: `x2` })
     const result = auto_ranges([x2_srs], { x2_series: [x2_srs] })
-    expect(result.x2).toEqual([100, 200])
+    expect(result.x2).toEqual([99.75, 200.25])
     expect(result.x).toEqual([0, 1])
   })
 })

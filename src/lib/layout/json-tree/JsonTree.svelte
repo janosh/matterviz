@@ -784,8 +784,10 @@
     </button>
     <menu
       class="context-menu"
-      style:left="{Math.min(context_menu_state.x, window.innerWidth - 180)}px"
-      style:top="{Math.min(context_menu_state.y, window.innerHeight - 200)}px"
+      style="left: {Math.max(
+        0,
+        Math.min(context_menu_state.x, window.innerWidth - 180),
+      )}px; top: {Math.max(0, Math.min(context_menu_state.y, window.innerHeight - 200))}px"
     >
       <li>
         <button

@@ -20,12 +20,15 @@
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
+    calc_auto_padding,
     compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
-    LABEL_GAP_DEFAULT,
+    measure_max_tick_width,
     point_in_rect,
+    sides_equal,
+    y_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -179,14 +182,8 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  // Unlike the other 2D plots this one doesn't auto-grow padding for tick labels, so this
-  // shared default is its final pad (merged with any user `padding`), not just a floor.
-  let pad = $derived(
-    add_sides(
-      filter_padding(padding_config, DEFAULT_PLOT_PADDING),
-      reserve_marginal_pad(resolved_marginals),
-    ),
-  )
+  let base_pad = $derived(filter_padding(padding_config, DEFAULT_PLOT_PADDING))
+  let pad = $derived(add_sides(base_pad, reserve_marginal_pad(resolved_marginals)))
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
       x: srs.x,
@@ -319,6 +316,18 @@
       default_count: 6,
     }),
   )
+  let y_tick_width = $derived(measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`))
+  $effect(() => {
+    const new_pad =
+      width > 0 && height > 0
+        ? calc_auto_padding({
+            padding: padding_config,
+            default_padding: DEFAULT_PLOT_PADDING,
+            y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
+          })
+        : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
+  })
   let density_bins = $derived({
     x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),
     y: Math.max(8, Math.ceil(plot_height / density_settings.bin_px)),
@@ -1016,7 +1025,7 @@
       {height}
       show_grid
       tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={Math.max(12, pad.l - LABEL_GAP_DEFAULT)}
+      label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
       label_y={pad.t + plot_height / 2}
     />
 
@@ -1077,8 +1086,7 @@
         {#if label_position}
           <div
             class="point-label"
-            style:left={`${label_position.x}px`}
-            style:top={`${label_position.y}px`}
+            style="left: {label_position.x}px; top: {label_position.y}px"
           >
             {@render point_labels_settings.render(payload)}
           </div>
@@ -1091,8 +1099,8 @@
     <div
       bind:this={colorbar_element}
       class="color-bar"
-      style:left={`${colorbar_tween.coords.current.x}px`}
-      style:top={`${colorbar_tween.coords.current.y}px`}
+      style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
+        .y}px"
     >
       <ColorBar
         {...color_bar_props}
@@ -1107,8 +1115,8 @@
     <div
       bind:this={annotation_element}
       class="annotation"
-      style:left={`${annotation_tween.coords.current.x}px`}
-      style:top={`${annotation_tween.coords.current.y}px`}
+      style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords.current
+        .y}px"
     >
       {@render annotation({ height, width, fullscreen })}
     </div>

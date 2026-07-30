@@ -17,7 +17,7 @@
 
 {#if visible}
   {@const { x, y } = position}
-  <div class="click-feedback" style:left="{x}px" style:top="{y}px">
+  <div class="click-feedback" style="left: {x}px; top: {y}px">
     <Icon {icon} />
   </div>
 {/if}

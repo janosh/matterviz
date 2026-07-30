@@ -203,7 +203,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   test(`clearing a range input resets the color range to auto`, () => {
     const props = mount_colored({ color_range: [-1, 1] })
-    const range_input = doc_query<HTMLInputElement>(`input[type="number"].range-input`)
+    const range_input = doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`)
     range_input.value = ``
     // bubbles: true — Svelte 5 delegates change events to the root
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -211,7 +211,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(props.settings.layers?.[0].color_range).toBeUndefined()
     // Inputs now show the auto placeholder state (empty values)
     const inputs = document.querySelectorAll<HTMLInputElement>(
-      `input[type="number"].range-input`,
+      `input[aria-label^="Color range "]`,
     )
     expect([...inputs].every((input) => input.value === ``)).toBe(true)
   })
@@ -256,7 +256,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   test(`editing one bound of an auto range materializes an explicit range`, () => {
     const props = mount_colored({ colormap: `interpolateViridis` })
-    const range_input = doc_query<HTMLInputElement>(`input[type="number"].range-input`)
+    const range_input = doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`)
     range_input.value = `2.5`
     range_input.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
@@ -271,7 +271,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     ).closest(`.multiselect`)
     expect(color_scale?.querySelector(`.selected`)?.textContent).toContain(`RdBu`)
     const range_inputs = document.querySelectorAll<HTMLInputElement>(
-      `input[type="number"].range-input`,
+      `input[aria-label^="Color range "]`,
     )
     expect(range_inputs).toHaveLength(2)
     expect(Array.from(range_inputs, (input) => input.getAttribute(`aria-label`))).toEqual([

@@ -48,7 +48,7 @@
       <span class="highlight-badge">★ Highlighted</span>
     {/if}
 
-    <div class="tooltip-title">
+    <div style="margin-bottom: 2px">
       {#if entry.entry_id}
         <strong style="display: block">
           {entry.entry_id}{is_element && elem_name ? ` (${elem_name})` : ``}
@@ -123,9 +123,6 @@
     font-weight: 600;
     color: var(--highlight-color, #ff2222);
     margin-bottom: 4px;
-  }
-  .tooltip-title {
-    margin-bottom: 2px;
   }
   .polymorphs span {
     margin-left: 3px;

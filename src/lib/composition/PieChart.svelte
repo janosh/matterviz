@@ -279,7 +279,7 @@
   {/if}
 
   {#if center_content}
-    <g class="center-content">
+    <g>
       {@render center_content({ composition, total_atoms })}
     </g>
   {/if}

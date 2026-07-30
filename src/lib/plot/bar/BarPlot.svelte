@@ -83,7 +83,8 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
+    sides_equal,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
@@ -119,7 +120,7 @@
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     range_padding = 0,
-    padding = DEFAULT_PLOT_PADDING,
+    padding = {},
     legend = {},
     show_legend,
     bar = {},
@@ -339,7 +340,7 @@
   // Update padding when format or ticks change
   $effect(() => {
     const new_pad =
-      width && height && ticks.y.length > 0
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
@@ -348,33 +349,8 @@
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    // Expand right padding if y2 ticks are shown (only for vertical orientation)
-    if (width && height && show_y2 && ticks.y2.length > 0) {
-      // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
-      // When ticks are inside, they don't contribute to padding
-      const inside = y2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
-    }
-    // Expand top padding if x2 ticks are shown (only for vertical orientation)
-    if (width && height && show_x2 && ticks.x2.length > 0) {
-      const inside = x2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : Math.abs(x2_axis.tick?.label?.shift?.y ?? 0) + 5
-      const tick_height = inside ? 0 : 16
-      const label_space = x2_axis.label ? 20 : 0
-      new_pad.t = Math.max(new_pad.t, tick_shift + tick_height + 30 + label_space)
-    }
 
-    // Only update if padding actually changed (prevents infinite loop)
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -567,8 +543,8 @@
   // Cache measured tick-label widths so expensive canvas text measurement
   // only runs when ticks/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -1003,12 +979,7 @@
         show_grid={display.y_grid}
         tick_label={(tick) =>
           get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
-        label_x={Math.max(
-          12,
-          pad.l -
-            (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-            LABEL_GAP_DEFAULT,
-        ) + (y_axis.label_shift?.x ?? 0)}
+        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `y`}
         on_axis_change={(key) => handle_axis_change(`y`, key)}

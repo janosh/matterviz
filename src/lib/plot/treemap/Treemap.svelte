@@ -744,7 +744,7 @@
         <!-- Cell labels: selectable text; data-treemap-node-idx forwards hover/click
         to the underlying cell via the chart-group delegation above -->
         {#if show_labels && !cell_content}
-          <g class="cell-labels">
+          <g>
             {#each visible_idxs as idx (idx)}
               {@const lbl = label_placements.get(idx)}
               {#if lbl}

@@ -141,9 +141,25 @@
 <g class="{side}-axis">
   {#if show_baseline}
     {#if is_x}
-      <line x1={pad.l} x2={width - pad.r} y1={axis_y} y2={axis_y} {stroke} stroke-width="1" />
+      <line
+        x1={pad.l}
+        x2={width - pad.r}
+        y1={axis_y}
+        y2={axis_y}
+        {stroke}
+        stroke-width="1"
+        pointer-events="none"
+      />
     {:else}
-      <line x1={axis_x} x2={axis_x} y1={pad.t} y2={height - pad.b} {stroke} stroke-width="1" />
+      <line
+        x1={axis_x}
+        x2={axis_x}
+        y1={pad.t}
+        y2={height - pad.b}
+        {stroke}
+        stroke-width="1"
+        pointer-events="none"
+      />
     {/if}
   {/if}
   {#each ticks as tick, idx (tick)}
@@ -151,9 +167,14 @@
     {#if isFinite(pos) && in_plot(pos)}
       <g class="tick" transform="translate({is_x ? pos : axis_x}, {is_x ? axis_y : pos})">
         {#if show_grid}
-          <line {...grid_line} {...DEFAULT_GRID_STYLE} {...axis.grid_style} />
+          <line
+            {...grid_line}
+            {...DEFAULT_GRID_STYLE}
+            {...axis.grid_style}
+            pointer-events="none"
+          />
         {/if}
-        <line {...tick_mark} {stroke} stroke-width="1" />
+        <line {...tick_mark} {stroke} stroke-width="1" pointer-events="none" />
         {#if in_domain(tick)}
           <text
             x={text_x}

@@ -131,6 +131,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const tie_line = wrapper.querySelector(`g.tie-line line`)
     expect(tie_line?.getAttribute(`x1`)).toBe(`${left}`)
     expect(tie_line?.getAttribute(`x2`)).toBe(`${right}`)
+    if (!tie_line?.parentElement) throw new Error(`missing tie line`)
+    expect(getComputedStyle(tie_line.parentElement).pointerEvents).toBe(`none`)
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`α + β`)
   })
 

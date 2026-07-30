@@ -194,10 +194,8 @@
     <div class="plot-viewport" onwheel={on_pinch_zoom} ondblclick={reset_zoom}>
       <div
         class="plot-container"
-        style:transform="scale({zoom_level})"
-        style:transform-origin="top left"
-        style:width="{100 / zoom_level}%"
-        style:height="{100 / zoom_level}%"
+        style="transform: scale({zoom_level}); transform-origin: top left; width: {100 /
+          zoom_level}%; height: {100 / zoom_level}%"
       >
         {#if plot_type === `scatter`}
           <ScatterPlot

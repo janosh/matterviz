@@ -67,10 +67,10 @@
 
 <g
   transform="translate({tweened_coords.current.x} {tweened_coords.current.y})"
-  style:--hover-scale={hover.scale ?? 1.5}
-  style:--hover-stroke={hover.stroke ?? `white`}
-  style:--hover-stroke-width="{hover.stroke_width ?? 0}px"
-  style:--hover-brightness={hover.brightness ?? 1.2}
+  style="--hover-scale: {hover.scale ?? 1.5}; {hover.stroke === ``
+    ? ``
+    : `--hover-stroke: ${hover.stroke ?? `white`}; `}--hover-stroke-width: {hover.stroke_width ??
+    0}px; --hover-brightness: {hover.brightness ?? 1.2}"
   {...rest}
 >
   {#if is_selected}
@@ -127,14 +127,15 @@
         stroke-width="var(--scatter-leader-line-width, 0.8)"
         stroke-dasharray="var(--scatter-leader-line-dash, 2 2)"
         stroke-opacity="var(--scatter-leader-line-opacity, 0.6)"
+        pointer-events="none"
       />
     {/if}
     <text
       x={offset_x}
       y={offset_y}
       text-anchor={label.auto_placement ? `middle` : undefined}
-      style:font-size={label.font_size ?? `10px`}
-      style:font-family={label.font_family ?? `sans-serif`}
+      style="font-size: {label.font_size ?? `10px`}; font-family: {label.font_family ??
+        `sans-serif`}; pointer-events: var(--scatter-point-label-pointer-events, none)"
       fill="var(--scatter-point-label-fill, currentColor)"
       dominant-baseline="middle"
       class="label-text"
@@ -179,11 +180,5 @@
       opacity: 0.7;
       transform: scale(1.2);
     }
-  }
-  .label-text {
-    pointer-events: var(--scatter-point-label-pointer-events, none);
-  }
-  .leader-line {
-    pointer-events: none;
   }
 </style>

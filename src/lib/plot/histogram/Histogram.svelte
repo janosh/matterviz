@@ -42,7 +42,8 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
+    sides_equal,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
@@ -92,7 +93,7 @@
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
     range_padding = 0,
-    padding = DEFAULT_PLOT_PADDING,
+    padding = {},
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = {},
@@ -342,7 +343,7 @@
     const current_ticks_y2 = untrack(() => ticks.y2)
 
     const new_pad =
-      width && height && current_ticks_y.length > 0
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
@@ -352,47 +353,7 @@
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
-    // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
-    if (
-      width &&
-      height &&
-      y2_series.length > 0 &&
-      current_ticks_y2.length > 0 &&
-      final_y2_axis.label
-    ) {
-      const inside = final_y2_axis.tick?.label?.inside ?? false
-      // When ticks are inside, they don't contribute to padding
-      const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_thickness = Math.round(12 * 1.2)
-      new_pad.r = Math.max(
-        new_pad.r,
-        tick_width_contribution + LABEL_GAP_DEFAULT + tick_shift + label_thickness,
-      )
-    }
-
-    // Add x2 axis label space (mirroring y2 logic for top padding)
-    if (
-      width &&
-      height &&
-      x2_series.length > 0 &&
-      current_ticks_x2.length > 0 &&
-      final_x2_axis.label
-    ) {
-      const inside = final_x2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : Math.abs(final_x2_axis.tick?.label?.shift?.y ?? 0) + 8
-      const label_thickness = Math.round(12 * 1.2)
-      new_pad.t = Math.max(new_pad.t, tick_shift + LABEL_GAP_DEFAULT + label_thickness)
-    }
-
-    // Only update if padding actually changed
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_size_revision = $state(0)
@@ -524,8 +485,8 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, final_y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, final_y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format),
   })
 
   let legend_data = $derived(prepare_legend_data(series))
@@ -866,12 +827,7 @@
       {height}
       show_grid={display.y_grid}
       tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-      label_x={Math.max(
-        12,
-        pad.l -
-          (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-          LABEL_GAP_DEFAULT,
-      ) + (final_y_axis.label_shift?.x ?? 0)}
+      label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
       label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
       axis_loading={axis_loading === `y`}
       on_axis_change={(key) => handle_axis_change(`y`, key)}

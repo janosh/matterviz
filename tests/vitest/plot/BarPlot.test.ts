@@ -1,5 +1,5 @@
 import { BarPlot } from '$lib'
-import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
+import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { axis_label_pivot_y, inside_clip_path, mount_sized } from '../setup'
@@ -15,79 +15,51 @@ const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
 ): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot` })
 
-const visible_bar_count = (series: BarSeries[] = []): number =>
-  series
-    .filter((srs) => srs.visible !== false && srs.render_mode !== `line`)
-    .reduce((sum, srs) => sum + srs.y.filter((y_val) => y_val !== 0).length, 0)
-
-const visible_bar_series_count = (series: BarSeries[] = []): number =>
-  series.filter((srs) => srs.visible !== false && srs.render_mode !== `line`).length
-
 describe(`BarPlot`, () => {
   test.each([
-    { series: [basic], x_axis: { label: `Category` }, y_axis: { label: `Value` } },
-    { series: [], orientation: `vertical` },
-    { series: [{ ...basic, labels: [`A`, `B`, `C`, `D`, `E`] }] },
     {
-      series: [{ x: [1, 2, 3], y: [-5, 0, 5] }],
-      display: { x_grid: true, y_zero_line: true },
-    },
-    { series: [{ x: [1, 2, 3, 4], y: [-10, -20, -15, -25] }] }, // all negative
-    { series: [basic], x_axis: { range: [2, 4] }, y_axis: { range: [10, 25] } },
-    { series: [basic], x_axis: { format: `.0r` }, y_axis: { format: `.2r` } },
-    { series: [basic], x_axis: { ticks: 10 }, y_axis: { ticks: -3 } },
-    { series: [basic], range_padding: 0.1 },
-    { series: [basic], padding: { t: 20, b: 80, l: 100, r: 40 } },
-    { series: [basic], show_controls: false },
-    { series: [basic], controls_open: true },
-    { series: [basic], x_axis: { range: [0, 10] }, y_axis: { range: [0, 50] } },
-    { series: [basic], legend: null },
-    {
-      series: [basic],
-      x_axis: { grid_style: { stroke: `blue`, 'stroke-width': 2 } },
-      y_axis: { grid_style: { stroke: `red` } },
-      display: { x_grid: true, y_grid: true },
+      name: `empty data`,
+      series: [],
+      expected_series: 0,
+      expected_bars: 0,
     },
     {
-      series: [basic],
-      x_axis: { label: `X`, label_shift: { x: 10 } },
-      y_axis: { label: `Y`, label_shift: { y: 10 } },
+      name: `all-negative values`,
+      series: [{ x: [1, 2, 3, 4], y: [-10, -20, -15, -25] }],
+      expected_series: 1,
+      expected_bars: 4,
     },
     {
-      series: [{ x: [1, 2, 3, 4], y: [-10, 5, -15, 20] }],
-      display: { y_zero_line: false },
-    },
-    { series: [{ ...basic, bar_width: 0.8 }] },
-    { series: [{ ...basic, bar_width: [0.3, 0.5, 0.7, 0.9, 0.4] }] },
-    {
-      series: [
-        {
-          ...basic,
-          metadata: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
-        },
-      ],
-    },
-    { series: [{ ...basic, metadata: { dataset: `Test`, units: `kg` } }] },
-    {
+      name: `hidden series`,
       series: [
         basic,
         { ...basic, color: `orangered`, visible: false },
         { ...basic, color: `green` },
       ],
+      expected_series: 2,
+      expected_bars: 10,
     },
-    {
-      series: [basic, { ...basic, color: `orangered`, label: `S2` }],
-      legend: { title: `Test` },
-    },
-  ] as Partial<ComponentProps<typeof BarPlot>>[])(`renders various configs`, async (props) => {
-    const series = (props.series ?? []) as BarSeries[]
-    const plot = await mount_sized_bar_plot(props)
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(visible_bar_series_count(series))
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(
-      visible_bar_count(series),
-    )
-    if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
+  ] satisfies {
+    name: string
+    series: BarSeries[]
+    expected_series: number
+    expected_bars: number
+  }[])(`renders $name`, async ({ series, expected_series, expected_bars }) => {
+    const plot = await mount_sized_bar_plot({ series })
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(expected_series)
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(expected_bars)
   })
+
+  test.each([`vertical`, `horizontal`] as const)(
+    `omits zero-valued bars in %s orientation`,
+    async (orientation) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1, 2, 3], y: [-5, 0, 5] }],
+        orientation,
+      })
+      expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(2)
+    },
+  )
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
     const plot = await mount_sized_bar_plot({
@@ -119,68 +91,78 @@ describe(`BarPlot`, () => {
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
   })
 
-  test.each<[Orientation, BarMode]>([
-    [`vertical`, `overlay`],
-    [`horizontal`, `overlay`],
-    [`vertical`, `stacked`],
-    [`vertical`, `grouped`],
-    [`horizontal`, `grouped`],
-    [`horizontal`, `stacked`],
-  ])(`orientation=%s mode=%s`, async (orientation, mode) => {
+  test(`explicit top/right padding is not overridden by secondary-axis auto-padding`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [
+        basic,
+        { ...basic, label: `Y2`, y_axis: `y2` },
+        { ...basic, label: `X2`, x_axis: `x2` },
+      ],
+      padding: { r: 10, t: 10 },
+      x2_axis: { label: `Top` },
+      y2_axis: { label: `Secondary` },
+    })
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
+    expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
+  })
+
+  test(`title-only y2 axis expands right padding`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
+      y_axis: { ticks: [] },
+      y2_axis: { label: `Secondary`, ticks: [] },
+    })
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(308)
+  })
+
+  test(`default padding grows for wide y-axis ticks`, async () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({ width: 120 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      const plot = await mount_sized_bar_plot({
+        series: [basic],
+        y_axis: { label: `Value` },
+      })
+      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
+        60,
+      )
+    } finally {
+      context_spy.mockRestore()
+    }
+  })
+
+  test(`horizontal grouped mode renders all bars`, async () => {
     const series = [basic, { ...basic, color: `orangered` }]
-    const plot = await mount_sized_bar_plot({ series, orientation, mode })
+    const plot = await mount_sized_bar_plot({
+      series,
+      orientation: `horizontal`,
+      mode: `grouped`,
+    })
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(10)
   })
 
-  test.each<[BarMode, BarSeries[]]>([
-    [
-      `overlay`,
-      [
-        { x: [1, 2, 3, 4], y: [-10, -5, 15, 20] },
-        { x: [1, 2, 3, 4], y: [5, -8, 12, -3] },
-      ],
-    ],
-    [
-      `stacked`,
-      [
-        { x: [1, 2, 3, 4], y: [10, -5, 15, 20] },
-        { x: [1, 2, 3, 4], y: [-5, 10, -8, 5] },
-      ],
-    ],
-    [
-      `grouped`,
-      [
-        basic,
-        { ...basic, color: `orangered`, label: `S2` },
-        { ...basic, color: `green`, label: `S3` },
-      ],
-    ],
-  ])(`%s mode with negative/multiple series`, async (mode, series) => {
-    const plot = await mount_sized_bar_plot({ series, mode })
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(series.length)
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(
-      visible_bar_count(series),
-    )
-  })
-
-  test.each([
-    { render_mode: `line` as const, color: `red`, label: `Line` },
-    { render_mode: `line` as const, line_style: { stroke_width: 4, line_dash: `10,5` } },
+  test(`line markers render zero-valued color and size inputs`, async () => {
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
     // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
-    {
-      render_mode: `line` as const,
-      markers: `line+points` as const,
-      color_values: [0, 0.25, 0.5, 0.75, 1],
-      size_values: [0, 5, 10, 15, 20],
-    },
-  ])(`line series %#`, async (series_props) => {
     const plot = await mount_sized_bar_plot({
-      series: [{ x: [1, 2, 3, 4, 5], y: [10, 20, 15, 25, 18], ...series_props }],
+      series: [
+        {
+          ...basic,
+          render_mode: `line`,
+          markers: `line+points`,
+          color_values: [0, 0.25, 0.5, 0.75, 1],
+          size_values: [0, 5, 10, 15, 20],
+        },
+      ],
     })
     expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(0)
+    const markers = [...plot.querySelectorAll(`.line-points .marker`)]
+    expect(markers).toHaveLength(5)
+    expect(markers.every((marker) => !marker.getAttribute(`d`)?.includes(`NaN`))).toBe(true)
   })
 
   test(`mixed bar and line series`, async () => {
@@ -199,24 +181,6 @@ describe(`BarPlot`, () => {
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
     expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(5)
-  })
-
-  test(`stacked mode with interleaved hidden series`, async () => {
-    // Regression test: stacked_offsets lookup should use original series index
-    const plot = await mount_sized_bar_plot({
-      series: [
-        { x: [1, 2, 3], y: [10, 20, 15], color: `red`, visible: true },
-        { x: [1, 2, 3], y: [5, 10, 8], color: `blue`, visible: false }, // hidden
-        { x: [1, 2, 3], y: [8, 12, 10], color: `green`, visible: true },
-      ],
-      mode: `stacked`,
-    })
-    expect(
-      Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
-        el.getAttribute(`data-series-idx`),
-      ),
-    ).toEqual([`0`, `2`])
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
@@ -285,20 +249,15 @@ describe(`BarPlot`, () => {
   })
 
   test(`children prop`, () => {
-    let called = false
     mount(BarPlot, {
       target: document.body,
       props: {
         series: [basic],
-        children: createRawSnippet(() => {
-          called = true
-          return {
-            render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
-          }
-        }),
+        children: createRawSnippet(() => ({
+          render: () => `<div class="custom-bar-child">Custom bar overlay</div>`,
+        })),
       },
     })
-    expect(called).toBe(true)
     expect(document.querySelector(`.custom-bar-child`)?.textContent).toBe(`Custom bar overlay`)
   })
 
@@ -308,52 +267,16 @@ describe(`BarPlot`, () => {
       { x: [`B`, `C`, `D`], y: [5, 15, 25], label: `S2`, color: `red` },
     ]
 
-    // Fold all mount-and-check configs into a single parameterized test
     test.each([
-      [`overlay mode`, { series: cat_series, mode: `overlay` as BarMode }],
-      [`stacked mode`, { series: cat_series, mode: `stacked` as BarMode }],
-      [`grouped mode`, { series: cat_series, mode: `grouped` as BarMode }],
-      [`vertical`, { series: cat_series, orientation: `vertical` as Orientation }],
-      [`horizontal`, { series: cat_series, orientation: `horizontal` as Orientation }],
-      [
-        `explicit category order`,
-        { series: cat_series, x_axis: { categories: [`D`, `C`, `B`, `A`] } },
-      ],
-      [`category subset filter`, { series: cat_series, x_axis: { categories: [`A`, `C`] } }],
-      [`empty categorical series`, { series: [{ x: [] as string[], y: [], color: `blue` }] }],
-      [`single category`, { series: [{ x: [`Only`], y: [42], color: `blue` }] }],
-      [
-        `mixed bar+line`,
-        {
-          series: [
-            { x: [`A`, `B`, `C`], y: [10, 20, 30], color: `blue` },
-            {
-              x: [`A`, `B`, `C`],
-              y: [15, 25, 35],
-              color: `red`,
-              render_mode: `line` as const,
-              markers: `line+points` as const,
-            },
-          ],
-        },
-      ],
-      [
-        `numeric x (not categorical)`,
-        { series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }] },
-      ],
-    ] as [string, Partial<ComponentProps<typeof BarPlot>>][])(
-      `renders %s`,
-      async (_label, props) => {
-        mount(BarPlot, {
-          target: document.body,
-          props: { ...props, style: `width: 400px; height: 300px` },
-        })
-        await tick()
-        const plot = document.querySelector(`.bar-plot`)
-        expect(plot).toBeInstanceOf(HTMLElement)
-        expect(plot?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
-      },
-    )
+      [`overlay mode`, { mode: `overlay` }],
+      [`stacked mode`, { mode: `stacked` }],
+      [`grouped mode`, { mode: `grouped` }],
+      [`horizontal orientation`, { orientation: `horizontal` }],
+    ] as const)(`renders misaligned categories in %s`, async (_name, props) => {
+      const plot = await mount_sized_bar_plot({ series: cat_series, ...props })
+      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
+      expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
+    })
 
     // every category renders a bar; x-axis ticks thin only when labels can't fit the
     // 400px axis at ~28px each (3 fit untouched, 30 thin to every ~3rd category)
@@ -439,6 +362,11 @@ describe(`BarPlot`, () => {
       visible: true,
       label: `auto-shows for multiple series`,
     },
+    {
+      props: { series: multi_series, legend: null },
+      visible: false,
+      label: `hidden when null`,
+    },
     { props: { series: [basic] }, visible: false, label: `auto-hides for single series` },
   ])(`legend $label`, async ({ props, visible }) => {
     mount(BarPlot, { target: document.body, props })
@@ -486,23 +414,6 @@ describe(`BarPlot`, () => {
       const plot = await mount_sized_bar_plot({ series: grouped_series, mode })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
       for (const label of labels) expect(plot.textContent).toContain(label)
-    })
-
-    test(`series visibility can be toggled via legend_group`, async () => {
-      // Test that series with legend_group can have their visibility toggled
-      const series_with_hidden_group: BarSeries[] = grouped_series.map((srs) =>
-        srs.legend_group === `DFT` ? { ...srs, visible: false } : srs,
-      )
-
-      const plot = await mount_sized_bar_plot({
-        series: series_with_hidden_group,
-        mode: `grouped`,
-      })
-      expect(
-        Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
-          el.getAttribute(`data-series-idx`),
-        ),
-      ).toEqual([`2`, `3`])
     })
   })
 

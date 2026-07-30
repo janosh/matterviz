@@ -337,7 +337,7 @@
           aria-label="{name} min"
           class="axis-range-input"
         />
-        <span class="axis-to">–</span>
+        <span style="flex-shrink: 0; opacity: 0.5">–</span>
         <input
           type="number"
           step="any"
@@ -425,10 +425,6 @@
     width: 7em;
     flex: 1;
     min-width: 5em;
-  }
-  .axis-to {
-    flex-shrink: 0;
-    opacity: 0.5;
   }
   .data-summary {
     display: flex;

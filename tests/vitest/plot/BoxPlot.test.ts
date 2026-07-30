@@ -129,19 +129,36 @@ describe(`BoxPlot`, () => {
     expect(Math.max(...tick_vals)).toBeGreaterThan(100)
   })
 
-  test(`outliers render as circles in tukey mode, none in minmax`, async () => {
-    const outlier_series: BoxPlotSeries[] = [
-      { y: [...dist(60, 0, 1), 50, -50], label: `Outliers` },
-    ]
-    const tukey = await mount_sized_box_plot({ series: outlier_series })
-    expect(tukey.querySelectorAll(`.box-series circle`).length).toBeGreaterThan(0)
-    document.body.innerHTML = ``
-    const minmax = await mount_sized_box_plot({
-      series: outlier_series,
-      whisker_mode: `minmax`,
-    })
-    expect(minmax.querySelectorAll(`.box-series circle`)).toHaveLength(0)
-  })
+  test.each([`vertical`, `horizontal`] satisfies Orientation[])(
+    `outliers render unclipped in %s tukey mode, none in minmax`,
+    async (orientation) => {
+      const outlier_series: BoxPlotSeries[] = [
+        { y: [...dist(60, 0, 1), 8, 9, -7, -8], label: `Outliers` },
+      ]
+      const tukey = await mount_sized_box_plot({ series: outlier_series, orientation })
+      const outlier_circles = tukey.querySelectorAll(`.box-series circle`)
+      expect(outlier_circles.length).toBeGreaterThan(0)
+      const clip_rect = tukey.querySelector(`clipPath rect`)
+      const coordinate = orientation === `vertical` ? `y` : `x`
+      const center = orientation === `vertical` ? `cy` : `cx`
+      const size = orientation === `vertical` ? `height` : `width`
+      const clip_start = Number(clip_rect?.getAttribute(coordinate))
+      const clip_end = clip_start + Number(clip_rect?.getAttribute(size))
+      for (const circle of outlier_circles) {
+        const center_pos = Number(circle.getAttribute(center))
+        const radius = Number(circle.getAttribute(`r`))
+        expect(center_pos - radius).toBeGreaterThanOrEqual(clip_start)
+        expect(center_pos + radius).toBeLessThanOrEqual(clip_end)
+      }
+      document.body.innerHTML = ``
+      const minmax = await mount_sized_box_plot({
+        series: outlier_series,
+        orientation,
+        whisker_mode: `minmax`,
+      })
+      expect(minmax.querySelectorAll(`.box-series circle`)).toHaveLength(0)
+    },
+  )
 
   test(`renders y2 axis when a box is assigned to y2`, async () => {
     const plot = await mount_sized_box_plot({
@@ -150,6 +167,33 @@ describe(`BoxPlot`, () => {
     })
     expect(plot.querySelector(`g.y2-axis`)).toBeInstanceOf(SVGGElement)
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
+  })
+
+  test(`explicit right padding is not overridden by y2 auto-padding`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
+      padding: { r: 10 },
+      y2_axis: { label: `Secondary` },
+    })
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(330)
+  })
+
+  test(`default padding grows for wide y-axis ticks`, async () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({ width: 120 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      const plot = await mount_sized_box_plot({
+        series: [basic],
+        y_axis: { label: `Value` },
+      })
+      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
+        60,
+      )
+    } finally {
+      context_spy.mockRestore()
+    }
   })
 
   test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {

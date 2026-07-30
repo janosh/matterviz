@@ -460,9 +460,10 @@
 {/snippet}
 
 {#if diagram_computing}
-  <div class="computing-state">
-    <Spinner text="Computing chemical potential domains..." style="--spinner-size: 1.2em" />
-  </div>
+  <Spinner
+    text="Computing chemical potential domains..."
+    style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
+  />
 {:else if !diagram_data}
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
@@ -534,14 +535,13 @@
       <aside
         bind:this={tooltip_el}
         class="tooltip"
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         <strong>
           {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}
         </strong>
         {#if locked_hover_formula === hover_info.formula}
-          <div>Pinned · Press Esc to unlock</div>
+          <br />Pinned · Press Esc to unlock
         {/if}
       </aside>
     {/if}
@@ -588,12 +588,6 @@
     align-items: center;
     gap: 4pt;
     margin-left: 4pt;
-  }
-  .computing-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
   }
   .error-state {
     display: flex;

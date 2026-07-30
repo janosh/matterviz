@@ -60,18 +60,18 @@
   active: boolean
   scale_context: ScaleContext
 })}
-  <div class:active>
+  <div>
     <strong>{element.name}</strong>
-    {#if active}<span class="active-indicator">★</span>{/if}
+    {#if active}<span>★</span>{/if}
     <br />
     <small>{element.symbol} • {element.number}</small>
     <br />
     <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : (value ?? `N/A`)}</em>
     <br />
-    <small class="position">Position: {element.column},{element.row}</small>
+    <small>Position: {element.column},{element.row}</small>
     {#if heatmap_key && value != null}
       <br />
-      <small class="scale-info">
+      <small>
         Range: {scale_context.min.toFixed(1)} - {scale_context.max.toFixed(1)}
       </small>
     {/if}

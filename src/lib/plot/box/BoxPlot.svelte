@@ -62,7 +62,8 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
-    LABEL_GAP_DEFAULT,
+    sides_equal,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
   } from '$lib/plot/core/layout'
@@ -126,7 +127,7 @@
     y2_axis: y2_axis_prop = $bindable({}),
     display = $bindable(DEFAULTS.box.display),
     range_padding = 0,
-    padding = DEFAULT_PLOT_PADDING,
+    padding = {},
     legend = {},
     show_legend,
     box = {},
@@ -407,7 +408,16 @@
   let auto_ranges = $derived.by(() => {
     const cat_count = slot_list.length
     const cat_range: Vec2 = cat_count > 0 ? [-0.5, cat_count - 0.5] : [0, 1]
-
+    const vertical = orientation === `vertical`
+    const initial_pad = filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const value_axis_pixels = vertical
+      ? height - initial_pad.t - initial_pad.b
+      : width - initial_pad.l - initial_pad.r
+    const outlier_extent = outlier_state.radius + outlier_state.stroke_width / 2
+    const outlier_range_padding =
+      value_axis_pixels > 2 * outlier_extent
+        ? outlier_extent / (value_axis_pixels - 2 * outlier_extent)
+        : 0.05
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (
       boxes: Box[],
@@ -416,9 +426,17 @@
     ): Vec2 => {
       const pts = value_points(boxes)
       if (pts.length === 0) return [0, 1]
-      return get_nice_data_range(pts, (pt) => pt.y, limit, scale_type, range_padding, false)
+      const has_outliers =
+        show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
+      return get_nice_data_range(
+        pts,
+        (point) => point.y,
+        limit,
+        scale_type,
+        has_outliers ? Math.max(range_padding, outlier_range_padding) : range_padding,
+        false,
+      )
     }
-    const vertical = orientation === `vertical`
     const value_primary = calc_value_range(
       primary_boxes,
       (vertical ? y_axis.range : x_axis.range) ?? [null, null],
@@ -465,7 +483,7 @@
   $effect(() => {
     // dynamic padding from tick label widths
     const new_pad =
-      width && height && ticks.y.length > 0
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
@@ -474,20 +492,7 @@
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    if (width && height && show_y2 && ticks.y2.length > 0) {
-      const inside = y2_axis.tick?.label?.inside ?? false
-      const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
-      const label_space = y2_axis.label ? 20 : 0
-      new_pad.r = Math.max(new_pad.r, tick_shift + tick_width_contribution + 30 + label_space)
-    }
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -642,8 +647,8 @@
   })
 
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    y_max: measure_max_tick_width(ticks.y, y_axis.format),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -965,12 +970,7 @@
         tick_label={(tick) =>
           get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
         tick_color={cat_axis === `y` ? (tick) => slot_colors.get(tick) : undefined}
-        label_x={Math.max(
-          12,
-          pad.l -
-            (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-            LABEL_GAP_DEFAULT,
-        ) + (y_axis.label_shift?.x ?? 0)}
+        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
       />
 
@@ -1176,6 +1176,7 @@
                   text-anchor={vertical ? `middle` : `start`}
                   dominant-baseline={vertical ? `auto` : `central`}
                   class="value-label"
+                  style="font-size: 11px"
                   fill={color}
                 >
                   {value_label_for(stats)}
@@ -1381,8 +1382,5 @@
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     font-size: var(--scatter-font-size);
-  }
-  .value-label {
-    font-size: 11px;
   }
 </style>

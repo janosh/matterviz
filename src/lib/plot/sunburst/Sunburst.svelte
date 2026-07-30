@@ -635,7 +635,7 @@
     {#if show_breadcrumbs && breadcrumb_arcs.length > 0}
       <nav class="breadcrumbs" aria-label="zoom path">
         {#each breadcrumb_arcs as crumb, crumb_idx (crumb.node_idx)}
-          {#if crumb_idx > 0}<span class="breadcrumb-sep" aria-hidden="true">›</span>{/if}
+          {#if crumb_idx > 0}<span style="opacity: 0.6" aria-hidden="true">›</span>{/if}
           <button
             type="button"
             class="breadcrumb"
@@ -730,8 +730,9 @@
                   transform={lbl.transform}
                   fill={info.label_fill}
                   fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
-                  style:cursor={info.clickable ? `pointer` : `text`}
-                  style:font-size={lbl.font_scale === 1 ? undefined : `${lbl.font_scale}em`}
+                  style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
+                    ? ``
+                    : `; font-size: ${lbl.font_scale}em`}"
                 >
                   {lbl.text}
                 </text>
@@ -750,8 +751,9 @@
             role={zoomed ? `button` : undefined}
             tabindex={zoomed ? 0 : undefined}
             aria-label={zoomed ? `zoom out to ${zoom_out_label}` : undefined}
-            style:cursor={zoomed ? `pointer` : `default`}
-            style:pointer-events={zoomed ? `auto` : `none`}
+            style="cursor: {zoomed ? `pointer` : `default`}; pointer-events: {zoomed
+              ? `auto`
+              : `none`}"
             onclick={zoom_out}
             onkeydown={handle_center_keydown}
           />
@@ -922,9 +924,6 @@
     font-weight: bold;
     background: transparent;
   }
-  .breadcrumb-sep {
-    opacity: 0.6;
-  }
   .sunburst :global(.pane-toggle),
   .sunburst .header-controls {
     opacity: 0;
@@ -979,9 +978,6 @@
     );
     stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
   }
-  .center-circle {
-    fill: var(--sunburst-center-bg, transparent);
-  }
   .arc-label {
     text-anchor: middle;
     dominant-baseline: central;
@@ -996,6 +992,9 @@
     font-weight: bold;
     -webkit-user-select: text;
     user-select: text;
+  }
+  .center-circle {
+    fill: var(--sunburst-center-bg, transparent);
   }
   .center-label .center-value {
     font-weight: normal;

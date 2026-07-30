@@ -453,7 +453,7 @@ describe(`AtomLegend Component`, () => {
         title: `Custom Title`,
       })
 
-      const title = doc_query(`.legend-header h4`)
+      const title = doc_query(`h4.legend-header`)
       expect(title.textContent).toBe(`Custom Title`)
     })
 
@@ -469,7 +469,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const title = doc_query(`.legend-header h4`)
+      const title = doc_query(`h4.legend-header`)
       expect(title.textContent).toBe(`Coordination`)
     })
 

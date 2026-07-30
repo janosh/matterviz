@@ -857,7 +857,7 @@
     </button>
   {/if}
   {#if show_examples && !disabled}
-    <div class="examples-wrapper" bind:this={examples_wrapper}>
+    <div bind:this={examples_wrapper} style="position: relative">
       <button
         type="button"
         class="icon-btn help-btn"
@@ -1091,9 +1091,6 @@
   .history-remove {
     min-width: 24px;
     min-height: 24px;
-  }
-  .examples-wrapper {
-    position: relative;
   }
   .examples-dropdown {
     position: absolute;

@@ -163,20 +163,21 @@ const load_disordered_site_scene = (
     rotation,
   )
 
-const get_canvas_purple_pixel_ratio = (canvas: Locator): Promise<number> =>
-  canvas.evaluate(async (canvas_element) => {
-    if (!(canvas_element instanceof HTMLCanvasElement)) {
-      throw new Error(`Expected structure canvas, got ${canvas_element.tagName}`)
-    }
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    )
+// Decode the compositor screenshot rather than drawImage-ing the canvas: a WebGPU canvas
+// reads back black that way unless it happens to be mid-render, so this returned 0 for any
+// scene sitting still (which, with auto-rotation off by default, is the normal case).
+const get_canvas_purple_pixel_ratio = async (canvas: Locator): Promise<number> => {
+  const screenshot = (await canvas.screenshot()).toString(`base64`)
+  return canvas.page().evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
     const offscreen_canvas = document.createElement(`canvas`)
-    offscreen_canvas.width = canvas_element.width
-    offscreen_canvas.height = canvas_element.height
+    offscreen_canvas.width = bitmap.width
+    offscreen_canvas.height = bitmap.height
     const context = offscreen_canvas.getContext(`2d`)
     if (!context) throw new Error(`Failed to create 2D canvas context`)
-    context.drawImage(canvas_element, 0, 0)
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close() // polled in a loop, so don't leak one bitmap per sample
     const { data } = context.getImageData(
       0,
       0,
@@ -193,7 +194,8 @@ const get_canvas_purple_pixel_ratio = (canvas: Locator): Promise<number> =>
       }
     }
     return purple_pixels / (offscreen_canvas.width * offscreen_canvas.height)
-  })
+  }, screenshot)
+}
 
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
@@ -227,18 +229,34 @@ test.describe(`StructureScene Component Tests`, () => {
 
   test(`supercell transition keeps atom spheres visible`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
+    const supercell_input = page.locator(`[data-testid="supercell-input"]`)
+    const legend = page.locator(`#test-structure .atom-legend`)
     const initial_purple_ratio = await get_canvas_purple_pixel_ratio(canvas)
     expect(initial_purple_ratio).toBeGreaterThan(0.01)
 
-    await page.locator(`[data-testid="supercell-input"]`).fill(`2x2x2`)
-    await page.locator(`[data-testid="supercell-input"]`).press(`Enter`)
-    await expect(page.locator(`#test-structure .atom-legend`)).toContainText(/Cs\s*16/)
+    await supercell_input.fill(`2x2x2`)
+    await supercell_input.press(`Enter`)
+    await expect(legend).toContainText(/Cs\s*16/)
 
     await expect
       .poll(() => get_canvas_purple_pixel_ratio(canvas), {
         timeout: get_canvas_timeout(),
       })
       .toBeGreaterThan(initial_purple_ratio * 2)
+
+    // Grow-only capacity: shrinking must lower mesh.count or extras stay drawn.
+    await supercell_input.fill(`1x1x1`)
+    await supercell_input.press(`Enter`)
+    await expect(legend).toContainText(/Cs\s*2/)
+
+    // Two-sided: a one-sided upper bound also passes if the atoms vanish entirely.
+    await expect
+      .poll(
+        async () =>
+          Math.abs((await get_canvas_purple_pixel_ratio(canvas)) / initial_purple_ratio - 1),
+        { timeout: get_canvas_timeout() },
+      )
+      .toBeLessThan(0.2)
   })
 
   // Combined tooltip functionality tests
@@ -553,8 +571,8 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = page.locator(`#test-structure canvas`)
     await expect(canvas).toBeVisible()
 
-    // Pole-on rotation shows all species wedges as pie slices. auto_rotate (default 0.2)
-    // must be off so the canvas can settle for the pixel comparison below.
+    // Pole-on rotation shows all species wedges as pie slices. auto_rotate must be off
+    // so the canvas can settle for the pixel comparison below.
     const dispatch_disordered_site = async (elements: [string, string]) => {
       await load_centered_scene(
         page,

@@ -532,6 +532,7 @@
           y={value_axis.title.y}
           text-anchor="middle"
           dominant-baseline="central"
+          style="font-size: var(--marginal-axis-title-font-size, 0.75em)"
           transform={value_axis.title.transform}>{value_axis.title.text}</text
         >
       {/if}
@@ -609,8 +610,5 @@
   .marginal-axis text {
     fill: var(--text-color);
     font-size: var(--marginal-axis-font-size, 0.65em);
-  }
-  .marginal-axis-title {
-    font-size: var(--marginal-axis-title-font-size, 0.75em);
   }
 </style>

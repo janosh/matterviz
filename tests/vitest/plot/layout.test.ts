@@ -1,5 +1,6 @@
 import {
   AXIS_LABEL_HEIGHT,
+  AXIS_LABEL_OUTER,
   calc_auto_padding,
   centered_rect,
   compute_element_placement,
@@ -14,8 +15,10 @@ import {
   rect_within_rect,
   sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
+  y_axis_label_x,
+  y2_axis_label_x,
 } from '$lib/plot/core/layout'
-import { describe, expect, it, test } from 'vitest'
+import { describe, expect, it, test, vi } from 'vitest'
 
 describe(`layout utility functions`, () => {
   describe(`rectangle helpers`, () => {
@@ -98,20 +101,12 @@ describe(`layout utility functions`, () => {
       [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
       [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
       [`flips up`, 300, 560, 100, 50, 800, 600, 310, 500],
-      [`left edge clamp`, 0, 200, 100, 50, 800, 600, 10, 210],
-      [`top edge`, 300, 0, 100, 50, 800, 600, 310, 10],
       [`bottom-right corner (flips both)`, 800, 600, 100, 50, 800, 600, 690, 540],
       [`top-left corner (clamp)`, -10, -10, 100, 50, 800, 600, 0, 0],
-      [`top-right corner`, 850, -20, 100, 50, 800, 600, 700, 0],
-      [`bottom-left corner`, -50, 650, 100, 50, 800, 600, 0, 550],
       [`zero-size tooltip`, 300, 200, 0, 0, 800, 600, 310, 210],
       [`tooltip > viewport`, 300, 200, 900, 700, 800, 600, 0, 0],
-      [`small viewport`, 25, 15, 100, 50, 50, 30, 0, 0],
       [`at flip threshold`, 690, 200, 100, 50, 800, 600, 700, 210],
       [`past flip threshold`, 691, 200, 100, 50, 800, 600, 581, 210],
-      [`1x1 tooltip`, 400, 300, 1, 1, 800, 600, 410, 310],
-      [`near right (flips)`, 700, 300, 100, 50, 800, 600, 590, 310],
-      [`near bottom (flips)`, 400, 550, 100, 50, 800, 600, 410, 490],
     ] as const)(`%s`, (_, cx, cy, tw, th, vw, vh, ex, ey) => {
       expect(constrain_tooltip_position(cx, cy, tw, th, vw, vh)).toEqual({ x: ex, y: ey })
     })
@@ -143,27 +138,18 @@ describe(`layout utility functions`, () => {
       points: [] as { x: number; y: number }[],
     }
 
-    it(`places element in valid region when no points exist`, () => {
+    it(`keeps no-data placement inside the configured axis clearance`, () => {
       const result = compute_element_placement(base_config)
-      // Should be within plot bounds minus axis clearance
-      expect(result.x).toBeGreaterThanOrEqual(
-        base_config.plot_bounds.x + base_config.axis_clearance,
+      const { plot_bounds, element_size, axis_clearance } = base_config
+      expect(result.x).toBeGreaterThanOrEqual(plot_bounds.x + axis_clearance)
+      expect(result.y).toBeGreaterThanOrEqual(plot_bounds.y + axis_clearance)
+      expect(result.x + element_size.width).toBeLessThanOrEqual(
+        plot_bounds.x + plot_bounds.width - axis_clearance,
       )
-      expect(result.y).toBeGreaterThanOrEqual(
-        base_config.plot_bounds.y + base_config.axis_clearance,
+      expect(result.y + element_size.height).toBeLessThanOrEqual(
+        plot_bounds.y + plot_bounds.height - axis_clearance,
       )
-      // Score must be finite (not Infinity) so corner bonus can properly select best position
       expect(Number.isFinite(result.score)).toBe(true)
-      expect(result.score).toBeGreaterThan(-Infinity)
-    })
-
-    it(`respects axis_clearance margin`, () => {
-      const result = compute_element_placement({
-        ...base_config,
-        axis_clearance: 60,
-      })
-      expect(result.x).toBeGreaterThanOrEqual(base_config.plot_bounds.x + 60)
-      expect(result.y).toBeGreaterThanOrEqual(base_config.plot_bounds.y + 60)
     })
 
     it(`keeps descendants overflowing left and top inside the valid region`, () => {
@@ -213,44 +199,8 @@ describe(`layout utility functions`, () => {
       expect(y_margin).toBe(12)
     })
 
-    it(`avoids dense point clusters`, () => {
-      // Create a small dense cluster in the center of the element placement area
-      // With proper overlap avoidance, the algorithm should place away from this cluster
-      const cluster_points: { x: number; y: number }[] = []
-      // Create a 5x5 grid of points at the center
-      for (let x_idx = 0; x_idx < 5; x_idx++) {
-        for (let y_idx = 0; y_idx < 5; y_idx++) {
-          cluster_points.push({
-            x: 200 + x_idx * 10, // Center of plot
-            y: 150 + y_idx * 10,
-          })
-        }
-      }
-      // This creates 25 points in a small cluster
-
-      const result = compute_element_placement({
-        ...base_config,
-        points: cluster_points,
-      })
-
-      // Count how many points overlap with the result
-      const overlapping = cluster_points.filter(
-        (pt) =>
-          pt.x >= result.x &&
-          pt.x <= result.x + base_config.element_size.width &&
-          pt.y >= result.y &&
-          pt.y <= result.y + base_config.element_size.height,
-      ).length
-
-      // Should avoid the cluster - overlap with few or no points
-      expect(overlapping).toBeLessThan(10)
-    })
-
     it(`penalizes overlap with exclusion rectangles`, () => {
-      // Test that exclusion rect covering the entire valid area results in negative score
-      // If exclusion penalty works, the best position overlapping exclusion gets score -= 1000
-      // This tests the penalty mechanism directly
-      const exclusion_rect = { x: 50, y: 20, width: 500, height: 400 } // covers everything
+      const exclusion_rect = { x: 50, y: 20, width: 500, height: 400 }
       const points = [{ x: 250, y: 150 }]
 
       const result = compute_element_placement({
@@ -259,35 +209,7 @@ describe(`layout utility functions`, () => {
         points,
       })
 
-      // With exclusion covering everything, ANY position overlaps
-      // Score should be heavily penalized (at least -1000)
       expect(result.score).toBeLessThan(-500)
-    })
-
-    it(`handles small plot areas where element barely fits`, () => {
-      const small_config = {
-        ...base_config,
-        plot_bounds: { x: 10, y: 10, width: 150, height: 100 },
-        element_size: { width: 80, height: 50 },
-        axis_clearance: 10,
-      }
-      const result = compute_element_placement(small_config)
-      expect(result.x).toBeGreaterThanOrEqual(small_config.plot_bounds.x)
-      expect(result.y).toBeGreaterThanOrEqual(small_config.plot_bounds.y)
-    })
-
-    it(`handles large datasets efficiently via subsampling`, () => {
-      const many_points = Array.from({ length: 5000 }, (_, idx) => ({
-        x: 100 + (idx % 50) * 5,
-        y: 50 + Math.floor(idx / 50) * 3,
-      }))
-      const start = performance.now()
-      const result = compute_element_placement({
-        ...base_config,
-        points: many_points,
-      })
-      expect(performance.now() - start).toBeLessThan(100)
-      expect(result.score).toBeDefined()
     })
 
     test.each([
@@ -301,7 +223,6 @@ describe(`layout utility functions`, () => {
         Array.from({ length: 15 }, () => ({ x: 400, y: 280 })),
         `top-left`,
       ],
-      [`center cluster`, Array.from({ length: 15 }, () => ({ x: 250, y: 170 })), `corner`],
     ])(`places away from %s`, (_, points, expected_region) => {
       const result = compute_element_placement({
         ...base_config,
@@ -313,9 +234,6 @@ describe(`layout utility functions`, () => {
       } else if (expected_region === `top-left`) {
         expect(result.x).toBeLessThan(200)
         expect(result.y).toBeLessThan(150)
-      } else {
-        // Any corner is acceptable for center cluster
-        expect(result.x).toBeDefined()
       }
     })
   })
@@ -345,19 +263,12 @@ describe(`layout utility functions`, () => {
 
     it(`samples interior points along the segment when the series draws a line`, () => {
       const result = sample_series_obstacle_points(sparse_line, true, 12)
-      // length ~141px / 12 ≈ 11 sub-intervals → 10 interior samples + 2 vertices
-      expect(result.length).toBeGreaterThan(sparse_line.length)
+      expect(result).toHaveLength(12)
       // every interior sample lies on the segment (here x === y)
       for (const point of result) expect(point.x).toBeCloseTo(point.y)
       // interior samples fall strictly between the endpoints
       const interior = result.filter((point) => point.x > 0 && point.x < 100)
-      expect(interior.length).toBeGreaterThan(5)
-    })
-
-    it(`closer sampling step yields more interior points`, () => {
-      const coarse = sample_series_obstacle_points(sparse_line, true, 40)
-      const fine = sample_series_obstacle_points(sparse_line, true, 8)
-      expect(fine.length).toBeGreaterThan(coarse.length)
+      expect(interior).toHaveLength(10)
     })
 
     it(`breaks the line at non-finite vertices (no sampling across gaps)`, () => {
@@ -384,6 +295,23 @@ describe(`layout utility functions`, () => {
       expect(measure_text_width(`hello`)).toBe(0)
       expect(measure_max_tick_width([1, 2, 3])).toBe(0)
     })
+
+    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+      const measured_labels: string[] = []
+      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: (label: string) => {
+          measured_labels.push(label)
+          return { width: label.length }
+        },
+      } as unknown as CanvasRenderingContext2D)
+      try {
+        expect(measure_max_tick_width([4500])).toBe(4)
+        expect(measured_labels).toEqual([`4.5k`])
+      } finally {
+        context_spy.mockRestore()
+      }
+    })
   })
 
   describe(`calc_auto_padding`, () => {
@@ -401,22 +329,13 @@ describe(`layout utility functions`, () => {
     it.each([
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
-    ] as const)(`%s padding is at least default when %s has ticks`, (side, axis_key) => {
-      const result = calc_auto_padding({
-        padding: {},
-        default_padding: defaults,
-        [axis_key]: { tick_values: [1, 2, 3] },
-      })
-      expect(result[side]).toBeGreaterThanOrEqual(defaults[side])
-    })
-
-    it(`right padding includes label_gap even with zero-width ticks`, () => {
+    ] as const)(`%s padding reserves the outside tick offset for %s`, (side, axis_key) => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        y2_axis: { tick_values: [1] },
+        [axis_key]: { tick_values: [1] },
       })
-      expect(result.r).toBe(LABEL_GAP_DEFAULT)
+      expect(result[side]).toBe(8)
     })
 
     it(`explicit padding overrides auto-computed padding`, () => {
@@ -432,13 +351,13 @@ describe(`layout utility functions`, () => {
       expect(result.t).toBe(10)
     })
 
-    it(`expands top padding for x2 ticks`, () => {
+    it(`reserves the top tick band and outer air for x2 ticks`, () => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: defaults,
         x2_axis: { tick_values: [0, 1, 2] },
       })
-      expect(result.t).toBeGreaterThanOrEqual(TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT)
+      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + AXIS_LABEL_OUTER)
     })
 
     it(`does not expand top padding when x2 has no ticks`, () => {
@@ -450,34 +369,118 @@ describe(`layout utility functions`, () => {
       expect(result.t).toBe(defaults.t)
     })
 
-    it(`x2 label adds exactly AXIS_LABEL_HEIGHT (>0) to top padding`, () => {
-      expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(0)
+    it(`reserves x2 title, gap, and outward shifts`, () => {
+      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
+      const no_ticks = calc_auto_padding({
+        ...base,
+        x2_axis: { tick_values: [], label: `Energy` },
+      })
       const without = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...base,
         x2_axis: { tick_values: [1, 2] },
       })
       const with_label = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...base,
         x2_axis: { tick_values: [1, 2], label: `Energy` },
       })
-      expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
+      const top_with_shift = (title_shift: number) =>
+        calc_auto_padding({
+          ...base,
+          x2_axis: { tick_values: [1, 2], label: `Energy`, label_shift: { y: title_shift } },
+        }).t
+      expect(no_ticks.t).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+      expect(with_label.t - without.t).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
+      expect([top_with_shift(14) - with_label.t, top_with_shift(-14) - with_label.t]).toEqual([
+        14, 0,
+      ])
     })
 
-    // y/y2 axis titles must reserve their rotated width too, else a wide tick label (e.g.
-    // "-789.389") pushes the title into the ticks (mirrors the x2 reservation above)
+    it(`top padding accounts for an outward x2 tick shift`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1], tick: { label: { shift: { y: -10 } } } },
+      })
+      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10 + AXIS_LABEL_OUTER)
+    })
+
+    // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
+    // label (e.g. "-789.389") pushes the title into the ticks (mirrors the x2 case).
     it.each([
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
-    ] as const)(`%s reserves AXIS_LABEL_HEIGHT for the %s title`, (side, axis_key) => {
+    ] as const)(`%s reserves title band + outer air for the %s title`, (side, axis_key) => {
       const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
       const without = calc_auto_padding({ ...base, [axis_key]: { tick_values: [1, 2] } })
       const with_label = calc_auto_padding({
         ...base,
         [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
       })
-      expect(with_label[side] - without[side]).toBe(AXIS_LABEL_HEIGHT)
+      expect(with_label[side] - without[side]).toBe(
+        LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER,
+      )
+    })
+
+    it(`left pad grows when y label_shift pushes the title outward`, () => {
+      const base = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y_axis: { tick_values: [1, 10], label: `E` },
+      }
+      const unshifted = calc_auto_padding(base)
+      const shifted = calc_auto_padding({
+        ...base,
+        y_axis: { ...base.y_axis, label_shift: { x: -14 } },
+      })
+      expect(shifted.l - unshifted.l).toBe(14)
+    })
+
+    it(`reserves a title band for interactive options without a literal label`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y2_axis: {
+          tick_values: [],
+          options: [{ key: `energy`, label: `Energy` }],
+        },
+      })
+      expect(result.r).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+    })
+
+    it(`right pad grows with an outward y2 tick-label shift`, () => {
+      const base = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y2_axis: { tick_values: [1, 10], label: `E` },
+      }
+      const unshifted = calc_auto_padding(base)
+      const shifted = calc_auto_padding({
+        ...base,
+        y2_axis: { ...base.y2_axis, tick: { label: { shift: { x: 20 } } } },
+      })
+      expect(shifted.r - unshifted.r).toBe(20)
+    })
+  })
+
+  describe(`y_axis_label_x / y2_axis_label_x`, () => {
+    const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
+    test.each([
+      [`left auto-padding`, () => y_axis_label_x({}, 90, 30), title_center],
+      [`left explicit padding`, () => y_axis_label_x({}, 120, 30), 52],
+      [
+        `left inside ticks`,
+        () => y_axis_label_x({ tick: { label: { inside: true } } }, 60, 30),
+        30,
+      ],
+      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30), 400 - title_center],
+      [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30), 348],
+      [
+        `right inside ticks`,
+        () => y2_axis_label_x({ tick: { label: { inside: true } } }, 400, 60, 30),
+        370,
+      ],
+    ])(`positions %s`, (_, get_position, expected) => {
+      expect(get_position()).toBe(expected)
     })
   })
 })

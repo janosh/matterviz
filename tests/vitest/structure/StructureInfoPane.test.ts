@@ -60,6 +60,23 @@ describe(`StructureInfoPane`, () => {
     },
   )
 
+  // Closed pane stays mounted (display:none); site cards must not rebuild while closed.
+  test.each([
+    [false, 0],
+    [true, 3],
+  ])(`pane_open=%s renders %i site cards`, (pane_open, n_cards) => {
+    mount_info_pane({ structure: get_dummy_structure(`H`, 3, true), pane_open })
+    expect(document.querySelectorAll(`.site-card`)).toHaveLength(n_cards)
+  })
+
+  // Tips stay in the DOM even when closed; must match Structure.svelte Ctrl/Cmd handlers.
+  test(`Keyboard tip documents Ctrl/Cmd for f/i and plain r`, () => {
+    mount_info_pane({ structure: get_dummy_structure(`H`, 1, true), pane_open: false })
+    expect(document.body.textContent).toContain(
+      `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
+    )
+  })
+
   test(`omits sites section entirely above max threshold`, () => {
     const structure = get_dummy_structure(`H`, 600, true)
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })

@@ -359,7 +359,9 @@
   {/each}
 </section>
 
-<h2 class="picker-heading">Mix your own (same-cell files append as extra volumes)</h2>
+<h2 style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85">
+  Mix your own (same-cell files append as extra volumes)
+</h2>
 <FilePicker
   files={volumetric_files}
   active_files={[
@@ -369,47 +371,29 @@
   style="margin-bottom: 0.5em"
 />
 
-<div
-  class="viewer-container"
-  class:dragover-hint={dragover_hint}
-  role="region"
-  aria-label="Multi-volume isosurface viewer - drop volumetric files here"
-  ondragenter={(event: DragEvent) => {
-    event.preventDefault()
-    dragover_hint = true
-  }}
-  ondragleave={(event: DragEvent & { currentTarget: HTMLElement }) => {
-    const related = event.relatedTarget
-    if (!(related instanceof Node) || !event.currentTarget.contains(related)) {
-      dragover_hint = false
-    }
-  }}
-  ondrop={() => (dragover_hint = false)}
+<Structure
+  bind:structure
+  bind:volumetric_data
+  bind:isosurface_settings
+  bind:active_volume_idx
+  bind:supercell_scaling
+  bind:loading
+  bind:error_msg
+  bind:dragover={dragover_hint}
+  show_controls="always"
+  on_file_load={clear_scenario}
+  style="height: 550px"
 >
   <DragOverlay
     visible={dragover_hint}
     message="Drop one or more volumetric files (same-cell files append as extra volumes)"
   />
-  <div class="viewer-pane">
-    <Structure
-      bind:structure
-      bind:volumetric_data
-      bind:isosurface_settings
-      bind:active_volume_idx
-      bind:supercell_scaling
-      bind:loading
-      bind:error_msg
-      show_controls="always"
-      on_file_load={clear_scenario}
-    >
-      {#if active_scenario}
-        <p class="scenario-label">
-          {scenarios.find((entry) => entry.id === active_scenario)?.title}
-        </p>
-      {/if}
-    </Structure>
-  </div>
-</div>
+  {#if active_scenario}
+    <p class="scenario-label">
+      {scenarios.find((entry) => entry.id === active_scenario)?.title}
+    </p>
+  {/if}
+</Structure>
 
 {#if error_msg}
   <StatusMessage message={error_msg} type="error" />
@@ -522,22 +506,6 @@
     font-size: 0.72em;
     opacity: 0.75;
     line-height: 1.35;
-  }
-  .picker-heading {
-    margin: 0.5em 0 0.3em;
-    font-size: 0.9rem;
-    opacity: 0.85;
-  }
-  .viewer-container {
-    position: relative;
-    min-height: 550px;
-  }
-  .viewer-pane {
-    position: relative;
-    height: 550px;
-    :global(.matterviz-structure) {
-      height: 100%;
-    }
   }
   .scenario-label {
     position: absolute;

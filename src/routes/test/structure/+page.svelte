@@ -274,6 +274,7 @@
   on_camera_move={(data) => {
     if (typeof globalThis !== `undefined`) {
       ;(globalThis as Record<string, unknown>).camera_target = data.camera_target
+      ;(globalThis as Record<string, unknown>).camera_position = data.camera_position
     }
   }}
   on_camera_reset={create_event_handler(`on_camera_reset`)}

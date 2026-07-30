@@ -227,7 +227,8 @@
         max={max_hull_dist_in_data}
         step="0.01"
         bind:value={max_hull_dist_show_phases}
-        class="threshold-input"
+        aria-label="Points threshold (eV/atom)"
+        style="border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))"
       />
       <span style="white-space: nowrap">eV/atom</span>
       <input
@@ -236,7 +237,6 @@
         max={max_hull_dist_in_data}
         step="0.01"
         bind:value={max_hull_dist_show_phases}
-        class="threshold-slider"
       />
     </label>
   </div>
@@ -246,7 +246,7 @@
       <span class="control-label">Points</span>
       <div class="legend-items-container">
         <div
-          class="legend-item clickable {show_stable ? `active` : `inactive`}"
+          class="legend-item {show_stable ? `active` : `inactive`}"
           onclick={() => (show_stable = !show_stable)}
           onkeydown={legend_keydown(() => (show_stable = !show_stable))}
           role="button"
@@ -258,7 +258,7 @@
           <span>Stable{merged_controls.show_counts ? ` (${stable_entries.length})` : ``}</span>
         </div>
         <div
-          class="legend-item clickable {show_unstable ? `active` : `inactive`}"
+          class="legend-item {show_unstable ? `active` : `inactive`}"
           onclick={() => (show_unstable = !show_unstable)}
           onkeydown={legend_keydown(() => (show_unstable = !show_unstable))}
           role="button"
@@ -308,7 +308,7 @@
           {@const count = category_counts[value] ?? 0}
           {@const long_name = entry_category.labels?.[value]}
           <div
-            class="legend-item clickable {hidden ? `inactive` : `active`}"
+            class="legend-item {hidden ? `inactive` : `active`}"
             onclick={() => toggle_category(value)}
             onkeydown={legend_keydown(() => toggle_category(value))}
             role="button"
@@ -374,7 +374,6 @@
             max={max_hull_dist_in_data}
             step="0.01"
             bind:value={max_hull_dist_show_labels}
-            class="threshold-slider"
           />
         </label>
       </div>
@@ -412,7 +411,6 @@
           bind:value={hull_face_opacity}
           oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
           {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
-          class="threshold-slider"
           style="flex: 1; min-width: 80px"
         />
         <span style="font-size: 0.9em; min-width: 2em; text-align: right"
@@ -427,7 +425,8 @@
       <div class="face-color-mode-buttons">
         {#each HULL_FACE_COLOR_MODES as mode (mode)}
           <button
-            class="toggle-btn face-mode-btn {hull_face_color_mode === mode ? `active` : ``}"
+            class="toggle-btn {hull_face_color_mode === mode ? `active` : ``}"
+            style="min-width: auto; flex: 0 1 auto"
             onclick={() => on_hull_face_color_mode_change?.(mode)}
             {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
           >
@@ -444,7 +443,6 @@
       {#if camera.elevation !== undefined && camera.azimuth !== undefined}
         <!-- Ternary camera controls (elevation/azimuth) -->
         <label
-          class="angle-input"
           {@attach tooltip({
             content: `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
           })}
@@ -461,10 +459,7 @@
           />
           <span>°</span>
         </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
-        >
+        <label {@attach tooltip({ content: `Azimuth rotation around z-axis` })}>
           <span>Azim</span>
           <input
             type="number"
@@ -479,10 +474,7 @@
         </label>
       {:else}
         <!-- Quaternary camera controls (rotation_x/rotation_y) -->
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
-        >
+        <label {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}>
           <span>φ</span>
           <input
             type="number"
@@ -496,10 +488,7 @@
             style="width: 3em"
           />
         </label>
-        <label
-          class="angle-input"
-          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
-        >
+        <label {@attach tooltip({ content: `Horizontal rotation (left/right)` })}>
           <span>θ</span>
           <input
             type="number"
@@ -587,18 +576,11 @@
     flex: 1;
     margin-top: 12px;
   }
-  .threshold-input {
-    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
-  }
   .face-color-mode-buttons {
     display: flex;
     gap: 4px;
     flex: 1;
     flex-wrap: wrap;
-  }
-  .face-mode-btn {
-    min-width: auto;
-    flex: 0 1 auto;
   }
   .color-scale-row {
     display: grid;

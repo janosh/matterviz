@@ -776,14 +776,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     initial_zoom: {
       value: 50,
-      description: `Initial zoom level for orthographic projection (ignored for perspective)`,
+      description: `Relative orthographic zoom scale (50 = fit structure bounding sphere to the shorter viewport edge; ignored for perspective)`,
       minimum: 0.1,
       maximum: 200,
     },
     fov: {
       value: 10,
       description: `Field of view in degrees for perspective projection`,
-      minimum: 10,
+      minimum: 5,
       maximum: 150,
     },
     rotation_damping: {
@@ -811,8 +811,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 2.0,
     },
     zoom_to_cursor: {
-      value: false,
-      description: `Zoom toward cursor position instead of scene center (double click canvas to reset camera)`,
+      value: true,
+      description: `Zoom toward the cursor instead of the scene center`,
     },
     max_zoom: {
       value: 500,
@@ -823,7 +823,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
     },
     auto_rotate: {
-      value: 0.2,
+      // Off by default: a permanently spinning scene is hard to read, keeps the render loop
+      // running every frame (no on-demand rendering, so it costs battery on every embed),
+      // and fights the user the moment they orbit.
+      value: 0,
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,
       maximum: 10,
@@ -846,7 +849,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     site_label_color: { value: `#111111`, description: `Text color for atom labels` },
     site_label_bg_color: {
-      value: `color-mix(in srgb, #000000 0%, transparent)`,
+      value: `transparent`,
       description: `Background color for atom labels`,
     },
     site_label_padding: {

@@ -1882,8 +1882,9 @@
   bind:clientHeight={container_height}
   class="chempot-diagram-3d"
   class:fullscreen
-  style:width={fullscreen ? `100vw` : `100%`}
-  style:height={fullscreen ? `100vh` : `${render_height}px`}
+  style="width: {fullscreen ? `100vw` : `100%`}; height: {fullscreen
+    ? `100vh`
+    : `${render_height}px`}"
   role="application"
   tabindex="0"
   onkeydown={(event) => {
@@ -2141,12 +2142,10 @@
   {/if}
   <div class="canvas-clip">
     {#if diagram_computing}
-      <div class="computing-state">
-        <Spinner
-          text="Computing chemical potential domains..."
-          style="--spinner-size: 1.2em"
-        />
-      </div>
+      <Spinner
+        text="Computing chemical potential domains..."
+        style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
+      />
     {:else if !diagram_data}
       <div class="error-state" role="alert" aria-live="polite">
         <p>Cannot compute chemical potential diagram.</p>
@@ -2378,8 +2377,7 @@
       <aside
         bind:this={tooltip_el}
         class="phase-tooltip"
-        style:left="{tooltip_pos.x}px"
-        style:top="{tooltip_pos.y}px"
+        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         <h4>
           {#each formula_label_segments(hover_info.formula) as segment}
@@ -2606,12 +2604,6 @@
     flex: 1;
     min-width: 0;
     padding: 2px 4px;
-  }
-  .computing-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
   }
   .error-state {
     display: flex;

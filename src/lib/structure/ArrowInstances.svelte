@@ -64,15 +64,21 @@
     return mesh
   }
 
-  // Recreate meshes only when the arrow count changes (fixed buffer capacity)
+  // Grow-only capacity (three caches TSL by mesh uuid); shrink via mesh.count.
   let shaft_mesh = $state.raw<InstancedMesh | null>(null)
   let head_mesh = $state.raw<InstancedMesh | null>(null)
   $effect(() => {
     const count = arrows.length
     const prev = untrack(() => shaft_mesh)
-    if (prev && prev.count === count) return
+    const heads = untrack(() => head_mesh)
+    if (prev && heads && prev.instanceMatrix.count >= count) {
+      prev.count = count
+      heads.count = count
+      invalidate()
+      return
+    }
     prev?.dispose()
-    untrack(() => head_mesh)?.dispose()
+    heads?.dispose()
     if (count === 0) {
       shaft_mesh = null
       head_mesh = null

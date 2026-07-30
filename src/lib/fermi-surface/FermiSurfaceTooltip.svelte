@@ -15,7 +15,7 @@
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
-  <div class="tooltip-content">
+  <div class="tooltip-content" style="max-width: var(--tooltip-max-width, 250px)">
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index}</strong>
       {#if hover_data.spin}
@@ -29,7 +29,7 @@
     />
 
     {#if hover_data.property_value != null}
-      <div class="property-row">
+      <div style="margin-top: 4px; font-size: 0.9em">
         {hover_data.property_name || `Property`}: {format_num(
           hover_data.property_value,
           `.4~`,
@@ -47,9 +47,6 @@
 </TooltipContent>
 
 <style>
-  .tooltip-content {
-    max-width: var(--tooltip-max-width, 250px);
-  }
   .tooltip-title {
     display: flex;
     align-items: center;
@@ -69,10 +66,6 @@
   .spin-badge.spin-down {
     background: #377eb8;
     color: white;
-  }
-  .property-row {
-    margin-top: 4px;
-    font-size: 0.9em;
   }
   .nearest-note {
     opacity: 0.6;

@@ -1266,10 +1266,7 @@
 
           <!-- Frame rate control: shown for any multi-frame trajectory so speed can be set before play -->
           {#if total_frames > 1 && controls_config.visible(`fps`)}
-            <label
-              class="fps-section"
-              style="font-size: 0.9em; display: flex; align-items: center; gap: 5pt; margin-inline: 6pt"
-            >
+            <label class="fps-section">
               FPS
               <input
                 type="range"
@@ -1409,9 +1406,10 @@
 
       {#if show_plot}
         {#if plot_metadata_loading}
-          <div class="plot-metadata-loading plot">
-            <Spinner text="Sampling trajectory plot data..." style="--spinner-size: 1.4em" />
-          </div>
+          <Spinner
+            text="Sampling trajectory plot data..."
+            style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
+          />
         {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
           <ScatterPlot
             series={plot_series}
@@ -1432,7 +1430,7 @@
                 scatter_props.legend?.on_toggle?.(series_idx)
               },
             }}
-            class={[`plot`, scatter_props.class]}
+            class={scatter_props.class}
           >
             {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
@@ -1457,7 +1455,7 @@
               histogram_props.on_series_toggle?.(series_idx)
             }}
             style="height: 100%"
-            class={[`plot`, histogram_props.class]}
+            class={histogram_props.class}
             --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({
@@ -1560,15 +1558,6 @@
       grid-template-rows: 1fr !important;
     }
   }
-  .plot-metadata-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6em;
-    min-height: 0;
-    color: var(--text-muted, currentColor);
-    background: var(--surface-bg);
-  }
   .trajectory-controls {
     display: flex;
     align-items: center;
@@ -1623,6 +1612,13 @@
     gap: clamp(0.25rem, 1.5cqw, 0.5rem);
     flex: 1;
     min-width: 0;
+  }
+  .fps-section {
+    display: flex;
+    align-items: center;
+    gap: 5pt;
+    margin-inline: 6pt;
+    font-size: 0.9em;
   }
   .step-input {
     border: 1px solid rgba(99, 179, 237, 0.3);

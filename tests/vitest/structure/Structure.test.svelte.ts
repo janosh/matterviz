@@ -1,5 +1,6 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
+import { DEFAULTS } from '$lib/settings'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
@@ -620,6 +621,33 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     `.controls-pane input[type="number"][max="2"]`,
   ) as HTMLInputElement
   expect(Number(auto_rotate_input.value)).toBeCloseTo(0.5, 1)
+})
+
+test(`viewer-local setting changes do not mutate defaults or another viewer`, async () => {
+  const auto_rotate_inputs = (): HTMLInputElement[] =>
+    [...document.querySelectorAll(`label`)]
+      .filter((label) => label.textContent?.includes(`Auto-rotate speed`))
+      .flatMap((label) => {
+        const input = label.querySelector<HTMLInputElement>(`input[type="number"]`)
+        return input ? [input] : []
+      })
+  const default_auto_rotate = DEFAULTS.structure.auto_rotate
+  mount_structure({ structure, controls_open: true, show_controls: true })
+  await tick()
+
+  const [first_auto_rotate] = auto_rotate_inputs()
+  if (!first_auto_rotate) throw new Error(`First viewer is missing its auto-rotate input`)
+  first_auto_rotate.value = `1.5`
+  first_auto_rotate.dispatchEvent(new Event(`input`, { bubbles: true }))
+  flushSync()
+  expect(DEFAULTS.structure.auto_rotate).toBe(default_auto_rotate)
+
+  mount_structure({ structure, controls_open: true, show_controls: true })
+  await tick()
+  const inputs = auto_rotate_inputs()
+  expect(inputs).toHaveLength(2)
+  expect(Number(inputs[0].value)).toBe(1.5)
+  expect(Number(inputs[1].value)).toBe(default_auto_rotate)
 })
 
 // Atom label controls tests

@@ -140,6 +140,6 @@ path below, which has no pointer position to read -->
     {#if is_icon_name(action.icon)}
       <Icon icon={action.icon} />
     {/if}
-    <span>{action.label}</span>
+    {action.label}
   {/snippet}
 </ContextMenu>

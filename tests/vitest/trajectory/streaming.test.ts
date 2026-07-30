@@ -138,14 +138,21 @@ describe(`Trajectory Streaming`, () => {
       await settle_frame_load()
     }
     await tick()
+    await wait_for_frame_load_debounce()
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
     flushSync()
     await tick()
     await wait_for_frame_load_debounce()
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
     await settle_frame_load()
+    // Site cards are the probe for which frame is displayed, and the info pane only
+    // renders them while open.
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
     expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()

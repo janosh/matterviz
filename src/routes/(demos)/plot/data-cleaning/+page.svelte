@@ -583,7 +583,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
   <div class="quality-report">
     <strong>Quality Report:</strong>
     {format_quality(cleaned_result.quality)}
-    <span class="point-count">
+    <span style="opacity: 0.7">
       ({raw_data.x.length} → {cleaned_result.series.x.length} points)
     </span>
     {#if instability_result.detected}
@@ -887,9 +887,6 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
     flex-wrap: wrap;
     gap: 0.5em 1.5em;
     align-items: center;
-  }
-  .point-count {
-    opacity: 0.7;
   }
   .instability-badge {
     color: #f39c12;

@@ -104,7 +104,8 @@
     calc_auto_padding,
     filter_padding,
     full_footprint_or,
-    LABEL_GAP_DEFAULT,
+    sides_equal,
+    y_axis_label_x,
     y2_axis_label_x,
     measure_max_tick_width,
     sample_series_obstacle_points,
@@ -388,9 +389,7 @@
   // Update padding when format or ticks change
   $effect(() => {
     const new_pad =
-      width &&
-      height &&
-      (y_tick_values.length > 0 || y2_tick_values.length > 0 || x2_tick_values.length > 0)
+      width && height
         ? calc_auto_padding({
             padding,
             default_padding,
@@ -400,13 +399,7 @@
           })
         : filter_padding(padding, default_padding)
 
-    if (
-      base_pad.t !== new_pad.t ||
-      base_pad.b !== new_pad.b ||
-      base_pad.l !== new_pad.l ||
-      base_pad.r !== new_pad.r
-    )
-      base_pad = new_pad
+    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   // === Auto-move legend/colorbar outside the plot when interior overlap is unavoidable ===
@@ -1094,9 +1087,9 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format ?? ``),
-    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format ?? ``),
-    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format ?? ``),
+    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format),
+    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format),
+    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
@@ -1587,12 +1580,7 @@
         domain={[y_min, y_max]}
         unit_on_first_tick
         tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-        label_x={Math.max(
-          12,
-          pad.l -
-            (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
-            LABEL_GAP_DEFAULT,
-        ) + (final_y_axis.label_shift?.x ?? 0)}
+        label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
         label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
         axis_loading={axis_loading === `y`}
         on_axis_change={(key) => handle_axis_change(`y`, key)}

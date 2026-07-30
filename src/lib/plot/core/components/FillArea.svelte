@@ -164,8 +164,7 @@
   class="fill-region"
   class:hovered={is_hovered}
   clip-path={`url(#${clip_path_id})`}
-  style:cursor={cursor_style}
-  style:pointer-events="all"
+  style="cursor: {cursor_style}; pointer-events: all"
   onmouseenter={handle_mouse_enter}
   onmouseleave={handle_mouse_leave}
   onmousemove={handle_mouse_move}

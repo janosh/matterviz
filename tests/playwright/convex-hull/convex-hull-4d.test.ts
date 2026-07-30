@@ -93,7 +93,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     // Switch to energy mode
     await controls.getByText(`Energy`, { exact: true }).click()
     // Raise threshold to include more unstable points
-    const number_input = controls.locator(`input.threshold-input`).first()
+    const number_input = controls.getByLabel(`Points threshold (eV/atom)`)
     await number_input.fill(`0.5`)
     // Ensure info pane is in front and visible before asserting
     await ensure_pane_visible(info, diagram.locator(`.info-btn`))

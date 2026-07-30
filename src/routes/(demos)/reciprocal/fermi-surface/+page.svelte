@@ -8,7 +8,7 @@
 
 <h1>Fermi Surface</h1>
 
-<p class="intro">
+<p>
   Interactive 3D visualization of Fermi surfaces extracted from electronic band structure data.
   Supports <code>BXSF</code>
   (<a href="http://www.xcrysden.org/" target="_blank" rel="noopener">XCrySDen</a>/<a

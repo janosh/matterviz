@@ -27,7 +27,7 @@
     fullscreen_btn_style?: string
     wrapper?: HTMLDivElement
     style?: string // extra styles/CSS vars for the section (user config style wins)
-    before?: Snippet // rendered before filename/fullscreen (e.g. reset-camera button)
+    before?: Snippet // rendered before filename/fullscreen
     children?: Snippet // rendered after the fullscreen toggle (panes, controls, ...)
   } = $props()
 

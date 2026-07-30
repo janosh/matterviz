@@ -77,7 +77,7 @@
     <label>
       <span>Opacity:</span>
       <input type="range" min="0" max="1" step="0.01" bind:value={surface_opacity} />
-      <span class="value">{surface_opacity.toFixed(2)}</span>
+      <span>{surface_opacity.toFixed(2)}</span>
     </label>
   </SettingsSection>
 
@@ -93,7 +93,7 @@
     <label>
       <span>Width:</span>
       <input type="range" min="0.002" max="0.02" step="0.001" bind:value={edge_width} />
-      <span class="value">{edge_width.toFixed(2)}</span>
+      <span>{edge_width.toFixed(2)}</span>
     </label>
   </SettingsSection>
 
@@ -134,7 +134,7 @@
       <label>
         <span>Opacity:</span>
         <input type="range" min="0" max="1" step="0.01" bind:value={ibz_opacity} />
-        <span class="value">{ibz_opacity.toFixed(2)}</span>
+        <span>{ibz_opacity.toFixed(2)}</span>
       </label>
     {/if}
   </SettingsSection>

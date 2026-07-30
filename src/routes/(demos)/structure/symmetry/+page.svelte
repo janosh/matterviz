@@ -112,14 +112,14 @@
 </p>
 
 <div class="symmetry-grid bleed-1400">
-  <div class="symmetry-info">
+  <div>
     {#if !wasm_ready}
       <div class="loading-placeholder">
         <div class="loading-spinner"></div>
         <p>Loading symmetry analysis...</p>
       </div>
     {:else if error}
-      <pre class="error" style="color: var(--error-color)">{error}</pre>
+      <pre style="color: var(--error-color)">{error}</pre>
     {:else if top_ex_sym_data}
       <SymmetryStats
         sym_data={top_ex_sym_data}
@@ -206,9 +206,7 @@
     <div class="example-section">
       <h3>Two Column - Stats + Structure</h3>
       <div class="two-column-layout">
-        <div>
-          <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-        </div>
+        <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
         <Structure
           data_url="/structures/{source_filename}"
           show_controls={true}

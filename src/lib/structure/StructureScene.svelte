@@ -18,7 +18,7 @@
   } from '$lib/scene'
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
-  import { DEFAULTS } from '$lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
   import type {
@@ -32,11 +32,15 @@
   } from '$lib/structure'
   import {
     atomic_radii,
+    camera_position_for_target,
     Cylinder,
     get_all_site_vectors,
     get_center_of_mass,
     get_structure_vector_keys,
     Lattice,
+    ortho_zoom_for_extent,
+    perspective_distance_for_extent,
+    structure_fit_frame,
     VECTOR_PALETTE,
   } from '$lib/structure'
   import ArrowInstances from './ArrowInstances.svelte'
@@ -407,9 +411,21 @@
   })
   $effect(() => () => fly_to.release())
 
-  // Expose rotation target for external reset
+  // Keep reset centered on the current structure without moving the live camera between
+  // trajectory frames. On first mount, an explicit camera pose retains its supplied target.
+  let target_structure = $state.raw<AnyStructure | null | undefined>()
+  let has_target_structure = $state(false)
   $effect(() => {
-    rotation_target_ref = rotation_target
+    const current_structure = structure
+    const current_fit_target = fit_frame.center
+    if (has_target_structure && current_structure === target_structure) return
+    const is_initial_structure = !has_target_structure
+    target_structure = current_structure
+    has_target_structure = true
+    rotation_target_ref =
+      is_initial_structure && camera_position.some((coordinate) => coordinate !== 0)
+        ? (camera_target ?? rotation_target)
+        : current_fit_target
   })
 
   // Track initial computed zoom for reset
@@ -1004,16 +1020,29 @@
   // Negated target for the inner un-translate group (recomputed only on target change)
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
 
+  // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
   let structure_size = $derived.by(() => {
     if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
     if (!structure?.sites?.length) return 10
-
     const ranges = [0, 1, 2].map((axis_idx) => {
       const coords = structure.sites.map((site) => site.xyz[axis_idx])
       return Math.max(...coords) - Math.min(...coords)
     })
     return Math.max(1, ...ranges)
   })
+
+  // Content AABB fit for ortho zoom / look-at. Frozen while dragging atoms.
+  let last_fit_frame = { center: [0, 0, 0] as Vec3, extent: 10 }
+  let fit_frame = $derived.by(() => {
+    if (dragging_atoms) return last_fit_frame
+    return (last_fit_frame = structure_fit_frame(structure, {
+      atom_radius_scale: show_atoms ? atom_radius : 0,
+      same_size_atoms,
+      element_radius_overrides,
+      site_radius_overrides,
+    }))
+  })
+  let fit_extent = $derived(fit_frame.extent)
 
   // Characteristic inter-atomic spacing: cube root of volume per atom.
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
@@ -1048,47 +1077,53 @@
   // This prevents z-fighting and disappearing objects when zooming in close on large supercells
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
   let camera_far = $derived(Math.max(1000, structure_size * 100))
+  const { minimum: min_fov = 5, maximum: max_fov = 150 } = SETTINGS_CONFIG.structure.fov
+  let effective_fov = $derived(
+    Number.isFinite(fov) && fov > 0
+      ? Math.min(max_fov, Math.max(min_fov, fov))
+      : DEFAULTS.structure.fov,
+  )
 
-  // Using $state because this is mutated in an effect based on viewport/structure size
+  const zoom_for = (extent: number) => {
+    const fit_zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
+    return max_zoom !== undefined && max_zoom > 0 ? Math.min(max_zoom, fit_zoom) : fit_zoom
+  }
+
   let computed_zoom = $state(untrack(() => initial_zoom))
-  // structure_size is read untracked so structure changes don't re-zoom the user's view;
-  // zoom only re-frames on a genuine viewport resize. Skip same-value width/height
-  // re-fires (a wrapping component can transiently re-emit clientWidth/Height during a
-  // structure swap) so they don't sneak in a re-zoom with the new structure_size.
+  // Resize uses untracked fit_extent (trajectory must not jump zoom). Reset→[0,0,0]
+  // reframes from live fit in effect.pre. Skip same-value width/height re-fires.
   let last_zoom_dims: [number, number] = [0, 0]
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
     if (width === last_zoom_dims[0] && height === last_zoom_dims[1]) return
     last_zoom_dims = [width, height]
-    const structure_max_dim = Math.max(
-      1,
-      untrack(() => structure_size),
-    )
-    const viewer_min_dim = Math.min(width, height)
-    const scale_factor = viewer_min_dim / (structure_max_dim * 50) // 50px per unit
-    let new_zoom = initial_zoom * scale_factor
-    if (min_zoom && min_zoom > 0) new_zoom = Math.max(min_zoom, new_zoom)
-    if (max_zoom && max_zoom > 0) new_zoom = Math.min(max_zoom, new_zoom)
-    computed_zoom = new_zoom
+    computed_zoom = zoom_for(untrack(() => fit_extent))
   })
 
   $effect.pre(() => {
-    // Simple initial camera auto-position: proportional to structure size and fov
-    if (camera_position.every((val) => val === 0) && structure) {
+    // Auto-place at content center; missing/zero camera_direction → default angled view.
+    if (
+      camera_position.every((coordinate) => coordinate === 0) &&
+      structure &&
+      width > 0 &&
+      height > 0
+    ) {
       stored_initial_zoom = undefined
-      const distance = Math.max(1, structure_size) * (60 / fov)
-      // When a view direction is given (multi-side view), place the camera
-      // target-relative along it; otherwise use the default angled position.
-      // normalize_vec returns [0,0,0] for an absent or zero-length direction (arrays are
-      // truthy, so a plain `camera_direction ?` check would miss [0,0,0]); treat that as
-      // "no direction" and fall back to the default, since placing the camera on the
-      // rotation target would be a degenerate zero-length view.
-      const view_dir: Vec3 = camera_direction
-        ? math.normalize_vec(camera_direction, [0, 0, 0])
-        : [0, 0, 0]
-      camera_position = view_dir.some((val) => val !== 0)
-        ? math.add(rotation_target, math.scale(view_dir, distance))
-        : [distance, distance * 0.3, distance * 0.8]
+      computed_zoom = zoom_for(fit_extent)
+      // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
+      const distance =
+        camera_projection === `perspective`
+          ? perspective_distance_for_extent(
+              Math.max(1, fit_extent),
+              width,
+              height,
+              effective_fov,
+            )
+          : Math.max(1, fit_extent) * 2
+      const target = camera_target ?? fit_frame.center
+      if (camera_target === undefined) camera_target = target
+      rotation_target_ref = target
+      camera_position = camera_position_for_target(target, distance, camera_direction)
     }
   })
   // Whether a never|always|crystals|molecules setting applies to the current structure
@@ -1355,7 +1390,10 @@
       return []
     return compute_polyhedra(structure, filtered_bond_pairs, {
       min_neighbors: polyhedra_min_neighbors,
-      max_neighbors: polyhedra_max_neighbors,
+      // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
+      // be dragged past each other. Widening the cap instead of honoring an empty window
+      // keeps polyhedra on screen rather than silently rendering none.
+      max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,
     })
@@ -1838,7 +1876,11 @@
       zoom_to_cursor,
       pan_speed,
       max_zoom,
-      min_zoom,
+      // The initial fit may need to zoom below the interaction floor for large structures.
+      min_zoom:
+        camera_projection === `orthographic` && min_zoom !== undefined
+          ? Math.min(min_zoom, computed_zoom)
+          : min_zoom,
       auto_rotate,
       rotation_damping,
       set_camera_is_moving: (moving) => (camera_is_moving = moving),
@@ -1872,10 +1914,8 @@
       <button
         type="button"
         class="atom-label"
-        style:font-size="{site_label_size * 0.85}em"
-        style:background={site_label_bg_color}
-        style:padding="{site_label_padding}px"
-        style:color={site_label_color}
+        style="font-size: {site_label_size *
+          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color}"
         onpointerdown={(event) => {
           event.preventDefault()
           event.stopImmediatePropagation()
@@ -1912,7 +1952,7 @@
 <SceneCamera
   {camera_projection}
   position={camera_position}
-  {fov}
+  fov={effective_fov}
   zoom={computed_zoom}
   near={camera_near}
   far={camera_far}
@@ -2044,11 +2084,9 @@
         />
       {/if}
 
-      <!-- Instanced bond rendering with gradient colors -->
-      {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
-        {#key group.instances.length}
-          <Bond {group} />
-        {/key}
+      <!-- Single group today; Bond grows capacity — remount rebuilds TSL. -->
+      {#each instanced_bond_groups as group (`bonds`)}
+        <Bond {group} />
       {/each}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
@@ -2249,7 +2287,7 @@
           []}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
-          <div class="elements">
+          <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
               {@const element_name =
                 element_by_symbol.get(element as ElementSymbol)?.name ?? ``}
@@ -2264,8 +2302,8 @@
               </span>
             {/each}
           </div>
-          <div class="coordinates fractional">abc: ({abc})</div>
-          <div class="coordinates cartesian">xyz: ({xyz}) Å</div>
+          <div class="coordinates">abc: ({abc})</div>
+          <div class="coordinates">xyz: ({xyz}) Å</div>
           {#if bond_neighbors.length > 0}
             <div class="coordinates">Bonds: {bond_neighbors.length}{bond_summary}</div>
           {/if}
@@ -2480,9 +2518,6 @@
     font: inherit;
     padding: var(--struct-atom-label-padding, 0 3px);
     white-space: nowrap;
-  }
-  .elements {
-    margin-bottom: var(--canvas-tooltip-elements-margin);
   }
   .species {
     display: inline-block;
