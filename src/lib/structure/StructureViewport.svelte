@@ -232,45 +232,71 @@
       if (typeof orbit_controls.update === `function`) orbit_controls.update()
       camera_position = read_camera_position() ?? camera_position
       camera_target = read_orbit_target()
-      self_written = { position: camera_position, target: camera_target }
+      self_written = { position: camera_position, target: camera_target, zoom: read_zoom() }
     }
     on_camera_reset?.({ structure, camera_has_moved: false, camera_position, camera_target })
   }
 
-  // The pose this pane last wrote into the bindable props; anything else appearing there came
+  // The view this pane last wrote into the bindable props; anything else appearing there came
   // from the caller. That is the only way to tell the two apart, since both arrive as props.
-  let self_written: { position?: Vec3; target?: Vec3 } = {}
+  // Zoom rides along unpropped: it is the only thing an orthographic wheel changes, so pose
+  // alone cannot tell whether the view moved.
+  let self_written: { position?: Vec3; target?: Vec3; zoom?: number } = {}
   const same_pose = (pose_a?: Vec3, pose_b?: Vec3): boolean =>
     pose_a === pose_b ||
     Boolean(pose_a && pose_b && pose_a.every((coord, idx) => coord === pose_b[idx]))
+  const read_zoom = (): number | undefined =>
+    camera && `zoom` in camera ? (camera as OrthographicCamera).zoom : undefined
+
+  const sync_camera = () => {
+    const pos = read_camera_position()
+    if (!pos) return
+    const [target, zoom] = [read_orbit_target(), read_zoom()]
+    // Interactions that end where they started (a click, or the effect cleanup below running
+    // after the end listener already synced) would otherwise emit a second, identical move.
+    const unmoved =
+      same_pose(pos, self_written.position) &&
+      same_pose(target, self_written.target) &&
+      zoom === self_written.zoom
+    if (unmoved) return
+    camera_position = pos
+    camera_target = target
+    self_written = { position: pos, target, zoom }
+    on_camera_move?.({
+      structure,
+      camera_has_moved: true,
+      camera_position: pos,
+      camera_target: target,
+    })
+  }
+
+  const mark_moved = () => {
+    report_moved?.(true)
+    sync_camera()
+  }
+
+  // A wheel zoom dispatches start and end in the same tick, so the effect below never observes
+  // `camera_is_moving` as true. Without this listener a zoom would leave the pose unpersisted
+  // and the reset control (gated on report_moved) unreachable.
+  $effect(() => {
+    const controls = orbit_controls
+    if (!controls) return
+    controls.addEventListener(`end`, mark_moved)
+    return () => controls.removeEventListener(`end`, mark_moved)
+  })
 
   // Track camera movement: keep camera_target in sync with the orbit controls and emit
   // on_camera_move (primary pane only) while the controls are active.
   $effect(() => {
     if (!camera_is_moving) return
-    report_moved?.(true)
-    const sync = () => {
-      const pos = read_camera_position()
-      if (!pos) return
-      const target = read_orbit_target()
-      camera_position = pos
-      camera_target = target
-      self_written = { position: pos, target }
-      on_camera_move?.({
-        structure,
-        camera_has_moved: true,
-        camera_position: pos,
-        camera_target: target,
-      })
-    }
-    sync()
-    const interval = setInterval(sync, 200)
+    mark_moved()
+    const interval = setInterval(sync_camera, 200)
     return () => {
       clearInterval(interval)
       // Movement always stops between ticks (mouse release, fly-to landing), so the final
       // pose needs one more sync. Skipped when the effect re-runs for any other reason —
       // e.g. a structure swap mid-drag, where the pose is about to be reset anyway.
-      if (!camera_is_moving) sync()
+      if (!camera_is_moving) sync_camera()
     }
   })
 
@@ -292,7 +318,11 @@
       if (move_camera) camera.position.set(...next_position)
       if (target) orbit_controls.target.set(...target)
       orbit_controls.update?.()
-      self_written = { position: read_camera_position(), target: read_orbit_target() }
+      self_written = {
+        position: read_camera_position(),
+        target: read_orbit_target(),
+        zoom: read_zoom(),
+      }
     })
   })
 

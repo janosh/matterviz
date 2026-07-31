@@ -60,7 +60,7 @@ describe(`Settings`, () => {
     // not, since it compares DEFAULTS against values read from DEFAULTS.
     test(`structure viewer ships the intended defaults`, () => {
       expect(DEFAULTS.structure.auto_rotate).toBe(0) // no perpetual spin / render loop
-      expect(DEFAULTS.structure.zoom_to_cursor).toBe(true)
+      expect(DEFAULTS.structure.zoom_to_cursor).toBe(false) // wheel zoom stays centered
       expect(DEFAULTS.structure.site_label_bg_color).toBe(`transparent`)
       expect(SETTINGS_CONFIG.structure.fov.minimum).toBe(5) // below the default of 10
     })
