@@ -556,24 +556,24 @@ Si 0 0 0`
       // that every seek is O(1) lookup + O(frame_size) regardless of position.
       await loader.load_frame(data, 0)
 
-      // Time frame access at different positions
-      const measure_access = async (frame_num: number) => {
-        const start = performance.now()
-        await loader.load_frame(data, frame_num)
-        return performance.now() - start
+      // One sub-millisecond sample measures scheduler noise, not complexity — as a ratio of
+      // two such samples this flaked at 9.1 and 17.6 on a loaded machine. Batch the loads so
+      // each measurement is milliseconds of real work, and keep the fastest round so a single
+      // GC pause can't decide the result. An O(n) seek still shows up: frame 95 would scan
+      // ~19x the lines of frame 5.
+      const batch_ms = async (frame_num: number) => {
+        const rounds: number[] = []
+        for (let round = 0; round < 3; round++) {
+          const start = performance.now()
+          for (let rep = 0; rep < 25; rep++) await loader.load_frame(data, frame_num)
+          rounds.push(performance.now() - start)
+        }
+        return Math.min(...rounds)
       }
 
-      const early_access = await measure_access(5)
-      const middle_access = await measure_access(50)
-      const late_access = await measure_access(95)
-
-      // Access times should be similar regardless of position (within 2x tolerance)
-      const max_time = Math.max(early_access, middle_access, late_access)
-      const min_time = Math.min(early_access, middle_access, late_access)
-
-      // CI has high timing variability; use generous threshold (semantically testing O(1) access)
+      const timings = [await batch_ms(5), await batch_ms(50), await batch_ms(95)]
       const max_ratio = is_ci ? 50 : 6
-      expect(max_time / min_time).toBeLessThan(max_ratio)
+      expect(Math.max(...timings) / Math.min(...timings)).toBeLessThan(max_ratio)
     })
 
     it(`splits the XYZ payload once across many sequential frame loads`, async () => {
