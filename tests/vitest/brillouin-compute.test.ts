@@ -665,9 +665,10 @@ describe(`scene sizing helpers`, () => {
         undefined,
         (2 * Math.sqrt(3)) / 0.85,
       ],
-      // no vertices: 2 * k_space_size must cover the cube those k-vectors would span
-      [`falls back to a sphere without vertices`, undefined, undefined, 8],
-      [`falls back on empty vertices too`, [], undefined, 8],
+      // no vertices: 2 * k_space_size must cover the cube those k-vectors would span, padded
+      // the same as the vertices branch so the zoom doesn't jump once vertices arrive
+      [`falls back to a sphere without vertices`, undefined, undefined, 8 / 0.85],
+      [`falls back on empty vertices too`, [], undefined, 8 / 0.85],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
@@ -676,6 +677,6 @@ describe(`scene sizing helpers`, () => {
 
     // k_space_size has its own fallback when there is no reciprocal lattice either
     test(`falls back twice without a lattice`, () =>
-      expect(bz_fit_extent(undefined, undefined)).toBe(20))
+      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo(20 / 0.85, 10))
   })
 })

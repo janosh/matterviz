@@ -410,7 +410,12 @@ describe(`measure: overlay endpoints`, () => {
       [0.3, 0.3, 0.3],
       [0.3, 0.3, 9.7],
     ]
-    expect(pbc_chain_positions(points, lattice, pbc)).toEqual(points)
+    // Tolerance, not equality: the chain rebuilds each point as previous + displacement, and
+    // a + (b - a) misses b by an ulp for ~15% of values, so exact equality here would hold by
+    // luck of these coordinates. The regression this guards — a spurious wrap — is 10 A away.
+    const chain = pbc_chain_positions(points, lattice, pbc)
+    expect(chain).toHaveLength(points.length)
+    for (const [idx, point] of chain.entries()) expect_vec3_close(point, points[idx], 12)
   })
 
   test(`chain positions unwrap a torsion that straddles a cell corner`, () => {

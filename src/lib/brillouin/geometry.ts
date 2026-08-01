@@ -83,7 +83,8 @@ export const bz_fit_extent = (
   k_lattice: Matrix3x3 | undefined,
   padding = 1 / 0.85, // occupy at most 85% of the shorter edge, matching DEFAULT_FIT_PADDING
 ): number => {
-  if (!vertices?.length) return Math.max(1, 2 * k_space_size(k_lattice))
+  // padded like the vertices branch, else the zone visibly rescales the moment they arrive
+  if (!vertices?.length) return Math.max(1, 2 * k_space_size(k_lattice) * padding)
   const center = polyhedron_centroid(vertices)
   let max_dist = 0
   for (const vert of vertices) {
