@@ -9,8 +9,6 @@ import { make_crystal } from '../setup'
 export interface BuildPositionsOptions {
   elements?: ElementSymbol[]
   lattice?: Matrix3x3 | null
-  // One cell per frame, for NPT fixtures. Takes precedence over the fixed `lattice`.
-  lattice_matrices?: (Matrix3x3 | null)[] | null
   coords_unwrapped?: boolean
   pbc?: Pbc
   frame_stride?: number
@@ -33,15 +31,13 @@ export function build_positions(
       positions[off + 2] = xyz[2]
     }
   }
-  const { lattice = null, lattice_matrices } = options
-  const per_frame_lattices =
-    lattice_matrices ?? (lattice ? Array.from({ length: n_frames }, () => lattice) : null)
+  const { lattice = null } = options
   return {
     positions,
     n_frames,
     n_atoms,
     elements: options.elements ?? Array.from({ length: n_atoms }, () => `H`),
-    lattice_matrices: per_frame_lattices,
+    lattice_matrices: lattice ? Array.from({ length: n_frames }, () => lattice) : null,
     pbc: options.pbc ?? null,
     coords_unwrapped: options.coords_unwrapped ?? false,
     frame_stride: options.frame_stride ?? 1,

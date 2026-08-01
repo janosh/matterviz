@@ -155,31 +155,13 @@ export function unwrap_flat_positions(
   let converters: LatticeConverters | null = cached_lattice
     ? create_lattice_converters(cached_lattice)
     : null
-  // The cell the previous frame's coordinates were wrapped in. Same object as `cached_lattice`
-  // for a fixed cell; under NPT they differ and both are needed to read a step correctly.
-  let prev_lattice = cached_lattice
-  let prev_converters = converters
 
   for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
     const frame_lattice = lattice_matrices?.[frame_idx] ?? null
     if (frame_lattice && frame_lattice !== cached_lattice) {
-      prev_lattice = cached_lattice
-      prev_converters = converters
       cached_lattice = frame_lattice
       converters = create_lattice_converters(frame_lattice)
-    } else {
-      prev_lattice = cached_lattice
-      prev_converters = converters
     }
-    // Under NPT the two endpoints were wrapped in different cells, so folding both with one
-    // of them is wrong: an atom sitting still at fractional 0.9 while the cell goes 10 -> 30 A
-    // moves 9 -> 27 A in Cartesian terms, which is 0.6 of the new cell, and the minimum image
-    // convention folds that to -12 and reports the atom at -3 A. Convert each endpoint in its
-    // own cell instead and fold the fractional step, which leaves only non-affine motion —
-    // box breathing stops counting as diffusion. A fixed cell makes the two converters the
-    // same object and takes the original path, including its triclinic candidate search.
-    const npt_step =
-      frame_lattice != null && prev_converters != null && prev_lattice !== frame_lattice
     // Carry the last known cell into frames whose own lattice is missing. A null entry
     // mid-trajectory is a parse gap, not a genuinely aperiodic frame: the neighbouring
     // frames ARE wrapped, so taking the plain coordinate difference there admits a jump
@@ -196,19 +178,10 @@ export function unwrap_flat_positions(
         to[axis] = positions[off + axis]
       }
       // Plain difference only before any cell has been seen - nothing was wrapped yet
-      let step: Vec3 | number[]
-      if (npt_step && converters && prev_converters) {
-        const frac_from = prev_converters.cart_to_frac(from)
-        const frac_to = converters.cart_to_frac(to)
-        const frac_diff: Vec3 = [0, 0, 0]
-        for (let axis = 0; axis < 3; axis++) {
-          const raw = frac_to[axis] - frac_from[axis]
-          frac_diff[axis] = pbc[axis] ? raw - Math.round(raw) : raw
-        }
-        step = converters.frac_to_cart(frac_diff)
-      } else if (lattice && converters) {
-        step = min_image_displacement(from, to, lattice, converters, pbc)
-      } else step = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
+      const step =
+        lattice && converters
+          ? min_image_displacement(from, to, lattice, converters, pbc)
+          : [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
       for (let axis = 0; axis < 3; axis++) {
         unwrapped[off + axis] = unwrapped[prev_off + axis] + step[axis]
       }

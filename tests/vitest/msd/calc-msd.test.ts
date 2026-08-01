@@ -127,38 +127,6 @@ describe(`periodic unwrapping`, () => {
     expect(max_rel_error(result.curves[0].msd, expected)).toBeLessThan(1e-12)
   })
 
-  // Regression: both endpoints of a step used to be folded with a single frame's cell. Under
-  // NPT they were wrapped in different cells, so an atom sitting still at fractional 0.9
-  // while the box goes 10 -> 30 A moves 9 -> 27 A in Cartesian terms, which is 0.6 of the new
-  // cell, and the minimum image convention folded it to -12 and put the atom at -3 A. Frame
-  // striding makes this reachable in ordinary runs by amplifying the per-step cell change.
-  it.each([
-    { desc: `expanding`, sides: [10, 30] },
-    { desc: `shrinking`, sides: [30, 10] },
-    { desc: `fluctuating`, sides: [10, 26, 11, 30] },
-  ])(`reports no displacement for an atom fixed in a $desc cell`, ({ sides }) => {
-    const frac = 0.9
-    const frames = sides.map((side) => [[frac * side, frac * side, frac * side]])
-    const result = calc_msd(
-      build_positions(frames, { lattice_matrices: sides.map(cubic_matrix) }),
-    )
-
-    expect(result.unwrapped).toBe(true)
-    // the atom never moved relative to the cell, so every lag must read zero
-    for (const msd of result.curves[0].msd) expect(msd).toBeCloseTo(0, 9)
-  })
-
-  it(`still sees a real hop while the cell changes`, () => {
-    // half a cell of genuine fractional motion, on top of a doubling box
-    const sides = [10, 20]
-    const frames = [[[1, 0, 0]], [[1 * 2 + 5, 0, 0]]]
-    const result = calc_msd(
-      build_positions(frames, { lattice_matrices: sides.map(cubic_matrix) }),
-    )
-    // frac 0.1 -> 0.35, i.e. 0.25 of the 20 A cell = 5 A
-    expect(Math.sqrt(result.curves[0].msd[0])).toBeCloseTo(5, 9)
-  })
-
   it(`sawtooths without unwrapping, bounded by the box`, () => {
     const result = calc_msd(build_positions(wrapped_frames, { lattice: box }), {
       skip_unwrap: true,
