@@ -41,12 +41,23 @@ function get_worker(): Worker | null {
       if (error || !result) req.reject(new Error(error ?? `Worker returned null`))
       else req.resolve(result)
     })
-    worker.addEventListener(`error`, (event) => {
-      event.preventDefault()
-      const err = new Error(event.message || `Worker initialization error`)
+    // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
+    // caller awaiting forever, and its key stays in `pending_by_key` so each identical
+    // retry is handed the same promise that will never settle.
+    const fail_all = (message: string) => {
+      const err = new Error(message)
       for (const req of pending.values()) req.reject(err)
       pending.clear()
+      worker?.terminate()
       worker = null
+    }
+    worker.addEventListener(`error`, (event) => {
+      event.preventDefault()
+      fail_all(event.message || `Chempot worker initialization error`)
+    })
+    // A response that fails to deserialize never reaches the `message` handler
+    worker.addEventListener(`messageerror`, () => {
+      fail_all(`Chempot worker sent a message that could not be deserialized`)
     })
   }
   return worker
