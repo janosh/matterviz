@@ -15,6 +15,11 @@ import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { ABCWidgetFactory, Base64ModelFactory, DocumentWidget } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
+import type { FileTypeSpec } from './file-types'
+import {
+  BASE64_FILE_TYPES as BASE64_FILE_TYPE_SPECS,
+  TEXT_FILE_TYPES as TEXT_FILE_TYPE_SPECS,
+} from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
 import type * as viewer_module from './viewer'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
@@ -26,75 +31,22 @@ let viewer_promise: Promise<typeof viewer_module> | null = null
 const load_viewer = (): Promise<typeof viewer_module> =>
   (viewer_promise ??= import(`./viewer`))
 
-// Everything the browser can decode from a UTF-8 string.
-const TEXT_EXTENSIONS = [
-  `cif`,
-  `mcif`,
-  `mmcif`,
-  `xyz`,
-  `extxyz`,
-  `poscar`,
-  `vasp`,
-  `cube`,
-  `pdb`,
-  `mol`,
-  `mol2`,
-  `sdf`,
-  `lmp`,
-  `dump`,
-  `lammpstrj`,
-  `bxsf`,
-  `frmsf`,
-]
-
-// Binary containers that must reach the parser as bytes, not text. These are the
-// formats gated behind the lazily loaded HDF5/binary decoders.
-const BINARY_EXTENSIONS = [`traj`, `h5`, `hdf5`, `xtc`, `trr`, `dcd`]
-
-// Files above this size are refused rather than pulled through the contents API,
-// which delivers them as a single JSON response (base64-inflated for binary) and
-// then holds the bytes twice while the parser copies them into WASM memory.
-const MAX_FILE_BYTES = 100 * 1024 * 1024
+// Caps parsing, not transfer: the document manager has already fetched and decoded
+// the whole file by the time a widget factory runs. Past this size the browser tab
+// is the wrong place to do the work, since the parser copies the bytes again into
+// WASM memory on top of the string the model is already holding.
+const MAX_PARSE_BYTES = 100 * 1024 * 1024
 
 const matterviz_icon = new LabIcon({
   name: `matterviz:file`,
   svgstr: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#616161" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="jp-icon3"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>`,
 })
 
-const make_file_types = (
-  extensions: string[],
-  file_format: `text` | `base64`,
-): DocumentRegistry.IFileType[] =>
-  extensions.map((ext) => ({
-    name: `matterviz-${ext.replaceAll(`.`, `-`)}`,
-    displayName: ext.toUpperCase(),
-    extensions: [`.${ext}`],
-    mimeTypes: [`application/octet-stream`],
-    contentType: `file`,
-    fileFormat: file_format,
-    icon: matterviz_icon,
-  }))
+const with_icon = (specs: FileTypeSpec[]): DocumentRegistry.IFileType[] =>
+  specs.map((spec) => ({ ...spec, icon: matterviz_icon }))
 
-// VASP's canonical filenames carry no extension at all.
-const VASP_NAMED_FILE_TYPE: DocumentRegistry.IFileType = {
-  name: `matterviz-vasp-named`,
-  displayName: `VASP structure`,
-  extensions: [],
-  pattern: `^(?:.*[._-])?(?:POSCAR|CONTCAR|XDATCAR|poscar|contcar|xdatcar)(?:[._-].*)?$`,
-  mimeTypes: [`text/plain`],
-  contentType: `file`,
-  fileFormat: `text`,
-  icon: matterviz_icon,
-}
-
-const TEXT_FILE_TYPES = [...make_file_types(TEXT_EXTENSIONS, `text`), VASP_NAMED_FILE_TYPE]
-
-// Gzipped variants are registered explicitly rather than claiming bare `.gz`,
-// which would hijack every compressed file in the browser. Compressed payloads
-// always travel as base64 — the parser peels one layer before dispatching on the
-// inner name.
-const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => `${ext}.gz`)
-const BASE64_FILE_TYPES = make_file_types([...BINARY_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`)
+const TEXT_FILE_TYPES = with_icon(TEXT_FILE_TYPE_SPECS)
+const BASE64_FILE_TYPES = with_icon(BASE64_FILE_TYPE_SPECS)
 
 const format_bytes = (bytes: number): string =>
   bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`
@@ -115,7 +67,9 @@ class MatterVizViewer extends Widget {
     void this.context.ready.then(() => {
       if (this.isDisposed) return
       void this.render()
-      // Mirrors the VS Code extension's file watching: re-render on disk changes.
+      // Fires on initial load and on File > Reload from Disk, not on external
+      // writes — JupyterLab has no filesystem watcher, so unlike the VS Code
+      // extension a file changed by a kernel needs a manual reload.
       this.context.model.contentChanged.connect(this.on_content_changed, this)
     })
   }
@@ -131,33 +85,38 @@ class MatterVizViewer extends Widget {
   private async render(): Promise<void> {
     const generation = ++this.render_generation
     const filename = PathExt.basename(this.context.path)
-    const { size = 0, format } = this.context.contentsModel ?? {}
+    const is_base64 = this.context.contentsModel?.format === `base64`
+    const content = this.context.model.toString()
+    // Measured off the loaded content because JupyterLab omits `size` from
+    // contentsModel; base64 carries three bytes per four characters.
+    const byte_size = is_base64 ? Math.floor((content.length * 3) / 4) : content.length
 
-    if (size > MAX_FILE_BYTES) {
-      const message = `File is ${format_bytes(size)}, above the ${format_bytes(MAX_FILE_BYTES)} viewer limit. Open it from a notebook instead, where the kernel parses it in Python rather than shipping every byte to the browser.`
-      this.show_error(filename, new Error(message))
+    if (byte_size > MAX_PARSE_BYTES) {
+      const message = `File is ${format_bytes(byte_size)}, above the ${format_bytes(MAX_PARSE_BYTES)} viewer limit. Open it from a notebook instead, where the kernel parses it in Python rather than holding every byte in the browser.`
+      await this.show_error(filename, new Error(message))
       return
     }
 
     try {
       const { create_display, parse_file_content } = await load_viewer()
-      const result = await parse_file_content(
-        this.context.model.toString(),
-        filename,
-        format === `base64`,
-      )
+      const result = await parse_file_content(content, filename, is_base64)
       // A newer render (or a dispose) won the race while we were parsing.
       if (generation !== this.render_generation || this.isDisposed) return
       await this.unmount_current()
+      // Re-check: unmounting yields, so a newer render can have started during it.
+      if (generation !== this.render_generation || this.isDisposed) return
       this.mounted_app = create_display(this.viewer_root, result)
     } catch (error) {
       if (generation !== this.render_generation || this.isDisposed) return
-      this.show_error(filename, error instanceof Error ? error : new Error(String(error)))
+      await this.show_error(
+        filename,
+        error instanceof Error ? error : new Error(String(error)),
+      )
     }
   }
 
-  private show_error(filename: string, error: Error): void {
-    void this.unmount_current()
+  private async show_error(filename: string, error: Error): Promise<void> {
+    await this.unmount_current()
     // Fixed literal, no interpolation; the untrusted strings go in via textContent.
     this.viewer_root.innerHTML = `<div class="mv-file-viewer-error"><h2></h2><p></p></div>`
     const [heading, detail] = this.viewer_root.querySelectorAll(`h2, p`)

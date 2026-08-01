@@ -4,6 +4,3 @@ Ships no Python API. The package exists so the prebuilt labextension assets get 
 home on PyPI; rendering happens entirely in the browser. JupyterLab finds those
 assets under ``{sys.prefix}/share/jupyter/labextensions``, not through this module.
 """
-
-# Keep in sync with package.json
-__version__ = "0.4.4"

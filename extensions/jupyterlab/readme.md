@@ -23,17 +23,21 @@ Requires JupyterLab 4.
 | Kind           | Extensions                                                                                    |
 | -------------- | --------------------------------------------------------------------------------------------- |
 | Structures     | `cif`, `mcif`, `mmcif`, `xyz`, `extxyz`, `poscar`, `vasp`, `pdb`, `mol`, `mol2`, `sdf`, `lmp` |
-| Trajectories   | `traj`, `h5`, `hdf5`, `xtc`, `trr`, `dcd`, `dump`, `lammpstrj`, multi-frame `xyz`             |
-| Volumetric     | `cube`, `CHGCAR`/`vaspwave.h5`                                                                |
+| Trajectories   | `traj` (ASE), `h5`/`hdf5` (vaspout, torch-sim), `lammpstrj`, multi-frame `xyz`                |
+| Volumetric     | `cube`, `CHGCAR`, `LOCPOT`, `ELFCAR`, `PARCHG`, `AECCAR*`, `vaspwave.h5`                      |
 | Fermi surfaces | `bxsf`, `frmsf`                                                                               |
 
-`POSCAR`, `CONTCAR` and `XDATCAR` are matched by name since they carry no extension. Every format above is also recognized with a `.gz` suffix. Structure JSON (pymatgen/ASE `as_dict()` output) is available under **Open With** without displacing Lab's built-in JSON viewer.
+Extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR` and the volumetric ones above) are matched by filename. Every format is also recognized with a `.gz` suffix. Structure JSON (pymatgen/ASE `as_dict()` output) is available under **Open With** without displacing Lab's built-in JSON viewer.
+
+A `.dump` file opens as a structure showing its first frame only, not as an animated trajectory. `.xtc`, `.trr` and `.dcd` are deliberately not registered — MatterViz has no decoder for them, so claiming them would replace another application's handler with an error message.
 
 ## Limits
 
-Files above 100 MB are refused. JupyterLab's contents API delivers a file as a single JSON response — base64-inflated by a third for binary formats — and the parser then holds the bytes a second time while copying them into WASM memory. Past roughly that size the browser tab is the wrong place to do the work; parse it in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`.
+Files above 100 MB refuse to parse. This caps parsing, not transfer: JupyterLab's document manager fetches and decodes the whole file before a viewer is constructed, so the download has already happened. Past roughly that size the browser tab is the wrong place to do the work — the parser copies the bytes again into WASM memory on top of the string the document model already holds. Parse it in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`.
 
 Unlike the VS Code extension, there is no host-side streaming bridge, so very large trajectories cannot be indexed and paged in frame by frame.
+
+Also unlike VS Code, an open viewer does not refresh when something else rewrites the file — JupyterLab has no filesystem watcher. Use **File → Reload from Disk**.
 
 ## Development
 
@@ -44,6 +48,8 @@ uv build --wheel
 ```
 
 `uv_build` packages whatever is already on disk — run `pnpm build` first or you will ship an empty extension. The flag on install is needed because `@jupyterlab/application` depends on fontawesome, whose install script pnpm declines to run unattended and then exits non-zero over.
+
+The `process` devDependency is not imported by anything here. `@jupyterlab/builder`'s webpack config carries an unconditional `ProvidePlugin({ process: 'process/browser' })`, which has to resolve from this package under pnpm's strict layout. Don't delete it as unused.
 
 The build runs in two stages, which is load-bearing:
 

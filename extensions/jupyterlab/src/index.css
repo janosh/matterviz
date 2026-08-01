@@ -12,6 +12,15 @@
   --vscode-editor-background: var(--jp-layout-color0);
   --vscode-editor-foreground: var(--jp-ui-font-color0);
   --vscode-errorForeground: var(--jp-error-color1);
+  /* Used by PlotPanel and JsonBrowser, both reachable from here — without these a
+     light Lab theme renders dark patches from the VS Code fallbacks. */
+  --vscode-foreground: var(--jp-ui-font-color1);
+  --vscode-descriptionForeground: var(--jp-ui-font-color2);
+  --vscode-focusBorder: var(--jp-brand-color1);
+  --vscode-panel-border: var(--jp-border-color1);
+  --vscode-input-background: var(--jp-layout-color1);
+  --vscode-input-foreground: var(--jp-ui-font-color0);
+  --vscode-input-border: var(--jp-border-color1);
 }
 .mv-file-viewer-error {
   padding: 2em;
