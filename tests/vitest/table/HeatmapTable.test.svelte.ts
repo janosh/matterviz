@@ -1775,6 +1775,8 @@ describe(`HeatmapTable`, () => {
       { desc: `commas`, val: `hello, world`, expected: `"hello, world"` },
       { desc: `double quotes`, val: `say "hi"`, expected: `"say ""hi"""` },
       { desc: `newlines`, val: `line1\nline2`, expected: `"line1\nline2"` },
+      // a bare CR is a record separator to most readers, so it must be quoted too
+      { desc: `carriage returns`, val: `line1\rline2`, expected: `"line1\rline2"` },
     ])(`CSV quoting for $desc`, async ({ val, expected }) => {
       const text = await export_csv_text({
         data: [{ Name: val }],
