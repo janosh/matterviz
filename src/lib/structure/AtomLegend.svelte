@@ -647,6 +647,7 @@
     padding: 0.25rem 0.4rem;
     border: none;
     box-sizing: border-box;
+    color: inherit;
   }
   .remap-search:focus {
     outline: none;
@@ -672,6 +673,7 @@
   .remap-option.reset {
     background: var(--surface-bg-hover, rgba(128, 128, 128, 0.1));
     font-style: italic;
+    color: inherit;
   }
 
   /* Radius Control Styles */
@@ -789,12 +791,12 @@
     font-size: 0.85rem;
   }
   .mode-option:first-child {
-    border-top-left-radius: var(--border-radius, 3pt);
-    border-top-right-radius: var(--border-radius, 3pt);
+    border-top-left-radius: var(--legend-menu-border-radius, 4px);
+    border-top-right-radius: var(--legend-menu-border-radius, 4px);
   }
   .mode-option:last-child {
-    border-bottom-left-radius: var(--border-radius, 3pt);
-    border-bottom-right-radius: var(--border-radius, 3pt);
+    border-bottom-left-radius: var(--legend-menu-border-radius, 4px);
+    border-bottom-right-radius: var(--legend-menu-border-radius, 4px);
   }
   .mode-option:hover:not(.disabled) {
     background: var(--pane-btn-bg-hover, rgba(128, 128, 128, 0.1));

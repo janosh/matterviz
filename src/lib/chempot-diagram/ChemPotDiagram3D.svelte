@@ -1744,15 +1744,10 @@
   // .canvas-clip also holds overlay chrome. Controls and panes own their own double-click, but
   // passive overlays (hover tooltip, color bar) sit over the canvas and must not swallow the
   // reset. `closest` because a click on a button's label reports the child as the target.
-  const handle_dblclick = (event: MouseEvent): void => {
-    const target = event.target
-    if (
-      target instanceof Element &&
-      target.closest(`button, input, select, .draggable-pane`)
-    ) {
-      return
-    }
-    reset_camera_view()
+  const handle_dblclick = ({ target }: MouseEvent): void => {
+    const on_chrome =
+      target instanceof Element && target.closest(`button, input, select, .draggable-pane`)
+    if (!on_chrome) reset_camera_view()
   }
 
   function set_projection_axis(axis_idx: number, element: string): void {

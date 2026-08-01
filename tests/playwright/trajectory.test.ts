@@ -558,12 +558,9 @@ test.describe(`Trajectory Component`, () => {
       // sampled, and both panes have to exist before either can be measured.
       await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30000 })
 
-      // A chat-sidebar-sized card: wider than it is tall, so the old aspect-ratio
-      // rule left it side by side with two ~240px panes and an unreadable plot.
-      // 500px is what such a card really measures - .trajectory's min-height floor
-      // outranks the host's inline height.
-      // minHeight goes too, else .trajectory's 500px floor outranks the height
-      // asked for here (which is exactly what it does to Hive's chat card)
+      // 500px tall is what a chat sidebar card really measures, and minHeight has
+      // to go for any height below that to stick: .trajectory's own 500px floor
+      // outranks an inline height, exactly as it does to Hive's card.
       const set_size = (width: number, height = 500) =>
         trajectory.evaluate((el: HTMLElement, size) => Object.assign(el.style, size), {
           width: `${width}px`,
@@ -600,10 +597,9 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory).not.toHaveClass(/vertical/)
       expect(await pane_divider()).toMatch(/ 1px 0px 0px 0px$/) // hairline to the right
 
-      // This viewer's controls bar is ~32px the panes never get, so at 380px tall
-      // the rows stacking would leave (174px) fall under the readable minimum and
-      // it stays side by side. Measuring the wrapper, whose 190px rows clear that
-      // minimum, would stack it instead.
+      // This viewer's controls bar takes ~32px the panes never get. At 380px tall
+      // that leaves 174px rows, under the readable minimum, so it stays side by
+      // side. Measuring the wrapper would see 190px rows and stack it instead.
       await set_size(520, 380)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
     })

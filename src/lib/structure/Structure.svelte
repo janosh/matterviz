@@ -355,6 +355,20 @@
   > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
+  // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
+  // them straight to the MeasureMode/BondEditMode props.
+  const MEASURE_MODES = [
+    { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
+    { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+    { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 },
+    { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
+    { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
+  ] as const
+  const BOND_EDIT_MODES = [
+    { mode: `add`, label: `Add`, title: `Add: click two atoms` },
+    { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
+  ] as const
+
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
@@ -1915,7 +1929,7 @@
           {/if}
           {#if measure_menu_open}
             <div class="view-mode-dropdown">
-              {#each [{ mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 }, { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 }, { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 }, { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 }, { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 }] as const as { mode, icon, label, scale } (mode)}
+              {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
                 <button
                   class="view-mode-option"
                   class:selected={measure_mode === mode}
@@ -2037,7 +2051,7 @@
               </label>
             {/if}
             <div class="bond-edit-mode-toggle">
-              {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
+              {#each BOND_EDIT_MODES as { mode, label, title } (mode)}
                 <button
                   type="button"
                   class:selected={bond_edit_mode === mode}

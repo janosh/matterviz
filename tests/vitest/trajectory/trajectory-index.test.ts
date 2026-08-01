@@ -309,9 +309,9 @@ describe(`get_trajectory_stats`, () => {
 })
 
 test.each([
-  // A chat sidebar card is wider than it is tall yet still too narrow to split
-  // side by side. Heights here are 500 because that is what such a card really
-  // measures: .trajectory's min-height floor outranks the host's inline height.
+  // Too narrow for 320px side-by-side panes, so these stack whatever their
+  // shape. 500 is the real height of a chat sidebar card: .trajectory's
+  // min-height floor outranks the host's inline height.
   [`chat sidebar card`, 490, 500, `vertical`],
   [`portrait`, 400, 800, `vertical`],
   [`square`, 600, 600, `vertical`],

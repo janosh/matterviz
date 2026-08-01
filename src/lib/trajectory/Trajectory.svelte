@@ -1475,7 +1475,7 @@
         <Structure
           structure={current_structure}
           allow_file_drop={false}
-          style="height: 100%; min-height: 0; border-radius: 0"
+          style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
           {...{
             show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
             ...structure_props,
@@ -1607,9 +1607,9 @@
       background: var(--traj-bg-fullscreen, var(--traj-bg, var(--surface-bg)));
       overflow: hidden;
     }
-    /* Hairline between the panes, drawn as a shadow so the 1px cannot nudge
-       either pane's layout. The structure paints above the plot (z-index 3), so
-       its shadow lands on top of the plot's background rather than under it. */
+    /* Equal tracks, plus a hairline between them drawn as a shadow so the 1px
+       cannot nudge either pane's layout. The structure paints above the plot
+       (z-index 3), so its shadow lands on top of the plot's background. */
     &.horizontal .content-area {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr);
