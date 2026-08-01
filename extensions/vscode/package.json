@@ -346,7 +346,8 @@
             "element",
             "coordination",
             "wyckoff",
-            "selective_dynamics"
+            "selective_dynamics",
+            "property"
           ]
         },
         "matterviz.structure.atom_color_scale": {

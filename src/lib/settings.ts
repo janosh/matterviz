@@ -66,6 +66,7 @@ export const ATOM_COLOR_MODE_OPTIONS = [
   `coordination`,
   `wyckoff`,
   `selective_dynamics`,
+  `property`,
   `custom`,
 ] as const
 export type AtomColorMode = (typeof ATOM_COLOR_MODE_OPTIONS)[number]
@@ -746,6 +747,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         coordination: `Coordination Number`,
         wyckoff: `Wyckoff Position`,
         selective_dynamics: `Selective Dynamics`,
+        property: `Site Property`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
     atom_color_scale: {

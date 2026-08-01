@@ -42,6 +42,31 @@ describe(`Trajectory Streaming`, () => {
     return frames.join(`\n`)
   }
 
+  // Distinct per (frame, atom) so a channel written to the wrong flat offset shows up
+  const charge_of = (frame_idx: number, atom_idx: number): number => frame_idx + atom_idx / 10
+  const velocity_of = (frame_idx: number, atom_idx: number): number[] => [
+    frame_idx,
+    atom_idx,
+    frame_idx * atom_idx,
+  ]
+
+  // extXYZ carrying per-atom charge + velocity columns, for position-stream channels
+  const create_channel_xyz = (num_frames: number, atoms_per_frame: number): string =>
+    Array.from({ length: num_frames }, (_, frame_idx) =>
+      [
+        `${atoms_per_frame}`,
+        `Properties=species:S:1:pos:R:3:charge:R:1:velocity:R:3 frame=${frame_idx}`,
+        ...Array.from(
+          { length: atoms_per_frame },
+          (_unused, atom_idx) =>
+            `H ${atom_idx * 0.1} ${frame_idx * 0.1} 0 ${charge_of(frame_idx, atom_idx)} ${velocity_of(
+              frame_idx,
+              atom_idx,
+            ).join(` `)}`,
+        ),
+      ].join(`\n`),
+    ).join(`\n`)
+
   // Helper to create synthetic ASE trajectory data (minimal valid structure).
   // `extra_fields` merge into every frame's JSON header, for cases that turn on
   // which section a scalar was written to.
@@ -306,6 +331,86 @@ describe(`Trajectory Streaming`, () => {
       await expect(
         loader.stream_positions(create_synthetic_xyz(100, 3), { max_bytes: 512 }),
       ).rejects.toThrow(/over the 512 byte budget\. Use frame_stride >=/)
+    })
+
+    // Per-atom channels ride along with positions in the same frame-major layout, so
+    // whole-trajectory analyses can see velocities/charges without re-decoding frames
+    it(`collects opt-in scalar and vector channels`, async () => {
+      const stream = await new TrajFrameReader(`channels.extxyz`).stream_positions(
+        create_channel_xyz(3, 2),
+        { scalar_keys: [`charge`], vector_keys: [`velocity`] },
+      )
+
+      expect(stream.n_frames).toBe(3)
+      expect(stream.n_atoms).toBe(2)
+      expect(stream.scalars?.charge).toHaveLength(3 * 2)
+      expect(stream.vectors?.velocity).toHaveLength(3 * 2 * 3)
+      for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
+        for (let atom_idx = 0; atom_idx < 2; atom_idx++) {
+          const flat = frame_idx * 2 + atom_idx
+          const vec = Array.from(
+            (stream.vectors?.velocity ?? []).slice(flat * 3, flat * 3 + 3),
+          )
+          expect(stream.scalars?.charge[flat]).toBeCloseTo(charge_of(frame_idx, atom_idx))
+          expect(vec).toEqual(velocity_of(frame_idx, atom_idx))
+        }
+      }
+    })
+
+    it(`omits the channel maps when no keys are requested`, async () => {
+      const stream = await new TrajFrameReader(`channels.extxyz`).stream_positions(
+        create_channel_xyz(2, 2),
+      )
+      expect(stream.scalars).toBeUndefined()
+      expect(stream.vectors).toBeUndefined()
+    })
+
+    // 2 frames x 2 atoms of positions alone is 96 bytes; adding one scalar and one vector
+    // channel takes it to 224, so a 128 byte budget must accept the first and reject the
+    // second. A budget that ignored channels would wave both through.
+    it(`charges the extra channels against the byte budget`, async () => {
+      const loader = new TrajFrameReader(`channels.extxyz`)
+      const data = create_channel_xyz(2, 2)
+      await expect(loader.stream_positions(data, { max_bytes: 128 })).resolves.toBeDefined()
+      await expect(
+        loader.stream_positions(data, {
+          max_bytes: 128,
+          scalar_keys: [`charge`],
+          vector_keys: [`velocity`],
+        }),
+      ).rejects.toThrow(/needs 224 bytes, over the 128 byte budget/)
+    })
+
+    // Filling NaN would leave a channel that silently goes flat mid-trajectory
+    // indistinguishable from real data, so a missing property is fatal and says where
+    it.each([
+      [`scalar`, { scalar_keys: [`charge`] }, /site 0 has no finite scalar property "charge"/],
+      [
+        `vector`,
+        { vector_keys: [`velocity`] },
+        /site 0 has no finite vec3 property "velocity"/,
+      ],
+    ])(
+      `throws when a frame is missing a requested %s channel`,
+      async (_kind, keys, pattern) => {
+        // Second frame drops the extra columns
+        const data = `${create_channel_xyz(1, 1)}\n1\nProperties=species:S:1:pos:R:3\nH 0 0 0`
+        await expect(
+          new TrajFrameReader(`channels.extxyz`).stream_positions(data, keys),
+        ).rejects.toThrow(pattern)
+        await expect(
+          new TrajFrameReader(`channels.extxyz`).stream_positions(data, keys),
+        ).rejects.toThrow(/Frame 1 /)
+      },
+    )
+
+    it(`rejects a key requested as both a scalar and a vector`, async () => {
+      await expect(
+        new TrajFrameReader(`channels.extxyz`).stream_positions(create_channel_xyz(2, 1), {
+          scalar_keys: [`velocity`],
+          vector_keys: [`velocity`],
+        }),
+      ).rejects.toThrow(/velocity requested as both a scalar and a vector channel/)
     })
 
     it(`should preserve EXTXYZ PBC in indexed loads`, async () => {

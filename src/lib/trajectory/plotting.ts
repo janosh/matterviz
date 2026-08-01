@@ -424,7 +424,7 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
 }
 
 // Helper functions
-function extract_label_and_unit(
+export function extract_label_and_unit(
   key: string,
   property_config: Record<string, TrajPropertyConfig>,
 ): { clean_label: string; unit: string; axis_group?: string } {

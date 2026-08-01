@@ -10,6 +10,10 @@
   import type { AnyStructure } from '$lib/structure'
   import { atomic_radii } from '$lib/structure'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
+  import {
+    get_colorable_property_keys,
+    sync_atom_color_mode,
+  } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
@@ -70,14 +74,20 @@
     wyckoff: `Wyckoff Position`,
   }
 
+  let colorable_property_keys = $derived(get_colorable_property_keys(structure))
+
   let show_element_legend = $derived(
     atom_color_config.mode === `element` && elements && Object.keys(elements).length > 0,
   )
   let show_property_legend = $derived(
     atom_color_config.mode !== `element` && property_colors?.colors.length,
   )
+  // Property mode has no fixed title — the key being colored by is the useful label
   let legend_title = $derived(
-    title || titles[atom_color_config.mode as keyof typeof titles] || ``,
+    title ||
+      (atom_color_config.mode === `property` && atom_color_config.property_key) ||
+      titles[atom_color_config.mode as keyof typeof titles] ||
+      ``,
   )
 
   // Dropdown state
@@ -253,18 +263,20 @@
     {#if mode_menu_open}
       <div class="mode-dropdown">
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
+          {@const disabled =
+            (value === `wyckoff` && !sym_data) ||
+            (value === `property` && colorable_property_keys.length === 0)}
           <button
             class="mode-option"
             class:selected={atom_color_config.mode === value}
-            class:disabled={value === `wyckoff` && !sym_data}
-            disabled={value === `wyckoff` && !sym_data}
+            class:disabled
+            {disabled}
+            title={value === `property` && disabled
+              ? `No per-atom properties on this structure`
+              : undefined}
             onclick={() => {
               atom_color_config.mode = value as AtomColorConfig[`mode`]
-              if (atom_color_config.mode === `wyckoff`) {
-                atom_color_config.scale_type = `categorical`
-              } else if (atom_color_config.mode === `coordination`) {
-                atom_color_config.scale_type = `continuous`
-              }
+              sync_atom_color_mode(atom_color_config, colorable_property_keys)
               mode_menu_open = false
             }}
           >

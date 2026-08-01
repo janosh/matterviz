@@ -106,6 +106,10 @@
       "types": "./dist/fermi-surface/index.d.ts",
       "default": "./dist/fermi-surface/index.js"
     },
+    "./fft": {
+      "types": "./dist/fft.d.ts",
+      "default": "./dist/fft.js"
+    },
     "./heatmap-matrix": {
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
@@ -264,6 +268,10 @@
     "./url-params": {
       "types": "./dist/url-params.d.ts",
       "default": "./dist/url-params.js"
+    },
+    "./vacf": {
+      "types": "./dist/vacf/index.d.ts",
+      "default": "./dist/vacf/index.js"
     },
     "./xrd": {
       "types": "./dist/xrd/index.d.ts",

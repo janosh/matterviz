@@ -1,11 +1,15 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
+import { rows_to_csv } from '$lib/heatmap-matrix'
+import { trajectory_property_config } from '$lib/labels'
 import { structure_to_poscar_str, structure_to_xyz_str } from '$lib/structure/export'
 import type { Site } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { zipSync } from 'fflate'
-import type { TrajectoryFrame } from './index'
+import { full_data_extractor } from './extract'
+import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from './index'
+import { extract_label_and_unit } from './plotting'
 
 // Resolve one frame by index; null when the index is out of range or the load failed.
 export type TrajectoryFrameResolver = (
@@ -78,12 +82,10 @@ export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
 // every YIELD_EVERY_FRAMES so a long export doesn't freeze the tab; awaiting a macrotask per
 // frame would instead dominate the serialization itself.
 const YIELD_EVERY_FRAMES = 16
-async function* iter_export_frames(
-  start_frame: number,
-  end_frame: number,
-  resolve_frame: TrajectoryFrameResolver,
-  on_progress?: (completed: number, total: number) => void,
-): AsyncGenerator<[frame_idx: number, frame: TrajectoryFrame]> {
+
+// Frame count of an inclusive range, throwing on anything a caller could mistake for a
+// successful short export (reversed, fractional, negative, or NaN bounds).
+function frame_range_length(start_frame: number, end_frame: number): number {
   if (
     !Number.isInteger(start_frame) ||
     !Number.isInteger(end_frame) ||
@@ -92,7 +94,16 @@ async function* iter_export_frames(
   ) {
     throw new Error(`Invalid trajectory frame range ${start_frame}-${end_frame}`)
   }
-  const total = end_frame - start_frame + 1
+  return end_frame - start_frame + 1
+}
+
+async function* iter_export_frames(
+  start_frame: number,
+  end_frame: number,
+  resolve_frame: TrajectoryFrameResolver,
+  on_progress?: (completed: number, total: number) => void,
+): AsyncGenerator<[frame_idx: number, frame: TrajectoryFrame]> {
+  const total = frame_range_length(start_frame, end_frame)
   for (let frame_idx = start_frame; frame_idx <= end_frame; frame_idx++) {
     // Same reason as serialize_frame below: a lazy resolver reading frame 3127 off disk fails
     // with an I/O or parse message that names no frame.
@@ -172,4 +183,146 @@ export async function create_poscar_frame_range_zip(
     )
   }
   return new Blob([zipSync(files)], { type: `application/zip` })
+}
+
+// === Per-frame property tables (CSV/JSON) ===
+
+// One frame's numbers: the frame index and MD step that identify it, plus every numeric
+// property the extractor (or the pre-extracted plot metadata) yielded for it.
+export interface TrajectoryPropertyRow {
+  frame: number
+  step: number
+  properties: Record<string, number>
+}
+
+export interface TrajectoryPropertyTable {
+  start_frame: number
+  end_frame: number
+  // Where the numbers came from: whole frames pulled through the resolver, or the sampled
+  // plot metadata when it happened to hold an entry for every frame in the range.
+  source: `frames` | `plot_metadata`
+  rows: TrajectoryPropertyRow[]
+}
+
+// `Step` duplicates the row's own step column, and `constant_*` are plot hints flagging
+// lattice params that never vary (always the literal 1), not measurements. The values those
+// hints refer to (`a`, `alpha`, ...) are kept: the plot drops constant series because a flat
+// line carries no information, but a data export exists precisely to hand over every number.
+// Non-finite values are dropped rather than written as `NaN`/`Infinity` text, leaving the
+// cell empty - same rule the extXYZ comment writer applies.
+const numeric_properties = (data: Record<string, unknown>): Record<string, number> => {
+  const properties: Record<string, number> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (key === `Step` || key.startsWith(`constant_`)) continue
+    if (typeof value === `number` && Number.isFinite(value)) properties[key] = value
+  }
+  return properties
+}
+
+// Rows straight off the sampled plot metadata, or null when it misses even one frame of the
+// range. Partial coverage must not silently export fewer rows than the range has frames.
+function plot_metadata_rows(
+  plot_metadata: TrajectoryMetadata[] | undefined,
+  start_frame: number,
+  end_frame: number,
+): TrajectoryPropertyRow[] | null {
+  if (!plot_metadata?.length) return null
+  const by_frame = new Map(plot_metadata.map((meta) => [meta.frame_number, meta]))
+  const rows: TrajectoryPropertyRow[] = []
+  for (let frame_idx = start_frame; frame_idx <= end_frame; frame_idx++) {
+    const meta = by_frame.get(frame_idx)
+    if (!meta) return null
+    rows.push({
+      frame: frame_idx,
+      step: meta.step,
+      properties: numeric_properties(meta.properties),
+    })
+  }
+  return rows
+}
+
+// Build a per-frame property table over an inclusive range. Prefers the already-extracted
+// plot metadata (no file reads at all), else walks the range through the resolver so an
+// indexed trajectory exports every frame rather than the handful held in memory.
+export async function collect_frame_property_rows(
+  start_frame: number,
+  end_frame: number,
+  resolve_frame: TrajectoryFrameResolver,
+  trajectory: TrajectoryType,
+  on_progress?: (completed: number, total: number) => void,
+): Promise<TrajectoryPropertyTable> {
+  const total = frame_range_length(start_frame, end_frame)
+
+  const metadata_rows = plot_metadata_rows(trajectory.plot_metadata, start_frame, end_frame)
+  if (metadata_rows) {
+    on_progress?.(total, total)
+    return { start_frame, end_frame, source: `plot_metadata`, rows: metadata_rows }
+  }
+
+  const rows: TrajectoryPropertyRow[] = []
+  for await (const [frame_idx, frame] of iter_export_frames(
+    start_frame,
+    end_frame,
+    resolve_frame,
+    on_progress,
+  )) {
+    rows.push({
+      frame: frame_idx,
+      step: frame.step,
+      properties: numeric_properties(
+        serialize_frame(frame_idx, () => full_data_extractor(frame, trajectory)),
+      ),
+    })
+  }
+  return { start_frame, end_frame, source: `frames`, rows }
+}
+
+// Union of property keys in first-seen order. A frame that failed to yield e.g. density must
+// not drop that column for every other frame (rows_to_csv only reads the first row's keys).
+const property_key_order = (rows: TrajectoryPropertyRow[]): string[] => {
+  const keys = new Set<string>()
+  for (const row of rows) for (const key of Object.keys(row.properties)) keys.add(key)
+  return [...keys]
+}
+
+const property_unit = (key: string): string =>
+  extract_label_and_unit(key, trajectory_property_config).unit
+
+// One row per frame, `frame,step` first, then every property observed anywhere in the range.
+// Each column is headed by the extractor key with its unit appended (`energy (eV)`), not by
+// the plot label, which carries markup (`F<sub>max</sub>`) and shifts with display tweaks.
+export function frame_rows_to_csv({ rows }: TrajectoryPropertyTable): string {
+  const columns = property_key_order(rows).map((key) => {
+    const unit = property_unit(key)
+    return { key, header: unit ? `${key} (${unit})` : key }
+  })
+  return rows_to_csv(
+    rows.map(({ frame, step, properties }) => {
+      const record: Record<string, number | string | null> = { frame, step }
+      for (const { key, header } of columns) record[header] = properties[key] ?? null
+      return record
+    }),
+  )
+}
+
+// Same numbers as the CSV, but keys stay bare and units move into their own map so a consumer
+// can index `row.energy` without parsing a header.
+export function frame_rows_to_json(table: TrajectoryPropertyTable): string {
+  const { start_frame, end_frame, source, rows } = table
+  const units: Record<string, string> = {}
+  for (const key of property_key_order(rows)) {
+    const unit = property_unit(key)
+    if (unit) units[key] = unit
+  }
+  return `${JSON.stringify(
+    {
+      frame_range: [start_frame, end_frame],
+      n_frames: rows.length,
+      source,
+      units,
+      rows: rows.map(({ frame, step, properties }) => ({ frame, step, ...properties })),
+    },
+    null,
+    2,
+  )}\n`
 }

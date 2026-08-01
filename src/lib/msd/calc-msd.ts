@@ -90,8 +90,9 @@ export function fit_einstein_diffusion(
 }
 
 // One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
-// `count` is the sample number including this one.
-const welford_update = (
+// `count` is the sample number including this one. Exported for $lib/vacf, which averages
+// its own per-origin samples the same way.
+export const welford_update = (
   mean: Float64Array,
   m2: Float64Array,
   idx: number,
@@ -103,12 +104,38 @@ const welford_update = (
   m2[idx] += delta * (value - mean[idx])
 }
 
+// Map each atom onto a dense element-group slot so a single pass over atoms feeds every
+// per-element curve. Callers reserve slot `labels.length` for the all-atom total.
+// Exported for $lib/vacf, which groups the same atoms for its own curves.
+export function group_atoms_by_element(elements: readonly string[]): {
+  labels: string[]
+  group_sizes: number[]
+  atom_group: Int32Array
+} {
+  const labels: string[] = []
+  const group_sizes: number[] = []
+  const label_to_group = new Map<string, number>()
+  const atom_group = Int32Array.from(elements, (label) => {
+    let group = label_to_group.get(label)
+    if (group === undefined) {
+      group = labels.length
+      label_to_group.set(label, group)
+      labels.push(label)
+      group_sizes.push(0)
+    }
+    group_sizes[group]++
+    return group
+  })
+  return { labels, group_sizes, atom_group }
+}
+
 // Accumulate minimum-image steps straight into a second flat buffer. math.unwrap_positions
 // is the same algorithm but takes Vec3[][]; inflating the flat buffer into that shape and
 // back costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x 2000 atoms,
 // measured), putting the module's own 512 MB collect budget out of reach. The kernel is
 // still math's verified min_image_displacement, driven over one reused scratch pair.
-function unwrap_flat_positions(
+// Exported for $lib/vacf, which differentiates the same unwrapped coordinates.
+export function unwrap_flat_positions(
   positions: Float64Array,
   n_frames: number,
   n_atoms: number,
@@ -241,22 +268,8 @@ export function calc_msd(input: MsdPositions, options: MsdOptions = {}): MsdResu
     fail(`origin_stride must be a positive integer, got ${origin_stride}`)
   }
 
-  // Group atoms by element so a single pass over atoms feeds every per-element curve.
-  // The total curve is the atom-count weighted combination of the element curves.
-  const labels: string[] = []
-  const group_sizes: number[] = []
-  const label_to_group = new Map<string, number>()
-  const atom_group = Int32Array.from(elements, (label) => {
-    let group = label_to_group.get(label)
-    if (group === undefined) {
-      group = labels.length
-      label_to_group.set(label, group)
-      labels.push(label)
-      group_sizes.push(0)
-    }
-    group_sizes[group]++
-    return group
-  })
+  // The total curve is the atom-count weighted combination of the element curves
+  const { labels, group_sizes, atom_group } = group_atoms_by_element(elements)
   const n_groups = labels.length
 
   // Per-lag Welford accumulators over time origins. The naive sum/sum-of-squares form

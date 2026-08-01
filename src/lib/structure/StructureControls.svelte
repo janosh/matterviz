@@ -26,7 +26,11 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { structure_has_selective_dynamics } from '$lib/structure/atom-properties'
+  import {
+    get_colorable_property_keys,
+    structure_has_selective_dynamics,
+    sync_atom_color_mode,
+  } from '$lib/structure/atom-properties'
   import type { DisplacementSummary } from '$lib/structure/measure'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
@@ -156,21 +160,16 @@
     if (atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0])
       color_scale_selected = [atom_color_config.scale]
   })
-  // Auto-set scale_type based on mode
-  $effect(() => {
-    if (
-      atom_color_config.mode === `wyckoff` ||
-      atom_color_config.mode === `selective_dynamics`
-    ) {
-      atom_color_config.scale_type = `categorical`
-    } else if (atom_color_config.mode === `coordination`) {
-      atom_color_config.scale_type = `continuous`
-    }
-  })
-
   // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
   let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
+
+  // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
+  // structures whose parser produced no extra columns, in which case the mode is disabled.
+  let colorable_property_keys = $derived(get_colorable_property_keys(structure))
+  // Keep scale_type and the colored-by key in step with the mode, also when the structure
+  // changes under a mode that was already selected (a stale key resets to the first one).
+  $effect(() => sync_atom_color_mode(atom_color_config, colorable_property_keys))
 
   // Zone-axis camera: [uvw] is a direct-lattice direction, (hkl) a reciprocal one, so both
   // need a lattice — molecules have no crystallographic directions to look down.
@@ -728,6 +727,7 @@
       atom_color_config.mode = DEFAULTS.structure.atom_color_mode
       atom_color_config.scale = DEFAULTS.structure.atom_color_scale
       atom_color_config.scale_type = DEFAULTS.structure.atom_color_scale_type
+      delete atom_color_config.property_key
       color_scale_selected = [DEFAULTS.structure.atom_color_scale]
     }}
   >
@@ -781,11 +781,28 @@
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
           {@const disabled =
             (value === `wyckoff` && !sym_data) ||
-            (value === `selective_dynamics` && !has_selective_dynamics)}
-          <option {value} {disabled}>{label}</option>
+            (value === `selective_dynamics` && !has_selective_dynamics) ||
+            (value === `property` && colorable_property_keys.length === 0)}
+          <option
+            {value}
+            {disabled}
+            title={value === `property` && disabled
+              ? `No per-atom properties on this structure — load a file that carries extra columns (extXYZ Properties=..., LAMMPS dump)`
+              : undefined}>{label}</option
+          >
         {/each}
       </select>
     </label>
+    {#if atom_color_config.mode === `property` && colorable_property_keys.length > 0}
+      <label {@attach tooltip({ content: `Per-atom property to map onto the color scale` })}>
+        Property
+        <select bind:value={atom_color_config.property_key}>
+          {#each colorable_property_keys as key (key)}
+            <option value={key}>{key}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     {#if atom_color_config.mode !== `element`}
       <label
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}

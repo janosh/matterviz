@@ -188,8 +188,35 @@
       ])
     }
 
-    // Energy/Forces sections (only for regular trajectories with multiple frames)
-    if (!trajectory.is_indexed && trajectory.frames.length > 1) {
+    // Aggregates over the run. An indexed trajectory keeps only a handful of frames in memory,
+    // so a min/max over `frames` there would describe the start of the run as the whole run.
+    // Its pre-extracted (but sampled) plot_metadata is the only honest source — which is why
+    // every value derived from it is labelled with the sample count below.
+    const frames_in_memory = trajectory.frames?.length ?? 0
+    const has_all_frames = frames_in_memory > 1 && frames_in_memory >= total_frames
+    const sampled = has_all_frames ? null : trajectory.plot_metadata
+    const sample_count = sampled?.length ?? 0
+    const can_aggregate = total_frames > 1 && (has_all_frames || sample_count > 1)
+    const sampled_note = sampled
+      ? `Min/max over ${format_num(sample_count, `.3~s`)} sampled frames of ${format_num(
+          total_frames,
+          `.3~s`,
+        )} total, so the true extremum may lie outside this range`
+      : undefined
+
+    const aggregate_values = (prop: string): number[] =>
+      sampled
+        ? sampled.map(({ properties }) => properties[prop]).filter(is_valid_number)
+        : extract_numeric_array(trajectory.frames, prop)
+
+    const range_item = (label: string, values: number[], unit: string, key: string) => {
+      const range = format_range(values, unit, `.3~s`)
+      if (!range) return null
+      const suffix = sampled ? ` (${format_num(sample_count, `.3~s`)} sampled)` : ``
+      return safe_item(label, `${range}${suffix}`, key, sampled_note)
+    }
+
+    if (can_aggregate) {
       const range_sections = [
         {
           title: `Energy`,
@@ -209,7 +236,7 @@
         },
       ] as const
       for (const { title, prop, unit, key, current_label, range_label } of range_sections) {
-        const values = extract_numeric_array(trajectory.frames, prop)
+        const values = aggregate_values(prop)
         if (values.length <= 1) continue
         const current = displayed_frame?.metadata?.[prop]
         push_section(title, [
@@ -219,30 +246,29 @@
               `${format_num(current, `.3~s`)} ${unit}`,
               `${key}-current`,
             ),
-          safe_item(range_label, format_range(values, unit, `.3~s`), `${key}-range`),
+          range_item(range_label, values, unit, `${key}-range`),
         ])
       }
-    }
 
-    // Volume change section (only for regular trajectories)
-    if (!trajectory.is_indexed && displayed_frame?.structure && trajectory.frames.length > 1) {
-      const lattice =
-        `lattice` in displayed_frame.structure ? displayed_frame.structure.lattice : null
-      if (lattice) {
-        const volumes = trajectory.frames
-          .map(({ structure }) => `lattice` in structure && structure.lattice?.volume)
-          .filter(is_valid_number)
-          .filter((volume) => volume > 0)
+      // In-memory frames carry volume on the lattice (metadata usually omits it); sampled
+      // metadata carries it as a plain property.
+      const volumes = (
+        sampled
+          ? aggregate_values(`volume`)
+          : trajectory.frames
+              .map(({ structure }) => `lattice` in structure && structure.lattice?.volume)
+              .filter(is_valid_number)
+      ).filter((volume) => volume > 0)
 
-        if (volumes.length > 1) {
-          const vol_change =
-            (Math.max(...volumes) - Math.min(...volumes)) / Math.min(...volumes)
-          if (Math.abs(vol_change) > 0.1 && is_valid_number(vol_change)) {
-            push_section(`Volume`, [
-              safe_item(`Volume Change`, `${format_num(vol_change, `.2~%`)}`, `vol-change`),
-            ])
-          }
-        }
+      if (volumes.length > 1) {
+        const [min_volume, max_volume] = [Math.min(...volumes), Math.max(...volumes)]
+        const vol_change = (max_volume - min_volume) / min_volume
+        push_section(`Volume`, [
+          range_item(`Volume Range`, volumes, `Å³`, `volume-range`),
+          Math.abs(vol_change) > 0.1 &&
+            is_valid_number(vol_change) &&
+            safe_item(`Volume Change`, `${format_num(vol_change, `.2~%`)}`, `vol-change`),
+        ])
       }
     }
     return sections

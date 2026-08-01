@@ -21,6 +21,9 @@ export interface AtomColorConfig {
   scale?: D3InterpolateName
   scale_type: ColorScaleType
   color_fn?: (site: Site, idx: number) => number | string
+  // Site property to color by in `property` mode (OVITO's Color Coding). Vec3 values
+  // (force, velocity, ...) are reduced to their magnitude.
+  property_key?: string
 }
 
 export interface AtomPropertyColors {
@@ -374,6 +377,83 @@ export function get_selective_dynamics_colors(
   return { colors, values: categories, unique_values }
 }
 
+// Bookkeeping properties the viewer attaches to sites itself (supercell / periodic-image
+// provenance). They are numeric but carry no physics, so they stay out of the picker.
+const INTERNAL_SITE_PROPS = new Set([`orig_site_idx`, `orig_unit_cell_idx`])
+
+// Read one site property as a color-coding scalar: numbers pass through, vec3s (force,
+// velocity, ...) contribute their magnitude. null = this site has nothing colorable under
+// that key (absent, non-numeric, or non-finite).
+export function site_property_scalar(site: Site, property_key: string): number | null {
+  const value = site.properties?.[property_key]
+  if (typeof value === `number`) return Number.isFinite(value) ? value : null
+  const is_vec3 =
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((comp) => typeof comp === `number` && Number.isFinite(comp))
+  return is_vec3 ? Math.hypot(value[0], value[1], value[2]) : null
+}
+
+// Union of the site property keys that `property` color mode can actually use, i.e. those
+// carrying a finite number or vec3 on at least one site. Sorted for a stable picker order.
+export function get_colorable_property_keys(
+  structure: AnyStructure | undefined | null,
+): string[] {
+  const keys = new Set<string>()
+  for (const site of structure?.sites ?? []) {
+    for (const key of Object.keys(site.properties ?? {})) {
+      if (INTERNAL_SITE_PROPS.has(key) || keys.has(key)) continue
+      if (site_property_scalar(site, key) !== null) keys.add(key)
+    }
+  }
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
+  return [...keys].sort((key_a, key_b) => key_a.localeCompare(key_b))
+}
+
+// A mode change implies a scale type (categorical for bucketed properties, a ramp for the
+// rest) and, in `property` mode, a key to color by — without one every atom would land on
+// the same flat color. Both the controls panel and the legend's mode menu switch modes, so
+// they share this fixup instead of each re-deriving what a mode implies.
+export function sync_atom_color_mode(
+  config: Partial<AtomColorConfig>,
+  property_keys: string[],
+): void {
+  const { mode, property_key } = config
+  if (mode === `wyckoff` || mode === `selective_dynamics`) config.scale_type = `categorical`
+  else if (mode === `coordination` || mode === `property`) config.scale_type = `continuous`
+  if (mode !== `property` || property_keys.length === 0) return
+  if (!property_key || !property_keys.includes(property_key)) {
+    config.property_key = property_keys[0]
+  }
+}
+
+// Color atoms by an arbitrary per-site scalar (OVITO's Color Coding). Sites that don't
+// declare the key keep a neutral gray and land in an `unknown` legend bucket rather than
+// being pinned to one end of the ramp, and they're excluded from the min/max the ColorBar
+// shows. An empty result (no site declares the key) tells callers to fall back.
+export function get_site_property_colors(
+  structure: AnyStructure,
+  property_key: string,
+  scale = DEFAULT_COLOR_SCALE,
+  type: ColorScaleType = `continuous`,
+): AtomPropertyColors {
+  const scalars = structure.sites.map((site) => site_property_scalar(site, property_key))
+  const present = scalars.filter((val) => val !== null)
+  if (present.length === 0) return { colors: [], values: [] }
+
+  const { colors, unique_values } = apply_color_scale(present, scale, type)
+  const stats = build_prop_colors(present, colors, unique_values)
+  if (present.length === scalars.length) return stats
+
+  // Re-expand the ramp over all sites, gray-filling the ones that had nothing to color by
+  let present_idx = 0
+  return {
+    ...stats,
+    colors: scalars.map((scalar) => (scalar === null ? GRAY : stats.colors[present_idx++])),
+    values: scalars.map((scalar) => scalar ?? `unknown`),
+  }
+}
+
 export function get_custom_colors(
   structure: AnyStructure,
   fn: (site: Site, idx: number) => number | string,
@@ -407,6 +487,9 @@ export function get_atom_colors(
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
   if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
+  if (mode === `property` && config.property_key) {
+    return get_site_property_colors(structure, config.property_key, scale, scale_type)
+  }
   if (mode === `custom` && config.color_fn) {
     return get_custom_colors(structure, config.color_fn, scale, scale_type)
   }

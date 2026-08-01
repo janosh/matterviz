@@ -433,6 +433,93 @@ describe(`Custom`, () => {
   })
 })
 
+// OVITO-style Color Coding: map an arbitrary per-site scalar (or a vec3's magnitude)
+// onto the color scale
+describe(`Site property coloring`, () => {
+  const with_props = (props: (Record<string, unknown> | undefined)[]): Crystal => {
+    const structure = make_struct(props.map((_unused, idx) => ({ xyz: [idx, 0, 0] })))
+    for (const [idx, properties] of props.entries()) {
+      if (properties) structure.sites[idx].properties = properties
+    }
+    return structure
+  }
+
+  test(`colors by a numeric key and reports its range`, () => {
+    const structure = with_props([{ charge: -0.5 }, { charge: 1.5 }, { charge: 0.5 }])
+    const result = ap.get_site_property_colors(structure, `charge`)
+    expect(result.values).toEqual([-0.5, 1.5, 0.5])
+    expect([result.min_value, result.max_value]).toEqual([-0.5, 1.5])
+    expect(new Set(result.colors).size).toBe(3)
+  })
+
+  test(`uses the magnitude of a vec3 property`, () => {
+    const structure = with_props([
+      { velocity: [3, 4, 0] },
+      { velocity: [0, 0, 1] },
+      { velocity: [1, 2, 2] },
+    ])
+    const result = ap.get_site_property_colors(structure, `velocity`)
+    expect(result.values).toEqual([5, 1, 3])
+    expect([result.min_value, result.max_value]).toEqual([1, 5])
+  })
+
+  test(`grays out sites missing the property and keeps them out of the range`, () => {
+    const structure = with_props([{ charge: 2 }, {}, { charge: 4 }, { charge: `n/a` }])
+    const result = ap.get_site_property_colors(structure, `charge`)
+    expect(result.values).toEqual([2, `unknown`, 4, `unknown`])
+    expect([result.min_value, result.max_value]).toEqual([2, 4])
+    expect(result.colors[1]).toBe(`#808080`)
+    expect(result.colors[3]).toBe(`#808080`)
+  })
+
+  test(`returns empty when no site declares the key, so callers can fall back`, () => {
+    const result = ap.get_site_property_colors(with_props([{ charge: 1 }]), `velocity`)
+    expect(result).toEqual({ colors: [], values: [] })
+  })
+
+  test.each([
+    [`numbers and vec3s`, { charge: -1, velocity: [1, 0, 0] }, [`charge`, `velocity`]],
+    [`skips non-numeric`, { tag: `core`, frozen: true, charge: 1 }, [`charge`]],
+    [`skips non-finite`, { charge: NaN, c_pe: 2 }, [`c_pe`]],
+    [`skips vec3s with a bad component`, { velocity: [1, `x`, 0], charge: 0 }, [`charge`]],
+    // Viewer-internal provenance keys are numeric but meaningless to color by
+    [
+      `skips viewer bookkeeping`,
+      { orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 },
+      [`charge`],
+    ],
+  ])(`get_colorable_property_keys: %s`, (_desc, properties, expected) => {
+    expect(ap.get_colorable_property_keys(with_props([properties]))).toEqual(expected)
+  })
+
+  test(`unions keys across sites`, () => {
+    const structure = with_props([{ charge: 1 }, { c_pe: -2 }, undefined])
+    expect(ap.get_colorable_property_keys(structure)).toEqual([`c_pe`, `charge`])
+    expect(ap.get_colorable_property_keys(undefined)).toEqual([])
+  })
+
+  test.each([
+    [`vec3 magnitude`, `velocity`, [5, 1]],
+    [`scalar`, `charge`, [-0.5, 0.5]],
+  ])(`get_atom_colors property mode over a %s key`, (_desc, property_key, expected) => {
+    const structure = with_props([
+      { charge: -0.5, velocity: [3, 4, 0] },
+      { charge: 0.5, velocity: [0, 1, 0] },
+    ])
+    const result = ap.get_atom_colors(structure, { mode: `property`, property_key })
+    expect(result.values).toEqual(expected)
+    expect(result.colors).toHaveLength(2)
+  })
+
+  test(`property mode without a key yields no colors`, () => {
+    const structure = with_props([{ charge: 1 }, { charge: 2 }])
+    expect(ap.get_atom_colors(structure, { mode: `property` })).toEqual({
+      colors: [],
+      values: [],
+    })
+  })
+})
+
 describe(`get_atom_colors`, () => {
   const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
 

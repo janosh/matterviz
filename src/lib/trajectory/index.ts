@@ -7,6 +7,7 @@ import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
+export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'
 export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
@@ -16,8 +17,18 @@ export {
   full_data_extractor,
   structural_data_extractor,
 } from './extract'
-export { create_poscar_frame_range_zip, serialize_extxyz_frame_range } from './file-export'
-export type { TrajectoryFrameResolver } from './file-export'
+export {
+  collect_frame_property_rows,
+  create_poscar_frame_range_zip,
+  frame_rows_to_csv,
+  frame_rows_to_json,
+  serialize_extxyz_frame_range,
+} from './file-export'
+export type {
+  TrajectoryFrameResolver,
+  TrajectoryPropertyRow,
+  TrajectoryPropertyTable,
+} from './file-export'
 export {
   available_x_quantities,
   build_x_map,
@@ -38,6 +49,9 @@ export type {
 } from './plotting'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
+
+// Tabs of TrajectoryDataInspectorPane: per-frame scalars vs per-atom rows
+export type TrajectoryInspectorTab = `frames` | `atoms`
 export type { AtomTypeMapping } from './types'
 
 // Debounce for on-demand frame loads while scrubbing: skips fetches for steps
@@ -163,6 +177,11 @@ export interface TrajectoryPositionStream {
   frame_stride: number
   // MD step number of each collected frame, in collection order
   steps: number[]
+  // Opt-in per-atom channels, laid out parallel to `positions` and keyed by site property
+  // name: scalars[key][frame * n_atoms + atom] and
+  // vectors[key][(frame * n_atoms + atom) * 3 + axis]. Undefined when none were requested.
+  scalars?: Record<string, Float64Array>
+  vectors?: Record<string, Float64Array>
 }
 
 export interface PositionStreamOptions {
@@ -171,6 +190,12 @@ export interface PositionStreamOptions {
   // Hard ceiling on the allocated position buffer; the sweep throws (with the stride
   // that would fit) rather than attempting a multi-GB allocation.
   max_bytes?: number
+  // Per-atom site properties to collect alongside positions: scalar_keys for numbers
+  // (`charge`, `c_pe`), vector_keys for vec3s (`velocity`, `force`). Every collected frame
+  // must carry them on every site — a frame that doesn't throws rather than padding NaN.
+  // Both count against `max_bytes`.
+  scalar_keys?: string[]
+  vector_keys?: string[]
 }
 
 export interface FrameLoader {

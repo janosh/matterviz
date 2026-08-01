@@ -23,6 +23,27 @@ export const POS_COL_VARIANTS = [
   { keys: [`x`, `y`, `z`], scaled: false, unwrapped: false },
 ] as const
 
+// Dump column triples that become a single vec3 site property. `force` and `velocity` are
+// the names the structure viewer's site-vector layers look for (see VECTOR_KEY_PREFIXES).
+const LAMMPS_VECTOR_GROUPS = [
+  { key: `velocity`, col_names: [`vx`, `vy`, `vz`] },
+  { key: `force`, col_names: [`fx`, `fy`, `fz`] },
+] as const
+
+// Columns never passed through as scalar site properties: coordinates in any spelling (they
+// become the positions), `element` (it becomes the species) and the vx/fx triples, which
+// LAMMPS_VECTOR_GROUPS regroups into vec3s.
+const NON_SCALAR_COLS: ReadonlySet<string> = new Set([
+  ...POS_COL_VARIANTS.flatMap(({ keys }) => keys),
+  ...LAMMPS_VECTOR_GROUPS.flatMap(({ col_names }) => col_names),
+  `element`,
+])
+
+// Dump columns renamed on the way to site properties. Everything else keeps its dump name
+// (`c_pe`, `v_myvar`, `id`, `type`, `mass`, ...) so compute/variable outputs stay traceable
+// to the dump command that produced them.
+const LAMMPS_COLUMN_ALIASES: Record<string, string> = { q: `charge` }
+
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
 // Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
@@ -130,9 +151,22 @@ export function parse_lammps_trajectory(
       continue
     }
 
+    // Columns not consumed as coordinates or as the element symbol become site properties:
+    // vx/vy/vz and fx/fy/fz grouped into vec3s, the rest as scalars under their dump name
+    // (aliased where LAMMPS' name is cryptic). `type` and `id` are kept as scalars too —
+    // they carry per-atom information (species grouping, atom identity) that is not
+    // recoverable from the element symbol alone.
+    const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
+      col_names.every((name) => name in col),
+    ).map(({ key, col_names }) => ({ key, indices: col_names.map((name) => col[name]) }))
+    const scalar_props = cols.flatMap((name, col_idx) =>
+      NON_SCALAR_COLS.has(name) ? [] : [{ key: LAMMPS_COLUMN_ALIASES[name] ?? name, col_idx }],
+    )
+
     // Parse atom data
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
+    const site_properties: Record<string, unknown>[] = []
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
@@ -174,17 +208,37 @@ export function parse_lammps_trajectory(
       if (!element_symbol) continue
       positions.push(xyz)
       elements.push(element_symbol)
+
+      // Non-numeric entries are dropped rather than stored as NaN, which would poison
+      // min/max color ranges and vector magnitudes downstream
+      const props: Record<string, unknown> = {}
+      for (const { key, indices } of vector_props) {
+        const vec = indices.map((col_idx) => Number(parts[col_idx]))
+        if (vec.every(Number.isFinite)) props[key] = vec
+      }
+      for (const { key, col_idx } of scalar_props) {
+        const raw = parts[col_idx]
+        if (raw === undefined || raw === ``) continue
+        const value = Number(raw)
+        if (Number.isFinite(value)) props[key] = value
+      }
+      site_properties.push(props)
     }
 
     if (positions.length === elements.length && positions.length === num_atoms) {
       const { volume } = math.calc_lattice_params(lattice_matrix)
-      frames.push(
-        create_trajectory_frame(positions, elements, lattice_matrix, pbc, timestep, {
-          volume,
-          timestep,
-          coords_unwrapped: pos_variant.unwrapped,
-        }),
+      const frame = create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        pbc,
+        timestep,
+        { volume, timestep, coords_unwrapped: pos_variant.unwrapped },
       )
+      for (const [site_idx, site] of frame.structure.sites.entries()) {
+        site.properties = { ...site.properties, ...site_properties[site_idx] }
+      }
+      frames.push(frame)
     }
   }
 

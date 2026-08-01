@@ -393,7 +393,9 @@ describe(`is_vector_key`, () => {
     [`spins_down`, true],
     [`force_`, true],
     [`magmom_`, true],
-    [`velocity`, false],
+    [`velocity`, true],
+    [`velocities`, true],
+    [`velocity_com`, true],
     [`charge`, false],
     [`energy`, false],
     [`forceful`, false],
@@ -413,6 +415,9 @@ describe(`get_all_site_vectors`, () => {
     [`spin`, [0, 0, 1]],
     [`spins`, [0, 0, -1]],
     [`force_DFT`, [1, 0, 0]],
+    // LAMMPS vx/vy/vz and extXYZ velocities land here with no further wiring
+    [`velocity`, [1.5, -2, 0]],
+    [`velocities`, [0, 3, 0]],
   ] as const)(`accepts 3D vector in %s`, (key, vec) => {
     const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
     expect(result[0]).toEqual({ key, vec: [...vec] })
@@ -491,8 +496,11 @@ describe(`get_all_site_vectors`, () => {
   test.each([
     {
       desc: `non-vector property keys ignored`,
-      props: { charge: 1, velocity: [1, 2, 3], force: [1, 0, 0] },
-      expected: [{ key: `force`, vec: [1, 0, 0] }],
+      props: { charge: 1, tag: `core`, velocity: [1, 2, 3], force: [1, 0, 0] },
+      expected: [
+        { key: `force`, vec: [1, 0, 0] },
+        { key: `velocity`, vec: [1, 2, 3] },
+      ],
     },
     {
       desc: `invalid values skipped, valid ones kept`,
@@ -588,6 +596,12 @@ describe(`get_structure_vector_keys`, () => {
       desc: `skips sites with all-invalid vector values`,
       sites: [{ force: [NaN, 0, 0], magmom: `bad` }, { force: [1, 0, 0] }],
       expected: [`force`],
+    },
+    {
+      // A LAMMPS dump with vx/vy/vz + fx/fy/fz + q gets two arrow layers; charge is not one
+      desc: `velocity is a layer, ranked after force/magmom/spin`,
+      sites: [{ velocity: [1, 0, 0], force: [0, 1, 0], charge: -0.5, spin: [0, 0, 1] }],
+      expected: [`force`, `spin`, `velocity`],
     },
   ])(`$desc`, ({ sites, expected }) => {
     expect(get_structure_vector_keys(make_structure(sites))).toEqual(expected)

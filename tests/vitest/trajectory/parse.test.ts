@@ -462,6 +462,41 @@ describe(`LAMMPS Trajectory Format`, () => {
     },
   )
 
+  // Columns beyond identity + coordinates become site properties: vx/vy/vz and fx/fy/fz
+  // grouped into the vec3 keys the viewer's arrow layers look for, q renamed to `charge`,
+  // computes/variables passed through under their dump names.
+  it(`maps remaining LAMMPS dump columns onto site properties`, async () => {
+    const content = [
+      `ITEM: TIMESTEP`,
+      `0`,
+      `ITEM: NUMBER OF ATOMS`,
+      `2`,
+      `ITEM: BOX BOUNDS pp pp pp`,
+      `0.0 10.0`,
+      `0.0 10.0`,
+      `0.0 10.0`,
+      `ITEM: ATOMS id type x y z vx vy vz fx fy fz q c_pe v_myvar`,
+      `1 1 0.0 0.0 0.0 1.0 2.0 3.0 0.1 0.2 0.3 -0.5 -3.25 7`,
+      `2 2 1.0 0.0 0.0 -1.0 -2.0 -3.0 0.4 0.5 0.6 0.5 N/A 8`,
+    ].join(`\n`)
+    const traj = await parse_trajectory_data(content, `test.lammpstrj`)
+    const [site_1, site_2] = traj.frames[0].structure.sites
+
+    expect(site_1.properties).toEqual({
+      velocity: [1, 2, 3],
+      force: [0.1, 0.2, 0.3],
+      charge: -0.5,
+      c_pe: -3.25,
+      v_myvar: 7,
+      id: 1,
+      type: 1,
+    })
+    // Non-numeric entries are skipped rather than stored as NaN
+    expect(site_2.properties).not.toHaveProperty(`c_pe`)
+    expect(site_2.properties?.velocity).toEqual([-1, -2, -3])
+    expect(site_2.properties?.type).toBe(2)
+  })
+
   it(`should reject invalid LAMMPS content`, async () => {
     const invalid_content = `This is not a LAMMPS file`
     await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow(
@@ -686,6 +721,53 @@ Si 0 0 0
       )
     },
   )
+
+  // Every declared column beyond species/pos lands on the sites, so property coloring and
+  // vector layers can read charges, velocities, per-atom computes etc. without re-parsing
+  it(`writes all declared extXYZ columns to site properties`, async () => {
+    const properties = `species:S:1:pos:R:3:forces:R:3:charge:R:1:velocities:R:3:tag:S:1:frozen:L:1`
+    const frame =
+      `2\nProperties=${properties}\n` +
+      `H 0 0 0 0.1 0.2 0.3 -0.5 1 2 3 core T\n` +
+      `O 1 0 0 0.4 0.5 0.6 1.25 -1 -2 -3 shell F`
+    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
+    const [site_h, site_o] = trajectory.frames[0].structure.sites
+
+    expect(site_h.properties).toEqual({
+      // `forces` (the declared name) is also a recognized site-vector key, so extXYZ
+      // forces now reach the arrow layers, not just frame.metadata
+      forces: [0.1, 0.2, 0.3],
+      charge: -0.5,
+      velocities: [1, 2, 3],
+      tag: `core`,
+      frozen: true,
+    })
+    expect(site_o.properties?.charge).toBe(1.25)
+    expect(site_o.properties?.velocities).toEqual([-1, -2, -3])
+    expect(site_o.properties?.frozen).toBe(false)
+    // Frame-level force stats keep working alongside the new per-site copy
+    expect(trajectory.frames[0].metadata?.forces).toEqual([
+      [0.1, 0.2, 0.3],
+      [0.4, 0.5, 0.6],
+    ])
+    expect(trajectory.frames[0].metadata?.force_max).toBeCloseTo(Math.hypot(0.4, 0.5, 0.6))
+  })
+
+  // oxfmt-ignore
+  it.each([
+    // move_mask stays owned by read_extxyz_move_flags: one `selective_dynamics` triple,
+    // no second copy under the declared name
+    [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true] }],
+    [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false] }],
+    // A column too short on the line is dropped for that atom rather than stored as NaN
+    [`charge:R:1:extra:R:1`, `H 0 0 0 0.5`, { charge: 0.5 }],
+    // Non-finite numeric tokens are dropped the same way
+    [`charge:R:1`, `H 0 0 0 not_a_number`, {}],
+  ])(`extXYZ column handling for Properties=...:%s`, async (tail, atom_line, expected) => {
+    const frame = `1\nProperties=species:S:1:pos:R:3:${tail}\n${atom_line}`
+    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `test.extxyz`)
+    expect(trajectory.frames[0].structure.sites[0].properties).toEqual(expected)
+  })
 
   it.each<[string, Record<string, number>]>([
     [`frame=5`, {}], // 'e' of frame must not match energy
