@@ -550,10 +550,10 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#auto-layout`)
 
       await trajectory.scrollIntoViewIfNeeded()
-      // Wait for trajectory controls to be visible (indicates data is loaded)
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: 30000,
-      })
+      // Wait for the plot, not the controls: controls render as soon as the
+      // trajectory loads, but the scatter only appears once plot metadata is
+      // sampled, and both panes have to exist before either can be measured.
+      await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30000 })
 
       // A chat-sidebar-sized card: wider than it is tall, so the old aspect-ratio
       // rule left it side by side with two ~240px panes and an unreadable plot.

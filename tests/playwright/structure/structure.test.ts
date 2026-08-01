@@ -270,8 +270,10 @@ test.describe(`Structure Component Tests`, () => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
 
-    let page_errors = false
-    page.once(`pageerror`, () => (page_errors = true))
+    // keep the message, not just a flag: a bare `expected false` says nothing about which
+    // error fired, and under CI's software WebGPU a lost device can surface here
+    const page_errors: string[] = []
+    page.on(`pageerror`, (error) => page_errors.push(error.message))
 
     // Test that single keys don't trigger actions or cause errors
     await page.keyboard.press(`f`)
@@ -289,7 +291,7 @@ test.describe(`Structure Component Tests`, () => {
     }
 
     // Verify no errors occurred and component still functions
-    expect(page_errors).toBe(false)
+    expect(page_errors).toEqual([])
     await expect(structure_div.locator(`canvas`)).toBeVisible()
   })
 
