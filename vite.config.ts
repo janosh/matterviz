@@ -150,6 +150,7 @@ export default defineConfig({
       `src/scripts/**`,
       `extensions/dash/**`,
       `extensions/anywidget/**`,
+      `extensions/jupyterlab/**`,
       `extensions/vscode/**`,
     ],
   },

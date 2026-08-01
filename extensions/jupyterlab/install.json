@@ -1,0 +1,5 @@
+{
+  "packageManager": "python",
+  "packageName": "matterviz-jupyterlab",
+  "uninstallInstructions": "Use your Python package manager (pip, uv, conda) to uninstall matterviz-jupyterlab"
+}

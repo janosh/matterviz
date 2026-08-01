@@ -1,0 +1,53 @@
+{
+  "name": "matterviz-jupyterlab",
+  "version": "0.4.4",
+  "description": "JupyterLab file viewer for MatterViz: open crystal structures, MD trajectories, band structures and volumetric data straight from the Lab file browser.",
+  "keywords": [
+    "crystal-structure",
+    "jupyter",
+    "jupyterlab",
+    "jupyterlab-extension",
+    "materials-science",
+    "molecular-dynamics"
+  ],
+  "homepage": "https://github.com/janosh/matterviz",
+  "license": "MIT",
+  "author": "Janosh Riebesell <janosh.riebesell@gmail.com>",
+  "repository": "https://github.com/janosh/matterviz",
+  "style": "lib/index.css",
+  "files": [
+    "lib/**/*"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "rm -rf lib data && vite build && jupyter labextension build . && cp install.json data/share/jupyter/labextensions/matterviz-jupyterlab/",
+    "build:viewer": "rm -rf lib && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@jupyterlab/application": "^4.5.10",
+    "@jupyterlab/apputils": "^4.6.10",
+    "@jupyterlab/coreutils": "^6.5.10",
+    "@jupyterlab/docregistry": "^4.5.10",
+    "@jupyterlab/ui-components": "^4.5.10",
+    "@lumino/widgets": "^2.9.0"
+  },
+  "devDependencies": {
+    "@jupyterlab/builder": "^4.5.10",
+    "@spglib/moyo-wasm": "^0.15.0",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@types/node": "^26.1.1",
+    "process": "^0.11.10",
+    "svelte": "^5.56.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  },
+  "packageManager": "pnpm@11.5.0",
+  "jupyterlab": {
+    "extension": true,
+    "outputDir": "data/share/jupyter/labextensions/matterviz-jupyterlab"
+  }
+}
