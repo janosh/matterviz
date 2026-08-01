@@ -19,13 +19,23 @@ export {
 export { create_poscar_frame_range_zip, serialize_extxyz_frame_range } from './file-export'
 export type { TrajectoryFrameResolver } from './file-export'
 export {
+  available_x_quantities,
+  build_x_map,
+  FRAME_X_MAP,
   generate_axis_labels,
   generate_axis_scale_types,
   generate_plot_series,
   generate_streaming_plot_series,
+  get_frame_step_samples,
+  get_frame_time_step,
   should_hide_plot,
 } from './plotting'
-export type { PlotSeriesOptions } from './plotting'
+export type {
+  FrameStepSamples,
+  PlotSeriesOptions,
+  TrajectoryXMap,
+  TrajectoryXQuantity,
+} from './plotting'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
 export type { AtomTypeMapping } from './types'
@@ -74,6 +84,8 @@ export interface ParseProgress {
 
 export interface TrajectoryFrame {
   structure: AnyStructure
+  // MD/ionic step recorded in the file. A LAMMPS dump written every 500 steps counts
+  // 0, 500, 1000, … so this is NOT the frame's position in the trajectory.
   step: number
   metadata?: Record<string, unknown>
 }
@@ -94,6 +106,13 @@ export interface TrajectoryMetadata {
 export interface TrajectoryType {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>
+  // Simulation time per MD step (NOT per frame), so a frame's time is step * time_step.
+  // Only set when the source records it (e.g. VASP POTIM); without it there is no time
+  // axis and consumers must fall back to step or frame numbering rather than inventing one.
+  time_step?: number
+  // Unit `time_step` is expressed in, e.g. `fs` or `ps`. Required alongside time_step:
+  // a bare number would put an unlabelled axis on the screen.
+  time_unit?: string
   // Large file streaming properties
   total_frames?: number
   indexed_frames?: FrameIndex[]

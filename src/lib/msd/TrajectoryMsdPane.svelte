@@ -19,6 +19,8 @@
     raw_data = null,
     pane_open = $bindable(false),
     result = $bindable(),
+    default_dt = null,
+    default_time_unit,
     toggle_props,
     pane_props,
     ...rest
@@ -29,12 +31,17 @@
     raw_data?: string | ArrayBuffer | null
     pane_open?: boolean
     result?: MsdResult
+    // Time between source frames as recorded in the file. When present the pane starts
+    // with a real time axis instead of lags in frames; the user can still override it.
+    default_dt?: number | null
+    default_time_unit?: string
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
   } = $props()
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting
   // every Nth frame multiplies it (see dt_collected below).
+  // Seeded from default_dt by the effect below, which also re-seeds on trajectory swap
   let dt_source = $state(1)
   let time_unit = $state(`ps`)
   let use_dt = $state(false)
@@ -79,14 +86,24 @@
   let collected_frames = $derived(Math.ceil(total_frames / safe_stride))
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
 
-  // Drop stale positions/curves whenever the underlying trajectory is swapped out
+  // Drop stale positions/curves whenever the underlying trajectory is swapped out, and
+  // re-seed the timestep from the file rather than carrying the previous one over. Seeding
+  // also keys on default_dt so a timestep that only becomes known later still lands.
   let analysed_trajectory: TrajectoryType | undefined
+  let seeded_dt: number | null | undefined
   $effect(() => {
-    if (trajectory !== analysed_trajectory) {
+    const trajectory_changed = trajectory !== analysed_trajectory
+    if (trajectory_changed) {
       analysed_trajectory = trajectory
       positions = undefined
       result = undefined
       error_msg = undefined
+    }
+    if (trajectory_changed || default_dt !== seeded_dt) {
+      seeded_dt = default_dt
+      dt_source = default_dt ?? 1
+      time_unit = default_time_unit ?? `ps`
+      use_dt = default_dt !== null
     }
   })
 

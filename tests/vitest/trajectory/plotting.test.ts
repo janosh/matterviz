@@ -1,9 +1,14 @@
 import type { DataSeries } from '$lib/plot'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
+  available_x_quantities,
+  build_x_map,
   generate_axis_labels,
   generate_axis_scale_types,
   generate_plot_series,
+  generate_streaming_plot_series,
+  get_frame_step_samples,
+  get_frame_time_step,
   should_hide_plot,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
@@ -410,6 +415,122 @@ describe(`integration and regression tests`, () => {
       expect(meta_arr).toHaveLength(3) // 3 frames in COMMON_TRAJECTORIES.multi_property
 
       expect(meta_arr?.[0]?.property_key).toBe(expected_key)
+    },
+  )
+})
+
+// A LAMMPS dump written every 500 steps records steps 0, 500, 1000 …, so plotting against
+// the frame index while labelling the axis "Step" misstates the x axis by a factor of 500.
+describe(`x axis quantity`, () => {
+  const strided_trajectory = (): TrajectoryType => ({
+    frames: [0, 500, 1000, 1500].map((step, frame_idx) =>
+      make_trajectory_frame(step, 1, { energy: -10 - frame_idx }),
+    ),
+  })
+
+  it.each([
+    { steps: [0, 1, 2, 3], time_step: undefined, expected: [`frame`] },
+    { steps: [0, 500, 1000, 1500], time_step: undefined, expected: [`frame`, `step`] },
+    { steps: [0, 500, 1000, 1500], time_step: 2, expected: [`frame`, `step`, `time`] },
+    // non-monotonic steps cannot be interpolated in either direction
+    { steps: [0, 500, 200, 1500], time_step: 2, expected: [`frame`] },
+    { steps: [7], time_step: 2, expected: [`frame`] },
+  ])(
+    `offers $expected for steps $steps with time_step $time_step`,
+    ({ steps, time_step, expected }) => {
+      const samples = { frame_numbers: steps.map((_step, idx) => idx), steps }
+      expect(available_x_quantities(samples, time_step)).toEqual(expected)
+    },
+  )
+
+  it(`plots against frame index by default`, () => {
+    const series = generate_plot_series(strided_trajectory(), test_extractor)
+    expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1, 2, 3])
+  })
+
+  it.each([
+    { quantity: `frame` as const, expected_x: [0, 1, 2, 3], label: `Frame`, unit: `` },
+    { quantity: `step` as const, expected_x: [0, 500, 1000, 1500], label: `Step`, unit: `` },
+    {
+      quantity: `time` as const,
+      expected_x: [0, 1000, 2000, 3000],
+      label: `Time`,
+      unit: `fs`,
+    },
+  ])(`plots $quantity on the x axis`, ({ quantity, expected_x, label, unit }) => {
+    const trajectory = strided_trajectory()
+    const samples = get_frame_step_samples(trajectory)
+    const x_map = build_x_map(samples, quantity, { time_step: 2, time_unit: `fs` })
+
+    expect(x_map.label).toBe(label)
+    expect(x_map.unit).toBe(unit)
+    const series = generate_plot_series(trajectory, test_extractor, { x_map })
+    expect(find_series_by_label(series, `energy`)?.x).toEqual(expected_x)
+  })
+
+  it(`falls back to frame numbering when the data cannot support the request`, () => {
+    const samples = { frame_numbers: [0, 1, 2], steps: [0, 1, 2] }
+    // no timestep recorded, and steps that merely repeat the frame index add nothing
+    const x_map = build_x_map(samples, `time`, {})
+    expect(x_map.quantity).toBe(`frame`)
+    expect(x_map.to_x(2)).toBe(2)
+  })
+
+  // Plot skimming feeds the hovered x back in to pick a frame, so to_frame must invert
+  // to_x exactly at sampled points and land on the nearest frame in between
+  it.each([`frame`, `step`, `time`] as const)(
+    `round-trips %s x values to frames`,
+    (quantity) => {
+      const samples = get_frame_step_samples(strided_trajectory())
+      const x_map = build_x_map(samples, quantity, { time_step: 2, time_unit: `fs` })
+
+      for (const frame_idx of [0, 1, 2, 3]) {
+        expect(x_map.to_frame(x_map.to_x(frame_idx))).toBe(frame_idx)
+      }
+      // a value between two frames snaps to the closer one
+      const midpoint = (x_map.to_x(1) + x_map.to_x(2)) / 2
+      expect([1, 2]).toContain(x_map.to_frame(midpoint))
+      // out-of-range values clamp instead of indexing past the ends
+      expect(x_map.to_frame(x_map.to_x(0) - 1e6)).toBe(0)
+      expect(x_map.to_frame(x_map.to_x(3) + 1e6)).toBe(3)
+    },
+  )
+
+  // An indexed trajectory only records steps at sampled frames, so intermediate frames
+  // have to be interpolated rather than dropped
+  it(`interpolates steps between sampled frames of an indexed trajectory`, () => {
+    const samples = { frame_numbers: [0, 10, 20], steps: [0, 1000, 2000] }
+    const x_map = build_x_map(samples, `step`, {})
+    expect(x_map.to_x(0)).toBe(0)
+    expect(x_map.to_x(5)).toBe(500)
+    expect(x_map.to_x(15)).toBe(1500)
+    expect(x_map.to_frame(500)).toBe(5)
+    expect(x_map.to_frame(1500)).toBe(15)
+  })
+
+  it(`maps streaming series x values through the same axis`, () => {
+    const plot_metadata = [0, 10, 20].map((frame_number) => ({
+      frame_number,
+      step: frame_number * 100,
+      properties: { energy: -10 - frame_number },
+    }))
+    const trajectory: TrajectoryType = { frames: [], plot_metadata }
+    const x_map = build_x_map(get_frame_step_samples(trajectory), `step`, {})
+
+    const series = generate_streaming_plot_series(plot_metadata, { x_map })
+    expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1000, 2000])
+  })
+
+  it.each([
+    { steps: [0, 500, 1000], time_step: 2, expected: 1000 },
+    // one dropped frame makes the spacing non-uniform, so a single dt would be a lie
+    { steps: [0, 500, 1500], time_step: 2, expected: null },
+    { steps: [0, 500, 1000], time_step: undefined, expected: null },
+  ])(
+    `derives frame timestep $expected from steps $steps`,
+    ({ steps, time_step, expected }) => {
+      const samples = { frame_numbers: steps.map((_step, idx) => idx), steps }
+      expect(get_frame_time_step(samples, time_step)).toBe(expected)
     },
   )
 })

@@ -4,7 +4,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, type IconName } from 'svelte-widgets'
   import * as io from '$lib/io'
   import { handle_and_prevent } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
@@ -33,6 +33,7 @@
     TrajectoryFrame,
     TrajectoryMetadata,
     TrajectoryType,
+    TrajectoryXQuantity,
     TrajHandlerData,
   } from './index'
   import type { TrajectoryFrameResolver } from './file-export'
@@ -51,11 +52,16 @@
     parse_trajectory_async,
   } from './parse'
   import {
+    available_x_quantities,
+    build_x_map,
     generate_axis_labels,
     generate_axis_scale_types,
     generate_plot_series,
     generate_streaming_plot_series,
+    get_frame_step_samples,
+    get_frame_time_step,
     should_hide_plot,
+    X_QUANTITY_LABELS,
   } from './plotting'
 
   type EventHandlers = {
@@ -101,6 +107,7 @@
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    x_quantity = $bindable(),
     visible_properties = $bindable(),
     ELEM_PROPERTY_LABELS,
     on_play,
@@ -157,7 +164,7 @@
       // - 'hover': controls visible on component hover (default)
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'view-mode', 'fullscreen'
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'x-axis', 'view-mode', 'fullscreen'
       show_controls?: ShowControlsProp
       // show/hide the fullscreen button
       fullscreen_toggle?: FullscreenToggleProp
@@ -176,6 +183,10 @@
       // - array: exact step indices to label
       // - undefined: no labels
       step_labels?: number | number[]
+      // what the plot's x axis counts: 'frame' (position in the trajectory), 'step' (the MD
+      // step recorded in the file) or 'time' (step x the file's timestep). Leave unset to
+      // pick the most informative one the data supports.
+      x_quantity?: TrajectoryXQuantity
       // visible properties - bindable array of property keys currently shown in the plot
       // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
       // - bindable: reflects current visibility state and can be used for external control
@@ -599,11 +610,12 @@
   // reads no dependencies leaves the effect dep-less, and Svelte permanently unlinks
   // dep-less effects - trajectory changes would then never regenerate the plot.
   $effect(() => {
-    const [traj, extractor, config, keys] = [
+    const [traj, extractor, config, keys, active_x_map] = [
       trajectory,
       data_extractor,
       extended_config,
       visible_properties,
+      x_map,
     ]
     if (syncing_visible_properties) return
     const keys_set = keys ? new Set(keys) : undefined
@@ -612,11 +624,13 @@
       plot_series = generate_streaming_plot_series(traj.plot_metadata, {
         property_config: config,
         default_visible_properties: keys_set,
+        x_map: active_x_map,
       })
     } else if (traj) {
       plot_series = generate_plot_series(traj, extractor, {
         property_config: config,
         default_visible_properties: keys_set,
+        x_map: active_x_map,
       })
     } else {
       plot_series = []
@@ -653,13 +667,37 @@
     plot_series = toggle_series_visibility(plot_series, series_idx)
   }
 
-  // Streamed trajectories plot sampled per-frame metadata, so x values are frame numbers
-  let x_axis_quantity = $derived(trajectory?.plot_metadata ? `Frame` : `Step`)
+  // Frame/step pairs backing the x axis. Eager trajectories supply every frame, indexed
+  // ones only the sampled frames their plot metadata covers.
+  let frame_step_samples = $derived(
+    trajectory ? get_frame_step_samples(trajectory) : { frame_numbers: [], steps: [] },
+  )
+  let x_quantity_options = $derived(
+    available_x_quantities(frame_step_samples, trajectory?.time_step),
+  )
+  // Until the user picks one, take the most informative axis the file supports: a
+  // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.
+  // build_x_map validates it, so x_map.quantity is the one actually in effect.
+  let chosen_x_quantity = $derived(
+    x_quantity ?? x_quantity_options[x_quantity_options.length - 1],
+  )
+  let x_map = $derived(
+    build_x_map(frame_step_samples, chosen_x_quantity, {
+      time_step: trajectory?.time_step,
+      time_unit: trajectory?.time_unit,
+    }),
+  )
+  // Time between frames, so displacement analyses report D in real units instead of
+  // asking the user to retype a timestep the file already stated
+  let frame_time_step = $derived(
+    get_frame_time_step(frame_step_samples, trajectory?.time_step),
+  )
   let x_axis = $derived({
-    label: x_axis_quantity,
+    label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
     // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
     format: `~g`,
-    ticks: step_label_positions,
+    // step_label_positions are frame indices; the axis is drawn in x units
+    ticks: step_label_positions.map(x_map.to_x),
   })
   // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
@@ -724,10 +762,11 @@
     }
   }
 
-  // Handle plot point clicks to jump to that step
+  // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
+  // time), so it has to be mapped back before it can index a frame.
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
     if (data?.x !== undefined && typeof data.x === `number`) {
-      go_to_step(Math.round(data.x))
+      go_to_step(x_map.to_frame(data.x))
     }
   }
 
@@ -1125,6 +1164,31 @@
   let scatter_controls = $state<ControlsConfig>({ open: false })
   let trajectory_export_open = $state(false)
 
+  // Analyses offered by the Graph menu. Each pane is mounted separately below (they take
+  // different props) but every menu entry is described here, so adding one is a list entry
+  // plus a mount rather than another copy of the button markup.
+  type AnalysisEntry = {
+    // matches the `hidden` control name consumers pass via show_controls
+    control_name: string
+    label: string
+    icon: IconName
+    is_open: boolean
+    toggle: () => void
+  }
+  let analysis_entries: AnalysisEntry[] = $derived([
+    {
+      control_name: `msd-pane`,
+      label: `Mean squared displacement`,
+      icon: `Graph`,
+      is_open: msd_pane_open,
+      toggle: () => (msd_pane_open = !msd_pane_open),
+    },
+  ])
+  let visible_analyses = $derived(
+    analysis_entries.filter((entry) => controls_config.visible(entry.control_name)),
+  )
+  let any_analysis_open = $derived(analysis_entries.some((entry) => entry.is_open))
+
   sync_fullscreen({
     get_wrapper: () => wrapper,
     get_fullscreen: () => fullscreen,
@@ -1142,7 +1206,7 @@
     scatter_controls.open ||
     trajectory_export_open ||
     info_pane_open ||
-    msd_pane_open}
+    any_analysis_open}
   bind:this={wrapper}
   role="button"
   tabindex="0"
@@ -1346,14 +1410,14 @@
                 pane_props={{ style: pane_max_height }}
               />
             {/if}
-            <!-- Analysis menu (MSD, …). MSD stays out of display_mode: it plots lag time,
-            not frame index, so it cannot share the step-linked scatter/histogram. -->
-            {#if trajectory && controls_config.visible(`msd-pane`)}
+            <!-- Analysis menu. These plot their own x axis (MSD plots lag time, not frame
+            index) so they cannot share the step-linked scatter/histogram display modes. -->
+            {#if trajectory && visible_analyses.length > 0}
               <div class="analysis-dropdown-wrapper">
                 <button
                   type="button"
                   class="analysis-button"
-                  class:active={analysis_menu_open || msd_pane_open}
+                  class:active={analysis_menu_open || any_analysis_open}
                   title="Analysis"
                   aria-label="Analysis"
                   aria-expanded={analysis_menu_open}
@@ -1368,37 +1432,55 @@
                 </button>
                 {#if analysis_menu_open}
                   <div class="view-mode-dropdown analysis-dropdown">
-                    <button
-                      type="button"
-                      class="view-mode-option"
-                      class:selected={msd_pane_open}
-                      title="Mean squared displacement"
-                      aria-pressed={msd_pane_open}
-                      onclick={() => {
-                        msd_pane_open = !msd_pane_open
-                        analysis_menu_open = false
-                      }}
-                    >
-                      <Icon icon="Graph" />
-                      <span>Mean squared displacement</span>
-                    </button>
+                    {#each visible_analyses as entry (entry.control_name)}
+                      <button
+                        type="button"
+                        class="view-mode-option"
+                        class:selected={entry.is_open}
+                        title={entry.label}
+                        aria-pressed={entry.is_open}
+                        onclick={() => {
+                          entry.toggle()
+                          analysis_menu_open = false
+                        }}
+                      >
+                        <Icon icon={entry.icon} />
+                        <span>{entry.label}</span>
+                      </button>
+                    {/each}
                   </div>
                 {/if}
-                <!-- Invisible toggle anchors the DraggablePane under this control;
+                <!-- Invisible toggles anchor each DraggablePane under this control;
                 the analysis menu is the real open/close affordance. -->
                 <TrajectoryMsdPane
                   {trajectory}
                   raw_data={orig_data}
                   bind:pane_open={msd_pane_open}
+                  default_dt={frame_time_step}
+                  default_time_unit={trajectory?.time_unit}
                   pane_props={{ style: pane_max_height }}
                   toggle_props={{
-                    class: `trajectory-msd-toggle-anchor`,
+                    class: `analysis-toggle-anchor`,
                     tabindex: -1,
                     'aria-hidden': `true`,
                     title: ``,
                   }}
                 />
               </div>
+            {/if}
+            <!-- X-axis quantity: only offered when the file records steps (or a timestep)
+            that say more than the frame index already does -->
+            {#if plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+              <select
+                bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
+                class="x-quantity-select"
+                title="Plot x axis"
+                aria-label="Plot x axis"
+              >
+                {#each x_quantity_options as option (option)}
+                  <option value={option}>{X_QUANTITY_LABELS[option]}</option>
+                {/each}
+              </select>
             {/if}
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
@@ -1499,7 +1581,7 @@
             {y_axis}
             {y2_axis}
             controls={scatter_controls}
-            current_x_value={current_step_idx}
+            current_x_value={x_map.to_x(current_step_idx)}
             change={plot_skimming ? handle_plot_change : undefined}
             padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
@@ -1516,7 +1598,7 @@
           >
             {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
-              {x_axis_quantity}: {Math.round(x)}<br />
+              {x_axis.label}: {format_num(x, `~g`)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
             {/snippet}
           </ScatterPlot>
@@ -1872,6 +1954,13 @@
     align-items: center;
     z-index: var(--trajectory-view-mode-z-index, 20);
   }
+  .x-quantity-select {
+    padding: 1pt 2pt;
+    font-size: 0.85em;
+    background: transparent;
+    border: var(--tooltip-border);
+    border-radius: 3pt;
+  }
   .view-mode-button,
   .analysis-button {
     display: flex;
@@ -1882,7 +1971,7 @@
     color: var(--accent-color, #4a9eff);
   }
   /* Keep DraggablePane's toggle for layout anchoring; the analysis menu owns clicks. */
-  .analysis-dropdown-wrapper :global(.trajectory-msd-toggle-anchor) {
+  .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
     position: absolute;
     inset: 0;
     width: 100%;

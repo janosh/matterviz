@@ -104,8 +104,9 @@ describe(`Trajectory`, () => {
     flushSync()
     await tick()
 
+    // the only MSD toggle is the hidden pane anchor; the menu is the real affordance
     expect(
-      target.querySelector(`.trajectory-msd-toggle:not(.trajectory-msd-toggle-anchor)`),
+      target.querySelector(`.trajectory-msd-toggle:not(.analysis-toggle-anchor)`),
     ).toBeNull()
     expect(target.querySelector(`.analysis-button`)).toBeInstanceOf(HTMLButtonElement)
 
