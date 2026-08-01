@@ -209,13 +209,17 @@ const create_error_display = (
   error: Error,
   filename: string,
 ): void => {
+  // Fall back to MatterViz theme tokens (not VS Code dark hex): Hive and other
+  // non-VS Code hosts apply --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
-    <div style="padding: 20px; text-align: center; color: var(--vscode-errorForeground, #f85149);
-                background: var(--vscode-editor-background, #1e1e1e); height: 100%;
+    <div style="padding: 20px; text-align: center;
+                background: var(--vscode-editor-background, var(--page-bg, Canvas));
+                color: var(--vscode-editor-foreground, var(--text-color, CanvasText));
+                height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0;">Failed to Parse File</h2>
-      <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 8px; max-width: 600px;">
+      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to Parse File</h2>
+      <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
@@ -232,6 +236,8 @@ export const create_display = (
   display_options?: DisplayOptions,
 ): MatterVizApp => {
   const { filename } = result
+  // Prefer VS Code tokens when present; otherwise MatterViz theme vars so Hive
+  // light mode is not stuck on the old dark hex fallbacks.
   Object.assign(container.style, {
     width: `100%`,
     height: `100%`,
@@ -240,8 +246,8 @@ export const create_display = (
     left: `0`,
     right: `0`,
     bottom: `0`,
-    background: `var(--vscode-editor-background, #1e1e1e)`,
-    color: `var(--vscode-editor-foreground, #d4d4d4)`,
+    background: `var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)))`,
+    color: `var(--vscode-editor-foreground, var(--text-color, CanvasText))`,
     overflow: `hidden`,
   })
   container.innerHTML = ``

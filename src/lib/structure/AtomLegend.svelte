@@ -636,8 +636,10 @@
     left: 50%;
     transform: translateX(-50%);
     margin-bottom: 0.4rem;
-    background: var(--surface-bg);
-    border-radius: var(--border-radius, 3pt);
+    background: var(--legend-menu-bg, var(--menu-bg));
+    color: var(--legend-menu-color, var(--menu-color));
+    border: 1px solid var(--legend-menu-border, var(--menu-border));
+    border-radius: var(--legend-menu-border-radius, 4px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   }
   .remap-search {
@@ -645,6 +647,7 @@
     padding: 0.25rem 0.4rem;
     border: none;
     box-sizing: border-box;
+    color: inherit;
   }
   .remap-search:focus {
     outline: none;
@@ -670,6 +673,7 @@
   .remap-option.reset {
     background: var(--surface-bg-hover, rgba(128, 128, 128, 0.1));
     font-style: italic;
+    color: inherit;
   }
 
   /* Radius Control Styles */
@@ -759,8 +763,10 @@
     bottom: 100%;
     right: 0;
     margin-bottom: 0.25rem;
-    background: var(--surface-bg);
-    border-radius: var(--border-radius, 3pt);
+    background: var(--legend-menu-bg, var(--menu-bg));
+    color: var(--legend-menu-color, var(--menu-color));
+    border: 1px solid var(--legend-menu-border, var(--menu-border));
+    border-radius: var(--legend-menu-border-radius, 4px);
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
@@ -776,6 +782,7 @@
     padding: 0.4rem 0.6rem;
     box-sizing: border-box;
     background: transparent;
+    color: inherit;
     border: none;
     border-radius: 0;
     text-align: left;
@@ -784,12 +791,12 @@
     font-size: 0.85rem;
   }
   .mode-option:first-child {
-    border-top-left-radius: var(--border-radius, 3pt);
-    border-top-right-radius: var(--border-radius, 3pt);
+    border-top-left-radius: var(--legend-menu-border-radius, 4px);
+    border-top-right-radius: var(--legend-menu-border-radius, 4px);
   }
   .mode-option:last-child {
-    border-bottom-left-radius: var(--border-radius, 3pt);
-    border-bottom-right-radius: var(--border-radius, 3pt);
+    border-bottom-left-radius: var(--legend-menu-border-radius, 4px);
+    border-bottom-right-radius: var(--legend-menu-border-radius, 4px);
   }
   .mode-option:hover:not(.disabled) {
     background: var(--pane-btn-bg-hover, rgba(128, 128, 128, 0.1));

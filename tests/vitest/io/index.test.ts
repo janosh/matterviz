@@ -182,41 +182,52 @@ describe(`load_from_url`, () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 
-  // content-encoding gzip: browser already decompressed the stored .gz, so the body is
-  // the inner file — text formats arrive as string, binary inner formats (.h5.gz) as
-  // ArrayBuffer that a text decode would corrupt
+  // Body already inflated (fetch transparently decoded a Content-Encoding: gzip response, the
+  // GitHub Pages way of serving a stored .gz). Text formats arrive as string, binary inner
+  // formats (.h5.gz) as ArrayBuffer that a text decode would corrupt.
   test.each([
-    [`file.xyz.gz`, `decompressed content`],
-    [`data.h5.gz`, new Uint8Array([0x89, 0x48, 0x44, 0x46]).buffer],
-  ] as const)(`content-encoding gzip body passes through: %s`, async (name, body) => {
+    [`file.xyz.gz`, `decompressed content`, `string`],
+    [`data.h5.gz`, new Uint8Array([0x89, 0x48, 0x44, 0x46]).buffer, `binary`],
+  ] as const)(`inflated gzip body passes through: %s`, async (name, body, kind) => {
     const { received_content, received_filename, received_metadata } = await load_test_url(
       `https://example.com/${name}`,
       body,
       { 'content-encoding': `gzip` },
     )
-    expect(received_content).toBe(body)
+    if (kind === `binary`) expect(received_content).toBe(body)
+    else expect(received_content).toBe(`decompressed content`)
     expect(received_filename).toBe(name.replace(/\.gz$/, ``))
     expect(received_metadata?.source_filename).toBe(name)
+    expect(mock_decompress_binary).not.toHaveBeenCalled()
   })
 
-  // No content-encoding: the .gz body is gunzipped manually, the .gz suffix stripped
-  // from the filename, and binary inner formats (.h5.gz) stay ArrayBuffer
+  // A body that still starts with the gzip magic is gunzipped here, the .gz suffix stripped
+  // from the filename, and binary inner formats (.h5.gz) stay ArrayBuffer. The header is
+  // deliberately varied: a host can send Content-Encoding: gzip for a stored .gz it ALSO
+  // transport-compressed, leaving one layer for us after fetch strips the other. Trusting the
+  // header there hands raw gzip to TextDecoder and yields mojibake.
   test.each([
-    [`file.xyz.gz`, `file.xyz`, `string`],
-    [`x.h5.gz`, `x.h5`, `binary`],
-  ] as const)(`manual gunzip: %s -> %s (%s)`, async (name, expected_name, kind) => {
-    const inner = new TextEncoder().encode(`inner bytes`).buffer
-    mock_decompress_binary.mockResolvedValue(inner)
-    const { received_content, received_filename, received_metadata } = await load_test_url(
-      `https://example.com/${name}`,
-      new ArrayBuffer(8),
-      { 'content-type': `application/octet-stream` },
-    )
-    expect(mock_decompress_binary).toHaveBeenCalledWith(new ArrayBuffer(8), `gzip`)
-    expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
-    expect(received_filename).toBe(expected_name)
-    expect(received_metadata?.source_filename).toBe(name)
-  })
+    [`file.xyz.gz`, `file.xyz`, `string`, {}],
+    [`x.h5.gz`, `x.h5`, `binary`, {}],
+    [`file.xyz.gz`, `file.xyz`, `string`, { 'content-encoding': `gzip` }],
+    [`x.h5.gz`, `x.h5`, `binary`, { 'content-encoding': `gzip` }],
+  ] as const)(
+    `gunzips a still-compressed body: %s -> %s (%s) %j`,
+    async (name, expected_name, kind, headers) => {
+      const inner = new TextEncoder().encode(`inner bytes`).buffer
+      mock_decompress_binary.mockResolvedValue(inner)
+      const gzipped = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
+      const { received_content, received_filename, received_metadata } = await load_test_url(
+        `https://example.com/${name}`,
+        gzipped,
+        { 'content-type': `application/octet-stream`, ...headers },
+      )
+      expect(mock_decompress_binary).toHaveBeenCalledWith(gzipped, `gzip`)
+      expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
+      expect(received_filename).toBe(expected_name)
+      expect(received_metadata?.source_filename).toBe(name)
+    },
+  )
 
   test(`propagates decompress errors instead of falling through to a text fetch`, async () => {
     // Once magic bytes commit to gzip, a decompress failure must throw rather than be

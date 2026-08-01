@@ -47,6 +47,10 @@ fps_range = "tuple[float, float]"
 key = "brillouin/BrillouinZone"
 doc = "3D Brillouin zone visualization."
 
+# `scene`/`camera` are bindable three.js handles for JS callers. They are useless from Python
+# and sort before most existing props, so list them here to keep them off the positional path.
+trailing_props = ["camera", "scene"]
+
 [components.ConvexHull2D]
 key = "convex-hull/ConvexHull2D"
 doc = "2D convex hull phase diagram plot."

@@ -479,28 +479,26 @@ test.describe(`Bond component`, () => {
     await run_hide_restore_cycle(page)
   })
 
-  // Fe–O dimer with atoms hidden: thick horizontal bond for gradient sampling, then the same
-  // canvas is rotated/zoomed. Bond.svelte must pass instanceColorStart/End and cylinder Y
-  // through TSL varyings (as the pre-WebGPU GLSL shader did); otherwise the bond is a solid
-  // mid-mix and left/right red means match.
-  test(`bond gradients and camera moves keep bonds rendered`, async ({ page }) => {
-    test.skip(IS_CI, `Visual bonds test times out in CI`)
+  // Dark Cs–Pb colors catch double sRGB conversion; a thick horizontal bond exposes its gradient.
+  // Matching ends mean Bond.svelte lost its instance-color or cylinder-Y TSL varyings.
+  test(`bond color-space gradients and camera moves keep bonds rendered`, async ({ page }) => {
+    test.skip(IS_CI, `Headless WebGPU device loss leaves the canvas blank`)
     const console_errors = await goto_structure_page(page)
     await page.evaluate(() => {
       const structure = {
         sites: [
           {
-            species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+            species: [{ element: `Cs`, occu: 1, oxidation_state: 0 }],
             abc: [0, 0, 0],
             xyz: [-1.2, 0, 0],
-            label: `Fe1`,
+            label: `Cs1`,
             properties: {},
           },
           {
-            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            species: [{ element: `Pb`, occu: 1, oxidation_state: 0 }],
             abc: [0, 0, 0],
             xyz: [1.2, 0, 0],
-            label: `O1`,
+            label: `Pb1`,
             properties: {},
           },
         ],
@@ -587,7 +585,13 @@ test.describe(`Bond component`, () => {
         Math.abs(halves.right.g - halves.left.g),
         Math.abs(halves.right.b - halves.left.b),
       )
-      expect(max_channel_diff).toBeGreaterThan(25)
+      expect(max_channel_diff, JSON.stringify(halves)).toBeGreaterThan(25)
+      const dimmer_endpoint_max = Math.min(
+        Math.max(halves.left.r, halves.left.g, halves.left.b),
+        Math.max(halves.right.r, halves.right.g, halves.right.b),
+      )
+      // Gradient survives double conversion; endpoint max was 124 fixed versus 52 buggy.
+      expect(dimmer_endpoint_max, JSON.stringify(halves)).toBeGreaterThan(80)
     } finally {
       await decoded_initial.dispose()
     }

@@ -121,8 +121,9 @@ plot, so starting a pan behind it must not make it vanish under the cursor -->
   .structure-popup-content {
     display: flex;
     gap: 8px;
-    background: var(--surface-bg);
-    border: 1px solid var(--border-color);
+    background: var(--structure-popup-bg, var(--menu-bg));
+    color: var(--structure-popup-color, var(--menu-color));
+    border: 1px solid var(--structure-popup-border, var(--menu-border));
     border-radius: 8px;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     overflow: hidden;

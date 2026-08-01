@@ -474,9 +474,12 @@ describe(`Structure`, () => {
     ).toBe(true)
   })
 
+  // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
+  // ordered tuple and roll the oldest pick out, so they never hit a wall worth badging.
   test.each([
     { mode: `distance`, shows_limit: true },
-    { mode: `angle`, shows_limit: true },
+    { mode: `angle`, shows_limit: false },
+    { mode: `dihedral`, shows_limit: false },
     { mode: `edit-bonds`, shows_limit: false },
     { mode: `edit-atoms`, shows_limit: false },
   ] as const)(
@@ -1017,6 +1020,40 @@ describe(`Multi-side view`, () => {
     await select_structure_layout(`3D single view`)
     expect(props.multi_view).toBe(false)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+  })
+
+  // Regression: the open panel needs a stacking context above canvas siblings,
+  // and options must remain clickable (paired light-dark ink is in CSS).
+  test(`view layout menu is layered and selectable`, async () => {
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure,
+      show_controls: `always`,
+      multi_view: false,
+    })
+    mount_structure(props)
+    await tick()
+
+    doc_query<HTMLButtonElement>(`button[aria-label^="View layout:"]`).click()
+    await tick()
+
+    const dropdown = doc_query(`.view-mode-dropdown`)
+    const dropdown_style = getComputedStyle(dropdown)
+    expect(dropdown_style.pointerEvents).toBe(`auto`)
+    expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
+
+    const control = doc_query(`.view-mode-control`)
+    expect(Number(getComputedStyle(control).zIndex)).toBeGreaterThan(0)
+
+    const grid_option = Array.from(
+      dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+    ).find((button) => button.textContent?.trim() === `3D 2×2 grid`)
+    if (!grid_option) throw new Error(`Missing structure layout option: 3D 2×2 grid`)
+    grid_option.click()
+    flushSync()
+    await tick()
+
+    expect(props.multi_view).toBe(true)
+    expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 
   test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {

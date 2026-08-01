@@ -14,6 +14,7 @@ import {
 } from '$lib/structure/polyhedra'
 import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
+import { Color } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../setup'
 
@@ -713,15 +714,15 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(buffers.edge_positions).toHaveLength(24 * 6)
   })
 
-  test(`uniform vertex color fills the whole color buffer`, () => {
-    const buffers = merge_polyhedra_buffers(
+  test(`fills the color buffer with linear CSS color`, () => {
+    // same oracle as geometry.test.ts: three's own conversion, not numbers pinned from a run
+    const expected_rgb = new Color(`#57178f`).toArray()
+    const { colors } = merge_polyhedra_buffers(
       [poly_from_hull(octahedron_points)],
-      () => `#00ff00`,
+      () => `#57178f`,
     )
-    for (let idx = 0; idx < buffers.colors.length; idx += 3) {
-      expect([buffers.colors[idx], buffers.colors[idx + 1], buffers.colors[idx + 2]]).toEqual([
-        0, 1, 0,
-      ])
+    for (let idx = 0; idx < colors.length; idx++) {
+      expect(colors[idx]).toBeCloseTo(expected_rgb[idx % 3], 6)
     }
   })
 

@@ -51,6 +51,88 @@ export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
   return { ...overrides, offset: { left: 5, bottom: 5, ...overrides.offset } }
 }
 
+// Fit must stay reachable: it becomes the zoom-out floor and lifts a too-low ceiling.
+// Infinity (OrbitControls' own default) rather than undefined, which would clamp to NaN.
+export const get_orthographic_zoom_bounds = (
+  fit_zoom: number,
+  min_zoom?: number,
+  max_zoom?: number,
+): { min_zoom: number; max_zoom: number } => ({
+  min_zoom: Math.min(min_zoom ?? Number.POSITIVE_INFINITY, fit_zoom),
+  max_zoom: max_zoom && max_zoom > 0 ? Math.max(max_zoom, fit_zoom) : Number.POSITIVE_INFINITY,
+})
+
+// Preserve zoom relative to fit, clamped so the fitted structure stays reachable.
+export const resize_orthographic_zoom = (
+  current_zoom: number | undefined,
+  previous_fit_zoom: number,
+  next_fit_zoom: number,
+  min_zoom?: number,
+  max_zoom?: number,
+): number => {
+  const keeps_zoom = current_zoom !== undefined && current_zoom > 0 && previous_fit_zoom > 0
+  // An unchanged fit returns the zoom untouched rather than multiplying by one: (z * f) / f
+  // lands an ulp away from z for some values, and callers (bounds-tracking effects call this
+  // with the fit unchanged) write the result straight back into reactive state.
+  const resized_zoom = !keeps_zoom
+    ? next_fit_zoom
+    : previous_fit_zoom === next_fit_zoom
+      ? current_zoom
+      : (current_zoom * next_fit_zoom) / previous_fit_zoom
+  const bounds = get_orthographic_zoom_bounds(next_fit_zoom, min_zoom, max_zoom)
+  return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
+}
+
+// Orthographic zoom that follows the auto-fit across resizes but yields to the user's wheel.
+// Callers assign `.zoom` when a gesture ends so the zoom the user landed on becomes the
+// baseline the next resize rescales from.
+export function create_orthographic_zoom(opts: {
+  fit_zoom: () => number
+  min_zoom: () => number | undefined
+  max_zoom: () => number | undefined
+  // False while the container has no size. Required, not optional: every caller needs it, and
+  // forgetting it silently halves a user's zoom when a hidden tab or fullscreen transition
+  // reports 0 — the placeholder fit inflates the zoom into the clamp, and the return trip
+  // cannot recover it.
+  measured: () => boolean
+}) {
+  let zoom = $state(untrack(opts.fit_zoom))
+  let previous_fit_zoom = 0
+  const bounds = $derived(
+    get_orthographic_zoom_bounds(opts.fit_zoom(), opts.min_zoom(), opts.max_zoom()),
+  )
+  // Scalars, not the bounds object: callers spread these into Threlte, which re-applies every
+  // prop when any one changes identity — including `target`, which would snap a panned view
+  // back to the scene center on each resize.
+  const min_zoom = $derived(bounds.min_zoom)
+  const max_zoom = $derived(bounds.max_zoom)
+  $effect(() => {
+    if (!opts.measured()) return
+    // Track fit + limits so a raised ceiling re-clamps now, not at the next gesture.
+    const next_fit = opts.fit_zoom()
+    const next_min = opts.min_zoom()
+    const next_max = opts.max_zoom()
+    untrack(() => {
+      zoom = resize_orthographic_zoom(zoom, previous_fit_zoom, next_fit, next_min, next_max)
+      previous_fit_zoom = next_fit
+    })
+  })
+  return {
+    get zoom() {
+      return zoom
+    },
+    set zoom(value: number) {
+      zoom = value
+    },
+    get min_zoom() {
+      return min_zoom
+    },
+    get max_zoom() {
+      return max_zoom
+    },
+  }
+}
+
 // Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection
@@ -65,6 +147,8 @@ export function build_orbit_props(opts: {
   rotation_damping: number
   set_camera_is_moving?: (moving: boolean) => void
   onstart_extra?: () => void
+  // runs when a gesture settles (e.g. BZ/Fermi capture the zoom the user wheeled to)
+  onend_extra?: () => void
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
   return {
@@ -90,7 +174,10 @@ export function build_orbit_props(opts: {
       opts.set_camera_is_moving?.(true)
       opts.onstart_extra?.()
     },
-    onend: () => opts.set_camera_is_moving?.(false),
+    onend: () => {
+      opts.set_camera_is_moving?.(false)
+      opts.onend_extra?.()
+    },
   }
 }
 

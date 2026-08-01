@@ -833,8 +833,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: var(--vscode-editor-background, #1e1e1e);
-    color: var(--vscode-editor-foreground, #d4d4d4);
+    background: var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)));
+    color: var(--vscode-editor-foreground, var(--text-color, CanvasText));
   }
   .json-browser.dragging {
     user-select: none;

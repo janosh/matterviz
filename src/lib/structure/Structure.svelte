@@ -355,6 +355,20 @@
   > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
+  // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
+  // them straight to the MeasureMode/BondEditMode props.
+  const MEASURE_MODES = [
+    { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
+    { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
+    { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 },
+    { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
+    { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
+  ] as const
+  const BOND_EDIT_MODES = [
+    { mode: `add`, label: `Add`, title: `Add: click two atoms` },
+    { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
+  ] as const
+
   // Initialize models from incoming props; mutations come from UI controls; we mirror into local dicts (NOTE only doing shallow merge)
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
@@ -801,8 +815,10 @@
   let is_measure_selection_mode = $derived(
     measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral`,
   )
+  // Only distance refuses further picks at its cap; angle/dihedral roll their fixed-arity
+  // window instead, so badging them as "full" the moment a measurement completes is noise.
   let show_measure_selection_limit = $derived(
-    is_measure_selection_mode && measured_sites.length >= MAX_SELECTED_SITES,
+    measure_mode === `distance` && measured_sites.length >= MAX_SELECTED_SITES,
   )
   let show_selection_reset = $derived(
     has_bond_edits ||
@@ -1913,7 +1929,7 @@
           {/if}
           {#if measure_menu_open}
             <div class="view-mode-dropdown">
-              {#each [{ mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 }, { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 }, { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 }, { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 }, { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 }] as const as { mode, icon, label, scale } (mode)}
+              {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
                 <button
                   class="view-mode-option"
                   class:selected={measure_mode === mode}
@@ -2023,31 +2039,29 @@
         {/if}
 
         {#if measure_mode === `edit-bonds` && !measure_menu_open}
-          <div class="edit-mode-toolbar" aria-label="Bond editing controls">
-            <div class="bond-edit-toolbar">
-              {#if bond_edit_mode === `add`}
-                <label>
-                  <span>Bond order</span>
-                  <select bind:value={bond_edit_order}>
-                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                      <option value={order}>{label}</option>
-                    {/each}
-                  </select>
-                </label>
-              {/if}
-              <div class="bond-edit-mode-toggle">
-                {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
-                  <button
-                    type="button"
-                    class:selected={bond_edit_mode === mode}
-                    aria-pressed={bond_edit_mode === mode}
-                    title="{title} ({label[0]})"
-                    onclick={() => (bond_edit_mode = mode)}
-                  >
-                    {label}
-                  </button>
-                {/each}
-              </div>
+          <div class="edit-mode-toolbar bond-edit-toolbar" aria-label="Bond editing controls">
+            {#if bond_edit_mode === `add`}
+              <label>
+                <span>Bond order</span>
+                <select bind:value={bond_edit_order}>
+                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                    <option value={order}>{label}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            <div class="bond-edit-mode-toggle">
+              {#each BOND_EDIT_MODES as { mode, label, title } (mode)}
+                <button
+                  type="button"
+                  class:selected={bond_edit_mode === mode}
+                  aria-pressed={bond_edit_mode === mode}
+                  title="{title} ({label[0]})"
+                  onclick={() => (bond_edit_mode = mode)}
+                >
+                  {label}
+                </button>
+              {/each}
             </div>
             {@render undo_redo_snippet([
               {
@@ -2249,9 +2263,11 @@
       </div>
     {/if}
 
-    <div class="bottom-left">
-      {@render bottom_left?.({ structure: internal_displayed_structure })}
-    </div>
+    {#if bottom_left}
+      <div class="bottom-left">
+        {@render bottom_left({ structure: internal_displayed_structure })}
+      </div>
+    {/if}
 
     {#if toast_msg}
       <div class="edit-toast">{toast_msg}</div>
@@ -2281,7 +2297,8 @@
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
     min-width: var(--struct-min-width, 300px);
-    border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
+    /* Square by default; opt into rounding with --struct-border-radius. */
+    border-radius: var(--struct-border-radius, 0);
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
     display: flex;
@@ -2338,18 +2355,23 @@
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
   }
-  /* Match Trajectory dropdown UI */
+  /* Match Trajectory dropdown UI: paired light-dark ink/bg so a light menu hosted
+     in a dark app does not inherit near-white --text-color onto the options. */
   .view-mode-dropdown {
     position: absolute;
     top: 115%;
     right: 0;
-    background: var(--surface-bg);
-    border-radius: var(--border-radius, 3pt);
+    z-index: var(--structure-view-mode-dropdown-z-index, 30);
+    background: var(--structure-view-mode-bg, var(--menu-bg));
+    color: var(--structure-view-mode-color, var(--menu-color));
+    border: 1px solid var(--structure-view-mode-border, var(--menu-border));
+    border-radius: var(--structure-view-mode-border-radius, 4px);
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
+    pointer-events: auto;
   }
   .view-mode-option {
     display: flex;
@@ -2359,16 +2381,21 @@
     padding: var(--trajectory-view-mode-option-padding, 5pt);
     box-sizing: border-box;
     background: transparent;
+    color: inherit;
     border-radius: 0;
     text-align: left;
     transition: background-color 0.15s ease;
+  }
+  .view-mode-option:hover,
+  .view-mode-option:focus-visible {
+    background: var(--structure-view-mode-option-hover-bg, var(--menu-option-hover-bg));
   }
   .view-mode-option:first-child {
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
   }
   .view-mode-option.selected {
-    color: var(--accent-color);
+    color: var(--accent-color, var(--menu-option-selected-color));
   }
   .view-mode-option span {
     font-weight: 500;
@@ -2382,6 +2409,7 @@
     position: relative;
     height: fit-content;
     place-self: center;
+    z-index: var(--structure-view-mode-z-index, 20);
   }
   .view-mode-control > button {
     display: flex;
@@ -2507,44 +2535,41 @@
     align-items: center;
     justify-content: center;
   }
-  .bond-edit-toolbar {
+  .edit-mode-toolbar.bond-edit-toolbar {
     --bond-edit-control-height: 1.8em;
-    display: flex;
-    align-items: center;
-    gap: 0.4em;
     font-size: 0.8em;
-  }
-  .bond-edit-mode-toggle,
-  .bond-edit-toolbar label {
-    display: flex;
-    align-items: center;
-  }
-  .bond-edit-mode-toggle {
-    gap: 0.35em;
-  }
-  .bond-edit-mode-toggle button,
-  .bond-edit-toolbar label,
-  .bond-edit-toolbar select {
-    height: var(--bond-edit-control-height);
-    line-height: 1;
-  }
-  .bond-edit-mode-toggle button {
-    min-width: 3.5em;
-    font: inherit;
-  }
-  .bond-edit-mode-toggle button.selected {
-    background: var(--accent-color, #007acc);
-    color: white;
-  }
-  .bond-edit-mode-toggle button.selected:hover {
-    background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
-  }
-  .bond-edit-toolbar label {
-    gap: 0.25em;
-  }
-  .bond-edit-toolbar select {
-    max-width: 8em;
-    font: inherit;
+    label,
+    .bond-edit-mode-toggle {
+      display: flex;
+      align-items: center;
+    }
+    label {
+      gap: 0.25em;
+    }
+    select {
+      max-width: 8em;
+      font: inherit;
+    }
+    label,
+    select,
+    .bond-edit-mode-toggle button {
+      height: var(--bond-edit-control-height);
+      line-height: 1;
+    }
+    .bond-edit-mode-toggle {
+      gap: 0.35em;
+      button {
+        min-width: 3.5em;
+        font: inherit;
+      }
+      button.selected {
+        background: var(--accent-color, #007acc);
+        color: white;
+      }
+      button.selected:hover {
+        background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
+      }
+    }
   }
   .history-count {
     position: absolute;

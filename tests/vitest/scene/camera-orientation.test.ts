@@ -1,6 +1,10 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { FlyToControls } from '$lib/scene/fly-to'
 import { create_fly_to, ease_in_out } from '$lib/scene/fly-to'
+import {
+  get_orthographic_zoom_bounds,
+  resize_orthographic_zoom,
+} from '$lib/scene/props.svelte'
 import type { ZoneAxisMode } from '$lib/scene/zone-axis'
 import {
   is_valid_zone_axis,
@@ -31,6 +35,38 @@ const DIRECTION_TOL = 1e-12
 
 const dot_3d = (vec_a: Vec3, vec_b: Vec3): number =>
   vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
+
+test.each([
+  [`2x user zoom survives growth`, 80, 40, 60, undefined, undefined, 120],
+  [`no minimum uses fit as zoom-out limit`, 5, 10, 20, undefined, undefined, 20],
+  [`fit zoom survives shrink`, 40, 40, 20, undefined, undefined, 20],
+  [`missing previous fit uses new fit`, 80, 0, 30, undefined, undefined, 30],
+  [`omitted maximum leaves zoom unbounded`, 400, 10, 20, undefined, undefined, 800],
+  [`fit expands maximum for small structures`, undefined, 0, 125, undefined, 100, 125],
+  [`fit lowers minimum for large structures`, undefined, 0, 5, 10, 100, 5],
+  [`configured maximum clamps user zoom`, 400, 10, 20, undefined, 500, 500],
+  [`configured minimum preserves user zoom`, 2, 10, 20, 1, 500, 4],
+  // (0.9 * 0.3) / 0.3 is 0.9000000000000001, so a rescale that runs on an unchanged fit
+  // drifts the zoom by an ulp on every bounds change
+  [`unchanged fit returns the zoom bit-for-bit`, 0.9, 0.3, 0.3, 0.1, 500, 0.9],
+] as const)(
+  `rescale orthographic zoom: %s`,
+  (_name, current, previous_fit, next_fit, min_zoom, max_zoom, expected) =>
+    expect(resize_orthographic_zoom(current, previous_fit, next_fit, min_zoom, max_zoom)).toBe(
+      expected,
+    ),
+)
+
+test.each([
+  [4.5, 4.5, 500],
+  [800, 10, 800],
+])(`orthographic bounds scale with fit %s`, (fit_zoom, expected_min, expected_max) => {
+  expect(get_orthographic_zoom_bounds(fit_zoom, 10, 500)).toEqual({
+    min_zoom: expected_min,
+    max_zoom: expected_max,
+  })
+  expect(get_orthographic_zoom_bounds(fit_zoom).max_zoom).toBe(Number.POSITIVE_INFINITY)
+})
 
 describe(`zone axis directions`, () => {
   // oxfmt-ignore
@@ -313,12 +349,15 @@ describe(`camera fly-to`, () => {
   })
 
   test(`restores orbit controls when released mid-flight`, () => {
-    const { controls, fly } = make_rig()
+    const { controls, fly, hook_calls } = make_rig()
     fly.start([1, 0, 0])
     fly.step(0.1)
     expect(controls.enabled).toBe(false)
     fly.release()
     expect([controls.enabled, fly.active]).toEqual([true, false])
+    expect(hook_calls).toEqual([`start`, `change`, `end`])
+    fly.release()
+    expect(hook_calls).toEqual([`start`, `change`, `end`]) // no duplicate end
   })
 
   test.each([

@@ -6,9 +6,16 @@
     get_ffmpeg_conversion_command,
     observe_canvas_presence,
   } from '$lib/io/export'
+  import { download } from '$lib/io/fetch'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
+  import {
+    create_poscar_frame_range_zip,
+    serialize_extxyz_frame_range,
+    trajectory_export_basename,
+    type TrajectoryFrameResolver,
+  } from '$lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
   import { to_error } from '$lib/utils'
 
@@ -20,6 +27,7 @@
     video_fps = $bindable(30),
     resolution_multiplier = $bindable(1),
     on_step_change = undefined,
+    resolve_frame = undefined,
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -37,6 +45,9 @@
     resolution_multiplier?: number
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
+    // Loads one frame by index. Indexed trajectories keep only a few frames in `frames`, so
+    // without this the data exports below would silently write a truncated file.
+    resolve_frame?: TrajectoryFrameResolver
     // Pane customization
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
@@ -46,6 +57,10 @@
   let export_progress = $state(0)
   let export_format = $state<`webm` | `mp4`>(`webm`)
   let export_error = $state<string | null>(null)
+  // Which data export is running, so only the clicked button shows its percentage
+  let data_export_format = $state<`extxyz` | `poscar` | null>(null)
+  let data_export_progress = $state(0)
+  let is_exporting_data = $derived(data_export_format !== null)
 
   let total_frames_available = $derived(
     trajectory?.total_frames || trajectory?.frames?.length || 0,
@@ -130,6 +145,46 @@
     }
   }
 
+  // Falls back to the in-memory frame when the host supplied no loader (eager trajectories)
+  const frame_at: TrajectoryFrameResolver = (idx) =>
+    resolve_frame ? resolve_frame(idx) : (trajectory?.frames?.[idx] ?? null)
+
+  async function export_data(format: `extxyz` | `poscar`) {
+    export_error = null
+    data_export_format = format
+    data_export_progress = 0
+    const base = trajectory_export_basename(filename)
+    const on_progress = (done: number, total: number) =>
+      (data_export_progress = (done / total) * 100)
+    try {
+      if (format === `extxyz`) {
+        const content = await serialize_extxyz_frame_range(
+          start_frame,
+          end_frame,
+          frame_at,
+          on_progress,
+        )
+        download(content, `${base}.extxyz`, `chemical/x-xyz`)
+      } else {
+        const blob = await create_poscar_frame_range_zip(
+          start_frame,
+          end_frame,
+          frame_at,
+          filename,
+          total_frames_available,
+          on_progress,
+        )
+        download(blob, `${base}_poscar_${start_frame}-${end_frame}.zip`, `application/zip`)
+      }
+    } catch (error) {
+      console.error(`Trajectory data export failed:`, error)
+      export_error = to_error(error).message
+    } finally {
+      data_export_format = null
+      data_export_progress = 0
+    }
+  }
+
   let is_video_supported = $derived(
     typeof globalThis !== `undefined` &&
       typeof MediaRecorder !== `undefined` &&
@@ -151,6 +206,75 @@
   }}
   {...rest}
 >
+  <!-- Shared by the data and video exports below, so it sits outside the MediaRecorder gate -->
+  <SettingsSection
+    title="Frame Range"
+    current_values={{ start_frame, end_frame }}
+    on_reset={() => {
+      start_frame = 0
+      end_frame = total_frames_available - 1
+    }}
+  >
+    <label>
+      Start Frame
+      <input
+        type="number"
+        min={0}
+        max={Math.max(0, total_frames_available - 1)}
+        bind:value={start_frame}
+      />
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, total_frames_available - 1)}
+        bind:value={start_frame}
+      />
+    </label>
+
+    <label>
+      End Frame
+      <input
+        type="number"
+        min={start_frame}
+        max={Math.max(0, total_frames_available - 1)}
+        bind:value={end_frame}
+      />
+      <input
+        type="range"
+        min={start_frame}
+        max={Math.max(0, total_frames_available - 1)}
+        bind:value={end_frame}
+      />
+    </label>
+  </SettingsSection>
+
+  {#if export_error}
+    <div class="error-message">⚠️ {export_error}</div>
+  {/if}
+
+  <h4>Export Data</h4>
+
+  <div class="export-buttons">
+    {#each [{ label: `extXYZ`, format: `extxyz`, hint: `All frames ${start_frame}–${end_frame} as one extended XYZ file` }, { label: `POSCAR ZIP`, format: `poscar`, hint: `One numbered POSCAR per frame, zipped` }] as const as { label, format, hint } (format)}
+      <div style="display: flex; align-items: center; gap: 4pt">
+        {label}
+        <button
+          type="button"
+          onclick={() => export_data(format)}
+          disabled={is_exporting ||
+            is_exporting_data ||
+            !trajectory ||
+            export_frame_count === 0}
+          {@attach tooltip({ content: hint })}
+        >
+          {#if data_export_format === format && data_export_progress > 0}
+            {data_export_progress.toFixed(0)}%
+          {:else}⬇{/if}
+        </button>
+      </div>
+    {/each}
+  </div>
+
   <h4>Export Video</h4>
 
   {#if !is_video_supported}
@@ -158,12 +282,10 @@
   {:else}
     <SettingsSection
       title="Video Settings"
-      current_values={{ video_fps, resolution_multiplier, start_frame, end_frame }}
+      current_values={{ video_fps, resolution_multiplier }}
       on_reset={() => {
         video_fps = 30
         resolution_multiplier = 1
-        start_frame = 0
-        end_frame = total_frames_available - 1
       }}
     >
       <label>
@@ -193,45 +315,7 @@
           {/each}
         </div>
       </span>
-
-      <label>
-        Start Frame
-        <input
-          type="number"
-          min={0}
-          max={Math.max(0, total_frames_available - 1)}
-          bind:value={start_frame}
-        />
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0, total_frames_available - 1)}
-          bind:value={start_frame}
-        />
-      </label>
-
-      <label>
-        End Frame
-        <input
-          type="number"
-          min={start_frame}
-          max={Math.max(0, total_frames_available - 1)}
-          bind:value={end_frame}
-        />
-        <input
-          type="range"
-          min={start_frame}
-          max={Math.max(0, total_frames_available - 1)}
-          bind:value={end_frame}
-        />
-      </label>
     </SettingsSection>
-
-    <h4>Export Formats</h4>
-
-    {#if export_error}
-      <div class="error-message">⚠️ {export_error}</div>
-    {/if}
 
     <div class="export-buttons">
       {#each [{ label: `WebM`, format: `webm`, hint: `Export as WebM video` }, { label: `MP4`, format: `mp4`, hint: `WebM + ffmpeg command` }] as const as { label, format, hint } (format)}
@@ -240,7 +324,7 @@
           <button
             type="button"
             onclick={() => handle_video_export(format)}
-            disabled={is_exporting || !trajectory || !has_canvas}
+            disabled={is_exporting || is_exporting_data || !trajectory || !has_canvas}
             {@attach tooltip({ content: hint })}
           >
             {#if is_exporting && export_format === format}

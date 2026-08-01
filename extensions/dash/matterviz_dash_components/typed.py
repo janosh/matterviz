@@ -527,6 +527,8 @@ class BrillouinZone(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
+        camera: Any | None = None,
+        scene: Any | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -537,6 +539,8 @@ class BrillouinZone(MatterViz):
             mv_props["bz_data"] = bz_data
         if bz_order is not None:
             mv_props["bz_order"] = bz_order
+        if camera is not None:
+            mv_props["camera"] = camera
         if camera_projection is not None:
             mv_props["camera_projection"] = camera_projection
         if controls_open is not None:
@@ -577,6 +581,8 @@ class BrillouinZone(MatterViz):
             mv_props["loading"] = loading
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
+        if scene is not None:
+            mv_props["scene"] = scene
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
         if show_ibz is not None:

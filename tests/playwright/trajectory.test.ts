@@ -451,53 +451,6 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`responsive design and viewport-based layout`, () => {
-    test(`auto layout detects viewport aspect ratio and applies correct layout`, async ({
-      page,
-    }) => {
-      const trajectory = page.locator(`#auto-layout`)
-
-      // Test wide container (should trigger horizontal layout)
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `800px`
-          el.style.height = `400px`
-        })
-      await expect(trajectory).toHaveClass(/horizontal/)
-      await expect(trajectory).not.toHaveClass(/vertical/)
-
-      // Test tall container (should trigger vertical layout)
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `400px`
-          el.style.height = `800px`
-        })
-
-      // Check if layout changed to vertical, but be lenient since viewport detection
-      // might not work perfectly in test environment
-      const current_class = await trajectory.getAttribute(`class`)
-
-      // At least one layout class should be present
-      expect(has_orientation_layout_class(current_class)).toBe(true)
-
-      // Test square container (implementation may default to horizontal for equal dimensions)
-      await page
-        .locator(`#auto-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `600px`
-          el.style.height = `600px`
-        })
-      // For equal dimensions, the component can choose either layout - just verify it has one
-      const has_layout_class = await trajectory.evaluate(
-        (el) => el.classList.contains(`horizontal`) || el.classList.contains(`vertical`),
-      )
-      expect(has_layout_class).toBe(true)
-    })
-
     test(`layout prop overrides automatic detection`, async ({ page }) => {
       // Test that explicit layout props still work
       const vertical_trajectory = page.locator(`#vertical-layout`)
@@ -591,29 +544,64 @@ test.describe(`Trajectory Component`, () => {
       }).toPass({ timeout: 5000 })
     })
 
-    test(`layout is based on element aspect ratio`, async ({ page }) => {
+    test(`narrow container stacks the panes and widening it unstacks them`, async ({
+      page,
+    }) => {
+      // Three resize cycles, each waiting on a ResizeObserver, does not fit the
+      // default 30s budget when the whole suite shares one software GPU.
+      test.slow()
       const trajectory = page.locator(`#auto-layout`)
 
-      // Scroll to the auto-layout trajectory to ensure it's in view
       await trajectory.scrollIntoViewIfNeeded()
-      // Wait for trajectory controls to be visible (indicates data is loaded)
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: 30000,
+      // Wait for the plot, not the controls: controls render as soon as the
+      // trajectory loads, but the scatter only appears once plot metadata is
+      // sampled, and both panes have to exist before either can be measured.
+      await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30000 })
+
+      // 500px tall is what a chat sidebar card really measures, and minHeight has
+      // to go for any height below that to stick: .trajectory's own 500px floor
+      // outranks an inline height, exactly as it does to Hive's card.
+      const set_size = (width: number, height = 500) =>
+        trajectory.evaluate((el: HTMLElement, size) => Object.assign(el.style, size), {
+          width: `${width}px`,
+          height: `${height}px`,
+          minHeight: `0`,
+        })
+
+      // The class comes from a ResizeObserver, which a page full of software-WebGPU
+      // canvases can leave waiting well past the default 5s expect timeout.
+      const resize_timeout = { timeout: 20_000 }
+      const pane_divider = () =>
+        trajectory.locator(`.structure`).evaluate((el) => getComputedStyle(el).boxShadow)
+
+      await set_size(480)
+      await expect(trajectory).toHaveClass(/vertical/, resize_timeout)
+      await expect(trajectory).not.toHaveClass(/horizontal/)
+
+      // Stacked means structure on top, plot below, splitting the box evenly.
+      // The layout class alone would still pass if the grid ordered them the
+      // other way round, or handed the plot its 350px floor and the structure
+      // whatever was left.
+      const panes = await trajectory.evaluate((el) => {
+        const rect = (sel: string) => el.querySelector(sel)?.getBoundingClientRect()
+        return { structure: rect(`.structure`), plot: rect(`.scatter`) }
       })
+      if (!panes.structure || !panes.plot) throw new Error(`panes not found`)
+      expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
+      expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
+      expect(await pane_divider()).toMatch(/ 0px 1px 0px 0px$/) // hairline below
 
-      // Layout is determined by element dimensions, not viewport - verify class is applied
-      await expect(trajectory).toHaveClass(/horizontal|vertical/, { timeout: 5000 })
+      // Widening the sidebar puts them back side by side without a remount
+      await set_size(900)
+      await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
+      await expect(trajectory).not.toHaveClass(/vertical/)
+      expect(await pane_divider()).toMatch(/ 1px 0px 0px 0px$/) // hairline to the right
 
-      // Check that the layout class corresponds to element aspect ratio
-      const element_bbox = await trajectory.boundingBox()
-      if (element_bbox) {
-        const current_class = await trajectory.getAttribute(`class`)
-        if (element_bbox.width > element_bbox.height) {
-          expect(current_class).toContain(`horizontal`)
-        } else {
-          expect(current_class).toContain(`vertical`)
-        }
-      }
+      // This viewer's controls bar takes ~32px the panes never get. At 380px tall
+      // that leaves 174px rows, under the readable minimum, so it stays side by
+      // side. Measuring the wrapper would see 190px rows and stack it instead.
+      await set_size(520, 380)
+      await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
     })
 
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({

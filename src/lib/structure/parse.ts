@@ -28,10 +28,18 @@ import {
   vec3_from_values,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
 import { is_xyz_atom_line, iter_xyz_frames } from '$lib/trajectory/helpers'
-import { parse_leading_num, parse_num_token } from '$lib/utils'
+// One extXYZ implementation for both the single-structure and trajectory readers; the
+// standalone one here used to hardcode `symbol x y z` and ignore Properties/pbc entirely.
+import {
+  parse_extxyz_columns,
+  parse_extxyz_lattice,
+  parse_extxyz_pbc,
+  read_extxyz_move_flags,
+} from '$lib/trajectory/parse/xyz'
+import { normalize_scientific_notation, parse_leading_num, parse_num_token } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '$lib/structure/format-detect'
@@ -361,26 +369,16 @@ export const parse_xyz = (content: string): ParsedStructure | null =>
       return null
     }
 
-    // The comment line (line 2) carries the cell of an extended XYZ file. Trimmed first:
-    // padding inside the quotes splits into empty tokens, pushing the count past 9 and
-    // silently dropping the cell.
-    const lattice_values = (/Lattice="(?<lattice>[^"]+)"/.exec(lines[1])?.[1] ?? ``)
-      .trim()
-      .split(/\s+/)
-      .map(parse_coordinate)
-    const lattice =
-      lattice_values.length === 9
-        ? make_lattice(
-            matrix3x3_from_rows(
-              [
-                lattice_values.slice(0, 3),
-                lattice_values.slice(3, 6),
-                lattice_values.slice(6, 9),
-              ],
-              `XYZ lattice vector`,
-            ),
-          )
-        : undefined
+    // The comment line (line 2) carries the cell of an extended XYZ file, the pbc flags, and
+    // the column layout. All three are parsed by the shared extXYZ helpers so this path and
+    // the trajectory reader agree on what a given file means.
+    const comment = lines[1]
+    const lattice_matrix = parse_extxyz_lattice(comment)
+    // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
+    // Honoring that keeps a molecule aperiodic (and unwrapped) instead of promoting it to a
+    // crystal; absent pbc, a cell-bearing file is fully periodic as every other parser assumes.
+    const pbc = parse_extxyz_pbc(comment) ?? ([true, true, true] satisfies Pbc)
+    const lattice = lattice_matrix ? make_lattice(lattice_matrix, pbc) : undefined
 
     const converters = lattice
       ? {
@@ -390,6 +388,9 @@ export const parse_xyz = (content: string): ParsedStructure | null =>
           }).convert,
         }
       : null
+
+    const { species_col, pos_col, forces_col, min_cols, layout } =
+      parse_extxyz_columns(comment)
     const sites: Site[] = []
 
     for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
@@ -400,26 +401,41 @@ export const parse_xyz = (content: string): ParsedStructure | null =>
       }
 
       const parts = lines[line_idx].trim().split(/\s+/)
-      if (parts.length < 4) {
+      if (parts.length < min_cols) {
         diag_error(`Invalid coordinate line in XYZ file`)
         return null
       }
 
-      const element = validate_element_symbol(parts[0], atom_idx)
+      const element = validate_element_symbol(parts[species_col], atom_idx)
       let xyz = vec3_from_values(
-        parts.slice(1, 4).map(parse_coordinate),
+        parts.slice(pos_col, pos_col + 3).map(parse_coordinate),
         `XYZ atom position ${atom_idx + 1}`,
       )
 
-      // Wrap fractional coordinates into [0, 1) and recompute xyz from them so
-      // rendered atoms stay inside the primary unit cell
+      // Wrap fractional coordinates into [0, 1) and recompute xyz from them so rendered atoms
+      // stay inside the primary unit cell. Aperiodic axes are left alone: wrapping the vacuum
+      // direction of a slab (or every axis of a molecule) folds atoms through a face that
+      // isn't there and tears the geometry apart.
       let abc: Vec3 = [0, 0, 0]
       if (converters) {
-        abc = wrap_to_unit_cell(converters.cart_to_frac(xyz))
+        const frac = converters.cart_to_frac(xyz)
+        abc = frac.map((coord, axis) => (pbc[axis] ? wrap_frac_coord(coord) : coord)) as Vec3
         xyz = converters.frac_to_cart(abc)
       }
 
-      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
+      const properties: Record<string, unknown> = {}
+      if (forces_col >= 0 && parts.length >= forces_col + 3) {
+        // Number(), not parse_coordinate: the latter throws, and guard_parse would turn one
+        // unreadable force token into a null structure for a file whose positions are fine.
+        const force = parts
+          .slice(forces_col, forces_col + 3)
+          .map((token) => Number(normalize_scientific_notation(token)))
+        if (force.every(Number.isFinite)) properties.force = force
+      }
+      const move_flags = read_extxyz_move_flags(parts, layout)
+      if (move_flags) properties.selective_dynamics = move_flags
+
+      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties))
     }
 
     return { sites, ...(lattice && { lattice }) }

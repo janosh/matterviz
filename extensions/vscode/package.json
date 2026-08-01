@@ -394,7 +394,7 @@
         "matterviz.structure.initial_zoom": {
           "type": "number",
           "default": 50,
-          "description": "Initial zoom level for orthographic projection (ignored for perspective)",
+          "description": "Relative orthographic zoom scale (50 = fit structure bounding sphere to the shorter viewport edge; ignored for perspective)",
           "minimum": 0.1,
           "maximum": 200
         },
@@ -402,7 +402,7 @@
           "type": "number",
           "default": 10,
           "description": "Field of view in degrees for perspective projection",
-          "minimum": 10,
+          "minimum": 5,
           "maximum": 150
         },
         "matterviz.structure.rotation_damping": {
@@ -436,7 +436,7 @@
         "matterviz.structure.zoom_to_cursor": {
           "type": "boolean",
           "default": false,
-          "description": "Zoom toward cursor position instead of scene center (double click canvas to reset camera)"
+          "description": "Zoom toward the cursor instead of the scene center (the view drifts off-center as you zoom)"
         },
         "matterviz.structure.max_zoom": {
           "type": "number",
@@ -450,7 +450,7 @@
         },
         "matterviz.structure.auto_rotate": {
           "type": "number",
-          "default": 0.2,
+          "default": 0,
           "description": "Automatic rotation speed (0 = disabled, positive = clockwise)",
           "minimum": 0,
           "maximum": 10
@@ -493,7 +493,7 @@
         },
         "matterviz.structure.site_label_bg_color": {
           "type": "string",
-          "default": "color-mix(in srgb, #000000 0%, transparent)",
+          "default": "transparent",
           "description": "Background color for atom labels"
         },
         "matterviz.structure.site_label_padding": {
@@ -595,6 +595,23 @@
           "description": "Length of vector arrow head (negative = relative to length or atom spacing with uniform thickness, positive = absolute)",
           "minimum": -0.5,
           "maximum": 0.5
+        },
+        "matterviz.structure.show_displacement_arrows": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draw an arrow per atom from its position in the reference structure to its current one (only when a reference structure is supplied)"
+        },
+        "matterviz.structure.displacement_arrow_scale": {
+          "type": "number",
+          "default": 1,
+          "description": "Length multiplier for displacement arrows. Arrows are auto-scaled first so the largest displacement spans ~0.9x the characteristic atom spacing (true magnitudes are reported as RMSD/max), since real relaxations are smaller than an atomic radius and would otherwise hide inside their atoms",
+          "minimum": 0.1,
+          "maximum": 20
+        },
+        "matterviz.structure.displacement_arrow_color": {
+          "type": "string",
+          "default": "#ff7f0e",
+          "description": "Color of displacement arrows"
         },
         "matterviz.structure.show_cell": {
           "type": "boolean",

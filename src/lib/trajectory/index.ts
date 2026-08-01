@@ -16,6 +16,8 @@ export {
   full_data_extractor,
   structural_data_extractor,
 } from './extract'
+export { create_poscar_frame_range_zip, serialize_extxyz_frame_range } from './file-export'
+export type { TrajectoryFrameResolver } from './file-export'
 export {
   generate_axis_labels,
   generate_axis_scale_types,
@@ -31,6 +33,37 @@ export type { AtomTypeMapping } from './types'
 // Debounce for on-demand frame loads while scrubbing: skips fetches for steps
 // the user slides past. Exported so tests stay in sync with the real delay.
 export const FRAME_LOAD_DEBOUNCE_MS = 75
+
+// Splitting side by side halves the width but keeps the full height, so the
+// panes come out twice as tall relative to their width as the container is.
+// A nearly square container therefore yields tall narrow panes, which a
+// step-series plot reads badly in - a ~900x800 viewer gave the plot 450x800.
+// Only split side by side while that leaves panes no more than this much
+// taller than they are wide.
+const MAX_PANE_TALLNESS = 1.4
+
+// Smallest pane the structure viewer and the plot both stay readable in: a
+// scatter spends ~80px on its y-axis label and tick labels and its legend needs
+// ~10em on top of that, and below ~180px of height the x-axis labels eat the
+// data area the same way.
+const MIN_PANE_SIZE = { width: 320, height: 180 }
+
+// Which way to split a container into two equal panes. Absolute size comes
+// first: when only one of the two splits clears MIN_PANE_SIZE, that one wins
+// regardless of shape, which is what stacks a 490x500 chat sidebar card whose
+// 245px-wide panes would leave a plot no room for its axes. When both fit (or
+// neither does), pane shape decides.
+export function pick_pane_orientation(
+  width: number,
+  height: number,
+): `horizontal` | `vertical` {
+  const side_by_side_fits = width / 2 >= MIN_PANE_SIZE.width
+  const stacked_fits = height / 2 >= MIN_PANE_SIZE.height
+  if (side_by_side_fits && !stacked_fits) return `horizontal`
+  if (stacked_fits && !side_by_side_fits) return `vertical`
+  // a side-by-side pane is half the width and the container's full height
+  return height <= (width / 2) * MAX_PANE_TALLNESS ? `horizontal` : `vertical`
+}
 
 // Core trajectory types
 export interface ParseProgress {

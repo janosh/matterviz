@@ -102,7 +102,10 @@ mvc.Structure(
 That is syntactic sugar for:
 
 ```python
-mvc.MatterViz(component="structure/Structure", mv_props={"structure": {...}, "show_controls": True})
+mvc.MatterViz(
+    component="structure/Structure",
+    mv_props={"structure": {...}, "show_controls": True},
+)
 ```
 
 If a component name is ambiguous, use a path key:
@@ -142,7 +145,6 @@ app.layout = html.Div(
             show_controls=True,
             height=500,
         ),
-
         # Generic API (any component by name/path)
         MatterViz(
             id="pt",

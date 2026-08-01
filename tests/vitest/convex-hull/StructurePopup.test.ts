@@ -79,11 +79,21 @@ describe(`StructurePopup`, () => {
     const handle = svg_query(`.structure-popup .control-tab .drag-handle`)
     expect(handle).toBeInstanceOf(SVGSVGElement)
 
-    handle.dispatchEvent(
-      new MouseEvent(`mousedown`, { bubbles: true, clientX: 10, clientY: 20 }),
-    )
-    globalThis.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 35, clientY: 50 }))
-    globalThis.dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
+    // svelte-widgets' draggable follows the captured pointer on the handle itself, so the
+    // move and release have to be dispatched there rather than on window
+    const drag = (type: string, coords?: { clientX: number; clientY: number }) =>
+      handle.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          isPrimary: true,
+          button: 0,
+          pointerId: 1,
+          ...coords,
+        }),
+      )
+    drag(`pointerdown`, { clientX: 10, clientY: 20 })
+    drag(`pointermove`, { clientX: 35, clientY: 50 })
+    drag(`pointerup`)
 
     expect(popup.style.left).toBe(`25px`)
     expect(popup.style.top).toBe(`30px`)

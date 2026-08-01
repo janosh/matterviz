@@ -5,7 +5,11 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '$lib/trajectory'
-import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
+import {
+  get_trajectory_stats,
+  pick_pane_orientation,
+  validate_trajectory,
+} from '$lib/trajectory'
 import { validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { describe, expect, test } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -302,6 +306,31 @@ describe(`get_trajectory_stats`, () => {
     expect(stats.constant_atom_count).toBe(false)
     expect(stats.atom_count_range).toEqual([3, 5])
   })
+})
+
+test.each([
+  // Too narrow for 320px side-by-side panes, so these stack whatever their
+  // shape. 500 is the real height of a chat sidebar card: .trajectory's
+  // min-height floor outranks the host's inline height.
+  [`chat sidebar card`, 490, 500, `vertical`],
+  [`portrait`, 400, 800, `vertical`],
+  [`square`, 600, 600, `vertical`],
+  // Short enough that MIN_PANE_SIZE.width, not pane shape, decides
+  [`just under the side-by-side pane minimum`, 639, 400, `vertical`],
+  [`at the side-by-side pane minimum`, 640, 400, `horizontal`],
+  // Tall enough that pane shape decides: panes may be at most 1.4x taller than
+  // wide, so side by side needs a container 10/7 as wide as it is tall
+  [`just under the side-by-side aspect`, 999, 700, `vertical`],
+  [`at the side-by-side aspect`, 1000, 700, `horizontal`],
+  // Both splits fit, but side by side would hand each pane 450x800
+  [`nearly square dashboard viewer`, 900, 800, `vertical`],
+  [`fullscreen on a 4:3 display`, 1440, 1080, `vertical`],
+  [`fullscreen on a 16:9 display`, 1920, 1080, `horizontal`],
+  [`desktop viewer`, 1200, 600, `horizontal`],
+  // stacking a short container would leave both panes unreadably flat
+  [`wide and short`, 500, 200, `horizontal`],
+] as const)(`pick_pane_orientation %s`, (_label, width, height, expected) => {
+  expect(pick_pane_orientation(width, height)).toBe(expected)
 })
 
 test(`TrajectoryFormat type values`, () => {

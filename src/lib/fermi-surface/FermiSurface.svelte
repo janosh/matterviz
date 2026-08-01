@@ -447,6 +447,8 @@
           {clip_position}
           {clip_flip}
           {camera_projection}
+          {width}
+          {height}
           bind:scene
           bind:camera
           bind:hover_data
@@ -483,7 +485,7 @@
     width: var(--fermi-width, 100%);
     max-width: var(--fermi-max-width, 100%);
     min-width: var(--fermi-min-width, 300px);
-    border-radius: var(--fermi-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--fermi-border-radius, 0);
     background: var(--fermi-bg, var(--surface-bg));
     color: var(--fermi-text-color, var(--text-color));
   }

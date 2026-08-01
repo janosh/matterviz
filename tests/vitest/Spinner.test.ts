@@ -12,10 +12,8 @@ describe(`Spinner`, () => {
     expect(container.getAttribute(`role`)).toBe(`status`)
     expect(container.getAttribute(`aria-live`)).toBe(`polite`)
     expect(container.getAttribute(`aria-busy`)).toBe(`true`)
-
-    const inner_spinner = doc_query(`.spinner > div`)
-    expect(inner_spinner.getAttribute(`aria-hidden`)).toBe(`true`)
-    expect(container.children.length).toBeGreaterThan(0)
+    // circle is a ::before pseudo — no inner spinner node
+    expect(container.querySelector(`div`)).toBeNull()
   })
 
   test(`renders text conditionally`, () => {

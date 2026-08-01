@@ -327,6 +327,81 @@ describe(`XYZ Parser`, () => {
     expect(result.sites[0].species[0].element).toBe(`H`)
   })
 
+  // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
+  // Ignoring that promoted the molecule to a 3D crystal and folded its atoms through faces
+  // that don't exist. Every quoting style ASE emits has to reach the same conclusion.
+  it.each([
+    [`pbc="F F F"`, [false, false, false]],
+    [`pbc="FFF"`, [false, false, false]],
+    [`pbc=F`, [false, false, false]],
+    [`pbc="T T F"`, [true, true, false]],
+  ])(`honors %s from the comment line`, (pbc_field, expected) => {
+    const content = `1\nLattice="5 0 0 0 5 0 0 0 5" ${pbc_field}\nH 6.0 6.0 6.0\n`
+    const result = parse_xyz(content)
+    assert(result?.lattice, `Failed to parse pbc-annotated XYZ`)
+    expect(result.lattice.pbc).toEqual(expected)
+    // aperiodic axes keep the atom where the file put it instead of wrapping it to 1.0
+    for (const [axis, periodic] of expected.entries()) {
+      if (periodic) expect(result.sites[0].abc[axis]).toBeCloseTo(0.2, 12)
+      else expect(result.sites[0].abc[axis]).toBeCloseTo(1.2, 12)
+    }
+    expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
+  })
+
+  it(`still wraps into the cell when the file declares no pbc`, () => {
+    const result = parse_xyz(`1\nLattice="5 0 0 0 5 0 0 0 5"\nH 6.0 6.0 6.0\n`)
+    assert(result?.lattice, `Failed to parse XYZ without pbc`)
+    expect(result.lattice.pbc).toEqual([true, true, true])
+    expect_abc_in_unit_cell(result.sites[0])
+  })
+
+  // The old parser hardcoded species at column 0 and positions at 1-3, so any file whose
+  // Properties declared a different layout was mis-read as coordinates without a word.
+  it(`reads species and positions from their declared columns`, () => {
+    const content = `2
+Properties=id:I:1:species:S:1:pos:R:3
+7 Si 1.0 2.0 3.0
+8 O 4.0 5.0 6.0
+`
+    const result = parse_xyz(content)
+    assert(result, `Failed to parse reordered Properties`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`])
+    expect(result.sites[0].xyz).toEqual([1, 2, 3])
+    expect(result.sites[1].xyz).toEqual([4, 5, 6])
+  })
+
+  it.each([
+    [`selective_dynamics:L:3`, `T F T`, [true, false, true]],
+    [`move_mask:L:1`, `F`, [false, false, false]],
+  ])(`carries %s onto site properties`, (declaration, tokens, expected) => {
+    const content = `1\nProperties=species:S:1:pos:R:3:${declaration}\nSi 0 0 0 ${tokens}\n`
+    const result = parse_xyz(content)
+    assert(result, `Failed to parse constraint column`)
+    expect(result.sites[0].properties.selective_dynamics).toEqual(expected)
+  })
+
+  it(`carries declared forces onto site properties`, () => {
+    const content = `1\nProperties=species:S:1:pos:R:3:forces:R:3\nSi 0 0 0 -0.1 0.2 0.3\n`
+    const result = parse_xyz(content)
+    assert(result, `Failed to parse forces column`)
+    expect(result.sites[0].properties.force).toEqual([-0.1, 0.2, 0.3])
+  })
+
+  it(`leaves properties empty when no extra columns are declared`, () => {
+    const result = parse_xyz(`1\nTest\nSi 0 0 0\n`)
+    assert(result, `Failed to parse plain XYZ`)
+    expect(result.sites[0].properties).toEqual({})
+  })
+
+  // A declared-but-unreadable cell is corrupt input; degrading to "molecule" would render a
+  // crystal wrong without complaint.
+  it.each([`Lattice="Infinity 0 0 0 1 0 0 0 1"`, `Lattice="1 0 0 0 1 0"`, `Lattice=""`])(
+    `rejects a malformed %s`,
+    (lattice_field) => {
+      expect(parse_xyz(`1\n${lattice_field}\nH 0 0 0\n`)).toBeNull()
+    },
+  )
+
   // Fortran `D` and Mathematica `*^` exponents both mean e0 in extended-XYZ Lattice strings.
   // Padding inside the quotes splits into empty tokens that would push the count past 9.
   it.each([

@@ -30,11 +30,43 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(status_locator(page, `bz-order`)).toHaveText(`1`)
   })
 
-  test(`camera projection toggles`, async ({ page }) => {
+  test(`camera projection toggles and orthographic zoom fits the zone`, async ({ page }) => {
     const projection = page.locator(`#camera-projection`)
     await expect(projection).toHaveValue(`perspective`)
     await projection.selectOption(`orthographic`)
     await expect(status_locator(page, `camera-projection`)).toHaveText(`orthographic`)
+
+    // initial_zoom (50) is relative to the fit, not an absolute camera zoom: passing it
+    // through verbatim left the zone a few times too small and deaf to the viewport size
+    const read_zoom = () =>
+      page.evaluate(() => (globalThis as { read_bz_zoom?: () => number }).read_bz_zoom?.())
+    const set_bz_width = async (css_width: string) => {
+      await page.locator(BZ_SELECTOR).evaluate((el, width) => {
+        ;(el as HTMLElement).style.setProperty(`--bz-width`, width)
+      }, css_width)
+      await page.waitForTimeout(200)
+    }
+
+    // Zoom per shorter canvas edge, the quantity the fit holds constant. Measured from the
+    // canvas rather than the CSS width so borders or sub-pixel layout rounding can't turn a
+    // correct fit into a failure — and so the assertion says what invariant it is checking.
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+    const zoom_per_edge = async (): Promise<number> => {
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`BZ canvas bounding box not found`)
+      return ((await read_zoom()) ?? 0) / Math.min(box.width, box.height)
+    }
+
+    const wide_zoom = await read_zoom()
+    expect(wide_zoom).toBeGreaterThan(50)
+    const wide_zoom_per_edge = await zoom_per_edge()
+    // the page fixes height at 500px, so narrowing past it drives the shorter edge
+    await set_bz_width(`400px`)
+    await expect.poll(read_zoom).toBeLessThan(wide_zoom ?? 0)
+    expect(await zoom_per_edge()).toBeCloseTo(wide_zoom_per_edge, 5)
+    await set_bz_width(`800px`)
+    await expect.poll(read_zoom).toBeCloseTo(wide_zoom ?? 0, 5)
+
     await projection.selectOption(`perspective`)
   })
 

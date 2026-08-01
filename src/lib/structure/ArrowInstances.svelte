@@ -5,6 +5,7 @@
   // Sizing math mirrors Arrow.svelte so the two render identically.
   import type { Vec3 } from '$lib/math'
   import { EPS } from '$lib/math'
+  import { set_linear_css_color } from '$lib/scene/colors'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import type { BufferGeometry } from 'three/webgpu'
@@ -146,7 +147,7 @@
       scratch_scale.set(head_r, head_len, head_r)
       heads.setMatrixAt(idx, scratch_matrix.compose(scratch_pos, scratch_quat, scratch_scale))
 
-      scratch_color.set(color)
+      set_linear_css_color(color, scratch_color)
       shafts.setColorAt(idx, scratch_color)
       heads.setColorAt(idx, scratch_color)
     }

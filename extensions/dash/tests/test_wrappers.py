@@ -195,7 +195,12 @@ def test_brillouin_zone_preserves_legacy_positional_bindings() -> None:
     """BrillouinZone documents file drops without shifting legacy arguments."""
     assert "on_file_drop" in (inspect.getdoc(mvc.BrillouinZone) or "")
     parameter_names = list(inspect.signature(mvc.BrillouinZone.__init__).parameters)[1:]
-    assert parameter_names == [*BRILLOUIN_ZONE_V043_PARAMETERS, "kwargs"]
+    assert parameter_names == [
+        *BRILLOUIN_ZONE_V043_PARAMETERS,
+        "camera",
+        "scene",
+        "kwargs",
+    ]
 
     legacy_args: list[Any] = [None] * BRILLOUIN_ZONE_V043_PARAMETERS.index("png_dpi")
     component = cast(Any, mvc.BrillouinZone)(*legacy_args, 144)

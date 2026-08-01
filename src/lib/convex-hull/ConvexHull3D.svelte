@@ -1143,7 +1143,7 @@
     width: 100%;
     height: var(--hull-height, 500px);
     background: var(--hull-3d-bg, var(--hull-bg));
-    border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--hull-border-radius, 0);
   }
   .convex-hull-3d:fullscreen {
     border-radius: 0;
