@@ -6,13 +6,17 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
 import type { Dataset, Entity, Group } from 'h5wasm'
-import * as h5wasm from 'h5wasm'
+import type * as h5wasm from 'h5wasm'
 
+// `Entity` is a closed union in which only Dataset declares to_array and only Group
+// declares keys (both extend HasAttrs, which declares neither), so these checks
+// discriminate it exactly. Doing it structurally keeps the guards synchronous
+// without forcing the lazily imported module (see with_h5_file) to be resolvable.
 export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
-  entity !== null && `to_array` in entity && entity instanceof h5wasm.Dataset
+  entity !== null && `to_array` in entity
 
 export const is_hdf5_group = (entity: Entity | null): entity is Group =>
-  entity !== null && `keys` in entity && entity instanceof h5wasm.Group
+  entity !== null && `keys` in entity
 
 // Datasets in interrupted files can be torn mid-chunk, making to_array throw —
 // treat unreadable datasets like missing ones so callers keep what parsed so far.
@@ -102,7 +106,12 @@ export async function with_h5_file<T>(
   filename: string | undefined,
   callback: (h5_file: h5wasm.File) => T | Promise<T>,
 ): Promise<T> {
-  const { FS } = await h5wasm.ready
+  // h5wasm inlines ~4 MB of base64-encoded WASM, which a static import would pin
+  // into every bundle's entry chunk. Importing on demand lets code-splitting
+  // bundlers emit it as a chunk fetched only when a caller opens an HDF5 file;
+  // the module registry memoizes it, so repeat calls don't re-download.
+  const h5 = await import(`h5wasm`)
+  const { FS } = await h5.ready
   const file_basename =
     filename
       ?.split(`/`)
@@ -114,7 +123,7 @@ export async function with_h5_file<T>(
   FS.writeFile(temp_filename, new Uint8Array(buffer))
   let h5_file: h5wasm.File | null = null
   try {
-    h5_file = new h5wasm.File(temp_filename, `r`)
+    h5_file = new h5.File(temp_filename, `r`)
     return await callback(h5_file)
   } finally {
     h5_file?.close()
