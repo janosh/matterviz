@@ -10,7 +10,7 @@ import type { StructureIdOptions } from '$lib/structure-id/index'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { make_fcc } from './lattices'
 
-type WorkerMessage = { id: number; structure: AnyStructure; options: StructureIdOptions }
+type WorkerMessage = { id: number; input: AnyStructure; options: StructureIdOptions }
 type Listener = (event: {
   data: unknown
   message?: string
@@ -45,7 +45,7 @@ class StubWorker {
         ? { id: cloned.id, result: null, error: force_error }
         : {
             id: cloned.id,
-            result: calc_structure_id(cloned.structure, cloned.options),
+            result: calc_structure_id(cloned.input, cloned.options),
             error: null,
           }
       force_error = null
@@ -104,7 +104,7 @@ describe(`worker code path`, () => {
     // A non-cloneable site property would throw inside structuredClone if it were forwarded
     crystal.sites[0].properties.on_click = () => {}
     await compute_structure_id_async(crystal)
-    const { structure } = posted[0].message
+    const { input: structure } = posted[0].message
     expect(structure.sites).toHaveLength(32)
     expect(structure.sites[0].properties).toEqual({})
     expect(`lattice` in structure && structure.lattice.matrix).toEqual(crystal.lattice.matrix)

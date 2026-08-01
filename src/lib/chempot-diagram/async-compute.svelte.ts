@@ -1,107 +1,28 @@
+// oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Async wrapper for compute_chempot_diagram via Web Worker.
 // Falls back to synchronous main-thread computation during SSR.
+import type { PhaseData } from '$lib/convex-hull/types'
+import { create_worker_client } from '$lib/worker-client.svelte'
 import { compute_chempot_diagram, entry_fingerprint } from './compute'
 import type { ChemPotDiagramConfig, ChemPotDiagramData } from './types'
-import type { PhaseData } from '$lib/convex-hull/types'
-import { to_error } from '$lib/utils'
 
-let worker: Worker | null = null
-let next_id = 0
-const pending = new Map<
-  number,
-  { resolve: (data: ChemPotDiagramData) => void; reject: (err: Error) => void }
->()
-const pending_by_key = new Map<string, Promise<ChemPotDiagramData>>()
+const run_chempot = create_worker_client<
+  PhaseData[],
+  ChemPotDiagramConfig,
+  ChemPotDiagramData
+>({
+  label: `Chempot`,
+  create_worker: () =>
+    new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` }),
+  compute_sync: compute_chempot_diagram,
+  build_payload: (entries) => $state.snapshot(entries),
+  // Content-keyed rather than identity-keyed: callers rebuild the entries array on every
+  // render, so an identity token would miss every dedupe.
+  request_key: (entries, config) =>
+    `${entries.map(entry_fingerprint).toSorted().join(`,`)}|${JSON.stringify(config)}`,
+})
 
-function make_compute_request_key(entries: PhaseData[], config: ChemPotDiagramConfig): string {
-  return `${entries.map(entry_fingerprint).toSorted().join(`,`)}|${JSON.stringify(config)}`
-}
-
-function track_pending(
-  request_key: string,
-  promise: Promise<ChemPotDiagramData>,
-): Promise<ChemPotDiagramData> {
-  pending_by_key.set(request_key, promise)
-  promise.then(
-    () => pending_by_key.delete(request_key),
-    () => pending_by_key.delete(request_key),
-  )
-  return promise
-}
-
-function get_worker(): Worker | null {
-  if (typeof Worker === `undefined`) return null
-  if (!worker) {
-    // oxlint-disable-next-line eslint-plugin-unicorn/relative-url-style -- Vite worker detection requires the `./` prefix
-    worker = new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` })
-    worker.addEventListener(`message`, ({ data: { id, result, error } }) => {
-      const req = pending.get(id)
-      if (!req) return
-      pending.delete(id)
-      if (error || !result) req.reject(new Error(error ?? `Worker returned null`))
-      else req.resolve(result)
-    })
-    // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
-    // caller awaiting forever, and its key stays in `pending_by_key` so each identical
-    // retry is handed the same promise that will never settle.
-    const fail_all = (message: string) => {
-      const err = new Error(message)
-      for (const req of pending.values()) req.reject(err)
-      pending.clear()
-      worker?.terminate()
-      worker = null
-    }
-    worker.addEventListener(`error`, (event) => {
-      event.preventDefault()
-      fail_all(event.message || `Chempot worker initialization error`)
-    })
-    // A response that fails to deserialize never reaches the `message` handler
-    worker.addEventListener(`messageerror`, () => {
-      fail_all(`Chempot worker sent a message that could not be deserialized`)
-    })
-  }
-  return worker
-}
-
-export function compute_chempot_async(
+export const compute_chempot_async = (
   entries: PhaseData[],
   config: ChemPotDiagramConfig = {},
-): Promise<ChemPotDiagramData> {
-  // Never throw synchronously: callers handle errors via .catch() only, so key
-  // construction or Worker instantiation failures (e.g. CSP) must reject instead
-  try {
-    return compute_chempot_async_unsafe(entries, config)
-  } catch (err) {
-    return Promise.reject(to_error(err))
-  }
-}
-
-function compute_chempot_async_unsafe(
-  entries: PhaseData[],
-  config: ChemPotDiagramConfig,
-): Promise<ChemPotDiagramData> {
-  const request_key = make_compute_request_key(entries, config)
-  const existing = pending_by_key.get(request_key)
-  if (existing) return existing
-
-  const wkr = get_worker()
-  // SSR / no-Worker fallback: run synchronously (wrapped so throws → rejections)
-  if (!wkr) {
-    const promise = Promise.resolve().then(() => compute_chempot_diagram(entries, config))
-    return track_pending(request_key, promise)
-  }
-
-  const promise = new Promise<ChemPotDiagramData>((resolve, reject) => {
-    const id = ++next_id
-    pending.set(id, { resolve, reject })
-    try {
-      // $state.snapshot strips Svelte $state proxies (not structured-cloneable)
-      // oxlint-disable-next-line unicorn/require-post-message-target-origin
-      wkr.postMessage($state.snapshot({ id, entries, config }))
-    } catch (err) {
-      pending.delete(id)
-      reject(to_error(err))
-    }
-  })
-  return track_pending(request_key, promise)
-}
+): Promise<ChemPotDiagramData> => run_chempot(entries, config)

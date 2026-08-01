@@ -214,6 +214,10 @@
       "types": "./dist/structure/index.d.ts",
       "default": "./dist/structure/index.js"
     },
+    "./structure-id": {
+      "types": "./dist/structure-id/index.d.ts",
+      "default": "./dist/structure-id/index.js"
+    },
     "./structure/parse": {
       "types": "./dist/structure/parse.d.ts",
       "default": "./dist/structure/parse.js"
