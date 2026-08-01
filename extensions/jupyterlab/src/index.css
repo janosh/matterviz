@@ -1,0 +1,29 @@
+/* create_display absolutely positions the viewer it mounts, so the widget node has
+   to be its containing block. It also styles that viewer against VS Code's palette
+   with hardcoded dark fallbacks, so point those custom properties at the theme
+   JupyterLab actually has active. */
+.mv-file-viewer {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background: var(--jp-layout-color0);
+  color: var(--jp-ui-font-color0);
+  --vscode-editor-background: var(--jp-layout-color0);
+  --vscode-editor-foreground: var(--jp-ui-font-color0);
+  --vscode-errorForeground: var(--jp-error-color1);
+}
+.mv-file-viewer-error {
+  padding: 2em;
+  text-align: center;
+  font-family: var(--jp-ui-font-family);
+  color: var(--jp-error-color1);
+  h2 {
+    font-size: var(--jp-ui-font-size3);
+  }
+  p {
+    max-width: 55ch;
+    margin: 0 auto;
+    color: var(--jp-ui-font-color1);
+  }
+}

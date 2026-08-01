@@ -1,0 +1,36 @@
+[build-system]
+requires = ["uv_build>=0.11.32,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "matterviz-jupyterlab"
+version = "0.4.4"
+description = "JupyterLab file viewer for crystal structures, MD trajectories and volumetric data"
+readme = "readme.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Janosh Riebesell", email = "janosh.riebesell@gmail.com" }]
+keywords = ["crystal-structure", "jupyter", "jupyterlab", "materials-science"]
+classifiers = [
+  "Framework :: Jupyter",
+  "Framework :: Jupyter :: JupyterLab",
+  "Framework :: Jupyter :: JupyterLab :: 4",
+  "Framework :: Jupyter :: JupyterLab :: Extensions",
+  "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
+]
+
+[project.urls]
+Repo = "https://github.com/janosh/matterviz"
+Issues = "https://github.com/janosh/matterviz/issues"
+
+[tool.uv.build-backend]
+module-root = "" # flat layout: the module sits next to pyproject.toml
+source-exclude = [".DS_Store"]
+
+# `pnpm build` writes the prebuilt labextension under data/, whose contents uv
+# copies into the wheel's .data/data/ and pip then unpacks over the environment
+# root — landing at {sys.prefix}/share/jupyter/labextensions/matterviz-jupyterlab,
+# where JupyterLab discovers it with no `jupyter labextension install` step.
+# Run `pnpm build` before `uv build`; unlike a build hook, uv won't do it for you.
+[tool.uv.build-backend.data]
+data = "data"
