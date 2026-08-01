@@ -101,22 +101,22 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
     const source_filename = extract_filename(resp.headers, url_basename)
 
-    // Handle gzipped files with proper content-encoding detection
+    // Decide by the bytes, not the Content-Encoding header. A host serving a stored .gz with
+    // `Content-Encoding: gzip` has already been un-gzipped by fetch (GitHub Pages-style), but
+    // one that also applies transport gzip to that same file leaves a second layer behind and
+    // sends the identical header. The magic bytes tell the two apart; the header cannot.
     if (ext === `gz` || ext === `gzip`) {
-      if (resp.headers.get(`content-encoding`) === `gzip`) {
-        // Browser already decompressed the stored .gz (GitHub Pages-style serving), so
-        // the body is the inner file — keep binary inner formats (.h5.gz, ...) binary
-        return emit_loaded(
-          await (has_binary_inner_ext(source_filename) ? resp.arrayBuffer() : resp.text()),
-          strip_gz_ext(source_filename),
-          source_filename,
-        )
+      const buffer = await resp.arrayBuffer()
+      if (has_gzip_magic(new Uint8Array(buffer.slice(0, 2)))) {
+        const [content, filename] = await decompress_gz_payload(buffer, source_filename)
+        return emit_loaded(content, filename, source_filename)
       }
-      const [content, filename] = await decompress_gz_payload(
-        await resp.arrayBuffer(),
+      // Already inflated: keep binary inner formats (.h5.gz, ...) as bytes
+      return emit_loaded(
+        has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
+        strip_gz_ext(source_filename),
         source_filename,
       )
-      return emit_loaded(content, filename, source_filename)
     }
 
     // For H5 files, always load as binary regardless of signature

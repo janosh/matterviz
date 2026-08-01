@@ -14,6 +14,8 @@
     build_orbit_props,
     create_fly_to,
     DEFAULT_FLY_TO_DURATION_MS,
+    get_orthographic_zoom_bounds,
+    resize_orthographic_zoom,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps } from '$lib/scene'
@@ -70,6 +72,7 @@
     Color,
     DoubleSide,
     Euler,
+    OrthographicCamera,
     Vector3,
   } from 'three/webgpu'
   import type { Mesh, Object3D } from 'three/webgpu'
@@ -426,15 +429,6 @@
       is_initial_structure && camera_position.some((coordinate) => coordinate !== 0)
         ? (camera_target ?? rotation_target)
         : current_fit_target
-  })
-
-  // Track initial computed zoom for reset
-  let stored_initial_zoom = $state<number | undefined>(undefined)
-  $effect(() => {
-    if (stored_initial_zoom === undefined && computed_zoom > 0) {
-      stored_initial_zoom = computed_zoom
-    }
-    initial_computed_zoom = stored_initial_zoom
   })
 
   let atom_tooltip_active = $state(false)
@@ -952,13 +946,17 @@
       return
     }
 
-    if (
-      !measured_sites.includes(site_index) &&
-      measured_sites.length >= measure.MAX_SELECTED_SITES
-    ) {
-      console.warn(
-        `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
-      )
+    const site_cap = measure.max_measured_sites(measure_mode)
+    if (!measured_sites.includes(site_index) && measured_sites.length >= site_cap) {
+      if (!measure.rolls_measured_sites(measure_mode)) {
+        console.warn(
+          `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
+        )
+        return
+      }
+      const dropped = measured_sites[0]
+      measured_sites = [...measured_sites.slice(1), site_index]
+      selected_sites = [...selected_sites.filter((idx) => idx !== dropped), site_index]
       return
     }
 
@@ -1084,20 +1082,31 @@
       : DEFAULTS.structure.fov,
   )
 
-  const zoom_for = (extent: number) => {
-    const fit_zoom = ortho_zoom_for_extent(extent, width, height, initial_zoom)
-    return max_zoom !== undefined && max_zoom > 0 ? Math.min(max_zoom, fit_zoom) : fit_zoom
-  }
+  const zoom_for = (extent: number) =>
+    ortho_zoom_for_extent(extent, width, height, initial_zoom)
 
   let computed_zoom = $state(untrack(() => initial_zoom))
-  // Resize uses untracked fit_extent (trajectory must not jump zoom). Reset→[0,0,0]
-  // reframes from live fit in effect.pre. Skip same-value width/height re-fires.
-  let last_zoom_dims: [number, number] = [0, 0]
+  // Untracked fit_extent avoids trajectory jumps; effect.pre reframes camera resets.
+  let current_fit_zoom = $state(0)
+  let zoom_bounds = $derived(
+    get_orthographic_zoom_bounds(current_fit_zoom, min_zoom, max_zoom),
+  )
   $effect(() => {
     if (!(width > 0) || !(height > 0)) return
-    if (width === last_zoom_dims[0] && height === last_zoom_dims[1]) return
-    last_zoom_dims = [width, height]
-    computed_zoom = zoom_for(untrack(() => fit_extent))
+    const next_fit_zoom = zoom_for(untrack(() => fit_extent))
+    if (next_fit_zoom === current_fit_zoom) return
+    const live_zoom = untrack(() =>
+      camera instanceof OrthographicCamera ? camera.zoom : undefined,
+    )
+    computed_zoom = resize_orthographic_zoom(
+      live_zoom,
+      current_fit_zoom,
+      next_fit_zoom,
+      min_zoom,
+      max_zoom,
+    )
+    current_fit_zoom = next_fit_zoom
+    initial_computed_zoom = next_fit_zoom
   })
 
   $effect.pre(() => {
@@ -1108,8 +1117,9 @@
       width > 0 &&
       height > 0
     ) {
-      stored_initial_zoom = undefined
       computed_zoom = zoom_for(fit_extent)
+      current_fit_zoom = computed_zoom
+      initial_computed_zoom = computed_zoom
       // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
       const distance =
         camera_projection === `perspective`
@@ -1875,12 +1885,9 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom,
+      max_zoom: camera_projection === `orthographic` ? zoom_bounds.max_zoom : max_zoom,
       // The initial fit may need to zoom below the interaction floor for large structures.
-      min_zoom:
-        camera_projection === `orthographic` && min_zoom !== undefined
-          ? Math.min(min_zoom, computed_zoom)
-          : min_zoom,
+      min_zoom: camera_projection === `orthographic` ? zoom_bounds.min_zoom : min_zoom,
       auto_rotate,
       rotation_damping,
       set_camera_is_moving: (moving) => (camera_is_moving = moving),
@@ -2436,49 +2443,48 @@
               </extras.HTML>
             {/each}
           {/each}
-        {:else if measure_mode === `angle` && measured_sites.length >= 3}
-          {#each measured_sites as idx_center (idx_center)}
-            {@const center = structure.sites[idx_center]}
-            {#each measured_sites.filter((idx) => idx !== idx_center) as idx_a, loop_idx (idx_center + `-` + idx_a)}
-              {#each measured_sites
-                .filter((idx) => idx !== idx_center)
-                .slice(loop_idx + 1) as idx_b (idx_center + `-` + idx_a + `-` + idx_b)}
-                {@const site_a = structure.sites[idx_a]}
-                {@const site_b = structure.sites[idx_b]}
-                {@const disp = (to: Vec3) =>
-                  measure.displacement_pbc(
-                    center.xyz,
-                    to,
-                    lattice?.matrix,
-                    undefined,
-                    lattice?.pbc,
-                  )}
-                {@const v1 = disp(site_a.xyz)}
-                {@const v2 = disp(site_b.xyz)}
-                {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
-                {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
-                {@const angle_deg = measure.angle_between_vectors(v1, v2, `degrees`)}
-                {#if n1 > math.EPS && n2 > math.EPS}
-                  <!-- draw rays from center to the two sites -->
-                  {#each [site_a.xyz, site_b.xyz] as ray_end, ray_idx (ray_idx)}
-                    <Cylinder
-                      from={center.xyz}
-                      to={ray_end}
-                      thickness={0.05}
-                      color={measure_line_color}
-                    />
-                  {/each}
-                  {@const bisector = math.add(math.scale(v1, 1 / n1), math.scale(v2, 1 / n2))}
-                  {@const bis_norm = Math.hypot(...bisector) || 1}
-                  {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
-                  {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
-                  <extras.HTML center position={label_pos}>
-                    <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
-                  </extras.HTML>
-                {/if}
+        {:else if measure_mode === `angle` && measured_sites.length === 3}
+          <!-- ordered triple A-B-C: the second pick is the vertex, same selection-order
+            convention as the torsion below -->
+          {@const [idx_a, idx_center, idx_b] = measured_sites}
+          {@const center = structure.sites[idx_center]}
+          {@const site_a = structure.sites[idx_a]}
+          {@const site_b = structure.sites[idx_b]}
+          {#if center && site_a && site_b}
+            {@const disp = (to: Vec3) =>
+              measure.displacement_pbc(
+                center.xyz,
+                to,
+                lattice?.matrix,
+                undefined,
+                lattice?.pbc,
+              )}
+            {@const v1 = disp(site_a.xyz)}
+            {@const v2 = disp(site_b.xyz)}
+            {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
+            {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
+            {@const angle_deg = measure.angle_between_vectors(v1, v2, `degrees`)}
+            {#if n1 > math.EPS && n2 > math.EPS}
+              <!-- rays end on the minimum-image positions the angle was measured from, not
+                the raw in-cell ones, so the drawn wedge matches the reported number -->
+              {@const ray_ends = [math.add(center.xyz, v1), math.add(center.xyz, v2)]}
+              {#each ray_ends as ray_end, ray_idx (ray_idx)}
+                <Cylinder
+                  from={center.xyz}
+                  to={ray_end}
+                  thickness={0.05}
+                  color={measure_line_color}
+                />
               {/each}
-            {/each}
-          {/each}
+              {@const bisector = math.add(math.scale(v1, 1 / n1), math.scale(v2, 1 / n2))}
+              {@const bis_norm = Math.hypot(...bisector) || 1}
+              {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
+              {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
+              <extras.HTML center position={label_pos}>
+                <span class="measure-label">{format_num(angle_deg, float_fmt)}°</span>
+              </extras.HTML>
+            {/if}
+          {/if}
         {:else if measure_mode === `dihedral` && measured_sites.length === 4}
           <!-- a torsion is defined by exactly four atoms in sequence, so unlike distance
             and angle this renders nothing until the fourth site is picked -->
@@ -2486,7 +2492,14 @@
             (idx) => structure.sites[idx]?.xyz,
           )}
           {#if pos_1 && pos_2 && pos_3 && pos_4}
-            {#each [[pos_1, pos_2], [pos_2, pos_3], [pos_3, pos_4]] as [from, to], seg_idx (seg_idx)}
+            <!-- draw the same unwrapped chain dihedral_angle measures, so a torsion whose
+              atoms straddle a cell face isn't drawn through the box -->
+            {@const [draw_1, draw_2, draw_3, draw_4] = measure.pbc_chain_positions(
+              [pos_1, pos_2, pos_3, pos_4],
+              lattice?.matrix,
+              lattice?.pbc,
+            )}
+            {#each [[draw_1, draw_2], [draw_2, draw_3], [draw_3, draw_4]] as [from, to], seg_idx (seg_idx)}
               <Cylinder {from} {to} thickness={0.05} color={measure_line_color} />
             {/each}
             {@const torsion_deg = measure.dihedral_angle(
@@ -2498,7 +2511,7 @@
               lattice?.pbc,
             )}
             <!-- label sits on the central bond, the axis the torsion is measured about -->
-            <extras.HTML center position={midpoint(pos_2, pos_3)}>
+            <extras.HTML center position={midpoint(draw_2, draw_3)}>
               <span class="measure-label">{format_num(torsion_deg, float_fmt)}°</span>
             </extras.HTML>
           {/if}

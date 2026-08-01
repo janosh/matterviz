@@ -2,6 +2,7 @@
 
 import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
 import {
+  add,
   create_lattice_converters,
   cross_3d,
   dot,
@@ -11,12 +12,24 @@ import {
   subtract,
   to_degrees,
 } from '$lib/math'
-import type { Site } from '$lib/structure'
+import type { MeasureMode, Site } from '$lib/structure'
 import type { Pbc } from './pbc'
 
 export type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
+
+// Modes that measure one fixed ordered tuple. They cap at that arity and a further pick rolls
+// the oldest out, keeping the measurement live: angle mode used to draw every center/pair
+// combination (N(N-1)(N-2)/2, i.e. 168 wedges at 8 sites) and dihedral mode rendered only at
+// exactly 4, blanking when a fifth atom joined. Every other mode accumulates a set up to the
+// shared ceiling and refuses past it, since no pick can be dropped without changing the answer.
+const ORDERED_TUPLE_SIZES = { angle: 3, dihedral: 4 } as const
+
+export const max_measured_sites = (mode: MeasureMode): number =>
+  ORDERED_TUPLE_SIZES[mode as keyof typeof ORDERED_TUPLE_SIZES] ?? MAX_SELECTED_SITES
+
+export const rolls_measured_sites = (mode: MeasureMode): boolean => mode in ORDERED_TUPLE_SIZES
 
 // Calculate minimum image displacement between two points under PBC
 // If lattice_matrix is null/undefined, returns Euclidean displacement.
@@ -46,6 +59,27 @@ export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `deg
 
   const ang = Math.acos(clamped)
   return mode === `degrees` ? to_degrees(ang) : ang
+}
+
+// Unwrap a chain of positions so consecutive points are minimum-image neighbors, anchored on
+// the first. Angles and torsions are reported from minimum-image displacements, so an overlay
+// drawn between raw in-cell coordinates depicts a different geometry than the one measured;
+// this returns the positions to draw instead. Torsions chain three such displacements (see
+// `dihedral_angle`). The angle overlay needs no helper: it already holds both displacements.
+export function pbc_chain_positions(
+  positions: Vec3[],
+  lattice_matrix: Matrix3x3 | null | undefined,
+  pbc?: Pbc,
+): Vec3[] {
+  const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
+  const chain = positions.slice(0, 1)
+  for (const position of positions.slice(1)) {
+    const previous = chain[chain.length - 1]
+    chain.push(
+      add(previous, displacement_pbc(previous, position, lattice_matrix, converters, pbc)),
+    )
+  }
+  return chain
 }
 
 export type DisplacementField = {

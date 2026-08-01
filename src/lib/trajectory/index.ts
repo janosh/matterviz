@@ -16,6 +16,8 @@ export {
   full_data_extractor,
   structural_data_extractor,
 } from './extract'
+export { create_poscar_frame_range_zip, serialize_extxyz_frame_range } from './file-export'
+export type { TrajectoryFrameResolver } from './file-export'
 export {
   generate_axis_labels,
   generate_axis_scale_types,

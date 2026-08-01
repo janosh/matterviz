@@ -1,5 +1,5 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Site } from '$lib/structure'
+import type { MeasureMode, Site } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   angle_between_vectors,
@@ -7,6 +7,10 @@ import {
   dihedral_angle,
   displacement_pbc,
   distance_pbc,
+  MAX_SELECTED_SITES,
+  max_measured_sites,
+  pbc_chain_positions,
+  rolls_measured_sites,
 } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
 
@@ -348,6 +352,93 @@ describe(`measure: dihedral angles`, () => {
     const backward = open_boundary(random_chain_a.toReversed())
     expect(forward).toBeCloseTo(74.11257999, 7)
     expect(backward).toBeCloseTo(forward, 7) // torsion is invariant under chain reversal
+  })
+})
+
+describe(`measure: selection caps`, () => {
+  // The fixed-arity caps must equal what the overlays destructure ([a, center, b] and
+  // [p1..p4]), else the overlay renders nothing (too few) or fans out into combinations
+  // (too many). Only those modes roll their window; the rest refuse at the shared ceiling.
+  test.each([
+    [`angle`, 3, true],
+    [`dihedral`, 4, true],
+    [`distance`, MAX_SELECTED_SITES, false],
+    [`edit-bonds`, MAX_SELECTED_SITES, false],
+    [`edit-atoms`, MAX_SELECTED_SITES, false],
+  ] as [MeasureMode, number, boolean][])(
+    `%s mode keeps at most %i sites (rolls: %s)`,
+    (mode, expected_cap, expected_rolls) => {
+      expect(max_measured_sites(mode)).toBe(expected_cap)
+      expect(rolls_measured_sites(mode)).toBe(expected_rolls)
+    },
+  )
+})
+
+// The overlay geometry must depict the same minimum-image vectors the reported numbers come
+// from; drawing to raw in-cell coordinates shows a different angle than the label states.
+describe(`measure: overlay endpoints`, () => {
+  // The angle overlay draws its rays to `center + v`, where v is the same minimum-image
+  // displacement the reported angle is computed from. This pins why that matters: drawing to
+  // the raw coordinate instead shows the supplement of the number printed on the label.
+  test(`a ray drawn to the minimum image subtends the reported angle`, () => {
+    const lattice = cubic(10)
+    const center: Vec3 = [0.5, 0.5, 0.5]
+    const site_a: Vec3 = [9.5, 0.5, 0.5] // 1 A away through the -x face
+    const site_b: Vec3 = [2.5, 2.5, 0.5] // inside the cell, so it shares site_a's x axis
+    const v1 = displacement_pbc(center, site_a, lattice, undefined, PBC_ALL)
+    const v2 = displacement_pbc(center, site_b, lattice, undefined, PBC_ALL)
+    const reported = angle_between_vectors(v1, v2)
+    expect(reported).toBeCloseTo(135, 10)
+
+    const subtended = (end: Vec3) =>
+      angle_between_vectors(end.map((coord, axis) => coord - center[axis]) as Vec3, v2)
+    // what the overlay draws: center + v1
+    expect(subtended(center.map((coord, axis) => coord + v1[axis]) as Vec3)).toBeCloseTo(
+      reported,
+      12,
+    )
+    // what it used to draw: the raw in-cell coordinate, a whole cell away
+    expect(subtended(site_a)).toBeCloseTo(45, 10)
+  })
+
+  test.each([
+    [`open boundaries leave positions untouched`, null, undefined],
+    [`a vacuum axis stays unwrapped`, cubic(10), SLAB_PBC],
+  ] as [string, Matrix3x3 | null, Pbc | undefined][])(`%s`, (_name, lattice, pbc) => {
+    // Only the c axis crosses a boundary here, so both cases must return the input verbatim
+    const points: Vec3[] = [
+      [0.3, 0.3, 0.3],
+      [0.3, 0.3, 9.7],
+    ]
+    expect(pbc_chain_positions(points, lattice, pbc)).toEqual(points)
+  })
+
+  test(`chain positions unwrap a torsion that straddles a cell corner`, () => {
+    const lattice = cubic(10)
+    // oxfmt-ignore
+    const chain: Vec3[] = [[9.8, 9.8, 9.8], [0.3, 0.1, 9.9], [0.9, 9.7, 0.4], [1.4, 0.6, 1.1]]
+    const drawn = pbc_chain_positions(chain, lattice, PBC_ALL)
+    expect(drawn[0]).toEqual(chain[0]) // anchored on the first point
+    // every drawn segment is the short minimum-image hop, never a near-full-cell traverse
+    for (let idx = 1; idx < drawn.length; idx++) {
+      const step = Math.hypot(
+        drawn[idx][0] - drawn[idx - 1][0],
+        drawn[idx][1] - drawn[idx - 1][1],
+        drawn[idx][2] - drawn[idx - 1][2],
+      )
+      expect(step).toBeLessThan(2)
+      expect(step).toBeCloseTo(distance_pbc(chain[idx - 1], chain[idx], lattice), 10)
+    }
+    // and the unwrapped chain measures the same torsion as the wrapped input
+    expect(dihedral_angle(drawn[0], drawn[1], drawn[2], drawn[3], null)).toBeCloseTo(
+      dihedral_angle(chain[0], chain[1], chain[2], chain[3], lattice, PBC_ALL),
+      10,
+    )
+  })
+
+  test(`empty and single-point chains are returned as-is`, () => {
+    expect(pbc_chain_positions([], cubic(10), PBC_ALL)).toEqual([])
+    expect(pbc_chain_positions([[1, 2, 3]], cubic(10), PBC_ALL)).toEqual([[1, 2, 3]])
   })
 })
 

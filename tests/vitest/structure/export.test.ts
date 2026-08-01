@@ -20,6 +20,7 @@ import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/s
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import {
   BufferGeometry,
   Color,
@@ -28,6 +29,7 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  type MeshPhongMaterial,
   MeshStandardMaterial,
   Scene,
   ShaderMaterial,
@@ -202,6 +204,77 @@ describe(`Export functionality`, () => {
         }
       })
     })
+
+    // Everything past `species x y z` used to vanish on export: no Properties= line was
+    // written at all, so a re-read saw only positions.
+    it.each([
+      [`forces`, { force: [-0.125, 0.25, 0.5] }],
+      [`selective dynamics`, { selective_dynamics: [true, false, true] }],
+      [`both`, { force: [1, -2, 3], selective_dynamics: [false, false, false] }],
+    ])(`round-trips %s through extended XYZ`, (_name, properties) => {
+      const structure = {
+        sites: [
+          { ...make_site(`Si`, [0, 0, 0], [0, 0, 0]), properties },
+          { ...make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]), properties },
+        ],
+        lattice: diag_lattice(2),
+      } as AnyStructure
+      const reparsed = parse_xyz(structure_to_xyz_str(structure))
+      assert(reparsed, `failed to reparse exported XYZ`)
+      for (const site of reparsed.sites) {
+        for (const [key, value] of Object.entries(properties)) {
+          expect(site.properties[key]).toEqual(value)
+        }
+      }
+    })
+
+    it(`omits the forces column unless every site has one`, () => {
+      const structure = {
+        sites: [
+          { ...make_site(`Si`, [0, 0, 0], [0, 0, 0]), properties: { force: [1, 2, 3] } },
+          make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]),
+        ],
+        lattice: diag_lattice(2),
+      } as AnyStructure
+      // Zero-filling the site that has no force would report a relaxed atom on no evidence
+      const exported = structure_to_xyz_str(structure)
+      expect(exported).not.toContain(`forces:R:3`)
+      expect(parse_xyz(exported)?.sites[0].properties.force).toBeUndefined()
+    })
+
+    it(`preserves an aperiodic cell through export`, () => {
+      const structure = {
+        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
+        lattice: { ...diag_lattice(10), pbc: [true, false, false] },
+      } as AnyStructure
+      const exported = structure_to_xyz_str(structure)
+      expect(exported).toContain(`pbc="T F F"`)
+      expect(parse_xyz(exported)?.lattice?.pbc).toEqual([true, false, false])
+    })
+
+    it(`strips characters that would turn a label into a bogus key=value pair`, () => {
+      const structure = {
+        id: `run=1 "trial"`,
+        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
+      } as AnyStructure
+      const comment = structure_to_xyz_str(structure).split(`\n`)[1]
+      expect(comment.startsWith(`run1 trial`)).toBe(true)
+      // the only key=value pairs left are the ones this exporter meant to write
+      expect(comment.match(/=/g)).toHaveLength(1) // Properties=
+    })
+
+    it(`keeps a newline in the id from splitting the comment line`, () => {
+      // An id spanning two lines shifts every atom line down one and makes the count a lie
+      const structure = {
+        id: `line1\nline2`,
+        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
+      } as AnyStructure
+      const lines = structure_to_xyz_str(structure).split(`\n`)
+      expect(lines).toHaveLength(3) // count, comment, one atom
+      expect(lines[0]).toBe(`1`)
+      expect(lines[1]).toContain(`line1 line2`)
+      expect(parse_xyz(structure_to_xyz_str(structure))?.sites).toHaveLength(1)
+    })
   })
 
   describe(`Coordinate handling and conversion`, () => {
@@ -247,13 +320,16 @@ describe(`Export functionality`, () => {
       expect(lines[2]).toBe(`H 1.000000 2.000000 3.000000`)
     })
 
-    it(`handles short coordinate arrays gracefully`, () => {
+    it(`refuses to export a site with no usable coordinates`, () => {
       const structure_short_coords: AnyStructure = {
         sites: [make_site(`H`, [0.1, 0.2] as unknown as Vec3, [1.0, 2.0] as unknown as Vec3)],
       }
-      // length < 3 falls through to the [0, 0, 0] fallback
-      const lines = structure_to_xyz_str(structure_short_coords).split(`\n`)
-      expect(lines[2]).toBe(`H 0.000000 0.000000 0.000000`)
+      // Neither xyz nor abc has 3 components and there is no lattice to convert through.
+      // Writing such a site at the origin passes off a placeholder as a measured position;
+      // the POSCAR path has always thrown here, so XYZ does too.
+      expect(() => structure_to_xyz_str(structure_short_coords)).toThrow(
+        `No valid coordinates found for site 0`,
+      )
     })
 
     // Test cartesian→fractional conversion with various xyz array formats.
@@ -619,11 +695,12 @@ describe(`Export functionality`, () => {
       `0.00000000 2.00000000 0.00000000`,
       `0.00000000 0.00000000 2.00000000`,
     ].join(` `)
+    // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
     // oxfmt-ignore
     it.each([
-      { name: `with lattice information`, expected_comment: `lattice_test H2O Lattice="${cube2_lattice_str}"`,
+      { name: `with lattice information`, expected_comment: `lattice_test H2O Lattice="${cube2_lattice_str}" Properties=species:S:1:pos:R:3 pbc="T T T"`,
         structure: { id: `lattice_test`, sites: [make_site(`H`)], lattice: diag_lattice(2) } },
-      { name: `without lattice information`, expected_comment: `no_lattice_test H2O`,
+      { name: `without lattice information`, expected_comment: `no_lattice_test H2O Properties=species:S:1:pos:R:3`,
         structure: { id: `no_lattice_test`, sites: [make_site(`H`)] } },
     ])(`handles XYZ $name correctly`, ({ structure, expected_comment }) => {
       expect(structure_to_xyz_str(structure).split(`\n`)[1]).toBe(expected_comment)
@@ -968,19 +1045,41 @@ describe(`3D Export Color Preservation`, () => {
       expect(mtl).not.toContain(`newmtl`)
     })
 
+    // Kd is written in sRGB, so the endpoints pass through but mid-tones do not: 0.5 working
+    // (linear) is 0.735361 sRGB. Emitting the linear value instead reads back ~2x too dark.
+    // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
+    // instead would decode to ~4% and leave the ambient term far too dark.
     const rgb_cases = [
-      { name: `red`, rgb: [1, 0, 0], kd: `Kd 1.000000 0.000000 0.000000` },
-      { name: `green`, rgb: [0, 1, 0], kd: `Kd 0.000000 1.000000 0.000000` },
-      { name: `blue`, rgb: [0, 0, 1], kd: `Kd 0.000000 0.000000 1.000000` },
-      { name: `purple`, rgb: [0.5, 0, 0.5], kd: `Kd 0.500000 0.000000 0.500000` },
+      { name: `red`, rgb: [1, 0, 0], kd: `1.000000 0.000000 0.000000`, ka: `0.484535 0.000000 0.000000` },
+      { name: `green`, rgb: [0, 1, 0], kd: `0.000000 1.000000 0.000000`, ka: `0.000000 0.484535 0.000000` },
+      { name: `blue`, rgb: [0, 0, 1], kd: `0.000000 0.000000 1.000000`, ka: `0.000000 0.000000 0.484535` },
+      { name: `purple`, rgb: [0.5, 0, 0.5], kd: `0.735361 0.000000 0.735361`, ka: `0.349196 0.000000 0.349196` },
     ]
 
-    test.each(rgb_cases)(`correct RGB order for $name`, ({ rgb, kd }) => {
+    const mtl_for_color = (rgb: number[], name = `test`): string => {
       const scene = new Scene()
       const mat = new MeshStandardMaterial({ color: new Color(...rgb) })
-      mat.name = `test`
+      mat.name = name
       scene.add(new Mesh(new SphereGeometry(1), mat))
-      expect(generate_mtl_content(scene)).toContain(kd)
+      return generate_mtl_content(scene)
+    }
+
+    // MTLLoader ignores Ka, so only a direct string assertion can catch a regression there
+    test.each(rgb_cases)(`correct RGB order and ambient for $name`, ({ rgb, kd, ka }) => {
+      const mtl = mtl_for_color(rgb)
+      expect(mtl).toContain(`Kd ${kd}`)
+      expect(mtl).toContain(`Ka ${ka}`)
+    })
+
+    // three's MTLLoader is the reference reader for what we write, and it treats Kd as sRGB
+    test.each(rgb_cases)(`$name survives a round trip through MTLLoader`, ({ rgb }) => {
+      const creator = new MTLLoader().parse(mtl_for_color(rgb), ``)
+      const { color } = creator.create(`test`) as MeshPhongMaterial
+      for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
+        // Kd is quantized to six decimals in sRGB; decoding magnifies that to ~1e-5 in the
+        // linear channel, still three orders below the ~0.29 error of writing linear values.
+        expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
+      }
     })
 
     test(`material properties and deduplication`, () => {
@@ -1003,10 +1102,14 @@ describe(`3D Export Color Preservation`, () => {
       expect(mtl).toContain(`illum`) // illumination
     })
 
-    test(`default name for unnamed materials`, () => {
+    test(`default name and white color for unnamed materials`, () => {
       const scene = new Scene()
       scene.add(new Mesh(new SphereGeometry(1), new MeshStandardMaterial()))
-      expect(generate_mtl_content(scene)).toContain(`newmtl default_material`)
+      const mtl = generate_mtl_content(scene)
+      expect(mtl).toContain(`newmtl default_material`)
+      // white default takes the same linear-then-encode path as a real color
+      expect(mtl).toContain(`Kd 1.000000 1.000000 1.000000`)
+      expect(mtl).toContain(`Ka 0.484535 0.484535 0.484535`)
     })
   })
 })

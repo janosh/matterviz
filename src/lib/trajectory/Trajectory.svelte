@@ -35,6 +35,7 @@
     TrajectoryType,
     TrajHandlerData,
   } from './index'
+  import type { TrajectoryFrameResolver } from './file-export'
   import {
     FRAME_LOAD_DEBOUNCE_MS,
     TrajectoryError,
@@ -461,6 +462,25 @@
         load_frame_on_demand(frame_idx)
       }
     }, FRAME_LOAD_DEBOUNCE_MS)
+  }
+
+  // Resolve any frame for export. Indexed trajectories hold only the first handful in
+  // `frames`, so the export panes must go through the loader for the rest; the decode is
+  // cached so re-exporting an overlapping range doesn't re-read the file.
+  const resolve_frame: TrajectoryFrameResolver = async (frame_idx) => {
+    const owner = trajectory
+    if (!owner || frame_idx < 0 || frame_idx >= total_frames) return null
+    // Both load paths bail before ensure_frame_cache_owner when a trajectory has no loader, so
+    // an eager trajectory loaded after an indexed one inherits a cache still full of the old
+    // one's frames. Claiming ownership here keeps the export from reading those.
+    ensure_frame_cache_owner()
+    const cached = cache_get(frame_idx) ?? owner.frames[frame_idx]
+    if (cached) return cached
+    if (!owner.frame_loader) return null
+    const frame = await owner.frame_loader.load_frame(orig_data || ``, frame_idx)
+    // A swap mid-export must not emit the old trajectory's frames into the new one's file.
+    // Deliberately not cached: a whole-range export would evict every frame playback holds.
+    return trajectory === owner ? frame : null
   }
 
   // Load frame on demand - works for both indexed files and external streaming
@@ -1310,6 +1330,7 @@
                 {wrapper}
                 filename={current_filename || `trajectory`}
                 on_step_change={go_to_step}
+                {resolve_frame}
                 pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
               />
             {/if}

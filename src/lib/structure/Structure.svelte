@@ -801,8 +801,10 @@
   let is_measure_selection_mode = $derived(
     measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral`,
   )
+  // Only distance refuses further picks at its cap; angle/dihedral roll their fixed-arity
+  // window instead, so badging them as "full" the moment a measurement completes is noise.
   let show_measure_selection_limit = $derived(
-    is_measure_selection_mode && measured_sites.length >= MAX_SELECTED_SITES,
+    measure_mode === `distance` && measured_sites.length >= MAX_SELECTED_SITES,
   )
   let show_selection_reset = $derived(
     has_bond_edits ||

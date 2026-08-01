@@ -474,9 +474,12 @@ describe(`Structure`, () => {
     ).toBe(true)
   })
 
+  // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
+  // ordered tuple and roll the oldest pick out, so they never hit a wall worth badging.
   test.each([
     { mode: `distance`, shows_limit: true },
-    { mode: `angle`, shows_limit: true },
+    { mode: `angle`, shows_limit: false },
+    { mode: `dihedral`, shows_limit: false },
     { mode: `edit-bonds`, shows_limit: false },
     { mode: `edit-atoms`, shows_limit: false },
   ] as const)(

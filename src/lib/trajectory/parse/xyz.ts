@@ -10,17 +10,29 @@ import {
 } from '$lib/trajectory/helpers'
 import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import { normalize_scientific_notation } from '$lib/utils'
+
+export type ExtxyzColumn = { offset: number; ncols: number }
+export type ExtxyzColumns = {
+  species_col: number
+  pos_col: number
+  forces_col: number
+  min_cols: number
+  // Every declared column by lowercased name, so callers can read properties beyond the three
+  // resolved above (move_mask, selective_dynamics, charges, ...) without re-parsing the string.
+  // Null when Properties was absent or malformed and the conventional layout was assumed.
+  layout: Record<string, ExtxyzColumn> | null
+}
 
 // Resolve species/pos/forces column offsets from an extxyz Properties string of
 // name:type:ncols triples (e.g. "species:S:1:pos:R:3:forces:R:3"), falling back
 // to the conventional "symbol x y z" layout when absent or malformed
-function parse_extxyz_columns(comment: string) {
+export function parse_extxyz_columns(comment: string): ExtxyzColumns {
   const fields =
     /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
   // Well-formed Properties is name:type:ncols triples; a non-multiple of 3 is malformed,
   // so bail to the conventional default rather than trusting a partial layout
-  let layout: Record<string, { offset: number; ncols: number }> | null =
-    fields.length % 3 === 0 ? {} : null
+  let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
     const ncols = Math.trunc(Number(fields[idx + 2]))
     if (Number.isInteger(ncols) && ncols > 0) {
@@ -31,17 +43,31 @@ function parse_extxyz_columns(comment: string) {
   const species_col = layout?.species?.offset ?? 0
   const pos_col = layout?.pos?.offset ?? 1
   const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
-  return { species_col, pos_col, forces_col, min_cols: Math.max(pos_col + 3, species_col + 1) }
+  return {
+    species_col,
+    pos_col,
+    forces_col,
+    min_cols: Math.max(pos_col + 3, species_col + 1),
+    layout: layout && Object.keys(layout).length > 0 ? layout : null,
+  }
 }
 
-// Parse Lattice="ax ay az bx by bz cx cy cz" from an extxyz comment line
-function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
-  const vals = /Lattice\s*=\s*"(?<lattice>[^"]+)"/i
-    .exec(comment)?.[1]
+// Parse Lattice="ax ay az bx by bz cx cy cz" from an extxyz comment line.
+// Values go through normalize_scientific_notation so Fortran-style exponents (1.0D+00) and
+// Mathematica's `*^` survive, matching how the atom coordinates themselves are read.
+// Undefined means the file declared no cell (a molecule); a declared but unreadable cell
+// throws instead, since silently rendering a crystal as an isolated molecule hides the defect.
+export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
+  const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
+  if (raw === undefined) return undefined
+  const vals = raw
     .trim()
     .split(/\s+/)
-    .map(Number)
-  if (vals?.length !== 9 || !vals.every(Number.isFinite)) return undefined
+    .filter(Boolean)
+    .map((token) => Number(normalize_scientific_notation(token)))
+  if (vals.length !== 9 || !vals.every(Number.isFinite)) {
+    throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
+  }
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as math.Matrix3x3
 }
 
@@ -61,7 +87,34 @@ function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
   return [first, second, third]
 }
 
-function parse_extxyz_pbc(comment: string): Pbc | undefined {
+// Read a declared boolean column as per-axis motion flags (T = free to move).
+// ASE writes `move_mask:L:3` for a per-axis FixCartesian and `move_mask:L:1` for a whole-atom
+// FixAtoms, so both arities are accepted and the 1-column form broadcasts. `selective_dynamics`
+// is read as a fallback for files written by tools that use the VASP name. Anything else
+// (missing column, short line, unrecognized token) yields undefined so callers fall through.
+export function read_extxyz_move_flags(
+  tokens: string[],
+  layout: Record<string, ExtxyzColumn> | null,
+): [boolean, boolean, boolean] | undefined {
+  for (const name of [`move_mask`, `selective_dynamics`]) {
+    const column = layout?.[name]
+    if (!column || tokens.length < column.offset + Math.min(column.ncols, 3)) continue
+    if (column.ncols >= 3) {
+      const flags = tokens
+        .slice(column.offset, column.offset + 3)
+        .map((token) => EXTXYZ_BOOL.get(token.toLowerCase()))
+      if (flags.every((flag) => flag !== undefined)) {
+        return flags as [boolean, boolean, boolean]
+      }
+    } else {
+      const flag = EXTXYZ_BOOL.get(tokens[column.offset].toLowerCase())
+      if (flag !== undefined) return [flag, flag, flag]
+    }
+  }
+  return undefined
+}
+
+export function parse_extxyz_pbc(comment: string): Pbc | undefined {
   const match =
     /\bpbc\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+(?:\s+\S+){0,2}))/iu.exec(
       comment,
@@ -117,17 +170,25 @@ type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
 // Parse num_atoms atom lines starting at lines[start], reading species/pos/forces from
 // their Properties-declared column offsets; invalid atoms are skipped with a warning.
 // force_stats holds raw forces plus max and RMS force magnitudes when forces are present.
+// move_flags is populated only when every kept atom declared one, so a partially-annotated
+// file doesn't silently report unconstrained axes for the atoms that were missing flags.
 function parse_xyz_atom_lines(
   lines: string[],
   start: number,
   num_atoms: number,
   comment: string,
   frame_label: string,
-): { elements: ElementSymbol[]; positions: number[][]; force_stats: ForceStats | null } {
-  const { species_col, pos_col, forces_col, min_cols } = parse_extxyz_columns(comment)
+): {
+  elements: ElementSymbol[]
+  positions: number[][]
+  force_stats: ForceStats | null
+  move_flags: [boolean, boolean, boolean][] | null
+} {
+  const { species_col, pos_col, forces_col, min_cols, layout } = parse_extxyz_columns(comment)
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []
+  const move_flags: [boolean, boolean, boolean][] = []
 
   for (let idx = 0; idx < num_atoms; idx++) {
     const parts = lines[start + idx]?.trim().split(/\s+/) ?? []
@@ -153,10 +214,18 @@ function parse_xyz_atom_lines(
       const force_vec = parts.slice(forces_col, forces_col + 3).map(parseFloat)
       if (force_vec.every(Number.isFinite)) forces.push(force_vec)
     }
+    const flags = read_extxyz_move_flags(parts, layout)
+    if (flags) move_flags.push(flags)
   }
 
   const stats = calc_force_stats(forces)
-  return { elements, positions, force_stats: stats && { forces, ...stats } }
+  return {
+    elements,
+    positions,
+    force_stats: stats && { forces, ...stats },
+    move_flags:
+      move_flags.length === positions.length && positions.length > 0 ? move_flags : null,
+  }
 }
 
 // Assemble a TrajectoryFrame from the XYZ frame starting at lines[start] (count line,
@@ -180,7 +249,7 @@ export function build_xyz_frame(
     )
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
-  const { elements, positions, force_stats } = parse_xyz_atom_lines(
+  const { elements, positions, force_stats, move_flags } = parse_xyz_atom_lines(
     lines,
     start + 2,
     num_atoms,
@@ -189,7 +258,7 @@ export function build_xyz_frame(
   )
   const metadata: Record<string, unknown> = { ...properties, ...force_stats }
   if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
-  return create_trajectory_frame(
+  const built = create_trajectory_frame(
     positions,
     elements,
     lattice_matrix,
@@ -197,6 +266,14 @@ export function build_xyz_frame(
     step ?? opts.default_step,
     metadata,
   )
+  // Constraints belong on the sites, not the frame metadata: that is where the viewer's
+  // selective-dynamics coloring and the POSCAR/extXYZ exporters read them from.
+  if (move_flags) {
+    for (const [idx, site] of built.structure.sites.entries()) {
+      site.properties = { ...site.properties, selective_dynamics: move_flags[idx] }
+    }
+  }
+  return built
 }
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {
