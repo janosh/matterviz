@@ -43,6 +43,49 @@ describe(`VDOS peak position`, () => {
     },
   )
 
+  // Regression: max_lags used to shrink the lag SPACING once a run exceeded ~8194 frames,
+  // which undersamples the correlation function before the transform. A 0.3 cycles/frame
+  // mode at the resulting stride of 2 folded to 0.2, i.e. 300 THz reported as 200 THz, with
+  // the peak moved rather than missing so the plot still looked reasonable.
+  it(`keeps a high-frequency peak put on a run long enough to trigger lag capping`, () => {
+    const cycles_per_frame = 0.3
+    const result = calc_vacf(orbit(9000, cycles_per_frame), { dt: 1, time_unit: `fs` })
+
+    expect(result.lag_stride).toBe(1)
+    const bin_spacing = result.frequencies[1] - result.frequencies[0]
+    const peak = result.curves[0].peak_frequency ?? 0
+    const aliased_thz = (1 / result.lag_stride - cycles_per_frame) * 1000
+    expect(Math.abs(peak - cycles_per_frame * 1000)).toBeLessThan(bin_spacing)
+    // and specifically not sitting where a stride-2 decimation would have folded it
+    expect(Math.abs(peak - aliased_thz)).toBeGreaterThan(bin_spacing)
+  })
+
+  it(`refuses to thin time origins on its own`, () => {
+    // A velocity repeating every 8 frames read at origin_stride 8 is sampled at one phase
+    // forever, so a real oscillation comes back as an all-zero curve.
+    const period = 8
+    const n_frames = 80
+    const velocities = Array.from({ length: n_frames }, (_, frame_idx) => [
+      [Math.cos((2 * Math.PI * frame_idx) / period), 0, 0],
+    ])
+    const positions = Array.from({ length: n_frames }, () => [[0, 0, 0]])
+    const input = build_vacf_input(positions, { velocity_frames: velocities })
+
+    const honest = calc_vacf(input, {})
+    expect(honest.origin_stride).toBe(1)
+    expect(honest.curves[0].vacf[0]).toBeCloseTo(0.5, 10)
+
+    // opting in is still possible, and still wrong for this signal - which is the point
+    const phase_locked = calc_vacf(input, { origin_stride: period })
+    expect(phase_locked.curves[0].vacf[0]).toBeCloseTo(1, 10)
+  })
+
+  it(`names the stride and the risk when the work budget is exceeded`, () => {
+    expect(() => calc_vacf(orbit(400, 0.05), { work_budget: 100 })).toThrow(
+      /origin_stride >= \d+.*aliases motion whose period divides the stride/s,
+    )
+  })
+
   it(`reports the same peak in cm^-1`, () => {
     const options = { dt: 1, time_unit: `fs` } as const
     const in_thz = calc_vacf(orbit(800, 0.02), options)

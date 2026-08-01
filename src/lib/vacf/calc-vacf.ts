@@ -185,8 +185,18 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   // === lag / origin grid ===
   // Lag 0 is included: it is the mean squared speed the whole curve normalizes by, and the
   // cosine transform needs the series to start there.
-  const max_lag = Math.max(1, Math.floor((n_frames - 1) * max_lag_fraction))
-  const lag_stride = options.lag_stride ?? Math.max(1, Math.ceil(max_lag / max_lags))
+  // max_lags caps the lag RANGE, never the lag spacing. Decimating a correlation function
+  // before transforming it is undersampling with no anti-alias filter: at lag_stride 3 a
+  // 0.4 cycles/frame mode reports as 0.067, i.e. 400 THz read as 67 THz at dt = 1 fs, and
+  // the peak moves rather than disappearing so the plot still looks plausible. Truncating
+  // the window instead costs frequency resolution, which the plot shows.
+  const max_lag = Math.min(
+    Math.max(1, Math.floor((n_frames - 1) * max_lag_fraction)),
+    Math.max(1, max_lags - 1),
+  )
+  // Still available as an explicit opt-in for a caller who knows their spectrum is
+  // band-limited well below the decimated Nyquist.
+  const lag_stride = options.lag_stride ?? 1
   if (!Number.isInteger(lag_stride) || lag_stride < 1) {
     fail(`lag_stride must be a positive integer, got ${lag_stride}`)
   }
@@ -196,11 +206,26 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     fail(`lag_stride ${lag_stride} exceeds the maximum lag ${max_lag}; nothing to transform`)
   }
 
+  // Sampling every Nth time origin phase-locks to periodic motion: a velocity repeating
+  // every 8 frames, sampled at origin_stride 8, is read at the same phase every time and
+  // an oscillation with mean square speed 0.5 comes back as a flat zero curve. MSD can
+  // thin origins because it averages a monotone displacement; a correlation function
+  // cannot. So thinning is never applied silently — a caller over budget is told the
+  // stride to set and what it costs.
   const unstrided_work = lags.reduce((total, lag) => total + (n_frames - lag) * n_atoms, 0)
-  const origin_stride =
-    options.origin_stride ?? Math.max(1, Math.ceil(unstrided_work / work_budget))
+  const origin_stride = options.origin_stride ?? 1
   if (!Number.isInteger(origin_stride) || origin_stride < 1) {
     fail(`origin_stride must be a positive integer, got ${origin_stride}`)
+  }
+  if (origin_stride === 1 && unstrided_work > work_budget) {
+    const suggested = Math.ceil(unstrided_work / work_budget)
+    fail(
+      `${lags.length} lags over ${n_frames} frames x ${n_atoms} atoms needs ` +
+        `${unstrided_work} origin-atom operations, over the ${work_budget} budget. Collect ` +
+        `fewer frames (frame_stride), shorten the lag window (max_lags, currently ` +
+        `${max_lags}), or set origin_stride >= ${suggested} — but note a strided origin ` +
+        `sample aliases motion whose period divides the stride`,
+    )
   }
 
   // === accumulate, grouped by element ===
