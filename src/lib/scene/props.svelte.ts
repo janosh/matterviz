@@ -70,10 +70,15 @@ export const resize_orthographic_zoom = (
   min_zoom?: number,
   max_zoom?: number,
 ): number => {
-  const resized_zoom =
-    current_zoom !== undefined && current_zoom > 0 && previous_fit_zoom > 0
-      ? (current_zoom * next_fit_zoom) / previous_fit_zoom
-      : next_fit_zoom
+  const keeps_zoom = current_zoom !== undefined && current_zoom > 0 && previous_fit_zoom > 0
+  // An unchanged fit returns the zoom untouched rather than multiplying by one: (z * f) / f
+  // lands an ulp away from z for some values, and callers (bounds-tracking effects call this
+  // with the fit unchanged) write the result straight back into reactive state.
+  const resized_zoom = !keeps_zoom
+    ? next_fit_zoom
+    : previous_fit_zoom === next_fit_zoom
+      ? current_zoom
+      : (current_zoom * next_fit_zoom) / previous_fit_zoom
   const bounds = get_orthographic_zoom_bounds(next_fit_zoom, min_zoom, max_zoom)
   return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
 }

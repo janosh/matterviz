@@ -47,11 +47,23 @@ test.describe(`BrillouinZone Component Tests`, () => {
       await page.waitForTimeout(200)
     }
 
+    // Zoom per shorter canvas edge, the quantity the fit holds constant. Measured from the
+    // canvas rather than the CSS width so borders or sub-pixel layout rounding can't turn a
+    // correct fit into a failure — and so the assertion says what invariant it is checking.
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+    const zoom_per_edge = async (): Promise<number> => {
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`BZ canvas bounding box not found`)
+      return ((await read_zoom()) ?? 0) / Math.min(box.width, box.height)
+    }
+
     const wide_zoom = await read_zoom()
     expect(wide_zoom).toBeGreaterThan(50)
+    const wide_zoom_per_edge = await zoom_per_edge()
     // the page fixes height at 500px, so narrowing past it drives the shorter edge
     await set_bz_width(`400px`)
-    await expect.poll(read_zoom).toBeCloseTo((wide_zoom ?? 0) * (400 / 500), 5)
+    await expect.poll(read_zoom).toBeLessThan(wide_zoom ?? 0)
+    expect(await zoom_per_edge()).toBeCloseTo(wide_zoom_per_edge, 5)
     await set_bz_width(`800px`)
     await expect.poll(read_zoom).toBeCloseTo(wide_zoom ?? 0, 5)
 

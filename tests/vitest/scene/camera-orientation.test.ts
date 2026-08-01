@@ -46,6 +46,9 @@ test.each([
   [`fit lowers minimum for large structures`, undefined, 0, 5, 10, 100, 5],
   [`configured maximum clamps user zoom`, 400, 10, 20, undefined, 500, 500],
   [`configured minimum preserves user zoom`, 2, 10, 20, 1, 500, 4],
+  // (0.9 * 0.3) / 0.3 is 0.9000000000000001, so a rescale that runs on an unchanged fit
+  // drifts the zoom by an ulp on every bounds change
+  [`unchanged fit returns the zoom bit-for-bit`, 0.9, 0.3, 0.3, 0.1, 500, 0.9],
 ] as const)(
   `rescale orthographic zoom: %s`,
   (_name, current, previous_fit, next_fit, min_zoom, max_zoom, expected) =>
@@ -57,8 +60,11 @@ test.each([
 test.each([
   [4.5, 4.5, 500],
   [800, 10, 800],
-])(`orthographic bounds scale with fit %s`, (fit_zoom, min_zoom, max_zoom) => {
-  expect(get_orthographic_zoom_bounds(fit_zoom, 10, 500)).toEqual({ min_zoom, max_zoom })
+])(`orthographic bounds scale with fit %s`, (fit_zoom, expected_min, expected_max) => {
+  expect(get_orthographic_zoom_bounds(fit_zoom, 10, 500)).toEqual({
+    min_zoom: expected_min,
+    max_zoom: expected_max,
+  })
   expect(get_orthographic_zoom_bounds(fit_zoom).max_zoom).toBe(Number.POSITIVE_INFINITY)
 })
 

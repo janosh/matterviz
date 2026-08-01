@@ -111,6 +111,10 @@ test.describe(`ScatterPlot3D`, () => {
       .toBeLessThan(initial_box.width)
     const resized_box = await canvas.boundingBox()
     if (!resized_box) throw new Error(`Resized canvas bounding box not found`)
+    // The page fixes height at 500px, so 320px makes width the shorter edge. Asserted rather
+    // than assumed: the fit zoom follows min(width, height), so a resize that left the height
+    // shorter would not move it and the ratio below would hold vacuously.
+    expect(resized_box.width).toBeLessThan(resized_box.height)
     await expect.poll(read_zoom).not.toBe(zoom_before_resize)
     const zoom_after_resize = await read_zoom()
     expect(zoom_after_resize / Math.min(resized_box.width, resized_box.height)).toBeCloseTo(

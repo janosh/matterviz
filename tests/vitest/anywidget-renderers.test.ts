@@ -357,7 +357,7 @@ describe(`render() lifecycle`, () => {
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el,
-    } as never) as () => void
+    }) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
 

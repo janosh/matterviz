@@ -99,7 +99,17 @@ async function* iter_export_frames(
   }
   const total = end_frame - start_frame + 1
   for (let frame_idx = start_frame; frame_idx <= end_frame; frame_idx++) {
-    const frame = await resolve_frame(frame_idx)
+    // Same reason as serialize_frame below: a lazy resolver reading frame 3127 off disk fails
+    // with an I/O or parse message that names no frame.
+    let frame: TrajectoryFrame | null | undefined
+    try {
+      frame = await resolve_frame(frame_idx)
+    } catch (error) {
+      throw new Error(
+        `Failed to load trajectory frame ${frame_idx}: ${to_error(error).message}`,
+        { cause: error },
+      )
+    }
     // Emitting a short file would look like a successful export of a shorter run
     if (!frame?.structure?.sites) {
       throw new Error(`Trajectory frame ${frame_idx} is not available for export`)
