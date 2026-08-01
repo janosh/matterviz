@@ -489,6 +489,7 @@ class BrillouinZone(MatterViz):
         allow_file_drop: bool | None = None,
         bz_data: Any | None = None,
         bz_order: float | None = None,
+        camera: Any | None = None,
         camera_projection: Any | None = None,
         controls_open: bool | None = None,
         data_url: str | None = None,
@@ -509,6 +510,7 @@ class BrillouinZone(MatterViz):
         k_path_points: list[list[float]] | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
+        scene: Any | None = None,
         show_controls: Any | None = None,
         show_ibz: bool | None = None,
         show_vectors: bool | None = None,
@@ -537,6 +539,8 @@ class BrillouinZone(MatterViz):
             mv_props["bz_data"] = bz_data
         if bz_order is not None:
             mv_props["bz_order"] = bz_order
+        if camera is not None:
+            mv_props["camera"] = camera
         if camera_projection is not None:
             mv_props["camera_projection"] = camera_projection
         if controls_open is not None:
@@ -577,6 +581,8 @@ class BrillouinZone(MatterViz):
             mv_props["loading"] = loading
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
+        if scene is not None:
+            mv_props["scene"] = scene
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
         if show_ibz is not None:
