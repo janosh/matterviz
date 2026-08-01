@@ -881,21 +881,19 @@
           {#each examples as category (category.label)}
             <div class="example-category">
               <div class="category-label">{category.label}:</div>
-              <div class="example-tags">
-                {#each category.examples as example (example)}
-                  <button
-                    type="button"
-                    class="example-tag"
-                    data-example-item
-                    onclick={() => apply_example(example)}
-                    title={category.description}
-                    role="menuitem"
-                    tabindex="-1"
-                  >
-                    {example}
-                  </button>
-                {/each}
-              </div>
+              {#each category.examples as example (example)}
+                <button
+                  type="button"
+                  class="example-tag"
+                  data-example-item
+                  onclick={() => apply_example(example)}
+                  title={category.description}
+                  role="menuitem"
+                  tabindex="-1"
+                >
+                  {example}
+                </button>
+              {/each}
             </div>
           {/each}
         </div>
@@ -1115,7 +1113,7 @@
   .example-category {
     display: flex;
     align-items: center;
-    gap: 6pt;
+    gap: 4pt 6pt;
     flex-wrap: wrap;
   }
   .category-label {
@@ -1123,11 +1121,6 @@
     font-weight: 600;
     opacity: 0.6;
     min-width: 115px;
-  }
-  .example-tags {
-    display: flex;
-    gap: 4pt;
-    flex-wrap: wrap;
   }
   .example-tag {
     background: rgba(77, 182, 255, 0.1);

@@ -547,6 +547,9 @@ test.describe(`Trajectory Component`, () => {
     test(`narrow container stacks the panes and widening it unstacks them`, async ({
       page,
     }) => {
+      // Three resize cycles, each waiting on a ResizeObserver, does not fit the
+      // default 30s budget when the whole suite shares one software GPU.
+      test.slow()
       const trajectory = page.locator(`#auto-layout`)
 
       await trajectory.scrollIntoViewIfNeeded()

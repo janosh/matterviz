@@ -398,47 +398,45 @@
     </ViewerChrome>
 
     {#if webgpu_available()}
-      <div style="overflow: hidden; height: 100%">
-        <Canvas createRenderer={create_renderer}>
-          <BrillouinZoneScene
-            {bz_data}
-            {surface_color}
-            {surface_opacity}
-            {edge_color}
-            {edge_width}
-            {show_vectors}
-            {vector_scale}
-            {camera_projection}
-            {k_path_points}
-            {k_path_labels}
-            {hovered_k_point}
-            {hovered_qpoint_index}
-            {on_kpath_hover}
-            {show_ibz}
-            {ibz_data}
-            {ibz_color}
-            {ibz_opacity}
-            {width}
-            {height}
-            bind:scene
-            bind:camera
-            bind:hover_data
-          />
-        </Canvas>
+      <Canvas createRenderer={create_renderer}>
+        <BrillouinZoneScene
+          {bz_data}
+          {surface_color}
+          {surface_opacity}
+          {edge_color}
+          {edge_width}
+          {show_vectors}
+          {vector_scale}
+          {camera_projection}
+          {k_path_points}
+          {k_path_labels}
+          {hovered_k_point}
+          {hovered_qpoint_index}
+          {on_kpath_hover}
+          {show_ibz}
+          {ibz_data}
+          {ibz_color}
+          {ibz_opacity}
+          {width}
+          {height}
+          bind:scene
+          bind:camera
+          bind:hover_data
+        />
+      </Canvas>
 
-        <!-- Hover tooltip -->
-        {#if hover_data}
-          <PlotTooltip
-            x={hover_data.screen_position.x}
-            y={hover_data.screen_position.y}
-            bg_color={hover_data.is_ibz ? ibz_color : surface_color}
-            fixed
-            style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
-          >
-            <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
-          </PlotTooltip>
-        {/if}
-      </div>
+      <!-- Hover tooltip -->
+      {#if hover_data}
+        <PlotTooltip
+          x={hover_data.screen_position.x}
+          y={hover_data.screen_position.y}
+          bg_color={hover_data.is_ibz ? ibz_color : surface_color}
+          fixed
+          style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+        >
+          <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
+        </PlotTooltip>
+      {/if}
     {/if}
   {:else if structure}
     <p class="warn">Structure must have a lattice to compute Brillouin zone</p>
@@ -461,6 +459,17 @@
     border-radius: var(--bz-border-radius, 0);
     background: var(--bz-bg, var(--surface-bg));
     color: var(--bz-text-color, var(--text-color));
+  }
+  /* Clip threlte HTML overlays (b₁/b₂/b₃ labels) when they fall outside canvas bounds.
+     Targets threlte-generated container (parent of canvas), not main wrapper so control
+     panes can still be dragged outside component bounds. */
+  .brillouin-zone :global(> div) {
+    overflow: hidden;
+  }
+  @supports selector(:has(> canvas)) {
+    .brillouin-zone :global(> div:not(:has(> canvas))) {
+      overflow: visible;
+    }
   }
   .brillouin-zone.active {
     z-index: var(--bz-active-z-index, 2);

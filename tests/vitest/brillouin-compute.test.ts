@@ -10,10 +10,12 @@ import {
   IBZ_REFERENCE_DIRECTIONS,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
+import { DEFAULT_FIT_PADDING } from '$lib/structure/camera-fit'
 import {
   bz_fit_extent,
   cartesian_to_fractional,
   default_camera_position,
+  k_cell_fit_extent,
   k_lattice_inverse,
   k_space_size,
   polyhedron_centroid,
@@ -665,18 +667,46 @@ describe(`scene sizing helpers`, () => {
         undefined,
         (2 * Math.sqrt(3)) / 0.85,
       ],
-      // no vertices: 2 * k_space_size must cover the cube those k-vectors would span, padded
-      // the same as the vertices branch so the zoom doesn't jump once vertices arrive
-      [`falls back to a sphere without vertices`, undefined, undefined, 8 / 0.85],
-      [`falls back on empty vertices too`, [], undefined, 8 / 0.85],
+      // Without vertices the zone is framed by the cell it is inscribed in: a cubic lattice of
+      // side 4 gives a cell diagonal of 4*sqrt(3). Using 2*k_space_size = 8 instead would frame
+      // the zone at 74% of the edge and then jump 15% the moment the vertices arrive.
+      [`falls back to the cell without vertices`, undefined, undefined, 4 * Math.sqrt(3) / 0.85],
+      [`falls back on empty vertices too`, [], undefined, 4 * Math.sqrt(3) / 0.85],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
         expect(bz_fit_extent(vertices, k_lattice, padding)).toBeCloseTo(expected, 10),
     )
 
-    // k_space_size has its own fallback when there is no reciprocal lattice either
+    // the fallback and the vertices branch must frame a cubic zone identically, or the view
+    // visibly rescales the moment the computed vertices land
+    test(`the cubic fallback matches what its own vertices would give`, () => {
+      // Wigner-Seitz zone of the cubic reciprocal lattice above: a cube of side 4
+      const zone: Vec3[] = [-2, 2].flatMap((x) =>
+        [-2, 2].flatMap((y) => [-2, 2].map((z): Vec3 => [x, y, z]))
+      )
+      expect(bz_fit_extent(undefined, k_lattice)).toBeCloseTo(
+        bz_fit_extent(zone, k_lattice),
+        10,
+      )
+    })
+
+    test(`an anisotropic cell is framed by its longest diagonal, not its mean vector`, () => {
+      // mean |b| is 34, so a k_space_size-based fallback would frame 100 units of cell at 68
+      const stretched: Matrix3x3 = [[100, 0, 0], [0, 1, 0], [0, 0, 1]]
+      expect(k_cell_fit_extent(stretched, 1)).toBeCloseTo(Math.hypot(100, 1, 1), 10)
+    })
+
+    // keeps this module's private FIT_PADDING from drifting away from camera-fit's constant
+    // without importing element data into every consumer of brillouin/geometry
+    test(`default padding matches structure_fit_frame`, () => {
+      expect(bz_fit_extent(cube, k_lattice)).toBe(
+        bz_fit_extent(cube, k_lattice, DEFAULT_FIT_PADDING),
+      )
+    })
+
+    // k_space_size has its own placeholder |b| when there is no reciprocal lattice either
     test(`falls back twice without a lattice`, () =>
-      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo(20 / 0.85, 10))
+      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo(Math.sqrt(3) * 10 / 0.85, 10))
   })
 })

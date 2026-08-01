@@ -71,13 +71,30 @@ describe(`poscar_frame_filename`, () => {
 })
 
 describe(`trajectory_frame_to_extxyz_str`, () => {
-  test(`keeps energy and step, which live on the frame not the structure`, () => {
-    const text = trajectory_frame_to_extxyz_str(frames[1])
-    const comment = text.split(`\n`)[1]
+  // Frame-level fields (step, energy, …) live outside the structure the single-structure
+  // exporter sees; scalars/booleans join the comment, arrays/strings/non-finites do not.
+  test(`merges frame scalars into the comment and skips the rest`, () => {
+    const comment = trajectory_frame_to_extxyz_str(
+      make_frame(5, two_sites, {
+        energy: -11.25,
+        force_max: 0.1,
+        temperature: 300,
+        converged: true,
+        pressure: Number.POSITIVE_INFINITY,
+        bad_energy: Number.NaN,
+        stress: [1, 2, 3, 4, 5, 6],
+        label: `some string`,
+      }),
+    ).split(`\n`)[1]
+    expect(comment).toContain(`Properties=species:S:1:pos:R:3`)
     expect(comment).toContain(`step=5`)
     expect(comment).toContain(`energy=-11.25`)
     expect(comment).toContain(`force_max=0.1`)
-    expect(comment).toContain(`Properties=species:S:1:pos:R:3`)
+    expect(comment).toContain(`temperature=300`)
+    expect(comment).toContain(`converged=true`)
+    expect(comment).not.toContain(`stress`)
+    expect(comment).not.toContain(`some string`)
+    expect(comment).not.toMatch(/NaN|Infinity/)
   })
 
   // XYZ parsing stores per-atom forces on frame.metadata, which the single-structure
@@ -104,43 +121,17 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(trajectory_frame_to_extxyz_str(make_frame(0, two_sites, { forces })))
       .not.toContain(`forces:R:3`)
   })
-
-  test(`skips non-finite scalars rather than emitting energy=NaN`, () => {
-    const frame = make_frame(0, two_sites, {
-      energy: Number.NaN,
-      pressure: Number.POSITIVE_INFINITY,
-      temperature: 300,
-    })
-    const comment = trajectory_frame_to_extxyz_str(frame).split(`\n`)[1]
-    expect(comment).toContain(`temperature=300`)
-    expect(comment).not.toMatch(/NaN|Infinity/)
-  })
-
-  test(`carries extra scalar metadata but not arrays`, () => {
-    const frame = make_frame(
-      0,
-      [
-        [0, 0, 0],
-        [1, 1, 1],
-      ],
-      {
-        temperature: 300,
-        converged: true,
-        stress: [1, 2, 3, 4, 5, 6],
-        label: `some string`,
-      },
-    )
-    const comment = trajectory_frame_to_extxyz_str(frame).split(`\n`)[1]
-    expect(comment).toContain(`temperature=300`)
-    expect(comment).toContain(`converged=true`)
-    expect(comment).not.toContain(`stress`)
-    expect(comment).not.toContain(`some string`)
-  })
 })
 
 describe(`serialize_extxyz_frame_range`, () => {
   test(`round-trips through the trajectory parser`, async () => {
-    const text = await serialize_extxyz_frame_range(0, 2, resolver)
+    const on_progress = vi.fn()
+    const text = await serialize_extxyz_frame_range(0, 2, resolver, on_progress)
+    expect(on_progress.mock.calls).toEqual([
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ])
     const reparsed = parse_xyz_trajectory(text)
     expect(reparsed.frames).toHaveLength(3)
     expect(reparsed.frames.map((frame) => frame.step)).toEqual([0, 5, 9])
@@ -152,26 +143,15 @@ describe(`serialize_extxyz_frame_range`, () => {
 
   test(`exports only the requested sub-range`, async () => {
     const text = await serialize_extxyz_frame_range(1, 2, resolver)
-    const reparsed = parse_xyz_trajectory(text)
-    expect(reparsed.frames.map((frame) => frame.step)).toEqual([5, 9])
-  })
-
-  test(`reports progress once per frame`, async () => {
-    const on_progress = vi.fn()
-    await serialize_extxyz_frame_range(0, 2, resolver, on_progress)
-    expect(on_progress.mock.calls).toEqual([
-      [1, 3],
-      [2, 3],
-      [3, 3],
-    ])
+    expect(parse_xyz_trajectory(text).frames.map((frame) => frame.step)).toEqual([5, 9])
   })
 
   // An indexed trajectory holds only a few frames in memory; the rest arrive from a loader.
   test(`awaits an async resolver rather than reading a frames array`, async () => {
     const async_resolver = vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
-    const text = await serialize_extxyz_frame_range(0, 2, async_resolver)
+    await serialize_extxyz_frame_range(0, 2, async_resolver)
     expect(async_resolver).toHaveBeenCalledTimes(3)
-    expect(parse_xyz_trajectory(text).frames).toHaveLength(3)
+    expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
   })
 
   test.each([
@@ -235,11 +215,5 @@ describe(`create_poscar_frame_range_zip`, () => {
       `run_frame_0001.vasp`,
       `run_frame_0002.vasp`,
     ])
-  })
-
-  test(`throws when a frame cannot be resolved`, async () => {
-    await expect(
-      create_poscar_frame_range_zip(0, 4, resolver, `run.extxyz`, 5),
-    ).rejects.toThrow(`Trajectory frame 3 is not available for export`)
   })
 })

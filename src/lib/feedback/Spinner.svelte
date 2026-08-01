@@ -5,7 +5,6 @@
 </script>
 
 <div class="spinner" role="status" aria-live="polite" aria-busy="true" {...rest}>
-  <div class="spinner" aria-hidden="true"></div>
   {#if text}
     <span>{text}</span>
   {/if}
@@ -17,7 +16,11 @@
     align-items: center;
     gap: 0.5rem;
     margin: var(--spinner-margin, 3pt);
-    > div {
+    &::before {
+      content: '';
+      /* explicit block: callers may override the host's display (CellSelect uses
+         inline-block), and width/height do not apply to an inline pseudo-element */
+      display: block;
       width: var(--spinner-size, 1em);
       height: var(--spinner-size, 1em);
       border: var(--spinner-border-width, 4px) solid var(--spinner-track-color, #f3f3f3);

@@ -37,21 +37,16 @@ export function poscar_frame_filename(
 
 // Per-atom forces recorded on the frame rather than its structure. XYZ/extXYZ parsing puts
 // them in `frame.metadata.forces` (see build_xyz_frame), where the structure exporter cannot
-// see them; this folds them back onto the sites it does read. All-or-nothing: one unusable
-// entry returns null, because a partial list would make the exporter drop the forces column
-// for every atom and look like a successful export that simply had no force data.
+// see them; this folds them back onto the sites it does read. Per-vector validation is left to
+// site_force in structure/export.ts, which already drops the forces column for every atom
+// unless all of them carry a finite 3-vector.
 const frame_sites_with_forces = (frame: TrajectoryFrame): Site[] | null => {
   const forces = frame.metadata?.forces
   if (!Array.isArray(forces) || forces.length !== frame.structure.sites.length) return null
-  const sites: Site[] = []
-  for (const [idx, site] of frame.structure.sites.entries()) {
-    const force = forces[idx]
-    if (!Array.isArray(force) || force.length < 3) return null
-    const vec = force.slice(0, 3).map(Number)
-    if (!vec.every(Number.isFinite)) return null
-    sites.push({ ...site, properties: { ...site.properties, force: vec } })
-  }
-  return sites
+  return frame.structure.sites.map((site, idx) => ({
+    ...site,
+    properties: { ...site.properties, force: forces[idx] },
+  }))
 }
 
 // Already carried by the forces columns, recomputed from the cell on read, or written

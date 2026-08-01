@@ -4,8 +4,7 @@
   import {
     bind_renderer,
     build_orbit_props,
-    get_orthographic_zoom_bounds,
-    resize_orthographic_zoom,
+    create_orthographic_zoom,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
@@ -14,7 +13,6 @@
   import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { untrack } from 'svelte'
   import { OrthographicCamera } from 'three/webgpu'
   import {
     bz_fit_extent,
@@ -118,30 +116,11 @@
         )
       : initial_zoom,
   )
-  let orthographic_zoom = $state(untrack(() => fit_zoom))
-  const zoom_bounds = $derived(get_orthographic_zoom_bounds(fit_zoom, min_zoom, max_zoom))
-  // Scalars, not the bounds object: build_orbit_props' result is spread into Threlte, which
-  // re-applies every prop when the object changes identity — including `target`, which would
-  // snap a panned view back to the zone centroid on each resize.
-  const orbit_min_zoom = $derived(zoom_bounds.min_zoom)
-  const orbit_max_zoom = $derived(zoom_bounds.max_zoom)
-  let previous_fit_zoom = 0
-  $effect(() => {
-    // A zero-size container would rescale the live zoom against the raw initial_zoom fallback
-    // and, if the clamp bit, lose the user's zoom for good.
-    if (!(width > 0) || !(height > 0)) return
-    // bounds tracked too, so raising a limit re-clamps now rather than at the next gesture
-    const [next_fit_zoom, next_min_zoom, next_max_zoom] = [fit_zoom, min_zoom, max_zoom]
-    untrack(() => {
-      orthographic_zoom = resize_orthographic_zoom(
-        orthographic_zoom,
-        previous_fit_zoom,
-        next_fit_zoom,
-        next_min_zoom,
-        next_max_zoom,
-      )
-      previous_fit_zoom = next_fit_zoom
-    })
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: () => fit_zoom,
+    min_zoom: () => min_zoom,
+    max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
   })
 
   const orbit_controls_props = $derived(
@@ -152,13 +131,13 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom: orbit_max_zoom,
-      min_zoom: orbit_min_zoom,
+      max_zoom: ortho_zoom.max_zoom,
+      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
       // keep the user's zoom as the baseline the next resize rescales from
       onend_extra: () => {
-        if (camera instanceof OrthographicCamera) orthographic_zoom = camera.zoom
+        if (camera instanceof OrthographicCamera) ortho_zoom.zoom = camera.zoom
       },
     }),
   )
@@ -284,7 +263,7 @@
   {camera_projection}
   position={computed_camera_position}
   {fov}
-  zoom={orthographic_zoom}
+  zoom={ortho_zoom.zoom}
   orbit_props={orbit_controls_props}
   {gizmo}
 />

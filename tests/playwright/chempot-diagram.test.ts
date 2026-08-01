@@ -276,6 +276,16 @@ test.describe(`ChemPot Diagram interactions`, () => {
     )
     await page.mouse.wheel(0, -200)
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
+
+    // A pinned camera stops the diagram re-fitting itself, so Reset has to offer to undo it
+    const controls_toggle = diagram.locator(`button.chempot-controls-toggle`).first()
+    const controls_pane = diagram
+      .locator(`.draggable-pane`)
+      .filter({ hasText: `ChemPot` })
+      .first()
+    await open_pane(diagram, controls_toggle, controls_pane)
+    await expect(controls_pane.getByRole(`button`, { name: /Reset chempot/i })).toBeVisible()
+
     // double click hands framing back to the auto-fit the wheel just pinned. The click also
     // dismisses the export pane (DraggablePane closes on any outside press), so reopen it.
     await page.mouse.dblclick(

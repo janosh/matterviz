@@ -174,7 +174,7 @@
     const target = event.currentTarget
     if (!(target instanceof HTMLElement)) return
     const rect = target.getBoundingClientRect()
-    const container_rect = target.closest(`.ptable-grid`)?.getBoundingClientRect()
+    const container_rect = target.closest(`.periodic-table`)?.getBoundingClientRect()
     if (container_rect) {
       tooltip_pos = {
         x: rect.left - container_rect.left + rect.width / 2,
@@ -273,143 +273,136 @@
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div {...rest} class={[`periodic-table`, rest.class]}>
-  <div class="ptable-grid" style:gap>
-    {#if should_show_color_bar}
-      <TableInset class="auto-colorbar-inset">
-        <ColorBar
-          {color_scale}
-          range={heat_range}
-          tick_labels={color_bar_props.tick_labels ?? 3}
-          tick_side="primary"
-          scale_type={log ? `log` : `linear`}
-          wrapper_style="width: 100%;"
-          bar_style="width: 100%;"
-          {...color_bar_props}
-        />
-      </TableInset>
-    {:else}
-      {@render inset?.({ active_element })}
-    {/if}
-    {#each element_data as element (element.number)}
-      {@const { column, row, category, name, symbol } = element}
-      {@const value = heat_values[element.number - 1]}
-      {@const override = color_overrides[symbol]}
-      {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
-      {@const is_active_elem = active_elements?.some((active_elem) =>
-        typeof active_elem === `string`
-          ? active_elem === symbol
-          : active_elem?.symbol === symbol,
-      )}
-      {@const active =
-        active_category === category || active_element?.name === name || is_active_elem}
-      {@const style = `grid-column: ${column}; grid-row: ${row};${
-        tile_props?.style ? ` ${tile_props.style}` : ``
-      }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
-      <ElementTile
-        {element}
-        href={links
-          ? typeof links == `string`
-            ? `/${element[links]}`.toLowerCase()
-            : links[symbol]
-          : undefined}
-        value={tile_missing ? undefined : (value ?? undefined)}
-        bg_color={override ?? bg_color(value, element) ?? undefined}
-        bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
-        {active}
-        label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
-        {...tile_props}
-        {style}
-        onmouseenter={(event: MouseEvent) => {
-          set_active_element(element)()
-          handle_tooltip_enter(element, event)
-        }}
-        onmouseleave={() => {
-          set_active_element(null)()
-          tooltip_visible = false
-          tooltip_element = null
-        }}
-        onfocus={set_active_element(element)}
-        onblur={set_active_element(null)}
-        {split_layout}
+<div {...rest} class={[`periodic-table`, rest.class]} style:gap>
+  {#if should_show_color_bar}
+    <TableInset class="auto-colorbar-inset">
+      <ColorBar
+        {color_scale}
+        range={heat_range}
+        tick_labels={color_bar_props.tick_labels ?? 3}
+        tick_side="primary"
+        scale_type={log ? `log` : `linear`}
+        wrapper_style="width: 100%;"
+        bar_style="width: 100%;"
+        {...color_bar_props}
       />
-    {/each}
-    <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
-    {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
-      {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${
-        6 + idx
-      }; ${lanth_act_style};`}
-      <ElementTile
-        element={lanth_act_element as unknown as ChemicalElement}
-        {style}
-        onmouseenter={() => (active_category = lanth_act_element.category)}
-        onmouseleave={() => (active_category = null)}
-        symbol_style="font-size: 30cqw;"
-      />
-    {/each}
-    {#if inner_transition_metal_offset}
-      <!-- provide vertical offset for lanthanides + actinides -->
-      <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset}></div>
-    {/if}
+    </TableInset>
+  {:else}
+    {@render inset?.({ active_element })}
+  {/if}
+  {#each element_data as element (element.number)}
+    {@const { column, row, category, name, symbol } = element}
+    {@const value = heat_values[element.number - 1]}
+    {@const override = color_overrides[symbol]}
+    {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
+    {@const is_active_elem = active_elements?.some((active_elem) =>
+      typeof active_elem === `string`
+        ? active_elem === symbol
+        : active_elem?.symbol === symbol,
+    )}
+    {@const active =
+      active_category === category || active_element?.name === name || is_active_elem}
+    {@const style = `grid-column: ${column}; grid-row: ${row};${
+      tile_props?.style ? ` ${tile_props.style}` : ``
+    }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
+    <ElementTile
+      {element}
+      href={links
+        ? typeof links == `string`
+          ? `/${element[links]}`.toLowerCase()
+          : links[symbol]
+        : undefined}
+      value={tile_missing ? undefined : (value ?? undefined)}
+      bg_color={override ?? bg_color(value, element) ?? undefined}
+      bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
+      {active}
+      label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
+      {...tile_props}
+      {style}
+      onmouseenter={(event: MouseEvent) => {
+        set_active_element(element)()
+        handle_tooltip_enter(element, event)
+      }}
+      onmouseleave={() => {
+        set_active_element(null)()
+        tooltip_visible = false
+        tooltip_element = null
+      }}
+      onfocus={set_active_element(element)}
+      onblur={set_active_element(null)}
+      {split_layout}
+    />
+  {/each}
+  <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
+  {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
+    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${
+      6 + idx
+    }; ${lanth_act_style};`}
+    <ElementTile
+      element={lanth_act_element as unknown as ChemicalElement}
+      {style}
+      onmouseenter={() => (active_category = lanth_act_element.category)}
+      onmouseleave={() => (active_category = null)}
+      symbol_style="font-size: 30cqw;"
+    />
+  {/each}
+  {#if inner_transition_metal_offset}
+    <!-- provide vertical offset for lanthanides + actinides -->
+    <div class="spacer" style:aspect-ratio={1 / inner_transition_metal_offset}></div>
+  {/if}
 
-    {#if bottom_left_inset}
-      {@render bottom_left_inset({ active_element })}
-    {:else if show_photo && active_element}
-      <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
-    {/if}
+  {#if bottom_left_inset}
+    {@render bottom_left_inset({ active_element })}
+  {:else if show_photo && active_element}
+    <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
+  {/if}
 
-    <!-- Tooltip -->
-    {#if tooltip_visible && tooltip_element}
-      {@const el = tooltip_element as ChemicalElement}
-      {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
-      {@const tooltip_value = heat_values[el.number - 1]}
-      {#if typeof tooltip == `function`}
-        <div class="tooltip" {style}>
-          {@render tooltip({
-            element: el,
-            value: tooltip_value ?? null,
-            active: active_category === el.category || active_element?.name === el.name,
-            bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-            scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
-          })}
-        </div>
-      {:else if tooltip !== false}
-        <div class="tooltip" {style}>
-          {el.name}<br />
-          <small>{el.symbol} • {el.number}</small>
-          {#if Array.isArray(tooltip_value)}
-            <br />
-            <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
-          {/if}
-        </div>
-      {/if}
+  <!-- Tooltip -->
+  {#if tooltip_visible && tooltip_element}
+    {@const el = tooltip_element as ChemicalElement}
+    {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
+    {@const tooltip_value = heat_values[el.number - 1]}
+    {#if typeof tooltip == `function`}
+      <div class="tooltip" {style}>
+        {@render tooltip({
+          element: el,
+          value: tooltip_value ?? null,
+          active: active_category === el.category || active_element?.name === el.name,
+          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+          scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
+        })}
+      </div>
+    {:else if tooltip !== false}
+      <div class="tooltip" {style}>
+        {el.name}<br />
+        <small>{el.symbol} • {el.number}</small>
+        {#if Array.isArray(tooltip_value)}
+          <br />
+          <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
+        {/if}
+      </div>
     {/if}
+  {/if}
 
-    {@render children?.()}
-  </div>
+  {@render children?.()}
 </div>
 
 <style>
   .periodic-table {
-    /* needed for gap: 0.3cqw; to work */
-    container-type: inline-size;
-    width: 100%; /* prevent collapse in shrink-to-fit contexts (inline-size containment) */
-  }
-  .ptable-grid {
+    container-type: inline-size; /* for gap: 0.3cqw */
+    width: 100%; /* prevent collapse in shrink-to-fit contexts */
     display: grid;
     grid-template-columns: repeat(18, 1fr);
     position: relative;
-    container-type: inline-size;
     gap: var(--ptable-gap, 0.3cqw);
   }
-  /* Auto-generated color bar inset with fluid responsive sizing using container query units */
-  .ptable-grid :global(.auto-colorbar-inset) {
+  .periodic-table :global(.auto-colorbar-inset) {
     place-items: center;
     padding: clamp(0.3em, 1.5cqw, 1em) clamp(0.4em, 3cqw, 2em);
     --cbar-font-size: clamp(7pt, 1.8cqw, 9pt);
     --cbar-thickness: clamp(8px, 2.5cqw, 14px);
   }
-  .ptable-grid :global(.auto-colorbar-inset .colorbar) {
+  .periodic-table :global(.auto-colorbar-inset .colorbar) {
     width: 90%;
   }
   div.spacer {

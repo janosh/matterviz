@@ -4,6 +4,7 @@
     bz_fit_extent,
     cartesian_to_fractional,
     default_camera_position,
+    k_cell_fit_extent,
     k_lattice_inverse,
     k_space_size,
     polyhedron_centroid,
@@ -17,8 +18,7 @@
   import {
     bind_renderer,
     build_orbit_props,
-    get_orthographic_zoom_bounds,
-    resize_orthographic_zoom,
+    create_orthographic_zoom,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
@@ -27,7 +27,6 @@
   import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     BackSide,
@@ -361,40 +360,25 @@
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
   // renders the zone several times too small. Tiling replicates by point-group symmetry, which
   // maps the zone onto itself, so it does not widen the extent.
+  const fit_extent = $derived(
+    Math.max(
+      bz_fit_extent(bz_data?.vertices, fermi_data?.k_lattice),
+      // Marching cubes leaves surfaces in the centered parallelepiped and does not clip them to
+      // the Wigner-Seitz zone (see compute.ts), so for a skew lattice framing only the zone
+      // crops them.
+      k_cell_fit_extent(fermi_data?.k_lattice),
+    ),
+  )
   const fit_zoom = $derived(
     width > 0 && height > 0
-      ? ortho_zoom_for_extent(
-          bz_fit_extent(bz_data?.vertices, fermi_data?.k_lattice),
-          width,
-          height,
-          initial_zoom,
-        )
+      ? ortho_zoom_for_extent(fit_extent, width, height, initial_zoom)
       : initial_zoom,
   )
-  let orthographic_zoom = $state(untrack(() => fit_zoom))
-  const zoom_bounds = $derived(get_orthographic_zoom_bounds(fit_zoom, min_zoom, max_zoom))
-  // Scalars, not the bounds object: build_orbit_props' result is spread into Threlte, which
-  // re-applies every prop when the object changes identity — including `target`, which would
-  // snap a panned view back to the zone centroid on each resize.
-  const orbit_min_zoom = $derived(zoom_bounds.min_zoom)
-  const orbit_max_zoom = $derived(zoom_bounds.max_zoom)
-  let previous_fit_zoom = 0
-  $effect(() => {
-    // A zero-size container would rescale the live zoom against the raw initial_zoom fallback
-    // and, if the clamp bit, lose the user's zoom for good.
-    if (!(width > 0) || !(height > 0)) return
-    // bounds tracked too, so raising a limit re-clamps now rather than at the next gesture
-    const [next_fit_zoom, next_min_zoom, next_max_zoom] = [fit_zoom, min_zoom, max_zoom]
-    untrack(() => {
-      orthographic_zoom = resize_orthographic_zoom(
-        orthographic_zoom,
-        previous_fit_zoom,
-        next_fit_zoom,
-        next_min_zoom,
-        next_max_zoom,
-      )
-      previous_fit_zoom = next_fit_zoom
-    })
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: () => fit_zoom,
+    min_zoom: () => min_zoom,
+    max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
   })
 
   const orbit_controls_props = $derived(
@@ -405,13 +389,13 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom: orbit_max_zoom,
-      min_zoom: orbit_min_zoom,
+      max_zoom: ortho_zoom.max_zoom,
+      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
       // keep the user's zoom as the baseline the next resize rescales from
       onend_extra: () => {
-        if (camera instanceof OrthographicCamera) orthographic_zoom = camera.zoom
+        if (camera instanceof OrthographicCamera) ortho_zoom.zoom = camera.zoom
       },
     }),
   )
@@ -542,7 +526,7 @@
   {camera_projection}
   position={computed_camera_position}
   {fov}
-  zoom={orthographic_zoom}
+  zoom={ortho_zoom.zoom}
   orbit_props={orbit_controls_props}
   {gizmo}
 />

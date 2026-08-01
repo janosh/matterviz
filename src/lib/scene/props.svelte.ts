@@ -83,6 +83,54 @@ export const resize_orthographic_zoom = (
   return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
 }
 
+// Orthographic zoom that follows the auto-fit across resizes but yields to the user's wheel.
+// Callers assign `.zoom` when a gesture ends so the zoom the user landed on becomes the
+// baseline the next resize rescales from.
+export function create_orthographic_zoom(opts: {
+  fit_zoom: () => number
+  min_zoom: () => number | undefined
+  max_zoom: () => number | undefined
+  // false while the container has no size: rescaling against a placeholder fit, then clamping
+  // the result, would lose the user's zoom for good
+  measured?: () => boolean
+}) {
+  let zoom = $state(untrack(opts.fit_zoom))
+  let previous_fit_zoom = 0
+  const bounds = $derived(
+    get_orthographic_zoom_bounds(opts.fit_zoom(), opts.min_zoom(), opts.max_zoom()),
+  )
+  // Scalars, not the bounds object: callers spread these into Threlte, which re-applies every
+  // prop when any one changes identity — including `target`, which would snap a panned view
+  // back to the scene center on each resize.
+  const min_zoom = $derived(bounds.min_zoom)
+  const max_zoom = $derived(bounds.max_zoom)
+  $effect(() => {
+    if (opts.measured?.() === false) return
+    // Track fit + limits so a raised ceiling re-clamps now, not at the next gesture.
+    const next_fit = opts.fit_zoom()
+    const next_min = opts.min_zoom()
+    const next_max = opts.max_zoom()
+    untrack(() => {
+      zoom = resize_orthographic_zoom(zoom, previous_fit_zoom, next_fit, next_min, next_max)
+      previous_fit_zoom = next_fit
+    })
+  })
+  return {
+    get zoom() {
+      return zoom
+    },
+    set zoom(value: number) {
+      zoom = value
+    },
+    get min_zoom() {
+      return min_zoom
+    },
+    get max_zoom() {
+      return max_zoom
+    },
+  }
+}
+
 // Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection

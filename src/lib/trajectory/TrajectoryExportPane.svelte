@@ -151,10 +151,6 @@
 
   async function export_data(format: `extxyz` | `poscar`) {
     export_error = null
-    if (!trajectory || export_frame_count === 0) {
-      export_error = !trajectory ? `No trajectory` : `Invalid frame range`
-      return
-    }
     data_export_format = format
     data_export_progress = 0
     const base = trajectory_export_basename(filename)

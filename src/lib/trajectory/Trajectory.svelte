@@ -237,10 +237,11 @@
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
   let parsing_progress = $state<ParseProgress | null>(null)
-  let wrapper_height = $state(0)
-  // leaves room for the controls bar so a pane can't overflow the viewer
-  let pane_max_height = $derived(`max-height: calc(${wrapper_height}px - 50px)`)
   let content_size = $state({ width: 0, height: 0 })
+  // Cap panes to .content-area (controls bar is a flex sibling above it).
+  let pane_max_height = $derived(
+    content_size.height > 0 ? `max-height: ${content_size.height}px` : undefined,
+  )
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
   let data_url_load_id = 0
@@ -1143,7 +1144,6 @@
     info_pane_open ||
     msd_pane_open}
   bind:this={wrapper}
-  bind:clientHeight={wrapper_height}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"

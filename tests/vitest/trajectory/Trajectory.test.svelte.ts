@@ -123,6 +123,39 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
   })
 
+  // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
+  test(`info pane max-height follows content-area height`, async () => {
+    const target = mount_traj({
+      trajectory: make_traj([{ energy: -1.5 }]),
+      show_controls: `always` as const,
+      info_pane_open: true,
+    })
+    flushSync()
+    await tick()
+    expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight)
+      .toBe(`600px`)
+  })
+
+  // show_controls.style is appended after the z-index the controls bar sets on itself, so
+  // both have to survive; a caller that names z-index deliberately wins, being last.
+  test.each([
+    [`without a trailing semicolon`, `color: rgb(255, 0, 0)`, `10`, `rgb(255, 0, 0)`],
+    [`with a trailing semicolon`, `color: rgb(255, 0, 0);`, `10`, `rgb(255, 0, 0)`],
+    [`overriding the z-index`, `z-index: 5`, `5`, ``],
+  ])(`show_controls.style %s`, async (_label, style, z_index, color) => {
+    const target = mount_traj({
+      trajectory: make_traj([{ energy: -1.5 }]),
+      show_controls: { mode: `always`, style },
+    })
+    flushSync()
+    await tick()
+
+    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
+    if (!controls) throw new Error(`trajectory controls not found`)
+    expect(getComputedStyle(controls).zIndex).toBe(z_index)
+    expect(getComputedStyle(controls).color).toBe(color)
+  })
+
   test(`view mode menu is layered and selectable`, async () => {
     const props = $state({
       trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),

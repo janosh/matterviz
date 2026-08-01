@@ -41,7 +41,7 @@
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
-  import { type CameraView, camera_view_changed, rescale_zoom_to_fit } from './camera'
+  import { type CameraView, rescale_zoom_to_fit } from './camera'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -1517,9 +1517,7 @@
     }
   }
 
-  const read_camera_view = (): CameraView | null => {
-    const controls = orbit_controls_ref
-    if (!controls) return null
+  const read_camera_view = (controls: NonNullable<typeof orbit_controls_ref>): CameraView => {
     const { object: controls_camera, target } = controls
     const { position } = controls_camera
     return {
@@ -1529,16 +1527,41 @@
     }
   }
 
-  let gesture_baseline: CameraView | null = null
-  function begin_camera_gesture(): void {
-    // Prime framing baseline on first user interaction so the next geometry
-    // change can preserve zoom/center immediately (not only from second change).
-    last_data_center ??= [data_center.x, data_center.y, data_center.z]
-    gesture_baseline = read_camera_view()
+  // OrbitControls dispatches `change` only once the camera has moved past its own epsilon, so
+  // any change arriving mid-gesture is real movement — measured: a bare click emits start/end
+  // with no change at all. Auto-rotation drives `change` with no `start`, and must not pin.
+  let gesture_active = false
+  const on_gesture_edge = (event: { type: string }): void => {
+    gesture_active = event.type === `start`
+    // Prime the framing baseline on first interaction so the next geometry change can
+    // preserve zoom/center immediately (not only from the second change).
+    if (gesture_active) last_data_center ??= [data_center.x, data_center.y, data_center.z]
+    else gesture_had_input = false
   }
-  const end_camera_gesture = (): void => {
-    gesture_baseline = null
+
+  // With auto-rotation on, `change` fires every frame, so a bare click's `start` would be
+  // enough to pin the framing for good. Intent has to come from the input itself. Capture
+  // phase on the wrapper, because OrbitControls dispatches start/change/end synchronously
+  // inside the wheel event and a listener on the canvas would land after all three.
+  let canvas_clip: HTMLDivElement | undefined = $state()
+  let gesture_had_input = false
+  const mark_drag = (event: PointerEvent): void => {
+    if (event.buttons > 0) gesture_had_input = true // hovering is not a gesture
   }
+  const mark_wheel = (): void => {
+    gesture_had_input = true
+  }
+  $effect(() => {
+    const element = canvas_clip
+    if (!element) return
+    const opts = { capture: true, passive: true } as const
+    element.addEventListener(`pointermove`, mark_drag, opts)
+    element.addEventListener(`wheel`, mark_wheel, opts)
+    return () => {
+      element.removeEventListener(`pointermove`, mark_drag, opts)
+      element.removeEventListener(`wheel`, mark_wheel, opts)
+    }
+  })
 
   // Drop the pinned view and hand framing back to the derived defaults.
   function reset_camera_view(): void {
@@ -1546,10 +1569,11 @@
     camera_target_override = null
     orthographic_zoom_override = null
     last_data_center = null
-    gesture_baseline = null
+    gesture_active = false
+    gesture_had_input = false
     const controls = orbit_controls_ref
-    const controls_camera = controls?.object
-    if (!controls || !controls_camera) return
+    if (!controls) return
+    const controls_camera = controls.object
     // Written straight to the camera rather than left to the props: the defaults are known
     // synchronously, and controls.update() below would otherwise run against the stale pose.
     controls_camera.position.set(...default_camera_position)
@@ -1598,25 +1622,25 @@
     if (!controls) return
     const on_controls_change = (): void => {
       update_backside()
-      // Read once: auto-rotation fires this every frame, and reading allocates two arrays.
-      // Once pinned keep tracking; before that only a gesture that moved something may pin.
-      const view = camera_position_override || gesture_baseline ? read_camera_view() : null
-      if (view && (camera_position_override || camera_view_changed(gesture_baseline, view))) {
+      // Once pinned keep tracking; before that only a live gesture may pin. Reading allocates
+      // two arrays, and auto-rotation fires this every frame, so stay out of that path.
+      if (camera_position_override || (gesture_active && gesture_had_input)) {
+        const view = read_camera_view(controls)
         camera_position_override = view.position
         camera_target_override = view.target
         if (view.zoom !== null) orthographic_zoom_override = view.zoom
       }
       if (has_occluding_domain_labels) schedule_label_occlusion_update()
     }
-    controls.addEventListener(`start`, begin_camera_gesture)
+    controls.addEventListener(`start`, on_gesture_edge)
     controls.addEventListener(`change`, on_controls_change)
-    controls.addEventListener(`end`, end_camera_gesture)
+    controls.addEventListener(`end`, on_gesture_edge)
     untrack(() => update_backside())
     controls.update()
     return () => {
-      controls.removeEventListener(`start`, begin_camera_gesture)
+      controls.removeEventListener(`start`, on_gesture_edge)
       controls.removeEventListener(`change`, on_controls_change)
-      controls.removeEventListener(`end`, end_camera_gesture)
+      controls.removeEventListener(`end`, on_gesture_edge)
     }
   })
 
@@ -2034,55 +2058,56 @@
           color_mode,
           color_scale,
           reverse_color_scale,
+          // a pinned camera is exactly the state Reset undoes, so it has to count as a change
+          // or the affordance never appears for it
+          camera_pinned: camera_position_override !== null,
         }}
         on_reset={reset_controls}
       >
         {#if has_multinary_system && plot_elements.length === 3}
-          <div class="projection-controls">
-            <div class="pane-row">
-              <label for="chempot-proj-x">X:</label>
-              <select
-                id="chempot-proj-x"
-                value={plot_elements[0]}
-                onchange={(event) => set_projection_axis(0, event.currentTarget.value)}
-              >
-                {#each all_entry_elements as element_name (element_name)}
-                  <option value={element_name}>{element_name}</option>
-                {/each}
-              </select>
-              <label for="chempot-proj-y">Y:</label>
-              <select
-                id="chempot-proj-y"
-                value={plot_elements[1]}
-                onchange={(event) => set_projection_axis(1, event.currentTarget.value)}
-              >
-                {#each all_entry_elements as element_name (element_name)}
-                  <option value={element_name}>{element_name}</option>
-                {/each}
-              </select>
-              <label for="chempot-proj-z">Z:</label>
-              <select
-                id="chempot-proj-z"
-                value={plot_elements[2]}
-                onchange={(event) => set_projection_axis(2, event.currentTarget.value)}
-              >
-                {#each all_entry_elements as element_name (element_name)}
-                  <option value={element_name}>{element_name}</option>
-                {/each}
-              </select>
-            </div>
-            <div class="projection-presets">
-              {#each projection_presets as preset_elements (preset_elements.join(`|`))}
-                <button
-                  type="button"
-                  class:selected={preset_elements.join(`|`) === current_projection_key}
-                  onclick={() => apply_projection_preset(preset_elements)}
-                  title="Switch projection"
-                >
-                  {preset_elements.join(`-`)}
-                </button>
+          <div class="pane-row projection-axes">
+            <label for="chempot-proj-x">X:</label>
+            <select
+              id="chempot-proj-x"
+              value={plot_elements[0]}
+              onchange={(event) => set_projection_axis(0, event.currentTarget.value)}
+            >
+              {#each all_entry_elements as element_name (element_name)}
+                <option value={element_name}>{element_name}</option>
               {/each}
-            </div>
+            </select>
+            <label for="chempot-proj-y">Y:</label>
+            <select
+              id="chempot-proj-y"
+              value={plot_elements[1]}
+              onchange={(event) => set_projection_axis(1, event.currentTarget.value)}
+            >
+              {#each all_entry_elements as element_name (element_name)}
+                <option value={element_name}>{element_name}</option>
+              {/each}
+            </select>
+            <label for="chempot-proj-z">Z:</label>
+            <select
+              id="chempot-proj-z"
+              value={plot_elements[2]}
+              onchange={(event) => set_projection_axis(2, event.currentTarget.value)}
+            >
+              {#each all_entry_elements as element_name (element_name)}
+                <option value={element_name}>{element_name}</option>
+              {/each}
+            </select>
+          </div>
+          <div class="projection-presets">
+            {#each projection_presets as preset_elements (preset_elements.join(`|`))}
+              <button
+                type="button"
+                class:selected={preset_elements.join(`|`) === current_projection_key}
+                onclick={() => apply_projection_preset(preset_elements)}
+                title="Switch projection"
+              >
+                {preset_elements.join(`-`)}
+              </button>
+            {/each}
           </div>
         {/if}
         <div class="chempot-checks">
@@ -2188,7 +2213,7 @@
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="canvas-clip" ondblclick={handle_dblclick}>
+  <div class="canvas-clip" bind:this={canvas_clip} ondblclick={handle_dblclick}>
     {#if diagram_computing}
       <Spinner
         text="Computing chemical potential domains..."
@@ -2549,10 +2574,7 @@
     gap: 1ex;
     margin: 4pt 0;
   }
-  .chempot-diagram-3d :global(.projection-controls) {
-    margin: 0 0 6pt;
-  }
-  .chempot-diagram-3d :global(.projection-controls .pane-row) {
+  .chempot-diagram-3d :global(.projection-axes) {
     display: grid;
     grid-template-columns: auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr) auto minmax(
         4.5em,
@@ -2562,7 +2584,7 @@
     gap: 3pt;
   }
   .chempot-diagram-3d :global(.projection-presets) {
-    margin-top: 4pt;
+    margin: 4pt 0 6pt;
     display: flex;
     flex-wrap: wrap;
     gap: 4pt;

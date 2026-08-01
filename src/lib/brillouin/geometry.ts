@@ -74,17 +74,38 @@ export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
 export const default_camera_position = (size: number): Vec3 =>
   [10, 3, 8].map((coord) => coord * Math.max(1, size)) as Vec3
 
+// Occupy at most 85% of the shorter viewport edge, matching structure_fit_frame's
+// DEFAULT_FIT_PADDING (asserted equal in brillouin-compute.test.ts rather than imported, which
+// would pull the element data tables into every consumer of this module).
+const FIT_PADDING = 1 / 0.85
+
+// Padded diameter of the sphere enclosing the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³,
+// whose half-extent along Cartesian axis j is 0.5·Σᵢ|k_lattice[i][j]|. Marching cubes leaves
+// Fermi surfaces in that cell rather than in the Wigner-Seitz zone, and for a skew lattice the
+// cell reaches well outside the zone. Duplicated from analyze_surface_topology in
+// fermi-surface/compute.ts, which runs in a worker and so cannot import this three.js module.
+export const k_cell_fit_extent = (
+  k_lattice: Matrix3x3 | undefined,
+  padding = FIT_PADDING,
+): number => {
+  // no lattice: treat k_space_size's placeholder as a cubic |b|, whose cell diagonal is sqrt(3)
+  if (!k_lattice) return Math.max(1, Math.sqrt(3) * k_space_size(undefined) * padding)
+  const half_extent = [0, 1, 2].map((axis_idx) =>
+    0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0)
+  )
+  return Math.max(1, 2 * Math.hypot(...half_extent) * padding)
+}
+
 // Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport
-// edge" currency as structure_fit_frame, so ortho_zoom_for_extent can frame it. Without
-// vertices, a sphere of radius k_space_size is the safe fallback: it encloses a zone spanning
-// that mean reciprocal vector (a cube of side b has half-diagonal 0.87b).
+// edge" currency as structure_fit_frame, so ortho_zoom_for_extent can frame it. Falls back to
+// the cell the zone is inscribed in, which for a cubic lattice is the same 85% framing the
+// vertices give — so the zoom does not jump the moment the computed vertices arrive.
 export const bz_fit_extent = (
   vertices: Vec3[] | undefined,
   k_lattice: Matrix3x3 | undefined,
-  padding = 1 / 0.85, // occupy at most 85% of the shorter edge, matching DEFAULT_FIT_PADDING
+  padding = FIT_PADDING,
 ): number => {
-  // padded like the vertices branch, else the zone visibly rescales the moment they arrive
-  if (!vertices?.length) return Math.max(1, 2 * k_space_size(k_lattice) * padding)
+  if (!vertices?.length) return k_cell_fit_extent(k_lattice, padding)
   const center = polyhedron_centroid(vertices)
   let max_dist = 0
   for (const vert of vertices) {

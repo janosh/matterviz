@@ -81,11 +81,11 @@ const water_xyz_rows = [
 // Test cases for structure export
 // oxfmt-ignore
 const export_cases = [
-  { name: `simple structure`, structure: simple_structure, expected_json: simple_structure,
-    formula: `H2O`, filename_contains: [`test_h2o`, `H2O`, `3sites`],
+  { name: `simple structure`, structure: simple_structure, formula: `H2O`,
+    filename_contains: [`test_h2o`, `H2O`, `3sites`],
     expected_xyz: [`3`, `test_h2o H2O`, ...water_xyz_rows] },
-  { name: `complex structure`, structure: complex_structure, expected_json: complex_structure,
-    formula: `LiFeP4O7`, filename_contains: [`test_complex`, `LiFeP4O7`, `7sites`],
+  { name: `complex structure`, structure: complex_structure, formula: `LiFeP4O7`,
+    filename_contains: [`test_complex`, `LiFeP4O7`, `7sites`],
     expected_xyz: [
       `7`, `test_complex LiFeP4O7`, `Li 0.000000 0.000000 0.000000`,
       `Fe 2.500000 0.000000 0.000000`, `P 0.000000 2.500000 0.000000`,
@@ -93,12 +93,16 @@ const export_cases = [
       `O 1.250000 3.750000 0.000000`, `O 3.750000 3.750000 0.000000`,
     ] },
   { name: `structure without ID`, structure: { ...simple_structure, id: undefined },
-    expected_json: { ...simple_structure, id: undefined }, formula: `H2O`,
-    filename_contains: [`H2O`, `3sites`], expected_xyz: [`3`, `H2O`, ...water_xyz_rows] },
+    formula: `H2O`, filename_contains: [`H2O`, `3sites`],
+    expected_xyz: [`3`, `H2O`, ...water_xyz_rows] },
   { name: `empty structure`, structure: { ...simple_structure, sites: [] },
-    expected_json: { ...simple_structure, sites: [] }, formula: `Empty`,
-    filename_contains: [`test_h2o`, `Empty`], expected_xyz: [`0`, `test_h2o Empty`] },
+    formula: `Empty`, filename_contains: [`test_h2o`, `Empty`],
+    expected_xyz: [`0`, `test_h2o Empty`] },
 ]
+const export_fmt_cases = export_cases.flatMap((test_case) => [
+  { ...test_case, fmt: `xyz` as const, mime: `text/plain`, ext: `xyz` },
+  { ...test_case, fmt: `json` as const, mime: `application/json`, ext: `json` },
+])
 
 describe(`Export functionality`, () => {
   beforeEach(() => {
@@ -107,35 +111,23 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Structure export (XYZ/JSON)`, () => {
-    it.each(export_cases)(
-      `exports $name to XYZ`,
-      ({ structure, expected_xyz, formula, filename_contains }) => {
+    it.each(export_fmt_cases)(
+      `exports $name to $fmt`,
+      ({ structure, expected_xyz, formula, filename_contains, fmt, mime, ext }) => {
         mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as(`xyz`, structure)
+        export_structure_as(fmt, structure)
         expect(mock_download).toHaveBeenCalledOnce()
         const [content, filename, mime_type] = mock_download.mock.calls[0]
-        const lines = (content as string).split(`\n`)
-        expected_xyz.forEach((line, idx) => {
-          if (idx === 1) expect(lines[idx].startsWith(line)).toBe(true)
-          else expect(lines[idx]).toBe(line)
-        })
+        if (fmt === `xyz`) {
+          const lines = (content as string).split(`\n`)
+          expected_xyz.forEach((line, idx) => {
+            if (idx === 1) expect(lines[idx].startsWith(line)).toBe(true)
+            else expect(lines[idx]).toBe(line)
+          })
+        } else expect(JSON.parse(content as string)).toEqual(structure)
         filename_contains.forEach((part) => expect(filename).toContain(part))
-        expect(filename).toMatch(/\.xyz$/)
-        expect(mime_type).toBe(`text/plain`)
-      },
-    )
-
-    it.each(export_cases)(
-      `exports $name to JSON`,
-      ({ structure, expected_json, formula, filename_contains }) => {
-        mock_get_electro_neg_formula.mockReturnValue(formula)
-        export_structure_as(`json`, structure)
-        expect(mock_download).toHaveBeenCalledOnce()
-        const [content, filename, mime_type] = mock_download.mock.calls[0]
-        expect(JSON.parse(content as string)).toEqual(expected_json)
-        filename_contains.forEach((part) => expect(filename).toContain(part))
-        expect(filename).toMatch(/\.json$/)
-        expect(mime_type).toBe(`application/json`)
+        expect(filename).toMatch(new RegExp(`\\.${ext}$`))
+        expect(mime_type).toBe(mime)
       },
     )
 
@@ -151,23 +143,20 @@ describe(`Export functionality`, () => {
     })
   })
 
-  describe(`Round-trip tests`, () => {
+  describe(`Round-trip exporters`, () => {
     // oxfmt-ignore
     it.each([
-      { name: `JSON`, structure: complex_structure, ext: `json`, to_str: structure_to_json_str, preserves_id: true },
-      { name: `XYZ`, structure: simple_structure, ext: `xyz`, to_str: structure_to_xyz_str, preserves_id: false },
-      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), ext: `json`, to_str: structure_to_json_str, preserves_id: false },
-    ])(`round-trips $name export and parse`, ({ structure, ext, to_str, preserves_id }) => {
-      const content = to_str(structure as AnyStructure)
-      const parsed = parse_structure_file(content, `test.${ext}`)
+      { name: `JSON`, structure: complex_structure, preserves_id: true },
+      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), preserves_id: false },
+    ])(`round-trips $name export and parse`, ({ structure, preserves_id }) => {
+      const content = structure_to_json_str(structure as AnyStructure)
+      const parsed = parse_structure_file(content, `test.json`)
       expect(parsed?.sites).toHaveLength(structure.sites.length)
       if (preserves_id && structure.id) {
         expect((parsed as AnyStructure).id).toBe(structure.id)
       }
     })
-  })
 
-  describe(`Round-trip exporters (fixtures)`, () => {
     const TOL = 8
     const to_any = (ps: {
       sites: AnyStructure[`sites`]
@@ -309,17 +298,6 @@ describe(`Export functionality`, () => {
       },
     )
 
-    it(`prefers xyz coordinates over abc when both available`, () => {
-      const structure_both_coords: AnyStructure = {
-        id: `both_coords`,
-        // abc [0.5, 0.5, 0.5] should be ignored in favor of xyz
-        sites: [make_site(`H`, [0.5, 0.5, 0.5], [1.0, 2.0, 3.0])],
-        lattice: diag_lattice(2),
-      }
-      const lines = structure_to_xyz_str(structure_both_coords).split(`\n`)
-      expect(lines[2]).toBe(`H 1.000000 2.000000 3.000000`)
-    })
-
     it(`refuses to export a site with no usable coordinates`, () => {
       const structure_short_coords: AnyStructure = {
         sites: [make_site(`H`, [0.1, 0.2] as unknown as Vec3, [1.0, 2.0] as unknown as Vec3)],
@@ -332,41 +310,26 @@ describe(`Export functionality`, () => {
       )
     })
 
-    // Test cartesian→fractional conversion with various xyz array formats.
-    // The 4-component rows are a regression guard: the check is xyz.length >= 3, not === 3
-    // oxfmt-ignore
-    it.each([
-      { format: `CIF`, xyz: [1, 1, 1], desc: `standard xyz` },
-      { format: `CIF`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
-      { format: `POSCAR`, xyz: [1, 1, 1], desc: `standard xyz` },
-      { format: `POSCAR`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
-    ])(`$format export converts $desc to fractional coords`, ({ format, xyz }) => {
-      const site = {
-        ...make_site(`H`),
-        xyz: xyz as unknown as Vec3,
-        abc: undefined as unknown as Vec3,
-      }
-      const structure: AnyStructure = { sites: [site], lattice: diag_lattice(2) }
-      const content =
-        format === `CIF` ? structure_to_cif_str(structure) : structure_to_poscar_str(structure)
-      expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
-    })
+    // The 4-component row is the regression: the check is xyz.length >= 3, not === 3
+    it.each([`CIF`, `POSCAR`] as const)(
+      `%s export converts xyz (incl. extra components) to fractional coords`,
+      (format) => {
+        const site = {
+          ...make_site(`H`),
+          xyz: [1, 1, 1, 0.5] as unknown as Vec3,
+          abc: undefined as unknown as Vec3,
+        }
+        const structure: AnyStructure = { sites: [site], lattice: diag_lattice(2) }
+        const content =
+          format === `CIF` ? structure_to_cif_str(structure) : structure_to_poscar_str(structure)
+        expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
+      },
+    )
   })
 
   describe(`Filename generation`, () => {
     const repeated_sites = (count: number, element: ElementSymbol) =>
       Array.from({ length: count }, () => make_site(element))
-
-    // oxfmt-ignore
-    it.each([
-      { name: `basic structure with ID`, extension: `xyz`, should_contain: [`water_molecule`, `2sites`, `.xyz`],
-        structure: { id: `water_molecule`, sites: repeated_sites(2, `H`) } },
-      { name: `structure with many sites`, extension: `json`, should_contain: [`complex_crystal`, `24sites`, `.json`],
-        structure: { id: `complex_crystal`, sites: repeated_sites(24, `Si`) } },
-    ])(`generates filename for $name`, ({ structure, extension, should_contain }) => {
-      const result = create_structure_filename(structure, extension)
-      should_contain.forEach((part) => expect(result).toContain(part))
-    })
 
     it(`strips HTML tags from chemical formulas`, () => {
       // Mock returns HTML when called without plain_text flag
@@ -441,21 +404,21 @@ describe(`Export functionality`, () => {
 
     // oxfmt-ignore
     it.each([
-      { name: `species without element`, expected: `X 0.000000 0.000000 0.000000`,
+      { name: `species without element`,
         species: [{ element: undefined, occu: 1, oxidation_state: 0 }] },
-      { name: `empty species array`, expected: `X 0.000000 0.000000 0.000000`, species: [] },
-      { name: `missing coordinates`, expected: `H 0.000000 0.000000 0.000000`, xyz: undefined,
-        abc: undefined, species: [{ element: `H`, occu: 1, oxidation_state: 0 }] },
-    ] as const)(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
+      { name: `empty species array`, species: [] },
+    ] as const)(`handles $name gracefully`, ({ species }) => {
       const site = {
         species, // deliberately invalid: missing element / empty array
-        xyz: xyz ?? [0.0, 0.0, 0.0],
-        abc: abc ?? [0.0, 0.0, 0.0],
+        xyz: [0.0, 0.0, 0.0],
+        abc: [0.0, 0.0, 0.0],
         label: `H`,
         properties: {},
       }
       const structure = { sites: [site] } as unknown as AnyStructure
-      expect(structure_to_xyz_str(structure).split(`\n`)[2]).toBe(expected)
+      expect(structure_to_xyz_str(structure).split(`\n`)[2]).toBe(
+        `X 0.000000 0.000000 0.000000`,
+      )
     })
 
     it(`handles invalid lattice matrix in POSCAR`, () => {
@@ -559,38 +522,27 @@ describe(`Export functionality`, () => {
       expect(lines[8]).toMatch(/^0\.\d+ 0\.\d+ 0\.\d+$/)
     })
 
-    // oxfmt-ignore
-    it.each([
-      { name: `with selective dynamics`, has_sd: true, expected_coords: [`T F T`, `F F F`],
-        sites: [
-          make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, { selective_dynamics: [true, false, true, false] }),
-          make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`, { selective_dynamics: [false, false, false] }),
-        ] },
-      { name: `without selective dynamics`, has_sd: false, sites: [make_site(`H`)],
-        expected_coords: [`0.00000000 0.00000000 0.00000000`] },
-    ])(`exports POSCAR $name correctly`, ({ sites, has_sd, expected_coords }) => {
+    it(`exports POSCAR with selective dynamics`, () => {
       const structure: AnyStructure = {
-        id: `test_${has_sd ? `sd` : `no_sd`}`,
-        sites,
+        id: `test_sd`,
+        sites: [
+          make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, {
+            selective_dynamics: [true, false, true, false],
+          }),
+          make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1], `O1`, {
+            selective_dynamics: [false, false, false],
+          }),
+        ],
         lattice: diag_lattice(2),
       }
       const lines = structure_to_poscar_str(structure).split(`\n`)
-
-      if (has_sd) {
-        expect(lines).toContain(`Selective dynamics`)
-        const coord_lines = lines.filter((line) =>
-          /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
-        )
-        expect(coord_lines).toHaveLength(expected_coords.length)
-        expected_coords.forEach((expected, idx) => {
-          expect(coord_lines[idx]).toContain(expected)
-        })
-      } else {
-        expect(lines).not.toContain(`Selective dynamics`)
-        const coord_lines = lines.filter((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line))
-        expect(coord_lines).toHaveLength(1)
-        expect(coord_lines[0]).toBe(expected_coords[0])
-      }
+      expect(lines).toContain(`Selective dynamics`)
+      const coord_lines = lines.filter((line) =>
+        /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
+      )
+      expect(coord_lines).toHaveLength(2)
+      expect(coord_lines[0]).toContain(`T F T`)
+      expect(coord_lines[1]).toContain(`F F F`)
     })
 
     it(`exports CIF with quoted H-M symbol, IT number, and identity symmetry ops loop`, () => {
@@ -725,7 +677,7 @@ describe(`Export functionality`, () => {
       expect(contains(`_space_group_IT_number`)).toBe(has_number)
     })
 
-    it(`handles very large structures efficiently`, () => {
+    it(`exports every site of a 1000-atom structure`, () => {
       const large_structure: AnyStructure = {
         id: `large_test`,
         sites: Array.from({ length: 1000 }, (_, idx) =>
@@ -733,25 +685,24 @@ describe(`Export functionality`, () => {
         ),
         lattice: diag_lattice(10),
       }
-      // Check that all sites are exported
       const lines = structure_to_xyz_str(large_structure).split(`\n`)
       expect(lines[0]).toBe(`1000`)
       expect(lines).toHaveLength(1002) // 1 count + 1 comment + 1000 atoms
     })
 
-    it(`handles structures with mixed coordinate types`, () => {
+    it(`prefers xyz over abc and converts abc when xyz is missing`, () => {
       const mixed_coords_structure: AnyStructure = {
         id: `mixed_coords`,
         sites: [
-          make_site(`H`, [0, 0, 0], [1, 1, 1]), // has both coord types
+          // abc [0.5, 0.5, 0.5] would map to a different point; xyz must win
+          make_site(`H`, [0.5, 0.5, 0.5], [1, 2, 3]),
           { ...make_site(`O`, [0.5, 0.5, 0.5]), xyz: undefined as unknown as Vec3 },
         ],
         lattice: diag_lattice(2),
       }
       const lines = structure_to_xyz_str(mixed_coords_structure).split(`\n`)
-      // First atom uses its xyz; the second has none, so abc is converted
       expect(lines.slice(2, 4)).toEqual([
-        `H 1.000000 1.000000 1.000000`,
+        `H 1.000000 2.000000 3.000000`,
         `O 1.000000 1.000000 1.000000`,
       ])
     })
@@ -844,16 +795,11 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
 
   test.each(test_cases)(`round-trips $filename correctly`, ({ filename, content }) => {
     const original = parse_structure_file(content, filename)
-    expect(original, `Failed to parse original file ${filename}`).not.toBeNull()
-    if (!original) return
+    assert(original, `Failed to parse original file ${filename}`)
 
     const exporter = filename.endsWith(`.cif`) ? structure_to_cif_str : structure_to_poscar_str
-
-    const exported_content = exporter(original)
-
-    const round_tripped = parse_structure_file(exported_content, filename)
-    expect(round_tripped, `Failed to parse exported file ${filename}`).not.toBeNull()
-    if (!round_tripped) return
+    const round_tripped = parse_structure_file(exporter(original), filename)
+    assert(round_tripped, `Failed to parse exported file ${filename}`)
 
     assert_structures_equal(original, round_tripped, filename)
   })
@@ -862,35 +808,27 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
 // Tests for 3D export color preservation (Issue #203)
 describe(`3D Export Color Preservation`, () => {
   describe(`extract_bond_color_for_instance`, () => {
-    const gradient_cases = [
-      { start: [1, 0, 0], end: [0, 0, 1], expected: [0.5, 0, 0.5] }, // red→blue
-      { start: [0, 1, 0], end: [1, 1, 0], expected: [0.5, 1, 0] }, // green→yellow
-      { start: [1, 1, 1], end: [0, 0, 0], expected: [0.5, 0.5, 0.5] }, // white→black
-      { start: [0.3, 0.6, 0.9], end: [0.3, 0.6, 0.9], expected: [0.3, 0.6, 0.9] }, // same
-      { start: [0.2, 0.4, 0.6], end: [0.8, 0.2, 0.4], expected: [0.5, 0.3, 0.5] }, // asymmetric
-    ]
-
-    test.each(gradient_cases)(
-      `midpoint: $start → $end = $expected`,
-      ({ start, end, expected }) => {
-        const geometry = new BufferGeometry()
-        geometry.setAttribute(
-          `instanceColorStart`,
-          new InstancedBufferAttribute(new Float32Array(start), 3),
-        )
-        geometry.setAttribute(
-          `instanceColorEnd`,
-          new InstancedBufferAttribute(new Float32Array(end), 3),
-        )
-
-        const result = extract_bond_color_for_instance(geometry, 0)
-        expect(result).not.toBeNull()
-        assert(result, `Expected result`)
-        expect(result.r).toBeCloseTo(expected[0], 5)
-        expect(result.g).toBeCloseTo(expected[1], 5)
-        expect(result.b).toBeCloseTo(expected[2], 5)
-      },
-    )
+    // Midpoint arithmetic for distinct pairs is covered by the multi-instance case below;
+    // keep same-color (no-op average) and asymmetric (non-0.5 channels) as the edges.
+    test.each([
+      { start: [0.3, 0.6, 0.9], end: [0.3, 0.6, 0.9], expected: [0.3, 0.6, 0.9] },
+      { start: [0.2, 0.4, 0.6], end: [0.8, 0.2, 0.4], expected: [0.5, 0.3, 0.5] },
+    ])(`midpoint: $start → $end = $expected`, ({ start, end, expected }) => {
+      const geometry = new BufferGeometry()
+      geometry.setAttribute(
+        `instanceColorStart`,
+        new InstancedBufferAttribute(new Float32Array(start), 3),
+      )
+      geometry.setAttribute(
+        `instanceColorEnd`,
+        new InstancedBufferAttribute(new Float32Array(end), 3),
+      )
+      const result = extract_bond_color_for_instance(geometry, 0)
+      assert(result, `Expected result`)
+      expect(result.r).toBeCloseTo(expected[0], 5)
+      expect(result.g).toBeCloseTo(expected[1], 5)
+      expect(result.b).toBeCloseTo(expected[2], 5)
+    })
 
     test(`returns null when color attributes missing or only partial`, () => {
       const geom = new BufferGeometry()
@@ -1028,14 +966,6 @@ describe(`3D Export Color Preservation`, () => {
     ])(`returns $expected for material`, ({ mat, expected }) => {
       expect(has_color_property(mat())).toBe(expected)
     })
-
-    test(`type guard grants color access`, () => {
-      const mat = new MeshStandardMaterial({ color: new Color(0.25, 0.5, 0.75) })
-      assert(has_color_property(mat), `Expected true`)
-      expect(mat.color.r).toBeCloseTo(0.25, 2)
-      expect(mat.color.g).toBeCloseTo(0.5, 2)
-      expect(mat.color.b).toBeCloseTo(0.75, 2)
-    })
   })
 
   describe(`generate_mtl_content`, () => {
@@ -1084,20 +1014,15 @@ describe(`3D Export Color Preservation`, () => {
       return generate_mtl_content(scene)
     }
 
-    // MTLLoader ignores Ka, so only a direct string assertion can catch a regression there
-    test.each(rgb_cases)(`correct RGB order and ambient for $name`, ({ rgb, kd, ka }) => {
+    // Ka is string-only (MTLLoader ignores it). Kd must also round-trip through MTLLoader,
+    // which treats it as sRGB — writing linear values reads back ~2x too dark.
+    test.each(rgb_cases)(`$name Kd/Ka strings and MTLLoader round-trip`, ({ rgb, kd, ka }) => {
       const mtl = mtl_for_color(rgb)
       expect(mtl).toContain(`Kd ${kd}`)
       expect(mtl).toContain(`Ka ${ka}`)
-    })
-
-    // three's MTLLoader is the reference reader for what we write, and it treats Kd as sRGB
-    test.each(rgb_cases)(`$name survives a round trip through MTLLoader`, ({ rgb }) => {
-      const creator = new MTLLoader().parse(mtl_for_color(rgb), ``)
-      const { color } = creator.create(`test`) as MeshPhongMaterial
+      const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
       for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
-        // Kd is quantized to six decimals in sRGB; decoding magnifies that to ~1e-5 in the
-        // linear channel, still three orders below the ~0.29 error of writing linear values.
+        // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
         expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
       }
     })

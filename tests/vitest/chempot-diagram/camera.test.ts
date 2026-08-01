@@ -1,41 +1,5 @@
-import {
-  type CameraView,
-  camera_view_changed,
-  rescale_zoom_to_fit,
-} from '$lib/chempot-diagram/camera'
+import { rescale_zoom_to_fit } from '$lib/chempot-diagram/camera'
 import { describe, expect, test } from 'vitest'
-
-const view = (overrides: Partial<CameraView> = {}): CameraView => ({
-  position: [1, 2, 3],
-  target: [0, 0, 0],
-  zoom: 40,
-  ...overrides,
-})
-
-describe(`camera_view_changed`, () => {
-  test.each([
-    // a click that moves nothing must not pin the view, or the diagram stops re-fitting
-    [`bare click leaves the view identical`, view(), false],
-    [`orbit moves the camera`, view({ position: [1, 2, 3.0001] }), true],
-    [`wheel changes only zoom`, view({ zoom: 40.5 }), true],
-    [`pan moves only the target`, view({ target: [0, 0.2, 0] }), true],
-  ] as [string, CameraView, boolean][])(`%s`, (_desc, after, expected) => {
-    expect(camera_view_changed(view(), after)).toBe(expected)
-  })
-
-  test(`a perspective camera reports no zoom and still compares`, () => {
-    const before = view({ zoom: null })
-    expect(camera_view_changed(before, view({ zoom: null }))).toBe(false)
-    expect(camera_view_changed(before, view({ zoom: null, position: [9, 2, 3] }))).toBe(true)
-  })
-
-  // auto-rotate drives `change` without a preceding `start`, so there is no baseline to
-  // compare against — and an animation the user never asked for must not pin the framing
-  test(`a missing view counts as unchanged`, () => {
-    expect(camera_view_changed(null, view())).toBe(false)
-    expect(camera_view_changed(view(), null)).toBe(false)
-  })
-})
 
 describe(`rescale_zoom_to_fit`, () => {
   test.each([

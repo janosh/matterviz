@@ -2025,31 +2025,32 @@
         {/if}
 
         {#if measure_mode === `edit-bonds` && !measure_menu_open}
-          <div class="edit-mode-toolbar" aria-label="Bond editing controls">
-            <div class="bond-edit-toolbar">
-              {#if bond_edit_mode === `add`}
-                <label>
-                  <span>Bond order</span>
-                  <select bind:value={bond_edit_order}>
-                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                      <option value={order}>{label}</option>
-                    {/each}
-                  </select>
-                </label>
-              {/if}
-              <div class="bond-edit-mode-toggle">
-                {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
-                  <button
-                    type="button"
-                    class:selected={bond_edit_mode === mode}
-                    aria-pressed={bond_edit_mode === mode}
-                    title="{title} ({label[0]})"
-                    onclick={() => (bond_edit_mode = mode)}
-                  >
-                    {label}
-                  </button>
-                {/each}
-              </div>
+          <div
+            class="edit-mode-toolbar bond-edit-toolbar"
+            aria-label="Bond editing controls"
+          >
+            {#if bond_edit_mode === `add`}
+              <label>
+                <span>Bond order</span>
+                <select bind:value={bond_edit_order}>
+                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                    <option value={order}>{label}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            <div class="bond-edit-mode-toggle">
+              {#each [{ mode: `add`, label: `Add`, title: `Add: click two atoms` }, { mode: `delete`, label: `Delete`, title: `Delete: click a bond` }] as const as { mode, label, title } (mode)}
+                <button
+                  type="button"
+                  class:selected={bond_edit_mode === mode}
+                  aria-pressed={bond_edit_mode === mode}
+                  title="{title} ({label[0]})"
+                  onclick={() => (bond_edit_mode = mode)}
+                >
+                  {label}
+                </button>
+              {/each}
             </div>
             {@render undo_redo_snippet([
               {
@@ -2251,9 +2252,11 @@
       </div>
     {/if}
 
-    <div class="bottom-left">
-      {@render bottom_left?.({ structure: internal_displayed_structure })}
-    </div>
+    {#if bottom_left}
+      <div class="bottom-left">
+        {@render bottom_left({ structure: internal_displayed_structure })}
+      </div>
+    {/if}
 
     {#if toast_msg}
       <div class="edit-toast">{toast_msg}</div>
@@ -2521,44 +2524,41 @@
     align-items: center;
     justify-content: center;
   }
-  .bond-edit-toolbar {
+  .edit-mode-toolbar.bond-edit-toolbar {
     --bond-edit-control-height: 1.8em;
-    display: flex;
-    align-items: center;
-    gap: 0.4em;
     font-size: 0.8em;
-  }
-  .bond-edit-mode-toggle,
-  .bond-edit-toolbar label {
-    display: flex;
-    align-items: center;
-  }
-  .bond-edit-mode-toggle {
-    gap: 0.35em;
-  }
-  .bond-edit-mode-toggle button,
-  .bond-edit-toolbar label,
-  .bond-edit-toolbar select {
-    height: var(--bond-edit-control-height);
-    line-height: 1;
-  }
-  .bond-edit-mode-toggle button {
-    min-width: 3.5em;
-    font: inherit;
-  }
-  .bond-edit-mode-toggle button.selected {
-    background: var(--accent-color, #007acc);
-    color: white;
-  }
-  .bond-edit-mode-toggle button.selected:hover {
-    background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
-  }
-  .bond-edit-toolbar label {
-    gap: 0.25em;
-  }
-  .bond-edit-toolbar select {
-    max-width: 8em;
-    font: inherit;
+    label,
+    .bond-edit-mode-toggle {
+      display: flex;
+      align-items: center;
+    }
+    label {
+      gap: 0.25em;
+    }
+    select {
+      max-width: 8em;
+      font: inherit;
+    }
+    label,
+    select,
+    .bond-edit-mode-toggle button {
+      height: var(--bond-edit-control-height);
+      line-height: 1;
+    }
+    .bond-edit-mode-toggle {
+      gap: 0.35em;
+      button {
+        min-width: 3.5em;
+        font: inherit;
+      }
+      button.selected {
+        background: var(--accent-color, #007acc);
+        color: white;
+      }
+      button.selected:hover {
+        background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
+      }
+    }
   }
   .history-count {
     position: absolute;
