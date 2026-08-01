@@ -51,7 +51,7 @@ const BASE64_FILE_TYPES = with_icon(BASE64_FILE_TYPE_SPECS)
 const format_bytes = (bytes: number): string =>
   bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`
 
-class MatterVizViewer extends Widget {
+export class MatterVizViewer extends Widget {
   private mounted_app: viewer_module.MatterVizApp | null = null
   private readonly viewer_root: HTMLDivElement
   // Guards against an in-flight parse of a stale revision clobbering a newer one
@@ -64,14 +64,25 @@ class MatterVizViewer extends Widget {
     this.viewer_root = document.createElement(`div`)
     this.node.append(this.viewer_root)
 
-    void this.context.ready.then(() => {
-      if (this.isDisposed) return
-      void this.render()
-      // Fires on initial load and on File > Reload from Disk, not on external
-      // writes — JupyterLab has no filesystem watcher, so unlike the VS Code
-      // extension a file changed by a kernel needs a manual reload.
-      this.context.model.contentChanged.connect(this.on_content_changed, this)
-    })
+    void this.context.ready.then(
+      () => {
+        if (this.isDisposed) return
+        void this.render()
+        // Fires on initial load and on File > Reload from Disk, not on external
+        // writes — JupyterLab has no filesystem watcher, so unlike the VS Code
+        // extension a file changed by a kernel needs a manual reload.
+        this.context.model.contentChanged.connect(this.on_content_changed, this)
+      },
+      // A failed fetch (deleted file, permissions, server error) would otherwise
+      // leave an empty panel and an unhandled rejection in the console.
+      (error: unknown) =>
+        this.show_error(PathExt.basename(this.context.path), error, this.render_generation),
+    )
+  }
+
+  // A newer render, or a dispose, won the race while we were awaiting.
+  private is_stale(generation: number): boolean {
+    return generation !== this.render_generation || this.isDisposed
   }
 
   // Arrow property rather than a method to keep the reference bound. Passing
@@ -93,35 +104,38 @@ class MatterVizViewer extends Widget {
 
     if (byte_size > MAX_PARSE_BYTES) {
       const message = `File is ${format_bytes(byte_size)}, above the ${format_bytes(MAX_PARSE_BYTES)} viewer limit. Open it from a notebook instead, where the kernel parses it in Python rather than holding every byte in the browser.`
-      await this.show_error(filename, new Error(message))
+      await this.show_error(filename, message, generation)
       return
     }
 
     try {
       const { create_display, parse_file_content } = await load_viewer()
       const result = await parse_file_content(content, filename, is_base64)
-      // A newer render (or a dispose) won the race while we were parsing.
-      if (generation !== this.render_generation || this.isDisposed) return
+      if (this.is_stale(generation)) return
       await this.unmount_current()
       // Re-check: unmounting yields, so a newer render can have started during it.
-      if (generation !== this.render_generation || this.isDisposed) return
+      if (this.is_stale(generation)) return
       this.mounted_app = create_display(this.viewer_root, result)
     } catch (error) {
-      if (generation !== this.render_generation || this.isDisposed) return
-      await this.show_error(
-        filename,
-        error instanceof Error ? error : new Error(String(error)),
-      )
+      await this.show_error(filename, error, generation)
     }
   }
 
-  private async show_error(filename: string, error: Error): Promise<void> {
+  private async show_error(
+    filename: string,
+    error: unknown,
+    generation: number,
+  ): Promise<void> {
+    if (this.is_stale(generation)) return
     await this.unmount_current()
+    // Unmounting yields, so re-check before writing into a node a newer render or
+    // a dispose has taken over.
+    if (this.is_stale(generation)) return
     // Fixed literal, no interpolation; the untrusted strings go in via textContent.
     this.viewer_root.innerHTML = `<div class="mv-file-viewer-error"><h2></h2><p></p></div>`
     const [heading, detail] = this.viewer_root.querySelectorAll(`h2, p`)
     heading.textContent = `Cannot display ${filename}`
-    detail.textContent = error.message
+    detail.textContent = error instanceof Error ? error.message : String(error)
   }
 
   private async unmount_current(): Promise<void> {

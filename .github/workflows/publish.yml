@@ -8,6 +8,8 @@ name: Publish
 # The VS Code Marketplace is NOT auto-published (the publisher's Azure org can't issue a
 # publish PAT/identity): upload the VSIX from the GitHub release by hand at
 # https://marketplace.visualstudio.com/manage.
+# matterviz-jupyterlab is built and content-checked here but not published either: download
+# the wheel from this run's artifacts and `uv publish` it.
 # Required repo secrets:
 #   OVSX_PAT - Open VSX token (namespace once: `npx ovsx create-namespace janosh -p <OVSX_PAT>`)
 
@@ -175,10 +177,57 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  package_jupyterlab:
+    name: Build JupyterLab extension
+    needs: [prepare, lint, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Install dependencies
+        uses: ./.github/actions/setup
+      # Not via the setup action's `extensions` input: @jupyterlab/application pulls
+      # in fontawesome, whose install script pnpm declines to run unattended and
+      # then exits non-zero over.
+      - name: Install JupyterLab extension dependencies
+        run: pnpm install --ignore-workspace --config.strict-dep-builds=false
+        working-directory: extensions/jupyterlab
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v9
+      - name: Build prebuilt labextension and wheel
+        working-directory: extensions/jupyterlab
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          # --no-project: uv would otherwise try to install this package, which
+          # cannot build until the labextension below has written data/.
+          uv run --no-project --with jupyterlab -- pnpm run build
+          uv build --wheel --out-dir release
+
+          # uv_build packages whatever is on disk, so a wheel builds fine with a
+          # half-written data/ and installs as a no-op extension. The wheel name
+          # also pins pyproject's version to the release.
+          wheel="release/matterviz_jupyterlab-$RELEASE_VERSION-py3-none-any.whl"
+          test -s "$wheel" || { echo "::error::$wheel not built"; exit 1; }
+          labextension="matterviz_jupyterlab-$RELEASE_VERSION.data/data/share/jupyter/labextensions/matterviz-jupyterlab"
+          # remoteEntry is the federated entry point, which webpack content-hashes.
+          # unzip -l exits 11 when its pattern matches nothing, so no grep needed.
+          for shipped in package.json install.json static/style.js 'static/remoteEntry.*.js'; do
+            unzip -l "$wheel" "$labextension/$shipped" > /dev/null || {
+              echo "::error::wheel is missing $labextension/$shipped"; exit 1; }
+          done
+      - name: Upload JupyterLab wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: matterviz-jupyterlab-wheel-${{ needs.prepare.outputs.version }}
+          path: extensions/jupyterlab/release/matterviz_jupyterlab-${{ needs.prepare.outputs.version }}-py3-none-any.whl
+          if-no-files-found: error
+          retention-days: 7
+
   # === Publish only after every artifact has built successfully ===
   publish_npm:
     name: Publish ${{ matrix.package_name }} to npm
-    needs: [prepare, package_matterviz, package_anywidget, package_vscode]
+    needs: [prepare, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -222,7 +271,7 @@ jobs:
 
   publish_open_vsx:
     name: Publish VS Code extension to Open VSX
-    needs: [prepare, package_matterviz, package_anywidget, package_vscode]
+    needs: [prepare, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX
