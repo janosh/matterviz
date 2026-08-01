@@ -1,10 +1,7 @@
 // @vitest-environment happy-dom
-// Covers the render lifecycle: a stale render must never write into the viewer
-// node, and a context that never becomes ready must say so instead of leaving a
-// blank panel. `./viewer` is mocked so the tests stay off the MatterViz component
-// graph, and the @jupyterlab/* imports because loading them drags in @microsoft/fast,
-// which throws on every animation frame outside a real browser. Only @lumino/widgets
-// stays real — the widget extends it.
+// Stale renders must not write the viewer node; a context that never becomes ready
+// must error instead of leaving a blank panel. Mock `./viewer` and @jupyterlab/*
+// (@microsoft/fast throws outside a real browser); keep @lumino/widgets real.
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { beforeEach, expect, test, vi } from 'vitest'
 
@@ -37,9 +34,7 @@ const { MatterVizViewer } = await import(`../src/index`)
 
 const MAX_PARSE_BYTES = 100 * 1024 * 1024
 
-// Minimal stand-in for Lumino's Signal, which would drag in the whole messaging
-// runtime. The widget's handler is an arrow property, so the receiver it passes to
-// connect is already bound and can be ignored.
+// Handler is an arrow property, so the signal's thisArg can be ignored.
 const make_signal = () => {
   const handlers = new Set<() => void>()
   return {
@@ -75,16 +70,16 @@ test(`an oversize file's error must not clobber the render that superseded it`, 
   const viewer = new_viewer(context)
   await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(1))
 
-  // Second render trips the size guard, so it unmounts before writing its error.
+  // Size guard unmounts before writing its error.
   context.set_content(`x`.repeat(MAX_PARSE_BYTES + 1))
   await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(1))
 
-  // Third render wins the race while that unmount is still in flight.
+  // Newer render wins while that unmount is still in flight.
   context.set_content(`data`)
   await vi.waitFor(() => expect(create_display).toHaveBeenCalledTimes(2))
 
   finish_unmount()
-  await new Promise((resolve) => setTimeout(resolve))
+  await Promise.resolve()
 
   expect(viewer.node.querySelector(`.mv-file-viewer-error`)).toBeNull()
   expect(viewer.node.textContent).toBe(`mounted`)

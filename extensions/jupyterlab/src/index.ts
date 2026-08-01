@@ -15,11 +15,7 @@ import { ABCWidgetFactory, Base64ModelFactory, DocumentWidget } from '@jupyterla
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
-import {
-  BASE64_FILE_TYPES as BASE64_FILE_TYPE_SPECS,
-  type FileTypeSpec,
-  TEXT_FILE_TYPES as TEXT_FILE_TYPE_SPECS,
-} from './file-types'
+import { BASE64_FILE_TYPES, type FileTypeSpec, TEXT_FILE_TYPES } from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
 import type * as viewer_module from './viewer'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
@@ -42,11 +38,7 @@ const matterviz_icon = new LabIcon({
   svgstr: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#616161" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="jp-icon3"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>`,
 })
 
-const with_icon = (specs: FileTypeSpec[]): DocumentRegistry.IFileType[] =>
-  specs.map((spec) => ({ ...spec, icon: matterviz_icon }))
-
-const TEXT_FILE_TYPES = with_icon(TEXT_FILE_TYPE_SPECS)
-const BASE64_FILE_TYPES = with_icon(BASE64_FILE_TYPE_SPECS)
+const type_names = (specs: FileTypeSpec[]): string[] => specs.map((spec) => spec.name)
 
 const format_bytes = (bytes: number): string =>
   bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.round(bytes / 2 ** 20)} MB`
@@ -177,18 +169,16 @@ const register_factory = (
   {
     name,
     model_name,
-    default_for,
+    default_names,
     additional_file_types = [],
   }: {
     name: string
     model_name: `text` | `base64`
-    default_for: DocumentRegistry.IFileType[]
+    default_names: string[]
     // Types we appear under in "Open With" without displacing the existing default
     additional_file_types?: string[]
   },
 ): void => {
-  const default_names = default_for.map((file_type) => file_type.name)
-
   const factory = new MatterVizFactory({
     name,
     // Shown in the file browser's "Open With" menu. Both factories share the label:
@@ -219,8 +209,8 @@ const plugin: JupyterFrontEndPlugin<void> = {
   autoStart: true,
   optional: [ILayoutRestorer],
   activate: (app: JupyterFrontEnd, restorer: ILayoutRestorer | null): void => {
-    for (const file_type of [...TEXT_FILE_TYPES, ...BASE64_FILE_TYPES]) {
-      app.docRegistry.addFileType(file_type)
+    for (const spec of [...TEXT_FILE_TYPES, ...BASE64_FILE_TYPES]) {
+      app.docRegistry.addFileType({ ...spec, icon: matterviz_icon })
     }
 
     // Only the `text` model factory ships with DocumentRegistry; `base64` is added
@@ -233,7 +223,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
     register_factory(app, restorer, {
       name: `MatterViz`,
       model_name: `text`,
-      default_for: TEXT_FILE_TYPES,
+      default_names: type_names(TEXT_FILE_TYPES),
       // MatterViz renders pymatgen/ASE JSON, but must not displace Lab's own JSON
       // viewer, so JSON stays an opt-in "Open With" entry.
       additional_file_types: [`json`],
@@ -241,7 +231,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
     register_factory(app, restorer, {
       name: `MatterViz (binary)`,
       model_name: `base64`,
-      default_for: BASE64_FILE_TYPES,
+      default_names: type_names(BASE64_FILE_TYPES),
     })
   },
 }

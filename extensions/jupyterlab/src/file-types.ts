@@ -27,9 +27,19 @@ const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => 
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
-const VASP_STEMS = [`POSCAR`, `CONTCAR`, `XDATCAR`, `CHGCAR`, `LOCPOT`, `ELFCAR`, `PARCHG`]
+// AECCAR carries its charge index as a regex class, which toLowerCase leaves alone.
+const VASP_STEMS = [
+  `POSCAR`,
+  `CONTCAR`,
+  `XDATCAR`,
+  `CHGCAR`,
+  `LOCPOT`,
+  `ELFCAR`,
+  `PARCHG`,
+  `AECCAR[012]`,
+]
 const VASP_TOKEN = [...VASP_STEMS, ...VASP_STEMS.map((stem) => stem.toLowerCase())].join(`|`)
-const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN}|AECCAR[012]|aeccar[012])(?:[_-][^.]*)?`
+const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN})(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here
 // would drag @jupyterlab/ui-components into the tests.
