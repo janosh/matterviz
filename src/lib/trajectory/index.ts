@@ -34,12 +34,6 @@ export type { AtomTypeMapping } from './types'
 // the user slides past. Exported so tests stay in sync with the real delay.
 export const FRAME_LOAD_DEBOUNCE_MS = 75
 
-// Smallest pane the structure viewer and the plot both stay readable in: a
-// scatter spends ~80px on its y-axis label and tick labels and its legend needs
-// ~10em on top of that, and below ~180px of height the x-axis labels eat the
-// data area the same way.
-const MIN_PANE_SIZE = { width: 320, height: 180 }
-
 // Splitting side by side halves the width but keeps the full height, so the
 // panes come out twice as tall relative to their width as the container is.
 // A nearly square container therefore yields tall narrow panes, which a
@@ -67,7 +61,8 @@ export function pick_pane_orientation(
   const stacked_fits = height / 2 >= MIN_PANE_SIZE.height
   if (side_by_side_fits && !stacked_fits) return `horizontal`
   if (stacked_fits && !side_by_side_fits) return `vertical`
-  return width / 2 >= height / MAX_PANE_TALLNESS ? `horizontal` : `vertical`
+  // a side-by-side pane is half the width and the container's full height
+  return height <= (width / 2) * MAX_PANE_TALLNESS ? `horizontal` : `vertical`
 }
 
 // Core trajectory types

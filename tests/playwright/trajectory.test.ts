@@ -601,9 +601,10 @@ test.describe(`Trajectory Component`, () => {
       expect(await pane_divider()).toMatch(/ 1px 0px 0px 0px$/) // hairline to the right
 
       // This viewer's controls bar is ~32px the panes never get, so at 380px tall
-      // stacking would leave 174px rows - under the readable minimum, so it stays
-      // side by side. Measuring the wrapper instead of .content-area would stack it.
-      await set_size(480, 380)
+      // the rows stacking would leave (174px) fall under the readable minimum and
+      // it stays side by side. Measuring the wrapper, whose 190px rows clear that
+      // minimum, would stack it instead.
+      await set_size(520, 380)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
     })
 

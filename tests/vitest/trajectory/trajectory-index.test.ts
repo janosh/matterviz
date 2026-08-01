@@ -313,17 +313,22 @@ test.each([
   // side by side. Heights here are 500 because that is what such a card really
   // measures: .trajectory's min-height floor outranks the host's inline height.
   [`chat sidebar card`, 490, 500, `vertical`],
-  [`just under the side-by-side minimum`, 639, 500, `vertical`],
-  [`exactly at the side-by-side minimum`, 640, 500, `horizontal`],
+  [`portrait`, 400, 800, `vertical`],
+  [`square`, 600, 600, `vertical`],
+  // Short enough that MIN_PANE_SIZE.width, not pane shape, decides
+  [`just under the side-by-side pane minimum`, 639, 400, `vertical`],
+  [`at the side-by-side pane minimum`, 640, 400, `horizontal`],
+  // Tall enough that pane shape decides: panes may be at most 1.4x taller than
+  // wide, so side by side needs a container 10/7 as wide as it is tall
+  [`just under the side-by-side aspect`, 999, 700, `vertical`],
+  [`at the side-by-side aspect`, 1000, 700, `horizontal`],
+  // Both splits fit, but side by side would hand each pane 450x800
+  [`nearly square dashboard viewer`, 900, 800, `vertical`],
+  [`fullscreen on a 4:3 display`, 1440, 1080, `vertical`],
+  [`fullscreen on a 16:9 display`, 1920, 1080, `horizontal`],
   [`desktop viewer`, 1200, 600, `horizontal`],
   // stacking a short container would leave both panes unreadably flat
   [`wide and short`, 500, 200, `horizontal`],
-  [`portrait`, 400, 800, `vertical`],
-  [`square`, 600, 600, `vertical`],
-  // both splits fit comfortably here, so shape decides and these stay as they
-  // always were - a size-blind ratio threshold would restack them
-  [`tab beside an open chat panel`, 900, 800, `horizontal`],
-  [`fullscreen on a 4:3 display`, 1440, 1080, `horizontal`],
 ] as const)(`pick_pane_orientation %s`, (_label, width, height, expected) => {
   expect(pick_pane_orientation(width, height)).toBe(expected)
 })
