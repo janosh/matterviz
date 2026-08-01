@@ -811,8 +811,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 2.0,
     },
     zoom_to_cursor: {
-      value: true,
-      description: `Zoom toward the cursor instead of the scene center`,
+      // off by default: cursor zoom shifts the orbit target toward the pointer and zooming
+      // back out does not undo it, so a few wheel flicks walk the structure into a corner
+      value: false,
+      description: `Zoom toward the cursor instead of the scene center (the view drifts off-center as you zoom)`,
     },
     max_zoom: {
       value: 500,

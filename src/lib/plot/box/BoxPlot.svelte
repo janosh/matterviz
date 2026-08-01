@@ -1323,7 +1323,7 @@
     min-height: var(--boxplot-min-height, 300px);
     container-type: size;
     z-index: var(--boxplot-z-index, auto);
-    border-radius: var(--boxplot-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--boxplot-border-radius, 0);
     flex: var(--boxplot-flex, 1);
     display: var(--boxplot-display, flex);
     flex-direction: column;

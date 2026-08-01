@@ -18,6 +18,23 @@
   --sms-selected-bg: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
   --border-radius: 3pt;
 
+  /* Popup menu chrome (view-mode dropdowns, legend menus, context menus, structure popup).
+     Ink is paired with the background rather than inherited: a light menu hosted in a dark
+     app would otherwise take that app's near-white --text-color onto its options. Each menu
+     still exposes its own --*-bg/-color/-border var, defaulting to these. */
+  --menu-bg: light-dark(#fff, #2f3137);
+  --menu-color: light-dark(#1a1a1a, #eee);
+  --menu-border: light-dark(#d0d0d4, #44474f);
+  --menu-option-hover-bg: light-dark(#ececef, #3a3d45);
+  --menu-option-selected-color: light-dark(#2563eb, #6ea8ff);
+
+  /* DraggablePane chrome. svelte-widgets sets --pane-bg from --page-bg but does not set
+     color; without a paired ink token, a light pane inherits a host's light --text-color
+     (or an inline VS Code foreground) and becomes unreadable. */
+  --pane-bg: var(--page-bg, light-dark(#f1f3f5, #18171c));
+  --pane-color: var(--text-color, light-dark(#374151, #eee));
+  --pane-muted-color: var(--text-color-muted, light-dark(#6b7280, #a0a0a0));
+
   /* Single source of truth for viewer control-button icon size, shared by all viewer chromes
      (Structure/Brillouin/Fermi/ConvexHull/Trajectory). Scales with the container but is capped so
      toolbar icons don't grow oversized in fullscreen. Uses rem (not em) so the size is consistent
@@ -57,6 +74,9 @@
 .draggable-pane {
   /* own compositing layer, or WKWebView paints the canvas over this */
   will-change: transform;
+  /* Pair ink with the pane surface (see --pane-bg/--pane-color above). */
+  color: var(--pane-color);
+  background: var(--pane-bg);
 }
 .hover-visible:has(.draggable-pane.pane-open) {
   opacity: 1;

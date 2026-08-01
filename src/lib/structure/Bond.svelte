@@ -1,14 +1,10 @@
 <script lang="ts">
   import type { BondGroupWithGradients } from '$lib/structure'
+  import { write_linear_color_to_buffer } from '$lib/scene/colors'
   import { T, useThrelte } from '@threlte/core'
   import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import type { InstancedMesh } from 'three/webgpu'
-  import {
-    Color,
-    InstancedBufferAttribute,
-    Matrix4,
-    MeshBasicNodeMaterial,
-  } from 'three/webgpu'
+  import { InstancedBufferAttribute, Matrix4, MeshBasicNodeMaterial } from 'three/webgpu'
 
   let {
     group,
@@ -58,24 +54,11 @@
   const diffuse = dot(normalView, vec3(1, 1, 1).normalize()).max(0)
   const bond_color = tinted.mul(ambient_intensity.add(directional_intensity.mul(diffuse)))
 
-  function set_color_buffer(
-    buffer: Float32Array,
-    idx: number,
-    color: string,
-    temp_color: Color,
-  ) {
-    temp_color.set(color).convertSRGBToLinear()
-    buffer[idx * 3] = temp_color.r
-    buffer[idx * 3 + 1] = temp_color.g
-    buffer[idx * 3 + 2] = temp_color.b
-  }
-
   $effect(() => {
     if (!mesh) return
 
     const count = group.instances.length
     const matrix = new Matrix4()
-    const temp_color = new Color()
 
     // Grow color buffers with mesh capacity; shrinking only lowers mesh.count.
     if (colors_start.length < capacity * 3) {
@@ -88,8 +71,8 @@
       const instance = group.instances[idx]
       matrix.fromArray(instance.matrix)
       mesh.setMatrixAt(idx, matrix)
-      set_color_buffer(colors_start, idx, instance.color_start, temp_color)
-      set_color_buffer(colors_end, idx, instance.color_end, temp_color)
+      write_linear_color_to_buffer(colors_start, idx, instance.color_start)
+      write_linear_color_to_buffer(colors_end, idx, instance.color_end)
     }
 
     mesh.instanceMatrix.needsUpdate = true

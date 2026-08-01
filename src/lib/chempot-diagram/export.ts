@@ -37,6 +37,8 @@ export function get_view_settings(opts: {
   reverse_color_scale: boolean
   camera_position?: XYZ | null
   camera_target?: XYZ | null
+  // an orthographic camera frames by zoom, not distance, so a snapshot without it is ambiguous
+  orthographic_zoom?: number | null
 }): Record<string, unknown> {
   const { camera_position, camera_target, ...settings } = opts
   return {

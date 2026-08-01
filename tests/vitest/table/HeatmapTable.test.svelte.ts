@@ -1351,7 +1351,7 @@ describe(`HeatmapTable`, () => {
         const overlay = container.querySelector(`.loading-overlay`)
         if (loading) {
           expect(overlay).not.toBeNull()
-          expect(container.querySelector(`.loading-spinner`)).not.toBeNull()
+          expect(container.querySelector(`[role="status"]`)).not.toBeNull()
           expect(getComputedStyle(overlay as HTMLElement).position).toBe(`absolute`)
         } else {
           expect(overlay).toBeNull()

@@ -864,7 +864,7 @@
     /* no bg shading by default: the cells are the chart; set --treemap-bg to
     add a panel background */
     background: var(--treemap-bg, transparent);
-    border-radius: var(--treemap-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--treemap-border-radius, 0);
   }
   .treemap.fullscreen {
     position: fixed;

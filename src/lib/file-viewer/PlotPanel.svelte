@@ -261,8 +261,8 @@
     flex-wrap: wrap;
     gap: 4px 14px;
     padding: 6px 10px;
-    background: var(--vscode-editor-background, #1e1e1e);
-    border-bottom: 1px solid var(--vscode-panel-border, #333);
+    background: var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)));
+    border-bottom: 1px solid var(--vscode-panel-border, var(--border-color, #333));
     align-items: center;
     font-size: 12px;
   }
@@ -270,13 +270,13 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    color: var(--vscode-foreground, #ccc);
+    color: var(--vscode-foreground, var(--text-color, CanvasText));
     font-weight: 500;
   }
   .close-btn {
     background: none;
     border: none;
-    color: var(--vscode-foreground, #ccc);
+    color: var(--vscode-foreground, var(--text-color, CanvasText));
     font-size: 16px;
     cursor: pointer;
     padding: 0 4px;
@@ -287,8 +287,8 @@
     }
   }
   .toolbar select {
-    background: var(--vscode-input-background, #3c3c3c);
-    color: var(--vscode-input-foreground, #ccc);
+    background: var(--vscode-input-background, var(--surface-bg, Canvas));
+    color: var(--vscode-input-foreground, var(--text-color, CanvasText));
     border: 1px solid var(--vscode-input-border, #555);
     border-radius: 3px;
     padding: 2px 4px;
@@ -313,13 +313,13 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    color: var(--vscode-foreground, #ccc);
+    color: var(--vscode-foreground, var(--text-color, CanvasText));
     font-size: 11px;
     input {
       width: 3.5em;
       box-sizing: border-box;
-      background: var(--vscode-input-background, #3c3c3c);
-      color: var(--vscode-input-foreground, #ccc);
+      background: var(--vscode-input-background, var(--surface-bg, Canvas));
+      color: var(--vscode-input-foreground, var(--text-color, CanvasText));
       border: 1px solid var(--vscode-input-border, #555);
       border-radius: 3px;
       padding: 1px 3px;
@@ -330,7 +330,7 @@
   .zoom-reset-btn {
     background: none;
     border: none;
-    color: var(--vscode-foreground, #ccc);
+    color: var(--vscode-foreground, var(--text-color, CanvasText));
     cursor: pointer;
     padding: 2px;
     display: flex;

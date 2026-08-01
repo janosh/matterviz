@@ -2072,7 +2072,7 @@
     display: var(--scatter-display, flex);
     flex-direction: column;
     background: var(--scatter-bg, var(--plot-bg));
-    border-radius: var(--scatter-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--scatter-border-radius, 0);
   }
   div.scatter.fullscreen {
     position: fixed;

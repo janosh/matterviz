@@ -28,6 +28,36 @@ const controls_pane_of = (page: Page): Locator =>
 const opacity_of = (locator: Locator): Promise<number> =>
   locator.evaluate((element) => Number(getComputedStyle(element).opacity))
 
+type EventCall = { event: string; data?: unknown }
+const clear_events = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    const event_calls = Reflect.get(globalThis, `event_calls`)
+    if (!Array.isArray(event_calls)) throw new Error(`event_calls is unavailable`)
+    event_calls.length = 0
+  })
+const get_event_calls = (page: Page): Promise<EventCall[]> =>
+  page.evaluate(
+    () => (Reflect.get(globalThis, `event_calls`) as EventCall[] | undefined) ?? [],
+  )
+const events_named = async (page: Page, event_name: string): Promise<EventCall[]> =>
+  (await get_event_calls(page)).filter(({ event }) => event === event_name)
+const wait_for_event = async (
+  page: Page,
+  event_name: string,
+  expected_props: string[],
+  timeout = get_canvas_timeout(),
+): Promise<EventCall> => {
+  await expect
+    .poll(async () => (await events_named(page, event_name)).length, { timeout })
+    .toBeGreaterThan(0)
+  const event = (await events_named(page, event_name)).at(-1)
+  if (!event) throw new Error(`${event_name} was not emitted`)
+  for (const prop of expected_props) {
+    expect(event.data as Record<string, unknown>, event_name).toHaveProperty(prop)
+  }
+  return event
+}
+
 const compressed_source_path = `/structures/source-loop.json.gz`
 const compressed_source_filename =
   compressed_source_path.split(`/`).at(-1) ?? compressed_source_path
@@ -240,8 +270,10 @@ test.describe(`Structure Component Tests`, () => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
 
-    let page_errors = false
-    page.once(`pageerror`, () => (page_errors = true))
+    // keep the message, not just a flag: a bare `expected false` says nothing about which
+    // error fired, and under CI's software WebGPU a lost device can surface here
+    const page_errors: string[] = []
+    page.on(`pageerror`, (error) => page_errors.push(error.message))
 
     // Test that single keys don't trigger actions or cause errors
     await page.keyboard.press(`f`)
@@ -259,7 +291,7 @@ test.describe(`Structure Component Tests`, () => {
     }
 
     // Verify no errors occurred and component still functions
-    expect(page_errors).toBe(false)
+    expect(page_errors).toEqual([])
     await expect(structure_div.locator(`canvas`)).toBeVisible()
   })
 
@@ -527,22 +559,16 @@ test.describe(`Structure Component Tests`, () => {
     const handles = await sweep_gizmo_handles(canvas)
     expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
-    const read_camera_position = () =>
-      page.evaluate(() => (globalThis as Record<string, unknown>).camera_position)
     let camera_position: unknown
     for (const candidate of candidates) {
       if (!candidate) continue
       await page.mouse.move(candidate.x, candidate.y)
       await page.waitForTimeout(100)
-      await page.evaluate(() => {
-        delete (globalThis as Record<string, unknown>).camera_position
-      })
+      await clear_events(page)
       await page.mouse.click(candidate.x, candidate.y)
       try {
-        await expect
-          .poll(read_camera_position, { timeout: 1500 })
-          .toEqual([expect.any(Number), expect.any(Number), expect.any(Number)])
-        camera_position = await read_camera_position()
+        const event = await wait_for_event(page, `on_camera_move`, [`camera_position`], 1500)
+        camera_position = (event.data as Record<string, unknown>).camera_position
         break
       } catch {
         // A sweep can include edge pixels that only hover a handle; try its center candidate.
@@ -950,11 +976,8 @@ H    1.261    0.728   -0.890`,
       },
     )
 
-    // Clear stale camera target from first rotation, then rotate the NEW structure.
-    // on_camera_move writes the orbit target to globalThis.camera_target.
-    await page.evaluate(() => {
-      ;(globalThis as Record<string, unknown>).camera_target = undefined
-    })
+    // Clear stale camera events from first rotation, then rotate the new structure.
+    await clear_events(page)
     const post_load = await canvas.screenshot()
     await canvas.dragTo(canvas, {
       sourcePosition: { x: cx - 80, y: cy },
@@ -963,12 +986,8 @@ H    1.261    0.728   -0.890`,
     await expect_canvas_changed(canvas, post_load)
 
     // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
-    const read_target = () =>
-      page.evaluate(() => (globalThis as Record<string, unknown>).camera_target as number[])
-    await expect
-      .poll(read_target, { timeout: get_canvas_timeout() })
-      .toEqual([expect.any(Number), expect.any(Number), expect.any(Number)])
-    const camera_target = await read_target()
+    const event = await wait_for_event(page, `on_camera_move`, [`camera_target`])
+    const camera_target = (event.data as Record<string, unknown>).camera_target as number[]
     expect(camera_target).toEqual(camera_target.map(() => expect.closeTo(2, 0)))
   })
 })
@@ -1066,46 +1085,41 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test.describe(`Event Handlers`, () => {
-    const clear_events = (page: Page): Promise<void> =>
-      page.evaluate(() => {
-        const event_calls = (globalThis as Record<string, unknown>).event_calls as unknown[]
-        event_calls.length = 0
-      })
-
-    const get_event_calls = (page: Page): Promise<{ event: string; data?: unknown }[]> =>
-      page.evaluate(
-        () =>
-          (globalThis as Record<string, unknown>).event_calls as {
-            event: string
-            data?: unknown
-          }[],
-      )
-
-    const check_event_triggered = async (
+    const wait_for_camera_move = async (
       page: Page,
-      event_name: string,
-      expected_props: string[],
-    ) => {
-      const events = (await get_event_calls(page)).filter((call) => call.event === event_name)
-      expect(events.length, event_name).toBeGreaterThan(0)
-
-      const event = events[0]
-      for (const prop of expected_props) {
-        expect(event.data as Record<string, unknown>, event_name).toHaveProperty(prop)
+    ): Promise<{ camera_target: number[]; camera_zoom: number }> => {
+      const event = await wait_for_event(page, `on_camera_move`, [
+        `camera_target`,
+        `camera_zoom`,
+      ])
+      const { camera_target, camera_zoom } = event.data as {
+        camera_target: number[]
+        camera_zoom: number
       }
-      return event
+      expect(camera_target.every(Number.isFinite), `camera_target`).toBe(true)
+      expect(Number.isFinite(camera_zoom), `camera_zoom`).toBe(true)
+      return { camera_target, camera_zoom }
+    }
+
+    // scrolled into view because a wheel off-screen scrolls the page instead of reaching
+    // the canvas, and because boundingBox() is only meaningful once the canvas is laid out
+    const canvas_box = async (page: Page) => {
+      const canvas = page.locator(`#test-structure canvas`).first()
+      await canvas.scrollIntoViewIfNeeded()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      return { canvas, box }
     }
 
     const drag_camera = async (page: Page) => {
-      const canvas = page.locator(`#test-structure canvas`).first()
-      await expect(canvas).toBeVisible()
-      const box = await canvas.boundingBox()
-      if (!box) throw new Error(`Canvas bounding box not found`)
-      await canvas.dragTo(canvas, {
-        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
-        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
-      })
-      return { box }
+      const { box } = await canvas_box(page)
+      const center_y = box.y + box.height / 2
+      await page.mouse.move(box.x + box.width / 2 - 80, center_y)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width / 2 + 80, center_y, { steps: 5 })
+      await page.waitForTimeout(250) // cross the 200 ms active-move sync interval
+      await page.mouse.up()
+      return box
     }
 
     test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
@@ -1115,13 +1129,11 @@ test.describe(`Structure Event Handler Tests`, () => {
       await clear_events(page)
       await fullscreen_button.click()
 
-      await expect(async () => {
-        const event = await check_event_triggered(page, `on_fullscreen_change`, [
-          `fullscreen`,
-          `structure`,
-        ])
-        expect(event.data).toMatchObject({ fullscreen: true })
-      }).toPass({ timeout: get_canvas_timeout() })
+      const event = await wait_for_event(page, `on_fullscreen_change`, [
+        `fullscreen`,
+        `structure`,
+      ])
+      expect(event.data).toMatchObject({ fullscreen: true })
     })
 
     test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
@@ -1131,94 +1143,164 @@ test.describe(`Structure Event Handler Tests`, () => {
       // Use a valid structure file that exists in the static directory
       await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
 
-      // Wait for the file load event to be processed
-      await expect(async () => {
-        await check_event_triggered(page, `on_file_load`, [`structure`, `filename`])
-      }).toPass({ timeout: get_canvas_timeout() })
+      await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
     })
 
     test(`should trigger on_error event when file loading fails`, async ({ page }) => {
       await clear_events(page)
       await page.goto(`/test/structure?data_url=non-existent.json`)
 
-      // Wait for the error event to be processed
-      await expect(async () => {
-        await check_event_triggered(page, `on_error`, [`error_msg`, `filename`])
-      }).toPass({ timeout: get_canvas_timeout() })
+      await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
 
       // UI should still render gracefully despite the load failure
       await expect(page.locator(`#test-structure`)).toBeVisible()
       await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
     })
 
-    // Camera move/reset go through Three.js OrbitControls. The drag works in headless
-    // (verified via globalThis.camera_target), but is unreliable in CI software GL.
-    test(`should trigger on_camera_move event when camera is moved`, async ({ page }) => {
+    test(`camera movement emits distinct on_camera_move events`, async ({ page }) => {
       test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      // on_camera_move writes the orbit target to globalThis.camera_target
-      await page.evaluate(() => {
-        ;(globalThis as Record<string, unknown>).camera_target = undefined
-      })
+      await clear_events(page)
       await drag_camera(page)
-      await expect
-        .poll(
-          () =>
-            page.evaluate(() =>
-              Array.isArray((globalThis as Record<string, unknown>).camera_target),
-            ),
-          { timeout: get_canvas_timeout() },
+      await wait_for_camera_move(page)
+      const camera_moves = await events_named(page, `on_camera_move`)
+      expect(camera_moves.length).toBeGreaterThan(1)
+      for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
+        expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
+      }
+    })
+
+    // Nothing dollies a perspective camera's zoom, so it has none to report. The multi-view
+    // grid makes this reachable: its primary pane — the one wired to on_camera_move — is the
+    // perspective view, and a payload carrying `camera_zoom: undefined` would claim otherwise.
+    test(`perspective camera moves omit zoom`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      await page.evaluate(() => {
+        globalThis.dispatchEvent(
+          new CustomEvent(`set-scene-props`, {
+            detail: { camera_projection: `perspective` },
+          }),
         )
-        .toBe(true)
+      })
+      await clear_events(page)
+      await drag_camera(page)
+      const move = await wait_for_event(page, `on_camera_move`, [`camera_target`])
+      expect(move.data).not.toHaveProperty(`camera_zoom`)
     })
 
     test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
       test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
       // Move the camera so camera_has_moved flips true and the reset button appears
-      await drag_camera(page)
-      await expect
-        .poll(() => page.evaluate(() => (globalThis as Record<string, unknown>).camera_target))
-        .toEqual(expect.arrayContaining([expect.any(Number)]))
-      const target_before_reset = await page.evaluate(
-        () => (globalThis as Record<string, unknown>).camera_target,
-      )
+      await clear_events(page)
+      const initial_box = await drag_camera(page)
+      const { camera_target: target_before_reset } = await wait_for_camera_move(page)
       await clear_events(page)
       await open_structure_control_pane(page)
       const reset_btn = page.locator(`#test-structure .controls-pane button.reset-camera`)
       await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
       await reset_btn.click()
-      await expect(async () => {
-        await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
-      }).toPass({ timeout: get_canvas_timeout() })
-      const reset_event = await check_event_triggered(page, `on_camera_reset`, [
+      const reset_event = await wait_for_event(page, `on_camera_reset`, [
         `structure`,
         `camera_target`,
+        `camera_zoom`,
       ])
-      const reset_target = (reset_event.data as Record<string, unknown>)
-        .camera_target as number[]
-      for (const [axis_idx, expected] of (target_before_reset as number[]).entries()) {
-        const tolerance = Number.EPSILON * Math.max(1, Math.abs(expected))
-        expect(
-          Math.abs(reset_target[axis_idx] - expected),
-          `axis ${axis_idx}`,
-        ).toBeLessThanOrEqual(tolerance)
+      const { camera_target: reset_target, camera_zoom: reset_zoom } = reset_event.data as {
+        camera_target: number[]
+        camera_zoom: number
       }
+      expect(reset_target).toEqual(
+        target_before_reset.map((coord) => expect.closeTo(coord, 12)),
+      )
+
+      await set_viewer_size(
+        page.locator(`#test-structure`),
+        Math.round(initial_box.width * 0.65),
+        initial_box.height,
+      )
+      const resized_box = (await canvas_box(page)).box
+      await clear_events(page)
+      await page.mouse.move(
+        resized_box.x + resized_box.width / 2,
+        resized_box.y + resized_box.height / 2,
+      )
+      await page.mouse.wheel(0, -120)
+      await wait_for_camera_move(page)
+      await clear_events(page)
+      await reset_btn.click()
+      const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
+      const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
+      expect(resized_zoom / reset_zoom).toBeCloseTo(
+        Math.min(resized_box.width, resized_box.height) /
+          Math.min(initial_box.width, initial_box.height),
+        2,
+      )
+    })
+
+    test(`click without camera movement does not report a move`, async ({ page }) => {
+      const { canvas, box } = await canvas_box(page)
+      await clear_events(page)
+
+      await canvas.click({
+        position: { x: box.width / 2, y: box.height / 2 },
+        force: true,
+      })
+      await page.waitForTimeout(100) // include the post-end damping settle sync
+      expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
+
+      await open_structure_control_pane(page)
+      await expect(
+        page.locator(`#test-structure .controls-pane button.reset-camera`),
+      ).toHaveCount(0)
+    })
+
+    // Wheel zoom must leave the orbit target alone: with zoomToCursor the target follows the
+    // pointer and zooming back out never returns it, so a few flicks walk the structure into a
+    // corner. Zooming also has to register as a camera move — OrbitControls fires start and end
+    // in the same tick for a wheel, and the reset control only appears once a move is reported.
+    test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
+      page,
+    }) => {
+      const { box } = await canvas_box(page)
+      await page.evaluate(() => {
+        window.dispatchEvent(
+          new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 1 } }),
+        )
+      })
+
+      await clear_events(page)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -120)
+      const { camera_target: target_before, camera_zoom: zoom_before } =
+        await wait_for_camera_move(page)
+
+      // zoom in and back out far off-center, where cursor zoom would drag the target along
+      await clear_events(page)
+      await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8)
+      for (const delta of [-120, -120, -120, 120, 120]) await page.mouse.wheel(0, delta)
+
+      const { camera_target: target_after, camera_zoom: zoom_after } =
+        await wait_for_camera_move(page)
+      expect(zoom_after).toBeGreaterThan(zoom_before)
+      for (const [axis_idx, coord] of target_after.entries()) {
+        expect(coord, `axis ${axis_idx}`).toBeCloseTo(target_before[axis_idx], 6)
+      }
+
+      await open_structure_control_pane(page)
+      await expect(
+        page.locator(`#test-structure .controls-pane button.reset-camera`),
+      ).toBeVisible({ timeout: get_canvas_timeout() })
     })
 
     test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {
       test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-      const { box } = await drag_camera(page)
+      const box = await drag_camera(page)
       await clear_events(page)
       // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
       // hover()'s actionability check trips on the overlays the drag leaves behind
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.keyboard.press(`Shift+R`)
-      expect(
-        (await get_event_calls(page)).filter((call) => call.event === `on_camera_reset`),
-      ).toHaveLength(0)
+      expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
       await page.keyboard.press(`r`)
-      await expect(async () => {
-        await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
-      }).toPass({ timeout: get_canvas_timeout() })
+      await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
     })
   })
 })

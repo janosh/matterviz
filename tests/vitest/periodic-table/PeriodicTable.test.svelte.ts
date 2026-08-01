@@ -83,7 +83,7 @@ describe(`PeriodicTable`, () => {
       },
     })
     // Empty text when symbols/names/numbers disabled
-    expect(doc_query(`.ptable-grid`)?.textContent?.trim()).toBe(``)
+    expect(doc_query(`.periodic-table`)?.textContent?.trim()).toBe(``)
   })
 
   test(`tile_props.style merges with grid placement instead of clobbering it`, () => {
@@ -120,7 +120,7 @@ describe(`PeriodicTable`, () => {
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
-        expect(getComputedStyle(doc_query(`.ptable-grid`)).gap).toBe(value)
+        expect(getComputedStyle(doc_query(`.periodic-table`)).gap).toBe(value)
       } else if (value > 0) {
         expect(getComputedStyle(doc_query(`div.spacer`)).gridRow).toBe(`8`)
       } else {
@@ -669,7 +669,7 @@ describe(`PeriodicTable`, () => {
       const bar = colorbar?.querySelector(`.bar`)
 
       // Structure: TableInset > ColorBar > bar with gradient
-      expect(document.querySelector(`.ptable-grid`)?.firstElementChild).toBe(table_inset)
+      expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(table_inset)
       expect(colorbar).toBeInstanceOf(HTMLElement)
       expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
 

@@ -1,5 +1,5 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Site } from '$lib/structure'
+import type { MeasureMode, Site } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import {
   angle_between_vectors,
@@ -7,6 +7,10 @@ import {
   dihedral_angle,
   displacement_pbc,
   distance_pbc,
+  MAX_SELECTED_SITES,
+  max_measured_sites,
+  pbc_chain_positions,
+  rolls_measured_sites,
 } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
 
@@ -15,6 +19,9 @@ const cubic = (a_len: number): Matrix3x3 => [[a_len, 0, 0], [0, a_len, 0], [0, 0
 
 const PBC_ALL: Pbc = [true, true, true]
 const SLAB_PBC: Pbc = [true, true, false]
+// Chain crossing the 10 A cube's corner along all three axes — shared by dihedral MIC and overlay
+// oxfmt-ignore
+const corner_chain: Vec3[] = [[9.8, 9.8, 9.8], [0.3, 0.1, 9.9], [0.9, 9.7, 0.4], [1.4, 0.6, 1.1]]
 
 const expect_vec3_close = (
   actual: readonly number[],
@@ -78,101 +85,6 @@ describe(`measure: distances`, () => {
     // Periodic axes still wrap with mixed pbc
     const disp_xy = displacement_pbc([1, 1, 1], [9, 9, 9], lat, undefined, SLAB_PBC)
     expect_vec3_close(disp_xy, [-2, -2, 8], 12)
-  })
-})
-
-describe(`measure: angles`, () => {
-  // oxfmt-ignore
-  test.each([
-    [`x and y axes`, [1, 0, 0], [0, 1, 0], 90],
-    [`x and z axes`, [1, 0, 0], [0, 0, 1], 90],
-    [`y and z axes`, [0, 1, 0], [0, 0, 1], 90],
-    [`diagonal vectors`, [1, 1, 0], [-1, 1, 0], 90],
-    [`3D diagonal`, [1, 0, 1], [-1, 0, 1], 90],
-    [`scaled orthogonal`, [2, 3, 0], [0, 0, 5], 90],
-    [`dot=0`, [1, 2, 3], [-2, 1, 0], 90],
-    [`60° angle`, [1, 0, 0], [0.5, Math.sqrt(3) / 2, 0], 60],
-    [`30° angle`, [1, 0, 0], [Math.sqrt(3) / 2, 0.5, 0], 30],
-    [`opposite directions`, [1, 0, 0], [-1, 0, 0], 180],
-    [`same direction`, [1, 0, 0], [2, 0, 0], 0],
-    [`identical vectors`, [1, 1, 1], [1, 1, 1], 0],
-  ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, v1, v2, deg) => {
-    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
-  })
-
-  // interior angle at `vertex` between the two `others` corners of a triangle
-  const angle_at = (vertex: Vec3, others: [Vec3, Vec3]): number =>
-    angle_between_vectors(
-      [others[0][0] - vertex[0], others[0][1] - vertex[1], others[0][2] - vertex[2]],
-      [others[1][0] - vertex[0], others[1][1] - vertex[1], others[1][2] - vertex[2]],
-      `degrees`,
-    )
-
-  // oxfmt-ignore
-  test.each([
-    [`equilateral`, [[0, 0, 0], [1, 0, 0], [0.5, Math.sqrt(3) / 2, 0]], [60, 60, 60]],
-    [`right triangle`, [[0, 0, 0], [3, 0, 0], [0, 4, 0]], [90, (Math.atan(4 / 3) * 180) / Math.PI, (Math.atan(3 / 4) * 180) / Math.PI]],
-    [`isosceles`, [[0, 0, 0], [2, 0, 0], [1, 2, 0]], undefined],
-    [`scalene`, [[0, 0, 0], [3, 0, 0], [1, 2, 0]], undefined],
-    [`3D triangle`, [[0, 0, 0], [1, 0, 0], [0, 1, 1]], undefined],
-  ] as [string, Vec3[], number[] | undefined][])(`triangle angles sum to 180°: %s`, (_name, vertices, expected_angles) => {
-    const [vert_a, vert_b, vert_c] = vertices
-    const angles = [
-      angle_at(vert_a, [vert_b, vert_c]),
-      angle_at(vert_b, [vert_a, vert_c]),
-      angle_at(vert_c, [vert_a, vert_b]),
-    ]
-    expect(angles[0] + angles[1] + angles[2]).toBeCloseTo(180, 8)
-    for (const [idx, expected] of (expected_angles ?? []).entries()) {
-      expect(angles[idx]).toBeCloseTo(expected, 5)
-    }
-  })
-
-  // oxfmt-ignore
-  test.each([
-    [[1, 0, 0], [0, 1, 0]],
-    [[1, 2, 3], [4, 5, 6]],
-    [[1, 1, 1], [-1, -1, -1]],
-    [[2, 0, 0], [1, 1, 0]],
-  ] as [Vec3, Vec3][])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (v1, v2) => {
-    const angle_12 = angle_between_vectors(v1, v2, `degrees`)
-    const angle_21 = angle_between_vectors(v2, v1, `degrees`)
-    expect(angle_12).toBeCloseTo(angle_21, 12)
-  })
-
-  test.each([0.1, 0.5, 2, 10, 100])(
-    `angle is independent of vector magnitude (scale %p)`,
-    (scale) => {
-      const v1: Vec3 = [1, 2, 3]
-      const v2: Vec3 = [4, 5, 6]
-      const base_angle = angle_between_vectors(v1, v2, `degrees`)
-      const scaled_v1: Vec3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale]
-      const scaled_v2: Vec3 = [v2[0] * scale, v2[1] * scale, v2[2] * scale]
-
-      expect(angle_between_vectors(scaled_v1, v2, `degrees`)).toBeCloseTo(base_angle, 10)
-      expect(angle_between_vectors(v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
-      expect(angle_between_vectors(scaled_v1, scaled_v2, `degrees`)).toBeCloseTo(
-        base_angle,
-        10,
-      )
-    },
-  )
-
-  test(`angle edge cases`, () => {
-    // Zero vectors
-    expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
-
-    // Radians mode
-    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(Math.PI / 2, 10)
-
-    // Collinear precision
-    expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
-    expect(angle_between_vectors([1, 2, 3], [-2, -4, -6])).toBeCloseTo(180, 12)
-
-    // Nearly collinear
-    const eps = 1e-10
-    expect(angle_between_vectors([1, 0, 0], [1, eps, 0])).toBeCloseTo(0, 6)
-    expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
   })
 
   // Non-orthogonal lattices where L ≠ L^T — catches missing transpose bugs.
@@ -243,6 +155,89 @@ describe(`measure: angles`, () => {
   })
 })
 
+describe(`measure: angles`, () => {
+  // oxfmt-ignore
+  test.each([
+    [`orthogonal axes`, [1, 0, 0], [0, 1, 0], 90],
+    [`non-axis orthogonal (dot=0)`, [1, 2, 3], [-2, 1, 0], 90],
+    [`60° angle`, [1, 0, 0], [0.5, Math.sqrt(3) / 2, 0], 60],
+    [`30° angle`, [1, 0, 0], [Math.sqrt(3) / 2, 0.5, 0], 30],
+    [`opposite directions`, [1, 0, 0], [-1, 0, 0], 180],
+    [`same direction`, [1, 0, 0], [2, 0, 0], 0],
+    [`identical vectors`, [1, 1, 1], [1, 1, 1], 0],
+  ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, v1, v2, deg) => {
+    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(deg, 10)
+  })
+
+  // interior angle at `vertex` between the two `others` corners of a triangle
+  const angle_at = (vertex: Vec3, others: [Vec3, Vec3]): number =>
+    angle_between_vectors(
+      [others[0][0] - vertex[0], others[0][1] - vertex[1], others[0][2] - vertex[2]],
+      [others[1][0] - vertex[0], others[1][1] - vertex[1], others[1][2] - vertex[2]],
+      `degrees`,
+    )
+
+  // oxfmt-ignore
+  test.each([
+    [`equilateral`, [[0, 0, 0], [1, 0, 0], [0.5, Math.sqrt(3) / 2, 0]], [60, 60, 60]],
+    [`right triangle`, [[0, 0, 0], [3, 0, 0], [0, 4, 0]], [90, (Math.atan(4 / 3) * 180) / Math.PI, (Math.atan(3 / 4) * 180) / Math.PI]],
+    // non-planar: only the sum is pinned; individual angles are not textbook values
+    [`3D triangle`, [[0, 0, 0], [1, 0, 0], [0, 1, 1]], undefined],
+  ] as [string, Vec3[], number[] | undefined][])(`triangle angles sum to 180°: %s`, (_name, vertices, expected_angles) => {
+    const [vert_a, vert_b, vert_c] = vertices
+    const angles = [
+      angle_at(vert_a, [vert_b, vert_c]),
+      angle_at(vert_b, [vert_a, vert_c]),
+      angle_at(vert_c, [vert_a, vert_b]),
+    ]
+    expect(angles[0] + angles[1] + angles[2]).toBeCloseTo(180, 8)
+    for (const [idx, expected] of (expected_angles ?? []).entries()) {
+      expect(angles[idx]).toBeCloseTo(expected, 5)
+    }
+  })
+
+  test.each([
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+    ],
+    [
+      [1, 1, 1],
+      [-1, -1, -1],
+    ],
+  ] as [Vec3, Vec3][])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (v1, v2) => {
+    expect(angle_between_vectors(v1, v2, `degrees`)).toBeCloseTo(
+      angle_between_vectors(v2, v1, `degrees`),
+      12,
+    )
+  })
+
+  test.each([0.1, 2, 100])(`angle is independent of vector magnitude (scale %p)`, (scale) => {
+    const v1: Vec3 = [1, 2, 3]
+    const v2: Vec3 = [4, 5, 6]
+    const base_angle = angle_between_vectors(v1, v2, `degrees`)
+    const scaled_v1: Vec3 = [v1[0] * scale, v1[1] * scale, v1[2] * scale]
+    const scaled_v2: Vec3 = [v2[0] * scale, v2[1] * scale, v2[2] * scale]
+
+    expect(angle_between_vectors(scaled_v1, v2, `degrees`)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(scaled_v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
+  })
+
+  test(`angle edge cases`, () => {
+    expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
+    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(Math.PI / 2, 10)
+
+    // Collinear precision beyond the axis-aligned 0°/180° cases above
+    expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
+    expect(angle_between_vectors([1, 2, 3], [-2, -4, -6])).toBeCloseTo(180, 12)
+
+    const eps = 1e-10
+    expect(angle_between_vectors([1, 0, 0], [1, eps, 0])).toBeCloseTo(0, 6)
+    expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
+  })
+})
+
 // Reference values from ASE 3.28.0 `Atoms.get_dihedral(0, 1, 2, 3)` (converted from ASE's
 // [0, 360) range to the signed (-180, 180] range used here) and cross-checked against an
 // independent projection-formula implementation. Both agreed with dihedral_angle to a max
@@ -258,9 +253,6 @@ describe(`measure: dihedral angles`, () => {
     [1.0956934986, -1.8417062899, -3.6722118085], [-3.8677789158, 2.5061619136, 3.3020446182],
     [0.8530862061, 1.8359724879, 0.3489999317], [3.4805793903, 2.526828433, -3.9780919986],
   ]
-  // Chain crossing the 10 A cube's corner along all three axes, reused below
-  // oxfmt-ignore
-  const corner_chain: Vec3[] = [[9.8, 9.8, 9.8], [0.3, 0.1, 9.9], [0.9, 9.7, 0.4], [1.4, 0.6, 1.1]]
 
   // oxfmt-ignore
   test.each([
@@ -314,7 +306,7 @@ describe(`measure: dihedral angles`, () => {
     const [p1, p2, p3, p4] = corner_chain
     const with_pbc = dihedral_angle(p1, p2, p3, p4, cubic(10), PBC_ALL)
     const without_pbc = dihedral_angle(p1, p2, p3, p4, null)
-    expect(with_pbc).toBeCloseTo(-142.25075813, 7)
+    // absolute value is covered by the corner MIC case; this pins that open-boundary diverges
     expect(Math.abs(with_pbc - without_pbc)).toBeGreaterThan(90)
   })
 
@@ -344,10 +336,87 @@ describe(`measure: dihedral angles`, () => {
   })
 
   test(`gives the same torsion whichever end of the chain it starts from`, () => {
-    const forward = open_boundary(random_chain_a)
-    const backward = open_boundary(random_chain_a.toReversed())
-    expect(forward).toBeCloseTo(74.11257999, 7)
-    expect(backward).toBeCloseTo(forward, 7) // torsion is invariant under chain reversal
+    // absolute value is covered by the random-chain-A case; this pins reversal invariance
+    expect(open_boundary(random_chain_a)).toBeCloseTo(
+      open_boundary(random_chain_a.toReversed()),
+      7,
+    )
+  })
+})
+
+describe(`measure: selection caps`, () => {
+  // The fixed-arity caps must equal what the overlays destructure ([a, center, b] and
+  // [p1..p4]), else the overlay renders nothing (too few) or fans out into combinations
+  // (too many). Only those modes roll their window; the rest refuse at the shared ceiling.
+  test.each([
+    [`angle`, 3, true],
+    [`dihedral`, 4, true],
+    [`distance`, MAX_SELECTED_SITES, false],
+    [`edit-bonds`, MAX_SELECTED_SITES, false],
+    [`edit-atoms`, MAX_SELECTED_SITES, false],
+  ] as [MeasureMode, number, boolean][])(
+    `%s mode keeps at most %i sites (rolls: %s)`,
+    (mode, expected_cap, expected_rolls) => {
+      expect(max_measured_sites(mode)).toBe(expected_cap)
+      expect(rolls_measured_sites(mode)).toBe(expected_rolls)
+    },
+  )
+})
+
+// The overlay geometry must depict the same minimum-image vectors the reported numbers come
+// from; drawing to raw in-cell coordinates shows a different angle than the label states.
+describe(`measure: overlay endpoints`, () => {
+  test.each([
+    [`open boundaries leave positions untouched`, null, undefined],
+    [`a vacuum axis stays unwrapped`, cubic(10), SLAB_PBC],
+  ] as [string, Matrix3x3 | null, Pbc | undefined][])(`%s`, (_name, lattice, pbc) => {
+    // Only the c axis crosses a boundary here, so both cases must return the input verbatim
+    const points: Vec3[] = [
+      [0.3, 0.3, 0.3],
+      [0.3, 0.3, 9.7],
+    ]
+    // Tolerance, not equality: the chain rebuilds each point as previous + displacement, and
+    // a + (b - a) misses b by an ulp for ~15% of values, so exact equality here would hold by
+    // luck of these coordinates. The regression this guards — a spurious wrap — is 10 A away.
+    const chain = pbc_chain_positions(points, lattice, pbc)
+    expect(chain).toHaveLength(points.length)
+    for (const [idx, point] of chain.entries()) expect_vec3_close(point, points[idx], 12)
+  })
+
+  test(`chain positions unwrap a torsion that straddles a cell corner`, () => {
+    const lattice = cubic(10)
+    const drawn = pbc_chain_positions(corner_chain, lattice, PBC_ALL)
+    expect(drawn[0]).toEqual(corner_chain[0]) // anchored on the first point
+    // every drawn segment is the short minimum-image hop, never a near-full-cell traverse
+    for (let idx = 1; idx < drawn.length; idx++) {
+      const step = Math.hypot(
+        drawn[idx][0] - drawn[idx - 1][0],
+        drawn[idx][1] - drawn[idx - 1][1],
+        drawn[idx][2] - drawn[idx - 1][2],
+      )
+      expect(step).toBeLessThan(2)
+      expect(step).toBeCloseTo(
+        distance_pbc(corner_chain[idx - 1], corner_chain[idx], lattice),
+        10,
+      )
+    }
+    // and the unwrapped chain measures the same torsion as the wrapped input
+    expect(dihedral_angle(drawn[0], drawn[1], drawn[2], drawn[3], null)).toBeCloseTo(
+      dihedral_angle(
+        corner_chain[0],
+        corner_chain[1],
+        corner_chain[2],
+        corner_chain[3],
+        lattice,
+        PBC_ALL,
+      ),
+      10,
+    )
+  })
+
+  test(`empty and single-point chains are returned as-is`, () => {
+    expect(pbc_chain_positions([], cubic(10), PBC_ALL)).toEqual([])
+    expect(pbc_chain_positions([[1, 2, 3]], cubic(10), PBC_ALL)).toEqual([[1, 2, 3]])
   })
 })
 

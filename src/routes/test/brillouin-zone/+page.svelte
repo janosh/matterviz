@@ -2,6 +2,7 @@
   import { BrillouinZone, type Crystal } from '$lib'
   import type { IrreducibleBZData } from '$lib/brillouin/types'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
+  import { type Camera, OrthographicCamera } from 'three/webgpu'
 
   let controls_open = $state(false)
   let info_pane_open = $state(false)
@@ -25,6 +26,14 @@
   let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
   let data_url = $state<string | undefined>(undefined)
   let event_calls = $state<{ event: string; data: unknown }[]>([])
+  let camera = $state<Camera>()
+  $effect(() => {
+    Reflect.set(globalThis, `read_bz_zoom`, () =>
+      camera instanceof OrthographicCamera ? camera.zoom : Number.NaN,
+    )
+    // else the hook outlives a client-side navigation and reports a stale camera
+    return () => Reflect.deleteProperty(globalThis, `read_bz_zoom`)
+  })
 
   const log_event = (event_name: string) => (data: unknown) => {
     event_calls = [...event_calls, { event: event_name, data }]
@@ -169,6 +178,7 @@
   bind:ibz_color
   bind:ibz_opacity
   bind:ibz_data
+  bind:camera
   {show_controls}
   on_file_load={log_event(`on_file_load`)}
   on_error={log_event(`on_error`)}

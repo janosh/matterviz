@@ -3,7 +3,7 @@
 import type { D3InterpolateName } from '$lib/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
-import { Color } from 'three/webgpu'
+import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import type { DataRange } from './types'
 
 // Curated continuous colormaps offered in the isosurface controls UI.
@@ -38,21 +38,15 @@ const LUT_SIZE = 256
 // Private so the mutable cached arrays cannot be corrupted by consumers.
 const lut_cache = new Map<string, Float32Array>()
 
-// Parse a CSS color to linear-space RGB via Three.js (vertex color attributes
-// are interpreted as Linear-sRGB by the renderer, so sRGB values from d3 must
-// be converted or surfaces render too bright)
-const scratch_color = new Color()
-const parse_linear_rgb = (css_color: string): [number, number, number] => {
-  scratch_color.set(css_color)
-  return [scratch_color.r, scratch_color.g, scratch_color.b]
-}
-
 function get_colormap_lut(colormap: D3InterpolateName): Float32Array {
   const cached = lut_cache.get(colormap)
   if (cached) return cached
   const interpolator = get_d3_interpolator(colormap)
   const lut = new Float32Array(LUT_SIZE * 3)
   for (let idx = 0; idx < LUT_SIZE; idx++) {
+    // Vertex colors are read as Linear-sRGB, so d3's sRGB output must be converted. Uncached:
+    // the finished LUT is the cache, and 256 one-shot keys per colormap would evict the shared
+    // memo's element colors for nothing.
     const [red, green, blue] = parse_linear_rgb(interpolator(idx / (LUT_SIZE - 1)))
     lut[idx * 3] = red
     lut[idx * 3 + 1] = green
@@ -82,7 +76,7 @@ export function scalars_to_vertex_colors(
   const [range_min, range_max] = color_range
   const span = range_max - range_min
   const inv_span = span !== 0 ? 1 / span : 0
-  const [fb_r, fb_g, fb_b] = parse_linear_rgb(fallback_color)
+  const [fb_r, fb_g, fb_b] = css_to_linear_rgb(fallback_color)
 
   const colors =
     out?.length === scalars.length * 3 ? out : new Float32Array(scalars.length * 3)

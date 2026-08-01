@@ -1,5 +1,6 @@
 <script lang="ts">
   import { luminance, watch_dark_mode } from '$lib/colors'
+  import { Spinner } from '$lib/feedback'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
@@ -1668,7 +1669,9 @@
   >
     {#if loading}
       <div class="loading-overlay">
-        <div class="loading-spinner"></div>
+        <Spinner
+          style="--spinner-size: 30px; --spinner-border-width: 3px; --spinner-margin: 0; --spinner-color: var(--highlight, #3b82f6); --spinner-track-color: light-dark(#e5e7eb, #444)"
+        />
       </div>
     {/if}
     <table class:fixed-header={fixed_header} class={heatmap_class}>
@@ -2522,19 +2525,6 @@
     align-items: center;
     justify-content: center;
     z-index: 10;
-  }
-  .loading-spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid light-dark(#e5e7eb, #444);
-    border-top-color: var(--highlight, #3b82f6);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   .empty-row td {
     text-align: center;

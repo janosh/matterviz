@@ -862,7 +862,7 @@
     flex-direction: column;
     /* Use the plot background by default; set --sunburst-bg to override it. */
     background: var(--sunburst-bg, var(--plot-bg));
-    border-radius: var(--sunburst-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--sunburst-border-radius, 0);
   }
   .sunburst.fullscreen {
     position: fixed;

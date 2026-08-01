@@ -4,12 +4,12 @@
 // so the whole scene renders in 1-2 draw calls regardless of supercell size.
 // Hot paths use scalar math and per-element caches to scale to large structures.
 
-import { rgb as parse_rgb } from 'd3-color'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, BondPair } from '$lib/structure'
+import { css_to_linear_rgb } from '$lib/scene/colors'
 import { get_orig_site_idx } from './atom-properties'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
@@ -663,7 +663,6 @@ export function merge_polyhedra_buffers(
   const colors = new Float32Array(triangle_count * 9)
   // A closed triangulated surface has at most 3F/2 unique edges
   const edge_positions = new Float32Array(Math.ceil(triangle_count * 1.5) * 6)
-  const rgb_cache = new Map<string, [number, number, number]>()
 
   let offset = 0
   let edge_offset = 0
@@ -678,14 +677,7 @@ export function merge_polyhedra_buffers(
     // Resolve per-hull-vertex colors once
     const vert_rgb = new Float32Array(verts.length * 3)
     for (let v_idx = 0; v_idx < verts.length; v_idx++) {
-      const color = get_vertex_color(poly, v_idx)
-      let channels = rgb_cache.get(color)
-      if (!channels) {
-        // d3-color handles hex, rgb()/rgba() (d3 property-color scales) and named colors
-        const { r, g, b } = parse_rgb(color)
-        channels = Number.isFinite(r) ? [r / 255, g / 255, b / 255] : [0.5, 0.5, 0.5]
-        rgb_cache.set(color, channels)
-      }
+      const channels = css_to_linear_rgb(get_vertex_color(poly, v_idx))
       vert_rgb[v_idx * 3] = channels[0]
       vert_rgb[v_idx * 3 + 1] = channels[1]
       vert_rgb[v_idx * 3 + 2] = channels[2]

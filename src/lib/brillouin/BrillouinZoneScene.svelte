@@ -1,13 +1,21 @@
 <script lang="ts">
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import {
+    bind_renderer,
+    build_orbit_props,
+    create_orthographic_zoom,
+    SceneCamera,
+  } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
+  import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import Cylinder from '$lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
+  import { OrthographicCamera } from 'three/webgpu'
   import {
+    bz_fit_extent,
     cartesian_to_fractional,
     default_camera_position,
     k_lattice_inverse,
@@ -54,9 +62,13 @@
     hovered_qpoint_index = null,
     hover_data = $bindable<BZHoverData | null>(null),
     on_kpath_hover,
+    width = 0,
+    height = 0,
   }: SceneControlProps & {
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
+    width?: number // viewport size, needed to turn the relative initial_zoom into a fit
+    height?: number
     surface_color?: string
     surface_opacity?: number
     edge_color?: string
@@ -91,6 +103,26 @@
     camera_position || default_camera_position(bz_size),
   )
 
+  // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
+  // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
+  // renders the zone several times too small.
+  const fit_zoom = $derived(
+    width > 0 && height > 0
+      ? ortho_zoom_for_extent(
+          bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice),
+          width,
+          height,
+          initial_zoom,
+        )
+      : initial_zoom,
+  )
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: () => fit_zoom,
+    min_zoom: () => min_zoom,
+    max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
+  })
+
   const orbit_controls_props = $derived(
     build_orbit_props({
       camera_projection,
@@ -99,10 +131,14 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom,
-      min_zoom,
+      max_zoom: ortho_zoom.max_zoom,
+      min_zoom: ortho_zoom.min_zoom,
       auto_rotate,
       rotation_damping,
+      // keep the user's zoom as the baseline the next resize rescales from
+      onend_extra: () => {
+        if (camera instanceof OrthographicCamera) ortho_zoom.zoom = camera.zoom
+      },
     }),
   )
 
@@ -227,7 +263,7 @@
   {camera_projection}
   position={computed_camera_position}
   {fov}
-  zoom={initial_zoom}
+  zoom={ortho_zoom.zoom}
   orbit_props={orbit_controls_props}
   {gizmo}
 />

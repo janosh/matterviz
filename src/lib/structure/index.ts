@@ -313,6 +313,7 @@ export interface StructureHandlerData extends FileLoadData {
   fullscreen?: boolean
   camera_position?: Vec3
   camera_target?: Vec3
+  camera_zoom?: number
   camera_has_moved?: boolean
   color_scheme?: string
   performance_mode?: `quality` | `speed`

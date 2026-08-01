@@ -18,7 +18,12 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { bind_renderer, Gizmo, type GizmoOptions } from '$lib/scene'
+  import {
+    bind_renderer,
+    create_orthographic_zoom,
+    Gizmo,
+    type GizmoOptions,
+  } from '$lib/scene'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -126,6 +131,13 @@
   const half_x = scene_x / 2
   const half_y = scene_y / 2
   const half_z = scene_z / 2
+  let fit_zoom = $derived(Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50)
+  const ortho_zoom = create_orthographic_zoom({
+    fit_zoom: () => fit_zoom,
+    min_zoom: () => min_zoom,
+    max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
+  })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera
   // pos.x/y/z are the Three.js positions where axes attach (backside of cube)
@@ -492,6 +504,7 @@
   )
 
   // Orbit controls - snappy with minimal inertia
+  const orbit_target: Vec3 = [0, 0, 0]
   let orbit_controls_props = $derived({
     enableRotate: rotate_speed > 0,
     rotateSpeed: rotate_speed,
@@ -499,13 +512,19 @@
     zoomSpeed: zoom_speed,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
-    target: [0, 0, 0] as Vec3,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
+    target: orbit_target,
+    maxZoom: ortho_zoom.max_zoom,
+    minZoom: ortho_zoom.min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: rotation_damping > 0,
     dampingFactor: rotation_damping,
+    onend: () => {
+      const controls_camera = orbit_controls?.object
+      if (controls_camera instanceof THREE.OrthographicCamera) {
+        ortho_zoom.zoom = controls_camera.zoom
+      }
+    },
   })
 
   // Axis configuration for rendering
@@ -675,7 +694,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50}
+    zoom={ortho_zoom.zoom}
     near={-100}
     far={1000}
   >
