@@ -47,17 +47,24 @@ describe(`VDOS peak position`, () => {
   // which undersamples the correlation function before the transform. A 0.3 cycles/frame
   // mode at the resulting stride of 2 folded to 0.2, i.e. 300 THz reported as 200 THz, with
   // the peak moved rather than missing so the plot still looked reasonable.
-  it(`keeps a high-frequency peak put on a run long enough to trigger lag capping`, () => {
+  it(`keeps a high-frequency peak put when max_lags caps the window`, () => {
+    // max_lags 64 over 1000 frames is the same arithmetic the default 4096 hits past ~8194
+    // frames, at a thousandth of the cost. The old lag_stride would be ceil(499 / 64) = 8,
+    // folding 0.3 cycles/frame to 0.05 and reporting 300 THz as 50.
     const cycles_per_frame = 0.3
-    const result = calc_vacf(orbit(9000, cycles_per_frame), { dt: 1, time_unit: `fs` })
+    const result = calc_vacf(orbit(1000, cycles_per_frame), {
+      dt: 1,
+      time_unit: `fs`,
+      max_lags: 64,
+    })
 
     expect(result.lag_stride).toBe(1)
+    expect(result.lags.length).toBeLessThanOrEqual(64)
     const bin_spacing = result.frequencies[1] - result.frequencies[0]
     const peak = result.curves[0].peak_frequency ?? 0
-    const aliased_thz = (1 / result.lag_stride - cycles_per_frame) * 1000
     expect(Math.abs(peak - cycles_per_frame * 1000)).toBeLessThan(bin_spacing)
-    // and specifically not sitting where a stride-2 decimation would have folded it
-    expect(Math.abs(peak - aliased_thz)).toBeGreaterThan(bin_spacing)
+    // and specifically not where a stride-8 decimation would have folded it
+    expect(Math.abs(peak - 50)).toBeGreaterThan(bin_spacing)
   })
 
   it(`refuses to thin time origins on its own`, () => {
