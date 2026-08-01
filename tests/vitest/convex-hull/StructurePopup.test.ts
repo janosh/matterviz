@@ -14,6 +14,31 @@ const mount_popup = (props: Partial<ComponentProps<typeof StructurePopup>> = {})
   flushSync()
 }
 
+const pointer_event = (type: string, [clientX, clientY]: [number, number]) => {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as PointerEvent
+  // happy-dom's PointerEvent ignores most of its init dict, so define the fields
+  // the attachment reads (button/isPrimary gate the press, pointerId the follow).
+  Object.defineProperties(event, {
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+    pointerId: { value: 1 },
+    button: { value: 0 },
+    isPrimary: { value: true },
+  })
+  return event
+}
+
+// Presses the handle, moves, then releases — the pointerdown must land on the
+// handle, while move/up are followed on the window.
+const drag = (
+  handle: Element,
+  { from, to }: { from: [number, number]; to: [number, number] },
+) => {
+  handle.dispatchEvent(pointer_event(`pointerdown`, from))
+  globalThis.dispatchEvent(pointer_event(`pointermove`, to))
+  globalThis.dispatchEvent(pointer_event(`pointerup`, to))
+}
+
 describe(`StructurePopup`, () => {
   test.each([
     {
@@ -79,11 +104,10 @@ describe(`StructurePopup`, () => {
     const handle = svg_query(`.structure-popup .control-tab .drag-handle`)
     expect(handle).toBeInstanceOf(SVGSVGElement)
 
-    handle.dispatchEvent(
-      new MouseEvent(`mousedown`, { bubbles: true, clientX: 10, clientY: 20 }),
-    )
-    globalThis.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 35, clientY: 50 }))
-    globalThis.dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
+    // svelte-widgets' draggable attachment listens on pointer events and gates on
+    // `button === 0 && isPrimary`, then follows the drag by pointerId. Mouse events
+    // never reach it.
+    drag(handle, { from: [10, 20], to: [35, 50] })
 
     expect(popup.style.left).toBe(`25px`)
     expect(popup.style.top).toBe(`30px`)
