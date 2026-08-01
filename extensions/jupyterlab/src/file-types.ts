@@ -1,29 +1,15 @@
 // Which filenames MatterViz claims, and whether each arrives as text or base64.
-// Kept free of JupyterLab imports so the patterns stay unit-testable — they decide
-// which files MatterViz becomes the *default* opener for, so getting one wrong is
-// user-visible in a way a typecheck won't catch.
+// Kept free of JupyterLab runtime imports so the patterns stay unit-testable — they
+// decide which files MatterViz becomes the *default* opener for, so getting one
+// wrong is user-visible in a way a typecheck won't catch.
 
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
 
 // Everything the browser can decode from a UTF-8 string.
+// oxfmt-ignore
 const TEXT_EXTENSIONS = [
-  `cif`,
-  `mcif`,
-  `mmcif`,
-  `xyz`,
-  `extxyz`,
-  `poscar`,
-  `vasp`,
-  `cube`,
-  `pdb`,
-  `mol`,
-  `mol2`,
-  `sdf`,
-  `lmp`,
-  `dump`,
-  `lammpstrj`,
-  `bxsf`,
-  `frmsf`,
+  `cif`, `mcif`, `mmcif`, `xyz`, `extxyz`, `poscar`, `vasp`, `cube`, `pdb`, `mol`,
+  `mol2`, `sdf`, `lmp`, `dump`, `lammpstrj`, `bxsf`, `frmsf`,
 ]
 
 // Binary containers that must reach the parser as bytes. Only ASE .traj and HDF5
@@ -41,10 +27,9 @@ const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => 
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
-const VASP_NAME_TOKEN =
-  `(?:POSCAR|CONTCAR|XDATCAR|CHGCAR|LOCPOT|ELFCAR|PARCHG|AECCAR[012]` +
-  `|poscar|contcar|xdatcar|chgcar|locpot|elfcar|parchg|aeccar[012])`
-const VASP_NAME_BODY = `^(?:.*[._-])?${VASP_NAME_TOKEN}(?:[_-][^.]*)?`
+const VASP_STEMS = [`POSCAR`, `CONTCAR`, `XDATCAR`, `CHGCAR`, `LOCPOT`, `ELFCAR`, `PARCHG`]
+const VASP_TOKEN = [...VASP_STEMS, ...VASP_STEMS.map((stem) => stem.toLowerCase())].join(`|`)
+const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN}|AECCAR[012]|aeccar[012])(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here
 // would drag @jupyterlab/ui-components into the tests.

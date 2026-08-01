@@ -7,17 +7,17 @@
 // `create_display` mounts the matching Svelte component. Only the host plumbing
 // (reading bytes, theming, widget lifecycle) is JupyterLab-specific.
 
-import type { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application'
 import { ILayoutRestorer } from '@jupyterlab/application'
+import type { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application'
 import { WidgetTracker } from '@jupyterlab/apputils'
 import { PathExt } from '@jupyterlab/coreutils'
-import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { ABCWidgetFactory, Base64ModelFactory, DocumentWidget } from '@jupyterlab/docregistry'
+import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
-import type { FileTypeSpec } from './file-types'
 import {
   BASE64_FILE_TYPES as BASE64_FILE_TYPE_SPECS,
+  type FileTypeSpec,
   TEXT_FILE_TYPES as TEXT_FILE_TYPE_SPECS,
 } from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
@@ -85,6 +85,14 @@ export class MatterVizViewer extends Widget {
     return generation !== this.render_generation || this.isDisposed
   }
 
+  // Unmount the current app and return whether this generation still owns the
+  // node — both `render` and `show_error` need this after every await.
+  private async clear_for(generation: number): Promise<boolean> {
+    if (this.is_stale(generation)) return false
+    await this.unmount_current()
+    return !this.is_stale(generation)
+  }
+
   // Arrow property rather than a method to keep the reference bound. Passing
   // `this` as the signal's thisArg makes the widget the receiver, so Lumino's
   // `Signal.clearData(this)` in `Widget.dispose` severs the connection even if
@@ -111,10 +119,7 @@ export class MatterVizViewer extends Widget {
     try {
       const { create_display, parse_file_content } = await load_viewer()
       const result = await parse_file_content(content, filename, is_base64)
-      if (this.is_stale(generation)) return
-      await this.unmount_current()
-      // Re-check: unmounting yields, so a newer render can have started during it.
-      if (this.is_stale(generation)) return
+      if (!(await this.clear_for(generation))) return
       this.mounted_app = create_display(this.viewer_root, result)
     } catch (error) {
       await this.show_error(filename, error, generation)
@@ -126,11 +131,7 @@ export class MatterVizViewer extends Widget {
     error: unknown,
     generation: number,
   ): Promise<void> {
-    if (this.is_stale(generation)) return
-    await this.unmount_current()
-    // Unmounting yields, so re-check before writing into a node a newer render or
-    // a dispose has taken over.
-    if (this.is_stale(generation)) return
+    if (!(await this.clear_for(generation))) return
     // Fixed literal, no interpolation; the untrusted strings go in via textContent.
     this.viewer_root.innerHTML = `<div class="mv-file-viewer-error"><h2></h2><p></p></div>`
     const [heading, detail] = this.viewer_root.querySelectorAll(`h2, p`)
@@ -173,7 +174,12 @@ class MatterVizFactory extends ABCWidgetFactory<DocumentWidget<MatterVizViewer>>
 const register_factory = (
   app: JupyterFrontEnd,
   restorer: ILayoutRestorer | null,
-  options: {
+  {
+    name,
+    model_name,
+    default_for,
+    additional_file_types = [],
+  }: {
     name: string
     model_name: `text` | `base64`
     default_for: DocumentRegistry.IFileType[]
@@ -181,7 +187,6 @@ const register_factory = (
     additional_file_types?: string[]
   },
 ): void => {
-  const { name, model_name, default_for, additional_file_types = [] } = options
   const default_names = default_for.map((file_type) => file_type.name)
 
   const factory = new MatterVizFactory({

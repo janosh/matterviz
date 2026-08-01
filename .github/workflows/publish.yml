@@ -5,10 +5,9 @@ name: Publish
 #
 # npm publishes via OIDC trusted publishing (no token) -- configure a Trusted Publisher for
 # both `matterviz` and `matterviz-anywidget` on npmjs.com pointing at this repo + publish.yml.
-# PyPI publishes matterviz-jupyterlab the same way. Configure it once at
-# https://pypi.org/manage/account/publishing/ with owner `janosh`, repo `matterviz`,
-# workflow `publish.yml` and no environment. Until the project's first release exists it
-# has to be added as a *pending* publisher, which is the same form under a different tab.
+# PyPI publishes matterviz-jupyterlab the same way (pending publisher until first
+# release): https://pypi.org/manage/account/publishing/ → owner `janosh`, repo
+# `matterviz`, workflow `publish.yml`, no environment.
 # The VS Code Marketplace is NOT auto-published (the publisher's Azure org can't issue a
 # publish PAT/identity): upload the VSIX from the GitHub release by hand at
 # https://marketplace.visualstudio.com/manage.

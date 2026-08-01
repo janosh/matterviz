@@ -33,21 +33,17 @@ A `.dump` file opens as a structure showing its first frame only, not as an anim
 
 ## Limits
 
-Files above 100 MB refuse to parse. This caps parsing, not transfer: JupyterLab's document manager fetches and decodes the whole file before a viewer is constructed, so the download has already happened. Past roughly that size the browser tab is the wrong place to do the work — the parser copies the bytes again into WASM memory on top of the string the document model already holds. Parse it in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`.
-
-Unlike the VS Code extension, there is no host-side streaming bridge, so very large trajectories cannot be indexed and paged in frame by frame.
-
-Also unlike VS Code, an open viewer does not refresh when something else rewrites the file — JupyterLab has no filesystem watcher. Use **File → Reload from Disk**.
+Files above 100 MB refuse to parse (transfer already happened; parse in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`). No host-side streaming like the VS Code extension, so very large trajectories can't be paged frame by frame. Open viewers also don't auto-refresh on external writes — JupyterLab has no filesystem watcher; use **File → Reload from Disk**.
 
 ## Development
 
 ```sh
-pnpm install --config.strict-dep-builds=false
+pnpm install --ignore-workspace --config.strict-dep-builds=false
 pnpm build   # vite build && jupyter labextension build . (needs jupyter on PATH)
 uv build --wheel
 ```
 
-`uv_build` packages whatever is already on disk — run `pnpm build` first or you will ship an empty extension. The flag on install is needed because `@jupyterlab/application` depends on fontawesome, whose install script pnpm declines to run unattended and then exits non-zero over.
+`uv_build` packages whatever is already on disk — run `pnpm build` first or you will ship an empty extension. The install flags are needed because this package is outside the monorepo workspace and `@jupyterlab/application` depends on fontawesome, whose install script pnpm declines to run unattended and then exits non-zero over.
 
 The `process` devDependency is not imported by anything here. `@jupyterlab/builder`'s webpack config carries an unconditional `ProvidePlugin({ process: 'process/browser' })`, which has to resolve from this package under pnpm's strict layout. Don't delete it as unused.
 
