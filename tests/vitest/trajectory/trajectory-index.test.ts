@@ -5,7 +5,11 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '$lib/trajectory'
-import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
+import {
+  get_trajectory_stats,
+  pick_pane_orientation,
+  validate_trajectory,
+} from '$lib/trajectory'
 import { validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { describe, expect, test } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -302,6 +306,20 @@ describe(`get_trajectory_stats`, () => {
     expect(stats.constant_atom_count).toBe(false)
     expect(stats.atom_count_range).toEqual([3, 5])
   })
+})
+
+test.each([
+  // a chat sidebar card: wider than tall, but too narrow to split side by side
+  [`narrow sidebar card`, 480, 360, `vertical`],
+  [`sidebar card at the panel minimum`, 300, 360, `vertical`],
+  [`sidebar card widened by the user`, 700, 360, `horizontal`],
+  [`desktop viewer`, 1200, 600, `horizontal`],
+  // stacking a short container would leave both panes unreadably flat
+  [`wide and short`, 500, 200, `horizontal`],
+  [`portrait`, 400, 800, `vertical`],
+  [`square`, 600, 600, `vertical`],
+] as const)(`pick_pane_orientation %s`, (_label, width, height, expected) => {
+  expect(pick_pane_orientation(width, height)).toBe(expected)
 })
 
 test(`TrajectoryFormat type values`, () => {

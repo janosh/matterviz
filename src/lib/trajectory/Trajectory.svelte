@@ -38,6 +38,7 @@
   import type { TrajectoryFrameResolver } from './file-export'
   import {
     FRAME_LOAD_DEBOUNCE_MS,
+    pick_pane_orientation,
     TrajectoryError,
     TrajectoryExportPane,
     TrajectoryInfoPane,
@@ -245,13 +246,11 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
-  // Reactive layout based on element aspect ratio (for auto mode)
+  // Reactive layout based on element size (for auto mode)
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
-    // For auto layout, use element dimensions to determine orientation
-    if (element_size.width > 0 && element_size.height > 0) {
-      return element_size.width > element_size.height ? `horizontal` : `vertical`
-    }
+    const { width, height } = element_size
+    if (width > 0 && height > 0) return pick_pane_orientation(width, height)
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
 

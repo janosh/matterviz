@@ -591,29 +591,39 @@ test.describe(`Trajectory Component`, () => {
       }).toPass({ timeout: 5000 })
     })
 
-    test(`layout is based on element aspect ratio`, async ({ page }) => {
+    test(`narrow container stacks the panes and widening it unstacks them`, async ({
+      page,
+    }) => {
       const trajectory = page.locator(`#auto-layout`)
 
-      // Scroll to the auto-layout trajectory to ensure it's in view
       await trajectory.scrollIntoViewIfNeeded()
       // Wait for trajectory controls to be visible (indicates data is loaded)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
         timeout: 30000,
       })
 
-      // Layout is determined by element dimensions, not viewport - verify class is applied
-      await expect(trajectory).toHaveClass(/horizontal|vertical/, { timeout: 5000 })
+      // A chat-sidebar-sized card: wider than it is tall, so the old aspect-ratio
+      // rule left it side by side with two ~240px panes and an unreadable plot.
+      // min-height has to go too, else the 500px floor keeps the card portrait.
+      const set_size = (width: number) =>
+        trajectory.evaluate((el: HTMLElement, css_width) => {
+          el.style.width = css_width
+          el.style.height = `360px`
+          el.style.minHeight = `0`
+        }, `${width}px`)
 
-      // Check that the layout class corresponds to element aspect ratio
-      const element_bbox = await trajectory.boundingBox()
-      if (element_bbox) {
-        const current_class = await trajectory.getAttribute(`class`)
-        if (element_bbox.width > element_bbox.height) {
-          expect(current_class).toContain(`horizontal`)
-        } else {
-          expect(current_class).toContain(`vertical`)
-        }
-      }
+      // The class comes from a ResizeObserver, which a page full of software-WebGPU
+      // canvases can leave waiting well past the default 5s expect timeout.
+      const resize_timeout = { timeout: 20_000 }
+
+      await set_size(480)
+      await expect(trajectory).toHaveClass(/vertical/, resize_timeout)
+      await expect(trajectory).not.toHaveClass(/horizontal/)
+
+      // Widening the sidebar puts them back side by side without a remount
+      await set_size(900)
+      await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
+      await expect(trajectory).not.toHaveClass(/vertical/)
     })
 
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({

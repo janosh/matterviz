@@ -238,7 +238,11 @@ test.describe(`Isosurface page`, () => {
       expect(resized_box).toBeTruthy()
       expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
 
-      await grip.dblclick()
+      // The gutter beneath the grip owns the dblclick-to-reset (the grip itself is a
+      // decorative overlay with pointer-events: none). Dispatched rather than synthesized:
+      // the gutter's pointerdown takes pointer capture, and Chromium then never emits the
+      // dblclick for a real double-click, though one from a user does reset the pane.
+      await pane.locator(`[data-resize-edge="right"]`).dispatchEvent(`dblclick`)
       expect(await pane.evaluate((element) => element.style.width)).toBe(``)
     })
 
