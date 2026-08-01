@@ -90,9 +90,11 @@ export function create_orthographic_zoom(opts: {
   fit_zoom: () => number
   min_zoom: () => number | undefined
   max_zoom: () => number | undefined
-  // false while the container has no size: rescaling against a placeholder fit, then clamping
-  // the result, would lose the user's zoom for good
-  measured?: () => boolean
+  // False while the container has no size. Required, not optional: every caller needs it, and
+  // forgetting it silently halves a user's zoom when a hidden tab or fullscreen transition
+  // reports 0 — the placeholder fit inflates the zoom into the clamp, and the return trip
+  // cannot recover it.
+  measured: () => boolean
 }) {
   let zoom = $state(untrack(opts.fit_zoom))
   let previous_fit_zoom = 0
@@ -105,7 +107,7 @@ export function create_orthographic_zoom(opts: {
   const min_zoom = $derived(bounds.min_zoom)
   const max_zoom = $derived(bounds.max_zoom)
   $effect(() => {
-    if (opts.measured?.() === false) return
+    if (!opts.measured()) return
     // Track fit + limits so a raised ceiling re-clamps now, not at the next gesture.
     const next_fit = opts.fit_zoom()
     const next_min = opts.min_zoom()

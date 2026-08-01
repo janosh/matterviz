@@ -136,6 +136,7 @@
     fit_zoom: () => fit_zoom,
     min_zoom: () => min_zoom,
     max_zoom: () => max_zoom,
+    measured: () => width > 0 && height > 0,
   })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera
