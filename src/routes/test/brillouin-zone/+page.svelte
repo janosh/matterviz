@@ -31,6 +31,8 @@
     Reflect.set(globalThis, `read_bz_zoom`, () =>
       camera instanceof OrthographicCamera ? camera.zoom : Number.NaN,
     )
+    // else the hook outlives a client-side navigation and reports a stale camera
+    return () => Reflect.deleteProperty(globalThis, `read_bz_zoom`)
   })
 
   const log_event = (event_name: string) => (data: unknown) => {

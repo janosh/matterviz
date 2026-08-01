@@ -84,7 +84,7 @@ const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Prom
   await expect(pane).toBeVisible()
 }
 
-const open_export_pane = async (page: Page, diagram: Locator): Promise<Locator> => {
+const open_export_pane = async (diagram: Locator): Promise<Locator> => {
   const export_toggle = diagram.locator(`button.chempot-export-toggle`).first()
   const export_pane = diagram
     .locator(`.draggable-pane`)
@@ -264,7 +264,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
     await assert_pin_toggle_and_escape(page, canvas, phase_tooltip, diagram)
 
-    const export_pane = await open_export_pane(page, diagram)
+    const export_pane = await open_export_pane(diagram)
 
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
     const initial_zoom = await read_view_zoom(page, export_pane)
@@ -282,8 +282,8 @@ test.describe(`ChemPot Diagram interactions`, () => {
       canvas_box.x + canvas_box.width / 2,
       canvas_box.y + canvas_box.height / 2,
     )
-    const reopened_pane = await open_export_pane(page, diagram)
+    const reopened_pane = await open_export_pane(diagram)
     expect(await read_view_zoom(page, reopened_pane)).toBeCloseTo(initial_zoom, 5)
-    await expect_download_suffix(page, get_export_button(export_pane, `GLB`), `.glb`)
+    await expect_download_suffix(page, get_export_button(reopened_pane, `GLB`), `.glb`)
   })
 })

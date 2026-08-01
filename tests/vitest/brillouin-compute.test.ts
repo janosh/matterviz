@@ -655,21 +655,20 @@ describe(`scene sizing helpers`, () => {
       [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
     )
 
-    test(`spans the enclosing sphere of the vertices, plus padding`, () => {
-      expect(bz_fit_extent(cube, k_lattice, 1)).toBeCloseTo(2 * Math.sqrt(3), 10)
-      expect(bz_fit_extent(cube, k_lattice, 2)).toBeCloseTo(4 * Math.sqrt(3), 10)
-    })
-
-    test(`the default padding leaves the zone inside the viewport`, () => {
-      // must exceed the bare diameter, or the zone touches the frame edge
-      expect(bz_fit_extent(cube, k_lattice)).toBeGreaterThan(2 * Math.sqrt(3))
-    })
-
-    test(`falls back to a sphere that still encloses the zone`, () => {
+    test.each([
+      [`spans the enclosing sphere of the vertices`, cube, 1, 2 * Math.sqrt(3)],
+      [`scales with padding`, cube, 2, 4 * Math.sqrt(3)],
+      // the default padding must exceed the bare diameter or the zone touches the frame edge
+      [`pads to 85% of the shorter edge by default`, cube, undefined, 2 * Math.sqrt(3) / 0.85],
       // no vertices: 2 * k_space_size must cover the cube those k-vectors would span
-      expect(bz_fit_extent(undefined, k_lattice)).toBe(8)
-      expect(bz_fit_extent([], k_lattice)).toBe(8)
-      expect(bz_fit_extent(undefined, undefined)).toBe(20) // k_space_size's own fallback
-    })
+      [`falls back to a sphere without vertices`, undefined, undefined, 8],
+      [`falls back on empty vertices too`, [], undefined, 8],
+      // and k_space_size has its own fallback when there is no reciprocal lattice either
+      [`falls back twice without a lattice`, undefined, undefined, 20, undefined],
+    ] as [string, Vec3[] | undefined, number | undefined, number, Matrix3x3 | undefined][])(
+      `%s`,
+      (_desc, vertices, padding, expected, lattice = k_lattice) =>
+        expect(bz_fit_extent(vertices, lattice, padding)).toBeCloseTo(expected, 10),
+    )
   })
 })
