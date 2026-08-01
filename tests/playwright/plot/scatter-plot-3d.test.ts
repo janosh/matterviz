@@ -82,18 +82,41 @@ test.describe(`ScatterPlot3D`, () => {
   })
 
   test(`scroll wheel zoom changes view`, async ({ page }) => {
+    const controls_pane = await open_controls_pane(page)
+    await controls_pane.getByLabel(`Projection:`).selectOption(`orthographic`)
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
     const initial = await canvas.screenshot()
 
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas bounding box not found`)
+    const initial_box = await canvas.boundingBox()
+    if (!initial_box) throw new Error(`Canvas bounding box not found`)
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.move(
+      initial_box.x + initial_box.width / 2,
+      initial_box.y + initial_box.height / 2,
+    )
     await page.mouse.wheel(0, -200)
     await page.waitForTimeout(300)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
+    const read_zoom = (): Promise<number> =>
+      page.evaluate(() => (Reflect.get(globalThis, `read_scatter_zoom`) as () => number)())
+    const zoom_before_resize = await read_zoom()
+
+    await page.locator(CONTAINER_SELECTOR).evaluate((element) => {
+      element.style.width = `320px`
+    })
+    await expect
+      .poll(async () => (await canvas.boundingBox())?.width)
+      .toBeLessThan(initial_box.width)
+    const resized_box = await canvas.boundingBox()
+    if (!resized_box) throw new Error(`Resized canvas bounding box not found`)
+    await expect.poll(read_zoom).not.toBe(zoom_before_resize)
+    const zoom_after_resize = await read_zoom()
+    expect(zoom_after_resize / Math.min(resized_box.width, resized_box.height)).toBeCloseTo(
+      zoom_before_resize / Math.min(initial_box.width, initial_box.height),
+      6,
+    )
   })
 
   test(`controls pane opens on toggle click`, async ({ page }) => {

@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { IS_CI } from './helpers'
 
 const TEST_URL = `/convex-hull/chempot-diagram`
@@ -61,12 +62,13 @@ const expect_download_suffix = async (
   page: Page,
   trigger_button: Locator,
   expected_suffix: string,
-): Promise<void> => {
+): Promise<Download> => {
   const [download] = await Promise.all([
     page.waitForEvent(`download`, { timeout: 20_000 }),
     trigger_button.click(),
   ])
   expect(download.suggestedFilename().endsWith(expected_suffix)).toBe(true)
+  return download
 }
 const get_export_button = (export_pane: Locator, label_text: string): Locator =>
   export_pane.locator(`.export-item:has-text("${label_text}") button`).first()
@@ -80,6 +82,25 @@ const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Prom
   await diagram.hover()
   await toggle.click({ force: true })
   await expect(pane).toBeVisible()
+}
+
+const open_export_pane = async (page: Page, diagram: Locator): Promise<Locator> => {
+  const export_toggle = diagram.locator(`button.chempot-export-toggle`).first()
+  const export_pane = diagram
+    .locator(`.draggable-pane`)
+    .filter({ hasText: `Export Image` })
+    .first()
+  await open_pane(diagram, export_toggle, export_pane)
+  return export_pane
+}
+
+// The view snapshot is the only readout of the live camera, and each read costs a download.
+const read_view_zoom = async (page: Page, export_pane: Locator): Promise<number> => {
+  const view_button = get_export_button(export_pane, `View`)
+  const download = await expect_download_suffix(page, view_button, `-view.json`)
+  const view = JSON.parse(await readFile(await download.path(), `utf8`))
+  expect(Number.isFinite(view.orthographic_zoom), `view snapshot zoom`).toBe(true)
+  return view.orthographic_zoom
 }
 
 const assert_pin_toggle_and_escape = async (
@@ -231,6 +252,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
   })
 
   test(`3D tooltip lock toggles and export actions download files`, async ({ page }) => {
+    test.setTimeout(60_000) // four downloads plus a tooltip hunt over a WebGPU canvas
     const diagram = await get_diagram_by_heading(
       page,
       /Ternary System \(Li-Co-O\)/,
@@ -242,17 +264,26 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
     await assert_pin_toggle_and_escape(page, canvas, phase_tooltip, diagram)
 
-    const export_toggle = diagram.locator(`button.chempot-export-toggle`).first()
-    const export_pane = diagram
-      .locator(`.draggable-pane`)
-      .filter({
-        hasText: `Export Image`,
-      })
-      .first()
-    await open_pane(diagram, export_toggle, export_pane)
+    const export_pane = await open_export_pane(page, diagram)
 
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
-    await expect_download_suffix(page, get_export_button(export_pane, `View`), `-view.json`)
+    const initial_zoom = await read_view_zoom(page, export_pane)
+    const canvas_box = await canvas.boundingBox()
+    if (!canvas_box) throw new Error(`ChemPot canvas bounding box unavailable`)
+    await page.mouse.move(
+      canvas_box.x + canvas_box.width / 2,
+      canvas_box.y + canvas_box.height / 2,
+    )
+    await page.mouse.wheel(0, -200)
+    expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
+    // double click hands framing back to the auto-fit the wheel just pinned. The click also
+    // dismisses the export pane (DraggablePane closes on any outside press), so reopen it.
+    await page.mouse.dblclick(
+      canvas_box.x + canvas_box.width / 2,
+      canvas_box.y + canvas_box.height / 2,
+    )
+    const reopened_pane = await open_export_pane(page, diagram)
+    expect(await read_view_zoom(page, reopened_pane)).toBeCloseTo(initial_zoom, 5)
     await expect_download_suffix(page, get_export_button(export_pane, `GLB`), `.glb`)
   })
 })

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
   import {
+    bz_fit_extent,
     cartesian_to_fractional,
     default_camera_position,
     k_lattice_inverse,
@@ -13,12 +14,20 @@
   import { get_d3_interpolator } from '$lib/colors'
   import type { Matrix4Tuple, Vec2, Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { bind_renderer, build_orbit_props, SceneCamera } from '$lib/scene'
+  import {
+    bind_renderer,
+    build_orbit_props,
+    get_orthographic_zoom_bounds,
+    resize_orthographic_zoom,
+    SceneCamera,
+  } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
   import { DEFAULTS } from '$lib/settings'
   import { Cylinder } from '$lib/structure'
+  import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
+  import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import {
     BackSide,
@@ -29,6 +38,7 @@
     DoubleSide,
     FrontSide,
     Matrix4,
+    OrthographicCamera,
     Plane,
     Vector3,
   } from 'three/webgpu'
@@ -84,10 +94,14 @@
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
+    width = 0,
+    height = 0,
   }: SceneControlProps & {
     fermi_data?: FermiSurfaceData
     bz_data?: BrillouinZoneData
     camera_position?: Vec3 | undefined
+    width?: number // viewport size, needed to turn the relative initial_zoom into a fit
+    height?: number
     color_property?: ColorProperty
     color_scale?: string
     representation?: RepresentationMode
@@ -343,6 +357,46 @@
     camera_position || default_camera_position(scene_size),
   )
 
+  // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
+  // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
+  // renders the zone several times too small. Tiling replicates by point-group symmetry, which
+  // maps the zone onto itself, so it does not widen the extent.
+  const fit_zoom = $derived(
+    width > 0 && height > 0
+      ? ortho_zoom_for_extent(
+          bz_fit_extent(bz_data?.vertices, fermi_data?.k_lattice),
+          width,
+          height,
+          initial_zoom,
+        )
+      : initial_zoom,
+  )
+  let orthographic_zoom = $state(untrack(() => fit_zoom))
+  const zoom_bounds = $derived(get_orthographic_zoom_bounds(fit_zoom, min_zoom, max_zoom))
+  // Scalars, not the bounds object: build_orbit_props' result is spread into Threlte, which
+  // re-applies every prop when the object changes identity — including `target`, which would
+  // snap a panned view back to the zone centroid on each resize.
+  const orbit_min_zoom = $derived(zoom_bounds.min_zoom)
+  const orbit_max_zoom = $derived(zoom_bounds.max_zoom)
+  let previous_fit_zoom = 0
+  $effect(() => {
+    // A zero-size container would rescale the live zoom against the raw initial_zoom fallback
+    // and, if the clamp bit, lose the user's zoom for good.
+    if (!(width > 0) || !(height > 0)) return
+    // bounds tracked too, so raising a limit re-clamps now rather than at the next gesture
+    const [next_fit_zoom, next_min_zoom, next_max_zoom] = [fit_zoom, min_zoom, max_zoom]
+    untrack(() => {
+      orthographic_zoom = resize_orthographic_zoom(
+        orthographic_zoom,
+        previous_fit_zoom,
+        next_fit_zoom,
+        next_min_zoom,
+        next_max_zoom,
+      )
+      previous_fit_zoom = next_fit_zoom
+    })
+  })
+
   const orbit_controls_props = $derived(
     build_orbit_props({
       camera_projection,
@@ -351,10 +405,14 @@
       zoom_speed,
       zoom_to_cursor,
       pan_speed,
-      max_zoom,
-      min_zoom,
+      max_zoom: orbit_max_zoom,
+      min_zoom: orbit_min_zoom,
       auto_rotate,
       rotation_damping,
+      // keep the user's zoom as the baseline the next resize rescales from
+      onend_extra: () => {
+        if (camera instanceof OrthographicCamera) orthographic_zoom = camera.zoom
+      },
     }),
   )
 
@@ -484,7 +542,7 @@
   {camera_projection}
   position={computed_camera_position}
   {fov}
-  zoom={initial_zoom}
+  zoom={orthographic_zoom}
   orbit_props={orbit_controls_props}
   {gizmo}
 />

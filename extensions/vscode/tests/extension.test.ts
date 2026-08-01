@@ -210,10 +210,22 @@ describe(`MatterViz Extension`, () => {
     expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
   })
 
-  test(`setting enums in package.json match SETTINGS_CONFIG`, () => {
-    // scripts/sync-config.ts only regenerates package.json on `prebuild`, so a new enum
-    // option is silently missing from the editor's dropdown until someone runs it.
-    const expected: Record<string, string[]> = {}
+  test(`generated settings in package.json match SETTINGS_CONFIG`, () => {
+    // sync-config.ts only regenerates package.json on `prebuild`, so a schema edit stays
+    // invisible to the editor until someone runs it.
+    const synced_fields = [
+      `default`,
+      `description`,
+      `minimum`,
+      `maximum`,
+      `minItems`,
+      `maxItems`,
+      `enum`,
+    ] as const
+    const pick = (obj: Record<string, unknown>): Record<string, unknown> =>
+      Object.fromEntries(synced_fields.map((field) => [field, obj[field]]))
+
+    const expected: Record<string, Record<string, unknown>> = {}
     const collect = (node: unknown, key_path: string): void => {
       if (!node || typeof node !== `object`) return
       if (!(`value` in node)) {
@@ -221,20 +233,32 @@ describe(`MatterViz Extension`, () => {
         return
       }
       const schema = node as SettingType
-      // sync-config.ts emits nothing for settings scoped away from the editor
       if (schema.context && ![`editor`, `all`].includes(schema.context)) return
-      if (schema.enum) expected[key_path] = Object.keys(schema.enum)
+      expected[key_path] = pick({
+        ...schema,
+        default: schema.value,
+        enum: schema.enum && Object.keys(schema.enum),
+      })
     }
     collect(SETTINGS_CONFIG, `matterviz`)
 
     const props = pkg_json.contributes.configuration.properties as unknown as Record<
       string,
-      { enum?: string[] } | undefined
+      Record<string, unknown> | undefined
     >
     const actual = Object.fromEntries(
-      Object.keys(expected).map((key) => [key, props[key]?.enum]),
+      Object.keys(expected).map((key) => [key, pick(props[key] ?? {})]),
     )
     expect(actual).toEqual(expected)
+
+    // sync-config.ts preserves properties it did not generate, so a setting deleted from (or
+    // scoped away from the editor in) SETTINGS_CONFIG can linger in package.json unnoticed.
+    // These three are hand-written and have no SETTINGS_CONFIG entry; anything else is stale.
+    const package_only = [`matterviz.auto_render`, `matterviz.open_beside`, `matterviz.theme`]
+    const unexpected = Object.keys(props)
+      .filter((key) => !(key in expected))
+      .sort()
+    expect(unexpected).toEqual(package_only)
   })
 
   describe(`Custom Editor File Patterns`, () => {

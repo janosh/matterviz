@@ -94,11 +94,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     controls?.update()
     hooks.onchange?.()
     hooks.invalidate()
-    if (progress >= 1) {
-      animation = null
-      if (controls) controls.enabled = true
-      hooks.onend?.()
-    }
+    if (progress >= 1) release()
   }
 
   // A flight disables orbiting until it lands. Hosts must call this when they unmount, else
@@ -108,6 +104,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     animation = null
     const controls = hooks.controls()
     if (controls) controls.enabled = true
+    hooks.onend?.()
   }
 
   return {

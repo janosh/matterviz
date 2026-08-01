@@ -2,6 +2,7 @@
   import { ScatterPlot3D } from '$lib'
   import type { Vec3 } from '$lib/math'
   import type { DataSeries3D } from '$lib/plot/core/types'
+  import { type Camera, OrthographicCamera } from 'three/webgpu'
 
   // Generate test data with color values to trigger ColorBar rendering
   // This replicates the original issue where ColorBar could block gizmo clicks
@@ -14,9 +15,15 @@
     label: `Test Helix`,
   }
 
-  // Expose camera position for testing
+  // Expose camera state for testing
   let camera_position = $state<Vec3>([8, 8, 8])
+  let camera = $state<Camera>()
   let wrapper: HTMLDivElement | undefined = $state()
+  $effect(() => {
+    Reflect.set(globalThis, `read_scatter_zoom`, () =>
+      camera instanceof OrthographicCamera ? camera.zoom : Number.NaN,
+    )
+  })
 </script>
 
 <h1>ScatterPlot3D Test Page</h1>
@@ -30,6 +37,7 @@
   z_axis={{ label: `Z` }}
   gizmo={true}
   bind:camera_position
+  bind:camera
   bind:wrapper
 />
 

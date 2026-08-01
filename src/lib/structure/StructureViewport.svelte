@@ -27,7 +27,7 @@
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { create_renderer, responsive_gizmo_size } from '$lib/scene'
-  import type { Camera, OrthographicCamera, Scene } from 'three/webgpu'
+  import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import StructureScene from './StructureScene.svelte'
 
@@ -38,6 +38,9 @@
   let recovery_reset_timer: ReturnType<typeof setTimeout> | undefined
   let recovery_attempts = 0
   let recovery_failed = $state(false)
+  let pending_recovery_zoom = $state<
+    { remount_token: number; stale_camera: OrthographicCamera; zoom: number } | undefined
+  >()
 
   const create_viewport_renderer = (canvas: HTMLCanvasElement) =>
     create_renderer(canvas, {
@@ -45,18 +48,26 @@
       on_device_lost: () => {
         // Recovery rebuilds the <Canvas> and a fresh scene re-derives the default camera, so
         // capture the live view first and resume there rather than discarding the user's orbit.
-        camera_position = read_camera_position() ?? camera_position
+        camera_position = read_camera_position()
         camera_target = read_orbit_target() ?? camera_target
         clearTimeout(recovery_reset_timer)
         if (recovery_attempts >= 3) {
+          pending_recovery_zoom = undefined
           recovery_failed = true
           return
         }
+        const remount_token = canvas_remount_token + 1
+        // Narrow on the live camera, not the projection prop: mid-toggle the two disagree,
+        // and only a camera that actually has a zoom has one worth restoring.
+        pending_recovery_zoom =
+          camera instanceof OrthographicCamera
+            ? { remount_token, stale_camera: camera, zoom: camera.zoom }
+            : undefined
         recovery_attempts += 1
         // Losses can arrive in bursts (e.g. both panes of a grid evicted at once); keep a
         // single pending remount so the burst doesn't tear down the renderer it just built.
         clearTimeout(remount_timer)
-        remount_timer = setTimeout(() => (canvas_remount_token += 1), 1000)
+        remount_timer = setTimeout(() => (canvas_remount_token = remount_token), 1000)
         // Reset only after a stable remount; an immediate reset would allow endless
         // eviction ping-pong while the page exceeds its GPU budget.
         recovery_reset_timer = setTimeout(() => (recovery_attempts = 0), 5000)
@@ -209,8 +220,28 @@
     return [x, y, z]
   }
 
-  const read_camera_position = (): Vec3 | undefined =>
+  const read_camera_position = (): Vec3 =>
     camera ? [camera.position.x, camera.position.y, camera.position.z] : camera_position
+  // Perspective controls dolly instead of changing camera.zoom.
+  const read_zoom = (): number | undefined =>
+    camera instanceof OrthographicCamera ? camera.zoom : undefined
+
+  // Both optional keys can be absent — a perspective camera has no zoom, and the orbit target
+  // is unknown until the controls bind. Omit rather than emit undefined: JSON.stringify drops
+  // such keys, so the payload the Dash and VS Code hosts receive would otherwise differ in
+  // shape from the one in-process listeners see.
+  const camera_event = (
+    camera_has_moved: boolean,
+    position: Vec3,
+    target: Vec3 | undefined,
+    zoom: number | undefined,
+  ): StructureHandlerData => ({
+    structure,
+    camera_has_moved,
+    camera_position: position,
+    ...(target !== undefined && { camera_target: target }),
+    ...(zoom !== undefined && { camera_zoom: zoom }),
+  })
 
   // Reset this pane's camera. The primary pane is given on_camera_reset, so it also emits.
   function reset_camera() {
@@ -218,78 +249,118 @@
     camera_target = rotation_target_ref
     report_moved?.(false)
     if (orbit_controls && camera) {
-      if (`reset` in orbit_controls && typeof orbit_controls.reset === `function`) {
-        orbit_controls.reset()
+      orbit_controls.reset()
+      if (rotation_target_ref) orbit_controls.target.set(...rotation_target_ref)
+      if (camera instanceof OrthographicCamera && initial_computed_zoom !== undefined) {
+        camera.zoom = initial_computed_zoom
+        camera.updateProjectionMatrix()
       }
-      if (orbit_controls.target && rotation_target_ref) {
-        orbit_controls.target.set(...rotation_target_ref)
-      }
-      if (`zoom` in camera && initial_computed_zoom !== undefined) {
-        const ortho_camera = camera as OrthographicCamera
-        ortho_camera.zoom = initial_computed_zoom
-        ortho_camera.updateProjectionMatrix()
-      }
-      if (typeof orbit_controls.update === `function`) orbit_controls.update()
-      camera_position = read_camera_position() ?? camera_position
+      orbit_controls.update()
+      camera_position = read_camera_position()
       camera_target = read_orbit_target()
-      self_written = { position: camera_position, target: camera_target, zoom: read_zoom() }
+      remember_current_view()
     }
-    on_camera_reset?.({ structure, camera_has_moved: false, camera_position, camera_target })
+    on_camera_reset?.(camera_event(false, camera_position, camera_target, read_zoom()))
   }
 
-  // The view this pane last wrote into the bindable props; anything else appearing there came
-  // from the caller. That is the only way to tell the two apart, since both arrive as props.
-  // Zoom rides along unpropped: it is the only thing an orthographic wheel changes, so pose
-  // alone cannot tell whether the view moved.
+  // Last view written or captured here; differing bindable props came from the caller.
+  // Zoom is included because an orthographic wheel changes nothing else.
   let self_written: { position?: Vec3; target?: Vec3; zoom?: number } = {}
+  // Damping decays geometrically, so a released camera keeps creeping for seconds after
+  // OrbitControls stops dispatching `change` (whose floor is a 1e-3 displacement). Exact
+  // equality would read that residue as motion and emit a duplicate move for a mere click.
+  const camera_state_tolerance = 8 * Number.EPSILON
+  const same_camera_value = (value_a?: number, value_b?: number): boolean =>
+    value_a === value_b ||
+    (value_a !== undefined &&
+      value_b !== undefined &&
+      Math.abs(value_a - value_b) <=
+        camera_state_tolerance * Math.max(1, Math.abs(value_a), Math.abs(value_b)))
   const same_pose = (pose_a?: Vec3, pose_b?: Vec3): boolean =>
     pose_a === pose_b ||
-    Boolean(pose_a && pose_b && pose_a.every((coord, idx) => coord === pose_b[idx]))
-  const read_zoom = (): number | undefined =>
-    camera && `zoom` in camera ? (camera as OrthographicCamera).zoom : undefined
+    Boolean(pose_a?.every((coord, idx) => same_camera_value(coord, pose_b?.[idx])))
+  $effect(() => {
+    const pending = pending_recovery_zoom
+    if (!pending || pending.remount_token !== canvas_remount_token) return
+    if (!(camera instanceof OrthographicCamera)) return
+    if (camera === pending.stale_camera) return
+    camera.zoom = pending.zoom
+    camera.updateProjectionMatrix()
+    pending_recovery_zoom = undefined
+  })
 
   const sync_camera = () => {
     const pos = read_camera_position()
-    if (!pos) return
-    const [target, zoom] = [read_orbit_target(), read_zoom()]
+    const target = read_orbit_target()
+    const zoom = read_zoom()
     // Interactions that end where they started (a click, or the effect cleanup below running
     // after the end listener already synced) would otherwise emit a second, identical move.
     const unmoved =
       same_pose(pos, self_written.position) &&
       same_pose(target, self_written.target) &&
-      zoom === self_written.zoom
+      same_camera_value(zoom, self_written.zoom)
     if (unmoved) return
     camera_position = pos
     camera_target = target
     self_written = { position: pos, target, zoom }
-    on_camera_move?.({
-      structure,
-      camera_has_moved: true,
-      camera_position: pos,
-      camera_target: target,
-    })
-  }
-
-  const mark_moved = () => {
     report_moved?.(true)
-    sync_camera()
+    on_camera_move?.(camera_event(true, pos, target, zoom))
   }
 
-  // A wheel zoom dispatches start and end in the same tick, so the effect below never observes
-  // `camera_is_moving` as true. Without this listener a zoom would leave the pose unpersisted
-  // and the reset control (gated on report_moved) unreachable.
+  let settle_sync_timeout: ReturnType<typeof setTimeout> | undefined
+  const remember_current_view = () => {
+    self_written = {
+      position: read_camera_position(),
+      target: read_orbit_target(),
+      zoom: read_zoom(),
+    }
+  }
+  // Only a fresh gesture may cancel a pending settle. Rebaselining alone must not: the push
+  // effect below also rebaselines, and cancelling there drops the sync that reports a drag.
+  const start_camera_interaction = () => {
+    clearTimeout(settle_sync_timeout)
+    settle_sync_timeout = undefined
+    remember_current_view()
+  }
+
+  const schedule_settled_sync = () => {
+    clearTimeout(settle_sync_timeout)
+    settle_sync_timeout = setTimeout(() => {
+      settle_sync_timeout = undefined
+      sync_camera()
+    }, 50)
+  }
+  const track_damped_change = () => {
+    if (settle_sync_timeout !== undefined) schedule_settled_sync()
+  }
+  const end_camera_interaction = () => {
+    sync_camera()
+    if (!in_grid && (scene_props.auto_rotate ?? 0) > 0) return
+    schedule_settled_sync()
+  }
+
+  // Wheel start/end can share a tick, so sync on end and debounce any damped tail.
   $effect(() => {
     const controls = orbit_controls
-    if (!controls) return
-    controls.addEventListener(`end`, mark_moved)
-    return () => controls.removeEventListener(`end`, mark_moved)
+    if (!controls || !camera) return
+    remember_current_view()
+    controls.addEventListener(`start`, start_camera_interaction)
+    controls.addEventListener(`change`, track_damped_change)
+    controls.addEventListener(`end`, end_camera_interaction)
+    return () => {
+      clearTimeout(settle_sync_timeout)
+      settle_sync_timeout = undefined
+      controls.removeEventListener(`start`, start_camera_interaction)
+      controls.removeEventListener(`change`, track_damped_change)
+      controls.removeEventListener(`end`, end_camera_interaction)
+    }
   })
 
   // Track camera movement: keep camera_target in sync with the orbit controls and emit
   // on_camera_move (primary pane only) while the controls are active.
   $effect(() => {
     if (!camera_is_moving) return
-    mark_moved()
+    sync_camera()
     const interval = setInterval(sync_camera, 200)
     return () => {
       clearInterval(interval)
@@ -317,12 +388,8 @@
       if (!move_camera && !target) return
       if (move_camera) camera.position.set(...next_position)
       if (target) orbit_controls.target.set(...target)
-      orbit_controls.update?.()
-      self_written = {
-        position: read_camera_position(),
-        target: read_orbit_target(),
-        zoom: read_zoom(),
-      }
+      orbit_controls.update()
+      remember_current_view()
     })
   })
 

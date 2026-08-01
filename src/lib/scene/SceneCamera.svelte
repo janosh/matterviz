@@ -42,7 +42,9 @@
 
 {#snippet camera_contents()}
   <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props}>
-    {#if gizmo}<Gizmo {...gizmo_props} />{/if}
+    {#if gizmo}
+      <Gizmo {...gizmo_props} onstart={orbit_props.onstart} onend={orbit_props.onend} />
+    {/if}
   </extras.OrbitControls>
 {/snippet}
 

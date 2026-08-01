@@ -17,6 +17,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { Camera, Scene } from 'three/webgpu'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
@@ -67,6 +68,8 @@
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
+    scene = $bindable(),
+    camera = $bindable(),
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
@@ -120,6 +123,8 @@
     fullscreen?: boolean
     width?: number
     height?: number
+    scene?: Scene // bindable: Threlte scene, e.g. for custom exports
+    camera?: Camera // bindable: active camera, e.g. to read the live orthographic zoom
     wrapper?: HTMLDivElement
     png_dpi?: number
     hovered?: boolean
@@ -158,8 +163,6 @@
     on_hover?: (data: BZHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
-  let scene = $state(undefined)
-  let camera = $state(undefined)
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<BZHoverData | null>(null)
@@ -415,6 +418,8 @@
             {ibz_data}
             {ibz_color}
             {ibz_opacity}
+            {width}
+            {height}
             bind:scene
             bind:camera
             bind:hover_data

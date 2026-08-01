@@ -18,7 +18,13 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { bind_renderer, Gizmo, type GizmoOptions } from '$lib/scene'
+  import {
+    bind_renderer,
+    get_orthographic_zoom_bounds,
+    Gizmo,
+    resize_orthographic_zoom,
+    type GizmoOptions,
+  } from '$lib/scene'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -126,6 +132,29 @@
   const half_x = scene_x / 2
   const half_y = scene_y / 2
   const half_z = scene_z / 2
+  let fit_zoom = $derived(Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50)
+  let orthographic_zoom = $state(untrack(() => fit_zoom))
+  // Scalars, not the bounds object: orbit_controls_props spreads these into Threlte, which
+  // re-applies every prop when any one changes identity — including `target`, which would
+  // snap a panned view back to the origin on each resize.
+  let zoom_bounds = $derived(get_orthographic_zoom_bounds(fit_zoom, min_zoom, max_zoom))
+  let orbit_min_zoom = $derived(zoom_bounds.min_zoom)
+  let orbit_max_zoom = $derived(zoom_bounds.max_zoom)
+  let previous_fit_zoom = 0
+  $effect(() => {
+    const [next_fit_zoom, next_min_zoom, next_max_zoom] = [fit_zoom, min_zoom, max_zoom]
+    untrack(() => {
+      // tracked bounds too: raising max_zoom must re-clamp now, not at the next gesture
+      orthographic_zoom = resize_orthographic_zoom(
+        orthographic_zoom,
+        previous_fit_zoom,
+        next_fit_zoom,
+        next_min_zoom,
+        next_max_zoom,
+      )
+      previous_fit_zoom = next_fit_zoom
+    })
+  })
 
   // Dynamic backside positions - axes/grids/planes always face away from camera
   // pos.x/y/z are the Three.js positions where axes attach (backside of cube)
@@ -492,6 +521,7 @@
   )
 
   // Orbit controls - snappy with minimal inertia
+  const orbit_target: Vec3 = [0, 0, 0]
   let orbit_controls_props = $derived({
     enableRotate: rotate_speed > 0,
     rotateSpeed: rotate_speed,
@@ -499,13 +529,18 @@
     zoomSpeed: zoom_speed,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
-    target: [0, 0, 0] as Vec3,
-    maxZoom: max_zoom,
-    minZoom: min_zoom,
+    target: orbit_target,
+    maxZoom: orbit_max_zoom,
+    minZoom: orbit_min_zoom,
     autoRotate: Boolean(auto_rotate),
     autoRotateSpeed: auto_rotate,
     enableDamping: rotation_damping > 0,
     dampingFactor: rotation_damping,
+    onend: () => {
+      const controls_camera = orbit_controls?.object
+      if (controls_camera instanceof THREE.OrthographicCamera)
+        orthographic_zoom = controls_camera.zoom
+    },
   })
 
   // Axis configuration for rendering
@@ -675,7 +710,7 @@
   <T.OrthographicCamera
     makeDefault
     position={camera_position}
-    zoom={Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50}
+    zoom={orthographic_zoom}
     near={-100}
     far={1000}
   >

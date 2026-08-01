@@ -11,6 +11,7 @@ import {
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
 import {
+  bz_fit_extent,
   cartesian_to_fractional,
   default_camera_position,
   k_lattice_inverse,
@@ -641,5 +642,34 @@ describe(`scene sizing helpers`, () => {
   test(`default_camera_position scales [10, 3, 8] by max(1, size)`, () => {
     expect(default_camera_position(2)).toEqual([20, 6, 16])
     expect(default_camera_position(0.5)).toEqual([10, 3, 8])
+  })
+
+  describe(`bz_fit_extent`, () => {
+    const k_lattice: Matrix3x3 = [
+      [4, 0, 0],
+      [0, 4, 0],
+      [0, 0, 4],
+    ]
+    // a cube of side 2 centered on the origin: the enclosing sphere has diameter 2*sqrt(3)
+    const cube: Vec3[] = [-1, 1].flatMap((x) =>
+      [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
+    )
+
+    test(`spans the enclosing sphere of the vertices, plus padding`, () => {
+      expect(bz_fit_extent(cube, k_lattice, 1)).toBeCloseTo(2 * Math.sqrt(3), 10)
+      expect(bz_fit_extent(cube, k_lattice, 2)).toBeCloseTo(4 * Math.sqrt(3), 10)
+    })
+
+    test(`the default padding leaves the zone inside the viewport`, () => {
+      // must exceed the bare diameter, or the zone touches the frame edge
+      expect(bz_fit_extent(cube, k_lattice)).toBeGreaterThan(2 * Math.sqrt(3))
+    })
+
+    test(`falls back to a sphere that still encloses the zone`, () => {
+      // no vertices: 2 * k_space_size must cover the cube those k-vectors would span
+      expect(bz_fit_extent(undefined, k_lattice)).toBe(8)
+      expect(bz_fit_extent([], k_lattice)).toBe(8)
+      expect(bz_fit_extent(undefined, undefined)).toBe(20) // k_space_size's own fallback
+    })
   })
 })

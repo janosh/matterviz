@@ -447,6 +447,8 @@
           {clip_position}
           {clip_flip}
           {camera_projection}
+          {width}
+          {height}
           bind:scene
           bind:camera
           bind:hover_data

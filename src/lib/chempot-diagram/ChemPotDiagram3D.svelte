@@ -41,6 +41,7 @@
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
+  import { type CameraView, camera_view_changed, rescale_zoom_to_fit } from './camera'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -548,7 +549,7 @@
       : 1,
   )
   let last_data_center: Vec3 | null = null
-  let last_data_extent: number | null = null
+  let last_default_zoom: number | null = null
 
   // Compute domain boundary edges via axis-aligned 2D convex hull projection.
   // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
@@ -768,7 +769,8 @@
     const merged = merge_coplanar_triangles(new Float32Array(kept))
     const geom = new THREE.BufferGeometry()
     geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
-    const colors = new Float32Array(merged.length).fill(0.965)
+    const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
+    const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
     geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
     return geom
   })
@@ -916,18 +918,18 @@
     return result
   })
 
+  // Faces no domain claims. Hoisted because a THREE.Color per recompute is pure waste.
+  const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
+
   // Reactive color fill: creates a cloned geometry with vertex colors applied.
   // Only runs when color_mode or domain_colors change — no mutation of hull_base_geometry.
   const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     const mapping = face_domain_map
     if (!hull_base_geometry || mapping.length === 0) return hull_base_geometry
+    if (color_mode === `none` || domain_colors.size === 0) return hull_base_geometry
 
     const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
-    const use_colors = color_mode !== `none` && domain_colors.size > 0
-    const fb = use_colors
-      ? [0.91, 0.91, 0.91] // #e8e8e8
-      : [0.965, 0.965, 0.965] // #f6f6f6
 
     // Cache parsed RGB per formula to avoid redundant THREE.Color allocations
     const rgb_cache = new SvelteMap<string, Vec3>()
@@ -937,8 +939,8 @@
     }
 
     for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
-      const rgb = use_colors ? rgb_cache.get(mapping[face_idx]) : null
-      const [red, green, blue] = rgb ?? fb
+      const rgb = rgb_cache.get(mapping[face_idx])
+      const [red, green, blue] = rgb ?? HULL_FALLBACK_RGB
       const base = face_idx * 3
       for (let vert_idx = 0; vert_idx < 3; vert_idx++) {
         color_attr.setXYZ(base + vert_idx, red, green, blue)
@@ -1515,31 +1517,48 @@
     }
   }
 
-  function store_camera_view_state(): void {
+  const read_camera_view = (): CameraView | null => {
+    const controls = orbit_controls_ref
+    if (!controls) return null
+    const { object: controls_camera, target } = controls
+    const { position } = controls_camera
+    return {
+      position: [position.x, position.y, position.z],
+      target: [target.x, target.y, target.z],
+      zoom: controls_camera instanceof THREE.OrthographicCamera ? controls_camera.zoom : null,
+    }
+  }
+
+  let gesture_baseline: CameraView | null = null
+  function begin_camera_gesture(): void {
     // Prime framing baseline on first user interaction so the next geometry
     // change can preserve zoom/center immediately (not only from second change).
-    if (last_data_center === null) {
-      last_data_center = [data_center.x, data_center.y, data_center.z]
-    }
-    if (last_data_extent === null) {
-      last_data_extent = data_extent
-    }
+    last_data_center ??= [data_center.x, data_center.y, data_center.z]
+    gesture_baseline = read_camera_view()
+  }
+  const end_camera_gesture = (): void => {
+    gesture_baseline = null
+  }
+
+  // Drop the pinned view and hand framing back to the derived defaults.
+  function reset_camera_view(): void {
+    camera_position_override = null
+    camera_target_override = null
+    orthographic_zoom_override = null
+    last_data_center = null
+    gesture_baseline = null
     const controls = orbit_controls_ref
     const controls_camera = controls?.object
-    if (controls_camera) {
-      camera_position_override = [
-        controls_camera.position.x,
-        controls_camera.position.y,
-        controls_camera.position.z,
-      ]
-      if (controls_camera instanceof THREE.OrthographicCamera) {
-        orthographic_zoom_override = controls_camera.zoom
-      }
+    if (!controls || !controls_camera) return
+    // Written straight to the camera rather than left to the props: the defaults are known
+    // synchronously, and controls.update() below would otherwise run against the stale pose.
+    controls_camera.position.set(...default_camera_position)
+    controls.target.set(...default_camera_target)
+    if (controls_camera instanceof THREE.OrthographicCamera) {
+      controls_camera.zoom = default_orthographic_zoom
+      controls_camera.updateProjectionMatrix()
     }
-    const controls_target = controls?.target
-    if (controls_target) {
-      camera_target_override = [controls_target.x, controls_target.y, controls_target.z]
-    }
+    controls.update()
   }
 
   // Preserve user framing across temperature-driven geometry changes:
@@ -1563,16 +1582,15 @@
         ]
       }
     }
-    if (
-      orthographic_zoom_override !== null &&
-      last_data_extent !== null &&
-      last_data_extent > 0 &&
-      data_extent > 0
-    ) {
-      orthographic_zoom_override *= last_data_extent / data_extent
-    }
+    orthographic_zoom_override = rescale_zoom_to_fit(
+      orthographic_zoom_override,
+      last_default_zoom,
+      default_orthographic_zoom,
+    )
     last_data_center = [data_center.x, data_center.y, data_center.z]
-    last_data_extent = data_extent
+    // A zero fit means the container has no size yet; keep the last real one as the baseline
+    // so the pinned zoom resumes from it rather than losing a rescale step.
+    if (default_orthographic_zoom > 0) last_default_zoom = default_orthographic_zoom
   })
 
   $effect(() => {
@@ -1580,13 +1598,26 @@
     if (!controls) return
     const on_controls_change = (): void => {
       update_backside()
-      store_camera_view_state()
+      // Read once: auto-rotation fires this every frame, and reading allocates two arrays.
+      // Once pinned keep tracking; before that only a gesture that moved something may pin.
+      const view = camera_position_override || gesture_baseline ? read_camera_view() : null
+      if (view && (camera_position_override || camera_view_changed(gesture_baseline, view))) {
+        camera_position_override = view.position
+        camera_target_override = view.target
+        if (view.zoom !== null) orthographic_zoom_override = view.zoom
+      }
       if (has_occluding_domain_labels) schedule_label_occlusion_update()
     }
+    controls.addEventListener(`start`, begin_camera_gesture)
     controls.addEventListener(`change`, on_controls_change)
+    controls.addEventListener(`end`, end_camera_gesture)
     untrack(() => update_backside())
     controls.update()
-    return () => controls.removeEventListener(`change`, on_controls_change)
+    return () => {
+      controls.removeEventListener(`start`, begin_camera_gesture)
+      controls.removeEventListener(`change`, on_controls_change)
+      controls.removeEventListener(`end`, end_camera_gesture)
+    }
   })
 
   $effect(() => {
@@ -1695,6 +1726,12 @@
     overrides.reset()
     projection_elements_override = null
     formula_filter_query = ``
+    reset_camera_view()
+  }
+
+  // Only the canvas itself: .canvas-clip also holds the color bar, arity legend and tooltip.
+  const handle_dblclick = (event: MouseEvent): void => {
+    if (event.target instanceof HTMLCanvasElement) reset_camera_view()
   }
 
   function set_projection_axis(axis_idx: number, element: string): void {
@@ -1750,6 +1787,7 @@
       reverse_color_scale,
       camera_position: orbit_controls_ref?.object?.position ?? null,
       camera_target: orbit_controls_ref?.target ?? null,
+      orthographic_zoom: camera_projection === `orthographic` ? orthographic_zoom : null,
     })
 
   const export_json_payload = (): Record<string, unknown> => ({
@@ -2140,7 +2178,8 @@
   {#if show_temperature_slider && temperature !== undefined}
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
-  <div class="canvas-clip">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="canvas-clip" ondblclick={handle_dblclick}>
     {#if diagram_computing}
       <Spinner
         text="Computing chemical potential domains..."

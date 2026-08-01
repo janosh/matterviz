@@ -73,3 +73,21 @@ export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
 // Default camera position scaled to the scene size
 export const default_camera_position = (size: number): Vec3 =>
   [10, 3, 8].map((coord) => coord * Math.max(1, size)) as Vec3
+
+// Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport
+// edge" currency as structure_fit_frame, so ortho_zoom_for_extent can frame it. Without
+// vertices, a sphere of radius k_space_size is the safe fallback: it encloses a zone spanning
+// that mean reciprocal vector (a cube of side b has half-diagonal 0.87b).
+export const bz_fit_extent = (
+  vertices: Vec3[] | undefined,
+  k_lattice: Matrix3x3 | undefined,
+  padding = 1 / 0.85, // occupy at most 85% of the shorter edge, matching DEFAULT_FIT_PADDING
+): number => {
+  if (!vertices?.length) return Math.max(1, 2 * k_space_size(k_lattice))
+  const center = polyhedron_centroid(vertices)
+  let max_dist = 0
+  for (const vert of vertices) {
+    max_dist = Math.max(max_dist, math.euclidean_dist(vert, center))
+  }
+  return Math.max(1, 2 * max_dist * padding)
+}

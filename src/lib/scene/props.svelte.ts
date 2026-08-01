@@ -51,6 +51,33 @@ export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
   return { ...overrides, offset: { left: 5, bottom: 5, ...overrides.offset } }
 }
 
+// Fit must stay reachable: it becomes the zoom-out floor and lifts a too-low ceiling.
+// Infinity (OrbitControls' own default) rather than undefined, which would clamp to NaN.
+export const get_orthographic_zoom_bounds = (
+  fit_zoom: number,
+  min_zoom?: number,
+  max_zoom?: number,
+): { min_zoom: number; max_zoom: number } => ({
+  min_zoom: Math.min(min_zoom ?? Number.POSITIVE_INFINITY, fit_zoom),
+  max_zoom: max_zoom && max_zoom > 0 ? Math.max(max_zoom, fit_zoom) : Number.POSITIVE_INFINITY,
+})
+
+// Preserve zoom relative to fit, clamped so the fitted structure stays reachable.
+export const resize_orthographic_zoom = (
+  current_zoom: number | undefined,
+  previous_fit_zoom: number,
+  next_fit_zoom: number,
+  min_zoom?: number,
+  max_zoom?: number,
+): number => {
+  const resized_zoom =
+    current_zoom !== undefined && current_zoom > 0 && previous_fit_zoom > 0
+      ? (current_zoom * next_fit_zoom) / previous_fit_zoom
+      : next_fit_zoom
+  const bounds = get_orthographic_zoom_bounds(next_fit_zoom, min_zoom, max_zoom)
+  return Math.max(bounds.min_zoom, Math.min(bounds.max_zoom, resized_zoom))
+}
+
 // Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection
@@ -65,6 +92,8 @@ export function build_orbit_props(opts: {
   rotation_damping: number
   set_camera_is_moving?: (moving: boolean) => void
   onstart_extra?: () => void
+  // runs when a gesture settles (e.g. BZ/Fermi capture the zoom the user wheeled to)
+  onend_extra?: () => void
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
   return {
@@ -90,7 +119,10 @@ export function build_orbit_props(opts: {
       opts.set_camera_is_moving?.(true)
       opts.onstart_extra?.()
     },
-    onend: () => opts.set_camera_is_moving?.(false),
+    onend: () => {
+      opts.set_camera_is_moving?.(false)
+      opts.onend_extra?.()
+    },
   }
 }
 
