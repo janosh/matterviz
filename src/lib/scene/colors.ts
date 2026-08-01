@@ -8,7 +8,7 @@ export type LinearRgb = readonly [number, number, number]
 const parse_scratch = new Color()
 
 // Parsed by d3 rather than three's Color.set, which leaves the previous value in place on an
-// unparseable string — painting one element with the last one's color. Falls back to mid grey.
+// unparsable string — painting one element with the last one's color. Falls back to mid grey.
 // Fully transparent inputs land on grey too: d3 blanks their channels (`if (a <= 0) r = g = b =
 // NaN`), and these meshes are opaque, so there is no hue left to honor anyway.
 // Uncached: for one-shot conversions already cached by the caller (isosurface colormap LUTs),

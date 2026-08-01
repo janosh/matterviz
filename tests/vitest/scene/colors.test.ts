@@ -28,7 +28,7 @@ test(`write_linear_color_to_buffer converts CSS once without stale scratch color
   // d3 also parses spellings three rejects — three warns and leaves the scratch on its
   // previous value — which is why the helper delegates to it rather than to Color.set()
   expect_rgb(write_at(4, `RGBA(0, 128, 255, 1)`), write_at(5, `rgb(0, 128, 255)`), `RGBA`)
-  // and an unparseable color must land on grey, not repaint with whatever came before
+  // and an unparsable color must land on grey, not repaint with whatever came before
   expect(write_at(6, `not-a-color`)).toEqual([0.5, 0.5, 0.5])
   // grey also covers fully transparent input: d3 blanks the channels of any alpha-0 color, so
   // the red of `rgba(255, 0, 0, 0)` is unrecoverable — and unused, since these meshes are opaque
