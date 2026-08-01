@@ -1050,10 +1050,30 @@ describe(`3D Export Color Preservation`, () => {
     // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
     // instead would decode to ~4% and leave the ambient term far too dark.
     const rgb_cases = [
-      { name: `red`, rgb: [1, 0, 0], kd: `1.000000 0.000000 0.000000`, ka: `0.484535 0.000000 0.000000` },
-      { name: `green`, rgb: [0, 1, 0], kd: `0.000000 1.000000 0.000000`, ka: `0.000000 0.484535 0.000000` },
-      { name: `blue`, rgb: [0, 0, 1], kd: `0.000000 0.000000 1.000000`, ka: `0.000000 0.000000 0.484535` },
-      { name: `purple`, rgb: [0.5, 0, 0.5], kd: `0.735361 0.000000 0.735361`, ka: `0.349196 0.000000 0.349196` },
+      {
+        name: `red`,
+        rgb: [1, 0, 0],
+        kd: `1.000000 0.000000 0.000000`,
+        ka: `0.484535 0.000000 0.000000`,
+      },
+      {
+        name: `green`,
+        rgb: [0, 1, 0],
+        kd: `0.000000 1.000000 0.000000`,
+        ka: `0.000000 0.484535 0.000000`,
+      },
+      {
+        name: `blue`,
+        rgb: [0, 0, 1],
+        kd: `0.000000 0.000000 1.000000`,
+        ka: `0.000000 0.000000 0.484535`,
+      },
+      {
+        name: `purple`,
+        rgb: [0.5, 0, 0.5],
+        kd: `0.735361 0.000000 0.735361`,
+        ka: `0.349196 0.000000 0.349196`,
+      },
     ]
 
     const mtl_for_color = (rgb: number[], name = `test`): string => {

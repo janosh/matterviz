@@ -34,7 +34,10 @@ export const rescale_zoom_to_fit = (
 ): number | null =>
   // An unchanged fit short-circuits rather than multiplying by 1: that product differs from
   // `zoom` by an ulp for ~10% of values, and every such write re-runs the framing effect.
-  zoom !== null && last_fit_zoom !== null && last_fit_zoom > 0 && next_fit_zoom > 0 &&
-    last_fit_zoom !== next_fit_zoom
+  zoom !== null &&
+  last_fit_zoom !== null &&
+  last_fit_zoom > 0 &&
+  next_fit_zoom > 0 &&
+  last_fit_zoom !== next_fit_zoom
     ? (zoom * next_fit_zoom) / last_fit_zoom
     : zoom
