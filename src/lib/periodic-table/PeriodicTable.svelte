@@ -335,9 +335,7 @@
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
   {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
-    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${
-      6 + idx
-    }; ${lanth_act_style};`}
+    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style};`}
     <ElementTile
       element={lanth_act_element as unknown as ChemicalElement}
       {style}

@@ -2025,10 +2025,7 @@
         {/if}
 
         {#if measure_mode === `edit-bonds` && !measure_menu_open}
-          <div
-            class="edit-mode-toolbar bond-edit-toolbar"
-            aria-label="Bond editing controls"
-          >
+          <div class="edit-mode-toolbar bond-edit-toolbar" aria-label="Bond editing controls">
             {#if bond_edit_mode === `add`}
               <label>
                 <span>Bond order</span>

@@ -132,8 +132,9 @@ describe(`Trajectory`, () => {
     })
     flushSync()
     await tick()
-    expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight)
-      .toBe(`600px`)
+    expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight).toBe(
+      `600px`,
+    )
   })
 
   // show_controls.style is appended after the z-index the controls bar sets on itself, so

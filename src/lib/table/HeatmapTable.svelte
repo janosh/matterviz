@@ -1670,7 +1670,7 @@
     {#if loading}
       <div class="loading-overlay">
         <Spinner
-          style="--spinner-size: 24px; --spinner-border-width: 3px; --spinner-margin: 0; --spinner-color: var(--highlight, #3b82f6); --spinner-track-color: light-dark(#e5e7eb, #444)"
+          style="--spinner-size: 30px; --spinner-border-width: 3px; --spinner-margin: 0; --spinner-color: var(--highlight, #3b82f6); --spinner-track-color: light-dark(#e5e7eb, #444)"
         />
       </div>
     {/if}
