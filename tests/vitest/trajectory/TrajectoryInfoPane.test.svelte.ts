@@ -83,6 +83,49 @@ test(`derives ranges from plot_metadata for an indexed trajectory, marked as sam
   expect(text).toContain(`On-demand`)
 })
 
+// parse_with_unified_loader extracts plot_metadata at sample_rate 1, so on the normal
+// indexed path it holds one entry per frame and the range is exact. Calling that "sampled"
+// told a user reading a complete 40-frame summary that frames were missing.
+test(`omits the sampled note when plot_metadata covers every frame`, async () => {
+  const total_frames = 40
+  const complete = Array.from({ length: total_frames }, (_unused, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: { energy: -10 - frame_number * 0.1, force_max: 0.5, volume: 100 },
+  }))
+  await mount_pane(indexed_trajectory({ plot_metadata: complete, total_frames }), 5)
+  const text = document.body.textContent ?? ``
+  expect(text).toContain(`Energy Range`)
+  expect(text).not.toContain(`sampled`)
+})
+
+// Math.min(...values) throws RangeError past ~125k arguments, and plot_metadata holds one
+// entry per frame on the indexed path, so a long run crashed the pane outright.
+test(`summarises a run with more frames than the argument limit`, async () => {
+  const total_frames = 130_000
+  const huge = Array.from({ length: total_frames }, (_unused, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: { energy: -10 - frame_number * 1e-4 },
+  }))
+  await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
+  expect(document.body.textContent).toContain(`Energy Range`)
+})
+
+// A fixed cell would otherwise print a zero-width range right under the Structure section's
+// own Volume row.
+test(`omits Volume Range when the cell never changes`, async () => {
+  const constant_volume = Array.from({ length: 5 }, (_unused, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: { energy: -10 - frame_number, volume: 125 },
+  }))
+  await mount_pane(indexed_trajectory({ plot_metadata: constant_volume, total_frames: 5 }), 2)
+  const text = document.body.textContent ?? ``
+  expect(text).toContain(`Energy Range`)
+  expect(text).not.toContain(`Volume Range`)
+})
+
 // Without plot_metadata there is no honest source: a min/max over the in-memory window would
 // describe the start of the run as the whole run.
 test(`shows no ranges for an indexed trajectory lacking plot_metadata`, async () => {

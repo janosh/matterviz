@@ -7,6 +7,7 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryFrame, TrajectoryType } from './index'
 
   let {
@@ -41,12 +42,25 @@
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
 
+  // Loop rather than Math.min(...spread), which throws RangeError past ~125k arguments.
+  // Reachable since these aggregates started reading plot_metadata, which the indexed
+  // parser fills at sample_rate 1 — one entry per frame of a run that can be six digits.
+  // calc_force_stats avoids the same trap for the same reason.
+  const min_max = (values: number[]): [number, number] => {
+    let [min, max] = [values[0], values[0]]
+    for (const value of values) {
+      if (value < min) min = value
+      if (value > max) max = value
+    }
+    return [min, max]
+  }
+
   const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
     if (values.length === 0) return null
     if (values.length === 1) {
       return `${format_num(values[0], decimals)} ${unit}`.trim()
     }
-    const [min, max] = [Math.min(...values), Math.max(...values)]
+    const [min, max] = min_max(values)
     return `${format_num(min, decimals)} - ${format_num(max, decimals)} ${unit}`.trim()
   }
 
@@ -190,29 +204,37 @@
 
     // Aggregates over the run. An indexed trajectory keeps only a handful of frames in memory,
     // so a min/max over `frames` there would describe the start of the run as the whole run.
-    // Its pre-extracted (but sampled) plot_metadata is the only honest source — which is why
-    // every value derived from it is labelled with the sample count below.
+    // Its pre-extracted plot_metadata is the only honest source, and is labelled with a
+    // sample count below when it really does skip frames.
     const frames_in_memory = trajectory.frames?.length ?? 0
     const has_all_frames = frames_in_memory > 1 && frames_in_memory >= total_frames
-    const sampled = has_all_frames ? null : trajectory.plot_metadata
-    const sample_count = sampled?.length ?? 0
-    const can_aggregate = total_frames > 1 && (has_all_frames || sample_count > 1)
-    const sampled_note = sampled
-      ? `Min/max over ${format_num(sample_count, `.3~s`)} sampled frames of ${format_num(
+    const metadata = has_all_frames ? null : trajectory.plot_metadata
+    const metadata_count = metadata?.length ?? 0
+    // The indexed parser extracts plot_metadata at sample_rate 1, so it normally holds one
+    // entry per frame and the min/max over it is exact. Only call it a sample when frames
+    // are actually missing, or a complete 100k-frame run reads "100k sampled of 100k".
+    // Counted over distinct frame numbers because a re-delivered streaming batch can repeat.
+    const covered_frames = metadata
+      ? new SvelteSet(metadata.map(({ frame_number }) => frame_number)).size
+      : 0
+    const is_sample = metadata != null && covered_frames < total_frames
+    const can_aggregate = total_frames > 1 && (has_all_frames || metadata_count > 1)
+    const sampled_note = is_sample
+      ? `Min/max over ${format_num(covered_frames, `.3~s`)} sampled frames of ${format_num(
           total_frames,
           `.3~s`,
         )} total, so the true extremum may lie outside this range`
       : undefined
 
     const aggregate_values = (prop: string): number[] =>
-      sampled
-        ? sampled.map(({ properties }) => properties[prop]).filter(is_valid_number)
+      metadata
+        ? metadata.map(({ properties }) => properties[prop]).filter(is_valid_number)
         : extract_numeric_array(trajectory.frames, prop)
 
     const range_item = (label: string, values: number[], unit: string, key: string) => {
       const range = format_range(values, unit, `.3~s`)
       if (!range) return null
-      const suffix = sampled ? ` (${format_num(sample_count, `.3~s`)} sampled)` : ``
+      const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
       return safe_item(label, `${range}${suffix}`, key, sampled_note)
     }
 
@@ -253,7 +275,7 @@
       // In-memory frames carry volume on the lattice (metadata usually omits it); sampled
       // metadata carries it as a plain property.
       const volumes = (
-        sampled
+        metadata
           ? aggregate_values(`volume`)
           : trajectory.frames
               .map(({ structure }) => `lattice` in structure && structure.lattice?.volume)
@@ -261,12 +283,14 @@
       ).filter((volume) => volume > 0)
 
       if (volumes.length > 1) {
-        const [min_volume, max_volume] = [Math.min(...volumes), Math.max(...volumes)]
+        const [min_volume, max_volume] = min_max(volumes)
+        // A fixed cell would otherwise render `125 - 125 Å³` directly under the Structure
+        // section's own Volume row. volumes is already filtered to finite positives, so the
+        // ratio is finite and non-negative.
         const vol_change = (max_volume - min_volume) / min_volume
         push_section(`Volume`, [
-          range_item(`Volume Range`, volumes, `Å³`, `volume-range`),
-          Math.abs(vol_change) > 0.1 &&
-            is_valid_number(vol_change) &&
+          min_volume < max_volume && range_item(`Volume Range`, volumes, `Å³`, `volume-range`),
+          vol_change > 0.1 &&
             safe_item(`Volume Change`, `${format_num(vol_change, `.2~%`)}`, `vol-change`),
         ])
       }
