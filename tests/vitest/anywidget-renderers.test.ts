@@ -354,10 +354,11 @@ describe(`render() lifecycle`, () => {
 
     // as never: anywidget's RenderProps also wants signal/host/experimental,
     // which the drive-listener assertions below don't need
+    // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el,
-    }) as () => void
+    } as never) as () => void
     flushSync()
     expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
 

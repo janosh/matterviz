@@ -51,9 +51,8 @@ export function pick_pane_orientation(
 ): `horizontal` | `vertical` {
   const side_by_side_fits = width / 2 >= MIN_PANE_SIZE.width
   const stacked_fits = height / 2 >= MIN_PANE_SIZE.height
-  if (side_by_side_fits !== stacked_fits) {
-    return side_by_side_fits ? `horizontal` : `vertical`
-  }
+  if (side_by_side_fits && !stacked_fits) return `horizontal`
+  if (stacked_fits && !side_by_side_fits) return `vertical`
   return width > height ? `horizontal` : `vertical`
 }
 

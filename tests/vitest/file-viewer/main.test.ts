@@ -208,6 +208,17 @@ describe(`create_display trajectory display options`, () => {
     filename: `relax.h5`,
   })
 
+  // Regression: Hive (and other non-VS Code hosts) leave --vscode-* unset. Falling
+  // back to dark hex made light-mode traj shells black and bleached info-pane text.
+  test(`viewer shell follows MatterViz theme tokens when VS Code vars are absent`, () => {
+    const container = make_container()
+    create_display(container, trajectory_result())
+    expect(container.style.background).toContain(`--page-bg`)
+    expect(container.style.background).not.toContain(`#1e1e1e`)
+    expect(container.style.color).toContain(`--text-color`)
+    expect(container.style.color).not.toContain(`#d4d4d4`)
+  })
+
   test(`initial_step_idx and on_step_change reach the mounted Trajectory component`, () => {
     const on_step_change = vi.fn()
     create_display(make_container(), trajectory_result(), {

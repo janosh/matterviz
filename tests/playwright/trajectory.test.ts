@@ -559,15 +559,20 @@ test.describe(`Trajectory Component`, () => {
       // rule left it side by side with two ~240px panes and an unreadable plot.
       // 500px is what such a card really measures - .trajectory's min-height floor
       // outranks the host's inline height.
-      const set_size = (width: number) =>
-        trajectory.evaluate((el: HTMLElement, css_width) => {
-          el.style.width = css_width
-          el.style.height = `500px`
-        }, `${width}px`)
+      // minHeight goes too, else .trajectory's 500px floor outranks the height
+      // asked for here (which is exactly what it does to Hive's chat card)
+      const set_size = (width: number, height = 500) =>
+        trajectory.evaluate((el: HTMLElement, size) => Object.assign(el.style, size), {
+          width: `${width}px`,
+          height: `${height}px`,
+          minHeight: `0`,
+        })
 
       // The class comes from a ResizeObserver, which a page full of software-WebGPU
       // canvases can leave waiting well past the default 5s expect timeout.
       const resize_timeout = { timeout: 20_000 }
+      const pane_divider = () =>
+        trajectory.locator(`.structure`).evaluate((el) => getComputedStyle(el).boxShadow)
 
       await set_size(480)
       await expect(trajectory).toHaveClass(/vertical/, resize_timeout)
@@ -584,19 +589,18 @@ test.describe(`Trajectory Component`, () => {
       if (!panes.structure || !panes.plot) throw new Error(`panes not found`)
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
+      expect(await pane_divider()).toMatch(/ 0px 1px 0px 0px$/) // hairline below
 
       // Widening the sidebar puts them back side by side without a remount
       await set_size(900)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)
+      expect(await pane_divider()).toMatch(/ 1px 0px 0px 0px$/) // hairline to the right
 
       // This viewer's controls bar is ~32px the panes never get, so at 380px tall
       // stacking would leave 174px rows - under the readable minimum, so it stays
       // side by side. Measuring the wrapper instead of .content-area would stack it.
-      await trajectory.evaluate((el: HTMLElement) => {
-        el.style.width = `480px`
-        el.style.height = `380px`
-      })
+      await set_size(480, 380)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
     })
 

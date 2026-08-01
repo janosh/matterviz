@@ -1582,6 +1582,7 @@
 <style>
   .trajectory {
     --min-height: 500px;
+    --traj-pane-divider: color-mix(in srgb, currentColor 15%, transparent);
     display: flex;
     flex-direction: column;
     height: var(--traj-height, 100%);
@@ -1589,6 +1590,9 @@
     min-height: var(--traj-min-height, var(--min-height));
     /* Square by default; opt into rounding with --traj-border-radius. */
     border-radius: var(--traj-border-radius, 0);
+    /* Follow host theme; avoid transparent shells sitting on a dark parent fallback. */
+    background: var(--traj-bg, var(--surface-bg, var(--page-bg, Canvas)));
+    color: var(--traj-color, var(--text-color, CanvasText));
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
@@ -1600,16 +1604,25 @@
       height: 100vh !important;
       width: 100vw !important;
       border-radius: 0 !important;
-      background: var(--traj-bg-fullscreen, var(--surface-bg));
+      background: var(--traj-bg-fullscreen, var(--traj-bg, var(--surface-bg)));
       overflow: hidden;
     }
+    /* Hairline between the panes, drawn as a shadow so the 1px cannot nudge
+       either pane's layout. The structure paints above the plot (z-index 3), so
+       its shadow lands on top of the plot's background rather than under it. */
     &.horizontal .content-area {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr);
+      &.show-both:not(.hide-plot):not(.hide-structure) > :global(.structure) {
+        box-shadow: 1px 0 0 var(--traj-pane-divider);
+      }
     }
     &.vertical .content-area {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      &.show-both:not(.hide-plot):not(.hide-structure) > :global(.structure) {
+        box-shadow: 0 1px 0 var(--traj-pane-divider);
+      }
     }
     /* Display mode specific layouts */
     &:is(.horizontal, .vertical) .content-area:is(.show-structure-only, .show-plot-only) {
