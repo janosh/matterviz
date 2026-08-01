@@ -84,14 +84,16 @@ const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Prom
   await expect(pane).toBeVisible()
 }
 
+// `toggle` is the pane's chrome button suffix, `label` text unique to that pane's contents
+const get_pane = (diagram: Locator, toggle: string, label: string) => ({
+  toggle: diagram.locator(`button.chempot-${toggle}-toggle`).first(),
+  pane: diagram.locator(`.draggable-pane`).filter({ hasText: label }).first(),
+})
+
 const open_export_pane = async (diagram: Locator): Promise<Locator> => {
-  const export_toggle = diagram.locator(`button.chempot-export-toggle`).first()
-  const export_pane = diagram
-    .locator(`.draggable-pane`)
-    .filter({ hasText: `Export Image` })
-    .first()
-  await open_pane(diagram, export_toggle, export_pane)
-  return export_pane
+  const { toggle, pane } = get_pane(diagram, `export`, `Export Image`)
+  await open_pane(diagram, toggle, pane)
+  return pane
 }
 
 // The view snapshot is the only readout of the live camera, and each read costs a download.
@@ -191,13 +193,11 @@ test.describe(`ChemPot Diagram interactions`, () => {
       `.chempot-diagram-3d`,
     )
 
-    const controls_toggle = diagram.locator(`button.chempot-controls-toggle`).first()
-    const controls_pane = diagram
-      .locator(`.draggable-pane`)
-      .filter({
-        hasText: `ChemPot`,
-      })
-      .first()
+    const { toggle: controls_toggle, pane: controls_pane } = get_pane(
+      diagram,
+      `controls`,
+      `ChemPot`,
+    )
     await open_pane(diagram, controls_toggle, controls_pane)
 
     const x_select = controls_pane.locator(`#chempot-proj-x`).first()
@@ -278,13 +278,16 @@ test.describe(`ChemPot Diagram interactions`, () => {
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
 
     // A pinned camera stops the diagram re-fitting itself, so Reset has to offer to undo it
-    const controls_toggle = diagram.locator(`button.chempot-controls-toggle`).first()
-    const controls_pane = diagram
-      .locator(`.draggable-pane`)
-      .filter({ hasText: `ChemPot` })
-      .first()
+    const { toggle: controls_toggle, pane: controls_pane } = get_pane(
+      diagram,
+      `controls`,
+      `ChemPot`,
+    )
     await open_pane(diagram, controls_toggle, controls_pane)
     await expect(controls_pane.getByRole(`button`, { name: /Reset chempot/i })).toBeVisible()
+    // the pane overlays the canvas centre, and the reset below deliberately ignores pane clicks
+    await controls_toggle.click({ force: true })
+    await expect(controls_pane).toBeHidden()
 
     // double click hands framing back to the auto-fit the wheel just pinned. The click also
     // dismisses the export pane (DraggablePane closes on any outside press), so reopen it.

@@ -1,9 +1,5 @@
-// Camera framing rule for ChemPotDiagram3D. Kept out of the component so the decision that
-// governs when the auto-fit stops applying is testable without a WebGPU canvas.
-import type { Vec3 } from '$lib/math'
-
-// zoom is null for a perspective camera, which dollies instead of zooming
-export type CameraView = { position: Vec3; target: Vec3; zoom: number | null }
+// Camera framing rule for ChemPotDiagram3D. Kept out of the component so the arithmetic that
+// keeps a pinned view tracking the auto-fit is testable without a WebGPU canvas.
 
 // Hold a pinned zoom at a constant ratio to the auto-fit, which folds in both of its inputs:
 // a change in data extent and a viewport resize. Unclamped on purpose — the diagram sets no

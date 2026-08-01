@@ -670,8 +670,13 @@ describe(`scene sizing helpers`, () => {
       // Without vertices the zone is framed by the cell it is inscribed in: a cubic lattice of
       // side 4 gives a cell diagonal of 4*sqrt(3). Using 2*k_space_size = 8 instead would frame
       // the zone at 74% of the edge and then jump 15% the moment the vertices arrive.
-      [`falls back to the cell without vertices`, undefined, undefined, 4 * Math.sqrt(3) / 0.85],
-      [`falls back on empty vertices too`, [], undefined, 4 * Math.sqrt(3) / 0.85],
+      [
+        `falls back to the cell without vertices`,
+        undefined,
+        undefined,
+        (4 * Math.sqrt(3)) / 0.85,
+      ],
+      [`falls back on empty vertices too`, [], undefined, (4 * Math.sqrt(3)) / 0.85],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
@@ -683,7 +688,7 @@ describe(`scene sizing helpers`, () => {
     test(`the cubic fallback matches what its own vertices would give`, () => {
       // Wigner-Seitz zone of the cubic reciprocal lattice above: a cube of side 4
       const zone: Vec3[] = [-2, 2].flatMap((x) =>
-        [-2, 2].flatMap((y) => [-2, 2].map((z): Vec3 => [x, y, z]))
+        [-2, 2].flatMap((y) => [-2, 2].map((z): Vec3 => [x, y, z])),
       )
       expect(bz_fit_extent(undefined, k_lattice)).toBeCloseTo(
         bz_fit_extent(zone, k_lattice),
@@ -693,7 +698,11 @@ describe(`scene sizing helpers`, () => {
 
     test(`an anisotropic cell is framed by its longest diagonal, not its mean vector`, () => {
       // mean |b| is 34, so a k_space_size-based fallback would frame 100 units of cell at 68
-      const stretched: Matrix3x3 = [[100, 0, 0], [0, 1, 0], [0, 0, 1]]
+      const stretched: Matrix3x3 = [
+        [100, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ]
       expect(k_cell_fit_extent(stretched, 1)).toBeCloseTo(Math.hypot(100, 1, 1), 10)
     })
 
@@ -707,6 +716,6 @@ describe(`scene sizing helpers`, () => {
 
     // k_space_size has its own placeholder |b| when there is no reciprocal lattice either
     test(`falls back twice without a lattice`, () =>
-      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo(Math.sqrt(3) * 10 / 0.85, 10))
+      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo((Math.sqrt(3) * 10) / 0.85, 10))
   })
 })

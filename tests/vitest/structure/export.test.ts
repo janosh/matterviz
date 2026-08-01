@@ -321,7 +321,9 @@ describe(`Export functionality`, () => {
         }
         const structure: AnyStructure = { sites: [site], lattice: diag_lattice(2) }
         const content =
-          format === `CIF` ? structure_to_cif_str(structure) : structure_to_poscar_str(structure)
+          format === `CIF`
+            ? structure_to_cif_str(structure)
+            : structure_to_poscar_str(structure)
         expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
       },
     )

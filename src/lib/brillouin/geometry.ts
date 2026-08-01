@@ -90,8 +90,8 @@ export const k_cell_fit_extent = (
 ): number => {
   // no lattice: treat k_space_size's placeholder as a cubic |b|, whose cell diagonal is sqrt(3)
   if (!k_lattice) return Math.max(1, Math.sqrt(3) * k_space_size(undefined) * padding)
-  const half_extent = [0, 1, 2].map((axis_idx) =>
-    0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0)
+  const half_extent = [0, 1, 2].map(
+    (axis_idx) => 0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0),
   )
   return Math.max(1, 2 * Math.hypot(...half_extent) * padding)
 }

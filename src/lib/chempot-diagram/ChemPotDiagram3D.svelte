@@ -41,7 +41,7 @@
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
-  import { type CameraView, rescale_zoom_to_fit } from './camera'
+  import { rescale_zoom_to_fit } from './camera'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -1517,16 +1517,6 @@
     }
   }
 
-  const read_camera_view = (controls: NonNullable<typeof orbit_controls_ref>): CameraView => {
-    const { object: controls_camera, target } = controls
-    const { position } = controls_camera
-    return {
-      position: [position.x, position.y, position.z],
-      target: [target.x, target.y, target.z],
-      zoom: controls_camera instanceof THREE.OrthographicCamera ? controls_camera.zoom : null,
-    }
-  }
-
   // OrbitControls dispatches `change` only once the camera has moved past its own epsilon, so
   // any change arriving mid-gesture is real movement — measured: a bare click emits start/end
   // with no change at all. Auto-rotation drives `change` with no `start`, and must not pin.
@@ -1545,21 +1535,18 @@
   // inside the wheel event and a listener on the canvas would land after all three.
   let canvas_clip: HTMLDivElement | undefined = $state()
   let gesture_had_input = false
-  const mark_drag = (event: PointerEvent): void => {
-    if (event.buttons > 0) gesture_had_input = true // hovering is not a gesture
-  }
-  const mark_wheel = (): void => {
-    gesture_had_input = true
+  const input_events = [`pointermove`, `wheel`] as const
+  // a wheel always counts; a pointer only with a button held, since hovering is not a gesture
+  const mark_input = (event: Event): void => {
+    if (!(event instanceof PointerEvent) || event.buttons > 0) gesture_had_input = true
   }
   $effect(() => {
     const element = canvas_clip
     if (!element) return
     const opts = { capture: true, passive: true } as const
-    element.addEventListener(`pointermove`, mark_drag, opts)
-    element.addEventListener(`wheel`, mark_wheel, opts)
+    for (const type of input_events) element.addEventListener(type, mark_input, opts)
     return () => {
-      element.removeEventListener(`pointermove`, mark_drag, opts)
-      element.removeEventListener(`wheel`, mark_wheel, opts)
+      for (const type of input_events) element.removeEventListener(type, mark_input, opts)
     }
   })
 
@@ -1625,10 +1612,11 @@
       // Once pinned keep tracking; before that only a live gesture may pin. Reading allocates
       // two arrays, and auto-rotation fires this every frame, so stay out of that path.
       if (camera_position_override || (gesture_active && gesture_had_input)) {
-        const view = read_camera_view(controls)
-        camera_position_override = view.position
-        camera_target_override = view.target
-        if (view.zoom !== null) orthographic_zoom_override = view.zoom
+        const { object: cam, target } = controls
+        camera_position_override = [cam.position.x, cam.position.y, cam.position.z]
+        camera_target_override = [target.x, target.y, target.z]
+        // a perspective camera dollies instead, leaving zoom at 1
+        if (cam instanceof THREE.OrthographicCamera) orthographic_zoom_override = cam.zoom
       }
       if (has_occluding_domain_labels) schedule_label_occlusion_update()
     }
