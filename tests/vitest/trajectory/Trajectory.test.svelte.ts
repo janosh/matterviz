@@ -94,6 +94,35 @@ describe(`Trajectory`, () => {
     expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
   })
 
+  test(`analysis menu nests MSD instead of a top-level toggle`, async () => {
+    const props = $state({
+      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      show_controls: `always` as const,
+      msd_pane_open: false,
+    })
+    const target = mount_traj(props)
+    flushSync()
+    await tick()
+
+    expect(
+      target.querySelector(`.trajectory-msd-toggle:not(.trajectory-msd-toggle-anchor)`),
+    ).toBeNull()
+    expect(target.querySelector(`.analysis-button`)).toBeInstanceOf(HTMLButtonElement)
+
+    target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
+    await tick()
+
+    const msd_option = [
+      ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
+    ].find((button) => button.textContent?.includes(`Mean squared displacement`))
+    if (!msd_option) throw new Error(`MSD analysis option not found`)
+    msd_option.click()
+    await tick()
+
+    expect(props.msd_pane_open).toBe(true)
+    expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+  })
+
   test(`view mode menu is layered and selectable`, async () => {
     const props = $state({
       trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
@@ -103,6 +132,12 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     flushSync()
     await tick()
+
+    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
+    if (!controls) throw new Error(`trajectory controls not found`)
+    // Inline, because jsdom applies no scoped styles: keeps the menu above the
+    // content-area siblings that follow it rather than under the scatter.
+    expect(Number(getComputedStyle(controls).zIndex)).toBeGreaterThan(0)
 
     target.querySelector<HTMLButtonElement>(`.view-mode-button`)?.click()
     await tick()

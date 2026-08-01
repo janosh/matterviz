@@ -309,15 +309,21 @@ describe(`get_trajectory_stats`, () => {
 })
 
 test.each([
-  // a chat sidebar card: wider than tall, but too narrow to split side by side
-  [`narrow sidebar card`, 480, 360, `vertical`],
-  [`sidebar card at the panel minimum`, 300, 360, `vertical`],
-  [`sidebar card widened by the user`, 700, 360, `horizontal`],
+  // A chat sidebar card is wider than it is tall yet still too narrow to split
+  // side by side. Heights here are 500 because that is what such a card really
+  // measures: .trajectory's min-height floor outranks the host's inline height.
+  [`chat sidebar card`, 490, 500, `vertical`],
+  [`just under the side-by-side minimum`, 639, 500, `vertical`],
+  [`exactly at the side-by-side minimum`, 640, 500, `horizontal`],
   [`desktop viewer`, 1200, 600, `horizontal`],
   // stacking a short container would leave both panes unreadably flat
   [`wide and short`, 500, 200, `horizontal`],
   [`portrait`, 400, 800, `vertical`],
   [`square`, 600, 600, `vertical`],
+  // both splits fit comfortably here, so shape decides and these stay as they
+  // always were - a size-blind ratio threshold would restack them
+  [`tab beside an open chat panel`, 900, 800, `horizontal`],
+  [`fullscreen on a 4:3 display`, 1440, 1080, `horizontal`],
 ] as const)(`pick_pane_orientation %s`, (_label, width, height, expected) => {
   expect(pick_pane_orientation(width, height)).toBe(expected)
 })

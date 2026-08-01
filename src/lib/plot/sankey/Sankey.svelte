@@ -634,7 +634,7 @@
     display: var(--sankey-display, flex);
     flex-direction: column;
     background: var(--sankey-bg, var(--plot-bg));
-    border-radius: var(--sankey-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--sankey-border-radius, 0);
   }
   .sankey.fullscreen {
     position: fixed;

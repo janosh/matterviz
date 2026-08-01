@@ -2573,8 +2573,10 @@
     gap: 2pt;
     padding: 3pt 5pt;
     border-radius: var(--border-radius, 3pt);
-    background: var(--surface-bg, Canvas);
-    color: var(--text-color, currentColor);
+    /* Pair with light-dark so a dark host's --text-color can't bleach a light menu. */
+    background: var(--surface-bg, var(--menu-bg));
+    color: var(--struct-context-menu-color, var(--menu-color));
+    border: 1px solid var(--struct-context-menu-border, var(--menu-border));
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
     pointer-events: auto;
     strong {

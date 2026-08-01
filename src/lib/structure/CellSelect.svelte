@@ -240,9 +240,11 @@
     top: 100%;
     right: 0;
     margin-top: 2px;
+    /* Pair ink with the light-dark surface so a dark host's --text-color can't bleach the menu. */
     background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    color: var(--struct-cell-select-color, var(--menu-color));
     padding: 4px;
-    border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--struct-cell-select-border-radius, 4px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;

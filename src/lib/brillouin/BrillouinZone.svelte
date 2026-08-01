@@ -458,7 +458,7 @@
     width: var(--bz-width, 100%);
     max-width: var(--bz-max-width, 100%);
     min-width: var(--bz-min-width, 300px);
-    border-radius: var(--bz-border-radius, var(--border-radius, 3pt));
+    border-radius: var(--bz-border-radius, 0);
     background: var(--bz-bg, var(--surface-bg));
     color: var(--bz-text-color, var(--text-color));
   }

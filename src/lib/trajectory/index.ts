@@ -34,23 +34,27 @@ export type { AtomTypeMapping } from './types'
 // the user slides past. Exported so tests stay in sync with the real delay.
 export const FRAME_LOAD_DEBOUNCE_MS = 75
 
-// Smallest pane the structure viewer and the plot both stay readable in: below
-// ~280px a scatter's y-axis label, tick labels and legend eat the data area,
-// below ~180px the x-axis labels do the same.
-export const MIN_PANE_SIZE = { width: 280, height: 180 }
+// Smallest pane the structure viewer and the plot both stay readable in: a
+// scatter spends ~80px on its y-axis label and tick labels and its legend needs
+// ~10em on top of that, and below ~180px of height the x-axis labels eat the
+// data area the same way.
+const MIN_PANE_SIZE = { width: 320, height: 180 }
 
-// Which way to split a container into two equal panes. Picks the orientation
-// whose worse pane comes closest to MIN_PANE_SIZE. Comparing container width to
-// container height instead is the same thing as asking for the squarest panes,
-// which happily returns `horizontal` for a 500x360 card in a chat sidebar even
-// though 250px-wide panes leave a plot no room for its axes.
+// Which way to split a container into two equal panes. Splitting along the
+// longer side gives the squarest panes, but that alone is blind to absolute
+// size: it keeps a 490x500 card in a chat sidebar side by side even though
+// 245px-wide panes leave a plot no room for its axes. So when only one of the
+// two splits clears MIN_PANE_SIZE, that one wins regardless of shape.
 export function pick_pane_orientation(
   width: number,
   height: number,
 ): `horizontal` | `vertical` {
-  const fit = (pane_width: number, pane_height: number) =>
-    Math.min(pane_width / MIN_PANE_SIZE.width, pane_height / MIN_PANE_SIZE.height)
-  return fit(width / 2, height) >= fit(width, height / 2) ? `horizontal` : `vertical`
+  const side_by_side_fits = width / 2 >= MIN_PANE_SIZE.width
+  const stacked_fits = height / 2 >= MIN_PANE_SIZE.height
+  if (side_by_side_fits !== stacked_fits) {
+    return side_by_side_fits ? `horizontal` : `vertical`
+  }
+  return width > height ? `horizontal` : `vertical`
 }
 
 // Core trajectory types

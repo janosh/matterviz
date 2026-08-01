@@ -2283,7 +2283,8 @@
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
     min-width: var(--struct-min-width, 300px);
-    border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
+    /* Square by default; opt into rounding with --struct-border-radius. */
+    border-radius: var(--struct-border-radius, 0);
     background: var(--struct-bg-override, var(--struct-bg));
     color: var(--struct-text-color);
     display: flex;
@@ -2340,18 +2341,23 @@
     font-size: var(--struct-bottom-left-font-size, 1.2em);
     padding: var(--struct-bottom-left-padding, 1pt 5pt);
   }
-  /* Match Trajectory dropdown UI */
+  /* Match Trajectory dropdown UI: paired light-dark ink/bg so a light menu hosted
+     in a dark app does not inherit near-white --text-color onto the options. */
   .view-mode-dropdown {
     position: absolute;
     top: 115%;
     right: 0;
-    background: var(--surface-bg);
-    border-radius: var(--border-radius, 3pt);
+    z-index: var(--structure-view-mode-dropdown-z-index, 30);
+    background: var(--structure-view-mode-bg, var(--menu-bg));
+    color: var(--structure-view-mode-color, var(--menu-color));
+    border: 1px solid var(--structure-view-mode-border, var(--menu-border));
+    border-radius: var(--structure-view-mode-border-radius, 4px);
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
+    pointer-events: auto;
   }
   .view-mode-option {
     display: flex;
@@ -2361,16 +2367,21 @@
     padding: var(--trajectory-view-mode-option-padding, 5pt);
     box-sizing: border-box;
     background: transparent;
+    color: inherit;
     border-radius: 0;
     text-align: left;
     transition: background-color 0.15s ease;
+  }
+  .view-mode-option:hover,
+  .view-mode-option:focus-visible {
+    background: var(--structure-view-mode-option-hover-bg, var(--menu-option-hover-bg));
   }
   .view-mode-option:first-child {
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
   }
   .view-mode-option.selected {
-    color: var(--accent-color);
+    color: var(--accent-color, var(--menu-option-selected-color));
   }
   .view-mode-option span {
     font-weight: 500;
@@ -2384,6 +2395,7 @@
     position: relative;
     height: fit-content;
     place-self: center;
+    z-index: var(--structure-view-mode-z-index, 20);
   }
   .view-mode-control > button {
     display: flex;

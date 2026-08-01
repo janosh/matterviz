@@ -237,7 +237,10 @@
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
   let parsing_progress = $state<ParseProgress | null>(null)
-  let element_size = $state({ width: 0, height: 0 })
+  let wrapper_height = $state(0)
+  // leaves room for the controls bar so a pane can't overflow the viewer
+  let pane_max_height = $derived(`max-height: calc(${wrapper_height}px - 50px)`)
+  let content_size = $state({ width: 0, height: 0 })
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
   let data_url_load_id = 0
@@ -246,10 +249,12 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
-  // Reactive layout based on element size (for auto mode)
+  // Reactive layout based on the size of the box actually being split (for auto
+  // mode). Measured on .content-area, not the wrapper: a mounted controls bar is
+  // ~32px of the wrapper's height that no pane ever gets.
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
-    const { width, height } = element_size
+    const { width, height } = content_size
     if (width > 0 && height > 0) return pick_pane_orientation(width, height)
     return `horizontal` // Fallback to horizontal if dimensions not available yet
   })
@@ -1029,15 +1034,17 @@
   })
 
   let view_mode_dropdown_open = $state(false)
+  let analysis_menu_open = $state(false)
 
   // Handle click outside to close dropdowns
   function handle_click_outside(event: MouseEvent) {
     const target = event.target
     if (!(target instanceof Element)) return
-    if (view_mode_dropdown_open) {
-      const dropdown_wrapper = target.closest(`.view-mode-dropdown-wrapper`)
-      // Don't close if clicking on dropdown wrapper (contains both button and menu)
-      if (!dropdown_wrapper) view_mode_dropdown_open = false
+    if (view_mode_dropdown_open && !target.closest(`.view-mode-dropdown-wrapper`)) {
+      view_mode_dropdown_open = false
+    }
+    if (analysis_menu_open && !target.closest(`.analysis-dropdown-wrapper`)) {
+      analysis_menu_open = false
     }
   }
 
@@ -1102,6 +1109,7 @@
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
+      else if (analysis_menu_open) analysis_menu_open = false
       // Escape key for info pane handled by DraggablePane
     }  // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
@@ -1135,8 +1143,7 @@
     info_pane_open ||
     msd_pane_open}
   bind:this={wrapper}
-  bind:clientWidth={element_size.width}
-  bind:clientHeight={element_size.height}
+  bind:clientHeight={wrapper_height}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -1178,7 +1185,13 @@
     {/if}
     <!-- Trajectory Controls -->
     {#if controls_config.mode !== `never`}
-      <div class="trajectory-controls {controls_config.class}" style={controls_config.style}>
+      <!-- z-index inline, not in the scoped block: content-area follows in the DOM, so
+        without a stacking value the open view-mode menu paints under the scatter traces -->
+      <div
+        class="trajectory-controls {controls_config.class}"
+        style="z-index: var(--traj-controls-z-index, var(--z-index-viewer-pane, 10)); {controls_config.style ??
+          ``}"
+      >
         {#if trajectory_controls}
           {@render trajectory_controls({
             trajectory,
@@ -1318,7 +1331,7 @@
                 {file_size}
                 {file_object}
                 bind:pane_open={info_pane_open}
-                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
+                pane_props={{ style: pane_max_height }}
               />
             {/if}
             <!-- Trajectory Export Pane -->
@@ -1330,24 +1343,71 @@
                 filename={current_filename || `trajectory`}
                 on_step_change={go_to_step}
                 {resolve_frame}
-                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
+                pane_props={{ style: pane_max_height }}
               />
             {/if}
-            <!-- MSD / diffusion pane. Kept out of display_mode because MSD is plotted
-            against lag time, not frame index, so it cannot share the step-linked plot. -->
+            <!-- Analysis menu (MSD, …). MSD stays out of display_mode: it plots lag time,
+            not frame index, so it cannot share the step-linked scatter/histogram. -->
             {#if trajectory && controls_config.visible(`msd-pane`)}
-              <TrajectoryMsdPane
-                {trajectory}
-                raw_data={orig_data}
-                bind:pane_open={msd_pane_open}
-                pane_props={{ style: `max-height: calc(${element_size.height}px - 50px)` }}
-              />
+              <div class="analysis-dropdown-wrapper">
+                <button
+                  type="button"
+                  class="analysis-button"
+                  class:active={analysis_menu_open || msd_pane_open}
+                  title="Analysis"
+                  aria-label="Analysis"
+                  aria-expanded={analysis_menu_open}
+                  onclick={() => {
+                    analysis_menu_open = !analysis_menu_open
+                    view_mode_dropdown_open = false
+                  }}
+                  style="background-color: transparent; padding: 0"
+                >
+                  <Icon icon="Graph" />
+                  <Icon icon={analysis_menu_open ? `ArrowUp` : `ArrowDown`} />
+                </button>
+                {#if analysis_menu_open}
+                  <div class="view-mode-dropdown analysis-dropdown">
+                    <button
+                      type="button"
+                      class="view-mode-option"
+                      class:selected={msd_pane_open}
+                      title="Mean squared displacement"
+                      aria-pressed={msd_pane_open}
+                      onclick={() => {
+                        msd_pane_open = !msd_pane_open
+                        analysis_menu_open = false
+                      }}
+                    >
+                      <Icon icon="Graph" />
+                      <span>Mean squared displacement</span>
+                    </button>
+                  </div>
+                {/if}
+                <!-- Invisible toggle anchors the DraggablePane under this control;
+                the analysis menu is the real open/close affordance. -->
+                <TrajectoryMsdPane
+                  {trajectory}
+                  raw_data={orig_data}
+                  bind:pane_open={msd_pane_open}
+                  pane_props={{ style: pane_max_height }}
+                  toggle_props={{
+                    class: `trajectory-msd-toggle-anchor`,
+                    tabindex: -1,
+                    'aria-hidden': `true`,
+                    title: ``,
+                  }}
+                />
+              </div>
             {/if}
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
               <div class="view-mode-dropdown-wrapper">
                 <button
-                  onclick={() => (view_mode_dropdown_open = !view_mode_dropdown_open)}
+                  onclick={() => {
+                    view_mode_dropdown_open = !view_mode_dropdown_open
+                    analysis_menu_open = false
+                  }}
                   title={current_view_label}
                   class="view-mode-button"
                   class:active={view_mode_dropdown_open}
@@ -1403,6 +1463,8 @@
 
     <div
       class="content-area"
+      bind:clientWidth={content_size.width}
+      bind:clientHeight={content_size.height}
       class:hide-plot={!show_plot}
       class:hide-structure={!show_structure}
       class:show-both={[`structure+scatter`, `structure+histogram`].includes(display_mode)}
@@ -1413,7 +1475,7 @@
         <Structure
           structure={current_structure}
           allow_file_drop={false}
-          style="height: 100%; min-height: 0; z-index: 3; border-radius: 0"
+          style="height: 100%; min-height: 0; border-radius: 0"
           {...{
             show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
             ...structure_props,
@@ -1525,16 +1587,14 @@
     height: var(--traj-height, 100%);
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
-    border-radius: var(--traj-border-radius, var(--border-radius, 3pt));
+    /* Square by default; opt into rounding with --traj-border-radius. */
+    border-radius: var(--traj-border-radius, 0);
     box-sizing: border-box;
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
     &.active {
       z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
-      .trajectory-controls {
-        z-index: 5; /* needed so info/control panes from an active viewer its own plot when active, not sure why needed */
-      }
     }
     &:fullscreen {
       height: 100vh !important;
@@ -1544,17 +1604,17 @@
       overflow: hidden;
     }
     &.horizontal .content-area {
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
     }
     &.vertical .content-area {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     }
     /* Display mode specific layouts */
     &:is(.horizontal, .vertical) .content-area:is(.show-structure-only, .show-plot-only) {
-      grid-template-columns: 1fr !important;
-      grid-template-rows: 1fr !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      grid-template-rows: minmax(0, 1fr) !important;
     }
     &.dragover {
       background-color: var(--traj-dragover-bg, var(--dragover-bg));
@@ -1572,10 +1632,16 @@
     display: grid;
     flex: 1;
     min-height: 0; /* important for tall structure viewers not to overflow */
+    /* The panes split this box evenly, so a plot's own floor (350px for scatter,
+       300px for histogram) must not bid for track space: in a fixed-height card
+       it wins the row and leaves the structure with the remainder. minmax(0, 1fr)
+       above caps the track; without this the plot would just overflow it. */
+    --scatter-min-height: 0;
+    --histogram-min-height: 0;
     /* When plot or structure is hidden, the other takes full space */
     &:is(.hide-plot, .hide-structure) {
-      grid-template-columns: 1fr !important;
-      grid-template-rows: 1fr !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      grid-template-rows: minmax(0, 1fr) !important;
     }
   }
   .trajectory-controls {
@@ -1583,10 +1649,17 @@
     align-items: center;
     gap: clamp(4pt, 1.6cqw, 1.5ex);
     padding: clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex);
-    background: var(--surface-bg-hover);
+    font-size: var(--traj-controls-font-size, 0.85rem);
+    /* Square icon boxes: Export's viewBox is taller than wide, so height:auto
+       from svelte-widgets Icon makes it overshoot neighboring glyphs. */
+    --icon-size: var(--traj-controls-icon-size, 1.05em);
+    /* Pair chrome + ink with light-dark so a light toolbar hosted in a dark app
+       (chat attachments) does not inherit near-white --text-color onto FPS/labels. */
+    background: var(--traj-controls-bg, var(--surface-bg-hover, light-dark(#f4f4f5, #2a2c33)));
+    color: var(--traj-controls-color, light-dark(#1a1a1a, #e8e8e8));
     backdrop-filter: blur(4px);
     position: relative;
-    border-radius: var(--border-radius, 3pt) var(--border-radius, 3pt) 0 0;
+    border-radius: var(--traj-controls-border-radius, 0);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
@@ -1597,16 +1670,26 @@
     }
     /* Mode: never - stays hidden (default state, no additional CSS needed) */
     &:focus-within {
-      z-index: var(--traj-controls-z-index, 999999999);
+      z-index: var(--traj-controls-focus-z-index, var(--z-index-viewer-dropdown, 100));
     }
     button {
       background: var(--btn-bg);
-      font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+      font-size: inherit;
+      line-height: 1;
       &:hover:not(:disabled) {
         background: var(--btn-bg-hover);
       }
     }
+    /* Force square icons inside panes/toggles that pierce scoped styles. */
+    :global(svg) {
+      width: var(--icon-size);
+      height: var(--icon-size);
+    }
     input[type='number'] {
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+      padding: 1px 3px;
       &::-webkit-outer-spin-button,
       &::-webkit-inner-spin-button {
         -webkit-appearance: none;
@@ -1619,13 +1702,6 @@
     align-items: center;
     gap: clamp(3pt, 1cqw, 9pt);
   }
-  /* nudge control-button icons slightly larger via transform */
-  .nav-section button,
-  .view-mode-button,
-  .info-section
-    :global(:is(.trajectory-info-toggle, .trajectory-export-toggle, .fullscreen-button)) {
-    transform: scale(1.15);
-  }
   .step-section {
     display: flex;
     align-items: center;
@@ -1633,18 +1709,24 @@
     flex: 1;
     min-width: 0;
   }
+  .step-section > span {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    opacity: 0.75;
+  }
   .fps-section {
     display: flex;
     align-items: center;
     gap: 5pt;
     margin-inline: 6pt;
-    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .step-input {
     border: 1px solid rgba(99, 179, 237, 0.3);
     text-align: center;
     margin: 0 -5px 0 0;
-    padding: 2px;
+    min-width: 3.5em;
   }
   .slider-container {
     position: relative;
@@ -1712,7 +1794,10 @@
     position: relative;
   }
   .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    font-size: inherit;
+    line-height: 1;
+    padding: 0;
+    background: transparent;
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
@@ -1762,24 +1847,49 @@
         }
       }
       .content-area.show-both:not(.hide-plot):not(.hide-structure) {
-        grid-template-columns: 1fr !important;
-        grid-template-rows: 1fr 1fr !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important;
       }
     }
   }
-  .view-mode-dropdown-wrapper {
+  .view-mode-dropdown-wrapper,
+  .analysis-dropdown-wrapper {
     display: flex;
     position: relative;
+    align-items: center;
     z-index: var(--trajectory-view-mode-z-index, 20);
+  }
+  .view-mode-button,
+  .analysis-button {
+    display: flex;
+    align-items: center;
+    gap: 1pt;
+  }
+  .analysis-button.active {
+    color: var(--accent-color, #4a9eff);
+  }
+  /* Keep DraggablePane's toggle for layout anchoring; the analysis menu owns clicks. */
+  .analysis-dropdown-wrapper :global(.trajectory-msd-toggle-anchor) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
   }
   .view-mode-dropdown {
     position: absolute;
     top: 115%;
     right: 0;
-    z-index: 1;
+    z-index: var(--trajectory-view-mode-dropdown-z-index, 30);
     min-width: max-content;
-    background: var(--trajectory-view-mode-bg, light-dark(#fff, #2f3137));
-    border-radius: 4px;
+    background: var(--trajectory-view-mode-bg, var(--menu-bg));
+    color: var(--trajectory-view-mode-color, var(--menu-color));
+    border: 1px solid var(--trajectory-view-mode-border, var(--menu-border));
+    border-radius: var(--trajectory-view-mode-border-radius, 4px);
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
@@ -1793,15 +1903,20 @@
     padding: var(--trajectory-view-mode-option-padding, 5pt);
     box-sizing: border-box;
     background: transparent;
+    color: inherit;
     border-radius: 0;
     text-align: left;
     transition: background-color 0.15s ease;
+    &:hover,
+    &:focus-visible {
+      background: var(--trajectory-view-mode-option-hover-bg, var(--menu-option-hover-bg));
+    }
     &:first-child {
       border-top-left-radius: 3px;
       border-top-right-radius: 3px;
     }
     &.selected {
-      color: var(--accent-color);
+      color: var(--accent-color, var(--menu-option-selected-color));
     }
     span {
       font-weight: 500;

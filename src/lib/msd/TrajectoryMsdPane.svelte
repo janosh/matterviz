@@ -134,7 +134,7 @@
   }}
   pane_props={{ ...pane_props, class: `trajectory-msd-pane ${pane_props?.class ?? ``}` }}
   open_icon="Cross"
-  closed_icon="Orbit"
+  closed_icon="Graph"
   {...rest}
 >
   <h4 style="margin-top: 0">Mean Squared Displacement</h4>
