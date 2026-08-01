@@ -389,6 +389,24 @@
             "../../src/lib/*"
           ]
         }
+      },
+      "extensions/jupyterlab": {
+        "entry": [
+          "src/index.ts"
+        ],
+        "ignoreDependencies": [
+          "@jupyterlab/builder",
+          "@spglib/moyo-wasm",
+          "process"
+        ],
+        "paths": {
+          "$lib": [
+            "../../src/lib"
+          ],
+          "$lib/*": [
+            "../../src/lib/*"
+          ]
+        }
       }
     }
   }
