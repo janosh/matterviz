@@ -24,6 +24,15 @@
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import { type ComponentProps, onMount } from 'svelte'
 
+  const MAX_WORKING_SET_BYTES = 1024 * 1024 * 1024
+  const estimate_working_set_bytes = (atoms: number, frames: number): number => {
+    const point_count = atoms * frames
+    const position_bytes = point_count * 3 * Float64Array.BYTES_PER_ELEMENT
+    const trail_vertex_bytes = point_count * 6 * Float32Array.BYTES_PER_ELEMENT
+    const trail_index_bytes = atoms * (frames - 1) * 2 * Uint32Array.BYTES_PER_ELEMENT
+    return position_bytes * 2 + trail_vertex_bytes + trail_index_bytes
+  }
+
   // Mobile species first so the element filter has something meaningful to narrow to
   const SPECIES: ElementSymbol[] = [`Li`, `O`]
   const MIN_ATOMS = 1
@@ -121,6 +130,16 @@
       generation_error =
         `Atoms must be an integer from ${MIN_ATOMS} to ${MAX_ATOMS} and frames ` +
         `from ${MIN_FRAMES} to ${MAX_FRAMES}.`
+      return
+    }
+    const estimated_working_set_bytes = estimate_working_set_bytes(
+      requested_atoms,
+      requested_frames,
+    )
+    if (estimated_working_set_bytes > MAX_WORKING_SET_BYTES) {
+      generation_error =
+        `Estimated working set ${format_num(estimated_working_set_bytes, `.3~s`)}B exceeds ` +
+        `the 1 GiB limit.`
       return
     }
 

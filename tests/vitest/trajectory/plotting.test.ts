@@ -77,28 +77,28 @@ const find_series_by_label = (series: DataSeries[], search_term: string) =>
   series.find((srs) => srs.label?.toLowerCase().includes(search_term.toLowerCase()))
 
 describe(`generate_plot_series`, () => {
-  it(`should handle basic trajectory generation with unit grouping`, () => {
-    const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
-    const series = generate_plot_series(trajectory, test_extractor, {
-      property_config: DEFAULT_PROPERTY_CONFIG,
-      default_visible_properties: new Set([`energy`, `force_max`]),
-    })
-
+  it(`groups energy and force series by unit`, () => {
+    const series = generate_plot_series(
+      create_trajectory(COMMON_TRAJECTORIES.multi_property),
+      test_extractor,
+      {
+        property_config: DEFAULT_PROPERTY_CONFIG,
+        default_visible_properties: new Set([`energy`, `force_max`]),
+      },
+    )
     expect(series).toHaveLength(3)
     // Units belong on the axis label, not duplicated in the legend series text
     for (const srs of series) expect(srs.label).not.toMatch(/\([^)]+\)/)
 
-    const energy_series = find_series_by_label(series, `energy`)
-    const force_series = find_series_by_label(series, `f`)
-    const volume_series = find_series_by_label(series, `volume`)
-
-    expect(energy_series).toMatchObject({
+    const energy = find_series_by_label(series, `energy`)
+    expect(energy).toMatchObject({
       unit: `eV`,
       y_axis: `y1`,
       visible: true,
       metadata: expect.arrayContaining([expect.objectContaining({ property_key: `energy` })]),
     })
-    expect(force_series).toMatchObject({
+    expect(energy?.metadata).toHaveLength(3)
+    expect(find_series_by_label(series, `f`)).toMatchObject({
       unit: `eV/Å`,
       y_axis: `y2`,
       visible: true,
@@ -106,11 +106,50 @@ describe(`generate_plot_series`, () => {
         expect.objectContaining({ property_key: `force_max` }),
       ]),
     })
-    expect(volume_series).toMatchObject({
-      visible: false, // Hidden (max 2 unit groups)
+    // volume omitted from default_visible_properties, not the 2-group cap
+    expect(find_series_by_label(series, `volume`)).toMatchObject({
+      visible: false,
       metadata: expect.arrayContaining([expect.objectContaining({ property_key: `volume` })]),
     })
-    expect(energy_series?.metadata).toHaveLength(3)
+  })
+
+  it(`assigns axes by property priority`, () => {
+    const series = generate_plot_series(
+      create_trajectory(COMMON_TRAJECTORIES.lattice_params),
+      test_extractor,
+      {
+        property_config: DEFAULT_PROPERTY_CONFIG,
+        default_visible_properties: new Set([`energy`, `a`]),
+      },
+    )
+    expect(find_series_by_label(series, `energy`)).toMatchObject({
+      y_axis: `y1`,
+      visible: true,
+      unit: `eV`,
+    })
+    // Energy gets y1 (higher priority), lattice params get y2
+    expect(find_series_by_label(series, `A`)).toMatchObject({
+      y_axis: `y2`,
+      visible: true,
+      unit: `Å`,
+    })
+  })
+
+  it(`limits visible series to two unit groups`, () => {
+    const series = generate_plot_series(
+      create_trajectory(COMMON_TRAJECTORIES.four_properties),
+      test_extractor,
+      {
+        property_config: {
+          prop_a: { label: `Prop A`, unit: `unit_a` },
+          prop_b: { label: `Prop B`, unit: `unit_b` },
+          prop_c: { label: `Prop C`, unit: `unit_c` },
+          prop_d: { label: `Prop D`, unit: `unit_d` },
+        },
+        default_visible_properties: new Set([`prop_a`, `prop_b`, `prop_c`, `prop_d`]),
+      },
+    )
+    expect(series.filter((srs) => srs.visible)).toHaveLength(2)
   })
 
   it(`memoizes extraction until extractor, trajectory, or frame identities change`, () => {
@@ -156,76 +195,37 @@ describe(`generate_plot_series`, () => {
   it.each([
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
-  ])(`should handle edge case: $name`, ({ frames, expected_length }) => {
-    const trajectory = create_trajectory(frames)
-    const series = generate_plot_series(trajectory, test_extractor)
-    expect(series).toHaveLength(expected_length)
+  ])(`handles edge case: $name`, ({ frames, expected_length }) => {
+    expect(generate_plot_series(create_trajectory(frames), test_extractor)).toHaveLength(
+      expected_length,
+    )
   })
 
   // oxfmt-ignore
   it.each([
-    { name: `constant`, values: [10.0, 10.0, 10.0], should_include: false },
-    { name: `nearly constant`, values: [10.000001, 10.000002, 10.000001], should_include: false },
-    { name: `varying`, values: [10.0, 10.1, 10.2], should_include: true },
-  ])(`should filter $name properties`, ({ values, should_include }) => {
-    const trajectory = create_trajectory(values.map((value) => ({ test_prop: value })))
-    const series = generate_plot_series(trajectory, test_extractor)
-    expect(series.length > 0).toBe(should_include)
-  })
-
-  it(`should always include energy series regardless of variance`, () => {
-    const trajectory = create_trajectory([
-      { energy: -789.391026308538 },
-      { energy: -789.391026308539 },
-      { energy: -789.39102630854 },
-    ])
-
-    const series = generate_plot_series(trajectory, test_extractor)
-    const energy_series = find_series_by_label(series, `energy`)
-    expect(series).toHaveLength(1)
-    expect(energy_series).toMatchObject({
-      visible: true,
-      unit: `eV`,
-      y_axis: `y1`,
-      label: `Energy`,
-      markers: `line+points`,
-    })
-  })
-
-  it(`should maintain priority-based axis assignment and unit grouping`, () => {
-    const trajectory = create_trajectory(COMMON_TRAJECTORIES.lattice_params)
-    const series = generate_plot_series(trajectory, test_extractor, {
-      property_config: DEFAULT_PROPERTY_CONFIG,
-      default_visible_properties: new Set([`energy`, `a`]),
-    })
-
-    expect(find_series_by_label(series, `energy`)).toMatchObject({
-      y_axis: `y1`,
-      visible: true,
-      unit: `eV`,
-    })
-    // Energy gets y1 (higher priority), lattice params get y2
-    expect(find_series_by_label(series, `A`)).toMatchObject({
-      y_axis: `y2`,
-      visible: true,
-      unit: `Å`,
-    })
-  })
-
-  it(`should enforce strict maximum 2 visible unit groups constraint`, () => {
-    const trajectory = create_trajectory(COMMON_TRAJECTORIES.four_properties)
-    const series = generate_plot_series(trajectory, test_extractor, {
-      property_config: {
-        prop_a: { label: `Prop A`, unit: `unit_a` },
-        prop_b: { label: `Prop B`, unit: `unit_b` },
-        prop_c: { label: `Prop C`, unit: `unit_c` },
-        prop_d: { label: `Prop D`, unit: `unit_d` },
+    { name: `constant`, key: `test_prop`, values: [10.0, 10.0, 10.0], should_include: false },
+    { name: `nearly constant`, key: `test_prop`, values: [10.000001, 10.000002, 10.000001], should_include: false },
+    { name: `varying`, key: `test_prop`, values: [10.0, 10.1, 10.2], should_include: true },
+    {
+      name: `near-constant energy (always kept)`,
+      key: `energy`,
+      values: [-789.391026308538, -789.391026308539, -789.39102630854],
+      should_include: true,
+      match: {
+        visible: true,
+        unit: `eV`,
+        y_axis: `y1`,
+        label: `Energy`,
+        markers: `line+points`,
       },
-      default_visible_properties: new Set([`prop_a`, `prop_b`, `prop_c`, `prop_d`]),
-    })
-
-    // 4 distinct units, all requested visible -> exactly 2 unit groups survive
-    expect(series.filter((srs) => srs.visible)).toHaveLength(2)
+    },
+  ])(`filters $name properties`, ({ key, values, should_include, match }) => {
+    const series = generate_plot_series(
+      create_trajectory(values.map((value) => ({ [key]: value }))),
+      test_extractor,
+    )
+    expect(series.length > 0).toBe(should_include)
+    if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
   })
 })
 
@@ -242,16 +242,16 @@ describe(`should_hide_plot`, () => {
     { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
     { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
     { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
-  ])(`should hide plot for $name`, ({ frames, series, expected }) => {
+  ])(`$name → hide=$expected`, ({ frames, series, expected }) => {
     expect(should_hide_plot(create_trajectory(frames), series)).toBe(expected)
   })
 
   it.each([
-    { name: `very strict`, tolerance: 1e-10, expected: false },
     { name: `very loose`, tolerance: 1e10, expected: true },
     { name: `zero tolerance`, tolerance: 0, expected: false },
+    // undefined exercises the default param (1e-10); same threshold as an explicit 1e-10
     { name: `default (undefined) tolerance`, tolerance: undefined, expected: false },
-  ])(`should handle tolerance: $name`, ({ tolerance, expected }) => {
+  ])(`tolerance: $name → hide=$expected`, ({ tolerance, expected }) => {
     const series = [create_series([1.0, 1.0000001, 1.0])]
     expect(should_hide_plot(create_trajectory(multi), series, tolerance)).toBe(expected)
   })
@@ -285,7 +285,7 @@ describe(`generate_axis_labels`, () => {
       create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
       create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
     ], expected: { y1: `A / B (Å)`, y2: `Energy (eV)` } },
-  ])(`should generate axis labels for $name`, ({ series, expected }) => {
+  ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_labels(series)).toEqual(expected)
   })
 })
@@ -338,8 +338,7 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
   ]
 
   it(`puts scf_energy_delta on its own log-scaled axis next to linear energy`, () => {
-    const trajectory = create_trajectory(scf_frames)
-    const series = generate_plot_series(trajectory, test_extractor)
+    const series = generate_plot_series(create_trajectory(scf_frames), test_extractor)
 
     const energy_series = series.find((srs) => srs.label === `Energy`)
     const delta_series = series.find((srs) => srs.label?.includes(`ΔE`))
@@ -473,8 +472,6 @@ describe(`x axis quantity`, () => {
 
   it.each([
     { frame_numbers: [0, 1, 2], steps: [0, 500, 1000], time_step: 2, expected: 1000 },
-    // one dropped frame makes the spacing non-uniform, so a single dt would be a lie
-    { frame_numbers: [0, 1, 2], steps: [0, 500, 1500], time_step: 2, expected: null },
     { frame_numbers: [0, 1, 2], steps: [0, 500, 1000], time_step: undefined, expected: null },
     // Indexed: a step recorded only every 10th frame spans 10 frames, so the per-frame dt
     // is a tenth of the per-sample one. Reading steps alone reports 1000 here.

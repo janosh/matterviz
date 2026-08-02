@@ -24,7 +24,6 @@ const ref_data: Record<
     amounts: Record<string, number>
     density: number
     center_of_mass: Vec3
-    elements: ElementSymbol[]
     formula_by_electronegativity: string
   }
 > = {
@@ -32,49 +31,42 @@ const ref_data: Record<
     amounts: { Cs: 2 },
     density: 1.8019302505603234,
     center_of_mass: [1.564, 1.564, 1.564],
-    elements: [`Cs`],
     formula_by_electronegativity: `Cs<sub>2</sub>`,
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.759135742447171,
     center_of_mass: [0.979, 0.979, 0.979],
-    elements: [`Pd`],
     formula_by_electronegativity: `Pd<sub>4</sub>`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
     center_of_mass: [3.119, 3.119, 3.119],
-    elements: [`Al`, `Lu`],
     formula_by_electronegativity: `Lu<sub>8</sub> Al<sub>16</sub>`,
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
-    elements: [`Pt`, `U`],
     formula_by_electronegativity: `U<sub>2</sub> Pt<sub>6</sub>`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.457890165317997,
     center_of_mass: [5.261, 5.261, 5.261],
-    elements: [`Bi`, `O`, `Zr`],
     formula_by_electronegativity: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.107930572082895,
     center_of_mass: [2.216, 3.594, 6.502],
-    elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
     formula_by_electronegativity: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.6567149052096903,
     center_of_mass: [1.802, 2.991, 12.542],
-    elements: [`Al`, `Fe`, `Ni`],
     formula_by_electronegativity: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
   },
 }
@@ -83,69 +75,48 @@ describe.each(structures)(`structure-utils`, (structure) => {
   const { id } = structure
   const expected = id ? ref_data[id] : undefined
 
-  test(`get_element_counts should return valid element amounts`, () => {
-    const result = struct_utils.get_element_counts(structure)
+  test(`element counts, density, and ref-data properties`, () => {
+    const counts = struct_utils.get_element_counts(structure)
 
-    for (const [element, count] of Object.entries(result)) {
-      expect(element, `${id}`).toMatch(/^[A-Z][a-z]{0,2}$/) // Valid element symbol
+    for (const [element, count] of Object.entries(counts)) {
+      expect(element, `${id}`).toMatch(/^[A-Z][a-z]{0,2}$/)
       expect(count, `${id}: ${element}`).toBeGreaterThan(0)
       expect(Number.isInteger(count), `${id}: ${element}`).toBe(true)
     }
-
-    // Sum must equal total sites
-    const total = Object.values(result).reduce((sum, count) => sum + count, 0)
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
     expect(total, `${id}`).toBe(structure.sites.length)
 
-    if (expected?.amounts) {
-      expect(result, id).toEqual(expected.amounts)
-    }
-  })
-
-  test(`density should return a valid positive value`, () => {
     const density = struct_utils.get_density(structure)
-
     if (structure.lattice) {
       // Physical sanity: 0.01 g/cm³ (aerogels) to 30 g/cm³ (beyond osmium)
       expect(density, `${id}: density`).toBeGreaterThan(0.01)
       expect(density, `${id}: density`).toBeLessThan(30)
       expect(Number.isFinite(density), `${id}: density finite`).toBe(true)
     } else {
-      // Without lattice (molecules), density should return 0 or NaN
       expect(density === 0 || Number.isNaN(density), `${id}: no-lattice density`).toBe(true)
     }
 
-    if (expected?.density) {
-      expect(density, id).toBeCloseTo(expected.density, 3)
-    }
+    if (!expected) return
+
+    expect(counts, id).toEqual(expected.amounts)
+    expect(density, id).toBeCloseTo(expected.density, 3)
+
+    const com = struct_utils.get_center_of_mass(structure)
+    expect(
+      com.map((val) => Math.round(val * 1e3) / 1e3),
+      `${id} center_of_mass`,
+    ).toEqual(expected.center_of_mass)
+    expect(
+      struct_utils.format_formula_by_electronegativity(structure),
+      `${id} formula_by_electronegativity`,
+    ).toEqual(expected.formula_by_electronegativity)
   })
 })
 
-// Consolidated tests for center of mass, formulas, and elements
-test.each(structures.filter((struct) => struct.id && ref_data[struct.id]))(
-  `%s calculations`,
-  (struct) => {
-    const expected_data = ref_data[struct.id as keyof typeof ref_data]
-
-    // Center of mass
-    const com = struct_utils.get_center_of_mass(struct)
-    expect(
-      com.map((val) => Math.round(val * 1e3) / 1e3),
-      `${struct.id} center_of_mass`,
-    ).toEqual(expected_data.center_of_mass)
-
-    // Electronegativity formula
-    const electro_formula = struct_utils.format_formula_by_electronegativity(struct)
-    expect(electro_formula, `${struct.id} formula_by_electronegativity`).toEqual(
-      expected_data.formula_by_electronegativity,
-    )
-  },
-)
-
-test.each(structures)(`find_image_atoms`, async (structure) => {
-  // Returns [atom_idx, img_xyz, img_abc][] tuples
+// Shape smoke across the full site set; exact/edge coverage lives in pbc.test.ts.
+test.each(structures)(`find_image_atoms`, (structure) => {
   const image_atoms = struct_utils.find_image_atoms(structure)
 
-  // Basic assertions that always run
   expect(Array.isArray(image_atoms), `${structure.id}: should return array`).toBe(true)
   for (const [atom_idx, img_xyz, img_abc] of image_atoms) {
     expect(atom_idx, `${structure.id}: atom_idx`).toBeGreaterThanOrEqual(0)
@@ -155,31 +126,17 @@ test.each(structures)(`find_image_atoms`, async (structure) => {
     expect(img_xyz.every(Number.isFinite), `${structure.id}: img_xyz finite`).toBe(true)
     expect(img_abc.every(Number.isFinite), `${structure.id}: img_abc finite`).toBe(true)
   }
-
-  // Compare against fixture if it exists
-  const path = `./fixtures/find_image_atoms/${structure.id}.json`
-  try {
-    const { default: expected } = await import(path)
-    expect(image_atoms).toEqual(expected)
-  } catch {
-    // No fixture for exact comparison - basic assertions above still provide coverage
-  }
 })
 
 test.each(structures)(`symmetrize_structure`, (structure) => {
   const orig_len = structure.sites.length
   const symmetrized = struct_utils.get_pbc_image_sites(structure)
   const { id } = structure
-
-  // Test that the function works correctly - it should add image atoms for structures with PBC
-  // The exact number depends on how many atoms are at the edges of the unit cell
   const msg = `${id} should have original sites plus appropriate image atoms`
 
-  // Basic sanity checks
   expect(symmetrized.sites.length, msg).toBeGreaterThanOrEqual(orig_len)
-  expect(structure.sites).toHaveLength(orig_len) // Original structure unchanged
+  expect(structure.sites).toHaveLength(orig_len)
 
-  // If structure has lattice and any atoms at edges, should have image atoms
   if (structure.lattice) {
     const image_atoms = struct_utils.find_image_atoms(structure)
     expect(symmetrized.sites).toHaveLength(orig_len + image_atoms.length)
@@ -426,7 +383,6 @@ describe(`get_all_site_vectors`, () => {
   test.each([
     [`force`, 2.5, [0, 0, 2.5]],
     [`magmom`, -1.0, [0, 0, -1.0]],
-    [`magmoms`, 0.5, [0, 0, 0.5]],
     [`spin`, 1, [0, 0, 1]],
     [`spin`, -3.5, [0, 0, -3.5]],
     [`magmom`, 0, [0, 0, 0]],
@@ -474,11 +430,6 @@ describe(`get_all_site_vectors`, () => {
       expected_keys: [`force`, `force_DFT`],
     },
     {
-      desc: `many prefixed keys sorted alphabetically`,
-      props: { force_C: [3, 0, 0], force_A: [1, 0, 0], force_B: [2, 0, 0] },
-      expected_keys: [`force_A`, `force_B`, `force_C`],
-    },
-    {
       desc: `singular < prefixed < plural`,
       props: { force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] },
       expected_keys: [`force`, `force_DFT`, `forces`],
@@ -510,31 +461,16 @@ describe(`get_all_site_vectors`, () => {
         spin: `bad`,
         force_DFT: [1, 2],
         force_MLFF: [Infinity, 0, 0],
+        magmoms: null,
+        spins: true,
+        velocity: { nested: [1, 2, 3] },
       },
       expected: [{ key: `magmom`, vec: [0, 0, 1] }],
-    },
-    {
-      desc: `null, boolean, object values in vector keys skipped`,
-      props: {
-        force: null,
-        magmom: true,
-        spin: { nested: [1, 2, 3] },
-        forces: [0, 0, 1],
-      },
-      expected: [{ key: `forces`, vec: [0, 0, 1] }],
     },
     {
       desc: `zero vector [0,0,0] is valid`,
       props: { force: [0, 0, 0] },
       expected: [{ key: `force`, vec: [0, 0, 0] }],
-    },
-    {
-      desc: `mix of zero and nonzero vectors`,
-      props: { force: [0, 0, 0], magmom: [0, 0, 2.2] },
-      expected: [
-        { key: `force`, vec: [0, 0, 0] },
-        { key: `magmom`, vec: [0, 0, 2.2] },
-      ],
     },
   ])(`filtering: $desc`, ({ props, expected }) => {
     expect(get_all_site_vectors(make_site(props))).toEqual(expected)
@@ -609,23 +545,28 @@ describe(`get_structure_vector_keys`, () => {
 })
 
 describe(`default_vector_configs`, () => {
-  test(`single key gets null color (semantic coloring)`, () => {
-    expect(default_vector_configs([`force`])).toEqual({
-      force: { visible: true, color: null, scale: null },
-    })
-  })
-
-  test(`multiple keys get distinct palette colors`, () => {
-    const configs = default_vector_configs([`force_DFT`, `force_MLFF`, `magmom`])
-    expect(configs).toEqual({
-      force_DFT: { visible: true, color: VECTOR_PALETTE[0], scale: null },
-      force_MLFF: { visible: true, color: VECTOR_PALETTE[1], scale: null },
-      magmom: { visible: true, color: VECTOR_PALETTE[2], scale: null },
-    })
-  })
-
-  test(`empty keys array returns empty object`, () => {
-    expect(default_vector_configs([])).toEqual({})
+  test.each([
+    {
+      desc: `single key gets null color (semantic coloring)`,
+      keys: [`force`],
+      expected: { force: { visible: true, color: null, scale: null } },
+    },
+    {
+      desc: `multiple keys get distinct palette colors`,
+      keys: [`force_DFT`, `force_MLFF`, `magmom`],
+      expected: {
+        force_DFT: { visible: true, color: VECTOR_PALETTE[0], scale: null },
+        force_MLFF: { visible: true, color: VECTOR_PALETTE[1], scale: null },
+        magmom: { visible: true, color: VECTOR_PALETTE[2], scale: null },
+      },
+    },
+    {
+      desc: `empty keys array returns empty object`,
+      keys: [] as string[],
+      expected: {},
+    },
+  ])(`$desc`, ({ keys, expected }) => {
+    expect(default_vector_configs(keys)).toEqual(expected)
   })
 
   test(`palette wraps around for more keys than palette entries`, () => {

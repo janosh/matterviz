@@ -292,28 +292,25 @@ export function build_trajectory_lines(
   let dropped_segments = 0
   let max_segment_length = 0
   const step: Vec3 = [0, 0, 0]
+  // Reused across atoms; each atom gets either its anchor translation or zeros
+  const shift: Vec3 = [0, 0, 0]
 
   for (const [atom_slot, atom_idx] of atom_idxs.entries()) {
     const point_base = atom_slot * n_sampled
     const rgb_base = time_mode ? 0 : atom_slot * 3
-    const head_offset = (end_frame * n_atoms + atom_idx) * 3
-    const anchor_offset = atom_idx * 3
-    const shift_x = anchor_positions
-      ? anchor_positions[anchor_offset] - coords[head_offset]
-      : 0
-    const shift_y = anchor_positions
-      ? anchor_positions[anchor_offset + 1] - coords[head_offset + 1]
-      : 0
-    const shift_z = anchor_positions
-      ? anchor_positions[anchor_offset + 2] - coords[head_offset + 2]
-      : 0
+    // Constant per atom, so the polyline moves rigidly and every segment keeps its length
+    const head = (end_frame * n_atoms + atom_idx) * 3
+    for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
+      const anchor = anchor_positions?.[atom_idx * 3 + axis_idx]
+      shift[axis_idx] = anchor === undefined ? 0 : anchor - coords[head + axis_idx]
+    }
 
     for (const [sample_idx, frame_idx] of frame_idxs.entries()) {
       const source = (frame_idx * n_atoms + atom_idx) * 3
       const target = (point_base + sample_idx) * 3
-      positions[target] = coords[source] + shift_x
-      positions[target + 1] = coords[source + 1] + shift_y
-      positions[target + 2] = coords[source + 2] + shift_z
+      positions[target] = coords[source] + shift[0]
+      positions[target + 1] = coords[source + 1] + shift[1]
+      positions[target + 2] = coords[source + 2] + shift[2]
       const rgb_offset = rgb_base + sample_idx * rgb_stride
       colors[target] = rgb_table[rgb_offset]
       colors[target + 1] = rgb_table[rgb_offset + 1]

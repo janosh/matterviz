@@ -164,8 +164,20 @@ export function build_neighbor_list(
 
   const cutoff_sq = cutoff * cutoff
   const offsets = new Int32Array(n_centers + 1)
-  const all_distances: number[] = []
-  const all_deltas: number[] = []
+  let distance_buffer = new Float64Array(Math.max(16, n_centers))
+  let delta_buffer = new Float64Array(distance_buffer.length * 3)
+  let total_neighbors = 0
+  const ensure_capacity = (required_count: number): void => {
+    if (required_count <= distance_buffer.length) return
+    let next_capacity = distance_buffer.length
+    while (next_capacity < required_count) next_capacity *= 2
+    const next_distances = new Float64Array(next_capacity)
+    const next_deltas = new Float64Array(next_capacity * 3)
+    next_distances.set(distance_buffer)
+    next_deltas.set(delta_buffer)
+    distance_buffer = next_distances
+    delta_buffer = next_deltas
+  }
   // Length-reset per center rather than reallocated. Array.sort needs the distance and its
   // delta to travel together, so these stay objects; at ~50 candidates per center the
   // allocation is well below the cost of the distance loop that fills them.
@@ -204,17 +216,19 @@ export function build_neighbor_list(
     }
     // a-CNA and CSP both consume a distance-ordered prefix, so sorting here is not optional
     found.sort((left, right) => left.distance - right.distance)
+    ensure_capacity(total_neighbors + found.length)
     for (const { distance, delta } of found) {
-      all_distances.push(distance)
-      all_deltas.push(...delta)
+      distance_buffer[total_neighbors] = distance
+      delta_buffer.set(delta, total_neighbors * 3)
+      total_neighbors++
     }
-    offsets[center_idx + 1] = all_distances.length
+    offsets[center_idx + 1] = total_neighbors
   }
 
   return {
     offsets,
-    deltas: Float64Array.from(all_deltas),
-    distances: Float64Array.from(all_distances),
+    deltas: delta_buffer.subarray(0, total_neighbors * 3),
+    distances: distance_buffer.subarray(0, total_neighbors),
     n_centers,
     cutoff,
   }

@@ -10,7 +10,6 @@ import type { AnyStructure } from '$lib/structure'
 import { normalize_fractional_coords } from '$lib/structure/parse'
 import type { TrajectoryType } from '$lib/trajectory'
 import { compute_structure_id_async } from './async-compute.svelte'
-import type { CnaTypeName } from './calc-cna'
 import type { StructureIdOptions, StructureIdResult } from './index'
 
 // a-CNA costs ~9-14 µs per atom, so a 5000-frame run of 10k atoms is 8-12 minutes of
@@ -33,12 +32,10 @@ export interface StructureIdSweep {
   // SOURCE frame index of each analysed frame, so plots label the real frame numbers
   // rather than 0..n_analysed
   frame_numbers: number[]
-  // Full per-frame results, in the shape StructureTypePlot consumes directly
+  // Full per-frame results, in the shape StructureTypePlot consumes directly.
+  // Breaking API change: populations, centrosymmetry, and n_atoms now live only on each
+  // results entry and are no longer duplicated on the sweep object.
   results: StructureIdResult[]
-  populations: Record<CnaTypeName, number>[]
-  // Mean over the sites that HAVE a centrosymmetry value, null when the frame has none
-  mean_centrosymmetry: (number | null)[]
-  n_atoms: number
   // Source frames skipped between samples; 1 means every frame was analysed
   frame_stride: number
 }
@@ -70,7 +67,8 @@ export function sweep_frame_plan(
 
 // Normalize fully periodic cells only; wrapping a nonperiodic axis can change slab geometry.
 function analysis_structure(structure: AnyStructure): AnyStructure {
-  const fully_periodic = `lattice` in structure && structure.lattice.pbc.every(Boolean)
+  const fully_periodic =
+    `lattice` in structure && (structure.lattice.pbc ?? [true, true, true]).every(Boolean)
   return fully_periodic ? normalize_fractional_coords(structure) : structure
 }
 
@@ -107,10 +105,10 @@ function make_frame_resolver(
         `analyse it.`,
     )
   }
-  if (raw_data === null) {
+  if (!raw_data || (raw_data instanceof ArrayBuffer && raw_data.byteLength === 0)) {
     throw new Error(
       `${indexed} so structure identification needs the raw file bytes to load the sampled ` +
-        `frames, but raw_data was not provided. Pass the payload Trajectory.svelte keeps ` +
+        `frames, but raw_data was missing or empty. Pass the payload Trajectory.svelte keeps ` +
         `in orig_data.`,
     )
   }
@@ -123,22 +121,6 @@ function make_frame_resolver(
     }
     return analysis_structure(frame.structure)
   }
-}
-
-// Mean over the sites that have a value. calc_centrosymmetry writes NaN for a site with
-// fewer than n_csp_neighbors neighbors (cluster surfaces, isolated fragments); folding
-// those into the sum would NaN the whole frame, so they are skipped and a frame where no
-// site has a value reports null instead of 0.
-function mean_defined(values: Float64Array | null): number | null {
-  if (!values) return null
-  let sum = 0
-  let n_defined = 0
-  for (const value of values) {
-    if (Number.isNaN(value)) continue
-    sum += value
-    n_defined++
-  }
-  return n_defined === 0 ? null : sum / n_defined
 }
 
 export async function collect_structure_id_sweep(
@@ -177,12 +159,5 @@ export async function collect_structure_id_sweep(
     on_progress?.(done + 1, frame_numbers.length)
   }
 
-  return {
-    frame_numbers,
-    results,
-    populations: results.map(({ populations }) => populations),
-    mean_centrosymmetry: results.map(({ centrosymmetry }) => mean_defined(centrosymmetry)),
-    n_atoms: results[0].n_atoms,
-    frame_stride,
-  }
+  return { frame_numbers, results, frame_stride }
 }

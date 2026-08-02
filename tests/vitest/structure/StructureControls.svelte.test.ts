@@ -1,5 +1,6 @@
 import { DEFAULTS } from '$lib/settings'
 import { StructureControls } from '$lib/structure'
+import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, simple_structure } from '../setup'
@@ -40,6 +41,40 @@ describe(`StructureControls reactive props`, () => {
     expect(label_color_input?.value).toBe(`#00ff00`)
     expect(label_bg_color_input?.value).toBe(`#123456`)
     expect(label_bg_opacity_input?.valueAsNumber).toBe(0.7)
+  })
+
+  test(`updates the scale type when the selected property changes`, async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const structure = {
+      ...simple_structure,
+      sites: simple_structure.sites.map((site) => ({
+        ...site,
+        properties: { ...site.properties, charge: 0.5, [CNA_TYPE_PROPERTY]: 1 },
+      })),
+    }
+    const state = $state({
+      atom_color_config: {
+        mode: `property` as const,
+        property_key: `charge`,
+        scale: DEFAULTS.structure.atom_color_scale,
+        scale_type: `continuous` as const,
+      },
+    })
+    mount(StructureControls, {
+      target,
+      props: bind_props({ structure, controls_open: true }, state),
+    })
+    await tick()
+
+    // The native property dropdown performs this same nested mutation through bind:value.
+    state.atom_color_config.property_key = CNA_TYPE_PROPERTY
+    await tick()
+
+    expect(state.atom_color_config).toMatchObject({
+      property_key: CNA_TYPE_PROPERTY,
+      scale_type: `categorical`,
+    })
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {

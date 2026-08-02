@@ -72,8 +72,10 @@ afterEach(() => {
 })
 
 describe(`worker code path`, () => {
-  it(`round-trips a request through the worker and matches the sync result`, async () => {
+  it(`round-trips a cloneable payload through the worker and matches the sync result`, async () => {
     const crystal = make_fcc([2, 2, 2])
+    // A non-cloneable site property would throw inside structuredClone if it were forwarded
+    crystal.sites[0].properties.on_click = () => {}
     const result = await compute_structure_id_async(crystal)
     expect(posted).toHaveLength(1)
     expect(result).toEqual(calc_structure_id(crystal))
@@ -85,31 +87,22 @@ describe(`worker code path`, () => {
       /\/src\/lib\/structure-id\/structure-id-worker\.ts\?worker_file/,
     )
     expect(last_worker_options).toEqual({ type: `module` })
-  })
-
-  it(`builds the worker exactly once across many computes`, async () => {
-    await compute_structure_id_async(make_fcc([2, 2, 2]))
-    const before = construction_count
-    await Promise.all([
-      compute_structure_id_async(make_fcc([2, 2, 3])),
-      compute_structure_id_async(make_fcc([2, 3, 3])),
-      compute_structure_id_async(make_fcc([3, 3, 3])),
-    ])
-    expect(construction_count).toBe(before)
-    expect(before).toBe(1)
-  })
-
-  it(`sends a cloneable payload carrying only what the analysis reads`, async () => {
-    const crystal = make_fcc([2, 2, 2])
-    // A non-cloneable site property would throw inside structuredClone if it were forwarded
-    crystal.sites[0].properties.on_click = () => {}
-    await compute_structure_id_async(crystal)
     const { input: structure } = posted[0].message
     expect(structure.sites).toHaveLength(32)
     expect(structure.sites[0].properties).toEqual({})
     expect(`lattice` in structure && structure.lattice.matrix).toEqual(crystal.lattice.matrix)
     // Nothing is transferred: detaching a caller's buffer would break the dedupe cache
     expect(posted[0].transfer).toHaveLength(0)
+  })
+
+  it(`builds the worker exactly once across many computes`, async () => {
+    await compute_structure_id_async(make_fcc([2, 2, 2]))
+    await Promise.all([
+      compute_structure_id_async(make_fcc([2, 2, 3])),
+      compute_structure_id_async(make_fcc([2, 3, 3])),
+      compute_structure_id_async(make_fcc([3, 3, 3])),
+    ])
+    expect(construction_count).toBe(1)
   })
 
   it(`rejects when the worker reports an error`, async () => {

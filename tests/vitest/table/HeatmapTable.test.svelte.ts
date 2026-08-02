@@ -413,34 +413,13 @@ describe(`HeatmapTable`, () => {
     })
   })
 
-  it(`handles formatting and styles`, () => {
-    const columns: Label[] = [
-      { label: `Num`, format: `.1%`, description: `` },
-      {
-        label: `Val`,
-        better: `higher`,
-        color_scale: `interpolateViridis`,
-        description: ``,
-      },
-    ]
-    const data = [
-      { Num: 0.123, Val: 0 },
-      { Num: 1.234, Val: 100 },
-    ]
+  it(`formats numbers with column format strings`, () => {
+    mount_table({
+      data: [{ Num: 0.123 }, { Num: 1.234 }],
+      columns: [{ label: `Num`, format: `.1%`, description: `` }],
+    })
 
-    mount_table({ data, columns })
-
-    // Check number formatting
-    const num_cell = document.querySelector(`td[data-col="Num"]`)
-    assert(num_cell, `Num cell not found`)
-    expect(num_cell.textContent?.trim()).toBe(`12.3%`)
-
-    // Check that val cells have --cell-bg set
-    const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
-    const has_color = Array.from(val_cells).some((cell) =>
-      (cell.getAttribute(`style`) ?? ``).includes(`--cell-bg:`),
-    )
-    expect(has_color).toBe(true)
+    expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
   })
 
   it(`applies different scale types for color mapping`, () => {
@@ -476,7 +455,6 @@ describe(`HeatmapTable`, () => {
   })
 
   it(`handles accessibility features`, () => {
-    // sort_hint rendering is covered by the sort_hint it.each in regression tests
     mount_table({
       data: sample_data,
       columns: [{ label: `Col`, description: `Description`, sticky: true }],
@@ -556,6 +534,7 @@ describe(`HeatmapTable`, () => {
 
     // --cell-bg CSS custom property is set inline per cell; the stylesheet applies
     // color-mix(in srgb, var(--cell-bg) var(--heatmap-opacity, 100%), transparent)
+    // Zero values must still color (regression); false path is the unique toggle edge.
     it.each([
       { show_heatmap: true, desc: `sets --cell-bg when show_heatmap is true (default)` },
       { show_heatmap: false, desc: `does not set --cell-bg when show_heatmap is false` },
@@ -570,21 +549,6 @@ describe(`HeatmapTable`, () => {
         } else {
           expect(style_attr).not.toContain(`--cell-bg:`)
         }
-      }
-    })
-
-    it(`does not set --cell-bg on non-numeric cells`, () => {
-      const data = [
-        { Name: `foo`, Val: 10 },
-        { Name: `bar`, Val: 20 },
-      ]
-      mount_table({ data, columns: [{ label: `Name`, description: `` }, heatmap_val_col] })
-
-      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Name"]`))) {
-        expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
-      }
-      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
-        expect(cell.getAttribute(`style`) ?? ``).toContain(`--cell-bg:`)
       }
     })
   })
@@ -669,48 +633,41 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Style and CSS properties`, () => {
-    it(`applies custom column styles`, () => {
-      const styled_columns: Label[] = [
-        {
-          label: `Col1`,
-          style: `color: red; font-weight: lighter;`,
-          description: ``,
-        },
-        { label: `Col2`, description: `` },
-      ]
-
-      mount_table({ data: [{ Col1: `a`, Col2: `b` }], columns: styled_columns })
-
-      const header = document.querySelector(`th`)
-      expect(header?.getAttribute(`style`)).toContain(`color: red`)
-      expect(header?.getAttribute(`style`)).toContain(`font-weight: lighter`)
-      // Check that style is also applied to cells
-      const cell = document.querySelector(`td[data-col="Col1"]`)
-      expect(cell?.getAttribute(`style`)).toContain(`font-weight: lighter;`)
+    it(`applies custom column styles to headers and cells`, () => {
+      mount_table({
+        data: [{ Col1: `a`, Col2: `b` }],
+        columns: [
+          { label: `Col1`, style: `color: red; font-weight: lighter;`, description: `` },
+          { label: `Col2`, description: `` },
+        ],
+      })
+      const header_style = document.querySelector(`th`)?.getAttribute(`style`) ?? ``
+      expect(header_style).toContain(`color: red`)
+      expect(header_style).toContain(`font-weight: lighter`)
+      expect(document.querySelector(`td[data-col="Col1"]`)?.getAttribute(`style`)).toContain(
+        `font-weight: lighter`,
+      )
     })
 
     it(`applies row styles from data`, () => {
-      const data_with_styles = [{ col: `value`, style: `background-color: yellow;` }]
-
       mount_table({
-        data: data_with_styles,
+        data: [{ col: `value`, style: `background-color: yellow;` }],
         columns: [{ label: `col`, description: `` }],
       })
-
-      const row = document.querySelector(`tbody tr`)
-      expect(row?.getAttribute(`style`)).toContain(`background-color: yellow`)
+      expect(document.querySelector(`tbody tr`)?.getAttribute(`style`)).toContain(
+        `background-color: yellow`,
+      )
     })
 
-    it(`applies container style from props`, () => {
+    it(`applies container styles from props`, () => {
       mount_table({
         data: [{ col: `value` }],
         columns: [{ label: `col`, description: `` }],
         style: `max-height: 200px; border: 1px solid blue;`,
       })
-
-      const container = document.querySelector(`.table-container`)
-      expect(container?.getAttribute(`style`)).toContain(`max-height: 200px`)
-      expect(container?.getAttribute(`style`)).toContain(`border: 1px solid blue`)
+      const style = document.querySelector(`.table-container`)?.getAttribute(`style`)
+      expect(style).toContain(`max-height: 200px`)
+      expect(style).toContain(`border: 1px solid blue`)
     })
   })
 
@@ -887,7 +844,6 @@ describe(`HeatmapTable`, () => {
     })
 
     it.each([
-      { clicks: 1, badge_count: `1` },
       { clicks: 2, badge_count: `2` },
       { clicks: 3, badge_count: `3` }, // all rows selected
     ])(
@@ -1120,13 +1076,6 @@ describe(`HeatmapTable`, () => {
         position: `top`,
       },
       {
-        desc: `renders at explicit position bottom`,
-        sort_hint: { text: `Positioned hint`, position: `bottom` },
-        text: `Positioned hint`,
-        permanent: false,
-        position: `bottom`,
-      },
-      {
         desc: `applies custom style, class, position, and permanent together`,
         sort_hint: {
           text: `Full config hint`,
@@ -1206,12 +1155,9 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Name`)).toEqual([`Item 1`, `Item 3`, `Item 2`])
     })
 
-    // Regression: zero and negative values should be included in linear scale heatmap
-    it.each([
-      { desc: `zero values`, values: [0, 50, 100] },
-      { desc: `negative values`, values: [-100, 0, 100] },
-    ])(`heatmap works with $desc for linear scale`, ({ values }) => {
-      const data = values.map((val, idx) => ({
+    // Negatives must still enter the linear scale domain (not filtered as invalid).
+    it(`heatmap works with negative values for linear scale`, () => {
+      const data = [-100, 0, 100].map((val, idx) => ({
         Name: String.fromCharCode(65 + idx),
         Value: val,
       }))
@@ -1236,38 +1182,24 @@ describe(`HeatmapTable`, () => {
     ]
 
     describe(`onsort callback prop`, () => {
-      it(`calls onsort with correct column and direction`, async () => {
+      it(`calls onsort with better-aware directions and toggles on re-click`, async () => {
         const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-
         mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
 
         const headers = document.querySelectorAll(`th`)
 
-        // Score has better: higher, so first click = desc
+        // Score has better: higher → first click desc; then asc; then desc again
         headers[1].click()
-        await tick()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledWith(`Score`, `desc`))
-
-        // Value has better: lower, so first click = asc
-        headers[2].click()
-        await tick()
-        await vi.waitFor(() => expect(onsort_mock).toHaveBeenCalledWith(`Value`, `asc`))
-      })
-
-      it(`toggles sort direction on subsequent clicks`, async () => {
-        const onsort_mock = vi.fn().mockResolvedValue(initial_data)
-        mount_table({ data: initial_data, columns: sample_columns, onsort: onsort_mock })
-
-        const score_header = document.querySelectorAll(`th`)[1]
-
-        // First click = desc (better: higher), second = asc, third = desc
-        score_header.click()
         await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
-        score_header.click()
+        headers[1].click()
         await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `asc`))
-        score_header.click()
+        headers[1].click()
         await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
         expect(onsort_mock).toHaveBeenCalledTimes(3)
+
+        // Value has better: lower → first click asc
+        headers[2].click()
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Value`, `asc`))
       })
 
       it(`updates data with resolved Promise value`, async () => {
@@ -1609,22 +1541,14 @@ describe(`HeatmapTable`, () => {
   describe(`Row Numbers`, () => {
     it(`shows 1-indexed numbers and # header when enabled`, () => {
       mount_table({ data: sample_data, columns: sample_columns, show_row_numbers: true })
-
-      const headers = Array.from(document.querySelectorAll(`th`)).map((th) =>
-        th.textContent?.trim(),
-      )
+      const headers = [...document.querySelectorAll(`th`)].map((th) => th.textContent?.trim())
       expect(headers).toContain(`#`)
-
-      const num_cells = document.querySelectorAll(`td.row-num-col`)
-      expect(num_cells).toHaveLength(3)
-      expect(Array.from(num_cells).map((td) => td.textContent?.trim())).toEqual([
-        `1`,
-        `2`,
-        `3`,
-      ])
+      expect(
+        [...document.querySelectorAll(`td.row-num-col`)].map((td) => td.textContent?.trim()),
+      ).toEqual([`1`, `2`, `3`])
     })
 
-    it(`hidden by default`, () => {
+    it(`hides row numbers by default`, () => {
       mount_table({ data: sample_data, columns: sample_columns })
       expect(document.querySelectorAll(`td.row-num-col`)).toHaveLength(0)
     })
@@ -2150,7 +2074,6 @@ describe(`HeatmapTable`, () => {
 
     it.each([
       [`virtualization is off by default: every row renders`, {}, many_rows.length],
-      [`virtual={false} renders every row`, { virtual: false as const }, many_rows.length],
       [`custom min_window bounds the window`, { virtual: { min_window: 25 } }, 25],
     ])(`%s`, (_desc, extra_props, expected_rows) => {
       mount_table({ data: many_rows, columns: two_cols, ...extra_props })

@@ -2,7 +2,7 @@
   import { StatusMessage } from '$lib/feedback'
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import { format_bytes, format_num } from '$lib/labels'
-  import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/msd'
+  import { analysis_pane_setup } from '$lib/msd/collect'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
@@ -56,23 +56,9 @@
   let error_msg = $state<string | undefined>(undefined)
   let progress = $state<ParseProgress | null>(null)
 
-  // trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
-  // and the other two route through it. The message rides back with the values because
-  // writing to state from inside a $derived is state_unsafe_mutation.
-  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived.by(() => {
-    const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
-    if (!trajectory) return { ...blank, setup_error: undefined }
-    try {
-      return {
-        total_frames: trajectory_total_frames(trajectory),
-        is_lazy: !has_all_frames_in_memory(trajectory),
-        suggested_stride: suggest_vacf_frame_stride(trajectory),
-        setup_error: undefined,
-      }
-    } catch (exc) {
-      return { ...blank, setup_error: to_error(exc).message }
-    }
-  })
+  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived(
+    analysis_pane_setup(trajectory, suggest_vacf_frame_stride),
+  )
   let loaded_frames = $derived(trajectory?.frames.length ?? 0)
   let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
   // accumulate_positions rejects a non-integer stride outright, so normalise once here.
@@ -107,9 +93,13 @@
     ) {
       seeded_dt = default_dt
       seeded_time_unit = default_time_unit
-      const has_default_timestep = default_dt !== null && default_time_unit !== undefined
+      const has_default_timestep =
+        default_dt !== null &&
+        Number.isFinite(default_dt) &&
+        default_dt > 0 &&
+        Boolean(default_time_unit)
       dt_source = has_default_timestep ? default_dt : 1
-      time_unit = has_default_timestep ? default_time_unit : `fs`
+      time_unit = has_default_timestep && default_time_unit ? default_time_unit : `fs`
       use_dt = has_default_timestep
     }
   })
@@ -123,10 +113,11 @@
       dt_source !== null &&
       Number.isFinite(dt_source) &&
       dt_source > 0 &&
-      thz_per_inverse_time(time_unit) !== undefined,
+      time_unit.length > 0,
   )
+  let has_convertible_time_unit = $derived(thz_per_inverse_time(time_unit) !== undefined)
   let effective_frequency_unit = $derived<VacfFrequencyUnit>(
-    has_valid_dt ? frequency_unit : `1/frame`,
+    has_valid_dt && has_convertible_time_unit ? frequency_unit : `1/frame`,
   )
   let vacf_options = $derived<VacfOptions>({
     ...(has_valid_dt ? { dt: dt_collected, time_unit } : {}),
@@ -241,10 +232,11 @@
       <p class="hint">
         {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
         {#if has_valid_dt}
-          · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
-        {:else if use_dt && dt_source !== null && thz_per_inverse_time(time_unit) === undefined}
-          · {time_unit} is not one of {Object.keys(TIME_UNIT_TO_THZ).join(`, `)}, so the VDOS
-          axis stays in inverse frames
+          {`· ${format_num(dt_collected, `.4~g`)} ${time_unit} per collected frame`}
+          {#if !has_convertible_time_unit}
+            · {time_unit} is not one of {Object.keys(TIME_UNIT_TO_THZ).join(`, `)}, so lag time
+            keeps {time_unit} while the VDOS axis stays in inverse frames
+          {/if}
         {:else}
           · no valid timestep is available, so the lag axis is in frames and the VDOS axis in
           inverse frames

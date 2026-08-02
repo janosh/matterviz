@@ -1,4 +1,4 @@
-import { calc_vacf } from '$lib/vacf'
+import { calc_vacf, type VacfResult } from '$lib/vacf'
 import { describe, expect, it } from 'vitest'
 import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 
@@ -9,6 +9,12 @@ const THZ_TO_INVERSE_CM = 1e12 / (299792458 * 100)
 const orbit = (n_frames: number, frequency: number) => {
   const { positions, velocities } = circular_motion(n_frames, frequency, 1)
   return build_vacf_input(positions, { velocity_frames: velocities })
+}
+
+const expect_peak_within_bin = (result: VacfResult, expected: number) => {
+  const bin_spacing = result.frequencies[1] - result.frequencies[0]
+  const peak = result.curves[0].peak_frequency ?? 0
+  expect(Math.abs(peak - expected)).toBeLessThan(bin_spacing)
 }
 
 describe(`VDOS peak position`, () => {
@@ -25,21 +31,12 @@ describe(`VDOS peak position`, () => {
         time_unit: `fs`,
       })
       expect(result.frequency_unit).toBe(`THz`)
-      const peak = result.curves[0].peak_frequency
-      expect(peak).not.toBeNull()
-
+      expect(result.curves[0].peak_frequency).not.toBeNull()
       // Tolerance is tied to the frequency grid, not picked by eye: the VDOS is only
       // evaluated on bins of width 1 / (n_fft * dt), so the reported peak can be off by
       // up to half a bin from discretisation alone. One full bin leaves room for the
       // asymmetry the negative-frequency image of the Hann-windowed line adds.
-      const bin_spacing = result.frequencies[1] - result.frequencies[0]
-      const offset = Math.abs((peak ?? 0) - expected_thz)
-      console.info(
-        `VDOS peak ${peak?.toFixed(4)} THz vs ${expected_thz} THz: off by ` +
-          `${offset.toExponential(3)} THz = ${(offset / bin_spacing).toFixed(2)} bins ` +
-          `(bin = ${bin_spacing.toExponential(3)} THz, n_fft = ${result.n_fft})`,
-      )
-      expect(offset).toBeLessThan(bin_spacing)
+      expect_peak_within_bin(result, expected_thz)
     },
   )
 
@@ -100,21 +97,13 @@ describe(`VDOS peak position`, () => {
       ...options,
       vdos: { frequency_unit: `cm^-1` },
     })
-    const [peak_thz, peak_cm] = [
-      in_thz.curves[0].peak_frequency,
-      in_wavenumbers.curves[0].peak_frequency,
-    ]
     expect(in_wavenumbers.frequency_unit).toBe(`cm^-1`)
-    expect(peak_cm).toBeCloseTo((peak_thz ?? 0) * THZ_TO_INVERSE_CM, 8)
-    // 20 THz is 667.13 cm^-1, a physically ordinary optical mode. Same one-bin tolerance
-    // as the THz assertions: the grid here is 8.1 cm^-1 coarse.
-    const bin_spacing = in_wavenumbers.frequencies[1] - in_wavenumbers.frequencies[0]
-    const exact_cm = 20 * THZ_TO_INVERSE_CM
-    console.info(
-      `cm^-1 peak ${peak_cm?.toFixed(3)} vs exact ${exact_cm.toFixed(3)}, bin = ` +
-        `${bin_spacing.toFixed(3)} cm^-1`,
+    // Absolute scale is already pinned by the THz peak table; here only the conversion
+    // between the two axes needs to hold.
+    expect(in_wavenumbers.curves[0].peak_frequency).toBeCloseTo(
+      (in_thz.curves[0].peak_frequency ?? 0) * THZ_TO_INVERSE_CM,
+      8,
     )
-    expect(Math.abs((peak_cm ?? 0) - exact_cm)).toBeLessThan(bin_spacing)
   })
 
   it(`labels the axis in inverse frames when no timestep was supplied`, () => {
@@ -122,22 +111,19 @@ describe(`VDOS peak position`, () => {
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequency_label).toBe(`Frequency (1/frame)`)
     expect(result.time_unit).toBe(`frame`)
-    const bin_spacing = result.frequencies[1] - result.frequencies[0]
-    expect(Math.abs((result.curves[0].peak_frequency ?? 0) - 0.02)).toBeLessThan(bin_spacing)
+    expect_peak_within_bin(result, 0.02)
   })
 
-  it.each([
-    [`fs`, 2],
-    [`steps`, 7],
-  ])(`reports inverse-frame frequencies with dt in %s`, (time_unit, dt) => {
+  it(`reports inverse-frame frequencies when dt is supplied but the axis asks for frames`, () => {
+    // frequency_factor returns dt for 1/frame, which cancels against sample_interval, so
+    // the grid (and Nyquist) are independent of the numerical dt.
     const result = calc_vacf(orbit(600, 0.02), {
-      dt,
-      time_unit,
+      dt: 2,
+      time_unit: `fs`,
       vdos: { frequency_unit: `1/frame` },
     })
-    const bin_spacing = result.frequencies[1] - result.frequencies[0]
     expect(result.frequency_unit).toBe(`1/frame`)
-    expect(Math.abs((result.curves[0].peak_frequency ?? 0) - 0.02)).toBeLessThan(bin_spacing)
+    expect_peak_within_bin(result, 0.02)
     expect(result.frequencies.at(-1)).toBeCloseTo(0.5, 12)
   })
 
@@ -146,8 +132,7 @@ describe(`VDOS peak position`, () => {
     const { positions } = circular_motion(1000, 0.02, 1)
     const result = calc_vacf(build_vacf_input(positions), { dt: 1, time_unit: `fs` })
     expect(result.velocity_source).toBe(`central_difference`)
-    const bin_spacing = result.frequencies[1] - result.frequencies[0]
-    expect(Math.abs((result.curves[0].peak_frequency ?? 0) - 20)).toBeLessThan(bin_spacing)
+    expect_peak_within_bin(result, 20)
   })
 
   it(`gives an ideal gas a flat spectrum with no dominant peak`, () => {
@@ -160,9 +145,7 @@ describe(`VDOS peak position`, () => {
     })
     const { vdos } = result.curves[0]
     const mean = vdos.reduce((sum, value) => sum + value, 0) / vdos.length
-    const peak_ratio = Math.max(...vdos) / mean
-    console.info(`ideal gas VDOS peak / mean = ${peak_ratio.toFixed(3)}`)
-    expect(peak_ratio).toBeLessThan(3)
+    expect(Math.max(...vdos) / mean).toBeLessThan(3)
     // The orbit fixture, for contrast, concentrates everything in one line
     const line = calc_vacf(orbit(400, 0.02), { dt: 1, time_unit: `fs` }).curves[0].vdos
     const line_mean = line.reduce((sum, value) => sum + value, 0) / line.length
@@ -175,9 +158,11 @@ describe(`windowing`, () => {
     // An orbit truncated mid-cycle: the rectangular window's sinc sidelobes ring across
     // the whole axis, Hann's fall away far faster. Measured as the spectral weight more
     // than 5 bins from the line, relative to the line itself.
+    expect(calc_vacf(orbit(200, 0.05)).window).toBe(`hann`)
     const input = orbit(301, 0.037)
     const sidelobe_fraction = (window: `none` | `hann` | `gaussian`) => {
       const result = calc_vacf(input, { dt: 1, time_unit: `fs`, vdos: { window } })
+      expect(result.window).toBe(window)
       const { vdos } = result.curves[0]
       let peak_bin = 0
       for (let bin = 1; bin < vdos.length; bin++) {
@@ -192,24 +177,9 @@ describe(`windowing`, () => {
       }
       return outside / inside
     }
-    const [rectangular, hann, gaussian] = [
-      sidelobe_fraction(`none`),
-      sidelobe_fraction(`hann`),
-      sidelobe_fraction(`gaussian`),
-    ]
-    console.info(
-      `leakage outside the main lobe: rectangular ${rectangular.toExponential(3)}, ` +
-        `hann ${hann.toExponential(3)}, gaussian ${gaussian.toExponential(3)}`,
-    )
-    expect(hann).toBeLessThan(rectangular / 2)
-    expect(gaussian).toBeLessThan(rectangular / 2)
-  })
-
-  it(`defaults to hann and reports which window ran`, () => {
-    expect(calc_vacf(orbit(200, 0.05)).window).toBe(`hann`)
-    expect(calc_vacf(orbit(200, 0.05), { vdos: { window: `gaussian` } }).window).toBe(
-      `gaussian`,
-    )
+    const rectangular = sidelobe_fraction(`none`)
+    expect(sidelobe_fraction(`hann`)).toBeLessThan(rectangular / 2)
+    expect(sidelobe_fraction(`gaussian`)).toBeLessThan(rectangular / 2)
   })
 
   it(`only interpolates the spectrum when zero padding grows`, () => {
@@ -240,6 +210,12 @@ describe(`no-dt policy`, () => {
     )
   })
 
+  it(`refuses a dt with the frame sentinel time unit`, () => {
+    expect(() => calc_vacf(orbit(50, 0.1), { dt: 0.5, time_unit: `frame` })).toThrow(
+      /time_unit 'frame' cannot be combined with dt/,
+    )
+  })
+
   it.each([`THz`, `cm^-1`] as const)(
     `refuses a %s axis when no timestep was supplied`,
     (frequency_unit) => {
@@ -249,32 +225,29 @@ describe(`no-dt policy`, () => {
     },
   )
 
-  it(`refuses a THz axis for a time unit it cannot convert`, () => {
-    expect(() =>
-      calc_vacf(orbit(50, 0.1), {
-        dt: 1,
-        time_unit: `arbitrary units`,
-        vdos: { frequency_unit: `THz` },
-      }),
-    ).toThrow(
-      /time_unit 'arbitrary units' with frequency_unit 'THz' is not convertible; use frequency_unit '1\/frame'/,
-    )
-  })
+  it.each([`arbitrary units`, `toString`] as const)(
+    `refuses a THz axis for time_unit %s`,
+    (time_unit) => {
+      expect(() =>
+        calc_vacf(orbit(50, 0.1), {
+          dt: 1,
+          time_unit,
+          vdos: { frequency_unit: `THz` },
+        }),
+      ).toThrow(
+        `time_unit '${time_unit}' with frequency_unit 'THz' is not convertible; ` +
+          `use frequency_unit '1/frame'`,
+      )
+    },
+  )
 
   it(`rejects inherited Object keys as THz-convertible time units`, () => {
     // Without Object.hasOwn, TIME_UNIT_TO_THZ['toString'] is a function and would be
     // treated as a conversion factor (NaN frequencies / a bogus THz default).
-    const options = { dt: 1, time_unit: `toString` } as const
-    const result = calc_vacf(orbit(80, 0.05), options)
+    const result = calc_vacf(orbit(80, 0.05), { dt: 1, time_unit: `toString` })
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequencies[1]).toBeGreaterThan(0)
     expect(Number.isFinite(result.frequencies[1])).toBe(true)
-    expect(() =>
-      calc_vacf(orbit(50, 0.1), {
-        ...options,
-        vdos: { frequency_unit: `THz` },
-      }),
-    ).toThrow(/time_unit 'toString' with frequency_unit 'THz' is not convertible/)
   })
 
   it(`accepts an unconvertible time unit as long as the axis stays in frames`, () => {
@@ -289,18 +262,16 @@ describe(`no-dt policy`, () => {
     expect(result.frequencies).toEqual([])
   })
 
+  // fs -> THz is already pinned by the peak-position table; ps/ns cover the rest of
+  // TIME_UNIT_TO_THZ.
   it.each([
-    [`fs`, 1000],
     [`ps`, 1],
     [`ns`, 0.001],
   ])(`converts a dt in %s to THz`, (time_unit, thz_per_inverse_time) => {
     const result = calc_vacf(orbit(600, 0.02), { dt: 1, time_unit })
+    expect(result.frequency_unit).toBe(`THz`)
     // 0.02 cycles per frame at dt = 1 <unit> is 0.02 / 1 <unit>^-1
-    const expected = 0.02 * thz_per_inverse_time
-    const bin_spacing = result.frequencies[1] - result.frequencies[0]
-    expect(Math.abs((result.curves[0].peak_frequency ?? 0) - expected)).toBeLessThan(
-      bin_spacing,
-    )
+    expect_peak_within_bin(result, 0.02 * thz_per_inverse_time)
   })
 })
 
@@ -315,11 +286,6 @@ describe(`frequency axis bookkeeping`, () => {
     const bin_spacing = thinned.frequencies[1] - thinned.frequencies[0]
     const offset = Math.abs(
       (thinned.curves[0].peak_frequency ?? 0) - (dense.curves[0].peak_frequency ?? 0),
-    )
-    console.info(
-      `lag_stride 1 vs 2: peaks ${dense.curves[0].peak_frequency?.toFixed(4)} and ` +
-        `${thinned.curves[0].peak_frequency?.toFixed(4)} THz, ` +
-        `${(offset / bin_spacing).toFixed(2)} bins apart`,
     )
     expect(offset).toBeLessThan(bin_spacing)
   })

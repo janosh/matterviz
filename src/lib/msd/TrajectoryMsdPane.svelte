@@ -6,10 +6,9 @@
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import {
+    analysis_pane_setup,
     collect_msd_positions,
-    has_all_frames_in_memory,
     suggest_msd_frame_stride,
-    trajectory_total_frames,
   } from './collect'
   import type { MsdOptions, MsdPositions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
@@ -42,7 +41,7 @@
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting
   // every Nth frame multiplies it (see dt_collected below).
   // Seeded from complete timestep metadata below, and re-seeded on trajectory swap
-  let dt_source = $state(1)
+  let dt_source = $state<number | null>(1)
   let time_unit = $state(`ps`)
   let use_dt = $state(false)
   let max_lag_fraction = $state(0.5)
@@ -57,23 +56,9 @@
   let error_msg = $state<string | undefined>(undefined)
   let progress = $state<ParseProgress | null>(null)
 
-  // trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
-  // and the other two route through it. The message rides back with the values because
-  // writing to state from inside a $derived is state_unsafe_mutation.
-  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived.by(() => {
-    const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
-    if (!trajectory) return { ...blank, setup_error: undefined }
-    try {
-      return {
-        total_frames: trajectory_total_frames(trajectory),
-        is_lazy: !has_all_frames_in_memory(trajectory),
-        suggested_stride: suggest_msd_frame_stride(trajectory),
-        setup_error: undefined,
-      }
-    } catch (exc) {
-      return { ...blank, setup_error: to_error(exc).message }
-    }
-  })
+  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived(
+    analysis_pane_setup(trajectory, suggest_msd_frame_stride),
+  )
   let loaded_frames = $derived(trajectory?.frames.length ?? 0)
   let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
   // accumulate_positions rejects a non-integer stride outright, so normalise once here.
@@ -90,6 +75,8 @@
   // re-seed the timestep from the file rather than carrying the previous one over. Seeding
   // also keys on the defaults so metadata that only becomes known later still lands.
   let analysed_trajectory: TrajectoryType | undefined
+  let seeded_dt: number | null | undefined
+  let seeded_time_unit: string | undefined
   $effect(() => {
     const trajectory_changed = trajectory !== analysed_trajectory
     if (trajectory_changed) {
@@ -98,18 +85,37 @@
       result = undefined
       error_msg = undefined
     }
-    const has_default_timestep = default_dt !== null && default_time_unit !== undefined
-    dt_source = has_default_timestep ? default_dt : 1
-    time_unit = has_default_timestep ? default_time_unit : `ps`
-    use_dt = has_default_timestep
+    if (
+      trajectory_changed ||
+      default_dt !== seeded_dt ||
+      default_time_unit !== seeded_time_unit
+    ) {
+      seeded_dt = default_dt
+      seeded_time_unit = default_time_unit
+      const has_default_timestep =
+        default_dt !== null &&
+        Number.isFinite(default_dt) &&
+        default_dt > 0 &&
+        Boolean(default_time_unit)
+      dt_source = has_default_timestep ? default_dt : 1
+      time_unit = has_default_timestep && default_time_unit ? default_time_unit : `ps`
+      use_dt = has_default_timestep
+    }
   })
 
   // MsdOptions.dt is time per COLLECTED frame, so striding has to be folded in here —
   // otherwise entering the real MD timestep with stride 5 reports D five times too large
   // with correct-looking units.
-  let dt_collected = $derived(dt_source * safe_stride)
+  let dt_collected = $derived((dt_source ?? 1) * safe_stride)
+  let has_valid_dt = $derived(
+    use_dt &&
+      dt_source !== null &&
+      Number.isFinite(dt_source) &&
+      dt_source > 0 &&
+      time_unit.length > 0,
+  )
   let msd_options = $derived<MsdOptions>({
-    ...(use_dt ? { dt: dt_collected, time_unit } : {}),
+    ...(has_valid_dt ? { dt: dt_collected, time_unit } : {}),
     max_lag_fraction,
     fit: { start_fraction: fit_start_fraction, end_fraction: fit_end_fraction },
   })
@@ -200,8 +206,8 @@
       </label>
       <p class="hint">
         {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
-        {#if use_dt}· {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
-        {:else}· lag axis in frames (no timestep is recorded in the file){/if}
+        {#if has_valid_dt}· {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
+        {:else}· lag axis in frames (no valid timestep is available){/if}
       </p>
       <button onclick={collect} disabled={collecting || plotting}>
         {collecting ? `Reading frames…` : positions ? `Recollect positions` : `Compute MSD`}

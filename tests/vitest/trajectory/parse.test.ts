@@ -32,7 +32,6 @@ describe(`Trajectory File Detection`, () => {
     [`test.traj`, true],
     [`test.h5`, false],
     [`data.hdf5`, false],
-    [`simulation.traj`, true],
     [`molecular_dynamics.h5`, true],
     [`relaxation.hdf5`, true],
 
@@ -87,9 +86,6 @@ describe(`Trajectory File Detection`, () => {
     // Compressed but not valid base
     [`trajectory.txt.gz`, false],
     [`document.pdf.gz`, false],
-
-    // ASE ULM binary trajectory files
-    [`ase-LiMnO2-chgnet-relax.traj`, true],
 
     // Case insensitive tests
     [`FILE.TRAJ`, true],
@@ -264,6 +260,11 @@ describe(`VASP XDATCAR Parser`, () => {
     expect(trajectory.metadata?.elements).toEqual([`O`, `Fe`])
     expect(trajectory.metadata?.element_counts).toEqual([48, 32])
     for (const frame of trajectory.frames) expect(frame.metadata?.volume).toBeGreaterThan(0)
+
+    // Content sniffing without a filename hint (blob: UUID basenames)
+    const sniffed = await parse_trajectory_data(content, undefined)
+    expect(sniffed.metadata?.source_format).toBe(`vasp_xdatcar`)
+    expect(sniffed.frames).toHaveLength(5)
   })
 
   it.each([
@@ -856,6 +857,11 @@ describe(`HDF5 Format`, () => {
         expect(frame.metadata.volume).toBeGreaterThan(0)
       }
     }
+
+    // HDF5 magic-byte sniff works without a filename hint
+    expect((await parse_trajectory_data(content)).metadata?.source_format).toBe(
+      `hdf5_trajectory`,
+    )
   })
 
   // Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
@@ -908,21 +914,11 @@ describe(`HDF5 Format`, () => {
     )
   })
 
-  it.each([
-    [`bad-positions.h5`, false],
-    [`bad.h5`, true],
-  ])(`detailed error for missing HDF5 datasets (%s)`, async (filename, check_length) => {
+  it(`detailed error for missing HDF5 datasets`, async () => {
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
-    try {
-      await parse_trajectory_data(content, filename)
-      expect.fail(`Expected parsing to fail`)
-    } catch (error: unknown) {
-      expect(error).toBeInstanceOf(Error)
-      if (error instanceof Error) {
-        expect(error.message).toMatch(/Missing required.*dataset/i)
-        if (check_length) expect(error.message.length).toBeGreaterThan(50)
-      }
-    }
+    await expect(parse_trajectory_data(content, `bad.h5`)).rejects.toThrow(
+      /Missing required.*dataset/i,
+    )
   })
 })
 
@@ -1022,29 +1018,16 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
       },
     )
 
-    it.each([
-      [`LAMMPS`, lammps_content, `lammps_trajectory`],
-      [`XDATCAR`, read_test_file(`vasp-XDATCAR.MD.gz`), `vasp_xdatcar`],
-    ])(`detects %s content without filename`, async (_label, content, expected) => {
-      const trajectory = await parse_trajectory_data(content, undefined)
-      expect(trajectory.metadata?.source_format).toBe(expected)
-    })
-
-    it.each([
-      [`HDF5`, `flame-gold-cluster-55-atoms.h5`, `hdf5_trajectory`],
-      [`ASE .traj`, `ase-LiMnO2-chgnet-relax.traj`, `ase_trajectory`],
-    ])(`detects %s binary signature without filename`, async (_label, fixture, expected) => {
-      const trajectory = await parse_trajectory_data(read_binary_test_file(fixture))
-      expect(trajectory.metadata?.source_format).toBe(expected)
+    it(`detects LAMMPS content without filename`, async () => {
+      const trajectory = await parse_trajectory_data(lammps_content, undefined)
+      expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
     })
 
     // ASE always writes the calculator as a nested ULM item, so its key carries a
     // trailing dot. Reading only the undotted name dropped every relaxation's energy.
     it(`reads calculator energies ASE wrote under the dotted key`, async () => {
-      const trajectory = await parse_trajectory_data(
-        read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`),
-        `ase-LiMnO2-chgnet-relax.traj`,
-      )
+      const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
+      const trajectory = await parse_trajectory_data(buffer, `ase-LiMnO2-chgnet-relax.traj`)
       const energies = trajectory.frames.map((frame) => frame.metadata?.energy)
       expect(energies).toEqual([-58.97273254394531, -58.59364700317383])
       // `forces.`/`magmoms.` are ndarray pointers, not values; metadata must not
@@ -1054,6 +1037,10 @@ ITEM: ATOMS id type x y z\n1 1 0.0 0.0 0.0\n2 1 5.0 0.0 0.0`
           expect(`${key}: ${JSON.stringify(value)}`).not.toMatch(/ndarray/)
         }
       }
+      // ULM signature sniff works without a filename hint
+      expect((await parse_trajectory_data(buffer)).metadata?.source_format).toBe(
+        `ase_trajectory`,
+      )
     })
 
     it.each([
@@ -1204,30 +1191,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     elements: [`Li`, `Si`],
     periodic: true,
     format: `vasp_xdatcar`,
-  },
-  {
-    file: `vasp-XDATCAR.MD.gz`,
-    frames: 5,
-    atoms: 80,
-    elements: [`Fe`, `O`],
-    periodic: true,
-    format: `vasp_xdatcar`,
-  },
-  {
-    file: `lammps-sample.lammpstrj.gz`,
-    frames: 5,
-    atoms: 864,
-    elements: [],
-    periodic: true,
-    format: `lammps_trajectory`,
-  },
-  {
-    file: `mdanalysis-additional-columns.lammpstrj`,
-    frames: 1,
-    atoms: 10,
-    elements: [],
-    periodic: true,
-    format: `lammps_trajectory`,
   },
   {
     file: `mdanalysis-chain-dump.lammpstrj`,

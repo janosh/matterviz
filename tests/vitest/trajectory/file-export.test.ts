@@ -58,6 +58,7 @@ const frames = [
   make_frame(9, [[0.2, 0, 0], [1.2, 1, 1]], { energy: -11.5, force_max: 0.01 }),
 ]
 const resolver = (idx: number) => frames[idx] ?? null
+const make_async_resolver = () => vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
 
 describe(`trajectory_export_basename`, () => {
   test.each([
@@ -137,9 +138,12 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
 })
 
 describe(`serialize_extxyz_frame_range`, () => {
+  // Uses an async resolver: indexed trajectories load frames from a loader, not a frames array.
   test(`round-trips through the trajectory parser`, async () => {
     const on_progress = vi.fn()
-    const text = await serialize_extxyz_frame_range(0, 2, resolver, on_progress)
+    const async_resolver = make_async_resolver()
+    const text = await serialize_extxyz_frame_range(0, 2, async_resolver, on_progress)
+    expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
     expect(on_progress.mock.calls).toEqual([
       [1, 3],
       [2, 3],
@@ -157,14 +161,6 @@ describe(`serialize_extxyz_frame_range`, () => {
   test(`exports only the requested sub-range`, async () => {
     const text = await serialize_extxyz_frame_range(1, 2, resolver)
     expect(parse_xyz_trajectory(text).frames.map((frame) => frame.step)).toEqual([5, 9])
-  })
-
-  // An indexed trajectory holds only a few frames in memory; the rest arrive from a loader.
-  test(`awaits an async resolver rather than reading a frames array`, async () => {
-    const async_resolver = vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
-    await serialize_extxyz_frame_range(0, 2, async_resolver)
-    expect(async_resolver).toHaveBeenCalledTimes(3)
-    expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
   })
 
   test.each([
@@ -212,6 +208,12 @@ describe(`create_poscar_frame_range_zip`, () => {
       const parsed = parse_poscar(text)
       expect(parsed?.sites[0].xyz[0]).toBeCloseTo(expected_x, 6)
     }
+    // names by absolute frame index, not position in the exported range
+    const sub = await create_poscar_frame_range_zip(1, 2, resolver, `run.extxyz`, 3)
+    expect(Object.keys(await read_zip(sub)).toSorted()).toEqual([
+      `run_frame_0001.vasp`,
+      `run_frame_0002.vasp`,
+    ])
   })
 
   test(`names the frame a serializer choked on`, async () => {
@@ -221,14 +223,6 @@ describe(`create_poscar_frame_range_zip`, () => {
       create_poscar_frame_range_zip(0, 0, () => lattice_less as TrajectoryFrame, `run`, 1),
     ).rejects.toThrow(`Failed to serialize trajectory frame 0`)
   })
-
-  test(`names files by absolute frame index, not position in the range`, async () => {
-    const blob = await create_poscar_frame_range_zip(1, 2, resolver, `run.extxyz`, 3)
-    expect(Object.keys(await read_zip(blob)).toSorted()).toEqual([
-      `run_frame_0001.vasp`,
-      `run_frame_0002.vasp`,
-    ])
-  })
 })
 
 const trajectory = { frames } as TrajectoryType
@@ -237,6 +231,18 @@ const plot_metadata: TrajectoryMetadata[] = [
   { frame_number: 1, step: 5, properties: { energy: -11.25, force_max: 0.1 } },
   { frame_number: 2, step: 9, properties: { energy: -11.5, force_max: 0.01 } },
 ]
+
+const indexed_window = {
+  frames: frames.slice(0, 1),
+  total_frames: 3,
+  is_indexed: true,
+} as TrajectoryType
+
+const plot_metadata_trajectory = {
+  frames: [],
+  is_indexed: true,
+  plot_metadata,
+} as unknown as TrajectoryType
 
 describe(`collect_frame_property_rows`, () => {
   test(`one row per frame carrying the extractor's numbers`, async () => {
@@ -263,17 +269,19 @@ describe(`collect_frame_property_rows`, () => {
         ),
       ),
     )
-  })
-
-  // The cube(5) cell never changes, so the plot drops a/b/c/α/β/γ as flat series and
-  // full_data_extractor flags them `constant_*`. A data export wants the values anyway.
-  test(`keeps constant lattice params but drops the constant_* hints`, async () => {
-    const { rows } = await collect_frame_property_rows(0, 2, resolver, trajectory)
+    // The cube(5) cell never changes, so the plot drops a/b/c/α/β/γ as flat series and
+    // full_data_extractor flags them `constant_*`. A data export wants the values anyway.
     expect(full_data_extractor(frames[0], trajectory).constant_a).toBe(1)
     expect(
-      Object.keys(rows[0].properties).filter((key) => key.startsWith(`constant_`)),
+      Object.keys(table.rows[0].properties).filter((key) => key.startsWith(`constant_`)),
     ).toEqual([])
-    expect(rows[0].properties).toMatchObject({ a: 5, b: 5, c: 5, alpha: 90, volume: 125 })
+    expect(table.rows[0].properties).toMatchObject({
+      a: 5,
+      b: 5,
+      c: 5,
+      alpha: 90,
+      volume: 125,
+    })
   })
 
   test(`covers only the requested sub-range`, async () => {
@@ -285,13 +293,13 @@ describe(`collect_frame_property_rows`, () => {
   // An indexed trajectory holds only its first frames in memory; reading `frames` directly
   // would export a 1-row table for a 3-frame range.
   test(`resolves the full range of an indexed trajectory, not the in-memory window`, async () => {
-    const indexed = {
-      frames: frames.slice(0, 1),
-      total_frames: 3,
-      is_indexed: true,
-    } as TrajectoryType
-    const async_resolver = vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
-    const { rows, source } = await collect_frame_property_rows(0, 2, async_resolver, indexed)
+    const async_resolver = make_async_resolver()
+    const { rows, source } = await collect_frame_property_rows(
+      0,
+      2,
+      async_resolver,
+      indexed_window,
+    )
     expect(source).toBe(`frames`)
     expect(async_resolver.mock.calls).toEqual([[0], [1], [2]])
     expect(rows.map(({ properties }) => properties.energy)).toEqual([-10.5, -11.25, -11.5])
@@ -299,17 +307,12 @@ describe(`collect_frame_property_rows`, () => {
 
   test(`reads plot_metadata instead of frames when it covers the range`, async () => {
     const spy_resolver = vi.fn(resolver)
-    const indexed = {
-      frames: [],
-      is_indexed: true,
-      plot_metadata,
-    } as unknown as TrajectoryType
     const on_progress = vi.fn()
     const { rows, source } = await collect_frame_property_rows(
       0,
       2,
       spy_resolver,
-      indexed,
+      plot_metadata_trajectory,
       on_progress,
     )
     expect(source).toBe(`plot_metadata`)
@@ -339,10 +342,9 @@ describe(`collect_frame_property_rows`, () => {
   // the plot_metadata shortcut must not skip the range check the resolver path applies
   // (serialize_extxyz_frame_range above covers the full set of rejected ranges)
   test(`rejects a reversed range even when plot_metadata covers it`, async () => {
-    const indexed = { frames: [], plot_metadata } as unknown as TrajectoryType
-    await expect(collect_frame_property_rows(2, 1, resolver, indexed)).rejects.toThrow(
-      `Invalid trajectory frame range`,
-    )
+    await expect(
+      collect_frame_property_rows(2, 1, resolver, plot_metadata_trajectory),
+    ).rejects.toThrow(`Invalid trajectory frame range`)
   })
 })
 
@@ -407,17 +409,17 @@ describe(`frame_rows_to_json`, () => {
     expect(parsed.rows[0]).toMatchObject({ frame: 1, step: 5, energy: -11.25, volume: 125 })
   })
 
+  // frame/step keys inside properties must not leak into the JSON rows (row identity wins)
   test(`records plot_metadata as the source when the table came from it`, async () => {
-    const indexed = {
-      frames: [],
-      is_indexed: true,
+    const colliding = {
+      ...plot_metadata_trajectory,
       plot_metadata: plot_metadata.map((row) => ({
         ...row,
         properties: { ...row.properties, frame: 999, step: 999 },
       })),
     } as unknown as TrajectoryType
     const parsed = JSON.parse(
-      frame_rows_to_json(await collect_frame_property_rows(0, 2, resolver, indexed)),
+      frame_rows_to_json(await collect_frame_property_rows(0, 2, resolver, colliding)),
     )
     expect(parsed.source).toBe(`plot_metadata`)
     expect(parsed.rows).toEqual([
@@ -487,11 +489,8 @@ describe(`TrajectoryExportPane property export`, () => {
   // The pane must route through resolve_frame, not `trajectory.frames`, or a streamed
   // trajectory would export a 1-row CSV for a 3-frame run
   test(`exports every frame of an indexed trajectory, not its in-memory window`, async () => {
-    const resolve_frame = vi.fn((idx: number) => Promise.resolve(frames[idx] ?? null))
-    open_pane({
-      trajectory: { frames: frames.slice(0, 1), total_frames: 3, is_indexed: true },
-      resolve_frame,
-    })
+    const resolve_frame = make_async_resolver()
+    open_pane({ trajectory: indexed_window, resolve_frame })
     await click(`Download CSV`)
     await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
     expect(resolve_frame.mock.calls).toEqual([[0], [1], [2]])

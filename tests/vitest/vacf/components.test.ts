@@ -5,12 +5,12 @@ import type { Vec3 } from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import type { compute_vacf_async as ComputeVacfAsync } from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
-import type { VacfInput, VacfOptions } from '$lib/vacf/index'
+import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
 import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '$lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { make_crystal } from '../setup'
+import { bind_props, make_crystal } from '../setup'
 import { build_vacf_input, circular_motion } from './helpers'
 
 type WorkerMessage = { id: number; input: VacfInput; options: VacfOptions }
@@ -79,10 +79,20 @@ afterEach(() => {
 describe(`worker code path`, () => {
   it(`round-trips a request and matches the synchronous result`, async () => {
     const input = orbit_input(60)
+    const sync = calc_vacf(input)
     const result = await compute_vacf_async(input)
     expect(posted).toHaveLength(1)
-    expect(result.curves[0].vacf).toEqual(calc_vacf(input).curves[0].vacf)
-    expect(result.curves[0].vdos).toEqual(calc_vacf(input).curves[0].vdos)
+    expect(result.curves[0].vacf).toEqual(sync.curves[0].vacf)
+    expect(result.curves[0].vdos).toEqual(sync.curves[0].vdos)
+  })
+
+  it(`deduplicates concurrent requests for the same input`, async () => {
+    const input = orbit_input(30)
+    const first = compute_vacf_async(input)
+    const second = compute_vacf_async(input)
+    expect(posted).toHaveLength(1)
+    await Promise.all([first, second])
+    expect(posted).toHaveLength(1)
   })
 
   it(`builds the worker exactly once across many computes`, async () => {
@@ -103,21 +113,22 @@ describe(`worker code path`, () => {
     expect(last_worker_options).toEqual({ type: `module` })
   })
 
-  it(`sends both buffers without transferring the caller's`, async () => {
+  // Transferring would detach the caller's buffer, breaking the dedupe cache on a repeat
+  // request for the same input, so the buffers are always copied
+  it(`copies position and velocity buffers without transferring`, async () => {
     const input = orbit_input(15)
     await compute_vacf_async(input)
     const { input: payload } = posted[0].message
-    expect(payload.positions).toHaveLength(15 * 3)
-    expect(payload.velocities).toHaveLength(15 * 3)
-    // Transferring would detach the caller's buffer, breaking the dedupe cache on a repeat
-    // request for the same input, so the buffers are always copied
     expect(posted[0].transfer).toHaveLength(0)
     expect(input.positions).toHaveLength(15 * 3)
+    expect(payload.positions).toHaveLength(15 * 3)
+    expect(payload.velocities).toHaveLength(15 * 3)
   })
 
   it(`sends a null velocity field when the input has none`, async () => {
     await compute_vacf_async(orbit_input(15, false))
     expect(posted[0].message.input.velocities).toBeNull()
+    expect(posted[0].transfer).toHaveLength(0)
   })
 })
 
@@ -144,6 +155,7 @@ describe(`VacfPlot`, () => {
   const mount_plot = (props: ComponentProps<typeof VacfPlot>): Promise<string> =>
     mount_and_read(VacfPlot, { style: `width: 400px; height: 300px`, ...props })
 
+  // Default panel is `both`; covers the two-plot case that the panel it.each below omits
   it(`renders both panels and the summary for a computed result`, async () => {
     const result = calc_vacf(orbit_input(120), { dt: 1, time_unit: `fs` })
     const text = await mount_plot({ result })
@@ -156,7 +168,6 @@ describe(`VacfPlot`, () => {
   it.each([
     [`vacf` as const, 1],
     [`vdos` as const, 1],
-    [`both` as const, 2],
   ])(`renders %s as %i plot(s)`, async (panel, expected) => {
     await mount_plot({ result: calc_vacf(orbit_input(80)), panel })
     expect(document.querySelectorAll(`.scatter`)).toHaveLength(expected)
@@ -228,6 +239,31 @@ describe(`TrajectoryVacfPane`, () => {
     expect(text).toContain(`velocities read from the file`)
     expect(text).toContain(`Recollect velocities`)
     expect(document.querySelectorAll(`.scatter`).length).toBeGreaterThan(0)
+  })
+
+  it(`keeps an unrecognized time unit for lag while using inverse-frame VDOS`, async () => {
+    const state = { result: undefined as VacfResult | undefined }
+    const text = await mount_and_read(
+      TrajectoryVacfPane,
+      bind_props(
+        {
+          trajectory: make_trajectory(40),
+          pane_open: true,
+          default_dt: 2,
+          default_time_unit: `steps`,
+        },
+        state,
+      ),
+    )
+    expect(text).toMatch(/2\s+steps per collected frame/)
+    expect(text).toMatch(/lag time\s+keeps steps/)
+    expect(text).toContain(`1/frame`)
+
+    await run_collect()
+    expect(state.result?.time_unit).toBe(`steps`)
+    expect(state.result?.x_label).toBe(`Lag time (steps)`)
+    expect(state.result?.frequency_unit).toBe(`1/frame`)
+    expect(state.result?.times[1]).toBe(2)
   })
 
   it(`surfaces a collect failure in the same message slot`, async () => {

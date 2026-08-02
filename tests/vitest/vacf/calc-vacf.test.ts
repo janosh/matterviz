@@ -13,18 +13,21 @@ import {
 // f64 machine epsilon, the yardstick every "is this just round-off?" claim below is
 // measured against
 const F64_EPS = Number.EPSILON // 2.220446049250313e-16
+const skip_vdos = { vdos: { skip: true } } as const
 
 describe(`analytic VACF limits`, () => {
   it.each([
     [`slow orbit`, 0.02, 600],
     [`fast orbit`, 0.17, 400],
-    [`large amplitude`, 0.05, 500],
+    [`mid frequency`, 0.05, 500],
   ])(
     `circular motion (%s) gives VACF = cos(2 pi f lag) exactly`,
     (label, frequency, n_frames) => {
-      const { positions, velocities } = circular_motion(n_frames, frequency, 2.5)
-      const input = build_vacf_input(positions, { velocity_frames: velocities })
-      const result = calc_vacf(input, { vdos: { skip: true } })
+      const { positions, velocities } = circular_motion(n_frames, frequency)
+      const result = calc_vacf(
+        build_vacf_input(positions, { velocity_frames: velocities }),
+        skip_vdos,
+      )
       const [total] = result.curves
       const omega = 2 * Math.PI * frequency
       const expected = result.lags.map((lag) => Math.cos(omega * lag))
@@ -44,23 +47,16 @@ describe(`analytic VACF limits`, () => {
     },
   )
 
-  it(`normalizes VACF(0) to exactly 1`, () => {
-    const { positions, velocities } = ideal_gas(300, 40, 20260801)
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
-      vdos: { skip: true },
-    })
-    for (const curve of result.curves) expect(curve.vacf_normalized[0]).toBe(1)
-  })
-
   it(`decays an ideal gas VACF to zero away from lag 0`, () => {
     // Independent velocities every frame: the VACF is a delta at lag 0 and pure sampling
     // noise elsewhere. With 200 atoms and >=150 origins per lag, each lag averages >=3e4
     // independent products, so the per-lag standard error is ~1/sqrt(3e4) = 6e-3.
     const [n_frames, n_atoms] = [400, 200]
     const { positions, velocities } = ideal_gas(n_frames, n_atoms, 314159)
-    const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
-      vdos: { skip: true },
-    })
+    const result = calc_vacf(
+      build_vacf_input(positions, { velocity_frames: velocities }),
+      skip_vdos,
+    )
     const [total] = result.curves
     const tail = total.vacf_normalized.slice(1)
     const worst = Math.max(...tail.map(Math.abs))
@@ -78,7 +74,7 @@ describe(`analytic VACF limits`, () => {
       [1.5, -2.25, 0.75],
       [4, 4, 4],
     ])
-    const result = calc_vacf(build_vacf_input(frames), { vdos: { skip: true } })
+    const result = calc_vacf(build_vacf_input(frames), skip_vdos)
     for (const curve of result.curves) {
       expect(curve.vacf.every((value) => value === 0)).toBe(true)
       expect(curve.vacf_normalized.every((value) => value === 0)).toBe(true)
@@ -93,9 +89,7 @@ describe(`analytic VACF limits`, () => {
       [5, 5, 5],
     ])
     const elements: ElementSymbol[] = [`H`, `He`]
-    const result = calc_vacf(build_vacf_input(frames, { elements }), {
-      vdos: { skip: true },
-    })
+    const result = calc_vacf(build_vacf_input(frames, { elements }), skip_vdos)
     expect(result.curves.map((curve) => curve.label)).toEqual([`Total`, `H`, `He`])
     const [total, hydrogen, helium] = result.curves
     expect(hydrogen.vacf[0]).toBeCloseTo(0.09, 12)
@@ -112,7 +106,7 @@ describe(`velocity sources`, () => {
     const [frequency, n_frames] = [0.05, 500]
     const omega = 2 * Math.PI * frequency
     const { positions, velocities } = circular_motion(n_frames, frequency, 1.7)
-    const options = { vdos: { skip: true }, max_lag_fraction: 0.4 } as const
+    const options = { ...skip_vdos, max_lag_fraction: 0.4 } as const
 
     const stored = calc_vacf(
       build_vacf_input(positions, { velocity_frames: velocities }),
@@ -171,14 +165,13 @@ describe(`velocity sources`, () => {
     const wrapped = positions.map((frame) =>
       frame.map((xyz) => xyz.map((coord) => coord - box * Math.floor(coord / box))),
     )
-    const options = { vdos: { skip: true } } as const
     const unwrapped = calc_vacf(
       build_vacf_input(wrapped, { lattice: cubic_matrix(box), pbc: [true, true, true] }),
-      options,
+      skip_vdos,
     )
     const folded = calc_vacf(
       build_vacf_input(wrapped, { lattice: cubic_matrix(box), pbc: [true, true, true] }),
-      { ...options, skip_unwrap: true },
+      { ...skip_vdos, skip_unwrap: true },
     )
     expect(unwrapped.unwrapped).toBe(true)
     expect(folded.unwrapped).toBe(false)
@@ -202,7 +195,7 @@ describe(`velocity sources`, () => {
         pbc: [true, true, true],
         coords_unwrapped: true,
       }),
-      { vdos: { skip: true } },
+      skip_vdos,
     )
     expect(result.unwrapped).toBe(false)
     const expected = result.lags.map((lag) => Math.cos(2 * Math.PI * 0.04 * lag))
@@ -220,7 +213,7 @@ describe(`velocity sources`, () => {
     const { positions, velocities } = circular_motion(100, 0.06)
     const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
       velocity_source: `central_difference`,
-      vdos: { skip: true },
+      ...skip_vdos,
     })
     expect(result.velocity_source).toBe(`central_difference`)
     expect(result.n_frames).toBe(98)
@@ -235,12 +228,11 @@ describe(`velocity sources`, () => {
     )
   })
 
-  it.each([
-    [2, /central differences need at least 3 frames/],
-    [1, /central differences need at least 3 frames/],
-  ])(`refuses to differentiate %i frames`, (n_frames, pattern) => {
+  it.each([2, 1])(`refuses to differentiate %i frames`, (n_frames) => {
     const { positions } = circular_motion(n_frames, 0.1)
-    expect(() => calc_vacf(build_vacf_input(positions))).toThrow(pattern)
+    expect(() => calc_vacf(build_vacf_input(positions))).toThrow(
+      /central differences need at least 3 frames/,
+    )
   })
 })
 

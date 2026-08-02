@@ -94,7 +94,7 @@ export function create_worker_client<Input extends object, Options, Result>(
         return [
           `object`,
           Object.entries(item)
-            .toSorted(([left], [right]) => left.localeCompare(right))
+            .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
             .map(([key, entry_value]) => [key, encode(entry_value)]),
         ]
       }

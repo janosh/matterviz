@@ -12,6 +12,8 @@ const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
   metadata: {},
 })
+const energy_traj = (...energies: number[]) =>
+  make_traj(energies.map((energy) => ({ energy })))
 const make_stepped_traj = (time_step?: number) => ({
   frames: [0, 500, 1000].map((step, frame_idx) =>
     make_trajectory_frame(step, 1, { energy: -frame_idx }),
@@ -56,7 +58,7 @@ describe(`Trajectory`, () => {
   // after which loading a new trajectory kept showing the previous one's series.
   test(`swapping the trajectory prop regenerates plot series`, async () => {
     const props = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      trajectory: energy_traj(-1.5, -2.5),
       display_mode: `scatter` as const,
       show_controls: false,
     })
@@ -98,11 +100,36 @@ describe(`Trajectory`, () => {
     },
   )
 
+  test.each([
+    [`auto-pick update`, undefined, `time`],
+    [`explicit preservation`, `frame`, `frame`],
+    [`coerced time restoration`, `time`, `time`],
+    [`coerced step restoration`, `step`, `step`],
+  ] as const)(
+    `%s when trajectory capabilities change`,
+    async (_kind, initial_quantity, expected) => {
+      const props = $state({
+        trajectory: energy_traj(-1, -2, -3),
+        x_quantity: initial_quantity,
+        display_mode: `scatter` as const,
+        show_controls: `always` as const,
+      })
+      const target = mount_traj(props)
+      await flush_render()
+      expect(props.x_quantity).toBe(`frame`)
+
+      props.trajectory = make_stepped_traj(2)
+      await flush_render()
+      expect(props.x_quantity).toBe(expected)
+      expect(selected_x_quantity(target)).toBe(expected)
+    },
+  )
+
   test(`syncs unsupported x_quantity to the effective frame fallback`, async () => {
     // Identity step numbering → only `frame` is available; requesting `time` must
     // write the fallback back to the bindable prop rather than leave a stale value.
     const props = $state({
-      trajectory: make_traj([{ energy: -1 }, { energy: -2 }, { energy: -3 }]),
+      trajectory: energy_traj(-1, -2, -3),
       x_quantity: `time`,
       display_mode: `scatter` as const,
       show_controls: false as const,
@@ -139,7 +166,7 @@ describe(`Trajectory`, () => {
   test(`clamps out-of-range steps and reports slider values from the event`, async () => {
     const step_events: { step_idx: number; frame_count: number }[] = []
     const props = $state({
-      trajectory: make_traj([{ energy: -1 }, { energy: -2 }, { energy: -3 }]),
+      trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
       // TrajHandlerData's fields are optional; the assertions below pin the
@@ -179,7 +206,7 @@ describe(`Trajectory`, () => {
     { label: `Data inspector`, open_prop: `data_inspector_open` },
   ])(`analysis menu opens $label`, async ({ label, open_prop, no_toplevel }) => {
     const props: Record<string, unknown> = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      trajectory: energy_traj(-1.5, -2.5),
       show_controls: `always` as const,
       [open_prop]: false,
     })
@@ -204,7 +231,7 @@ describe(`Trajectory`, () => {
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
   test(`info pane max-height follows content-area height`, async () => {
     const target = mount_traj({
-      trajectory: make_traj([{ energy: -1.5 }]),
+      trajectory: energy_traj(-1.5),
       show_controls: `always` as const,
       info_pane_open: true,
     })
@@ -216,13 +243,14 @@ describe(`Trajectory`, () => {
 
   // show_controls.style is appended after the z-index the controls bar sets on itself, so
   // both have to survive; a caller that names z-index deliberately wins, being last.
+  // Trailing-semicolon variants of the color style are not distinct: the template already
+  // supplies the join semicolon before the caller string.
   test.each([
-    [`without a trailing semicolon`, `color: rgb(255, 0, 0)`, `10`, `rgb(255, 0, 0)`],
-    [`with a trailing semicolon`, `color: rgb(255, 0, 0);`, `10`, `rgb(255, 0, 0)`],
-    [`overriding the z-index`, `z-index: 5`, `5`, ``],
-  ])(`show_controls.style %s`, async (_label, style, z_index, color) => {
+    { style: `color: rgb(255, 0, 0)`, z_index: `10`, color: `rgb(255, 0, 0)` },
+    { style: `z-index: 5`, z_index: `5`, color: `` },
+  ])(`show_controls.style keeps z-index=$z_index`, async ({ style, z_index, color }) => {
     const target = mount_traj({
-      trajectory: make_traj([{ energy: -1.5 }]),
+      trajectory: energy_traj(-1.5),
       show_controls: { mode: `always`, style },
     })
     await flush_render()
@@ -235,24 +263,20 @@ describe(`Trajectory`, () => {
 
   test(`view mode menu is layered and selectable`, async () => {
     const props = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      trajectory: energy_traj(-1.5, -2.5),
       display_mode: `structure+scatter` as const,
       show_controls: `always` as const,
     })
     const target = mount_traj(props)
     await flush_render()
 
-    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
-    if (!controls) throw new Error(`trajectory controls not found`)
-    // Inline, because jsdom applies no scoped styles: keeps the menu above the
-    // content-area siblings that follow it rather than under the scatter.
-    expect(Number(getComputedStyle(controls).zIndex)).toBeGreaterThan(0)
-
     target.querySelector<HTMLButtonElement>(`.view-mode-button`)?.click()
     await tick()
 
     const dropdown = target.querySelector<HTMLElement>(`.view-mode-dropdown`)
     if (!dropdown) throw new Error(`view mode dropdown not found`)
+    // Inline stacking: jsdom applies no scoped styles; menu must stay above
+    // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
     expect(dropdown_style.pointerEvents).toBe(`auto`)
     expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
@@ -296,7 +320,7 @@ describe(`Trajectory`, () => {
     await with_fetch(fetch_mock, async () => {
       mount_traj({
         data_url: `/ignored.xyz`,
-        trajectory: make_traj([{ energy: -1 }]),
+        trajectory: energy_traj(-1),
         show_controls: `never`,
       })
       await tick()

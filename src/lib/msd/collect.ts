@@ -11,6 +11,7 @@ import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   suggest_frame_stride,
 } from '$lib/trajectory/frame-reader'
+import { to_error } from '$lib/utils'
 import type { MsdPositions } from './index'
 
 export interface MsdCollectOptions {
@@ -43,6 +44,35 @@ export function trajectory_total_frames(trajectory: TrajectoryType): number {
 export const has_all_frames_in_memory = (trajectory: TrajectoryType): boolean => {
   const total = trajectory_total_frames(trajectory)
   return total > 0 && trajectory.frames.length >= total
+}
+
+// Frame counts and stride advice every trajectory analysis pane opens with.
+//
+// trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
+// and has_all_frames_in_memory and the stride suggesters all route through it. The message
+// is returned rather than thrown so a pane can render it in place of its controls instead
+// of taking the whole viewer down.
+export function analysis_pane_setup(
+  trajectory: TrajectoryType | undefined,
+  // Omit for a pane that reads frames one at a time and so has no buffer to budget
+  suggest_stride?: (trajectory: TrajectoryType) => number | null,
+): {
+  total_frames: number
+  is_lazy: boolean
+  suggested_stride: number | null
+  setup_error?: string
+} {
+  const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
+  if (!trajectory) return blank
+  try {
+    return {
+      total_frames: trajectory_total_frames(trajectory),
+      is_lazy: !has_all_frames_in_memory(trajectory),
+      suggested_stride: suggest_stride?.(trajectory) ?? null,
+    }
+  } catch (exc) {
+    return { ...blank, setup_error: to_error(exc).message }
+  }
 }
 
 // Frame stride that keeps the collected buffer inside `max_bytes`, or null when the
@@ -90,10 +120,10 @@ export async function collect_msd_positions(
           `is impossible. MSD would otherwise be computed over just ${loaded} frames.`,
       )
     }
-    if (raw_data === null) {
+    if (!raw_data || (raw_data instanceof ArrayBuffer && raw_data.byteLength === 0)) {
       throw new Error(
         `${indexed} so MSD needs the raw file bytes to stream the remaining frames, but ` +
-          `raw_data was not provided. Pass the payload Trajectory.svelte keeps in orig_data.`,
+          `raw_data was missing or empty. Pass the payload Trajectory.svelte keeps in orig_data.`,
       )
     }
     return loader.stream_positions(raw_data, { frame_stride, max_bytes }, on_progress)

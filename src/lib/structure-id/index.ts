@@ -9,6 +9,8 @@ export { compute_structure_id_async } from './async-compute.svelte'
 export * from './calc-cna'
 export { calc_centrosymmetry } from './calc-csp'
 export * from './calc-structure-id'
+// Breaking API note for the ./structure-id entry point: StructureIdSweep consumers must read
+// populations, centrosymmetry, and n_atoms from each `results` entry, not the sweep object.
 export * from './collect'
 export * from './neighbors'
 export { default as StructureTypePlot } from './StructureTypePlot.svelte'

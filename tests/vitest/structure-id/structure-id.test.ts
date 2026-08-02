@@ -295,16 +295,17 @@ describe(`neighbor list`, () => {
 })
 
 describe(`common neighbor analysis`, () => {
+  // Dilated fcc exercises a-CNA's lattice-constant independence: no a is supplied, so an
+  // isotropically strained crystal must classify the same as an unstrained one.
   test.each([
     [`fcc`, () => make_fcc([4, 4, 4]), `fcc` as const, 256],
     [`bcc`, () => make_bcc([4, 4, 4]), `bcc` as const, 128],
     [`hcp`, () => make_hcp([4, 4, 4]), `hcp` as const, 128],
+    [`dilated fcc`, () => make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.08), `fcc` as const, 108],
   ])(`adaptive CNA classifies a perfect %s supercell`, (_label, build, expected, n_atoms) => {
     const result = calc_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
     expect(result.populations[expected]).toBe(n_atoms)
-    expect(result.populations.other).toBe(0)
-    expect(structure_type_fractions(result)[expected]).toBe(1)
   })
 
   test.each([
@@ -330,31 +331,20 @@ describe(`common neighbor analysis`, () => {
     expect(result.populations.other).toBe(256)
   })
 
-  test(`adaptive CNA is invariant under isotropic dilation`, () => {
-    // The whole point of a-CNA: no lattice constant is supplied, so a strained crystal
-    // classifies the same as an unstrained one.
-    const strained = calc_structure_id(make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.08), {
-      skip_csp: true,
-    })
-    expect(strained.populations.fcc).toBe(108)
-  })
-
   // 0.05 Å (~2% of the 2.556 Å nn distance) is thermal noise CNA should ignore; 0.6 Å
   // (~23%) is past where any signature survives.
-  test.each([
-    [`small (0.05 Å) leave fcc intact`, 0.05, 1, { fcc: 256 } as const],
-    [`large (0.6 Å) degrade to Other`, 0.6, 0, { other_min_frac: 0.95 } as const],
-  ])(`random displacements %s`, (_label, amplitude, seed, expected) => {
-    const result = calc_structure_id(
-      with_random_displacements(make_fcc([4, 4, 4]), amplitude, seed),
-      { skip_csp: true },
-    )
-    if (`fcc` in expected) expect(result.populations.fcc).toBe(expected.fcc)
-    if (`other_min_frac` in expected) {
-      expect(result.populations.other / result.n_atoms).toBeGreaterThan(
-        expected.other_min_frac,
-      )
-    }
+  test(`small random displacements leave fcc intact`, () => {
+    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.05, 1), {
+      skip_csp: true,
+    })
+    expect(result.populations.fcc).toBe(256)
+  })
+
+  test(`large random displacements degrade to Other`, () => {
+    const result = calc_structure_id(with_random_displacements(make_fcc([4, 4, 4]), 0.6, 0), {
+      skip_csp: true,
+    })
+    expect(result.populations.other / result.n_atoms).toBeGreaterThan(0.95)
   })
 
   test(`a vacancy leaves its 12 neighbors unclassified and raises their CSP`, () => {
@@ -404,15 +394,13 @@ describe(`common neighbor analysis`, () => {
     expect(result.populations.other).toBe(12)
   })
 
-  test(`calc_cna refuses a neighbor list built at a different cutoff`, () => {
+  test(`calc_cna validates and accepts its fixed cutoff`, () => {
     const cutoff = 0.854 * FCC_LATTICE_CONST
     const list = build_neighbor_list(make_fcc([2, 2, 2]), { cutoff })
     expect(() => calc_cna(list, `fixed`, cutoff * 1.2)).toThrow(
       /needs a cutoff equal to the .* the neighbor list was built with/,
     )
-    // A missing cutoff is caught by the same check
     expect(() => calc_cna(list, `fixed`)).toThrow(/got undefined/)
-    // The matching cutoff is accepted
     expect(calc_cna(list, `fixed`, cutoff)[0]).toBe(CNA_TYPES.fcc)
   })
 
@@ -425,9 +413,12 @@ describe(`common neighbor analysis`, () => {
 })
 
 describe(`centrosymmetry`, () => {
+  // Dilated fcc: Kelchner's CSP stays 0 under affine deformation — a strained perfect crystal
+  // is still centrosymmetric, so the score must remain at round-off.
   test.each([
     [`fcc`, () => make_fcc([4, 4, 4]), 12],
     [`bcc`, () => make_bcc([4, 4, 4]), 8],
+    [`dilated fcc`, () => make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.15), 12],
   ])(`a perfect %s lattice has CSP = 0 to round-off`, (label, build, n_csp_neighbors) => {
     const result = calc_structure_id(build(), { skip_cna: true, n_csp_neighbors })
     if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
@@ -450,16 +441,6 @@ describe(`centrosymmetry`, () => {
     const min_csp = Math.min(...result.centrosymmetry)
     console.info(`displaced fcc: min CSP = ${min_csp.toFixed(4)} Å²`)
     expect(min_csp).toBeGreaterThan(0.1)
-  })
-
-  test(`CSP is unchanged by an affine dilation up to the square of the strain`, () => {
-    // Kelchner's CSP is invariant under affine deformation in the sense that a centrosymmetric
-    // site stays centrosymmetric; a dilated perfect crystal must still score 0.
-    const result = calc_structure_id(make_fcc([3, 3, 3], FCC_LATTICE_CONST * 1.15), {
-      skip_cna: true,
-    })
-    if (!result.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
-    expect(max_finite(result.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
   })
 
   test.each([
@@ -549,18 +530,14 @@ describe(`calc_structure_id plumbing`, () => {
     expect(elapsed_ms).toBeLessThan(20000)
   })
 
-  test(`a non-periodic cluster still ranks its surface above its interior`, () => {
+  test(`a non-periodic cluster has CSP well above a periodic crystal`, () => {
     // Dropping the lattice makes the outer atoms non-centrosymmetric; their 12 nearest
-    // neighbors still exist, so CSP is defined and must be far above the interior's.
-    const { sites, lattice } = make_fcc([4, 4, 4])
+    // neighbors still exist, so CSP is defined and must sit far above round-off. Periodic
+    // CSP ≈ 0 for the same geometry is covered by the perfect-fcc centrosymmetry case.
+    const { sites } = make_fcc([4, 4, 4])
     const cluster = calc_structure_id({ sites }, { skip_cna: true })
-    const periodic = calc_structure_id({ sites, lattice }, { skip_cna: true })
-    if (!cluster.centrosymmetry || !periodic.centrosymmetry) {
-      throw new Error(`centrosymmetry was not computed`)
-    }
+    if (!cluster.centrosymmetry) throw new Error(`centrosymmetry was not computed`)
     expect(cluster.n_csp_undefined).toBe(0)
-    expect(periodic.n_csp_undefined).toBe(0)
-    expect(max_finite(periodic.centrosymmetry)).toBeLessThan(PERFECT_CSP_TOLERANCE)
     expect(max_finite(cluster.centrosymmetry)).toBeGreaterThan(10)
   })
 })

@@ -1,7 +1,7 @@
 import type { StructureIdResult } from '$lib/structure-id'
 import { calc_structure_id, StructureTypePlot } from '$lib/structure-id'
 import * as async_compute from '$lib/structure-id/async-compute.svelte'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { mount_sized } from '../setup'
 import { make_bcc, make_fcc, make_hcp } from './lattices'
@@ -23,13 +23,13 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   const hcp_result = calc_structure_id(make_hcp([2, 2, 2]), { skip_csp: true })
   const frames: StructureIdResult[] = [fcc_result, hcp_result, bcc_result]
 
+  // `over_frames` without labels is covered by the explicit frame_labels case below
   test.each<[string, ComponentProps<typeof StructureTypePlot>]>([
     [`one result, by_type`, { id_results: [fcc_result] }],
     [`several results, by_type`, { id_results: frames }],
-    [`several results, over_frames`, { id_results: frames, layout: `over_frames` }],
     [`normalized`, { id_results: frames, normalize: true }],
     [
-      `explicit frame labels`,
+      `over_frames with labels`,
       {
         id_results: frames,
         layout: `over_frames`,
@@ -62,21 +62,25 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   test(`computes from structures when no results are supplied`, async () => {
     const target = document.createElement(`div`)
     document.body.append(target)
-    mount(StructureTypePlot, {
+    const component = mount(StructureTypePlot, {
       target,
       props: { structures: [make_fcc([2, 2, 2])] },
     })
-    flushSync()
-    // Mount catches the component mid-flight: no results yet, so the loading state shows
-    const loading_status = target.querySelector<HTMLElement>(`.status-message`)
-    expect(loading_status?.isConnected).toBe(true)
-    expect(loading_status?.textContent).toContain(`Identifying structure types`)
-    // The status message is replaced by the plot once the promise settles, so the assertion
-    // has to re-query this mount target rather than hold on to the detached status element.
-    await vi.waitFor(() => {
-      expect(target.textContent).toContain(`Structure type`)
-      expect(target.textContent).toContain(`FCC`)
-    })
+    try {
+      flushSync()
+      // Mount catches the component mid-flight: no results yet, so the loading state shows
+      const loading_status = target.querySelector<HTMLElement>(`.status-message`)
+      expect(loading_status?.isConnected).toBe(true)
+      expect(loading_status?.textContent).toContain(`Identifying structure types`)
+      // The status message is replaced by the plot once the promise settles, so the assertion
+      // has to re-query this mount target rather than hold on to the detached status element.
+      await vi.waitFor(() => {
+        expect(target.textContent).toContain(`Structure type`)
+        expect(target.textContent).toContain(`FCC`)
+      })
+    } finally {
+      await unmount(component)
+    }
   })
 
   test(`equivalent recreated ID options do not recompute`, async () => {

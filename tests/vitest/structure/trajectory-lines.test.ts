@@ -52,9 +52,9 @@ const wrapping_stream = (n_frames = 15, element: ElementSymbol = `Li`) =>
     [element],
   )
 
-const two_atom_stream = () =>
+const two_atom_stream = (n_frames = 3) =>
   make_stream(
-    Array.from({ length: 3 }, (_, frame_idx) => [
+    Array.from({ length: n_frames }, (_, frame_idx) => [
       [frame_idx, 0, 0],
       [0, frame_idx, 0],
     ]),
@@ -111,28 +111,23 @@ describe(`build_trajectory_lines vertex counts`, () => {
     },
   )
 
-  test(`sampled window ends at end_frame and spans exactly trail_frames`, () => {
-    const stream = wrapping_stream(20)
-    const built = build_trajectory_lines(stream, { end_frame: 12, trail_frames: 5 })
-    expect(built.frame_idxs).toEqual([8, 9, 10, 11, 12])
-  })
-
-  test(`interior stride grid is anchored at frame 0, so it does not shift as the window slides`, () => {
-    const stream = wrapping_stream(40)
-    const at_20 = build_trajectory_lines(stream, {
-      end_frame: 20,
-      trail_frames: 13,
-      frame_stride: 4,
-    })
-    const at_21 = build_trajectory_lines(stream, {
-      end_frame: 21,
-      trail_frames: 13,
-      frame_stride: 4,
-    })
-    expect(at_20.frame_idxs).toEqual([8, 12, 16, 20])
-    // Interior points 12 and 16 stay put; only the two moving ends differ
-    expect(at_21.frame_idxs).toEqual([9, 12, 16, 20, 21])
-  })
+  // Interior stride grid is anchored at frame 0, so it does not shift as the window slides:
+  // cases end_frame 20 and 21 share interior points 12 and 16; only the moving ends differ.
+  test.each([
+    [12, 5, 1, [8, 9, 10, 11, 12]],
+    [20, 13, 4, [8, 12, 16, 20]],
+    [21, 13, 4, [9, 12, 16, 20, 21]],
+  ])(
+    `end_frame %i trail %i stride %i -> frames %j`,
+    (end_frame, trail_frames, frame_stride, expected_frames) => {
+      const built = build_trajectory_lines(wrapping_stream(40), {
+        end_frame,
+        trail_frames,
+        frame_stride,
+      })
+      expect(built.frame_idxs).toEqual(expected_frames)
+    },
+  )
 
   test.each([
     [`end_frame out of range`, { end_frame: 99 }, /end_frame must be an integer in \[0, 14\]/],
@@ -241,13 +236,12 @@ describe(`element filter`, () => {
       [`Li`, `O`, `Li`],
     )
 
-  const filter_cases: [string, ElementSymbol[] | null, number, number][] = [
+  test.each([
     [`null draws every species`, null, 3, 15],
-    [`a single species picks its atoms`, [`Li`], 2, 10],
-    [`an unrelated species matches nothing`, [`Fe`], 0, 0],
-    [`an empty filter draws nothing`, [], 0, 0],
-  ]
-  test.each(filter_cases)(`%s`, (_label, elements, expected_atoms, expected_segments) => {
+    [`a single species picks its atoms`, [`Li`] as ElementSymbol[], 2, 10],
+    [`an unrelated species matches nothing`, [`Fe`] as ElementSymbol[], 0, 0],
+    [`an empty filter draws nothing`, [] as ElementSymbol[], 0, 0],
+  ])(`%s`, (_label, elements, expected_atoms, expected_segments) => {
     const built = build_trajectory_lines(mixed_stream(), { elements })
     expect(built.atom_count).toBe(expected_atoms)
     expect(built.segment_count).toBe(expected_segments)
@@ -277,14 +271,7 @@ describe(`element filter`, () => {
 
 describe(`coloring`, () => {
   test(`element mode paints each atom's whole path in one color`, () => {
-    const stream = make_stream(
-      Array.from({ length: 4 }, (_, frame_idx) => [
-        [frame_idx, 0, 0],
-        [0, frame_idx, 0],
-      ]),
-      [`Li`, `O`],
-    )
-    const { colors } = build_trajectory_lines(stream, {
+    const { colors } = build_trajectory_lines(two_atom_stream(4), {
       color_mode: `element`,
       element_colors: { Li: `#ff0000`, O: `#0000ff` },
     })
@@ -299,29 +286,9 @@ describe(`coloring`, () => {
     expect(rgb_at(colors, 4)[0]).toBe(0)
   })
 
-  test(`time mode ramps along the window and repeats the ramp per atom`, () => {
-    const stream = make_stream(
-      Array.from({ length: 5 }, (_, frame_idx) => [
-        [frame_idx, 0, 0],
-        [0, frame_idx, 0],
-      ]),
-      [`Li`, `O`],
-    )
-    const { colors, point_count } = build_trajectory_lines(stream, { color_mode: `time` })
-    expect(point_count).toBe(10)
-    // Both atoms share one ramp, so their nth points match
-    for (let sample_idx = 0; sample_idx < 5; sample_idx++) {
-      expect(rgb_at(colors, sample_idx)).toEqual(rgb_at(colors, 5 + sample_idx))
-    }
-    // …and the ramp actually varies along the path
-    expect(rgb_at(colors, 0)).not.toEqual(rgb_at(colors, 4))
-  })
-
-  test(`time mode ramps on elapsed frames, not the sample ordinal`, () => {
-    const stream = make_stream(
-      Array.from({ length: 22 }, (_, frame_idx) => [[frame_idx, 0, 0]]),
-      [`Li`],
-    )
+  // Covers both "same ramp per atom" and "color by elapsed frames, not sample ordinal"
+  test(`time mode ramps on elapsed frames and repeats the ramp per atom`, () => {
+    const stream = two_atom_stream(22)
     const built = build_trajectory_lines(stream, {
       color_mode: `time`,
       color_scale: `interpolateGreys`,
@@ -330,11 +297,13 @@ describe(`coloring`, () => {
       frame_stride: 4,
     })
     expect(built.frame_idxs).toEqual([9, 12, 16, 20, 21])
+    expect(built.point_count).toBe(10)
     const interpolate = get_d3_interpolator(`interpolateGreys`)
     const expected = built.frame_idxs.flatMap((frame_idx) =>
       parse_linear_rgb(interpolate((frame_idx - 9) / 12)).map(Math.fround),
     )
-    expect([...built.colors]).toEqual(expected)
+    // Atom-major layout: both atoms get the same elapsed-frame ramp
+    expect([...built.colors]).toEqual([...expected, ...expected])
   })
 })
 

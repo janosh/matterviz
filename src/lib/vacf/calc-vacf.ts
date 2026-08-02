@@ -137,6 +137,9 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
         `lag axis and the VDOS frequency axis carry real units`,
     )
   }
+  if (options.dt !== undefined && requested_time_unit === `frame`) {
+    fail(`time_unit 'frame' cannot be combined with dt; omit dt for a frame-based lag axis`)
+  }
   if (!(max_lag_fraction > 0) || max_lag_fraction > 1) {
     fail(`max_lag_fraction must be in (0, 1], got ${max_lag_fraction}`)
   }

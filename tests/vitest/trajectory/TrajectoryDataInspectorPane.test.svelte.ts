@@ -28,12 +28,27 @@ const make_eager_trajectory = (n_frames = 4): TrajectoryType => ({
   ),
 })
 
+// Indexed trajectory trap: only a handful of frames are in memory
+const make_indexed_trajectory = (overrides: Partial<TrajectoryType> = {}): TrajectoryType => ({
+  frames: Array.from({ length: 10 }, (_, frame_idx) =>
+    make_trajectory_frame(frame_idx, 3, { energy: -1 }, CUBIC_LATTICE),
+  ),
+  is_indexed: true,
+  ...overrides,
+})
+
 const make_site = (site_idx: number, properties: Record<string, unknown>): Site => ({
   species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
   abc: [site_idx / 10, 0.25, 0.5] as Vec3,
   xyz: [site_idx, 2.5, 5] as Vec3,
   label: `Fe${site_idx + 1}`,
   properties,
+})
+
+const make_sites_frame = (sites: Site[]): TrajectoryFrame => ({
+  step: 0,
+  metadata: {},
+  structure: { sites },
 })
 
 const mount_pane = async (props: Record<string, unknown>) => {
@@ -69,6 +84,11 @@ const open_tab = async (value: string) => {
   await tick()
 }
 
+const expect_headers_contain = (...expected: string[]) => {
+  const joined = header_texts().join(` | `)
+  for (const label of expected) expect(joined).toContain(label)
+}
+
 // HeatmapTable virtualizes above min_window (~60); assert the DOM stays bounded
 const expect_virtualized = (max_rendered: number) => {
   const rows = body_rows()
@@ -89,13 +109,10 @@ test(`frames tab has one row per frame and one unit-labeled column per property`
   ).filter((key) => key !== `Step` && !key.startsWith(`constant_`))
 
   expect(body_rows()).toHaveLength(4)
-  const headers = header_texts()
-  expect(headers).toHaveLength(2 + property_keys.length)
+  expect(header_texts()).toHaveLength(2 + property_keys.length)
 
   // headers render label HTML (F<sub>max</sub>), so compare on textContent
-  for (const expected of [`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`]) {
-    expect(headers.join(` | `)).toContain(expected)
-  }
+  expect_headers_contain(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
 
   // Frame index and step are distinct columns: step counts by 10 here
   expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`0`, `0`])
@@ -107,20 +124,14 @@ test(`frames tab has one row per frame and one unit-labeled column per property`
 
 test(`indexed trajectory reads sampled plot_metadata and says so`, async () => {
   const n_sampled = 500
-  const total_frames = 100_000
-  const trajectory: TrajectoryType = {
-    // the trap: only 10 of 100k frames are in memory for an indexed trajectory
-    frames: Array.from({ length: 10 }, (_, frame_idx) =>
-      make_trajectory_frame(frame_idx, 3, { energy: -1 }, CUBIC_LATTICE),
-    ),
-    total_frames,
-    is_indexed: true,
+  const trajectory = make_indexed_trajectory({
+    total_frames: 100_000,
     plot_metadata: Array.from({ length: n_sampled }, (_, sample_idx) => ({
       frame_number: sample_idx * 200,
       step: sample_idx * 200,
       properties: { energy: -100 - sample_idx, temperature: 300 + sample_idx },
     })),
-  }
+  })
   await mount_pane({ trajectory })
 
   expect(document.body.textContent).toContain(`Sampled frames: 500 of 100,000 frames`)
@@ -131,9 +142,8 @@ test(`indexed trajectory reads sampled plot_metadata and says so`, async () => {
   const rows = expect_virtualized(n_sampled)
 
   // columns come from plot_metadata properties, not from the in-memory frames' lattice
-  const headers = header_texts()
-  expect(headers.some((text) => text.includes(`Temperature (K)`))).toBe(true)
-  expect(headers.some((text) => text.includes(`Volume`))).toBe(false)
+  expect_headers_contain(`Temperature (K)`)
+  expect(header_texts().some((text) => text.includes(`Volume`))).toBe(false)
 
   // sampled rows keep their true frame numbers (0, 200, 400, …)
   expect(cell_texts(rows[0])[0]).toBe(`0`)
@@ -147,53 +157,45 @@ test.each([
 ])(
   `indexed trajectory without plot_metadata flags the partial view (total %s)`,
   async (total_frames, expected_notice) => {
-    const trajectory: TrajectoryType = {
-      frames: Array.from({ length: 10 }, (_, frame_idx) =>
-        make_trajectory_frame(frame_idx, 3, { energy: -1 }, CUBIC_LATTICE),
-      ),
-      total_frames,
-      is_indexed: true,
-    }
-    await mount_pane({ trajectory })
+    await mount_pane({ trajectory: make_indexed_trajectory({ total_frames }) })
     expect(document.body.textContent).toContain(expected_notice)
     expect(body_rows()).toHaveLength(10)
   },
 )
 
 test(`atoms tab enumerates arbitrary site property keys including vec3`, async () => {
-  const frame: TrajectoryFrame = {
-    step: 0,
-    metadata: {},
-    structure: {
-      sites: [
-        make_site(0, {
-          force: [0.1, -0.2, 0.3],
-          magmom: 1.5,
-          selective_dynamics: [true, true, false],
-          cluster_tag: `surface`,
-        }),
-        make_site(1, {
-          force: [0.4, 0.5, -0.6],
-          magmom: -0.5,
-          selective_dynamics: [false, false, false],
-          cluster_tag: `bulk`,
-        }),
-      ],
-    },
-  }
+  const frame = make_sites_frame([
+    make_site(0, {
+      force: [0.1, -0.2, 0.3],
+      magmom: 1.5,
+      selective_dynamics: [true, true, false],
+      cluster_tag: `surface`,
+    }),
+    make_site(1, {
+      force: [0.4, 0.5, -0.6],
+      magmom: -0.5,
+      selective_dynamics: [false, false, false],
+      cluster_tag: `bulk`,
+    }),
+  ])
   await mount_pane({ trajectory: { frames: [frame] }, current_frame: frame })
   await open_tab(`atoms`)
 
-  const headers = header_texts()
-  const header_text = headers.join(` | `)
   // vec3 properties become three columns, scalars one, unknown keys pass through verbatim
-  for (const expected of [`Site`, `Element`, `afrac`, `x (Å)`, `magmom (μB)`, `cluster_tag`]) {
-    expect(header_text).toContain(expected)
-  }
-  for (const axis of [`x`, `y`, `z`]) expect(header_text).toContain(`force ${axis} (eV/Å)`)
-  expect(header_text).toContain(`selective_dynamics x`)
+  expect_headers_contain(
+    `Site`,
+    `Element`,
+    `afrac`,
+    `x (Å)`,
+    `magmom (μB)`,
+    `cluster_tag`,
+    `force x (eV/Å)`,
+    `force y (eV/Å)`,
+    `force z (eV/Å)`,
+    `selective_dynamics x`,
+  )
   // 2 identity + 3 fractional + 3 cartesian + 3 force + 1 magmom + 3 selective + 1 tag
-  expect(headers).toHaveLength(16)
+  expect(header_texts()).toHaveLength(16)
 
   const rows = body_rows()
   expect(rows).toHaveLength(2)
@@ -211,13 +213,9 @@ test(`atoms tab enumerates arbitrary site property keys including vec3`, async (
 test(`atoms tab virtualizes a large site frame and formats the tab count`, async () => {
   // enough to exceed HeatmapTable's min_window; 100k was timing out under load
   const n_sites = 2000
-  const frame: TrajectoryFrame = {
-    step: 0,
-    metadata: {},
-    structure: {
-      sites: Array.from({ length: n_sites }, (_, site_idx) => make_site(site_idx, {})),
-    },
-  }
+  const frame = make_sites_frame(
+    Array.from({ length: n_sites }, (_, site_idx) => make_site(site_idx, {})),
+  )
   await mount_pane({ trajectory: { frames: [frame] }, current_frame: frame })
   await open_tab(`atoms`)
 

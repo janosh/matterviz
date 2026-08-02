@@ -728,8 +728,13 @@
   // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.
   // Keep this priority explicit rather than coupling the default to the options' display order.
   // build_x_map validates explicit user choices, so x_map.quantity is the one actually in effect.
+  let requested_x_quantity = $state<TrajectoryXQuantity | undefined>(untrack(() => x_quantity))
+  let auto_picked_x_quantity = $state<TrajectoryXQuantity | undefined>(undefined)
+  let auto_pick_active = $state(false)
   let chosen_x_quantity = $derived.by((): TrajectoryXQuantity => {
-    if (x_quantity) return x_quantity
+    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
+    const preferred = component_owned ? requested_x_quantity : x_quantity
+    if (preferred !== undefined && x_quantity_options.includes(preferred)) return preferred
     if (x_quantity_options.includes(`time`)) return `time`
     if (x_quantity_options.includes(`step`)) return `step`
     return `frame`
@@ -746,7 +751,15 @@
   // prevent time→step→frame auto-pick once the trajectory arrives.
   $effect(() => {
     if (frame_step_samples.frame_numbers.length === 0) return
-    if (x_quantity !== x_map.quantity) x_quantity = x_map.quantity
+    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
+    if (!component_owned) requested_x_quantity = x_quantity
+    if (x_quantity !== x_map.quantity) {
+      x_quantity = x_map.quantity
+      auto_picked_x_quantity = x_map.quantity
+      auto_pick_active = true
+    } else if (!component_owned) {
+      auto_pick_active = false
+    }
   })
   // Time between frames, so displacement analyses report D in real units instead of
   // asking the user to retype a timestep the file already stated
@@ -1220,14 +1233,26 @@
     return handled
   }
 
-  // Every analysis pane keeps its DraggablePane toggle for layout anchoring but hides it;
-  // the analysis menu owns the clicks.
-  const analysis_toggle_props = {
-    class: `analysis-toggle-anchor`,
-    tabindex: -1,
-    'aria-hidden': `true`,
-    title: ``,
-  } as const
+  // Shared by every analysis pane: each keeps its DraggablePane toggle for layout anchoring
+  // but hides it, since the analysis menu owns the clicks.
+  let analysis_pane_props = $derived({
+    trajectory,
+    pane_props: { style: pane_max_height },
+    toggle_props: {
+      class: `analysis-toggle-anchor`,
+      tabindex: -1,
+      'aria-hidden': true,
+      title: ``,
+    },
+  })
+  // MSD and VACF both sweep the whole file and both label a time axis with the timestep the
+  // file recorded, leaving the component and its open flag as the only difference between them.
+  let correlation_pane_props = $derived({
+    ...analysis_pane_props,
+    raw_data: orig_data,
+    default_dt: frame_time_step,
+    default_time_unit: trajectory?.time_unit,
+  })
 
   // Separate state variables for each pane to match component prop types
   let structure_info_open = $state(false)
@@ -1541,45 +1566,29 @@
                     {/each}
                   </div>
                 {/if}
-                <!-- Invisible toggles anchor each DraggablePane under this control;
-                the analysis menu is the real open/close affordance. -->
                 <TrajectoryMsdPane
-                  {trajectory}
-                  raw_data={orig_data}
+                  {...correlation_pane_props}
                   bind:pane_open={msd_pane_open}
-                  default_dt={frame_time_step}
-                  default_time_unit={trajectory?.time_unit}
-                  pane_props={{ style: pane_max_height }}
-                  toggle_props={analysis_toggle_props}
                 />
                 <TrajectoryVacfPane
-                  {trajectory}
-                  raw_data={orig_data}
+                  {...correlation_pane_props}
                   bind:pane_open={vacf_pane_open}
-                  default_dt={frame_time_step}
-                  default_time_unit={trajectory?.time_unit}
-                  pane_props={{ style: pane_max_height }}
-                  toggle_props={analysis_toggle_props}
                 />
                 <TrajectoryStructureIdPane
-                  {trajectory}
+                  {...analysis_pane_props}
                   raw_data={orig_data}
                   bind:pane_open={structure_id_pane_open}
-                  pane_props={{ style: pane_max_height }}
-                  toggle_props={analysis_toggle_props}
                 />
                 <!-- current_frame is only ever assigned for the index that was current when
                 the load was issued (see load_frame_on_demand's request_is_current), so the
                 two props below always describe the same frame even mid-scrub. -->
                 <TrajectoryDataInspectorPane
-                  {trajectory}
+                  {...analysis_pane_props}
                   {current_step_idx}
                   {current_frame}
                   {data_extractor}
                   bind:pane_open={data_inspector_open}
                   on_step_change={go_to_step}
-                  pane_props={{ style: pane_max_height }}
-                  toggle_props={analysis_toggle_props}
                 />
               </div>
             {/if}

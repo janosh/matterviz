@@ -353,7 +353,9 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
 
   return {
     frames,
-    ...(potim !== null && potim > 0 ? { time_step: potim, time_unit: `fs` } : {}),
+    ...(potim !== null && potim > 0 && !frames_are_scf_steps
+      ? { time_step: potim, time_unit: `fs` }
+      : {}),
     metadata: {
       source_format: `vaspout_h5`,
       frame_count: frames.length,

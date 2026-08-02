@@ -21,12 +21,11 @@ describe(`compute_structure_id_async`, () => {
     // Differing options must NOT collapse onto the same entry
     const third = compute_structure_id_async(crystal, { skip_cna: true })
     expect(third).not.toBe(first)
-    await Promise.all([first, second, third])
+    const [first_result] = await Promise.all([first, second, third])
 
     const after_settle = compute_structure_id_async(crystal, { skip_csp: true })
     expect(after_settle).not.toBe(first)
-    const [first_result, after_result] = await Promise.all([first, after_settle])
-    expect(after_result.populations).toEqual(first_result.populations)
+    expect(await after_settle).toEqual(first_result)
   })
 
   test.each([
@@ -49,7 +48,6 @@ describe(`compute_structure_id_async`, () => {
       const input = structure ?? make_fcc([2, 2, 2])
       // No try/catch around the call itself: a synchronous throw would fail the test here
       const promise = compute_structure_id_async(input, options)
-      expect(promise).toBeInstanceOf(Promise)
       await expect(promise).rejects.toThrow(pattern)
     },
   )

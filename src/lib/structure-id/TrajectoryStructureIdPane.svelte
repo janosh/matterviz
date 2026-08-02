@@ -1,11 +1,11 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/msd/collect'
+  import { analysis_pane_setup } from '$lib/msd/collect'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
+  import { type ComponentProps, untrack } from 'svelte'
   import {
     collect_structure_id_sweep,
     DEFAULT_MAX_SWEEP_FRAMES,
@@ -40,22 +40,8 @@
   let error_msg = $state<string | undefined>(undefined)
   let progress = $state<{ done: number; total: number } | null>(null)
 
-  // trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
-  // and has_all_frames_in_memory routes through it. The message rides back with the values
-  // because writing to state from inside a $derived is state_unsafe_mutation.
-  let { total_frames, is_lazy, setup_error } = $derived.by(() => {
-    const blank = { total_frames: 0, is_lazy: false }
-    if (!trajectory) return { ...blank, setup_error: undefined }
-    try {
-      return {
-        total_frames: trajectory_total_frames(trajectory),
-        is_lazy: !has_all_frames_in_memory(trajectory),
-        setup_error: undefined,
-      }
-    } catch (exc) {
-      return { ...blank, setup_error: to_error(exc).message }
-    }
-  })
+  // No stride to suggest: the sweep loads one frame at a time, so there is no buffer budget
+  let { total_frames, is_lazy, setup_error } = $derived(analysis_pane_setup(trajectory))
   let loaded_frames = $derived(trajectory?.frames.length ?? 0)
   let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
   // sweep_frame_plan rejects a non-integer or sub-1 cap outright, so normalise once here.
@@ -75,27 +61,33 @@
 
   // Drop a stale sweep whenever the underlying trajectory is swapped out — its frame
   // numbers and atom count belong to a run that is no longer on screen
-  let analysed_trajectory: TrajectoryType | undefined
+  let analysed_trajectory = untrack(() => trajectory)
   $effect(() => {
     if (trajectory === analysed_trajectory) return
     analysed_trajectory = trajectory
     result = undefined
     error_msg = undefined
+    progress = null
   })
 
   async function compute() {
     if (!trajectory) return
+    const requested_trajectory = trajectory
     computing = true
     error_msg = undefined
     try {
-      result = await collect_structure_id_sweep(trajectory, {
+      const next_result = await collect_structure_id_sweep(requested_trajectory, {
         raw_data,
         max_frames: safe_max_frames,
         // CSP is not plotted here, and skipping it drops the second neighbor pass per frame
         options: { skip_csp: true },
-        on_progress: (done, total) => (progress = { done, total }),
+        on_progress: (done, total) => {
+          if (trajectory === requested_trajectory) progress = { done, total }
+        },
       })
+      if (trajectory === requested_trajectory) result = next_result
     } catch (exc) {
+      if (trajectory !== requested_trajectory) return
       // clearing the result too, else the previous curves stay up and hide this error
       result = undefined
       error_msg = to_error(exc).message

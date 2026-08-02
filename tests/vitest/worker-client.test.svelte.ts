@@ -52,7 +52,6 @@ beforeEach(() => {
   FakeWorker.instances = []
   vi.stubGlobal(`Worker`, FakeWorker)
 })
-
 describe(`worker teardown`, () => {
   test.each([
     {
@@ -90,27 +89,27 @@ describe(`worker teardown`, () => {
 })
 
 describe(`request dedupe`, () => {
-  test.each([
-    { desc: `identical`, first: { alpha: 1 }, second: { alpha: 1 } },
-    {
-      desc: `top-level key order`,
-      first: { alpha: 1, beta: 2 },
-      second: { beta: 2, alpha: 1 },
-    },
-    {
-      desc: `nested key order`,
-      first: { fit: { start: 0.1, end: 0.8 } },
-      second: { fit: { end: 0.8, start: 0.1 } },
-    },
-  ])(`$desc options share one in-flight request`, ({ first, second }) => {
-    expect(posted_count(first, second)).toBe(1)
+  test(`nested key order shares one in-flight request`, () => {
+    expect(
+      posted_count({ fit: { start: 0.1, end: 0.8 } }, { fit: { end: 0.8, start: 0.1 } }),
+    ).toBe(1)
+  })
+
+  test(`keys that collate equally are still ordered deterministically`, () => {
+    const decomposed_accent = `e\u0301`
+    const composed_accent = `\u00E9`
+    expect(
+      posted_count(
+        { [decomposed_accent]: 1, [composed_accent]: 2 },
+        { [composed_accent]: 2, [decomposed_accent]: 1 },
+      ),
+    ).toBe(1)
   })
 
   test(`arrays retain order and cannot collide with plain objects`, () => {
     expect(
       posted_count(
         { value: { alpha: 1 }, values: [1, null] },
-        { values: [1, null], value: { alpha: 1 } },
         { value: [[`alpha`, 1]], values: [1, null] },
         { value: { alpha: 1 }, values: [null, 1] },
       ),

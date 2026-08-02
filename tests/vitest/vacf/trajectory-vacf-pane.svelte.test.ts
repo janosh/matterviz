@@ -45,3 +45,23 @@ test(`uses physical time only with complete valid timestep metadata`, async () =
   expect(summary.textContent).toContain(`no valid timestep`)
   expect(document.body.textContent).toContain(`1/frame`)
 })
+
+test.each([
+  [`zero timestep`, 0, `fs`],
+  [`negative timestep`, -1, `fs`],
+  [`NaN timestep`, Number.NaN, `fs`],
+  [`infinite timestep`, Number.POSITIVE_INFINITY, `fs`],
+  [`empty time unit`, 2, ``],
+])(`rejects a %s default`, async (_label, default_dt, default_time_unit) => {
+  const structure = make_crystal(20, [[`H`, [0, 0, 0]]])
+  const trajectory: TrajectoryType = {
+    frames: Array.from({ length: 4 }, (_unused, step) => ({ step, structure })),
+  }
+  mount(TrajectoryVacfPane, {
+    target: document.body,
+    props: { trajectory, pane_open: true, default_dt, default_time_unit },
+  })
+  await settle()
+  expect(document.body.textContent).toContain(`no valid timestep`)
+  expect(document.body.textContent).toContain(`1/frame`)
+})

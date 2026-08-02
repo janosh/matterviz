@@ -5,17 +5,25 @@ import { line_mode_labels, read_vaspout_bands } from '$lib/trajectory/parse/vasp
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
+import type * as h5wasm from 'h5wasm'
 import { describe, expect, it } from 'vitest'
 import { read_binary_test_file } from '../setup'
 
 const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_vaspout = (filename: string): ArrayBuffer =>
   read_binary_test_file(filename, VASPOUT_FIXTURE_DIR)
-const parse_fixture = (fixture: string) =>
-  with_h5_file(read_vaspout(fixture), `vaspout.h5`, parse_vaspout_h5_file)
+const parse_fixture = (fixture: string, potim_override?: number) =>
+  with_h5_file(read_vaspout(fixture), `vaspout.h5`, (h5_file) => {
+    if (potim_override === undefined) return parse_vaspout_h5_file(h5_file)
+    const file_with_potim = {
+      get: (path: string) =>
+        path === `input/incar/POTIM` ? { to_array: () => potim_override } : h5_file.get(path),
+    } as unknown as h5wasm.File
+    return parse_vaspout_h5_file(file_with_potim)
+  })
 
 describe(`vaspout.h5 parsing`, () => {
-  it(`parses a relaxation trajectory with energy and force metadata`, async () => {
+  it(`parses a relaxation trajectory with energy, forces, and SCF summaries`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-relax.h5`)
 
     expect(trajectory.metadata?.source_format).toBe(`vaspout_h5`)
@@ -23,14 +31,26 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.metadata?.num_atoms).toBe(2)
     expect(trajectory.metadata?.element_counts).toEqual({ Si: 2 })
     expect(trajectory.metadata?.energy_tag).toBe(`free energy    TOTEN`)
+    expect(trajectory.metadata?.electronic).toBeUndefined()
 
     // TOTEN column of the energies dataset, in step order
     const energies = trajectory.frames.map((frame) => frame.metadata?.energy)
     expect(energies).toEqual([-10.0, -10.2, -10.35, -10.45, -10.5])
 
+    expect(trajectory.frames.map((frame) => frame.metadata?.n_scf_steps)).toEqual([
+      12, 8, 6, 5, 4,
+    ])
     for (const frame of trajectory.frames) {
       expect(Array.isArray(frame.metadata?.forces)).toBe(true)
       expect(frame.metadata?.volume).toBeCloseTo(5.43 ** 3, 6)
+      expect(frame.metadata?.scf_energy_delta).toBeGreaterThan(0)
+      expect(frame.metadata?.scf_rms).toBeGreaterThan(0)
+      expect(frame.metadata?.scf_charge_rms).toBeGreaterThan(0)
+    }
+    // SCF summaries flow through the shared extractor into plot series
+    const extracted = full_data_extractor(trajectory.frames[0], trajectory)
+    for (const key of [`n_scf_steps`, `scf_energy_delta`, `scf_rms`, `scf_charge_rms`]) {
+      expect(extracted[key], key).toBeGreaterThan(0)
     }
 
     // Cubic 5.43 Å lattice survives the round trip
@@ -49,6 +69,7 @@ describe(`vaspout.h5 parsing`, () => {
 
     expect(trajectory.frames).toHaveLength(1)
     expect(trajectory.metadata?.element_counts).toEqual({ Ga: 1, Sb: 1 })
+    expect(trajectory.metadata?.electronic).toBeUndefined()
     expect(trajectory.frames[0].metadata?.energy).toBeCloseTo(-8.95303508, 6)
     const structure = trajectory.frames[0].structure
     expect(structure.sites[1].abc.map((coord) => Math.round(coord * 1e6) / 1e6)).toEqual([
@@ -56,12 +77,14 @@ describe(`vaspout.h5 parsing`, () => {
     ])
   })
 
-  it(`falls back to results/positions for NSW=0 files without ion_dynamics`, async () => {
+  it(`falls back to results/positions for NSW=0 files without ion_dynamics or SCF data`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-static.h5`)
 
     expect(trajectory.frames).toHaveLength(1)
     expect(trajectory.frames[0].step).toBe(0)
     expect(trajectory.metadata?.element_counts).toEqual({ Si: 2 })
+    expect(trajectory.metadata?.frames_are_scf_steps).toBeUndefined()
+    expect(trajectory.frames[0].metadata?.n_scf_steps).toBeUndefined()
   })
 
   it(`keeps complete steps from a file torn mid-write`, async () => {
@@ -106,12 +129,17 @@ describe(`vaspout.h5 parsing`, () => {
   })
 
   it.each([
-    [`vaspout-si-potim.h5`, 2.5, `fs`],
-    [`vaspout-si-static.h5`, undefined, undefined],
-  ])(`%s -> time_step %s %s`, async (fixture, time_step, time_unit) => {
-    const trajectory = await parse_fixture(fixture)
-    expect([trajectory.time_step, trajectory.time_unit]).toEqual([time_step, time_unit])
-  })
+    [`vaspout-si-potim.h5`, undefined, 2.5, `fs`],
+    [`vaspout-si-static.h5`, undefined, undefined, undefined],
+    [`vaspout-si-static.h5`, 2.5, 2.5, `fs`],
+    [`vaspout-si-static-scf.h5`, 2.5, undefined, undefined],
+  ])(
+    `%s with POTIM override %s -> time_step %s %s`,
+    async (fixture, potim_override, time_step, time_unit) => {
+      const trajectory = await parse_fixture(fixture, potim_override)
+      expect([trajectory.time_step, trajectory.time_unit]).toEqual([time_step, time_unit])
+    },
+  )
 
   it(`throws for torn geometry without any electronic results`, async () => {
     await expect(parse_fixture(`vaspout-si-torn-structure.h5`)).rejects.toThrow(
@@ -197,52 +225,7 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     expect(bands.distance.at(-1)).toBeGreaterThan(0)
   })
 
-  it(`attaches DOS to static-run trajectories via metadata.electronic`, async () => {
-    const trajectory = await parse_fixture(`vaspout-si-static-scf.h5`)
-
-    // SCF pseudo-frame expansion is untouched by the DOS group
-    expect(trajectory.frames).toHaveLength(8)
-    const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
-    expect(electronic.bands).toBeNull()
-    const dos = electronic.dos
-    if (!dos) throw new Error(`expected dos`)
-    expect(dos.type).toBe(`electronic`)
-    expect(dos.energies).toHaveLength(25)
-    expect(dos.densities).toHaveLength(25)
-    expect(dos.efermi).toBeCloseTo(0.5, 6)
-    expect(dos.spin_polarized).toBeUndefined()
-  })
-
-  it.each([
-    [`vaspout-gasb-static.h5`], // real file trimmed of dos/bands datasets
-    [`vaspout-si-relax.h5`], // synthetic relax fixture without electronic groups
-  ])(`%s has no metadata.electronic`, async (fixture) => {
-    const trajectory = await parse_fixture(fixture)
-    expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.metadata?.electronic).toBeUndefined()
-  })
-})
-
-describe(`vaspout.h5 SCF convergence data (OSZICAR)`, () => {
-  it(`attaches per-ionic-step SCF summaries to relax frames`, async () => {
-    const trajectory = await parse_fixture(`vaspout-si-relax.h5`)
-
-    expect(trajectory.frames.map((frame) => frame.metadata?.n_scf_steps)).toEqual([
-      12, 8, 6, 5, 4,
-    ])
-    for (const frame of trajectory.frames) {
-      expect(frame.metadata?.scf_energy_delta).toBeGreaterThan(0)
-      expect(frame.metadata?.scf_rms).toBeGreaterThan(0)
-      expect(frame.metadata?.scf_charge_rms).toBeGreaterThan(0)
-    }
-    // SCF summaries flow through the shared extractor into plot series
-    const extracted = full_data_extractor(trajectory.frames[0], trajectory)
-    for (const key of [`n_scf_steps`, `scf_energy_delta`, `scf_rms`, `scf_charge_rms`]) {
-      expect(extracted[key], key).toBeGreaterThan(0)
-    }
-  })
-
-  it(`expands single-point runs into SCF pseudo-frames for convergence plots`, async () => {
+  it(`expands single-point SCF runs into pseudo-frames and attaches DOS`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-static-scf.h5`)
 
     expect(trajectory.metadata?.frames_are_scf_steps).toBe(true)
@@ -269,31 +252,30 @@ describe(`vaspout.h5 SCF convergence data (OSZICAR)`, () => {
     // OSZICAR's dE column: zero on the first SCF row, then |dE| per step
     expect(trajectory.frames[0].metadata?.scf_energy_delta).toBe(0)
     expect(trajectory.frames[3].metadata?.scf_energy_delta).toBeGreaterThan(0)
-  })
 
-  it(`leaves files without SCF data as plain single-frame trajectories`, async () => {
-    const trajectory = await parse_fixture(`vaspout-si-static.h5`)
-    expect(trajectory.frames).toHaveLength(1)
-    expect(trajectory.metadata?.frames_are_scf_steps).toBeUndefined()
-    expect(trajectory.frames[0].metadata?.n_scf_steps).toBeUndefined()
+    const electronic = trajectory.metadata?.electronic as VaspoutElectronicData
+    expect(electronic.bands).toBeNull()
+    const dos = electronic.dos
+    if (!dos) throw new Error(`expected dos`)
+    expect(dos.type).toBe(`electronic`)
+    expect(dos.energies).toHaveLength(25)
+    expect(dos.densities).toHaveLength(25)
+    expect(dos.efermi).toBeCloseTo(0.5, 6)
+    expect(dos.spin_polarized).toBeUndefined()
   })
 })
 
 describe(`vaspout.h5 routing`, () => {
   it.each([
-    [`vaspout-si-relax.h5`, `vaspout.h5`, `vaspout_h5`],
-    [`vaspout-si-relax.h5`, `some/dir/vaspout.h5`, `vaspout_h5`],
+    [`vaspout.h5`, `vaspout_h5`],
     // Dispatch is content-based (root group layout), not filename-based
-    [`vaspout-si-relax.h5`, `renamed.h5`, `vaspout_h5`],
-  ])(`%s as %s routes to %s`, async (fixture, filename, expected_format) => {
-    const trajectory = await parse_trajectory_data(read_vaspout(fixture), filename)
+    [`renamed.h5`, `vaspout_h5`],
+  ])(`vaspout-si-relax.h5 as %s routes to %s`, async (filename, expected_format) => {
+    const trajectory = await parse_trajectory_data(
+      read_vaspout(`vaspout-si-relax.h5`),
+      filename,
+    )
     expect(trajectory.metadata?.source_format).toBe(expected_format)
-  })
-
-  it(`still routes torch-sim h5 files to the generic HDF5 parser`, async () => {
-    const content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
-    const trajectory = await parse_trajectory_data(content, `flame-gold-cluster-55-atoms.h5`)
-    expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
   })
 
   it.each([

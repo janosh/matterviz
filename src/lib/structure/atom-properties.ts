@@ -443,12 +443,8 @@ export function sync_atom_color_mode(
 }
 
 // Keep discrete CNA phases on OVITO's stable palette as phases appear or vanish.
-const cna_type_palette = (codes: number[]): { colors: string[]; unique_values: number[] } => ({
-  colors: codes.map((code) => CNA_TYPE_COLORS[CNA_TYPE_NAMES[code]] ?? GRAY),
-  unique_values: codes
-    .filter((code, idx) => codes.indexOf(code) === idx)
-    .toSorted((code_a, code_b) => code_a - code_b),
-})
+const cna_type_palette = (codes: number[]): string[] =>
+  codes.map((code) => CNA_TYPE_COLORS[CNA_TYPE_NAMES[code]] ?? GRAY)
 
 // Color atoms by an arbitrary per-site scalar (OVITO's Color Coding). Sites that don't
 // declare the key keep a neutral gray and land in an `unknown` legend bucket rather than
@@ -464,10 +460,13 @@ export function get_site_property_colors(
   const present = scalars.filter((val) => val !== null)
   if (present.length === 0) return { colors: [], values: [] }
 
-  const { colors, unique_values } =
-    property_key === CNA_TYPE_PROPERTY && type === `categorical`
-      ? cna_type_palette(present)
-      : apply_color_scale(present, scale, type)
+  let colors: string[]
+  let unique_values: number[] | undefined
+  if (property_key === CNA_TYPE_PROPERTY && type === `categorical`) {
+    colors = cna_type_palette(present)
+  } else {
+    ;({ colors, unique_values } = apply_color_scale(present, scale, type))
+  }
   const stats = build_prop_colors(present, colors, unique_values)
   if (present.length === scalars.length) return stats
 

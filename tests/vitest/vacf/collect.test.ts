@@ -134,29 +134,29 @@ describe(`indexed trajectories`, () => {
     ...(loader ? { frame_loader: loader } : {}),
   })
 
-  it(`refuses to analyse the in-memory window when there is no loader`, async () => {
-    await expect(collect_vacf_input(lazy_trajectory())).rejects.toThrow(
-      /only 5 are in memory and it has no frame_loader/,
-    )
-  })
-
-  it(`refuses when the loader cannot stream a full pass`, async () => {
-    const loader = loader_methods(500) satisfies FrameLoader
-    await expect(collect_vacf_input(lazy_trajectory(loader))).rejects.toThrow(
-      /does not implement stream_positions/,
-    )
-  })
-
-  it(`refuses to stream without the raw file bytes`, async () => {
-    const loader = {
-      ...loader_methods(500),
-      stream_positions: async () => {
-        throw new Error(`should not be reached`)
-      },
-    } satisfies FrameLoader
-    await expect(collect_vacf_input(lazy_trajectory(loader))).rejects.toThrow(
-      /VACF needs the raw file bytes to stream the remaining frames/,
-    )
+  const indexed_refusals: { label: string; loader?: FrameLoader; pattern: RegExp }[] = [
+    {
+      label: `no frame_loader`,
+      pattern: /only 5 are in memory and it has no frame_loader/,
+    },
+    {
+      label: `loader without stream_positions`,
+      loader: loader_methods(500) satisfies FrameLoader,
+      pattern: /does not implement stream_positions/,
+    },
+    {
+      label: `missing raw_data`,
+      loader: {
+        ...loader_methods(500),
+        stream_positions: async () => {
+          throw new Error(`should not be reached`)
+        },
+      } satisfies FrameLoader,
+      pattern: /VACF needs the raw file bytes to stream the remaining frames/,
+    },
+  ]
+  it.each(indexed_refusals)(`refuses when $label`, async ({ loader, pattern }) => {
+    await expect(collect_vacf_input(lazy_trajectory(loader))).rejects.toThrow(pattern)
   })
 
   // A loader that streams 40 frames of one atom, handing back whatever velocity channel
@@ -211,18 +211,22 @@ describe(`indexed trajectories`, () => {
     expect(collected.velocities).toBeNull()
   })
 
-  it(`rejects a velocity channel that is not a Float64Array`, async () => {
-    const loader = streaming_loader(new Float32Array(120))
+  it.each([
+    {
+      label: `not a Float64Array`,
+      channel: new Float32Array(120),
+      pattern: /'velocity' channel of type object; VACF needs a Float64Array/,
+    },
+    {
+      label: `length disagreeing with positions`,
+      channel: new Float64Array(9),
+      pattern: /returned 9 velocity components but the collected positions need 120/,
+    },
+  ])(`rejects a velocity channel $label`, async ({ channel, pattern }) => {
+    const loader = streaming_loader(channel)
     await expect(
       collect_vacf_input(lazy_trajectory(loader, true), { raw_data: `stub payload` }),
-    ).rejects.toThrow(/'velocity' channel of type object; VACF needs a Float64Array/)
-  })
-
-  it(`rejects a velocity channel whose length disagrees with the positions`, async () => {
-    const loader = streaming_loader(new Float64Array(9))
-    await expect(
-      collect_vacf_input(lazy_trajectory(loader, true), { raw_data: `stub payload` }),
-    ).rejects.toThrow(/returned 9 velocity components but the collected positions need 120/)
+    ).rejects.toThrow(pattern)
   })
 })
 

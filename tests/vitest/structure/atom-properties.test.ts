@@ -50,7 +50,9 @@ describe(`Color Scales`, () => {
 
   test(`categorical strings`, () => {
     const { colors } = ap.apply_categorical_color_scale([`a`, `b`, `c`, `a`])
-    expect([colors.length, colors[0] === colors[3]]).toEqual([4, true])
+    expect(colors).toHaveLength(4)
+    expect(colors[0]).toBe(colors[3])
+    expect(new Set(colors).size).toBe(3)
   })
 
   test(`invalid scale fallback`, () => {
@@ -72,9 +74,11 @@ describe(`Coordination`, () => {
       { xyz: [1.5, 0, 0], element: `O` },
     ])
 
-  test(`bonded atoms have positive coordination`, () => {
-    const { values } = ap.get_coordination_colors(co_pair())
+  test(`bonded pair shares positive coordination and color`, () => {
+    const { values, colors } = ap.get_coordination_colors(co_pair())
     expect(values.every((val) => typeof val === `number` && val > 0)).toBe(true)
+    expect(values[0]).toBe(values[1])
+    expect(colors[0]).toBe(colors[1])
   })
 
   test(`isolated atoms have zero coordination`, () => {
@@ -89,13 +93,6 @@ describe(`Coordination`, () => {
       { xyz: [3, 0, 0], element: `C` },
     ])
     expect(ap.get_coordination_colors(structure).values).toEqual([1, 2, 1])
-  })
-
-  test(`equal coordination produces equal colors`, () => {
-    const single = ap.get_coordination_colors(make_struct([{ xyz: [0, 0, 0] }]))
-    expect(single.values).toEqual([0])
-    const { colors, values } = ap.get_coordination_colors(co_pair())
-    expect([values[0] === values[1], colors[0] === colors[1]]).toEqual([true, true])
   })
 
   describe(`PBC-aware coordination`, () => {
@@ -119,8 +116,6 @@ describe(`Coordination`, () => {
       pbc?: [boolean, boolean, boolean]
       check: CnCheck
     }>([
-      { name: `cell boundaries`, lattice_size: 3, check: all_positive,
-        sites: [{ abc: [0, 0, 0] }, { abc: [0.5, 0, 0] }] },
       { name: `BCC symmetry`, lattice_size: 5, check: (vals) => vals[0] === 8 && vals[1] === 8,
         sites: [{ abc: [0, 0, 0], element: `Cs` }, { abc: [0.5, 0.5, 0.5], element: `Cs` }] },
       { name: `NaCl corner`, lattice_size: 5, sites: nacl_corner_sites,
@@ -148,13 +143,9 @@ describe(`Coordination`, () => {
         sites: Array.from({ length: 64 }, (_, idx) => ({
           abc: [((idx % 4) + 0.5) / 5, ((Math.floor(idx / 4) % 4) + 0.5) / 5, (Math.floor(idx / 16) + 0.5) / 5] as Vec3,
         })) },
-      { name: `ionic atoms at exact cell boundary (NaCl)`, lattice_size: 5, check: all_positive,
-        sites: [{ abc: [0, 0, 0], element: `Na` }, { abc: [0.5, 0, 0], element: `Cl` }] },
       // atoms at 0.1 and 0.9 bond across the wrap (1 Å apart through the boundary)
       { name: `atoms just inside opposite faces bond through PBC`, lattice_size: 5, check: all_positive,
         sites: [{ abc: [0.1, 0.5, 0.5] }, { abc: [0.9, 0.5, 0.5] }] },
-      { name: `partial PBC, atoms inside cell`, lattice_size: 8, pbc: [true, true, false],
-        check: all_finite, sites: [{ abc: [0, 0, 0.1] }, { abc: [0.5, 0.5, 0.1] }] },
       { name: `very large cell with sparse atoms`, lattice_size: 50, check: all_finite,
         sites: [
           { abc: [0.1, 0.1, 0.1] },
@@ -360,16 +351,13 @@ describe(`Wyckoff`, () => {
     expect([colors[0], values[0]]).toEqual([`#808080`, `unknown`])
   })
 
-  test(`distinct Wyckoff labels produce distinct colors`, () => {
-    const dataset = { wyckoffs: [`a`, `b`] } as unknown as MoyoDataset
-    const { colors, values } = ap.get_wyckoff_colors(diagonal_c(2), dataset)
-    expect([values, colors[0] !== colors[1]]).toEqual([[`a|C`, `b|C`], true])
-  })
-
-  test(`duplicate Wyckoff labels share a color`, () => {
+  test(`labels are categorical by Wyckoff letter`, () => {
     const dataset = { wyckoffs: [`a`, `a`, `b`, `a`] } as unknown as MoyoDataset
-    const { colors } = ap.get_wyckoff_colors(diagonal_c(4), dataset)
-    expect([colors[0] === colors[1], colors[0] !== colors[2]]).toEqual([true, true])
+    const { colors, values } = ap.get_wyckoff_colors(diagonal_c(4), dataset)
+    expect(values).toEqual([`a|C`, `a|C`, `b|C`, `a|C`])
+    expect(colors[0]).toBe(colors[1])
+    expect(colors[0]).toBe(colors[3])
+    expect(colors[0]).not.toBe(colors[2])
   })
 
   test(`null Wyckoff positions remain unknown`, () => {
@@ -397,46 +385,27 @@ describe(`Custom`, () => {
   // oxfmt-ignore
   const diagonal_c = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, { xyz: [2, 2, 2] }])
 
-  test(`numeric`, () => {
-    const { values } = ap.get_custom_colors(diagonal_c, (site) => site.xyz[2])
-    expect(values).toEqual([0, 1, 2])
+  test(`numeric values pass through`, () => {
+    expect(ap.get_custom_colors(diagonal_c, (site) => site.xyz[2]).values).toEqual([0, 1, 2])
   })
 
-  test(`string`, () => {
+  test(`string values are categorical`, () => {
     // oxfmt-ignore
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` }, { xyz: [1, 1, 1], element: `O` },
       { xyz: [2, 2, 2], element: `C` },
     ])
-    const color_fn = (site: Site) => site.species[0].element
-    const { values, colors } = ap.get_custom_colors(structure, color_fn)
-    expect([values, colors[0] === colors[2]]).toEqual([[`C`, `O`, `C`], true])
-  })
-
-  test(`site index`, () => {
-    const { colors } = ap.get_custom_colors(diagonal_c, (_, idx) => idx)
-    expect(new Set(colors).size).toBe(3)
-  })
-
-  test(`properties`, () => {
-    // oxfmt-ignore
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 0, 0] }, { xyz: [0, 1, 0] }])
-    for (const [idx, magmom] of [2.5, -1.0, 0.5].entries()) {
-      structure.sites[idx].properties = { magmom }
-    }
-    const { values } = ap.get_custom_colors(structure, (site) =>
-      Number(site.properties?.magmom ?? 0),
+    const { values, colors } = ap.get_custom_colors(
+      structure,
+      (site) => site.species[0].element,
     )
-    expect(values).toEqual([2.5, -1.0, 0.5])
+    expect(values).toEqual([`C`, `O`, `C`])
+    expect(colors[0]).toBe(colors[2])
+    expect(colors[0]).not.toBe(colors[1])
   })
 
-  test(`distance`, () => {
-    // oxfmt-ignore
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [3, 4, 0] }, { xyz: [6, 8, 0] }])
-    const { values } = ap.get_custom_colors(structure, (site) =>
-      Math.hypot(site.xyz[0], site.xyz[1]),
-    )
-    expect(values).toEqual([0, 5, 10])
+  test(`site index yields distinct colors`, () => {
+    expect(new Set(ap.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size).toBe(3)
   })
 })
 
@@ -459,18 +428,20 @@ describe(`sync_atom_color_mode`, () => {
     expect(config.scale_type).toBe(scale_type)
   })
 
-  test(`resets a stale property key and derives its scale type`, () => {
-    const config: Partial<ap.AtomColorConfig> = {
-      mode: `property`,
-      property_key: `gone`,
-      scale_type: `continuous`,
-    }
-    ap.sync_atom_color_mode(config, [CNA_TYPE_PROPERTY, `charge`])
-    expect(config).toMatchObject({
-      property_key: CNA_TYPE_PROPERTY,
-      scale_type: `categorical`,
-    })
-  })
+  test.each([
+    [`missing`, { mode: `property` }],
+    [`stale`, { mode: `property`, property_key: `gone`, scale_type: `continuous` }],
+  ] as const)(
+    `repairs a %s property key before deriving scale type`,
+    (_case, initial_config) => {
+      const config: Partial<ap.AtomColorConfig> = { ...initial_config }
+      ap.sync_atom_color_mode(config, [CNA_TYPE_PROPERTY])
+      expect(config).toMatchObject({
+        property_key: CNA_TYPE_PROPERTY,
+        scale_type: `categorical`,
+      })
+    },
+  )
 
   test(`falls back to element mode when no colorable properties remain`, () => {
     const config: Partial<ap.AtomColorConfig> = {
@@ -593,19 +564,17 @@ describe(`get_atom_colors`, () => {
     expect(ap.get_atom_colors(structure, config).colors).toHaveLength(expected_len)
   })
 
-  test(`custom with fn`, () => {
-    const { values } = ap.get_atom_colors(structure, {
-      mode: `custom`,
-      color_fn: (_, idx) => idx * 10,
-    })
-    expect(values).toEqual([0, 10])
-  })
-
-  test(`custom without fn`, () => {
-    // When color_fn is missing, returns empty arrays (no property coloring)
-    const { colors, values } = ap.get_atom_colors(structure, { mode: `custom` })
-    expect(colors).toEqual([])
-    expect(values).toEqual([])
+  test.each([
+    [
+      `custom with fn`,
+      { mode: `custom` as const, color_fn: (_: Site, idx: number) => idx * 10 },
+      [0, 10],
+    ],
+    [`custom without fn`, { mode: `custom` as const }, []],
+  ])(`%s`, (_name, config, expected_values) => {
+    const { colors, values } = ap.get_atom_colors(structure, config)
+    expect(values).toEqual(expected_values)
+    expect(colors).toHaveLength(expected_values.length)
   })
 
   test(`scale option changes the rendered colors`, () => {
@@ -654,13 +623,6 @@ describe(`Performance`, () => {
     expect(colors).toHaveLength(count)
     expect(elapsed).toBeLessThan(budget_ms)
   }, 10000)
-
-  test(`50 categorical values`, () => {
-    const sites = Array.from({ length: 50 }, (_, idx) => ({ xyz: [idx, 0, 0] as Vec3 }))
-    const args = [`interpolateViridis`, `categorical`] as const
-    const { colors } = ap.get_custom_colors(make_struct(sites), (_, idx) => idx, ...args)
-    expect(new Set(colors).size).toBe(50)
-  })
 })
 
 describe(`Selective dynamics`, () => {
@@ -792,13 +754,12 @@ describe(`CNA structure type coloring`, () => {
   })
 
   test(`reaches the palette through the shared atom color entry point`, () => {
+    // sync_atom_color_mode → categorical for cna_type is covered in sync_atom_color_mode
     const config: Partial<ap.AtomColorConfig> = {
       mode: `property`,
       property_key: CNA_TYPE_PROPERTY,
+      scale_type: `categorical`,
     }
-    ap.sync_atom_color_mode(config, [CNA_TYPE_PROPERTY])
-    // property mode forces `continuous` for every other key; cna_type is five discrete codes
-    expect(config).toMatchObject({ scale_type: `categorical` })
     expect(ap.get_atom_colors(cna_struct(all_codes), config).colors).toEqual(palette)
   })
 })

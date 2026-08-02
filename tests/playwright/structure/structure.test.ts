@@ -25,6 +25,14 @@ const section_body = (heading: Locator): Locator =>
   heading.locator(`xpath=following-sibling::*[1]`)
 const controls_pane_of = (page: Page): Locator =>
   page.locator(`#test-structure .controls-pane`)
+const fill_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
+  for (const [axis_idx, value] of values.entries()) await inputs.nth(axis_idx).fill(value)
+}
+const expect_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
+  for (const [axis_idx, value] of values.entries()) {
+    await expect(inputs.nth(axis_idx), `axis ${axis_idx}`).toHaveValue(value)
+  }
+}
 const opacity_of = (locator: Locator): Promise<number> =>
   locator.evaluate((element) => Number(getComputedStyle(element).opacity))
 
@@ -474,11 +482,7 @@ test.describe(`Structure Component Tests`, () => {
     await background_color_input.fill(`#0000ff`)
     await opacity_input.fill(`0.7`)
 
-    // Disable site labels
     await site_labels_checkbox.uncheck()
-
-    await expect(pane_div).toBeVisible()
-
     await site_labels_checkbox.check()
     await expect(text_color_input).toHaveValue(`#ff0000`)
     await expect(background_color_input).toHaveValue(`#0000ff`)
@@ -1337,17 +1341,19 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const auto_rotate_input = pane_div.locator(
       `label:has-text("Auto-rotate speed") input[type="number"]`,
     )
+    const rotation_numbers = pane_div.locator(`.rotation-axes input[type="number"]`)
 
-    // Test 1: Settings preservation across projection changes
+    // Settings preservation across projection changes
     await atom_radius_input.fill(`1.5`)
     await auto_rotate_input.fill(`0.5`)
     await camera_projection_select.selectOption(`orthographic`)
+    await fill_axis_values(rotation_numbers, [`120`, `240`, `300`])
 
     await expect(atom_radius_input).toHaveValue(`1.5`)
     await expect(auto_rotate_input).toHaveValue(`0.5`)
     await expect(camera_projection_select).toHaveValue(`orthographic`)
 
-    // Test 2: State persistence across pane close/open
+    // State persistence across pane close/open (incl. rotation axes)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -1360,6 +1366,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
     await expect(camera_projection_select).toHaveValue(`orthographic`)
     await expect(atom_radius_input).toHaveValue(`1.5`)
+    await expect(auto_rotate_input).toHaveValue(`0.5`)
+    await expect_axis_values(rotation_numbers, [`120`, `240`, `300`])
   })
 
   test.describe(`Structure Controls Reset Functionality`, () => {
@@ -1410,12 +1418,18 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await projection_select.selectOption(new_value)
       await expect(projection_select).toHaveValue(new_value)
 
+      const rotation_numbers = controls_pane_of(page).locator(
+        `.rotation-axes input[type="number"]`,
+      )
+      await fill_axis_values(rotation_numbers, [`45`, `90`, `135`])
+
       // Reset button should now appear in Camera section (DOM update, not canvas rendering)
       await expect(camera_reset).toBeVisible({ timeout: 3000 })
       await camera_reset.click()
 
-      // Projection should be back to initial value (the default captured on mount)
+      // Projection and rotation axes restore to mount defaults
       await expect(projection_select).toHaveValue(initial_value)
+      await expect_axis_values(rotation_numbers, [`0`, `0`, `0`])
     })
 
     // Every section's reset button follows one lifecycle: absent until something in that
@@ -1589,12 +1603,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
       ranges: axes.locator(`input[type="range"]`),
     }
   }
-  const expect_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
-    for (const [axis_idx, value] of values.entries()) {
-      await expect(inputs.nth(axis_idx), `axis ${axis_idx}`).toHaveValue(value)
-    }
-  }
-
   test(`rotation controls clamp out-of-range values on input`, async ({ page }) => {
     const { pane_div } = await open_structure_control_pane(page)
 
@@ -1635,9 +1643,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     await expect_axis_values(ranges, [`0`, `0`, `0`])
 
     // Set different values for each axis
-    for (const [axis_idx, value] of [`30`, `60`, `90`].entries()) {
-      await numbers.nth(axis_idx).fill(value)
-    }
+    await fill_axis_values(numbers, [`30`, `60`, `90`])
 
     // Verify all values are set correctly and independently
     await expect_axis_values(numbers, [`30`, `60`, `90`])
@@ -1646,47 +1652,6 @@ test.describe(`Structure Rotation Controls Tests`, () => {
     // Modify one axis and verify others remain unchanged
     await numbers.nth(1).fill(`120`)
     await expect_axis_values(numbers, [`30`, `120`, `90`])
-  })
-
-  test(`rotation controls reset with Camera section reset button`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const { numbers } = rotation_axes_of(pane_div)
-
-    // Set some non-zero values
-    for (const [axis_idx, value] of [`45`, `90`, `135`].entries()) {
-      await numbers.nth(axis_idx).fill(value)
-    }
-    await expect_axis_values(numbers, [`45`, `90`, `135`])
-
-    await pane_div.locator(`h4:has-text("Camera")`).locator(`button.reset-button`).click()
-
-    await expect_axis_values(numbers, [`0`, `0`, `0`])
-  })
-
-  test(`rotation controls persist across pane close/open`, async ({ page }) => {
-    const { pane_div } = await open_structure_control_pane(page)
-
-    const { numbers } = rotation_axes_of(pane_div)
-
-    // Set rotation values
-    for (const [axis_idx, value] of [`120`, `240`, `300`].entries()) {
-      await numbers.nth(axis_idx).fill(value)
-    }
-
-    // Close the pane
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.uncheck()
-    await expect(pane_div).not.toHaveClass(/pane-open/)
-
-    // Reopen the pane
-    await test_page_controls_checkbox.check()
-    await expect(pane_div).toHaveClass(/pane-open/)
-
-    // Verify values persisted
-    await expect_axis_values(numbers, [`120`, `240`, `300`])
   })
 })
 
@@ -1929,17 +1894,20 @@ test.describe(`Edit Atoms Mode`, () => {
   test(`undo restores state and enables redo`, async ({ page }) => {
     await enter_edit_atoms_mode(page)
 
-    const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(page.locator(`#test-structure`))
+    const structure_div = page.locator(`#test-structure`)
+    const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(structure_div)
     await expect(undo_btn).toBeDisabled()
     await expect(redo_btn).toBeDisabled()
+    await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
     await select_atom_for_delete(page)
 
-    // Wait for undo to become available, then click it
+    const count_badge = structure_div.locator(`.history-count`).first()
+    await expect(count_badge).toBeVisible({ timeout: 2000 })
+    await expect(count_badge).toHaveText(`1`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
     await undo_btn.click({ force: true })
 
-    // Redo should now be enabled
     await expect(redo_btn).toBeEnabled({ timeout: 2000 })
   })
 
@@ -1999,23 +1967,6 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Undo/redo buttons should still be visible
     await expect(undo_btn).toBeVisible({ timeout: 2000 })
-  })
-
-  test(`history count badges show correct counts`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-
-    // Initially no count badges
-    await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
-
-    // Delete an atom to create history
-    await select_atom_for_delete(page)
-
-    // Should show undo count badge with "1"
-    const count_badge = structure_div.locator(`.history-count`).first()
-    await expect(count_badge).toBeVisible({ timeout: 2000 })
-    await expect(count_badge).toHaveText(`1`)
   })
 })
 

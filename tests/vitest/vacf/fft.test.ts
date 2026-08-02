@@ -25,7 +25,9 @@ function naive_dft(re: readonly number[], im: readonly number[]) {
 }
 
 describe(`fft_in_place`, () => {
-  it.each([2, 4, 8, 16, 64, 256])(
+  // n=256 already runs every radix-2 stage size; 2 and 4 keep the smallest butterflies
+  // as isolated failures. Mid sizes (8/16/64) re-ran the same stages on smaller data.
+  it.each([2, 4, 256])(
     `matches a naive DFT of a seeded random complex signal (n = %i)`,
     (n_points) => {
       const rng = make_rng(20260801 + n_points)

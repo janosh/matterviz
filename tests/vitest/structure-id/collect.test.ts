@@ -1,11 +1,13 @@
+import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
+import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
   sweep_frame_plan,
 } from '$lib/structure-id/collect'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
 const in_memory = (structures: AnyStructure[]): TrajectoryType => ({
@@ -54,8 +56,7 @@ describe(`sweep_frame_plan`, () => {
   )
 
   it(`defaults to DEFAULT_MAX_SWEEP_FRAMES samples`, () => {
-    const { frame_numbers } = sweep_frame_plan(10_000)
-    expect(frame_numbers).toHaveLength(DEFAULT_MAX_SWEEP_FRAMES)
+    expect(sweep_frame_plan(10_000).frame_numbers).toHaveLength(DEFAULT_MAX_SWEEP_FRAMES)
   })
 
   it.each([
@@ -69,7 +70,7 @@ describe(`sweep_frame_plan`, () => {
 })
 
 describe(`collect_structure_id_sweep`, () => {
-  it(`caps analysed frames, reports stride, and emits progress`, async () => {
+  it(`caps analysed frames and reports stride, results and progress`, async () => {
     const seen: [number, number][] = []
     const sweep = await collect_structure_id_sweep(repeat_fcc(20), {
       max_frames: 4,
@@ -79,11 +80,10 @@ describe(`collect_structure_id_sweep`, () => {
     expect(sweep.frame_stride).toBe(5)
     expect(sweep.frame_numbers).toEqual([0, 5, 10, 15])
     expect(sweep.results).toHaveLength(4)
-    expect(sweep.populations).toHaveLength(4)
-    expect(sweep.n_atoms).toBe(32)
-    expect(sweep.populations[0]).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
-    // skip_csp leaves no centrosymmetry to average
-    expect(sweep.mean_centrosymmetry).toEqual([null, null, null, null])
+    expect(sweep.results[0].n_atoms).toBe(32)
+    expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
+    // skip_csp is forwarded, so no frame carries centrosymmetry
+    expect(sweep.results.every(({ centrosymmetry }) => centrosymmetry === null)).toBe(true)
     expect(seen).toEqual([
       [1, 4],
       [2, 4],
@@ -92,18 +92,57 @@ describe(`collect_structure_id_sweep`, () => {
     ])
   })
 
-  it(`reports mean centrosymmetry per frame when CSP is not skipped`, async () => {
-    const sweep = await collect_structure_id_sweep(repeat_fcc(2), { max_frames: 2 })
-    expect(sweep.mean_centrosymmetry).toHaveLength(2)
-    // ideal fcc is centrosymmetric, so every site's CSP is 0 to round-off
-    for (const mean of sweep.mean_centrosymmetry) expect(mean ?? NaN).toBeLessThan(1e-20)
-  })
-
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {
     const trajectory = in_memory([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])
     await expect(
       collect_structure_id_sweep(trajectory, { max_frames: 2, options: { skip_csp: true } }),
     ).rejects.toThrow(/frame 1 has 31 atoms but frame 0 has 32/)
+  })
+
+  it(`preserves out-of-cell coordinates on a non-periodic axis`, async () => {
+    const bulk = make_fcc([3, 3, 3])
+    const shifted_slab = {
+      ...bulk,
+      lattice: { ...bulk.lattice, pbc: [true, true, false] as const },
+      sites: bulk.sites.map((site, site_idx) => {
+        if (site_idx !== 0) return site
+        const abc: Vec3 = [site.abc[0], site.abc[1], site.abc[2] - 1]
+        const xyz: Vec3 = [site.xyz[0], site.xyz[1], site.xyz[2] - bulk.lattice.c]
+        return { ...site, abc, xyz }
+      }),
+    }
+    expect(shifted_slab.sites[0].abc[2]).toBeLessThan(0)
+
+    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
+    try {
+      await collect_structure_id_sweep(in_memory([shifted_slab]), {
+        options: { skip_csp: true },
+      })
+      expect(compute_spy).toHaveBeenCalledOnce()
+      const analysed_structure = compute_spy.mock.calls[0][0]
+      expect(analysed_structure.sites[0].abc).toEqual(shifted_slab.sites[0].abc)
+      expect(analysed_structure.sites[0].xyz).toEqual(shifted_slab.sites[0].xyz)
+    } finally {
+      compute_spy.mockRestore()
+    }
+  })
+
+  it(`defaults missing lattice pbc before normalizing sites`, async () => {
+    const crystal = make_fcc([2, 2, 2])
+    const { pbc: _pbc, ...lattice } = crystal.lattice
+    const structure = {
+      ...crystal,
+      lattice,
+      sites: crystal.sites.map((site, site_idx) =>
+        site_idx === 0
+          ? { ...site, abc: [1, 0, 0] as Vec3, xyz: [999, 999, 999] as Vec3 }
+          : site,
+      ),
+    } as AnyStructure
+    const sweep = await collect_structure_id_sweep(in_memory([structure]), {
+      options: { skip_csp: true },
+    })
+    expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
   })
 })
 
@@ -119,6 +158,16 @@ describe(`indexed trajectories`, () => {
     await expect(collect_structure_id_sweep(make_trajectory())).rejects.toThrow(pattern)
   })
 
+  it.each([
+    [`empty text`, ``],
+    [`empty buffer`, new ArrayBuffer(0)],
+  ])(`refuses %s raw data`, async (_label, raw_data) => {
+    const trajectory = indexed(50, counting_loader())
+    await expect(collect_structure_id_sweep(trajectory, { raw_data })).rejects.toThrow(
+      /needs the raw file bytes to load the sampled frames/,
+    )
+  })
+
   it(`loads exactly the sampled source frames through the loader`, async () => {
     const loader = counting_loader()
     const sweep = await collect_structure_id_sweep(indexed(50, loader), {
@@ -126,8 +175,7 @@ describe(`indexed trajectories`, () => {
       max_frames: 5,
       options: { skip_csp: true },
     })
-    expect(loader.requested).toEqual([0, 10, 20, 30, 40])
-    expect(sweep.frame_numbers).toEqual([0, 10, 20, 30, 40])
-    expect(sweep.frame_stride).toBe(10)
+    expect([sweep.frame_numbers, sweep.frame_stride]).toEqual([[0, 10, 20, 30, 40], 10])
+    expect(sweep.frame_numbers).toEqual(loader.requested)
   })
 })
