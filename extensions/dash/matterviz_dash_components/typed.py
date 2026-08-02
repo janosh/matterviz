@@ -379,6 +379,7 @@ class Trajectory(MatterViz):
         controls_open: bool | None = None,
         current_step_idx: int | None = None,
         data_extractor: Any | None = None,
+        data_inspector_open: bool | None = None,
         data_url: str | None = None,
         display_mode: Any | None = None,
         fps: float | None = None,
@@ -396,8 +397,10 @@ class Trajectory(MatterViz):
         show_controls: Any | None = None,
         spinner_props: dict | None = None,
         step_labels: list[float] | None = None,
+        structure_id_pane_open: bool | None = None,
         structure_props: dict | None = None,
         trajectory: Any | None = None,
+        vacf_pane_open: bool | None = None,
         visible_properties: list[str] | None = None,
         x_quantity: Any | None = None,
         mv_props: dict | None = None,
@@ -425,6 +428,8 @@ class Trajectory(MatterViz):
             mv_props["current_step_idx"] = current_step_idx
         if data_extractor is not None:
             mv_props["data_extractor"] = data_extractor
+        if data_inspector_open is not None:
+            mv_props["data_inspector_open"] = data_inspector_open
         if data_url is not None:
             mv_props["data_url"] = data_url
         if display_mode is not None:
@@ -459,10 +464,14 @@ class Trajectory(MatterViz):
             mv_props["spinner_props"] = spinner_props
         if step_labels is not None:
             mv_props["step_labels"] = step_labels
+        if structure_id_pane_open is not None:
+            mv_props["structure_id_pane_open"] = structure_id_pane_open
         if structure_props is not None:
             mv_props["structure_props"] = structure_props
         if trajectory is not None:
             mv_props["trajectory"] = trajectory
+        if vacf_pane_open is not None:
+            mv_props["vacf_pane_open"] = vacf_pane_open
         if visible_properties is not None:
             mv_props["visible_properties"] = visible_properties
         if x_quantity is not None:
