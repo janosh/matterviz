@@ -1661,6 +1661,12 @@ describe(`make_nd_cache_key`, () => {
       same: true,
       label: `EPA matches total/atoms`,
     },
+    {
+      a: { composition: { Li: 2, O: 1 }, energy: -10 },
+      b: { composition: { O: 1, Li: 2 }, energy: -10 },
+      same: true,
+      label: `composition key order`,
+    },
   ])(`nd cache key same=$same for $label`, ({ a, b, same }) => {
     expect(
       make_nd_cache_key([a], true, -50, undefined) ===
@@ -1670,6 +1676,25 @@ describe(`make_nd_cache_key`, () => {
 
   test(`cache key ignores entry order`, () => {
     expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key)
+  })
+
+  test(`cache key ignores heavy non-computational entry metadata`, () => {
+    const lightweight: PhaseData = {
+      entry_id: `mp-1`,
+      composition: { Li: 2, O: 1 },
+      energy: -10,
+      reduced_formula: `Li2O`,
+    }
+    const with_heavy_metadata: PhaseData = {
+      ...lightweight,
+      structure: { sites: Array.from({ length: 100 }, () => ({ element: `Li` })) },
+      parameters: { calculation: `large payload` },
+      data: { provenance: `not geometric input` },
+      energy_adjustments: [{ correction: 0.1 }],
+    }
+    expect(make_nd_cache_key([with_heavy_metadata], true, -50, undefined)).toBe(
+      make_nd_cache_key([lightweight], true, -50, undefined),
+    )
   })
 
   test.each([
@@ -1741,6 +1766,16 @@ describe(`N-D projection cache consistency`, () => {
     expect(Object.keys(proj_a.domains).toSorted()).toEqual(
       Object.keys(proj_b.domains).toSorted(),
     )
+    const enriched_entries = ytos_entries.map((entry) => ({
+      ...entry,
+      data: { cache_revision: 2 },
+    }))
+    const enriched = compute_chempot_diagram(enriched_entries, {
+      ...config_base,
+      elements: [`O`, `Ti`, `Y`],
+    })
+    expect(enriched.min_entries.every((entry) => entry.data?.cache_revision === 2)).toBe(true)
+
     const renamed_entries = ytos_entries.map((entry, idx) => ({
       ...entry,
       name: `renamed ${idx}`,

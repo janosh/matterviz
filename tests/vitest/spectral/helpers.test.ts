@@ -1300,6 +1300,20 @@ describe(`normalize_dos`, () => {
     expect(result).toMatchObject({ type: `phonon`, frequencies })
   })
 
+  it.each([`cm-1`, `cm^-1`, `cm⁻¹`] as const)(
+    `normalizes explicitly declared %s phonon frequencies to THz`,
+    (unit) => {
+      const result = normalize_dos({
+        frequencies: [0, 333.5640951981521],
+        densities: [0, 1],
+        frequency_unit: unit,
+      })
+      expect(result).toMatchObject({ type: `phonon` })
+      if (result?.type !== `phonon`) throw new Error(`Expected normalized phonon DOS`)
+      expect(result.frequencies[1]).toBeCloseTo(10, 12)
+    },
+  )
+
   describe(`electronic DOS`, () => {
     it(`validates with energies array`, () => {
       const result = normalize_dos({

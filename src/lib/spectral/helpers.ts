@@ -698,8 +698,19 @@ export function normalize_band_structure(
   return normalized as unknown as types.BaseBandStructure
 }
 
-// Validate and normalize a DOS object.
-// Supports both matterviz and pymatgen formats.
+const parse_frequency_unit = (unit: unknown): types.FrequencyUnit | null => {
+  if (typeof unit !== `string`) return null
+  const normalized = unit.trim().toLowerCase()
+  if (normalized === `thz`) return `THz`
+  if (normalized === `ev`) return `eV`
+  if (normalized === `mev`) return `meV`
+  if (normalized === `ha` || normalized === `hartree`) return `Ha`
+  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm-1`
+  return null
+}
+
+// Validate and normalize a DOS object. Phonon frequencies are normalized to THz so
+// Dos.svelte can safely treat its default axis unit as THz.
 export function normalize_dos(dos: unknown): types.DosData | null {
   if (!is_plain_object(dos)) return null
 
@@ -723,7 +734,16 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   // Phonon DOS: has frequencies
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
-    return { type: `phonon`, frequencies: frequencies as number[], densities }
+    const declared_unit = dos.frequency_unit ?? dos.unit
+    const source_unit = declared_unit == null ? `THz` : parse_frequency_unit(declared_unit)
+    if (!source_unit) return null
+    const numeric_frequencies = frequencies as number[]
+    const source_unit_per_thz = convert_frequencies([1], source_unit)[0]
+    const normalized_frequencies =
+      source_unit === `THz`
+        ? numeric_frequencies
+        : numeric_frequencies.map((frequency) => frequency / source_unit_per_thz)
+    return { type: `phonon`, frequencies: normalized_frequencies, densities }
   }
 
   // Electronic DOS: has energies
