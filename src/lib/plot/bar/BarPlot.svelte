@@ -1084,6 +1084,22 @@
                   show_line && points.length > 1
                     ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
                     : ``}
+                {@const set_hover = (
+                  pt: LineSeriesPoint | null,
+                  evt: MouseEvent | FocusEvent,
+                ) => {
+                  if (!pt) return clear_point_hover()
+                  hovered = true
+                  const fill = line_point_fill(pt, color)
+                  hover_info = get_bar_data(series_idx, pt.idx, fill)
+                  change(hover_info)
+                  on_point_hover?.({ ...hover_info, event: evt, point: pt })
+                }}
+                {@const do_click = (pt: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
+                  const fill = line_point_fill(pt, color)
+                  const bar_data = get_bar_data(series_idx, pt.idx, fill)
+                  on_point_click?.({ ...bar_data, event: evt, point: pt })
+                }}
                 {#if polyline_str}
                   <polyline
                     points={polyline_str}
@@ -1108,20 +1124,12 @@
                     style:cursor={on_point_click ? `pointer` : undefined}
                     onmousemove={(evt) => {
                       const pt = find_closest_point(evt, points)
-                      if (!pt) return
-                      hovered = true
-                      const fill = line_point_fill(pt, color)
-                      hover_info = get_bar_data(series_idx, pt.idx, fill)
-                      change(hover_info)
-                      on_point_hover?.({ ...hover_info!, event: evt, point: pt })
+                      if (pt) set_hover(pt, evt)
                     }}
                     onmouseleave={clear_point_hover}
                     onclick={(evt) => {
                       const pt = find_closest_point(evt, points)
-                      if (!pt) return
-                      const fill = line_point_fill(pt, color)
-                      const bar_data = get_bar_data(series_idx, pt.idx, fill)
-                      on_point_click?.({ ...bar_data, event: evt, point: pt })
+                      if (pt) do_click(pt, evt)
                     }}
                   />
                 {/if}
@@ -1133,25 +1141,6 @@
                         ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(`data-bar-idx`)
                         : null
                     return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
-                  }}
-                  {@const set_hover = (
-                    pt: LineSeriesPoint | null,
-                    evt: MouseEvent | FocusEvent,
-                  ) => {
-                    if (!pt) return clear_point_hover()
-                    hovered = true
-                    const fill = line_point_fill(pt, color)
-                    hover_info = get_bar_data(series_idx, pt.idx, fill)
-                    change(hover_info)
-                    on_point_hover?.({ ...hover_info, event: evt, point: pt })
-                  }}
-                  {@const do_click = (
-                    pt: LineSeriesPoint,
-                    evt: MouseEvent | KeyboardEvent,
-                  ) => {
-                    const fill = line_point_fill(pt, color)
-                    const bar_data = get_bar_data(series_idx, pt.idx, fill)
-                    on_point_click?.({ ...bar_data, event: evt, point: pt })
                   }}
                   {@const leaving = (evt: MouseEvent | FocusEvent) =>
                     (evt.relatedTarget instanceof Element

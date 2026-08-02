@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -11,6 +11,7 @@
   import * as math from '$lib/math'
   import {
     bind_renderer,
+    brighten_hex,
     build_orbit_props,
     create_fly_to,
     DEFAULT_FLY_TO_DURATION_MS,
@@ -410,9 +411,6 @@
     { step: 0.015, frequency: 5 },
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
-
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
@@ -634,6 +632,9 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
+  // Outer translucent shell around hover/selection. Atom meshes use the same
+  // SphereGeometry(0.5) × radius scale, so this is a pure radial margin (1.2 was a bulky 20%).
+  const HIGHLIGHT_SHELL_SCALE = 1.08
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
@@ -1585,6 +1586,14 @@
     }
     return map
   })
+  // First visible species/property color per site — same source the atom mesh uses.
+  let color_by_site_idx = $derived.by(() => {
+    const map = new Map<number, string>()
+    for (const atom of atom_data) {
+      if (!map.has(atom.site_idx) && atom.color) map.set(atom.site_idx, atom.color)
+    }
+    return map
+  })
 
   // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
   // to a point at the sphere's poles, leaving the ball hard to hover from some
@@ -1662,7 +1671,14 @@
           : get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
-    add(`hover`, hovered_site, hovered_idx, dark_mode ? `white` : `#333`)
+    const hover_color =
+      hovered_idx !== null
+        ? brighten_hex(
+            color_by_site_idx.get(hovered_idx) ??
+              (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element]),
+          )
+        : brighten_hex(undefined)
+    add(`hover`, hovered_site, hovered_idx, hover_color)
     for (const idx of selected_sites ?? []) {
       add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
     }
@@ -2294,16 +2310,16 @@
         {@const is_pulsing = entry.kind !== `hover`}
         <T.Mesh
           position={entry.site.xyz}
-          scale={1.2 * entry.radius}
+          scale={HIGHLIGHT_SHELL_SCALE * entry.radius}
           oncreate={disable_raycast}
         >
           <T.SphereGeometry args={[0.5, 22, 22]} />
           <T.MeshStandardMaterial
             color={entry.color}
             transparent
-            opacity={is_pulsing ? pulse_opacity : 0.28}
+            opacity={is_pulsing ? pulse_opacity : 0.42}
             emissive={entry.color}
-            emissiveIntensity={is_pulsing ? 0.7 : 0.2}
+            emissiveIntensity={is_pulsing ? 0.7 : 0.55}
             depthTest={false}
             depthWrite={false}
           />

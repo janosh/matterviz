@@ -58,3 +58,15 @@ export function write_linear_color_to_buffer(
   buffer[idx * 3 + 1] = green
   buffer[idx * 3 + 2] = blue
 }
+
+const brighten_scratch = new Color()
+const brighten_white = new Color(0xffffff)
+
+// Mix a CSS color toward white in sRGB. Used for hover shells that should glow in the
+// atom's own hue rather than a flat gray outline. amount=0 keeps the input; 1 → white.
+export function brighten_hex(css_color: string | undefined, amount = 0.55): string {
+  const mix = Math.min(1, Math.max(0, amount))
+  if (!css_color)
+    return `#${brighten_scratch.set(0xcccccc).lerp(brighten_white, mix).getHexString()}`
+  return `#${brighten_scratch.set(css_color).lerp(brighten_white, mix).getHexString()}`
+}

@@ -53,11 +53,8 @@
     const inputs = structures
     const options: StructureIdOptions = JSON.parse(id_options_snapshot)
     const this_request = ++request_id
-    if (!inputs?.length) {
-      loading = false
-      return
-    }
-    loading = true
+    loading = Boolean(inputs?.length)
+    if (!inputs?.length) return
     error_msg = undefined
     Promise.all(inputs.map((structure) => compute_structure_id_async(structure, options)))
       .then((computed) => {

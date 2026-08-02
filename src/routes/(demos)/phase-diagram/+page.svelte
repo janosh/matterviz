@@ -26,7 +26,6 @@
     result: TdbParseResult
     system_name: string
     precomputed_data: PhaseDiagramData | null
-    is_loaded: boolean
   }
   let tdb = $state<TdbState | null>(null)
 
@@ -140,7 +139,7 @@
     }
     const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
     const precomputed_data = find_precomputed_diagram(system_name) ?? null
-    tdb = { result, system_name, precomputed_data, is_loaded: false }
+    tdb = { result, system_name, precomputed_data }
     current_file = filename
     update_url(filename)
     return true
@@ -239,10 +238,7 @@
   }
 
   function load_precomputed(): void {
-    if (tdb?.precomputed_data) {
-      current_data = tdb.precomputed_data
-      tdb.is_loaded = true
-    }
+    if (tdb?.precomputed_data) current_data = tdb.precomputed_data
   }
 
   // Load example A-B eutectic diagram as default when no other diagram is loaded
@@ -321,7 +317,7 @@
       result={tdb.result}
       system_name={tdb.system_name}
       has_precomputed={tdb.precomputed_data !== null}
-      is_precomputed_loaded={tdb.is_loaded}
+      is_precomputed_loaded={current_data === tdb.precomputed_data}
       on_load_precomputed={load_precomputed}
       style="margin: 0.5em"
     />

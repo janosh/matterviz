@@ -38,11 +38,8 @@
   $effect(() => {
     const [request_input, options] = [input, vacf_options]
     const this_request = ++request_id
-    if (!request_input) {
-      loading = false
-      return
-    }
-    loading = true
+    loading = Boolean(request_input)
+    if (!request_input) return
     error_msg = undefined
     compute_vacf_async(request_input, options)
       .then((computed) => {
