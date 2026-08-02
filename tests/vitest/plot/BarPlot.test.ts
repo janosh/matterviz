@@ -148,10 +148,8 @@ describe(`BarPlot`, () => {
   test(`line markers render zero-valued color and size inputs`, async () => {
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
     // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
-    const [on_point_hover, on_point_click, on_bar_hover, on_bar_click] = Array.from(
-      { length: 4 },
-      () => vi.fn(),
-    )
+    const on_point_hover = vi.fn()
+    const on_point_click = vi.fn()
     const plot = await mount_sized_bar_plot({
       series: [
         {
@@ -164,8 +162,6 @@ describe(`BarPlot`, () => {
       ],
       on_point_hover,
       on_point_click,
-      on_bar_hover,
-      on_bar_click,
     })
     expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
     const markers = [...plot.querySelectorAll(`.line-points .marker`)]
@@ -175,17 +171,15 @@ describe(`BarPlot`, () => {
     markers[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_click).toHaveBeenCalledOnce()
-    expect(on_bar_hover).toHaveBeenCalledOnce()
-    expect(on_bar_click).toHaveBeenCalledOnce()
   })
 
-  test(`markerless line series retain legacy bar hover and click callbacks`, async () => {
-    const on_bar_hover = vi.fn()
-    const on_bar_click = vi.fn()
+  test(`markerless line series emit point hover and click callbacks`, async () => {
+    const on_point_hover = vi.fn()
+    const on_point_click = vi.fn()
     const plot = await mount_sized_bar_plot({
       series: [{ ...basic, render_mode: `line`, markers: `line` }],
-      on_bar_hover,
-      on_bar_click,
+      on_point_hover,
+      on_point_click,
     })
     const hit_target = plot.querySelector(`.line-series polyline[stroke="transparent"]`)
     expect(hit_target).toBeInstanceOf(SVGPolylineElement)
@@ -193,12 +187,12 @@ describe(`BarPlot`, () => {
       new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
     )
     hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    expect(on_bar_hover).toHaveBeenCalledOnce()
-    expect(on_bar_hover.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
-    expect(on_bar_click).toHaveBeenCalledOnce()
-    expect(on_bar_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    expect(on_point_click).toHaveBeenCalledOnce()
+    expect(on_point_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
     hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`mixed bar and line series`, async () => {

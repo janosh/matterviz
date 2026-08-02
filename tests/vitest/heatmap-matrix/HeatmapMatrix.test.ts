@@ -109,7 +109,6 @@ describe(`axis replacement`, () => {
 
 describe(`symmetric mode`, () => {
   test.each([
-    { mode: true as const, label: `legacy true`, check: `toBeLessThanOrEqual` as const },
     { mode: `lower` as const, label: `lower`, check: `toBeLessThanOrEqual` as const },
     { mode: `upper` as const, label: `upper`, check: `toBeGreaterThanOrEqual` as const },
   ])(`$label renders triangle + diagonal`, ({ mode, check }) => {

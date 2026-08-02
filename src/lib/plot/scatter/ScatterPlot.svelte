@@ -154,6 +154,7 @@
     point_events,
     on_point_click,
     on_point_hover,
+    on_pointer_leave,
     fill_regions = $bindable([]),
     error_bands = [],
     on_fill_click,
@@ -211,6 +212,7 @@
       >
       on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+      on_pointer_leave?: () => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
       error_bands?: ErrorBand[]
       on_fill_click?: (event: FillHandlerEvent) => void
@@ -1513,11 +1515,12 @@
         if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
-        end_queued_mouse_move(false)
+        end_queued_mouse_move(true)
         hovered = false
         tooltip_point = null
         change(null)
         on_point_hover?.(null)
+        on_pointer_leave?.()
       }}
       ondblclick={pan_zoom.reset_view}
       onkeydown={pan_zoom.on_key_down}

@@ -521,11 +521,17 @@ export class TrajFrameReader implements FrameLoader {
         if (current_frame >= total_frames) break
 
         if (current_frame % sample_rate === 0) {
-          // parse_xyz_comment_metadata is pure regex/parseFloat and never throws
           const { step, properties: props } = parse_xyz_comment_metadata(comment)
           if (props.volume === undefined) {
-            const lattice = parse_extxyz_lattice(comment)
-            if (lattice) props.volume = Math.abs(math.det_3x3(lattice))
+            try {
+              const lattice = parse_extxyz_lattice(comment)
+              if (lattice) props.volume = Math.abs(math.det_3x3(lattice))
+            } catch (error) {
+              console.warn(
+                `Skipping malformed EXTXYZ lattice volume for frame ${current_frame}:`,
+                error,
+              )
+            }
           }
           const frame_metadata: TrajectoryMetadata = {
             frame_number: current_frame,

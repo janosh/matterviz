@@ -1,5 +1,4 @@
 // Tests for IsosurfaceControls component rendering and interactions
-import Isosurface from '$lib/isosurface/Isosurface.svelte'
 import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
 import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import type {
@@ -8,7 +7,7 @@ import type {
   VolumetricData,
 } from '$lib/isosurface/types'
 import { flushSync, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { doc_query, make_grid, make_volume as make_volume_fixture } from '../setup'
 
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
@@ -64,21 +63,6 @@ const mount_controls = (
   flushSync()
   return state_props
 }
-
-test(`legacy volume prop drives the isosurface geometry pipeline`, async () => {
-  const profiler = vi.fn()
-  mount(Isosurface, {
-    target: document.body,
-    props: {
-      volume: make_volume(),
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, isovalue: 9 },
-      profiler,
-    },
-  })
-  await vi.waitFor(() =>
-    expect(profiler).toHaveBeenCalledWith(expect.objectContaining({ stage: `rebuild_total` })),
-  )
-})
 
 describe(`IsosurfaceControls`, () => {
   test.each([

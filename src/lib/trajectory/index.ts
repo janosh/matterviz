@@ -201,6 +201,8 @@ export interface PositionStreamOptions {
 
 export interface FrameLoader {
   get_total_frames: (data: string | ArrayBuffer) => Promise<number>
+  // Release worker ports, file handles, or other external resources owned by the loader.
+  dispose?: () => void
   // Optional single sequential pass over the payload emitting flat positions.
   // Whole-trajectory analyses (e.g. MSD) need this for indexed trajectories, whose
   // in-memory `frames` array holds only the first handful of frames.

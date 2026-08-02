@@ -36,6 +36,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { full_data_extractor } from './extract'
   import type {
+    FrameLoader,
     ParseProgress,
     TrajectoryDataExtractor,
     TrajectoryFrame,
@@ -368,7 +369,6 @@
 
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
-  let frame_load_request_id = 0
   let frame_read_active = false
   let pending_frame_idx: number | undefined
 
@@ -403,6 +403,13 @@
   let frame_cache = new SvelteMap<number, TrajectoryFrame>()
   let frame_cache_atom_count = 0
   let frame_cache_owner: TrajectoryType | undefined
+  let active_frame_loader: FrameLoader | undefined
+  $effect(() => {
+    const next_frame_loader = trajectory?.frame_loader
+    if (next_frame_loader === active_frame_loader) return
+    active_frame_loader?.dispose?.()
+    active_frame_loader = next_frame_loader
+  })
   let streaming_file_path = $derived(
     trajectory?.metadata?.streaming_file_path as string | undefined,
   )
@@ -444,6 +451,7 @@
       globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
       if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
       if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+      active_frame_loader?.dispose?.()
     }
   })
 
@@ -467,22 +475,27 @@
     })
   }
   // Sync LRU write, evicting oldest entries until under both the frame and atom budgets
+  const frame_atom_count = (frame: TrajectoryFrame): number =>
+    frame.structure?.sites?.length ?? 0
   function cache_put(frame_idx: number, frame: TrajectoryFrame) {
     untrack(() => {
+      const previous = frame_cache.get(frame_idx)
+      if (previous) {
+        frame_cache_atom_count -= frame_atom_count(previous)
+        frame_cache.delete(frame_idx)
+      }
       frame_cache.set(frame_idx, frame)
-      let total_atoms = 0
-      for (const cached of frame_cache.values())
-        total_atoms += cached.structure?.sites?.length ?? 0
+      frame_cache_atom_count += frame_atom_count(frame)
       while (
         frame_cache.size > 1 &&
-        (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
+        (frame_cache.size > FRAME_CACHE_MAX || frame_cache_atom_count > FRAME_CACHE_MAX_ATOMS)
       ) {
         const oldest = frame_cache.keys().next().value
         if (oldest === undefined) break
-        total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
+        const oldest_frame = frame_cache.get(oldest)
+        if (oldest_frame) frame_cache_atom_count -= frame_atom_count(oldest_frame)
         frame_cache.delete(oldest)
       }
-      frame_cache_atom_count = total_atoms
     })
   }
 
@@ -492,7 +505,7 @@
         detail: {
           frame_idx,
           inflight: frame_read_active ? 1 : 0,
-          cached_frames: frame_cache.size,
+          cached_frames: untrack(() => frame_cache.size),
           cached_atoms: frame_cache_atom_count,
         },
       }),
@@ -516,7 +529,6 @@
   function prefetch_frames(from_idx: number) {
     const frame_loader = trajectory?.frame_loader
     if (!frame_loader || frame_read_active || pending_frame_idx !== undefined) return
-    if (trajectory?.indexed_frames && trajectory.indexed_frames.length < total_frames) return
     const owner = trajectory
     for (const ahead of [1, 2]) {
       const idx = from_idx + ahead
@@ -528,7 +540,7 @@
         .then((frame) => {
           if (frame && frame_cache_owner === owner) cache_put(idx, frame)
         })
-        .catch(() => {})
+        .catch((error) => console.warn(`Failed to prefetch trajectory frame ${idx}:`, error))
         .finally(() => finish_frame_read(idx))
       break
     }
@@ -541,7 +553,6 @@
     const cached = cache_get(frame_idx)
     const frame = cached ?? load_trajectory.frames[frame_idx]
     if (!frame) return false
-    if (!cached) cache_put(frame_idx, frame)
     current_frame = frame
     prefetch_frames(frame_idx)
     return true
@@ -551,7 +562,6 @@
     const load_trajectory = trajectory
     if (!load_trajectory?.frame_loader) return
     ensure_frame_cache_owner()
-    frame_load_request_id++
 
     if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) {
       pending_frame_idx = undefined
@@ -586,11 +596,8 @@
   async function load_frame_on_demand(load_trajectory: TrajectoryType, frame_idx: number) {
     const frame_loader = load_trajectory.frame_loader
     if (!frame_loader) return
-    const request_id = frame_load_request_id
     const request_is_current = () =>
-      request_id === frame_load_request_id &&
-      trajectory === load_trajectory &&
-      current_step_idx === frame_idx
+      trajectory === load_trajectory && current_step_idx === frame_idx
 
     frame_read_active = true
     emit_frame_load_state(frame_idx)
@@ -858,15 +865,19 @@
     if (scrub_animation_frame !== undefined) return
     scrub_active = true
     if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = undefined
     scrub_animation_frame = requestAnimationFrame(() => {
       scrub_animation_frame = undefined
       const next_step_idx = pending_scrub_step
       pending_scrub_step = undefined
-      if (next_step_idx !== undefined) commit_step(next_step_idx)
-      scrub_settle_timeout = setTimeout(() => {
-        scrub_settle_timeout = undefined
-        scrub_active = false
-      }, SCRUB_SETTLE_MS)
+      try {
+        if (next_step_idx !== undefined) commit_step(next_step_idx)
+      } finally {
+        scrub_settle_timeout = setTimeout(() => {
+          scrub_settle_timeout = undefined
+          scrub_active = false
+        }, SCRUB_SETTLE_MS)
+      }
     })
   }
 
@@ -899,7 +910,7 @@
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
     if (data?.x !== undefined && typeof data.x === `number`) {
       queue_scrub_step(x_map.to_frame(data.x))
-    } else flush_scrub_step()
+    }
   }
 
   // Play/pause functionality
@@ -1772,6 +1783,7 @@
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
+            on_pointer_leave={plot_skimming ? () => flush_scrub_step() : undefined}
             legend={{
               ...(scatter_props.legend ?? {}),
               on_toggle: (series_idx: number) => {

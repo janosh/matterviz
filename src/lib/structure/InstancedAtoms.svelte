@@ -11,6 +11,7 @@
   import type { Vec3 } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
+  import { SvelteMap } from 'svelte/reactivity'
   import {
     Color,
     InstancedMesh,
@@ -131,13 +132,14 @@
   })
 
   const gray = new Color(0x999999)
+  let colored_mesh: InstancedMesh | null = null
   $effect(() => {
     const current = mesh
-    if (!current || positions_only) return
+    if (!current || (positions_only && current === colored_mesh)) return
     const limit = Math.min(atoms.length, current.count)
     // Color.set(string) parses CSS with regexes. Atoms draw from a handful of distinct
     // colors, so resolve each one once per update instead of once per atom (>10k here).
-    const resolved = new Map<string | undefined, Color>()
+    const resolved = new SvelteMap<string | undefined, Color>()
     const resolve_color = (color: string | undefined): Color => {
       let hit = resolved.get(color)
       if (!hit) {
@@ -151,6 +153,7 @@
       current.setColorAt(idx, resolve_color(color))
     }
     if (current.instanceColor) current.instanceColor.needsUpdate = true
+    colored_mesh = current
     invalidate()
   })
 </script>
