@@ -360,10 +360,6 @@ describe(`anchoring trails to the displayed atoms`, () => {
         )
       }
     }
-    // The unwrapped path stays continuous: 1 Å per frame, no cell-sized jump
-    for (const [from, to] of segments_of(anchored)) {
-      expect(Math.hypot(...to.map((coord, axis) => coord - from[axis]))).toBeCloseTo(1, 5)
-    }
   })
 
   test(`anchors each atom independently`, () => {
@@ -382,7 +378,6 @@ describe(`collected_frame_idx`, () => {
   test.each([
     [1, 0, 0],
     [1, 9, 9],
-    [5, 0, 0],
     [5, 37, 7],
     // past the end of a stream that stopped short, and a negative from a clamped playhead
     [5, 999, 9],

@@ -59,16 +59,8 @@ export function create_worker_client<Input extends object, Options, Result>(
   // not a safe substitute: chempot briefly keyed on a thermodynamic fingerprint that omitted
   // name and entry_id, so two runs differing only in labels shared a promise and the second
   // caller got the first one's entries back in min_entries and el_refs.
-  // Plain-object keys are sorted at every depth, while ordered containers keep their order.
-  // Tagged JSON tuples keep unlike values collision-free.
-  const bytes_key = (
-    buffer: ArrayBufferLike,
-    byte_offset = 0,
-    byte_length = buffer.byteLength,
-  ): string =>
-    Array.from(new Uint8Array(buffer, byte_offset, byte_length), (byte) =>
-      byte.toString(16).padStart(2, `0`),
-    ).join(``)
+  // Plain-object keys are sorted at every depth and arrays retain order. Non-plain values
+  // use identity: no current worker option schema needs value semantics for them.
   const canonical_key_of = (value: unknown): string => {
     const seen = new WeakMap<object, number>()
     let next_reference = 0
@@ -107,41 +99,7 @@ export function create_worker_client<Input extends object, Options, Result>(
         ]
       }
 
-      const type_key = [Object.prototype.toString.call(item), non_plain_token(prototype)]
-      if (item instanceof Date) return [`date`, type_key, encode(item.getTime())]
-      if (item instanceof Map) {
-        return [
-          `map`,
-          type_key,
-          ...Array.from(item.entries()).flatMap(([key, entry_value]) => [
-            encode(key),
-            encode(entry_value),
-          ]),
-        ]
-      }
-      if (item instanceof Set) return [`set`, type_key, ...Array.from(item, encode)]
-      if (item instanceof RegExp) {
-        return [`regexp`, type_key, item.source, item.flags, item.lastIndex]
-      }
-      if (item instanceof ArrayBuffer) return [`array-buffer`, type_key, bytes_key(item)]
-      if (ArrayBuffer.isView(item)) {
-        return [
-          `array-buffer-view`,
-          type_key,
-          item.byteOffset,
-          item.byteLength,
-          bytes_key(item.buffer),
-        ]
-      }
-      if (item instanceof URL || item instanceof URLSearchParams) {
-        return [`url`, type_key, String(item)]
-      }
-      return [
-        `instance`,
-        type_key,
-        non_plain_token(item),
-        Object.entries(item).map(([key, entry_value]) => [key, encode(entry_value)]),
-      ]
+      return [`identity`, Object.prototype.toString.call(item), non_plain_token(item)]
     }
     const key = JSON.stringify(encode(value))
     if (key === undefined) throw new TypeError(`${label} worker could not key its request`)

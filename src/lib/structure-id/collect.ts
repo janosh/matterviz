@@ -68,25 +68,10 @@ export function sweep_frame_plan(
   return { frame_numbers, frame_stride }
 }
 
-// Structure handed to the analysis for one frame. Two things happen here:
-//
-// 1. Fractional coordinates are wrapped back into the cell. Measured on an fcc 3x3x3
-//    supercell translated by both a whole lattice vector and (1.3, -2.7, 0.4) cells, this
-//    changes NOTHING: 0 of 108 atoms differ, because build_neighbor_list already wraps into
-//    the cell itself before building periodic images (neighbors.ts). So this is belt and
-//    braces for consumers that reach for `structure.sites[i].abc` directly, not a fix.
-//    It is skipped unless all three axes are periodic: normalize_fractional_coords wraps
-//    every axis regardless of lattice.pbc, and on a slab (pbc [true, true, false])
-//    translated 0.6c that folds the top layer under the bottom one — measured 18 of 108
-//    atoms reclassified, fcc dropping 72 -> 54.
-// 2. The result is ALWAYS a fresh object. create_worker_client keys in-flight requests on
-//    input object IDENTITY (a WeakMap token) plus the canonical options, so handing it the
-//    same object twice — or reusing one scratch frame object and mutating it in place
-//    between calls — can return the FIRST frame's result for a later frame.
+// Normalize fully periodic cells only; wrapping a nonperiodic axis can change slab geometry.
 function analysis_structure(structure: AnyStructure): AnyStructure {
   const fully_periodic = `lattice` in structure && structure.lattice.pbc.every(Boolean)
-  const sites = fully_periodic ? normalize_fractional_coords(structure).sites : structure.sites
-  return { ...structure, sites }
+  return fully_periodic ? normalize_fractional_coords(structure) : structure
 }
 
 // Resolve a source frame number to the structure to analyse. Built once per sweep so the

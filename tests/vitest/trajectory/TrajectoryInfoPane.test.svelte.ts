@@ -111,18 +111,14 @@ test(`omits the sampled note when plot_metadata covers every frame`, async () =>
 
 // Math.min(...values) throws RangeError past ~125k arguments, and plot_metadata holds one
 // entry per frame on the indexed path, so a long run crashed the pane outright.
-test(
-  `summarises a run with more frames than the argument limit`,
-  { timeout: 120_000 },
-  async () => {
-    const total_frames = 130_000
-    const huge = make_plot_metadata(total_frames, (frame_number) => ({
-      energy: -10 - frame_number * 1e-4,
-    }))
-    await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
-    expect(document.body.textContent).toContain(`Energy Range`)
-  },
-)
+test(`summarises a run with more frames than the argument limit`, async () => {
+  const total_frames = 130_000
+  const huge = make_plot_metadata(total_frames, (frame_number) => ({
+    energy: -10 - frame_number * 1e-4,
+  }))
+  await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
+  expect(document.body.textContent).toContain(`Energy Range`)
+})
 
 // A fixed cell would otherwise print a zero-width range right under the Structure section's
 // own Volume row.

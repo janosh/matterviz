@@ -167,11 +167,9 @@ export function parse_lammps_trajectory(
     // (aliased where LAMMPS' name is cryptic). `type` and `id` are kept as scalars too —
     // they carry per-atom information (species grouping, atom identity) that is not
     // recoverable from the element symbol alone.
-    const vector_props = LAMMPS_VECTOR_GROUPS.flatMap(({ key, col_names }) =>
-      col_names.every((name) => name in col)
-        ? [{ key, indices: col_names.map((name) => col[name]) }]
-        : [],
-    )
+    const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
+      col_names.every((name) => name in col),
+    ).map(({ key, col_names }) => ({ key, indices: col_names.map((name) => col[name]) }))
     const scalar_props = cols.flatMap((name, col_idx) =>
       NON_SCALAR_COLS.has(name) ||
       vector_props.some(({ indices }) => indices.includes(col_idx))

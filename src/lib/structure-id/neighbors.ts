@@ -164,24 +164,8 @@ export function build_neighbor_list(
 
   const cutoff_sq = cutoff * cutoff
   const offsets = new Int32Array(n_centers + 1)
-  // Growable typed buffers avoid the peak of a full number[] plus a Float64Array.from copy.
-  // Seed ~8 neighbors/center (typical first shell); doubling covers wider cutoffs without a
-  // fixed attempt cap. Returned subarrays report the used length; the backing store may be
-  // larger for the lifetime of the list.
-  let n_found = 0
-  let all_distances = new Float64Array(Math.max(n_centers * 8, 16))
-  let all_deltas = new Float64Array(all_distances.length * 3)
-  const ensure_capacity = (needed: number) => {
-    if (needed <= all_distances.length) return
-    let next_capacity = all_distances.length
-    while (next_capacity < needed) next_capacity *= 2
-    const next_distances = new Float64Array(next_capacity)
-    next_distances.set(all_distances.subarray(0, n_found))
-    all_distances = next_distances
-    const next_deltas = new Float64Array(next_capacity * 3)
-    next_deltas.set(all_deltas.subarray(0, n_found * 3))
-    all_deltas = next_deltas
-  }
+  const all_distances: number[] = []
+  const all_deltas: number[] = []
   // Length-reset per center rather than reallocated. Array.sort needs the distance and its
   // delta to travel together, so these stay objects; at ~50 candidates per center the
   // allocation is well below the cost of the distance loop that fills them.
@@ -220,22 +204,17 @@ export function build_neighbor_list(
     }
     // a-CNA and CSP both consume a distance-ordered prefix, so sorting here is not optional
     found.sort((left, right) => left.distance - right.distance)
-    ensure_capacity(n_found + found.length)
     for (const { distance, delta } of found) {
-      all_distances[n_found] = distance
-      const delta_base = n_found * 3
-      all_deltas[delta_base] = delta[0]
-      all_deltas[delta_base + 1] = delta[1]
-      all_deltas[delta_base + 2] = delta[2]
-      n_found++
+      all_distances.push(distance)
+      all_deltas.push(...delta)
     }
-    offsets[center_idx + 1] = n_found
+    offsets[center_idx + 1] = all_distances.length
   }
 
   return {
     offsets,
-    deltas: all_deltas.subarray(0, n_found * 3),
-    distances: all_distances.subarray(0, n_found),
+    deltas: Float64Array.from(all_deltas),
+    distances: Float64Array.from(all_distances),
     n_centers,
     cutoff,
   }

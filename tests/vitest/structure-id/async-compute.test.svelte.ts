@@ -10,9 +10,7 @@ describe(`compute_structure_id_async`, () => {
     const crystal = make_fcc([2, 2, 2])
     const options = { skip_csp: true }
     const result = await compute_structure_id_async(crystal, options)
-    const sync = calc_structure_id(crystal, options)
-    expect(result.populations).toEqual(sync.populations)
-    expect(result.cna_types).toEqual(sync.cna_types)
+    expect(result).toEqual(calc_structure_id(crystal, options))
   })
 
   test(`dedupes in-flight requests and does not reuse a settled promise`, async () => {

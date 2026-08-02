@@ -76,13 +76,6 @@ const create_series = (
 const find_series_by_label = (series: DataSeries[], search_term: string) =>
   series.find((srs) => srs.label?.toLowerCase().includes(search_term.toLowerCase()))
 
-const property_key_of = (srs: DataSeries | undefined): string | undefined => {
-  const meta = srs?.metadata
-  if (!Array.isArray(meta) || meta.length === 0) return undefined
-  const first = meta[0]
-  return typeof first?.property_key === `string` ? first.property_key : undefined
-}
-
 describe(`generate_plot_series`, () => {
   it(`should handle basic trajectory generation with unit grouping`, () => {
     const trajectory = create_trajectory(COMMON_TRAJECTORIES.multi_property)
@@ -99,15 +92,24 @@ describe(`generate_plot_series`, () => {
     const force_series = find_series_by_label(series, `f`)
     const volume_series = find_series_by_label(series, `volume`)
 
-    expect(energy_series).toMatchObject({ unit: `eV`, y_axis: `y1`, visible: true })
-    expect(force_series).toMatchObject({ unit: `eV/Å`, y_axis: `y2`, visible: true })
-    expect(volume_series?.visible).toBe(false) // Hidden (max 2 unit groups)
-
-    expect([energy_series, force_series, volume_series].map(property_key_of)).toEqual([
-      `energy`,
-      `force_max`,
-      `volume`,
-    ])
+    expect(energy_series).toMatchObject({
+      unit: `eV`,
+      y_axis: `y1`,
+      visible: true,
+      metadata: expect.arrayContaining([expect.objectContaining({ property_key: `energy` })]),
+    })
+    expect(force_series).toMatchObject({
+      unit: `eV/Å`,
+      y_axis: `y2`,
+      visible: true,
+      metadata: expect.arrayContaining([
+        expect.objectContaining({ property_key: `force_max` }),
+      ]),
+    })
+    expect(volume_series).toMatchObject({
+      visible: false, // Hidden (max 2 unit groups)
+      metadata: expect.arrayContaining([expect.objectContaining({ property_key: `volume` })]),
+    })
     expect(energy_series?.metadata).toHaveLength(3)
   })
 

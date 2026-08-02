@@ -420,7 +420,18 @@ export function sync_atom_color_mode(
   config: Partial<AtomColorConfig>,
   property_keys: string[],
 ): void {
-  const { mode, property_key } = config
+  const { mode } = config
+  let { property_key } = config
+  if (mode === `property`) {
+    if (property_keys.length === 0) {
+      config.mode = `element`
+      return
+    }
+    if (!property_key || !property_keys.includes(property_key)) {
+      property_key = property_keys[0]
+      config.property_key = property_key
+    }
+  }
   if (mode && mode !== `element`) {
     config.scale_type =
       mode === `wyckoff` ||
@@ -428,14 +439,6 @@ export function sync_atom_color_mode(
       (mode === `property` && property_key === CNA_TYPE_PROPERTY)
         ? `categorical`
         : `continuous`
-  }
-  if (mode !== `property`) return
-  if (property_keys.length === 0) {
-    config.mode = `element`
-    return
-  }
-  if (!property_key || !property_keys.includes(property_key)) {
-    config.property_key = property_keys[0]
   }
 }
 

@@ -307,19 +307,12 @@
     }
   })
 
-  // Trails are decoration, so they get a fraction of the analysis budget: enough for the
-  // 500-atom x 5000-frame run the layer is designed around, and striding past that costs
-  // only smoothness.
+  // Decoration gets a 64 MB budget; larger runs trade smoothness for frame stride.
   const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
 
-  // Whole-trajectory positions behind the per-atom trail overlay. $state.raw, never $state:
-  // a deep proxy wraps every entry of `lattice_matrices` and the unwrap kernel reads a cell
-  // per atom per frame, which measured 1917 ms against 1.1 ms for the raw buffer.
+  // Avoid deep-proxying lattice_matrices: unwrapping measured 1917 ms proxied vs 1.1 ms raw.
   let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
-  // Only for trajectories already fully in memory, where collecting is a repack of frames
-  // we hold anyway. An indexed one would need a second full parse of the payload on every
-  // file load, seconds of stall for an overlay the user has not asked for; its trail
-  // controls simply stay hidden, since StructureControls gates them on this stream.
+  // Indexed trajectories would require a second full parse for an optional overlay.
   $effect(() => {
     const owner = trajectory
     trail_stream = null
@@ -335,9 +328,7 @@
       })
   })
 
-  // The playhead counts source frames while the trail layer counts collected ones, so the
-  // index has to be converted rather than passed straight through. Consumer scene_props
-  // spread last so an explicit stream of theirs wins over ours.
+  // Convert source-frame playhead to collected frames; consumer scene_props override ours.
   let trail_scene_props = $derived({
     trajectory_position_stream: trail_stream,
     trajectory_line_end_frame: trail_stream

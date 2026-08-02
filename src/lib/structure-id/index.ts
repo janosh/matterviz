@@ -7,7 +7,7 @@ import type { CnaTypeName } from './calc-cna'
 
 export { compute_structure_id_async } from './async-compute.svelte'
 export * from './calc-cna'
-export * from './calc-csp'
+export { calc_centrosymmetry } from './calc-csp'
 export * from './calc-structure-id'
 export * from './collect'
 export * from './neighbors'

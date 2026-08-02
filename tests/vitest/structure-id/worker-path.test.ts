@@ -76,9 +76,7 @@ describe(`worker code path`, () => {
     const crystal = make_fcc([2, 2, 2])
     const result = await compute_structure_id_async(crystal)
     expect(posted).toHaveLength(1)
-    const sync = calc_structure_id(crystal)
-    expect(result.populations).toEqual(sync.populations)
-    expect(result.centrosymmetry).toEqual(sync.centrosymmetry)
+    expect(result).toEqual(calc_structure_id(crystal))
     // Vite only detects and rewrites the worker when the URL keeps the `./` prefix and the
     // `.js` extension. Detection turns the source `.js` spec into the real `.ts` module tagged
     // `?worker_file`; losing that means the app 404s on the worker and silently never enters

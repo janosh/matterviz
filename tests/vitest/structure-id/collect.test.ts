@@ -1,42 +1,12 @@
-import type { Vec3 } from '$lib/math'
-import { create_frac_to_cart } from '$lib/math'
-import type { AnyStructure, Crystal } from '$lib/structure'
-import type { StructureIdOptions } from '$lib/structure-id'
-import type * as AsyncCompute from '$lib/structure-id/async-compute.svelte'
+import type { AnyStructure } from '$lib/structure'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
   sweep_frame_plan,
 } from '$lib/structure-id/collect'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
-
-// Records every structure the sweep hands to the analysis, which is the only place the
-// wrapped copy is observable: a wrapped and an unwrapped periodic crystal produce the SAME
-// CNA result (build_neighbor_list wraps into the cell itself), so the result cannot prove it.
-const analysis_spy = vi.hoisted(() => ({ structures: [] as AnyStructure[] }))
-vi.mock(`$lib/structure-id/async-compute.svelte`, async (import_original) => {
-  const actual = await import_original<typeof AsyncCompute>()
-  return {
-    ...actual,
-    compute_structure_id_async: (structure: AnyStructure, options: StructureIdOptions) => {
-      analysis_spy.structures.push(structure)
-      return actual.compute_structure_id_async(structure, options)
-    },
-  }
-})
-
-const translate = (crystal: Crystal, offset: Vec3): Crystal => {
-  const frac_to_cart = create_frac_to_cart(crystal.lattice.matrix)
-  return {
-    ...crystal,
-    sites: crystal.sites.map((site) => {
-      const abc = site.abc.map((coord, axis) => coord + offset[axis]) as Vec3
-      return { ...site, abc, xyz: frac_to_cart(abc) }
-    }),
-  }
-}
 
 const in_memory = (structures: AnyStructure[]): TrajectoryType => ({
   frames: structures.map((structure, step) => ({ step, structure })),
@@ -127,40 +97,6 @@ describe(`collect_structure_id_sweep`, () => {
     expect(sweep.mean_centrosymmetry).toHaveLength(2)
     // ideal fcc is centrosymmetric, so every site's CSP is 0 to round-off
     for (const mean of sweep.mean_centrosymmetry) expect(mean ?? NaN).toBeLessThan(1e-20)
-  })
-
-  it(`wraps each frame into the cell and never reuses a frame's own structure`, async () => {
-    analysis_spy.structures.length = 0
-    // 1.4 cells along a and -2.7 along b puts every site outside [0, 1)
-    const frames = [make_fcc([2, 2, 2]), make_fcc([2, 2, 2])].map((crystal) =>
-      translate(crystal, [1.4, -2.7, 0]),
-    )
-    const trajectory = in_memory(frames)
-    const outside_before = frames[0].sites.filter((site) =>
-      site.abc.some((coord) => coord < 0 || coord >= 1),
-    )
-    expect(outside_before).toHaveLength(32)
-
-    const sweep = await collect_structure_id_sweep(trajectory, {
-      max_frames: 2,
-      options: { skip_csp: true },
-    })
-
-    expect(analysis_spy.structures).toHaveLength(2)
-    for (const [idx, analysed] of analysis_spy.structures.entries()) {
-      for (const site of analysed.sites) {
-        for (const coord of site.abc) {
-          expect(coord).toBeGreaterThanOrEqual(0)
-          expect(coord).toBeLessThan(1)
-        }
-      }
-      // create_worker_client dedupes in-flight requests on input object identity, so the
-      // analysed structure must be a fresh object rather than the frame's own
-      expect(analysed).not.toBe(frames[idx])
-      expect(analysed.sites).not.toBe(frames[idx].sites)
-    }
-    // wrapping a fully periodic cell is a no-op for the classification itself
-    expect(sweep.populations[0]).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
   })
 
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {

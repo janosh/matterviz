@@ -459,13 +459,17 @@ describe(`sync_atom_color_mode`, () => {
     expect(config.scale_type).toBe(scale_type)
   })
 
-  test(`resets a missing or stale property_key to the first available key`, () => {
+  test(`resets a stale property key and derives its scale type`, () => {
     const config: Partial<ap.AtomColorConfig> = {
       mode: `property`,
       property_key: `gone`,
+      scale_type: `continuous`,
     }
-    ap.sync_atom_color_mode(config, [`charge`, `magmom`])
-    expect(config.property_key).toBe(`charge`)
+    ap.sync_atom_color_mode(config, [CNA_TYPE_PROPERTY, `charge`])
+    expect(config).toMatchObject({
+      property_key: CNA_TYPE_PROPERTY,
+      scale_type: `categorical`,
+    })
   })
 
   test(`falls back to element mode when no colorable properties remain`, () => {

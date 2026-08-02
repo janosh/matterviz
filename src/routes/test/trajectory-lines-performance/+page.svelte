@@ -55,10 +55,7 @@
   let generation_error = $state<string | null>(null)
 
   // Cell side scaled so the atom density stays physical (~0.05 atoms/A^3) as the count grows.
-  // Read off the generated stream, not the input box, so editing the atom count without
-  // regenerating cannot leave the rendered cell disagreeing with the coordinates in it.
   const cell_side_for = (atoms: number) => Math.max(10, Math.cbrt(atoms / 0.05))
-  let cell_side = $derived(cell_side_for(stream?.n_atoms ?? n_atoms))
 
   // Random walk with a per-atom drift, wrapped into the cell. Li steps ~5x further per frame
   // than O, so the two species read very differently once trails are on.
@@ -148,7 +145,7 @@
   let current_structure = $derived.by((): Crystal | undefined => {
     const frames = stream
     if (!frames) return undefined
-    const side = cell_side
+    const side = cell_side_for(frames.n_atoms)
     const base = end_frame * frames.n_atoms * 3
     return {
       lattice: {

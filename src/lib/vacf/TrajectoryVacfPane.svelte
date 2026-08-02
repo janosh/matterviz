@@ -87,11 +87,11 @@
   let buffers = $derived(input?.velocities ? 2 : 1)
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8 * buffers)
 
-  // Drop stale input/curves whenever the underlying trajectory is swapped out, and re-seed
-  // the timestep from the file rather than carrying the previous one over. Seeding also
-  // keys on default_dt so a timestep that only becomes known later still lands.
+  // Drop stale input/curves whenever the trajectory changes, and only seed physical time
+  // when the file supplies both a timestep and its unit.
   let analysed_trajectory: TrajectoryType | undefined
   let seeded_dt: number | null | undefined
+  let seeded_time_unit: string | undefined
   $effect(() => {
     const trajectory_changed = trajectory !== analysed_trajectory
     if (trajectory_changed) {
@@ -100,11 +100,17 @@
       result = undefined
       error_msg = undefined
     }
-    if (trajectory_changed || default_dt !== seeded_dt) {
+    if (
+      trajectory_changed ||
+      default_dt !== seeded_dt ||
+      default_time_unit !== seeded_time_unit
+    ) {
       seeded_dt = default_dt
-      dt_source = default_dt ?? 1
-      time_unit = default_time_unit ?? `fs`
-      use_dt = default_dt !== null
+      seeded_time_unit = default_time_unit
+      const has_default_timestep = default_dt !== null && default_time_unit !== undefined
+      dt_source = has_default_timestep ? default_dt : 1
+      time_unit = has_default_timestep ? default_time_unit : `fs`
+      use_dt = has_default_timestep
     }
   })
 
@@ -112,13 +118,18 @@
   // otherwise entering the real MD timestep with stride 5 puts every VDOS peak at five
   // times its true frequency with correct-looking units.
   let dt_collected = $derived((dt_source ?? 1) * safe_stride)
-  // Without a dt the only honest frequency axis is inverse frames; calc_vacf throws rather
-  // than inventing a THz scale, so don't ask it to.
+  let has_valid_dt = $derived(
+    use_dt &&
+      dt_source !== null &&
+      Number.isFinite(dt_source) &&
+      dt_source > 0 &&
+      thz_per_inverse_time(time_unit) !== undefined,
+  )
   let effective_frequency_unit = $derived<VacfFrequencyUnit>(
-    use_dt && thz_per_inverse_time(time_unit) !== undefined ? frequency_unit : `1/frame`,
+    has_valid_dt ? frequency_unit : `1/frame`,
   )
   let vacf_options = $derived<VacfOptions>({
-    ...(use_dt ? { dt: dt_collected, time_unit } : {}),
+    ...(has_valid_dt ? { dt: dt_collected, time_unit } : {}),
     max_lag_fraction,
     vdos: { window: window_type, frequency_unit: effective_frequency_unit },
   })
@@ -229,14 +240,14 @@
       </label>
       <p class="hint">
         {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
-        {#if use_dt && thz_per_inverse_time(time_unit) !== undefined}
+        {#if has_valid_dt}
           · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
-        {:else if use_dt}
+        {:else if use_dt && dt_source !== null && thz_per_inverse_time(time_unit) === undefined}
           · {time_unit} is not one of {Object.keys(TIME_UNIT_TO_THZ).join(`, `)}, so the VDOS
           axis stays in inverse frames
         {:else}
-          · no timestep is recorded in the file, so the lag axis is in frames and the VDOS axis
-          in inverse frames
+          · no valid timestep is available, so the lag axis is in frames and the VDOS axis in
+          inverse frames
         {/if}
       </p>
       <button onclick={collect} disabled={collecting || plotting}>

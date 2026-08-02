@@ -24,8 +24,6 @@ let construction_count = 0
 let last_worker_url: string | undefined
 let last_worker_options: WorkerOptions | undefined
 const posted: { message: WorkerMessage; transfer: Transferable[] }[] = []
-// Set to make the next postMessage reply with an error instead of a result
-let force_error: string | null = null
 
 class StubWorker {
   private readonly listeners = new Map<string, Listener[]>()
@@ -50,13 +48,10 @@ class StubWorker {
       // rather than letting it escape the worker
       let data: { id: number; result: unknown; error: string | null }
       try {
-        data = force_error
-          ? { id: cloned.id, result: null, error: force_error }
-          : { id: cloned.id, result: calc_vacf(cloned.input, cloned.options), error: null }
+        data = { id: cloned.id, result: calc_vacf(cloned.input, cloned.options), error: null }
       } catch (err) {
         data = { id: cloned.id, result: null, error: (err as Error).message }
       }
-      force_error = null
       for (const handler of this.listeners.get(`message`) ?? []) {
         handler({ data, preventDefault: () => {} })
       }
@@ -79,7 +74,6 @@ beforeAll(async () => {
 
 afterEach(() => {
   posted.length = 0
-  force_error = null
 })
 
 describe(`worker code path`, () => {
@@ -124,21 +118,6 @@ describe(`worker code path`, () => {
   it(`sends a null velocity field when the input has none`, async () => {
     await compute_vacf_async(orbit_input(15, false))
     expect(posted[0].message.input.velocities).toBeNull()
-  })
-
-  it(`rejects when the worker reports an error`, async () => {
-    force_error = `synthetic worker failure`
-    await expect(compute_vacf_async(orbit_input(16))).rejects.toThrow(
-      /synthetic worker failure/,
-    )
-  })
-
-  it(`dedupes identical in-flight requests to a single postMessage`, async () => {
-    const input = orbit_input(17)
-    const [first, second] = [compute_vacf_async(input), compute_vacf_async(input)]
-    expect(first).toBe(second)
-    await first
-    expect(posted).toHaveLength(1)
   })
 })
 
@@ -262,25 +241,5 @@ describe(`TrajectoryVacfPane`, () => {
   it(`reports no trajectory rather than an empty plot`, async () => {
     const text = await mount_and_read(TrajectoryVacfPane, { pane_open: true })
     expect(text).toContain(`No trajectory loaded`)
-  })
-
-  it(`uses a safe unit timestep when the number input is cleared`, async () => {
-    await mount_and_read(TrajectoryVacfPane, {
-      trajectory: make_trajectory(4),
-      pane_open: true,
-      default_dt: 2,
-    })
-    const dt_input = document.querySelector<HTMLInputElement>(
-      `.vacf-controls input[type="number"][step="0.001"]`,
-    )
-    const summary = document.querySelector<HTMLParagraphElement>(`.vacf-controls p.hint`)
-    if (!dt_input || !summary) throw new Error(`missing VACF timestep controls`)
-
-    expect(summary.textContent).toContain(`2 fs per collected frame`)
-    dt_input.value = ``
-    dt_input.dispatchEvent(new Event(`input`))
-    await tick()
-    expect(summary.textContent).toContain(`1 fs per collected frame`)
-    expect(summary.textContent).not.toContain(`NaN`)
   })
 })

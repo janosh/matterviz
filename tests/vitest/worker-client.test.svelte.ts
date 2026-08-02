@@ -30,14 +30,6 @@ class FakeWorker {
   }
 }
 
-class FirstOption {
-  constructor(readonly value: number) {}
-}
-
-class SecondOption {
-  constructor(readonly value: number) {}
-}
-
 const make_client = <Result = string>(
   compute_sync: () => Result = (() => `sync`) as () => Result,
 ) =>
@@ -114,46 +106,6 @@ describe(`request dedupe`, () => {
     expect(posted_count(first, second)).toBe(1)
   })
 
-  test.each([
-    {
-      desc: `Date`,
-      first: new Date(`2025-01-01T00:00:00Z`),
-      equivalent: new Date(`2025-01-01T00:00:00Z`),
-      different: new Date(`2026-01-01T00:00:00Z`),
-    },
-    {
-      desc: `Map`,
-      first: new Map([[`alpha`, 1]]),
-      equivalent: new Map([[`alpha`, 1]]),
-      different: new Map([[`alpha`, 2]]),
-    },
-    {
-      desc: `Set`,
-      first: new Set([1, 2]),
-      equivalent: new Set([1, 2]),
-      different: new Set([1, 3]),
-    },
-    {
-      desc: `RegExp`,
-      first: /alpha/giu,
-      equivalent: /alpha/giu,
-      different: /beta/giu,
-    },
-    {
-      desc: `typed array`,
-      first: new Uint8Array([1, 2]),
-      equivalent: new Uint8Array([1, 2]),
-      different: new Uint8Array([1, 3]),
-    },
-  ])(
-    `$desc options dedupe by value without conflating different values`,
-    ({ first, equivalent, different }) => {
-      expect(posted_count({ value: first }, { value: equivalent }, { value: different })).toBe(
-        2,
-      )
-    },
-  )
-
   test(`arrays retain order and cannot collide with plain objects`, () => {
     expect(
       posted_count(
@@ -165,16 +117,10 @@ describe(`request dedupe`, () => {
     ).toBe(3)
   })
 
-  test(`class instances retain identity and type in request keys`, () => {
-    const first = new FirstOption(1)
-    expect(
-      posted_count(
-        { value: first },
-        { value: first },
-        { value: new FirstOption(2) },
-        { value: new SecondOption(1) },
-      ),
-    ).toBe(3)
+  test(`non-plain options use identity`, () => {
+    const date = new Date(`2025-01-01T00:00:00Z`)
+    const cloned_date = new Date(date)
+    expect(posted_count({ value: date }, { value: date }, { value: cloned_date })).toBe(2)
   })
 
   test(`distinct inputs are never conflated, however alike`, () => {

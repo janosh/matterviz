@@ -338,31 +338,17 @@ test.describe(`Structure Component Tests`, () => {
     )
     const labels_heading = control_pane.locator(`h4:has-text("Labels")`)
 
-    // With both off, Labels is gated on Site Labels alone
+    // Cover neither, both, and indices-only states; label-only is exercised below.
     await expect(labels_heading).toBeHidden()
-    await site_labels_checkbox.check()
-    await expect(labels_heading).toBeVisible()
-    await site_labels_checkbox.uncheck()
-    await expect(labels_heading).toBeHidden()
-
-    // Enable both — Labels stays up, and either checkbox keeps it visible
     await site_labels_checkbox.check()
     await site_indices_checkbox.check()
-    await expect(site_labels_checkbox).toBeChecked()
-    await expect(site_indices_checkbox).toBeChecked()
     await expect(labels_heading).toBeVisible()
 
     await site_labels_checkbox.uncheck()
-    await expect(site_labels_checkbox).not.toBeChecked()
-    await expect(site_indices_checkbox).toBeChecked()
     await expect(labels_heading).toBeVisible()
 
     await site_indices_checkbox.uncheck()
-    await expect(site_indices_checkbox).not.toBeChecked()
     await expect(labels_heading).toBeHidden()
-
-    await site_indices_checkbox.check()
-    await expect(labels_heading).toBeVisible()
   })
 
   test(`label styling controls echo values and enforce input constraints`, async ({

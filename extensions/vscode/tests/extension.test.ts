@@ -663,14 +663,14 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
     await handle_msg({
       command: `saveAs`,
-      content: `data:image/png;base64,SGVsbG8=`,
+      content: `data:image/png;base64,/wCA`,
       ...msg_args,
       filename,
       is_binary: true,
     })
     expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
       { fsPath: `/test/${filename}` },
-      Uint8Array.from(Buffer.from(`Hello`)),
+      Uint8Array.from([255, 0, 128]),
     )
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
       `Saved: ${filename}`,
@@ -1432,6 +1432,7 @@ describe(`MatterViz Extension`, () => {
         'structure.camera_position': [1, 2, 3],
         'structure.vector_configs': { force: { visible: true } },
         'trajectory.auto_play': true,
+        'trajectory.show_controls': false,
         'scatter.point.size': 7,
         background_color: `#111111`,
       })
@@ -1443,7 +1444,7 @@ describe(`MatterViz Extension`, () => {
           same_size_atoms: DEFAULTS.structure.same_size_atoms,
           vector_configs: { force: { visible: true } },
         },
-        trajectory: { auto_play: true },
+        trajectory: { auto_play: true, show_controls: false },
         scatter: { point: { size: 7 } },
         background_color: `#111111`,
       })

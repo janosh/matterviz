@@ -52,23 +52,11 @@ const to_crystal = ({ matrix, positions }: OvitoCase): Crystal => {
   }
 }
 
-// Fraction of atoms whose code differs, plus the confusion pairs, so a failure says what moved
-const compare_codes = (ours: Int8Array | null, theirs: number[]) => {
-  if (!ours) throw new Error(`CNA was not computed`)
-  if (ours.length !== theirs.length) {
-    return [`length: ovito ${theirs.length} vs ours ${ours.length}`]
-  }
-  const mismatches: string[] = []
-  for (const [idx, code] of theirs.entries()) {
-    if (ours[idx] !== code) mismatches.push(`${idx}: ovito ${code} vs ours ${ours[idx]}`)
-  }
-  return mismatches
-}
-
 describe(`parity with OVITO ${ovito_version}`, () => {
   test.each(labeled_cases)(`%s: adaptive CNA matches atom for atom`, (_label, ovito_case) => {
     const result = calc_structure_id(to_crystal(ovito_case), { skip_csp: true })
-    expect(compare_codes(result.cna_types, ovito_case.cna_adaptive)).toEqual([])
+    if (!result.cna_types) throw new Error(`CNA was not computed`)
+    expect(Array.from(result.cna_types)).toEqual(ovito_case.cna_adaptive)
   })
 
   test.each(fixed_cases)(
@@ -80,7 +68,8 @@ describe(`parity with OVITO ${ovito_version}`, () => {
         cutoff: fixed_cutoff,
         skip_csp: true,
       })
-      expect(compare_codes(result.cna_types, cna_fixed)).toEqual([])
+      if (!result.cna_types) throw new Error(`CNA was not computed`)
+      expect(Array.from(result.cna_types)).toEqual(cna_fixed)
     },
   )
 

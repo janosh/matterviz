@@ -1851,14 +1851,6 @@
     return () => (displacement_summary = null)
   })
 
-  $effect(() => {
-    if (!interactive || !show_trajectory_lines || !trajectory_position_stream) {
-      trajectory_lines_result = null
-    }
-    // Clear child-owned stats when the layer or scene is torn down.
-    return () => (trajectory_lines_result = null)
-  })
-
   // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
   let trajectory_line_anchors = $derived.by(() => {
     const sites = structure?.sites

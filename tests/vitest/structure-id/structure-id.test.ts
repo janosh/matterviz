@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { AnyStructure, Crystal } from '$lib/structure'
 import {
   apply_structure_id,
   build_neighbor_list,
@@ -62,6 +62,60 @@ const distances_to = (crystal: Crystal, target_idx: number): number[] => {
   return crystal.sites.map(({ xyz }) =>
     Math.hypot(...min_image_displacement(target, xyz, matrix, converters, pbc)),
   )
+}
+
+const neighbor_oracle_errors = (
+  structure: AnyStructure,
+  cutoff: number,
+  displacement: (center: Vec3, other: Vec3) => Vec3,
+): { max_abs_distance: number; max_abs_delta: number } => {
+  const list = build_neighbor_list(structure, { cutoff })
+  const cutoff_sq = cutoff * cutoff
+  expect(list.distances).toHaveLength(list.offsets[list.n_centers])
+  expect(list.deltas).toHaveLength(list.distances.length * 3)
+  let max_abs_distance = 0
+  let max_abs_delta = 0
+  for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
+    const center = structure.sites[center_idx].xyz
+    const expected = structure.sites
+      .filter((_site, other_idx) => other_idx !== center_idx)
+      .map(({ xyz }) => {
+        const delta = displacement(center, xyz)
+        const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
+        return { dist_sq, delta }
+      })
+      .filter(({ dist_sq }) => dist_sq > 0 && dist_sq <= cutoff_sq)
+      .map(({ dist_sq, delta }) => ({ distance: Math.sqrt(dist_sq), delta }))
+      .toSorted((left, right) => left.distance - right.distance)
+    const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
+    expect(end - start).toBe(expected.length)
+    for (let slot = 0; slot < expected.length; slot++) {
+      max_abs_distance = Math.max(
+        max_abs_distance,
+        Math.abs(list.distances[start + slot] - expected[slot].distance),
+      )
+    }
+    // Equal-distance shells are not uniquely ordered, so match each observed delta to the
+    // nearest unused oracle vector rather than zipping them by slot.
+    const unmatched = expected.map(({ delta }) => delta)
+    for (let slot = 0; slot < expected.length; slot++) {
+      const base = (start + slot) * 3
+      const observed = list.deltas.subarray(base, base + 3)
+      let best_idx = 0
+      let best_error = Infinity
+      for (let expected_idx = 0; expected_idx < unmatched.length; expected_idx++) {
+        const error = Math.hypot(
+          observed[0] - unmatched[expected_idx][0],
+          observed[1] - unmatched[expected_idx][1],
+          observed[2] - unmatched[expected_idx][2],
+        )
+        if (error < best_error) [best_idx, best_error] = [expected_idx, error]
+      }
+      max_abs_delta = Math.max(max_abs_delta, best_error)
+      unmatched.splice(best_idx, 1)
+    }
+  }
+  return { max_abs_distance, max_abs_delta }
 }
 
 describe(`neighbor list`, () => {
@@ -182,17 +236,6 @@ describe(`neighbor list`, () => {
     )
   })
 
-  test(`returned buffers are sized to the used neighbor count`, () => {
-    // The growable path may over-allocate backing stores; the exposed views must still report
-    // exactly the written neighbor count so offsets[n_centers] and .length agree.
-    const list = build_neighbor_list(make_fcc([3, 3, 3]), {
-      cutoff: 0.854 * FCC_LATTICE_CONST,
-    })
-    expect(list.distances).toHaveLength(list.offsets[list.n_centers])
-    expect(list.deltas).toHaveLength(list.distances.length * 3)
-    expect(list.distances).toHaveLength(list.n_centers * 12)
-  })
-
   test.each([
     [`fcc first shell`, () => make_fcc([3, 3, 3]), 0.854 * FCC_LATTICE_CONST],
     [`bcc first shell`, () => make_bcc([3, 3, 3]), 0.95 * BCC_LATTICE_CONST],
@@ -201,65 +244,15 @@ describe(`neighbor list`, () => {
       () => with_random_displacements(make_fcc([2, 2, 2]), 0.05, 2),
       0.9 * FCC_LATTICE_CONST,
     ],
-  ])(`growable buffers match min-image oracle on %s`, (label, build, cutoff) => {
+  ])(`neighbor list matches min-image oracle on %s`, (label, build, cutoff) => {
     const crystal = build()
-    const list = build_neighbor_list(crystal, { cutoff })
-    const converters = create_lattice_converters(crystal.lattice.matrix)
     const { pbc, matrix } = crystal.lattice
-    let max_abs_distance = 0
-    let max_abs_delta = 0
-    for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
-      const center = crystal.sites[center_idx].xyz
-      const expected: { distance: number; delta: Vec3 }[] = []
-      for (let other_idx = 0; other_idx < crystal.sites.length; other_idx++) {
-        if (other_idx === center_idx) continue
-        const delta = min_image_displacement(
-          center,
-          crystal.sites[other_idx].xyz,
-          matrix,
-          converters,
-          pbc,
-        )
-        // Same formula as build_neighbor_list (sqrt of summed squares), not Math.hypot
-        const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
-        if (dist_sq > cutoff * cutoff || dist_sq === 0) continue
-        expected.push({ distance: Math.sqrt(dist_sq), delta })
-      }
-      expected.sort((left, right) => left.distance - right.distance)
-      const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
-      expect(end - start).toBe(expected.length)
-      for (let slot = 0; slot < expected.length; slot++) {
-        max_abs_distance = Math.max(
-          max_abs_distance,
-          Math.abs(list.distances[start + slot] - expected[slot].distance),
-        )
-      }
-      // Equal-distance shells are not uniquely ordered. Pair each observed delta to the
-      // nearest unused oracle delta so ulp-level component noise cannot reshuffle the zip.
-      const unmatched = expected.map((item) => item.delta)
-      for (let slot = 0; slot < expected.length; slot++) {
-        const observed_delta: Vec3 = [
-          list.deltas[(start + slot) * 3],
-          list.deltas[(start + slot) * 3 + 1],
-          list.deltas[(start + slot) * 3 + 2],
-        ]
-        let best_idx = 0
-        let best_error = Infinity
-        for (let expected_idx = 0; expected_idx < unmatched.length; expected_idx++) {
-          const delta_error = Math.hypot(
-            observed_delta[0] - unmatched[expected_idx][0],
-            observed_delta[1] - unmatched[expected_idx][1],
-            observed_delta[2] - unmatched[expected_idx][2],
-          )
-          if (delta_error < best_error) {
-            best_error = delta_error
-            best_idx = expected_idx
-          }
-        }
-        max_abs_delta = Math.max(max_abs_delta, best_error)
-        unmatched.splice(best_idx, 1)
-      }
-    }
+    const converters = create_lattice_converters(matrix)
+    const { max_abs_distance, max_abs_delta } = neighbor_oracle_errors(
+      crystal,
+      cutoff,
+      (center, other) => min_image_displacement(center, other, matrix, converters, pbc),
+    )
     // Grid path subtracts imaged Cartesian coords; min_image goes through a frac round-trip.
     // Measured maxima on these fixtures are a few ulps (~1e-15 Å); 1e-12 Å is still far
     // below any geometric length that could change neighbor membership at these cutoffs.
@@ -289,44 +282,13 @@ describe(`neighbor list`, () => {
   })
 
   test(`cluster without lattice matches a Euclidean all-pairs reference`, () => {
-    // No lattice → no image replication, so the grid path is a pure Cartesian all-pairs
-    // scan and must match a direct O(N²) reference with exact equality.
     const { sites } = make_fcc([2, 2, 2])
     const cutoff = 0.854 * FCC_LATTICE_CONST
-    const cutoff_sq = cutoff * cutoff
-    const list = build_neighbor_list({ sites }, { cutoff })
-    let max_abs_distance = 0
-    let max_abs_delta = 0
-    for (let center_idx = 0; center_idx < sites.length; center_idx++) {
-      const [center_x, center_y, center_z] = sites[center_idx].xyz
-      const expected: { distance: number; delta: Vec3 }[] = []
-      for (let other_idx = 0; other_idx < sites.length; other_idx++) {
-        if (other_idx === center_idx) continue
-        const delta: Vec3 = [
-          sites[other_idx].xyz[0] - center_x,
-          sites[other_idx].xyz[1] - center_y,
-          sites[other_idx].xyz[2] - center_z,
-        ]
-        const dist_sq = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]
-        if (dist_sq > cutoff_sq || dist_sq === 0) continue
-        expected.push({ distance: Math.sqrt(dist_sq), delta })
-      }
-      expected.sort((left, right) => left.distance - right.distance)
-      const [start, end] = [list.offsets[center_idx], list.offsets[center_idx + 1]]
-      expect(end - start).toBe(expected.length)
-      for (let slot = 0; slot < expected.length; slot++) {
-        max_abs_distance = Math.max(
-          max_abs_distance,
-          Math.abs(list.distances[start + slot] - expected[slot].distance),
-        )
-        for (let axis = 0; axis < 3; axis++) {
-          max_abs_delta = Math.max(
-            max_abs_delta,
-            Math.abs(list.deltas[(start + slot) * 3 + axis] - expected[slot].delta[axis]),
-          )
-        }
-      }
-    }
+    const { max_abs_distance, max_abs_delta } = neighbor_oracle_errors(
+      { sites },
+      cutoff,
+      (center, other) => other.map((coord, axis) => coord - center[axis]) as Vec3,
+    )
     expect(max_abs_distance).toBe(0)
     expect(max_abs_delta).toBe(0)
   })
