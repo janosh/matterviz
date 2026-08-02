@@ -65,6 +65,7 @@ class Structure(MatterViz):
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
+        trajectory_lines_result: Any | None = None,
         views: list | None = None,
         volumetric_data: list | None = None,
         width: float | None = None,
@@ -185,6 +186,8 @@ class Structure(MatterViz):
             mv_props["sym_data"] = sym_data
         if symmetry_settings is not None:
             mv_props["symmetry_settings"] = symmetry_settings
+        if trajectory_lines_result is not None:
+            mv_props["trajectory_lines_result"] = trajectory_lines_result
         if views is not None:
             mv_props["views"] = views
         if volumetric_data is not None:
@@ -396,6 +399,7 @@ class Trajectory(MatterViz):
         structure_props: dict | None = None,
         trajectory: Any | None = None,
         visible_properties: list[str] | None = None,
+        x_quantity: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -461,6 +465,8 @@ class Trajectory(MatterViz):
             mv_props["trajectory"] = trajectory
         if visible_properties is not None:
             mv_props["visible_properties"] = visible_properties
+        if x_quantity is not None:
+            mv_props["x_quantity"] = x_quantity
 
         super().__init__(
             id=id,
