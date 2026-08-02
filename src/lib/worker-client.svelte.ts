@@ -16,9 +16,6 @@ export interface WorkerClientConfig<Input, Options, Result> {
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
   build_payload: (input: Input) => unknown
-  // Defaults to an identity token for `input` plus the serialized options. Hashing megabytes
-  // of positions would cost more than the compute, so identity stands in for contents.
-  request_key?: (input: Input, options: Options) => string
 }
 
 export function create_worker_client<Input extends object, Options, Result>(
@@ -44,15 +41,22 @@ export function create_worker_client<Input extends object, Options, Result>(
     return token
   }
 
-  // Key order would otherwise split one request in two: {a, b} and {b, a} serialize
-  // differently and both reach the worker.
-  const default_request_key = (input: Input, options: Options): string => {
-    const entries = Object.entries(options ?? {}).toSorted(([left], [right]) =>
-      left.localeCompare(right),
-    )
-    return `${input_token(input)}|${JSON.stringify(entries)}`
+  // Identity for the input, canonical JSON for the options. Hashing megabytes of positions
+  // would cost more than the compute, so identity stands in for contents. A content hash is
+  // not a safe substitute: chempot briefly keyed on a thermodynamic fingerprint that omitted
+  // name and entry_id, so two runs differing only in labels shared a promise and the second
+  // caller got the first one's entries back in min_entries and el_refs.
+  // Keys are sorted at every depth, since nested option objects (msd's `fit`, vacf's `vdos`)
+  // would otherwise make {a, b} and {b, a} two different requests.
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical)
+    if (value === null || typeof value !== `object`) return value
+    return Object.entries(value as Record<string, unknown>)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([key, val]) => [key, canonical(val)])
   }
-  const request_key_of = config.request_key ?? default_request_key
+  const request_key_of = (input: Input, options: Options): string =>
+    `${input_token(input)}|${JSON.stringify(canonical(options ?? {}))}`
 
   const track_pending = (request_key: string, promise: Promise<Result>): Promise<Result> => {
     pending_by_key.set(request_key, promise)
@@ -71,7 +75,7 @@ export function create_worker_client<Input extends object, Options, Result>(
         const req = pending.get(id)
         if (!req) return
         pending.delete(id)
-        if (error || !result) {
+        if (error || result == null) {
           req.reject(
             new Error(error ?? `${label} worker returned no result for request ${id}`),
           )
