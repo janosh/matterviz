@@ -813,16 +813,12 @@ describe(`simple_pca`, () => {
       [1, 1, 1],
     ]
     const { eigenvectors } = simple_pca(data, 2)
+    expect(eigenvectors).toHaveLength(2)
     for (const ev of eigenvectors) {
       expect(Math.hypot(...ev)).toBeCloseTo(1.0, 6)
     }
-    if (eigenvectors.length >= 2) {
-      const dot = eigenvectors[0].reduce(
-        (sum, val, idx) => sum + val * eigenvectors[1][idx],
-        0,
-      )
-      expect(Math.abs(dot)).toBeLessThan(1e-6)
-    }
+    const dot = eigenvectors[0].reduce((sum, val, idx) => sum + val * eigenvectors[1][idx], 0)
+    expect(Math.abs(dot)).toBeLessThan(1e-6)
   })
 })
 
@@ -1471,25 +1467,6 @@ describe(`compute_chempot_diagram edge cases`, () => {
       for (const pt of pts) expect(pt).toHaveLength(n_axes)
     }
   })
-
-  test(`different projection triplets keep stable formula set overlap`, () => {
-    const proj_tsy = compute_chempot_diagram(ytos_entries, {
-      elements: [`Ti`, `S`, `Y`],
-      default_min_limit: -25,
-      formal_chempots: true,
-    })
-    const proj_tyo = compute_chempot_diagram(ytos_entries, {
-      elements: [`Ti`, `Y`, `O`],
-      default_min_limit: -25,
-      formal_chempots: true,
-    })
-    const tsy_formulas = new Set(Object.keys(proj_tsy.domains))
-    const tyo_formulas = new Set(Object.keys(proj_tyo.domains))
-    const overlap = [...tsy_formulas].filter((formula) => tyo_formulas.has(formula))
-    expect(overlap.length).toBeGreaterThan(0)
-    expect(overlap).toContain(`Ti`)
-    expect(overlap).toContain(`Y`)
-  })
 })
 
 // === Formation energy computation ===
@@ -1684,19 +1661,15 @@ describe(`make_nd_cache_key`, () => {
       same: true,
       label: `EPA matches total/atoms`,
     },
-    { a: li, b: oxygen, same: true, label: `order invariance`, multi: true },
-  ])(`nd cache key same=$same for $label`, ({ a, b, same, multi }) => {
-    if (multi) {
-      expect(make_nd_cache_key([a, b], true, -50, undefined)).toBe(
-        make_nd_cache_key([b, a], true, -50, undefined),
-      )
-      expect(make_nd_cache_key([a, b], true, -50, undefined)).toBe(base_key)
-    } else {
-      expect(
-        make_nd_cache_key([a], true, -50, undefined) ===
-          make_nd_cache_key([b], true, -50, undefined),
-      ).toBe(same)
-    }
+  ])(`nd cache key same=$same for $label`, ({ a, b, same }) => {
+    expect(
+      make_nd_cache_key([a], true, -50, undefined) ===
+        make_nd_cache_key([b], true, -50, undefined),
+    ).toBe(same)
+  })
+
+  test(`cache key ignores entry order`, () => {
+    expect(make_nd_cache_key([oxygen, li], true, -50, undefined)).toBe(base_key)
   })
 
   test.each([
@@ -1756,7 +1729,7 @@ describe(`make_nd_cache_key`, () => {
 describe(`N-D projection cache consistency`, () => {
   const config_base = { default_min_limit: -25, formal_chempots: true }
 
-  test(`shared N-D formula set across different element projections`, () => {
+  test(`reuses N-D geometry without reusing stale entry metadata`, () => {
     const proj_a = compute_chempot_diagram(ytos_entries, {
       ...config_base,
       elements: [`O`, `Ti`, `Y`],
@@ -1768,6 +1741,15 @@ describe(`N-D projection cache consistency`, () => {
     expect(Object.keys(proj_a.domains).toSorted()).toEqual(
       Object.keys(proj_b.domains).toSorted(),
     )
+    const renamed_entries = ytos_entries.map((entry, idx) => ({
+      ...entry,
+      name: `renamed ${idx}`,
+    }))
+    const renamed = compute_chempot_diagram(renamed_entries, {
+      ...config_base,
+      elements: [`O`, `Ti`, `Y`],
+    })
+    expect(renamed.min_entries[0]?.name).toMatch(/^renamed /)
   })
 
   test(`changing formal_chempots invalidates cache (different domain coords)`, () => {
@@ -1949,11 +1931,14 @@ describe(`compute_chempot_async`, () => {
     const config = { elements: [`Li`, `O`] }
     const first = compute_chempot_async(structuredClone(async_entries), config)
     const equivalent = compute_chempot_async(structuredClone(async_entries), { ...config })
+    const reordered_entries = structuredClone(async_entries).toReversed()
+    const reordered = compute_chempot_async(reordered_entries, config)
     const renamed_entries = structuredClone(async_entries)
     renamed_entries[0].name = `renamed lithium`
     const renamed = compute_chempot_async(renamed_entries, config)
 
     expect(equivalent).toBe(first)
+    expect(reordered).toBe(first)
     expect(renamed).not.toBe(first)
     await Promise.all([first, renamed])
   })

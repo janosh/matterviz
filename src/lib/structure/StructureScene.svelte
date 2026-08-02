@@ -368,9 +368,8 @@
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
-    // Loaded volumetric datasets for isosurface rendering (single volume accepted
-    // for backwards compatibility)
-    volumetric_data?: VolumetricData | VolumetricData[]
+    // Loaded volumetric datasets for isosurface rendering
+    volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
@@ -2468,11 +2467,8 @@
 
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
-        {@const volume_list = Array.isArray(volumetric_data)
-          ? volumetric_data
-          : [volumetric_data]}
         <Isosurface
-          volumes={volume_list}
+          volumes={volumetric_data}
           settings={isosurface_settings}
           {active_volume_idx}
           tiling={volume_scaling}
@@ -2492,7 +2488,7 @@
               {@const mid_pos = midpoint(pos_i, pos_j)}
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
               {@const pbc = lattice
-                ? measure.distance_pbc(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
+                ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
                 : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
               <extras.HTML center position={mid_pos}>

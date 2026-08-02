@@ -87,7 +87,6 @@
     on_fullscreen_change,
     on_mu_change,
     on_point_hover,
-    on_hover,
     ...rest
   }: {
     fermi_data?: FermiSurfaceData
@@ -141,8 +140,6 @@
     on_mu_change?: (mu: number) => void
     tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
     on_point_hover?: (data: FermiHoverData | null) => void
-    // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
-    on_hover?: (data: FermiHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
@@ -151,17 +148,7 @@
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
   let hover_data = $state<FermiHoverData | null>(null)
 
-  // Call on_point_hover callback when hover_data changes (on_hover is a deprecated alias)
-  let warned_deprecated_on_hover = false
-  $effect(() => {
-    if (on_hover && !on_point_hover && !warned_deprecated_on_hover) {
-      warned_deprecated_on_hover = true
-      console.warn(
-        `FermiSurface: the on_hover prop was renamed to on_point_hover; the alias will be removed in a future release`,
-      )
-    }
-    ;(on_point_hover ?? on_hover)?.(hover_data)
-  })
+  $effect(() => on_point_hover?.(hover_data))
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 

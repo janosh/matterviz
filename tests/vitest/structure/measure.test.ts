@@ -6,7 +6,6 @@ import {
   compute_displacements,
   dihedral_angle,
   displacement_pbc,
-  distance_pbc,
   MAX_SELECTED_SITES,
   max_measured_sites,
   pbc_chain_positions,
@@ -46,13 +45,12 @@ const sites = (positions: Vec3[], elements: string[] = []): Site[] =>
   })
 
 describe(`measure: distances`, () => {
-  test(`pbc distance and displacement`, () => {
+  test(`pbc displacement`, () => {
     const lat = cubic(10)
 
     const v1: Vec3 = [0.5, 0.5, 0.5]
     const v2: Vec3 = [9.8, 9.6, 9.5]
     expect_vec3_close(displacement_pbc(v1, v2, lat), [-0.7, -0.9, -1.0], 10)
-    expect(distance_pbc(v1, v2, lat)).toBeCloseTo(Math.hypot(0.7, 0.9, 1.0), 10)
 
     const pos: Vec3 = [5.0, 5.0, 5.0]
     expect(displacement_pbc(pos, pos, lat)).toEqual([0, 0, 0])
@@ -74,12 +72,7 @@ describe(`measure: distances`, () => {
 
   test(`pbc flags disable wrapping along vacuum axes (slabs)`, () => {
     const lat = cubic(10)
-    // Slab with vacuum along z: distance must NOT wrap across the vacuum gap
-    const slab_dist = distance_pbc([0, 0, 1], [0, 0, 9], lat, undefined, SLAB_PBC)
-    expect(slab_dist).toBeCloseTo(8, 12)
-    // Fully periodic: wraps to the minimum image distance of 2
-    expect(distance_pbc([0, 0, 1], [0, 0, 9], lat)).toBeCloseTo(2, 12)
-
+    // Slab with vacuum along z: displacement must NOT wrap across the vacuum gap
     const disp = displacement_pbc([0, 0, 1], [0, 0, 9], lat, undefined, SLAB_PBC)
     expect(disp[2]).toBeCloseTo(8, 12)
     // Periodic axes still wrap with mixed pbc
@@ -88,7 +81,6 @@ describe(`measure: distances`, () => {
   })
 
   // Non-orthogonal lattices where L ≠ L^T — catches missing transpose bugs.
-  // Includes a cubic lattice to verify basic opposing-corners-are-equivalent behavior.
   // oxfmt-ignore
   const non_ortho_lattices: [string, Matrix3x3][] = [
     [`cubic`, [[5, 0, 0], [0, 5, 0], [0, 0, 5]]],
@@ -98,43 +90,18 @@ describe(`measure: distances`, () => {
     [`fully skewed`, [[3, 0.5, 0.3], [0.7, 4, 0.2], [0.4, 0.6, 5]]],
   ]
 
-  // oxfmt-ignore
-  const pbc_pairs: [Vec3, Vec3][] = [
-    [[0, 0, 0], [1.5, 1.5, 1.5]],
-    [[0.1, 0.2, 0.3], [3.7, 2.9, 3.1]],
-  ]
-
   test.each(non_ortho_lattices)(`minimum image in a %s lattice`, (_name, lattice) => {
-    // Lattice vector equivalence: each row is a lattice vector, so displacement by
-    // any single vector — or by their sum — lands on the same site
     const origin: Vec3 = [0, 0, 0]
-    for (const vec of lattice) expect(distance_pbc(origin, vec, lattice)).toBeCloseTo(0, 10)
-    const all_sum = lattice[0].map(
-      (_val, axis) => lattice[0][axis] + lattice[1][axis] + lattice[2][axis],
-    ) as Vec3
-    expect(distance_pbc(origin, all_sum, lattice)).toBeCloseTo(0, 10)
-
     // Half a lattice vector is NOT an equivalent site — guard against always-zero bugs
     const half_a = lattice[0].map((val) => val / 2) as Vec3
-    const half_dist = distance_pbc(origin, half_a, lattice)
-    expect(half_dist).toBeGreaterThan(0.1)
-    const half_disp = Math.hypot(...displacement_pbc(origin, half_a, lattice))
-    expect(half_disp).toBeCloseTo(half_dist, 10)
+    expect(Math.hypot(...displacement_pbc(origin, half_a, lattice))).toBeGreaterThan(0.1)
 
     // Displacement antisymmetry: disp(a,b) = -disp(b,a)
     const pos1: Vec3 = [0.3, 0.7, 1.2]
     const pos2: Vec3 = [2.1, 1.5, 0.8]
     const d_ab = displacement_pbc(pos1, pos2, lattice)
-    const negated_ba = displacement_pbc(pos2, pos1, lattice).map((val) => -val)
-    for (const [axis, value] of negated_ba.entries()) {
-      expect(d_ab[axis]).toBeCloseTo(value, 10)
-    }
-
-    // The minimum image can never be farther than the direct separation
-    for (const [start, end] of pbc_pairs) {
-      const direct = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])
-      expect(distance_pbc(start, end, lattice)).toBeLessThanOrEqual(direct + 1e-10)
-    }
+    const negated_ba = displacement_pbc(pos2, pos1, lattice).map((val) => -val) as Vec3
+    expect_vec3_close(d_ab, negated_ba, 10)
   })
 
   test(`skewed triclinic regression: displacement finds non-local minimum image`, () => {
@@ -148,10 +115,9 @@ describe(`measure: distances`, () => {
     const pos2: Vec3 = [1.6425399077772327, -1.0582437501479167, 0.9390064337754569]
     const expected_disp: Vec3 = [-0.3507742293398103, 0.31324394398281463, -0.9022051740668167]
 
-    expect_vec3_close(displacement_pbc(pos1, pos2, lattice), expected_disp, 12)
-    const dist = distance_pbc(pos1, pos2, lattice)
-    expect(dist).toBeCloseTo(Math.hypot(...expected_disp), 12)
-    expect(dist).toBeCloseTo(distance_pbc(pos2, pos1, lattice), 12)
+    expect(displacement_pbc(pos1, pos2, lattice)).toEqual(
+      expected_disp.map((value) => expect.closeTo(value, 12)),
+    )
   })
 })
 
@@ -396,7 +362,7 @@ describe(`measure: overlay endpoints`, () => {
       )
       expect(step).toBeLessThan(2)
       expect(step).toBeCloseTo(
-        distance_pbc(corner_chain[idx - 1], corner_chain[idx], lattice),
+        Math.hypot(...displacement_pbc(corner_chain[idx - 1], corner_chain[idx], lattice)),
         10,
       )
     }

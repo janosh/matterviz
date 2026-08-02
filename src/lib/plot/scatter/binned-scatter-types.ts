@@ -29,23 +29,10 @@ export type BinnedDensityConfig = {
   bin_click?: `zoom` | `point` | `none`
 }
 
-// legacy explicit-endpoint form; prefer the declarative RefLine union (e.g.
-// { type: `diagonal`, slope: 1, intercept: 0 }), which is resolved against the
-// current axis ranges so lines span the full plot area and stay correct under zoom
-export type BinnedRefLine = {
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  color?: string
-  dash?: string
-  width?: number
-}
-
 export type BinnedOverlaysConfig = {
   // RefLine entries render geometry + style only for now: annotation, legend and
   // interaction fields (label, on_click, ...) are ignored by BinnedScatterPlot
-  ref_lines?: (BinnedRefLine | RefLine)[]
+  ref_lines?: RefLine[]
 }
 
 export type BinnedPointBasePayload<

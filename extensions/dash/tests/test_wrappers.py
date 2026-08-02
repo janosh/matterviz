@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 
@@ -13,36 +11,8 @@ from matterviz_dash_components import MatterViz
 from scripts.sync_typed_wrappers import (
     _py_type_hint,
     add_extra_props,
-    generate_wrappers,
     parse_svelte_dts_with_includes,
 )
-
-STRUCTURE_V043_PARAMETERS = """
-id active_volume_idx allow_file_drop atom_color_config bond_edit_mode bond_edit_order bonds
-cell_type data_url displayed_structure dragover element_mapping element_radius_overrides
-enable_info_pane enable_measure_mode error_msg fullscreen fullscreen_toggle height hidden_elements
-hidden_prop_vals highlighted_sites hovered hovered_site_idx info_pane_open isosurface_settings
-loading measure_mode measured_sites multi_view performance_mode png_dpi reset_text scene_props
-selected_sites show_controls site_radius_overrides spinner_props structure structure_string sym_data
-symmetry_settings views volumetric_data width mv_props set_props float32_props event_props last_event
-className style
-""".split()  # noqa: SIM905
-
-BRILLOUIN_ZONE_V043_PARAMETERS = """
-id allow_file_drop bz_data bz_order camera_projection controls_open data_url dragover edge_color
-edge_width error_msg fullscreen fullscreen_toggle height hovered hovered_k_point
-hovered_qpoint_index ibz_color ibz_data ibz_opacity info_pane_open k_path_points loading png_dpi
-show_controls show_ibz show_vectors spinner_props structure structure_string surface_color
-surface_opacity tooltip_config vector_scale width mv_props set_props float32_props event_props
-last_event className style
-""".split()  # noqa: SIM905
-
-PERIODIC_TABLE_V043_PARAMETERS = """
-id active_category active_element active_elements color_bar_props color_overrides color_scale_range
-disabled gap heatmap_values inner_transition_metal_offset labels lanth_act_style links log missing
-show_color_bar show_photo split_layout tile_props mv_props set_props float32_props event_props
-last_event className style
-""".split()  # noqa: SIM905
 
 
 def test_matterviz_forwards_props() -> None:
@@ -107,123 +77,6 @@ def test_prop_kind_detection(tmp_path: Path) -> None:
 def test_set_type_hints_require_set_generics(ts_type: str, expected: str) -> None:
     """Set type inference excludes class names that merely contain 'Set'."""
     assert _py_type_hint(ts_type) == expected
-
-
-def test_trailing_props_use_python_names(tmp_path: Path) -> None:
-    """Trailing props accept Python names when aliases are explicitly null."""
-    dist_dir = tmp_path / "dist"
-    dist_dir.mkdir()
-    (dist_dir / "Test.svelte.d.ts").write_text(
-        "type $$ComponentProps = { someProp?: string; other_prop?: number; }; "
-        'declare const Test: import("svelte").Component<$$ComponentProps>;',
-        encoding="utf-8",
-    )
-    generated = generate_wrappers(
-        {
-            "components": {
-                "Test": {
-                    "key": "Test",
-                    "aliases": None,
-                    "trailing_props": ["some_prop"],
-                }
-            }
-        },
-        str(dist_dir),
-    )
-    assert (
-        "style: dict | None = None,\n"
-        "        some_prop: str | None = None,\n"
-        "        **kwargs" in generated
-    )
-    assert 'mv_props["someProp"] = some_prop' in generated
-
-    # RdfPlot has no frozen v0.4.3 baseline, so pin only the width of its alphabetically
-    # sorted prop block. A new prop belongs in trailing_props (landing after style);
-    # one inserted into the sorted block instead shifts every later positional argument.
-    rdf_params = list(inspect.signature(mvc.RdfPlot.__init__).parameters)[1:]
-    assert rdf_params.index("mv_props") == 16
-
-
-def test_structure_preserves_legacy_positional_bindings() -> None:
-    """Structure documents file drops without shifting legacy arguments."""
-    structure_docs = inspect.getdoc(mvc.Structure) or ""
-    assert "on_file_drop" in structure_docs
-    assert "on_display_mode_change" in structure_docs
-    assert "on_active_volume_idx_change" in structure_docs
-    assert "on_slice_settings_change" in structure_docs
-    parameter_names = list(inspect.signature(mvc.Structure.__init__).parameters)[1:]
-    assert parameter_names == [
-        *STRUCTURE_V043_PARAMETERS,
-        "multi_view_gap",
-        "multi_view_active",
-        "multi_view_min_pane_height",
-        "multi_view_min_pane_width",
-        "display_mode",
-        "slice_settings",
-        "reference_structure",
-        "displacement_rmsd",
-        "kwargs",
-    ]
-
-    legacy_args: list[Any] = [None] * STRUCTURE_V043_PARAMETERS.index(
-        "performance_mode"
-    )
-    component = cast(Any, mvc.Structure)(
-        *legacy_args,
-        "speed",
-        144,
-        multi_view_active=True,
-        multi_view_min_pane_height=201,
-        multi_view_min_pane_width=301,
-        multi_view_gap=12,
-        display_mode="slice",
-        slice_settings={"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
-    )
-    assert component.mv_props == {
-        "performance_mode": "speed",
-        "png_dpi": 144,
-        "multi_view_active": True,
-        "multi_view_min_pane_height": 201,
-        "multi_view_min_pane_width": 301,
-        "multi_view_gap": 12,
-        "display_mode": "slice",
-        "slice_settings": {"plane_mode": "hkl", "miller_indices": [1, 1, 0]},
-    }
-
-
-def test_brillouin_zone_preserves_legacy_positional_bindings() -> None:
-    """BrillouinZone documents file drops without shifting legacy arguments."""
-    assert "on_file_drop" in (inspect.getdoc(mvc.BrillouinZone) or "")
-    parameter_names = list(inspect.signature(mvc.BrillouinZone.__init__).parameters)[1:]
-    assert parameter_names == [
-        *BRILLOUIN_ZONE_V043_PARAMETERS,
-        "camera",
-        "scene",
-        "kwargs",
-    ]
-
-    legacy_args: list[Any] = [None] * BRILLOUIN_ZONE_V043_PARAMETERS.index("png_dpi")
-    component = cast(Any, mvc.BrillouinZone)(*legacy_args, 144)
-    assert component.mv_props == {"png_dpi": 144}
-
-
-def test_periodic_table_preserves_legacy_positional_bindings() -> None:
-    """PeriodicTable appends callable color scales after legacy arguments."""
-    parameter_names = list(inspect.signature(mvc.PeriodicTable.__init__).parameters)[1:]
-    assert parameter_names == [
-        *PERIODIC_TABLE_V043_PARAMETERS,
-        "color_scale",
-        "kwargs",
-    ]
-
-    legacy_args: list[Any] = [None] * PERIODIC_TABLE_V043_PARAMETERS.index("style")
-    component = cast(Any, mvc.PeriodicTable)(
-        *legacy_args,
-        {"width": "100%"},
-        "interpolateViridis",
-    )
-    assert component.style == {"width": "100%"}
-    assert component.mv_props == {"color_scale": "interpolateViridis"}
 
 
 @pytest.mark.parametrize(

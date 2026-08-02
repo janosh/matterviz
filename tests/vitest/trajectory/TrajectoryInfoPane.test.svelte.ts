@@ -1,9 +1,12 @@
 import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
 import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
 
 // oxfmt-ignore
 const frame: TrajectoryFrame = {
@@ -133,15 +136,17 @@ test(`omits Volume Range when the cell never changes`, async () => {
   expect(text).not.toContain(`Volume Range`)
 })
 
-// Math.min(...values) throws RangeError past ~125k arguments, and plot_metadata holds one
-// entry per frame on the indexed path, so a long run crashed the pane outright.
-test(`summarises a run with more frames than the argument limit`, async () => {
-  // Node throws near ~124k spread args; 130k keeps headroom.
-  const total_frames = 130_000
-  const huge = make_plot_metadata(total_frames, (frame_number) => ({
+test(`summarises a run without spreading every value into Math.min`, async () => {
+  const total_frames = 20
+  const native_min = Math.min
+  vi.spyOn(Math, `min`).mockImplementation((...values) => {
+    if (values.length === total_frames) throw new RangeError(`simulated argument limit`)
+    return native_min(...values)
+  })
+  const large_plot_metadata = make_plot_metadata(total_frames, (frame_number) => ({
     energy: -10 - frame_number * 1e-4,
   }))
-  await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
+  await mount_pane(indexed_trajectory({ plot_metadata: large_plot_metadata, total_frames }), 5)
   expect(pane_text()).toContain(`Energy Range`)
 })
 

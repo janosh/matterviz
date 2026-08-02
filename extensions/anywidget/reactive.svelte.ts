@@ -102,7 +102,7 @@ export const throttle = <Args extends unknown[]>(
 }
 
 // One reactive component prop, described uniformly so the engine can handle plain
-// driven keys, renamed traits, and props composed from several traits the same way:
+// driven keys and props composed from several traits the same way:
 //   - prop:    the component prop name
 //   - deps:    model traits to listen on; a `change:<dep>` recomputes this prop
 //   - compute: derive the value from the model; undefined => use the component's own
@@ -118,20 +118,14 @@ export type DrivenProp = {
   fallback?: unknown
 }
 
-// Spec backed by reading a single trait (the prop name may differ from the trait).
-const trait_prop = (trait: string, prop: string): DrivenProp => ({
-  prop,
-  deps: [trait],
-  compute: (model) => get_prop(model, trait),
+// Plain driven key (trait name == component prop name).
+export const drive_prop = (key: string): DrivenProp => ({
+  prop: key,
+  deps: [key],
+  compute: (model) => get_prop(model, key),
 })
 
-// Plain driven key (trait name == component prop name).
-export const drive_prop = (key: string): DrivenProp => trait_prop(key, key)
-
 export const drive_props = (keys: readonly string[]): DrivenProp[] => keys.map(drive_prop)
-
-// Driven trait surfaced under a different component prop name.
-export const rename_prop = (trait: string, prop: string): DrivenProp => trait_prop(trait, prop)
 
 // Prop composed from several traits; recomputed whenever any dep changes.
 export const derived_prop = (
@@ -143,7 +137,7 @@ export const derived_prop = (
 // Two-way prop: driven from Python AND written back on component mutation. fallback
 // seeds/reverts the value when the trait is absent/None.
 export const writeback_prop = (prop: string, fallback?: unknown): DrivenProp => ({
-  ...trait_prop(prop, prop),
+  ...drive_prop(prop),
   writeback: true,
   fallback,
 })

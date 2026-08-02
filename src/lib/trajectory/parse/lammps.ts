@@ -89,7 +89,6 @@ export function parse_lammps_trajectory(
   // Absolute simulation time per kept frame, or null when omitted
   const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
-  let id_fallback_warning_emitted = false
   let idx = 0
 
   const read_line = (): string => lines[idx++]?.trim() ?? ``
@@ -147,18 +146,13 @@ export function parse_lammps_trajectory(
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
     if (!pos_variant) continue
     const pos_cols = pos_variant.keys.map((key) => col[key])
-    // Atom identity: prefer numeric type, else explicit element symbol.
-    // Fallback to ID-based mapping only for legacy dumps; this can be inaccurate
-    // for large or non-element-like IDs, so prefer TYPE column when available.
+    // Atom identity comes from numeric type or an explicit element symbol.
     const type_col = col.type
     const element_col = col.element
-    const id_col = col.id
-    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
+    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1)
 
-    if (type_col === undefined && element_col === undefined && id_col === undefined) {
-      traj_warn(
-        `Skipping LAMMPS frame at timestep ${timestep}: missing type/element/id column`,
-      )
+    if (type_col === undefined && element_col === undefined) {
+      traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`)
       continue
     }
 
@@ -207,16 +201,6 @@ export function parse_lammps_trajectory(
           )
           continue
         }
-      } else if (id_col !== undefined) {
-        const atom_id = Math.trunc(Number(parts[id_col])) || 1
-        atom_types_found.add(atom_id)
-        if (!id_fallback_warning_emitted) {
-          traj_warn(
-            `LAMMPS parser fallback: mapping atom IDs to elements from ID column; this may be incorrect for large or sequential IDs. Prefer a TYPE column when available.`,
-          )
-          id_fallback_warning_emitted = true
-        }
-        element_symbol = get_element(atom_id)
       }
 
       if (!element_symbol) continue
@@ -239,7 +223,7 @@ export function parse_lammps_trajectory(
       site_properties.push(props)
     }
 
-    if (positions.length === elements.length && positions.length === num_atoms) {
+    if (positions.length === num_atoms) {
       const { volume } = math.calc_lattice_params(lattice_matrix)
       const frame = create_trajectory_frame(
         positions,

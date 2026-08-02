@@ -157,7 +157,7 @@
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     lattice_props?: ComponentProps<typeof StructureScene>[`lattice_props`]
-    volumetric_data?: VolumetricData | VolumetricData[]
+    volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     active_volume_idx?: number
     volume_scaling?: Vec3

@@ -7,7 +7,6 @@ import {
   drive_props,
   next_event_id,
   reactive_widget,
-  rename_prop,
   set_model,
   throttle,
   writeback_prop,
@@ -91,17 +90,6 @@ describe(`reactive_widget`, () => {
     const { props } = reactive_widget(as_model(model), [drive_prop(`current_step_idx`)])
     model.push_from_python(`current_step_idx`, 7)
     expect(props.current_step_idx).toBe(7)
-  })
-
-  test(`rename: a trait drives a differently-named component prop`, () => {
-    const model = new MockModel({ band_structure: 1 })
-    const { props } = reactive_widget(as_model(model), [
-      rename_prop(`band_structure`, `band_structs`),
-    ])
-    expect(props.band_structs).toBe(1)
-    expect(`band_structure` in props).toBe(false) // surfaced only under the new name
-    model.push_from_python(`band_structure`, 2)
-    expect(props.band_structs).toBe(2)
   })
 
   test(`derived: recomputes when any dep trait changes`, () => {

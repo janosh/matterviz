@@ -37,8 +37,11 @@
   let request_id = 0
   $effect(() => {
     const [request_input, options] = [input, vacf_options]
-    if (!request_input) return
     const this_request = ++request_id
+    if (!request_input) {
+      loading = false
+      return
+    }
     loading = true
     error_msg = undefined
     compute_vacf_async(request_input, options)

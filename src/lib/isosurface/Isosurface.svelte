@@ -43,15 +43,12 @@
 
   let {
     volumes = [],
-    volume = undefined,
     settings = DEFAULT_ISOSURFACE_SETTINGS,
     active_volume_idx = 0,
     tiling = [1, 1, 1],
     profiler = undefined,
   }: {
     volumes?: VolumetricData[]
-    // Deprecated single-volume alias (kept for backwards compatibility)
-    volume?: VolumetricData
     settings?: IsosurfaceSettings
     // Volume that implicit single-isovalue settings apply to when no explicit
     // layers are set (also the fallback for layers without volume_idx)
@@ -63,8 +60,7 @@
     profiler?: IsosurfaceProfiler
   } = $props()
 
-  let all_volumes = $derived(volumes.length ? volumes : volume ? [volume] : [])
-  let reference_origin = $derived<Vec3>(all_volumes[0]?.origin ?? [0, 0, 0])
+  let reference_origin = $derived<Vec3>(volumes[0]?.origin ?? [0, 0, 0])
   let reference_origin_key = $derived(reference_origin.join(`,`))
 
   type ResolvedLayer = IsosurfaceLayer & { volume_idx: number }
@@ -75,7 +71,7 @@
   // skipped rather than clamped — silently rendering a different volume's data
   // would be scientifically wrong.
   let resolved_layers = $derived.by((): ResolvedLayer[] => {
-    const n_vols = all_volumes.length
+    const n_vols = volumes.length
     if (n_vols === 0) return []
     const clamp_idx = (idx: number) => Math.min(Math.max(idx, 0), n_vols - 1)
     if (settings.layers) {
@@ -269,7 +265,7 @@
   // range_key covers halo + tiling (encoded in the range for periodic volumes;
   // irrelevant for finite ones), so the geometry identity needs no other inputs
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
-    const vol = all_volumes[layer.volume_idx]
+    const vol = volumes[layer.volume_idx]
     return JSON.stringify([
       layer.volume_idx,
       vol ? vol_id(vol) : 0,
@@ -392,7 +388,7 @@
 
     for (let layer_idx = 0; layer_idx < layers.length; layer_idx++) {
       const layer = layers[layer_idx]
-      const vol = all_volumes[layer.volume_idx]
+      const vol = volumes[layer.volume_idx]
       if (!vol || !layer.visible || layer.isovalue <= 0) continue
 
       const signs: (1 | -1)[] = layer.show_negative ? [1, -1] : [1]
@@ -525,7 +521,7 @@
     // comparable, so rank by isovalue as a fraction of each volume's abs_max.
     const shell_fraction = (entry: MeshEntry): number => {
       const layer = layers[entry.layer_idx]
-      const abs_max = all_volumes[layer.volume_idx]?.data_range.abs_max ?? 1
+      const abs_max = volumes[layer.volume_idx]?.data_range.abs_max ?? 1
       return layer.isovalue / Math.max(abs_max, 1e-30)
     }
     entries = entries.toSorted(
@@ -567,7 +563,7 @@
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
-        const vol = all_volumes[layer.volume_idx]
+        const vol = volumes[layer.volume_idx]
         if (!vol || !layer.visible || layer.isovalue <= 0) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
@@ -583,7 +579,7 @@
     clearTimeout(debounce_id)
     cancelAnimationFrame(raf_id)
     cancel_geometry_worker()
-    if (untrack(() => all_volumes.length) === 0) {
+    if (untrack(() => volumes.length) === 0) {
       untrack(() => dispose_all())
       return
     }
@@ -614,7 +610,7 @@
 
   // The layer's scalar-color-source volume, if any
   const color_vol_of = (layer: IsosurfaceLayer | undefined): VolumetricData | undefined =>
-    layer?.color_volume_idx != null ? all_volumes[layer.color_volume_idx] : undefined
+    layer?.color_volume_idx != null ? volumes[layer.color_volume_idx] : undefined
 
   function apply_vertex_colors(entries: MeshEntry[], layers: ResolvedLayer[]) {
     const profile_start = profiler ? performance.now() : 0

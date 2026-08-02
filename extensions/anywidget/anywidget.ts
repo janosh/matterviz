@@ -38,7 +38,6 @@ import {
   get_prop,
   next_event_id,
   reactive_widget,
-  rename_prop,
   set_model,
   throttle,
   writeback_prop,
@@ -394,9 +393,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `fullscreen_toggle`,
         `auto_play`,
         `step_labels`,
+        `property_labels`,
       ]),
-      // pymatviz trait `property_labels` is consumed by the component as ELEM_PROPERTY_LABELS
-      rename_prop(`property_labels`, `ELEM_PROPERTY_LABELS`),
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, `structure+scatter`),
@@ -462,24 +460,25 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   band_structure: {
     component: Bands,
-    drive: [
-      rename_prop(`band_structure`, `band_structs`), // Renamed traitlet
-      ...drive_props([`band_type`, `show_legend`, `fermi_level`, `reference_frequency`]),
-    ],
+    drive: drive_props([
+      `band_structs`,
+      `band_type`,
+      `show_legend`,
+      `fermi_level`,
+      `reference_frequency`,
+    ]),
   },
   dos: {
     component: Dos,
-    drive: [
-      rename_prop(`dos`, `doses`), // Renamed traitlet
-      ...drive_props([
-        `stack`,
-        `sigma`,
-        `normalize`,
-        `orientation`,
-        `show_legend`,
-        `spin_mode`,
-      ]),
-    ],
+    drive: drive_props([
+      `doses`,
+      `stack`,
+      `sigma`,
+      `normalize`,
+      `orientation`,
+      `show_legend`,
+      `spin_mode`,
+    ]),
   },
   bands_and_dos: {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
@@ -488,8 +487,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: BandsAndDos,
     base_drive: style_base_drive,
     drive: [
-      rename_prop(`band_structure`, `band_structs`), // Renamed traitlet
-      rename_prop(`dos`, `doses`), // Renamed traitlet
+      ...drive_props([`band_structs`, `doses`]),
       picked_prop(`bands_props`, [`band_type`, `show_legend`, `show_controls`]),
       picked_prop(`dos_props`, [
         `stack`,
@@ -540,19 +538,17 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   periodic_table: {
     component: PeriodicTable,
     base_drive: style_base_drive,
-    drive: [
-      ...drive_props([
-        `heatmap_values`,
-        `color_scale`,
-        `color_scale_range`,
-        `color_overrides`,
-        `labels`,
-        `show_color_bar`,
-        `gap`,
-        `missing`,
-      ]),
-      rename_prop(`log_scale`, `log`),
-    ],
+    drive: drive_props([
+      `heatmap_values`,
+      `color_scale`,
+      `color_scale_range`,
+      `color_overrides`,
+      `labels`,
+      `show_color_bar`,
+      `gap`,
+      `missing`,
+      `log`,
+    ]),
   },
   rdf_plot: {
     component: RdfPlot,
@@ -573,23 +569,21 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
-    drive: [
-      ...drive_props([
-        `x_items`,
-        `y_items`,
-        `values`,
-        `color_scale`,
-        `color_scale_range`,
-        `missing`,
-        `x_axis`,
-        `y_axis`,
-        `tile_size`,
-        `gap`,
-        `show_values`,
-        `label_style`,
-      ]),
-      rename_prop(`log_scale`, `log`),
-    ],
+    drive: drive_props([
+      `x_items`,
+      `y_items`,
+      `values`,
+      `color_scale`,
+      `color_scale_range`,
+      `missing`,
+      `x_axis`,
+      `y_axis`,
+      `tile_size`,
+      `gap`,
+      `show_values`,
+      `label_style`,
+      `log`,
+    ]),
   },
   spacegroup_bar: {
     component: SpacegroupBarPlot,

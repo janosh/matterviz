@@ -96,8 +96,6 @@
       count,
     )
     next.frustumCulled = false
-    // export.ts reads per-instance colors (instead of the material color) when set
-    next.userData.per_instance_color = true
     mesh = next
   })
   // Unmount-only cleanup (a cleanup on the effect above would dispose the mesh

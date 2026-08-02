@@ -11,11 +11,7 @@
     TdbInfoPanel,
   } from '$lib/phase-diagram'
   import { to_error } from '$lib/utils'
-  import {
-    all_phase_diagram_files,
-    find_precomputed_url,
-    load_binary_phase_diagram,
-  } from '$site/phase-diagrams'
+  import { all_phase_diagram_files, find_precomputed_diagram } from '$site/phase-diagrams'
   import { replace_url } from '$site/state.svelte'
 
   // Track currently loaded diagram
@@ -29,7 +25,7 @@
   interface TdbState {
     result: TdbParseResult
     system_name: string
-    precomputed_url: string | null
+    precomputed_data: PhaseDiagramData | null
     is_loaded: boolean
   }
   let tdb = $state<TdbState | null>(null)
@@ -43,6 +39,18 @@
   // Helper for consistent error formatting
   const format_error = (context: string, exc: unknown) =>
     `${context}: ${to_error(exc).message}`
+
+  async function load_phase_diagram(url: string): Promise<PhaseDiagramData> {
+    if (url.startsWith(`builtin:`)) {
+      const system = url.slice(`builtin:`.length)
+      const diagram = find_precomputed_diagram(system)
+      if (!diagram) throw new Error(`Unknown built-in phase diagram: ${system}`)
+      return diagram
+    }
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
+    return (await response.json()) as PhaseDiagramData
+  }
 
   // Token for race condition protection - each load gets a unique Symbol
   let active_load: symbol | null = null
@@ -93,14 +101,7 @@
         const success = await parse_tdb_content(content, filename)
         if (is_stale(token) || !success) return false
 
-        // Auto-load pre-computed diagram if available
-        if (tdb?.precomputed_url) {
-          const data = await load_binary_phase_diagram(tdb.precomputed_url)
-          if (!is_stale(token) && data) {
-            current_data = data
-            tdb.is_loaded = true
-          }
-        }
+        load_precomputed()
         return true
       } else if (is_svg(filename)) {
         const res = await fetch(url)
@@ -115,12 +116,8 @@
         return true
       }
       // JSON files: load directly
-      const data = await load_binary_phase_diagram(url)
+      const data = await load_phase_diagram(url)
       if (is_stale(token)) return false
-      if (!data) {
-        error_message = `Failed to parse phase diagram data`
-        return false
-      }
       current_data = data
       current_file = filename
       if (update_url_param) update_url(filename)
@@ -150,8 +147,8 @@
       return false
     }
     const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
-    const precomputed_url = find_precomputed_url(system_name) ?? null
-    tdb = { result, system_name, precomputed_url, is_loaded: false }
+    const precomputed_data = find_precomputed_diagram(system_name) ?? null
+    tdb = { result, system_name, precomputed_data, is_loaded: false }
     current_file = filename
     update_url(filename)
     return true
@@ -168,14 +165,7 @@
       if (is_tdb(filename)) {
         if (typeof content === `string`) {
           const success = await parse_tdb_content(content, filename)
-          // Auto-load precomputed if available
-          if (success && tdb?.precomputed_url) {
-            const data = await load_binary_phase_diagram(tdb.precomputed_url)
-            if (data) {
-              current_data = data
-              tdb.is_loaded = true
-            }
-          }
+          if (success) load_precomputed()
         }
         return
       }
@@ -258,13 +248,10 @@
     event.preventDefault()
   }
 
-  async function load_precomputed(): Promise<void> {
-    if (tdb?.precomputed_url) {
-      const data = await load_binary_phase_diagram(tdb.precomputed_url)
-      if (data) {
-        current_data = data
-        tdb.is_loaded = true
-      }
+  function load_precomputed(): void {
+    if (tdb?.precomputed_data) {
+      current_data = tdb.precomputed_data
+      tdb.is_loaded = true
     }
   }
 
@@ -343,7 +330,7 @@
     <TdbInfoPanel
       result={tdb.result}
       system_name={tdb.system_name}
-      has_precomputed={tdb.precomputed_url !== null}
+      has_precomputed={tdb.precomputed_data !== null}
       is_precomputed_loaded={tdb.is_loaded}
       on_load_precomputed={load_precomputed}
       style="margin: 0.5em"

@@ -2802,7 +2802,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 <ScatterPlot
   {series}
   {ref_lines}
-  x_axis={{ label: `Date`, format: `%b %d` }}
+  x_axis={{ label: `Date`, scale_type: `time`, format: `%b %d` }}
   y_axis={{ label: `Value`, range: [20, 80] }}
   style="height: 400px"
 />

@@ -26,7 +26,7 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
-    observe_height,
+    observe_size,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -195,7 +195,7 @@
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar (via observe_height, which resets it
+  // measured height of the bottom colorbar (via observe_size, which resets it
   // to 0 on unmount), reserved from the chart so it never overlaps the cells;
   // capped at half the area so a bad measurement can't collapse the chart
   let colorbar_height = $state(0)
@@ -841,7 +841,7 @@
         : ``} {colorbar?.wrapper_style ?? ``}"
       style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
         ``}"
-      {@attach observe_height((px) => (colorbar_height = px))}
+      {@attach observe_size(({ height }) => (colorbar_height = height))}
     />
   {/if}
 

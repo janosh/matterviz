@@ -40,8 +40,11 @@
   let request_id = 0
   $effect(() => {
     const [input, options] = [positions, msd_options]
-    if (!input) return
     const this_request = ++request_id
+    if (!input) {
+      loading = false
+      return
+    }
     loading = true
     error_msg = undefined
     compute_msd_async(input, options)

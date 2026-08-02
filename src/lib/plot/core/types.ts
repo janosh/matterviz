@@ -339,16 +339,9 @@ export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number
   return 1 // default threshold
 }
 
-// Helper to detect time scale - checks explicit scale_type or falls back to format heuristic
-// Prefer explicit scale_type: 'time' for new code; format heuristic kept for backwards compatibility
-export function is_time_scale(
-  scale_type: ScaleType | undefined,
-  format: string | undefined,
-): boolean {
-  if (get_scale_type_name(scale_type) === `time`) return true
-  // Fallback: d3 time format strings start with '%'
-  return format?.startsWith(`%`) ?? false
-}
+// Helper to detect an explicit time scale
+export const is_time_scale = (scale_type: ScaleType | undefined): boolean =>
+  get_scale_type_name(scale_type) === `time`
 
 export type QuadrantCounts = {
   top_left: number

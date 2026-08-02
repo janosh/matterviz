@@ -7,7 +7,6 @@ import {
   is_valid_supercell_input,
   make_supercell,
   parse_supercell_scaling,
-  scale_lattice_matrix,
 } from '$lib/structure/supercell'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../setup'
@@ -103,7 +102,7 @@ describe(`scale_lattice_matrix`, () => {
     [[2, 1, 1], [[4.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]]],
     [[2, 2, 2], [[4.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 8.0]]],
   ])(`scales diagonal matrix correctly for %s`, (scaling, expected) => {
-    expect(scale_lattice_matrix(diagonal_matrix, scaling as Vec3)).toEqual(expected)
+    expect(math.scale_lattice_matrix(diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })
 
   // oxfmt-ignore
@@ -112,7 +111,7 @@ describe(`scale_lattice_matrix`, () => {
     [[2, 1, 1], [[4.0, 3.0, 1.0], [0.5, 3.0, 1.0], [1.0, 0.5, 4.0]]],
     [[2, 2, 2], [[4.0, 3.0, 1.0], [1.0, 6.0, 2.0], [2.0, 1.0, 8.0]]],
   ])(`scales non-diagonal matrix correctly for %s`, (scaling, expected) => {
-    expect(scale_lattice_matrix(non_diagonal_matrix, scaling as Vec3)).toEqual(expected)
+    expect(math.scale_lattice_matrix(non_diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })
 })
 

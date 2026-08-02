@@ -1,9 +1,10 @@
 import type { StructureIdResult } from '$lib/structure-id'
 import { calc_structure_id, StructureTypePlot } from '$lib/structure-id'
 import * as async_compute from '$lib/structure-id/async-compute.svelte'
+import type { AnyStructure } from '$lib/structure'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { mount_sized } from '../setup'
+import { bind_props, mount_sized } from '../setup'
 import { make_bcc, make_fcc, make_hcp } from './lattices'
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
@@ -78,6 +79,36 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
         expect(target.textContent).toContain(`Structure type`)
         expect(target.textContent).toContain(`FCC`)
       })
+    } finally {
+      await unmount(component)
+    }
+  })
+
+  test(`discards a pending compute when structures are cleared`, async () => {
+    const pending_compute = Promise.withResolvers<StructureIdResult>()
+    vi.spyOn(async_compute, `compute_structure_id_async`).mockReturnValue(
+      pending_compute.promise,
+    )
+    const state = $state({
+      structures: [make_fcc([1, 1, 1])] as AnyStructure[] | undefined,
+      id_results: [] as StructureIdResult[],
+      loading: false,
+    })
+    const component = mount(StructureTypePlot, {
+      target: document.body,
+      props: bind_props({}, state),
+    })
+    try {
+      flushSync()
+      expect(state.loading).toBe(true)
+      state.structures = undefined
+      flushSync()
+      expect(state.loading).toBe(false)
+
+      pending_compute.resolve(fcc_result)
+      await tick()
+      await Promise.resolve()
+      expect(state.id_results).toEqual([])
     } finally {
       await unmount(component)
     }

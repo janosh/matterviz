@@ -52,8 +52,11 @@
   $effect(() => {
     const inputs = structures
     const options: StructureIdOptions = JSON.parse(id_options_snapshot)
-    if (!inputs?.length) return
     const this_request = ++request_id
+    if (!inputs?.length) {
+      loading = false
+      return
+    }
     loading = true
     error_msg = undefined
     Promise.all(inputs.map((structure) => compute_structure_id_async(structure, options)))

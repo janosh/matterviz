@@ -314,12 +314,11 @@ export function generate_ticks(
   ticks_option: TicksOption | undefined,
   scale_fn: PlotScaleFn, // D3 scale function with .ticks() method
   options: {
-    format?: string // For detecting time format
     default_count?: number // Default tick count
     interval_padding?: number // Padding for interval mode
   } = {},
 ): number[] {
-  const { format, default_count = 8, interval_padding = 0.1 } = options
+  const { default_count = 8, interval_padding = 0.1 } = options
   const [min_val, max_val] = domain
 
   // If ticks_option is an object (value-to-label mapping), extract values
@@ -334,8 +333,7 @@ export function generate_ticks(
   // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
 
-  // Time-based ticks (explicit scale_type: 'time' or format heuristic for backwards compatibility)
-  if (is_time_scale(scale_type, format)) {
+  if (is_time_scale(scale_type)) {
     const time_scale = scaleTime().domain([new Date(min_val), new Date(max_val)])
 
     let count = 10 // default

@@ -61,7 +61,6 @@
     const mesh = new InstancedMesh(geometry, material, count)
     mesh.frustumCulled = false
     mesh.raycast = () => undefined // arrows are display-only
-    mesh.userData.per_instance_color = true
     return mesh
   }
 

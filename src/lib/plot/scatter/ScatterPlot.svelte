@@ -246,8 +246,8 @@
   })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
-  let is_time_x = $derived(is_time_scale(final_x_axis.scale_type, final_x_axis.format))
-  let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type, final_x2_axis.format))
+  let is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
+  let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
   const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
@@ -1032,7 +1032,7 @@
     if (!width || !height) return { x: [], x2: [], y: [], y2: [] }
 
     // X-axis ticks: choose appropriate scale for tick generation
-    // Time scales (format starts with %) use scaleTime for better tick placement
+    // Explicit time scales use scaleTime for better tick placement
     const x_scale_for_ticks = is_time_x
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
       : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
@@ -1047,7 +1047,6 @@
         final_x_axis.scale_type ?? `linear`,
         final_x_axis.ticks,
         x_scale_for_ticks,
-        { format: final_x_axis.format },
       ),
       x2:
         x2_points.length > 0
@@ -1056,7 +1055,6 @@
               final_x2_axis.scale_type ?? `linear`,
               final_x2_axis.ticks,
               x2_scale_for_ticks,
-              { format: final_x2_axis.format },
             )
           : [],
       y: generate_ticks(

@@ -1,13 +1,13 @@
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
-import * as async_compute from '$lib/structure-id/async-compute.svelte'
+import { calc_structure_id } from '$lib/structure-id'
 import {
   collect_structure_id_sweep,
   DEFAULT_MAX_SWEEP_FRAMES,
   sweep_frame_plan,
 } from '$lib/structure-id/collect'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
 const in_memory = (structures: AnyStructure[]): TrajectoryType => ({
@@ -113,18 +113,14 @@ describe(`collect_structure_id_sweep`, () => {
     }
     expect(shifted_slab.sites[0].abc[2]).toBeLessThan(0)
 
-    const compute_spy = vi.spyOn(async_compute, `compute_structure_id_async`)
-    try {
-      await collect_structure_id_sweep(in_memory([shifted_slab]), {
-        options: { skip_csp: true },
-      })
-      expect(compute_spy).toHaveBeenCalledOnce()
-      const analysed_structure = compute_spy.mock.calls[0][0]
-      expect(analysed_structure.sites[0].abc).toEqual(shifted_slab.sites[0].abc)
-      expect(analysed_structure.sites[0].xyz).toEqual(shifted_slab.sites[0].xyz)
-    } finally {
-      compute_spy.mockRestore()
-    }
+    const wrapped = calc_structure_id(
+      { ...shifted_slab, sites: bulk.sites },
+      { skip_csp: true },
+    )
+    const sweep = await collect_structure_id_sweep(in_memory([shifted_slab]), {
+      options: { skip_csp: true },
+    })
+    expect(sweep.results[0].cna_types).not.toEqual(wrapped.cna_types)
   })
 
   it(`defaults missing lattice pbc before normalizing sites`, async () => {

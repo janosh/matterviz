@@ -883,7 +883,7 @@ describe(`3D Export Color Preservation`, () => {
       return colors
     }
 
-    test(`flagged meshes read per-instance colors, not the white base material`, () => {
+    test(`reads per-instance colors instead of the white base material`, () => {
       // Mirrors InstancedAtoms/ArrowInstances: white material + instanceColor buffer
       const scene = new Scene()
       const atoms = new InstancedMesh(
@@ -892,7 +892,6 @@ describe(`3D Export Color Preservation`, () => {
         2,
       )
       atoms.name = `atoms`
-      atoms.userData.per_instance_color = true
       atoms.setColorAt(0, new Color(1, 0, 0))
       atoms.setColorAt(1, new Color(0, 0, 1))
       scene.add(atoms)
@@ -903,9 +902,7 @@ describe(`3D Export Color Preservation`, () => {
       ])
     })
 
-    test(`legacy unflagged meshes keep the material color over all-white instanceColor`, () => {
-      // Mirrors threlte-instanced meshes (e.g. ScatterPlot3D): real color lives on
-      // the material, instanceColor is an all-white buffer that must NOT win
+    test(`keeps material color over a legacy all-white instanceColor`, () => {
       const scene = new Scene()
       const legacy = new InstancedMesh(
         new SphereGeometry(0.5, 4, 4),
@@ -919,7 +916,7 @@ describe(`3D Export Color Preservation`, () => {
       expect(converted_group_colors(scene, `legacy`)).toEqual([[0, 1, 0]])
     })
 
-    test(`shader-material bond gradients win over everything`, () => {
+    test(`shader-material bond gradients win over instance colors`, () => {
       const scene = new Scene()
       const bond_geometry = new SphereGeometry(0.5, 4, 4)
       bond_geometry.setAttribute(
@@ -936,7 +933,7 @@ describe(`3D Export Color Preservation`, () => {
         1,
       )
       bonds.name = `bonds`
-      bonds.userData.per_instance_color = true // must lose to the gradient path
+      bonds.setColorAt(0, new Color(0, 1, 0))
       scene.add(bonds)
 
       expect(converted_group_colors(scene, `bonds`)).toEqual([[0.5, 0, 0.5]])

@@ -66,7 +66,11 @@ function prefer_min_entry(
   if ((candidate.is_stable === true) !== (existing.is_stable === true)) {
     return candidate.is_stable === true
   }
-  return (candidate.e_above_hull ?? Infinity) < (existing.e_above_hull ?? Infinity)
+  const candidate_hull_dist = candidate.e_above_hull ?? Infinity
+  const existing_hull_dist = existing.e_above_hull ?? Infinity
+  if (candidate_hull_dist !== existing_hull_dist)
+    return candidate_hull_dist < existing_hull_dist
+  return entry_fingerprint(candidate) < entry_fingerprint(existing)
 }
 
 // Cache for reduced formula strings -- avoids recomputing get_reduced_formula
@@ -906,16 +910,12 @@ let nd_cache: {
   result: FullNDResult
 } | null = null
 
-// Fingerprint for N-D / async-compute cache keys (computed EPA; NaN → null).
+// Full entry fingerprint for N-D cache keys and deterministic equal-energy tie-breaking.
+// Normalize a redundant explicit energy_per_atom to its effective value.
 export function entry_fingerprint(entry: PhaseData): string {
+  const { energy_per_atom: _energy_per_atom, ...metadata } = entry
   const epa = get_energy_per_atom(entry)
-  return JSON.stringify([
-    formula_key_from_composition(entry.composition),
-    Number.isFinite(epa) ? epa : null,
-    entry.is_stable ?? null,
-    entry.e_above_hull ?? null,
-    entry.exclude_from_hull ?? null,
-  ])
+  return JSON.stringify([metadata, Number.isFinite(epa) ? epa : null])
 }
 
 export function make_nd_cache_key(

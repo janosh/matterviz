@@ -92,7 +92,6 @@
     on_error,
     on_fullscreen_change,
     on_point_hover,
-    on_hover,
     ...rest
   }: {
     structure?: Crystal
@@ -159,25 +158,13 @@
     on_error?: (data: BZHandlerData) => void
     on_fullscreen_change?: (data: BZHandlerData) => void
     on_point_hover?: (data: BZHoverData | null) => void
-    // Deprecated alias for on_point_hover (honored when on_point_hover is unset)
-    on_hover?: (data: BZHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<BZHoverData | null>(null)
 
-  // Call on_point_hover callback when hover_data changes (on_hover is a deprecated alias)
-  let warned_deprecated_on_hover = false
-  $effect(() => {
-    if (on_hover && !on_point_hover && !warned_deprecated_on_hover) {
-      warned_deprecated_on_hover = true
-      console.warn(
-        `BrillouinZone: the on_hover prop was renamed to on_point_hover; the alias will be removed in a future release`,
-      )
-    }
-    ;(on_point_hover ?? on_hover)?.(hover_data)
-  })
+  $effect(() => on_point_hover?.(hover_data))
 
   // Normalize show_controls prop into consistent config
   let controls_config = $derived(normalize_show_controls(show_controls))

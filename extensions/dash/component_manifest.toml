@@ -12,22 +12,10 @@ doc = "Crystal structure, volumetric isosurface, and cross-section viewer."
 
 # Structure expects a few props as JS Set / Float32Array; Dash must pass JSON arrays.
 # The generator auto-detects set_props/float32_props from their TypeScript types.
-# Append newly added Python parameters to preserve positional compatibility.
-trailing_props = [
-  "multi_view_gap",
-  "multi_view_active",
-  "multi_view_min_pane_height",
-  "multi_view_min_pane_width",
-  "display_mode",
-  "slice_settings",
-  "reference_structure",
-  "displacement_rmsd",
-]
 
 [components.PeriodicTable]
 key = "periodic-table/PeriodicTable"
 doc = "Interactive periodic table with heatmaps and tooltips."
-trailing_props = ["color_scale"]
 
 [components.Composition]
 key = "composition/Composition"
@@ -37,8 +25,6 @@ doc = "Composition chart (pie/bubble/bar) for a chemical formula or composition 
 key = "trajectory/Trajectory"
 doc = "Molecular dynamics trajectory viewer with structure + plots."
 
-# ALL_CAPS prop ELEM_PROPERTY_LABELS is converted to Pythonic snake_case automatically.
-
 # fps_range is a fixed [min_fps, max_fps] pair (Vec2 in TS)
 [components.Trajectory.type_hints]
 fps_range = "tuple[float, float]"
@@ -46,10 +32,6 @@ fps_range = "tuple[float, float]"
 [components.BrillouinZone]
 key = "brillouin/BrillouinZone"
 doc = "3D Brillouin zone visualization."
-
-# `scene`/`camera` are bindable three.js handles for JS callers. They are useless from Python
-# and sort before most existing props, so list them here to keep them off the positional path.
-trailing_props = ["camera", "scene"]
 
 [components.ConvexHull2D]
 key = "convex-hull/ConvexHull2D"

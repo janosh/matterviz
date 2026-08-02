@@ -321,7 +321,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`clips reference lines to the plot area`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      overlays: { ref_lines: [{ x1: -100, y1: -100, x2: 100, y2: 100 }] },
+      overlays: { ref_lines: [{ type: `diagonal`, slope: 1, intercept: 0 }] },
       density: hidden_density,
       padding: { l: 80, r: 20, t: 30, b: 60 },
       style: `width: 800px; height: 600px`,
@@ -337,45 +337,37 @@ describe(`BinnedScatterPlot`, () => {
 
     const ref_group = document.querySelector(`.reference-lines`)
     expect(ref_group?.getAttribute(`clip-path`)).toBe(`url(#${clip_path?.id})`)
+    const line = ref_group?.querySelector(`line`)
+    expect(line).toBeInstanceOf(SVGLineElement)
+    expect([`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line?.getAttribute(attr)))).toEqual([
+      80, 540, 780, 30,
+    ])
+    expect(line?.getAttribute(`stroke`)).toBe(`currentColor`)
+    expect(line?.getAttribute(`stroke-dasharray`)).toBeNull()
   })
 
-  test.each([
-    // y=x diagonal auto-fills the axis ranges: with x=y ranges [0,1] on an 800x600
-    // plot padded {l:80,r:20,t:30,b:60}, it runs corner to corner
-    [
-      { type: `diagonal`, slope: 1, intercept: 0 } as const,
-      { x1: 80, y1: 540, x2: 780, y2: 30 },
-      { stroke: `currentColor`, dash: null }, // RefLine default style is solid
-    ],
-    // horizontal line at mid-range spans the full x extent
-    [
-      { type: `horizontal`, y: 0.5, style: { color: `red`, dash: `4 4` } } as const,
-      { x1: 80, y1: 285, x2: 780, y2: 285 },
-      { stroke: `red`, dash: `4 4` },
-    ],
-  ])(
-    `resolves declarative RefLine %o against current axis ranges`,
-    async (ref_line, coords, style) => {
-      mount_plot({
-        series: [{ x: [0, 1], y: [0, 1] }],
-        x_axis: { range: [0, 1] as Vec2 },
-        y_axis: { range: [0, 1] as Vec2 },
-        overlays: { ref_lines: [ref_line] },
-        density: hidden_density,
-        padding: { l: 80, r: 20, t: 30, b: 60 },
-        style: `width: 800px; height: 600px`,
-      })
-      await settle()
+  test(`resolves a styled horizontal RefLine against current axis ranges`, async () => {
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      overlays: {
+        ref_lines: [{ type: `horizontal`, y: 0.5, style: { color: `red`, dash: `4 4` } }],
+      },
+      density: hidden_density,
+      padding: { l: 80, r: 20, t: 30, b: 60 },
+      style: `width: 800px; height: 600px`,
+    })
+    await settle()
 
-      const line = document.querySelector(`.reference-lines line`)
-      expect(line).toBeInstanceOf(SVGLineElement)
-      for (const [attr, expected] of Object.entries(coords)) {
-        expect(Number(line?.getAttribute(attr)), attr).toBeCloseTo(expected, 6)
-      }
-      expect(line?.getAttribute(`stroke`)).toBe(style.stroke)
-      expect(line?.getAttribute(`stroke-dasharray`)).toBe(style.dash)
-    },
-  )
+    const line = document.querySelector(`.reference-lines line`)
+    expect(line).toBeInstanceOf(SVGLineElement)
+    expect([`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line?.getAttribute(attr)))).toEqual([
+      80, 285, 780, 285,
+    ])
+    expect(line?.getAttribute(`stroke`)).toBe(`red`)
+    expect(line?.getAttribute(`stroke-dasharray`)).toBe(`4 4`)
+  })
 
   test(`drops declarative RefLines that resolve outside the axis ranges`, async () => {
     mount_plot({

@@ -33,8 +33,6 @@ export interface StructureIdSweep {
   // rather than 0..n_analysed
   frame_numbers: number[]
   // Full per-frame results, in the shape StructureTypePlot consumes directly.
-  // Breaking API change: populations, centrosymmetry, and n_atoms now live only on each
-  // results entry and are no longer duplicated on the sweep object.
   results: StructureIdResult[]
   // Source frames skipped between samples; 1 means every frame was analysed
   frame_stride: number

@@ -375,22 +375,21 @@ describe(`LAMMPS Trajectory Format`, () => {
     expect(gz_traj.frames).toHaveLength(5)
   })
 
-  it(`should parse file without type column using id as fallback`, async () => {
-    // mdanalysis-additional-columns.lammpstrj has columns: id x y z q p (no type)
-    const content = read_test_file(`mdanalysis-additional-columns.lammpstrj`)
-    const traj = await parse_trajectory_data(
-      content,
-      `mdanalysis-additional-columns.lammpstrj`,
-    )
+  it(`parses element identity and extra columns from the MDAnalysis fixture`, async () => {
+    const filename = `mdanalysis-additional-columns.lammpstrj`
+    const trajectory = await parse_trajectory_data(read_test_file(filename), filename)
+    const sites = trajectory.frames[0].structure.sites
 
-    expect(traj.metadata?.source_format).toBe(`lammps_trajectory`)
-    expect(traj.frames).toHaveLength(1)
-    expect(traj.frames[0].structure.sites).toHaveLength(10)
+    // oxfmt-ignore
+    expect(sites.map((site) => site.species[0].element)).toEqual([`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`])
+    expect(sites[0].properties).toMatchObject({ id: 1, charge: 0.00258855, p: 1.1 })
+  })
 
-    // id column used as atom type: 1→H, 2→He, 3→Li, etc.
-    const elements = traj.frames[0].structure.sites.map((site) => site.species[0].element)
-    expect(elements).toEqual([`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`])
-    expect(traj.metadata?.atom_types).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  it(`rejects a LAMMPS file without type or element columns`, async () => {
+    const content = lammps_frame(`id x y z`, [`1 0 0 0`])
+    await expect(
+      parse_trajectory_data(content, `mdanalysis-additional-columns.lammpstrj`),
+    ).rejects.toThrow(`No valid frames found in LAMMPS trajectory`)
   })
 
   it(`should parse inline LAMMPS content`, async () => {
@@ -401,18 +400,6 @@ describe(`LAMMPS Trajectory Format`, () => {
     expect(trajectory.frames).toHaveLength(2)
     expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100])
     expect(trajectory.frames[0].structure.sites).toHaveLength(3)
-  })
-
-  // xu/yu/zu columns are already unwrapped by LAMMPS, so consumers must skip the
-  // minimum image convention for them. xs/ys/zs and x/y/z are both wrapped into the box.
-  // oxfmt-ignore
-  it.each([
-    { name: `xu yu zu fixture`, file: `mdanalysis-chain-dump.lammpstrj`, expected: true },
-    { name: `x y z fixture`, file: `mdanalysis-additional-columns.lammpstrj`, expected: false },
-  ])(`flags coords_unwrapped=$expected for the $name`, async ({ file, expected }) => {
-    const traj = await parse_trajectory_data(read_test_file(file), file)
-    expect(traj.frames.length).toBeGreaterThan(0)
-    for (const frame of traj.frames) expect(frame.metadata?.coords_unwrapped).toBe(expected)
   })
 
   // Coordinate values are 0.25, 0.5, 0.75, ... in column order, so the expected Cartesian

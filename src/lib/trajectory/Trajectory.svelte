@@ -119,7 +119,7 @@
     step_labels = 5,
     x_quantity = $bindable(),
     visible_properties = $bindable(),
-    ELEM_PROPERTY_LABELS,
+    property_labels,
     on_play,
     on_pause,
     on_step_change,
@@ -209,7 +209,7 @@
       // custom labels for trajectory properties - maps property keys to display labels
       // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
       // - merged with built-in trajectory_property_config
-      ELEM_PROPERTY_LABELS?: Record<string, string>
+      property_labels?: Record<string, string>
       fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
       fps?: number // frame rate for playback
       // Loading options for large files
@@ -636,10 +636,10 @@
 
   // Build extended property config with custom labels if provided
   let extended_config = $derived.by(() => {
-    if (!ELEM_PROPERTY_LABELS) return trajectory_property_config
+    if (!property_labels) return trajectory_property_config
 
     const custom_config: Record<string, TrajPropertyConfig> = {}
-    for (const [key, label] of Object.entries(ELEM_PROPERTY_LABELS)) {
+    for (const [key, label] of Object.entries(property_labels)) {
       const existing =
         trajectory_property_config[key] || trajectory_property_config[key.toLowerCase()]
       // Spread the existing config so fields like axis_group survive the
@@ -722,7 +722,7 @@
     trajectory ? get_frame_step_samples(trajectory) : { frame_numbers: [], steps: [] },
   )
   let x_quantity_options = $derived(
-    available_x_quantities(frame_step_samples, trajectory?.time_step),
+    available_x_quantities(frame_step_samples, trajectory?.time_step, trajectory?.time_unit),
   )
   // Until the user picks one, take the most informative axis the file supports: a
   // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.

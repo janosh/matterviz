@@ -377,18 +377,20 @@ describe(`x axis quantity`, () => {
     ),
   })
 
+  // oxfmt-ignore
   it.each([
-    { steps: [0, 1, 2, 3], time_step: undefined, expected: [`frame`] },
-    { steps: [0, 500, 1000, 1500], time_step: undefined, expected: [`frame`, `step`] },
-    { steps: [0, 500, 1000, 1500], time_step: 2, expected: [`frame`, `step`, `time`] },
+    { steps: [0, 1, 2, 3], time_step: undefined, time_unit: undefined, expected: [`frame`] },
+    { steps: [0, 1, 2, 3], time_step: 2, time_unit: `fs`, expected: [`frame`, `time`] },
+    { steps: [0, 500, 1000, 1500], time_step: 2, time_unit: undefined, expected: [`frame`, `step`] },
+    { steps: [0, 500, 1000, 1500], time_step: 2, time_unit: `fs`, expected: [`frame`, `step`, `time`] },
     // non-monotonic steps cannot be interpolated in either direction
-    { steps: [0, 500, 200, 1500], time_step: 2, expected: [`frame`] },
-    { steps: [7], time_step: 2, expected: [`frame`] },
+    { steps: [0, 500, 200, 1500], time_step: 2, time_unit: `fs`, expected: [`frame`] },
+    { steps: [7], time_step: 2, time_unit: `fs`, expected: [`frame`] },
   ])(
     `offers $expected for steps $steps with time_step $time_step`,
-    ({ steps, time_step, expected }) => {
+    ({ steps, time_step, time_unit, expected }) => {
       const samples = { frame_numbers: steps.map((_step, idx) => idx), steps }
-      expect(available_x_quantities(samples, time_step)).toEqual(expected)
+      expect(available_x_quantities(samples, time_step, time_unit)).toEqual(expected)
     },
   )
 

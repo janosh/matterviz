@@ -69,8 +69,7 @@ export type NormalizeMode =
   | ((value: number, min: number, max: number) => number)
 export type DomainMode = `auto` | `robust` | `fixed`
 export type LegendPosition = `right` | `bottom`
-// true is accepted as backward-compat alias for 'lower'
-export type SymmetricMode = boolean | `lower` | `upper`
+export type SymmetricMode = false | `lower` | `upper`
 
 // Tooltip snippet type for HeatmapMatrix
 export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean

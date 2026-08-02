@@ -70,22 +70,28 @@ const strictly_increasing = (values: readonly number[]): boolean =>
     (value, idx) => Number.isFinite(value) && (idx === 0 || value > values[idx - 1]),
   )
 
-// Which x quantities the data actually supports. Steps only earn their own option when
-// they differ from the frame numbering (a relaxation numbered 0, 1, 2, … says nothing
-// extra) and increase monotonically, since interpolating a non-monotonic axis is
-// meaningless. Time additionally needs a timestep from the file.
+// Which x quantities the data actually supports. Step and time interpolation both need a
+// monotonic frame/step grid. Steps only earn their own option when they differ from frame
+// numbering; time remains informative even when steps are exactly 0, 1, 2, …
 export function available_x_quantities(
   samples: FrameStepSamples,
   time_step?: number,
+  time_unit?: string,
 ): TrajectoryXQuantity[] {
   const { frame_numbers, steps } = samples
-  const usable_steps =
+  const usable_grid =
     steps.length === frame_numbers.length &&
     steps.length > 1 &&
-    strictly_increasing(steps) &&
-    steps.some((step, idx) => step !== frame_numbers[idx])
-  if (!usable_steps) return [`frame`]
-  return time_step && time_step > 0 ? [`frame`, `step`, `time`] : [`frame`, `step`]
+    strictly_increasing(frame_numbers) &&
+    strictly_increasing(steps)
+  if (!usable_grid) return [`frame`]
+
+  const quantities: TrajectoryXQuantity[] = [`frame`]
+  if (steps.some((step, idx) => step !== frame_numbers[idx])) quantities.push(`step`)
+  if (time_step !== undefined && Number.isFinite(time_step) && time_step > 0 && time_unit) {
+    quantities.push(`time`)
+  }
+  return quantities
 }
 
 export const X_QUANTITY_LABELS: Record<TrajectoryXQuantity, string> = {
@@ -139,7 +145,7 @@ export function build_x_map(
   const { frame_numbers, steps } = samples
   if (frame_numbers.length === 0) return FRAME_X_MAP
 
-  const usable = available_x_quantities(samples, time_step).includes(quantity)
+  const usable = available_x_quantities(samples, time_step, time_unit).includes(quantity)
     ? quantity
     : `frame`
   const values = usable === `frame` ? frame_numbers : steps

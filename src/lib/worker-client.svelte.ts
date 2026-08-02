@@ -16,10 +16,9 @@ export interface WorkerClientConfig<Input, Options, Result> {
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
   build_payload: (input: Input) => unknown
-  // Canonically key the payload contents instead of the input object's identity. This is
-  // suitable for modest inputs whose callers commonly recreate equivalent objects; leave
-  // false for large numerical buffers where serialization can cost more than the compute.
-  dedupe_by_payload?: boolean
+  // Key requests by canonicalized payload + options instead of input identity. `unordered`
+  // treats a top-level payload array as a multiset; nested arrays remain ordered.
+  dedupe_by_payload?: boolean | `unordered`
 }
 
 export function create_worker_client<Input extends object, Options, Result>(
@@ -105,9 +104,19 @@ export function create_worker_client<Input extends object, Options, Result>(
     if (key === undefined) throw new TypeError(`${label} worker could not key its request`)
     return key
   }
+  const payload_key_of = (payload: unknown): string => {
+    if (dedupe_by_payload !== `unordered`) return canonical_key_of(payload)
+    if (!Array.isArray(payload)) {
+      throw new TypeError(`${label} worker unordered payload dedupe requires an array payload`)
+    }
+    const item_keys = Array.from({ length: payload.length }, (_unused, idx) =>
+      Object.hasOwn(payload, idx) ? canonical_key_of(payload[idx]) : `hole`,
+    )
+    return JSON.stringify(item_keys.toSorted())
+  }
   const request_key_of = (input: Input, options: Options, payload?: unknown): string => {
     const input_key = dedupe_by_payload
-      ? canonical_key_of(payload)
+      ? payload_key_of(payload)
       : `input:${input_token(input)}`
     const options_key = canonical_key_of(options ?? {})
     return `${input_key.length}:${input_key}${options_key}`

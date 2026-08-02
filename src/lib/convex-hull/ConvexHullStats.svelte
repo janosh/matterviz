@@ -268,27 +268,24 @@
   const sort_span = (sort_val: number | string, display: string, attrs = ``) =>
     `<span data-sort-value="${sort_val}"${attrs ? ` ${attrs}` : ``}>${display}</span>`
 
-  const unescape_html = (str: string, max_rounds = 5): string => {
-    let decoded = str
-    for (let round_idx = 0; round_idx < max_rounds; round_idx++) {
-      const next_decoded = decoded
+  const normalize_formula_markup = (formula: string): string => {
+    let decoded = formula
+    for (let round_idx = 0; round_idx < 5; round_idx++) {
+      const next = decoded
         .replaceAll('&amp;', `&`)
         .replaceAll('&lt;', `<`)
         .replaceAll('&gt;', `>`)
         .replaceAll('&quot;', `"`)
         .replaceAll('&#39;', `'`)
-      if (next_decoded === decoded) break
-      decoded = next_decoded
+      if (next === decoded) break
+      decoded = next
     }
     return decoded
-  }
-  // Convert legacy/html formula strings like Fe<sub>2</sub>O<sub>3</sub> back to plain
-  // stoichiometric input before parsing/reordering.
-  const normalize_formula_markup = (formula: string): string =>
-    unescape_html(formula)
       .replaceAll(/<sub>\s*(?<content>[^<]+?)\s*<\/sub>/gi, `$1`)
       .replaceAll(/<[^>]+>/g, ``)
       .replaceAll(/\s+/g, ``)
+  }
+
   const sanitize_href = (href: string | null | undefined): string | null => {
     const trimmed_href = href?.trim()
     if (!trimmed_href) return null

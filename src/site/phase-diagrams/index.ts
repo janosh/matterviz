@@ -16,24 +16,19 @@ const tdb_modules = import.meta.glob(`$site/phase-diagrams/tdb/*.tdb`, {
   query: `?url`,
 })
 
-// Build all diagrams from JSON data
-const built_diagrams = new Map<string, PhaseDiagramData>()
-for (const [path, input] of Object.entries(diagram_modules)) {
+const built_diagrams = Object.entries(diagram_modules).map(([path, input]) => {
   const name = path.split(`/`).pop()?.replace(`.json`, ``) ?? path
-  built_diagrams.set(name, build_diagram(input))
-}
+  return [name, build_diagram(input)] as const
+})
 
 // Convert to FileInfo array for binary phase diagrams
-// These are now built-in (no URL needed), but we keep the API compatible
-const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.keys()).map(
-  (name) => ({
-    name: `${name}.json`,
-    url: `builtin:${name}`, // Special marker for built-in diagrams
-    type: `json`,
-    category: `Binary`,
-    category_icon: `📊`,
-  }),
-)
+const binary_phase_diagram_files: FileInfo[] = built_diagrams.map(([name]) => ({
+  name: `${name}.json`,
+  url: `builtin:${name}`, // Special marker for built-in diagrams
+  type: `json`,
+  category: `Binary`,
+  category_icon: `📊`,
+}))
 
 // Convert glob results to FileInfo array for TDB files
 const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) => {
@@ -48,53 +43,11 @@ export const all_phase_diagram_files: FileInfo[] = [
   ...tdb_files,
 ]
 
-// Map normalized system names to {original_name, data} for quick lookup
+// Map normalized system names to precomputed diagrams for quick lookup
 const precomputed_map = new Map(
-  Array.from(built_diagrams.entries()).map(([name, data]) => [
-    normalize_system_name(name),
-    { name, data },
-  ]),
+  built_diagrams.map(([name, data]) => [normalize_system_name(name), data]),
 )
 
 // Find precomputed phase diagram by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
-const find_precomputed_diagram = (system: string): PhaseDiagramData | undefined =>
-  precomputed_map.get(normalize_system_name(system))?.data
-
-// Backward compatibility: find precomputed URL by system name
-// Returns a builtin: URL that load_binary_phase_diagram can handle
-export function find_precomputed_url(system: string): string | undefined {
-  const entry = precomputed_map.get(normalize_system_name(system))
-  return entry ? `builtin:${entry.name}` : undefined
-}
-
-// For backward compatibility - load binary phase diagram
-export async function load_binary_phase_diagram(
-  url: string,
-): Promise<PhaseDiagramData | null> {
-  // Handle built-in diagrams (new format)
-  if (url.startsWith(`builtin:`)) {
-    const name = url.replace(`builtin:`, ``)
-    return built_diagrams.get(name) ?? null
-  }
-
-  // Handle legacy .json.gz URLs - try to extract system name
-  const match = /(?<system>[A-Za-z0-9]+-[A-Za-z0-9]+)\.json/.exec(url)
-  if (match) {
-    const system = match[1]
-    const diagram = find_precomputed_diagram(system)
-    if (diagram) return diagram
-  }
-
-  // Fallback: try to fetch from URL (for external files)
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      console.error(`Failed to fetch phase diagram: ${response.statusText}`)
-      return null
-    }
-    return (await response.json()) as PhaseDiagramData
-  } catch (error) {
-    console.error(`Failed to load phase diagram from ${url}:`, error)
-    return null
-  }
-}
+export const find_precomputed_diagram = (system: string): PhaseDiagramData | undefined =>
+  precomputed_map.get(normalize_system_name(system))

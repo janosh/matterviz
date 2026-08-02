@@ -16,7 +16,7 @@ const run_chempot = create_worker_client<
     new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: compute_chempot_diagram,
   build_payload: (entries) => $state.snapshot(entries),
-  dedupe_by_payload: true,
+  dedupe_by_payload: `unordered`,
 })
 
 export const compute_chempot_async = (

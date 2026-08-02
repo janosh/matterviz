@@ -8,13 +8,15 @@ import {
   MsdPlot,
   suggest_msd_frame_stride,
 } from '$lib/msd'
+import * as async_compute from '$lib/msd/async-compute.svelte'
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { join } from 'node:path'
 import process from 'node:process'
-import { type Component, type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
+import { describe, expect, it, vi } from 'vitest'
 import { cubic_matrix, read_maybe_gz } from '../setup'
 import { drift_positions, make_frame, max_rel_error, on_x_axis } from './helpers'
 
@@ -454,6 +456,53 @@ describe(`MsdPlot`, () => {
     })
     expect(text).toContain(`max_lag_fraction must be in (0, 1]`)
     expect(text).not.toContain(`R²`)
+  })
+
+  it(`discards a pending compute when positions are cleared`, async () => {
+    const pending_compute = Promise.withResolvers<MsdResult>()
+    const compute_spy = vi
+      .spyOn(async_compute, `compute_msd_async`)
+      .mockReturnValue(pending_compute.promise)
+    const positions = drift_positions(20)
+    const state = new SvelteMap<string, MsdPositions | MsdResult | boolean | undefined>([
+      [`positions`, positions],
+      [`result`, undefined],
+      [`loading`, false],
+    ])
+    const component = mount(MsdPlot, {
+      target: document.body,
+      props: {
+        get positions() {
+          return state.get(`positions`) as MsdPositions | undefined
+        },
+        get result() {
+          return state.get(`result`) as MsdResult | undefined
+        },
+        set result(value: MsdResult | undefined) {
+          state.set(`result`, value)
+        },
+        get loading() {
+          return state.get(`loading`) as boolean
+        },
+        set loading(value: boolean) {
+          state.set(`loading`, value)
+        },
+      },
+    })
+    try {
+      await tick()
+      expect(state.get(`loading`)).toBe(true)
+      state.set(`positions`, undefined)
+      await tick()
+      expect(state.get(`loading`)).toBe(false)
+
+      pending_compute.resolve(calc_msd(positions))
+      await settle()
+      expect(state.get(`result`)).toBeUndefined()
+    } finally {
+      compute_spy.mockRestore()
+      await unmount(component)
+    }
   })
 })
 

@@ -178,7 +178,7 @@ describe(`ScatterPlot`, () => {
       x: Array.from({ length: 12 }, (_, idx) =>
         new Date().setMonth(new Date().getMonth() - (12 - idx)),
       ),
-      x_axis: { ticks: `month`, format: `%b %Y` },
+      x_axis: { ticks: `month`, scale_type: `time` as const, format: `%b %Y` },
     },
   ])(`tick formatting`, async ({ x, x_axis, y_axis }) => {
     const y = [12, 24, 36, 48, 60, 72]
@@ -289,7 +289,7 @@ describe(`ScatterPlot`, () => {
         series_idx: 0,
         point_idx: 0,
       },
-      x_axis: { format: `%b %d, %Y` },
+      x_axis: { scale_type: `time` as const, format: `%b %d, %Y` },
       y_axis: { format: `.2r` },
     },
     { tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 } },

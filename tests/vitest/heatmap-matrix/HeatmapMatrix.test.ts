@@ -9,7 +9,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
-const make_items = (labels: string[]): AxisItem[] =>
+const make_items = (labels: readonly string[]): AxisItem[] =>
   labels.map((label, idx) => ({ label, key: label, sort_value: idx }))
 
 const x_items = make_items([`A`, `B`, `C`])
@@ -18,7 +18,9 @@ const y_items = make_items([`X`, `Y`, `Z`])
 // `x`/`y` are a shorthand to build x_items/y_items from label arrays; pass x_items/y_items
 // directly for custom AxisItem objects (e.g. explicit sort_value)
 const mount_matrix = (
-  props: { x?: string[]; y?: string[] } & Partial<ComponentProps<typeof HeatmapMatrix>> = {},
+  props: { x?: readonly string[]; y?: readonly string[] } & Partial<
+    ComponentProps<typeof HeatmapMatrix>
+  > = {},
 ): void => {
   const { x, y, ...rest } = props
   mount(HeatmapMatrix, {
@@ -107,11 +109,6 @@ describe(`axis replacement`, () => {
 
 describe(`symmetric mode`, () => {
   test.each([
-    {
-      mode: true,
-      label: `true (alias for lower)`,
-      check: `toBeLessThanOrEqual` as const,
-    },
     { mode: `lower` as const, label: `lower`, check: `toBeLessThanOrEqual` as const },
     { mode: `upper` as const, label: `upper`, check: `toBeGreaterThanOrEqual` as const },
   ])(`$label renders triangle + diagonal`, ({ mode, check }) => {
@@ -398,8 +395,15 @@ describe(`edge cases`, () => {
       data: 8,
       empty: 0,
     },
-    { desc: `1x1 symmetric`, x: [`A`], y: [`A`], symmetric: true, data: 1, empty: 0 },
-  ])(
+    {
+      desc: `1x1 symmetric`,
+      x: [`A`],
+      y: [`A`],
+      symmetric: `lower`,
+      data: 1,
+      empty: 0,
+    },
+  ] as const)(
     `$desc renders $data data cells and $empty empty cells`,
     ({ x, y, symmetric, data, empty }) => {
       mount_matrix({ x, y, symmetric })
@@ -477,7 +481,7 @@ describe(`axis label placement`, () => {
 
   test(`symmetric diagonal mode moves only x labels toward diagonal`, () => {
     mount_matrix({
-      symmetric: true,
+      symmetric: `lower`,
       symmetric_label_position: `diagonal`,
     })
     const x_labels = get_x_labels()
@@ -492,7 +496,7 @@ describe(`axis label placement`, () => {
 
   test(`symmetric edge mode keeps x labels on top edge`, () => {
     mount_matrix({
-      symmetric: true,
+      symmetric: `lower`,
       symmetric_label_position: `edge`,
     })
     const x_labels = get_x_labels()
@@ -646,7 +650,7 @@ describe(`milestone feature props`, () => {
         [1, 2],
         [3, 4],
       ],
-      symmetric: true,
+      symmetric: `lower`,
       show_row_summaries: true,
     })
     const summary_cells = document.querySelectorAll<HTMLElement>(`.summary-row`)

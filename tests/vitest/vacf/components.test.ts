@@ -3,12 +3,13 @@
 // real postMessage path runs; the components then exercise the synchronous fallback.
 import type { Vec3 } from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
-import type { compute_vacf_async as ComputeVacfAsync } from '$lib/vacf/async-compute.svelte'
+import type * as VacfAsyncModule from '$lib/vacf/async-compute.svelte'
 import { calc_vacf } from '$lib/vacf/calc-vacf'
 import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
 import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '$lib/vacf/VacfPlot.svelte'
-import { type Component, type ComponentProps, mount, tick } from 'svelte'
+import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, make_crystal } from '../setup'
 import { build_vacf_input, circular_motion } from './helpers'
@@ -59,7 +60,8 @@ class StubWorker {
   }
 }
 
-let compute_vacf_async: typeof ComputeVacfAsync
+let compute_vacf_async: typeof VacfAsyncModule.compute_vacf_async
+let vacf_async_module: typeof VacfAsyncModule
 
 const orbit_input = (n_frames: number, with_velocities = true): VacfInput => {
   const { positions, velocities } = circular_motion(n_frames, 0.04, 1)
@@ -69,11 +71,13 @@ const orbit_input = (n_frames: number, with_velocities = true): VacfInput => {
 beforeAll(async () => {
   vi.stubGlobal(`Worker`, StubWorker)
   // Imported after the stub so the module-level singleton picks it up
-  ;({ compute_vacf_async } = await import(`$lib/vacf/async-compute.svelte`))
+  vacf_async_module = await import(`$lib/vacf/async-compute.svelte`)
+  ;({ compute_vacf_async } = vacf_async_module)
 })
 
 afterEach(() => {
   posted.length = 0
+  vi.restoreAllMocks()
 })
 
 describe(`worker code path`, () => {
@@ -188,6 +192,50 @@ describe(`VacfPlot`, () => {
     })
     expect(text).toContain(`max_lag_fraction must be in (0, 1]`)
     expect(text).not.toContain(`VACF(0)`)
+  })
+
+  it(`discards a pending compute when input is cleared`, async () => {
+    const pending_compute = Promise.withResolvers<VacfResult>()
+    vi.spyOn(vacf_async_module, `compute_vacf_async`).mockReturnValue(pending_compute.promise)
+    const input = orbit_input(40)
+    const state = new SvelteMap<string, VacfInput | VacfResult | boolean | undefined>([
+      [`input`, input],
+      [`result`, undefined],
+      [`loading`, false],
+    ])
+    const component = mount(VacfPlot, {
+      target: document.body,
+      props: {
+        get input() {
+          return state.get(`input`) as VacfInput | undefined
+        },
+        get result() {
+          return state.get(`result`) as VacfResult | undefined
+        },
+        set result(value: VacfResult | undefined) {
+          state.set(`result`, value)
+        },
+        get loading() {
+          return state.get(`loading`) as boolean
+        },
+        set loading(value: boolean) {
+          state.set(`loading`, value)
+        },
+      },
+    })
+    try {
+      await tick()
+      expect(state.get(`loading`)).toBe(true)
+      state.set(`input`, undefined)
+      await tick()
+      expect(state.get(`loading`)).toBe(false)
+
+      pending_compute.resolve(calc_vacf(input))
+      await settle()
+      expect(state.get(`result`)).toBeUndefined()
+    } finally {
+      await unmount(component)
+    }
   })
 })
 
