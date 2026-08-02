@@ -144,10 +144,11 @@ describe(`vaspout.h5 electronic routing`, () => {
     create_display(make_container(), result)
     const mount_props = last_mount_props() as {
       dos?: unknown
-      trajectory_props?: { trajectory: unknown }
+      trajectory_props?: { trajectory: unknown; property_labels: Record<string, string> }
     }
     expect(mount_props.dos).toBeDefined()
     expect(mount_props.trajectory_props?.trajectory).toBe(result.data)
+    expect(mount_props.trajectory_props?.property_labels).toEqual({})
   })
 
   // Ferrox archives VASP HDF5 outputs gzipped on S3; the inner filename must

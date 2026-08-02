@@ -2,7 +2,7 @@ default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
+    rev: v0.16.1
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -67,7 +67,8 @@ repos:
           # statics: static (single-point) calculations
           # conect: PDB bond-connectivity record name; trough: a dip in a curve
           # skelton: Jonathan Michael Skelton, author of the cited Phonopy-Spectroscopy
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton'
+          # cna: common neighbor analysis; mater: journal abbreviation (Acta Mater.)
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton,cna,mater'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli

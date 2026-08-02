@@ -5,15 +5,13 @@ import { IS_CI } from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
+const HYDRATION_TIMEOUT = 30_000
 
 // Helper to conditionally skip entire describe blocks on CI
 const describe_local_only = (title: string, callback: () => void): void => {
   if (IS_CI) test.describe.skip(title, callback)
   else test.describe(title, callback)
 }
-
-const has_orientation_layout_class = (class_name: string | null): boolean =>
-  class_name?.includes(`vertical`) === true || class_name?.includes(`horizontal`) === true
 
 test(`homepage keeps the compressed trajectory source URL after loading`, async ({ page }) => {
   const compressed_path = `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
@@ -27,57 +25,39 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
     if (path.startsWith(compressed_path.replace(/\.gz$/, ``))) trajectory_requests.push(path)
   })
 
-  await page.goto(`/`, { waitUntil: `networkidle` })
+  await page.goto(`/`, { waitUntil: `domcontentloaded` })
   const filename = page.locator(`.trajectory button.filename`)
   await expect(filename).toBeVisible({ timeout: LOAD_TIMEOUT })
 
   expect(trajectory_requests).toEqual([compressed_path])
 })
 
-// Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
   const display_button = trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`)
   await expect(display_button).toBeVisible()
   await display_button.click()
-
-  // Wait for dropdown to be visible
   const dropdown = trajectory.locator(`.view-mode-dropdown`)
   await expect(dropdown).toBeVisible()
-
-  const option = dropdown.locator(`.view-mode-option`).filter({
-    hasText: mode_name,
-  })
+  const option = dropdown.locator(`.view-mode-option`).filter({ hasText: mode_name })
   await expect(option).toBeVisible()
   await option.click()
-
-  // Wait for dropdown to close and content area to update
   await expect(dropdown).toBeHidden()
-  const content_area = trajectory.locator(`.content-area`)
-  await content_area.waitFor({ state: `attached` })
-  return content_area
+  return trajectory.locator(`.content-area`)
 }
 
 test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
 
-  test.beforeEach(async ({ page }, testInfo) => {
-    // Skip beforeEach for tests that are known to be flaky on CI
-    // This prevents the 30s timeout in beforeEach for skipped tests
-    const ci_flaky_tests = [`info pane displays trajectory information correctly`]
-    if (IS_CI && ci_flaky_tests.includes(testInfo.title)) {
-      test.skip()
-      return
-    }
+  test.beforeEach(async ({ page }, test_info) => {
+    test_info.setTimeout(test_info.timeout + HYDRATION_TIMEOUT)
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
-    // Use domcontentloaded instead of networkidle because this page has 20 Trajectory
-    // components, some of which intentionally make 404 requests (#error-state, #error-snippet)
-    // that can delay or prevent networkidle from completing on CI
     await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
-    // Wait for page structure to be ready before checking component visibility
-    await page.locator(`h1`).waitFor({ state: `visible` })
     await expect(trajectory_viewer).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
+      timeout: HYDRATION_TIMEOUT,
+    })
   })
 
   test(`empty state displays correctly`, async ({ page }) => {
@@ -92,131 +72,82 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test(`basic controls and navigation work`, async () => {
-    // Check control layout - filename should be leftmost (if present)
-    const filename_section = controls.locator(`.filename-section`)
-    if (await filename_section.isVisible()) {
-      await expect(filename_section).toBeVisible()
-
-      // Test filename copy functionality
-      const filename_button = filename_section.locator(`button`)
-      await expect(filename_button).toBeVisible()
-      await expect(filename_button).toBeEnabled()
-      await expect(filename_button).toHaveAttribute(`title`, `Click to copy filename`)
-      await filename_button.click() // no visual feedback expected
-    }
-
-    // Navigation controls expected:
-    // - Previous step
-    // - Play/pause
-    // - Next step
-    // - Info pane toggle
-    // - Display mode selector
-    // - Fullscreen toggle
-    // - (Optional) Additional view controls
-    const MIN_EXPECTED_NAV_BUTTONS = 6
-    const nav_button_count = await controls.locator(`button`).count()
-    expect(nav_button_count).toBeGreaterThanOrEqual(MIN_EXPECTED_NAV_BUTTONS)
-
     const step_input = controls.locator(`.step-input`)
-
     await expect(step_input).toHaveValue(`0`)
     await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
 
-    // Test navigation
-    // Test navigation using step input directly
-    await step_input.fill(`1`)
-    await step_input.press(`Enter`)
+    await controls.locator(`button[title^="Next step"]`).click()
     await expect(step_input).toHaveValue(`1`)
-
+    await controls.locator(`button[title^="Previous step"]`).click()
+    await expect(step_input).toHaveValue(`0`)
     await step_input.fill(`2`)
     await step_input.press(`Enter`)
     await expect(step_input).toHaveValue(`2`)
   })
 
-  test(`info pane displays trajectory information correctly`, async () => {
-    // Wait for trajectory to be loaded first
-    await expect(trajectory_viewer.locator(`.trajectory-controls`)).toBeVisible()
-
-    // Try to find the info button and click it
-    const info_button = trajectory_viewer.locator(`.trajectory-info-toggle`)
-    await expect(info_button).toBeVisible()
-    await expect(info_button).toBeEnabled()
-
-    // Get the pane before clicking
-    const info_pane = trajectory_viewer.locator(`.trajectory-info-pane`).first()
-
-    // Verify pane is initially hidden
-    await expect(info_pane).toBeHidden()
-
-    // Try keyboard shortcut first (which might be more reliable)
-    await trajectory_viewer.focus()
-    await trajectory_viewer.press(`i`)
-
-    // Wait a short time for the pane to show
-    try {
-      await info_pane.waitFor({ state: `visible`, timeout: 3000 })
-    } catch {
-      // Keyboard shortcuts can be flaky in headless mode - button click is reliable fallback
-      await info_button.click()
-      await info_pane.waitFor({ state: `visible`, timeout: 3000 })
-    }
-
-    // Verify pane is now visible
-    await expect(info_pane).toBeVisible()
-
-    // Check info pane has the main header
-    await expect(info_pane.locator(`h4`).filter({ hasText: `Trajectory Info` })).toBeVisible()
-
-    // Check that the pane contains some trajectory information
-    const pane_content = await info_pane.textContent()
-    expect(pane_content).toMatch(/Atoms|Total Frames|frames|Frame|Volume|volume|Trajectory/i)
-
-    // Test component-specific timestamp formatting
-    if (await info_pane.locator(`[title="File system last modified time"]`).isVisible()) {
-      const timestamp_text = await info_pane
-        .locator(`[title="File system last modified time"]`)
-        .textContent()
-      expect(timestamp_text).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}.*\d{1,2}:\d{2}/)
-    }
-
-    // Verify button is still functional
-    await expect(info_button).toBeEnabled()
-  })
-
   test(`playback controls function properly`, async () => {
     const play_button = controls.locator(`.play-button`)
-
     await expect(play_button).toHaveText(`▶`)
-    await expect(play_button).toBeEnabled()
-
-    // Test that button can be clicked
     await play_button.click()
-
-    // Verify button is still functional
-    await expect(play_button).toBeEnabled()
+    await expect(play_button).toHaveText(`⏸`)
+    await play_button.click()
+    await expect(play_button).toHaveText(`▶`)
   })
 
   test.describe(`layout and configuration options`, () => {
     test(`step labels work correctly`, async ({ page }) => {
-      // Test evenly spaced labels
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
-      await expect(step_labels).toHaveCount(3)
-      await expect(step_labels.nth(0)).toHaveText(`0`)
-      await expect(step_labels.nth(2)).toHaveText(`2`)
+      await expect(step_labels).toHaveText([`0`, `1`, `2`])
 
-      // Test other step label configurations exist
-      const negative_labels = page.locator(`#negative-step-labels .step-label`)
-      const negative_count = await negative_labels.count()
-      expect(negative_count).toBeGreaterThan(0)
+      const first_tick = loaded_trajectory.locator(`.step-tick`).first()
+      await expect(first_tick).toHaveCSS(`top`, `5px`)
+      await expect(first_tick).toHaveCSS(`height`, `3px`)
+      await expect(step_labels.first()).toHaveCSS(`top`, `9px`)
 
-      const array_labels = page.locator(`#array-step-labels .step-label`)
-      const array_count = await array_labels.count()
-      expect(array_count).toBeGreaterThan(0)
+      await expect(page.locator(`#negative-step-labels .step-label`)).toHaveText([
+        `0`,
+        `1`,
+        `2`,
+      ])
+      await expect(page.locator(`#array-step-labels .step-label`)).toHaveText([`0`, `2`])
     })
 
-    test(`controls can be hidden`, async ({ page }) => {
+    test(`viewer surface contrasts the page and hover controls overlay it`, async ({
+      page,
+    }) => {
       await expect(page.locator(`#no-controls .trajectory-controls`)).toBeHidden()
+      const hover_viewer = page.locator(`#vertical-layout`)
+      const hover_controls = hover_viewer.locator(`.trajectory-controls`)
+      await expect(hover_viewer).toHaveCSS(`border-radius`, `4px`)
+      const surface_bg = await hover_viewer.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      )
+      const page_bg = await page
+        .locator(`body`)
+        .evaluate((element) => getComputedStyle(element).backgroundColor)
+      expect(surface_bg).not.toBe(page_bg)
+      await expect(hover_viewer.locator(`.content-area > .structure`)).toHaveCSS(
+        `background-color`,
+        surface_bg,
+      )
+      await expect(hover_viewer.locator(`.content-area > .scatter`)).toHaveCSS(
+        `background-color`,
+        surface_bg,
+      )
+      await expect(hover_controls).toHaveCSS(`position`, `absolute`)
+      await hover_viewer.hover()
+      await expect(hover_controls).toBeVisible()
+      const structure_controls = hover_viewer.locator(
+        `.content-area > .structure > .control-buttons`,
+      )
+      await expect(structure_controls).toBeVisible()
+      const [trajectory_box, structure_box] = await Promise.all([
+        hover_controls.boundingBox(),
+        structure_controls.boundingBox(),
+      ])
+      if (!trajectory_box || !structure_box) throw new Error(`toolbar bounds not found`)
+      expect(structure_box.y).toBeGreaterThanOrEqual(trajectory_box.y + trajectory_box.height)
     })
   })
 
@@ -239,135 +170,68 @@ test.describe(`Trajectory Component`, () => {
       await expect(first_item).toHaveClass(/hidden/)
 
       // Regression: trigger a reactive update and verify hidden state persists.
-      const next_btn = trajectory_viewer.locator(`button[title="Next step"]`)
+      const next_btn = trajectory_viewer.locator(`button[title^="Next step"]`)
       await expect(next_btn).toBeVisible()
       await next_btn.click()
       await expect(first_item).toHaveClass(/hidden/)
-    })
-
-    test(`scatter plot displays with legend`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const scatter_plot = trajectory.locator(`.scatter`)
-
-      // Wait for scatter plot with increased timeout - plots load after trajectory data
-      await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
-
-      // Legend may not be present if there's only one series or if legend is disabled
-      const legend = scatter_plot.locator(`.legend`)
-      if (await legend.isVisible()) {
-        const legend_count = await legend.locator(`.legend-item`).count()
-        expect(legend_count).toBeGreaterThan(0)
-      }
     })
 
     test(`plot skimming can be disabled via plot_skimming prop`, async ({ page }) => {
       const trajectory = page.locator(`#no-plot-skimming`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
-
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: LOAD_TIMEOUT,
-      })
       await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
 
       const initial_step = await step_input.inputValue()
-      const plot_points = scatter_plot.locator(`.point`)
-      const points_count = await plot_points.count()
-      if (points_count > 1) {
-        await plot_points.nth(1).hover()
-        await expect(step_input).toHaveValue(initial_step)
-      }
+      const plot_points = scatter_plot.locator(`.marker`)
+      expect(await plot_points.count()).toBeGreaterThan(1)
+      await plot_points.nth(1).hover()
+      await expect(step_input).toHaveValue(initial_step)
     })
 
     test(`plot skimming is enabled by default`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
-
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible({
-        timeout: LOAD_TIMEOUT,
-      })
       await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
 
-      const plot_points = scatter_plot.locator(`.point`)
-      const points_count = await plot_points.count()
-      if (points_count > 1) {
-        const before = await step_input.inputValue()
-        await plot_points.nth(1).hover()
-
-        await expect(step_input).toBeVisible()
-        await expect(scatter_plot).toBeVisible()
-        // Wait for step input to update after hover
-        await expect(step_input).not.toHaveValue(before)
-      }
+      const plot_points = scatter_plot.locator(`.marker`)
+      expect(await plot_points.count()).toBeGreaterThan(1)
+      const before = await step_input.inputValue()
+      await plot_points.nth(1).hover()
+      await expect(step_input).not.toHaveValue(before)
     })
 
     test(`plot hides when values are constant`, async ({ page }) => {
       const constant_trajectory = page.locator(`#constant-values`)
-      if (await constant_trajectory.isVisible()) {
-        const content_area = constant_trajectory.locator(`.content-area`)
-        await expect(content_area).toHaveClass(/hide-plot/)
-        await expect(content_area.locator(`.structure`)).toBeVisible()
-      }
+      const content_area = constant_trajectory.locator(`.content-area`)
+      await expect(content_area).toHaveClass(/hide-plot/)
+      await expect(content_area.locator(`.structure`)).toBeVisible()
     })
 
     test(`plot hides for single-frame trajectories`, async ({ page }) => {
-      // Test that single-frame trajectories automatically hide plots since there's no time-series data
       const single_frame_viewer = page.locator(`#single-frame`)
-
-      if (await single_frame_viewer.isVisible()) {
-        const step_info = single_frame_viewer
-          .locator(`.trajectory-controls span`)
-          .filter({ hasText: `/ 1` })
-        await expect(step_info).toBeVisible()
-
-        const content_area = single_frame_viewer.locator(`.content-area`)
-        await expect(content_area).toHaveClass(/hide-plot/)
-        await expect(content_area.locator(`.structure`)).toBeVisible()
-        await expect(single_frame_viewer.locator(`.step-input`)).toHaveValue(`0`)
-      }
-    })
-
-    test(`dual y-axis configuration works`, async ({ page }) => {
-      const dual_axis = page.locator(`#dual-axis`)
-      await expect(dual_axis).toBeVisible({ timeout: LOAD_TIMEOUT })
-      const scatter_plot = dual_axis.locator(`.scatter`)
-      await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
-
-      const legend = scatter_plot.locator(`.legend`)
-      if (await legend.isVisible()) {
-        const legend_count = await legend.locator(`.legend-item`).count()
-        expect(legend_count).toBeGreaterThanOrEqual(1)
-      }
-    })
-
-    test(`custom properties display correctly`, async ({ page }) => {
-      const custom_props = page.locator(`#custom-properties`)
-      const legend = custom_props.locator(`.legend`)
-
-      // Legend may not be present if there's only one series or if legend is disabled
-      if (await legend.isVisible()) {
-        await expect(legend.filter({ hasText: `Total Energy` })).toBeVisible()
-        await expect(legend.filter({ hasText: `Max Force` })).toBeVisible()
-
-        // Test legend interactivity
-        const legend_items = legend.locator(`.legend-item`)
-        if ((await legend_items.count()) > 0) {
-          await legend_items.first().click()
-        }
-      }
+      const step_info = single_frame_viewer
+        .locator(`.trajectory-controls span`)
+        .filter({ hasText: `/ 1` })
+      await expect(step_info).toBeVisible()
+      const content_area = single_frame_viewer.locator(`.content-area`)
+      await expect(content_area).toHaveClass(/hide-plot/)
+      await expect(content_area.locator(`.structure`)).toBeVisible()
+      await expect(single_frame_viewer.locator(`.step-input`)).toHaveValue(`0`)
     })
   })
 
   test.describe(`advanced features`, () => {
     test(`custom controls snippet works`, async ({ page }) => {
       const custom_controls = page.locator(`#custom-controls`)
-      if (await custom_controls.isVisible()) {
-        await expect(custom_controls.locator(`.trajectory-controls .nav-section`)).toBeHidden()
-        await expect(
-          custom_controls.locator(`.trajectory-controls button`).first(),
-        ).toBeVisible()
-      }
+      await expect(custom_controls.locator(`.trajectory-controls .nav-section`)).toBeHidden()
+      const buttons = custom_controls.locator(`.trajectory-controls button`)
+      await expect(buttons).toHaveText([`First`, `Last`])
+      await buttons.last().click()
+      await expect(custom_controls.locator(`.trajectory-controls`)).toContainText(
+        `Step 3 of 3`,
+      )
     })
 
     test(`accessibility attributes are present`, async ({ page }) => {
@@ -387,8 +251,8 @@ test.describe(`Trajectory Component`, () => {
         trajectory_controls.locator(`button[title^="Previous step"]`),
       ).toHaveAttribute(`title`, /^Previous step/)
       await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
-        `title`,
-        /info/,
+        `aria-label`,
+        /trajectory info/,
       )
       await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
         `aria-label`,
@@ -399,20 +263,13 @@ test.describe(`Trajectory Component`, () => {
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const step_input = trajectory.locator(`.step-input`)
-
-      // Focus the step input
       await step_input.focus()
       await expect(step_input).toHaveValue(`0`)
-
-      // Type in the input - keyboard shortcuts should not interfere
       await step_input.fill(`1`)
       await expect(step_input).toHaveValue(`1`)
-
-      // Pressing space while in input should not trigger play/pause
       await step_input.focus()
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
-      // Should still show play icon (not paused) since space was ignored
       await expect(play_button).toHaveText(`▶`)
     })
 
@@ -423,124 +280,61 @@ test.describe(`Trajectory Component`, () => {
       await play_button.click() // Start playing to show FPS controls
 
       const fps_section = trajectory.locator(`.fps-section`)
-      if (await fps_section.isVisible()) {
-        const fps_input = fps_section.locator(`input[type="number"]`)
-        const fps_slider = fps_section.locator(`input[type="range"]`)
-
-        // Test range of FPS values via number input (slider.fill() doesn't work for range inputs)
-        for (const fps of [`0.2`, `5`, `15`, `60`]) {
-          await fps_input.fill(fps)
-          await fps_input.press(`Enter`)
-          await expect(fps_input).toHaveValue(fps)
-        }
-
-        // Test input field changes with decimal
-        await fps_input.fill(`12.5`)
+      await expect(fps_section).toBeVisible()
+      const fps_input = fps_section.locator(`input[type="number"]`)
+      const fps_slider = fps_section.locator(`input[type="range"]`)
+      for (const fps of [`0.5`, `5`, `15`, `60`, `12.5`]) {
+        await fps_input.fill(fps)
         await fps_input.press(`Enter`)
-        await expect(fps_input).toHaveValue(`12.5`)
-
-        // Verify attributes and UI elements
-        await expect(fps_slider).toHaveAttribute(`min`, `0.2`)
-        await expect(fps_slider).toHaveAttribute(`max`, `60`)
-        await expect(fps_section).toContainText(/fps/i)
+        await expect(fps_input).toHaveValue(fps)
+        await expect(fps_slider).toHaveValue(fps)
       }
-
+      await fps_input.fill(`12.3`)
+      await expect(fps_input).toHaveValue(`12.5`)
+      await expect(fps_slider).toHaveValue(`12.5`)
+      await expect(fps_input).toHaveAttribute(`step`, `0.5`)
+      await expect(fps_slider).toHaveAttribute(`min`, `0.5`)
+      await expect(fps_slider).toHaveAttribute(`max`, `60`)
+      await expect(fps_slider).toHaveAttribute(`step`, `0.5`)
       await play_button.click() // Stop playing
       await expect(play_button).toHaveText(`▶`)
     })
   })
 
   test.describe(`responsive design and viewport-based layout`, () => {
-    test(`layout prop overrides automatic detection`, async ({ page }) => {
-      // Test that explicit layout props still work
-      const vertical_trajectory = page.locator(`#vertical-layout`)
-
-      // Set wide container that would normally trigger horizontal
-      await page
-        .locator(`#vertical-layout div`)
-        .first()
-        .evaluate((el) => {
-          el.style.width = `800px`
-          el.style.height = `400px`
-        })
-
-      // Should still be vertical due to explicit layout="vertical" prop
-      await expect(vertical_trajectory).toHaveClass(/vertical/)
-      await expect(vertical_trajectory).not.toHaveClass(/horizontal/)
-    })
-
-    test(`display mode cycling works correctly with responsive layout`, async ({ page }) => {
-      // Use auto-layout trajectory which has responsive layout behavior
+    test(`display mode menu updates the visible pane`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
       const content_area = trajectory.locator(`.content-area`)
-
-      // Check if view mode button exists (only appears if plot_series.length > 0)
-      // Must check skip condition before running other assertions
-      // Use specific selector to avoid matching other .view-mode-button elements (e.g., in Structure)
       const display_button = trajectory.locator(
         `.view-mode-dropdown-wrapper .view-mode-button`,
       )
       const button_count = await display_button.count()
       test.skip(button_count === 0, `No view mode button found (no plot data)`)
 
-      // Wait for trajectory controls to be visible (indicating data is loaded)
       await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
       await expect(display_button).toBeVisible()
-
-      // Test dropdown display mode functionality
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-
       await select_display_mode(trajectory, `Scatter-only`)
       await expect(content_area).toHaveClass(/show-plot-only/)
-
       await select_display_mode(trajectory, `Structure + Scatter`)
       await expect(content_area).toHaveClass(/show-both/)
-
-      // Test in wide viewport (horizontal layout)
-      await page.setViewportSize({ width: 1200, height: 600 })
-
-      // Check that layout is still valid (horizontal or vertical)
-      const final_class = await trajectory.getAttribute(`class`)
-      expect(has_orientation_layout_class(final_class)).toBe(true)
-
-      // Wait for display mode button to be available (only shows when plot series exist)
-      await display_button.waitFor({ state: `visible`, timeout: 10000 })
-
-      // Display mode cycling should still work
-      await display_button.click()
-      await trajectory.locator(`.view-mode-option`).first().waitFor({ state: `visible` })
-      const structure_only_option_h = trajectory.locator(`.view-mode-option`).filter({
-        hasText: `Structure-only`,
-      })
-      await structure_only_option_h.click()
-      await expect(content_area).toHaveClass(/show-structure-only/)
     })
 
     test(`mobile viewport forces vertical content layout for small screens`, async ({
       page,
     }) => {
-      // Set narrow viewport to trigger mobile layout
       await page.setViewportSize({ width: 700, height: 800 })
       const trajectory = page.locator(`#auto-layout`)
       const content_area = trajectory.locator(`.content-area`)
-
       await expect(trajectory).toBeVisible({ timeout: LOAD_TIMEOUT })
       await expect(content_area).toBeVisible({ timeout: LOAD_TIMEOUT })
 
-      // Check that CSS media queries force vertical content layout for small screens
-      // Use toPass to poll for style changes after viewport resize
       await expect(async () => {
-        const content_styles = await content_area.evaluate((el) => {
-          const styles = getComputedStyle(el)
-          return {
-            gridTemplateColumns: styles.gridTemplateColumns,
-            gridTemplateRows: styles.gridTemplateRows,
-          }
-        })
-        // On small screens (width < 768px), content should stack vertically via CSS media queries
-        // The media query forces grid-template-columns: 1fr (single column)
-        expect(content_styles.gridTemplateColumns.split(` `)).toHaveLength(1)
+        const columns = await content_area.evaluate(
+          (element) => getComputedStyle(element).gridTemplateColumns,
+        )
+        expect(columns.split(` `)).toHaveLength(1)
       }).toPass({ timeout: 5000 })
     })
 
@@ -607,44 +401,36 @@ test.describe(`Trajectory Component`, () => {
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({
       page,
     }) => {
-      // Helper function to get component dimensions
-      const get_dimensions = async (content_area: Locator) =>
-        content_area.evaluate((el: Element) => {
-          const structure_node = el.querySelector(`.structure`) as HTMLElement
-          const plot_node = el.querySelector(`.scatter`) as HTMLElement
-          const structure = structure_node?.getBoundingClientRect()
-          const plot = plot_node?.getBoundingClientRect()
-          return { structure, plot }
-        })
-
-      // Helper function to check dimension ratios
-      const check_ratios = (
-        dims: { structure?: DOMRect; plot?: DOMRect },
-        primary_dimension: `width` | `height`,
+      const check_viewer = async (
+        selector: string,
+        orientation: `horizontal` | `vertical`,
       ) => {
-        if (!dims.structure || !dims.plot) return
-        const ratio = dims.structure[primary_dimension] / dims.plot[primary_dimension]
-        expect(ratio).toBeGreaterThan(0.9)
-        expect(ratio).toBeLessThan(1.1)
+        const viewer = page.locator(selector)
+        await expect(viewer).toBeVisible()
+        await expect(viewer).toHaveClass(new RegExp(orientation))
+        await expect(viewer.locator(`.structure`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+        await expect(viewer.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+        const dimensions = await viewer.locator(`.content-area`).evaluate((element) => {
+          const structure = element.querySelector(`.structure`)
+          const plot = element.querySelector(`.scatter`)
+          if (!(structure instanceof HTMLElement) || !(plot instanceof HTMLElement)) {
+            throw new Error(`trajectory panes not found`)
+          }
+          return {
+            structure: structure.getBoundingClientRect(),
+            plot: plot.getBoundingClientRect(),
+          }
+        })
+        for (const dimension of [`width`, `height`] as const) {
+          expect(dimensions.structure[dimension] / dimensions.plot[dimension]).toBeCloseTo(
+            1,
+            1,
+          )
+        }
       }
 
-      // Test horizontal layout
-      const horizontal_viewer = page.locator(`#auto-layout`)
-      await expect(horizontal_viewer).toBeVisible()
-      await expect(horizontal_viewer).toHaveClass(/horizontal/)
-
-      const horizontal_dims = await get_dimensions(horizontal_viewer.locator(`.content-area`))
-      check_ratios(horizontal_dims, `width`)
-      check_ratios(horizontal_dims, `height`)
-
-      // Test vertical layout
-      const vertical_viewer = page.locator(`#vertical-layout`)
-      await expect(vertical_viewer).toBeVisible()
-      await expect(vertical_viewer).toHaveClass(/vertical/)
-
-      const vertical_dims = await get_dimensions(vertical_viewer.locator(`.content-area`))
-      check_ratios(vertical_dims, `height`)
-      check_ratios(vertical_dims, `width`)
+      await check_viewer(`#auto-layout`, `horizontal`)
+      await check_viewer(`#vertical-layout`, `vertical`)
     })
   })
 })

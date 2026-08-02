@@ -39,6 +39,7 @@ import keyword
 import os
 import re
 import tomllib
+from collections import Counter
 from dataclasses import dataclass
 from glob import glob
 from typing import Any
@@ -602,31 +603,17 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         default_set_props = spec.get("set_props", auto_set)
         default_float32_props = spec.get("float32_props", auto_float32)
-        alias_overrides = spec.get("aliases") or {}
         type_hints = spec.get("type_hints", {})
         forward_none_props = set(spec.get("forward_none_props", []))
-        trailing_props: list[str] = spec.get("trailing_props", [])
-        if len(trailing_props) != len(set(trailing_props)):
-            raise ValueError(f"[{class_name}] trailing props must be unique")
-        js_to_prop = {prop.js_name: prop for prop in value_props}
 
-        # Build python->js mapping with unique identifiers
-        py_to_js: dict[str, str] = {}
-        for prop in value_props:
-            py, js = prop.py_name, alias_overrides.get(prop.py_name, prop.js_name)
-            base = py
-            suffix = 2
-            while py in py_to_js:
-                py = f"{base}_{suffix}"
-                suffix += 1
-            py_to_js[py] = js
-
-        if invalid_trailing_props := [
-            prop for prop in trailing_props if prop not in py_to_js
-        ]:
+        py_name_counts = Counter(prop.py_name for prop in value_props)
+        duplicate_py_names = sorted(
+            name for name, count in py_name_counts.items() if count > 1
+        )
+        if duplicate_py_names:
             raise ValueError(
-                f"[{class_name}] unknown trailing Python props: "
-                f"{invalid_trailing_props}"
+                f"{key} has duplicate Python prop names: "
+                f"{', '.join(duplicate_py_names)}"
             )
 
         # Generate class
@@ -649,24 +636,14 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         # Build signature
         sig = ["self", "id=None"]
-        trailing_params: dict[str, str] = {}
-        for py, js in py_to_js.items():
-            prop = js_to_prop.get(js)
-            if prop is None:
-                raise ValueError(
-                    f"[{class_name}] alias '{py}' maps to unknown JS prop '{js}'. "
-                    f"Valid props: {list(js_to_prop.keys())}"
-                )
-            py_type = _py_type_hint(prop.ts_type, py, type_hints)
+        for prop in value_props:
+            py_name = prop.py_name
+            py_type = _py_type_hint(prop.ts_type, py_name, type_hints)
             # Avoid duplicate None when type hint already includes it
             if "None" not in py_type:
                 py_type += " | None"
-            default = "_UNSET" if js in forward_none_props else "None"
-            param = f"{py}: {py_type} = {default}"
-            if py in trailing_props:
-                trailing_params[py] = param
-            else:
-                sig.append(param)
+            default = "_UNSET" if prop.js_name in forward_none_props else "None"
+            sig.append(f"{py_name}: {py_type} = {default}")
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
@@ -675,17 +652,18 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             "last_event: dict | None = None",
             "className: str | None = None",
             "style: dict | None = None",
+            "**kwargs",
         ]
-        sig += [trailing_params[prop] for prop in trailing_props] + ["**kwargs"]
 
         params = ",\n        ".join(sig)
         lines.append(f"    def __init__(\n        {params},\n    ):")
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
-        for py, js in py_to_js.items():
-            sentinel = "_UNSET" if js in forward_none_props else "None"
-            lines.append(f"        if {py} is not {sentinel}:")
-            lines.append(f'            mv_props["{js}"] = {py}')
+        for prop in value_props:
+            py_name = prop.py_name
+            sentinel = "_UNSET" if prop.js_name in forward_none_props else "None"
+            lines.append(f"        if {py_name} is not {sentinel}:")
+            lines.append(f'            mv_props["{prop.js_name}"] = {py_name}')
         for arg_name, default_props in {
             "set_props": default_set_props,
             "float32_props": default_float32_props,

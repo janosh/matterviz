@@ -1,7 +1,7 @@
 // Streaming trajectory loader tests - clever testing without large files
 import { trajectory_property_config } from '$lib/labels'
 import { DEFAULTS } from '$lib/settings'
-import { FRAME_LOAD_DEBOUNCE_MS, type ParseProgress } from '$lib/trajectory'
+import type { ParseProgress } from '$lib/trajectory'
 import {
   LARGE_FILE_THRESHOLD,
   MAX_BIN_FILE_SIZE,
@@ -10,13 +10,15 @@ import {
   TrajFrameReader,
 } from '$lib/trajectory/parse'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
-import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
 
-// CI environments have higher timing variability
-const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
+const settle_frame_load = async (): Promise<void> => {
+  await Promise.resolve()
+  flushSync()
+  await tick()
+}
 
 it(`large-file fallback thresholds stay in sync with the settings schema`, () => {
   // Plain component usage (no loading_options) and settings-driven contexts (VSCode
@@ -29,18 +31,43 @@ describe(`Trajectory Streaming`, () => {
   // Helper to create synthetic multi-frame XYZ data
   const create_synthetic_xyz = (num_frames: number, atoms_per_frame = 3): string => {
     const frames = []
-    for (let ii = 0; ii < num_frames; ii++) {
+    for (let frame_idx = 0; frame_idx < num_frames; frame_idx++) {
       const lines = [
         `${atoms_per_frame}`,
-        `energy=${-10 - ii * 0.1} volume=${100 + ii} frame=${ii}`,
+        `energy=${-10 - frame_idx * 0.1} volume=${100 + frame_idx} frame=${frame_idx}`,
       ]
-      for (let jj = 0; jj < atoms_per_frame; jj++) {
-        lines.push(`H ${jj * 0.1} ${ii * 0.1} ${(ii + jj) * 0.05}`)
+      for (let atom_idx = 0; atom_idx < atoms_per_frame; atom_idx++) {
+        lines.push(`H ${atom_idx * 0.1} ${frame_idx * 0.1} ${(frame_idx + atom_idx) * 0.05}`)
       }
       frames.push(lines.join(`\n`))
     }
     return frames.join(`\n`)
   }
+
+  // Distinct per (frame, atom) so a channel written to the wrong flat offset shows up
+  const charge_of = (frame_idx: number, atom_idx: number): number => frame_idx + atom_idx / 10
+  const velocity_of = (frame_idx: number, atom_idx: number): number[] => [
+    frame_idx,
+    atom_idx,
+    frame_idx * atom_idx,
+  ]
+
+  // extXYZ carrying per-atom charge + velocity columns, for position-stream channels
+  const create_channel_xyz = (num_frames: number, atoms_per_frame: number): string =>
+    Array.from({ length: num_frames }, (_, frame_idx) =>
+      [
+        `${atoms_per_frame}`,
+        `Properties=species:S:1:pos:R:3:charge:R:1:velocity:R:3 frame=${frame_idx}`,
+        ...Array.from(
+          { length: atoms_per_frame },
+          (_unused, atom_idx) =>
+            `H ${atom_idx * 0.1} ${frame_idx * 0.1} 0 ${charge_of(frame_idx, atom_idx)} ${velocity_of(
+              frame_idx,
+              atom_idx,
+            ).join(` `)}`,
+        ),
+      ].join(`\n`),
+    ).join(`\n`)
 
   // Helper to create synthetic ASE trajectory data (minimal valid structure).
   // `extra_fields` merge into every frame's JSON header, for cases that turn on
@@ -51,16 +78,6 @@ describe(`Trajectory Streaming`, () => {
   ): ArrayBuffer => {
     // Create minimal valid ASE trajectory with proper header
     const signature = `- of Ulm\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0`
-    const version = new ArrayBuffer(8)
-    const n_items = new ArrayBuffer(8)
-    const offsets_pos = new ArrayBuffer(8)
-
-    // Use DataView to write proper values
-    new DataView(version).setBigInt64(0, BigInt(1), true)
-    new DataView(n_items).setBigInt64(0, BigInt(num_frames), true)
-    new DataView(offsets_pos).setBigInt64(0, BigInt(48), true) // After header
-
-    // Simple frame data (minimal JSON)
     const frame_data = JSON.stringify({
       positions: [
         [0, 0, 0],
@@ -126,38 +143,57 @@ describe(`Trajectory Streaming`, () => {
     expect(warnings?.every((msg) => msg.includes(`unknown element symbol`))).toBe(true)
   })
 
-  it(`ignores stale out-of-order frame loads`, async () => {
+  it(`bounds indexed reads and loads only the latest queued frame`, async () => {
     mount(TrajectoryRaceHarness, { target: document.body })
-    const settle_frame_load = async () => {
-      await Promise.resolve()
-      flushSync()
-      await tick()
-    }
-    const wait_for_frame_load_debounce = async () => {
-      await new Promise<void>((resolve) => setTimeout(resolve, FRAME_LOAD_DEBOUNCE_MS + 15))
-      await settle_frame_load()
-    }
-    await tick()
-    await wait_for_frame_load_debounce()
+    await settle_frame_load()
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
-    flushSync()
-    await tick()
-    await wait_for_frame_load_debounce()
-    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
-
-    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
+    for (const step_idx of [1, 2, 3, 4]) {
+      document.querySelector<HTMLButtonElement>(`[data-testid="step-${step_idx}"]`)?.click()
+    }
     await settle_frame_load()
-    // Site cards are the probe for which frame is displayed, and the info pane only
-    // renders them while open.
-    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
-    await tick()
-    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
+    // Frame 4 replaces intermediate targets but does not start beside frame 0.
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
     await settle_frame_load()
-    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,4`)
+
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
+    expect(document.body.textContent).not.toContain(`Cart. (0, 0, 0)`)
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-4"]`)?.click()
+    await settle_frame_load()
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
+    expect(document.body.textContent).toContain(`Cart. (4, 0, 0)`)
+  })
+
+  it(`prefetches adjacent frames despite a sampled frame index`, async () => {
+    mount(TrajectoryRaceHarness, { target: document.body })
+    await settle_frame_load()
+    const trajectory_element = document.querySelector<HTMLElement>(`.trajectory`)
+    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const load_events: { frame_idx: number; inflight: number }[] = []
+    trajectory_element.addEventListener(`matterviz:trajectory-load-state`, (event) => {
+      const { frame_idx, inflight } = (
+        event as CustomEvent<{ frame_idx: number; inflight: number }>
+      ).detail
+      load_events.push({ frame_idx, inflight })
+    })
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
+    await settle_frame_load()
+
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
+    expect(load_events).toEqual(
+      expect.arrayContaining([
+        { frame_idx: 0, inflight: 0 },
+        { frame_idx: 1, inflight: 1 },
+      ]),
+    )
   })
 
   describe(`Frame Indexing`, () => {
@@ -206,11 +242,10 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Lazy Frame Loading`, () => {
-    it(`should load specific frames without loading all`, async () => {
+    it(`loads non-sequential frames with metadata and rejects out-of-bounds`, async () => {
       const data = create_synthetic_xyz(50)
       const loader = new TrajFrameReader(`test.xyz`)
 
-      // Load frames 5, 10, 45 - non-sequential access
       const frame_5 = await loader.load_frame(data, 5)
       const frame_10 = await loader.load_frame(data, 10)
       const frame_45 = await loader.load_frame(data, 45)
@@ -218,19 +253,11 @@ describe(`Trajectory Streaming`, () => {
       expect(frame_5?.step).toBe(5)
       expect(frame_10?.step).toBe(10)
       expect(frame_45?.step).toBe(45)
-
-      // Verify metadata is correctly extracted (note: step is used as frame number)
+      // step is used as frame number in synthetic XYZ
       expect(frame_5?.metadata?.energy).toBe(-10.5)
       expect(frame_10?.metadata?.energy).toBe(-11.0)
       expect(frame_45?.metadata?.energy).toBe(-14.5)
-    })
-
-    it(`should handle out-of-bounds frame requests gracefully`, async () => {
-      const data = create_synthetic_xyz(10)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      const invalid_frame = await loader.load_frame(data, 15) // Beyond available frames
-      expect(invalid_frame).toBeNull()
+      expect(await loader.load_frame(data, 50)).toBeNull()
     })
 
     it(`should parse Lattice and Properties-offset forces in indexed loads`, async () => {
@@ -281,11 +308,11 @@ describe(`Trajectory Streaming`, () => {
         const frame = await loader.load_frame(data, frame_idx)
         expect(frame).not.toBeNull()
         for (const [atom_idx, site] of (frame?.structure.sites ?? []).entries()) {
-          const off = (frame_idx * stream.n_atoms + atom_idx) * 3
+          const pos_offset = (frame_idx * stream.n_atoms + atom_idx) * 3
           expect([
-            stream.positions[off],
-            stream.positions[off + 1],
-            stream.positions[off + 2],
+            stream.positions[pos_offset],
+            stream.positions[pos_offset + 1],
+            stream.positions[pos_offset + 2],
           ]).toEqual([site.xyz[0], site.xyz[1], site.xyz[2]])
         }
       }
@@ -306,6 +333,104 @@ describe(`Trajectory Streaming`, () => {
       await expect(
         loader.stream_positions(create_synthetic_xyz(100, 3), { max_bytes: 512 }),
       ).rejects.toThrow(/over the 512 byte budget\. Use frame_stride >=/)
+    })
+
+    // Per-atom channels ride along with positions in the same frame-major layout, so
+    // whole-trajectory analyses can see velocities/charges without re-decoding frames
+    it(`collects opt-in scalar and vector channels`, async () => {
+      const data = create_channel_xyz(3, 2)
+      const loader = new TrajFrameReader(`channels.extxyz`)
+      // Columns present but no keys requested → maps must stay omitted
+      const bare = await loader.stream_positions(data)
+      expect(bare.scalars).toBeUndefined()
+      expect(bare.vectors).toBeUndefined()
+
+      const stream = await loader.stream_positions(data, {
+        scalar_keys: [`charge`],
+        vector_keys: [`velocity`],
+      })
+
+      expect(stream.n_frames).toBe(3)
+      expect(stream.n_atoms).toBe(2)
+      expect(stream.scalars?.charge).toHaveLength(3 * 2)
+      expect(stream.vectors?.velocity).toHaveLength(3 * 2 * 3)
+      for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
+        for (let atom_idx = 0; atom_idx < 2; atom_idx++) {
+          const flat = frame_idx * 2 + atom_idx
+          const vec = Array.from(
+            (stream.vectors?.velocity ?? []).slice(flat * 3, flat * 3 + 3),
+          )
+          expect(stream.scalars?.charge[flat]).toBeCloseTo(charge_of(frame_idx, atom_idx))
+          expect(vec).toEqual(velocity_of(frame_idx, atom_idx))
+        }
+      }
+    })
+
+    // 2 frames x 2 atoms of positions alone is 96 bytes; adding one scalar and one vector
+    // channel takes it to 224, so a 128 byte budget must accept the first and reject the
+    // second. A budget that ignored channels would wave both through.
+    it(`charges the extra channels against the byte budget`, async () => {
+      const loader = new TrajFrameReader(`channels.extxyz`)
+      const data = create_channel_xyz(2, 2)
+      await expect(loader.stream_positions(data, { max_bytes: 128 })).resolves.toBeDefined()
+      await expect(
+        loader.stream_positions(data, {
+          max_bytes: 128,
+          scalar_keys: [`charge`],
+          vector_keys: [`velocity`],
+        }),
+      ).rejects.toThrow(/needs 224 bytes, over the 128 byte budget/)
+    })
+
+    // Filling NaN would leave a channel that silently goes flat mid-trajectory
+    // indistinguishable from real data, so a missing property is fatal and says where
+    it.each([
+      [
+        `scalar`,
+        { scalar_keys: [`charge`] },
+        /Frame 1 site 0 has no finite scalar property "charge"/,
+      ],
+      [
+        `vector`,
+        { vector_keys: [`velocity`] },
+        /Frame 1 site 0 has no finite vec3 property "velocity"/,
+      ],
+    ])(
+      `throws when a frame is missing a requested %s channel`,
+      async (_kind, keys, pattern) => {
+        // Second frame drops the extra columns
+        const data = `${create_channel_xyz(1, 1)}\n1\nProperties=species:S:1:pos:R:3\nH 0 0 0`
+        await expect(
+          new TrajFrameReader(`channels.extxyz`).stream_positions(data, keys),
+        ).rejects.toThrow(pattern)
+      },
+    )
+
+    it.each([
+      [`scalar`, `NaN`, `charge`, `charge:R:1`, `1`],
+      [`vec3`, `NaN 2 3`, `velocity`, `velocity:R:3`, `1 2 3`],
+    ])(
+      `rejects a requested %s channel containing %s`,
+      async (kind, invalid, key, declaration, valid) => {
+        const frame = (value: string) =>
+          `1\nProperties=species:S:1:pos:R:3:${declaration}\nH 0 0 0 ${value}`
+        const keys = kind === `scalar` ? { scalar_keys: [key] } : { vector_keys: [key] }
+        await expect(
+          new TrajFrameReader(`channels.extxyz`).stream_positions(
+            `${frame(valid)}\n${frame(invalid)}`,
+            keys,
+          ),
+        ).rejects.toThrow(`Frame 1 site 0 has no finite ${kind} property "${key}"`)
+      },
+    )
+
+    it(`rejects a key requested as both a scalar and a vector`, async () => {
+      await expect(
+        new TrajFrameReader(`channels.extxyz`).stream_positions(create_channel_xyz(2, 1), {
+          scalar_keys: [`velocity`],
+          vector_keys: [`velocity`],
+        }),
+      ).rejects.toThrow(/velocity requested as both a scalar and a vector channel/)
     })
 
     it(`should preserve EXTXYZ PBC in indexed loads`, async () => {
@@ -339,6 +464,33 @@ Si 0 0 0`
       expect(metadata[1].properties.energy).toBe(-10.3) // frame 3
       expect(metadata[0].properties.volume).toBe(100)
       expect(metadata[1].properties.volume).toBe(103) // frame 3
+      expect(metadata.map((entry) => entry.frame_number)).toEqual([
+        0, 3, 6, 9, 12, 15, 18, 21, 24, 27,
+      ])
+      expect((await loader.load_frame(data, 29))?.structure.sites).toHaveLength(3)
+    })
+
+    it(`derives valid EXTXYZ volumes and skips malformed lattice metadata`, async () => {
+      const reader = new TrajFrameReader(`lattice.extxyz`)
+      const valid_frame = `1\nLattice="2 0 0 0 3 0 0 0 4"\nH 0 0 0\n`
+      const metadata = await reader.extract_plot_metadata(`${valid_frame}${valid_frame}`)
+
+      expect(metadata.map(({ properties }) => properties.volume)).toEqual([24, 24])
+
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      const malformed_frame = `1\nstep=7 energy=-2 Lattice="2 0 0 0 3 0"\nH 0 0 0\n`
+      expect(await reader.extract_plot_metadata(malformed_frame)).toEqual([
+        {
+          frame_number: 0,
+          step: 7,
+          properties: { energy: -2 },
+        },
+      ])
+      expect(warn).toHaveBeenCalledWith(
+        `Skipping malformed EXTXYZ lattice volume for frame 0:`,
+        expect.any(Error),
+      )
+      warn.mockRestore()
     })
 
     it.each<[string, Record<string, number>]>([
@@ -382,29 +534,6 @@ Si 0 0 0`
   })
 
   describe(`Large File Detection & Auto-Streaming`, () => {
-    it(`should return indexed result when use_indexing is forced`, async () => {
-      const small_data = create_synthetic_xyz(20)
-      const result = await parse_trajectory_async(
-        small_data,
-        `simulated_large.xyz`,
-        undefined,
-        { use_indexing: true, index_sample_rate: 1 },
-      )
-
-      expect(result.is_indexed).toBe(true)
-      expect(result.indexed_frames).toBeDefined()
-      expect(result.total_frames).toBe(20)
-
-      // Indexed mode loads only the initial window, not every frame
-      expect(result.frames).toHaveLength(10)
-      expect(result.frames.length).toBeLessThan(result.total_frames ?? 0)
-
-      expect(result.indexed_frames).toBeInstanceOf(Array)
-      expect(result.indexed_frames?.length).toBe(20)
-      expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
-      expect(result.frame_loader).toBeDefined()
-    })
-
     it(`should use direct parsing for small files`, async () => {
       const data = create_synthetic_xyz(5)
 
@@ -422,28 +551,51 @@ Si 0 0 0`
     })
 
     // use_indexing forces streaming even for small files, incl. compressed filenames
-    // oxfmt-ignore
     it.each([
-      [`explicit request`, `force_streaming.xyz`,
-        { use_indexing: true, extract_plot_metadata: true }, true],
-      [`compressed filename`, `compressed-trajectory.xyz.gz`, { use_indexing: true }, false],
+      {
+        desc: `explicit request`,
+        filename: `force_streaming.xyz`,
+        options: { use_indexing: true, extract_plot_metadata: true },
+        expect_plot_metadata: true,
+      },
+      {
+        desc: `compressed filename`,
+        filename: `compressed-trajectory.xyz.gz`,
+        options: { use_indexing: true },
+        expect_plot_metadata: false,
+      },
     ])(
-      `forces indexed loading (%s)`,
-      async (_desc, filename, options, expect_plot_metadata) => {
+      `forces indexed loading ($desc)`,
+      async ({ filename, options, expect_plot_metadata }) => {
         const result = await parse_trajectory_async(
           create_synthetic_xyz(5),
           filename,
           undefined,
           options,
         )
-
         expect(result.is_indexed).toBe(true)
+        expect(result.indexed_frames).toBeInstanceOf(Array)
         expect(result.indexed_frames?.length).toBeGreaterThan(0)
         expect(result.total_frames).toBe(5)
         expect(result.frame_loader).toBeDefined()
         if (expect_plot_metadata) expect(result.plot_metadata).toBeDefined()
       },
     )
+
+    it(`loads only the initial window in indexed mode`, async () => {
+      const result = await parse_trajectory_async(
+        create_synthetic_xyz(20),
+        `simulated_large.xyz`,
+        undefined,
+        { use_indexing: true, index_sample_rate: 1 },
+      )
+      expect(result.is_indexed).toBe(true)
+      expect(result.indexed_frames).toHaveLength(20)
+      expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
+      expect(result.total_frames).toBe(20)
+      expect(result.frame_loader).toBeDefined()
+      expect(result.frames).toHaveLength(10)
+    })
   })
 
   describe(`Memory Efficiency`, () => {
@@ -517,25 +669,6 @@ Si 0 0 0`
   })
 
   describe(`Cross-Format Streaming`, () => {
-    it(`should handle both XYZ and ASE with same interface`, async () => {
-      const xyz_data = create_synthetic_xyz(10)
-      const ase_data = create_synthetic_ase(10)
-
-      const xyz_loader = new TrajFrameReader(`test.xyz`)
-      const ase_loader = new TrajFrameReader(`test.traj`)
-
-      // Both should implement same interface
-      expect(await xyz_loader.get_total_frames(xyz_data)).toBe(10)
-      expect(await ase_loader.get_total_frames(ase_data)).toBe(10)
-
-      // Both should support frame loading
-      const xyz_frame = await xyz_loader.load_frame(xyz_data, 3)
-      const ase_frame = await ase_loader.load_frame(ase_data, 3)
-
-      expect(xyz_frame?.step).toBe(3)
-      expect(ase_frame?.step).toBe(3)
-    })
-
     it(`labels indexed ASE data from compressed filenames correctly`, async () => {
       const result = await parse_trajectory_async(
         create_synthetic_ase(2),
@@ -556,24 +689,23 @@ Si 0 0 0`
       // that every seek is O(1) lookup + O(frame_size) regardless of position.
       await loader.load_frame(data, 0)
 
-      // Time frame access at different positions
-      const measure_access = async (frame_num: number) => {
-        const start = performance.now()
-        await loader.load_frame(data, frame_num)
-        return performance.now() - start
+      // One sub-millisecond sample measures scheduler noise, not complexity — as a ratio of
+      // two such samples this flaked at 9.1 and 17.6 on a loaded machine. Batch the loads so
+      // each measurement is milliseconds of real work, and keep the fastest round so a single
+      // GC pause can't decide the result. An O(n) seek still shows up: frame 95 would scan
+      // ~19x the lines of frame 5.
+      const batch_ms = async (frame_num: number) => {
+        const rounds: number[] = []
+        for (let round = 0; round < 3; round++) {
+          const start = performance.now()
+          for (let rep = 0; rep < 25; rep++) await loader.load_frame(data, frame_num)
+          rounds.push(performance.now() - start)
+        }
+        return Math.min(...rounds)
       }
 
-      const early_access = await measure_access(5)
-      const middle_access = await measure_access(50)
-      const late_access = await measure_access(95)
-
-      // Access times should be similar regardless of position (within 2x tolerance)
-      const max_time = Math.max(early_access, middle_access, late_access)
-      const min_time = Math.min(early_access, middle_access, late_access)
-
-      // CI has high timing variability; use generous threshold (semantically testing O(1) access)
-      const max_ratio = is_ci ? 50 : 6
-      expect(max_time / min_time).toBeLessThan(max_ratio)
+      const timings = [await batch_ms(5), await batch_ms(50), await batch_ms(95)]
+      expect(Math.max(...timings) / Math.min(...timings)).toBeLessThan(6)
     })
 
     it(`splits the XYZ payload once across many sequential frame loads`, async () => {
@@ -599,38 +731,6 @@ Si 0 0 0`
       } finally {
         split_spy.mockRestore()
       }
-    })
-
-    it(`reuses the cache for random-access and repeated loads`, async () => {
-      const data = create_synthetic_xyz(40)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Non-sequential + repeated access must stay correct with the line cache
-      for (const idx of [37, 0, 19, 37, 5, 0]) {
-        const frame = await loader.load_frame(data, idx)
-        expect(frame?.step, `frame ${idx}`).toBe(idx)
-        expect(frame?.metadata?.energy).toBeCloseTo(-10 - idx * 0.1, 10)
-      }
-      // Out-of-range still returns null after the cache is warm
-      expect(await loader.load_frame(data, 40)).toBeNull()
-    })
-
-    it(`metadata extraction assigns sequential frame numbers and keeps frames loadable`, async () => {
-      const frame_count = 50
-      const data = create_synthetic_xyz(frame_count)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      const metadata = await loader.extract_plot_metadata(data, { sample_rate: 1 })
-
-      expect(metadata).toHaveLength(frame_count)
-      for (const [idx, entry] of metadata.entries()) {
-        expect(entry.frame_number, `entry ${idx}`).toBe(idx)
-        expect(typeof entry.step).toBe(`number`)
-      }
-
-      // Individual frames stay loadable after metadata extraction
-      const frame_last = await loader.load_frame(data, frame_count - 1)
-      expect(frame_last?.structure.sites.length).toBeGreaterThan(0)
     })
   })
 

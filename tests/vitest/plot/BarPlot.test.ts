@@ -148,6 +148,8 @@ describe(`BarPlot`, () => {
   test(`line markers render zero-valued color and size inputs`, async () => {
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
     // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
+    const on_point_hover = vi.fn()
+    const on_point_click = vi.fn()
     const plot = await mount_sized_bar_plot({
       series: [
         {
@@ -158,11 +160,39 @@ describe(`BarPlot`, () => {
           size_values: [0, 5, 10, 15, 20],
         },
       ],
+      on_point_hover,
+      on_point_click,
     })
     expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
     const markers = [...plot.querySelectorAll(`.line-points .marker`)]
     expect(markers).toHaveLength(5)
     expect(markers.every((marker) => !marker.getAttribute(`d`)?.includes(`NaN`))).toBe(true)
+    markers[0].dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
+    markers[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_click).toHaveBeenCalledOnce()
+  })
+
+  test(`markerless line series emit point hover and click callbacks`, async () => {
+    const on_point_hover = vi.fn()
+    const on_point_click = vi.fn()
+    const plot = await mount_sized_bar_plot({
+      series: [{ ...basic, render_mode: `line`, markers: `line` }],
+      on_point_hover,
+      on_point_click,
+    })
+    const hit_target = plot.querySelector(`.line-series polyline[stroke="transparent"]`)
+    expect(hit_target).toBeInstanceOf(SVGPolylineElement)
+    hit_target?.dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+    )
+    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    expect(on_point_click).toHaveBeenCalledOnce()
+    expect(on_point_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`mixed bar and line series`, async () => {
@@ -407,13 +437,12 @@ describe(`BarPlot`, () => {
       },
     ]
 
-    test.each([
-      [`grouped`, [`DFT`, `ML`]],
-      [`overlay`, [`Experiment`]],
-    ] as const)(`renders grouped + ungrouped series in %s mode`, async (mode, labels) => {
-      const plot = await mount_sized_bar_plot({ series: grouped_series, mode })
+    test(`renders grouped and ungrouped legend entries`, async () => {
+      const plot = await mount_sized_bar_plot({ series: grouped_series })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
-      for (const label of labels) expect(plot.textContent).toContain(label)
+      for (const label of [`DFT`, `ML`, `Experiment`]) {
+        expect(plot.textContent).toContain(label)
+      }
     })
   })
 

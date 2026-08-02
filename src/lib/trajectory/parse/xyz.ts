@@ -6,13 +6,16 @@ import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
+  derive_time_step,
   iter_xyz_frames,
 } from '$lib/trajectory/helpers'
 import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { normalize_scientific_notation } from '$lib/utils'
 
-export type ExtxyzColumn = { offset: number; ncols: number }
+// `type` is the extxyz type letter, lowercased: `s` string, `r` real, `i` integer, `l` logical.
+// Needed to decide whether a declared column reads back as a number, a string or a boolean.
+export type ExtxyzColumn = { offset: number; ncols: number; type: string }
 export type ExtxyzColumns = {
   species_col: number
   pos_col: number
@@ -36,7 +39,11 @@ export function parse_extxyz_columns(comment: string): ExtxyzColumns {
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
     const ncols = Math.trunc(Number(fields[idx + 2]))
     if (Number.isInteger(ncols) && ncols > 0) {
-      layout[fields[idx].toLowerCase()] = { offset, ncols }
+      layout[fields[idx].toLowerCase()] = {
+        offset,
+        ncols,
+        type: fields[idx + 1].toLowerCase(),
+      }
       offset += ncols
     } else layout = null
   }
@@ -87,6 +94,8 @@ function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
   return [first, second, third]
 }
 
+const MOVE_FLAG_COLUMNS = [`move_mask`, `selective_dynamics`] as const
+
 // Read a declared boolean column as per-axis motion flags (T = free to move).
 // ASE writes `move_mask:L:3` for a per-axis FixCartesian and `move_mask:L:1` for a whole-atom
 // FixAtoms, so both arities are accepted and the 1-column form broadcasts. `selective_dynamics`
@@ -96,7 +105,7 @@ export function read_extxyz_move_flags(
   tokens: string[],
   layout: Record<string, ExtxyzColumn> | null,
 ): [boolean, boolean, boolean] | undefined {
-  for (const name of [`move_mask`, `selective_dynamics`]) {
+  for (const name of MOVE_FLAG_COLUMNS) {
     const column = layout?.[name]
     if (!column || tokens.length < column.offset + Math.min(column.ncols, 3)) continue
     if (column.ncols >= 3) {
@@ -112,6 +121,35 @@ export function read_extxyz_move_flags(
     }
   }
   return undefined
+}
+
+// Structural fields, normalized motion flags, and forces handled with frame-level statistics.
+const RESERVED_EXTXYZ_COLUMNS = new Set([`species`, `pos`, `forces`, ...MOVE_FLAG_COLUMNS])
+
+// Canonical site-property names shared with LAMMPS and exporters.
+const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
+  velocities: `velocity`,
+  momenta: `momentum`,
+  charges: `charge`,
+  masses: `mass`,
+}
+
+// Read one declared column of an atom line as a site property value. Logical columns
+// become booleans, string columns strings, everything else numbers. Returns undefined
+// when the line is too short or any component fails to parse, so a malformed column is
+// dropped for that atom rather than written as NaN.
+function read_extxyz_column(tokens: string[], column: ExtxyzColumn): unknown {
+  const { offset, ncols, type } = column
+  if (tokens.length < offset + ncols) return undefined
+  const read_token = (token: string): number | string | boolean | undefined => {
+    if (type === `s`) return token
+    if (type === `l`) return EXTXYZ_BOOL.get(token.toLowerCase())
+    const num = Number(normalize_scientific_notation(token))
+    return Number.isFinite(num) ? num : undefined
+  }
+  const values = tokens.slice(offset, offset + ncols).map(read_token)
+  if (values.includes(undefined)) return undefined
+  return ncols === 1 ? values[0] : values
 }
 
 export function parse_extxyz_pbc(comment: string): Pbc | undefined {
@@ -149,6 +187,8 @@ const METADATA_PATTERNS = {
   temperature: make_pattern(`temperature|temp|T`),
   force_max: make_pattern(`max_force|force_max|fmax`),
   bandgap: make_pattern(`bandgap|E_gap|gap`),
+  // Absolute snapshot time; derive_time_step divides out the step interval.
+  time: make_pattern(`time`),
 } as const
 
 // Extract step number and scalar properties from an (ext)XYZ comment line
@@ -172,6 +212,7 @@ type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
 // force_stats holds raw forces plus max and RMS force magnitudes when forces are present.
 // move_flags is populated only when every kept atom declared one, so a partially-annotated
 // file doesn't silently report unconstrained axes for the atoms that were missing flags.
+// Other declared columns become per-site properties under their canonical or declared name.
 function parse_xyz_atom_lines(
   lines: string[],
   start: number,
@@ -183,12 +224,17 @@ function parse_xyz_atom_lines(
   positions: number[][]
   force_stats: ForceStats | null
   move_flags: [boolean, boolean, boolean][] | null
+  site_properties: Record<string, unknown>[]
 } {
   const { species_col, pos_col, forces_col, min_cols, layout } = parse_extxyz_columns(comment)
   const elements: ElementSymbol[] = []
   const positions: number[][] = []
   const forces: number[][] = []
   const move_flags: [boolean, boolean, boolean][] = []
+  const site_properties: Record<string, unknown>[] = []
+  const extra_columns = Object.entries(layout ?? {})
+    .filter(([name]) => !RESERVED_EXTXYZ_COLUMNS.has(name))
+    .map(([name, column]) => [EXTXYZ_COLUMN_ALIASES[name] ?? name, column] as const)
 
   for (let idx = 0; idx < num_atoms; idx++) {
     const parts = lines[start + idx]?.trim().split(/\s+/) ?? []
@@ -216,6 +262,13 @@ function parse_xyz_atom_lines(
     }
     const flags = read_extxyz_move_flags(parts, layout)
     if (flags) move_flags.push(flags)
+
+    const props: Record<string, unknown> = {}
+    for (const [name, column] of extra_columns) {
+      const value = read_extxyz_column(parts, column)
+      if (value !== undefined) props[name] = value
+    }
+    site_properties.push(props)
   }
 
   const stats = calc_force_stats(forces)
@@ -225,6 +278,7 @@ function parse_xyz_atom_lines(
     force_stats: stats && { forces, ...stats },
     move_flags:
       move_flags.length === positions.length && positions.length > 0 ? move_flags : null,
+    site_properties,
   }
 }
 
@@ -249,13 +303,8 @@ export function build_xyz_frame(
     )
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
-  const { elements, positions, force_stats, move_flags } = parse_xyz_atom_lines(
-    lines,
-    start + 2,
-    num_atoms,
-    comment,
-    opts.frame_label,
-  )
+  const { elements, positions, force_stats, move_flags, site_properties } =
+    parse_xyz_atom_lines(lines, start + 2, num_atoms, comment, opts.frame_label)
   const metadata: Record<string, unknown> = { ...properties, ...force_stats }
   if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
   const built = create_trajectory_frame(
@@ -266,12 +315,13 @@ export function build_xyz_frame(
     step ?? opts.default_step,
     metadata,
   )
-  // Constraints belong on the sites, not the frame metadata: that is where the viewer's
-  // selective-dynamics coloring and the POSCAR/extXYZ exporters read them from.
-  if (move_flags) {
-    for (const [idx, site] of built.structure.sites.entries()) {
-      site.properties = { ...site.properties, selective_dynamics: move_flags[idx] }
-    }
+  // Attach per-atom data to sites. Forces are all-or-nothing and use the canonical singular key.
+  const { sites } = built.structure
+  const forces = force_stats?.forces.length === sites.length ? force_stats.forces : null
+  for (const [idx, site] of sites.entries()) {
+    site.properties = { ...site.properties, ...site_properties[idx] }
+    if (forces) site.properties.force = forces[idx]
+    if (move_flags) site.properties.selective_dynamics = move_flags[idx]
   }
   return built
 }
@@ -289,8 +339,15 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     )
   }
 
+  // extXYZ does not state the time unit, so do not guess time_unit.
+  const time_step = derive_time_step(
+    frames.map(({ metadata }) => (typeof metadata?.time === `number` ? metadata.time : null)),
+    frames.map(({ step }) => step),
+  )
+
   return {
     frames,
+    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
       source_format: `xyz_trajectory`,
       frame_count: frames.length,

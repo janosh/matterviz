@@ -43,6 +43,8 @@ export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export { default as StructureViewport } from './StructureViewport.svelte'
+export { default as TrajectoryLines } from './TrajectoryLines.svelte'
+export * from './trajectory-lines'
 export * from './supercell'
 export * from './validation'
 
@@ -207,7 +209,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
   return math.scale(center, 1 / total_weight)
 }
 
-// Recognized prefixes for per-site vector data (force, magnetic moment, spin).
+// Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
 // Both singular and plural forms are accepted. Keys matching exactly or starting
 // with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
 export const VECTOR_KEY_PREFIXES = [
@@ -217,6 +219,8 @@ export const VECTOR_KEY_PREFIXES = [
   `magmoms`,
   `spin`,
   `spins`,
+  `velocity`,
+  `velocities`,
 ] as const
 
 export const is_vector_key = (key: string): boolean =>

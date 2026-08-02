@@ -35,4 +35,17 @@ describe(`InstancedMesh limits`, () => {
     // vectors (forces, magmoms), one for the displacement-vs-reference overlay
     expect(source.match(/<ArrowInstances\b/g)).toHaveLength(2)
   })
+
+  it(`keeps scrub deferral wired through geometry and replacement-mesh colors`, () => {
+    const scene_source = readFileSync(`src/lib/structure/StructureScene.svelte`, `utf8`)
+    const atoms_source = readFileSync(`src/lib/structure/InstancedAtoms.svelte`, `utf8`)
+
+    expect(scene_source).toContain(`if (dragging_atoms || defer_expensive_geometry)`)
+    expect(scene_source).toContain(`if (defer_expensive_geometry) return last_polyhedra`)
+    expect(scene_source.match(/positions_only=\{defer_expensive_geometry\}/g)).toHaveLength(2)
+    expect(atoms_source).toContain(`positions_only && current === colored_mesh`)
+    expect(atoms_source.indexOf(`colored_mesh = current`)).toBeGreaterThan(
+      atoms_source.indexOf(`current.setColorAt`),
+    )
+  })
 })

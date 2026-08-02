@@ -3,16 +3,20 @@ import {
   calc_msd,
   collect_msd_positions,
   has_all_frames_in_memory,
+  type MsdPositions,
+  type MsdResult,
   MsdPlot,
   suggest_msd_frame_stride,
 } from '$lib/msd'
+import * as async_compute from '$lib/msd/async-compute.svelte'
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { join } from 'node:path'
 import process from 'node:process'
-import { type Component, type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
+import { describe, expect, it, vi } from 'vitest'
 import { cubic_matrix, read_maybe_gz } from '../setup'
 import { drift_positions, make_frame, max_rel_error, on_x_axis } from './helpers'
 
@@ -111,10 +115,9 @@ describe(`atom-identity invariants fail loudly`, () => {
     )
   })
 
-  // The symbol comparison above is blind to a permutation within one species, and the
-  // LAMMPS parser drops the `id` column, so there is no key left to sort by. Four
-  // immobile H atoms in alternating order used to report MSD(lag 1) = 46.5 A² and a
-  // fitted D of 0.664 instead of an identically zero curve.
+  // Element symbols cannot detect permutations within one species, and the accumulator does
+  // not validate LAMMPS `id` properties. Four immobile H atoms in alternating order used to
+  // report MSD(lag 1) = 46.5 A² and D = 0.664 instead of an identically zero curve.
   it(`rejects a single-species permutation the symbol check cannot see`, async () => {
     // oxfmt-ignore
     const sorted = [[1, 1, 1], [1, 1, 8], [8, 1, 1], [8, 8, 8]]
@@ -127,7 +130,7 @@ describe(`atom-identity invariants fail loudly`, () => {
     await expect(
       collect_msd_positions(six_frames((idx) => (idx % 2 === 0 ? sorted : permuted))),
     ).rejects.toThrow(
-      /Frame 1: 4 of 4 atoms moved more than a quarter of the cell.*dump_modify/s,
+      /Frame 1: 4 of 4 atoms moved more than a quarter of the cell.*preserved IDs are not checked here/s,
     )
     // The same frames in a stable order are immobile, so MSD is identically zero
     const result = calc_msd(await collect_msd_positions(six_frames(() => sorted)))
@@ -197,6 +200,9 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
     load_frame: () => Promise.resolve(null),
     extract_plot_metadata: () => Promise.resolve([]),
   } satisfies FrameLoader
+  // Shared streamed fixtures: 50-frame (window trap + no-raw-bytes) and 1500-frame (progress)
+  const streamed_xyz_50 = synthetic_drift_xyz(50, 4)
+  const streamed_xyz_1500 = synthetic_drift_xyz(1500, 2)
 
   it(`sees through total_frames vs frames.length`, () => {
     const stub = { ...make_drift_trajectory(10), total_frames: 50, is_indexed: true }
@@ -224,10 +230,13 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
     await expect(collect_msd_positions(trajectory, { raw_data: `x` })).rejects.toThrow(pattern)
   })
 
-  it(`throws when the raw payload is unavailable`, async () => {
-    const trajectory = await indexed(synthetic_drift_xyz(50))
+  it.each([
+    [`missing`, null],
+    [`empty buffer`, new ArrayBuffer(0)],
+  ])(`throws when the raw payload is %s`, async (_label, raw_data) => {
+    const trajectory = await indexed(streamed_xyz_50)
     expect(trajectory.frame_loader?.stream_positions).toBeTypeOf(`function`)
-    await expect(collect_msd_positions(trajectory)).rejects.toThrow(
+    await expect(collect_msd_positions(trajectory, { raw_data })).rejects.toThrow(
       /MSD needs the raw file bytes/,
     )
   })
@@ -236,15 +245,13 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
   // naive loop over `trajectory.frames` would compute MSD over those 10 with nothing
   // catching it. Streaming must recover all 50 and the full lag range.
   it(`streams the full payload instead of the 10-frame window`, async () => {
-    const [n_frames, n_atoms] = [50, 4]
-    const xyz = synthetic_drift_xyz(n_frames, n_atoms)
-    const trajectory = await indexed(xyz)
+    const trajectory = await indexed(streamed_xyz_50)
     expect(trajectory.frames).toHaveLength(10)
-    expect(trajectory.total_frames).toBe(n_frames)
+    expect(trajectory.total_frames).toBe(50)
 
-    const collected = await collect_msd_positions(trajectory, { raw_data: xyz })
-    expect(collected.n_frames).toBe(n_frames)
-    expect(collected.n_atoms).toBe(n_atoms)
+    const collected = await collect_msd_positions(trajectory, { raw_data: streamed_xyz_50 })
+    expect(collected.n_frames).toBe(50)
+    expect(collected.n_atoms).toBe(4)
 
     const result = calc_msd(collected)
     // max lag is 24 for 50 frames; a 10-frame silent truncation would cap it at 4
@@ -276,11 +283,10 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
   ])(
     `reports progress every 500 collected frames at stride %i`,
     async (frame_stride, expected_reports) => {
-      const xyz = synthetic_drift_xyz(1500, 2)
-      const trajectory = await indexed(xyz)
+      const trajectory = await indexed(streamed_xyz_1500)
       const stages: string[] = []
       await collect_msd_positions(trajectory, {
-        raw_data: xyz,
+        raw_data: streamed_xyz_1500,
         frame_stride,
         on_progress: (progress) => stages.push(progress.stage),
       })
@@ -303,6 +309,20 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
 })
 
 describe(`real MD fixtures`, () => {
+  // Shared sanity checks for a real collected trajectory (finite, growing, origin falloff)
+  const expect_sane_msd = (collected: MsdPositions): MsdResult => {
+    expect(collected.lattice_matrices).not.toBeNull()
+    const result = calc_msd(collected)
+    expect(result.curves[0].label).toBe(`Total`)
+    for (const curve of result.curves) {
+      expect(curve.msd.every((value) => Number.isFinite(value) && value >= 0)).toBe(true)
+      expect(curve.msd[curve.msd.length - 1]).toBeGreaterThan(curve.msd[0])
+      expect(curve.n_origins[0]).toBeGreaterThan(curve.n_origins[curve.n_origins.length - 1])
+    }
+    return result
+  }
+
+  // Also covers the per-element/sanity checks that used to re-parse this same dump
   it(`honours the coords_unwrapped flag on a LAMMPS xu/yu/zu dump`, async () => {
     const filename = `mdanalysis-chain-dump.lammpstrj`
     const trajectory = await parse_trajectory_async(load_fixture(filename), filename)
@@ -310,7 +330,7 @@ describe(`real MD fixtures`, () => {
     expect(collected.coords_unwrapped).toBe(true)
     expect(collected.n_atoms).toBe(22)
 
-    const honoured = calc_msd(collected)
+    const honoured = expect_sane_msd(collected)
     expect(honoured.unwrapped).toBe(false)
 
     // The dump's real 10 A cell is larger than any per-frame displacement here, so the
@@ -356,30 +376,14 @@ describe(`real MD fixtures`, () => {
     )
   })
 
-  it.each([
-    [`vasp-XDATCAR.MD.gz`, 80, [`Fe`, `O`]],
-    [`mdanalysis-chain-dump.lammpstrj`, 22, undefined],
-  ])(
-    `computes a per-element MSD for %s`,
-    async (filename, expected_atoms, expected_species) => {
-      const trajectory = await parse_trajectory_async(load_fixture(filename), filename)
-      const collected = await collect_msd_positions(trajectory)
-      expect(collected.n_atoms).toBe(expected_atoms)
-      expect(collected.lattice_matrices).not.toBeNull()
-
-      const result = calc_msd(collected)
-      expect(result.curves[0].label).toBe(`Total`)
-      if (expected_species) {
-        expect(result.curves.slice(1).map((curve) => curve.label)).toEqual(expected_species)
-      }
-      // Real MD: every curve must be finite, non-negative and grow with lag
-      for (const curve of result.curves) {
-        expect(curve.msd.every((value) => Number.isFinite(value) && value >= 0)).toBe(true)
-        expect(curve.msd[curve.msd.length - 1]).toBeGreaterThan(curve.msd[0])
-        expect(curve.n_origins[0]).toBeGreaterThan(curve.n_origins[curve.n_origins.length - 1])
-      }
-    },
-  )
+  it(`computes a per-element MSD for vasp-XDATCAR.MD.gz`, async () => {
+    const filename = `vasp-XDATCAR.MD.gz`
+    const trajectory = await parse_trajectory_async(load_fixture(filename), filename)
+    const collected = await collect_msd_positions(trajectory)
+    expect(collected.n_atoms).toBe(80)
+    const result = expect_sane_msd(collected)
+    expect(result.curves.slice(1).map((curve) => curve.label)).toEqual([`Fe`, `O`])
+  })
 })
 
 // Ticks and microtasks enough for the $effect to run, the (synchronous, since happy-dom
@@ -432,11 +436,8 @@ describe(`MsdPlot`, () => {
     expect(await mount_plot({ result })).toContain(`1 in 3 time origins`)
   })
 
-  it.each([
-    [`no data`, {}, `No MSD data to display`],
-    [`computed`, { positions: drift_positions(20) }, `Total`],
-  ])(`shows the right empty/filled state (%s)`, async (_label, props, expected) => {
-    expect(await mount_plot(props)).toContain(expected)
+  it(`shows the empty state without positions`, async () => {
+    expect(await mount_plot({})).toContain(`No MSD data to display`)
   })
 
   // The empty state owns the message area, so a failed recompute has to drop the previous
@@ -451,6 +452,53 @@ describe(`MsdPlot`, () => {
     })
     expect(text).toContain(`max_lag_fraction must be in (0, 1]`)
     expect(text).not.toContain(`R²`)
+  })
+
+  it(`discards a pending compute when positions are cleared`, async () => {
+    const pending_compute = Promise.withResolvers<MsdResult>()
+    const compute_spy = vi
+      .spyOn(async_compute, `compute_msd_async`)
+      .mockReturnValue(pending_compute.promise)
+    const positions = drift_positions(20)
+    const state = new SvelteMap<string, MsdPositions | MsdResult | boolean | undefined>([
+      [`positions`, positions],
+      [`result`, undefined],
+      [`loading`, false],
+    ])
+    const component = mount(MsdPlot, {
+      target: document.body,
+      props: {
+        get positions() {
+          return state.get(`positions`) as MsdPositions | undefined
+        },
+        get result() {
+          return state.get(`result`) as MsdResult | undefined
+        },
+        set result(value: MsdResult | undefined) {
+          state.set(`result`, value)
+        },
+        get loading() {
+          return state.get(`loading`) as boolean
+        },
+        set loading(value: boolean) {
+          state.set(`loading`, value)
+        },
+      },
+    })
+    try {
+      await tick()
+      expect(state.get(`loading`)).toBe(true)
+      state.set(`positions`, undefined)
+      await tick()
+      expect(state.get(`loading`)).toBe(false)
+
+      pending_compute.resolve(calc_msd(positions))
+      await settle()
+      expect(state.get(`result`)).toBeUndefined()
+    } finally {
+      compute_spy.mockRestore()
+      await unmount(component)
+    }
   })
 })
 

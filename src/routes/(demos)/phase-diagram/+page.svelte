@@ -11,11 +11,7 @@
     TdbInfoPanel,
   } from '$lib/phase-diagram'
   import { to_error } from '$lib/utils'
-  import {
-    all_phase_diagram_files,
-    find_precomputed_url,
-    load_binary_phase_diagram,
-  } from '$site/phase-diagrams'
+  import { all_phase_diagram_files, find_precomputed_diagram } from '$site/phase-diagrams'
   import { replace_url } from '$site/state.svelte'
 
   // Track currently loaded diagram
@@ -29,8 +25,7 @@
   interface TdbState {
     result: TdbParseResult
     system_name: string
-    precomputed_url: string | null
-    is_loaded: boolean
+    precomputed_data: PhaseDiagramData | null
   }
   let tdb = $state<TdbState | null>(null)
 
@@ -43,6 +38,18 @@
   // Helper for consistent error formatting
   const format_error = (context: string, exc: unknown) =>
     `${context}: ${to_error(exc).message}`
+
+  async function load_phase_diagram(url: string): Promise<PhaseDiagramData> {
+    if (url.startsWith(`builtin:`)) {
+      const system = url.slice(`builtin:`.length)
+      const diagram = find_precomputed_diagram(system)
+      if (!diagram) throw new Error(`Unknown built-in phase diagram: ${system}`)
+      return diagram
+    }
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
+    return (await response.json()) as PhaseDiagramData
+  }
 
   // Token for race condition protection - each load gets a unique Symbol
   let active_load: symbol | null = null
@@ -73,13 +80,12 @@
     url: string,
     filename: string,
     update_url_param: boolean = true,
-    preserve_tdb: boolean = false,
   ): Promise<boolean> {
     const token = Symbol(`load-token`)
     active_load = token
     loading = true
     error_message = null
-    if (!preserve_tdb) tdb = null
+    tdb = null
 
     try {
       if (is_tdb(filename)) {
@@ -93,14 +99,7 @@
         const success = await parse_tdb_content(content, filename)
         if (is_stale(token) || !success) return false
 
-        // Auto-load pre-computed diagram if available
-        if (tdb?.precomputed_url) {
-          const data = await load_binary_phase_diagram(tdb.precomputed_url)
-          if (!is_stale(token) && data) {
-            current_data = data
-            tdb.is_loaded = true
-          }
-        }
+        load_precomputed()
         return true
       } else if (is_svg(filename)) {
         const res = await fetch(url)
@@ -115,12 +114,8 @@
         return true
       }
       // JSON files: load directly
-      const data = await load_binary_phase_diagram(url)
+      const data = await load_phase_diagram(url)
       if (is_stale(token)) return false
-      if (!data) {
-        error_message = `Failed to parse phase diagram data`
-        return false
-      }
       current_data = data
       current_file = filename
       if (update_url_param) update_url(filename)
@@ -134,13 +129,6 @@
     }
   }
 
-  // Handle URL drop from FilePicker
-  async function handle_url_file_drop(url: string, file: File): Promise<boolean> {
-    if (!url.startsWith(`/`)) return false
-    await load_file(url, file.name || url.split(`/`).pop() || `unknown`)
-    return true
-  }
-
   // Parse TDB content and set up state (used by both load_file and parse_file_content)
   async function parse_tdb_content(content: string, filename: string): Promise<boolean> {
     const { parse_tdb, get_system_name } = await import(`$lib/phase-diagram/parse.js`)
@@ -150,8 +138,8 @@
       return false
     }
     const system_name = get_system_name(result.data.elements.map((el) => el.symbol))
-    const precomputed_url = find_precomputed_url(system_name) ?? null
-    tdb = { result, system_name, precomputed_url, is_loaded: false }
+    const precomputed_data = find_precomputed_diagram(system_name) ?? null
+    tdb = { result, system_name, precomputed_data }
     current_file = filename
     update_url(filename)
     return true
@@ -168,14 +156,7 @@
       if (is_tdb(filename)) {
         if (typeof content === `string`) {
           const success = await parse_tdb_content(content, filename)
-          // Auto-load precomputed if available
-          if (success && tdb?.precomputed_url) {
-            const data = await load_binary_phase_diagram(tdb.precomputed_url)
-            if (data) {
-              current_data = data
-              tdb.is_loaded = true
-            }
-          }
+          if (success) load_precomputed()
         }
         return
       }
@@ -235,10 +216,8 @@
     if (url && json_data) {
       // Internal drag from FilePicker - parse the JSON to get file info
       try {
-        const file_info = JSON.parse(json_data) as { name: string; url: string }
-        // Create a minimal File-like object for compatibility
-        const pseudo_file = new File([], file_info.name)
-        handle_url_file_drop(url, pseudo_file)
+        const { name } = JSON.parse(json_data) as { name: string }
+        if (url.startsWith(`/`)) void load_file(url, name || url.split(`/`).pop() || `unknown`)
         return
       } catch (exc) {
         console.warn(
@@ -258,14 +237,8 @@
     event.preventDefault()
   }
 
-  async function load_precomputed(): Promise<void> {
-    if (tdb?.precomputed_url) {
-      const data = await load_binary_phase_diagram(tdb.precomputed_url)
-      if (data) {
-        current_data = data
-        tdb.is_loaded = true
-      }
-    }
+  function load_precomputed(): void {
+    if (tdb?.precomputed_data) current_data = tdb.precomputed_data
   }
 
   // Load example A-B eutectic diagram as default when no other diagram is loaded
@@ -343,8 +316,9 @@
     <TdbInfoPanel
       result={tdb.result}
       system_name={tdb.system_name}
-      has_precomputed={tdb.precomputed_url !== null}
-      is_precomputed_loaded={tdb.is_loaded}
+      has_precomputed={tdb.precomputed_data !== null}
+      is_precomputed_loaded={tdb.precomputed_data !== null &&
+        current_data === tdb.precomputed_data}
       on_load_precomputed={load_precomputed}
       style="margin: 0.5em"
     />

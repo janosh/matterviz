@@ -5,7 +5,7 @@ import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
 // Replace the heavy matterviz components with a recording stub so we can exercise
-// the real anywidget widget wiring (drive / rename / derived / writeback key names,
+// the real anywidget widget wiring (drive / derived / writeback key names,
 // scatter click/hover callbacks + event_id) without mounting WebGL/SVG components or
 // pulling the built dist bundle. The theme/css imports are stubbed for the same
 // reason (mount_spec never calls into them directly).
@@ -209,17 +209,6 @@ describe(`structure wiring`, () => {
   })
 })
 
-describe(`trajectory wiring`, () => {
-  test(`property_labels trait is delivered to the component as ELEM_PROPERTY_LABELS`, () => {
-    // Trajectory.svelte consumes ELEM_PROPERTY_LABELS, not property_labels.
-    const labels = { energy: `Energy (eV)` }
-    const model = new MockModel({ widget_type: `trajectory`, property_labels: labels })
-    const stub = run_widget(`trajectory`, model)
-    expect(stub.read().ELEM_PROPERTY_LABELS).toEqual(labels)
-    expect(`property_labels` in stub.read()).toBe(false) // renamed, not passed raw
-  })
-})
-
 describe(`WIDGET_MODEL_KEYS contract`, () => {
   test(`includes drive deps and interaction keys`, () => {
     // spot-check: derived-prop deps, writeback traits and interaction-written
@@ -244,7 +233,18 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
   })
 })
 
-describe(`plot-family config wiring`, () => {
+describe(`widget config wiring`, () => {
+  test.each([
+    [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
+    [`band_structure`, `band_structs`, { branches: [] }],
+    [`dos`, `doses`, { energies: [] }],
+    [`periodic_table`, `log`, true],
+    [`heatmap_matrix`, `log`, true],
+  ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {
+    const stub = run_widget(widget_type, new MockModel({ widget_type, [prop]: value }))
+    expect(stub.read()[prop]).toEqual(value)
+  })
+
   test.each([`bar_plot`, `histogram`] as const)(
     `%s maps range traits into axis config while keeping top-level show_controls`,
     (widget_type) => {

@@ -45,9 +45,6 @@ export function displacement_pbc(
   return min_image_displacement(from, to, lattice_matrix, converters, pbc)
 }
 
-// Minimum-image distance between two Cartesian points
-export { pbc_dist as distance_pbc } from '$lib/math'
-
 export function angle_between_vectors(v1: Vec3, v2: Vec3, mode: AngleMode = `degrees`) {
   const n1 = Math.hypot(v1[0], v1[1], v1[2])
   const n2 = Math.hypot(v2[0], v2[1], v2[2])

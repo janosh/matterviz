@@ -32,6 +32,8 @@ class Structure(MatterViz):
         bonds: list | None = None,
         cell_type: Any | None = None,
         data_url: str | None = None,
+        displacement_rmsd: float | None = None,
+        display_mode: Any | None = None,
         displayed_structure: Any | None = None,
         dragover: bool | None = None,
         element_mapping: dict | None = None,
@@ -53,18 +55,26 @@ class Structure(MatterViz):
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         multi_view: bool | None = None,
+        multi_view_active: bool | None = None,
+        multi_view_gap: float | None = None,
+        multi_view_min_pane_height: float | None = None,
+        multi_view_min_pane_width: float | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
+        reference_structure: Any | None = None,
         reset_text: str | None = None,
         scene_props: dict | None = None,
         selected_sites: list[int] | None = None,
         show_controls: Any | None = None,
+        show_trajectory_lines: bool | None = None,
         site_radius_overrides: Any | None = None,
+        slice_settings: dict | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
+        trajectory_lines_result: Any | None = None,
         views: list | None = None,
         volumetric_data: list | None = None,
         width: float | None = None,
@@ -75,14 +85,6 @@ class Structure(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
-        multi_view_gap: float | None = None,
-        multi_view_active: bool | None = None,
-        multi_view_min_pane_height: float | None = None,
-        multi_view_min_pane_width: float | None = None,
-        display_mode: Any | None = None,
-        slice_settings: dict | None = None,
-        reference_structure: Any | None = None,
-        displacement_rmsd: float | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -171,6 +173,8 @@ class Structure(MatterViz):
             mv_props["selected_sites"] = selected_sites
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
+        if show_trajectory_lines is not None:
+            mv_props["show_trajectory_lines"] = show_trajectory_lines
         if site_radius_overrides is not None:
             mv_props["site_radius_overrides"] = site_radius_overrides
         if slice_settings is not None:
@@ -185,6 +189,8 @@ class Structure(MatterViz):
             mv_props["sym_data"] = sym_data
         if symmetry_settings is not None:
             mv_props["symmetry_settings"] = symmetry_settings
+        if trajectory_lines_result is not None:
+            mv_props["trajectory_lines_result"] = trajectory_lines_result
         if views is not None:
             mv_props["views"] = views
         if volumetric_data is not None:
@@ -225,6 +231,7 @@ class PeriodicTable(MatterViz):
         active_elements: list | None = None,
         color_bar_props: dict | None = None,
         color_overrides: dict | None = None,
+        color_scale: Any | None = None,
         color_scale_range: list | None = None,
         disabled: bool | None = None,
         gap: str | None = None,
@@ -246,7 +253,6 @@ class PeriodicTable(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
-        color_scale: Any | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -369,13 +375,13 @@ class Trajectory(MatterViz):
     def __init__(
         self,
         id=None,
-        elem_property_labels: dict | None = None,
         allow_file_drop: bool | None = None,
         atom_type_mapping: Any | None = None,
         auto_play: bool | None = None,
         controls_open: bool | None = None,
         current_step_idx: int | None = None,
         data_extractor: Any | None = None,
+        data_inspector_open: bool | None = None,
         data_url: str | None = None,
         display_mode: Any | None = None,
         fps: float | None = None,
@@ -389,13 +395,17 @@ class Trajectory(MatterViz):
         loading_options: Any | None = None,
         msd_pane_open: bool | None = None,
         plot_skimming: bool | None = None,
+        property_labels: dict | None = None,
         scatter_props: dict | None = None,
         show_controls: Any | None = None,
         spinner_props: dict | None = None,
         step_labels: list[float] | None = None,
+        structure_id_pane_open: bool | None = None,
         structure_props: dict | None = None,
         trajectory: Any | None = None,
+        vacf_pane_open: bool | None = None,
         visible_properties: list[str] | None = None,
+        x_quantity: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -407,8 +417,6 @@ class Trajectory(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
-        if elem_property_labels is not None:
-            mv_props["ELEM_PROPERTY_LABELS"] = elem_property_labels
         if allow_file_drop is not None:
             mv_props["allow_file_drop"] = allow_file_drop
         if atom_type_mapping is not None:
@@ -421,6 +429,8 @@ class Trajectory(MatterViz):
             mv_props["current_step_idx"] = current_step_idx
         if data_extractor is not None:
             mv_props["data_extractor"] = data_extractor
+        if data_inspector_open is not None:
+            mv_props["data_inspector_open"] = data_inspector_open
         if data_url is not None:
             mv_props["data_url"] = data_url
         if display_mode is not None:
@@ -447,6 +457,8 @@ class Trajectory(MatterViz):
             mv_props["msd_pane_open"] = msd_pane_open
         if plot_skimming is not None:
             mv_props["plot_skimming"] = plot_skimming
+        if property_labels is not None:
+            mv_props["property_labels"] = property_labels
         if scatter_props is not None:
             mv_props["scatter_props"] = scatter_props
         if show_controls is not None:
@@ -455,12 +467,18 @@ class Trajectory(MatterViz):
             mv_props["spinner_props"] = spinner_props
         if step_labels is not None:
             mv_props["step_labels"] = step_labels
+        if structure_id_pane_open is not None:
+            mv_props["structure_id_pane_open"] = structure_id_pane_open
         if structure_props is not None:
             mv_props["structure_props"] = structure_props
         if trajectory is not None:
             mv_props["trajectory"] = trajectory
+        if vacf_pane_open is not None:
+            mv_props["vacf_pane_open"] = vacf_pane_open
         if visible_properties is not None:
             mv_props["visible_properties"] = visible_properties
+        if x_quantity is not None:
+            mv_props["x_quantity"] = x_quantity
 
         super().__init__(
             id=id,
@@ -480,7 +498,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover, on_point_hover
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_kpath_hover, on_point_hover
     """
 
     def __init__(
@@ -489,6 +507,7 @@ class BrillouinZone(MatterViz):
         allow_file_drop: bool | None = None,
         bz_data: Any | None = None,
         bz_order: float | None = None,
+        camera: Any | None = None,
         camera_projection: Any | None = None,
         controls_open: bool | None = None,
         data_url: str | None = None,
@@ -509,6 +528,7 @@ class BrillouinZone(MatterViz):
         k_path_points: list[list[float]] | None = None,
         loading: bool | None = None,
         png_dpi: float | None = None,
+        scene: Any | None = None,
         show_controls: Any | None = None,
         show_ibz: bool | None = None,
         show_vectors: bool | None = None,
@@ -527,8 +547,6 @@ class BrillouinZone(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
-        camera: Any | None = None,
-        scene: Any | None = None,
         **kwargs,
     ):
         if mv_props is None:
@@ -1283,7 +1301,7 @@ class Bands(MatterViz):
 
     Component key: ``spectral/Bands``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1441,7 +1459,7 @@ class Dos(MatterViz):
 
     Component key: ``spectral/Dos``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1596,7 +1614,7 @@ class ScatterPlot(MatterViz):
 
     Component key: ``plot/scatter/ScatterPlot``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """

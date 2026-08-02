@@ -399,7 +399,7 @@ export function compute_label_positions(
     for (const pt of series.filtered_data ?? []) {
       if (!pt.point_label?.auto_placement || !pt.point_label.text) continue
 
-      const ax = is_time_scale(x_axis.scale_type, x_axis.format)
+      const ax = is_time_scale(x_axis.scale_type)
         ? x_scale_fn(new Date(pt.x))
         : x_scale_fn(pt.x)
       const ay = (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y)

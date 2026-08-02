@@ -1,5 +1,9 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import {
+    create_clipboard_feedback,
+    type PaneProps,
+    type PaneToggleProps,
+  } from '$lib/overlays'
   import {
     estimate_video_bitrate,
     export_trajectory_video,
@@ -8,10 +12,14 @@
   } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
   import ExportPane from '$lib/io/ExportPane.svelte'
+  import { format_num } from '$lib/labels'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
   import {
+    collect_frame_property_rows,
     create_poscar_frame_range_zip,
+    frame_rows_to_csv,
+    frame_rows_to_json,
     serialize_extxyz_frame_range,
     trajectory_export_basename,
     type TrajectoryFrameResolver,
@@ -53,12 +61,16 @@
     toggle_props?: PaneToggleProps
   } = $props()
 
+  // extXYZ/POSCAR write out the structures; CSV/JSON write out the per-frame numbers
+  type StructureFormat = `extxyz` | `poscar`
+  type TableFormat = `csv` | `json`
+
   let is_exporting = $state(false)
   let export_progress = $state(0)
   let export_format = $state<`webm` | `mp4`>(`webm`)
   let export_error = $state<string | null>(null)
   // Which data export is running, so only the clicked button shows its percentage
-  let data_export_format = $state<`extxyz` | `poscar` | null>(null)
+  let data_export_format = $state<StructureFormat | TableFormat | null>(null)
   let data_export_progress = $state(0)
   let is_exporting_data = $derived(data_export_format !== null)
 
@@ -99,6 +111,10 @@
   })
 
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
+
+  let data_export_disabled = $derived(
+    is_exporting || is_exporting_data || !trajectory || export_frame_count === 0,
+  )
 
   async function handle_video_export(format: `webm` | `mp4` = `webm`) {
     export_error = null
@@ -149,33 +165,20 @@
   const frame_at: TrajectoryFrameResolver = (idx) =>
     resolve_frame ? resolve_frame(idx) : (trajectory?.frames?.[idx] ?? null)
 
-  async function export_data(format: `extxyz` | `poscar`) {
+  const on_export_progress = (done: number, total: number) =>
+    (data_export_progress = (done / total) * 100)
+
+  // Run one data export, keeping the clicked button's progress/error state in sync. The task
+  // acts through side effects (a download or a clipboard write) rather than a return value.
+  async function run_data_export(
+    format: StructureFormat | TableFormat,
+    task: () => Promise<void>,
+  ) {
     export_error = null
     data_export_format = format
     data_export_progress = 0
-    const base = trajectory_export_basename(filename)
-    const on_progress = (done: number, total: number) =>
-      (data_export_progress = (done / total) * 100)
     try {
-      if (format === `extxyz`) {
-        const content = await serialize_extxyz_frame_range(
-          start_frame,
-          end_frame,
-          frame_at,
-          on_progress,
-        )
-        download(content, `${base}.extxyz`, `chemical/x-xyz`)
-      } else {
-        const blob = await create_poscar_frame_range_zip(
-          start_frame,
-          end_frame,
-          frame_at,
-          filename,
-          total_frames_available,
-          on_progress,
-        )
-        download(blob, `${base}_poscar_${start_frame}-${end_frame}.zip`, `application/zip`)
-      }
+      await task()
     } catch (error) {
       console.error(`Trajectory data export failed:`, error)
       export_error = to_error(error).message
@@ -184,6 +187,59 @@
       data_export_progress = 0
     }
   }
+
+  // Every frame in the range, resolved one at a time (or read off plot_metadata when it covers
+  // the range), so an indexed trajectory exports its full range and not the ~10 frames it
+  // holds in memory.
+  const serialize_table = async (format: TableFormat) => {
+    if (!trajectory) throw new Error(`No trajectory to export`)
+    const table = await collect_frame_property_rows(
+      start_frame,
+      end_frame,
+      frame_at,
+      trajectory,
+      on_export_progress,
+    )
+    return format === `csv` ? frame_rows_to_csv(table) : frame_rows_to_json(table)
+  }
+
+  const export_data = (format: StructureFormat | TableFormat) =>
+    run_data_export(format, async () => {
+      const base = trajectory_export_basename(filename)
+      const range = `${start_frame}-${end_frame}`
+      if (format === `extxyz`) {
+        const content = await serialize_extxyz_frame_range(
+          start_frame,
+          end_frame,
+          frame_at,
+          on_export_progress,
+        )
+        download(content, `${base}.extxyz`, `chemical/x-xyz`)
+      } else if (format === `poscar`) {
+        const blob = await create_poscar_frame_range_zip(
+          start_frame,
+          end_frame,
+          frame_at,
+          filename,
+          total_frames_available,
+          on_export_progress,
+        )
+        download(blob, `${base}_poscar_${range}.zip`, `application/zip`)
+      } else {
+        download(
+          await serialize_table(format),
+          `${base}_frames_${range}.${format}`,
+          format === `csv` ? `text/csv` : `application/json`,
+        )
+      }
+    })
+
+  const { copied, copy } = create_clipboard_feedback()
+
+  const copy_table = (format: TableFormat) =>
+    run_data_export(format, async () => {
+      await copy(await serialize_table(format), format)
+    })
 
   let is_video_supported = $derived(
     typeof globalThis !== `undefined` &&
@@ -261,15 +317,42 @@
         <button
           type="button"
           onclick={() => export_data(format)}
-          disabled={is_exporting ||
-            is_exporting_data ||
-            !trajectory ||
-            export_frame_count === 0}
+          disabled={data_export_disabled}
           {@attach tooltip({ content: hint })}
         >
           {#if data_export_format === format && data_export_progress > 0}
-            {data_export_progress.toFixed(0)}%
+            {format_num(data_export_progress, `.0f`)}%
           {:else}⬇{/if}
+        </button>
+      </div>
+    {/each}
+  </div>
+
+  <h4>Export Properties</h4>
+
+  <div class="export-buttons">
+    {#each [{ label: `CSV`, format: `csv`, hint: `One row per frame over ${start_frame}–${end_frame}: frame index, MD step, then every extracted property with its unit in the header` }, { label: `JSON`, format: `json`, hint: `Same per-frame numbers as the CSV, with a separate units map` }] as const as { label, format, hint } (format)}
+      <div style="display: flex; align-items: center; gap: 4pt">
+        {label}
+        <button
+          type="button"
+          onclick={() => export_data(format)}
+          disabled={data_export_disabled}
+          aria-label="Download {label}"
+          {@attach tooltip({ content: hint })}
+        >
+          {#if data_export_format === format && data_export_progress > 0}
+            {format_num(data_export_progress, `.0f`)}%
+          {:else}⬇{/if}
+        </button>
+        <button
+          type="button"
+          onclick={() => copy_table(format)}
+          disabled={data_export_disabled}
+          aria-label="Copy {label} to clipboard"
+          {@attach tooltip({ content: `Copy ${label} to clipboard` })}
+        >
+          {copied.has(format) ? `✅` : `📋`}
         </button>
       </div>
     {/each}

@@ -4,11 +4,16 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, type IconName } from 'svelte-widgets'
   import * as io from '$lib/io'
-  import { handle_and_prevent } from '$lib/utils'
+  import { handle_and_prevent, to_error } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
+  import {
+    collect_msd_positions,
+    has_all_frames_in_memory,
+    suggest_msd_frame_stride,
+  } from '$lib/msd/collect'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
@@ -20,25 +25,31 @@
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
+  import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
+  import { collected_frame_idx } from '$lib/structure/trajectory-lines'
+  import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onMount, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { full_data_extractor } from './extract'
   import type {
+    FrameLoader,
     ParseProgress,
     TrajectoryDataExtractor,
     TrajectoryFrame,
     TrajectoryMetadata,
+    TrajectoryPositionStream,
     TrajectoryType,
+    TrajectoryXQuantity,
     TrajHandlerData,
   } from './index'
   import type { TrajectoryFrameResolver } from './file-export'
   import {
-    FRAME_LOAD_DEBOUNCE_MS,
     pick_pane_orientation,
+    TrajectoryDataInspectorPane,
     TrajectoryError,
     TrajectoryExportPane,
     TrajectoryInfoPane,
@@ -51,11 +62,16 @@
     parse_trajectory_async,
   } from './parse'
   import {
+    available_x_quantities,
+    build_x_map,
     generate_axis_labels,
     generate_axis_scale_types,
     generate_plot_series,
     generate_streaming_plot_series,
+    get_frame_step_samples,
+    get_frame_time_step,
     should_hide_plot,
+    X_QUANTITY_LABELS,
   } from './plotting'
 
   type EventHandlers = {
@@ -82,6 +98,7 @@
     plot_metadata?: TrajectoryMetadata[]
     is_complete?: boolean
   }
+  const FPS_STEP = 0.5
 
   let {
     trajectory = $bindable(),
@@ -101,8 +118,9 @@
     auto_play = false,
     display_mode = $bindable(`structure+scatter`),
     step_labels = 5,
+    x_quantity = $bindable(),
     visible_properties = $bindable(),
-    ELEM_PROPERTY_LABELS,
+    property_labels,
     on_play,
     on_pause,
     on_step_change,
@@ -122,6 +140,9 @@
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     msd_pane_open = $bindable(false),
+    vacf_pane_open = $bindable(false),
+    structure_id_pane_open = $bindable(false),
+    data_inspector_open = $bindable(false),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     ...rest
@@ -157,7 +178,7 @@
       // - 'hover': controls visible on component hover (default)
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'view-mode', 'fullscreen'
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'x-axis', 'view-mode', 'fullscreen'
       show_controls?: ShowControlsProp
       // show/hide the fullscreen button
       fullscreen_toggle?: FullscreenToggleProp
@@ -176,6 +197,10 @@
       // - array: exact step indices to label
       // - undefined: no labels
       step_labels?: number | number[]
+      // what the plot's x axis counts: 'frame' (position in the trajectory), 'step' (the MD
+      // step recorded in the file) or 'time' (step x the file's timestep). Leave unset to
+      // pick the most informative one the data supports.
+      x_quantity?: TrajectoryXQuantity
       // visible properties - bindable array of property keys currently shown in the plot
       // - controls which trajectory properties are plotted (e.g. ['energy', 'volume', 'force_max'])
       // - bindable: reflects current visibility state and can be used for external control
@@ -185,7 +210,7 @@
       // custom labels for trajectory properties - maps property keys to display labels
       // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
       // - merged with built-in trajectory_property_config
-      ELEM_PROPERTY_LABELS?: Record<string, string>
+      property_labels?: Record<string, string>
       fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
       fps?: number // frame rate for playback
       // Loading options for large files
@@ -202,6 +227,12 @@
       info_pane_open?: boolean
       // bindable: whether the MSD / diffusion pane is currently open
       msd_pane_open?: boolean
+      // bindable: whether the VACF / VDOS pane is currently open
+      vacf_pane_open?: boolean
+      // bindable: whether the structure identification (CNA / centrosymmetry) pane is open
+      structure_id_pane_open?: boolean
+      // bindable: whether the per-frame data inspector pane is currently open
+      data_inspector_open?: boolean
       // bindable: top-level wrapper element
       wrapper?: HTMLDivElement
       // bindable: fullscreen state
@@ -226,11 +257,15 @@
   // requestAnimationFrame handle for the playback loop (rAF auto-pauses in background tabs and
   // self-throttles, unlike setInterval which drifts and queues work when a frame render overruns)
   let play_raf: number | undefined
+  let controls_height = $state(0)
 
-  // Ensure fps is within the allowed range
+  let fps_min = $derived(Math.ceil(fps_range[0] / FPS_STEP) * FPS_STEP)
+  let fps_max = $derived(Math.floor(fps_range[1] / FPS_STEP) * FPS_STEP)
+  // Restrict FPS to half-integer values within the allowed range.
   $effect(() => {
-    const clamped = Math.max(fps_range[0], Math.min(fps_range[1], fps))
-    if (clamped !== fps) fps = clamped
+    const rounded = Math.round(fps / FPS_STEP) * FPS_STEP
+    const normalized = Math.max(fps_min, Math.min(fps_max, rounded))
+    if (normalized !== fps) fps = normalized
   })
   let current_filename = $state<string | undefined>(undefined)
   let current_file_path = $state<string | null>(null)
@@ -277,10 +312,82 @@
     }
   })
 
+  // Decoration gets a 64 MB budget; larger runs trade smoothness for frame stride.
+  const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
+
+  // Avoid deep-proxying lattice_matrices: unwrapping measured 1917 ms proxied vs 1.1 ms raw.
+  let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
+  let show_trajectory_lines = $state(
+    untrack(
+      () =>
+        structure_props.scene_props?.show_trajectory_lines ??
+        DEFAULTS.structure.show_trajectory_lines,
+    ),
+  )
+  $effect(() => {
+    const configured = structure_props.scene_props?.show_trajectory_lines
+    if (configured !== undefined) show_trajectory_lines = configured
+  })
+  let trajectory_lines_available = $derived(
+    Boolean(trajectory && total_frames >= 2 && has_all_frames_in_memory(trajectory)),
+  )
+  // Indexed trajectories would require a second full parse for an optional overlay. In-memory
+  // trajectories are collected only when trails are enabled, so the default path pays nothing.
+  $effect(() => {
+    const owner = trajectory
+    const enabled = show_trajectory_lines
+    trail_stream = null
+    if (!enabled || !owner || !trajectory_lines_available) return
+    let cancelled = false
+    const frame_stride = suggest_msd_frame_stride(owner, TRAIL_POSITION_MAX_BYTES) ?? 1
+    collect_msd_positions(owner, { frame_stride, max_bytes: TRAIL_POSITION_MAX_BYTES })
+      .then((stream) => {
+        if (!cancelled && trajectory === owner) trail_stream = stream
+      })
+      .catch((exc: unknown) => {
+        if (cancelled) return
+        // Trails are optional, so a failure here hides them rather than breaking the viewer
+        console.error(`Trajectory trails: position collection failed`, to_error(exc).message)
+      })
+    return () => {
+      cancelled = true
+    }
+  })
+
+  const SCRUB_SETTLE_MS = 80
+  let scrub_active = $state(false)
+  let scrub_animation_frame: number | undefined
+  let scrub_settle_timeout: ReturnType<typeof setTimeout> | undefined
+  let pending_scrub_step: number | undefined
+
+  // Convert source-frame playhead to collected frames; collection and scrub deferral remain
+  // owned by the trajectory interaction pipeline.
+  let trail_end_owner: TrajectoryPositionStream | null = null
+  let settled_trail_end_frame: number | undefined
+  let trajectory_line_end_frame = $derived.by(() => {
+    if (!trail_stream) {
+      trail_end_owner = null
+      settled_trail_end_frame = undefined
+      return undefined
+    }
+    if (trail_stream !== trail_end_owner || !scrub_active) {
+      trail_end_owner = trail_stream
+      settled_trail_end_frame = collected_frame_idx(trail_stream, current_step_idx)
+    }
+    return settled_trail_end_frame
+  })
+  let trail_scene_props = $derived({
+    ...structure_props.scene_props,
+    trajectory_position_stream: trajectory_lines_available ? trail_stream : undefined,
+    trajectory_line_end_frame,
+    show_trajectory_lines,
+    defer_expensive_geometry: scrub_active,
+  })
+
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
-  let frame_load_request_id = 0
-  let frame_load_timeout: ReturnType<typeof setTimeout> | undefined
+  let frame_read_active = false
+  let pending_frame_idx: number | undefined
 
   // Auto-play when trajectory changes (handles both props and file loading)
   $effect(() => {
@@ -297,7 +404,6 @@
         current_frame = null
         schedule_frame_load_on_demand(current_step_idx)
       } else {
-        clear_frame_load_timeout()
         // Use in-memory frame for regular trajectories
         current_frame = trajectory.frames[current_step_idx] || null
       }
@@ -311,19 +417,20 @@
   // Capped by frame count AND a total-atom budget (cache many tiny frames or few huge ones).
   const FRAME_CACHE_MAX = 64
   const FRAME_CACHE_MAX_ATOMS = 200_000
-  let frame_cache = new Map<number, TrajectoryFrame>()
+  let frame_cache = new SvelteMap<number, TrajectoryFrame>()
+  let frame_cache_atom_count = 0
   let frame_cache_owner: TrajectoryType | undefined
-  // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
-  const inflight_frames = new Set<number>()
+  let active_frame_loader: FrameLoader | undefined
+  $effect(() => {
+    const next_frame_loader = trajectory?.frame_loader
+    if (next_frame_loader === active_frame_loader) return
+    active_frame_loader?.dispose?.()
+    active_frame_loader = next_frame_loader
+  })
   let streaming_file_path = $derived(
     trajectory?.metadata?.streaming_file_path as string | undefined,
   )
   let plot_metadata_loading = $derived(trajectory?.metadata?.plot_metadata_loading === true)
-
-  const clear_frame_load_timeout = () => {
-    if (frame_load_timeout) clearTimeout(frame_load_timeout)
-    frame_load_timeout = undefined
-  }
 
   const skip_stale_url_stream = () =>
     Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
@@ -359,61 +466,100 @@
     globalThis.addEventListener(`message`, handle_plot_metadata_stream)
     return () => {
       globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
-      clear_frame_load_timeout()
+      if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
+      if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+      active_frame_loader?.dispose?.()
     }
   })
 
   // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
   function ensure_frame_cache_owner() {
     if (frame_cache_owner !== trajectory) {
-      frame_cache = new Map()
-      inflight_frames.clear()
+      frame_cache = new SvelteMap()
+      frame_cache_atom_count = 0
+      pending_frame_idx = undefined
       frame_cache_owner = trajectory
     }
   }
   // Sync LRU read (delete + re-insert refreshes recency); undefined on miss
   function cache_get(frame_idx: number): TrajectoryFrame | undefined {
-    const hit = frame_cache.get(frame_idx)
-    if (!hit) return undefined
-    frame_cache.delete(frame_idx)
-    frame_cache.set(frame_idx, hit)
-    return hit
+    return untrack(() => {
+      const hit = frame_cache.get(frame_idx)
+      if (!hit) return undefined
+      frame_cache.delete(frame_idx)
+      frame_cache.set(frame_idx, hit)
+      return hit
+    })
   }
   // Sync LRU write, evicting oldest entries until under both the frame and atom budgets
+  const frame_atom_count = (frame: TrajectoryFrame): number =>
+    frame.structure?.sites?.length ?? 0
   function cache_put(frame_idx: number, frame: TrajectoryFrame) {
-    frame_cache.set(frame_idx, frame)
-    let total_atoms = 0
-    for (const cached of frame_cache.values())
-      total_atoms += cached.structure?.sites?.length ?? 0
-    while (
-      frame_cache.size > 1 &&
-      (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
-    ) {
-      const oldest = frame_cache.keys().next().value
-      if (oldest === undefined) break
-      total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
-      frame_cache.delete(oldest)
+    untrack(() => {
+      const previous = frame_cache.get(frame_idx)
+      if (previous) {
+        frame_cache_atom_count -= frame_atom_count(previous)
+        frame_cache.delete(frame_idx)
+      }
+      frame_cache.set(frame_idx, frame)
+      frame_cache_atom_count += frame_atom_count(frame)
+      while (
+        frame_cache.size > 1 &&
+        (frame_cache.size > FRAME_CACHE_MAX || frame_cache_atom_count > FRAME_CACHE_MAX_ATOMS)
+      ) {
+        const oldest = frame_cache.keys().next().value
+        if (oldest === undefined) break
+        const oldest_frame = frame_cache.get(oldest)
+        if (oldest_frame) frame_cache_atom_count -= frame_atom_count(oldest_frame)
+        frame_cache.delete(oldest)
+      }
+    })
+  }
+
+  const emit_frame_load_state = (frame_idx: number) => {
+    wrapper?.dispatchEvent(
+      new CustomEvent(`matterviz:trajectory-load-state`, {
+        detail: {
+          frame_idx,
+          inflight: frame_read_active ? 1 : 0,
+          cached_frames: untrack(() => frame_cache.size),
+          cached_atoms: frame_cache_atom_count,
+        },
+      }),
+    )
+  }
+
+  const finish_frame_read = (frame_idx: number, prefetch_from_idx?: number) => {
+    frame_read_active = false
+    emit_frame_load_state(frame_idx)
+    const next_frame_idx = pending_frame_idx
+    pending_frame_idx = undefined
+    if (next_frame_idx === current_step_idx) {
+      schedule_frame_load_on_demand(next_frame_idx)
+    } else if (prefetch_from_idx !== undefined) {
+      prefetch_frames(prefetch_from_idx)
     }
   }
 
-  // Warm the next couple of frames in the background (fire-and-forget) so playback/forward-scrub
-  // doesn't stall on a serial per-frame read; skips frames already cached or in flight
+  // Warm one adjacent frame only while the demand lane is idle. A new scrub target waits for
+  // this read instead of starting another, keeping decode/IPC backlog strictly bounded.
   function prefetch_frames(from_idx: number) {
     const frame_loader = trajectory?.frame_loader
-    if (!frame_loader) return
-    if (trajectory?.indexed_frames && trajectory.indexed_frames.length < total_frames) return
+    if (!frame_loader || frame_read_active || pending_frame_idx !== undefined) return
     const owner = trajectory
     for (const ahead of [1, 2]) {
       const idx = from_idx + ahead
-      if (idx >= total_frames || frame_cache.has(idx) || inflight_frames.has(idx)) continue
-      inflight_frames.add(idx)
+      if (idx >= total_frames || untrack(() => frame_cache.has(idx))) continue
+      frame_read_active = true
+      emit_frame_load_state(idx)
       frame_loader
         .load_frame(orig_data || ``, idx)
         .then((frame) => {
           if (frame && frame_cache_owner === owner) cache_put(idx, frame)
         })
-        .catch(() => {})
-        .finally(() => inflight_frames.delete(idx))
+        .catch((error) => console.warn(`Failed to prefetch trajectory frame ${idx}:`, error))
+        .finally(() => finish_frame_read(idx))
+      break
     }
   }
 
@@ -422,51 +568,26 @@
     frame_idx: number,
   ): boolean {
     const cached = cache_get(frame_idx)
-    if (cached) {
-      current_frame = cached
-      prefetch_frames(frame_idx)
-      return true
-    }
-
-    const in_memory_frame = load_trajectory.frames[frame_idx]
-    if (in_memory_frame) {
-      cache_put(frame_idx, in_memory_frame)
-      current_frame = in_memory_frame
-      prefetch_frames(frame_idx)
-      return true
-    }
-    return false
+    const frame = cached ?? load_trajectory.frames[frame_idx]
+    if (!frame) return false
+    current_frame = frame
+    prefetch_frames(frame_idx)
+    return true
   }
 
   function schedule_frame_load_on_demand(frame_idx: number) {
     const load_trajectory = trajectory
     if (!load_trajectory?.frame_loader) return
     ensure_frame_cache_owner()
-    frame_load_request_id++
 
-    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
-
-    clear_frame_load_timeout()
-    // Debouncing during playback would keep resetting the timer at fps above
-    // ~1000/FRAME_LOAD_DEBOUNCE_MS and stall uncached streamed frames entirely.
-    // untrack: this runs synchronously inside the step-change $effect, so tracking
-    // is_playing would re-run that effect on every play/pause toggle and kick off
-    // duplicate loads for a frame that's already in flight.
-    if (untrack(() => is_playing)) {
-      void load_frame_on_demand(frame_idx)
+    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) {
+      pending_frame_idx = undefined
       return
     }
-    const request_id = frame_load_request_id
-    frame_load_timeout = setTimeout(() => {
-      frame_load_timeout = undefined
-      if (
-        request_id === frame_load_request_id &&
-        trajectory === load_trajectory &&
-        current_step_idx === frame_idx
-      ) {
-        load_frame_on_demand(frame_idx)
-      }
-    }, FRAME_LOAD_DEBOUNCE_MS)
+    pending_frame_idx = frame_idx
+    if (frame_read_active) return
+    pending_frame_idx = undefined
+    void load_frame_on_demand(load_trajectory, frame_idx)
   }
 
   // Resolve any frame for export. Indexed trajectories hold only the first handful in
@@ -489,20 +610,15 @@
   }
 
   // Load frame on demand - works for both indexed files and external streaming
-  async function load_frame_on_demand(frame_idx: number) {
-    const load_trajectory = trajectory
-    const frame_loader = load_trajectory?.frame_loader
-    if (!load_trajectory || !frame_loader) return
-    ensure_frame_cache_owner()
-
-    const request_id = ++frame_load_request_id
+  async function load_frame_on_demand(load_trajectory: TrajectoryType, frame_idx: number) {
+    const frame_loader = load_trajectory.frame_loader
+    if (!frame_loader) return
     const request_is_current = () =>
-      request_id === frame_load_request_id &&
-      trajectory === load_trajectory &&
-      current_step_idx === frame_idx
+      trajectory === load_trajectory && current_step_idx === frame_idx
 
-    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
-    inflight_frames.add(frame_idx) // let concurrent prefetch skip the frame we're already loading
+    frame_read_active = true
+    emit_frame_load_state(frame_idx)
+    let prefetch_from_idx: number | undefined
     try {
       const frame = await frame_loader.load_frame(
         orig_data || ``, // original_data for indexed files, empty string for external streaming
@@ -512,7 +628,7 @@
       if (frame && frame_cache_owner === load_trajectory) cache_put(frame_idx, frame)
       if (!request_is_current()) return
       current_frame = frame
-      prefetch_frames(frame_idx) // warm upcoming frames for smooth playback/scrub
+      prefetch_from_idx = frame_idx
     } catch (error) {
       if (!request_is_current()) return
       console.error(`Failed to load frame ${frame_idx}:`, error)
@@ -525,7 +641,7 @@
         frame_count: total_frames,
       })
     } finally {
-      inflight_frames.delete(frame_idx)
+      finish_frame_read(frame_idx, prefetch_from_idx)
     }
   }
 
@@ -576,10 +692,10 @@
 
   // Build extended property config with custom labels if provided
   let extended_config = $derived.by(() => {
-    if (!ELEM_PROPERTY_LABELS) return trajectory_property_config
+    if (!property_labels) return trajectory_property_config
 
     const custom_config: Record<string, TrajPropertyConfig> = {}
-    for (const [key, label] of Object.entries(ELEM_PROPERTY_LABELS)) {
+    for (const [key, label] of Object.entries(property_labels)) {
       const existing =
         trajectory_property_config[key] || trajectory_property_config[key.toLowerCase()]
       // Spread the existing config so fields like axis_group survive the
@@ -599,11 +715,12 @@
   // reads no dependencies leaves the effect dep-less, and Svelte permanently unlinks
   // dep-less effects - trajectory changes would then never regenerate the plot.
   $effect(() => {
-    const [traj, extractor, config, keys] = [
+    const [traj, extractor, config, keys, active_x_map] = [
       trajectory,
       data_extractor,
       extended_config,
       visible_properties,
+      x_map,
     ]
     if (syncing_visible_properties) return
     const keys_set = keys ? new Set(keys) : undefined
@@ -612,11 +729,13 @@
       plot_series = generate_streaming_plot_series(traj.plot_metadata, {
         property_config: config,
         default_visible_properties: keys_set,
+        x_map: active_x_map,
       })
     } else if (traj) {
       plot_series = generate_plot_series(traj, extractor, {
         property_config: config,
         default_visible_properties: keys_set,
+        x_map: active_x_map,
       })
     } else {
       plot_series = []
@@ -653,13 +772,60 @@
     plot_series = toggle_series_visibility(plot_series, series_idx)
   }
 
-  // Streamed trajectories plot sampled per-frame metadata, so x values are frame numbers
-  let x_axis_quantity = $derived(trajectory?.plot_metadata ? `Frame` : `Step`)
+  // Frame/step pairs backing the x axis. Eager trajectories supply every frame, indexed
+  // ones only the sampled frames their plot metadata covers.
+  let frame_step_samples = $derived(
+    trajectory ? get_frame_step_samples(trajectory) : { frame_numbers: [], steps: [] },
+  )
+  let x_quantity_options = $derived(
+    available_x_quantities(frame_step_samples, trajectory?.time_step, trajectory?.time_unit),
+  )
+  // Until the user picks one, take the most informative axis the file supports: a
+  // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.
+  // Keep this priority explicit rather than coupling the default to the options' display order.
+  // build_x_map validates explicit user choices, so x_map.quantity is the one actually in effect.
+  let requested_x_quantity = $state<TrajectoryXQuantity | undefined>(untrack(() => x_quantity))
+  let auto_picked_x_quantity = $state<TrajectoryXQuantity | undefined>(undefined)
+  let auto_pick_active = $state(false)
+  let chosen_x_quantity = $derived.by((): TrajectoryXQuantity => {
+    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
+    const preferred = component_owned ? requested_x_quantity : x_quantity
+    if (preferred !== undefined && x_quantity_options.includes(preferred)) return preferred
+    if (x_quantity_options.includes(`time`)) return `time`
+    if (x_quantity_options.includes(`step`)) return `step`
+    return `frame`
+  })
+  let x_map = $derived(
+    build_x_map(frame_step_samples, chosen_x_quantity, {
+      time_step: trajectory?.time_step,
+      time_unit: trajectory?.time_unit,
+    }),
+  )
+  // Report the axis actually in effect so hosts binding x_quantity see the resolved
+  // value rather than undefined (auto-pick) or a quantity the data does not support.
+  // Skip empty samples: writing `frame` before data loads would lock the prop and
+  // prevent time→step→frame auto-pick once the trajectory arrives.
+  $effect(() => {
+    if (frame_step_samples.frame_numbers.length === 0) return
+    const component_owned = auto_pick_active && x_quantity === auto_picked_x_quantity
+    if (!component_owned) requested_x_quantity = x_quantity
+    if (x_quantity !== x_map.quantity) {
+      x_quantity = x_map.quantity
+      auto_picked_x_quantity = x_map.quantity
+      auto_pick_active = true
+    } else if (!component_owned) {
+      auto_pick_active = false
+    }
+  })
+  // Time between frames, so displacement analyses report D in real units instead of
+  // asking the user to retype a timestep the file already stated
+  let frame_time_step = $derived(
+    get_frame_time_step(frame_step_samples, trajectory?.time_step),
+  )
   let x_axis = $derived({
-    label: x_axis_quantity,
-    // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
-    format: `~g`,
-    ticks: step_label_positions,
+    label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
+    // step_label_positions are frame indices; the axis is drawn in x units
+    ticks: step_label_positions.map(x_map.to_x),
   })
   // Generate axis labels based on first visible series on each axis
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
@@ -668,13 +834,11 @@
   let y_axis_scale_types = $derived(generate_axis_scale_types(plot_series))
   let y_axis = $derived({
     label: y_axis_labels.y1,
-    format: `~g`,
     label_shift: { y: 10 },
     scale_type: y_axis_scale_types.y1,
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
-    format: `~g`,
     label_shift: { y: 80 },
     scale_type: y_axis_scale_types.y2,
   })
@@ -687,10 +851,7 @@
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
-  // Report the current step to on_step_change consumers. Also wired to the step
-  // slider/number input whose bind:value bypasses the navigation functions
-  // below — those handlers pass the event target's value explicitly because
-  // bind:value may not have written the binding yet when oninput fires.
+  // Report the current step to consumers after explicit slider, input, or plot navigation.
   function notify_step_change(step_idx: number = current_step_idx) {
     if (!trajectory || !Number.isFinite(step_idx)) return
     const last_frame = Math.max(total_frames - 1, 0)
@@ -703,31 +864,66 @@
     })
   }
   // Step navigation functions (streaming frame loading is handled by the reactive effect)
-  function next_step() {
-    if (current_step_idx < total_frames - 1) {
-      current_step_idx++
-      notify_step_change()
+  function commit_step(idx: number) {
+    if (idx < 0 || idx >= total_frames || idx === current_step_idx) return
+    current_step_idx = idx
+    notify_step_change()
+    wrapper?.dispatchEvent(
+      new CustomEvent(`matterviz:trajectory-step-commit`, { detail: { step_idx: idx } }),
+    )
+  }
+
+  function queue_scrub_step(idx: number) {
+    if (idx < 0 || idx >= total_frames || idx === pending_scrub_step) return
+    pending_scrub_step = idx
+    if (scrub_animation_frame !== undefined) return
+    scrub_active = true
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = undefined
+    scrub_animation_frame = requestAnimationFrame(() => {
+      scrub_animation_frame = undefined
+      const next_step_idx = pending_scrub_step
+      pending_scrub_step = undefined
+      try {
+        if (next_step_idx !== undefined) commit_step(next_step_idx)
+      } finally {
+        scrub_settle_timeout = setTimeout(() => {
+          scrub_settle_timeout = undefined
+          scrub_active = false
+        }, SCRUB_SETTLE_MS)
+      }
+    })
+  }
+
+  function flush_scrub_step(idx = pending_scrub_step) {
+    if (scrub_animation_frame !== undefined) {
+      cancelAnimationFrame(scrub_animation_frame)
+      scrub_animation_frame = undefined
     }
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = undefined
+    scrub_active = false
+    pending_scrub_step = undefined
+    if (idx !== undefined) commit_step(idx)
+  }
+
+  function next_step() {
+    commit_step(current_step_idx + 1)
   }
 
   function prev_step() {
-    if (current_step_idx > 0) {
-      current_step_idx--
-      notify_step_change()
-    }
+    commit_step(current_step_idx - 1)
   }
 
   function go_to_step(idx: number) {
-    if (idx >= 0 && idx < total_frames) {
-      current_step_idx = idx
-      notify_step_change()
-    }
+    flush_scrub_step(idx)
   }
 
-  // Handle plot point clicks to jump to that step
+  // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
+  // time), so it has to be mapped back before it can index a frame.
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
     if (data?.x !== undefined && typeof data.x === `number`) {
-      go_to_step(Math.round(data.x))
+      queue_scrub_step(x_map.to_frame(data.x))
     }
   }
 
@@ -1101,10 +1297,10 @@
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      fps = Math.min(fps_range[1], fps + 0.2)
+      fps = Math.min(fps_max, fps + FPS_STEP)
       on_frame_rate_change?.({ trajectory, fps })
     } else if (event.key === `-` && is_playing) {
-      fps = Math.max(fps_range[0], fps - 0.2)
+      fps = Math.max(fps_min, fps - FPS_STEP)
       on_frame_rate_change?.({ trajectory, fps })
     }  // System shortcuts
     else if (event.key === `Escape`) {
@@ -1120,10 +1316,77 @@
     return handled
   }
 
+  // Shared by every analysis pane: each keeps its DraggablePane toggle for layout anchoring
+  // but hides it, since the analysis menu owns the clicks.
+  let analysis_pane_props = $derived({
+    trajectory,
+    pane_props: { style: pane_max_height },
+    toggle_props: {
+      class: `analysis-toggle-anchor`,
+      tabindex: -1,
+      'aria-hidden': true,
+      title: ``,
+    },
+  })
+  // MSD and VACF both sweep the whole file and both label a time axis with the timestep the
+  // file recorded, leaving the component and its open flag as the only difference between them.
+  let correlation_pane_props = $derived({
+    ...analysis_pane_props,
+    raw_data: orig_data,
+    default_dt: frame_time_step,
+    default_time_unit: trajectory?.time_unit,
+  })
+
   // Separate state variables for each pane to match component prop types
   let structure_info_open = $state(false)
   let scatter_controls = $state<ControlsConfig>({ open: false })
   let trajectory_export_open = $state(false)
+
+  // Analyses offered by the Graph menu. Each pane is mounted separately below (they take
+  // different props) but every menu entry is described here, so adding one is a list entry
+  // plus a mount rather than another copy of the button markup.
+  type AnalysisEntry = {
+    // matches the `hidden` control name consumers pass via show_controls
+    control_name: string
+    label: string
+    icon: IconName
+    is_open: boolean
+    toggle: () => void
+  }
+  let analysis_entries: AnalysisEntry[] = $derived([
+    {
+      control_name: `msd-pane`,
+      label: `Mean squared displacement`,
+      icon: `Graph`,
+      is_open: msd_pane_open,
+      toggle: () => (msd_pane_open = !msd_pane_open),
+    },
+    {
+      control_name: `vacf-pane`,
+      label: `Velocity autocorrelation & VDOS`,
+      icon: `Graph`,
+      is_open: vacf_pane_open,
+      toggle: () => (vacf_pane_open = !vacf_pane_open),
+    },
+    {
+      control_name: `structure-id-pane`,
+      label: `Structure identification`,
+      icon: `Atom`,
+      is_open: structure_id_pane_open,
+      toggle: () => (structure_id_pane_open = !structure_id_pane_open),
+    },
+    {
+      control_name: `data-inspector-pane`,
+      label: `Data inspector`,
+      icon: `Database`,
+      is_open: data_inspector_open,
+      toggle: () => (data_inspector_open = !data_inspector_open),
+    },
+  ])
+  let visible_analyses = $derived(
+    analysis_entries.filter((entry) => controls_config.visible(entry.control_name)),
+  )
+  let any_analysis_open = $derived(analysis_entries.some((entry) => entry.is_open))
 
   sync_fullscreen({
     get_wrapper: () => wrapper,
@@ -1142,8 +1405,9 @@
     scatter_controls.open ||
     trajectory_export_open ||
     info_pane_open ||
-    msd_pane_open}
+    any_analysis_open}
   bind:this={wrapper}
+  data-scrubbing={scrub_active}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
@@ -1189,6 +1453,7 @@
         without a stacking value the open view-mode menu paints under the scatter traces -->
       <div
         class="trajectory-controls {controls_config.class}"
+        bind:clientHeight={controls_height}
         style="z-index: var(--traj-controls-z-index, var(--z-index-viewer-pane, 10)); {controls_config.style ??
           ``}"
       >
@@ -1261,8 +1526,8 @@
                 type="number"
                 min="0"
                 max={total_frames - 1}
-                bind:value={current_step_idx}
-                oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
+                value={current_step_idx}
+                oninput={(event) => go_to_step(event.currentTarget.valueAsNumber)}
                 class="step-input"
                 title="Enter step number to jump to"
                 aria-label="Step input"
@@ -1274,8 +1539,9 @@
                   type="range"
                   min="0"
                   max={total_frames - 1}
-                  bind:value={current_step_idx}
-                  oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
+                  value={current_step_idx}
+                  oninput={(event) => queue_scrub_step(event.currentTarget.valueAsNumber)}
+                  onchange={(event) => flush_scrub_step(event.currentTarget.valueAsNumber)}
                   class="step-slider"
                   title="Drag to navigate steps"
                 />
@@ -1302,16 +1568,18 @@
               FPS
               <input
                 type="range"
-                min={fps_range[0]}
-                max={fps_range[1]}
+                min={fps_min}
+                max={fps_max}
+                step={FPS_STEP}
                 bind:value={fps}
                 title="Frame rate: {format_num(fps, `.2~s`)} fps"
                 style="width: clamp(60px, 8cqw, 90px)"
               />
               <input
                 type="number"
-                min={fps_range[0]}
-                max={fps_range[1]}
+                min={fps_min}
+                max={fps_max}
+                step={FPS_STEP}
                 bind:value={fps}
                 title="Enter precise FPS value"
                 style="text-align: center; border: var(--tooltip-border)"
@@ -1346,14 +1614,14 @@
                 pane_props={{ style: pane_max_height }}
               />
             {/if}
-            <!-- Analysis menu (MSD, …). MSD stays out of display_mode: it plots lag time,
-            not frame index, so it cannot share the step-linked scatter/histogram. -->
-            {#if trajectory && controls_config.visible(`msd-pane`)}
+            <!-- Analysis menu. These plot their own x axis (MSD plots lag time, not frame
+            index) so they cannot share the step-linked scatter/histogram display modes. -->
+            {#if trajectory && visible_analyses.length > 0}
               <div class="analysis-dropdown-wrapper">
                 <button
                   type="button"
                   class="analysis-button"
-                  class:active={analysis_menu_open || msd_pane_open}
+                  class:active={analysis_menu_open || any_analysis_open}
                   title="Analysis"
                   aria-label="Analysis"
                   aria-expanded={analysis_menu_open}
@@ -1368,37 +1636,63 @@
                 </button>
                 {#if analysis_menu_open}
                   <div class="view-mode-dropdown analysis-dropdown">
-                    <button
-                      type="button"
-                      class="view-mode-option"
-                      class:selected={msd_pane_open}
-                      title="Mean squared displacement"
-                      aria-pressed={msd_pane_open}
-                      onclick={() => {
-                        msd_pane_open = !msd_pane_open
-                        analysis_menu_open = false
-                      }}
-                    >
-                      <Icon icon="Graph" />
-                      <span>Mean squared displacement</span>
-                    </button>
+                    {#each visible_analyses as entry (entry.control_name)}
+                      <button
+                        type="button"
+                        class="view-mode-option"
+                        class:selected={entry.is_open}
+                        title={entry.label}
+                        aria-pressed={entry.is_open}
+                        onclick={() => {
+                          entry.toggle()
+                          analysis_menu_open = false
+                        }}
+                      >
+                        <Icon icon={entry.icon} />
+                        <span>{entry.label}</span>
+                      </button>
+                    {/each}
                   </div>
                 {/if}
-                <!-- Invisible toggle anchors the DraggablePane under this control;
-                the analysis menu is the real open/close affordance. -->
                 <TrajectoryMsdPane
-                  {trajectory}
-                  raw_data={orig_data}
+                  {...correlation_pane_props}
                   bind:pane_open={msd_pane_open}
-                  pane_props={{ style: pane_max_height }}
-                  toggle_props={{
-                    class: `trajectory-msd-toggle-anchor`,
-                    tabindex: -1,
-                    'aria-hidden': `true`,
-                    title: ``,
-                  }}
+                />
+                <TrajectoryVacfPane
+                  {...correlation_pane_props}
+                  bind:pane_open={vacf_pane_open}
+                />
+                <TrajectoryStructureIdPane
+                  {...analysis_pane_props}
+                  raw_data={orig_data}
+                  bind:pane_open={structure_id_pane_open}
+                />
+                <!-- current_frame is only ever assigned for the index that was current when
+                the load was issued (see load_frame_on_demand's request_is_current), so the
+                two props below always describe the same frame even mid-scrub. -->
+                <TrajectoryDataInspectorPane
+                  {...analysis_pane_props}
+                  {current_step_idx}
+                  {current_frame}
+                  {data_extractor}
+                  bind:pane_open={data_inspector_open}
+                  on_step_change={go_to_step}
                 />
               </div>
+            {/if}
+            <!-- X-axis quantity: only offered when the file records steps (or a timestep)
+            that say more than the frame index already does -->
+            {#if plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+              <select
+                bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
+                class="x-quantity-select"
+                title="Plot x axis"
+                aria-label="Plot x axis"
+              >
+                {#each x_quantity_options as option (option)}
+                  <option value={option}>{X_QUANTITY_LABELS[option]}</option>
+                {/each}
+              </select>
             {/if}
             <!-- Display mode dropdown -->
             {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
@@ -1470,6 +1764,9 @@
       class:show-both={[`structure+scatter`, `structure+histogram`].includes(display_mode)}
       class:show-structure-only={display_mode === `structure`}
       class:show-plot-only={[`scatter`, `histogram`].includes(display_mode)}
+      style:--viewer-buttons-top={controls_config.mode === `hover`
+        ? `calc(${controls_height}px + 1ex)`
+        : undefined}
     >
       {#if show_structure}
         <Structure
@@ -1479,7 +1776,9 @@
           {...{
             show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
             ...structure_props,
+            scene_props: trail_scene_props,
           }}
+          bind:show_trajectory_lines
           bind:controls_open
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements
@@ -1499,12 +1798,13 @@
             {y_axis}
             {y2_axis}
             controls={scatter_controls}
-            current_x_value={current_step_idx}
+            current_x_value={x_map.to_x(current_step_idx)}
             change={plot_skimming ? handle_plot_change : undefined}
             padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
+            on_pointer_leave={plot_skimming ? () => flush_scrub_step() : undefined}
             legend={{
               ...(scatter_props.legend ?? {}),
               on_toggle: (series_idx: number) => {
@@ -1516,7 +1816,7 @@
           >
             {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
-              {x_axis_quantity}: {Math.round(x)}<br />
+              {x_axis.label}: {format_num(x, `~g`)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
             {/snippet}
           </ScatterPlot>
@@ -1588,10 +1888,14 @@
     height: var(--traj-height, 100%);
     position: relative;
     min-height: var(--traj-min-height, var(--min-height));
-    /* Square by default; opt into rounding with --traj-border-radius. */
-    border-radius: var(--traj-border-radius, 0);
-    /* Follow host theme; avoid transparent shells sitting on a dark parent fallback. */
-    background: var(--traj-bg, var(--surface-bg, var(--page-bg, Canvas)));
+    --traj-surface-bg: var(
+      --traj-bg,
+      color-mix(in srgb, var(--page-bg, Canvas) 97%, var(--text-color, CanvasText) 3%)
+    );
+    --struct-bg: var(--traj-surface-bg);
+    --plot-bg: var(--traj-surface-bg);
+    border-radius: var(--traj-border-radius, 4px);
+    background: var(--traj-surface-bg);
     color: var(--traj-color, var(--text-color, CanvasText));
     box-sizing: border-box;
     contain: layout;
@@ -1604,7 +1908,7 @@
       height: 100vh !important;
       width: 100vw !important;
       border-radius: 0 !important;
-      background: var(--traj-bg-fullscreen, var(--traj-bg, var(--surface-bg)));
+      background: var(--traj-bg-fullscreen, var(--traj-surface-bg));
       overflow: hidden;
     }
     /* Equal tracks, plus a hairline between them drawn as a shadow so the 1px
@@ -1672,10 +1976,17 @@
     color: var(--traj-controls-color, light-dark(#1a1a1a, #e8e8e8));
     backdrop-filter: blur(4px);
     position: relative;
-    border-radius: var(--traj-controls-border-radius, 0);
+    border-radius: var(--traj-controls-border-radius, var(--traj-border-radius, 4px));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
+    /* Hover controls overlay the viewer instead of reserving a permanently visible band. */
+    &.hover-visible {
+      position: absolute;
+      inset: 0 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
     /* Mode: always - controls always visible */
     &.always-visible {
       opacity: 1;
@@ -1713,7 +2024,7 @@
   .nav-section {
     display: flex;
     align-items: center;
-    gap: clamp(3pt, 1cqw, 9pt);
+    gap: 3pt;
   }
   .step-section {
     display: flex;
@@ -1755,14 +2066,15 @@
     position: absolute;
     left: 0;
     right: 0;
+    top: 50%;
   }
   .step-tick {
     position: absolute;
     transform: translateX(-50%);
     width: var(--trajectory-step-tick-width, 1px);
-    height: var(--trajectory-step-tick-height, 4px);
+    height: var(--trajectory-step-tick-height, 3px);
     background: var(--text-color-muted);
-    top: -9pt;
+    top: var(--trajectory-step-tick-offset, 5px);
   }
   .step-label {
     position: absolute;
@@ -1771,7 +2083,9 @@
     color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;
-    top: -1.7ex;
+    top: calc(
+      var(--trajectory-step-tick-offset, 5px) + var(--trajectory-step-tick-height, 3px) + 1px
+    );
   }
   button.filename {
     align-items: center;
@@ -1872,6 +2186,13 @@
     align-items: center;
     z-index: var(--trajectory-view-mode-z-index, 20);
   }
+  .x-quantity-select {
+    padding: 1pt 2pt;
+    font-size: 0.85em;
+    background: transparent;
+    border: var(--tooltip-border);
+    border-radius: 3pt;
+  }
   .view-mode-button,
   .analysis-button {
     display: flex;
@@ -1882,7 +2203,7 @@
     color: var(--accent-color, #4a9eff);
   }
   /* Keep DraggablePane's toggle for layout anchoring; the analysis menu owns clicks. */
-  .analysis-dropdown-wrapper :global(.trajectory-msd-toggle-anchor) {
+  .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
     position: absolute;
     inset: 0;
     width: 100%;

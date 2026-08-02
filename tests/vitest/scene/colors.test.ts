@@ -1,4 +1,5 @@
 import {
+  brighten_hex,
   css_to_linear_rgb,
   parse_linear_rgb,
   write_linear_color_to_buffer,
@@ -36,6 +37,22 @@ test(`write_linear_color_to_buffer converts CSS once without stale scratch color
   // out-of-gamut channels come back from d3 unclamped; CSS clamps them, so we must too
   expect_rgb(write_at(8, `rgb(300, -20, 0)`), new Color(`rgb(255, 0, 0)`).toArray(), `gamut`)
   expect(Array.from(buffer.slice(0, 3))).toEqual([0, 0, 0])
+})
+
+test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
+  const source = `#57178f` // deep purple (Cs-like)
+  const bright = brighten_hex(source, 0.55)
+  expect(bright).toBe(`#cac4d6`)
+  const src = new Color(source)
+  const out = new Color(bright)
+  // Strictly brighter than the atom color (dirty gray hover used to lose the hue entirely).
+  expect(out.r + out.g + out.b).toBeGreaterThan(src.r + src.g + src.b)
+  // Still purple-ish: blue and red dominate green (not a neutral wash).
+  expect(out.b).toBeGreaterThan(out.g)
+  expect(out.r).toBeGreaterThan(out.g)
+  expect(brighten_hex(source, 0)).toBe(`#57178f`)
+  expect(brighten_hex(source, 1)).toBe(`#ffffff`)
+  expect(brighten_hex(undefined)).toMatch(/^#[0-9a-f]{6}$/u)
 })
 
 test(`css_to_linear_rgb memoizes without changing results, and stays bounded`, () => {

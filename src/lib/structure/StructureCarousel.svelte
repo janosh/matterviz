@@ -493,9 +493,8 @@
     contain: layout paint style;
   }
   /* element color chips stay visible at all times; the legend's extra chrome
-     is already hover-gated elsewhere (mode chevron via Structure's
-     viewer_active, cell-select via .structure:hover, chip × toggles via
-     .legend-item:hover) */
+     is already hover-gated elsewhere (mode chevron via Structure hovered,
+     cell-select via .structure:hover, chip × toggles via .legend-item:hover) */
   .structure-card :global(.atom-legend) {
     z-index: 4;
     max-inline-size: calc(100% - 8px);

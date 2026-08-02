@@ -28,6 +28,14 @@ export const escape_html = (unsafe_string: string): string =>
     .replaceAll(`"`, `&quot;`)
     .replaceAll(`'`, `&#39;`)
 
+// Quote a CSV field per RFC 4180. A lone CR counts: readers treat CR, LF and CRLF alike
+// as record separators, so an unquoted CR splits one record into two.
+export const escape_csv_field = (value: number | string | null | undefined): string => {
+  const field = String(value ?? ``)
+  if (!/[",\n\r]/.test(field)) return field
+  return `"${field.replaceAll(`"`, `""`)}"`
+}
+
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
 export const normalize_unicode_minus = (value: string): string => value.replaceAll('−', `-`)
 

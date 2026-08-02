@@ -1,4 +1,9 @@
-import { Trajectory, type TrajHandlerData } from '$lib/trajectory'
+import {
+  Trajectory,
+  type TrajectoryType,
+  type TrajectoryXQuantity,
+  type TrajHandlerData,
+} from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { make_trajectory_frame, resize_element } from '../setup'
@@ -6,6 +11,16 @@ import { make_trajectory_frame, resize_element } from '../setup'
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
   metadata: {},
+})
+const energy_traj = (...energies: number[]) =>
+  make_traj(energies.map((energy) => ({ energy })))
+const make_stepped_traj = (time_step?: number) => ({
+  frames: [0, 500, 1000].map((step, frame_idx) =>
+    make_trajectory_frame(step, 1, { energy: -frame_idx }),
+  ),
+  metadata: {},
+  time_step,
+  time_unit: `fs` as const,
 })
 const xyz = (element: string) => `1\n${element} frame\n${element} 0 0 0\n`
 const request_url = (url: string | URL | Request) =>
@@ -19,6 +34,12 @@ const mount_traj = (props: Record<string, unknown>) => {
   mount(Trajectory, { target, props })
   return target
 }
+const flush_render = async () => {
+  flushSync()
+  await tick()
+}
+const selected_x_quantity = (target: ParentNode) =>
+  target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
 const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
   vi.stubGlobal(`fetch`, fetch_impl)
@@ -29,109 +50,290 @@ const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
   }
 }
 
+const click_menu_option = async (
+  target: ParentNode,
+  menu_button: string,
+  option_text: string,
+): Promise<void> => {
+  target.querySelector<HTMLButtonElement>(menu_button)?.click()
+  await tick()
+  const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
+    (button) => button.textContent?.includes(option_text),
+  )
+  if (!option) throw new Error(`${option_text} menu option not found`)
+  option.click()
+  await tick()
+}
+
 describe(`Trajectory`, () => {
+  // StructureControls owns trail-chrome visibility; this only guards Trajectory's
+  // lazy collect_msd_positions gate (Trail length appears once the stream lands).
+  test(`collects trail positions lazily when trails are enabled`, async () => {
+    const target = mount_traj({
+      trajectory: make_traj([{}, {}, {}]),
+      display_mode: `structure`,
+      show_controls: false,
+      controls_open: true,
+      structure_props: { show_controls: `always` },
+    })
+    await flush_render()
+
+    const trail_toggle = Array.from(target.querySelectorAll(`label`))
+      .find((label) => label.textContent?.includes(`Show trajectory trails`))
+      ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
+    expect(target.textContent).not.toContain(`Trail length`)
+
+    trail_toggle.click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
+  })
+
   // Regression: the series-regeneration effect must survive the visible_properties
   // write-back from the legend-sync effect. That write re-runs the regeneration
   // effect while the syncing flag is set; returning before reading any reactive dep
   // leaves the effect dep-less, and Svelte permanently unlinks dep-less effects -
   // after which loading a new trajectory kept showing the previous one's series.
-  test(`swapping the trajectory prop regenerates plot series`, async () => {
+  test(`swapping the trajectory regenerates plot series and axis ticks`, async () => {
     const props = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      trajectory: energy_traj(-1.5, -2.5),
       display_mode: `scatter` as const,
       show_controls: false,
+      step_labels: [0, 1, 2],
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
     let plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`trajectory scatter plot not found`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
-    props.trajectory = make_traj([{ volume: 10 }, { volume: 12 }])
-    flushSync()
-    await tick()
+    props.trajectory = {
+      frames: [0, 1500, 10_000].map((step, frame_idx) =>
+        make_trajectory_frame(step, 1, { volume: frame_idx * 5000 }),
+      ),
+      metadata: {},
+    }
+    await flush_render()
     plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`trajectory scatter plot not found after swap`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
+    const tick_labels = (axis: `x` | `y`) =>
+      Array.from(plot.querySelectorAll(`.${axis}-axis .tick text`), (tick_label) =>
+        tick_label.textContent?.trim(),
+      )
+    expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`1.5k`, `10k`]))
+    expect(tick_labels(`y`)).toContain(`10k`)
+  })
+
+  // Bindable x_quantity starts unset; after auto-pick it must write back the
+  // effective axis so hosts can read which quantity is in effect. Empty mounts
+  // must not write `frame` early or time-capable data can never auto-pick.
+  test.each([
+    {
+      desc: `time on first paint when POTIM is present`,
+      trajectory: make_stepped_traj(2) as TrajectoryType | undefined,
+      later: undefined as ReturnType<typeof make_stepped_traj> | undefined,
+      expect_initial: `time` as TrajectoryXQuantity | undefined,
+      expect_final: `time` as TrajectoryXQuantity,
+    },
+    {
+      desc: `step on first paint without POTIM`,
+      trajectory: make_stepped_traj(undefined),
+      later: undefined,
+      expect_initial: `step`,
+      expect_final: `step`,
+    },
+    {
+      desc: `deferred until samples exist`,
+      trajectory: undefined,
+      later: make_stepped_traj(2),
+      expect_initial: undefined,
+      expect_final: `time`,
+    },
+  ])(`x_quantity $desc`, async ({ trajectory, later, expect_initial, expect_final }) => {
+    const props = $state({
+      trajectory,
+      x_quantity: undefined as TrajectoryXQuantity | undefined,
+      display_mode: `scatter` as const,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    expect(props.x_quantity).toBe(expect_initial)
+    if (expect_initial !== undefined) expect(selected_x_quantity(target)).toBe(expect_initial)
+
+    if (!later) return
+    props.trajectory = later
+    await flush_render()
+    expect(props.x_quantity).toBe(expect_final)
+    expect(selected_x_quantity(target)).toBe(expect_final)
+  })
+
+  test.each([
+    [`auto-pick update`, undefined, `time`],
+    [`explicit preservation`, `frame`, `frame`],
+    [`coerced time restoration`, `time`, `time`],
+    [`coerced step restoration`, `step`, `step`],
+  ] as const)(
+    `%s when trajectory capabilities change`,
+    async (_kind, initial_quantity, expected) => {
+      const props = $state({
+        trajectory: energy_traj(-1, -2, -3),
+        x_quantity: initial_quantity,
+        display_mode: `scatter` as const,
+        show_controls: `always` as const,
+      })
+      const target = mount_traj(props)
+      await flush_render()
+      expect(props.x_quantity).toBe(`frame`)
+
+      props.trajectory = make_stepped_traj(2)
+      await flush_render()
+      expect(props.x_quantity).toBe(expected)
+      expect(selected_x_quantity(target)).toBe(expected)
+    },
+  )
+
+  test(`restricts FPS controls and binding to half-integer values`, async () => {
+    const props = $state({
+      trajectory: energy_traj(-1, -2),
+      fps: 0.2,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+
+    const fps_input = target.querySelector<HTMLInputElement>(
+      `.fps-section input[type="number"]`,
+    )
+    const fps_slider = target.querySelector<HTMLInputElement>(
+      `.fps-section input[type="range"]`,
+    )
+    if (!fps_input || !fps_slider) throw new Error(`FPS controls not found`)
+    expect(props.fps).toBe(0.5)
+    expect(fps_input.min).toBe(`0.5`)
+    expect(fps_input.step).toBe(`0.5`)
+    expect(fps_slider.min).toBe(`0.5`)
+    expect(fps_slider.step).toBe(`0.5`)
+
+    fps_input.value = `12.3`
+    fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await flush_render()
+    expect(props.fps).toBe(12.5)
+    expect(fps_input.value).toBe(`12.5`)
+    expect(fps_slider.value).toBe(`12.5`)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
   // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
-  // write back the corrected index and notify on_step_change. Slider input
-  // must report the event target's value — bind:value may not have written
-  // the binding yet when oninput fires, so reading the bound state is stale.
-  test(`clamps out-of-range steps and reports slider values from the event`, async () => {
-    const step_events: { step_idx: number; frame_count: number }[] = []
+  // write back the corrected index and notify on_step_change. Slider bursts
+  // commit only their latest event-target value on the next animation frame.
+  test(`clamps steps, coalesces slider input, and settles after callback errors`, async () => {
+    let throw_on_change = false
+    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count`>[] = []
     const props = $state({
-      trajectory: make_traj([{ energy: -1 }, { energy: -2 }, { energy: -3 }]),
+      trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
-      // TrajHandlerData's fields are optional; the assertions below pin the
-      // concrete values so `?? -1` can't mask a missing field
-      on_step_change: (data: { step_idx?: number; frame_count?: number }) => {
-        step_events.push({
-          step_idx: data.step_idx ?? -1,
-          frame_count: data.frame_count ?? -1,
-        })
+      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) => {
+        step_events.push({ step_idx, frame_count })
+        if (throw_on_change) throw new Error(`host callback failed`)
       },
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
 
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
 
     const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
     if (!slider) throw new Error(`step slider not found`)
-    slider.value = `1`
-    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    const trajectory_element = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const commit_events: number[] = []
+    trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
+      commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
+    })
+    const events_before_scrub = step_events.length
+    for (const value of [`0`, `1`, `0`, `1`]) {
+      slider.value = value
+      slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    }
     flushSync()
+    expect(step_events).toHaveLength(events_before_scrub)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
+    expect(step_events).toHaveLength(events_before_scrub + 1)
+    expect(commit_events).toEqual([1])
+
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.value = `0`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(step_events.at(-1)).toEqual({ step_idx: 0, frame_count: 3 })
+    expect(step_events).toHaveLength(events_before_scrub + 2)
+    expect(commit_events).toEqual([1, 0])
+
+    vi.useFakeTimers()
+    try {
+      throw_on_change = true
+      slider.value = `2`
+      slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(trajectory_element.dataset.scrubbing).toBe(`true`)
+      expect(() => vi.advanceTimersToNextFrame()).toThrow(`host callback failed`)
+
+      vi.advanceTimersByTime(81)
+      flushSync()
+      expect(trajectory_element.dataset.scrubbing).toBe(`false`)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  test(`analysis menu nests MSD instead of a top-level toggle`, async () => {
-    const props = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+  // Every finished analysis pane is reachable from the one menu, and each menu entry drives
+  // its own bindable open flag rather than all of them sharing one. MSD also must not
+  // reappear as a top-level toggle outside the menu.
+  test(`analysis menu opens each pane`, async () => {
+    const options = [
+      [`Mean squared displacement`, `msd_pane_open`],
+      [`Velocity autocorrelation & VDOS`, `vacf_pane_open`],
+      [`Structure identification`, `structure_id_pane_open`],
+      [`Data inspector`, `data_inspector_open`],
+    ] as const
+    const props: Record<string, unknown> = $state({
+      trajectory: energy_traj(-1.5, -2.5),
       show_controls: `always` as const,
       msd_pane_open: false,
+      vacf_pane_open: false,
+      structure_id_pane_open: false,
+      data_inspector_open: false,
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
 
     expect(
-      target.querySelector(`.trajectory-msd-toggle:not(.trajectory-msd-toggle-anchor)`),
+      target.querySelector(`.trajectory-msd-toggle:not(.analysis-toggle-anchor)`),
     ).toBeNull()
-    expect(target.querySelector(`.analysis-button`)).toBeInstanceOf(HTMLButtonElement)
 
-    target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
-    await tick()
-
-    const msd_option = [
-      ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
-    ].find((button) => button.textContent?.includes(`Mean squared displacement`))
-    if (!msd_option) throw new Error(`MSD analysis option not found`)
-    msd_option.click()
-    await tick()
-
-    expect(props.msd_pane_open).toBe(true)
-    expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+    for (const [label, open_prop] of options) {
+      await click_menu_option(target, `.analysis-button`, label)
+      expect(props[open_prop]).toBe(true)
+      expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+    }
   })
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
   test(`info pane max-height follows content-area height`, async () => {
     const target = mount_traj({
-      trajectory: make_traj([{ energy: -1.5 }]),
+      trajectory: energy_traj(-1.5),
       show_controls: `always` as const,
       info_pane_open: true,
     })
-    flushSync()
-    await tick()
+    await flush_render()
     expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight).toBe(
       `600px`,
     )
@@ -139,17 +341,17 @@ describe(`Trajectory`, () => {
 
   // show_controls.style is appended after the z-index the controls bar sets on itself, so
   // both have to survive; a caller that names z-index deliberately wins, being last.
+  // Trailing-semicolon variants of the color style are not distinct: the template already
+  // supplies the join semicolon before the caller string.
   test.each([
-    [`without a trailing semicolon`, `color: rgb(255, 0, 0)`, `10`, `rgb(255, 0, 0)`],
-    [`with a trailing semicolon`, `color: rgb(255, 0, 0);`, `10`, `rgb(255, 0, 0)`],
-    [`overriding the z-index`, `z-index: 5`, `5`, ``],
-  ])(`show_controls.style %s`, async (_label, style, z_index, color) => {
+    { style: `color: rgb(255, 0, 0)`, z_index: `10`, color: `rgb(255, 0, 0)` },
+    { style: `z-index: 5`, z_index: `5`, color: `` },
+  ])(`show_controls.style keeps z-index=$z_index`, async ({ style, z_index, color }) => {
     const target = mount_traj({
-      trajectory: make_traj([{ energy: -1.5 }]),
+      trajectory: energy_traj(-1.5),
       show_controls: { mode: `always`, style },
     })
-    flushSync()
-    await tick()
+    await flush_render()
 
     const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
     if (!controls) throw new Error(`trajectory controls not found`)
@@ -159,25 +361,20 @@ describe(`Trajectory`, () => {
 
   test(`view mode menu is layered and selectable`, async () => {
     const props = $state({
-      trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
+      trajectory: energy_traj(-1.5, -2.5),
       display_mode: `structure+scatter` as const,
       show_controls: `always` as const,
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
-
-    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
-    if (!controls) throw new Error(`trajectory controls not found`)
-    // Inline, because jsdom applies no scoped styles: keeps the menu above the
-    // content-area siblings that follow it rather than under the scatter.
-    expect(Number(getComputedStyle(controls).zIndex)).toBeGreaterThan(0)
+    await flush_render()
 
     target.querySelector<HTMLButtonElement>(`.view-mode-button`)?.click()
     await tick()
 
     const dropdown = target.querySelector<HTMLElement>(`.view-mode-dropdown`)
     if (!dropdown) throw new Error(`view mode dropdown not found`)
+    // Inline stacking: jsdom applies no scoped styles; menu must stay above
+    // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
     expect(dropdown_style.pointerEvents).toBe(`auto`)
     expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
@@ -193,39 +390,35 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 
-  test(`reloads URL-owned trajectory when data_url changes`, async () => {
-    const loaded_elements: string[] = []
-    await with_fetch(
-      vi.fn(
-        async (url: string | URL | Request) =>
-          new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
-      ),
-      async () => {
-        const props = $state({
-          data_url: `/a.xyz`,
-          display_mode: `structure` as const,
-          show_controls: `never` as const,
-          on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
-        })
-        mount_traj(props)
-        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
-
-        props.data_url = `/b.xyz`
-        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
-      },
+  test(`data_url reloads on change; trajectory prop wins over data_url`, async () => {
+    const fetch_mock = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
     )
-  })
-
-  test(`caller-supplied trajectory takes precedence over data_url`, async () => {
-    const fetch_mock = vi.fn()
     await with_fetch(fetch_mock, async () => {
       mount_traj({
         data_url: `/ignored.xyz`,
-        trajectory: make_traj([{ energy: -1 }]),
+        trajectory: energy_traj(-1),
         show_controls: `never`,
       })
       await tick()
       expect(fetch_mock).not.toHaveBeenCalled()
+    })
+
+    const loaded_elements: string[] = []
+    await with_fetch(fetch_mock, async () => {
+      fetch_mock.mockClear()
+      const props = $state({
+        data_url: `/a.xyz`,
+        display_mode: `structure` as const,
+        show_controls: `never` as const,
+        on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
+      })
+      mount_traj(props)
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+
+      props.data_url = `/b.xyz`
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
     })
   })
 

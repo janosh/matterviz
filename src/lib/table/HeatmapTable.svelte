@@ -29,7 +29,7 @@
   } from '$lib/table'
   import { make_cell_color_scale, strip_html } from '$lib/table'
   import { sanitize_html } from '$lib/sanitize'
-  import { normalize_unicode_minus } from '$lib/utils'
+  import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -1310,16 +1310,10 @@
     show_row_select && selected_rows.length > 0 ? selected_rows : sorted_data,
   )
 
-  // Serialize table as delimited text (shared by CSV export and clipboard copy)
-  // Per RFC 4180, fields containing commas, double quotes, or newlines must be quoted
+  // Serialize table as delimited text (shared by CSV export and clipboard copy).
+  // TSV skips quoting; CSV goes through the shared RFC 4180 escaper.
   function serialize_table(delimiter: string, csv_quote = false): string {
-    const quote = (str: string) => {
-      if (!csv_quote) return str
-      if (str.includes(`,`) || str.includes(`"`) || str.includes(`\n`)) {
-        return `"${str.replaceAll('"', `""`)}"`
-      }
-      return str
-    }
+    const quote = (str: string) => (csv_quote ? escape_csv_field(str) : str)
     const headers = visible_columns.map((col) => quote(strip_html(col.label)))
     const rows = export_rows.map((row) =>
       visible_columns.map((col) => {

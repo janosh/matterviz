@@ -229,10 +229,6 @@ export const observe_size =
     }
   }
 
-// Height-only compatibility wrapper used by hierarchy charts with bottom colorbars.
-export const observe_height = (on_height: (px: number) => void) =>
-  observe_size(({ height }) => on_height(height))
-
 // The font node labels actually render in (respects the chart's font-size CSS
 // var instead of assuming 11px), for canvas-measured label fitting
 export function svg_label_font(svg_element: SVGSVGElement | null): string {

@@ -11,6 +11,7 @@
   import type { Vec3 } from '$lib/math'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
+  import { SvelteMap } from 'svelte/reactivity'
   import {
     Color,
     InstancedMesh,
@@ -29,12 +30,15 @@
     atoms,
     sphere_segments = 20,
     ghost = false,
+    positions_only = false,
     ...pointer_props
   }: {
     atoms: InstancedAtom[]
     sphere_segments?: number
     // edit-mode PBC image atoms: desaturated + translucent
     ghost?: boolean
+    // Fast trajectory-scrub path: apply positions/radii but skip unchanged color uploads.
+    positions_only?: boolean
     // threlte interactivity handlers (onpointerenter, onclick, ...) forwarded to the mesh
     [key: string]: unknown
   } = $props()
@@ -96,14 +100,11 @@
       count,
     )
     next.frustumCulled = false
-    // export.ts reads per-instance colors (instead of the material color) when set
-    next.userData.per_instance_color = true
     mesh = next
   })
   // Unmount-only cleanup (a cleanup on the effect above would dispose the mesh
   // on every re-run, including runs that keep it; cleanups run untracked)
   $effect(() => () => mesh?.dispose())
-
   $effect(() => {
     if (mesh && mesh.geometry !== geometry) {
       mesh.geometry = geometry
@@ -112,15 +113,32 @@
   })
 
   const scratch_matrix = new Matrix4()
-  const gray = new Color(0x999999)
-
   $effect(() => {
     const current = mesh
     if (!current) return
     const limit = Math.min(atoms.length, current.count)
+    for (let idx = 0; idx < limit; idx++) {
+      const { position, radius } = atoms[idx]
+      scratch_matrix
+        .makeScale(radius, radius, radius)
+        .setPosition(position[0], position[1], position[2])
+      current.setMatrixAt(idx, scratch_matrix)
+    }
+    current.instanceMatrix.needsUpdate = true
+    // keep the whole-mesh bounding sphere in sync so raycasts can early-reject
+    current.computeBoundingSphere()
+    invalidate()
+  })
+
+  const gray = new Color(0x999999)
+  let colored_mesh: InstancedMesh | null = null
+  $effect(() => {
+    const current = mesh
+    if (!current || (positions_only && current === colored_mesh)) return
+    const limit = Math.min(atoms.length, current.count)
     // Color.set(string) parses CSS with regexes. Atoms draw from a handful of distinct
     // colors, so resolve each one once per update instead of once per atom (>10k here).
-    const resolved = new Map<string | undefined, Color>()
+    const resolved = new SvelteMap<string | undefined, Color>()
     const resolve_color = (color: string | undefined): Color => {
       let hit = resolved.get(color)
       if (!hit) {
@@ -130,17 +148,11 @@
       return hit
     }
     for (let idx = 0; idx < limit; idx++) {
-      const { position, radius, color } = atoms[idx]
-      scratch_matrix
-        .makeScale(radius, radius, radius)
-        .setPosition(position[0], position[1], position[2])
-      current.setMatrixAt(idx, scratch_matrix)
+      const { color } = atoms[idx]
       current.setColorAt(idx, resolve_color(color))
     }
-    current.instanceMatrix.needsUpdate = true
     if (current.instanceColor) current.instanceColor.needsUpdate = true
-    // keep the whole-mesh bounding sphere in sync so raycasts can early-reject
-    current.computeBoundingSphere()
+    colored_mesh = current
     invalidate()
   })
 </script>

@@ -1258,8 +1258,6 @@ describe(`normalize_band_structure`, () => {
 })
 
 describe(`normalize_dos`, () => {
-  const spy_info = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
-
   describe(`spin-keyed densities (pymatgen format)`, () => {
     it.each([
       {
@@ -1293,55 +1291,28 @@ describe(`normalize_dos`, () => {
     })
   })
 
-  describe(`phonon DOS`, () => {
-    it(`validates with frequencies array`, () => {
-      const result = normalize_dos({
-        frequencies: [0, 1, 2, 3, 4],
-        densities: [0, 0.5, 1, 0.5, 0],
-      })
-      expect(result?.type).toBe(`phonon`)
-      if (result?.type === `phonon`) expect(result.frequencies).toEqual([0, 1, 2, 3, 4])
-    })
-
-    it(`auto-converts cm⁻¹→THz when max > 100 (factor 33.356)`, () => {
-      const info_spy = spy_info()
-      const result = normalize_dos({
-        frequencies: [0, 200, 333.5641],
-        densities: [0, 1, 0],
-      })
-      expect(result?.type).toBe(`phonon`)
-      if (result?.type === `phonon`) {
-        expect(result.frequencies[1]).toBeCloseTo(5.99, 1) // 200 cm⁻¹
-        expect(result.frequencies[2]).toBeCloseTo(10.0, 4) // 333.5641 cm⁻¹
-      }
-      expect(info_spy).toHaveBeenCalled()
-      info_spy.mockRestore()
-    })
-
-    it(`preserves THz when max < 100`, () => {
-      const result = normalize_dos({
-        frequencies: [0, 5, 10, 15, 20],
-        densities: [0, 0.5, 1, 0.5, 0],
-      })
-      if (result?.type === `phonon`) {
-        expect(result.frequencies).toEqual([0, 5, 10, 15, 20])
-      }
-    })
-
-    it(`skips cm⁻¹→THz conversion when auto_convert_units: false`, () => {
-      const info_spy = spy_info()
-      const result = normalize_dos(
-        { frequencies: [0, 100, 200, 300, 400], densities: [0, 0.5, 1, 0.5, 0] },
-        { auto_convert_units: false },
-      )
-      if (result?.type === `phonon`) {
-        // Frequencies should remain unchanged (not converted)
-        expect(result.frequencies).toEqual([0, 100, 200, 300, 400])
-      }
-      expect(info_spy).not.toHaveBeenCalled()
-      info_spy.mockRestore()
-    })
+  it(`preserves phonon frequencies without guessing their unit`, () => {
+    const frequencies = [0, 200, 333.5641]
+    const dos = {
+      frequencies,
+      densities: frequencies.map((_frequency, frequency_idx) => frequency_idx),
+    }
+    expect(normalize_dos(dos)).toMatchObject({ type: `phonon`, frequencies })
   })
+
+  it.each([`cm-1`, `cm^-1`, `cm⁻¹`] as const)(
+    `normalizes explicitly declared %s phonon frequencies to THz`,
+    (unit) => {
+      const result = normalize_dos({
+        frequencies: [0, 333.5640951981521],
+        densities: [0, 1],
+        frequency_unit: unit,
+      })
+      expect(result).toMatchObject({ type: `phonon` })
+      if (result?.type !== `phonon`) throw new Error(`Expected normalized phonon DOS`)
+      expect(result.frequencies[1]).toBeCloseTo(10, 12)
+    },
+  )
 
   describe(`electronic DOS`, () => {
     it(`validates with energies array`, () => {

@@ -66,7 +66,11 @@ function prefer_min_entry(
   if ((candidate.is_stable === true) !== (existing.is_stable === true)) {
     return candidate.is_stable === true
   }
-  return (candidate.e_above_hull ?? Infinity) < (existing.e_above_hull ?? Infinity)
+  const candidate_hull_dist = candidate.e_above_hull ?? Infinity
+  const existing_hull_dist = existing.e_above_hull ?? Infinity
+  if (candidate_hull_dist !== existing_hull_dist)
+    return candidate_hull_dist < existing_hull_dist
+  return entry_fingerprint(candidate) < entry_fingerprint(existing)
 }
 
 // Cache for reduced formula strings -- avoids recomputing get_reduced_formula
@@ -906,16 +910,24 @@ let nd_cache: {
   result: FullNDResult
 } | null = null
 
-// Fingerprint for N-D / async-compute cache keys (computed EPA; NaN → null).
-export function entry_fingerprint(entry: PhaseData): string {
-  const epa = get_energy_per_atom(entry)
-  return JSON.stringify([
-    formula_key_from_composition(entry.composition),
-    Number.isFinite(epa) ? epa : null,
-    entry.is_stable ?? null,
-    entry.e_above_hull ?? null,
-    entry.exclude_from_hull ?? null,
-  ])
+// Lightweight entry fingerprint for N-D cache keys and deterministic equal-energy
+// tie-breaking. Heavy payloads such as structures and calculation metadata do not affect
+// the geometry; normalize a redundant explicit energy_per_atom to its effective value.
+function entry_fingerprint(entry: PhaseData): string {
+  const effective_energy = get_energy_per_atom(entry)
+  const composition = Object.entries(entry.composition).toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  )
+  return JSON.stringify({
+    entry_id: entry.entry_id ?? null,
+    name: entry.name ?? null,
+    reduced_formula: entry.reduced_formula ?? null,
+    composition,
+    energy_per_atom: Number.isFinite(effective_energy) ? effective_energy : null,
+    exclude_from_hull: entry.exclude_from_hull === true,
+    is_stable: entry.is_stable === true,
+    e_above_hull: Number.isFinite(entry.e_above_hull) ? entry.e_above_hull : null,
+  })
 }
 
 export function make_nd_cache_key(
@@ -975,6 +987,26 @@ export function compute_chempot_diagram(
     : ``
   let nd_result: FullNDResult | null =
     is_projection && nd_cache?.key === cache_key ? nd_cache.result : null
+
+  // Cached geometry is independent of heavy entry metadata, but returned entries must
+  // still come from the current input rather than an earlier projection call.
+  if (nd_result) {
+    const sorted_entries = entries
+      .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
+      .toSorted((left, right) => left.key.localeCompare(right.key))
+      .map(({ entry }) => entry)
+    let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
+    if (formal_chempots) {
+      min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
+      el_refs = get_min_entries_and_el_refs(min_entries).el_refs
+    }
+    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
+      min_entries,
+      el_refs,
+      compute_elements,
+    )
+    nd_result = { ...nd_result, min_entries, el_refs, hyperplanes, hyperplane_entries }
+  }
 
   if (!nd_result) {
     // In subsystem mode, filter entries to only those within the element set

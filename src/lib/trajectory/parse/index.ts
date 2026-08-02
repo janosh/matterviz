@@ -283,7 +283,12 @@ async function parse_with_unified_loader(
     loader.load_frame(data, idx),
   )
   const loaded_frames = await Promise.all(frame_promises)
-  const frames = loaded_frames.filter((frame): frame is TrajectoryFrame => frame !== null)
+  const frames: TrajectoryFrame[] = []
+  for (const frame of loaded_frames) {
+    if (!frame) break
+    frames.push(frame)
+  }
+  if (frames.length === 0) throw new Error(`Failed to load initial trajectory frame 0`)
 
   let plot_metadata: TrajectoryMetadata[] | undefined
   if (extract_plot_metadata) {

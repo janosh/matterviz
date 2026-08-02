@@ -12,7 +12,6 @@ import {
   ir_intensity,
   IrRamanSpectrum,
   is_gamma_point,
-  normalize_dos,
   parse_born,
   parse_phonon_modes,
   raman_invariants,
@@ -40,7 +39,7 @@ import sio2_born from '$site/phonons/ir-raman/SiO2.BORN?raw'
 import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -613,23 +612,12 @@ it(`round-trips a 4000 cm^-1 mode through THz and meV`, () => {
   expect((mev / convert_frequencies([1], `meV`)[0]) * cm_per_thz).toBeCloseTo(4000, 9)
 })
 
-it(`a 4000 cm^-1 stick survives the IR path that normalize_dos would mangle`, () => {
+it(`a 4000 cm^-1 stick survives the IR path`, () => {
   const cm_per_thz = convert_frequencies([1], `cm-1`)[0]
   // Mode 8 is optical and IR-active, so only its frequency has to be swapped out
   const mode = { ...co2_spectrum.modes[8], frequency: 4000 / cm_per_thz }
   const spectrum = { ...co2_spectrum, modes: [mode] }
   expect(spectrum_sticks(spectrum, `ir`, { unit: `cm-1` }).x[0]).toBeCloseTo(4000, 9)
-
-  // Guard against a future refactor routing IR data through the DOS path: normalize_dos
-  // assumes any frequency above 100 must be cm^-1 and silently divides by 33.36.
-  const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-  const mangled = normalize_dos({ frequencies: [4000], densities: [1] })
-  warn_spy.mockRestore()
-  expect(mangled?.type).toBe(`phonon`)
-  if (mangled?.type === `phonon`) {
-    expect(mangled.frequencies[0]).toBeCloseTo(4000 / cm_per_thz, 9)
-    expect(mangled.frequencies[0]).not.toBeCloseTo(4000, 0)
-  }
 })
 
 // Its only caller inverts the result as 1 - A, so a silent no-op here would render a

@@ -329,7 +329,7 @@ describe(`scales`, () => {
       )
     })
 
-    test(`time-based ticks with % format`, () => {
+    test(`time-based ticks`, () => {
       const start_time = new Date(2023, 0, 1).getTime()
       const end_time = new Date(2023, 2, 15).getTime()
       const domain: Vec2 = [start_time, end_time]
@@ -337,7 +337,7 @@ describe(`scales`, () => {
         .domain([new Date(start_time), new Date(end_time)])
         .range([0, 500])
 
-      const result = generate_ticks(domain, `linear`, 5, scale, { format: `%Y-%m-%d` })
+      const result = generate_ticks(domain, `time`, 5, scale)
       expect(result.length).toBeGreaterThan(0)
       expect(result.every((tick) => typeof tick === `number`)).toBe(true)
       expect(result.some((tick) => tick >= start_time && tick <= end_time)).toBe(true)
@@ -418,9 +418,7 @@ describe(`scales`, () => {
         .domain([new Date(start_time), new Date(end_time)])
         .range([0, 500])
 
-      const result = generate_ticks(domain, `linear`, interval, scale, {
-        format: `%Y-%m-%d`,
-      })
+      const result = generate_ticks(domain, `time`, interval, scale)
       expect(result.length).toBeGreaterThan(0)
       result.forEach((tick) => expect(check(new Date(tick))).toBe(true))
     })
@@ -627,14 +625,16 @@ describe(`scales`, () => {
 
   describe(`type helpers`, () => {
     test.each([
-      [`linear`, `linear`],
-      [`log`, `log`],
-      [`arcsinh`, `arcsinh`],
-      [`time`, `time`],
-      [undefined, `linear`],
-      [{ type: `arcsinh`, threshold: 10 }, `arcsinh`],
-    ])(`get_scale_type_name(%s) = %s`, (input, expected) => {
-      expect(get_scale_type_name(input as ScaleType | undefined)).toBe(expected)
+      [`linear`, `linear`, false],
+      [`log`, `log`, false],
+      [`arcsinh`, `arcsinh`, false],
+      [`time`, `time`, true],
+      [undefined, `linear`, false],
+      [{ type: `arcsinh`, threshold: 10 }, `arcsinh`, false],
+    ])(`get_scale_type_name(%s) = %s`, (input, expected, expected_is_time) => {
+      const scale_type = input as ScaleType | undefined
+      expect(get_scale_type_name(scale_type)).toBe(expected)
+      expect(is_time_scale(scale_type)).toBe(expected_is_time)
     })
 
     test.each([
@@ -648,26 +648,6 @@ describe(`scales`, () => {
     ])(`is_scale_type_name(%s) = %s`, (input, expected) => {
       expect(is_scale_type_name(input)).toBe(expected)
     })
-
-    test.each([
-      // explicit scale_type: 'time' → always true regardless of format
-      { scale_type: `time` as ScaleType, format: undefined, expected: true },
-      { scale_type: `time` as ScaleType, format: `.2f`, expected: true },
-      // format heuristic: starts with '%' → true
-      { scale_type: undefined, format: `%Y-%m`, expected: true },
-      { scale_type: undefined, format: `%b %d`, expected: true },
-      { scale_type: `linear` as ScaleType, format: `%Y`, expected: true },
-      // not time
-      { scale_type: undefined, format: undefined, expected: false },
-      { scale_type: `linear` as ScaleType, format: `.2f`, expected: false },
-      { scale_type: `log` as ScaleType, format: undefined, expected: false },
-      { scale_type: undefined, format: ``, expected: false },
-    ])(
-      `is_time_scale($scale_type, $format) = $expected`,
-      ({ scale_type, format, expected }) => {
-        expect(is_time_scale(scale_type, format)).toBe(expected)
-      },
-    )
 
     test.each([
       [{ type: `arcsinh`, threshold: 42 }, 42],

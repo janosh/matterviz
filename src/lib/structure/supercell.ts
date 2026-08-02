@@ -108,9 +108,6 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   return points
 }
 
-// Re-export from $lib/math for backward compatibility
-export { scale_lattice_matrix } from '$lib/math'
-
 // Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)
 // Returns new supercell structure

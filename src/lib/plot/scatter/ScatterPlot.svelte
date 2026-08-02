@@ -154,6 +154,7 @@
     point_events,
     on_point_click,
     on_point_hover,
+    on_pointer_leave,
     fill_regions = $bindable([]),
     error_bands = [],
     on_fill_click,
@@ -211,6 +212,7 @@
       >
       on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+      on_pointer_leave?: () => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
       error_bands?: ErrorBand[]
       on_fill_click?: (event: FillHandlerEvent) => void
@@ -246,8 +248,8 @@
   })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
-  let is_time_x = $derived(is_time_scale(final_x_axis.scale_type, final_x_axis.format))
-  let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type, final_x2_axis.format))
+  let is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
+  let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
   const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
@@ -1032,7 +1034,7 @@
     if (!width || !height) return { x: [], x2: [], y: [], y2: [] }
 
     // X-axis ticks: choose appropriate scale for tick generation
-    // Time scales (format starts with %) use scaleTime for better tick placement
+    // Explicit time scales use scaleTime for better tick placement
     const x_scale_for_ticks = is_time_x
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
       : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
@@ -1047,7 +1049,6 @@
         final_x_axis.scale_type ?? `linear`,
         final_x_axis.ticks,
         x_scale_for_ticks,
-        { format: final_x_axis.format },
       ),
       x2:
         x2_points.length > 0
@@ -1056,7 +1057,6 @@
               final_x2_axis.scale_type ?? `linear`,
               final_x2_axis.ticks,
               x2_scale_for_ticks,
-              { format: final_x2_axis.format },
             )
           : [],
       y: generate_ticks(
@@ -1222,14 +1222,36 @@
     }
   }
 
-  function on_mouse_move(evt: MouseEvent) {
-    hovered = true
+  let hover_animation_frame: number | undefined
+  let pending_hover: { x_rel: number; y_rel: number; event: MouseEvent } | undefined
 
+  function flush_pending_hover() {
+    const next_hover = pending_hover
+    pending_hover = undefined
+    if (next_hover) {
+      update_tooltip_point(next_hover.x_rel, next_hover.y_rel, next_hover.event)
+    }
+  }
+
+  function queue_mouse_move(evt: MouseEvent) {
+    hovered = true
     const coords = get_relative_coords(evt)
     if (!coords) return
-
-    update_tooltip_point(coords.x, coords.y, evt)
+    pending_hover = { x_rel: coords.x, y_rel: coords.y, event: evt }
+    if (hover_animation_frame !== undefined) return
+    hover_animation_frame = requestAnimationFrame(() => {
+      hover_animation_frame = undefined
+      flush_pending_hover()
+    })
   }
+
+  function end_queued_mouse_move(apply_pending: boolean) {
+    if (hover_animation_frame !== undefined) cancelAnimationFrame(hover_animation_frame)
+    hover_animation_frame = undefined
+    if (apply_pending) flush_pending_hover()
+    else pending_hover = undefined
+  }
+  onDestroy(() => end_queued_mouse_move(false))
 
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
@@ -1490,12 +1512,15 @@
       onmousedown={pan_zoom.on_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) on_mouse_move(evt)
+        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
+        end_queued_mouse_move(false)
         hovered = false
         tooltip_point = null
+        change(null)
         on_point_hover?.(null)
+        on_pointer_leave?.()
       }}
       ondblclick={pan_zoom.reset_view}
       onkeydown={pan_zoom.on_key_down}

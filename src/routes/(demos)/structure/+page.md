@@ -164,6 +164,12 @@ declares the property.
 Like the other property modes, this feeds the atom legend, so clicking a category hides
 those atoms. Handy for isolating the relaxing adlayer of a slab.
 
+## Color Coding by Site Property
+
+Pick **Site Property** under _Atoms → Atom coloring_ to map any per-atom scalar onto the color scale (OVITO's Color Coding). The **Property** dropdown next to it lists the keys actually present on the current structure's sites: extXYZ writes every column its `Properties=` string declares (`charge`, `c_pe`, `velocities`, ...) and LAMMPS dumps write every column past the coordinates (`vx vy vz` as `velocity`, `fx fy fz` as `force`, `q` as `charge`, computes and variables under their dump names). Vec3 properties are colored by their magnitude, so `velocity` gives a speed map. Sites that don't declare the selected key stay gray and are left out of the min/max the color bar shows, and the mode is disabled entirely for structures with no numeric site properties.
+
+`velocity`/`velocities` also count as site-vector keys, so a dump carrying `vx vy vz` gets a velocity arrow layer under _Vectors_ with no extra configuration, next to the usual force and magmom layers.
+
 ## Dihedral (Torsion) Measurement
 
 The measurement menu has a third mode next to Distance and Angle. Click exactly four

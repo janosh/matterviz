@@ -63,7 +63,7 @@
     generate_ticks,
     get_tick_label,
   } from '$lib/plot/core/scales'
-  import { DEFAULT_MARKERS, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { DEFAULT_MARKERS, is_time_scale, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -182,9 +182,6 @@
           | null,
       ) => void
       // Line marker props (matching ScatterPlot)
-      // Note: For line series with markers, BOTH on_bar_* AND on_point_* events fire.
-      // Use on_point_* for marker-specific data (includes `point` with InternalPoint details)
-      // or on_bar_* for backward compatibility with bar-style event handling.
       color_scale?: ColorScaleConfig | D3InterpolateName
       size_scale?: SizeScaleConfig
       point_tween?: TweenOptions<Point2D>
@@ -295,10 +292,10 @@
       category_count: category_list.length,
       x_range: x_axis.range ?? [null, null],
       x_scale_type: x_axis.scale_type ?? `linear`,
-      x_is_time: x_axis.format?.startsWith(`%`) || false,
+      x_is_time: is_time_scale(x_axis.scale_type),
       x2_range: x2_axis.range ?? [null, null],
       x2_scale_type: x2_axis.scale_type ?? `linear`,
-      x2_is_time: x2_axis.format?.startsWith(`%`) || false,
+      x2_is_time: is_time_scale(x2_axis.scale_type),
       y_range: y_axis.range ?? [null, null],
       y_scale_type: y_axis.scale_type ?? `linear`,
       y2_range: y2_axis.range ?? [null, null],
@@ -787,6 +784,11 @@
     change(null)
     on_bar_hover?.(null)
   }
+  const clear_point_hover = () => {
+    hover_info = null
+    change(null)
+    on_point_hover?.(null)
+  }
 
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode))
@@ -1031,8 +1033,8 @@
           x2_scale_type={x2_axis.scale_type}
           y_scale_type={y_axis.scale_type}
           y2_scale_type={y2_axis.scale_type}
-          x_is_time={x_axis.format?.startsWith(`%`) ?? false}
-          x2_is_time={x2_axis.format?.startsWith(`%`) ?? false}
+          x_is_time={is_time_scale(x_axis.scale_type)}
+          x2_is_time={is_time_scale(x2_axis.scale_type)}
           has_x2={show_x2}
           has_y2={show_y2}
           {width}
@@ -1082,6 +1084,22 @@
                   show_line && points.length > 1
                     ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
                     : ``}
+                {@const set_hover = (
+                  pt: LineSeriesPoint | null,
+                  evt: MouseEvent | FocusEvent,
+                ) => {
+                  if (!pt) return clear_point_hover()
+                  hovered = true
+                  const fill = line_point_fill(pt, color)
+                  hover_info = get_bar_data(series_idx, pt.idx, fill)
+                  change(hover_info)
+                  on_point_hover?.({ ...hover_info, event: evt, point: pt })
+                }}
+                {@const do_click = (pt: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
+                  const fill = line_point_fill(pt, color)
+                  const point_data = get_bar_data(series_idx, pt.idx, fill)
+                  on_point_click?.({ ...point_data, event: evt, point: pt })
+                }}
                 {#if polyline_str}
                   <polyline
                     points={polyline_str}
@@ -1093,7 +1111,7 @@
                     stroke-linecap="round"
                   />
                 {/if}
-                {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
+                {#if polyline_str && !show_points && (on_point_hover || on_point_click)}
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <polyline
@@ -1103,59 +1121,26 @@
                     stroke-width={Math.max(10, stroke_width * 3)}
                     stroke-linejoin="round"
                     stroke-linecap="round"
-                    style:cursor={on_bar_click ? `pointer` : undefined}
+                    style:cursor={on_point_click ? `pointer` : undefined}
                     onmousemove={(evt) => {
                       const pt = find_closest_point(evt, points)
-                      if (!pt) return
-                      hovered = true
-                      const fill = line_point_fill(pt, color)
-                      hover_info = get_bar_data(series_idx, pt.idx, fill)
-                      change(hover_info)
-                      on_bar_hover?.({ ...hover_info!, event: evt })
+                      if (pt) set_hover(pt, evt)
                     }}
-                    onmouseleave={clear_hover}
+                    onmouseleave={clear_point_hover}
                     onclick={(evt) => {
                       const pt = find_closest_point(evt, points)
-                      if (!pt) return
-                      const fill = line_point_fill(pt, color)
-                      const bar_data = get_bar_data(series_idx, pt.idx, fill)
-                      on_bar_click?.({ ...bar_data, event: evt })
+                      if (pt) do_click(pt, evt)
                     }}
                   />
                 {/if}
                 {#if show_points}
-                  {@const clickable = on_bar_click || on_point_click}
+                  {@const clickable = Boolean(on_point_click)}
                   {@const get_pt = (evt: Event) => {
                     const attr =
                       evt.target instanceof Element
                         ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(`data-bar-idx`)
                         : null
                     return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
-                  }}
-                  {@const set_hover = (
-                    pt: LineSeriesPoint | null,
-                    evt: MouseEvent | FocusEvent,
-                  ) => {
-                    if (pt) {
-                      hovered = true
-                      const fill = line_point_fill(pt, color)
-                      hover_info = get_bar_data(series_idx, pt.idx, fill)
-                      change(hover_info)
-                    } else {
-                      change(null)
-                      hover_info = null
-                    }
-                    on_bar_hover?.(pt ? { ...hover_info!, event: evt } : null)
-                    on_point_hover?.(pt ? { ...hover_info!, event: evt, point: pt } : null)
-                  }}
-                  {@const do_click = (
-                    pt: LineSeriesPoint,
-                    evt: MouseEvent | KeyboardEvent,
-                  ) => {
-                    const fill = line_point_fill(pt, color)
-                    const bar_data = get_bar_data(series_idx, pt.idx, fill)
-                    on_bar_click?.({ ...bar_data, event: evt })
-                    on_point_click?.({ ...bar_data, event: evt, point: pt })
                   }}
                   {@const leaving = (evt: MouseEvent | FocusEvent) =>
                     (evt.relatedTarget instanceof Element

@@ -207,27 +207,12 @@
         : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  // pixel-space endpoints + style per ref line. Declarative RefLine entries (with a
-  // `type` field) are resolved against the current axis ranges via the shared core
-  // resolver, so e.g. a parity diagonal spans the full plot area and stays correct
-  // under zoom; legacy explicit-endpoint entries are scaled as-is (clip path crops
-  // out-of-range parts). Annotation/legend/interaction RefLine fields are ignored.
+  // Resolve declarative RefLines against current axis ranges. Annotation, legend,
+  // and interaction fields are ignored.
   let resolved_ref_lines = $derived.by(() => {
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
     return (overlays_config.ref_lines ?? []).flatMap((line) => {
-      if (!(`type` in line)) {
-        return {
-          x1: x_scale_fn(line.x1),
-          y1: y_scale_fn(line.y1),
-          x2: x_scale_fn(line.x2),
-          y2: y_scale_fn(line.y2),
-          color: line.color ?? `currentColor`,
-          width: line.width ?? 1.5,
-          dash: line.dash ?? `5 4`,
-          opacity: 1,
-        }
-      }
       if (line.visible === false) return []
       const endpoints = resolve_line_endpoints(
         line,

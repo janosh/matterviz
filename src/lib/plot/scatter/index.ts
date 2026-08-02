@@ -10,7 +10,6 @@ export type {
   BinnedPointLabelsConfig,
   BinnedPointPayload,
   BinnedPointTooltipPayload,
-  BinnedRefLine,
   BinnedSizeScaleConfig,
 } from './binned-scatter-types'
 export { default as ElementScatter } from './ElementScatter.svelte'

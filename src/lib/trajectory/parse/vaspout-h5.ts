@@ -48,6 +48,7 @@ const ENERGY_LABELS = `intermediate/ion_dynamics/energies_tags`
 const OSZICAR_ROWS = `intermediate/ion_dynamics/oszicar`
 const OSZICAR_LABELS = `intermediate/ion_dynamics/oszicar_label`
 const ELECTRONIC_STEP_ENERGIES = `intermediate/electronic_steps/energies`
+const INCAR_POTIM = `input/incar/POTIM`
 
 // vaspout.h5 root groups per the VASP 6.x schema. torch-sim files use flat
 // dataset names (positions/atomic_numbers/...) and never these groups.
@@ -347,8 +348,14 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File): TrajectoryType {
   // electronic-only paths above, which are the sole consumers.
   const dos = read_vaspout_dos(h5_file)
 
+  // POTIM is simulation time per ionic step in fs.
+  const potim = to_scalar_number(read_dataset(h5_file, INCAR_POTIM))
+
   return {
     frames,
+    ...(potim !== null && potim > 0 && !frames_are_scf_steps
+      ? { time_step: potim, time_unit: `fs` }
+      : {}),
     metadata: {
       source_format: `vaspout_h5`,
       frame_count: frames.length,

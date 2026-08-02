@@ -7,6 +7,7 @@ import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
+export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'
 export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
@@ -16,23 +17,43 @@ export {
   full_data_extractor,
   structural_data_extractor,
 } from './extract'
-export { create_poscar_frame_range_zip, serialize_extxyz_frame_range } from './file-export'
-export type { TrajectoryFrameResolver } from './file-export'
 export {
+  collect_frame_property_rows,
+  create_poscar_frame_range_zip,
+  frame_rows_to_csv,
+  frame_rows_to_json,
+  serialize_extxyz_frame_range,
+} from './file-export'
+export type {
+  TrajectoryFrameResolver,
+  TrajectoryPropertyRow,
+  TrajectoryPropertyTable,
+} from './file-export'
+export {
+  available_x_quantities,
+  build_x_map,
+  FRAME_X_MAP,
   generate_axis_labels,
   generate_axis_scale_types,
   generate_plot_series,
   generate_streaming_plot_series,
+  get_frame_step_samples,
+  get_frame_time_step,
   should_hide_plot,
+  X_QUANTITY_LABELS,
 } from './plotting'
-export type { PlotSeriesOptions } from './plotting'
+export type {
+  FrameStepSamples,
+  PlotSeriesOptions,
+  TrajectoryXMap,
+  TrajectoryXQuantity,
+} from './plotting'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
-export type { AtomTypeMapping } from './types'
 
-// Debounce for on-demand frame loads while scrubbing: skips fetches for steps
-// the user slides past. Exported so tests stay in sync with the real delay.
-export const FRAME_LOAD_DEBOUNCE_MS = 75
+// Tabs of TrajectoryDataInspectorPane: per-frame scalars vs per-atom rows
+export type TrajectoryInspectorTab = `frames` | `atoms`
+export type { AtomTypeMapping } from './types'
 
 // Splitting side by side halves the width but keeps the full height, so the
 // panes come out twice as tall relative to their width as the container is.
@@ -74,6 +95,8 @@ export interface ParseProgress {
 
 export interface TrajectoryFrame {
   structure: AnyStructure
+  // MD/ionic step recorded in the file. A LAMMPS dump written every 500 steps counts
+  // 0, 500, 1000, … so this is NOT the frame's position in the trajectory.
   step: number
   metadata?: Record<string, unknown>
 }
@@ -94,6 +117,13 @@ export interface TrajectoryMetadata {
 export interface TrajectoryType {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>
+  // Simulation time per MD step (NOT per frame), so a frame's time is step * time_step.
+  // Only set when the source records it (e.g. VASP POTIM); without it there is no time
+  // axis and consumers must fall back to step or frame numbering rather than inventing one.
+  time_step?: number
+  // Unit `time_step` is expressed in, e.g. `fs` or `ps`. Required alongside time_step:
+  // a bare number would put an unlabelled axis on the screen.
+  time_unit?: string
   // Large file streaming properties
   total_frames?: number
   indexed_frames?: FrameIndex[]
@@ -144,6 +174,11 @@ export interface TrajectoryPositionStream {
   frame_stride: number
   // MD step number of each collected frame, in collection order
   steps: number[]
+  // Opt-in per-atom channels, laid out parallel to `positions` and keyed by site property
+  // name: scalars[key][frame * n_atoms + atom] and
+  // vectors[key][(frame * n_atoms + atom) * 3 + axis]. Undefined when none were requested.
+  scalars?: Record<string, Float64Array>
+  vectors?: Record<string, Float64Array>
 }
 
 export interface PositionStreamOptions {
@@ -152,10 +187,18 @@ export interface PositionStreamOptions {
   // Hard ceiling on the allocated position buffer; the sweep throws (with the stride
   // that would fit) rather than attempting a multi-GB allocation.
   max_bytes?: number
+  // Per-atom site properties to collect alongside positions: scalar_keys for numbers
+  // (`charge`, `c_pe`), vector_keys for vec3s (`velocity`, `force`). Every collected frame
+  // must carry them on every site — a frame that doesn't throws rather than padding NaN.
+  // Both count against `max_bytes`.
+  scalar_keys?: string[]
+  vector_keys?: string[]
 }
 
 export interface FrameLoader {
   get_total_frames: (data: string | ArrayBuffer) => Promise<number>
+  // Release worker ports, file handles, or other external resources owned by the loader.
+  dispose?: () => void
   // Optional single sequential pass over the payload emitting flat positions.
   // Whole-trajectory analyses (e.g. MSD) need this for indexed trajectories, whose
   // in-memory `frames` array holds only the first handful of frames.

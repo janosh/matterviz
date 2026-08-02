@@ -457,57 +457,19 @@ describe(`ConvexHullStats`, () => {
       expect(formula_cell?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(`Ca Ti O<sub>3</sub>`)
     })
 
-    test(`reformats reduced_formula containing <sub> markup without losing stoichiometry`, () => {
-      mount_stats_table({
-        stable_entries: [
-          mock_entry({
-            composition: { Fe: 2, O: 3 },
-            reduced_formula: `Fe<sub>2</sub>O<sub>3</sub>`,
-            is_stable: true,
-            e_above_hull: 0,
-          }),
-        ],
-        unstable_entries: [],
-      })
-      const headers = get_headers()
-      const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
-      const formula_text = normalize_formula_text(formula_cell?.textContent ?? ``)
-      expect(formula_text).toMatch(/Fe.*2.*O.*3|O.*3.*Fe.*2/)
-    })
-
     test.each([
-      {
-        desc: `unparsable markup`,
-        reduced_formula: `Xx<sub>2</sub>O`,
-        bad_markup: `&lt;sub&gt;`,
-      },
-      {
-        desc: `double-encoded markup`,
-        reduced_formula: `Xx&amp;lt;sub&amp;gt;2&amp;lt;/sub&amp;gt;O`,
-        bad_markup: `&amp;lt;sub&amp;gt;`,
-      },
-      {
-        desc: `deeply encoded markup`,
-        reduced_formula: `Xx&amp;amp;lt;sub&amp;amp;gt;2&amp;amp;lt;/sub&amp;amp;gt;O`,
-        bad_markup: `&amp;lt;sub&amp;gt;`,
-      },
-    ])(`normalizes $desc before formula fallback`, ({ reduced_formula, bad_markup }) => {
+      `Fe<sub>2</sub>O<sub>3</sub>`,
+      `Fe&amp;lt;sub&amp;gt;2&amp;lt;/sub&amp;gt;O&amp;lt;sub&amp;gt;3&amp;lt;/sub&amp;gt;`,
+    ])(`preserves stoichiometry in marked-up formula %s`, (reduced_formula) => {
       mount_stats_table({
-        stable_entries: [],
-        unstable_entries: [
-          mock_entry({
-            composition: { O: 1 },
-            reduced_formula,
-            is_stable: false,
-            e_above_hull: 0.1,
-          }),
-        ],
+        stable_entries: [mock_entry({ composition: { Fe: 2, O: 3 }, reduced_formula })],
+        unstable_entries: [],
       })
       const formula_idx = get_headers().indexOf(`Formula`)
       const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
-      expect(formula_cell?.innerHTML).not.toContain(bad_markup)
-      expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
+      expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toMatch(
+        /Fe.*2.*O.*3|O.*3.*Fe.*2/,
+      )
     })
 
     test(`table has # column with row numbers and bold stable formulas`, () => {

@@ -1,6 +1,7 @@
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Vec2 } from '$lib/math'
+import { escape_csv_field } from '$lib/utils'
 import type { Snippet } from 'svelte'
 
 export { COLOR_OVERRIDE_KEY_SEPARATOR, make_color_override_key } from './shared'
@@ -68,8 +69,7 @@ export type NormalizeMode =
   | ((value: number, min: number, max: number) => number)
 export type DomainMode = `auto` | `robust` | `fixed`
 export type LegendPosition = `right` | `bottom`
-// true is accepted as backward-compat alias for 'lower'
-export type SymmetricMode = boolean | `lower` | `upper`
+export type SymmetricMode = false | `lower` | `upper`
 
 // Tooltip snippet type for HeatmapMatrix
 export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
@@ -107,12 +107,6 @@ export function matrix_to_rows(
     }
     return row
   })
-}
-
-function escape_csv_field(value: number | string | null | undefined): string {
-  const field = String(value ?? ``)
-  if (!/[",\n\r]/.test(field)) return field
-  return `"${field.replaceAll(`"`, `""`)}"`
 }
 
 export function rows_to_csv(rows: Record<string, number | string | null>[]): string {

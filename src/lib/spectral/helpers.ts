@@ -698,14 +698,20 @@ export function normalize_band_structure(
   return normalized as unknown as types.BaseBandStructure
 }
 
-// Validate and normalize a DOS object.
-// Supports both matterviz and pymatgen formats.
-// Also auto-detects and converts cm⁻¹ to THz for legacy data (disable with auto_convert_units: false).
-export function normalize_dos(
-  dos: unknown,
-  options: { auto_convert_units?: boolean } = {},
-): types.DosData | null {
-  const { auto_convert_units = true } = options
+const parse_frequency_unit = (unit: unknown): types.FrequencyUnit | null => {
+  if (typeof unit !== `string`) return null
+  const normalized = unit.trim().toLowerCase()
+  if (normalized === `thz`) return `THz`
+  if (normalized === `ev`) return `eV`
+  if (normalized === `mev`) return `meV`
+  if (normalized === `ha` || normalized === `hartree`) return `Ha`
+  if ([`cm-1`, `cm^-1`, `cm⁻¹`].includes(normalized)) return `cm-1`
+  return null
+}
+
+// Validate and normalize a DOS object. Phonon frequencies are normalized to THz so
+// Dos.svelte can safely treat its default axis unit as THz.
+export function normalize_dos(dos: unknown): types.DosData | null {
   if (!is_plain_object(dos)) return null
 
   // Check for pymatgen format (has @class or @module)
@@ -728,23 +734,16 @@ export function normalize_dos(
   // Phonon DOS: has frequencies
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
-
-    // Auto-detect if frequencies are in cm⁻¹ instead of THz (unless disabled)
-    // Typical phonon frequencies are < 50 THz for most materials
-    // If max frequency > 100, it's almost certainly in cm⁻¹
-    const max_freq = Math.max(...(frequencies as number[]))
-    let final_frequencies = frequencies as number[]
-
-    if (auto_convert_units && max_freq > 100) {
-      // Likely in cm⁻¹, convert to THz
-      final_frequencies = (frequencies as number[]).map((frequency) => frequency * CM_TO_THZ)
-      console.warn(
-        `Phonon DOS frequencies appear to be in cm⁻¹ (max: ${max_freq.toFixed(1)}). ` +
-          `Converting to THz (max: ${(max_freq * CM_TO_THZ).toFixed(1)} THz).`,
-      )
-    }
-
-    return { type: `phonon`, frequencies: final_frequencies, densities }
+    const declared_unit = dos.frequency_unit ?? dos.unit
+    const source_unit = declared_unit == null ? `THz` : parse_frequency_unit(declared_unit)
+    if (!source_unit) return null
+    const numeric_frequencies = frequencies as number[]
+    const source_unit_per_thz = convert_frequencies([1], source_unit)[0]
+    const normalized_frequencies =
+      source_unit === `THz`
+        ? numeric_frequencies
+        : numeric_frequencies.map((frequency) => frequency / source_unit_per_thz)
+    return { type: `phonon`, frequencies: normalized_frequencies, densities }
   }
 
   // Electronic DOS: has energies

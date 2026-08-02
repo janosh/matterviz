@@ -68,6 +68,7 @@
   import { mirror_scene_props } from '$lib/scene/props.svelte'
   import type { StructureHandlerData } from './index'
   import type { DisplacementSummary } from './measure'
+  import type { TrajectoryLinesStats } from './trajectory-lines'
   import { MAX_SELECTED_SITES } from './measure'
   import {
     ensure_lattice_params,
@@ -140,8 +141,12 @@
     structure = $bindable(),
     reference_structure = undefined,
     displacement_rmsd = $bindable(undefined),
+    trajectory_lines_result = $bindable(null),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
+    show_trajectory_lines = $bindable(
+      scene_props_in?.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
+    ),
     lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
@@ -240,8 +245,11 @@
     // unrelaxed cell) to `structure`. Same atom count and ordering required.
     reference_structure?: AnyStructure
     displacement_rmsd?: number // (output) RMSD in Angstrom vs reference_structure
+    // (output) vertex/segment counts of the trajectory-trail layer, for cost readouts
+    trajectory_lines_result?: TrajectoryLinesStats | null
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
+    show_trajectory_lines?: boolean
     // Controls visibility configuration.
     // - 'always': controls always visible
     // - 'hover': controls visible on component hover (default)
@@ -373,6 +381,9 @@
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
       mirror_scene_props(scene_props, scene_props_in)
+      if (scene_props_in.show_trajectory_lines !== undefined) {
+        show_trajectory_lines = scene_props_in.show_trajectory_lines
+      }
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
       Object.assign(lattice_props, lattice_props_in)
@@ -1003,8 +1014,8 @@
         : undefined,
   )
   // $effect instead of `$derived(hovered || focused)`: the $derived reading the $bindable
-  // `hovered` prop went stale after the first hover/leave cycle, so the gizmo + mode toggle only
-  // appeared on the first mouseenter until reload.
+  // `hovered` prop went stale after the first hover/leave cycle, so the gizmo only appeared
+  // on the first mouseenter until reload.
   let viewer_active = $state(false)
   $effect(() => {
     viewer_active = hovered || focused
@@ -1243,7 +1254,7 @@
     structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
     reference_structure,
-    scene_props,
+    scene_props: { ...scene_props, show_trajectory_lines },
     gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
@@ -2114,6 +2125,7 @@
         <StructureControls
           bind:controls_open
           bind:scene_props
+          bind:show_trajectory_lines
           bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling
@@ -2135,6 +2147,7 @@
           {sym_data}
           {polyhedra_rendered_elements}
           {displacement_summary}
+          {trajectory_lines_result}
           on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
           {reset_text}
           bind:fly_to_request
@@ -2212,6 +2225,7 @@
         bind:add_element
         bind:dragging_atoms
         bind:polyhedra_rendered_elements
+        bind:trajectory_lines_result
       />
     {/snippet}
 

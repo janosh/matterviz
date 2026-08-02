@@ -72,7 +72,7 @@
     show_x_labels = true,
     show_y_labels = true,
     stagger_axis_labels = `auto`,
-    symmetric: symmetric_prop = false,
+    symmetric = false,
     symmetric_label_position = `diagonal`,
     label_style = ``,
     x_order,
@@ -193,9 +193,6 @@
     y_label_cell?: Snippet<[{ item: AxisItem; idx: number }]>
     children?: Snippet
   } = $props()
-
-  // Normalize symmetric prop: true→'lower', otherwise pass through
-  const symmetric = $derived(symmetric_prop === true ? `lower` : symmetric_prop)
 
   // Check if a cell should be skipped in symmetric mode
   function is_hidden_cell(x_idx: number, y_idx: number): boolean {

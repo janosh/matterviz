@@ -17,7 +17,6 @@ function sync_package_config() {
       // Skip settings that don't apply to editor context
       if (schema.context && ![`editor`, `all`].includes(schema.context)) return
 
-      // This is a SettingSchema - cast to any to access dynamic properties
       const config: Record<string, unknown> = {
         type:
           typeof schema.value === `boolean`
@@ -34,6 +33,7 @@ function sync_package_config() {
       // Add constraints from schema
       if (schema.minimum !== undefined) config.minimum = schema.minimum
       if (schema.maximum !== undefined) config.maximum = schema.maximum
+      if (schema.multipleOf !== undefined) config.multipleOf = schema.multipleOf
       if (schema.minItems !== undefined) config.minItems = schema.minItems
       if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
       if (schema.enum) config.enum = Object.keys(schema.enum)

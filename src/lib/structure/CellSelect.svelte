@@ -210,7 +210,20 @@
     font-size: inherit;
     align-self: center;
     --cell-select-accent: var(--accent-color, light-dark(#2563eb, #60a5fa));
-    --cell-select-surface: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    --cell-select-surface: var(
+      --struct-cell-select-bg,
+      var(--menu-bg, light-dark(#fff, #2f3137))
+    );
+    --cell-select-color: var(
+      --struct-cell-select-color,
+      var(--menu-color, light-dark(#1a1a1a, #eee))
+    );
+    /* Mix ink into the opaque resting surface so hover never becomes a translucent
+       wash over the 3D canvas (e.g. host --btn-bg-hover / --menu-option-hover-bg). */
+    --cell-select-hover-surface: var(
+      --struct-cell-select-hover-bg,
+      color-mix(in srgb, var(--cell-select-color) 12%, var(--cell-select-surface))
+    );
     --cell-select-border: var(
       --border-color,
       light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.25))
@@ -221,18 +234,18 @@
     padding: var(--struct-legend-padding, 0 4pt);
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
-    color: inherit;
-    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
-    border: 1px solid var(--border-color);
+    color: var(--cell-select-color);
+    /* background-color (not shorthand) so a host `button:hover { background: … }`
+       can't wipe the opaque fill via the shorthand reset. */
+    background-color: var(--cell-select-surface);
+    border: 1px solid var(--cell-select-border);
     border-radius: var(--border-radius, 3pt);
-    transition: background 0.15s ease;
+    transition: background-color 0.15s ease;
   }
   @media (hover: hover) {
-    .toggle-btn:hover {
-      background: var(
-        --btn-bg-hover,
-        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
-      );
+    .toggle-btn:hover,
+    .toggle-btn:focus-visible {
+      background-color: var(--cell-select-hover-surface);
     }
   }
   .dropdown {
@@ -242,7 +255,7 @@
     margin-top: 2px;
     /* Pair ink with the light-dark surface so a dark host's --text-color can't bleach the menu. */
     background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
-    color: var(--struct-cell-select-color, var(--menu-color));
+    color: var(--cell-select-color);
     padding: 4px;
     border-radius: var(--struct-cell-select-border-radius, 4px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);

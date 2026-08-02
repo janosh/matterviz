@@ -40,9 +40,9 @@
   let request_id = 0
   $effect(() => {
     const [input, options] = [positions, msd_options]
-    if (!input) return
     const this_request = ++request_id
-    loading = true
+    loading = Boolean(input)
+    if (!input) return
     error_msg = undefined
     compute_msd_async(input, options)
       .then((computed) => {

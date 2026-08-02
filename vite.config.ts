@@ -25,8 +25,6 @@ const split_query = (path: string): [clean: string, query: string] => {
 const resolve_from_importer = (clean: string, importer?: string) =>
   importer ? resolve(dirname(strip_query(importer)), clean) : clean
 
-let is_build = false
-
 // starry-night's `both.css` switches to its dark palette via
 // `@media (prefers-color-scheme: dark)`, i.e. it follows the OS instead of the
 // app's theme toggle. Re-target that one block to the app's `data-theme`
@@ -47,34 +45,37 @@ const starry_night_theme_plugin: Plugin = {
 
 // Handle .json.gz files by decompressing them on-the-fly during SSR/build.
 // Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset).
-const json_gz_plugin: Plugin = {
-  name: `vite-plugin-json-gz`,
-  enforce: `pre`,
-  configResolved(resolved_config) {
-    is_build = resolved_config.command === `build`
-  },
-  resolveId(source, importer) {
-    const [clean, query] = split_query(source)
-    if (query.includes(`raw`) || query.includes(`url`)) return null
-    if (!clean.endsWith(`.json.gz`)) return null
-    return resolve_from_importer(clean, importer)
-  },
-  load(id) {
-    const [clean_id, query] = split_query(id)
-    if (query.includes(`raw`) || query.includes(`url`)) return null
-    if (!clean_id.endsWith(`.json.gz`)) return null
-    try {
-      const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
-      JSON.parse(json_str) // validate before passing to bundler
-      // Rolldown (production) needs moduleType:'json' for import.meta.glob
-      // with import:'default' to properly unwrap the default export.
-      // Dev/test server doesn't support moduleType, needs JS module format.
-      if (is_build) return { code: json_str, moduleType: `json` }
-      return `export default ${json_str}`
-    } catch (error) {
-      return this.error(`Failed to decompress ${id}: ${error}`)
-    }
-  },
+const json_gz_plugin = (): Plugin => {
+  let is_build = false
+  return {
+    name: `vite-plugin-json-gz`,
+    enforce: `pre`,
+    configResolved(resolved_config) {
+      is_build = resolved_config.command === `build`
+    },
+    resolveId(source, importer) {
+      const [clean, query] = split_query(source)
+      if (query.includes(`raw`) || query.includes(`url`)) return null
+      if (!clean.endsWith(`.json.gz`)) return null
+      return resolve_from_importer(clean, importer)
+    },
+    load(id) {
+      const [clean_id, query] = split_query(id)
+      if (query.includes(`raw`) || query.includes(`url`)) return null
+      if (!clean_id.endsWith(`.json.gz`)) return null
+      try {
+        const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
+        JSON.parse(json_str) // validate before passing to bundler
+        // Rolldown (production) needs moduleType:'json' for import.meta.glob
+        // with import:'default' to properly unwrap the default export.
+        // Dev/test server doesn't support moduleType, needs JS module format.
+        if (is_build) return { code: json_str, moduleType: `json` }
+        return `export default ${json_str}`
+      } catch (error) {
+        return this.error(`Failed to decompress ${id}: ${error}`)
+      }
+    },
+  }
 }
 
 // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
@@ -113,7 +114,7 @@ const raw_text_plugin: Plugin = {
 // array's element type deep-compares them and exceeds TS's instantiation depth (TS2321).
 // Typing as `unknown[]` skips that comparison; vite ignores the falsy (null) entry.
 const plugins = [
-  json_gz_plugin as unknown,
+  json_gz_plugin() as unknown,
   raw_text_plugin as unknown,
   starry_night_theme_plugin as unknown,
   sveltekit() as unknown,
@@ -126,6 +127,7 @@ const config = make_config()
 export default defineConfig({
   ...config, // shared lint/fmt/build
   plugins,
+  worker: { plugins: () => [json_gz_plugin() as unknown as PluginOption] },
   fmt: {
     ...config.fmt,
     printWidth: 95,

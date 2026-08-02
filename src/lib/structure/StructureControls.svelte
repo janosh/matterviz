@@ -25,9 +25,15 @@
     StructureScene,
     VECTOR_PALETTE,
   } from '$lib/structure'
+  import type { ElementSymbol } from '$lib/element'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { structure_has_selective_dynamics } from '$lib/structure/atom-properties'
+  import {
+    get_colorable_property_keys,
+    structure_has_selective_dynamics,
+    sync_atom_color_mode,
+  } from '$lib/structure/atom-properties'
   import type { DisplacementSummary } from '$lib/structure/measure'
+  import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import { get_majority_element } from '$lib/structure/bonding'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
@@ -73,6 +79,8 @@
     multi_view_unavailable_reason = undefined,
     polyhedra_rendered_elements = [],
     displacement_summary = null,
+    trajectory_lines_result = null,
+    show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
     on_reset_camera,
     reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
@@ -105,6 +113,9 @@
     polyhedra_rendered_elements?: string[] // elements currently anchoring polyhedra
     // Displacement-vs-reference readout, bound out of the scene; null hides the whole section
     displacement_summary?: DisplacementSummary | null
+    // Trajectory-trail vertex counts, bound out of the scene, shown as a cost readout
+    trajectory_lines_result?: TrajectoryLinesStats | null
+    show_trajectory_lines?: boolean
     on_reset_camera?: () => void // undefined while camera at home (hides button)
     reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
@@ -127,6 +138,10 @@
       }
       extra_reset?.()
     },
+  })
+
+  $effect(() => {
+    scene_props.show_trajectory_lines = show_trajectory_lines
   })
 
   const controls_id = $props.id()
@@ -156,21 +171,16 @@
     if (atom_color_config.scale && atom_color_config.scale !== color_scale_selected[0])
       color_scale_selected = [atom_color_config.scale]
   })
-  // Auto-set scale_type based on mode
-  $effect(() => {
-    if (
-      atom_color_config.mode === `wyckoff` ||
-      atom_color_config.mode === `selective_dynamics`
-    ) {
-      atom_color_config.scale_type = `categorical`
-    } else if (atom_color_config.mode === `coordination`) {
-      atom_color_config.scale_type = `continuous`
-    }
-  })
-
   // Selective-dynamics coloring needs at least one site declaring the property (POSCAR
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
   let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
+
+  // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
+  // structures whose parser produced no extra columns, in which case the mode is disabled.
+  let colorable_property_keys = $derived(get_colorable_property_keys(structure))
+  // Keep scale_type and the colored-by key in step with the mode, also when the structure
+  // changes under a mode that was already selected (a stale key resets to the first one).
+  $effect(() => sync_atom_color_mode(atom_color_config, colorable_property_keys))
 
   // Zone-axis camera: [uvw] is a direct-lattice direction, (hkl) a reciprocal one, so both
   // need a lattice — molecules have no crystallographic directions to look down.
@@ -243,6 +253,22 @@
       scene_props.polyhedra_excluded_elements = excluded.filter((el) => el !== element)
       scene_props.polyhedra_included_elements = [...new Set([...included, element])]
     }
+  }
+
+  // Species in the collected trajectory stream, for the trail filter. A Li-ion conductor
+  // wants Li trails and not the framework, so narrowing this is usually the first move.
+  let trail_elements = $derived(
+    [...new Set(scene_props.trajectory_position_stream?.elements)].toSorted(),
+  )
+  // A null filter means "every species", which is also the state the checkboxes start in
+  const is_trail_element_on = (element: ElementSymbol): boolean =>
+    scene_props.trajectory_line_elements?.includes(element) ?? true
+
+  function toggle_trail_element(element: ElementSymbol) {
+    const current = scene_props.trajectory_line_elements ?? trail_elements
+    scene_props.trajectory_line_elements = is_trail_element_on(element)
+      ? current.filter((elem) => elem !== element)
+      : [...current, element]
   }
 
   const hex_color_pattern = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i
@@ -728,6 +754,7 @@
       atom_color_config.mode = DEFAULTS.structure.atom_color_mode
       atom_color_config.scale = DEFAULTS.structure.atom_color_scale
       atom_color_config.scale_type = DEFAULTS.structure.atom_color_scale_type
+      delete atom_color_config.property_key
       color_scale_selected = [DEFAULTS.structure.atom_color_scale]
     }}
   >
@@ -781,11 +808,28 @@
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
           {@const disabled =
             (value === `wyckoff` && !sym_data) ||
-            (value === `selective_dynamics` && !has_selective_dynamics)}
-          <option {value} {disabled}>{label}</option>
+            (value === `selective_dynamics` && !has_selective_dynamics) ||
+            (value === `property` && colorable_property_keys.length === 0)}
+          <option
+            {value}
+            {disabled}
+            title={value === `property` && disabled
+              ? `No per-atom properties on this structure — load a file that carries extra columns (extXYZ Properties=..., LAMMPS dump)`
+              : undefined}>{label}</option
+          >
         {/each}
       </select>
     </label>
+    {#if atom_color_config.mode === `property` && colorable_property_keys.length > 0}
+      <label {@attach tooltip({ content: `Per-atom property to map onto the color scale` })}>
+        Property
+        <select bind:value={atom_color_config.property_key}>
+          {#each colorable_property_keys as key (key)}
+            <option value={key}>{key}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     {#if atom_color_config.mode !== `element`}
       <label
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
@@ -925,7 +969,7 @@
       {#if displacement_summary.error !== null}
         <span class="control-error">{displacement_summary.error}</span>
       {:else}
-        <div class="displacement-readout">
+        <div class="pane-row">
           <span>RMSD <strong>{format_num(displacement_summary.rmsd, `.4~f`)} Å</strong></span>
           <span>
             Max <strong>{format_num(displacement_summary.max_displacement, `.4~f`)} Å</strong>
@@ -960,6 +1004,115 @@
             bind:value={scene_props.displacement_arrow_color}
           />
         </label>
+      {/if}
+    </SettingsSection>
+  {/if}
+
+  <!-- Only the trajectory viewer can collect a whole-run position stream, so this section is
+    absent for plain structures rather than showing dead controls -->
+  {#if scene_props.trajectory_position_stream !== undefined}
+    <SettingsSection
+      title="Trajectory Trails"
+      {...scene_section(
+        [
+          `show_trajectory_lines`,
+          `trajectory_line_trail_frames`,
+          `trajectory_line_frame_stride`,
+          `trajectory_line_color_mode`,
+          `trajectory_line_wrap_mode`,
+        ],
+        () => {
+          show_trajectory_lines = DEFAULTS.structure.show_trajectory_lines
+          scene_props.trajectory_line_elements = null
+        },
+      )}
+    >
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.show_trajectory_lines.description,
+        })}
+        style="gap: 6pt"
+      >
+        <input type="checkbox" bind:checked={show_trajectory_lines} />
+        Show trajectory trails
+      </label>
+      {#if show_trajectory_lines && scene_props.trajectory_position_stream}
+        {#if trail_elements.length > 1}
+          <div class="pane-row" style="flex-wrap: wrap; gap: 8pt">
+            Species
+            {#each trail_elements as element (element)}
+              <label style="gap: 4pt">
+                <input
+                  type="checkbox"
+                  checked={is_trail_element_on(element)}
+                  onchange={() => toggle_trail_element(element)}
+                />
+                {element}
+              </label>
+            {/each}
+          </div>
+        {/if}
+        <NumberRangeInput
+          min={0}
+          max={Math.max(1, scene_props.trajectory_position_stream.n_frames)}
+          step={1}
+          bind:value={scene_props.trajectory_line_trail_frames}
+          title={SETTINGS_CONFIG.structure.trajectory_line_trail_frames.description}
+          >Trail length <small>(0 = full run)</small></NumberRangeInput
+        >
+        <NumberRangeInput
+          min={1}
+          max={100}
+          step={1}
+          bind:value={scene_props.trajectory_line_frame_stride}
+          title={SETTINGS_CONFIG.structure.trajectory_line_frame_stride.description}
+          >Frame stride</NumberRangeInput
+        >
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.trajectory_line_color_mode.description,
+          })}
+        >
+          Color by
+          <select bind:value={scene_props.trajectory_line_color_mode}>
+            {#each Object.entries(SETTINGS_CONFIG.structure.trajectory_line_color_mode.enum ?? {}) as [value, label] (value)}
+              <option {value}>{label}</option>
+            {/each}
+          </select>
+        </label>
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.trajectory_line_wrap_mode.description,
+          })}
+        >
+          Boundaries
+          <select bind:value={scene_props.trajectory_line_wrap_mode}>
+            {#each Object.entries(SETTINGS_CONFIG.structure.trajectory_line_wrap_mode.enum ?? {}) as [value, label] (value)}
+              <option {value}>{label}</option>
+            {/each}
+          </select>
+        </label>
+        {#if trajectory_lines_result}
+          {@const { point_count, segment_count, atom_count, max_segment_length } =
+            trajectory_lines_result}
+          <div class="pane-row">
+            <span>{format_num(atom_count, `.3~s`)} atoms</span>
+            <span>{format_num(point_count, `.3~s`)} vertices</span>
+            <span>{format_num(segment_count, `.3~s`)} segments</span>
+            <span
+              {@attach tooltip({
+                content:
+                  `Longest drawn segment. With unwrapping on this stays at the scale of a ` +
+                  `real per-step displacement; a value near a cell diagonal means the path ` +
+                  `is jumping across the box.`,
+              })}
+            >
+              max step <strong>{format_num(max_segment_length, `.3~f`)} Å</strong>
+            </span>
+          </div>
+        {/if}
+      {:else if show_trajectory_lines}
+        <Spinner text="Collecting trajectory positions..." style="margin: 4pt 0" />
       {/if}
     </SettingsSection>
   {/if}
@@ -1428,12 +1581,6 @@
       flex: 1;
       min-width: 0;
     }
-  }
-  .displacement-readout {
-    display: flex;
-    gap: 12pt;
-    width: 100%;
-    justify-content: space-between;
   }
   .control-error {
     color: var(--error-color, #e74c3c);

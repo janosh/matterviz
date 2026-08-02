@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import { get_d3_interpolator } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -11,6 +11,7 @@
   import * as math from '$lib/math'
   import {
     bind_renderer,
+    brighten_hex,
     build_orbit_props,
     create_fly_to,
     DEFAULT_FLY_TO_DURATION_MS,
@@ -95,6 +96,13 @@
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
   import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
+  import TrajectoryLines from './TrajectoryLines.svelte'
+  import type {
+    TrajectoryLineColorMode,
+    TrajectoryLinesStats,
+    TrajectoryLineWrapMode,
+  } from './trajectory-lines'
+  import type { TrajectoryPositionStream } from '$lib/trajectory'
 
   type EditableAtomHitTarget = {
     site_idx: number
@@ -141,6 +149,7 @@
     zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
     show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
+    defer_expensive_geometry = false,
     show_site_labels = DEFAULTS.structure.show_site_labels,
     show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
@@ -244,6 +253,17 @@
     displacement_arrow_scale = DEFAULTS.structure.displacement_arrow_scale,
     displacement_arrow_color = DEFAULTS.structure.displacement_arrow_color,
     displacement_summary = $bindable(null),
+    trajectory_position_stream = null,
+    show_trajectory_lines = DEFAULTS.structure.show_trajectory_lines,
+    trajectory_line_end_frame = undefined,
+    trajectory_line_trail_frames = DEFAULTS.structure.trajectory_line_trail_frames,
+    trajectory_line_frame_stride = DEFAULTS.structure.trajectory_line_frame_stride,
+    trajectory_line_elements = null,
+    trajectory_line_color_mode = DEFAULTS.structure
+      .trajectory_line_color_mode as TrajectoryLineColorMode,
+    trajectory_line_wrap_mode = DEFAULTS.structure
+      .trajectory_line_wrap_mode as TrajectoryLineWrapMode,
+    trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -256,6 +276,7 @@
     camera_direction?: Vec3
     show_atoms?: boolean
     show_bonds?: ShowBonds
+    defer_expensive_geometry?: boolean
     show_site_labels?: boolean
     show_site_indices?: boolean
     vector_configs?: Record<string, VectorLayerConfig>
@@ -347,9 +368,8 @@
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
     dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
-    // Loaded volumetric datasets for isosurface rendering (single volume accepted
-    // for backwards compatibility)
-    volumetric_data?: VolumetricData | VolumetricData[]
+    // Loaded volumetric datasets for isosurface rendering
+    volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
     active_volume_idx?: number // Volume implicit single-isovalue settings apply to
     volume_scaling?: Vec3 // Supercell tiling applied to isosurface geometry
@@ -368,6 +388,19 @@
     displacement_arrow_scale?: number
     displacement_arrow_color?: string
     displacement_summary?: measure.DisplacementSummary | null // (output) readout vs reference
+    // Per-atom trajectory trails. Inert unless a caller supplies a whole-trajectory position
+    // stream (accumulate_positions / FrameLoader.stream_positions) — a single structure has
+    // no path to draw, so nothing changes for plain Structure users.
+    trajectory_position_stream?: TrajectoryPositionStream | null
+    show_trajectory_lines?: boolean
+    // Newest collected frame the trails reach; drive from the playhead for a comet tail
+    trajectory_line_end_frame?: number
+    trajectory_line_trail_frames?: number // 0 = whole run
+    trajectory_line_frame_stride?: number
+    trajectory_line_elements?: readonly ElementSymbol[] | null // null = all species
+    trajectory_line_color_mode?: TrajectoryLineColorMode
+    trajectory_line_wrap_mode?: TrajectoryLineWrapMode
+    trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
   const pulse = create_pulse_animation(
@@ -375,9 +408,6 @@
     { step: 0.015, frequency: 5 },
   )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
-
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
@@ -599,6 +629,9 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
+  // Outer translucent shell around hover/selection. Atom meshes use the same
+  // SphereGeometry(0.5) × radius scale, so this is a pure radial margin (1.2 was a bulky 20%).
+  const HIGHLIGHT_SHELL_SCALE = 1.08
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
@@ -1172,7 +1205,7 @@
   // the polyhedra $derived below, gated on the same effective value — won't run.
   let last_bond_pairs: BondPair[] = []
   let bond_pairs: BondPair[] = $derived.by(() => {
-    if (dragging_atoms) return last_bond_pairs
+    if (dragging_atoms || defer_expensive_geometry) return last_bond_pairs
     const want_bonds = applies_to_structure(show_bonds)
     const want_polyhedra = applies_to_structure(effective_show_polyhedra)
     last_bond_pairs =
@@ -1390,15 +1423,19 @@
   // (edited, filtered) bond graph as rendered bonds so the two never disagree.
   // Colors are resolved in polyhedra_buffers below, so color-scheme/mode changes
   // never recompute the hull geometry.
+  let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
+    if (defer_expensive_geometry) return last_polyhedra
     if (
       !structure?.sites ||
       dragging_atoms ||
       !applies_to_structure(effective_show_polyhedra) ||
       filtered_bond_pairs.length === 0
-    )
-      return []
-    return compute_polyhedra(structure, filtered_bond_pairs, {
+    ) {
+      last_polyhedra = []
+      return last_polyhedra
+    }
+    last_polyhedra = compute_polyhedra(structure, filtered_bond_pairs, {
       min_neighbors: polyhedra_min_neighbors,
       // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
       // be dragged past each other. Widening the cap instead of honoring an empty window
@@ -1407,6 +1444,7 @@
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,
     })
+    return last_polyhedra
   })
 
   // Color of a site: property color (coordination/Wyckoff modes) or element color
@@ -1550,6 +1588,14 @@
     }
     return map
   })
+  // First visible species/property color per site — same source the atom mesh uses.
+  let color_by_site_idx = $derived.by(() => {
+    const map = new Map<number, string>()
+    for (const atom of atom_data) {
+      if (!map.has(atom.site_idx) && atom.color) map.set(atom.site_idx, atom.color)
+    }
+    return map
+  })
 
   // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
   // to a point at the sphere's poles, leaving the ball hard to hover from some
@@ -1627,7 +1673,14 @@
           : get_site_radius(site, site_idx)
       targets.push({ kind, site, site_idx, color, radius })
     }
-    add(`hover`, hovered_site, hovered_idx, dark_mode ? `white` : `#333`)
+    const hover_color =
+      hovered_idx !== null
+        ? brighten_hex(
+            color_by_site_idx.get(hovered_idx) ??
+              (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element]),
+          )
+        : brighten_hex(undefined)
+    add(`hover`, hovered_site, hovered_idx, hover_color)
     for (const idx of selected_sites ?? []) {
       add(`selected`, structure?.sites?.[idx] ?? null, idx, selection_highlight_color)
     }
@@ -1815,6 +1868,16 @@
     return () => (displacement_summary = null)
   })
 
+  // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
+  let trajectory_line_anchors = $derived.by(() => {
+    const sites = structure?.sites
+    const n_atoms = trajectory_position_stream?.n_atoms
+    if (!sites || n_atoms !== sites.length) return null
+    const anchors = new Float64Array(n_atoms * 3)
+    for (const [site_idx, site] of sites.entries()) anchors.set(site.xyz, site_idx * 3)
+    return anchors
+  })
+
   let displacement_arrows = $derived.by(() => {
     const vectors = displacement_field?.vectors
     if (!vectors || !show_displacement_arrows || !structure?.sites) return []
@@ -1983,6 +2046,7 @@
           <InstancedAtoms
             atoms={instanced_atom_sets.base}
             {sphere_segments}
+            positions_only={defer_expensive_geometry}
             {...atom_instance_events(instanced_atom_sets.base, false)}
           />
         {/if}
@@ -1992,6 +2056,7 @@
             atoms={instanced_atom_sets.image}
             {sphere_segments}
             ghost={edit_mode_image}
+            positions_only={defer_expensive_geometry}
             {...atom_instance_events(instanced_atom_sets.image, edit_mode_image)}
           />
         {/if}
@@ -2095,6 +2160,23 @@
       {#each instanced_bond_groups as group (`bonds`)}
         <Bond {group} />
       {/each}
+
+      <!-- Per-atom trajectory trails: every atom's whole path in one indexed
+        LineSegments (1 draw call no matter how many atoms or frames) -->
+      {#if interactive && show_trajectory_lines && trajectory_position_stream}
+        <TrajectoryLines
+          position_stream={trajectory_position_stream}
+          end_frame={trajectory_line_end_frame}
+          trail_frames={trajectory_line_trail_frames}
+          frame_stride={trajectory_line_frame_stride}
+          elements={trajectory_line_elements}
+          color_mode={trajectory_line_color_mode}
+          element_colors={colors.element}
+          wrap_mode={trajectory_line_wrap_mode}
+          anchor_positions={trajectory_line_anchors}
+          bind:build_result={trajectory_lines_result}
+        />
+      {/if}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
         LineSegments (1-2 draw calls regardless of supercell size) -->
@@ -2230,16 +2312,16 @@
         {@const is_pulsing = entry.kind !== `hover`}
         <T.Mesh
           position={entry.site.xyz}
-          scale={1.2 * entry.radius}
+          scale={HIGHLIGHT_SHELL_SCALE * entry.radius}
           oncreate={disable_raycast}
         >
           <T.SphereGeometry args={[0.5, 22, 22]} />
           <T.MeshStandardMaterial
             color={entry.color}
             transparent
-            opacity={is_pulsing ? pulse_opacity : 0.28}
+            opacity={is_pulsing ? pulse_opacity : 0.42}
             emissive={entry.color}
-            emissiveIntensity={is_pulsing ? 0.7 : 0.2}
+            emissiveIntensity={is_pulsing ? 0.7 : 0.55}
             depthTest={false}
             depthWrite={false}
           />
@@ -2403,11 +2485,8 @@
 
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
-        {@const volume_list = Array.isArray(volumetric_data)
-          ? volumetric_data
-          : [volumetric_data]}
         <Isosurface
-          volumes={volume_list}
+          volumes={volumetric_data}
           settings={isosurface_settings}
           {active_volume_idx}
           tiling={volume_scaling}
@@ -2427,7 +2506,7 @@
               {@const mid_pos = midpoint(pos_i, pos_j)}
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
               {@const pbc = lattice
-                ? measure.distance_pbc(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
+                ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
                 : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
               <extras.HTML center position={mid_pos}>

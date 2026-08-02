@@ -6,7 +6,11 @@ import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { coerce_elem_symbol } from '$lib/element/helpers'
-import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
+import {
+  count_elements,
+  create_trajectory_frame,
+  derive_time_step,
+} from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
 import { traj_warn } from './diagnostics'
 
@@ -22,6 +26,24 @@ export const POS_COL_VARIANTS = [
   { keys: [`xs`, `ys`, `zs`], scaled: true, unwrapped: false },
   { keys: [`x`, `y`, `z`], scaled: false, unwrapped: false },
 ] as const
+
+// Dump column triples that become a single vec3 site property. `force` and `velocity` are
+// the names the structure viewer's site-vector layers look for (see VECTOR_KEY_PREFIXES).
+const LAMMPS_VECTOR_GROUPS = [
+  { key: `velocity`, col_names: [`vx`, `vy`, `vz`] },
+  { key: `force`, col_names: [`fx`, `fy`, `fz`] },
+] as const
+
+// Coordinates become positions and `element` becomes the species.
+const NON_SCALAR_COLS: ReadonlySet<string> = new Set([
+  ...POS_COL_VARIANTS.flatMap(({ keys }) => keys),
+  `element`,
+])
+
+// Dump columns renamed on the way to site properties. Everything else keeps its dump name
+// (`c_pe`, `v_myvar`, `id`, `type`, `mass`, ...) so compute/variable outputs stay traceable
+// to the dump command that produced them.
+const LAMMPS_COLUMN_ALIASES: Record<string, string> = { q: `charge` }
 
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
@@ -64,8 +86,9 @@ export function parse_lammps_trajectory(
 ): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
+  // Absolute simulation time per kept frame, or null when omitted
+  const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
-  let id_fallback_warning_emitted = false
   let idx = 0
 
   const read_line = (): string => lines[idx++]?.trim() ?? ``
@@ -82,7 +105,15 @@ export function parse_lammps_trajectory(
   }
 
   while (idx < lines.length) {
-    if (!skip_to(`ITEM: TIMESTEP`)) break
+    // `ITEM: TIMESTEP` also starts with `ITEM: TIME`, so this finds either frame prefix.
+    if (!skip_to(`ITEM: TIME`)) break
+    let time: number | null = null
+    if (peek_line() === `ITEM: TIME`) {
+      idx++
+      const parsed = Number(read_line())
+      time = Number.isFinite(parsed) ? parsed : null
+      if (!skip_to(`ITEM: TIMESTEP`)) break
+    }
     idx++
     const timestep = Math.trunc(Number(read_line())) || 0
 
@@ -115,24 +146,35 @@ export function parse_lammps_trajectory(
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
     if (!pos_variant) continue
     const pos_cols = pos_variant.keys.map((key) => col[key])
-    // Atom identity: prefer numeric type, else explicit element symbol.
-    // Fallback to ID-based mapping only for legacy dumps; this can be inaccurate
-    // for large or non-element-like IDs, so prefer TYPE column when available.
+    // Atom identity comes from numeric type or an explicit element symbol.
     const type_col = col.type
     const element_col = col.element
-    const id_col = col.id
-    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
+    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1)
 
-    if (type_col === undefined && element_col === undefined && id_col === undefined) {
-      traj_warn(
-        `Skipping LAMMPS frame at timestep ${timestep}: missing type/element/id column`,
-      )
+    if (type_col === undefined && element_col === undefined) {
+      traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`)
       continue
     }
+
+    // Columns not consumed as coordinates or as the element symbol become site properties:
+    // vx/vy/vz and fx/fy/fz grouped into vec3s, the rest as scalars under their dump name
+    // (aliased where LAMMPS' name is cryptic). `type` and `id` are kept as scalars too —
+    // they carry per-atom information (species grouping, atom identity) that is not
+    // recoverable from the element symbol alone.
+    const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
+      col_names.every((name) => name in col),
+    ).map(({ key, col_names }) => ({ key, indices: col_names.map((name) => col[name]) }))
+    const scalar_props = cols.flatMap((name, col_idx) =>
+      NON_SCALAR_COLS.has(name) ||
+      vector_props.some(({ indices }) => indices.includes(col_idx))
+        ? []
+        : [{ key: LAMMPS_COLUMN_ALIASES[name] ?? name, col_idx }],
+    )
 
     // Parse atom data
     const positions: number[][] = []
     const elements: ElementSymbol[] = []
+    const site_properties: Record<string, unknown>[] = []
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
@@ -159,32 +201,48 @@ export function parse_lammps_trajectory(
           )
           continue
         }
-      } else if (id_col !== undefined) {
-        const atom_id = Math.trunc(Number(parts[id_col])) || 1
-        atom_types_found.add(atom_id)
-        if (!id_fallback_warning_emitted) {
-          traj_warn(
-            `LAMMPS parser fallback: mapping atom IDs to elements from ID column; this may be incorrect for large or sequential IDs. Prefer a TYPE column when available.`,
-          )
-          id_fallback_warning_emitted = true
-        }
-        element_symbol = get_element(atom_id)
       }
 
       if (!element_symbol) continue
       positions.push(xyz)
       elements.push(element_symbol)
+
+      // Non-numeric entries are dropped rather than stored as NaN, which would poison
+      // min/max color ranges and vector magnitudes downstream
+      const props: Record<string, unknown> = {}
+      for (const { key, indices } of vector_props) {
+        const vec = indices.map((col_idx) => Number(parts[col_idx]))
+        if (vec.every(Number.isFinite)) props[key] = vec
+      }
+      for (const { key, col_idx } of scalar_props) {
+        const raw = parts[col_idx]
+        if (raw === undefined || raw === ``) continue
+        const value = Number(raw)
+        if (Number.isFinite(value)) props[key] = value
+      }
+      site_properties.push(props)
     }
 
-    if (positions.length === elements.length && positions.length === num_atoms) {
+    if (positions.length === num_atoms) {
       const { volume } = math.calc_lattice_params(lattice_matrix)
-      frames.push(
-        create_trajectory_frame(positions, elements, lattice_matrix, pbc, timestep, {
+      const frame = create_trajectory_frame(
+        positions,
+        elements,
+        lattice_matrix,
+        pbc,
+        timestep,
+        {
           volume,
           timestep,
           coords_unwrapped: pos_variant.unwrapped,
-        }),
+          ...(time === null ? {} : { time }),
+        },
       )
+      for (const [site_idx, site] of frame.structure.sites.entries()) {
+        site.properties = { ...site.properties, ...site_properties[site_idx] }
+      }
+      frames.push(frame)
+      frame_times.push(time)
     }
   }
 
@@ -197,8 +255,15 @@ export function parse_lammps_trajectory(
     first_frame.structure.sites.map((site) => site.species[0].element),
   )
 
+  // LAMMPS dumps omit the units setting, so do not guess time_unit.
+  const time_step = derive_time_step(
+    frame_times,
+    frames.map((frame) => frame.step),
+  )
+
   return {
     frames,
+    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
       filename,
       source_format: `lammps_trajectory`,
