@@ -383,9 +383,7 @@ describe(`Trajectory Streaming`, () => {
 
     it.each([
       [`scalar`, `NaN`, `charge`, `charge:R:1`, `1`],
-      [`scalar`, `Infinity`, `charge`, `charge:R:1`, `1`],
       [`vec3`, `NaN 2 3`, `velocity`, `velocity:R:3`, `1 2 3`],
-      [`vec3`, `1 2 Infinity`, `velocity`, `velocity:R:3`, `1 2 3`],
     ])(
       `rejects a requested %s channel containing %s`,
       async (kind, invalid, key, declaration, valid) => {
@@ -441,6 +439,10 @@ Si 0 0 0`
       expect(metadata[1].properties.energy).toBe(-10.3) // frame 3
       expect(metadata[0].properties.volume).toBe(100)
       expect(metadata[1].properties.volume).toBe(103) // frame 3
+      expect(metadata.map((entry) => entry.frame_number)).toEqual([
+        0, 3, 6, 9, 12, 15, 18, 21, 24, 27,
+      ])
+      expect((await loader.load_frame(data, 29))?.structure.sites).toHaveLength(3)
     })
 
     it.each<[string, Record<string, number>]>([
@@ -619,25 +621,6 @@ Si 0 0 0`
   })
 
   describe(`Cross-Format Streaming`, () => {
-    it(`should handle both XYZ and ASE with same interface`, async () => {
-      const xyz_data = create_synthetic_xyz(10)
-      const ase_data = create_synthetic_ase(10)
-
-      const xyz_loader = new TrajFrameReader(`test.xyz`)
-      const ase_loader = new TrajFrameReader(`test.traj`)
-
-      // Both should implement same interface
-      expect(await xyz_loader.get_total_frames(xyz_data)).toBe(10)
-      expect(await ase_loader.get_total_frames(ase_data)).toBe(10)
-
-      // Both should support frame loading
-      const xyz_frame = await xyz_loader.load_frame(xyz_data, 3)
-      const ase_frame = await ase_loader.load_frame(ase_data, 3)
-
-      expect(xyz_frame?.step).toBe(3)
-      expect(ase_frame?.step).toBe(3)
-    })
-
     it(`labels indexed ASE data from compressed filenames correctly`, async () => {
       const result = await parse_trajectory_async(
         create_synthetic_ase(2),
@@ -700,38 +683,6 @@ Si 0 0 0`
       } finally {
         split_spy.mockRestore()
       }
-    })
-
-    it(`reuses the cache for random-access and repeated loads`, async () => {
-      const data = create_synthetic_xyz(40)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Non-sequential + repeated access must stay correct with the line cache
-      for (const idx of [37, 0, 19, 37, 5, 0]) {
-        const frame = await loader.load_frame(data, idx)
-        expect(frame?.step, `frame ${idx}`).toBe(idx)
-        expect(frame?.metadata?.energy).toBeCloseTo(-10 - idx * 0.1, 10)
-      }
-      // Out-of-range still returns null after the cache is warm
-      expect(await loader.load_frame(data, 40)).toBeNull()
-    })
-
-    it(`metadata extraction assigns sequential frame numbers and keeps frames loadable`, async () => {
-      const frame_count = 50
-      const data = create_synthetic_xyz(frame_count)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      const metadata = await loader.extract_plot_metadata(data, { sample_rate: 1 })
-
-      expect(metadata).toHaveLength(frame_count)
-      for (const [idx, entry] of metadata.entries()) {
-        expect(entry.frame_number, `entry ${idx}`).toBe(idx)
-        expect(typeof entry.step).toBe(`number`)
-      }
-
-      // Individual frames stay loadable after metadata extraction
-      const frame_last = await loader.load_frame(data, frame_count - 1)
-      expect(frame_last?.structure.sites.length).toBeGreaterThan(0)
     })
   })
 

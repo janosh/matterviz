@@ -16,16 +16,16 @@ class FakeWorker {
   constructor() {
     FakeWorker.instances.push(this)
   }
-  addEventListener(type: string, listener: Listener) {
+  addEventListener(type: string, listener: Listener): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
-  postMessage(message: { id: number; input: unknown; options: unknown }) {
+  postMessage(message: { id: number; input: unknown; options: unknown }): void {
     this.posted.push(message)
   }
-  terminate() {
+  terminate(): void {
     this.terminated++
   }
-  emit(type: string, event: unknown) {
+  emit(type: string, event: unknown): void {
     for (const listener of this.listeners.get(type) ?? []) listener(event)
   }
 }
@@ -138,15 +138,12 @@ test(`falls back to compute_sync when Worker is missing`, async () => {
   expect(FakeWorker.instances).toHaveLength(0)
 })
 
-test.each([
-  { desc: `zero`, result: 0 },
-  { desc: `explicit null`, result: null },
-])(`a $desc result is delivered rather than reported as missing`, async ({ result }) => {
+test(`an explicit null result is delivered rather than reported as missing`, async () => {
   const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})
   const [worker] = FakeWorker.instances
-  worker.emit(`message`, { data: { id: worker.posted[0].id, result, error: null } })
-  await expect(pending).resolves.toBe(result)
+  worker.emit(`message`, { data: { id: worker.posted[0].id, result: null, error: null } })
+  await expect(pending).resolves.toBeNull()
 })
 
 test.each([

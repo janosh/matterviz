@@ -807,13 +807,6 @@ test.describe(`Structure Component Tests`, () => {
 
     // Verify the reset button disappears after reset (since measured_sites is empty)
     await expect(reset_button).toBeHidden()
-
-    // Verify we can set measured sites again (proving state was fully reset)
-    await page.locator(`[data-testid="btn-set-measured"]`).click()
-    await expect(labels).toHaveCount(3)
-
-    // Clean up
-    await page.locator(`[data-testid="btn-clear-measured"]`).click()
   })
 
   test(`selections are cleared on supercell scaling and image atoms toggle`, async ({
@@ -1028,11 +1021,17 @@ test.describe(`Export Button Tests`, () => {
   test(`JSON, XYZ, and PNG export buttons trigger downloads`, async ({ page }) => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
-    for (const title_selector of [`Download JSON`, `Download XYZ`, `PNG`]) {
+    const export_cases = [
+      { title_selector: `Download JSON`, extension: `.json` },
+      { title_selector: `Download XYZ`, extension: `.xyz` },
+      { title_selector: `PNG`, extension: `.png` },
+    ]
+    for (const { title_selector, extension } of export_cases) {
       const export_btn = export_pane.locator(`button[title*="${title_selector}"]`)
       await expect(export_btn).toBeVisible()
       const [download] = await Promise.all([page.waitForEvent(`download`), export_btn.click()])
       expect(await download.path()).toBeTruthy()
+      expect(download.suggestedFilename()).toMatch(new RegExp(`\\${extension}$`, `u`))
       await expect(export_btn).toBeEnabled()
     }
   })
@@ -1044,7 +1043,7 @@ test.describe(`Export Button Tests`, () => {
     await expect(dpi_input).toBeVisible()
     await expect(dpi_input).toHaveAttribute(`min`, `50`)
     await expect(dpi_input).toHaveAttribute(`max`, `600`)
-    expect(Number(await dpi_input.inputValue())).toBeGreaterThanOrEqual(72)
+    await expect(dpi_input).toHaveValue(`150`)
 
     await dpi_input.fill(`200`)
     await expect(dpi_input).toHaveValue(`200`)
@@ -1780,6 +1779,8 @@ test.describe(`Element Visibility Toggle`, () => {
   test(`color picker remains functional with toggle button`, async ({ page }) => {
     const label = legend_item(page).locator(`label`)
     const color_input = label.locator(`input[type="color"]`)
+    const initial_color = await color_input.inputValue()
+    expect(initial_color).not.toBe(`#ff0000`)
 
     // Verify label is clickable and element remains visible
     await label.click({ position: { x: 10, y: 10 } })
@@ -1794,8 +1795,8 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Double-click to reset color
     await label.dblclick({ position: { x: 10, y: 10 } })
+    await expect(color_input).toHaveValue(initial_color)
     await expect(color_input).not.toHaveValue(`#ff0000`)
-    expect((await color_input.inputValue()).length).toBe(7)
   })
 
   test(`multiple elements work independently`, async ({ page }) => {

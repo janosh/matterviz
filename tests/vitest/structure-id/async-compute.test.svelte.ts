@@ -28,27 +28,10 @@ describe(`compute_structure_id_async`, () => {
     expect(await after_settle).toEqual(first_result)
   })
 
-  test.each([
-    [`no sites`, { sites: [] }, {}, /structure has no sites/],
-    [
-      `both analyses skipped`,
-      undefined,
-      { skip_cna: true, skip_csp: true },
-      /nothing to compute/,
-    ],
-    [
-      `fixed mode without a cutoff`,
-      undefined,
-      { cna_mode: `fixed` as const },
-      /needs a positive cutoff/,
-    ],
-  ])(
-    `rejects rather than throwing synchronously for %s`,
-    async (_label, structure, options, pattern) => {
-      const input = structure ?? make_fcc([2, 2, 2])
-      // No try/catch around the call itself: a synchronous throw would fail the test here
-      const promise = compute_structure_id_async(input, options)
-      await expect(promise).rejects.toThrow(pattern)
-    },
-  )
+  test(`rejects rather than throwing synchronously`, async () => {
+    // No try/catch around the call itself: a synchronous throw would fail the test here.
+    // calc_structure_id's individual validation paths are covered in structure-id.test.ts.
+    const promise = compute_structure_id_async({ sites: [] })
+    await expect(promise).rejects.toThrow(/structure has no sites/)
+  })
 })

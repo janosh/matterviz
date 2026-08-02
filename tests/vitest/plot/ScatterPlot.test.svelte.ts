@@ -188,7 +188,16 @@ describe(`ScatterPlot`, () => {
       y_axis,
     })
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(6)
-    expect(plot.querySelectorAll(`.x-axis .tick text`).length).toBeGreaterThan(1)
+    const x_tick_labels = [...plot.querySelectorAll(`.x-axis .tick text`)].map(
+      (tick_label) => tick_label.textContent,
+    )
+    if (x_axis.format.startsWith(`%`)) {
+      // A monthly interval should not silently degrade to generic linear ticks.
+      expect(x_tick_labels.length).toBeGreaterThanOrEqual(10)
+      expect(
+        new Set(x_tick_labels.map((label) => label?.slice(0, 3))).size,
+      ).toBeGreaterThanOrEqual(10)
+    } else expect(x_tick_labels).toEqual([`0`, `10`, `20`, `30`, `40`, `50`])
     expect(plot.querySelectorAll(`.y-axis .tick text`).length).toBeGreaterThan(1)
   })
 
@@ -291,15 +300,20 @@ describe(`ScatterPlot`, () => {
       },
       x_axis: { scale_type: `time` as const, format: `%b %d, %Y` },
       y_axis: { format: `.2r` },
+      expected: [`Jun 15, 2023`, `120`],
     },
-    { tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 } },
-  ])(`tooltip format`, async (props) => {
+    {
+      tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
+      expected: [`2`, `20`],
+    },
+  ])(`tooltip format`, async ({ expected, ...props }) => {
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [1, 2, 3], y: [10, 20, 30] }],
       hovered: true,
       ...props,
     })
-    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/x|Jun|20|123/)
+    const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
+    for (const text of expected) expect(tooltip_text).toContain(text)
   })
 
   test(`children prop`, () => {

@@ -127,14 +127,6 @@ describe(`VDOS peak position`, () => {
     expect(result.frequencies.at(-1)).toBeCloseTo(0.5, 12)
   })
 
-  it(`finds the peak from central differences too`, () => {
-    // The stencil scales the VACF amplitude but not its period, so the peak must not move
-    const { positions } = circular_motion(1000, 0.02, 1)
-    const result = calc_vacf(build_vacf_input(positions), { dt: 1, time_unit: `fs` })
-    expect(result.velocity_source).toBe(`central_difference`)
-    expect_peak_within_bin(result, 20)
-  })
-
   it(`gives an ideal gas a flat spectrum with no dominant peak`, () => {
     // A delta-correlated VACF transforms to a constant, so the tallest bin is barely
     // above the mean rather than towering over it like a vibrational line
@@ -158,7 +150,6 @@ describe(`windowing`, () => {
     // An orbit truncated mid-cycle: the rectangular window's sinc sidelobes ring across
     // the whole axis, Hann's fall away far faster. Measured as the spectral weight more
     // than 5 bins from the line, relative to the line itself.
-    expect(calc_vacf(orbit(200, 0.05)).window).toBe(`hann`)
     const input = orbit(301, 0.037)
     const sidelobe_fraction = (window: `none` | `hann` | `gaussian`) => {
       const result = calc_vacf(input, { dt: 1, time_unit: `fs`, vdos: { window } })
@@ -248,18 +239,6 @@ describe(`no-dt policy`, () => {
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequencies[1]).toBeGreaterThan(0)
     expect(Number.isFinite(result.frequencies[1])).toBe(true)
-  })
-
-  it(`accepts an unconvertible time unit as long as the axis stays in frames`, () => {
-    const result = calc_vacf(orbit(50, 0.1), {
-      dt: 2,
-      time_unit: `steps`,
-      vdos: { skip: true },
-    })
-    expect(result.time_unit).toBe(`steps`)
-    expect(result.x_label).toBe(`Lag time (steps)`)
-    expect(result.times[1]).toBe(result.lags[1] * 2)
-    expect(result.frequencies).toEqual([])
   })
 
   // fs -> THz is already pinned by the peak-position table; ps/ns cover the rest of

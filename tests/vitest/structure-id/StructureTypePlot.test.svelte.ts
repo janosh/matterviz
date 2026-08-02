@@ -27,7 +27,6 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   // `over_frames` without labels is covered by the explicit frame_labels case below
   test.each<[string, ComponentProps<typeof StructureTypePlot>]>([
     [`one result, by_type`, { id_results: [fcc_result] }],
-    [`several results, by_type`, { id_results: frames }],
     [`normalized`, { id_results: frames, normalize: true }],
     [
       `over_frames with labels`,

@@ -152,6 +152,7 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       ? instanced_mesh.material[0]
       : instanced_mesh.material
     const material_color = has_color_property(source_material) ? source_material.color : null
+    const material_tint = material_color ?? new Color(1, 1, 1)
 
     // Create individual meshes for each instance
     const instance_color = new Color()
@@ -179,7 +180,7 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       const resolved_color = has_bond_gradient
         ? extract_bond_color_for_instance(instanced_mesh.geometry, idx)
         : instanceColor
-          ? instance_color.fromBufferAttribute(instanceColor, idx)
+          ? instance_color.fromBufferAttribute(instanceColor, idx).multiply(material_tint)
           : material_color
       if (resolved_color) new_material.color.copy(resolved_color)
 
@@ -204,6 +205,7 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // rewrite, so they can't trip GLTF accessor-count validation.
   cloned_scene.traverse((object) => {
     if (object instanceof Mesh && has_bond_gradient_attributes(object.geometry)) {
+      object.geometry = object.geometry.clone()
       clean_geometry_for_export(object.geometry)
     }
   })

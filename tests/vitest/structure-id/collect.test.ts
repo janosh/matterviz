@@ -154,14 +154,11 @@ describe(`indexed trajectories`, () => {
     await expect(collect_structure_id_sweep(make_trajectory())).rejects.toThrow(pattern)
   })
 
-  it.each([
-    [`empty text`, ``],
-    [`empty buffer`, new ArrayBuffer(0)],
-  ])(`refuses %s raw data`, async (_label, raw_data) => {
+  it(`refuses empty buffer raw data`, async () => {
     const trajectory = indexed(50, counting_loader())
-    await expect(collect_structure_id_sweep(trajectory, { raw_data })).rejects.toThrow(
-      /needs the raw file bytes to load the sampled frames/,
-    )
+    await expect(
+      collect_structure_id_sweep(trajectory, { raw_data: new ArrayBuffer(0) }),
+    ).rejects.toThrow(/needs the raw file bytes to load the sampled frames/)
   })
 
   it(`loads exactly the sampled source frames through the loader`, async () => {

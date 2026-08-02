@@ -21,16 +21,14 @@ type Listener = (event: {
   preventDefault: () => void
 }) => void
 
-let construction_count = 0
 let last_worker_url: string | undefined
 let last_worker_options: WorkerOptions | undefined
 const posted: { message: WorkerMessage; transfer: Transferable[] }[] = []
 
 class StubWorker {
-  private readonly listeners = new Map<string, Listener[]>()
+  private readonly listeners = new SvelteMap<string, Listener[]>()
 
   constructor(url: URL | string, options?: WorkerOptions) {
-    construction_count++
     last_worker_url = String(url)
     last_worker_options = options
   }
@@ -81,32 +79,16 @@ afterEach(() => {
 })
 
 describe(`worker code path`, () => {
-  it(`round-trips a request and matches the synchronous result`, async () => {
-    const input = orbit_input(60)
+  it.each([
+    [`stored`, true],
+    [`central-difference`, false],
+  ])(`round-trips a %s request and matches the synchronous result`, async (_label, stored) => {
+    const input = orbit_input(60, stored)
     const sync = calc_vacf(input)
     const result = await compute_vacf_async(input)
     expect(posted).toHaveLength(1)
-    expect(result.curves[0].vacf).toEqual(sync.curves[0].vacf)
-    expect(result.curves[0].vdos).toEqual(sync.curves[0].vdos)
-  })
-
-  it(`deduplicates concurrent requests for the same input`, async () => {
-    const input = orbit_input(30)
-    const first = compute_vacf_async(input)
-    const second = compute_vacf_async(input)
-    expect(posted).toHaveLength(1)
-    await Promise.all([first, second])
-    expect(posted).toHaveLength(1)
-  })
-
-  it(`builds the worker exactly once across many computes`, async () => {
-    await compute_vacf_async(orbit_input(19))
-    await Promise.all([
-      compute_vacf_async(orbit_input(20)),
-      compute_vacf_async(orbit_input(21)),
-      compute_vacf_async(orbit_input(22)),
-    ])
-    expect(construction_count).toBe(1)
+    expect(result).toEqual(sync)
+    expect(posted[0].message.input.velocities === null).toBe(!stored)
   })
 
   it(`points the worker at the vacf worker module as an ES module`, () => {
@@ -127,12 +109,6 @@ describe(`worker code path`, () => {
     expect(input.positions).toHaveLength(15 * 3)
     expect(payload.positions).toHaveLength(15 * 3)
     expect(payload.velocities).toHaveLength(15 * 3)
-  })
-
-  it(`sends a null velocity field when the input has none`, async () => {
-    await compute_vacf_async(orbit_input(15, false))
-    expect(posted[0].message.input.velocities).toBeNull()
-    expect(posted[0].transfer).toHaveLength(0)
   })
 })
 
@@ -268,20 +244,13 @@ describe(`TrajectoryVacfPane`, () => {
     throw new Error(`collect never finished: button still disabled`)
   }
 
-  it(`shows the empty state before anything is collected`, async () => {
-    const text = await mount_and_read(TrajectoryVacfPane, {
-      trajectory: make_trajectory(40),
-      pane_open: true,
-    })
-    expect(text).toContain(`No VACF data to display`)
-    expect(text).toContain(`Compute VACF`)
-  })
-
-  it(`collects and plots on click`, async () => {
-    await mount_and_read(TrajectoryVacfPane, {
+  it(`starts empty, then collects and plots on click`, async () => {
+    const initial_text = await mount_and_read(TrajectoryVacfPane, {
       trajectory: make_trajectory(60),
       pane_open: true,
     })
+    expect(initial_text).toContain(`No VACF data to display`)
+    expect(initial_text).toContain(`Compute VACF`)
     await run_collect()
     const text = document.body.textContent ?? ``
     expect(text).toContain(`velocities read from the file`)

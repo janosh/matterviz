@@ -125,20 +125,6 @@ describe(`Trajectory`, () => {
     },
   )
 
-  test(`syncs unsupported x_quantity to the effective frame fallback`, async () => {
-    // Identity step numbering → only `frame` is available; requesting `time` must
-    // write the fallback back to the bindable prop rather than leave a stale value.
-    const props = $state({
-      trajectory: energy_traj(-1, -2, -3),
-      x_quantity: `time`,
-      display_mode: `scatter` as const,
-      show_controls: false as const,
-    })
-    mount_traj(props)
-    await flush_render()
-    expect(props.x_quantity).toBe(`frame`)
-  })
-
   test(`defers x_quantity sync until trajectory samples exist`, async () => {
     // Writing `frame` while still empty would lock the bindable and skip auto-pick
     // once a time-capable trajectory arrives.
@@ -195,37 +181,41 @@ describe(`Trajectory`, () => {
   // Every finished analysis pane is reachable from the one menu, and each menu entry drives
   // its own bindable open flag rather than all of them sharing one. MSD also must not
   // reappear as a top-level toggle outside the menu.
-  test.each([
-    {
-      label: `Mean squared displacement`,
-      open_prop: `msd_pane_open`,
-      no_toplevel: `.trajectory-msd-toggle:not(.analysis-toggle-anchor)`,
-    },
-    { label: `Velocity autocorrelation & VDOS`, open_prop: `vacf_pane_open` },
-    { label: `Structure identification`, open_prop: `structure_id_pane_open` },
-    { label: `Data inspector`, open_prop: `data_inspector_open` },
-  ])(`analysis menu opens $label`, async ({ label, open_prop, no_toplevel }) => {
+  test(`analysis menu opens each pane`, async () => {
+    const options = [
+      [`Mean squared displacement`, `msd_pane_open`],
+      [`Velocity autocorrelation & VDOS`, `vacf_pane_open`],
+      [`Structure identification`, `structure_id_pane_open`],
+      [`Data inspector`, `data_inspector_open`],
+    ] as const
     const props: Record<string, unknown> = $state({
       trajectory: energy_traj(-1.5, -2.5),
       show_controls: `always` as const,
-      [open_prop]: false,
+      msd_pane_open: false,
+      vacf_pane_open: false,
+      structure_id_pane_open: false,
+      data_inspector_open: false,
     })
     const target = mount_traj(props)
     await flush_render()
 
-    if (no_toplevel) expect(target.querySelector(no_toplevel)).toBeNull()
+    expect(
+      target.querySelector(`.trajectory-msd-toggle:not(.analysis-toggle-anchor)`),
+    ).toBeNull()
 
-    target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
-    await tick()
-    const option = [
-      ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
-    ].find((button) => button.textContent?.includes(label))
-    if (!option) throw new Error(`${label} analysis option not found`)
-    option.click()
-    await tick()
+    for (const [label, open_prop] of options) {
+      target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
+      await tick()
+      const option = [
+        ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
+      ].find((button) => button.textContent?.includes(label))
+      if (!option) throw new Error(`${label} analysis option not found`)
+      option.click()
+      await tick()
 
-    expect(props[open_prop]).toBe(true)
-    expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+      expect(props[open_prop]).toBe(true)
+      expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+    }
   })
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).

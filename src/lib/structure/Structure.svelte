@@ -1013,13 +1013,6 @@
   $effect(() => {
     viewer_active = hovered || focused
   })
-  // Mode chevron: hover only (same as CellSelect's .structure:hover gate). Focus alone left
-  // it stuck visible after a click/tab into the viewer; the open menu still keeps it via
-  // AtomLegend's `mode_menu_open` clause.
-  let legend_mode_toggle_visible = $state(false)
-  $effect(() => {
-    legend_mode_toggle_visible = hovered
-  })
   // Keep the gizmo mounted whenever enabled — toggling via `{#if gizmo}` on hover remounts
   // OrbitControls/Gizmo and resets camera rotation. Reveal it with the gizmo's own `visible`
   // flag instead, since it draws inside the canvas where CSS can't reach it.
@@ -2168,7 +2161,7 @@
         bind:site_radius_overrides
         selected_sites={atom_legend_selected_sites}
         structure={internal_displayed_structure}
-        show_mode_toggle={legend_mode_toggle_visible}
+        show_mode_toggle={viewer_active}
         {sym_data}
       >
         {#snippet children({ mode_menu_open })}

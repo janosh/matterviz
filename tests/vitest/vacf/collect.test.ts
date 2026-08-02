@@ -231,16 +231,13 @@ describe(`indexed trajectories`, () => {
 })
 
 describe(`suggest_vacf_frame_stride`, () => {
-  it(`budgets two buffers when the frames carry velocities`, () => {
+  it(`handles missing atom counts and budgets stored velocity buffers`, () => {
+    expect(suggest_vacf_frame_stride({ frames: [] })).toBeNull()
     const with_velocities = make_trajectory(1000, true)
     const without = make_trajectory(1000, false)
     // 1000 frames x 1 atom x 3 x f64 = 24 kB of positions; a 30 kB budget fits one buffer
     // at stride 1 but needs stride 2 once velocities double the footprint
     expect(suggest_vacf_frame_stride(without, 30_000)).toBe(1)
     expect(suggest_vacf_frame_stride(with_velocities, 30_000)).toBe(2)
-  })
-
-  it(`returns null before any frame has been read`, () => {
-    expect(suggest_vacf_frame_stride({ frames: [] })).toBeNull()
   })
 })

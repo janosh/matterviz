@@ -69,7 +69,6 @@ describe(`vaspout.h5 parsing`, () => {
 
     expect(trajectory.frames).toHaveLength(1)
     expect(trajectory.metadata?.element_counts).toEqual({ Ga: 1, Sb: 1 })
-    expect(trajectory.metadata?.electronic).toBeUndefined()
     expect(trajectory.frames[0].metadata?.energy).toBeCloseTo(-8.95303508, 6)
     const structure = trajectory.frames[0].structure
     expect(structure.sites[1].abc.map((coord) => Math.round(coord * 1e6) / 1e6)).toEqual([
@@ -266,16 +265,12 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
 })
 
 describe(`vaspout.h5 routing`, () => {
-  it.each([
-    [`vaspout.h5`, `vaspout_h5`],
-    // Dispatch is content-based (root group layout), not filename-based
-    [`renamed.h5`, `vaspout_h5`],
-  ])(`vaspout-si-relax.h5 as %s routes to %s`, async (filename, expected_format) => {
+  it(`routes a renamed VASP HDF5 file by root-group layout`, async () => {
     const trajectory = await parse_trajectory_data(
       read_vaspout(`vaspout-si-relax.h5`),
-      filename,
+      `renamed.h5`,
     )
-    expect(trajectory.metadata?.source_format).toBe(expected_format)
+    expect(trajectory.metadata?.source_format).toBe(`vaspout_h5`)
   })
 
   it.each([

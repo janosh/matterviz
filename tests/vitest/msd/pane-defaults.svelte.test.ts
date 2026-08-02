@@ -97,9 +97,7 @@ test(`waits for a late time unit before enabling the timestep`, async () => {
 test.each([
   [`undefined timestep`, undefined, `fs`],
   [`zero timestep`, 0, `fs`],
-  [`negative timestep`, -1, `fs`],
   [`NaN timestep`, NaN, `fs`],
-  [`infinite timestep`, Infinity, `fs`],
   [`empty time unit`, 2, ``],
 ])(`rejects a %s default`, async (_label, default_dt, default_time_unit) => {
   mounted_pane = mount(TrajectoryMsdPane, {

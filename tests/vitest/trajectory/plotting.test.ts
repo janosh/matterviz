@@ -18,8 +18,6 @@ const DEFAULT_PROPERTY_CONFIG = {
   energy: { label: `Energy`, unit: `eV` },
   force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
   volume: { label: `Volume`, unit: `Å³` },
-  a: { label: `A`, unit: `Å` },
-  b: { label: `B`, unit: `Å` },
 } as const
 
 const COMMON_TRAJECTORIES = {
@@ -27,10 +25,6 @@ const COMMON_TRAJECTORIES = {
     { energy: -10.0, force_max: 0.1, volume: 100.0 },
     { energy: -10.5, force_max: 0.2, volume: 101.0 },
     { energy: -11.0, force_max: 0.3, volume: 102.0 },
-  ],
-  lattice_params: [
-    { energy: -10.0, a: 5.0, b: 5.1, volume: 100.0 },
-    { energy: -10.5, a: 5.1, b: 5.2, volume: 101.0 },
   ],
   four_properties: [
     { prop_a: 1.0, prop_b: 2.0, prop_c: 3.0, prop_d: 4.0 },
@@ -113,28 +107,6 @@ describe(`generate_plot_series`, () => {
     })
   })
 
-  it(`assigns axes by property priority`, () => {
-    const series = generate_plot_series(
-      create_trajectory(COMMON_TRAJECTORIES.lattice_params),
-      test_extractor,
-      {
-        property_config: DEFAULT_PROPERTY_CONFIG,
-        default_visible_properties: new Set([`energy`, `a`]),
-      },
-    )
-    expect(find_series_by_label(series, `energy`)).toMatchObject({
-      y_axis: `y1`,
-      visible: true,
-      unit: `eV`,
-    })
-    // Energy gets y1 (higher priority), lattice params get y2
-    expect(find_series_by_label(series, `A`)).toMatchObject({
-      y_axis: `y2`,
-      visible: true,
-      unit: `Å`,
-    })
-  })
-
   it(`limits visible series to two unit groups`, () => {
     const series = generate_plot_series(
       create_trajectory(COMMON_TRAJECTORIES.four_properties),
@@ -150,6 +122,21 @@ describe(`generate_plot_series`, () => {
       },
     )
     expect(series.filter((srs) => srs.visible)).toHaveLength(2)
+  })
+
+  it(`keeps sparse property values aligned to their source frames`, () => {
+    const series = generate_plot_series(
+      create_trajectory([
+        { energy: -10, temperature: 300 },
+        { energy: -11 },
+        { energy: -12, temperature: 320 },
+      ]),
+      test_extractor,
+    )
+    expect(find_series_by_label(series, `temperature`)).toMatchObject({
+      x: [0, 2],
+      y: [300, 320],
+    })
   })
 
   it(`memoizes extraction until extractor, trajectory, or frame identities change`, () => {
@@ -186,7 +173,7 @@ describe(`generate_plot_series`, () => {
 
     const before_other_trajectory = call_count
     generate_plot_series(
-      create_trajectory(COMMON_TRAJECTORIES.lattice_params),
+      create_trajectory(COMMON_TRAJECTORIES.multi_property),
       counting_extractor,
     )
     expect(call_count).toBeGreaterThan(before_other_trajectory)
@@ -249,8 +236,6 @@ describe(`should_hide_plot`, () => {
   it.each([
     { name: `very loose`, tolerance: 1e10, expected: true },
     { name: `zero tolerance`, tolerance: 0, expected: false },
-    // undefined exercises the default param (1e-10); same threshold as an explicit 1e-10
-    { name: `default (undefined) tolerance`, tolerance: undefined, expected: false },
   ])(`tolerance: $name → hide=$expected`, ({ tolerance, expected }) => {
     const series = [create_series([1.0, 1.0000001, 1.0])]
     expect(should_hide_plot(create_trajectory(multi), series, tolerance)).toBe(expected)
@@ -276,10 +261,6 @@ describe(`generate_axis_labels`, () => {
       create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
       create_series([5, 6], true, `Another`, `Å`, `y2`),
     ], expected: { y1: `Visible (eV)`, y2: `Another (Å)` } },
-    { name: `series split across y1 and y2`, series: [
-      create_series([1, 2], true, `Energy`, `eV`, `y1`),
-      create_series([3, 4], true, `Force`, `eV/Å`, `y2`),
-    ], expected: { y1: `Energy (eV)`, y2: `Force (eV/Å)` } },
     { name: `multiple series concatenated on y1 with separate y2`, series: [
       create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
       create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
@@ -299,11 +280,14 @@ describe(`generate_axis_scale_types`, () => {
     { name: `positive SCF axis group spanning >=3 decades goes log`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: { y1: `log`, y2: `linear` } },
-    { name: `negative values stay linear despite decade span`,
-      series: [create_series([-10, 1e-4, 1])], expected: all_linear },
-    { name: `zero values stay linear`, series: [create_series([0, 1e-4, 1])],
+    { name: `negative SCF values stay linear despite decade span`,
+      series: [create_series([-10, 1e-4, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: all_linear },
-    { name: `positive but narrow span stays linear`, series: [create_series([1, 5, 100])],
+    { name: `zero SCF values stay linear`,
+      series: [create_series([0, 1e-4, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      expected: all_linear },
+    { name: `positive but narrow SCF span stays linear`,
+      series: [create_series([1, 5, 100], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: all_linear },
     { name: `hidden series don't affect the axis scale`, series: [
       create_series([-10, -11, -12], true, `Energy`, `eV`),

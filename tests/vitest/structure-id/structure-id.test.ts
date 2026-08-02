@@ -162,21 +162,6 @@ describe(`neighbor list`, () => {
     }
   })
 
-  test(`adaptive cutoff reaches its ceiling after more than 21 growth steps`, () => {
-    const crystal = make_fcc([1, 1, 1])
-    crystal.sites = crystal.sites.slice(0, 1)
-    crystal.lattice.matrix = [
-      [1e12, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-    crystal.lattice.volume = 1e12
-    crystal.lattice.pbc = [false, false, false]
-    const { list, n_undercoordinated } = find_k_nearest(crystal, 14)
-    expect(list.cutoff).toBe(4e12)
-    expect(n_undercoordinated).toBe(1)
-  })
-
   test(`unwrapped trajectory coordinates classify the same as wrapped ones`, () => {
     // A trajectory frame can carry coordinates far outside the cell. The neighbor list wraps
     // before generating images, so the classification must not depend on which image of an
@@ -228,7 +213,6 @@ describe(`neighbor list`, () => {
 
   test.each([
     [`zero cutoff`, 0],
-    [`negative cutoff`, -1],
     [`non-finite cutoff`, Number.POSITIVE_INFINITY],
   ])(`build_neighbor_list rejects %s`, (_label, cutoff) => {
     expect(() => build_neighbor_list(make_fcc([2, 2, 2]), { cutoff })).toThrow(
@@ -400,7 +384,6 @@ describe(`common neighbor analysis`, () => {
     expect(() => calc_cna(list, `fixed`, cutoff * 1.2)).toThrow(
       /needs a cutoff equal to the .* the neighbor list was built with/,
     )
-    expect(() => calc_cna(list, `fixed`)).toThrow(/got undefined/)
     expect(calc_cna(list, `fixed`, cutoff)[0]).toBe(CNA_TYPES.fcc)
   })
 

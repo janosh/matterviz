@@ -307,7 +307,7 @@ describe(`Structure`, () => {
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
-  test(`hides atom color mode toggle until viewer hover`, async () => {
+  test(`reveals atom color mode toggle while viewer is hovered or focused`, async () => {
     mount_structure({ structure })
     await tick()
 
@@ -316,8 +316,17 @@ describe(`Structure`, () => {
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
     expect(mode_toggle.tabIndex).toBe(-1)
 
-    // Focus alone must not reveal it (matches CellSelect; avoids stuck-visible after click).
-    viewer.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    viewer.focus()
+    await tick()
+    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
+    expect(mode_toggle.tabIndex).toBe(0)
+
+    mode_toggle.focus()
+    await tick()
+    expect(document.activeElement).toBe(mode_toggle)
+    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
+
+    mode_toggle.blur()
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
     expect(mode_toggle.tabIndex).toBe(-1)

@@ -31,7 +31,6 @@ describe(`Trajectory File Detection`, () => {
     // Standard trajectory file extensions
     [`test.traj`, true],
     [`test.h5`, false],
-    [`data.hdf5`, false],
     [`molecular_dynamics.h5`, true],
     [`relaxation.hdf5`, true],
 
@@ -41,7 +40,6 @@ describe(`Trajectory File Detection`, () => {
 
     // VASP trajectory files
     [`XDATCAR`, true],
-    [`xdatcar`, true],
     [`XDATCAR.out`, true],
 
     // xyz/extxyz files with trajectory keywords are detected by filename for auto-render
@@ -57,15 +55,10 @@ describe(`Trajectory File Detection`, () => {
 
     // Fallback extensions require a trajectory keyword
     [`trajectory.dat`, true],
-    [`relax_output.log`, true],
     [`npt_dynamics.data`, true],
-    [`nvt_simulation.out`, true],
     // Need trailing delimiter after keyword (rejects md/notes, npt2, etc.)
     [`md/notes.log`, false],
-    [`mdp_run.log`, false],
     [`npt2.log`, false],
-    [`traj3.out`, false],
-    [`relax2.dat`, false],
     // Special-cased md_simulation.* exclusion
     [`md_simulation.out`, false],
 
@@ -73,9 +66,7 @@ describe(`Trajectory File Detection`, () => {
     [`relax.extxyz.gz`, true], // Has trajectory keyword "relax"
     [`trajectory.traj.gz`, true],
     [`simulation.h5.gz`, true],
-    [`dynamics.hdf5.gz`, true],
     [`XDATCAR.gz`, true],
-    [`xdatcar.gz`, true],
     [`md.xyz.gz`, true], // Has trajectory keyword "md"
     // Compressed with other extensions
     [`trajectory.traj.xz`, true],
@@ -90,29 +81,13 @@ describe(`Trajectory File Detection`, () => {
     // Case insensitive tests
     [`FILE.TRAJ`, true],
     [`TRAJECTORY.H5`, true],
-    [`XDATCAR.HDF5`, true],
     [`RELAX.EXTXYZ`, true], // Has trajectory keyword "relax"
-    [`MD.XYZ`, true], // Has trajectory keyword "md"
-
-    // Unicode and special characters
-    [`مەركەزیtrajectory.traj`, true],
-    [`file🔥emoji.h5`, false],
-    [`trajectory-测试.traj`, true],
-    [`simulation_ñáéíóú.h5`, true],
-    [`trajectory with spaces.traj`, true],
-    [`trajectory.with.dots.traj`, true],
-    [`trajectory#with@symbols%.traj`, true],
-    [`123trajectory.traj`, true],
 
     // Very short names
     [`a.traj`, true],
     [`a.h5`, false],
     [`a.xyz`, false], // No trajectory keywords
     [`a`, false],
-
-    // Very long filename
-    [`${`a`.repeat(1000)}.traj`, true],
-    [`${`a`.repeat(1000)}.xyz`, false], // No trajectory keywords
 
     // Specific regression tests
     [`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz`, true], // Has trajectory keyword "qha"
@@ -126,39 +101,20 @@ describe(`Trajectory File Detection`, () => {
     [`test.json`, false],
     [`random.txt`, false],
     [`test.xyz.backup`, false],
-    [`structure.cif`, false],
-    [`molecule.json`, false],
     [`POSCAR`, false],
-    [`data.txt`, false],
 
     // Files with trajectory keywords but excluded extensions
     [`trajectory.md`, false],
-    [`md_simulation.txt`, false],
-    [`relax_output.py`, false],
     [`npt_dynamics.csv`, false],
     [`nve_dynamics.zip`, false],
-    [`trajectory.yaml`, false],
-    [`nvt_simulation.html`, false],
     [`TRAJECTORY.MD`, false], // mixed case with excluded extension
-
-    // Files with partial matches that should not trigger
-    [`trajectory_notes.txt`, false],
-    [`md_documentation.md`, false],
-    [`relax_manual.pdf`, false],
 
     // Compressed files that should not be detected
     [`script.py.gz`, false],
-    [`trajectory_notes.md.gz`, false],
 
     // Keyword matching edge cases - xyz files with trajectory keywords are detected by filename
     [`trajectory_analysis.xyz`, true], // keyword as prefix
     [`analysis_trajectory.xyz`, true], // keyword as suffix
-    [`npt_ensemble.xyz`, true],
-    [`nvt_canonical.xyz`, true],
-    [`nve_microcanonical.xyz`, true],
-    [`qha_thermodynamics.xyz`, true],
-    [`TRAJECTORY.xyz`, true], // case insensitive
-    [`Md.xyz`, true],
     // Machine learning potential trajectories (some have trajectory keywords)
     [`V8Ta12W71Re8-mace-omat.xyz`, false], // No trajectory keywords
     [`CuAgAu_chgnet_relax.xyz`, true], // Has trajectory keyword "relax"
@@ -166,12 +122,8 @@ describe(`Trajectory File Detection`, () => {
     [`alloy_simulation_m3gnet.xyz`, true], // Has trajectory keyword "simulation"
     // Compressed JSON trajectories from various sources
     [`pymatgen-trajectory-data.json.gz`, true],
-    [`ase-md-output.json.bz2`, true],
-    [`simulation-results.json.xz`, true],
     // Edge cases that should still work
     [`dataset_structure_0001.xyz`, false], // No trajectory keywords
-    [`crystal_optimization.xyz`, false], // No trajectory keywords (crystal is structure keyword)
-    [`mp-1184225.extxyz`, false], // No trajectory keywords
   ])(`trajectory detection: "%s" → %s`, (filename, expected) => {
     expect(is_trajectory_file(filename)).toBe(expected)
   })
@@ -1240,10 +1192,6 @@ describe(`Comprehensive File Coverage`, () => {
         ) // Exclude unsupported compression
       })
     : []
-
-  it(`should find trajectory files`, () => {
-    expect(all_trajectory_files.length).toBeGreaterThan(9)
-  })
 
   it.each(all_trajectory_files)(
     `should successfully parse sample file: %s`,

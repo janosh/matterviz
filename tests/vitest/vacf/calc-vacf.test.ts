@@ -237,26 +237,21 @@ describe(`velocity sources`, () => {
 })
 
 describe(`central_difference_velocities`, () => {
-  it(`reproduces the analytic derivative of a quadratic exactly`, () => {
+  it.each([1, 0.5])(`reproduces a quadratic derivative exactly at dt=%f`, (dt) => {
     // r(n) = (n^2, 2n, 0) has central difference ((n+1)^2 - (n-1)^2) / 2 = 2n, which is
-    // the exact derivative: central differences are exact for quadratics.
+    // the exact derivative at dt=1; dividing by dt also pins the physical-time scaling.
     const n_frames = 8
     const positions = new Float64Array(n_frames * 3)
     for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
       positions[frame_idx * 3] = frame_idx * frame_idx
       positions[frame_idx * 3 + 1] = 2 * frame_idx
     }
-    const velocities = central_difference_velocities(positions, n_frames, 1, 1)
+    const velocities = central_difference_velocities(positions, n_frames, 1, dt)
     expect(velocities).toHaveLength((n_frames - 2) * 3)
     for (let out_idx = 0; out_idx < n_frames - 2; out_idx++) {
-      expect(velocities[out_idx * 3]).toBe(2 * (out_idx + 1))
-      expect(velocities[out_idx * 3 + 1]).toBe(2)
+      expect(velocities[out_idx * 3]).toBe((2 * (out_idx + 1)) / dt)
+      expect(velocities[out_idx * 3 + 1]).toBe(2 / dt)
       expect(velocities[out_idx * 3 + 2]).toBe(0)
     }
-  })
-
-  it(`scales by 1 / (2 dt)`, () => {
-    const positions = Float64Array.from([0, 0, 0, 4, 0, 0, 8, 0, 0])
-    expect(central_difference_velocities(positions, 3, 1, 0.5)[0]).toBe(8)
   })
 })

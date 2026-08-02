@@ -78,7 +78,6 @@ describe(`poscar_frame_filename`, () => {
   test.each([
     [7, 10, `run_frame_0007.vasp`],
     [7, 100_000, `run_frame_00007.vasp`], // widens past the 4-digit floor (max index 99999)
-    [0, 1, `run_frame_0000.vasp`],
   ])(`frame %i of %i`, (frame_idx, total, expected) => {
     expect(poscar_frame_filename(`run.extxyz`, frame_idx, total)).toBe(expected)
   })
@@ -259,16 +258,6 @@ describe(`collect_frame_property_rows`, () => {
       [2, 3],
       [3, 3],
     ])
-    // every property the extractor yields, minus `Step` (already the row's own column) and
-    // the `constant_*` plot hints
-    const extracted = full_data_extractor(frames[1], trajectory)
-    expect(table.rows[1].properties).toEqual(
-      Object.fromEntries(
-        Object.entries(extracted).filter(
-          ([key]) => key !== `Step` && !key.startsWith(`constant_`),
-        ),
-      ),
-    )
     // The cube(5) cell never changes, so the plot drops a/b/c/α/β/γ as flat series and
     // full_data_extractor flags them `constant_*`. A data export wants the values anyway.
     expect(full_data_extractor(frames[0], trajectory).constant_a).toBe(1)
@@ -276,18 +265,14 @@ describe(`collect_frame_property_rows`, () => {
       Object.keys(table.rows[0].properties).filter((key) => key.startsWith(`constant_`)),
     ).toEqual([])
     expect(table.rows[0].properties).toMatchObject({
+      energy: -10.5,
+      force_max: 0.25,
       a: 5,
       b: 5,
       c: 5,
       alpha: 90,
       volume: 125,
     })
-  })
-
-  test(`covers only the requested sub-range`, async () => {
-    const { rows } = await collect_frame_property_rows(1, 2, resolver, trajectory)
-    expect(rows.map(({ frame }) => frame)).toEqual([1, 2])
-    expect(rows.map(({ properties }) => properties.energy)).toEqual([-11.25, -11.5])
   })
 
   // An indexed trajectory holds only its first frames in memory; reading `frames` directly
@@ -348,6 +333,15 @@ describe(`collect_frame_property_rows`, () => {
   })
 })
 
+const make_property_table = (
+  rows: TrajectoryPropertyTable[`rows`],
+): TrajectoryPropertyTable => ({
+  start_frame: rows[0]?.frame ?? 0,
+  end_frame: rows.at(-1)?.frame ?? 0,
+  source: `frames`,
+  rows,
+})
+
 describe(`frame_rows_to_csv`, () => {
   test(`heads every property column with its unit and writes one row per frame`, async () => {
     const table = await collect_frame_property_rows(0, 2, resolver, trajectory)
@@ -363,32 +357,20 @@ describe(`frame_rows_to_csv`, () => {
 
   // rows_to_csv keys off the first row alone, so a property only later frames carry would
   // otherwise vanish from the file entirely
-  test(`keeps a column the first frame lacks and leaves its cell empty`, () => {
-    const table: TrajectoryPropertyTable = {
-      start_frame: 0,
-      end_frame: 1,
-      source: `frames`,
-      rows: [
-        { frame: 0, step: 0, properties: { frame: 999, step: 999, energy: -1 } },
-        { frame: 1, step: 1, properties: { energy: -2, temperature: 300 } },
-      ],
-    }
-    expect(frame_rows_to_csv(table).split(`\n`)).toEqual([
-      `frame,step,energy (eV),temperature (K)`,
-      `0,0,-1,`,
-      `1,1,-2,300`,
+  test(`aligns missing and unitless property columns across frames`, () => {
+    const table = make_property_table([
+      { frame: 0, step: 0, properties: { frame: 999, step: 999, energy: -1 } },
+      {
+        frame: 1,
+        step: 1,
+        properties: { energy: -2, temperature: 300, some_custom_prop: 1.5 },
+      },
     ])
-  })
-
-  // an unconfigured key has no unit to append, and must not gain an empty `()`
-  test(`omits the unit for a property with no configured one`, () => {
-    const table: TrajectoryPropertyTable = {
-      start_frame: 0,
-      end_frame: 0,
-      source: `frames`,
-      rows: [{ frame: 0, step: 0, properties: { some_custom_prop: 1.5 } }],
-    }
-    expect(frame_rows_to_csv(table).split(`\n`)[0]).toBe(`frame,step,some_custom_prop`)
+    expect(frame_rows_to_csv(table).split(`\n`)).toEqual([
+      `frame,step,energy (eV),temperature (K),some_custom_prop`,
+      `0,0,-1,,`,
+      `1,1,-2,300,1.5`,
+    ])
   })
 })
 

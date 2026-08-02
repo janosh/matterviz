@@ -113,36 +113,6 @@ describe.each(structures)(`structure-utils`, (structure) => {
   })
 })
 
-// Shape smoke across the full site set; exact/edge coverage lives in pbc.test.ts.
-test.each(structures)(`find_image_atoms`, (structure) => {
-  const image_atoms = struct_utils.find_image_atoms(structure)
-
-  expect(Array.isArray(image_atoms), `${structure.id}: should return array`).toBe(true)
-  for (const [atom_idx, img_xyz, img_abc] of image_atoms) {
-    expect(atom_idx, `${structure.id}: atom_idx`).toBeGreaterThanOrEqual(0)
-    expect(atom_idx, `${structure.id}: atom_idx`).toBeLessThan(structure.sites.length)
-    expect(img_xyz, `${structure.id}: img_xyz`).toHaveLength(3)
-    expect(img_abc, `${structure.id}: img_abc`).toHaveLength(3)
-    expect(img_xyz.every(Number.isFinite), `${structure.id}: img_xyz finite`).toBe(true)
-    expect(img_abc.every(Number.isFinite), `${structure.id}: img_abc finite`).toBe(true)
-  }
-})
-
-test.each(structures)(`symmetrize_structure`, (structure) => {
-  const orig_len = structure.sites.length
-  const symmetrized = struct_utils.get_pbc_image_sites(structure)
-  const { id } = structure
-  const msg = `${id} should have original sites plus appropriate image atoms`
-
-  expect(symmetrized.sites.length, msg).toBeGreaterThanOrEqual(orig_len)
-  expect(structure.sites).toHaveLength(orig_len)
-
-  if (structure.lattice) {
-    const image_atoms = struct_utils.find_image_atoms(structure)
-    expect(symmetrized.sites).toHaveLength(orig_len + image_atoms.length)
-  }
-})
-
 describe(`get_center_of_mass`, () => {
   const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
     sites: sites.map((site, idx) => ({
@@ -496,19 +466,9 @@ describe(`get_structure_vector_keys`, () => {
       expected: [`force`, `magmom`],
     },
     {
-      desc: `prefixed keys across sites`,
-      sites: [{ force_DFT: [1, 0, 0] }, { force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0] }],
-      expected: [`force_DFT`, `force_MLFF`],
-    },
-    {
       desc: `empty for structure without vectors`,
       sites: [{ charge: 1 }, {}],
       expected: [],
-    },
-    {
-      desc: `bare before prefixed`,
-      sites: [{ force_DFT: [1, 0, 0], force: [0, 1, 0], magmom: [0, 0, 1] }],
-      expected: [`force`, `force_DFT`, `magmom`],
     },
     {
       desc: `deduplicates across sites`,

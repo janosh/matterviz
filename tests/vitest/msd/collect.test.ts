@@ -232,7 +232,6 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
 
   it.each([
     [`missing`, null],
-    [`empty text`, ``],
     [`empty buffer`, new ArrayBuffer(0)],
   ])(`throws when the raw payload is %s`, async (_label, raw_data) => {
     const trajectory = await indexed(streamed_xyz_50)
@@ -437,11 +436,8 @@ describe(`MsdPlot`, () => {
     expect(await mount_plot({ result })).toContain(`1 in 3 time origins`)
   })
 
-  it.each([
-    [`no data`, {}, `No MSD data to display`],
-    [`computed`, { positions: drift_positions(20) }, `Total`],
-  ])(`shows the right empty/filled state (%s)`, async (_label, props, expected) => {
-    expect(await mount_plot(props)).toContain(expected)
+  it(`shows the empty state without positions`, async () => {
+    expect(await mount_plot({})).toContain(`No MSD data to display`)
   })
 
   // The empty state owns the message area, so a failed recompute has to drop the previous

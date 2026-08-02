@@ -42,6 +42,7 @@ test(`write_linear_color_to_buffer converts CSS once without stale scratch color
 test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   const source = `#57178f` // deep purple (Cs-like)
   const bright = brighten_hex(source, 0.55)
+  expect(bright).toBe(`#cac4d6`)
   const src = new Color(source)
   const out = new Color(bright)
   // Strictly brighter than the atom color (dirty gray hover used to lose the hue entirely).

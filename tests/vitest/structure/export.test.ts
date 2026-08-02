@@ -902,6 +902,22 @@ describe(`3D Export Color Preservation`, () => {
       ])
     })
 
+    test(`keeps the material color when every instance color is white`, () => {
+      // Mirrors material-colored instancing (for example ScatterPlot3D): Three creates an
+      // all-white instanceColor buffer that multiplies, rather than replaces, material.color.
+      const scene = new Scene()
+      const material_colored = new InstancedMesh(
+        new SphereGeometry(0.5, 4, 4),
+        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
+        1,
+      )
+      material_colored.name = `material-colored`
+      material_colored.setColorAt(0, new Color(1, 1, 1))
+      scene.add(material_colored)
+
+      expect(converted_group_colors(scene, `material-colored`)).toEqual([[0, 1, 0]])
+    })
+
     test(`shader-material bond gradients win over instance colors`, () => {
       const scene = new Scene()
       const bond_geometry = new SphereGeometry(0.5, 4, 4)
@@ -923,6 +939,23 @@ describe(`3D Export Color Preservation`, () => {
       scene.add(bonds)
 
       expect(converted_group_colors(scene, `bonds`)).toEqual([[0.5, 0, 0.5]])
+    })
+
+    test(`cleans cloned geometry without mutating the live scene`, () => {
+      const scene = new Scene()
+      const geometry = new BufferGeometry()
+      for (const attr of [`instanceColorStart`, `instanceColorEnd`]) {
+        geometry.setAttribute(attr, new Float32BufferAttribute([1, 0, 0], 3))
+      }
+      scene.add(new Mesh(geometry, new MeshStandardMaterial()))
+
+      const converted = convert_instanced_meshes_to_regular(scene)
+      const converted_mesh = converted.children[0]
+      expect(converted_mesh).toBeInstanceOf(Mesh)
+      if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
+      expect(converted_mesh.geometry).not.toBe(geometry)
+      expect(converted_mesh.geometry.hasAttribute(`instanceColorStart`)).toBe(false)
+      expect(geometry.hasAttribute(`instanceColorStart`)).toBe(true)
     })
   })
 

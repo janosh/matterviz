@@ -123,7 +123,7 @@ test(`frames tab has one row per frame and one unit-labeled column per property`
 })
 
 test(`indexed trajectory reads sampled plot_metadata and says so`, async () => {
-  const n_sampled = 500
+  const n_sampled = 100
   const trajectory = make_indexed_trajectory({
     total_frames: 100_000,
     plot_metadata: Array.from({ length: n_sampled }, (_, sample_idx) => ({
@@ -134,11 +134,11 @@ test(`indexed trajectory reads sampled plot_metadata and says so`, async () => {
   })
   await mount_pane({ trajectory })
 
-  expect(document.body.textContent).toContain(`Sampled frames: 500 of 100,000 frames`)
+  expect(document.body.textContent).toContain(`Sampled frames: 100 of 100,000 frames`)
   // never presents the 10 in-memory frames as the run, nor the sample as all frames
-  expect(document.body.textContent).not.toContain(`Sampled frames: 10`)
+  expect(document.body.textContent).not.toContain(`Sampled frames: 10 of`)
 
-  // virtualization keeps the DOM bounded while the sample stays 500 rows long
+  // Virtualization keeps the DOM bounded while the sample stays 100 rows long.
   const rows = expect_virtualized(n_sampled)
 
   // columns come from plot_metadata properties, not from the in-memory frames' lattice
@@ -173,9 +173,7 @@ test(`atoms tab enumerates arbitrary site property keys including vec3`, async (
     }),
     make_site(1, {
       force: [0.4, 0.5, -0.6],
-      magmom: -0.5,
       selective_dynamics: [false, false, false],
-      cluster_tag: `bulk`,
     }),
   ])
   await mount_pane({ trajectory: { frames: [frame] }, current_frame: frame })
@@ -208,19 +206,32 @@ test(`atoms tab enumerates arbitrary site property keys including vec3`, async (
   expect(cells[11]).toBe(`1.5`)
   expect(cells.slice(12, 15)).toEqual([`true`, `true`, `false`])
   expect(cells[15]).toBe(`surface`)
+
+  // Missing scalar properties leave empty cells without shifting later vec3 components.
+  const second_cells = cell_texts(rows[1])
+  expect(second_cells.slice(8, 16)).toEqual([
+    `0.4`,
+    `0.5`,
+    `-0.6`,
+    `n/a`,
+    `false`,
+    `false`,
+    `false`,
+    `n/a`,
+  ])
 })
 
 test(`atoms tab virtualizes a large site frame and formats the tab count`, async () => {
-  // enough to exceed HeatmapTable's min_window; 100k was timing out under load
-  const n_sites = 2000
+  // Enough to exceed HeatmapTable's min_window without building thousands of fixtures.
+  const n_sites = 100
   const frame = make_sites_frame(
     Array.from({ length: n_sites }, (_, site_idx) => make_site(site_idx, {})),
   )
   await mount_pane({ trajectory: { frames: [frame] }, current_frame: frame })
   await open_tab(`atoms`)
 
-  expect_virtualized(500)
-  expect(document.body.textContent).toContain(`Atoms (2,000)`)
+  expect_virtualized(n_sites)
+  expect(document.body.textContent).toContain(`Atoms (100)`)
 })
 
 test(`row clicks report the frame index and the site index`, async () => {

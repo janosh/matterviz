@@ -101,7 +101,7 @@ test(`derives ranges from plot_metadata for an indexed trajectory, marked as sam
 
 // parse_with_unified_loader extracts plot_metadata at sample_rate 1, so a complete summary must
 // not say "sampled". A fixed cell must not print a zero-width Volume Range under Structure.
-test(`omits the sampled note when plot_metadata covers every frame`, async () => {
+test(`omits sampled and fixed-volume notes from complete plot_metadata`, async () => {
   const total_frames = 40
   await mount_pane(
     indexed_trajectory({
@@ -117,22 +117,6 @@ test(`omits the sampled note when plot_metadata covers every frame`, async () =>
   const text = pane_text()
   expect(text).toContain(`Energy Range`)
   expect(text).not.toContain(`sampled`)
-})
-
-test(`omits Volume Range when the cell never changes`, async () => {
-  const total_frames = 5
-  await mount_pane(
-    indexed_trajectory({
-      plot_metadata: make_plot_metadata(total_frames, (frame_number) => ({
-        energy: -10 - frame_number,
-        volume: 125,
-      })),
-      total_frames,
-    }),
-    2,
-  )
-  const text = pane_text()
-  expect(text).toContain(`Energy Range`)
   expect(text).not.toContain(`Volume Range`)
 })
 
