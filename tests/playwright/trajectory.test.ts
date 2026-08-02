@@ -205,6 +205,11 @@ test.describe(`Trajectory Component`, () => {
       await expect(step_labels.nth(0)).toHaveText(`0`)
       await expect(step_labels.nth(2)).toHaveText(`2`)
 
+      const first_tick = loaded_trajectory.locator(`.step-tick`).first()
+      await expect(first_tick).toHaveCSS(`top`, `5px`)
+      await expect(first_tick).toHaveCSS(`height`, `3px`)
+      await expect(step_labels.first()).toHaveCSS(`top`, `9px`)
+
       // Test other step label configurations exist
       const negative_labels = page.locator(`#negative-step-labels .step-label`)
       const negative_count = await negative_labels.count()

@@ -149,6 +149,7 @@
     zoom_to_cursor = DEFAULTS.structure.zoom_to_cursor,
     show_atoms = DEFAULTS.structure.show_atoms,
     show_bonds = DEFAULTS.structure.show_bonds,
+    defer_expensive_geometry = false,
     show_site_labels = DEFAULTS.structure.show_site_labels,
     show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
@@ -278,6 +279,7 @@
     camera_direction?: Vec3
     show_atoms?: boolean
     show_bonds?: ShowBonds
+    defer_expensive_geometry?: boolean
     show_site_labels?: boolean
     show_site_indices?: boolean
     vector_configs?: Record<string, VectorLayerConfig>
@@ -1208,7 +1210,7 @@
   // the polyhedra $derived below, gated on the same effective value — won't run.
   let last_bond_pairs: BondPair[] = []
   let bond_pairs: BondPair[] = $derived.by(() => {
-    if (dragging_atoms) return last_bond_pairs
+    if (dragging_atoms || defer_expensive_geometry) return last_bond_pairs
     const want_bonds = applies_to_structure(show_bonds)
     const want_polyhedra = applies_to_structure(effective_show_polyhedra)
     last_bond_pairs =
@@ -1426,15 +1428,19 @@
   // (edited, filtered) bond graph as rendered bonds so the two never disagree.
   // Colors are resolved in polyhedra_buffers below, so color-scheme/mode changes
   // never recompute the hull geometry.
+  let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
+    if (defer_expensive_geometry) return last_polyhedra
     if (
       !structure?.sites ||
       dragging_atoms ||
       !applies_to_structure(effective_show_polyhedra) ||
       filtered_bond_pairs.length === 0
-    )
-      return []
-    return compute_polyhedra(structure, filtered_bond_pairs, {
+    ) {
+      last_polyhedra = []
+      return last_polyhedra
+    }
+    last_polyhedra = compute_polyhedra(structure, filtered_bond_pairs, {
       min_neighbors: polyhedra_min_neighbors,
       // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
       // be dragged past each other. Widening the cap instead of honoring an empty window
@@ -1443,6 +1449,7 @@
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,
     })
+    return last_polyhedra
   })
 
   // Color of a site: property color (coordination/Wyckoff modes) or element color
@@ -2044,6 +2051,7 @@
           <InstancedAtoms
             atoms={instanced_atom_sets.base}
             {sphere_segments}
+            positions_only={defer_expensive_geometry}
             {...atom_instance_events(instanced_atom_sets.base, false)}
           />
         {/if}
@@ -2053,6 +2061,7 @@
             atoms={instanced_atom_sets.image}
             {sphere_segments}
             ghost={edit_mode_image}
+            positions_only={defer_expensive_geometry}
             {...atom_instance_events(instanced_atom_sets.image, edit_mode_image)}
           />
         {/if}

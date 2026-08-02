@@ -787,6 +787,7 @@
   const clear_point_hover = () => {
     hover_info = null
     change(null)
+    on_bar_hover?.(null)
     on_point_hover?.(null)
   }
 
@@ -1093,11 +1094,13 @@
                   const fill = line_point_fill(pt, color)
                   hover_info = get_bar_data(series_idx, pt.idx, fill)
                   change(hover_info)
+                  on_bar_hover?.({ ...hover_info, event: evt })
                   on_point_hover?.({ ...hover_info, event: evt, point: pt })
                 }}
                 {@const do_click = (pt: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
                   const fill = line_point_fill(pt, color)
                   const bar_data = get_bar_data(series_idx, pt.idx, fill)
+                  on_bar_click?.({ ...bar_data, event: evt })
                   on_point_click?.({ ...bar_data, event: evt, point: pt })
                 }}
                 {#if polyline_str}
@@ -1111,7 +1114,7 @@
                     stroke-linecap="round"
                   />
                 {/if}
-                {#if polyline_str && !show_points && (on_point_hover || on_point_click)}
+                {#if polyline_str && !show_points && (on_bar_hover || on_bar_click || on_point_hover || on_point_click)}
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <polyline
@@ -1121,7 +1124,7 @@
                     stroke-width={Math.max(10, stroke_width * 3)}
                     stroke-linejoin="round"
                     stroke-linecap="round"
-                    style:cursor={on_point_click ? `pointer` : undefined}
+                    style:cursor={on_bar_click || on_point_click ? `pointer` : undefined}
                     onmousemove={(evt) => {
                       const pt = find_closest_point(evt, points)
                       if (pt) set_hover(pt, evt)
@@ -1134,7 +1137,7 @@
                   />
                 {/if}
                 {#if show_points}
-                  {@const clickable = on_point_click}
+                  {@const clickable = on_bar_click || on_point_click}
                   {@const get_pt = (evt: Event) => {
                     const attr =
                       evt.target instanceof Element

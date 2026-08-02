@@ -33,7 +33,7 @@
   import { onMount, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { full_data_extractor } from './extract'
   import type {
     ParseProgress,
@@ -47,7 +47,6 @@
   } from './index'
   import type { TrajectoryFrameResolver } from './file-export'
   import {
-    FRAME_LOAD_DEBOUNCE_MS,
     pick_pane_orientation,
     TrajectoryDataInspectorPane,
     TrajectoryError,
@@ -328,19 +327,28 @@
       })
   })
 
-  // Convert source-frame playhead to collected frames; consumer scene_props override ours.
+  const SCRUB_SETTLE_MS = 80
+  let scrub_active = $state(false)
+  let scrub_animation_frame: number | undefined
+  let scrub_settle_timeout: ReturnType<typeof setTimeout> | undefined
+  let pending_scrub_step: number | undefined
+
+  // Convert source-frame playhead to collected frames; consumer scene_props override trail
+  // values, while scrub deferral remains owned by the trajectory interaction pipeline.
   let trail_scene_props = $derived({
     trajectory_position_stream: trail_stream,
     trajectory_line_end_frame: trail_stream
       ? collected_frame_idx(trail_stream, current_step_idx)
       : undefined,
     ...structure_props.scene_props,
+    defer_expensive_geometry: scrub_active,
   })
 
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
   let frame_load_request_id = 0
-  let frame_load_timeout: ReturnType<typeof setTimeout> | undefined
+  let frame_read_active = false
+  let pending_frame_idx: number | undefined
 
   // Auto-play when trajectory changes (handles both props and file loading)
   $effect(() => {
@@ -357,7 +365,6 @@
         current_frame = null
         schedule_frame_load_on_demand(current_step_idx)
       } else {
-        clear_frame_load_timeout()
         // Use in-memory frame for regular trajectories
         current_frame = trajectory.frames[current_step_idx] || null
       }
@@ -371,19 +378,14 @@
   // Capped by frame count AND a total-atom budget (cache many tiny frames or few huge ones).
   const FRAME_CACHE_MAX = 64
   const FRAME_CACHE_MAX_ATOMS = 200_000
-  let frame_cache = new Map<number, TrajectoryFrame>()
+  let frame_cache = new SvelteMap<number, TrajectoryFrame>()
   let frame_cache_owner: TrajectoryType | undefined
   // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
-  const inflight_frames = new Set<number>()
+  const inflight_frames = new SvelteSet<number>()
   let streaming_file_path = $derived(
     trajectory?.metadata?.streaming_file_path as string | undefined,
   )
   let plot_metadata_loading = $derived(trajectory?.metadata?.plot_metadata_loading === true)
-
-  const clear_frame_load_timeout = () => {
-    if (frame_load_timeout) clearTimeout(frame_load_timeout)
-    frame_load_timeout = undefined
-  }
 
   const skip_stale_url_stream = () =>
     Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
@@ -419,61 +421,95 @@
     globalThis.addEventListener(`message`, handle_plot_metadata_stream)
     return () => {
       globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
-      clear_frame_load_timeout()
+      if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
+      if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
     }
   })
 
   // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
   function ensure_frame_cache_owner() {
     if (frame_cache_owner !== trajectory) {
-      frame_cache = new Map()
+      frame_cache = new SvelteMap()
       inflight_frames.clear()
+      pending_frame_idx = undefined
       frame_cache_owner = trajectory
     }
   }
   // Sync LRU read (delete + re-insert refreshes recency); undefined on miss
   function cache_get(frame_idx: number): TrajectoryFrame | undefined {
-    const hit = frame_cache.get(frame_idx)
-    if (!hit) return undefined
-    frame_cache.delete(frame_idx)
-    frame_cache.set(frame_idx, hit)
-    return hit
+    return untrack(() => {
+      const hit = frame_cache.get(frame_idx)
+      if (!hit) return undefined
+      frame_cache.delete(frame_idx)
+      frame_cache.set(frame_idx, hit)
+      return hit
+    })
   }
   // Sync LRU write, evicting oldest entries until under both the frame and atom budgets
   function cache_put(frame_idx: number, frame: TrajectoryFrame) {
-    frame_cache.set(frame_idx, frame)
-    let total_atoms = 0
-    for (const cached of frame_cache.values())
-      total_atoms += cached.structure?.sites?.length ?? 0
-    while (
-      frame_cache.size > 1 &&
-      (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
-    ) {
-      const oldest = frame_cache.keys().next().value
-      if (oldest === undefined) break
-      total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
-      frame_cache.delete(oldest)
+    untrack(() => {
+      frame_cache.set(frame_idx, frame)
+      let total_atoms = 0
+      for (const cached of frame_cache.values())
+        total_atoms += cached.structure?.sites?.length ?? 0
+      while (
+        frame_cache.size > 1 &&
+        (frame_cache.size > FRAME_CACHE_MAX || total_atoms > FRAME_CACHE_MAX_ATOMS)
+      ) {
+        const oldest = frame_cache.keys().next().value
+        if (oldest === undefined) break
+        total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
+        frame_cache.delete(oldest)
+      }
+    })
+  }
+
+  const emit_frame_load_state = (frame_idx: number) => {
+    wrapper?.dispatchEvent(
+      new CustomEvent(`matterviz:trajectory-load-state`, {
+        detail: { frame_idx, inflight: frame_read_active ? 1 : 0 },
+      }),
+    )
+  }
+
+  const finish_frame_read = (frame_idx: number, prefetch_from_idx?: number) => {
+    inflight_frames.delete(frame_idx)
+    frame_read_active = false
+    emit_frame_load_state(frame_idx)
+    const next_frame_idx = pending_frame_idx
+    pending_frame_idx = undefined
+    if (next_frame_idx !== undefined && next_frame_idx === current_step_idx) {
+      schedule_frame_load_on_demand(next_frame_idx)
+    } else if (prefetch_from_idx !== undefined) {
+      prefetch_frames(prefetch_from_idx)
     }
   }
 
-  // Warm the next couple of frames in the background (fire-and-forget) so playback/forward-scrub
-  // doesn't stall on a serial per-frame read; skips frames already cached or in flight
+  // Warm one adjacent frame only while the demand lane is idle. A new scrub target waits for
+  // this read instead of starting another, keeping decode/IPC backlog strictly bounded.
   function prefetch_frames(from_idx: number) {
     const frame_loader = trajectory?.frame_loader
-    if (!frame_loader) return
+    if (!frame_loader || frame_read_active || pending_frame_idx !== undefined) return
     if (trajectory?.indexed_frames && trajectory.indexed_frames.length < total_frames) return
     const owner = trajectory
     for (const ahead of [1, 2]) {
       const idx = from_idx + ahead
-      if (idx >= total_frames || frame_cache.has(idx) || inflight_frames.has(idx)) continue
+      if (
+        idx >= total_frames ||
+        untrack(() => frame_cache.has(idx) || inflight_frames.has(idx))
+      )
+        continue
+      frame_read_active = true
       inflight_frames.add(idx)
+      emit_frame_load_state(idx)
       frame_loader
         .load_frame(orig_data || ``, idx)
         .then((frame) => {
           if (frame && frame_cache_owner === owner) cache_put(idx, frame)
         })
         .catch(() => {})
-        .finally(() => inflight_frames.delete(idx))
+        .finally(() => finish_frame_read(idx))
+      break
     }
   }
 
@@ -504,29 +540,14 @@
     ensure_frame_cache_owner()
     frame_load_request_id++
 
-    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
-
-    clear_frame_load_timeout()
-    // Debouncing during playback would keep resetting the timer at fps above
-    // ~1000/FRAME_LOAD_DEBOUNCE_MS and stall uncached streamed frames entirely.
-    // untrack: this runs synchronously inside the step-change $effect, so tracking
-    // is_playing would re-run that effect on every play/pause toggle and kick off
-    // duplicate loads for a frame that's already in flight.
-    if (untrack(() => is_playing)) {
-      void load_frame_on_demand(frame_idx)
+    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) {
+      pending_frame_idx = undefined
       return
     }
-    const request_id = frame_load_request_id
-    frame_load_timeout = setTimeout(() => {
-      frame_load_timeout = undefined
-      if (
-        request_id === frame_load_request_id &&
-        trajectory === load_trajectory &&
-        current_step_idx === frame_idx
-      ) {
-        load_frame_on_demand(frame_idx)
-      }
-    }, FRAME_LOAD_DEBOUNCE_MS)
+    pending_frame_idx = frame_idx
+    if (frame_read_active) return
+    pending_frame_idx = undefined
+    void load_frame_on_demand(frame_idx)
   }
 
   // Resolve any frame for export. Indexed trajectories hold only the first handful in
@@ -555,14 +576,21 @@
     if (!load_trajectory || !frame_loader) return
     ensure_frame_cache_owner()
 
-    const request_id = ++frame_load_request_id
+    if (frame_read_active) {
+      pending_frame_idx = frame_idx
+      return
+    }
+    const request_id = frame_load_request_id
     const request_is_current = () =>
       request_id === frame_load_request_id &&
       trajectory === load_trajectory &&
       current_step_idx === frame_idx
 
     if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
-    inflight_frames.add(frame_idx) // let concurrent prefetch skip the frame we're already loading
+    frame_read_active = true
+    inflight_frames.add(frame_idx)
+    emit_frame_load_state(frame_idx)
+    let prefetch_from_idx: number | undefined
     try {
       const frame = await frame_loader.load_frame(
         orig_data || ``, // original_data for indexed files, empty string for external streaming
@@ -572,7 +600,7 @@
       if (frame && frame_cache_owner === load_trajectory) cache_put(frame_idx, frame)
       if (!request_is_current()) return
       current_frame = frame
-      prefetch_frames(frame_idx) // warm upcoming frames for smooth playback/scrub
+      prefetch_from_idx = frame_idx
     } catch (error) {
       if (!request_is_current()) return
       console.error(`Failed to load frame ${frame_idx}:`, error)
@@ -585,7 +613,7 @@
         frame_count: total_frames,
       })
     } finally {
-      inflight_frames.delete(frame_idx)
+      finish_frame_read(frame_idx, prefetch_from_idx)
     }
   }
 
@@ -768,8 +796,6 @@
   )
   let x_axis = $derived({
     label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
-    // ~g (not ~s) so sub-1 values read as 0.8 rather than SI "800m"; integer steps stay clean
-    format: `~g`,
     // step_label_positions are frame indices; the axis is drawn in x units
     ticks: step_label_positions.map(x_map.to_x),
   })
@@ -780,13 +806,11 @@
   let y_axis_scale_types = $derived(generate_axis_scale_types(plot_series))
   let y_axis = $derived({
     label: y_axis_labels.y1,
-    format: `~g`,
     label_shift: { y: 10 },
     scale_type: y_axis_scale_types.y1,
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
-    format: `~g`,
     label_shift: { y: 80 },
     scale_type: y_axis_scale_types.y2,
   })
@@ -815,33 +839,63 @@
     })
   }
   // Step navigation functions (streaming frame loading is handled by the reactive effect)
-  function next_step() {
-    if (current_step_idx < total_frames - 1) {
-      current_step_idx++
-      notify_step_change()
+  function commit_step(idx: number) {
+    if (idx < 0 || idx >= total_frames || idx === current_step_idx) return
+    current_step_idx = idx
+    notify_step_change()
+    wrapper?.dispatchEvent(
+      new CustomEvent(`matterviz:trajectory-step-commit`, { detail: { step_idx: idx } }),
+    )
+  }
+
+  function queue_scrub_step(idx: number) {
+    if (idx < 0 || idx >= total_frames || idx === pending_scrub_step) return
+    scrub_active = true
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = setTimeout(() => {
+      scrub_settle_timeout = undefined
+      scrub_active = false
+    }, SCRUB_SETTLE_MS)
+    pending_scrub_step = idx
+    if (scrub_animation_frame !== undefined) return
+    scrub_animation_frame = requestAnimationFrame(() => {
+      scrub_animation_frame = undefined
+      const next_step_idx = pending_scrub_step
+      pending_scrub_step = undefined
+      if (next_step_idx !== undefined) commit_step(next_step_idx)
+    })
+  }
+
+  function flush_scrub_step(idx = pending_scrub_step) {
+    if (scrub_animation_frame !== undefined) {
+      cancelAnimationFrame(scrub_animation_frame)
+      scrub_animation_frame = undefined
     }
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = undefined
+    scrub_active = false
+    pending_scrub_step = undefined
+    if (idx !== undefined) commit_step(idx)
+  }
+
+  function next_step() {
+    commit_step(current_step_idx + 1)
   }
 
   function prev_step() {
-    if (current_step_idx > 0) {
-      current_step_idx--
-      notify_step_change()
-    }
+    commit_step(current_step_idx - 1)
   }
 
   function go_to_step(idx: number) {
-    if (idx >= 0 && idx < total_frames) {
-      current_step_idx = idx
-      notify_step_change()
-    }
+    flush_scrub_step(idx)
   }
 
   // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
   // time), so it has to be mapped back before it can index a frame.
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
     if (data?.x !== undefined && typeof data.x === `number`) {
-      go_to_step(x_map.to_frame(data.x))
-    }
+      queue_scrub_step(x_map.to_frame(data.x))
+    } else flush_scrub_step()
   }
 
   // Play/pause functionality
@@ -1441,8 +1495,8 @@
                 type="number"
                 min="0"
                 max={total_frames - 1}
-                bind:value={current_step_idx}
-                oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
+                value={current_step_idx}
+                oninput={(event) => go_to_step(event.currentTarget.valueAsNumber)}
                 class="step-input"
                 title="Enter step number to jump to"
                 aria-label="Step input"
@@ -1454,8 +1508,9 @@
                   type="range"
                   min="0"
                   max={total_frames - 1}
-                  bind:value={current_step_idx}
-                  oninput={(event) => notify_step_change(event.currentTarget.valueAsNumber)}
+                  value={current_step_idx}
+                  oninput={(event) => queue_scrub_step(event.currentTarget.valueAsNumber)}
+                  onchange={(event) => flush_scrub_step(event.currentTarget.valueAsNumber)}
                   class="step-slider"
                   title="Drag to navigate steps"
                 />
@@ -1962,14 +2017,15 @@
     position: absolute;
     left: 0;
     right: 0;
+    top: 50%;
   }
   .step-tick {
     position: absolute;
     transform: translateX(-50%);
     width: var(--trajectory-step-tick-width, 1px);
-    height: var(--trajectory-step-tick-height, 4px);
+    height: var(--trajectory-step-tick-height, 3px);
     background: var(--text-color-muted);
-    top: -9pt;
+    top: var(--trajectory-step-tick-offset, 5px);
   }
   .step-label {
     position: absolute;
@@ -1978,7 +2034,9 @@
     color: var(--text-color-muted);
     white-space: nowrap;
     text-align: center;
-    top: -1.7ex;
+    top: calc(
+      var(--trajectory-step-tick-offset, 5px) + var(--trajectory-step-tick-height, 3px) + 1px
+    );
   }
   button.filename {
     align-items: center;

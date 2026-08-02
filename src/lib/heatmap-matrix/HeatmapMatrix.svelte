@@ -72,7 +72,7 @@
     show_x_labels = true,
     show_y_labels = true,
     stagger_axis_labels = `auto`,
-    symmetric = false,
+    symmetric: symmetric_prop = false,
     symmetric_label_position = `diagonal`,
     label_style = ``,
     x_order,
@@ -154,7 +154,7 @@
     show_x_labels?: boolean
     show_y_labels?: boolean
     stagger_axis_labels?: boolean | `auto`
-    symmetric?: SymmetricMode
+    symmetric?: SymmetricMode | true
     symmetric_label_position?: `diagonal` | `edge`
     label_style?: string
     x_order?: AxisOrder
@@ -193,6 +193,11 @@
     y_label_cell?: Snippet<[{ item: AxisItem; idx: number }]>
     children?: Snippet
   } = $props()
+
+  // Normalize runtime true explicitly: show both triangles while placing labels diagonally.
+  let symmetric = $derived<SymmetricMode | `both`>(
+    symmetric_prop === true ? `both` : symmetric_prop,
+  )
 
   // Check if a cell should be skipped in symmetric mode
   function is_hidden_cell(x_idx: number, y_idx: number): boolean {

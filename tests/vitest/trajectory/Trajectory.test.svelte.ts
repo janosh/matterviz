@@ -56,11 +56,12 @@ describe(`Trajectory`, () => {
   // effect while the syncing flag is set; returning before reading any reactive dep
   // leaves the effect dep-less, and Svelte permanently unlinks dep-less effects -
   // after which loading a new trajectory kept showing the previous one's series.
-  test(`swapping the trajectory prop regenerates plot series`, async () => {
+  test(`swapping the trajectory regenerates plot series and axis ticks`, async () => {
     const props = $state({
       trajectory: energy_traj(-1.5, -2.5),
       display_mode: `scatter` as const,
       show_controls: false,
+      step_labels: [0, 1, 2],
     })
     const target = mount_traj(props)
     await flush_render()
@@ -69,13 +70,24 @@ describe(`Trajectory`, () => {
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
-    props.trajectory = make_traj([{ volume: 10 }, { volume: 12 }])
+    props.trajectory = {
+      frames: [0, 1500, 10_000].map((step, frame_idx) =>
+        make_trajectory_frame(step, 1, { volume: frame_idx * 5000 }),
+      ),
+      metadata: {},
+    }
     await flush_render()
     plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`trajectory scatter plot not found after swap`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
+    const tick_labels = (axis: `x` | `y`) =>
+      Array.from(plot.querySelectorAll(`.${axis}-axis .tick text`), (tick_label) =>
+        tick_label.textContent?.trim(),
+      )
+    expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`1.5k`, `10k`]))
+    expect(tick_labels(`y`)).toContain(`10k`)
   })
 
   test.each([
@@ -146,23 +158,16 @@ describe(`Trajectory`, () => {
 
   // Regression: hosts restore viewer position by passing an out-of-range
   // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
-  // write back the corrected index and notify on_step_change. Slider input
-  // must report the event target's value — bind:value may not have written
-  // the binding yet when oninput fires, so reading the bound state is stale.
-  test(`clamps out-of-range steps and reports slider values from the event`, async () => {
-    const step_events: { step_idx: number; frame_count: number }[] = []
+  // write back the corrected index and notify on_step_change. Slider bursts
+  // commit only their latest event-target value on the next animation frame.
+  test(`clamps out-of-range steps and coalesces slider input`, async () => {
+    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count`>[] = []
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
-      // TrajHandlerData's fields are optional; the assertions below pin the
-      // concrete values so `?? -1` can't mask a missing field
-      on_step_change: (data: { step_idx?: number; frame_count?: number }) => {
-        step_events.push({
-          step_idx: data.step_idx ?? -1,
-          frame_count: data.frame_count ?? -1,
-        })
-      },
+      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) =>
+        step_events.push({ step_idx, frame_count }),
     })
     const target = mount_traj(props)
     await flush_render()
@@ -172,10 +177,16 @@ describe(`Trajectory`, () => {
 
     const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
     if (!slider) throw new Error(`step slider not found`)
-    slider.value = `1`
-    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    const events_before_scrub = step_events.length
+    for (const value of [`0`, `1`, `0`, `1`]) {
+      slider.value = value
+      slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    }
     flushSync()
+    expect(step_events).toHaveLength(events_before_scrub)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
+    expect(step_events).toHaveLength(events_before_scrub + 1)
   })
 
   // Every finished analysis pane is reachable from the one menu, and each menu entry drives

@@ -39,6 +39,7 @@ import keyword
 import os
 import re
 import tomllib
+from collections import Counter
 from dataclasses import dataclass
 from glob import glob
 from typing import Any
@@ -605,9 +606,15 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         type_hints = spec.get("type_hints", {})
         forward_none_props = set(spec.get("forward_none_props", []))
 
-        py_names = {prop.py_name for prop in value_props}
-        if len(py_names) != len(value_props):
-            raise ValueError(f"{key} has duplicate Python prop names")
+        py_name_counts = Counter(prop.py_name for prop in value_props)
+        duplicate_py_names = sorted(
+            name for name, count in py_name_counts.items() if count > 1
+        )
+        if duplicate_py_names:
+            raise ValueError(
+                f"{key} has duplicate Python prop names: "
+                f"{', '.join(duplicate_py_names)}"
+            )
 
         # Generate class
         doc = (spec.get("doc") or "").strip() or f"Typed wrapper for '{key}'."

@@ -11,6 +11,7 @@ from matterviz_dash_components import MatterViz
 from scripts.sync_typed_wrappers import (
     _py_type_hint,
     add_extra_props,
+    generate_wrappers,
     parse_svelte_dts_with_includes,
 )
 
@@ -28,21 +29,18 @@ def test_matterviz_forwards_props() -> None:
         "className": "viewer",
         "style": {"height": "100%"},
     }
-    component = MatterViz(**expected)
-    assert {key: getattr(component, key) for key in expected} == expected
+    assert MatterViz(**expected).to_plotly_json()["props"] == expected
     assert "id" not in MatterViz(component="Structure").to_plotly_json()["props"]
 
 
 def test_prop_kind_detection(tmp_path: Path) -> None:
     """Aliases, unions, and parenthesized callbacks classify correctly."""
-    dist_dir = tmp_path / "dist"
-    dist_dir.mkdir()
-    (dist_dir / "Component.svelte.d.ts").write_text(
+    (tmp_path / "Component.svelte.d.ts").write_text(
         "type $$ComponentProps = {}; declare const Component: "
         'import("svelte").Component<$$ComponentProps>;',
         encoding="utf-8",
     )
-    (dist_dir / "included.d.ts").write_text(
+    (tmp_path / "included.d.ts").write_text(
         "type EventHandler = (data: StructureHandlerData) => void;\n"
         "type OnReady = EventHandler;\n"
         "interface IncludedProps { onReady?: OnReady; "
@@ -52,8 +50,8 @@ def test_prop_kind_detection(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     props = parse_svelte_dts_with_includes(
-        f"{dist_dir}/Component.svelte.d.ts",
-        str(dist_dir),
+        f"{tmp_path}/Component.svelte.d.ts",
+        str(tmp_path),
         ["included.d.ts:IncludedProps"],
     )
     add_extra_props(props, {"onOptional": "((data: string) => void)?"})
@@ -64,6 +62,21 @@ def test_prop_kind_detection(tmp_path: Path) -> None:
         "onOverloaded": "callback",
         "onOptional": "callback",
     }
+
+
+def test_duplicate_python_prop_error_lists_collisions(tmp_path: Path) -> None:
+    """Wrapper generation identifies colliding normalized Python prop names."""
+    (tmp_path / "Test.svelte.d.ts").write_text(
+        "type $$ComponentProps = { fooBar?: string; foo_bar?: number; "
+        "barBaz?: string; bar_baz?: number; }; "
+        'declare const Test: import("svelte").Component<$$ComponentProps>;',
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"Test has duplicate Python prop names: bar_baz, foo_bar",
+    ):
+        generate_wrappers({"components": {"Test": {"key": "Test"}}}, str(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -85,12 +98,9 @@ def test_set_type_hints_require_set_generics(ts_type: str, expected: str) -> Non
 )
 def test_convex_hull_category_props_forwarded(wrapper: type) -> None:
     """Typed convex hull wrappers forward category props."""
-    omitted = wrapper(entries=[])
-    assert "entry_category" not in omitted.mv_props
-    assert "hidden_categories" not in omitted.mv_props
-
-    configured = wrapper(entries=[], entry_category=None)
-    assert configured.mv_props["entry_category"] is None
-
-    empty_hidden = wrapper(entries=[], hidden_categories=[])
-    assert empty_hidden.mv_props["hidden_categories"] == []
+    assert wrapper(entries=[]).mv_props == {"entries": []}
+    assert wrapper(entries=[], entry_category=None, hidden_categories=[]).mv_props == {
+        "entries": [],
+        "entry_category": None,
+        "hidden_categories": [],
+    }

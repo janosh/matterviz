@@ -12,15 +12,10 @@ import type {
   TrajectoryMetadata,
   TrajectoryPositionStream,
 } from './index'
-import {
-  copy_numeric_fields,
-  count_xyz_frames,
-  iter_xyz_frames,
-  validate_3x3_matrix,
-} from './helpers'
+import { copy_numeric_fields, iter_xyz_frames, validate_3x3_matrix } from './helpers'
 import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
 import { ase_calculator_data, decode_ase_frame, read_ase_header } from './parse/ase'
-import { build_xyz_frame, parse_xyz_comment_metadata } from './parse/xyz'
+import { build_xyz_frame, parse_extxyz_lattice, parse_xyz_comment_metadata } from './parse/xyz'
 
 const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 
@@ -92,6 +87,13 @@ const make_reporter =
   (on_progress: ((progress: ParseProgress) => void) | undefined, total: number) =>
   (done: number, stage: string): void =>
     on_progress?.({ current: (done / total) * 100, total: 100, stage })
+
+const utf8_byte_length = (value: string, encoder: TextEncoder): number => {
+  for (let char_idx = 0; char_idx < value.length; char_idx++) {
+    if (value.charCodeAt(char_idx) > 0x7f) return encoder.encode(value).length
+  }
+  return value.length
+}
 
 // Accumulates frames into one flat Float64Array, checking the invariants MSD-style
 // whole-trajectory analyses depend on: constant atom count and stable atom ordering.
@@ -412,7 +414,7 @@ export class TrajFrameReader implements FrameLoader {
   async get_total_frames(data: string | ArrayBuffer): Promise<number> {
     if (this.format === `xyz`) {
       if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)
-      return count_xyz_frames(data)
+      return this.get_xyz_cache(data).frame_starts.length
     }
     if (!(data instanceof ArrayBuffer)) throw new Error(`ASE loader requires binary data`)
     return read_ase_header(new DataView(data)).n_items
@@ -429,12 +431,12 @@ export class TrajFrameReader implements FrameLoader {
 
     if (this.format === `xyz`) {
       const data_str = data as string
-      const lines = data_str.trim().split(/\r?\n/)
+      const { lines } = this.get_xyz_cache(data_str)
       const encoder = new TextEncoder()
       const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
-      const newline_byte_len = encoder.encode(newline_sequence).length
+      const newline_byte_len = newline_sequence.length
       const line_bytes = (idx: number): number =>
-        encoder.encode(lines[idx]).length + newline_byte_len
+        utf8_byte_length(lines[idx], encoder) + newline_byte_len
 
       // cursor = next line whose bytes haven't been added to byte_offset yet
       let [current_frame, cursor, byte_offset] = [0, 0, 0]
@@ -512,7 +514,7 @@ export class TrajFrameReader implements FrameLoader {
     const report = make_reporter(on_progress, total_frames)
 
     if (this.format === `xyz`) {
-      const lines = (data as string).trim().split(/\r?\n/)
+      const { lines } = this.get_xyz_cache(data as string)
       let current_frame = 0
 
       for (const { comment } of iter_xyz_frames(lines)) {
@@ -521,6 +523,10 @@ export class TrajFrameReader implements FrameLoader {
         if (current_frame % sample_rate === 0) {
           // parse_xyz_comment_metadata is pure regex/parseFloat and never throws
           const { step, properties: props } = parse_xyz_comment_metadata(comment)
+          if (props.volume === undefined) {
+            const lattice = parse_extxyz_lattice(comment)
+            if (lattice) props.volume = Math.abs(math.det_3x3(lattice))
+          }
           const frame_metadata: TrajectoryMetadata = {
             frame_number: current_frame,
             step: step ?? current_frame,

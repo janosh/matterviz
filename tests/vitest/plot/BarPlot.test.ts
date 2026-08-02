@@ -175,8 +175,30 @@ describe(`BarPlot`, () => {
     markers[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_click).toHaveBeenCalledOnce()
-    expect(on_bar_hover).not.toHaveBeenCalled()
-    expect(on_bar_click).not.toHaveBeenCalled()
+    expect(on_bar_hover).toHaveBeenCalledOnce()
+    expect(on_bar_click).toHaveBeenCalledOnce()
+  })
+
+  test(`markerless line series retain legacy bar hover and click callbacks`, async () => {
+    const on_bar_hover = vi.fn()
+    const on_bar_click = vi.fn()
+    const plot = await mount_sized_bar_plot({
+      series: [{ ...basic, render_mode: `line`, markers: `line` }],
+      on_bar_hover,
+      on_bar_click,
+    })
+    const hit_target = plot.querySelector(`.line-series polyline[stroke="transparent"]`)
+    expect(hit_target).toBeInstanceOf(SVGPolylineElement)
+    hit_target?.dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+    )
+    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_bar_hover).toHaveBeenCalledOnce()
+    expect(on_bar_hover.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    expect(on_bar_click).toHaveBeenCalledOnce()
+    expect(on_bar_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`mixed bar and line series`, async () => {
@@ -421,13 +443,12 @@ describe(`BarPlot`, () => {
       },
     ]
 
-    test.each([
-      [`grouped`, [`DFT`, `ML`]],
-      [`overlay`, [`Experiment`]],
-    ] as const)(`renders grouped + ungrouped series in %s mode`, async (mode, labels) => {
-      const plot = await mount_sized_bar_plot({ series: grouped_series, mode })
+    test(`renders grouped and ungrouped legend entries`, async () => {
+      const plot = await mount_sized_bar_plot({ series: grouped_series })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
-      for (const label of labels) expect(plot.textContent).toContain(label)
+      for (const label of [`DFT`, `ML`, `Experiment`]) {
+        expect(plot.textContent).toContain(label)
+      }
     })
   })
 

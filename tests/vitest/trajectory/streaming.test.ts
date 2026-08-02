@@ -1,7 +1,7 @@
 // Streaming trajectory loader tests - clever testing without large files
 import { trajectory_property_config } from '$lib/labels'
 import { DEFAULTS } from '$lib/settings'
-import { FRAME_LOAD_DEBOUNCE_MS, type ParseProgress } from '$lib/trajectory'
+import type { ParseProgress } from '$lib/trajectory'
 import {
   LARGE_FILE_THRESHOLD,
   MAX_BIN_FILE_SIZE,
@@ -137,25 +137,23 @@ describe(`Trajectory Streaming`, () => {
     expect(warnings?.every((msg) => msg.includes(`unknown element symbol`))).toBe(true)
   })
 
-  it(`ignores stale out-of-order frame loads`, async () => {
+  it(`bounds indexed reads and loads the latest requested frame next`, async () => {
     mount(TrajectoryRaceHarness, { target: document.body })
     const settle_frame_load = async () => {
       await Promise.resolve()
       flushSync()
       await tick()
     }
-    const wait_for_frame_load_debounce = async () => {
-      await new Promise<void>((resolve) => setTimeout(resolve, FRAME_LOAD_DEBOUNCE_MS + 15))
-      await settle_frame_load()
-    }
-    await tick()
-    await wait_for_frame_load_debounce()
+    await settle_frame_load()
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
-    flushSync()
-    await tick()
-    await wait_for_frame_load_debounce()
+    await settle_frame_load()
+    // Frame 1 is queued, not started alongside the still-pending frame 0 read.
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
+    await settle_frame_load()
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
@@ -164,10 +162,6 @@ describe(`Trajectory Streaming`, () => {
     // renders them while open.
     document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
     await tick()
-    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
-
-    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
-    await settle_frame_load()
     expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
   })
 
@@ -443,6 +437,15 @@ Si 0 0 0`
         0, 3, 6, 9, 12, 15, 18, 21, 24, 27,
       ])
       expect((await loader.load_frame(data, 29))?.structure.sites).toHaveLength(3)
+    })
+
+    it(`derives indexed XYZ volume from the EXTXYZ lattice`, async () => {
+      const frame = `1\nLattice="2 0 0 0 3 0 0 0 4"\nH 0 0 0\n`
+      const metadata = await new TrajFrameReader(`lattice.extxyz`).extract_plot_metadata(
+        `${frame}${frame}`,
+      )
+
+      expect(metadata.map(({ properties }) => properties.volume)).toEqual([24, 24])
     })
 
     it.each<[string, Record<string, number>]>([

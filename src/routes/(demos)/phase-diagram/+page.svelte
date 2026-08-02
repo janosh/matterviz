@@ -317,7 +317,8 @@
       result={tdb.result}
       system_name={tdb.system_name}
       has_precomputed={tdb.precomputed_data !== null}
-      is_precomputed_loaded={current_data === tdb.precomputed_data}
+      is_precomputed_loaded={tdb.precomputed_data !== null &&
+        current_data === tdb.precomputed_data}
       on_load_precomputed={load_precomputed}
       style="margin: 0.5em"
     />

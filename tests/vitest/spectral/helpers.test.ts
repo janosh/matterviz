@@ -1293,11 +1293,11 @@ describe(`normalize_dos`, () => {
 
   it(`preserves phonon frequencies without guessing their unit`, () => {
     const frequencies = [0, 200, 333.5641]
-    const result = normalize_dos({
+    const dos = {
       frequencies,
       densities: frequencies.map((_frequency, frequency_idx) => frequency_idx),
-    })
-    expect(result).toMatchObject({ type: `phonon`, frequencies })
+    }
+    expect(normalize_dos(dos)).toMatchObject({ type: `phonon`, frequencies })
   })
 
   it.each([`cm-1`, `cm^-1`, `cm⁻¹`] as const)(

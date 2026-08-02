@@ -688,7 +688,13 @@ Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels 
 
   <ScatterPlot
     series={time_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
-    x_axis={{ format: date_format, ticks: -7, label: 'Date', tick: { label: { inside } } }}
+    x_axis={{
+      scale_type: 'time',
+      format: date_format,
+      ticks: -7,
+      label: 'Date',
+      tick: { label: { inside } },
+    }}
     y_axis={{ format: y_format, ticks: 5, label: 'Value', tick: { label: { inside } } }}
     style="height: 350px"
     legend={{

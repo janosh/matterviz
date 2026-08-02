@@ -342,6 +342,9 @@ describe(`LAMMPS Trajectory Format`, () => {
     await expect(
       parse_trajectory_data(content, `mdanalysis-additional-columns.lammpstrj`),
     ).rejects.toThrow(`No valid frames found in LAMMPS trajectory`)
+    expect(get_traj_parse_warnings()).toContain(
+      `Skipping LAMMPS frame at timestep 0: missing type/element column`,
+    )
   })
 
   it(`should parse inline LAMMPS content`, async () => {
