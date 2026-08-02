@@ -144,6 +144,9 @@
     trajectory_lines_result = $bindable(null),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
+    show_trajectory_lines = $bindable(
+      scene_props_in?.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
+    ),
     lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
@@ -246,6 +249,7 @@
     trajectory_lines_result?: TrajectoryLinesStats | null
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
+    show_trajectory_lines?: boolean
     // Controls visibility configuration.
     // - 'always': controls always visible
     // - 'hover': controls visible on component hover (default)
@@ -377,6 +381,9 @@
   $effect.pre(() => {
     if (scene_props_in && typeof scene_props_in === `object`) {
       mirror_scene_props(scene_props, scene_props_in)
+      if (scene_props_in.show_trajectory_lines !== undefined) {
+        show_trajectory_lines = scene_props_in.show_trajectory_lines
+      }
     }
     if (lattice_props_in && typeof lattice_props_in === `object`) {
       Object.assign(lattice_props, lattice_props_in)
@@ -1247,7 +1254,7 @@
     structure: internal_displayed_structure,
     base_structure: cell_transformed_structure,
     reference_structure,
-    scene_props,
+    scene_props: { ...scene_props, show_trajectory_lines },
     gizmo: scene_gizmo_props,
     lattice_props,
     volumetric_data,
@@ -2118,6 +2125,7 @@
         <StructureControls
           bind:controls_open
           bind:scene_props
+          bind:show_trajectory_lines
           bind:lattice_props
           bind:show_image_atoms
           bind:supercell_scaling

@@ -311,20 +311,41 @@
 
   // Avoid deep-proxying lattice_matrices: unwrapping measured 1917 ms proxied vs 1.1 ms raw.
   let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
-  // Indexed trajectories would require a second full parse for an optional overlay.
+  let show_trajectory_lines = $state(
+    untrack(
+      () =>
+        structure_props.scene_props?.show_trajectory_lines ??
+        DEFAULTS.structure.show_trajectory_lines,
+    ),
+  )
+  $effect(() => {
+    const configured = structure_props.scene_props?.show_trajectory_lines
+    if (configured !== undefined) show_trajectory_lines = configured
+  })
+  let trajectory_lines_available = $derived(
+    Boolean(trajectory && total_frames >= 2 && has_all_frames_in_memory(trajectory)),
+  )
+  // Indexed trajectories would require a second full parse for an optional overlay. In-memory
+  // trajectories are collected only when trails are enabled, so the default path pays nothing.
   $effect(() => {
     const owner = trajectory
+    const enabled = show_trajectory_lines
     trail_stream = null
-    if (!owner || total_frames < 2 || !has_all_frames_in_memory(owner)) return
+    if (!enabled || !owner || !trajectory_lines_available) return
+    let cancelled = false
     const frame_stride = suggest_msd_frame_stride(owner, TRAIL_POSITION_MAX_BYTES) ?? 1
     collect_msd_positions(owner, { frame_stride, max_bytes: TRAIL_POSITION_MAX_BYTES })
       .then((stream) => {
-        if (trajectory === owner) trail_stream = stream
+        if (!cancelled && trajectory === owner) trail_stream = stream
       })
       .catch((exc: unknown) => {
+        if (cancelled) return
         // Trails are optional, so a failure here hides them rather than breaking the viewer
         console.error(`Trajectory trails: position collection failed`, to_error(exc).message)
       })
+    return () => {
+      cancelled = true
+    }
   })
 
   const SCRUB_SETTLE_MS = 80
@@ -333,14 +354,15 @@
   let scrub_settle_timeout: ReturnType<typeof setTimeout> | undefined
   let pending_scrub_step: number | undefined
 
-  // Convert source-frame playhead to collected frames; consumer scene_props override trail
-  // values, while scrub deferral remains owned by the trajectory interaction pipeline.
+  // Convert source-frame playhead to collected frames; collection and scrub deferral remain
+  // owned by the trajectory interaction pipeline.
   let trail_scene_props = $derived({
-    trajectory_position_stream: trail_stream,
+    ...structure_props.scene_props,
+    trajectory_position_stream: trajectory_lines_available ? trail_stream : undefined,
     trajectory_line_end_frame: trail_stream
       ? collected_frame_idx(trail_stream, current_step_idx)
       : undefined,
-    ...structure_props.scene_props,
+    show_trajectory_lines,
     defer_expensive_geometry: scrub_active,
   })
 
@@ -379,6 +401,7 @@
   const FRAME_CACHE_MAX = 64
   const FRAME_CACHE_MAX_ATOMS = 200_000
   let frame_cache = new SvelteMap<number, TrajectoryFrame>()
+  let frame_cache_atom_count = 0
   let frame_cache_owner: TrajectoryType | undefined
   // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
   const inflight_frames = new SvelteSet<number>()
@@ -430,6 +453,7 @@
   function ensure_frame_cache_owner() {
     if (frame_cache_owner !== trajectory) {
       frame_cache = new SvelteMap()
+      frame_cache_atom_count = 0
       inflight_frames.clear()
       pending_frame_idx = undefined
       frame_cache_owner = trajectory
@@ -461,13 +485,19 @@
         total_atoms -= frame_cache.get(oldest)?.structure?.sites?.length ?? 0
         frame_cache.delete(oldest)
       }
+      frame_cache_atom_count = total_atoms
     })
   }
 
   const emit_frame_load_state = (frame_idx: number) => {
     wrapper?.dispatchEvent(
       new CustomEvent(`matterviz:trajectory-load-state`, {
-        detail: { frame_idx, inflight: frame_read_active ? 1 : 0 },
+        detail: {
+          frame_idx,
+          inflight: frame_read_active ? 1 : 0,
+          cached_frames: frame_cache.size,
+          cached_atoms: frame_cache_atom_count,
+        },
       }),
     )
   }
@@ -850,19 +880,20 @@
 
   function queue_scrub_step(idx: number) {
     if (idx < 0 || idx >= total_frames || idx === pending_scrub_step) return
-    scrub_active = true
-    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
-    scrub_settle_timeout = setTimeout(() => {
-      scrub_settle_timeout = undefined
-      scrub_active = false
-    }, SCRUB_SETTLE_MS)
     pending_scrub_step = idx
     if (scrub_animation_frame !== undefined) return
+    scrub_active = true
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    scrub_settle_timeout = undefined
     scrub_animation_frame = requestAnimationFrame(() => {
       scrub_animation_frame = undefined
       const next_step_idx = pending_scrub_step
       pending_scrub_step = undefined
       if (next_step_idx !== undefined) commit_step(next_step_idx)
+      scrub_settle_timeout = setTimeout(() => {
+        scrub_settle_timeout = undefined
+        scrub_active = false
+      }, SCRUB_SETTLE_MS)
     })
   }
 
@@ -1742,6 +1773,7 @@
             ...structure_props,
             scene_props: trail_scene_props,
           }}
+          bind:show_trajectory_lines
           bind:controls_open
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements

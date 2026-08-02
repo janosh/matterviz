@@ -51,6 +51,30 @@ const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
 }
 
 describe(`Trajectory`, () => {
+  test(`collects trajectory trail positions only after trails are enabled`, async () => {
+    const target = mount_traj({
+      trajectory: make_traj([{}, {}, {}]),
+      display_mode: `structure`,
+      show_controls: false,
+      controls_open: true,
+      structure_props: { show_controls: `always` },
+    })
+    await flush_render()
+
+    const trail_label = Array.from(target.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Show trajectory trails`),
+    )
+    const trail_toggle = trail_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
+    expect(target.textContent).not.toContain(`Trail length`)
+
+    trail_toggle.click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
+
+    trail_toggle.click()
+    await vi.waitFor(() => expect(target.textContent).not.toContain(`Trail length`))
+  })
+
   // Regression: the series-regeneration effect must survive the visible_properties
   // write-back from the legend-sync effect. That write re-runs the regeneration
   // effect while the syncing flag is set; returning before reading any reactive dep

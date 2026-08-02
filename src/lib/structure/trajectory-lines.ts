@@ -9,7 +9,6 @@
 //
 // Everything here is a pure function of the position stream + options so it can be unit
 // tested without a WebGPU context; TrajectoryLines.svelte only wraps the result in buffers.
-import type { D3InterpolateName } from '$lib/colors'
 import { default_element_colors, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -49,8 +48,6 @@ export interface TrajectoryLinesOptions {
   // Per-element CSS colors, normally the scene's live `colors.element` map so trails match
   // their spheres. Defaults to the VESTA palette.
   element_colors?: Partial<Record<ElementSymbol, string>>
-  // d3 ramp used by `time` color mode, sampled across the window
-  color_scale?: D3InterpolateName
   wrap_mode?: TrajectoryLineWrapMode
   // Cartesian trail-head targets in stream atom order. Each whole polyline is translated
   // onto its anchor without changing its shape.
@@ -197,7 +194,6 @@ export function build_trajectory_lines(
     elements: element_filter = null,
     color_mode = `element`,
     element_colors = default_element_colors,
-    color_scale = `interpolateViridis`,
     wrap_mode = `unwrap`,
     anchor_positions = null,
   } = options
@@ -269,7 +265,7 @@ export function build_trajectory_lines(
   const rgb_stride = time_mode ? 3 : 0
   const rgb_table = new Float32Array((time_mode ? n_sampled : atom_idxs.length) * 3)
   if (time_mode) {
-    const interpolate = get_d3_interpolator(color_scale)
+    const interpolate = get_d3_interpolator(`interpolateViridis`)
     // End anchoring can make samples uneven, so color by elapsed frames, not sample ordinal.
     const frame_span = end_frame - start_frame
     for (let sample_idx = 0; sample_idx < n_sampled; sample_idx++) {

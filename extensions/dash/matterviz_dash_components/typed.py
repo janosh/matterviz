@@ -66,6 +66,7 @@ class Structure(MatterViz):
         scene_props: dict | None = None,
         selected_sites: list[int] | None = None,
         show_controls: Any | None = None,
+        show_trajectory_lines: bool | None = None,
         site_radius_overrides: Any | None = None,
         slice_settings: dict | None = None,
         spinner_props: dict | None = None,
@@ -172,6 +173,8 @@ class Structure(MatterViz):
             mv_props["selected_sites"] = selected_sites
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
+        if show_trajectory_lines is not None:
+            mv_props["show_trajectory_lines"] = show_trajectory_lines
         if site_radius_overrides is not None:
             mv_props["site_radius_overrides"] = site_radius_overrides
         if slice_settings is not None:

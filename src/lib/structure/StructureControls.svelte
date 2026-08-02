@@ -80,6 +80,7 @@
     polyhedra_rendered_elements = [],
     displacement_summary = null,
     trajectory_lines_result = null,
+    show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
     on_reset_camera,
     reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
@@ -114,6 +115,7 @@
     displacement_summary?: DisplacementSummary | null
     // Trajectory-trail vertex counts, bound out of the scene, shown as a cost readout
     trajectory_lines_result?: TrajectoryLinesStats | null
+    show_trajectory_lines?: boolean
     on_reset_camera?: () => void // undefined while camera at home (hides button)
     reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
@@ -136,6 +138,10 @@
       }
       extra_reset?.()
     },
+  })
+
+  $effect(() => {
+    scene_props.show_trajectory_lines = show_trajectory_lines
   })
 
   const controls_id = $props.id()
@@ -1002,9 +1008,9 @@
     </SettingsSection>
   {/if}
 
-  <!-- Only the trajectory viewer collects a whole-run position stream, so this section is
+  <!-- Only the trajectory viewer can collect a whole-run position stream, so this section is
     absent for plain structures rather than showing dead controls -->
-  {#if scene_props.trajectory_position_stream}
+  {#if scene_props.trajectory_position_stream !== undefined}
     <SettingsSection
       title="Trajectory Trails"
       {...scene_section(
@@ -1013,11 +1019,12 @@
           `trajectory_line_trail_frames`,
           `trajectory_line_frame_stride`,
           `trajectory_line_color_mode`,
-          `trajectory_line_color_scale`,
           `trajectory_line_wrap_mode`,
-          `trajectory_line_opacity`,
         ],
-        () => (scene_props.trajectory_line_elements = null),
+        () => {
+          show_trajectory_lines = DEFAULTS.structure.show_trajectory_lines
+          scene_props.trajectory_line_elements = null
+        },
       )}
     >
       <label
@@ -1026,10 +1033,10 @@
         })}
         style="gap: 6pt"
       >
-        <input type="checkbox" bind:checked={scene_props.show_trajectory_lines} />
+        <input type="checkbox" bind:checked={show_trajectory_lines} />
         Show trajectory trails
       </label>
-      {#if scene_props.show_trajectory_lines}
+      {#if show_trajectory_lines && scene_props.trajectory_position_stream}
         {#if trail_elements.length > 1}
           <div class="pane-row" style="flex-wrap: wrap; gap: 8pt">
             Species
@@ -1061,14 +1068,6 @@
           title={SETTINGS_CONFIG.structure.trajectory_line_frame_stride.description}
           >Frame stride</NumberRangeInput
         >
-        <NumberRangeInput
-          min={0.05}
-          max={1}
-          step={0.05}
-          bind:value={scene_props.trajectory_line_opacity}
-          title={SETTINGS_CONFIG.structure.trajectory_line_opacity.description}
-          >Opacity</NumberRangeInput
-        >
         <label
           {@attach tooltip({
             content: SETTINGS_CONFIG.structure.trajectory_line_color_mode.description,
@@ -1081,15 +1080,6 @@
             {/each}
           </select>
         </label>
-        {#if scene_props.trajectory_line_color_mode === `time`}
-          <label>
-            Color scale
-            <ColorScaleSelect
-              bind:value={scene_props.trajectory_line_color_scale}
-              style="max-width: 180px"
-            />
-          </label>
-        {/if}
         <label
           {@attach tooltip({
             content: SETTINGS_CONFIG.structure.trajectory_line_wrap_mode.description,
@@ -1121,6 +1111,8 @@
             </span>
           </div>
         {/if}
+      {:else if show_trajectory_lines}
+        <Spinner text="Collecting trajectory positions..." style="margin: 4pt 0" />
       {/if}
     </SettingsSection>
   {/if}

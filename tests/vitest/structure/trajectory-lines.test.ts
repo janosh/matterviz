@@ -291,14 +291,13 @@ describe(`coloring`, () => {
     const stream = two_atom_stream(22)
     const built = build_trajectory_lines(stream, {
       color_mode: `time`,
-      color_scale: `interpolateGreys`,
       end_frame: 21,
       trail_frames: 13,
       frame_stride: 4,
     })
     expect(built.frame_idxs).toEqual([9, 12, 16, 20, 21])
     expect(built.point_count).toBe(10)
-    const interpolate = get_d3_interpolator(`interpolateGreys`)
+    const interpolate = get_d3_interpolator(`interpolateViridis`)
     const expected = built.frame_idxs.flatMap((frame_idx) =>
       parse_linear_rgb(interpolate((frame_idx - 9) / 12)).map(Math.fround),
     )

@@ -8,12 +8,10 @@ Everything is packed into ONE indexed BufferGeometry, so the whole overlay is a 
 draw call regardless of atom or frame count. Geometry maths lives in trajectory-lines.ts
 as a pure function; this file only owns the GPU buffers and their disposal.
 
-Line WIDTH is deliberately not a prop: WebGPU rasterizes every line at 1 device pixel, and
-the fat-line alternative (LineSegments2, which expands each segment into an instanced quad)
-costs ~18 floats per segment against the 6 used here — 180 MB of instance attributes for a
-500-atom x 5000-frame run. Opacity is the visual-weight control instead. -->
+WebGPU rasterizes lines at 1 device pixel. The fat-line alternative expands every segment
+into an instanced quad and costs three times the attributes, so this layer keeps a fixed
+subtle opacity instead of exposing width and opacity controls. -->
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { DEFAULTS } from '$lib/settings'
   import type {
@@ -36,10 +34,8 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
     frame_stride = DEFAULTS.structure.trajectory_line_frame_stride,
     elements = null,
     color_mode = DEFAULTS.structure.trajectory_line_color_mode as TrajectoryLineColorMode,
-    color_scale = DEFAULTS.structure.trajectory_line_color_scale as D3InterpolateName,
     element_colors = undefined,
     wrap_mode = DEFAULTS.structure.trajectory_line_wrap_mode as TrajectoryLineWrapMode,
-    opacity = DEFAULTS.structure.trajectory_line_opacity,
     anchor_positions = null,
     build_result = $bindable(null),
   }: {
@@ -56,11 +52,9 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
     // Species to draw. null = all, [] = none.
     elements?: readonly ElementSymbol[] | null
     color_mode?: TrajectoryLineColorMode
-    color_scale?: D3InterpolateName
     // Normally the scene's live `colors.element` map so trails match their spheres
     element_colors?: Partial<Record<ElementSymbol, string>>
     wrap_mode?: TrajectoryLineWrapMode
-    opacity?: number
     // Displayed Cartesian positions to glue the trail heads to, one xyz per stream atom.
     // The scene wraps atoms into the cell while trails are unwrapped, so without these a
     // head can sit a whole cell from its sphere.
@@ -78,7 +72,6 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
           frame_stride,
           elements,
           color_mode,
-          color_scale,
           element_colors,
           wrap_mode,
           anchor_positions,
@@ -110,11 +103,6 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
   <!-- Trails are decoration: they must not swallow atom hover, and their bounding box
     covers the whole diffusion path, which would defeat frustum culling anyway -->
   <T.LineSegments {geometry} frustumCulled={false} raycast={() => null}>
-    <T.LineBasicMaterial
-      vertexColors
-      transparent={opacity < 1}
-      {opacity}
-      depthWrite={opacity >= 1}
-    />
+    <T.LineBasicMaterial vertexColors transparent opacity={0.85} depthWrite={false} />
   </T.LineSegments>
 {/if}

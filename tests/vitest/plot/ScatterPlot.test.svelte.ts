@@ -475,11 +475,54 @@ describe(`ScatterPlot`, () => {
     )
   })
 
-  // NOTE: Cursor behavior tests for ScatterPlot SVG and points are in Playwright
-  // since vitest/happy-dom lacks proper dimensions for rendering points.
-  // The cursor logic is tested indirectly via:
-  // - FillArea.test.ts (cursor based on click handlers and hover_style.cursor)
-  // - ScatterPoint.test.ts (style.cursor prop application)
+  test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
+    const changes = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      point_tween: { duration: 0 },
+      change: changes,
+      legend: null,
+    })
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const markers = [...plot.querySelectorAll<SVGPathElement>(`.marker`)]
+    if (!svg || markers.length !== 2) throw new Error(`expected chart SVG with two markers`)
+    Object.defineProperty(svg, `getBoundingClientRect`, {
+      value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+    })
+    const marker_coords = markers.map((marker) => {
+      const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+      if (!match?.groups) throw new Error(`could not parse marker transform "${transform}"`)
+      return { x: Number(match.groups.x), y: Number(match.groups.y) }
+    })
+
+    for (const { x, y } of marker_coords) {
+      svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    }
+    expect(changes).not.toHaveBeenCalled()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    expect(changes).toHaveBeenCalledTimes(1)
+    expect(changes.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+
+    svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(changes).toHaveBeenLastCalledWith(null)
+
+    changes.mockClear()
+    for (const { x, y } of marker_coords) {
+      svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
+    }
+    svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(changes).toHaveBeenCalledTimes(2)
+    expect(changes.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+    expect(changes).toHaveBeenLastCalledWith(null)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    expect(changes).toHaveBeenCalledTimes(2)
+  })
+
+  // Remaining cursor-style behavior lives in Playwright because happy-dom lacks
+  // dimensions unless each chart element is explicitly stubbed as above.
 
   describe(`auto-cycling series colors and symbols`, () => {
     test(`DEFAULT_SERIES_COLORS and DEFAULT_SERIES_SYMBOLS are valid`, () => {

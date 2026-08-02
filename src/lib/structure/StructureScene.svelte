@@ -261,11 +261,8 @@
     trajectory_line_elements = null,
     trajectory_line_color_mode = DEFAULTS.structure
       .trajectory_line_color_mode as TrajectoryLineColorMode,
-    trajectory_line_color_scale = DEFAULTS.structure
-      .trajectory_line_color_scale as D3InterpolateName,
     trajectory_line_wrap_mode = DEFAULTS.structure
       .trajectory_line_wrap_mode as TrajectoryLineWrapMode,
-    trajectory_line_opacity = DEFAULTS.structure.trajectory_line_opacity,
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
@@ -402,9 +399,7 @@
     trajectory_line_frame_stride?: number
     trajectory_line_elements?: readonly ElementSymbol[] | null // null = all species
     trajectory_line_color_mode?: TrajectoryLineColorMode
-    trajectory_line_color_scale?: D3InterpolateName
     trajectory_line_wrap_mode?: TrajectoryLineWrapMode
-    trajectory_line_opacity?: number
     trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
@@ -2176,10 +2171,8 @@
           frame_stride={trajectory_line_frame_stride}
           elements={trajectory_line_elements}
           color_mode={trajectory_line_color_mode}
-          color_scale={trajectory_line_color_scale}
           element_colors={colors.element}
           wrap_mode={trajectory_line_wrap_mode}
-          opacity={trajectory_line_opacity}
           anchor_positions={trajectory_line_anchors}
           bind:build_result={trajectory_lines_result}
         />

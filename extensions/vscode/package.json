@@ -644,11 +644,6 @@
             "time"
           ]
         },
-        "matterviz.structure.trajectory_line_color_scale": {
-          "type": "string",
-          "default": "interpolateViridis",
-          "description": "D3 color scale ramped along each trail when coloring by time"
-        },
         "matterviz.structure.trajectory_line_wrap_mode": {
           "type": "string",
           "default": "unwrap",
@@ -657,13 +652,6 @@
             "unwrap",
             "break"
           ]
-        },
-        "matterviz.structure.trajectory_line_opacity": {
-          "type": "number",
-          "default": 0.85,
-          "description": "Opacity of trajectory trails. WebGPU draws every line 1 device pixel wide, so opacity is the visual weight control",
-          "minimum": 0.05,
-          "maximum": 1
         },
         "matterviz.structure.show_cell": {
           "type": "boolean",

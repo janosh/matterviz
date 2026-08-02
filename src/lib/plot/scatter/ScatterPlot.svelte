@@ -1220,14 +1220,36 @@
     }
   }
 
-  function on_mouse_move(evt: MouseEvent) {
-    hovered = true
+  let hover_animation_frame: number | undefined
+  let pending_hover: { x_rel: number; y_rel: number; event: MouseEvent } | undefined
 
+  function flush_pending_hover() {
+    const next_hover = pending_hover
+    pending_hover = undefined
+    if (next_hover) {
+      update_tooltip_point(next_hover.x_rel, next_hover.y_rel, next_hover.event)
+    }
+  }
+
+  function queue_mouse_move(evt: MouseEvent) {
+    hovered = true
     const coords = get_relative_coords(evt)
     if (!coords) return
-
-    update_tooltip_point(coords.x, coords.y, evt)
+    pending_hover = { x_rel: coords.x, y_rel: coords.y, event: evt }
+    if (hover_animation_frame !== undefined) return
+    hover_animation_frame = requestAnimationFrame(() => {
+      hover_animation_frame = undefined
+      flush_pending_hover()
+    })
   }
+
+  function end_queued_mouse_move(apply_pending: boolean) {
+    if (hover_animation_frame !== undefined) cancelAnimationFrame(hover_animation_frame)
+    hover_animation_frame = undefined
+    if (apply_pending) flush_pending_hover()
+    else pending_hover = undefined
+  }
+  onDestroy(() => end_queued_mouse_move(false))
 
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
@@ -1488,11 +1510,13 @@
       onmousedown={pan_zoom.on_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) on_mouse_move(evt)
+        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
+        end_queued_mouse_move(true)
         hovered = false
         tooltip_point = null
+        change(null)
         on_point_hover?.(null)
       }}
       ondblclick={pan_zoom.reset_view}
