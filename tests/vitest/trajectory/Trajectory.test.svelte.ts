@@ -57,9 +57,9 @@ const click_menu_option = async (
 ): Promise<void> => {
   target.querySelector<HTMLButtonElement>(menu_button)?.click()
   await tick()
-  const option = [
-    ...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-  ].find((button) => button.textContent?.includes(option_text))
+  const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
+    (button) => button.textContent?.includes(option_text),
+  )
   if (!option) throw new Error(`${option_text} menu option not found`)
   option.click()
   await tick()

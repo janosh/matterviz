@@ -371,12 +371,14 @@ describe(`ScatterPlot`, () => {
 
   test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
     const changes = vi.fn()
+    const on_point_hover = vi.fn()
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
       x_axis: { range: [0, 1] },
       y_axis: { range: [0, 1] },
       point_tween: { duration: 0 },
       change: changes,
+      on_point_hover,
       legend: null,
     })
     const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
@@ -404,15 +406,18 @@ describe(`ScatterPlot`, () => {
     expect(changes).toHaveBeenLastCalledWith(null)
 
     changes.mockClear()
+    on_point_hover.mockClear()
     for (const { x, y } of marker_coords) {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(changes).toHaveBeenCalledTimes(2)
-    expect(changes.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+    expect(changes).toHaveBeenCalledOnce()
     expect(changes).toHaveBeenLastCalledWith(null)
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    expect(changes).toHaveBeenCalledTimes(2)
+    expect(changes).toHaveBeenCalledOnce()
+    expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks

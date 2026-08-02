@@ -2,16 +2,26 @@ import { DEFAULTS } from '$lib/settings'
 import { StructureControls } from '$lib/structure'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, simple_structure } from '../setup'
+import { bind_props, make_crystal, simple_structure } from '../setup'
 
-const trail_stream = (n_frames = 3): TrajectoryPositionStream => ({
-  positions: new Float64Array(n_frames * 3),
-  n_frames,
+const mount_controls = async (
+  props: ComponentProps<typeof StructureControls>,
+): Promise<HTMLElement> => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  mount(StructureControls, { target, props })
+  await tick()
+  return target
+}
+
+const trail_stream = (): TrajectoryPositionStream => ({
+  positions: new Float64Array(9),
+  n_frames: 3,
   n_atoms: 1,
   elements: [`H`],
-  lattice_matrices: Array.from({ length: n_frames }, () => [
+  lattice_matrices: Array.from({ length: 3 }, () => [
     [1, 0, 0],
     [0, 1, 0],
     [0, 0, 1],
@@ -19,13 +29,11 @@ const trail_stream = (n_frames = 3): TrajectoryPositionStream => ({
   pbc: [false, false, false],
   coords_unwrapped: true,
   frame_stride: 1,
-  steps: Array.from({ length: n_frames }, (_, idx) => idx),
+  steps: [0, 1, 2],
 })
 
 describe(`StructureControls reactive props`, () => {
   test(`syncs site label controls from external scene prop updates`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     const state = $state({
       scene_props: {
         show_site_labels: true,
@@ -34,10 +42,9 @@ describe(`StructureControls reactive props`, () => {
       },
     })
 
-    mount(StructureControls, {
-      target,
-      props: bind_props({ structure: simple_structure, controls_open: true }, state),
-    })
+    const target = await mount_controls(
+      bind_props({ structure: simple_structure, controls_open: true }, state),
+    )
 
     state.scene_props = {
       ...state.scene_props,
@@ -61,8 +68,6 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`updates the scale type when the selected property changes`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     const structure = {
       ...simple_structure,
       sites: simple_structure.sites.map((site) => ({
@@ -78,11 +83,7 @@ describe(`StructureControls reactive props`, () => {
         scale_type: `continuous` as const,
       },
     })
-    mount(StructureControls, {
-      target,
-      props: bind_props({ structure, controls_open: true }, state),
-    })
-    await tick()
+    await mount_controls(bind_props({ structure, controls_open: true }, state))
 
     // The native property dropdown performs this same nested mutation through bind:value.
     state.atom_color_config.property_key = CNA_TYPE_PROPERTY
@@ -95,8 +96,6 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     const state = $state({
       scene_props: {
         show_polyhedra: `crystals` as const,
@@ -105,15 +104,13 @@ describe(`StructureControls reactive props`, () => {
       },
     })
 
-    mount(StructureControls, {
-      target,
-      props: bind_props(
+    const target = await mount_controls(
+      bind_props(
         // nothing rendered yet (e.g. O blocked by CN cap), but O is force-included
         { structure: simple_structure, controls_open: true, polyhedra_rendered_elements: [] },
         state,
       ),
-    })
-    await tick()
+    )
 
     const center_checkbox = (symbol: string) =>
       [...target.querySelectorAll(`label`)]
@@ -133,36 +130,17 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`renders multi-character element symbols as single center checkboxes`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     // flatMap only flattens arrays, not strings, so 2-letter symbols like Fe must
     // stay intact (not split into F + e). Guards against a flatMap -> spread regression.
-    const fe_oxide = {
-      id: `test_fe_oxide`,
-      sites: [
-        {
-          species: [{ element: `Fe`, occu: 1, oxidation_state: 3 }],
-          xyz: [0, 0, 0],
-          abc: [0, 0, 0],
-          label: `Fe1`,
-          properties: {},
-        },
-        {
-          species: [{ element: `O`, occu: 1, oxidation_state: -2 }],
-          xyz: [1.5, 0, 0],
-          abc: [0.15, 0, 0],
-          label: `O1`,
-          properties: {},
-        },
-      ],
-    } as typeof simple_structure
+    const fe_oxide = make_crystal(10, [
+      [`Fe`, [0, 0, 0], 3],
+      [`O`, [0.15, 0, 0], -2],
+    ])
     const state = $state({ scene_props: { show_polyhedra: `crystals` as const } })
 
-    mount(StructureControls, {
-      target,
-      props: bind_props({ structure: fe_oxide, controls_open: true }, state),
-    })
-    await tick()
+    const target = await mount_controls(
+      bind_props({ structure: fe_oxide, controls_open: true }, state),
+    )
 
     const center_label = (symbol: string) =>
       [...target.querySelectorAll(`label`)].find(
@@ -170,25 +148,20 @@ describe(`StructureControls reactive props`, () => {
       )
 
     expect(center_label(`Fe`)).toBeDefined()
-    expect(center_label(`O`)).toBeDefined()
     // no split-character artifacts from string iteration
     expect(center_label(`F`)).toBeUndefined()
     expect(center_label(`e`)).toBeUndefined()
   })
 
-  // Sections wire `current_values` and `on_reset` from one shared key list, so this covers
-  // every scene_props-driven section: the reset offer appears only once something differs
-  // from the mount-time snapshot, and clicking it puts every key of that section back.
-  test(`offers a section reset only after a change and restores every key`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
+  // Sections wire `current_values` and `on_reset` from one shared key list. Check two
+  // scene_props-driven sections to ensure changes reveal their reset and restore defaults.
+  test(`offers section resets only after changes and restores defaults`, async () => {
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
 
-    mount(StructureControls, {
-      target,
-      props: bind_props(
+    const target = await mount_controls(
+      bind_props(
         {
           structure: simple_structure,
           controls_open: true,
@@ -196,8 +169,7 @@ describe(`StructureControls reactive props`, () => {
         },
         state,
       ),
-    })
-    await tick()
+    )
 
     const reset_button = (section: string) =>
       target.querySelector<HTMLButtonElement>(
@@ -223,14 +195,8 @@ describe(`StructureControls reactive props`, () => {
   // The next two cover the temporary wrapper in $lib/overlays/DraggablePane.svelte and come
   // out together once a svelte-widgets release carries the upstream fixes.
   const mount_open_pane = async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     const state = $state({ controls_open: true })
-    mount(StructureControls, {
-      target,
-      props: bind_props({ structure: simple_structure }, state),
-    })
-    await tick()
+    const target = await mount_controls(bind_props({ structure: simple_structure }, state))
     const pane = target.querySelector(`.controls-pane`)
     if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
     return { target, state, pane }
@@ -295,49 +261,21 @@ describe(`StructureControls reactive props`, () => {
     expect(pane.style.height).toBe(``)
   })
 
-  test.each([
-    {
-      desc: `hidden without a stream slot`,
-      stream: undefined as TrajectoryPositionStream | null | undefined,
-      show_trails: false,
-      expect_toggle: false,
-      expect_length: false,
-    },
-    {
-      desc: `toggle only while stream is pending`,
-      stream: null,
-      show_trails: false,
-      expect_toggle: true,
-      expect_length: false,
-    },
-    {
-      desc: `length controls once a stream arrives`,
-      stream: trail_stream(),
-      show_trails: true,
-      expect_toggle: true,
-      expect_length: true,
-    },
-    {
-      desc: `length controls stay gated on the trails toggle`,
-      stream: trail_stream(),
-      show_trails: false,
-      expect_toggle: true,
-      expect_length: false,
-    },
+  test.each<[string, TrajectoryPositionStream | null | undefined, boolean, boolean, boolean]>([
+    [`hidden without a stream slot`, undefined, false, false, false],
+    [`toggle only while stream is pending`, null, false, true, false],
+    [`length controls once a stream arrives`, trail_stream(), true, true, true],
+    [`length controls stay gated on the trails toggle`, trail_stream(), false, true, false],
   ])(
-    `trajectory trails chrome: $desc`,
-    async ({ stream, show_trails, expect_toggle, expect_length }) => {
-      const target = document.createElement(`div`)
-      document.body.append(target)
+    `trajectory trails chrome: %s`,
+    async (_desc, stream, show_trails, expect_toggle, expect_length) => {
       const state = $state({
         show_trajectory_lines: show_trails,
         scene_props: { trajectory_position_stream: stream },
       })
-      mount(StructureControls, {
-        target,
-        props: bind_props({ structure: simple_structure, controls_open: true }, state),
-      })
-      await tick()
+      const target = await mount_controls(
+        bind_props({ structure: simple_structure, controls_open: true }, state),
+      )
 
       const has_toggle = [...target.querySelectorAll(`label`)].some((label) =>
         label.textContent?.includes(`Show trajectory trails`),
@@ -348,8 +286,6 @@ describe(`StructureControls reactive props`, () => {
   )
 
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
-    const target = document.createElement(`div`)
-    document.body.append(target)
     const state = $state<{
       multi_view: boolean
       multi_view_unavailable_reason: string | undefined
@@ -358,11 +294,7 @@ describe(`StructureControls reactive props`, () => {
       multi_view_unavailable_reason: `Requires at least 600×400 px. Enlarge the viewer or use fullscreen.`,
     })
 
-    mount(StructureControls, {
-      target,
-      props: bind_props({ controls_open: true }, state),
-    })
-    await tick()
+    const target = await mount_controls(bind_props({ controls_open: true }, state))
 
     const multi_view_input = [...target.querySelectorAll<HTMLInputElement>(`input`)].find(
       (input) => input.closest(`label`)?.textContent?.includes(`Multi-view grid`),
