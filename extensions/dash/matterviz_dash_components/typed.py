@@ -1301,7 +1301,7 @@ class Bands(MatterViz):
 
     Component key: ``spectral/Bands``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1459,7 +1459,7 @@ class Dos(MatterViz):
 
     Component key: ``spectral/Dos``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1614,7 +1614,7 @@ class ScatterPlot(MatterViz):
 
     Component key: ``plot/scatter/ScatterPlot``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
