@@ -52,6 +52,9 @@ export interface TrajectoryLinesOptions {
   // d3 ramp used by `time` color mode, sampled across the window
   color_scale?: D3InterpolateName
   wrap_mode?: TrajectoryLineWrapMode
+  // Cartesian trail-head targets in stream atom order. Each whole polyline is translated
+  // onto its anchor without changing its shape.
+  anchor_positions?: Float64Array | null
 }
 
 export interface TrajectoryLinesGeometry {
@@ -90,7 +93,8 @@ export const trajectory_lines_stats = ({
   ...stats
 }: TrajectoryLinesGeometry): TrajectoryLinesStats => stats
 
-const EMPTY_GEOMETRY: TrajectoryLinesGeometry = {
+// Fresh buffers prevent one consumer from mutating later empty results.
+const empty_geometry = (): TrajectoryLinesGeometry => ({
   positions: new Float32Array(0),
   colors: new Float32Array(0),
   indices: new Uint32Array(0),
@@ -100,7 +104,7 @@ const EMPTY_GEOMETRY: TrajectoryLinesGeometry = {
   frame_idxs: [],
   dropped_segments: 0,
   max_segment_length: 0,
-}
+})
 
 const fail = (message: string): never => {
   throw new Error(`build_trajectory_lines: ${message}`)
@@ -175,6 +179,13 @@ function make_wrap_jump_test(
   }
 }
 
+// Convert a source-file frame index to the collected stream, clamped if collection stopped.
+export const collected_frame_idx = (
+  stream: Pick<TrajectoryPositionStream, `n_frames` | `frame_stride`>,
+  source_idx: number,
+): number =>
+  Math.max(0, Math.min(stream.n_frames - 1, Math.floor(source_idx / stream.frame_stride)))
+
 export function build_trajectory_lines(
   stream: TrajectoryPositionStream,
   options: TrajectoryLinesOptions = {},
@@ -188,6 +199,7 @@ export function build_trajectory_lines(
     element_colors = default_element_colors,
     color_scale = `interpolateViridis`,
     wrap_mode = `unwrap`,
+    anchor_positions = null,
   } = options
   const end_frame = options.end_frame ?? n_frames - 1
 
@@ -215,21 +227,27 @@ export function build_trajectory_lines(
   if (trail_frames !== null && (!Number.isInteger(trail_frames) || trail_frames < 1)) {
     fail(`trail_frames must be null or a positive integer, got ${trail_frames}`)
   }
+  if (anchor_positions && anchor_positions.length !== n_atoms * 3) {
+    fail(
+      `anchor_positions has ${anchor_positions.length} entries but ${n_atoms} atoms x 3 ` +
+        `requires ${n_atoms * 3}; anchors are indexed by the stream's atom order`,
+    )
+  }
 
   // An explicit empty filter means "no species selected", which is a legitimate UI state
-  if (element_filter?.length === 0) return EMPTY_GEOMETRY
+  if (element_filter?.length === 0) return empty_geometry()
 
   const wanted = element_filter ? new Set(element_filter) : null
   const atom_idxs: number[] = []
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
     if (!wanted || wanted.has(atom_elements[atom_idx])) atom_idxs.push(atom_idx)
   }
-  if (atom_idxs.length === 0) return EMPTY_GEOMETRY
+  if (atom_idxs.length === 0) return empty_geometry()
 
   const start_frame = trail_frames === null ? 0 : Math.max(0, end_frame - trail_frames + 1)
   const frame_idxs = sample_window_frames(start_frame, end_frame, frame_stride)
   const n_sampled = frame_idxs.length
-  if (n_sampled < 2) return EMPTY_GEOMETRY
+  if (n_sampled < 2) return empty_geometry()
 
   // `break` mode is the only consumer of wrapped coordinates — it exists precisely to show
   // where the wrapping happened, so unwrapping first would leave it nothing to break on.
@@ -252,9 +270,11 @@ export function build_trajectory_lines(
   const rgb_table = new Float32Array((time_mode ? n_sampled : atom_idxs.length) * 3)
   if (time_mode) {
     const interpolate = get_d3_interpolator(color_scale)
+    // End anchoring can make samples uneven, so color by elapsed frames, not sample ordinal.
+    const frame_span = end_frame - start_frame
     for (let sample_idx = 0; sample_idx < n_sampled; sample_idx++) {
-      const ramp_rgb = parse_linear_rgb(interpolate(sample_idx / (n_sampled - 1)))
-      rgb_table.set(ramp_rgb, sample_idx * 3)
+      const elapsed = (frame_idxs[sample_idx] - start_frame) / frame_span
+      rgb_table.set(parse_linear_rgb(interpolate(elapsed)), sample_idx * 3)
     }
   } else {
     for (const [atom_slot, atom_idx] of atom_idxs.entries()) {
@@ -276,13 +296,24 @@ export function build_trajectory_lines(
   for (const [atom_slot, atom_idx] of atom_idxs.entries()) {
     const point_base = atom_slot * n_sampled
     const rgb_base = time_mode ? 0 : atom_slot * 3
+    const head_offset = (end_frame * n_atoms + atom_idx) * 3
+    const anchor_offset = atom_idx * 3
+    const shift_x = anchor_positions
+      ? anchor_positions[anchor_offset] - coords[head_offset]
+      : 0
+    const shift_y = anchor_positions
+      ? anchor_positions[anchor_offset + 1] - coords[head_offset + 1]
+      : 0
+    const shift_z = anchor_positions
+      ? anchor_positions[anchor_offset + 2] - coords[head_offset + 2]
+      : 0
 
     for (const [sample_idx, frame_idx] of frame_idxs.entries()) {
       const source = (frame_idx * n_atoms + atom_idx) * 3
       const target = (point_base + sample_idx) * 3
-      positions[target] = coords[source]
-      positions[target + 1] = coords[source + 1]
-      positions[target + 2] = coords[source + 2]
+      positions[target] = coords[source] + shift_x
+      positions[target + 1] = coords[source + 1] + shift_y
+      positions[target + 2] = coords[source + 2] + shift_z
       const rgb_offset = rgb_base + sample_idx * rgb_stride
       colors[target] = rgb_table[rgb_offset]
       colors[target + 1] = rgb_table[rgb_offset + 1]

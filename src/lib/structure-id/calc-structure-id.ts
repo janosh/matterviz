@@ -2,7 +2,7 @@
 import type { AnyStructure } from '$lib/structure'
 import type { CnaTypeName } from './calc-cna'
 import { calc_cna, CNA_TYPE_NAMES } from './calc-cna'
-import { calc_centrosymmetry } from './calc-csp'
+import { calc_centrosymmetry, validate_csp_neighbors } from './calc-csp'
 import type { StructureIdOptions, StructureIdResult } from './index'
 import type { NeighborList } from './neighbors'
 import { build_neighbor_list, find_k_nearest } from './neighbors'
@@ -35,6 +35,8 @@ export function calc_structure_id(
       `calc_structure_id: skip_cna and skip_csp are both set, nothing to compute`,
     )
   }
+  // Reject bad N before find_k_nearest grows a cutoff for a k that can never be satisfied.
+  if (!skip_csp) validate_csp_neighbors(n_csp_neighbors)
   // Fixed-cutoff CNA is DEFINED by its cutoff, so that query is the one it must see. Every
   // other case takes a k-nearest query sized for whichever analysis wants more neighbors.
   const use_fixed_cutoff = cna_mode === `fixed` && !skip_cna

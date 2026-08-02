@@ -116,8 +116,14 @@ export function correlation_window(
 // frequency axis f_bin = bin / (n_fft * sample_interval) before running any transform.
 // >= 2 * n_values guarantees the mirror index n_fft - n stays clear of n for every
 // n < n_values; at exactly 2 * n_values - 2 the last lag would land on itself.
-export const cosine_spectrum_length = (n_values: number, zero_pad_factor = 4): number =>
-  next_power_of_two(zero_pad_factor * 2 * n_values)
+export function cosine_spectrum_length(n_values: number, zero_pad_factor = 4): number {
+  if (!(zero_pad_factor >= 1)) {
+    throw new Error(
+      `cosine_spectrum_length: zero_pad_factor must be >= 1, got ${zero_pad_factor}`,
+    )
+  }
+  return next_power_of_two(zero_pad_factor * 2 * n_values)
+}
 
 // Real spectrum of the even extension of a one-sided series c_0..c_{N-1}.
 //
@@ -136,11 +142,6 @@ export function even_cosine_spectrum(
   const n_values = values.length
   if (n_values < 2) {
     throw new Error(`even_cosine_spectrum: need at least 2 values, got ${n_values}`)
-  }
-  if (!(zero_pad_factor >= 1)) {
-    throw new Error(
-      `even_cosine_spectrum: zero_pad_factor must be >= 1, got ${zero_pad_factor}`,
-    )
   }
   const n_fft = cosine_spectrum_length(n_values, zero_pad_factor)
   const re = new Float64Array(n_fft)

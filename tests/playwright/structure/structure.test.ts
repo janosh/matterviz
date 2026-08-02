@@ -41,6 +41,19 @@ const get_event_calls = (page: Page): Promise<EventCall[]> =>
   )
 const events_named = async (page: Page, event_name: string): Promise<EventCall[]> =>
   (await get_event_calls(page)).filter(({ event }) => event === event_name)
+const set_viewer_size = async (
+  structure_div: Locator,
+  width: number,
+  height: number,
+): Promise<void> => {
+  await structure_div.evaluate(
+    (element, size) => {
+      element.style.setProperty(`--struct-width`, `${size.width}px`)
+      element.style.setProperty(`--struct-height`, `${size.height}px`)
+    },
+    { width, height },
+  )
+}
 const wait_for_event = async (
   page: Page,
   event_name: string,
@@ -323,34 +336,33 @@ test.describe(`Structure Component Tests`, () => {
     const site_indices_checkbox = control_pane.locator(
       `label:has-text("Site Indices") input[type="checkbox"]`,
     )
+    const labels_heading = control_pane.locator(`h4:has-text("Labels")`)
 
-    // Enable both
+    // With both off, Labels is gated on Site Labels alone
+    await expect(labels_heading).toBeHidden()
+    await site_labels_checkbox.check()
+    await expect(labels_heading).toBeVisible()
+    await site_labels_checkbox.uncheck()
+    await expect(labels_heading).toBeHidden()
+
+    // Enable both — Labels stays up, and either checkbox keeps it visible
     await site_labels_checkbox.check()
     await site_indices_checkbox.check()
-
-    // Verify both are enabled
     await expect(site_labels_checkbox).toBeChecked()
     await expect(site_indices_checkbox).toBeChecked()
+    await expect(labels_heading).toBeVisible()
 
-    // Verify Labels section is visible when site labels are enabled
-    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
-
-    // Disable one at a time to test independence
     await site_labels_checkbox.uncheck()
     await expect(site_labels_checkbox).not.toBeChecked()
     await expect(site_indices_checkbox).toBeChecked()
+    await expect(labels_heading).toBeVisible()
 
-    // Labels section remains visible when Site Indices enabled
-    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
-
-    // Disable both - Labels section should hide
     await site_indices_checkbox.uncheck()
     await expect(site_indices_checkbox).not.toBeChecked()
-    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeHidden()
+    await expect(labels_heading).toBeHidden()
 
-    // Re-enable site indices only
     await site_indices_checkbox.check()
-    await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
+    await expect(labels_heading).toBeVisible()
   })
 
   test(`label styling controls echo values and enforce input constraints`, async ({
@@ -720,33 +732,6 @@ test.describe(`Structure Component Tests`, () => {
     )
   })
 
-  test(`bond controls appear when bonds are enabled`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-
-    // Enable bonds via the Visibility section select
-    const show_bonds_select = section_body(
-      control_pane.locator(`h4:has-text("Visibility")`),
-    ).locator(`label:has-text("Bonds:") select`)
-    await expect(show_bonds_select).toBeVisible()
-    await show_bonds_select.selectOption(`always`)
-    await expect(control_pane.locator(`h4:has-text("Bonds")`)).toBeVisible({
-      timeout: 2000,
-    })
-
-    // Check that bond-specific controls appear - use exact text matching to avoid conflicts
-    // The Bonds section labels are: "Strategy", "Color", "Thickness"
-    // We use the sibling relationship: Strategy <select>, Color <input type="color">, Thickness <input + range>
-    const strategy_label = control_pane.locator(`label:has(select):has-text("Strategy")`)
-    const bond_color_label = control_pane
-      .locator(`label:has(input[type="color"]):has-text("Color")`)
-      .last()
-    const thickness_label = control_pane.locator(`label:has-text("Thickness")`)
-
-    await expect(strategy_label).toBeVisible()
-    await expect(bond_color_label).toBeVisible()
-    await expect(thickness_label).toBeVisible()
-  })
-
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const initial_screenshot = await canvas.screenshot()
@@ -1017,13 +1002,8 @@ test.describe(`Export Button Tests`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
-  test(`export button clicks do not cause errors`, async ({ page }) => {
-    const { container, pane_div: export_pane } = await open_structure_export_pane(page)
-
-    const canvas = container.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-    await expect(canvas).toHaveAttribute(`width`)
-    await expect(canvas).toHaveAttribute(`height`)
+  test(`JSON, XYZ, and PNG export buttons trigger downloads`, async ({ page }) => {
+    const { pane_div: export_pane } = await open_structure_export_pane(page)
 
     for (const title_selector of [`Download JSON`, `Download XYZ`, `PNG`]) {
       const export_btn = export_pane.locator(`button[title*="${title_selector}"]`)
@@ -1034,29 +1014,21 @@ test.describe(`Export Button Tests`, () => {
     }
   })
 
-  test(`DPI input for PNG export works correctly`, async ({ page }) => {
+  test(`DPI input updates PNG export button title`, async ({ page }) => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
-    // Find DPI input
     const dpi_input = export_pane.locator(`input[title="Export resolution in dots per inch"]`)
     await expect(dpi_input).toBeVisible()
-
-    // Test DPI input attributes
-    await expect(dpi_input).toHaveAttribute(`type`, `number`)
     await expect(dpi_input).toHaveAttribute(`min`, `50`)
     await expect(dpi_input).toHaveAttribute(`max`, `600`)
-    // Note: DPI input doesn't have a step attribute
-
-    // Test changing DPI value
-    const initial_value = await dpi_input.inputValue()
-    expect(Number(initial_value)).toBeGreaterThanOrEqual(72)
+    expect(Number(await dpi_input.inputValue())).toBeGreaterThanOrEqual(72)
 
     await dpi_input.fill(`200`)
     await expect(dpi_input).toHaveValue(`200`)
-
-    // Verify PNG button title updates with new DPI
-    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    await expect(png_export_btn).toHaveAttribute(`title`, /\(200 DPI\)/)
+    await expect(export_pane.locator(`button[title*="PNG"]`)).toHaveAttribute(
+      `title`,
+      /\(200 DPI\)/,
+    )
   })
 })
 
@@ -1543,11 +1515,17 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await show_bonds_select.scrollIntoViewIfNeeded()
       await show_bonds_select.selectOption(`always`)
 
-      // Wait for Bonds section (separate from Visibility) to appear (DOM update, not canvas rendering)
+      // Bonds section and its controls appear once bonds are shown
       const bonds_heading = pane_heading(page, `Bonds`)
       await expect(bonds_heading).toBeVisible({ timeout: 3000 })
+      await expect(
+        controls_pane.locator(`label:has(select):has-text("Strategy")`),
+      ).toBeVisible()
+      await expect(
+        controls_pane.locator(`label:has(input[type="color"]):has-text("Color")`).last(),
+      ).toBeVisible()
+      await expect(controls_pane.locator(`label:has-text("Thickness")`)).toBeVisible()
 
-      // Change bonding strategy within the Bonds section (label is "Strategy")
       const strategy_select = controls_pane.locator(`label:has-text("Strategy") select`)
       await strategy_select.scrollIntoViewIfNeeded()
       const initial_value = await strategy_select.inputValue()
@@ -1556,25 +1534,11 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await strategy_select.selectOption(new_value)
       await expect(strategy_select).toHaveValue(new_value)
 
-      // Reset button should appear in Bonds section heading (DOM update, not canvas rendering)
       const bonds_reset = bonds_heading.locator(`button.reset-button`)
       await expect(bonds_reset).toBeVisible({ timeout: 3000 })
       await bonds_reset.click()
 
       await expect(strategy_select).toHaveValue(initial_value)
-    })
-
-    // The reset lifecycle for Labels is covered by the table above; this is the separate
-    // behavior that the section exists at all only while site labels are switched on.
-    test(`Labels section renders only while site labels are enabled`, async ({ page }) => {
-      const labels_heading = page.locator(`h4:has-text("Labels")`)
-      const show_labels = page.locator(`label:has-text("Site Labels") input[type="checkbox"]`)
-
-      await expect(labels_heading).toBeHidden()
-      await show_labels.check()
-      await expect(labels_heading).toBeVisible()
-      await show_labels.uncheck()
-      await expect(labels_heading).toBeHidden()
     })
 
     test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {
@@ -1846,12 +1810,8 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Double-click to reset color
     await label.dblclick({ position: { x: 10, y: 10 } })
-    // Wait for color to change from #ff0000
     await expect(color_input).not.toHaveValue(`#ff0000`)
-    const reset_color = await color_input.inputValue()
-    expect(reset_color).not.toBe(`#ff0000`)
-    // Should be close to original (may not be exact due to rounding)
-    expect(reset_color.length).toBe(7) // Valid hex color
+    expect((await color_input.inputValue()).length).toBe(7)
   })
 
   test(`multiple elements work independently`, async ({ page }) => {
@@ -2072,20 +2032,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await expect(count_badge).toHaveText(`1`)
   })
 })
-
-const set_viewer_size = async (
-  structure_div: Locator,
-  width: number,
-  height: number,
-): Promise<void> => {
-  await structure_div.evaluate(
-    (element, size) => {
-      element.style.setProperty(`--struct-width`, `${size.width}px`)
-      element.style.setProperty(`--struct-height`, `${size.height}px`)
-    },
-    { width, height },
-  )
-}
 
 test.describe(`Responsive edit controls`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

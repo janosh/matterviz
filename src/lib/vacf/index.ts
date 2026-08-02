@@ -5,12 +5,14 @@ import type { TrajectoryPositionStream } from '$lib/trajectory'
 export { compute_vacf_async } from './async-compute.svelte'
 export * from './calc-vacf'
 export * from './collect'
+export { thz_per_inverse_time, TIME_UNIT_TO_THZ } from './units'
 export { default as TrajectoryVacfPane } from './TrajectoryVacfPane.svelte'
 export { default as VacfPlot } from './VacfPlot.svelte'
 
 // VACF consumes a whole-trajectory position sweep plus, when the file stored them, a
-// parallel velocity buffer. Same flat frame-major layout as `positions` so both can be
-// transferred (not cloned) into a worker: velocities[(frame * n_atoms + atom) * 3 + axis].
+// parallel velocity buffer with the same frame-major layout as `positions`:
+// velocities[(frame * n_atoms + atom) * 3 + axis]. Workers clone both because transferring
+// would detach the caller's arrays.
 export type VacfInput = TrajectoryPositionStream & {
   // Null / absent means the file carried no velocities and they must be differentiated
   // out of the positions. Length must be exactly n_frames * n_atoms * 3.
@@ -32,10 +34,6 @@ export type VelocitySource = `stored` | `central_difference`
 export const VACF_FREQUENCY_UNITS = [`THz`, `cm^-1`, `1/frame`] as const
 export type VacfFrequencyUnit = (typeof VACF_FREQUENCY_UNITS)[number]
 
-// Time units whose inverse is expressible in THz. A dt in anything else can still drive
-// the lag axis, but asking for a THz / cm^-1 VDOS on top of it throws.
-export const TIME_UNIT_TO_THZ: Record<string, number> = { fs: 1000, ps: 1, ns: 0.001 }
-
 export interface VdosOptions {
   // Hann by default: it reaches exactly zero with zero slope at the truncation lag, so
   // the mirrored (even) signal stays C1-continuous and sidelobes fall off as f^-3 instead
@@ -49,7 +47,8 @@ export interface VdosOptions {
   // frequency grid, not resolution.
   zero_pad_factor?: number
   // Defaults to `THz` when a dt with a THz-convertible time_unit was supplied, else
-  // `1/frame`. Explicitly asking for THz / cm^-1 without such a dt throws.
+  // `1/frame`. Inverse frames always means cycles per collected frame, even when dt is
+  // supplied. Explicitly asking for THz / cm^-1 without a convertible time_unit throws.
   frequency_unit?: VacfFrequencyUnit
   // Skip the transform entirely (the pane does this while only the VACF is on screen)
   skip?: boolean
@@ -69,7 +68,8 @@ export interface VacfOptions {
   // far higher than calc_msd's 200.
   max_lags?: number
   lag_stride?: number
-  // Sub-sample time origins. Omit to auto-tune against `work_budget`.
+  // Sub-sample time origins. When omitted, exceeding `work_budget` throws with a suggested
+  // stride rather than silently changing the sampled signal.
   origin_stride?: number
   work_budget?: number
   pbc?: Pbc

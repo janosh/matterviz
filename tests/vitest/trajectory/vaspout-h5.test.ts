@@ -105,6 +105,14 @@ describe(`vaspout.h5 parsing`, () => {
     expect(electronic.dos?.efermi).toBeCloseTo(0.5, 6)
   })
 
+  it.each([
+    [`vaspout-si-potim.h5`, 2.5, `fs`],
+    [`vaspout-si-static.h5`, undefined, undefined],
+  ])(`%s -> time_step %s %s`, async (fixture, time_step, time_unit) => {
+    const trajectory = await parse_fixture(fixture)
+    expect([trajectory.time_step, trajectory.time_unit]).toEqual([time_step, time_unit])
+  })
+
   it(`throws for torn geometry without any electronic results`, async () => {
     await expect(parse_fixture(`vaspout-si-torn-structure.h5`)).rejects.toThrow(
       /no electron_dos\/electron_eigenvalues results either/,

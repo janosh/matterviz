@@ -10,13 +10,9 @@ import {
   TrajFrameReader,
 } from '$lib/trajectory/parse'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
-import process from 'node:process'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
-
-// CI environments have higher timing variability
-const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
 
 it(`large-file fallback thresholds stay in sync with the settings schema`, () => {
   // Plain component usage (no loading_options) and settings-driven contexts (VSCode
@@ -404,6 +400,26 @@ describe(`Trajectory Streaming`, () => {
       },
     )
 
+    it.each([
+      [`scalar`, `NaN`, `charge`, `charge:R:1`, `1`],
+      [`scalar`, `Infinity`, `charge`, `charge:R:1`, `1`],
+      [`vec3`, `NaN 2 3`, `velocity`, `velocity:R:3`, `1 2 3`],
+      [`vec3`, `1 2 Infinity`, `velocity`, `velocity:R:3`, `1 2 3`],
+    ])(
+      `rejects a requested %s channel containing %s`,
+      async (kind, invalid, key, declaration, valid) => {
+        const frame = (value: string) =>
+          `1\nProperties=species:S:1:pos:R:3:${declaration}\nH 0 0 0 ${value}`
+        const keys = kind === `scalar` ? { scalar_keys: [key] } : { vector_keys: [key] }
+        await expect(
+          new TrajFrameReader(`channels.extxyz`).stream_positions(
+            `${frame(valid)}\n${frame(invalid)}`,
+            keys,
+          ),
+        ).rejects.toThrow(`Frame 1 site 0 has no finite ${kind} property "${key}"`)
+      },
+    )
+
     it(`rejects a key requested as both a scalar and a vector`, async () => {
       await expect(
         new TrajFrameReader(`channels.extxyz`).stream_positions(create_channel_xyz(2, 1), {
@@ -677,8 +693,7 @@ Si 0 0 0`
       }
 
       const timings = [await batch_ms(5), await batch_ms(50), await batch_ms(95)]
-      const max_ratio = is_ci ? 50 : 6
-      expect(Math.max(...timings) / Math.min(...timings)).toBeLessThan(max_ratio)
+      expect(Math.max(...timings) / Math.min(...timings)).toBeLessThan(6)
     })
 
     it(`splits the XYZ payload once across many sequential frame loads`, async () => {

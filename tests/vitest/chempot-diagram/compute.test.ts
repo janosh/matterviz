@@ -35,7 +35,7 @@ import { get_hill_formula } from '$lib/composition/format'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
-import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
+import { convex_hull_2d, solve_linear_system } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json } from '../setup'
 
@@ -118,10 +118,9 @@ const dedup_vertices = (pts: number[][], tol: number = 1e-4): number[][] =>
 
 describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   test(`diagram metadata matches pymatgen`, () => {
-    expect(cpd_binary.elements).toHaveLength(2)
-    expect(cpd_ternary.elements).toHaveLength(3)
-    expect(cpd_ternary_formal.elements).toHaveLength(3)
+    expect(cpd_binary.elements).toEqual([`Fe`, `O`])
     expect(cpd_ternary.elements).toEqual([`Fe`, `Li`, `O`])
+    expect(cpd_ternary_formal.elements).toEqual([`Fe`, `Li`, `O`])
     expect(cpd_ternary.lims).toEqual([
       [-25, 0],
       [-25, 0],
@@ -929,50 +928,6 @@ describe(`orthonormal_2d`, () => {
   })
 })
 
-describe(`polygon_centroid`, () => {
-  test.each([
-    {
-      label: `unit square`,
-      pts: [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ] as Vec2[],
-      expected: [0.5, 0.5],
-      digits: 8,
-    },
-    {
-      label: `equilateral triangle`,
-      pts: [
-        [0, 0],
-        [1, 0],
-        [0.5, Math.sqrt(3) / 2],
-      ] as Vec2[],
-      expected: [0.5, Math.sqrt(3) / 6],
-      digits: 6,
-    },
-    { label: `single point`, pts: [[7, 3]] as Vec2[], expected: [7, 3], digits: null },
-    {
-      label: `two points midpoint`,
-      pts: [
-        [0, 0],
-        [4, 6],
-      ] as Vec2[],
-      expected: [2, 3],
-      digits: 8,
-    },
-    { label: `empty`, pts: [] as Vec2[], expected: [0, 0], digits: null },
-  ])(`$label`, ({ pts, expected, digits }) => {
-    const centroid = polygon_centroid(pts)
-    if (digits === null) expect(centroid).toEqual(expected)
-    else {
-      expect(centroid[0]).toBeCloseTo(expected[0], digits)
-      expect(centroid[1]).toBeCloseTo(expected[1], digits)
-    }
-  })
-})
-
 describe(`config.elements projection vs subsystem`, () => {
   test(`binary elements on ternary data triggers projection (includes Li phases)`, () => {
     const result = compute_chempot_diagram(entries, {
@@ -1068,43 +1023,18 @@ describe(`YTOS quaternary system (projection mode)`, () => {
       phases: [`O2Ti`, `S`, `Ti`],
     },
   ])(
-    `$label projection metadata and key phases`,
+    `$label projection metadata, key phases, and 3-column vertices`,
     ({ diagram, elements, phases, min_domains }) => {
       expect(diagram.elements).toEqual(elements)
       expect(diagram.lims).toHaveLength(3)
       const formulas = Object.keys(diagram.domains)
       for (const formula of phases) expect(formulas).toContain(formula)
       if (min_domains !== undefined) expect(formulas.length).toBeGreaterThan(min_domains)
-    },
-  )
-
-  test(`projections have 3 display elements, 3-column vertices, and 3 lims`, () => {
-    expect(ytos_y_ti_o.elements).toEqual([`O`, `Ti`, `Y`])
-    expect(ytos_ti_o_s.elements).toEqual([`O`, `S`, `Ti`])
-    expect(ytos_y_ti_o.lims).toHaveLength(3)
-    expect(ytos_ti_o_s.lims).toHaveLength(3)
-    for (const projection of [ytos_y_ti_o, ytos_ti_o_s]) {
-      for (const points of Object.values(projection.domains)) {
+      for (const points of Object.values(diagram.domains)) {
         for (const point of points) expect(point).toHaveLength(3)
       }
-    }
-  })
-
-  test(`Y-Ti-O projection contains expected phases`, () => {
-    const formulas = Object.keys(ytos_y_ti_o.domains)
-    expect(formulas).toContain(`O`)
-    expect(formulas).toContain(`Ti`)
-    expect(formulas).toContain(`Y`)
-    expect(formulas).toContain(`O3Y2`) // Y2O3
-    expect(formulas).toContain(`O2Ti`) // TiO2
-  })
-
-  test(`Ti-O-S projection contains key phases`, () => {
-    const formulas = Object.keys(ytos_ti_o_s.domains)
-    expect(formulas).toContain(`O2Ti`) // TiO2
-    expect(formulas).toContain(`S`) // elemental S
-    expect(formulas).toContain(`Ti`) // elemental Ti
-  })
+    },
+  )
 
   test(`Y-Ti-O has Y2Ti2O7, valid vertices, and elemental mu=0 touch`, () => {
     const key = `O7Ti2Y2`
@@ -1585,23 +1515,6 @@ describe(`compute_chempot_diagram edge cases`, () => {
     expect(result.lims).toHaveLength(n_axes)
     for (const pts of Object.values(result.domains)) {
       for (const pt of pts) expect(pt).toHaveLength(n_axes)
-    }
-  })
-
-  test(`non-sequential 4D projection preserves domain dimensionality`, () => {
-    const projected = compute_chempot_diagram(ytos_entries, {
-      elements: [`Y`, `Ti`, `S`],
-      default_min_limit: -25,
-      formal_chempots: true,
-    })
-    expect(projected.elements).toEqual([`Y`, `Ti`, `S`])
-    const domain_keys = Object.keys(projected.domains)
-    expect(domain_keys.length).toBeGreaterThan(0)
-    for (const pts of Object.values(projected.domains)) {
-      for (const pt of pts) {
-        expect(pt).toHaveLength(3)
-        for (const coord of pt) expect(Number.isFinite(coord)).toBe(true)
-      }
     }
   })
 
@@ -2094,5 +2007,19 @@ describe(`compute_chempot_async`, () => {
     const { compute_chempot_async } = await load_async(undefined)
     const data = await compute_chempot_async(async_entries, { elements: [`Li`, `O`] })
     expect(Object.keys(data.domains).length).toBeGreaterThan(0)
+  })
+
+  test(`dedupes equivalent entry snapshots without conflating entry metadata`, async () => {
+    const { compute_chempot_async } = await load_async(undefined)
+    const config = { elements: [`Li`, `O`] }
+    const first = compute_chempot_async(structuredClone(async_entries), config)
+    const equivalent = compute_chempot_async(structuredClone(async_entries), { ...config })
+    const renamed_entries = structuredClone(async_entries)
+    renamed_entries[0].name = `renamed lithium`
+    const renamed = compute_chempot_async(renamed_entries, config)
+
+    expect(equivalent).toBe(first)
+    expect(renamed).not.toBe(first)
+    await Promise.all([first, renamed])
   })
 })

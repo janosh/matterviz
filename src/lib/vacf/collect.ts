@@ -22,7 +22,9 @@ import {
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
-// vx vy vz). A vec3 in the site's own units; nothing here converts it.
+// vx vy vz). A vec3 in the site's own units; nothing here converts it. Parsers and
+// TrajectoryType do not currently expose a velocity unit, so collect_vacf_input leaves
+// VacfInput.velocity_unit unset and calc_vacf labels stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 export interface VacfCollectOptions {
@@ -63,7 +65,8 @@ const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
 
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.
-const has_velocities = (frame: TrajectoryFrame): boolean => is_vec3(site_velocity(frame, 0))
+const has_velocities = (frame?: TrajectoryFrame): boolean =>
+  frame !== undefined && is_vec3(site_velocity(frame, 0))
 
 // Copy one frame's per-atom velocities straight into `out` at `base`, in the positions'
 // frame-major layout. Throws when only SOME sites have them: a half-filled velocity buffer
@@ -95,15 +98,13 @@ function write_frame_velocities(
 // would be averaged together as if they were one signal.
 function collect_frame_velocities(
   frames: TrajectoryFrame[],
-  n_collected: number,
-  n_atoms: number,
-  frame_stride: number,
+  { n_frames, n_atoms, frame_stride }: TrajectoryPositionStream,
 ): Float64Array | null {
-  if (!frames[0] || !has_velocities(frames[0])) return null
-  const velocities = new Float64Array(n_collected * n_atoms * 3)
+  if (!has_velocities(frames[0])) return null
+  const velocities = new Float64Array(n_frames * n_atoms * 3)
   // accumulate_positions keeps collected frame `k` as source frame `k * frame_stride`, so
   // indexing that way is what puts the two buffers in lockstep
-  for (let collected = 0; collected < n_collected; collected++) {
+  for (let collected = 0; collected < n_frames; collected++) {
     const frame_number = collected * frame_stride
     const frame = frames[frame_number]
     if (!has_velocities(frame)) {
@@ -118,28 +119,25 @@ function collect_frame_velocities(
   return velocities
 }
 
-// Velocity channel of a streamed position sweep, if the loader produced one.
+// Velocity channel of a streamed position sweep, if one was requested and produced.
 //
-// The trajectory parsers are being taught to keep per-atom velocities and hand them back
-// on `TrajectoryPositionStream.velocities`, in the positions' own frame-major layout. That
-// field does not exist on the interface yet, so it is read defensively here and validated
-// against the expected length before being trusted — a mislaid buffer is worse than none.
-function stream_velocities(
-  stream: TrajectoryPositionStream,
-  expected_length: number,
-): Float64Array | null {
-  const candidate = (stream as { velocities?: unknown }).velocities
+// `vector_keys: ['velocity']` is what asks a loader for it, and accumulate_positions hands
+// it back under `vectors.velocity` in the positions' own frame-major layout. FrameLoader is
+// a public interface that consumers implement themselves, so the buffer is validated before
+// it is trusted — a mislaid one is worse than none.
+function stream_velocities(stream: TrajectoryPositionStream): Float64Array | null {
+  const candidate: unknown = stream.vectors?.[VELOCITY_SITE_PROPERTY]
   if (candidate == null) return null
   if (!(candidate instanceof Float64Array)) {
     throw new TypeError(
-      `stream_positions returned a 'velocities' field of type ${typeof candidate}; VACF ` +
-        `needs a Float64Array laid out like positions`,
+      `stream_positions returned a '${VELOCITY_SITE_PROPERTY}' channel of type ` +
+        `${typeof candidate}; VACF needs a Float64Array laid out like positions`,
     )
   }
-  if (candidate.length !== expected_length) {
+  if (candidate.length !== stream.positions.length) {
     throw new Error(
       `stream_positions returned ${candidate.length} velocity components but the collected ` +
-        `positions need ${expected_length}; the two buffers must share a layout`,
+        `positions need ${stream.positions.length}; the two buffers must share a layout`,
     )
   }
   return candidate
@@ -187,12 +185,21 @@ export async function collect_vacf_input(
           `raw_data was not provided. Pass the payload Trajectory.svelte keeps in orig_data.`,
       )
     }
+    // Only ask for the velocity channel when the frames already in memory carry one:
+    // accumulate_positions throws on a frame that lacks a requested key, and a run without
+    // stored velocities is meant to fall through to differentiating the positions.
     const stream = await loader.stream_positions(
       raw_data,
-      { frame_stride, max_bytes },
+      {
+        frame_stride,
+        max_bytes,
+        ...(has_velocities(trajectory.frames[0])
+          ? { vector_keys: [VELOCITY_SITE_PROPERTY] }
+          : {}),
+      },
       on_progress,
     )
-    return { ...stream, velocities: stream_velocities(stream, stream.positions.length) }
+    return { ...stream, velocities: stream_velocities(stream) }
   }
 
   const { frames } = trajectory
@@ -204,11 +211,6 @@ export async function collect_vacf_input(
   )
   return {
     ...stream,
-    velocities: collect_frame_velocities(
-      frames,
-      stream.n_frames,
-      stream.n_atoms,
-      frame_stride,
-    ),
+    velocities: collect_frame_velocities(frames, stream),
   }
 }

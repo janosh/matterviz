@@ -247,10 +247,8 @@ class PositionAccumulator {
     }
   }
 
-  // The ordering check above compares element SYMBOLS, so a permutation within a single
-  // species — Al/Cu/Si self-diffusion, the core MSD use case — is invisible to it, and the
-  // LAMMPS parser discards the `id` column, leaving no per-atom key to sort by. What is
-  // still visible is the physics: unrelated atoms sit a cell apart, real MD steps do not.
+  // Element symbols cannot reveal same-species permutations, and this check does not compare
+  // preserved LAMMPS IDs. Large displacements still expose likely ordering changes.
   private check_step_plausibility(
     lattice: Matrix3x3 | null,
     source_frame_number: number,
@@ -292,9 +290,8 @@ class PositionAccumulator {
       `Frame ${source_frame_number}: ${far_atoms} of ${this.n_atoms} atoms moved more than a ` +
         `quarter of the cell since the previous collected frame. Displacement analysis tracks ` +
         `atoms by index, so either the ordering changed (LAMMPS dumps are unsorted unless the ` +
-        `run used "dump_modify <id> sort id", and the id column is not preserved, so a ` +
-        `permutation within one species is otherwise undetectable) or the collected frames ` +
-        `are too far apart to unwrap. Re-dump sorted, or lower frame_stride.`,
+        `run used "dump_modify <id> sort id"; preserved IDs are not checked here) or collected ` +
+        `frames are too far apart to unwrap. Re-dump sorted, or lower frame_stride.`,
     )
   }
 

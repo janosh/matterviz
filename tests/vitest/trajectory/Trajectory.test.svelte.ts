@@ -1,4 +1,9 @@
-import { Trajectory, type TrajHandlerData } from '$lib/trajectory'
+import {
+  Trajectory,
+  type TrajectoryType,
+  type TrajectoryXQuantity,
+  type TrajHandlerData,
+} from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { make_trajectory_frame, resize_element } from '../setup'
@@ -6,6 +11,14 @@ import { make_trajectory_frame, resize_element } from '../setup'
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
   metadata: {},
+})
+const make_stepped_traj = (time_step?: number) => ({
+  frames: [0, 500, 1000].map((step, frame_idx) =>
+    make_trajectory_frame(step, 1, { energy: -frame_idx }),
+  ),
+  metadata: {},
+  time_step,
+  time_unit: `fs` as const,
 })
 const xyz = (element: string) => `1\n${element} frame\n${element} 0 0 0\n`
 const request_url = (url: string | URL | Request) =>
@@ -19,6 +32,12 @@ const mount_traj = (props: Record<string, unknown>) => {
   mount(Trajectory, { target, props })
   return target
 }
+const flush_render = async () => {
+  flushSync()
+  await tick()
+}
+const selected_x_quantity = (target: ParentNode) =>
+  target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
 const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
   vi.stubGlobal(`fetch`, fetch_impl)
@@ -42,21 +61,74 @@ describe(`Trajectory`, () => {
       show_controls: false,
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
     let plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`trajectory scatter plot not found`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
     props.trajectory = make_traj([{ volume: 10 }, { volume: 12 }])
-    flushSync()
-    await tick()
+    await flush_render()
     plot = target.querySelector<HTMLElement>(`.scatter`)
     if (!plot) throw new Error(`trajectory scatter plot not found after swap`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
+  })
+
+  test.each([
+    { time_step: 2, expected_quantity: `time` },
+    { time_step: undefined, expected_quantity: `step` },
+  ] as const)(
+    `defaults to the most informative supported $expected_quantity axis`,
+    async ({ time_step, expected_quantity }) => {
+      // Bindable x_quantity starts unset; after auto-pick it must write back the
+      // effective axis so hosts can read which quantity is in effect.
+      const props = $state({
+        trajectory: make_stepped_traj(time_step),
+        x_quantity: undefined as TrajectoryXQuantity | undefined,
+        display_mode: `scatter` as const,
+        show_controls: `always` as const,
+      })
+      const target = mount_traj(props)
+      await flush_render()
+
+      expect(selected_x_quantity(target)).toBe(expected_quantity)
+      expect(props.x_quantity).toBe(expected_quantity)
+    },
+  )
+
+  test(`syncs unsupported x_quantity to the effective frame fallback`, async () => {
+    // Identity step numbering → only `frame` is available; requesting `time` must
+    // write the fallback back to the bindable prop rather than leave a stale value.
+    const props = $state({
+      trajectory: make_traj([{ energy: -1 }, { energy: -2 }, { energy: -3 }]),
+      x_quantity: `time`,
+      display_mode: `scatter` as const,
+      show_controls: false as const,
+    })
+    mount_traj(props)
+    await flush_render()
+    expect(props.x_quantity).toBe(`frame`)
+  })
+
+  test(`defers x_quantity sync until trajectory samples exist`, async () => {
+    // Writing `frame` while still empty would lock the bindable and skip auto-pick
+    // once a time-capable trajectory arrives.
+    const props = $state({
+      trajectory: undefined as TrajectoryType | undefined,
+      x_quantity: undefined as TrajectoryXQuantity | undefined,
+      display_mode: `scatter` as const,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    expect(props.x_quantity).toBeUndefined()
+
+    props.trajectory = make_stepped_traj(2)
+    await flush_render()
+    expect(props.x_quantity).toBe(`time`)
+    expect(selected_x_quantity(target)).toBe(`time`)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -80,8 +152,7 @@ describe(`Trajectory`, () => {
       },
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
 
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
@@ -94,33 +165,39 @@ describe(`Trajectory`, () => {
     expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
   })
 
-  test(`analysis menu nests MSD instead of a top-level toggle`, async () => {
-    const props = $state({
+  // Every finished analysis pane is reachable from the one menu, and each menu entry drives
+  // its own bindable open flag rather than all of them sharing one. MSD also must not
+  // reappear as a top-level toggle outside the menu.
+  test.each([
+    {
+      label: `Mean squared displacement`,
+      open_prop: `msd_pane_open`,
+      no_toplevel: `.trajectory-msd-toggle:not(.analysis-toggle-anchor)`,
+    },
+    { label: `Velocity autocorrelation & VDOS`, open_prop: `vacf_pane_open` },
+    { label: `Structure identification`, open_prop: `structure_id_pane_open` },
+    { label: `Data inspector`, open_prop: `data_inspector_open` },
+  ])(`analysis menu opens $label`, async ({ label, open_prop, no_toplevel }) => {
+    const props: Record<string, unknown> = $state({
       trajectory: make_traj([{ energy: -1.5 }, { energy: -2.5 }]),
       show_controls: `always` as const,
-      msd_pane_open: false,
+      [open_prop]: false,
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
 
-    // the only MSD toggle is the hidden pane anchor; the menu is the real affordance
-    expect(
-      target.querySelector(`.trajectory-msd-toggle:not(.analysis-toggle-anchor)`),
-    ).toBeNull()
-    expect(target.querySelector(`.analysis-button`)).toBeInstanceOf(HTMLButtonElement)
+    if (no_toplevel) expect(target.querySelector(no_toplevel)).toBeNull()
 
     target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
     await tick()
-
-    const msd_option = [
+    const option = [
       ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
-    ].find((button) => button.textContent?.includes(`Mean squared displacement`))
-    if (!msd_option) throw new Error(`MSD analysis option not found`)
-    msd_option.click()
+    ].find((button) => button.textContent?.includes(label))
+    if (!option) throw new Error(`${label} analysis option not found`)
+    option.click()
     await tick()
 
-    expect(props.msd_pane_open).toBe(true)
+    expect(props[open_prop]).toBe(true)
     expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
   })
 
@@ -131,8 +208,7 @@ describe(`Trajectory`, () => {
       show_controls: `always` as const,
       info_pane_open: true,
     })
-    flushSync()
-    await tick()
+    await flush_render()
     expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight).toBe(
       `600px`,
     )
@@ -149,8 +225,7 @@ describe(`Trajectory`, () => {
       trajectory: make_traj([{ energy: -1.5 }]),
       show_controls: { mode: `always`, style },
     })
-    flushSync()
-    await tick()
+    await flush_render()
 
     const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
     if (!controls) throw new Error(`trajectory controls not found`)
@@ -165,8 +240,7 @@ describe(`Trajectory`, () => {
       show_controls: `always` as const,
     })
     const target = mount_traj(props)
-    flushSync()
-    await tick()
+    await flush_render()
 
     const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
     if (!controls) throw new Error(`trajectory controls not found`)

@@ -1,19 +1,21 @@
 // The vitest environment has no Worker, so these exercise the synchronous SSR fallback path
 // of compute_structure_id_async — including that a thrown error becomes a rejection rather
 // than a synchronous throw, which is the contract every caller's .catch() relies on.
-import { CNA_TYPES, compute_structure_id_async } from '$lib/structure-id'
+import { calc_structure_id, compute_structure_id_async } from '$lib/structure-id'
 import { describe, expect, test } from 'vitest'
 import { make_fcc } from './lattices'
 
 describe(`compute_structure_id_async`, () => {
   test(`resolves with the same result the synchronous path produces`, async () => {
     const crystal = make_fcc([2, 2, 2])
-    const result = await compute_structure_id_async(crystal, { skip_csp: true })
-    expect(result.populations.fcc).toBe(32)
-    expect(result.cna_types?.[0]).toBe(CNA_TYPES.fcc)
+    const options = { skip_csp: true }
+    const result = await compute_structure_id_async(crystal, options)
+    const sync = calc_structure_id(crystal, options)
+    expect(result.populations).toEqual(sync.populations)
+    expect(result.cna_types).toEqual(sync.cna_types)
   })
 
-  test(`dedupes concurrent identical requests into one promise`, async () => {
+  test(`dedupes in-flight requests and does not reuse a settled promise`, async () => {
     const crystal = make_fcc([2, 2, 2])
     const first = compute_structure_id_async(crystal, { skip_csp: true })
     const second = compute_structure_id_async(crystal, { skip_csp: true })
@@ -22,13 +24,11 @@ describe(`compute_structure_id_async`, () => {
     const third = compute_structure_id_async(crystal, { skip_cna: true })
     expect(third).not.toBe(first)
     await Promise.all([first, second, third])
-  })
 
-  test(`a request that runs after the previous one settled is not served a stale promise`, async () => {
-    const crystal = make_fcc([2, 2, 2])
-    const first = await compute_structure_id_async(crystal, { skip_csp: true })
-    const second = await compute_structure_id_async(crystal, { skip_csp: true })
-    expect(second.populations).toEqual(first.populations)
+    const after_settle = compute_structure_id_async(crystal, { skip_csp: true })
+    expect(after_settle).not.toBe(first)
+    const [first_result, after_result] = await Promise.all([first, after_settle])
+    expect(after_result.populations).toEqual(first_result.populations)
   })
 
   test.each([

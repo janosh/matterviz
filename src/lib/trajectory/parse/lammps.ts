@@ -6,7 +6,11 @@ import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { coerce_elem_symbol } from '$lib/element/helpers'
-import { count_elements, create_trajectory_frame } from '$lib/trajectory/helpers'
+import {
+  count_elements,
+  create_trajectory_frame,
+  derive_time_step,
+} from '$lib/trajectory/helpers'
 import type { AtomTypeMapping } from '$lib/trajectory/types'
 import { traj_warn } from './diagnostics'
 
@@ -30,12 +34,9 @@ const LAMMPS_VECTOR_GROUPS = [
   { key: `force`, col_names: [`fx`, `fy`, `fz`] },
 ] as const
 
-// Columns never passed through as scalar site properties: coordinates in any spelling (they
-// become the positions), `element` (it becomes the species) and the vx/fx triples, which
-// LAMMPS_VECTOR_GROUPS regroups into vec3s.
+// Coordinates become positions and `element` becomes the species.
 const NON_SCALAR_COLS: ReadonlySet<string> = new Set([
   ...POS_COL_VARIANTS.flatMap(({ keys }) => keys),
-  ...LAMMPS_VECTOR_GROUPS.flatMap(({ col_names }) => col_names),
   `element`,
 ])
 
@@ -85,6 +86,8 @@ export function parse_lammps_trajectory(
 ): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
+  // Absolute simulation time per kept frame, or null when omitted
+  const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
   let id_fallback_warning_emitted = false
   let idx = 0
@@ -103,7 +106,15 @@ export function parse_lammps_trajectory(
   }
 
   while (idx < lines.length) {
-    if (!skip_to(`ITEM: TIMESTEP`)) break
+    // `ITEM: TIMESTEP` also starts with `ITEM: TIME`, so this finds either frame prefix.
+    if (!skip_to(`ITEM: TIME`)) break
+    let time: number | null = null
+    if (peek_line() === `ITEM: TIME`) {
+      idx++
+      const parsed = Number(read_line())
+      time = Number.isFinite(parsed) ? parsed : null
+      if (!skip_to(`ITEM: TIMESTEP`)) break
+    }
     idx++
     const timestep = Math.trunc(Number(read_line())) || 0
 
@@ -156,11 +167,16 @@ export function parse_lammps_trajectory(
     // (aliased where LAMMPS' name is cryptic). `type` and `id` are kept as scalars too —
     // they carry per-atom information (species grouping, atom identity) that is not
     // recoverable from the element symbol alone.
-    const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
-      col_names.every((name) => name in col),
-    ).map(({ key, col_names }) => ({ key, indices: col_names.map((name) => col[name]) }))
+    const vector_props = LAMMPS_VECTOR_GROUPS.flatMap(({ key, col_names }) =>
+      col_names.every((name) => name in col)
+        ? [{ key, indices: col_names.map((name) => col[name]) }]
+        : [],
+    )
     const scalar_props = cols.flatMap((name, col_idx) =>
-      NON_SCALAR_COLS.has(name) ? [] : [{ key: LAMMPS_COLUMN_ALIASES[name] ?? name, col_idx }],
+      NON_SCALAR_COLS.has(name) ||
+      vector_props.some(({ indices }) => indices.includes(col_idx))
+        ? []
+        : [{ key: LAMMPS_COLUMN_ALIASES[name] ?? name, col_idx }],
     )
 
     // Parse atom data
@@ -233,12 +249,18 @@ export function parse_lammps_trajectory(
         lattice_matrix,
         pbc,
         timestep,
-        { volume, timestep, coords_unwrapped: pos_variant.unwrapped },
+        {
+          volume,
+          timestep,
+          coords_unwrapped: pos_variant.unwrapped,
+          ...(time === null ? {} : { time }),
+        },
       )
       for (const [site_idx, site] of frame.structure.sites.entries()) {
         site.properties = { ...site.properties, ...site_properties[site_idx] }
       }
       frames.push(frame)
+      frame_times.push(time)
     }
   }
 
@@ -251,8 +273,15 @@ export function parse_lammps_trajectory(
     first_frame.structure.sites.map((site) => site.species[0].element),
   )
 
+  // LAMMPS dumps omit the units setting, so do not guess time_unit.
+  const time_step = derive_time_step(
+    frame_times,
+    frames.map((frame) => frame.step),
+  )
+
   return {
     frames,
+    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
       filename,
       source_format: `lammps_trajectory`,

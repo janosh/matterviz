@@ -92,13 +92,12 @@ describe(`worker code path`, () => {
   })
 
   it(`builds the worker exactly once across many computes`, async () => {
-    const before = construction_count
+    await compute_vacf_async(orbit_input(19))
     await Promise.all([
       compute_vacf_async(orbit_input(20)),
       compute_vacf_async(orbit_input(21)),
       compute_vacf_async(orbit_input(22)),
     ])
-    expect(construction_count).toBe(before)
     expect(construction_count).toBe(1)
   })
 
@@ -263,5 +262,25 @@ describe(`TrajectoryVacfPane`, () => {
   it(`reports no trajectory rather than an empty plot`, async () => {
     const text = await mount_and_read(TrajectoryVacfPane, { pane_open: true })
     expect(text).toContain(`No trajectory loaded`)
+  })
+
+  it(`uses a safe unit timestep when the number input is cleared`, async () => {
+    await mount_and_read(TrajectoryVacfPane, {
+      trajectory: make_trajectory(4),
+      pane_open: true,
+      default_dt: 2,
+    })
+    const dt_input = document.querySelector<HTMLInputElement>(
+      `.vacf-controls input[type="number"][step="0.001"]`,
+    )
+    const summary = document.querySelector<HTMLParagraphElement>(`.vacf-controls p.hint`)
+    if (!dt_input || !summary) throw new Error(`missing VACF timestep controls`)
+
+    expect(summary.textContent).toContain(`2 fs per collected frame`)
+    dt_input.value = ``
+    dt_input.dispatchEvent(new Event(`input`))
+    await tick()
+    expect(summary.textContent).toContain(`1 fs per collected frame`)
+    expect(summary.textContent).not.toContain(`NaN`)
   })
 })

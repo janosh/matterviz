@@ -346,6 +346,13 @@ describe(`collect_frame_property_rows`, () => {
   })
 })
 
+const identity_collision_table: TrajectoryPropertyTable = {
+  start_frame: 4,
+  end_frame: 4,
+  source: `frames`,
+  rows: [{ frame: 4, step: 50, properties: { frame: 999, step: 999, energy: -1 } }],
+}
+
 describe(`frame_rows_to_csv`, () => {
   test(`heads every property column with its unit and writes one row per frame`, async () => {
     const table = await collect_frame_property_rows(0, 2, resolver, trajectory)
@@ -388,6 +395,13 @@ describe(`frame_rows_to_csv`, () => {
     }
     expect(frame_rows_to_csv(table).split(`\n`)[0]).toBe(`frame,step,some_custom_prop`)
   })
+
+  test(`reserves frame and step headers for row identity`, () => {
+    expect(frame_rows_to_csv(identity_collision_table).split(`\n`)).toEqual([
+      `frame,step,energy (eV)`,
+      `4,50,-1`,
+    ])
+  })
 })
 
 describe(`frame_rows_to_json`, () => {
@@ -421,6 +435,12 @@ describe(`frame_rows_to_json`, () => {
       { frame: 0, step: 0, energy: -10.5, force_max: 0.25 },
       { frame: 1, step: 5, energy: -11.25, force_max: 0.1 },
       { frame: 2, step: 9, energy: -11.5, force_max: 0.01 },
+    ])
+  })
+
+  test(`properties cannot overwrite row identity`, () => {
+    expect(JSON.parse(frame_rows_to_json(identity_collision_table)).rows).toEqual([
+      { energy: -1, frame: 4, step: 50 },
     ])
   })
 })

@@ -55,6 +55,28 @@ function sum_smallest_pairs(n_pairs: number, n_terms: number): number {
   return total
 }
 
+// Fail fast on invalid N so callers (calc_structure_id) can reject before an expensive
+// neighbor search sized to a k that can never be satisfied.
+export function validate_csp_neighbors(n_csp_neighbors: number): void {
+  if (!Number.isInteger(n_csp_neighbors) || n_csp_neighbors < 2) {
+    throw new Error(
+      `validate_csp_neighbors: n_csp_neighbors must be an integer >= 2, got ${n_csp_neighbors}`,
+    )
+  }
+  if (n_csp_neighbors % 2 !== 0) {
+    throw new Error(
+      `validate_csp_neighbors: n_csp_neighbors must be even so every bond can be paired with ` +
+        `an opposite, got ${n_csp_neighbors}`,
+    )
+  }
+  if (n_csp_neighbors > MAX_CSP_NEIGHBORS) {
+    throw new Error(
+      `validate_csp_neighbors: n_csp_neighbors ${n_csp_neighbors} exceeds the ` +
+        `${MAX_CSP_NEIGHBORS} built-in limit`,
+    )
+  }
+}
+
 // Per-atom centrosymmetry in Å². Atoms with fewer than `n_csp_neighbors` neighbors in `list`
 // (cluster surfaces, isolated fragments) get NaN rather than a value computed from a different
 // neighbor count, which would not be comparable to the rest of the array.
@@ -62,23 +84,7 @@ export function calc_centrosymmetry(
   list: NeighborList,
   n_csp_neighbors: number,
 ): Float64Array {
-  if (!Number.isInteger(n_csp_neighbors) || n_csp_neighbors < 2) {
-    throw new Error(
-      `calc_centrosymmetry: n_csp_neighbors must be an integer >= 2, got ${n_csp_neighbors}`,
-    )
-  }
-  if (n_csp_neighbors % 2 !== 0) {
-    throw new Error(
-      `calc_centrosymmetry: n_csp_neighbors must be even so every bond can be paired with an ` +
-        `opposite, got ${n_csp_neighbors}`,
-    )
-  }
-  if (n_csp_neighbors > MAX_CSP_NEIGHBORS) {
-    throw new Error(
-      `calc_centrosymmetry: n_csp_neighbors ${n_csp_neighbors} exceeds the ` +
-        `${MAX_CSP_NEIGHBORS} built-in limit`,
-    )
-  }
+  validate_csp_neighbors(n_csp_neighbors)
 
   const csp = new Float64Array(list.n_centers)
   for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {

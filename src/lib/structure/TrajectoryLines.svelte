@@ -40,6 +40,7 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
     element_colors = undefined,
     wrap_mode = DEFAULTS.structure.trajectory_line_wrap_mode as TrajectoryLineWrapMode,
     opacity = DEFAULTS.structure.trajectory_line_opacity,
+    anchor_positions = null,
     build_result = $bindable(null),
   }: {
     // Whole-trajectory positions from accumulate_positions / FrameLoader.stream_positions.
@@ -60,6 +61,10 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
     element_colors?: Partial<Record<ElementSymbol, string>>
     wrap_mode?: TrajectoryLineWrapMode
     opacity?: number
+    // Displayed Cartesian positions to glue the trail heads to, one xyz per stream atom.
+    // The scene wraps atoms into the cell while trails are unwrapped, so without these a
+    // head can sit a whole cell from its sphere.
+    anchor_positions?: Float64Array | null
     // (output) vertex/segment counts and the longest drawn segment, for readouts and tests
     build_result?: TrajectoryLinesStats | null
   } = $props()
@@ -76,6 +81,7 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
           color_scale,
           element_colors,
           wrap_mode,
+          anchor_positions,
         })
       : null,
   )
@@ -89,15 +95,14 @@ costs ~18 floats per segment against the 6 used here — 180 MB of instance attr
     return geo
   })
 
-  // Cleanup captures the geometry this run created, so a rebuild frees the previous buffers
-  // instead of leaking one set per playhead step
+  // Dispose rebuilt GPU buffers and clear bound stats when this layer becomes stale.
   $effect(() => {
     const current = geometry
-    return () => current?.dispose()
-  })
-
-  $effect(() => {
     build_result = built && trajectory_lines_stats(built)
+    return () => {
+      current?.dispose()
+      build_result = null
+    }
   })
 </script>
 

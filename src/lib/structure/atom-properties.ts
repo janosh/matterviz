@@ -12,6 +12,8 @@ import type { BondingStrategy } from '$lib/structure/bonding'
 import { get_majority_element } from '$lib/structure/bonding'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_frac_coord } from '$lib/structure/pbc'
+import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
+import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
@@ -419,13 +421,31 @@ export function sync_atom_color_mode(
   property_keys: string[],
 ): void {
   const { mode, property_key } = config
-  if (mode === `wyckoff` || mode === `selective_dynamics`) config.scale_type = `categorical`
-  else if (mode === `coordination` || mode === `property`) config.scale_type = `continuous`
-  if (mode !== `property` || property_keys.length === 0) return
+  if (mode && mode !== `element`) {
+    config.scale_type =
+      mode === `wyckoff` ||
+      mode === `selective_dynamics` ||
+      (mode === `property` && property_key === CNA_TYPE_PROPERTY)
+        ? `categorical`
+        : `continuous`
+  }
+  if (mode !== `property`) return
+  if (property_keys.length === 0) {
+    config.mode = `element`
+    return
+  }
   if (!property_key || !property_keys.includes(property_key)) {
     config.property_key = property_keys[0]
   }
 }
+
+// Keep discrete CNA phases on OVITO's stable palette as phases appear or vanish.
+const cna_type_palette = (codes: number[]): { colors: string[]; unique_values: number[] } => ({
+  colors: codes.map((code) => CNA_TYPE_COLORS[CNA_TYPE_NAMES[code]] ?? GRAY),
+  unique_values: codes
+    .filter((code, idx) => codes.indexOf(code) === idx)
+    .toSorted((code_a, code_b) => code_a - code_b),
+})
 
 // Color atoms by an arbitrary per-site scalar (OVITO's Color Coding). Sites that don't
 // declare the key keep a neutral gray and land in an `unknown` legend bucket rather than
@@ -441,7 +461,10 @@ export function get_site_property_colors(
   const present = scalars.filter((val) => val !== null)
   if (present.length === 0) return { colors: [], values: [] }
 
-  const { colors, unique_values } = apply_color_scale(present, scale, type)
+  const { colors, unique_values } =
+    property_key === CNA_TYPE_PROPERTY && type === `categorical`
+      ? cna_type_palette(present)
+      : apply_color_scale(present, scale, type)
   const stats = build_prop_colors(present, colors, unique_values)
   if (present.length === scalars.length) return stats
 

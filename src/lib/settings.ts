@@ -35,6 +35,7 @@ export interface SettingType<T = unknown> {
   enum?: Readonly<Record<Extract<T, string>, string>>
   minimum?: number
   maximum?: number
+  multipleOf?: number
   minItems?: number
   maxItems?: number
   context?: `web` | `editor` | `notebook` | `all`
@@ -972,12 +973,14 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Length of the trail behind the current frame, in collected frames. 0 draws the whole run; a finite window leaves a comet tail during playback`,
       minimum: 0,
       maximum: 10000,
+      multipleOf: 1,
     },
     trajectory_line_frame_stride: {
       value: 1,
       description: `Draw every Nth collected frame of the trail. Raise it so a 100k-frame run does not allocate 100k vertices per atom`,
       minimum: 1,
       maximum: 1000,
+      multipleOf: 1,
     },
     trajectory_line_color_mode: {
       value: `element`,

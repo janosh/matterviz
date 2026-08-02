@@ -16,12 +16,22 @@ export interface WorkerClientConfig<Input, Options, Result> {
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
   build_payload: (input: Input) => unknown
+  // Canonically key the payload contents instead of the input object's identity. This is
+  // suitable for modest inputs whose callers commonly recreate equivalent objects; leave
+  // false for large numerical buffers where serialization can cost more than the compute.
+  dedupe_by_payload?: boolean
 }
 
 export function create_worker_client<Input extends object, Options, Result>(
   config: WorkerClientConfig<Input, Options, Result>,
 ): (input: Input, options: Options) => Promise<Result> {
-  const { label, create_worker, compute_sync, build_payload } = config
+  const {
+    label,
+    create_worker,
+    compute_sync,
+    build_payload,
+    dedupe_by_payload = false,
+  } = config
 
   let worker: Worker | null = null
   let next_id = 0
@@ -31,32 +41,119 @@ export function create_worker_client<Input extends object, Options, Result>(
   >()
   const pending_by_key = new Map<string, Promise<Result>>()
 
-  let next_input_token = 0
-  const input_tokens = new WeakMap<Input, number>()
-  const input_token = (input: Input): number => {
-    const existing = input_tokens.get(input)
-    if (existing !== undefined) return existing
-    const token = ++next_input_token
-    input_tokens.set(input, token)
-    return token
+  const make_tokenizer = () => {
+    let next_token = 0
+    const tokens = new WeakMap<object, number>()
+    return (value: object): number => {
+      const existing = tokens.get(value)
+      if (existing !== undefined) return existing
+      tokens.set(value, ++next_token)
+      return next_token
+    }
   }
+  const input_token = make_tokenizer()
+  const non_plain_token = make_tokenizer()
 
-  // Identity for the input, canonical JSON for the options. Hashing megabytes of positions
+  // Identity for the input, canonical serialization for the options. Hashing megabytes of positions
   // would cost more than the compute, so identity stands in for contents. A content hash is
   // not a safe substitute: chempot briefly keyed on a thermodynamic fingerprint that omitted
   // name and entry_id, so two runs differing only in labels shared a promise and the second
   // caller got the first one's entries back in min_entries and el_refs.
-  // Keys are sorted at every depth, since nested option objects (msd's `fit`, vacf's `vdos`)
-  // would otherwise make {a, b} and {b, a} two different requests.
-  const canonical = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(canonical)
-    if (value === null || typeof value !== `object`) return value
-    return Object.entries(value as Record<string, unknown>)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, val]) => [key, canonical(val)])
+  // Plain-object keys are sorted at every depth, while ordered containers keep their order.
+  // Tagged JSON tuples keep unlike values collision-free.
+  const bytes_key = (
+    buffer: ArrayBufferLike,
+    byte_offset = 0,
+    byte_length = buffer.byteLength,
+  ): string =>
+    Array.from(new Uint8Array(buffer, byte_offset, byte_length), (byte) =>
+      byte.toString(16).padStart(2, `0`),
+    ).join(``)
+  const canonical_key_of = (value: unknown): string => {
+    const seen = new WeakMap<object, number>()
+    let next_reference = 0
+    const encode = (item: unknown): unknown => {
+      if (item === null || item === undefined) return [String(item)]
+      if (typeof item === `number`) {
+        return [`number`, Object.is(item, -0) ? `-0` : String(item)]
+      }
+      if (typeof item === `string` || typeof item === `boolean` || typeof item === `bigint`) {
+        return [typeof item, String(item)]
+      }
+      if (typeof item !== `object`) {
+        throw new TypeError(`${label} worker options cannot contain ${typeof item} values`)
+      }
+
+      const existing_reference = seen.get(item)
+      if (existing_reference !== undefined) return [`reference`, existing_reference]
+      seen.set(item, next_reference++)
+
+      if (Array.isArray(item)) {
+        return [
+          `array`,
+          Array.from({ length: item.length }, (_unused, idx) =>
+            Object.hasOwn(item, idx) ? encode(item[idx]) : [`hole`],
+          ),
+        ]
+      }
+
+      const prototype = Object.getPrototypeOf(item)
+      if (prototype === Object.prototype || prototype === null) {
+        return [
+          `object`,
+          Object.entries(item)
+            .toSorted(([left], [right]) => left.localeCompare(right))
+            .map(([key, entry_value]) => [key, encode(entry_value)]),
+        ]
+      }
+
+      const type_key = [Object.prototype.toString.call(item), non_plain_token(prototype)]
+      if (item instanceof Date) return [`date`, type_key, encode(item.getTime())]
+      if (item instanceof Map) {
+        return [
+          `map`,
+          type_key,
+          ...Array.from(item.entries()).flatMap(([key, entry_value]) => [
+            encode(key),
+            encode(entry_value),
+          ]),
+        ]
+      }
+      if (item instanceof Set) return [`set`, type_key, ...Array.from(item, encode)]
+      if (item instanceof RegExp) {
+        return [`regexp`, type_key, item.source, item.flags, item.lastIndex]
+      }
+      if (item instanceof ArrayBuffer) return [`array-buffer`, type_key, bytes_key(item)]
+      if (ArrayBuffer.isView(item)) {
+        return [
+          `array-buffer-view`,
+          type_key,
+          item.byteOffset,
+          item.byteLength,
+          bytes_key(item.buffer),
+        ]
+      }
+      if (item instanceof URL || item instanceof URLSearchParams) {
+        return [`url`, type_key, String(item)]
+      }
+      return [
+        `instance`,
+        type_key,
+        non_plain_token(item),
+        Object.entries(item).map(([key, entry_value]) => [key, encode(entry_value)]),
+      ]
+    }
+    const key = JSON.stringify(encode(value))
+    if (key === undefined) throw new TypeError(`${label} worker could not key its request`)
+    return key
   }
-  const request_key_of = (input: Input, options: Options): string =>
-    `${input_token(input)}|${JSON.stringify(canonical(options ?? {}))}`
+  const request_key_of = (input: Input, options: Options, payload?: unknown): string => {
+    const input_key = dedupe_by_payload
+      ? canonical_key_of(payload)
+      : `input:${input_token(input)}`
+    const options_key = canonical_key_of(options ?? {})
+    return `${input_key.length}:${input_key}${options_key}`
+  }
 
   const track_pending = (request_key: string, promise: Promise<Result>): Promise<Result> => {
     pending_by_key.set(request_key, promise)
@@ -75,7 +172,7 @@ export function create_worker_client<Input extends object, Options, Result>(
         const req = pending.get(id)
         if (!req) return
         pending.delete(id)
-        if (error || result == null) {
+        if (error || result === undefined) {
           req.reject(
             new Error(error ?? `${label} worker returned no result for request ${id}`),
           )
@@ -104,7 +201,10 @@ export function create_worker_client<Input extends object, Options, Result>(
   }
 
   const compute_unsafe = (input: Input, options: Options): Promise<Result> => {
-    const request_key = request_key_of(input, options)
+    // Content-keyed clients build once before the lookup and reuse that same snapshot for
+    // postMessage. Identity-keyed clients defer payload construction until a cache miss.
+    const keyed_payload = dedupe_by_payload ? build_payload(input) : undefined
+    const request_key = request_key_of(input, options, keyed_payload)
     const existing = pending_by_key.get(request_key)
     if (existing) return existing
 
@@ -116,11 +216,13 @@ export function create_worker_client<Input extends object, Options, Result>(
       )
     }
 
-    const payload = build_payload(input)
+    const payload = dedupe_by_payload ? keyed_payload : build_payload(input)
     const promise = new Promise<Result>((resolve, reject) => {
       const id = ++next_id
       pending.set(id, { resolve, reject })
       try {
+        // Empty transfer list on purpose: callers keep ownership of typed-array buffers
+        // (dedupe reuses the same input). Transferring would detach them.
         // oxlint-disable-next-line unicorn/require-post-message-target-origin
         wkr.postMessage({ id, input: payload, options: $state.snapshot(options) }, [])
       } catch (err) {

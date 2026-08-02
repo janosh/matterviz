@@ -292,10 +292,12 @@ const property_unit = (key: string): string =>
 // Each column is headed by the extractor key with its unit appended (`energy (eV)`), not by
 // the plot label, which carries markup (`F<sub>max</sub>`) and shifts with display tweaks.
 export function frame_rows_to_csv({ rows }: TrajectoryPropertyTable): string {
-  const columns = property_key_order(rows).map((key) => {
-    const unit = property_unit(key)
-    return { key, header: unit ? `${key} (${unit})` : key }
-  })
+  const columns = property_key_order(rows)
+    .filter((key) => key !== `frame` && key !== `step`)
+    .map((key) => {
+      const unit = property_unit(key)
+      return { key, header: unit ? `${key} (${unit})` : key }
+    })
   return rows_to_csv(
     rows.map(({ frame, step, properties }) => {
       const record: Record<string, number | string | null> = { frame, step }
@@ -320,7 +322,7 @@ export function frame_rows_to_json(table: TrajectoryPropertyTable): string {
       n_frames: rows.length,
       source,
       units,
-      rows: rows.map(({ frame, step, properties }) => ({ frame, step, ...properties })),
+      rows: rows.map(({ frame, step, properties }) => ({ ...properties, frame, step })),
     },
     null,
     2,

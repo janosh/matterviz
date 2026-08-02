@@ -1851,6 +1851,24 @@
     return () => (displacement_summary = null)
   })
 
+  $effect(() => {
+    if (!interactive || !show_trajectory_lines || !trajectory_position_stream) {
+      trajectory_lines_result = null
+    }
+    // Clear child-owned stats when the layer or scene is torn down.
+    return () => (trajectory_lines_result = null)
+  })
+
+  // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
+  let trajectory_line_anchors = $derived.by(() => {
+    const sites = structure?.sites
+    const n_atoms = trajectory_position_stream?.n_atoms
+    if (!sites || n_atoms !== sites.length) return null
+    const anchors = new Float64Array(n_atoms * 3)
+    for (const [site_idx, site] of sites.entries()) anchors.set(site.xyz, site_idx * 3)
+    return anchors
+  })
+
   let displacement_arrows = $derived.by(() => {
     const vectors = displacement_field?.vectors
     if (!vectors || !show_displacement_arrows || !structure?.sites) return []
@@ -2134,7 +2152,7 @@
 
       <!-- Per-atom trajectory trails: every atom's whole path in one indexed
         LineSegments (1 draw call no matter how many atoms or frames) -->
-      {#if show_trajectory_lines && trajectory_position_stream}
+      {#if interactive && show_trajectory_lines && trajectory_position_stream}
         <TrajectoryLines
           position_stream={trajectory_position_stream}
           end_frame={trajectory_line_end_frame}
@@ -2146,6 +2164,7 @@
           element_colors={colors.element}
           wrap_mode={trajectory_line_wrap_mode}
           opacity={trajectory_line_opacity}
+          anchor_positions={trajectory_line_anchors}
           bind:build_result={trajectory_lines_result}
         />
       {/if}

@@ -30,13 +30,31 @@ class FakeWorker {
   }
 }
 
-const make_client = () =>
-  create_worker_client<{ tag: string }, Record<string, unknown>, string>({
+class FirstOption {
+  constructor(readonly value: number) {}
+}
+
+class SecondOption {
+  constructor(readonly value: number) {}
+}
+
+const make_client = <Result = string>(
+  compute_sync: () => Result = (() => `sync`) as () => Result,
+) =>
+  create_worker_client<{ tag: string }, Record<string, unknown>, Result>({
     label: `Test`,
     create_worker: () => new FakeWorker() as unknown as Worker,
-    compute_sync: () => `sync`,
+    compute_sync,
     build_payload: (input) => input,
   })
+
+// Fire in-flight requests that share one input identity; return how many posts were sent
+const posted_count = (...options_list: Record<string, unknown>[]): number => {
+  const run = make_client()
+  const input = { tag: `a` }
+  for (const options of options_list) void run(input, options).catch(() => {})
+  return FakeWorker.instances[0].posted.length
+}
 
 beforeEach(() => {
   FakeWorker.instances = []
@@ -80,27 +98,83 @@ describe(`worker teardown`, () => {
 })
 
 describe(`request dedupe`, () => {
-  test(`in-flight requests for the same input and options share one post`, () => {
-    const run = make_client()
-    const input = { tag: `a` }
-    void run(input, { alpha: 1 }).catch(() => {})
-    void run(input, { alpha: 1 }).catch(() => {})
-    expect(FakeWorker.instances[0].posted).toHaveLength(1)
-  })
-
   test.each([
-    { desc: `top-level`, first: { alpha: 1, beta: 2 }, second: { beta: 2, alpha: 1 } },
+    { desc: `identical`, first: { alpha: 1 }, second: { alpha: 1 } },
     {
-      desc: `nested`,
+      desc: `top-level key order`,
+      first: { alpha: 1, beta: 2 },
+      second: { beta: 2, alpha: 1 },
+    },
+    {
+      desc: `nested key order`,
       first: { fit: { start: 0.1, end: 0.8 } },
       second: { fit: { end: 0.8, start: 0.1 } },
     },
-  ])(`$desc option key order does not split one request in two`, ({ first, second }) => {
-    const run = make_client()
-    const input = { tag: `a` }
-    void run(input, first).catch(() => {})
-    void run(input, second).catch(() => {})
-    expect(FakeWorker.instances[0].posted).toHaveLength(1)
+  ])(`$desc options share one in-flight request`, ({ first, second }) => {
+    expect(posted_count(first, second)).toBe(1)
+  })
+
+  test.each([
+    {
+      desc: `Date`,
+      first: new Date(`2025-01-01T00:00:00Z`),
+      equivalent: new Date(`2025-01-01T00:00:00Z`),
+      different: new Date(`2026-01-01T00:00:00Z`),
+    },
+    {
+      desc: `Map`,
+      first: new Map([[`alpha`, 1]]),
+      equivalent: new Map([[`alpha`, 1]]),
+      different: new Map([[`alpha`, 2]]),
+    },
+    {
+      desc: `Set`,
+      first: new Set([1, 2]),
+      equivalent: new Set([1, 2]),
+      different: new Set([1, 3]),
+    },
+    {
+      desc: `RegExp`,
+      first: /alpha/giu,
+      equivalent: /alpha/giu,
+      different: /beta/giu,
+    },
+    {
+      desc: `typed array`,
+      first: new Uint8Array([1, 2]),
+      equivalent: new Uint8Array([1, 2]),
+      different: new Uint8Array([1, 3]),
+    },
+  ])(
+    `$desc options dedupe by value without conflating different values`,
+    ({ first, equivalent, different }) => {
+      expect(posted_count({ value: first }, { value: equivalent }, { value: different })).toBe(
+        2,
+      )
+    },
+  )
+
+  test(`arrays retain order and cannot collide with plain objects`, () => {
+    expect(
+      posted_count(
+        { value: { alpha: 1 }, values: [1, null] },
+        { values: [1, null], value: { alpha: 1 } },
+        { value: [[`alpha`, 1]], values: [1, null] },
+        { value: { alpha: 1 }, values: [null, 1] },
+      ),
+    ).toBe(3)
+  })
+
+  test(`class instances retain identity and type in request keys`, () => {
+    const first = new FirstOption(1)
+    expect(
+      posted_count(
+        { value: first },
+        { value: first },
+        { value: new FirstOption(2) },
+        { value: new SecondOption(1) },
+      ),
+    ).toBe(3)
   })
 
   test(`distinct inputs are never conflated, however alike`, () => {
@@ -112,15 +186,39 @@ describe(`request dedupe`, () => {
   })
 })
 
-test(`a falsy result is delivered rather than reported as no result`, async () => {
-  const run = create_worker_client<{ tag: string }, Record<string, unknown>, number>({
-    label: `Test`,
-    create_worker: () => new FakeWorker() as unknown as Worker,
-    compute_sync: () => 0,
-    build_payload: (input) => input,
-  })
+test(`falls back to compute_sync when Worker is missing`, async () => {
+  vi.stubGlobal(`Worker`, undefined)
+  const run = make_client()
+  await expect(run({ tag: `a` }, {})).resolves.toBe(`sync`)
+  expect(FakeWorker.instances).toHaveLength(0)
+})
+
+test.each([
+  { desc: `zero`, result: 0 },
+  { desc: `explicit null`, result: null },
+])(`a $desc result is delivered rather than reported as missing`, async ({ result }) => {
+  const run = make_client<number | null>(() => 0)
   const pending = run({ tag: `a` }, {})
   const [worker] = FakeWorker.instances
-  worker.emit(`message`, { data: { id: worker.posted[0].id, result: 0, error: null } })
-  await expect(pending).resolves.toBe(0)
+  worker.emit(`message`, { data: { id: worker.posted[0].id, result, error: null } })
+  await expect(pending).resolves.toBe(result)
+})
+
+test.each([
+  {
+    desc: `worker error`,
+    response: { result: null, error: `boom` },
+    expected: /boom/,
+  },
+  {
+    desc: `undefined result`,
+    response: { result: undefined, error: null },
+    expected: /Test worker returned no result for request 1/,
+  },
+])(`a $desc rejects with the expected message`, async ({ response, expected }) => {
+  const run = make_client()
+  const pending = run({ tag: `a` }, {})
+  const [worker] = FakeWorker.instances
+  worker.emit(`message`, { data: { id: worker.posted[0].id, ...response } })
+  await expect(pending).rejects.toThrow(expected)
 })

@@ -41,7 +41,7 @@
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting
   // every Nth frame multiplies it (see dt_collected below).
-  // Seeded from default_dt by the effect below, which also re-seeds on trajectory swap
+  // Seeded from complete timestep metadata below, and re-seeded on trajectory swap
   let dt_source = $state(1)
   let time_unit = $state(`ps`)
   let use_dt = $state(false)
@@ -88,9 +88,8 @@
 
   // Drop stale positions/curves whenever the underlying trajectory is swapped out, and
   // re-seed the timestep from the file rather than carrying the previous one over. Seeding
-  // also keys on default_dt so a timestep that only becomes known later still lands.
+  // also keys on the defaults so metadata that only becomes known later still lands.
   let analysed_trajectory: TrajectoryType | undefined
-  let seeded_dt: number | null | undefined
   $effect(() => {
     const trajectory_changed = trajectory !== analysed_trajectory
     if (trajectory_changed) {
@@ -99,12 +98,10 @@
       result = undefined
       error_msg = undefined
     }
-    if (trajectory_changed || default_dt !== seeded_dt) {
-      seeded_dt = default_dt
-      dt_source = default_dt ?? 1
-      time_unit = default_time_unit ?? `ps`
-      use_dt = default_dt !== null
-    }
+    const has_default_timestep = default_dt !== null && default_time_unit !== undefined
+    dt_source = has_default_timestep ? default_dt : 1
+    time_unit = has_default_timestep ? default_time_unit : `ps`
+    use_dt = has_default_timestep
   })
 
   // MsdOptions.dt is time per COLLECTED frame, so striding has to be folded in here —

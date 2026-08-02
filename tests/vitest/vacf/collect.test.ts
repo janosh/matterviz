@@ -1,6 +1,16 @@
 import type { Vec3 } from '$lib/math'
-import type { FrameLoader, TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
-import { calc_vacf, collect_vacf_input, suggest_vacf_frame_stride } from '$lib/vacf'
+import type {
+  FrameLoader,
+  PositionStreamOptions,
+  TrajectoryFrame,
+  TrajectoryType,
+} from '$lib/trajectory'
+import {
+  calc_vacf,
+  collect_vacf_input,
+  suggest_vacf_frame_stride,
+  VELOCITY_SITE_PROPERTY,
+} from '$lib/vacf'
 import { describe, expect, it } from 'vitest'
 import { make_crystal } from '../setup'
 import { circular_motion, max_abs_error } from './helpers'
@@ -44,6 +54,8 @@ describe(`in-memory collection`, () => {
     expect(collected.n_frames).toBe(50)
     expect(collected.velocities).toBeInstanceOf(Float64Array)
     expect(collected.velocities).toHaveLength(50 * 1 * 3)
+    // Parsers/TrajectoryType expose no velocity unit today, so collect leaves it unset
+    expect(collected.velocity_unit).toBeUndefined()
     // Same orbit the fixture built: v(0) = A w (1, 0, 0)
     const omega = 2 * Math.PI * 0.03
     expect(collected.velocities?.[0]).toBeCloseTo(1.5 * omega, 12)
@@ -51,6 +63,7 @@ describe(`in-memory collection`, () => {
 
     const result = calc_vacf(collected, { vdos: { skip: true } })
     expect(result.velocity_source).toBe(`stored`)
+    expect(result.velocity_unit).toBe(`(file velocity units)^2`)
     const expected = result.lags.map((lag) => Math.cos(omega * lag))
     expect(max_abs_error(result.curves[0].vacf_normalized, expected)).toBeLessThan(1e-12)
   })
@@ -108,8 +121,14 @@ describe(`in-memory collection`, () => {
 })
 
 describe(`indexed trajectories`, () => {
-  const lazy_trajectory = (loader?: FrameLoader): TrajectoryType => ({
-    ...make_trajectory(5, false),
+  const loader_methods = (total_frames: number) => ({
+    get_total_frames: async () => total_frames,
+    build_frame_index: async () => [],
+    load_frame: async () => null,
+    extract_plot_metadata: async () => [],
+  })
+  const lazy_trajectory = (loader?: FrameLoader, with_velocities = false): TrajectoryType => ({
+    ...make_trajectory(5, with_velocities),
     total_frames: 500,
     is_indexed: true,
     ...(loader ? { frame_loader: loader } : {}),
@@ -122,12 +141,7 @@ describe(`indexed trajectories`, () => {
   })
 
   it(`refuses when the loader cannot stream a full pass`, async () => {
-    const loader = {
-      get_total_frames: async () => 500,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
-    } satisfies FrameLoader
+    const loader = loader_methods(500) satisfies FrameLoader
     await expect(collect_vacf_input(lazy_trajectory(loader))).rejects.toThrow(
       /does not implement stream_positions/,
     )
@@ -135,10 +149,7 @@ describe(`indexed trajectories`, () => {
 
   it(`refuses to stream without the raw file bytes`, async () => {
     const loader = {
-      get_total_frames: async () => 500,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
+      ...loader_methods(500),
       stream_positions: async () => {
         throw new Error(`should not be reached`)
       },
@@ -148,58 +159,69 @@ describe(`indexed trajectories`, () => {
     )
   })
 
-  it(`reads the velocity channel a streaming loader hands back`, async () => {
-    const { positions, velocities } = circular_motion(40, 0.03, 1.5)
-    const flat = (frames: number[][][]) => Float64Array.from(frames.flat().flat())
-    const loader = {
-      get_total_frames: async () => 40,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
-      // The parser work that adds this channel has not landed yet, so the extra field is
-      // attached here exactly as the interface documents it
-      stream_positions: async () => ({
-        positions: flat(positions),
-        velocities: flat(velocities),
-        n_frames: 40,
-        n_atoms: 1,
-        elements: [`H` as const],
-        lattice_matrices: null,
-        pbc: null,
-        coords_unwrapped: false,
-        frame_stride: 1,
-        steps: Array.from({ length: 40 }, (_unused, idx) => idx),
-      }),
-    } satisfies FrameLoader
-    const collected = await collect_vacf_input(lazy_trajectory(loader), {
+  // A loader that streams 40 frames of one atom, handing back whatever velocity channel
+  // the test names, and recording the options it was asked with.
+  type RecordingLoader = FrameLoader & { requested_options?: PositionStreamOptions }
+  const streaming_loader = (velocity_channel: unknown): RecordingLoader => {
+    const loader: RecordingLoader = {
+      ...loader_methods(40),
+      stream_positions: async (
+        _data: string | ArrayBuffer,
+        stream_options?: PositionStreamOptions,
+      ) => {
+        loader.requested_options = stream_options
+        const vectors: Record<string, Float64Array> = {}
+        if (velocity_channel != null)
+          Reflect.set(vectors, VELOCITY_SITE_PROPERTY, velocity_channel)
+        return {
+          positions: Float64Array.from(circular_motion(40, 0.03, 1.5).positions.flat().flat()),
+          ...(velocity_channel != null ? { vectors } : {}),
+          n_frames: 40,
+          n_atoms: 1,
+          elements: [`H` as const],
+          lattice_matrices: null,
+          pbc: null,
+          coords_unwrapped: false,
+          frame_stride: 1,
+          steps: Array.from({ length: 40 }, (_unused, idx) => idx),
+        }
+      },
+    }
+    return loader
+  }
+
+  it(`requests the velocity channel and reads it back off stream.vectors`, async () => {
+    const { velocities } = circular_motion(40, 0.03, 1.5)
+    const loader = streaming_loader(Float64Array.from(velocities.flat().flat()))
+    // In-memory frames carry velocities, which is what makes the sweep ask for them
+    const collected = await collect_vacf_input(lazy_trajectory(loader, true), {
       raw_data: `stub payload`,
     })
+    expect(loader.requested_options?.vector_keys).toEqual([VELOCITY_SITE_PROPERTY])
     expect(collected.velocities).toHaveLength(40 * 3)
     expect(calc_vacf(collected, { vdos: { skip: true } }).velocity_source).toBe(`stored`)
   })
 
-  it(`rejects a velocity channel whose length disagrees with the positions`, async () => {
-    const { positions } = circular_motion(40, 0.03, 1.5)
-    const loader = {
-      get_total_frames: async () => 40,
-      build_frame_index: async () => [],
-      load_frame: async () => null,
-      extract_plot_metadata: async () => [],
-      stream_positions: async () => ({
-        positions: Float64Array.from(positions.flat().flat()),
-        velocities: new Float64Array(9),
-        n_frames: 40,
-        n_atoms: 1,
-        elements: [`H` as const],
-        lattice_matrices: null,
-        pbc: null,
-        coords_unwrapped: false,
-        frame_stride: 1,
-        steps: Array.from({ length: 40 }, (_unused, idx) => idx),
-      }),
-    } satisfies FrameLoader
+  it(`does not request velocities when the in-memory frames carry none`, async () => {
+    const loader = streaming_loader(null)
+    const collected = await collect_vacf_input(lazy_trajectory(loader), {
+      raw_data: `stub payload`,
+    })
+    expect(loader.requested_options?.vector_keys).toBeUndefined()
+    expect(collected.velocities).toBeNull()
+  })
+
+  it(`rejects a velocity channel that is not a Float64Array`, async () => {
+    const loader = streaming_loader(new Float32Array(120))
     await expect(
-      collect_vacf_input(lazy_trajectory(loader), { raw_data: `stub payload` }),
+      collect_vacf_input(lazy_trajectory(loader, true), { raw_data: `stub payload` }),
+    ).rejects.toThrow(/'velocity' channel of type object; VACF needs a Float64Array/)
+  })
+
+  it(`rejects a velocity channel whose length disagrees with the positions`, async () => {
+    const loader = streaming_loader(new Float64Array(9))
+    await expect(
+      collect_vacf_input(lazy_trajectory(loader, true), { raw_data: `stub payload` }),
     ).rejects.toThrow(/returned 9 velocity components but the collected positions need 120/)
   })
 })

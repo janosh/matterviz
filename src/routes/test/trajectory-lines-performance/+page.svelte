@@ -22,10 +22,16 @@
   } from '$lib/structure/trajectory-lines'
   import { build_trajectory_lines } from '$lib/structure/trajectory-lines'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
-  import type { ComponentProps } from 'svelte'
+  import { type ComponentProps, onMount } from 'svelte'
 
   // Mobile species first so the element filter has something meaningful to narrow to
   const SPECIES: ElementSymbol[] = [`Li`, `O`]
+  const MIN_ATOMS = 1
+  const MAX_ATOMS = 5000
+  const MIN_FRAMES = 2
+  const MAX_FRAMES = 20_000
+  const in_integer_range = (value: number, min: number, max: number): boolean =>
+    Number.isInteger(value) && value >= min && value <= max
 
   let n_atoms = $state(500)
   let n_frames = $state(5000)
@@ -46,6 +52,7 @@
   let frame_ms = $state<number | null>(null)
   let worst_frame_ms = $state<number | null>(null)
   let trajectory_lines_result = $state<TrajectoryLinesStats | null>(null)
+  let generation_error = $state<string | null>(null)
 
   // Cell side scaled so the atom density stays physical (~0.05 atoms/A^3) as the count grows.
   // Read off the generated stream, not the input box, so editing the atom count without
@@ -107,15 +114,34 @@
     }
   }
 
-  async function regenerate() {
+  async function regenerate(): Promise<void> {
+    const requested_atoms = n_atoms
+    const requested_frames = n_frames
+    const valid_request =
+      in_integer_range(requested_atoms, MIN_ATOMS, MAX_ATOMS) &&
+      in_integer_range(requested_frames, MIN_FRAMES, MAX_FRAMES)
+    if (!valid_request) {
+      generation_error =
+        `Atoms must be an integer from ${MIN_ATOMS} to ${MAX_ATOMS} and frames ` +
+        `from ${MIN_FRAMES} to ${MAX_FRAMES}.`
+      return
+    }
+
     generating = true
     playing = false
     build_ms = null
-    // Yield so the spinner paints before the (synchronous, multi-hundred-ms) generation
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    stream = generate_stream(n_atoms, n_frames)
-    end_frame = n_frames - 1
-    generating = false
+    generation_error = null
+    try {
+      // Yield so the spinner paints before the (synchronous, multi-hundred-ms) generation
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      stream = generate_stream(requested_atoms, requested_frames)
+      end_frame = requested_frames - 1
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      generation_error = `Failed to generate trajectory: ${message}`
+    } finally {
+      generating = false
+    }
   }
 
   // The structure rendered alongside the trails: the atoms at `end_frame`
@@ -245,9 +271,7 @@
     return () => cancelAnimationFrame(handle)
   })
 
-  $effect(() => {
-    regenerate()
-  })
+  onMount(() => void regenerate())
 </script>
 
 <h1>Trajectory Lines Performance Test</h1>
@@ -255,11 +279,11 @@
 <div class="controls">
   <label>
     Atoms
-    <input type="number" bind:value={n_atoms} min="1" max="5000" step="100" />
+    <input type="number" bind:value={n_atoms} min={MIN_ATOMS} max={MAX_ATOMS} step="100" />
   </label>
   <label>
     Frames
-    <input type="number" bind:value={n_frames} min="2" max="20000" step="500" />
+    <input type="number" bind:value={n_frames} min={MIN_FRAMES} max={MAX_FRAMES} step="500" />
   </label>
   <button type="button" onclick={regenerate} disabled={generating}>Regenerate</button>
   {#each [[100, 500], [500, 5000], [2000, 5000]] as [atoms, frames] (`${atoms}x${frames}`)}
@@ -275,6 +299,10 @@
     </button>
   {/each}
 </div>
+
+{#if generation_error}
+  <p role="alert" style="color: var(--error-color, #ef4444)">{generation_error}</p>
+{/if}
 
 <div class="controls">
   <label>

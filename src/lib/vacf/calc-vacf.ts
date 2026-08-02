@@ -22,7 +22,7 @@ import type {
   VacfResult,
   VelocitySource,
 } from './index'
-import { TIME_UNIT_TO_THZ } from './index'
+import { thz_per_inverse_time, TIME_UNIT_TO_THZ } from './units'
 
 // THz -> cm^-1: 1e12 Hz divided by the speed of light in cm/s
 const THZ_TO_INVERSE_CM = 1e12 / (299792458 * 100)
@@ -64,25 +64,28 @@ export function central_difference_velocities(
   return velocities
 }
 
-// Frequency conversion factor from cycles per `time_unit` to `frequency_unit`. Throws
-// rather than inventing a scale when the pair is not convertible, so it is only called
-// once a VDOS is actually wanted — a skipped VDOS reports no frequency axis at all.
-const frequency_factor = (time_unit: string, frequency_unit: VacfFrequencyUnit): number => {
-  const thz_per_inverse_time = TIME_UNIT_TO_THZ[time_unit]
-  // Either branch falls through to the throw below when the pair does not line up
-  if (frequency_unit === `1/frame`) {
-    if (time_unit === `frame`) return 1
-  } else if (thz_per_inverse_time !== undefined) {
-    return frequency_unit === `THz`
-      ? thz_per_inverse_time
-      : thz_per_inverse_time * THZ_TO_INVERSE_CM
+// Frequency conversion factor from cycles per `time_unit` to `frequency_unit`. `dt`
+// converts back to cycles per collected frame when that axis is requested. Throws rather
+// than inventing a scale for unconvertible physical units, so it is only called once a
+// VDOS is actually wanted — a skipped VDOS reports no frequency axis at all.
+const frequency_factor = (
+  dt: number,
+  time_unit: string,
+  frequency_unit: VacfFrequencyUnit,
+): number => {
+  // Cycles per collected frame: independent of whether `time_unit` is THz-convertible
+  if (frequency_unit === `1/frame`) return dt
+  const to_thz = thz_per_inverse_time(time_unit)
+  if (to_thz !== undefined) {
+    return frequency_unit === `THz` ? to_thz : to_thz * THZ_TO_INVERSE_CM
   }
   const convertible = Object.keys(TIME_UNIT_TO_THZ).join(`, `)
   const reason =
     time_unit === `frame`
       ? `no timestep was supplied, so the only honest axis is '1/frame'. Pass dt and ` +
         `time_unit (one of ${convertible}) to get real frequencies.`
-      : `time_unit must be one of ${convertible} to convert to THz or cm^-1`
+      : `time_unit '${time_unit}' with frequency_unit '${frequency_unit}' is not convertible; ` +
+        `use frequency_unit '1/frame', or a time_unit of ${convertible}`
   return fail(
     `cannot report a ${frequency_unit} frequency axis for a lag axis in ` +
       `'${time_unit}': ${reason}`,
@@ -104,7 +107,8 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     time_unit: requested_time_unit,
     max_lag_fraction = 0.5,
     max_lags = 4096,
-    // Rough (origin x atom) operation budget used to auto-tune `origin_stride`
+    // Rough (origin x atom) operation budget; exceeding it throws unless the caller
+    // explicitly accepts the aliasing risk by setting `origin_stride`
     work_budget = 2e8,
     velocity_source: requested_source = `auto`,
     vdos: vdos_options = {},
@@ -299,7 +303,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   const sample_interval = dt * lag_stride
   const frequency_unit: VacfFrequencyUnit =
     vdos_options.frequency_unit ??
-    (TIME_UNIT_TO_THZ[time_unit] === undefined ? `1/frame` : `THz`)
+    (thz_per_inverse_time(time_unit) === undefined ? `1/frame` : `THz`)
 
   const weights = correlation_window(lags.length, window, window_options)
   // even_cosine_spectrum mirrors the lags and rounds up, so the grid is known before any
@@ -308,7 +312,8 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   const n_fft = skip_vdos ? 0 : cosine_spectrum_length(lags.length, zero_pad_factor)
   let frequencies: number[] = []
   if (!skip_vdos) {
-    const bin_spacing = frequency_factor(time_unit, frequency_unit) / (n_fft * sample_interval)
+    const bin_spacing =
+      frequency_factor(dt, time_unit, frequency_unit) / (n_fft * sample_interval)
     frequencies = Array.from({ length: n_fft / 2 + 1 }, (_unused, bin) => bin * bin_spacing)
   }
 

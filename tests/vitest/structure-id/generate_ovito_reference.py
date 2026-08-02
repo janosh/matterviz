@@ -12,6 +12,7 @@ import json
 import os
 
 import numpy as np
+import ovito
 from ovito.data import DataCollection
 from ovito.modifiers import CentroSymmetryModifier, CommonNeighborAnalysisModifier
 from ovito.pipeline import Pipeline, StaticSource
@@ -151,8 +152,9 @@ def main() -> None:
 
     out_path = f"{os.path.dirname(os.path.abspath(__file__))}/ovito_reference.json.gz"
     with gzip.open(out_path, "wt") as file:
-        json.dump({"ovito_version": "3.15.5", "cases": cases}, file)
+        json.dump({"ovito_version": ovito.version_string, "cases": cases}, file)
     print(f"wrote {out_path} ({os.path.getsize(out_path) / 1024:.0f} KB)")
 
 
-main()
+if __name__ == "__main__":
+    main()

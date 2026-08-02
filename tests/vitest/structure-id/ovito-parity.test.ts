@@ -22,9 +22,19 @@ interface OvitoCase {
   csp: number[]
 }
 
+type OvitoFixedCase = OvitoCase & { fixed_cutoff: number; cna_fixed: number[] }
+
 const { ovito_version, cases } = load_json<{ ovito_version: string; cases: OvitoCase[] }>(
   `${import.meta.dirname}/ovito_reference.json.gz`,
 )
+
+const labeled_cases = cases.map((ovito_case) => [ovito_case.label, ovito_case] as const)
+const fixed_cases = cases
+  .filter(
+    (ovito_case): ovito_case is OvitoFixedCase =>
+      ovito_case.fixed_cutoff !== null && ovito_case.cna_fixed !== undefined,
+  )
+  .map((ovito_case) => [ovito_case.label, ovito_case] as const)
 
 const to_crystal = ({ matrix, positions }: OvitoCase): Crystal => {
   const lattice_matrix = matrix as Matrix3x3
@@ -45,6 +55,9 @@ const to_crystal = ({ matrix, positions }: OvitoCase): Crystal => {
 // Fraction of atoms whose code differs, plus the confusion pairs, so a failure says what moved
 const compare_codes = (ours: Int8Array | null, theirs: number[]) => {
   if (!ours) throw new Error(`CNA was not computed`)
+  if (ours.length !== theirs.length) {
+    return [`length: ovito ${theirs.length} vs ours ${ours.length}`]
+  }
   const mismatches: string[] = []
   for (const [idx, code] of theirs.entries()) {
     if (ours[idx] !== code) mismatches.push(`${idx}: ovito ${code} vs ours ${ours[idx]}`)
@@ -53,55 +66,48 @@ const compare_codes = (ours: Int8Array | null, theirs: number[]) => {
 }
 
 describe(`parity with OVITO ${ovito_version}`, () => {
-  test.each(cases.map((ovito_case) => [ovito_case.label, ovito_case] as const))(
-    `%s: adaptive CNA matches atom for atom`,
-    (_label, ovito_case) => {
-      const result = calc_structure_id(to_crystal(ovito_case), { skip_csp: true })
-      expect(compare_codes(result.cna_types, ovito_case.cna_adaptive)).toEqual([])
-    },
-  )
-
-  test.each(
-    cases
-      .filter((ovito_case) => ovito_case.cna_fixed)
-      .map((ovito_case) => [ovito_case.label, ovito_case] as const),
-  )(`%s: fixed-cutoff CNA matches atom for atom`, (_label, ovito_case) => {
-    const { fixed_cutoff, cna_fixed } = ovito_case
-    if (fixed_cutoff === null || !cna_fixed) throw new Error(`case has no fixed-cutoff data`)
-    const result = calc_structure_id(to_crystal(ovito_case), {
-      cna_mode: `fixed`,
-      cutoff: fixed_cutoff,
-      skip_csp: true,
-    })
-    expect(compare_codes(result.cna_types, cna_fixed)).toEqual([])
+  test.each(labeled_cases)(`%s: adaptive CNA matches atom for atom`, (_label, ovito_case) => {
+    const result = calc_structure_id(to_crystal(ovito_case), { skip_csp: true })
+    expect(compare_codes(result.cna_types, ovito_case.cna_adaptive)).toEqual([])
   })
 
-  test.each(cases.map((ovito_case) => [ovito_case.label, ovito_case] as const))(
-    `%s: centrosymmetry matches to float32 precision`,
-    (label, ovito_case) => {
+  test.each(fixed_cases)(
+    `%s: fixed-cutoff CNA matches atom for atom`,
+    (_label, ovito_case) => {
+      const { fixed_cutoff, cna_fixed } = ovito_case
       const result = calc_structure_id(to_crystal(ovito_case), {
-        skip_cna: true,
-        n_csp_neighbors: ovito_case.n_csp_neighbors,
+        cna_mode: `fixed`,
+        cutoff: fixed_cutoff,
+        skip_csp: true,
       })
-      if (!result.centrosymmetry) throw new Error(`CSP was not computed`)
-      let max_abs_error = 0
-      let max_rel_error = 0
-      for (const [idx, reference] of ovito_case.csp.entries()) {
-        const abs_error = Math.abs(result.centrosymmetry[idx] - reference)
-        max_abs_error = Math.max(max_abs_error, abs_error)
-        if (reference > 1e-6) max_rel_error = Math.max(max_rel_error, abs_error / reference)
-      }
-      console.info(
-        `${label} CSP vs OVITO: max |a-b| = ${max_abs_error.toExponential(3)} Å², ` +
-          `max relative = ${max_rel_error.toExponential(3)}`,
-      )
-      // Both sides are float64 over identical coordinates, so the only difference is the order
-      // the six terms are accumulated in. Measured worst case across all fixtures is
-      // 3.0e-14 Å² absolute and 1.5e-14 relative (~68 x f64 eps); two fixtures agree bit for
-      // bit. The bounds below sit ~30x above that, tight enough that a genuine algorithm
-      // change (a different pairing, a different neighbor set) could not slip through.
-      expect(max_abs_error).toBeLessThan(1e-12)
-      expect(max_rel_error).toBeLessThan(1e-12)
+      expect(compare_codes(result.cna_types, cna_fixed)).toEqual([])
     },
   )
+
+  test.each(labeled_cases)(`%s: centrosymmetry matches within 1e-12`, (label, ovito_case) => {
+    const result = calc_structure_id(to_crystal(ovito_case), {
+      skip_cna: true,
+      n_csp_neighbors: ovito_case.n_csp_neighbors,
+    })
+    if (!result.centrosymmetry) throw new Error(`CSP was not computed`)
+    expect(result.centrosymmetry).toHaveLength(ovito_case.csp.length)
+    let max_abs_error = 0
+    let max_rel_error = 0
+    for (const [idx, reference] of ovito_case.csp.entries()) {
+      const abs_error = Math.abs(result.centrosymmetry[idx] - reference)
+      max_abs_error = Math.max(max_abs_error, abs_error)
+      if (reference > 1e-6) max_rel_error = Math.max(max_rel_error, abs_error / reference)
+    }
+    console.info(
+      `${label} CSP vs OVITO: max |a-b| = ${max_abs_error.toExponential(3)} Å², ` +
+        `max relative = ${max_rel_error.toExponential(3)}`,
+    )
+    // Both sides are float64 over identical coordinates, so the only difference is the order
+    // the six terms are accumulated in. Measured worst case across all fixtures is
+    // 3.0e-14 Å² absolute and 1.5e-14 relative (~68 x f64 eps); two fixtures agree bit for
+    // bit. The bounds below sit ~30x above that, tight enough that a genuine algorithm
+    // change (a different pairing, a different neighbor set) could not slip through.
+    expect(max_abs_error).toBeLessThan(1e-12)
+    expect(max_rel_error).toBeLessThan(1e-12)
+  })
 })

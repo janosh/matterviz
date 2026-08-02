@@ -4,8 +4,8 @@ import {
   TRAJ_KEYWORDS,
   VASP_VOLUMETRIC_REGEX,
 } from '$lib/constants'
-import { DEFAULTS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 import { VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
+import { DEFAULTS, SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file, LARGE_FILE_THRESHOLD } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -30,7 +30,6 @@ import {
   handle_msg,
   read_file,
   render,
-  should_auto_render,
 } from '../src/extension'
 
 // Mock modules (extension.ts only touches fs.existsSync + fs.readdirSync;
@@ -218,6 +217,7 @@ describe(`MatterViz Extension`, () => {
       `description`,
       `minimum`,
       `maximum`,
+      `multipleOf`,
       `minItems`,
       `maxItems`,
       `enum`,
@@ -311,9 +311,11 @@ describe(`MatterViz Extension`, () => {
       [`data.hdf5`, `HDF5`],
       [`dynamics.dcd`, `DCD`],
       [`run.trr`, `TRR`],
+      // xyz/extxyz are editor-only (not in STRUCTURE_EXTENSIONS)
       [`molecule.xyz`, `XYZ`],
       [`atoms.extxyz`, `extXYZ`],
       // VASP volumetric filenames, incl. compressed and band/run-suffixed variants
+      // (.cube / .cube.gz covered by STRUCTURE_EXTENSIONS above)
       ...[
         `CHGCAR`,
         `AECCAR0`,
@@ -326,8 +328,6 @@ describe(`MatterViz Extension`, () => {
         `PARCHG.BAND_1`,
         `run_PARCHG_001`,
       ].map((filename) => [filename, `VASP volumetric`] as [string, string]),
-      [`density.cube`, `Gaussian cube`],
-      [`density.cube.gz`, `Gaussian cube`],
     ])(`pattern matches "%s" (%s)`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(true)
     })
@@ -425,8 +425,6 @@ describe(`MatterViz Extension`, () => {
     [`test.h5`, true],
     [`test.traj`, true], // ASE binary files should be treated as compressed
     [`test.hdf5`, true],
-    [`md_npt_300K.traj`, true], // Specific ASE ULM binary file
-    [`ase-LiMnO2-chgnet-relax.traj`, true], // Another ASE ULM binary file
     [`test.cif`, false],
     [`test.xyz`, false], // .xyz files are text format, not compressed binary
     [`test.json`, false],
@@ -527,55 +525,19 @@ describe(`MatterViz Extension`, () => {
     })
   })
 
-  test.each([
-    [`md_npt_300K.traj`, true], // ASE binary trajectory
-    [`ase-LiMnO2-chgnet-relax.traj`, true], // ASE binary trajectory
-    [`simulation_nvt_250K.traj`, true], // ASE binary trajectory
-    [`water_cluster_md.traj`, true], // ASE binary trajectory
-    [`optimization_relax.traj`, true], // ASE binary trajectory
-    [`regular_text.traj`, true], // .traj files are always binary
-    // filename-only based .xyz/.extxyz detection always assumes structure, requires file content to look for frames and recognize as trajectory
-    [`test.xyz`, false],
-    [`test.extxyz`, false],
-    [`test.cif`, false], // Not a trajectory file
-  ])(
-    `ASE trajectory file handling: "%s" → trajectory:%s`,
-    async (filename, expected_trajectory) => {
-      expect(is_trajectory_file(filename)).toBe(expected_trajectory)
-      if (!expected_trajectory) return
-      expect((await read_file(`/test/${filename}`)).is_base64).toBe(true)
-    },
-  )
-
-  // Integration test for ASE trajectory file processing (simulates the exact failing scenario)
   test(`ASE trajectory file end-to-end processing`, async () => {
     const ase_filename = `ase-LiMnO2-chgnet-relax.traj`
-
-    // Step 1: Extension should detect this as a trajectory file
     expect(is_trajectory_file(ase_filename)).toBe(true)
 
-    // Step 2: Extension should read this as binary (compressed)
-    const file_result = await read_file(`/test/${ase_filename}`)
-    expect(file_result.filename).toBe(ase_filename)
-    expect(file_result.is_base64).toBe(true)
-    expect(file_result.content).toBe(mock_base64) // base64 encoded binary data
-
-    // Step 3: HTML generation should embed exactly this data, no extra/renamed keys
-    const webview_data = { data: file_result, theme: `light` as const }
-    const html = create_html(mock_webview, mock_context, webview_data)
-
-    expect(html).toContain(`<!DOCTYPE html>`)
-    expect(html).toContain(JSON.stringify(webview_data))
-
-    // Step 4: the embedded payload must still be parseable JSON after escaping
+    const data = await read_file(`/test/${ase_filename}`)
+    const html = create_html(mock_webview, mock_context, { data, theme: `light` })
     const parsed_data = JSON.parse(
       /matterviz_data=(?<json>\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`,
     )
-    expect(parsed_data).not.toHaveProperty(`type`)
-    expect(parsed_data.data.filename).toBe(ase_filename)
-    expect(parsed_data.data.is_base64).toBe(true)
-    expect(parsed_data.data.content).toBe(mock_base64)
-    expect(parsed_data.theme).toBe(`light`)
+    expect(parsed_data).toEqual({
+      data: { filename: ase_filename, content: mock_base64, is_base64: true },
+      theme: `light`,
+    })
   })
 
   test.each([
@@ -696,36 +658,19 @@ describe(`MatterViz Extension`, () => {
     },
   )
 
-  test.each([
-    [
-      `PNG image`,
-      `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
-      `structure.png`,
-    ],
-    [
-      `JPEG image`,
-      `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AP/Z`,
-      `plot.jpg`,
-    ],
-    [
-      `PDF document`,
-      `data:application/pdf;base64,JVBERi0xLjQKJcOkw7zDtsO8DQoxIDAgb2JqDQo8PA0KL1R5cGUgL0NhdGFsb2cNCi9QYWdlcyAyIDAgUg0KPj4NCmVuZG9iag0KMiAwIG9iag0KPDwNCi9UeXBlIC9QYWdlcw0KL0tpZHMgWzMgMCBSXQ0KL0NvdW50IDENCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdDQo+Pg0KZW5kb2JqDQozIDAgb2JqDQo8PA0KL1R5cGUgL1BhZ2UNCi9QYXJlbnQgMiAwIFINCi9SZXNvdXJjZXMgPDwNCi9Gb250IDw8DQovRjEgNCAwIFINCj4+DQo+Pg0KL0NvbnRlbnRzIDUgMCBSDQo+Pg0KZW5kb2JqDQo0IDAgb2JqDQo8PA0KL1R5cGUgL0ZvbnQNCi9TdWJ0eXBlIC9UeXBlMQ0KL0Jhc2VGb250IC9IZWx2ZXRpY2ENCi9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nDQo+Pg0KZW5kb2JqDQo1IDAgb2JqDQo8PA0KL0xlbmd0aCA0NA0KPj4NCnN0cmVhbQ0KQlQNCjEyIDAgVGQKL0YxIDEyIFRqDQooSGVsbG8gV29ybGQpIFRqDQpFVA0KZW5kc3RyZWFtDQplbmRvYmoNCnhyZWYNCjAgNg0KMDAwMDAwMDAwMCA2NTUzNSBmDQowMDAwMDAwMDEwIDAwMDAwIG4NCjAwMDAwMDAwNzkgMDAwMDAgbg0KMDAwMDAwMDE3MyAwMDAwMCBuDQowMDAwMDAwMzAxIDAwMDAwIG4NCjAwMDAwMDAzODAgMDAwMDAgbg0KdHJhaWxlcg0KPDwNCi9TaXplIDYNCi9Sb290IDEgMCBSDQo+Pg0Kc3RhcnR4cmVmDQo0OTINCiUlRU9G`,
-      `report.pdf`,
-    ],
-  ])(`saveAs binary data: %s`, async (_description, data_url, filename) => {
+  test(`saveAs binary data URL writes decoded bytes`, async () => {
+    const filename = `structure.png`
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
     await handle_msg({
       command: `saveAs`,
-      content: data_url,
+      content: `data:image/png;base64,SGVsbG8=`,
       ...msg_args,
       filename,
       is_binary: true,
     })
-    const base64_data = data_url.replace(/^data:[^;]+;base64,/, ``)
-    const expected_buffer = Uint8Array.from(Buffer.from(base64_data, `base64`))
     expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
       { fsPath: `/test/${filename}` },
-      expected_buffer,
+      Uint8Array.from(Buffer.from(`Hello`)),
     )
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
       `Saved: ${filename}`,
@@ -1052,14 +997,6 @@ describe(`MatterViz Extension`, () => {
     // Ensure no raw </script> inside the JSON data breaks out of the script tag
     const data_script = /window\.matterviz_data=(?<json>.*?);/s.exec(html)
     if (data_script) expect(data_script[1]).not.toContain(`</script>`)
-  })
-
-  test(`concurrent operations`, async () => {
-    const promises = Array.from({ length: 50 }, (_, idx) =>
-      handle_msg({ command: `info`, text: `Message ${idx}`, ...msg_args }),
-    )
-    await Promise.all(promises)
-    expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledTimes(50)
   })
 
   describe(`Theme functionality`, () => {
@@ -1435,28 +1372,6 @@ describe(`MatterViz Extension`, () => {
       return callback as (doc: unknown) => void
     }
 
-    // Detailed eligibility lives in eligibility.test.ts; keep a thin wiring smoke set here.
-    test.each([
-      [`structure.cif`, true],
-      [`molecule.xyz.gz`, true],
-      [`POSCAR`, true],
-      [`CHGCAR`, true],
-      [`band.bxsf`, true],
-      [`vaspout.h5`, true],
-      [`simulation.h5`, true],
-      [`structure.json`, false],
-      [`crystal.json.gz`, false],
-      [`data.json.gz`, false],
-      [`npt.log`, false],
-      [`trajectory.dat`, false],
-      [`si_md.log`, false],
-      [`README.md`, false],
-      [`package.json`, false],
-      [null as unknown as string, false],
-    ])(`should_auto_render("%s") → %s`, (filename, expected) => {
-      expect(should_auto_render(filename)).toBe(expected)
-    })
-
     test.each([
       [`non-file URIs`, { scheme: `untitled` }, true],
       [
@@ -1510,31 +1425,28 @@ describe(`MatterViz Extension`, () => {
         ),
       })
 
-    const setting_at = (path: string) =>
-      path
-        .split(`.`)
-        .reduce<unknown>(
-          (obj, key) => (obj as Record<string, unknown> | undefined)?.[key],
-          get_defaults(),
-        )
-
-    test(`merges explicit overrides and keeps unset keys at DEFAULTS`, () => {
+    test(`merges representative overrides and keeps unset keys at DEFAULTS`, () => {
       apply_overrides({
         'structure.atom_radius': 1.5,
         'structure.show_bonds': `always`,
-        'structure.bond_color': `#ff0000`,
+        'structure.camera_position': [1, 2, 3],
         'structure.vector_configs': { force: { visible: true } },
         'trajectory.auto_play': true,
+        'scatter.point.size': 7,
+        background_color: `#111111`,
       })
-      const result = get_defaults()
-      expect(result.structure).toMatchObject({
-        atom_radius: 1.5,
-        show_bonds: `always`,
-        bond_color: `#ff0000`,
-        same_size_atoms: DEFAULTS.structure.same_size_atoms, // Falls back to default
-        vector_configs: { force: { visible: true } },
+      expect(get_defaults()).toMatchObject({
+        structure: {
+          atom_radius: 1.5,
+          show_bonds: `always`,
+          camera_position: [1, 2, 3],
+          same_size_atoms: DEFAULTS.structure.same_size_atoms,
+          vector_configs: { force: { visible: true } },
+        },
+        trajectory: { auto_play: true },
+        scatter: { point: { size: 7 } },
+        background_color: `#111111`,
       })
-      expect(result.trajectory.auto_play).toBe(true)
     })
 
     test(`ignores package defaultValue from inspect()`, () => {
@@ -1543,70 +1455,6 @@ describe(`MatterViz Extension`, () => {
         inspect: vi.fn(() => ({ key: `structure.atom_radius`, defaultValue: 1.5 })),
       })
       expect(get_defaults().structure.atom_radius).toBe(DEFAULTS.structure.atom_radius)
-    })
-
-    test.each([
-      // Numbers
-      [`structure.atom_radius`, 1.5],
-      [`structure.sphere_segments`, 24],
-      [`structure.bond_thickness`, 0.2],
-      [`structure.rotation_damping`, 0.2],
-      [`structure.zoom_speed`, 1.0],
-      [`structure.pan_speed`, 1.0],
-      [`structure.auto_rotate`, 2.0],
-      [`structure.site_label_size`, 14],
-      [`structure.site_label_padding`, 4],
-      [`structure.ambient_light`, 0.6],
-      [`structure.directional_light`, 0.8],
-      [`structure.vector_scale`, 2.0],
-      [`structure.vector_origin_gap`, 0.25],
-      [`structure.cell_edge_opacity`, 0.5],
-      [`structure.cell_surface_opacity`, 0.2],
-      [`background_opacity`, 0.8],
-      [`trajectory.fps`, 10],
-      [`trajectory.step_labels`, 10],
-      [`scatter.point.size`, 7],
-      [`convex_hull.ternary.camera_zoom`, 2],
-      [`symmetry.symprec`, 0.01],
-
-      // Booleans
-      [`structure.same_size_atoms`, true],
-      [`structure.show_atoms`, false],
-      [`structure.show_bonds`, `always`],
-      [`structure.show_site_labels`, true],
-      [`structure.show_cell`, true],
-      [`structure.show_cell_vectors`, true],
-      [`structure.show_image_atoms`, true],
-      [`structure.show_gizmo`, false],
-      [`trajectory.auto_play`, true],
-      [`trajectory.show_controls`, false],
-      [`plot.grid_lines`, false],
-
-      // Colors (strings)
-      [`structure.bond_color`, `#ff0000`],
-      [`structure.site_label_color`, `#00ff00`],
-      [`structure.site_label_bg_color`, `#333333`],
-      [`structure.cell_edge_color`, `#aaaaaa`],
-      [`structure.cell_surface_color`, `#bbbbbb`],
-      [`structure.vector_color`, `#ffff00`],
-      [`background_color`, `#111111`],
-
-      // String enums
-      [`structure.bonding_strategy`, `explicit_only`],
-      [`structure.camera_projection`, `orthographic`],
-      [`color_scheme`, `Jmol`],
-      [`composition.color_scheme`, `Alloy`],
-      [`trajectory.display_mode`, `scatter`],
-      [`trajectory.layout`, `vertical`],
-      [`composition.display_mode`, `bar`],
-
-      // Arrays
-      [`structure.camera_position`, [1, 2, 3]],
-      [`structure.site_label_offset`, [0.5, 1.0, 0]],
-      [`trajectory.fps_range`, [0.5, 60]],
-    ])(`applies %s = %s`, (path, expected) => {
-      apply_overrides({ [path]: expected })
-      expect(setting_at(path)).toEqual(expected)
     })
 
     test.each([

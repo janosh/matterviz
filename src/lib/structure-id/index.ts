@@ -9,8 +9,10 @@ export { compute_structure_id_async } from './async-compute.svelte'
 export * from './calc-cna'
 export * from './calc-csp'
 export * from './calc-structure-id'
+export * from './collect'
 export * from './neighbors'
 export { default as StructureTypePlot } from './StructureTypePlot.svelte'
+export { default as TrajectoryStructureIdPane } from './TrajectoryStructureIdPane.svelte'
 
 // `adaptive` derives a per-atom cutoff from that atom's own neighbor distances (Stukowski 2012)
 // and needs no lattice constant. `fixed` uses one global cutoff for the whole structure and

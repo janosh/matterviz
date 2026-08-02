@@ -31,6 +31,16 @@ const mount_pane = async (trajectory: TrajectoryType, current_step_idx: number) 
   return props
 }
 
+const make_plot_metadata = (
+  length: number,
+  properties: (frame_number: number) => Record<string, number>,
+): TrajectoryMetadata[] =>
+  Array.from({ length }, (_unused, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: properties(frame_number),
+  }))
+
 // A sampled summary of a 1000-frame run: 3 of 1000 frames, spread across it
 const plot_metadata: TrajectoryMetadata[] = [
   { frame_number: 0, step: 0, properties: { energy: -10, force_max: 0.5, volume: 100 } },
@@ -88,10 +98,10 @@ test(`derives ranges from plot_metadata for an indexed trajectory, marked as sam
 // told a user reading a complete 40-frame summary that frames were missing.
 test(`omits the sampled note when plot_metadata covers every frame`, async () => {
   const total_frames = 40
-  const complete = Array.from({ length: total_frames }, (_unused, frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties: { energy: -10 - frame_number * 0.1, force_max: 0.5, volume: 100 },
+  const complete = make_plot_metadata(total_frames, (frame_number) => ({
+    energy: -10 - frame_number * 0.1,
+    force_max: 0.5,
+    volume: 100,
   }))
   await mount_pane(indexed_trajectory({ plot_metadata: complete, total_frames }), 5)
   const text = document.body.textContent ?? ``
@@ -101,24 +111,25 @@ test(`omits the sampled note when plot_metadata covers every frame`, async () =>
 
 // Math.min(...values) throws RangeError past ~125k arguments, and plot_metadata holds one
 // entry per frame on the indexed path, so a long run crashed the pane outright.
-test(`summarises a run with more frames than the argument limit`, async () => {
-  const total_frames = 130_000
-  const huge = Array.from({ length: total_frames }, (_unused, frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties: { energy: -10 - frame_number * 1e-4 },
-  }))
-  await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
-  expect(document.body.textContent).toContain(`Energy Range`)
-})
+test(
+  `summarises a run with more frames than the argument limit`,
+  { timeout: 120_000 },
+  async () => {
+    const total_frames = 130_000
+    const huge = make_plot_metadata(total_frames, (frame_number) => ({
+      energy: -10 - frame_number * 1e-4,
+    }))
+    await mount_pane(indexed_trajectory({ plot_metadata: huge, total_frames }), 5)
+    expect(document.body.textContent).toContain(`Energy Range`)
+  },
+)
 
 // A fixed cell would otherwise print a zero-width range right under the Structure section's
 // own Volume row.
 test(`omits Volume Range when the cell never changes`, async () => {
-  const constant_volume = Array.from({ length: 5 }, (_unused, frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties: { energy: -10 - frame_number, volume: 125 },
+  const constant_volume = make_plot_metadata(5, (frame_number) => ({
+    energy: -10 - frame_number,
+    volume: 125,
   }))
   await mount_pane(indexed_trajectory({ plot_metadata: constant_volume, total_frames: 5 }), 2)
   const text = document.body.textContent ?? ``

@@ -8,7 +8,7 @@
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
   import { collect_vacf_input, suggest_vacf_frame_stride } from './collect'
-  import { TIME_UNIT_TO_THZ, VACF_FREQUENCY_UNITS } from './index'
+  import { thz_per_inverse_time, TIME_UNIT_TO_THZ, VACF_FREQUENCY_UNITS } from './index'
   import type { VacfFrequencyUnit, VacfInput, VacfOptions, VacfResult } from './index'
   import VacfPlot from './VacfPlot.svelte'
 
@@ -40,7 +40,7 @@
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
   // Nth frame multiplies it (see dt_collected below).
   // Seeded from default_dt by the effect below, which also re-seeds on trajectory swap
-  let dt_source = $state(1)
+  let dt_source = $state<number | null>(1)
   let time_unit = $state(`fs`)
   let use_dt = $state(false)
   let max_lag_fraction = $state(0.5)
@@ -111,11 +111,11 @@
   // VacfOptions.dt is time per COLLECTED frame, so striding has to be folded in here —
   // otherwise entering the real MD timestep with stride 5 puts every VDOS peak at five
   // times its true frequency with correct-looking units.
-  let dt_collected = $derived(dt_source * safe_stride)
+  let dt_collected = $derived((dt_source ?? 1) * safe_stride)
   // Without a dt the only honest frequency axis is inverse frames; calc_vacf throws rather
   // than inventing a THz scale, so don't ask it to.
   let effective_frequency_unit = $derived<VacfFrequencyUnit>(
-    use_dt && TIME_UNIT_TO_THZ[time_unit] !== undefined ? frequency_unit : `1/frame`,
+    use_dt && thz_per_inverse_time(time_unit) !== undefined ? frequency_unit : `1/frame`,
   )
   let vacf_options = $derived<VacfOptions>({
     ...(use_dt ? { dt: dt_collected, time_unit } : {}),
@@ -229,7 +229,7 @@
       </label>
       <p class="hint">
         {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
-        {#if use_dt && TIME_UNIT_TO_THZ[time_unit] !== undefined}
+        {#if use_dt && thz_per_inverse_time(time_unit) !== undefined}
           · {format_num(dt_collected, `.4~g`)} {time_unit} per collected frame
         {:else if use_dt}
           · {time_unit} is not one of {Object.keys(TIME_UNIT_TO_THZ).join(`, `)}, so the VDOS

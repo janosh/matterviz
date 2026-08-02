@@ -40,6 +40,7 @@ export {
   get_frame_step_samples,
   get_frame_time_step,
   should_hide_plot,
+  X_QUANTITY_LABELS,
 } from './plotting'
 export type {
   FrameStepSamples,

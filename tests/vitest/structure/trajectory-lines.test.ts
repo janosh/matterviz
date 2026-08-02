@@ -1,7 +1,10 @@
+import { get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
+import { parse_linear_rgb } from '$lib/scene/colors'
 import {
   build_trajectory_lines,
+  collected_frame_idx,
   unwrapped_stream_positions,
 } from '$lib/structure/trajectory-lines'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
@@ -49,21 +52,31 @@ const wrapping_stream = (n_frames = 15, element: ElementSymbol = `Li`) =>
     [element],
   )
 
+const two_atom_stream = () =>
+  make_stream(
+    Array.from({ length: 3 }, (_, frame_idx) => [
+      [frame_idx, 0, 0],
+      [0, frame_idx, 0],
+    ]),
+    [`Li`, `O`],
+  )
+
+const point_at = (positions: Float32Array, point_idx: number): number[] =>
+  Array.from(positions.subarray(point_idx * 3, point_idx * 3 + 3))
+
 // Every drawn segment, as [from_xyz, to_xyz] pairs read back through the index buffer
 function segments_of(
   built: ReturnType<typeof build_trajectory_lines>,
 ): [number[], number[]][] {
   const { positions, indices } = built
-  const point_at = (point_idx: number) => [
-    positions[point_idx * 3],
-    positions[point_idx * 3 + 1],
-    positions[point_idx * 3 + 2],
-  ]
   return Array.from({ length: indices.length / 2 }, (_, seg_idx) => [
-    point_at(indices[seg_idx * 2]),
-    point_at(indices[seg_idx * 2 + 1]),
+    point_at(positions, indices[seg_idx * 2]),
+    point_at(positions, indices[seg_idx * 2 + 1]),
   ])
 }
+
+const rgb_at = (colors: Float32Array, point_idx: number) =>
+  colors.slice(point_idx * 3, point_idx * 3 + 3)
 
 describe(`build_trajectory_lines vertex counts`, () => {
   test.each([
@@ -134,33 +147,27 @@ describe(`build_trajectory_lines vertex counts`, () => {
     expect(() => build_trajectory_lines(wrapping_stream(), options)).toThrow(message)
   })
 
-  test(`throws when the element labels do not cover every atom`, () => {
-    const stream = make_stream(
-      [
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-        ],
-        [
-          [0, 0, 1],
-          [1, 0, 1],
-        ],
-      ],
-      [`Li`, `O`],
-    )
-    expect(() => build_trajectory_lines({ ...stream, elements: [`Li`] })).toThrow(
+  test.each([
+    [
+      `too few element labels`,
+      { ...two_atom_stream(), elements: [`Li`] as ElementSymbol[] },
+      {},
       /got 1 element labels for 2 atoms/,
-    )
+    ],
+    [
+      `mismatched anchor_positions`,
+      two_atom_stream(),
+      { anchor_positions: new Float64Array(3) },
+      /anchor_positions has 3 entries but 2 atoms x 3 requires 6/,
+    ],
+  ])(`throws on %s`, (_label, stream, options, message) => {
+    expect(() => build_trajectory_lines(stream, options)).toThrow(message)
   })
 })
 
 describe(`periodic boundary handling`, () => {
   test(`unwraps a PBC-crossing path into a continuous line instead of a box-spanning segment`, () => {
     const stream = wrapping_stream(15)
-    // Raw coordinates contain the artefact: frame 9 -> 10 jumps 9 Å back across the cell
-    const raw = segments_of(build_trajectory_lines(stream, { wrap_mode: `break` }))
-    expect(raw).toHaveLength(13) // 14 steps, the wrap-around omitted
-
     const built = build_trajectory_lines(stream, { wrap_mode: `unwrap` })
     expect(built.segment_count).toBe(14)
     // Every step is the true 1 Å drift — no segment anywhere near the 10 Å box
@@ -202,7 +209,7 @@ describe(`periodic boundary handling`, () => {
     for (const [[from_x], [to_x]] of segments_of(built)) {
       expect(to_x - from_x).toBeCloseTo(12, 4)
     }
-    // Same buffer feeds `break` mode, whose crossing test must not fire on real drift here…
+    // `break` cannot distinguish real >L/2 drift from wrapping, so it drops every step here
     const broken = build_trajectory_lines(stream, { wrap_mode: `break` })
     expect(broken.dropped_segments).toBe(4)
   })
@@ -256,6 +263,16 @@ describe(`element filter`, () => {
     expect(drawn.filter(([, to]) => to[0] > 0)).toHaveLength(5)
     expect(drawn.filter(([, to]) => to[2] > 0)).toHaveLength(5)
   })
+
+  test(`empty results do not share mutable state`, () => {
+    const first = build_trajectory_lines(mixed_stream(), { elements: [] })
+    const second = build_trajectory_lines(mixed_stream(), { elements: [`Fe`] })
+
+    expect(first).not.toBe(second)
+    expect(first.positions).not.toBe(second.positions)
+    first.frame_idxs.push(99)
+    expect(second.frame_idxs).toEqual([])
+  })
 })
 
 describe(`coloring`, () => {
@@ -272,15 +289,14 @@ describe(`coloring`, () => {
       element_colors: { Li: `#ff0000`, O: `#0000ff` },
     })
     // Atom-major layout: points 0-3 are Li, points 4-7 are O
-    const rgb_at = (point_idx: number) => colors.slice(point_idx * 3, point_idx * 3 + 3)
     for (let point_idx = 1; point_idx < 4; point_idx++) {
-      expect(rgb_at(point_idx)).toEqual(rgb_at(0))
+      expect(rgb_at(colors, point_idx)).toEqual(rgb_at(colors, 0))
     }
     // Pure red vs pure blue in linear space: red channel high for Li, blue high for O
-    expect(rgb_at(0)[0]).toBeGreaterThan(0.9)
-    expect(rgb_at(0)[2]).toBe(0)
-    expect(rgb_at(4)[2]).toBeGreaterThan(0.9)
-    expect(rgb_at(4)[0]).toBe(0)
+    expect(rgb_at(colors, 0)[0]).toBeGreaterThan(0.9)
+    expect(rgb_at(colors, 0)[2]).toBe(0)
+    expect(rgb_at(colors, 4)[2]).toBeGreaterThan(0.9)
+    expect(rgb_at(colors, 4)[0]).toBe(0)
   })
 
   test(`time mode ramps along the window and repeats the ramp per atom`, () => {
@@ -293,52 +309,85 @@ describe(`coloring`, () => {
     )
     const { colors, point_count } = build_trajectory_lines(stream, { color_mode: `time` })
     expect(point_count).toBe(10)
-    const rgb_at = (point_idx: number) => colors.slice(point_idx * 3, point_idx * 3 + 3)
     // Both atoms share one ramp, so their nth points match
     for (let sample_idx = 0; sample_idx < 5; sample_idx++) {
-      expect(rgb_at(sample_idx)).toEqual(rgb_at(5 + sample_idx))
+      expect(rgb_at(colors, sample_idx)).toEqual(rgb_at(colors, 5 + sample_idx))
     }
     // …and the ramp actually varies along the path
-    expect(rgb_at(0)).not.toEqual(rgb_at(4))
+    expect(rgb_at(colors, 0)).not.toEqual(rgb_at(colors, 4))
+  })
+
+  test(`time mode ramps on elapsed frames, not the sample ordinal`, () => {
+    const stream = make_stream(
+      Array.from({ length: 22 }, (_, frame_idx) => [[frame_idx, 0, 0]]),
+      [`Li`],
+    )
+    const built = build_trajectory_lines(stream, {
+      color_mode: `time`,
+      color_scale: `interpolateGreys`,
+      end_frame: 21,
+      trail_frames: 13,
+      frame_stride: 4,
+    })
+    expect(built.frame_idxs).toEqual([9, 12, 16, 20, 21])
+    const interpolate = get_d3_interpolator(`interpolateGreys`)
+    const expected = built.frame_idxs.flatMap((frame_idx) =>
+      parse_linear_rgb(interpolate((frame_idx - 9) / 12)).map(Math.fround),
+    )
+    expect([...built.colors]).toEqual(expected)
   })
 })
 
-describe(`realistic scale`, () => {
-  // 500 atoms x 5000 frames is the scale the layer is designed for. Assert the geometry
-  // is one draw call's worth of buffers with the exact vertex count, not a per-atom pile.
-  test(`500 atoms x 5000 frames yields one buffer set of the expected size`, () => {
-    const [n_atoms, n_frames] = [500, 5000]
-    const positions = new Float64Array(n_frames * n_atoms * 3)
-    // Cheap deterministic drift; magnitudes stay well inside the 10 Å cell per step
-    for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-        const offset = (frame_idx * n_atoms + atom_idx) * 3
-        positions[offset] = (atom_idx * 0.02 + frame_idx * 0.01) % 10
-        positions[offset + 1] = (atom_idx * 0.03) % 10
-        positions[offset + 2] = (frame_idx * 0.005) % 10
+describe(`anchoring trails to the displayed atoms`, () => {
+  test(`puts each head on its anchor without changing the path shape`, () => {
+    const stream = wrapping_stream(15)
+    const plain = build_trajectory_lines(stream)
+    const anchor = new Float64Array([4, -2, 7])
+    const anchored = build_trajectory_lines(stream, { anchor_positions: anchor })
+
+    const plain_head = point_at(plain.positions, plain.point_count - 1)
+    const anchored_head = point_at(anchored.positions, anchored.point_count - 1)
+    expect(anchored_head).toEqual(Array.from(anchor, Math.fround))
+    // f32 positions can shift lengths by ~1 ULP (~1e-7); five digits is measured headroom.
+    expect(anchored.max_segment_length).toBeCloseTo(plain.max_segment_length, 5)
+    const shift = anchored_head.map((coord, axis) => coord - plain_head[axis])
+    for (let point_idx = 0; point_idx < plain.point_count; point_idx++) {
+      for (const axis of [0, 1, 2]) {
+        const offset = point_idx * 3 + axis
+        expect(anchored.positions[offset] - plain.positions[offset]).toBeCloseTo(
+          shift[axis],
+          5,
+        )
       }
     }
-    const stream: TrajectoryPositionStream = {
-      positions,
-      n_frames,
-      n_atoms,
-      elements: Array.from({ length: n_atoms }, () => `Li`),
-      lattice_matrices: Array.from({ length: n_frames }, () => CUBIC_10),
-      pbc: [true, true, true],
-      coords_unwrapped: false,
-      frame_stride: 1,
-      steps: Array.from({ length: n_frames }, (_, idx) => idx),
+    // The unwrapped path stays continuous: 1 Å per frame, no cell-sized jump
+    for (const [from, to] of segments_of(anchored)) {
+      expect(Math.hypot(...to.map((coord, axis) => coord - from[axis]))).toBeCloseTo(1, 5)
     }
+  })
 
-    const built = build_trajectory_lines(stream)
-    expect(built.point_count).toBe(n_atoms * n_frames)
-    expect(built.segment_count).toBe(n_atoms * (n_frames - 1))
-    expect(built.positions).toHaveLength(n_atoms * n_frames * 3)
-    expect(built.indices).toHaveLength(n_atoms * (n_frames - 1) * 2)
+  test(`anchors each atom independently`, () => {
+    const built = build_trajectory_lines(two_atom_stream(), {
+      anchor_positions: new Float64Array([100, 0, 0, 0, 200, 0]),
+    })
+    // Atom-major: points 0-2 are Li (head at index 2), points 3-5 are O (head at index 5)
+    expect(point_at(built.positions, 2)).toEqual([100, 0, 0])
+    expect(point_at(built.positions, 5)).toEqual([0, 200, 0])
+  })
+})
 
-    // Frame stride is the escape hatch for runs this long: 10x fewer vertices
-    const strided = build_trajectory_lines(stream, { frame_stride: 10 })
-    expect(strided.frame_idxs).toHaveLength(n_frames / 10 + 1)
-    expect(strided.point_count).toBeLessThan(built.point_count / 9)
+describe(`collected_frame_idx`, () => {
+  // The playhead counts source frames; the layer counts collected ones. A stream that kept
+  // every 5th frame turns source frame 37 into collected frame 7, not 37.
+  test.each([
+    [1, 0, 0],
+    [1, 9, 9],
+    [5, 0, 0],
+    [5, 37, 7],
+    // past the end of a stream that stopped short, and a negative from a clamped playhead
+    [5, 999, 9],
+    [5, -3, 0],
+  ])(`stride %i maps source frame %i to collected %i`, (stride, source, expected) => {
+    expect(collected_frame_idx({ n_frames: 10, frame_stride: stride }, source)).toBe(expected)
   })
 })

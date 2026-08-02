@@ -111,10 +111,9 @@ describe(`atom-identity invariants fail loudly`, () => {
     )
   })
 
-  // The symbol comparison above is blind to a permutation within one species, and the
-  // LAMMPS parser drops the `id` column, so there is no key left to sort by. Four
-  // immobile H atoms in alternating order used to report MSD(lag 1) = 46.5 A² and a
-  // fitted D of 0.664 instead of an identically zero curve.
+  // Element symbols cannot detect permutations within one species, and the accumulator does
+  // not validate LAMMPS `id` properties. Four immobile H atoms in alternating order used to
+  // report MSD(lag 1) = 46.5 A² and D = 0.664 instead of an identically zero curve.
   it(`rejects a single-species permutation the symbol check cannot see`, async () => {
     // oxfmt-ignore
     const sorted = [[1, 1, 1], [1, 1, 8], [8, 1, 1], [8, 8, 8]]
@@ -127,7 +126,7 @@ describe(`atom-identity invariants fail loudly`, () => {
     await expect(
       collect_msd_positions(six_frames((idx) => (idx % 2 === 0 ? sorted : permuted))),
     ).rejects.toThrow(
-      /Frame 1: 4 of 4 atoms moved more than a quarter of the cell.*dump_modify/s,
+      /Frame 1: 4 of 4 atoms moved more than a quarter of the cell.*preserved IDs are not checked here/s,
     )
     // The same frames in a stable order are immobile, so MSD is identically zero
     const result = calc_msd(await collect_msd_positions(six_frames(() => sorted)))

@@ -37,6 +37,8 @@ class StubWorker {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler])
   }
 
+  terminate(): void {}
+
   postMessage(message: WorkerMessage, transfer: Transferable[] = []): void {
     const cloned = structuredClone(message)
     posted.push({ message: cloned, transfer })
@@ -74,21 +76,9 @@ describe(`worker code path`, () => {
     const crystal = make_fcc([2, 2, 2])
     const result = await compute_structure_id_async(crystal)
     expect(posted).toHaveLength(1)
-    expect(result.populations).toEqual(calc_structure_id(crystal).populations)
-    expect(result.centrosymmetry).toEqual(calc_structure_id(crystal).centrosymmetry)
-  })
-
-  it(`builds the worker exactly once across many computes`, async () => {
-    await Promise.all([
-      compute_structure_id_async(make_fcc([2, 2, 2])),
-      compute_structure_id_async(make_fcc([2, 2, 3])),
-      compute_structure_id_async(make_fcc([2, 3, 3])),
-    ])
-    await compute_structure_id_async(make_fcc([3, 3, 3]))
-    expect(construction_count).toBe(1)
-  })
-
-  it(`points the worker at the structure-id worker module as an ES module`, () => {
+    const sync = calc_structure_id(crystal)
+    expect(result.populations).toEqual(sync.populations)
+    expect(result.centrosymmetry).toEqual(sync.centrosymmetry)
     // Vite only detects and rewrites the worker when the URL keeps the `./` prefix and the
     // `.js` extension. Detection turns the source `.js` spec into the real `.ts` module tagged
     // `?worker_file`; losing that means the app 404s on the worker and silently never enters
@@ -97,6 +87,18 @@ describe(`worker code path`, () => {
       /\/src\/lib\/structure-id\/structure-id-worker\.ts\?worker_file/,
     )
     expect(last_worker_options).toEqual({ type: `module` })
+  })
+
+  it(`builds the worker exactly once across many computes`, async () => {
+    await compute_structure_id_async(make_fcc([2, 2, 2]))
+    const before = construction_count
+    await Promise.all([
+      compute_structure_id_async(make_fcc([2, 2, 3])),
+      compute_structure_id_async(make_fcc([2, 3, 3])),
+      compute_structure_id_async(make_fcc([3, 3, 3])),
+    ])
+    expect(construction_count).toBe(before)
+    expect(before).toBe(1)
   })
 
   it(`sends a cloneable payload carrying only what the analysis reads`, async () => {

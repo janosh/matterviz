@@ -176,6 +176,40 @@ export function calc_force_stats(
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
 }
 
+// Simulation time per MD step, from the absolute time each frame recorded.
+//
+// LAMMPS' `ITEM: TIME` and extXYZ's `Time=` say WHEN a snapshot was taken, not what the
+// integrator's dt was, so the step count has to be divided out — otherwise a run dumped
+// every 100 steps reports a dt 100x too large. Undefined unless every frame carries a time
+// and they all agree on one spacing, since a single dt over a non-uniform run misreports
+// every quantity derived from it.
+export function derive_time_step(
+  times: readonly (number | null)[],
+  steps: readonly number[],
+): number | undefined {
+  if (times.length !== steps.length || times.length < 2) return undefined
+  // All-or-nothing: partial times give no basis for a dt covering the whole run.
+  const finite_times = times.filter(
+    (time): time is number => time !== null && Number.isFinite(time),
+  )
+  if (finite_times.length !== times.length) return undefined
+  const step_span = steps[1] - steps[0]
+  const time_span = finite_times[1] - finite_times[0]
+  if (!(step_span > 0) || !(time_span > 0)) return undefined
+  const time_step = time_span / step_span
+  // Absolute times arrive as decimal text, so differences between them carry real rounding
+  // error and an exact comparison would reject uniform runs. 1e-6 relative sits far above
+  // the ~1e-15 a 16-digit round trip costs and far below the whole-factor disagreement a
+  // genuinely non-uniform run produces.
+  const uniform = steps.every((step, idx) => {
+    if (idx === 0) return true
+    const expected = time_step * (step - steps[idx - 1])
+    const elapsed_time = finite_times[idx] - finite_times[idx - 1]
+    return Math.abs(elapsed_time - expected) <= 1e-6 * Math.abs(expected)
+  })
+  return uniform ? time_step : undefined
+}
+
 // True when a whitespace-split line looks like an XYZ atom line: a short
 // non-numeric element token followed by three numeric coordinates. Shared by
 // trajectory frame iteration and structure-format sniffing so both stay in sync.

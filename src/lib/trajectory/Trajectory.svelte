@@ -6,9 +6,14 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { Icon, type IconName } from 'svelte-widgets'
   import * as io from '$lib/io'
-  import { handle_and_prevent } from '$lib/utils'
+  import { handle_and_prevent, to_error } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
+  import {
+    collect_msd_positions,
+    has_all_frames_in_memory,
+    suggest_msd_frame_stride,
+  } from '$lib/msd/collect'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
@@ -20,6 +25,9 @@
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
+  import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
+  import { collected_frame_idx } from '$lib/structure/trajectory-lines'
+  import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onMount, untrack } from 'svelte'
@@ -32,6 +40,7 @@
     TrajectoryDataExtractor,
     TrajectoryFrame,
     TrajectoryMetadata,
+    TrajectoryPositionStream,
     TrajectoryType,
     TrajectoryXQuantity,
     TrajHandlerData,
@@ -40,6 +49,7 @@
   import {
     FRAME_LOAD_DEBOUNCE_MS,
     pick_pane_orientation,
+    TrajectoryDataInspectorPane,
     TrajectoryError,
     TrajectoryExportPane,
     TrajectoryInfoPane,
@@ -129,6 +139,9 @@
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     msd_pane_open = $bindable(false),
+    vacf_pane_open = $bindable(false),
+    structure_id_pane_open = $bindable(false),
+    data_inspector_open = $bindable(false),
     wrapper = $bindable(),
     fullscreen = $bindable(false),
     ...rest
@@ -213,6 +226,12 @@
       info_pane_open?: boolean
       // bindable: whether the MSD / diffusion pane is currently open
       msd_pane_open?: boolean
+      // bindable: whether the VACF / VDOS pane is currently open
+      vacf_pane_open?: boolean
+      // bindable: whether the structure identification (CNA / centrosymmetry) pane is open
+      structure_id_pane_open?: boolean
+      // bindable: whether the per-frame data inspector pane is currently open
+      data_inspector_open?: boolean
       // bindable: top-level wrapper element
       wrapper?: HTMLDivElement
       // bindable: fullscreen state
@@ -286,6 +305,45 @@
       current_step_idx = 0
       notify_step_change()
     }
+  })
+
+  // Trails are decoration, so they get a fraction of the analysis budget: enough for the
+  // 500-atom x 5000-frame run the layer is designed around, and striding past that costs
+  // only smoothness.
+  const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
+
+  // Whole-trajectory positions behind the per-atom trail overlay. $state.raw, never $state:
+  // a deep proxy wraps every entry of `lattice_matrices` and the unwrap kernel reads a cell
+  // per atom per frame, which measured 1917 ms against 1.1 ms for the raw buffer.
+  let trail_stream = $state.raw<TrajectoryPositionStream | null>(null)
+  // Only for trajectories already fully in memory, where collecting is a repack of frames
+  // we hold anyway. An indexed one would need a second full parse of the payload on every
+  // file load, seconds of stall for an overlay the user has not asked for; its trail
+  // controls simply stay hidden, since StructureControls gates them on this stream.
+  $effect(() => {
+    const owner = trajectory
+    trail_stream = null
+    if (!owner || total_frames < 2 || !has_all_frames_in_memory(owner)) return
+    const frame_stride = suggest_msd_frame_stride(owner, TRAIL_POSITION_MAX_BYTES) ?? 1
+    collect_msd_positions(owner, { frame_stride, max_bytes: TRAIL_POSITION_MAX_BYTES })
+      .then((stream) => {
+        if (trajectory === owner) trail_stream = stream
+      })
+      .catch((exc: unknown) => {
+        // Trails are optional, so a failure here hides them rather than breaking the viewer
+        console.error(`Trajectory trails: position collection failed`, to_error(exc).message)
+      })
+  })
+
+  // The playhead counts source frames while the trail layer counts collected ones, so the
+  // index has to be converted rather than passed straight through. Consumer scene_props
+  // spread last so an explicit stream of theirs wins over ours.
+  let trail_scene_props = $derived({
+    trajectory_position_stream: trail_stream,
+    trajectory_line_end_frame: trail_stream
+      ? collected_frame_idx(trail_stream, current_step_idx)
+      : undefined,
+    ...structure_props.scene_props,
   })
 
   // Current frame - load on demand for indexed trajectories
@@ -677,16 +735,28 @@
   )
   // Until the user picks one, take the most informative axis the file supports: a
   // trajectory whose steps are just 0, 1, 2, … offers nothing beyond the frame index.
-  // build_x_map validates it, so x_map.quantity is the one actually in effect.
-  let chosen_x_quantity = $derived(
-    x_quantity ?? x_quantity_options[x_quantity_options.length - 1],
-  )
+  // Keep this priority explicit rather than coupling the default to the options' display order.
+  // build_x_map validates explicit user choices, so x_map.quantity is the one actually in effect.
+  let chosen_x_quantity = $derived.by((): TrajectoryXQuantity => {
+    if (x_quantity) return x_quantity
+    if (x_quantity_options.includes(`time`)) return `time`
+    if (x_quantity_options.includes(`step`)) return `step`
+    return `frame`
+  })
   let x_map = $derived(
     build_x_map(frame_step_samples, chosen_x_quantity, {
       time_step: trajectory?.time_step,
       time_unit: trajectory?.time_unit,
     }),
   )
+  // Report the axis actually in effect so hosts binding x_quantity see the resolved
+  // value rather than undefined (auto-pick) or a quantity the data does not support.
+  // Skip empty samples: writing `frame` before data loads would lock the prop and
+  // prevent time→step→frame auto-pick once the trajectory arrives.
+  $effect(() => {
+    if (frame_step_samples.frame_numbers.length === 0) return
+    if (x_quantity !== x_map.quantity) x_quantity = x_map.quantity
+  })
   // Time between frames, so displacement analyses report D in real units instead of
   // asking the user to retype a timestep the file already stated
   let frame_time_step = $derived(
@@ -1159,6 +1229,15 @@
     return handled
   }
 
+  // Every analysis pane keeps its DraggablePane toggle for layout anchoring but hides it;
+  // the analysis menu owns the clicks.
+  const analysis_toggle_props = {
+    class: `analysis-toggle-anchor`,
+    tabindex: -1,
+    'aria-hidden': `true`,
+    title: ``,
+  } as const
+
   // Separate state variables for each pane to match component prop types
   let structure_info_open = $state(false)
   let scatter_controls = $state<ControlsConfig>({ open: false })
@@ -1182,6 +1261,27 @@
       icon: `Graph`,
       is_open: msd_pane_open,
       toggle: () => (msd_pane_open = !msd_pane_open),
+    },
+    {
+      control_name: `vacf-pane`,
+      label: `Velocity autocorrelation & VDOS`,
+      icon: `Graph`,
+      is_open: vacf_pane_open,
+      toggle: () => (vacf_pane_open = !vacf_pane_open),
+    },
+    {
+      control_name: `structure-id-pane`,
+      label: `Structure identification`,
+      icon: `Atom`,
+      is_open: structure_id_pane_open,
+      toggle: () => (structure_id_pane_open = !structure_id_pane_open),
+    },
+    {
+      control_name: `data-inspector-pane`,
+      label: `Data inspector`,
+      icon: `Database`,
+      is_open: data_inspector_open,
+      toggle: () => (data_inspector_open = !data_inspector_open),
     },
   ])
   let visible_analyses = $derived(
@@ -1459,12 +1559,36 @@
                   default_dt={frame_time_step}
                   default_time_unit={trajectory?.time_unit}
                   pane_props={{ style: pane_max_height }}
-                  toggle_props={{
-                    class: `analysis-toggle-anchor`,
-                    tabindex: -1,
-                    'aria-hidden': `true`,
-                    title: ``,
-                  }}
+                  toggle_props={analysis_toggle_props}
+                />
+                <TrajectoryVacfPane
+                  {trajectory}
+                  raw_data={orig_data}
+                  bind:pane_open={vacf_pane_open}
+                  default_dt={frame_time_step}
+                  default_time_unit={trajectory?.time_unit}
+                  pane_props={{ style: pane_max_height }}
+                  toggle_props={analysis_toggle_props}
+                />
+                <TrajectoryStructureIdPane
+                  {trajectory}
+                  raw_data={orig_data}
+                  bind:pane_open={structure_id_pane_open}
+                  pane_props={{ style: pane_max_height }}
+                  toggle_props={analysis_toggle_props}
+                />
+                <!-- current_frame is only ever assigned for the index that was current when
+                the load was issued (see load_frame_on_demand's request_is_current), so the
+                two props below always describe the same frame even mid-scrub. -->
+                <TrajectoryDataInspectorPane
+                  {trajectory}
+                  {current_step_idx}
+                  {current_frame}
+                  {data_extractor}
+                  bind:pane_open={data_inspector_open}
+                  on_step_change={go_to_step}
+                  pane_props={{ style: pane_max_height }}
+                  toggle_props={analysis_toggle_props}
                 />
               </div>
             {/if}
@@ -1561,6 +1685,7 @@
           {...{
             show_image_atoms: false, // Default to false to avoid atoms popping in/out at cell edges
             ...structure_props,
+            scene_props: trail_scene_props,
           }}
           bind:controls_open
           bind:info_pane_open={structure_info_open}

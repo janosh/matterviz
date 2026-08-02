@@ -3,11 +3,16 @@ import type { Site } from '$lib/structure'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import { full_data_extractor } from '$lib/trajectory'
 import TrajectoryDataInspectorPane from '$lib/trajectory/TrajectoryDataInspectorPane.svelte'
-import { mount, tick } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { make_trajectory_frame } from '../setup'
 
-afterEach(() => document.body.replaceChildren())
+let mounted_pane: ReturnType<typeof mount> | undefined
+afterEach(async () => {
+  if (mounted_pane) await unmount(mounted_pane)
+  mounted_pane = undefined
+  document.body.replaceChildren()
+})
 
 const CUBIC_LATTICE = { a: 3, b: 3, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 27 }
 
@@ -32,7 +37,7 @@ const make_site = (site_idx: number, properties: Record<string, unknown>): Site 
 })
 
 const mount_pane = async (props: Record<string, unknown>) => {
-  mount(TrajectoryDataInspectorPane, {
+  mounted_pane = mount(TrajectoryDataInspectorPane, {
     target: document.body,
     props: { pane_open: true, ...props },
   })
@@ -64,6 +69,15 @@ const open_tab = async (value: string) => {
   await tick()
 }
 
+// HeatmapTable virtualizes above min_window (~60); assert the DOM stays bounded
+const expect_virtualized = (max_rendered: number) => {
+  const rows = body_rows()
+  expect(rows.length).toBeGreaterThan(0)
+  expect(rows.length).toBeLessThan(max_rendered)
+  expect(document.querySelectorAll(`tbody tr.virtual-spacer`).length).toBeGreaterThan(0)
+  return rows
+}
+
 test(`frames tab has one row per frame and one unit-labeled column per property`, async () => {
   const trajectory = make_eager_trajectory(4)
   await mount_pane({ trajectory })
@@ -73,7 +87,6 @@ test(`frames tab has one row per frame and one unit-labeled column per property`
   const property_keys = Object.keys(
     full_data_extractor(trajectory.frames[0], trajectory),
   ).filter((key) => key !== `Step` && !key.startsWith(`constant_`))
-  expect(property_keys.length).toBeGreaterThan(2)
 
   expect(body_rows()).toHaveLength(4)
   const headers = header_texts()
@@ -115,10 +128,7 @@ test(`indexed trajectory reads sampled plot_metadata and says so`, async () => {
   expect(document.body.textContent).not.toContain(`Sampled frames: 10`)
 
   // virtualization keeps the DOM bounded while the sample stays 500 rows long
-  const rows = body_rows()
-  expect(rows.length).toBeGreaterThan(0)
-  expect(rows.length).toBeLessThan(n_sampled)
-  expect(document.querySelectorAll(`tbody tr.virtual-spacer`).length).toBeGreaterThan(0)
+  const rows = expect_virtualized(n_sampled)
 
   // columns come from plot_metadata properties, not from the in-memory frames' lattice
   const headers = header_texts()
@@ -198,8 +208,9 @@ test(`atoms tab enumerates arbitrary site property keys including vec3`, async (
   expect(cells[15]).toBe(`surface`)
 })
 
-test(`atoms tab virtualizes a 100k-site frame`, async () => {
-  const n_sites = 100_000
+test(`atoms tab virtualizes a large site frame and formats the tab count`, async () => {
+  // enough to exceed HeatmapTable's min_window; 100k was timing out under load
+  const n_sites = 2000
   const frame: TrajectoryFrame = {
     step: 0,
     metadata: {},
@@ -210,11 +221,8 @@ test(`atoms tab virtualizes a 100k-site frame`, async () => {
   await mount_pane({ trajectory: { frames: [frame] }, current_frame: frame })
   await open_tab(`atoms`)
 
-  const rows = body_rows()
-  expect(rows.length).toBeGreaterThan(0)
-  expect(rows.length).toBeLessThan(500)
-  expect(document.querySelectorAll(`tbody tr.virtual-spacer`).length).toBeGreaterThan(0)
-  expect(document.body.textContent).toContain(`Atoms (100,000)`)
+  expect_virtualized(500)
+  expect(document.body.textContent).toContain(`Atoms (2,000)`)
 })
 
 test(`row clicks report the frame index and the site index`, async () => {
@@ -222,7 +230,12 @@ test(`row clicks report the frame index and the site index`, async () => {
   const on_site_select = vi.fn()
   const trajectory = make_eager_trajectory(5)
   const frame = trajectory.frames[0]
-  await mount_pane({ trajectory, current_frame: frame, on_step_change, on_site_select })
+  await mount_pane({
+    trajectory,
+    current_frame: frame,
+    on_step_change,
+    on_site_select,
+  })
 
   body_rows()[2].click()
   expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)

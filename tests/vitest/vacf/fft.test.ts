@@ -43,7 +43,6 @@ describe(`fft_in_place`, () => {
         max_abs_error([...re], reference.re),
         max_abs_error([...im], reference.im),
       )
-      console.info(`fft n=${n_points}: max |fft - dft| = ${worst.toExponential(3)}`)
       expect(worst).toBeLessThan(1e-12 * scale)
     },
   )
@@ -65,18 +64,16 @@ describe(`fft_in_place`, () => {
   })
 
   it.each([
-    [`non-power-of-two length`, 6, /length must be a power of two, got 6/],
-    [`empty signal`, 0, /signal is empty/],
-  ])(`rejects %s`, (_label, n_points, pattern) => {
-    expect(() => fft_in_place(new Float64Array(n_points), new Float64Array(n_points))).toThrow(
-      pattern,
-    )
-  })
-
-  it(`rejects mismatched real and imaginary lengths`, () => {
-    expect(() => fft_in_place(new Float64Array(4), new Float64Array(8))).toThrow(
+    [`non-power-of-two length`, 6, 6, /length must be a power of two, got 6/],
+    [`empty signal`, 0, 0, /signal is empty/],
+    [
+      `mismatched real and imaginary lengths`,
+      4,
+      8,
       /real part has 4 entries but imaginary part has 8/,
-    )
+    ],
+  ])(`rejects %s`, (_label, n_re, n_im, pattern) => {
+    expect(() => fft_in_place(new Float64Array(n_re), new Float64Array(n_im))).toThrow(pattern)
   })
 })
 
@@ -121,6 +118,22 @@ describe(`correlation_window`, () => {
   })
 })
 
+describe(`cosine_spectrum_length`, () => {
+  it.each([
+    [17, 2, 128], // next_pow2(2 * 2 * 17 = 68)
+    [17, 4, 256], // next_pow2(4 * 2 * 17 = 136)
+    [200, 1, 512], // next_pow2(1 * 2 * 200 = 400)
+  ])(`n_values=%i factor=%i -> %i`, (n_values, factor, expected) => {
+    expect(cosine_spectrum_length(n_values, factor)).toBe(expected)
+  })
+
+  it.each([0.5, 0, -1, Number.NaN])(`rejects zero_pad_factor=%s`, (factor) => {
+    expect(() => cosine_spectrum_length(8, factor)).toThrow(
+      /cosine_spectrum_length: zero_pad_factor must be >= 1/,
+    )
+  })
+})
+
 describe(`even_cosine_spectrum`, () => {
   it(`equals the closed-form cosine transform of the input`, () => {
     // X_k = c_0 + 2 sum_{n>=1} c_n cos(2 pi k n / n_fft) — the definition the mirrored
@@ -139,10 +152,6 @@ describe(`even_cosine_spectrum`, () => {
     })
     const worst = max_abs_error([...spectrum], expected)
     const scale = Math.max(...expected.map(Math.abs))
-    console.info(
-      `even_cosine_spectrum: max |fft - closed form| = ${worst.toExponential(3)} ` +
-        `on a scale of ${scale.toFixed(3)}`,
-    )
     expect(worst).toBeLessThan(1e-12 * scale)
   })
 
@@ -165,14 +174,10 @@ describe(`even_cosine_spectrum`, () => {
 
   it.each([
     [`a single value`, [1], 4, /need at least 2 values, got 1/],
+    // Guard lives in cosine_spectrum_length; even_cosine_spectrum must surface it too
     [`zero_pad_factor below 1`, [1, 2, 3], 0.5, /zero_pad_factor must be >= 1, got 0.5/],
+    [`a non-finite entry`, [1, 2, Number.NaN, 4], 4, /value at index 2 is NaN, not finite/],
   ])(`rejects %s`, (_label, values, factor, pattern) => {
     expect(() => even_cosine_spectrum(values, factor)).toThrow(pattern)
-  })
-
-  it(`rejects a non-finite entry naming its index`, () => {
-    expect(() => even_cosine_spectrum([1, 2, Number.NaN, 4])).toThrow(
-      /value at index 2 is NaN, not finite/,
-    )
   })
 })

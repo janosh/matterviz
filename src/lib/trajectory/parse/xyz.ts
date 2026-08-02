@@ -6,6 +6,7 @@ import type { Pbc } from '$lib/structure/pbc'
 import {
   calc_force_stats,
   create_trajectory_frame,
+  derive_time_step,
   iter_xyz_frames,
 } from '$lib/trajectory/helpers'
 import { get_traj_parse_warnings, traj_warn } from './diagnostics'
@@ -122,10 +123,16 @@ export function read_extxyz_move_flags(
   return undefined
 }
 
-// Columns the generic per-site property pass leaves alone: species and pos are the site
-// identity itself, and the move-flag spellings are owned by read_extxyz_move_flags, which
-// normalizes both into a single `selective_dynamics` triple.
-const RESERVED_EXTXYZ_COLUMNS = new Set([`species`, `pos`, ...MOVE_FLAG_COLUMNS])
+// Structural fields, normalized motion flags, and forces handled with frame-level statistics.
+const RESERVED_EXTXYZ_COLUMNS = new Set([`species`, `pos`, `forces`, ...MOVE_FLAG_COLUMNS])
+
+// Canonical site-property names shared with LAMMPS and exporters.
+const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
+  velocities: `velocity`,
+  momenta: `momentum`,
+  charges: `charge`,
+  masses: `mass`,
+}
 
 // Read one declared column of an atom line as a site property value. Logical columns
 // become booleans, string columns strings, everything else numbers. Returns undefined
@@ -180,6 +187,8 @@ const METADATA_PATTERNS = {
   temperature: make_pattern(`temperature|temp|T`),
   force_max: make_pattern(`max_force|force_max|fmax`),
   bandgap: make_pattern(`bandgap|E_gap|gap`),
+  // Absolute snapshot time; derive_time_step divides out the step interval.
+  time: make_pattern(`time`),
 } as const
 
 // Extract step number and scalar properties from an (ext)XYZ comment line
@@ -203,9 +212,7 @@ type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
 // force_stats holds raw forces plus max and RMS force magnitudes when forces are present.
 // move_flags is populated only when every kept atom declared one, so a partially-annotated
 // file doesn't silently report unconstrained axes for the atoms that were missing flags.
-// site_properties carries every other declared column (charge, velocities, c_* ...) per
-// kept atom, keyed by the lowercased declared name, so downstream coloring and vector
-// layers can read them off the sites.
+// Other declared columns become per-site properties under their canonical or declared name.
 function parse_xyz_atom_lines(
   lines: string[],
   start: number,
@@ -225,9 +232,9 @@ function parse_xyz_atom_lines(
   const forces: number[][] = []
   const move_flags: [boolean, boolean, boolean][] = []
   const site_properties: Record<string, unknown>[] = []
-  const extra_columns = Object.entries(layout ?? {}).filter(
-    ([name]) => !RESERVED_EXTXYZ_COLUMNS.has(name),
-  )
+  const extra_columns = Object.entries(layout ?? {})
+    .filter(([name]) => !RESERVED_EXTXYZ_COLUMNS.has(name))
+    .map(([name, column]) => [EXTXYZ_COLUMN_ALIASES[name] ?? name, column] as const)
 
   for (let idx = 0; idx < num_atoms; idx++) {
     const parts = lines[start + idx]?.trim().split(/\s+/) ?? []
@@ -308,11 +315,12 @@ export function build_xyz_frame(
     step ?? opts.default_step,
     metadata,
   )
-  // Per-atom columns and constraints belong on the sites, not the frame metadata: that is
-  // where the viewer's property coloring, site-vector arrows, selective-dynamics coloring
-  // and the POSCAR/extXYZ exporters read them from.
-  for (const [idx, site] of built.structure.sites.entries()) {
+  // Attach per-atom data to sites. Forces are all-or-nothing and use the canonical singular key.
+  const { sites } = built.structure
+  const forces = force_stats?.forces.length === sites.length ? force_stats.forces : null
+  for (const [idx, site] of sites.entries()) {
     site.properties = { ...site.properties, ...site_properties[idx] }
+    if (forces) site.properties.force = forces[idx]
     if (move_flags) site.properties.selective_dynamics = move_flags[idx]
   }
   return built
@@ -331,8 +339,15 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     )
   }
 
+  // extXYZ does not state the time unit, so do not guess time_unit.
+  const time_step = derive_time_step(
+    frames.map(({ metadata }) => (typeof metadata?.time === `number` ? metadata.time : null)),
+    frames.map(({ step }) => step),
+  )
+
   return {
     frames,
+    ...(time_step === undefined ? {} : { time_step }),
     metadata: {
       source_format: `xyz_trajectory`,
       frame_count: frames.length,

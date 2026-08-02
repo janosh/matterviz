@@ -45,10 +45,13 @@
     y_axis?: ComponentProps<typeof BarPlot>[`y_axis`]
   } & ComponentProps<typeof BarPlot> = $props()
 
+  const id_options_snapshot = $derived(JSON.stringify(id_options))
+
   // Async compute can't be a $derived; a request id drops results of superseded inputs
   let request_id = 0
   $effect(() => {
-    const [inputs, options] = [structures, id_options]
+    const inputs = structures
+    const options: StructureIdOptions = JSON.parse(id_options_snapshot)
     if (!inputs?.length) return
     const this_request = ++request_id
     loading = true

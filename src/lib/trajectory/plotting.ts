@@ -168,16 +168,25 @@ export function get_frame_time_step(
   samples: FrameStepSamples,
   time_step?: number,
 ): number | null {
-  const { steps } = samples
+  const { frame_numbers, steps } = samples
   if (!time_step || time_step <= 0 || steps.length < 2) return null
-  if (!strictly_increasing(steps)) return null
+  if (frame_numbers.length !== steps.length) return null
+  if (!strictly_increasing(steps) || !strictly_increasing(frame_numbers)) return null
 
-  const first_delta = steps[1] - steps[0]
+  // Steps per SOURCE frame, not per sample. An indexed trajectory only records a step at
+  // every Nth frame, so the step delta between two samples spans N frames; dividing by the
+  // sample count alone reports a dt N times too large.
+  const step_delta = steps[1] - steps[0]
+  const frame_delta = frame_numbers[1] - frame_numbers[0]
+  // Cross-multiplied rather than compared as ratios: both sides are integers, so this is
+  // exact and needs no tolerance, and any tolerance picked here would be arbitrary.
   const uniform = steps.every(
     (step, idx) =>
-      idx === 0 || Math.abs(step - steps[idx - 1] - first_delta) <= 1e-9 * first_delta,
+      idx === 0 ||
+      (step - steps[idx - 1]) * frame_delta ===
+        (frame_numbers[idx] - frame_numbers[idx - 1]) * step_delta,
   )
-  return uniform ? first_delta * time_step : null
+  return uniform ? (step_delta / frame_delta) * time_step : null
 }
 
 // Frame/step pairs from whichever source the trajectory has: an eagerly parsed frame list,

@@ -164,8 +164,24 @@ export function build_neighbor_list(
 
   const cutoff_sq = cutoff * cutoff
   const offsets = new Int32Array(n_centers + 1)
-  const all_deltas: number[] = []
-  const all_distances: number[] = []
+  // Growable typed buffers avoid the peak of a full number[] plus a Float64Array.from copy.
+  // Seed ~8 neighbors/center (typical first shell); doubling covers wider cutoffs without a
+  // fixed attempt cap. Returned subarrays report the used length; the backing store may be
+  // larger for the lifetime of the list.
+  let n_found = 0
+  let all_distances = new Float64Array(Math.max(n_centers * 8, 16))
+  let all_deltas = new Float64Array(all_distances.length * 3)
+  const ensure_capacity = (needed: number) => {
+    if (needed <= all_distances.length) return
+    let next_capacity = all_distances.length
+    while (next_capacity < needed) next_capacity *= 2
+    const next_distances = new Float64Array(next_capacity)
+    next_distances.set(all_distances.subarray(0, n_found))
+    all_distances = next_distances
+    const next_deltas = new Float64Array(next_capacity * 3)
+    next_deltas.set(all_deltas.subarray(0, n_found * 3))
+    all_deltas = next_deltas
+  }
   // Length-reset per center rather than reallocated. Array.sort needs the distance and its
   // delta to travel together, so these stay objects; at ~50 candidates per center the
   // allocation is well below the cost of the distance loop that fills them.
@@ -204,17 +220,22 @@ export function build_neighbor_list(
     }
     // a-CNA and CSP both consume a distance-ordered prefix, so sorting here is not optional
     found.sort((left, right) => left.distance - right.distance)
+    ensure_capacity(n_found + found.length)
     for (const { distance, delta } of found) {
-      all_distances.push(distance)
-      all_deltas.push(delta[0], delta[1], delta[2])
+      all_distances[n_found] = distance
+      const delta_base = n_found * 3
+      all_deltas[delta_base] = delta[0]
+      all_deltas[delta_base + 1] = delta[1]
+      all_deltas[delta_base + 2] = delta[2]
+      n_found++
     }
-    offsets[center_idx + 1] = all_distances.length
+    offsets[center_idx + 1] = n_found
   }
 
   return {
     offsets,
-    deltas: Float64Array.from(all_deltas),
-    distances: Float64Array.from(all_distances),
+    deltas: all_deltas.subarray(0, n_found * 3),
+    distances: all_distances.subarray(0, n_found),
     n_centers,
     cutoff,
   }
@@ -261,7 +282,7 @@ export function find_k_nearest(
       ? 4 * Math.max(...cell_heights(structure.lattice.matrix))
       : 2 * (atom_volume * structure.sites.length) ** (1 / 3)
 
-  for (let attempt = 0; ; attempt++) {
+  for (;;) {
     const list = build_neighbor_list(structure, { cutoff, pbc })
     let n_undercoordinated = 0
     for (let center_idx = 0; center_idx < list.n_centers; center_idx++) {
@@ -273,11 +294,5 @@ export function find_k_nearest(
     // 1.4x per step: enough to converge in a couple of passes, small enough that the final
     // cutoff (and therefore the candidate count per center) stays close to what's needed.
     cutoff = Math.min(cutoff * 1.4, max_cutoff)
-    if (attempt > 20) {
-      fail(
-        `cutoff search did not converge after ${attempt} attempts (cutoff ${cutoff} Å, ` +
-          `ceiling ${max_cutoff} Å, k=${k_neighbors}, ${n_undercoordinated} centers short)`,
-      )
-    }
   }
 }

@@ -126,6 +126,21 @@ describe(`VDOS peak position`, () => {
     expect(Math.abs((result.curves[0].peak_frequency ?? 0) - 0.02)).toBeLessThan(bin_spacing)
   })
 
+  it.each([
+    [`fs`, 2],
+    [`steps`, 7],
+  ])(`reports inverse-frame frequencies with dt in %s`, (time_unit, dt) => {
+    const result = calc_vacf(orbit(600, 0.02), {
+      dt,
+      time_unit,
+      vdos: { frequency_unit: `1/frame` },
+    })
+    const bin_spacing = result.frequencies[1] - result.frequencies[0]
+    expect(result.frequency_unit).toBe(`1/frame`)
+    expect(Math.abs((result.curves[0].peak_frequency ?? 0) - 0.02)).toBeLessThan(bin_spacing)
+    expect(result.frequencies.at(-1)).toBeCloseTo(0.5, 12)
+  })
+
   it(`finds the peak from central differences too`, () => {
     // The stencil scales the VACF amplitude but not its period, so the peak must not move
     const { positions } = circular_motion(1000, 0.02, 1)
@@ -235,9 +250,31 @@ describe(`no-dt policy`, () => {
   )
 
   it(`refuses a THz axis for a time unit it cannot convert`, () => {
-    expect(() => calc_vacf(orbit(50, 0.1), { dt: 1, time_unit: `arbitrary units` })).toThrow(
-      /time_unit must be one of fs, ps, ns to convert to THz or cm\^-1/,
+    expect(() =>
+      calc_vacf(orbit(50, 0.1), {
+        dt: 1,
+        time_unit: `arbitrary units`,
+        vdos: { frequency_unit: `THz` },
+      }),
+    ).toThrow(
+      /time_unit 'arbitrary units' with frequency_unit 'THz' is not convertible; use frequency_unit '1\/frame'/,
     )
+  })
+
+  it(`rejects inherited Object keys as THz-convertible time units`, () => {
+    // Without Object.hasOwn, TIME_UNIT_TO_THZ['toString'] is a function and would be
+    // treated as a conversion factor (NaN frequencies / a bogus THz default).
+    const options = { dt: 1, time_unit: `toString` } as const
+    const result = calc_vacf(orbit(80, 0.05), options)
+    expect(result.frequency_unit).toBe(`1/frame`)
+    expect(result.frequencies[1]).toBeGreaterThan(0)
+    expect(Number.isFinite(result.frequencies[1])).toBe(true)
+    expect(() =>
+      calc_vacf(orbit(50, 0.1), {
+        ...options,
+        vdos: { frequency_unit: `THz` },
+      }),
+    ).toThrow(/time_unit 'toString' with frequency_unit 'THz' is not convertible/)
   })
 
   it(`accepts an unconvertible time unit as long as the axis stays in frames`, () => {
