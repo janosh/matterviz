@@ -49,53 +49,23 @@ export function extract_bond_color_for_instance(
   if (!color_start_attr || !color_end_attr) return null
   if (instance_idx < 0 || instance_idx >= color_start_attr.count) return null
 
-  // Get RGB values for this instance and compute midpoint color
-  const start_rgb: Vec3 = [
-    color_start_attr.getX(instance_idx),
-    color_start_attr.getY(instance_idx),
-    color_start_attr.getZ(instance_idx),
-  ]
-  const end_rgb: Vec3 = [
-    color_end_attr.getX(instance_idx),
-    color_end_attr.getY(instance_idx),
-    color_end_attr.getZ(instance_idx),
-  ]
-  const [mid_r, mid_g, mid_b] = math.scale(math.add(start_rgb, end_rgb), 0.5)
-  return new Color(mid_r, mid_g, mid_b)
+  return new Color(
+    (color_start_attr.getX(instance_idx) + color_end_attr.getX(instance_idx)) / 2,
+    (color_start_attr.getY(instance_idx) + color_end_attr.getY(instance_idx)) / 2,
+    (color_start_attr.getZ(instance_idx) + color_end_attr.getZ(instance_idx)) / 2,
+  )
 }
 
 // @internal exported only for tests - not part of the public API.
-// Remove custom/non-standard attributes from geometry that cause export issues.
-// Standard GLTF attributes: position, normal, tangent, texcoord_N, color_N, joints_N,
-// weights_N.
+// Remove per-instance and non-standard color attributes that cause export issues.
 export function clean_geometry_for_export(geometry: BufferGeometry): void {
-  const standard_attrs = new Set([
-    `position`,
-    `normal`,
-    `tangent`,
-    `uv`,
-    `uv1`,
-    `uv2`,
-    `uv3`,
-    `color`,
-    `skinIndex`,
-    `skinWeight`,
-  ])
-
-  const attrs_to_remove: string[] = []
   for (const attr_name of Object.keys(geometry.attributes)) {
-    // Keep standard attributes and those starting with underscore (GLTF custom)
-    // But remove instance-specific attributes that cause accessor count mismatches
     const lower_name = attr_name.toLowerCase()
     if (
       lower_name.includes(`instance`) ||
-      (lower_name.includes(`color`) && !standard_attrs.has(lower_name))
+      (lower_name.includes(`color`) && lower_name !== `color`)
     )
-      attrs_to_remove.push(attr_name)
-  }
-
-  for (const attr_name of attrs_to_remove) {
-    geometry.deleteAttribute(attr_name)
+      geometry.deleteAttribute(attr_name)
   }
 }
 
@@ -176,37 +146,17 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     const group = new Group()
     group.name = instanced_mesh.name
 
-    // Get the base transform from the InstancedMesh
-    const base_matrix = new Matrix4()
-    base_matrix.copy(instanced_mesh.matrix)
-
     const has_bond_gradient = has_bond_gradient_attributes(instanced_mesh.geometry)
     const { instanceColor } = instanced_mesh
     const source_material = Array.isArray(instanced_mesh.material)
       ? instanced_mesh.material[0]
       : instanced_mesh.material
     const material_color = has_color_property(source_material) ? source_material.color : null
-    let all_instance_colors_are_white = Boolean(instanceColor)
-    if (instanceColor) {
-      const instance_color = new Color()
-      const white = new Color(1, 1, 1)
-      for (let instance_idx = 0; instance_idx < instanced_mesh.count; instance_idx++) {
-        instance_color.fromBufferAttribute(instanceColor, instance_idx)
-        if (!instance_color.equals(white)) {
-          all_instance_colors_are_white = false
-          break
-        }
-      }
-    }
-    // Threlte's legacy instancing stores the real color on the material and an
-    // all-white instanceColor buffer. Real per-instance colors take precedence otherwise.
-    const use_material_color =
-      all_instance_colors_are_white &&
-      material_color !== null &&
-      !material_color.equals(new Color(1, 1, 1))
 
     // Create individual meshes for each instance
+    const instance_color = new Color()
     const instance_matrix = new Matrix4()
+    const combined_matrix = new Matrix4()
     for (let idx = 0; idx < instanced_mesh.count; idx++) {
       instanced_mesh.getMatrixAt(idx, instance_matrix)
 
@@ -228,16 +178,15 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
 
       const resolved_color = has_bond_gradient
         ? extract_bond_color_for_instance(instanced_mesh.geometry, idx)
-        : instanceColor && !use_material_color
-          ? new Color().fromBufferAttribute(instanceColor, idx)
+        : instanceColor
+          ? instance_color.fromBufferAttribute(instanceColor, idx)
           : material_color
       if (resolved_color) new_material.color.copy(resolved_color)
 
       const mesh = new Mesh(cloned_geometry, new_material)
 
       // Combine base transform with instance transform
-      const combined_matrix = new Matrix4()
-      combined_matrix.multiplyMatrices(base_matrix, instance_matrix)
+      combined_matrix.multiplyMatrices(instanced_mesh.matrix, instance_matrix)
       mesh.applyMatrix4(combined_matrix)
 
       group.add(mesh)
@@ -246,9 +195,6 @@ export function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     // Replace the InstancedMesh with the Group in the parent
     parent.remove(instanced_mesh)
     parent.add(group)
-
-    // Update world matrices after scene graph modification
-    group.updateMatrixWorld(true)
   }
 
   // Update all world matrices in the modified scene

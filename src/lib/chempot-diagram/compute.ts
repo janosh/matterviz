@@ -912,7 +912,7 @@ let nd_cache: {
 
 // Full entry fingerprint for N-D cache keys and deterministic equal-energy tie-breaking.
 // Normalize a redundant explicit energy_per_atom to its effective value.
-export function entry_fingerprint(entry: PhaseData): string {
+function entry_fingerprint(entry: PhaseData): string {
   const { energy_per_atom: _energy_per_atom, ...metadata } = entry
   const epa = get_energy_per_atom(entry)
   return JSON.stringify([metadata, Number.isFinite(epa) ? epa : null])

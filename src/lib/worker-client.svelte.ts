@@ -16,9 +16,9 @@ export interface WorkerClientConfig<Input, Options, Result> {
   // cloneable, so callers rebuild field by field rather than deep-snapshotting - a proxied
   // typed array still reads back as its raw buffer, which keeps megabyte payloads cheap.
   build_payload: (input: Input) => unknown
-  // Key requests by canonicalized payload + options instead of input identity. `unordered`
-  // treats a top-level payload array as a multiset; nested arrays remain ordered.
-  dedupe_by_payload?: boolean | `unordered`
+  // Key requests by canonicalized payload + options, treating the top-level payload array
+  // as a multiset. Nested arrays remain ordered.
+  dedupe_by_payload?: `unordered`
 }
 
 export function create_worker_client<Input extends object, Options, Result>(
@@ -105,7 +105,6 @@ export function create_worker_client<Input extends object, Options, Result>(
     return key
   }
   const payload_key_of = (payload: unknown): string => {
-    if (dedupe_by_payload !== `unordered`) return canonical_key_of(payload)
     if (!Array.isArray(payload)) {
       throw new TypeError(`${label} worker unordered payload dedupe requires an array payload`)
     }

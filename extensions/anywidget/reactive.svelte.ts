@@ -8,7 +8,7 @@
 // Why not @anywidget/svelte: it targets one purpose-built widget with a `bindings`
 // prop that binds every trait two-way. We adapt ~20 existing matterviz components,
 // each with its own prop API / $bindables, via explicit per-widget contracts:
-// drive-generic, writeback-opt-in, plus trait renames, derived/composed props,
+// drive-generic, writeback-opt-in, plus derived/composed props,
 // throttling and click event_ids. Wrapping @anywidget/svelte would mostly
 // reimplement it, so we use AFM's model API (on/get/set/save_changes) directly.
 

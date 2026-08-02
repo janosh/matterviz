@@ -9,14 +9,14 @@ import { make_site } from '$lib/structure/site'
 
 export const FCC_LATTICE_CONST = 3.615 // Å, Cu
 export const BCC_LATTICE_CONST = 2.8665 // Å, alpha-Fe
-export const HCP_LATTICE_CONST = 3.209 // Å, Mg
-export const IDEAL_HCP_AXIAL_RATIO = Math.sqrt(8 / 3) // c/a for ideal hard-sphere packing
+const HCP_LATTICE_CONST = 3.209 // Å, Mg
+const IDEAL_HCP_AXIAL_RATIO = Math.sqrt(8 / 3) // c/a for ideal hard-sphere packing
 
 // Park-Miller ("minimal standard") LCG: state <- 16807 * state mod (2^31 - 1). Vitest runs must
 // be reproducible, so no Math.random(). All intermediates stay below 2^53, so this needs no bit
 // twiddling and behaves identically on every engine.
 const LCG_MODULUS = 2147483647
-export function seeded_rng(seed: number): () => number {
+function seeded_rng(seed: number): () => number {
   // 0 is a fixed point of the recurrence, so seeds are mapped into [1, MODULUS - 1]
   let state = (Math.abs(Math.trunc(seed)) % (LCG_MODULUS - 1)) + 1
   return () => {
@@ -27,7 +27,7 @@ export function seeded_rng(seed: number): () => number {
 
 // Supercell from a conventional cell: `basis` are fractional coordinates in the unit cell,
 // `reps` the repeat counts along a, b, c.
-export function build_supercell(
+function build_supercell(
   unit_matrix: Matrix3x3,
   basis: Vec3[],
   reps: [number, number, number],

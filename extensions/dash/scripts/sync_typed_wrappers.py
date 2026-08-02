@@ -605,16 +605,9 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         type_hints = spec.get("type_hints", {})
         forward_none_props = set(spec.get("forward_none_props", []))
 
-        # Build Python names with unique identifiers
-        py_props: dict[str, Prop] = {}
-        for prop in value_props:
-            py_name = prop.py_name
-            base_name = py_name
-            suffix = 2
-            while py_name in py_props:
-                py_name = f"{base_name}_{suffix}"
-                suffix += 1
-            py_props[py_name] = prop
+        py_names = {prop.py_name for prop in value_props}
+        if len(py_names) != len(value_props):
+            raise ValueError(f"{key} has duplicate Python prop names")
 
         # Generate class
         doc = (spec.get("doc") or "").strip() or f"Typed wrapper for '{key}'."
@@ -636,7 +629,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
 
         # Build signature
         sig = ["self", "id=None"]
-        for py_name, prop in py_props.items():
+        for prop in value_props:
+            py_name = prop.py_name
             py_type = _py_type_hint(prop.ts_type, py_name, type_hints)
             # Avoid duplicate None when type hint already includes it
             if "None" not in py_type:
@@ -658,7 +652,8 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         lines.append(f"    def __init__(\n        {params},\n    ):")
         lines.append("        if mv_props is None:")
         lines.append("            mv_props = {}")
-        for py_name, prop in py_props.items():
+        for prop in value_props:
+            py_name = prop.py_name
             sentinel = "_UNSET" if prop.js_name in forward_none_props else "None"
             lines.append(f"        if {py_name} is not {sentinel}:")
             lines.append(f'            mv_props["{prop.js_name}"] = {py_name}')

@@ -5,7 +5,7 @@ import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
 // Replace the heavy matterviz components with a recording stub so we can exercise
-// the real anywidget widget wiring (drive / rename / derived / writeback key names,
+// the real anywidget widget wiring (drive / derived / writeback key names,
 // scatter click/hover callbacks + event_id) without mounting WebGL/SVG components or
 // pulling the built dist bundle. The theme/css imports are stubbed for the same
 // reason (mount_spec never calls into them directly).

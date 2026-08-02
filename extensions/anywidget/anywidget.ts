@@ -303,7 +303,7 @@ const scatter_interactions = (model: AnyModel) => {
 }
 
 // Declarative description of one widget: the component, its reactive props (drive /
-// rename / derived / writeback), and optional interaction callbacks + teardown.
+// derived / writeback), and optional interaction callbacks + teardown.
 type WidgetSpec = {
   component: unknown
   drive: readonly DrivenProp[]

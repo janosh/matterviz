@@ -218,9 +218,11 @@
       --struct-cell-select-color,
       var(--menu-color, light-dark(#1a1a1a, #eee))
     );
+    /* Mix ink into the opaque resting surface so hover never becomes a translucent
+       wash over the 3D canvas (e.g. host --btn-bg-hover / --menu-option-hover-bg). */
     --cell-select-hover-surface: var(
       --struct-cell-select-hover-bg,
-      var(--menu-option-hover-bg, light-dark(#ececef, #3a3d45))
+      color-mix(in srgb, var(--cell-select-color) 12%, var(--cell-select-surface))
     );
     --cell-select-border: var(
       --border-color,
@@ -233,14 +235,17 @@
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
     color: var(--cell-select-color);
-    background: var(--cell-select-surface);
+    /* background-color (not shorthand) so a host `button:hover { background: … }`
+       can't wipe the opaque fill via the shorthand reset. */
+    background-color: var(--cell-select-surface);
     border: 1px solid var(--cell-select-border);
     border-radius: var(--border-radius, 3pt);
-    transition: background 0.15s ease;
+    transition: background-color 0.15s ease;
   }
   @media (hover: hover) {
-    .toggle-btn:hover {
-      background: var(--cell-select-hover-surface);
+    .toggle-btn:hover,
+    .toggle-btn:focus-visible {
+      background-color: var(--cell-select-hover-surface);
     }
   }
   .dropdown {

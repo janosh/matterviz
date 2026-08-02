@@ -307,7 +307,7 @@ describe(`Structure`, () => {
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
-  test(`hides atom color mode toggle until viewer hover or focus`, async () => {
+  test(`hides atom color mode toggle until viewer hover`, async () => {
     mount_structure({ structure })
     await tick()
 
@@ -316,19 +316,20 @@ describe(`Structure`, () => {
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
     expect(mode_toggle.tabIndex).toBe(-1)
 
+    // Focus alone must not reveal it (matches CellSelect; avoids stuck-visible after click).
     viewer.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     await tick()
-    // fully opaque (not a dim peek) so it's clearly discoverable on viewer hover/focus
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-    expect(mode_toggle.tabIndex).toBe(0)
-
-    viewer.dispatchEvent(new FocusEvent(`focusout`, { bubbles: true }))
-    await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
+    expect(mode_toggle.tabIndex).toBe(-1)
 
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
+    expect(mode_toggle.tabIndex).toBe(0)
+
+    viewer.dispatchEvent(new PointerEvent(`pointerleave`))
+    await tick()
+    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {

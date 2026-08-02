@@ -81,13 +81,12 @@
     url: string,
     filename: string,
     update_url_param: boolean = true,
-    preserve_tdb: boolean = false,
   ): Promise<boolean> {
     const token = Symbol(`load-token`)
     active_load = token
     loading = true
     error_message = null
-    if (!preserve_tdb) tdb = null
+    tdb = null
 
     try {
       if (is_tdb(filename)) {
@@ -129,13 +128,6 @@
     } finally {
       if (!is_stale(token)) loading = false
     }
-  }
-
-  // Handle URL drop from FilePicker
-  async function handle_url_file_drop(url: string, file: File): Promise<boolean> {
-    if (!url.startsWith(`/`)) return false
-    await load_file(url, file.name || url.split(`/`).pop() || `unknown`)
-    return true
   }
 
   // Parse TDB content and set up state (used by both load_file and parse_file_content)
@@ -225,10 +217,8 @@
     if (url && json_data) {
       // Internal drag from FilePicker - parse the JSON to get file info
       try {
-        const file_info = JSON.parse(json_data) as { name: string; url: string }
-        // Create a minimal File-like object for compatibility
-        const pseudo_file = new File([], file_info.name)
-        handle_url_file_drop(url, pseudo_file)
+        const { name } = JSON.parse(json_data) as { name: string }
+        if (url.startsWith(`/`)) void load_file(url, name || url.split(`/`).pop() || `unknown`)
         return
       } catch (exc) {
         console.warn(

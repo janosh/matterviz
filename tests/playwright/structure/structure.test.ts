@@ -183,7 +183,37 @@ test.describe(`Structure Component Tests`, () => {
   test(`CellSelect toggle has an opaque theme-aware surface`, async ({ page }) => {
     const structure = page.locator(`#test-structure`)
     const toggle = structure.locator(`.cell-select .toggle-btn`)
-    const expect_colors = async (
+    // color-mix() may serialize as oklab()/color(srgb …); rgb() omits alpha when opaque.
+    const is_opaque_css_color = (value: string): boolean => {
+      if (value === `transparent`) return false
+      if (
+        value.startsWith(`oklab(`) ||
+        value.startsWith(`oklch(`) ||
+        value.startsWith(`color(`)
+      ) {
+        const alpha_part = value.split(`/`)[1]
+        if (!alpha_part) return true
+        return Number(alpha_part.replace(`)`, ``).trim()) === 1
+      }
+      const match = /rgba?\((?<channels>[^)]+)\)/u.exec(value)
+      if (!match) return false
+      const parts = match[1].split(`,`).map((part) => Number(part.trim()))
+      return parts.length === 3 || parts[3] === 1
+    }
+    // Resolve --cell-select-hover-surface without needing a real :hover (pointer-events
+    // on .cell-select is none until the structure is hovered).
+    const hover_surface_of = (): Promise<string> =>
+      toggle.evaluate((el) => {
+        const cell = el.closest(`.cell-select`)
+        if (!(cell instanceof HTMLElement)) throw new Error(`missing .cell-select`)
+        const probe = document.createElement(`div`)
+        cell.append(probe)
+        probe.style.backgroundColor = `var(--cell-select-hover-surface)`
+        const background = getComputedStyle(probe).backgroundColor
+        probe.remove()
+        return background
+      })
+    const expect_opaque = async (
       color_scheme: `light` | `dark`,
       background: string,
       color: string,
@@ -193,10 +223,13 @@ test.describe(`Structure Component Tests`, () => {
       }, color_scheme)
       await expect(toggle).toHaveCSS(`background-color`, background)
       await expect(toggle).toHaveCSS(`color`, color)
+      const hover_bg = await hover_surface_of()
+      expect(is_opaque_css_color(hover_bg)).toBe(true)
+      expect(hover_bg).not.toBe(background)
     }
 
-    await expect_colors(`light`, `rgb(255, 255, 255)`, `rgb(26, 26, 26)`)
-    await expect_colors(`dark`, `rgb(47, 49, 55)`, `rgb(238, 238, 238)`)
+    await expect_opaque(`light`, `rgb(255, 255, 255)`, `rgb(26, 26, 26)`)
+    await expect_opaque(`dark`, `rgb(47, 49, 55)`, `rgb(238, 238, 238)`)
   })
 
   test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {

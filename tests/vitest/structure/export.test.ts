@@ -902,20 +902,6 @@ describe(`3D Export Color Preservation`, () => {
       ])
     })
 
-    test(`keeps material color over a legacy all-white instanceColor`, () => {
-      const scene = new Scene()
-      const legacy = new InstancedMesh(
-        new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
-        1,
-      )
-      legacy.name = `legacy`
-      legacy.setColorAt(0, new Color(1, 1, 1))
-      scene.add(legacy)
-
-      expect(converted_group_colors(scene, `legacy`)).toEqual([[0, 1, 0]])
-    })
-
     test(`shader-material bond gradients win over instance colors`, () => {
       const scene = new Scene()
       const bond_geometry = new SphereGeometry(0.5, 4, 4)

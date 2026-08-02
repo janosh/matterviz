@@ -784,6 +784,11 @@
     change(null)
     on_bar_hover?.(null)
   }
+  const clear_point_hover = () => {
+    hover_info = null
+    change(null)
+    on_point_hover?.(null)
+  }
 
   // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode))
@@ -1110,11 +1115,7 @@
                       change(hover_info)
                       on_point_hover?.({ ...hover_info!, event: evt, point: pt })
                     }}
-                    onmouseleave={() => {
-                      hover_info = null
-                      change(null)
-                      on_point_hover?.(null)
-                    }}
+                    onmouseleave={clear_point_hover}
                     onclick={(evt) => {
                       const pt = find_closest_point(evt, points)
                       if (!pt) return
@@ -1137,16 +1138,12 @@
                     pt: LineSeriesPoint | null,
                     evt: MouseEvent | FocusEvent,
                   ) => {
-                    if (pt) {
-                      hovered = true
-                      const fill = line_point_fill(pt, color)
-                      hover_info = get_bar_data(series_idx, pt.idx, fill)
-                      change(hover_info)
-                    } else {
-                      change(null)
-                      hover_info = null
-                    }
-                    on_point_hover?.(pt ? { ...hover_info!, event: evt, point: pt } : null)
+                    if (!pt) return clear_point_hover()
+                    hovered = true
+                    const fill = line_point_fill(pt, color)
+                    hover_info = get_bar_data(series_idx, pt.idx, fill)
+                    change(hover_info)
+                    on_point_hover?.({ ...hover_info, event: evt, point: pt })
                   }}
                   {@const do_click = (
                     pt: LineSeriesPoint,
