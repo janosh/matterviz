@@ -194,10 +194,8 @@
     children?: Snippet
   } = $props()
 
-  // Normalize runtime true explicitly: show both triangles while placing labels diagonally.
-  let symmetric = $derived<SymmetricMode | `both`>(
-    symmetric_prop === true ? `both` : symmetric_prop,
-  )
+  // Preserve the legacy true alias for lower-triangle rendering.
+  let symmetric = $derived<SymmetricMode>(symmetric_prop === true ? `lower` : symmetric_prop)
 
   // Check if a cell should be skipped in symmetric mode
   function is_hidden_cell(x_idx: number, y_idx: number): boolean {

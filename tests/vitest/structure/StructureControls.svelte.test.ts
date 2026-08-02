@@ -1,9 +1,26 @@
 import { DEFAULTS } from '$lib/settings'
 import { StructureControls } from '$lib/structure'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
+import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, simple_structure } from '../setup'
+
+const trail_stream = (n_frames = 3): TrajectoryPositionStream => ({
+  positions: new Float64Array(n_frames * 3),
+  n_frames,
+  n_atoms: 1,
+  elements: [`H`],
+  lattice_matrices: Array.from({ length: n_frames }, () => [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]),
+  pbc: [false, false, false],
+  coords_unwrapped: true,
+  frame_stride: 1,
+  steps: Array.from({ length: n_frames }, (_, idx) => idx),
+})
 
 describe(`StructureControls reactive props`, () => {
   test(`syncs site label controls from external scene prop updates`, async () => {
@@ -277,6 +294,58 @@ describe(`StructureControls reactive props`, () => {
     expect(pane.style.width).toBe(``)
     expect(pane.style.height).toBe(``)
   })
+
+  test.each([
+    {
+      desc: `hidden without a stream slot`,
+      stream: undefined as TrajectoryPositionStream | null | undefined,
+      show_trails: false,
+      expect_toggle: false,
+      expect_length: false,
+    },
+    {
+      desc: `toggle only while stream is pending`,
+      stream: null,
+      show_trails: false,
+      expect_toggle: true,
+      expect_length: false,
+    },
+    {
+      desc: `length controls once a stream arrives`,
+      stream: trail_stream(),
+      show_trails: true,
+      expect_toggle: true,
+      expect_length: true,
+    },
+    {
+      desc: `length controls stay gated on the trails toggle`,
+      stream: trail_stream(),
+      show_trails: false,
+      expect_toggle: true,
+      expect_length: false,
+    },
+  ])(
+    `trajectory trails chrome: $desc`,
+    async ({ stream, show_trails, expect_toggle, expect_length }) => {
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      const state = $state({
+        show_trajectory_lines: show_trails,
+        scene_props: { trajectory_position_stream: stream },
+      })
+      mount(StructureControls, {
+        target,
+        props: bind_props({ structure: simple_structure, controls_open: true }, state),
+      })
+      await tick()
+
+      const has_toggle = [...target.querySelectorAll(`label`)].some((label) =>
+        label.textContent?.includes(`Show trajectory trails`),
+      )
+      expect(has_toggle).toBe(expect_toggle)
+      expect(target.textContent?.includes(`Trail length`) ?? false).toBe(expect_length)
+    },
+  )
 
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
     const target = document.createElement(`div`)

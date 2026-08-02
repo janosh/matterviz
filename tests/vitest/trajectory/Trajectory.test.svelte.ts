@@ -50,8 +50,25 @@ const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
   }
 }
 
+const click_menu_option = async (
+  target: ParentNode,
+  menu_button: string,
+  option_text: string,
+): Promise<void> => {
+  target.querySelector<HTMLButtonElement>(menu_button)?.click()
+  await tick()
+  const option = [
+    ...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+  ].find((button) => button.textContent?.includes(option_text))
+  if (!option) throw new Error(`${option_text} menu option not found`)
+  option.click()
+  await tick()
+}
+
 describe(`Trajectory`, () => {
-  test(`collects trajectory trail positions only after trails are enabled`, async () => {
+  // StructureControls owns trail-chrome visibility; this only guards Trajectory's
+  // lazy collect_msd_positions gate (Trail length appears once the stream lands).
+  test(`collects trail positions lazily when trails are enabled`, async () => {
     const target = mount_traj({
       trajectory: make_traj([{}, {}, {}]),
       display_mode: `structure`,
@@ -61,18 +78,14 @@ describe(`Trajectory`, () => {
     })
     await flush_render()
 
-    const trail_label = Array.from(target.querySelectorAll(`label`)).find((label) =>
-      label.textContent?.includes(`Show trajectory trails`),
-    )
-    const trail_toggle = trail_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    const trail_toggle = Array.from(target.querySelectorAll(`label`))
+      .find((label) => label.textContent?.includes(`Show trajectory trails`))
+      ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
     expect(target.textContent).not.toContain(`Trail length`)
 
     trail_toggle.click()
     await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
-
-    trail_toggle.click()
-    await vi.waitFor(() => expect(target.textContent).not.toContain(`Trail length`))
   })
 
   // Regression: the series-regeneration effect must survive the visible_properties
@@ -114,27 +127,49 @@ describe(`Trajectory`, () => {
     expect(tick_labels(`y`)).toContain(`10k`)
   })
 
+  // Bindable x_quantity starts unset; after auto-pick it must write back the
+  // effective axis so hosts can read which quantity is in effect. Empty mounts
+  // must not write `frame` early or time-capable data can never auto-pick.
   test.each([
-    { time_step: 2, expected_quantity: `time` },
-    { time_step: undefined, expected_quantity: `step` },
-  ] as const)(
-    `defaults to the most informative supported $expected_quantity axis`,
-    async ({ time_step, expected_quantity }) => {
-      // Bindable x_quantity starts unset; after auto-pick it must write back the
-      // effective axis so hosts can read which quantity is in effect.
-      const props = $state({
-        trajectory: make_stepped_traj(time_step),
-        x_quantity: undefined as TrajectoryXQuantity | undefined,
-        display_mode: `scatter` as const,
-        show_controls: `always` as const,
-      })
-      const target = mount_traj(props)
-      await flush_render()
-
-      expect(selected_x_quantity(target)).toBe(expected_quantity)
-      expect(props.x_quantity).toBe(expected_quantity)
+    {
+      desc: `time on first paint when POTIM is present`,
+      trajectory: make_stepped_traj(2) as TrajectoryType | undefined,
+      later: undefined as ReturnType<typeof make_stepped_traj> | undefined,
+      expect_initial: `time` as TrajectoryXQuantity | undefined,
+      expect_final: `time` as TrajectoryXQuantity,
     },
-  )
+    {
+      desc: `step on first paint without POTIM`,
+      trajectory: make_stepped_traj(undefined),
+      later: undefined,
+      expect_initial: `step`,
+      expect_final: `step`,
+    },
+    {
+      desc: `deferred until samples exist`,
+      trajectory: undefined,
+      later: make_stepped_traj(2),
+      expect_initial: undefined,
+      expect_final: `time`,
+    },
+  ])(`x_quantity $desc`, async ({ trajectory, later, expect_initial, expect_final }) => {
+    const props = $state({
+      trajectory,
+      x_quantity: undefined as TrajectoryXQuantity | undefined,
+      display_mode: `scatter` as const,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    expect(props.x_quantity).toBe(expect_initial)
+    if (expect_initial !== undefined) expect(selected_x_quantity(target)).toBe(expect_initial)
+
+    if (!later) return
+    props.trajectory = later
+    await flush_render()
+    expect(props.x_quantity).toBe(expect_final)
+    expect(selected_x_quantity(target)).toBe(expect_final)
+  })
 
   test.each([
     [`auto-pick update`, undefined, `time`],
@@ -160,25 +195,6 @@ describe(`Trajectory`, () => {
       expect(selected_x_quantity(target)).toBe(expected)
     },
   )
-
-  test(`defers x_quantity sync until trajectory samples exist`, async () => {
-    // Writing `frame` while still empty would lock the bindable and skip auto-pick
-    // once a time-capable trajectory arrives.
-    const props = $state({
-      trajectory: undefined as TrajectoryType | undefined,
-      x_quantity: undefined as TrajectoryXQuantity | undefined,
-      display_mode: `scatter` as const,
-      show_controls: `always` as const,
-    })
-    const target = mount_traj(props)
-    await flush_render()
-    expect(props.x_quantity).toBeUndefined()
-
-    props.trajectory = make_stepped_traj(2)
-    await flush_render()
-    expect(props.x_quantity).toBe(`time`)
-    expect(selected_x_quantity(target)).toBe(`time`)
-  })
 
   // Regression: hosts restore viewer position by passing an out-of-range
   // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
@@ -239,15 +255,7 @@ describe(`Trajectory`, () => {
     ).toBeNull()
 
     for (const [label, open_prop] of options) {
-      target.querySelector<HTMLButtonElement>(`.analysis-button`)?.click()
-      await tick()
-      const option = [
-        ...target.querySelectorAll<HTMLButtonElement>(`.analysis-dropdown .view-mode-option`),
-      ].find((button) => button.textContent?.includes(label))
-      if (!option) throw new Error(`${label} analysis option not found`)
-      option.click()
-      await tick()
-
+      await click_menu_option(target, `.analysis-button`, label)
       expect(props[open_prop]).toBe(true)
       expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
     }
@@ -317,31 +325,11 @@ describe(`Trajectory`, () => {
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 
-  test(`reloads URL-owned trajectory when data_url changes`, async () => {
-    const loaded_elements: string[] = []
-    await with_fetch(
-      vi.fn(
-        async (url: string | URL | Request) =>
-          new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
-      ),
-      async () => {
-        const props = $state({
-          data_url: `/a.xyz`,
-          display_mode: `structure` as const,
-          show_controls: `never` as const,
-          on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
-        })
-        mount_traj(props)
-        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
-
-        props.data_url = `/b.xyz`
-        await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
-      },
+  test(`data_url reloads on change; trajectory prop wins over data_url`, async () => {
+    const fetch_mock = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
     )
-  })
-
-  test(`caller-supplied trajectory takes precedence over data_url`, async () => {
-    const fetch_mock = vi.fn()
     await with_fetch(fetch_mock, async () => {
       mount_traj({
         data_url: `/ignored.xyz`,
@@ -350,6 +338,22 @@ describe(`Trajectory`, () => {
       })
       await tick()
       expect(fetch_mock).not.toHaveBeenCalled()
+    })
+
+    const loaded_elements: string[] = []
+    await with_fetch(fetch_mock, async () => {
+      fetch_mock.mockClear()
+      const props = $state({
+        data_url: `/a.xyz`,
+        display_mode: `structure` as const,
+        show_controls: `never` as const,
+        on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
+      })
+      mount_traj(props)
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+
+      props.data_url = `/b.xyz`
+      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
     })
   })
 

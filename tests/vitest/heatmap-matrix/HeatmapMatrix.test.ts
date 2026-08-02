@@ -108,14 +108,8 @@ describe(`axis replacement`, () => {
 })
 
 describe(`symmetric mode`, () => {
-  test(`runtime true shows both triangles with diagonal labels`, () => {
-    mount_matrix({ symmetric: true })
-    expect(get_data_cells()).toHaveLength(9)
-    expect(get_empty_cells()).toHaveLength(0)
-    expect(get_x_labels().map((label) => label.style.gridRow)).toEqual([`1`, `2`, `3`])
-  })
-
   test.each([
+    { mode: true as const, label: `legacy true`, check: `toBeLessThanOrEqual` as const },
     { mode: `lower` as const, label: `lower`, check: `toBeLessThanOrEqual` as const },
     { mode: `upper` as const, label: `upper`, check: `toBeGreaterThanOrEqual` as const },
   ])(`$label renders triangle + diagonal`, ({ mode, check }) => {

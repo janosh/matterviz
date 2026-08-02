@@ -439,13 +439,17 @@ Si 0 0 0`
       expect((await loader.load_frame(data, 29))?.structure.sites).toHaveLength(3)
     })
 
-    it(`derives indexed XYZ volume from the EXTXYZ lattice`, async () => {
-      const frame = `1\nLattice="2 0 0 0 3 0 0 0 4"\nH 0 0 0\n`
-      const metadata = await new TrajFrameReader(`lattice.extxyz`).extract_plot_metadata(
-        `${frame}${frame}`,
-      )
+    it(`derives volume from valid EXTXYZ lattices and rejects malformed ones`, async () => {
+      const reader = new TrajFrameReader(`lattice.extxyz`)
+      const valid_frame = `1\nLattice="2 0 0 0 3 0 0 0 4"\nH 0 0 0\n`
+      const metadata = await reader.extract_plot_metadata(`${valid_frame}${valid_frame}`)
 
       expect(metadata.map(({ properties }) => properties.volume)).toEqual([24, 24])
+
+      const malformed_frame = `1\nLattice="2 0 0 0 3 0"\nH 0 0 0\n`
+      await expect(reader.extract_plot_metadata(malformed_frame)).rejects.toThrow(
+        `Invalid EXTXYZ Lattice: expected 9 finite numbers`,
+      )
     })
 
     it.each<[string, Record<string, number>]>([

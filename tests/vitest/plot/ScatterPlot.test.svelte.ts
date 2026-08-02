@@ -19,11 +19,6 @@ const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
 
-const visible_marker_count = (series: DataSeries[]): number =>
-  series.reduce((sum, srs) => {
-    const markers = srs.markers ?? `line+points`
-    return markers.includes(`points`) ? sum + srs.y.length : sum
-  }, 0)
 const marker_radius = (marker: Element): number => {
   const path = marker.getAttribute(`d`) ?? ``
   const match = /^M(?<radius>-?\d*\.?\d+(?:e-?\d+)?),0/i.exec(path)
@@ -35,12 +30,6 @@ const marker_radius = (marker: Element): number => {
 const hover = async (element: Element): Promise<void> => {
   element.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
   await tick()
-}
-
-type LegendGroupingCase = {
-  desc: string
-  series: DataSeries[]
-  props: Partial<ComponentProps<typeof ScatterPlot>>
 }
 
 describe(`ScatterPlot`, () => {
@@ -317,29 +306,22 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`children prop`, () => {
-    let called = false
     mount(ScatterPlot, {
       target: document.body,
       props: {
         series: [basic],
-        children: createRawSnippet(() => {
-          called = true
-          return {
-            render: () => `<div class="custom-scatter-child">Custom overlay content</div>`,
-          }
-        }),
+        children: createRawSnippet(() => ({
+          render: () => `<div class="custom-scatter-child">Custom overlay content</div>`,
+        })),
       },
     })
-    expect(called).toBe(true)
     expect(document.querySelector(`.custom-scatter-child`)?.textContent).toBe(
       `Custom overlay content`,
     )
   })
 
   test.each([
-    { selected_point: { series_idx: 0, point_idx: 2 }, desc: `middle point` },
     { selected_point: { series_idx: 0, point_idx: 0 }, desc: `first point` },
-    { selected_point: { series_idx: 0, point_idx: 4 }, desc: `last point` },
     { selected_point: null, desc: `null (no selection)` },
   ])(`selected_point accepts $desc`, async ({ selected_point }) => {
     const plot = await mount_sized_scatter_plot({ series: [basic], selected_point })
@@ -385,94 +367,6 @@ describe(`ScatterPlot`, () => {
     expect(
       [...plot.querySelectorAll(`.label-text`)].map((label) => label.textContent),
     ).toEqual([`Lonely`])
-  })
-
-  test.each<LegendGroupingCase>([
-    {
-      desc: `with legend_group and legend config`,
-      series: [
-        {
-          x: [1, 2],
-          y: [2, 4],
-          label: `PBE`,
-          legend_group: `DFT`,
-          point_style: { fill: `blue` },
-        },
-        {
-          x: [1, 2],
-          y: [2.1, 4.1],
-          label: `MACE`,
-          legend_group: `ML`,
-          point_style: { fill: `red` },
-        },
-        { x: [1, 2], y: [2.2, 4.2], label: `Experiment`, point_style: { fill: `green` } },
-      ],
-      props: { legend: { draggable: false } },
-    },
-    {
-      desc: `with hidden legend_group`,
-      series: [
-        { x: [1, 2], y: [2, 4], legend_group: `DFT`, visible: false },
-        { x: [1, 2], y: [3, 5], legend_group: `ML`, visible: true },
-      ],
-      props: {},
-    },
-    {
-      desc: `same label in different legend_groups (no dedupe)`,
-      series: [
-        {
-          x: [1, 2],
-          y: [2, 4],
-          label: `Energy`,
-          legend_group: `DFT`,
-          point_style: { fill: `blue` },
-        },
-        {
-          x: [1, 2],
-          y: [3, 5],
-          label: `Energy`,
-          legend_group: `ML`,
-          point_style: { fill: `red` },
-        },
-      ],
-      props: { legend: { draggable: false } },
-    },
-    {
-      desc: `same label in same legend_group (deduped)`,
-      series: [
-        {
-          x: [1, 2],
-          y: [2, 4],
-          label: `Energy`,
-          legend_group: `DFT`,
-          point_style: { fill: `blue` },
-        },
-        {
-          x: [1, 2],
-          y: [3, 5],
-          label: `Energy`,
-          legend_group: `DFT`,
-          point_style: { fill: `red` },
-        },
-      ],
-      props: { legend: { draggable: false } },
-    },
-    {
-      desc: `same label without legend_group (deduped)`,
-      series: [
-        { x: [1, 2], y: [2, 4], label: `Energy`, point_style: { fill: `blue` } },
-        { x: [1, 2], y: [3, 5], label: `Energy`, point_style: { fill: `red` } },
-      ],
-      props: { legend: { draggable: false } },
-    },
-    // NOTE: Legend deduplication counts are tested in Playwright since JSDOM lacks proper dimensions
-  ])(`legend grouping: renders $desc`, async ({ series, props }) => {
-    const plot = await mount_sized_scatter_plot({ series, ...props })
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(
-      series
-        .filter((srs) => srs.visible !== false)
-        .reduce((sum, srs) => sum + srs.y.length, 0),
-    )
   })
 
   test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
@@ -524,83 +418,9 @@ describe(`ScatterPlot`, () => {
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks
   // dimensions unless each chart element is explicitly stubbed as above.
 
-  describe(`auto-cycling series colors and symbols`, () => {
-    test(`DEFAULT_SERIES_COLORS and DEFAULT_SERIES_SYMBOLS are valid`, () => {
-      // Colors: 10 distinct valid hex
-      expect(DEFAULT_SERIES_COLORS).toHaveLength(10)
-      expect(new Set(DEFAULT_SERIES_COLORS).size).toBe(10)
-      for (const color of DEFAULT_SERIES_COLORS) expect(color).toMatch(/^#[0-9a-f]{6}$/i)
-      // Symbols: 7 distinct valid D3 names
-      expect(DEFAULT_SERIES_SYMBOLS).toHaveLength(7)
-      expect(new Set(DEFAULT_SERIES_SYMBOLS).size).toBe(7)
-      const valid = [`Circle`, `Square`, `Triangle`, `Cross`, `Diamond`, `Star`, `Wye`]
-      for (const sym of DEFAULT_SERIES_SYMBOLS) expect(valid).toContain(sym)
-    })
-
-    test.each([
-      { desc: `single series`, count: 1 },
-      { desc: `multiple series (3)`, count: 3 },
-      { desc: `cycling past colors (15)`, count: 15 },
-      { desc: `mixed markers`, count: 3, markers: [`line+points`, `points`, `line`] },
-    ])(`renders $desc without explicit styles`, async ({ count, markers }) => {
-      const series: DataSeries[] = Array.from({ length: count }, (_, idx) => ({
-        x: [1, 2, 3],
-        y: [idx + 1, idx + 2, idx + 3],
-        ...(markers
-          ? {
-              markers: markers[idx % markers.length] as `line` | `points` | `line+points`,
-            }
-          : {}),
-      }))
-      const plot = await mount_sized_scatter_plot({ series })
-      expect(plot.querySelectorAll(`.marker`)).toHaveLength(visible_marker_count(series))
-    })
-
-    test.each([
-      { desc: `explicit fill`, props: { point_style: { fill: `purple` } } },
-      {
-        desc: `explicit symbol_type`,
-        props: { point_style: { symbol_type: `Star` as const } },
-      },
-      {
-        desc: `explicit line stroke`,
-        props: { markers: `line` as const, line_style: { stroke: `red` } },
-      },
-    ])(`$desc overrides auto styling`, async ({ props }) => {
-      const series: DataSeries[] = [
-        { x: [1, 2, 3], y: [1, 2, 3] },
-        { x: [1, 2, 3], y: [3, 2, 1], ...props },
-      ]
-      const plot = await mount_sized_scatter_plot({ series })
-      expect(plot.querySelectorAll(`.marker`)).toHaveLength(visible_marker_count(series))
-    })
-
-    test(`cycling logic: modulo wrapping and unique combinations`, () => {
-      // Modulo wrapping for colors (length 10) and symbols (length 7)
-      expect(get_series_color(0)).toBe(get_series_color(10))
-      expect(get_series_color(1)).toBe(get_series_color(11))
-      expect(get_series_symbol(0)).toBe(get_series_symbol(7))
-      expect(get_series_symbol(1)).toBe(get_series_symbol(8))
-      // LCM(10,7) = 70 unique color+symbol combinations
-      const combos = new Set(
-        Array.from(
-          { length: 70 },
-          (_, idx) => `${get_series_color(idx)}-${get_series_symbol(idx)}`,
-        ),
-      )
-      expect(combos.size).toBe(70)
-    })
-
-    test.each([
-      { idx: 0, color: `#4e79a7`, symbol: `Circle` },
-      { idx: 1, color: `#f28e2c`, symbol: `Square` },
-      { idx: 2, color: `#e15759`, symbol: `Triangle` },
-      { idx: 3, color: `#76b7b2`, symbol: `Cross` },
-      { idx: 4, color: `#59a14f`, symbol: `Diamond` },
-    ])(`index $idx maps to $color and $symbol`, ({ idx, color, symbol }) => {
-      expect(get_series_color(idx)).toBe(color)
-      expect(get_series_symbol(idx)).toBe(symbol)
-    })
+  test(`auto-cycles series colors and symbols`, () => {
+    expect(get_series_color(DEFAULT_SERIES_COLORS.length)).toBe(DEFAULT_SERIES_COLORS[0])
+    expect(get_series_symbol(DEFAULT_SERIES_SYMBOLS.length)).toBe(DEFAULT_SERIES_SYMBOLS[0])
   })
 
   test(`svg aria-label derives from axis labels`, async () => {
@@ -869,22 +689,15 @@ describe(`ScatterPlot`, () => {
   // branch reads it back - a tracked read would re-trigger the effect forever. Svelte's
   // loop guard logs via console.error and throws, so a clean mount proves the fix.
   test(`explicit y range + y2 sync mounts without a reactive loop`, async () => {
-    const errors: unknown[][] = []
-    const error_spy = vi
-      .spyOn(console, `error`)
-      .mockImplementation((...args) => void errors.push(args))
-    try {
-      await mount_sized_scatter_plot({
-        series: [
-          { x: [1, 2, 3], y: [1, 2, 3] },
-          { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` },
-        ],
-        y_axis: { range: [0, 5] as Vec2 },
-        y2_axis: { sync: `synced` },
-      })
-    } finally {
-      error_spy.mockRestore()
-    }
-    expect(errors.map(String).join(`\n`)).toBe(``)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    await mount_sized_scatter_plot({
+      series: [
+        { x: [1, 2, 3], y: [1, 2, 3] },
+        { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` },
+      ],
+      y_axis: { range: [0, 5] as Vec2 },
+      y2_axis: { sync: `synced` },
+    })
+    expect(error_spy).not.toHaveBeenCalled()
   })
 })

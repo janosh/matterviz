@@ -403,8 +403,6 @@
   let frame_cache = new SvelteMap<number, TrajectoryFrame>()
   let frame_cache_atom_count = 0
   let frame_cache_owner: TrajectoryType | undefined
-  // Frames currently being read (direct or prefetch) so we don't kick off duplicate loads
-  const inflight_frames = new SvelteSet<number>()
   let streaming_file_path = $derived(
     trajectory?.metadata?.streaming_file_path as string | undefined,
   )
@@ -454,7 +452,6 @@
     if (frame_cache_owner !== trajectory) {
       frame_cache = new SvelteMap()
       frame_cache_atom_count = 0
-      inflight_frames.clear()
       pending_frame_idx = undefined
       frame_cache_owner = trajectory
     }
@@ -503,12 +500,11 @@
   }
 
   const finish_frame_read = (frame_idx: number, prefetch_from_idx?: number) => {
-    inflight_frames.delete(frame_idx)
     frame_read_active = false
     emit_frame_load_state(frame_idx)
     const next_frame_idx = pending_frame_idx
     pending_frame_idx = undefined
-    if (next_frame_idx !== undefined && next_frame_idx === current_step_idx) {
+    if (next_frame_idx === current_step_idx) {
       schedule_frame_load_on_demand(next_frame_idx)
     } else if (prefetch_from_idx !== undefined) {
       prefetch_frames(prefetch_from_idx)
@@ -524,13 +520,8 @@
     const owner = trajectory
     for (const ahead of [1, 2]) {
       const idx = from_idx + ahead
-      if (
-        idx >= total_frames ||
-        untrack(() => frame_cache.has(idx) || inflight_frames.has(idx))
-      )
-        continue
+      if (idx >= total_frames || untrack(() => frame_cache.has(idx))) continue
       frame_read_active = true
-      inflight_frames.add(idx)
       emit_frame_load_state(idx)
       frame_loader
         .load_frame(orig_data || ``, idx)
@@ -548,20 +539,12 @@
     frame_idx: number,
   ): boolean {
     const cached = cache_get(frame_idx)
-    if (cached) {
-      current_frame = cached
-      prefetch_frames(frame_idx)
-      return true
-    }
-
-    const in_memory_frame = load_trajectory.frames[frame_idx]
-    if (in_memory_frame) {
-      cache_put(frame_idx, in_memory_frame)
-      current_frame = in_memory_frame
-      prefetch_frames(frame_idx)
-      return true
-    }
-    return false
+    const frame = cached ?? load_trajectory.frames[frame_idx]
+    if (!frame) return false
+    if (!cached) cache_put(frame_idx, frame)
+    current_frame = frame
+    prefetch_frames(frame_idx)
+    return true
   }
 
   function schedule_frame_load_on_demand(frame_idx: number) {
@@ -577,7 +560,7 @@
     pending_frame_idx = frame_idx
     if (frame_read_active) return
     pending_frame_idx = undefined
-    void load_frame_on_demand(frame_idx)
+    void load_frame_on_demand(load_trajectory, frame_idx)
   }
 
   // Resolve any frame for export. Indexed trajectories hold only the first handful in
@@ -600,25 +583,16 @@
   }
 
   // Load frame on demand - works for both indexed files and external streaming
-  async function load_frame_on_demand(frame_idx: number) {
-    const load_trajectory = trajectory
-    const frame_loader = load_trajectory?.frame_loader
-    if (!load_trajectory || !frame_loader) return
-    ensure_frame_cache_owner()
-
-    if (frame_read_active) {
-      pending_frame_idx = frame_idx
-      return
-    }
+  async function load_frame_on_demand(load_trajectory: TrajectoryType, frame_idx: number) {
+    const frame_loader = load_trajectory.frame_loader
+    if (!frame_loader) return
     const request_id = frame_load_request_id
     const request_is_current = () =>
       request_id === frame_load_request_id &&
       trajectory === load_trajectory &&
       current_step_idx === frame_idx
 
-    if (use_cached_or_in_memory_frame(load_trajectory, frame_idx)) return
     frame_read_active = true
-    inflight_frames.add(frame_idx)
     emit_frame_load_state(frame_idx)
     let prefetch_from_idx: number | undefined
     try {
@@ -884,7 +858,6 @@
     if (scrub_animation_frame !== undefined) return
     scrub_active = true
     if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
-    scrub_settle_timeout = undefined
     scrub_animation_frame = requestAnimationFrame(() => {
       scrub_animation_frame = undefined
       const next_step_idx = pending_scrub_step
