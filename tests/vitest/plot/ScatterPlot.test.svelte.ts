@@ -3,7 +3,7 @@ import type { Vec2 } from '$lib/math'
 import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
-import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, mount_sized, resize_element, svg_query } from '../setup'
 
@@ -86,41 +86,29 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
-    [`points only`, `points`, 5, 3],
-    [`line+points`, `line+points`, 5, 2.5],
-    [`dense points only`, `points`, 101, 2.5],
-    [`dense line+points`, `line+points`, 101, 2],
+    [`points only`, `points`, 5, 3, undefined],
+    [`line+points`, `line+points`, 5, 2.5, undefined],
+    [`dense points only`, `points`, 101, 2.5, undefined],
+    [`dense line+points`, `line+points`, 101, 2, undefined],
+    [`explicit dense line+points`, `line+points`, 101, 6, 6],
   ] as const)(
-    `uses smaller default marker radius for %s`,
-    async (_desc, markers, count, radius) => {
+    `uses the expected marker radius for %s`,
+    async (_desc, markers, count, expected_radius, explicit_radius) => {
       const series = [
         {
           x: Array.from({ length: count }, (_, idx) => idx),
           y: Array.from({ length: count }, (_, idx) => idx % 10),
           markers,
+          point_style: explicit_radius === undefined ? undefined : { radius: explicit_radius },
         },
       ]
       const plot = await mount_sized_scatter_plot({ series, legend: null })
-      expect(marker_radius(plot.querySelector(`.marker`) as Element)).toBeCloseTo(radius, 6)
+      expect(marker_radius(plot.querySelector(`.marker`) as Element)).toBeCloseTo(
+        expected_radius,
+        6,
+      )
     },
   )
-
-  test(`keeps explicit marker radius`, async () => {
-    const count = 101
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        {
-          x: Array.from({ length: count }, (_, idx) => idx),
-          y: Array.from({ length: count }, (_, idx) => idx % 10),
-          markers: `line+points`,
-          point_style: { radius: 6 },
-        },
-      ],
-      legend: null,
-    })
-
-    expect(marker_radius(plot.querySelector(`.marker`) as Element)).toBeCloseTo(6, 6)
-  })
 
   // guards the line_style.curve -> <Line> wiring (the Line unit test alone wouldn't catch
   // ScatterPlot dropping `curve={ls?.curve}`). cubic `C` commands appear only for splines.
@@ -423,6 +411,24 @@ describe(`ScatterPlot`, () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     expect(changes).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenCalledOnce()
+  })
+
+  test(`cancels queued pointer hover when destroyed`, async () => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(400)
+    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)
+    const change = vi.fn()
+    const component = mount(ScatterPlot, {
+      target: document.body,
+      props: { series: [{ x: [0], y: [0] }], change },
+    })
+    flushSync()
+    document
+      .querySelector(`svg`)
+      ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: 1, clientY: 1 }))
+    await unmount(component)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
+    expect(change).not.toHaveBeenCalled()
   })
 
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks

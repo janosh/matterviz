@@ -200,14 +200,17 @@ describe(`Trajectory`, () => {
   // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
   // write back the corrected index and notify on_step_change. Slider bursts
   // commit only their latest event-target value on the next animation frame.
-  test(`clamps out-of-range steps and coalesces slider input`, async () => {
+  test(`clamps steps, coalesces slider input, and settles after callback errors`, async () => {
+    let throw_on_change = false
     const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count`>[] = []
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
-      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) =>
-        step_events.push({ step_idx, frame_count }),
+      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) => {
+        step_events.push({ step_idx, frame_count })
+        if (throw_on_change) throw new Error(`host callback failed`)
+      },
     })
     const target = mount_traj(props)
     await flush_render()
@@ -243,6 +246,22 @@ describe(`Trajectory`, () => {
     expect(step_events.at(-1)).toEqual({ step_idx: 0, frame_count: 3 })
     expect(step_events).toHaveLength(events_before_scrub + 2)
     expect(commit_events).toEqual([1, 0])
+
+    vi.useFakeTimers()
+    try {
+      throw_on_change = true
+      slider.value = `2`
+      slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(trajectory_element.dataset.scrubbing).toBe(`true`)
+      expect(() => vi.advanceTimersToNextFrame()).toThrow(`host callback failed`)
+
+      vi.advanceTimersByTime(81)
+      flushSync()
+      expect(trajectory_element.dataset.scrubbing).toBe(`false`)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // Every finished analysis pane is reachable from the one menu, and each menu entry drives

@@ -1402,6 +1402,7 @@
     info_pane_open ||
     any_analysis_open}
   bind:this={wrapper}
+  data-scrubbing={scrub_active}
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"

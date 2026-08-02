@@ -1515,7 +1515,7 @@
         if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
-        end_queued_mouse_move(true)
+        end_queued_mouse_move(false)
         hovered = false
         tooltip_point = null
         change(null)
