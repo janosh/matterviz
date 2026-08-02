@@ -68,6 +68,7 @@
   import { mirror_scene_props } from '$lib/scene/props.svelte'
   import type { StructureHandlerData } from './index'
   import type { DisplacementSummary } from './measure'
+  import type { TrajectoryLinesStats } from './trajectory-lines'
   import { MAX_SELECTED_SITES } from './measure'
   import {
     ensure_lattice_params,
@@ -140,6 +141,7 @@
     structure = $bindable(),
     reference_structure = undefined,
     displacement_rmsd = $bindable(undefined),
+    trajectory_lines_result = $bindable(null),
     bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
     lattice_props: lattice_props_in = $bindable(),
@@ -240,6 +242,8 @@
     // unrelaxed cell) to `structure`. Same atom count and ordering required.
     reference_structure?: AnyStructure
     displacement_rmsd?: number // (output) RMSD in Angstrom vs reference_structure
+    // (output) vertex/segment counts of the trajectory-trail layer, for cost readouts
+    trajectory_lines_result?: TrajectoryLinesStats | null
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
     // Controls visibility configuration.
@@ -2135,6 +2139,7 @@
           {sym_data}
           {polyhedra_rendered_elements}
           {displacement_summary}
+          {trajectory_lines_result}
           on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
           {reset_text}
           bind:fly_to_request
@@ -2212,6 +2217,7 @@
         bind:add_element
         bind:dragging_atoms
         bind:polyhedra_rendered_elements
+        bind:trajectory_lines_result
       />
     {/snippet}
 

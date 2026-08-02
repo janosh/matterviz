@@ -43,6 +43,8 @@ export { default as StructureExportPane } from './StructureExportPane.svelte'
 export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export { default as StructureViewport } from './StructureViewport.svelte'
+export { default as TrajectoryLines } from './TrajectoryLines.svelte'
+export * from './trajectory-lines'
 export * from './supercell'
 export * from './validation'
 

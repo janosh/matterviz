@@ -134,7 +134,8 @@ export function group_atoms_by_element(elements: readonly string[]): {
 // back costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x 2000 atoms,
 // measured), putting the module's own 512 MB collect budget out of reach. The kernel is
 // still math's verified min_image_displacement, driven over one reused scratch pair.
-// Exported for $lib/vacf, which differentiates the same unwrapped coordinates.
+// Exported for $lib/vacf, which differentiates the same unwrapped coordinates, and for
+// trajectory lines, which draws them.
 export function unwrap_flat_positions(
   positions: Float64Array,
   n_frames: number,

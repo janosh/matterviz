@@ -95,6 +95,13 @@
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
   import { compute_polyhedra, merge_polyhedra_buffers } from './polyhedra'
+  import TrajectoryLines from './TrajectoryLines.svelte'
+  import type {
+    TrajectoryLineColorMode,
+    TrajectoryLinesStats,
+    TrajectoryLineWrapMode,
+  } from './trajectory-lines'
+  import type { TrajectoryPositionStream } from '$lib/trajectory'
 
   type EditableAtomHitTarget = {
     site_idx: number
@@ -244,6 +251,20 @@
     displacement_arrow_scale = DEFAULTS.structure.displacement_arrow_scale,
     displacement_arrow_color = DEFAULTS.structure.displacement_arrow_color,
     displacement_summary = $bindable(null),
+    trajectory_position_stream = null,
+    show_trajectory_lines = DEFAULTS.structure.show_trajectory_lines,
+    trajectory_line_end_frame = undefined,
+    trajectory_line_trail_frames = DEFAULTS.structure.trajectory_line_trail_frames,
+    trajectory_line_frame_stride = DEFAULTS.structure.trajectory_line_frame_stride,
+    trajectory_line_elements = null,
+    trajectory_line_color_mode = DEFAULTS.structure
+      .trajectory_line_color_mode as TrajectoryLineColorMode,
+    trajectory_line_color_scale = DEFAULTS.structure
+      .trajectory_line_color_scale as D3InterpolateName,
+    trajectory_line_wrap_mode = DEFAULTS.structure
+      .trajectory_line_wrap_mode as TrajectoryLineWrapMode,
+    trajectory_line_opacity = DEFAULTS.structure.trajectory_line_opacity,
+    trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -368,6 +389,21 @@
     displacement_arrow_scale?: number
     displacement_arrow_color?: string
     displacement_summary?: measure.DisplacementSummary | null // (output) readout vs reference
+    // Per-atom trajectory trails. Inert unless a caller supplies a whole-trajectory position
+    // stream (accumulate_positions / FrameLoader.stream_positions) — a single structure has
+    // no path to draw, so nothing changes for plain Structure users.
+    trajectory_position_stream?: TrajectoryPositionStream | null
+    show_trajectory_lines?: boolean
+    // Newest collected frame the trails reach; drive from the playhead for a comet tail
+    trajectory_line_end_frame?: number
+    trajectory_line_trail_frames?: number // 0 = whole run
+    trajectory_line_frame_stride?: number
+    trajectory_line_elements?: readonly ElementSymbol[] | null // null = all species
+    trajectory_line_color_mode?: TrajectoryLineColorMode
+    trajectory_line_color_scale?: D3InterpolateName
+    trajectory_line_wrap_mode?: TrajectoryLineWrapMode
+    trajectory_line_opacity?: number
+    trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
   const pulse = create_pulse_animation(
@@ -2095,6 +2131,24 @@
       {#each instanced_bond_groups as group (`bonds`)}
         <Bond {group} />
       {/each}
+
+      <!-- Per-atom trajectory trails: every atom's whole path in one indexed
+        LineSegments (1 draw call no matter how many atoms or frames) -->
+      {#if show_trajectory_lines && trajectory_position_stream}
+        <TrajectoryLines
+          position_stream={trajectory_position_stream}
+          end_frame={trajectory_line_end_frame}
+          trail_frames={trajectory_line_trail_frames}
+          frame_stride={trajectory_line_frame_stride}
+          elements={trajectory_line_elements}
+          color_mode={trajectory_line_color_mode}
+          color_scale={trajectory_line_color_scale}
+          element_colors={colors.element}
+          wrap_mode={trajectory_line_wrap_mode}
+          opacity={trajectory_line_opacity}
+          bind:build_result={trajectory_lines_result}
+        />
+      {/if}
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
         LineSegments (1-2 draw calls regardless of supercell size) -->

@@ -21,6 +21,7 @@
     StructureHandlerData,
   } from '$lib/structure'
   import type { DisplacementSummary } from '$lib/structure/measure'
+  import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
@@ -139,6 +140,7 @@
     add_element = $bindable(`C`),
     dragging_atoms = $bindable(false),
     polyhedra_rendered_elements = $bindable([]),
+    trajectory_lines_result = $bindable(null),
   }: {
     in_grid?: boolean
     active?: boolean
@@ -192,6 +194,7 @@
     add_element?: ElementSymbol
     dragging_atoms?: boolean
     polyhedra_rendered_elements?: string[]
+    trajectory_lines_result?: TrajectoryLinesStats | null
   } = $props()
 
   // Cell-local dimensions (each pane is responsible for its own zoom sizing) and cursor
@@ -511,6 +514,7 @@
         bind:cursor
         bind:dragging_atoms
         bind:polyhedra_rendered_elements
+        bind:trajectory_lines_result
       />
     </Canvas>
   {/key}

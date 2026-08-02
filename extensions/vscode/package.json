@@ -614,6 +614,55 @@
           "default": "#ff7f0e",
           "description": "Color of displacement arrows"
         },
+        "matterviz.structure.show_trajectory_lines": {
+          "type": "boolean",
+          "default": false,
+          "description": "Draw the path each atom traces over the whole trajectory as a polyline (requires a trajectory, not a single structure)"
+        },
+        "matterviz.structure.trajectory_line_trail_frames": {
+          "type": "number",
+          "default": 0,
+          "description": "Length of the trail behind the current frame, in collected frames. 0 draws the whole run; a finite window leaves a comet tail during playback",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "matterviz.structure.trajectory_line_frame_stride": {
+          "type": "number",
+          "default": 1,
+          "description": "Draw every Nth collected frame of the trail. Raise it so a 100k-frame run does not allocate 100k vertices per atom",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "matterviz.structure.trajectory_line_color_mode": {
+          "type": "string",
+          "default": "element",
+          "description": "Color trails by their atom's element (matching the spheres) or by time along the path",
+          "enum": [
+            "element",
+            "time"
+          ]
+        },
+        "matterviz.structure.trajectory_line_color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 color scale ramped along each trail when coloring by time"
+        },
+        "matterviz.structure.trajectory_line_wrap_mode": {
+          "type": "string",
+          "default": "unwrap",
+          "description": "Unwrap paths across periodic boundaries (real diffusion paths, may leave the cell) or keep them wrapped and break the line where an atom crosses a cell face",
+          "enum": [
+            "unwrap",
+            "break"
+          ]
+        },
+        "matterviz.structure.trajectory_line_opacity": {
+          "type": "number",
+          "default": 0.85,
+          "description": "Opacity of trajectory trails. WebGPU draws every line 1 device pixel wide, so opacity is the visual weight control",
+          "minimum": 0.05,
+          "maximum": 1
+        },
         "matterviz.structure.show_cell": {
           "type": "boolean",
           "default": false,

@@ -210,7 +210,18 @@
     font-size: inherit;
     align-self: center;
     --cell-select-accent: var(--accent-color, light-dark(#2563eb, #60a5fa));
-    --cell-select-surface: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    --cell-select-surface: var(
+      --struct-cell-select-bg,
+      var(--menu-bg, light-dark(#fff, #2f3137))
+    );
+    --cell-select-color: var(
+      --struct-cell-select-color,
+      var(--menu-color, light-dark(#1a1a1a, #eee))
+    );
+    --cell-select-hover-surface: var(
+      --struct-cell-select-hover-bg,
+      var(--menu-option-hover-bg, light-dark(#ececef, #3a3d45))
+    );
     --cell-select-border: var(
       --border-color,
       light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.25))
@@ -221,18 +232,15 @@
     padding: var(--struct-legend-padding, 0 4pt);
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
-    color: inherit;
-    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
-    border: 1px solid var(--border-color);
+    color: var(--cell-select-color);
+    background: var(--cell-select-surface);
+    border: 1px solid var(--cell-select-border);
     border-radius: var(--border-radius, 3pt);
     transition: background 0.15s ease;
   }
   @media (hover: hover) {
     .toggle-btn:hover {
-      background: var(
-        --btn-bg-hover,
-        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
-      );
+      background: var(--cell-select-hover-surface);
     }
   }
   .dropdown {

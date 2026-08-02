@@ -21,6 +21,10 @@ import type {
 } from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import type { PolyhedraColorMode } from '$lib/structure/polyhedra'
+import type {
+  TrajectoryLineColorMode,
+  TrajectoryLineWrapMode,
+} from '$lib/structure/trajectory-lines'
 import { merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
@@ -261,6 +265,15 @@ export interface SettingsConfig {
     show_displacement_arrows: SettingType<boolean>
     displacement_arrow_scale: SettingType<number>
     displacement_arrow_color: SettingType<string>
+    // Per-atom trajectory trails (needs a whole-trajectory position stream, so only the
+    // trajectory viewer can turn these on)
+    show_trajectory_lines: SettingType<boolean>
+    trajectory_line_trail_frames: SettingType<number>
+    trajectory_line_frame_stride: SettingType<number>
+    trajectory_line_color_mode: SettingType<TrajectoryLineColorMode>
+    trajectory_line_color_scale: SettingType<D3InterpolateName>
+    trajectory_line_wrap_mode: SettingType<TrajectoryLineWrapMode>
+    trajectory_line_opacity: SettingType<number>
     show_cell: SettingType<boolean>
     show_cell_vectors: SettingType<boolean>
     cell_edge_opacity: SettingType<number>
@@ -949,6 +962,42 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     displacement_arrow_color: {
       value: `#ff7f0e`,
       description: `Color of displacement arrows`,
+    },
+    show_trajectory_lines: {
+      value: false,
+      description: `Draw the path each atom traces over the whole trajectory as a polyline (requires a trajectory, not a single structure)`,
+    },
+    trajectory_line_trail_frames: {
+      value: 0,
+      description: `Length of the trail behind the current frame, in collected frames. 0 draws the whole run; a finite window leaves a comet tail during playback`,
+      minimum: 0,
+      maximum: 10000,
+    },
+    trajectory_line_frame_stride: {
+      value: 1,
+      description: `Draw every Nth collected frame of the trail. Raise it so a 100k-frame run does not allocate 100k vertices per atom`,
+      minimum: 1,
+      maximum: 1000,
+    },
+    trajectory_line_color_mode: {
+      value: `element`,
+      description: `Color trails by their atom's element (matching the spheres) or by time along the path`,
+      enum: { element: `Element`, time: `Time` },
+    },
+    trajectory_line_color_scale: {
+      value: `interpolateViridis`,
+      description: `D3 color scale ramped along each trail when coloring by time`,
+    },
+    trajectory_line_wrap_mode: {
+      value: `unwrap`,
+      description: `Unwrap paths across periodic boundaries (real diffusion paths, may leave the cell) or keep them wrapped and break the line where an atom crosses a cell face`,
+      enum: { unwrap: `Unwrap (continuous)`, break: `Break at cell crossings` },
+    },
+    trajectory_line_opacity: {
+      value: 0.85,
+      description: `Opacity of trajectory trails. WebGPU draws every line 1 device pixel wide, so opacity is the visual weight control`,
+      minimum: 0.05,
+      maximum: 1,
     },
     show_cell: { value: false, description: `Display system cell` },
     show_cell_vectors: { value: true, description: `Display cell vectors` },

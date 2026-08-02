@@ -159,6 +159,25 @@ test.describe(`Structure Component Tests`, () => {
     await expect(supercell).toHaveCSS(`opacity`, `0`)
   })
 
+  test(`CellSelect toggle has an opaque theme-aware surface`, async ({ page }) => {
+    const structure = page.locator(`#test-structure`)
+    const toggle = structure.locator(`.cell-select .toggle-btn`)
+    const expect_colors = async (
+      color_scheme: `light` | `dark`,
+      background: string,
+      color: string,
+    ) => {
+      await page.evaluate((scheme) => {
+        document.documentElement.style.colorScheme = scheme
+      }, color_scheme)
+      await expect(toggle).toHaveCSS(`background-color`, background)
+      await expect(toggle).toHaveCSS(`color`, color)
+    }
+
+    await expect_colors(`light`, `rgb(255, 255, 255)`, `rgb(26, 26, 26)`)
+    await expect_colors(`dark`, `rgb(47, 49, 55)`, `rgb(238, 238, 238)`)
+  })
+
   test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
     await page.locator(`[data-testid="canvas-width-input"]`).fill(`260`)
     await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`260`)
