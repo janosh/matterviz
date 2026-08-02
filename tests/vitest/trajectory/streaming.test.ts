@@ -14,6 +14,12 @@ import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
 
+const settle_frame_load = async (): Promise<void> => {
+  await Promise.resolve()
+  flushSync()
+  await tick()
+}
+
 it(`large-file fallback thresholds stay in sync with the settings schema`, () => {
   // Plain component usage (no loading_options) and settings-driven contexts (VSCode
   // extension) must agree on when large-file/indexed loading kicks in
@@ -137,32 +143,57 @@ describe(`Trajectory Streaming`, () => {
     expect(warnings?.every((msg) => msg.includes(`unknown element symbol`))).toBe(true)
   })
 
-  it(`bounds indexed reads and loads the latest requested frame next`, async () => {
+  it(`bounds indexed reads and loads only the latest queued frame`, async () => {
     mount(TrajectoryRaceHarness, { target: document.body })
-    const settle_frame_load = async () => {
-      await Promise.resolve()
-      flushSync()
-      await tick()
-    }
     await settle_frame_load()
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
+    for (const step_idx of [1, 2, 3, 4]) {
+      document.querySelector<HTMLButtonElement>(`[data-testid="step-${step_idx}"]`)?.click()
+    }
     await settle_frame_load()
-    // Frame 1 is queued, not started alongside the still-pending frame 0 read.
+    // Frame 4 replaces intermediate targets but does not start beside frame 0.
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0`)
 
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
     await settle_frame_load()
-    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,4`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
-    await settle_frame_load()
-    // Site cards are the probe for which frame is displayed, and the info pane only
-    // renders them while open.
     document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
     await tick()
-    expect(document.body.textContent).toContain(`Cart. (1, 0, 0)`)
+    expect(document.body.textContent).not.toContain(`Cart. (0, 0, 0)`)
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-4"]`)?.click()
+    await settle_frame_load()
+    document.querySelector<HTMLButtonElement>(`.structure-info-toggle`)?.click()
+    await tick()
+    expect(document.body.textContent).toContain(`Cart. (4, 0, 0)`)
+  })
+
+  it(`prefetches adjacent frames despite a sampled frame index`, async () => {
+    mount(TrajectoryRaceHarness, { target: document.body })
+    await settle_frame_load()
+    const trajectory_element = document.querySelector<HTMLElement>(`.trajectory`)
+    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const load_events: { frame_idx: number; inflight: number }[] = []
+    trajectory_element.addEventListener(`matterviz:trajectory-load-state`, (event) => {
+      const { frame_idx, inflight } = (
+        event as CustomEvent<{ frame_idx: number; inflight: number }>
+      ).detail
+      load_events.push({ frame_idx, inflight })
+    })
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
+    await settle_frame_load()
+
+    expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
+    expect(load_events).toEqual(
+      expect.arrayContaining([
+        { frame_idx: 0, inflight: 0 },
+        { frame_idx: 1, inflight: 1 },
+      ]),
+    )
   })
 
   describe(`Frame Indexing`, () => {
@@ -439,17 +470,27 @@ Si 0 0 0`
       expect((await loader.load_frame(data, 29))?.structure.sites).toHaveLength(3)
     })
 
-    it(`derives volume from valid EXTXYZ lattices and rejects malformed ones`, async () => {
+    it(`derives valid EXTXYZ volumes and skips malformed lattice metadata`, async () => {
       const reader = new TrajFrameReader(`lattice.extxyz`)
       const valid_frame = `1\nLattice="2 0 0 0 3 0 0 0 4"\nH 0 0 0\n`
       const metadata = await reader.extract_plot_metadata(`${valid_frame}${valid_frame}`)
 
       expect(metadata.map(({ properties }) => properties.volume)).toEqual([24, 24])
 
-      const malformed_frame = `1\nLattice="2 0 0 0 3 0"\nH 0 0 0\n`
-      await expect(reader.extract_plot_metadata(malformed_frame)).rejects.toThrow(
-        `Invalid EXTXYZ Lattice: expected 9 finite numbers`,
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      const malformed_frame = `1\nstep=7 energy=-2 Lattice="2 0 0 0 3 0"\nH 0 0 0\n`
+      expect(await reader.extract_plot_metadata(malformed_frame)).toEqual([
+        {
+          frame_number: 0,
+          step: 7,
+          properties: { energy: -2 },
+        },
+      ])
+      expect(warn).toHaveBeenCalledWith(
+        `Skipping malformed EXTXYZ lattice volume for frame 0:`,
+        expect.any(Error),
       )
+      warn.mockRestore()
     })
 
     it.each<[string, Record<string, number>]>([

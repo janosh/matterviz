@@ -357,12 +357,24 @@
 
   // Convert source-frame playhead to collected frames; collection and scrub deferral remain
   // owned by the trajectory interaction pipeline.
+  let trail_end_owner: TrajectoryPositionStream | null = null
+  let settled_trail_end_frame: number | undefined
+  let trajectory_line_end_frame = $derived.by(() => {
+    if (!trail_stream) {
+      trail_end_owner = null
+      settled_trail_end_frame = undefined
+      return undefined
+    }
+    if (trail_stream !== trail_end_owner || !scrub_active) {
+      trail_end_owner = trail_stream
+      settled_trail_end_frame = collected_frame_idx(trail_stream, current_step_idx)
+    }
+    return settled_trail_end_frame
+  })
   let trail_scene_props = $derived({
     ...structure_props.scene_props,
     trajectory_position_stream: trajectory_lines_available ? trail_stream : undefined,
-    trajectory_line_end_frame: trail_stream
-      ? collected_frame_idx(trail_stream, current_step_idx)
-      : undefined,
+    trajectory_line_end_frame,
     show_trajectory_lines,
     defer_expensive_geometry: scrub_active,
   })
@@ -834,10 +846,7 @@
 
   // Check if there are any Y2 series to determine padding
   let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
-  // Report the current step to on_step_change consumers. Also wired to the step
-  // slider/number input whose bind:value bypasses the navigation functions
-  // below — those handlers pass the event target's value explicitly because
-  // bind:value may not have written the binding yet when oninput fires.
+  // Report the current step to consumers after explicit slider, input, or plot navigation.
   function notify_step_change(step_idx: number = current_step_idx) {
     if (!trajectory || !Number.isFinite(step_idx)) return
     const last_frame = Math.max(total_frames - 1, 0)

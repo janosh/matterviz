@@ -217,6 +217,12 @@ describe(`Trajectory`, () => {
 
     const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
     if (!slider) throw new Error(`step slider not found`)
+    const trajectory_element = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const commit_events: number[] = []
+    trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
+      commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
+    })
     const events_before_scrub = step_events.length
     for (const value of [`0`, `1`, `0`, `1`]) {
       slider.value = value
@@ -227,6 +233,16 @@ describe(`Trajectory`, () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
     expect(step_events).toHaveLength(events_before_scrub + 1)
+    expect(commit_events).toEqual([1])
+
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.value = `0`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(step_events.at(-1)).toEqual({ step_idx: 0, frame_count: 3 })
+    expect(step_events).toHaveLength(events_before_scrub + 2)
+    expect(commit_events).toEqual([1, 0])
   })
 
   // Every finished analysis pane is reachable from the one menu, and each menu entry drives

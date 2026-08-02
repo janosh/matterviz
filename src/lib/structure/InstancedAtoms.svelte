@@ -37,7 +37,7 @@
     sphere_segments?: number
     // edit-mode PBC image atoms: desaturated + translucent
     ghost?: boolean
-    // Fast trajectory-scrub path: topology, radii, and colors stay unchanged.
+    // Fast trajectory-scrub path: apply positions/radii but skip unchanged color uploads.
     positions_only?: boolean
     // threlte interactivity handlers (onpointerenter, onclick, ...) forwarded to the mesh
     [key: string]: unknown
@@ -105,7 +105,6 @@
   // Unmount-only cleanup (a cleanup on the effect above would dispose the mesh
   // on every re-run, including runs that keep it; cleanups run untracked)
   $effect(() => () => mesh?.dispose())
-
   $effect(() => {
     if (mesh && mesh.geometry !== geometry) {
       mesh.geometry = geometry

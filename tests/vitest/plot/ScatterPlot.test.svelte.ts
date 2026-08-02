@@ -372,6 +372,7 @@ describe(`ScatterPlot`, () => {
   test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
     const changes = vi.fn()
     const on_point_hover = vi.fn()
+    const on_pointer_leave = vi.fn()
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
       x_axis: { range: [0, 1] },
@@ -379,6 +380,7 @@ describe(`ScatterPlot`, () => {
       point_tween: { duration: 0 },
       change: changes,
       on_point_hover,
+      on_pointer_leave,
       legend: null,
     })
     const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
@@ -404,9 +406,11 @@ describe(`ScatterPlot`, () => {
 
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(changes).toHaveBeenLastCalledWith(null)
+    expect(on_pointer_leave).toHaveBeenCalledOnce()
 
     changes.mockClear()
     on_point_hover.mockClear()
+    on_pointer_leave.mockClear()
     for (const { x, y } of marker_coords) {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
@@ -415,6 +419,7 @@ describe(`ScatterPlot`, () => {
     expect(changes).toHaveBeenLastCalledWith(null)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
+    expect(on_pointer_leave).toHaveBeenCalledOnce()
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     expect(changes).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenCalledOnce()

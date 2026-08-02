@@ -55,10 +55,6 @@ export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `u
 export type TrajectoryInspectorTab = `frames` | `atoms`
 export type { AtomTypeMapping } from './types'
 
-// Debounce for on-demand frame loads while scrubbing: skips fetches for steps
-// the user slides past. Exported so tests stay in sync with the real delay.
-export const FRAME_LOAD_DEBOUNCE_MS = 75
-
 // Splitting side by side halves the width but keeps the full height, so the
 // panes come out twice as tall relative to their width as the container is.
 // A nearly square container therefore yields tall narrow panes, which a
