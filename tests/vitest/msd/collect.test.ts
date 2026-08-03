@@ -1,10 +1,9 @@
 import type { ElementSymbol } from '$lib/element'
+import type { MsdPositions, MsdResult } from '$lib/msd'
 import {
   calc_msd,
   collect_msd_positions,
   has_all_frames_in_memory,
-  type MsdPositions,
-  type MsdResult,
   MsdPlot,
   suggest_msd_frame_stride,
 } from '$lib/msd'

@@ -6,6 +6,7 @@ import { download } from '$lib/io/fetch'
 import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from '$lib/trajectory'
 import { TrajectoryExportPane } from '$lib/trajectory'
 import { full_data_extractor } from '$lib/trajectory/extract'
+import type { TrajectoryPropertyTable } from '$lib/trajectory/file-export'
 import {
   collect_frame_property_rows,
   create_poscar_frame_range_zip,
@@ -15,7 +16,6 @@ import {
   serialize_extxyz_frame_range,
   trajectory_export_basename,
   trajectory_frame_to_extxyz_str,
-  type TrajectoryPropertyTable,
 } from '$lib/trajectory/file-export'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { unzipSync } from 'fflate'

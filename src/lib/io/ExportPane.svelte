@@ -1,10 +1,6 @@
 <script lang="ts">
-  import {
-    create_clipboard_feedback,
-    DraggablePane,
-    type PaneProps,
-    type PaneToggleProps,
-  } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { create_clipboard_feedback, DraggablePane } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'

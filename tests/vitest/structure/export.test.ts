@@ -21,6 +21,7 @@ import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
+import type { MeshPhongMaterial } from 'three/webgpu'
 import {
   BufferGeometry,
   Color,
@@ -29,7 +30,6 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
-  type MeshPhongMaterial,
   MeshStandardMaterial,
   Scene,
   ShaderMaterial,

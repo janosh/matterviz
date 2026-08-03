@@ -1,6 +1,10 @@
 // Wire protocol shared by the parse worker (parse-worker.ts) and its main-thread
 // client (parse-in-worker.ts). Kept in its own module so the worker never pulls in
 // the client (which constructs the worker) and vice versa.
+//
+// MessagePort.postMessage takes no targetOrigin (that's window.postMessage), so
+// unicorn's require-post-message-target-origin is a false positive here.
+// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ParseProgress } from '$lib/trajectory'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
@@ -43,6 +47,18 @@ export interface FrameWorkerResponse {
 
 const INDEXED_XYZ_MIN_CHARS = 1024 * 1024
 const INDEXED_XYZ_MIN_FRAMES = 64
+
+// Best-effort dispose for a transferred frame port the client never bound (stale
+// reply, id mismatch, clone failure). Active loaders use their own RPC dispose.
+export const dispose_frame_port = (frame_port: MessagePort | undefined): void => {
+  if (!frame_port) return
+  try {
+    frame_port.postMessage({ id: 0, method: `dispose`, args: [] })
+  } catch {
+    // Port may already be closed / detached.
+  }
+  frame_port.close()
+}
 
 // Whether a worker parse should build a frame index instead of materializing every
 // frame: only multi-frame plain-text XYZ that is either large or long is worth it.

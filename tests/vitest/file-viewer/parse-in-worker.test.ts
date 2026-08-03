@@ -71,6 +71,11 @@ const make_worker_factory = (...workers: WorkerLike[]) => {
   return vi.fn<() => WorkerLike>(() => workers[Math.min(worker_idx++, workers.length - 1)])
 }
 
+const make_stalled_then = (...next: WorkerLike[]) => {
+  const stalled = make_fake_worker(() => null)
+  return { stalled, worker_factory: make_worker_factory(stalled, ...next) }
+}
+
 afterEach(() => {
   reset_parse_worker()
   vi.useRealTimers()
@@ -274,10 +279,9 @@ describe(`parse_in_worker`, () => {
   })
 
   it(`does not start queued jobs sharing an aborted signal`, async () => {
-    const stalled_worker = make_fake_worker(() => null)
     const replacement_worker = make_successful_worker()
     const replacement_post = vi.spyOn(replacement_worker, `postMessage`)
-    const worker_factory = make_worker_factory(stalled_worker, replacement_worker)
+    const { worker_factory } = make_stalled_then(replacement_worker)
     const controller = new AbortController()
     const worker_options = { worker_factory, signal: controller.signal }
     const parses = [
@@ -345,9 +349,7 @@ describe(`parse_in_worker`, () => {
 
   it(`times out the active worker and continues the queued parse off-thread`, async () => {
     vi.useFakeTimers()
-    const stalled_worker = make_fake_worker(() => null)
-    const replacement_worker = make_successful_worker()
-    const worker_factory = make_worker_factory(stalled_worker, replacement_worker)
+    const { stalled, worker_factory } = make_stalled_then(make_successful_worker())
     const fallback_parse = vi.fn().mockResolvedValue(structure_result)
     const timed_out = parse_in_worker(`large`, `slow.h5`, true, {
       worker_factory,
@@ -363,7 +365,7 @@ describe(`parse_in_worker`, () => {
 
     await expect(timed_out).resolves.toEqual(structure_result)
     await expect(queued).resolves.toEqual(structure_result)
-    expect(stalled_worker.terminate).toHaveBeenCalledOnce()
+    expect(stalled.terminate).toHaveBeenCalledOnce()
     expect(worker_factory).toHaveBeenCalledTimes(2)
     expect(fallback_parse).toHaveBeenCalledOnce()
   })
@@ -371,7 +373,6 @@ describe(`parse_in_worker`, () => {
   it.each([`error`, `message`] as const)(
     `ignores late %s events from a terminated worker`,
     async (event_type) => {
-      const stalled_worker = make_fake_worker(() => null)
       const fallback_parse = vi.fn()
       const controller = new AbortController()
       let replacement_request: ParseWorkerRequest | undefined
@@ -379,7 +380,7 @@ describe(`parse_in_worker`, () => {
         replacement_request = request
         return null
       })
-      const worker_factory = make_worker_factory(stalled_worker, replacement_worker)
+      const { stalled: stalled_worker, worker_factory } = make_stalled_then(replacement_worker)
       const cancelled = parse_in_worker(`large`, `cancelled.h5`, true, {
         worker_factory,
         fallback_parse,
@@ -630,20 +631,38 @@ describe(`parse_in_worker`, () => {
     }
   })
 
-  it(`routes LARGE_FILE markers straight to the main thread (host bridge)`, async () => {
-    const worker_factory = vi.fn()
-    const fallback_parse = vi.fn().mockResolvedValue(structure_result)
-
-    const marker = `LARGE_FILE:/tmp/huge.extxyz:268435456`
-    const result = await parse_in_worker(marker, `huge.extxyz`, false, {
-      worker_factory,
-      fallback_parse,
-    })
-
-    expect(result).toEqual(structure_result)
-    expect(worker_factory).not.toHaveBeenCalled()
-    expect(fallback_parse).toHaveBeenCalledWith(marker, `huge.extxyz`, false)
-  })
+  it.each([
+    {
+      label: `valid marker`,
+      content: `LARGE_FILE:/tmp/huge.extxyz:268435456`,
+      filename: `huge.extxyz`,
+      is_base64: false,
+      fallback: () => vi.fn().mockResolvedValue(structure_result),
+      expected: structure_result,
+    },
+    {
+      label: `malformed marker`,
+      content: `LARGE_FILE:/tmp/file:not-a-number`,
+      filename: `file.h5`,
+      is_base64: true,
+      fallback: () => vi.fn().mockRejectedValue(new Error(`Malformed large file size`)),
+      expected: `Malformed large file size`,
+    },
+  ])(
+    `routes LARGE_FILE $label to fallback without a worker`,
+    async ({ content, filename, is_base64, fallback, expected }) => {
+      const worker_factory = vi.fn()
+      const fallback_parse = fallback()
+      const parsing = parse_in_worker(content, filename, is_base64, {
+        worker_factory,
+        fallback_parse,
+      })
+      if (typeof expected === `string`) await expect(parsing).rejects.toThrow(expected)
+      else await expect(parsing).resolves.toEqual(expected)
+      expect(worker_factory).not.toHaveBeenCalled()
+      expect(fallback_parse).toHaveBeenCalledExactlyOnceWith(content, filename, is_base64)
+    },
+  )
 
   it(`reset aborts an active LARGE_FILE fallback`, async () => {
     const deferred_parse = Promise.withResolvers<ParseResult>()
@@ -695,20 +714,5 @@ describe(`parse_in_worker`, () => {
     await vi.waitFor(() => expect(fallback_parse).toHaveBeenCalledTimes(2))
     await expect(queued).resolves.toEqual(structure_result)
     deferred_parse.resolve(structure_result)
-  })
-
-  it(`routes malformed LARGE_FILE markers to fallback validation`, async () => {
-    const worker_factory = vi.fn()
-    const marker_error = new Error(`Malformed large file size`)
-    const fallback_parse = vi.fn().mockRejectedValue(marker_error)
-
-    await expect(
-      parse_in_worker(`LARGE_FILE:/tmp/file:not-a-number`, `file.h5`, true, {
-        worker_factory,
-        fallback_parse,
-      }),
-    ).rejects.toThrow(marker_error.message)
-    expect(worker_factory).not.toHaveBeenCalled()
-    expect(fallback_parse).toHaveBeenCalledTimes(1)
   })
 })

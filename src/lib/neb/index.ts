@@ -15,13 +15,11 @@ import type { Pbc } from '$lib/structure/pbc'
 export * from './parse'
 export {
   analyze_barrier,
-  type BarrierAnalysis,
   path_profile,
   path_spline,
-  type PathSpline,
-  type PathSplineOptions,
   reaction_coordinate,
 } from './reaction-path'
+export type { BarrierAnalysis, PathSpline, PathSplineOptions } from './reaction-path'
 export { default as NebPlot } from './NebPlot.svelte'
 export { default as NebViewer } from './NebViewer.svelte'
 

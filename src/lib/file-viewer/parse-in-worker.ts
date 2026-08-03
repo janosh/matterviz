@@ -20,14 +20,15 @@ import type {
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { to_error } from '$lib/utils'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-import { parse_file_content, type ParseResult } from './parse'
-import {
-  should_index_worker_xyz,
-  type FrameWorkerMethod,
-  type FrameWorkerResponse,
-  type ParseWorkerRequest,
-  type ParseWorkerResponse,
+import type { ParseResult } from './parse'
+import { parse_file_content } from './parse'
+import type {
+  FrameWorkerMethod,
+  FrameWorkerResponse,
+  ParseWorkerRequest,
+  ParseWorkerResponse,
 } from './parse-worker-protocol'
+import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
 
 export * from './parse-worker-protocol'
 
@@ -85,23 +86,13 @@ interface ParseJob {
   abort_request: () => void
 }
 
-const dispose_unbound_frame_port = (frame_port: MessagePort | undefined): void => {
-  if (!frame_port) return
-  try {
-    frame_port.postMessage({ id: 0, method: `dispose`, args: [] })
-  } catch {
-    // The worker may already have closed its end of the transferred port.
-  }
-  frame_port.close()
-}
-
 const bind_indexed_frame_loader = (
   result: ParseResult,
   frame_port: MessagePort | undefined,
 ): ParseResult => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
   if (trajectory?.is_indexed !== true) {
-    dispose_unbound_frame_port(frame_port)
+    dispose_frame_port(frame_port)
     return result
   }
   if (!frame_port) throw new Error(`Indexed parse worker result is missing its frame port`)
@@ -290,13 +281,9 @@ const handle_worker_message = (
   event: MessageEvent<ParseWorkerResponse>,
 ): void => {
   const { id, result, error, frame_port } = event.data ?? {}
-  if (shared_worker !== worker) {
-    dispose_unbound_frame_port(frame_port)
-    return
-  }
-  const job = queued_jobs[0]
+  const job = shared_worker === worker ? queued_jobs[0] : undefined
   if (job?.phase !== `worker` || job.request.id !== id) {
-    dispose_unbound_frame_port(frame_port)
+    dispose_frame_port(frame_port)
     return
   }
   if (!result) {

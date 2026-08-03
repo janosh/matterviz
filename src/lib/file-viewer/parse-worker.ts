@@ -10,12 +10,12 @@
 import type { FrameLoader, ParseProgress } from '$lib/trajectory'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { parse_file_content } from './parse'
-import {
-  type FrameWorkerRequest,
-  type ParseWorkerRequest,
-  type ParseWorkerResponse,
-  should_index_worker_xyz,
+import type {
+  FrameWorkerRequest,
+  ParseWorkerRequest,
+  ParseWorkerResponse,
 } from './parse-worker-protocol'
+import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
 
 const error_message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -120,12 +120,7 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
       // The DOM lib types `self` as Window; the worker scope takes the list.
       ;(self as unknown as Worker).postMessage(response, transfer)
     } catch (error) {
-      try {
-        response.frame_port?.postMessage({ id: 0, method: `dispose`, args: [] })
-      } catch {
-        // The failed transfer may already have detached the port.
-      }
-      response.frame_port?.close()
+      dispose_frame_port(response.frame_port)
       self.postMessage({
         id,
         error: `Failed to clone parse result: ${error_message(error)}`,

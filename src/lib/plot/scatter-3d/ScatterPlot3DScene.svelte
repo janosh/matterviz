@@ -18,12 +18,8 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import {
-    bind_renderer,
-    create_orthographic_zoom,
-    Gizmo,
-    type GizmoOptions,
-  } from '$lib/scene'
+  import type { GizmoOptions } from '$lib/scene'
+  import { bind_renderer, create_orthographic_zoom, Gizmo } from '$lib/scene'
   import { T, useTask } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
