@@ -364,10 +364,12 @@
   let live_code_html = $derived.by(() => {
     // Build config lines with highlighting
     const config_lines: string[] = []
-    config_lines.push(`  ${prop(`invalid_values`)}: ${str(invalid_mode)},`)
-    config_lines.push(`  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`)
-    config_lines.push(`  ${prop(`window_size`)}: ${num(window_size)},`)
-    config_lines.push(`  ${prop(`truncation_mode`)}: ${str(truncation_mode)},`)
+    config_lines.push(
+      `  ${prop(`invalid_values`)}: ${str(invalid_mode)},`,
+      `  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`,
+      `  ${prop(`window_size`)}: ${num(window_size)},`,
+      `  ${prop(`truncation_mode`)}: ${str(truncation_mode)},`,
+    )
 
     if (apply_bounds) {
       config_lines.push(

@@ -1,5 +1,6 @@
 import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
+import type { StructureFitOpts } from '$lib/structure'
 import {
   camera_position_for_target,
   DEFAULT_FIT_PADDING,
@@ -13,7 +14,6 @@ import {
   perspective_distance_for_extent,
   structure_fit_frame,
   VECTOR_PALETTE,
-  type StructureFitOpts,
 } from '$lib/structure'
 import { glob_text, structure_files, structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'

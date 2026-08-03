@@ -201,6 +201,7 @@
   let camera_projection = $derived(camera_projection_init)
   let auto_rotate = $derived(auto_rotate_init)
   let controls = $derived({ show: true, open: false, ...controls_init })
+  let controls_open = $derived(controls.open)
 
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
@@ -340,6 +341,7 @@
     <!-- Control pane -->
     {#if controls.show}
       <ScatterPlot3DControls
+        bind:open={controls_open}
         toggle_props={{
           ...controls.toggle_props,
           style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${

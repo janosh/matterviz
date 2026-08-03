@@ -102,21 +102,20 @@ export function generate_mtl_content(scene: Scene): string {
 
       // Get diffuse color (main color), defaulting to white
       const color = has_color_property(mat) ? mat.color : { r: 1, g: 1, b: 1 }
-      lines.push(`Kd ${encode_srgb(color, 1)}`)
-      // Ambient is typically a fraction of diffuse
-      lines.push(`Ka ${encode_srgb(color, 0.2)}`)
-
-      // Specular properties
-      lines.push(`Ks 0.500000 0.500000 0.500000`)
-      lines.push(`Ns 96.078431`) // Specular exponent
+      lines.push(
+        `Kd ${encode_srgb(color, 1)}`,
+        `Ka ${encode_srgb(color, 0.2)}`, // Ambient is typically a fraction of diffuse
+        `Ks 0.500000 0.500000 0.500000`,
+        `Ns 96.078431`, // Specular exponent
+      )
 
       // Transparency (d = 1.0 is fully opaque)
       const opacity = `opacity` in mat && typeof mat.opacity === `number` ? mat.opacity : 1.0
-      lines.push(`d ${opacity.toFixed(6)}`)
-
-      // Illumination model (2 = highlight on)
-      lines.push(`illum 2`)
-      lines.push(``)
+      lines.push(
+        `d ${opacity.toFixed(6)}`,
+        `illum 2`, // Illumination model (2 = highlight on)
+        ``,
+      )
     }
   })
 
@@ -476,14 +475,15 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     }
   }
 
-  lines.push(``)
-
-  // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
-  // full P1 list, so without it parsers would re-apply the H-M ops and multiply sites
-  lines.push(`loop_`, `_symmetry_equiv_pos_as_xyz`, `  'x, y, z'`, ``)
-
-  // Atom site loop header
   lines.push(
+    ``,
+    // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
+    // full P1 list, so without it parsers would re-apply the H-M ops and multiply sites
+    `loop_`,
+    `_symmetry_equiv_pos_as_xyz`,
+    `  'x, y, z'`,
+    ``,
+    // Atom site loop header
     `loop_`,
     `_atom_site_label`,
     `_atom_site_type_symbol`,
@@ -536,8 +536,7 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
     structure.id || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
     (formula && formula !== `Unknown` ? formula : null) || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
     `Generated from structure`
-  lines.push(title)
-  lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)
+  lines.push(title, `1.0`) // Scale factor (1.0 for direct coordinates)
 
   const lattice = structure.lattice
   if (lattice.matrix && Array.isArray(lattice.matrix) && lattice.matrix.length >= 3) {
@@ -558,11 +557,11 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
     else sites_by_element.set(element_symbol, [site])
   }
 
-  // Element symbols line
-  lines.push([...sites_by_element.keys()].join(` `))
-
-  // Atom counts line
-  lines.push([...sites_by_element.values()].map((group) => group.length).join(` `))
+  // Element symbols and atom counts
+  lines.push(
+    [...sites_by_element.keys()].join(` `),
+    [...sites_by_element.values()].map((group) => group.length).join(` `),
+  )
 
   const has_selective_dynamics = has_move_flags(structure)
   if (has_selective_dynamics) {

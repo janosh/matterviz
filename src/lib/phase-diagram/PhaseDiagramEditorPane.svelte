@@ -67,7 +67,7 @@
 </script>
 
 <DraggablePane
-  bind:show={editor_open}
+  bind:open={editor_open}
   persistent
   pane_props={{ class: `pd-editor-pane` }}
   toggle_props={{

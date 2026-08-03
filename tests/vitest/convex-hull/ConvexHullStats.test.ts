@@ -602,10 +602,13 @@ describe(`ConvexHullStats`, () => {
     ])(`exports $format via dropdown and closes menu`, ({ format, ext, mime_type }) => {
       const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
       const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+      let downloaded_as = ``
+      // download() clicks a detached anchor; capture filename from the click target
       const anchor_click = vi
         .spyOn(HTMLAnchorElement.prototype, `click`)
-        .mockImplementation(() => {})
-      const append = vi.spyOn(document.body, `append`)
+        .mockImplementation(function (this: HTMLAnchorElement) {
+          downloaded_as = this.download
+        })
       try {
         mount_stats_table(export_props)
         doc_query(`.table-container .dropdown-wrapper .icon-btn`).click()
@@ -622,14 +625,11 @@ describe(`ConvexHullStats`, () => {
         expect((create_url.mock.calls[0][0] as Blob).type).toBe(mime_type)
         expect(anchor_click).toHaveBeenCalledTimes(1)
         expect(revoke_url).toHaveBeenCalledTimes(1)
-        expect((append.mock.calls[0][0] as HTMLAnchorElement).download).toBe(
-          `li-fe-p-o.${ext}`,
-        )
+        expect(downloaded_as).toBe(`li-fe-p-o.${ext}`)
       } finally {
         create_url.mockRestore()
         revoke_url.mockRestore()
         anchor_click.mockRestore()
-        append.mockRestore()
       }
     })
   })

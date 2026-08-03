@@ -239,7 +239,7 @@
 </script>
 
 <DraggablePane
-  bind:show={pane_open}
+  bind:open={pane_open}
   max_width="min(56em, 92vw)"
   toggle_props={{
     title: pane_open ? `` : `Data inspector`,

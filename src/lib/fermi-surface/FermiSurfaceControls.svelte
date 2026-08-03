@@ -130,7 +130,7 @@
 </script>
 
 <DraggablePane
-  bind:show={controls_open}
+  bind:open={controls_open}
   pane_props={{ class: `fermi-controls` }}
   toggle_props={{ class: `controls-toggle`, title: `Fermi surface controls` }}
   open_icon="Cross"

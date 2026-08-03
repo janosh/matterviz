@@ -391,7 +391,7 @@
 </script>
 
 <DraggablePane
-  bind:show={pane_open}
+  bind:open={pane_open}
   max_width="24em"
   toggle_props={{
     class: `structure-info-toggle`,

@@ -42,7 +42,7 @@ export function setup_fullscreen_effect(
     wrapper
       .requestFullscreen()
       .then(() => on_fullscreen_change?.(true))
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error(`Fullscreen request failed:`, error)
         on_fullscreen_change?.(false)
       })
@@ -51,7 +51,7 @@ export function setup_fullscreen_effect(
     document
       .exitFullscreen()
       .then(() => on_fullscreen_change?.(false))
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error(`Exit fullscreen failed:`, error)
         on_fullscreen_change?.(false)
       })

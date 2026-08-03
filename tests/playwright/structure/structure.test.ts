@@ -1029,7 +1029,11 @@ test.describe(`Export Button Tests`, () => {
     for (const { title_selector, extension } of export_cases) {
       const export_btn = export_pane.locator(`button[title*="${title_selector}"]`)
       await expect(export_btn).toBeVisible()
-      const [download] = await Promise.all([page.waitForEvent(`download`), export_btn.click()])
+      // Cap each wait: a hung GPU toBlob used to burn the whole 90s test budget on PNG.
+      const [download] = await Promise.all([
+        page.waitForEvent(`download`, { timeout: 20_000 }),
+        export_btn.click(),
+      ])
       expect(await download.path()).toBeTruthy()
       expect(download.suggestedFilename()).toMatch(new RegExp(`\\${extension}$`, `u`))
       await expect(export_btn).toBeEnabled()

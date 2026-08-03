@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    create_clipboard_feedback,
-    type PaneProps,
-    type PaneToggleProps,
-  } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { create_clipboard_feedback } from '$lib/overlays'
   import {
     estimate_video_bitrate,
     export_trajectory_video,
@@ -15,6 +12,7 @@
   import { format_num } from '$lib/labels'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
+  import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
   import {
     collect_frame_property_rows,
     create_poscar_frame_range_zip,
@@ -22,7 +20,6 @@
     frame_rows_to_json,
     serialize_extxyz_frame_range,
     trajectory_export_basename,
-    type TrajectoryFrameResolver,
   } from '$lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
   import { to_error } from '$lib/utils'

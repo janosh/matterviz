@@ -51,8 +51,11 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 )
 
 // Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
-const ext_regex = (exts: readonly string[]): RegExp =>
+export const ext_regex = (exts: readonly string[]): RegExp =>
   new RegExp(`\\.(${exts.map((ext) => ext.slice(1)).join(`|`)})$`, `i`)
+
+const filename_token_regex = (filenames: readonly string[]): RegExp =>
+  new RegExp(`(?:^|[\\\\/_.-])(?:${filenames.join(`|`)})(?:[\\\\/_.-]|$)`, `i`)
 
 // File extensions for different file types
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
@@ -73,15 +76,22 @@ export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
 export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS)
 
 // Special regex patterns
-export const VASP_FILES_REGEX =
-  /(?:^|[\\/_.-])(?:poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
-export const VASP_VOLUMETRIC_REGEX =
-  /(?:^|[\\/_.-])(?:chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
+// Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and
+// POTCAR are left out because advertising unparsable run inputs only earns the caller
+// `Unable to determine file format`.
+export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
+export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
+// oxfmt-ignore
+export const VASP_VOLUMETRIC_FILES = Object.freeze([
+  `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
+])
+export const VASP_VOLUMETRIC_REGEX = filename_token_regex(VASP_VOLUMETRIC_FILES)
 export const XDATCAR_REGEX = /xdatcar/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
-export const XYZ_EXTXYZ_REGEX = /\.(?:xyz|extxyz)$/i
+export const XYZ_EXTENSIONS = Object.freeze([`.xyz`, `.extxyz`])
+export const XYZ_EXTXYZ_REGEX = ext_regex(XYZ_EXTENSIONS)
 
 // Compression extensions regex (shared across files)
 export const COMPRESSION_EXTENSIONS_REGEX = ext_regex(COMPRESSION_EXTENSIONS)

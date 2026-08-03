@@ -1553,7 +1553,7 @@
 
     {#if show_controls}
       <DraggablePane
-        bind:show={controls_open}
+        bind:open={controls_open}
         toggle_props={{ title: `${controls_open ? `Close` : `Open`} table controls` }}
         position="fixed"
         pane_props={{

@@ -1851,8 +1851,9 @@ describe(`Structure File Detection`, () => {
     [`test.cif`, true], [`test.poscar`, true], [`test.vasp`, true], [`test.xyz`, true],
     [`test.extxyz`, true], [`test.lmp`, true], [`test.data`, true], [`test.dump`, true],
     [`test.pdb`, true], [`test.mol`, true], [`test.mol2`, true], [`test.sdf`, true],
-    [`test.mmcif`, true], [`POSCAR`, true], [`CONTCAR`, true], [`POTCAR`, true],
-    [`INCAR`, true], [`KPOINTS`, true], [`OUTCAR`, true],
+    [`test.mmcif`, true], [`POSCAR`, true], [`CONTCAR`, true],
+    // Unsupported VASP outputs and run inputs are not structure files
+    [`OUTCAR`, false], [`POTCAR`, false], [`INCAR`, false], [`KPOINTS`, false],
     [`structure.cif.gz`, true], [`molecule.xyz.gz`, true], [`crystal.poscar.gz`, true],
     [`molecule.pdb.gz`, true], [`compound.mol.gz`, true], [`structure.mol2.gz`, true],
     [`data.sdf.gz`, true], [`crystal.mmcif.gz`, true], [`structure.extxyz.gz`, true],

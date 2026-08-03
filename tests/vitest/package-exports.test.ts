@@ -60,6 +60,7 @@ describe(`package.json exports`, () => {
     `./file-viewer/eligibility`,
     `./file-viewer/host-protocol`,
     `./file-viewer/host-transfer`,
+    `./file-viewer/parse-in-worker`,
     `./isosurface/parse-vaspwave`,
     `./json-path`,
     `./marching-cubes`,
@@ -73,6 +74,10 @@ describe(`package.json exports`, () => {
     `./url-params`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
+  })
+
+  test(`worker-backed parser ships its sibling worker entry`, () => {
+    expect(existsSync(join(repo_root, `dist/file-viewer/parse-worker.js`))).toBe(true)
   })
 
   test(

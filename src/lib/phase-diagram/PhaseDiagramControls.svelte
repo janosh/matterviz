@@ -100,7 +100,7 @@
 </script>
 
 <DraggablePane
-  bind:show={controls_open}
+  bind:open={controls_open}
   pane_props={{
     ...pane_props,
     class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,

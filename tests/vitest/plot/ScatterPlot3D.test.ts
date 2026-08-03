@@ -103,6 +103,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
         auto_rotate: 2,
         color_scale: { scheme: `interpolateViridis` },
         size_scale: { radius_range: [0.05, 0.3] },
+        controls: { open: true },
       },
     ],
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
@@ -111,10 +112,13 @@ describe(`ScatterPlot3D smoke tests`, () => {
       `mismatched series array lengths`,
       { series: [{ x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] },
     ],
-  ])(`mounts with %s`, (_desc, props) => {
+  ])(`mounts with %s`, async (_desc, props) => {
     mounted_component = mount(ScatterPlot3D, { target: container, props })
-
+    await tick()
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
+    const pane = container.querySelector(`.draggable-pane`)
+    if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
+    expect(pane.style.display).toBe(props.controls?.open ? `grid` : `none`)
   })
 
   test.each([

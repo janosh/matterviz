@@ -31,8 +31,7 @@ export function violin_path(
       pts.push(orient(center + sign * half_offsets_px[idx], grid_px[idx]))
     }
     // straight inner edge back along the center line
-    pts.push(orient(center, grid_px[n_pts - 1]))
-    pts.push(orient(center, grid_px[0]))
+    pts.push(orient(center, grid_px[n_pts - 1]), orient(center, grid_px[0]))
   }
   return `M${pts.map(([x_pos, y_pos]) => `${x_pos},${y_pos}`).join(`L`)}Z`
 }

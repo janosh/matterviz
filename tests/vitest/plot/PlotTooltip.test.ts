@@ -1,107 +1,80 @@
 import { PlotTooltip } from '$lib/plot'
-import { createRawSnippet, mount } from 'svelte'
+import { createRawSnippet, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
-// Helper to create a simple children snippet for testing.
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
     render: () => `<span>${text}</span>`,
   }))
 
-describe(`PlotTooltip`, () => {
-  test(`renders with basic positioning, default offset, and absolute position`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 100, y: 200, children: make_children(`Test content`) },
-    })
+const mount_tooltip = (
+  props: Partial<ComponentProps<typeof PlotTooltip>> & {
+    children?: ReturnType<typeof make_children>
+  } = {},
+): HTMLElement => {
+  mount(PlotTooltip, {
+    target: document.body,
+    props: { x: 0, y: 0, children: make_children(), ...props },
+  })
+  return doc_query(`.plot-tooltip`)
+}
 
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip).toBeInstanceOf(HTMLElement)
+describe(`PlotTooltip`, () => {
+  test(`renders with default offset, absolute position, and nowrap chips`, () => {
+    const tooltip = mount_tooltip({ x: 100, y: 200, children: make_children(`Test content`) })
     expect(tooltip.style.left).toBe(`106px`) // 100 + default offset 6
     expect(tooltip.style.top).toBe(`200px`)
     expect(tooltip.style.position).toBe(`absolute`)
     expect(tooltip.style.pointerEvents).toBe(`none`)
     expect(tooltip.textContent).toBe(`Test content`)
+    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
+    expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
   })
 
   test(`applies custom offset`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 50, y: 75, offset: { x: 10, y: -10 }, children: make_children() },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.style.left).toBe(`60px`) // 50 + 10
-    expect(tooltip.style.top).toBe(`65px`) // 75 + (-10)
+    const tooltip = mount_tooltip({ x: 50, y: 75, offset: { x: 10, y: -10 } })
+    expect(tooltip.style.left).toBe(`60px`)
+    expect(tooltip.style.top).toBe(`65px`)
   })
 
+  test(`uses fixed positioning when fixed`, () => {
+    expect(mount_tooltip({ fixed: true }).style.position).toBe(`fixed`)
+  })
+
+  // luminance() itself is covered in colors.test.ts; here only the wiring + null skip.
   test.each([
-    { fixed: true, expected: `fixed` },
-    { fixed: false, expected: `absolute` },
-  ])(`uses $expected positioning when fixed=$fixed`, ({ fixed, expected }) => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 100, y: 200, fixed, children: make_children() },
-    })
-    expect(doc_query(`.plot-tooltip`).style.position).toBe(expected)
+    { bg: `#000000`, text: `#ffffff` },
+    { bg: `#ffff00`, text: `#000000` },
+  ])(`sets background $bg and contrasting text $text`, ({ bg, text }) => {
+    const tooltip = mount_tooltip({ bg_color: bg })
+    expect(tooltip.style.backgroundColor).toBe(bg)
+    expect(tooltip.style.color).toBe(text)
   })
 
-  test(`applies background color`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 0, y: 0, bg_color: `#ff5500`, children: make_children() },
-    })
-    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(`#ff5500`)
+  test(`does not set text color without bg_color`, () => {
+    expect(mount_tooltip({ bg_color: null }).style.color).toBe(``)
   })
 
-  test.each([
-    { bg: `#000000`, expected: `#ffffff`, desc: `black` },
-    { bg: `#1a1a1a`, expected: `#ffffff`, desc: `very dark gray` },
-    { bg: `#333333`, expected: `#ffffff`, desc: `dark gray` },
-    { bg: `#323296`, expected: `#ffffff`, desc: `dark blue` },
-    { bg: `#ffffff`, expected: `#000000`, desc: `white` },
-    { bg: `#e0e0e0`, expected: `#000000`, desc: `light gray` },
-    { bg: `#ffff00`, expected: `#000000`, desc: `yellow` },
-    { bg: `#ffc8c8`, expected: `#000000`, desc: `light pink` },
-  ])(`computes $expected text for $desc background`, ({ bg, expected }) => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 0, y: 0, bg_color: bg, children: make_children() },
+  test(`passes through class and style`, () => {
+    const tooltip = mount_tooltip({
+      class: `custom-tooltip my-class`,
+      style: `z-index: 9999; backdrop-filter: blur(4px);`,
     })
-    expect(doc_query(`.plot-tooltip`).style.color).toBe(expected)
+    expect(tooltip.className).toContain(`plot-tooltip`)
+    expect(tooltip.className).toContain(`custom-tooltip`)
+    expect(tooltip.className).toContain(`my-class`)
+    expect(tooltip.style.zIndex).toBe(`9999`)
   })
 
-  test.each([null, undefined])(`does not set text color when bg_color is %s`, (bg_color) => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 0, y: 0, bg_color, children: make_children() },
+  // Position clamping is covered in layout.test.ts; this only checks wrap width = box - 16.
+  test(`wraps inside a constrained width`, () => {
+    const tooltip = mount_tooltip({
+      constrain_to: { width: 100, height: 300 },
+      children: make_children(`a`.repeat(80)),
     })
-    expect(doc_query(`.plot-tooltip`).style.color).toBe(``)
-  })
-
-  test(`applies custom class`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: { x: 0, y: 0, class: `custom-tooltip my-class`, children: make_children() },
-    })
-
-    const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip.classList.contains(`plot-tooltip`)).toBe(true)
-    expect(tooltip.classList.contains(`custom-tooltip`)).toBe(true)
-    expect(tooltip.classList.contains(`my-class`)).toBe(true)
-  })
-
-  test(`passes through additional style`, () => {
-    mount(PlotTooltip, {
-      target: document.body,
-      props: {
-        x: 0,
-        y: 0,
-        style: `z-index: 9999; backdrop-filter: blur(4px);`,
-        children: make_children(),
-      },
-    })
-    expect(doc_query(`.plot-tooltip`).style.zIndex).toBe(`9999`)
+    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
+    expect(tooltip.style.maxWidth).toBe(`84px`)
+    expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
   })
 })

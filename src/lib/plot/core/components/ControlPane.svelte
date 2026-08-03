@@ -25,7 +25,7 @@
 </script>
 
 <DraggablePane
-  bind:show={controls_open}
+  bind:open={controls_open}
   toggle_props={{
     title: `${controls_open ? `Close` : `Open`} ${title} controls`,
     ...toggle_props,

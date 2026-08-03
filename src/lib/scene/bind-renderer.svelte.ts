@@ -75,7 +75,7 @@ export function create_renderer(
   }
   // Start device acquisition now rather than on Threlte's first frame. init() caches its own
   // promise, so this races nothing and is safe to call repeatedly.
-  renderer.init().catch((error) => {
+  renderer.init().catch((error: unknown) => {
     console.error(`WebGPU renderer initialization failed`, error)
   })
   return renderer

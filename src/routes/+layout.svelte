@@ -99,8 +99,10 @@
   loadOptions={{ fetch: load_search_options, debounceMs: 120, batchSize: 12 }}
   noMatchingOptionsMsg="No matching pages"
   maxOptions={12}
-  dialog_props={{ class: `site-search-dialog` }}
-  dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex"
+  dialog_props={{
+    class: `site-search-dialog`,
+    style: `left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog); --sms-width: min(42em, 90vw); --sms-options-li-padding: 2pt 1ex`,
+  }}
 />
 <GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
 <CopyButton global class="copy-btn" />

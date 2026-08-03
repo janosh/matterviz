@@ -39,54 +39,59 @@
 
     // Brillouin Zone section
     const bz_order_suffix = [`st`, `nd`, `rd`][bz_data.order - 1] ?? `th`
-    sections.push({
-      title: `Brillouin Zone`,
-      items: [
-        {
-          label: `Order`,
-          value: `${bz_data.order}${bz_order_suffix}`,
-          key: `bz-order`,
-        },
-        {
-          label: `Volume`,
-          value: `${format_num(bz_data.volume, `.3f`)} Å⁻³`,
-          key: `bz-volume`,
-        },
-        {
-          label: `Vertices / Faces`,
-          value: `${bz_data.vertices.length} / ${bz_data.faces.length}`,
-          key: `bz-vertices`,
-        },
-        {
-          label: `Space Group`,
-          value: `${sym_data?.number ?? ``} ${
-            sym_data?.hm_symbol ? `(${sym_data.hm_symbol})` : ``
-          }`.trim(),
-          key: `space-group`,
-        },
-      ],
-    })
-
-    // Real Lattice section
-    sections.push({
-      title: `Real Lattice`,
-      items: [
-        {
-          label: `a, b, c`,
-          value: `${[structure.lattice.a, structure.lattice.b, structure.lattice.c]
-            .map((val) => format_num(val, `.3~f`))
-            .join(`, `)} Å`,
-          key: `real-lattice-abc`,
-        },
-        {
-          label: `α, β, γ`,
-          value: `${[structure.lattice.alpha, structure.lattice.beta, structure.lattice.gamma]
-            .map((val) => format_num(val, `.2~f`))
-            .join(`, `)}°`,
-          key: `real-lattice-angles`,
-        },
-      ],
-    })
+    sections.push(
+      {
+        title: `Brillouin Zone`,
+        items: [
+          {
+            label: `Order`,
+            value: `${bz_data.order}${bz_order_suffix}`,
+            key: `bz-order`,
+          },
+          {
+            label: `Volume`,
+            value: `${format_num(bz_data.volume, `.3f`)} Å⁻³`,
+            key: `bz-volume`,
+          },
+          {
+            label: `Vertices / Faces`,
+            value: `${bz_data.vertices.length} / ${bz_data.faces.length}`,
+            key: `bz-vertices`,
+          },
+          {
+            label: `Space Group`,
+            value: `${sym_data?.number ?? ``} ${
+              sym_data?.hm_symbol ? `(${sym_data.hm_symbol})` : ``
+            }`.trim(),
+            key: `space-group`,
+          },
+        ],
+      },
+      {
+        // Real Lattice section
+        title: `Real Lattice`,
+        items: [
+          {
+            label: `a, b, c`,
+            value: `${[structure.lattice.a, structure.lattice.b, structure.lattice.c]
+              .map((val) => format_num(val, `.3~f`))
+              .join(`, `)} Å`,
+            key: `real-lattice-abc`,
+          },
+          {
+            label: `α, β, γ`,
+            value: `${[
+              structure.lattice.alpha,
+              structure.lattice.beta,
+              structure.lattice.gamma,
+            ]
+              .map((val) => format_num(val, `.2~f`))
+              .join(`, `)}°`,
+            key: `real-lattice-angles`,
+          },
+        ],
+      },
+    )
 
     // Reciprocal Lattice section
     const k_lattice_items: InfoItem[] = bz_data.k_lattice.map((vec, idx) => ({
@@ -103,7 +108,7 @@
 
 {#if structure && bz_data}
   <DraggablePane
-    bind:show={pane_open}
+    bind:open={pane_open}
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
     pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
     open_icon="Cross"

@@ -411,6 +411,11 @@ export class TrajFrameReader implements FrameLoader {
     this.format = indexed_trajectory_format(filename)
   }
 
+  dispose(): void {
+    this.global_numbers = undefined
+    this.xyz_cache = undefined
+  }
+
   async get_total_frames(data: string | ArrayBuffer): Promise<number> {
     if (this.format === `xyz`) {
       if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)

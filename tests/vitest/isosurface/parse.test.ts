@@ -26,11 +26,13 @@ function make_chgcar({
     `   ${counts}`,
   ]
   if (selective_dynamics) lines.push(`Selective dynamics`)
-  lines.push(coord_mode)
-  lines.push(...(positions as string[]).map((pos) => `  ${pos}`))
-  lines.push(``)
-  lines.push(`   ${grid_dims}`)
-  lines.push(data)
+  lines.push(
+    coord_mode,
+    ...(positions as string[]).map((pos) => `  ${pos}`),
+    ``,
+    `   ${grid_dims}`,
+    data,
+  )
   if (augmentation) lines.push(augmentation)
   if (second_volume) lines.push(``, second_volume)
   lines.push(``)

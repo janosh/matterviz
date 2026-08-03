@@ -190,7 +190,7 @@ const process_file_change = (message: FileChangeMessage): void => {
   const generation = ++file_change_generation
   file_change_queue = file_change_queue
     .then(() => handle_file_change(message, generation))
-    .catch((error) => {
+    .catch((error: unknown) => {
       if (!is_current_file_change(generation)) return
       console.error(`Failed to process file change:`, error)
       vscode_api?.postMessage({

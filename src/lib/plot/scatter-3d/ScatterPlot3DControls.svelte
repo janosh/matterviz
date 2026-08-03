@@ -14,13 +14,13 @@
   import { calculate_domain } from '$lib/plot/core/scales'
   import { unique_id } from '$lib/plot/core/utils'
   import { parse_num_token } from '$lib/utils'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
   const uid = unique_id(`scatter3d-ctrl`)
 
   let {
-    show = $bindable(false),
+    open = $bindable(false),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     z_axis = $bindable({}),
@@ -33,7 +33,7 @@
     pane_props,
     children,
   }: {
-    show?: boolean
+    open?: boolean
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -122,7 +122,7 @@
 </script>
 
 <DraggablePane
-  bind:show
+  bind:open
   {toggle_props}
   pane_props={{
     title: `3D Plot Settings`,

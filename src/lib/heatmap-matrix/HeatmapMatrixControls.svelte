@@ -84,7 +84,7 @@
 <!-- gated here so the toggle goes with the pane; DraggablePane has no prop for it -->
 {#if show_pane}
   <DraggablePane
-    bind:show={controls_open}
+    bind:open={controls_open}
     pane_props={{
       ...pane_props,
       class: `heatmap-controls ${pane_props?.class ?? ``}`.trim(),

@@ -11,9 +11,15 @@ describe(`file-viewer worker safety`, () => {
     const { existsSync, readFileSync } = await import(`node:fs`)
     const { dirname, resolve } = await import(`node:path`)
     const repo_root = resolve(import.meta.dirname, `../../..`)
-    const entries = [`parse.ts`, `eligibility.ts`, `host-transfer.ts`].map((filename) =>
-      resolve(repo_root, `src/lib/file-viewer/${filename}`),
-    )
+    const entries = [
+      `parse.ts`,
+      `eligibility.ts`,
+      `host-transfer.ts`,
+      // The parse worker's own entry and its protocol module: both load inside a
+      // Worker, where `document` does not exist.
+      `parse-worker.ts`,
+      `parse-worker-protocol.ts`,
+    ].map((filename) => resolve(repo_root, `src/lib/file-viewer/${filename}`))
     const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
 
     const resolve_specifier = (specifier: string, from_file: string): string | null => {

@@ -9,12 +9,8 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import {
-    FullscreenButton,
-    SettingsSection,
-    type FullscreenToggleProp,
-    toggle_fullscreen,
-  } from '$lib/layout'
+  import type { FullscreenToggleProp } from '$lib/layout'
+  import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
@@ -1386,8 +1382,10 @@
               swiz(val, back[1], back[2] + out_y * tick_size),
             ),
           )
-          grid_geoms.push(make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])))
-          grid_geoms.push(make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])))
+          grid_geoms.push(
+            make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])),
+            make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])),
+          )
           tick_labels.push({
             pos: swiz(
               val,
@@ -1414,8 +1412,10 @@
               swiz(back[0], val, back[2] + out_y * tick_size),
             ),
           )
-          grid_geoms.push(make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])))
-          grid_geoms.push(make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])))
+          grid_geoms.push(
+            make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])),
+            make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])),
+          )
           tick_labels.push({
             pos: swiz(back[0], val, back[2] + out_y * tick_label_dist),
             text: format_num(val, `.3~g`),
@@ -1438,8 +1438,10 @@
               swiz(back[0], back[1] + out_x * tick_size, val),
             ),
           )
-          grid_geoms.push(make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)))
-          grid_geoms.push(make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)))
+          grid_geoms.push(
+            make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)),
+            make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)),
+          )
           tick_labels.push({
             pos: swiz(back[0], back[1] + out_x * tick_label_dist, val),
             text: format_num(val, `.3~g`),
@@ -1967,7 +1969,7 @@
       }}
     />
     <DraggablePane
-      bind:show={formula_picker_open}
+      bind:open={formula_picker_open}
       pane_props={{ class: `chempot-formula-pane` }}
       toggle_props={{
         class: `chempot-formula-toggle`,
@@ -2015,7 +2017,7 @@
     </DraggablePane>
 
     <ScatterPlot3DControls
-      bind:show={controls_open}
+      bind:open={controls_open}
       bind:x_axis
       bind:y_axis
       bind:z_axis

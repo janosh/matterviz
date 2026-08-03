@@ -150,7 +150,7 @@
 </script>
 
 <DraggablePane
-  bind:show={pane_open}
+  bind:open={pane_open}
   max_width="34em"
   toggle_props={{
     title: pane_open ? `` : `Velocity autocorrelation and vibrational DOS`,

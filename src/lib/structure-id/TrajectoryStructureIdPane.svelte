@@ -6,10 +6,10 @@
   import type { TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import { type ComponentProps, untrack } from 'svelte'
+  import type { StructureIdSweep } from './collect'
   import {
     collect_structure_id_sweep,
     DEFAULT_MAX_SWEEP_FRAMES,
-    type StructureIdSweep,
     sweep_frame_plan,
   } from './collect'
   import StructureTypePlot from './StructureTypePlot.svelte'
@@ -99,7 +99,7 @@
 </script>
 
 <DraggablePane
-  bind:show={pane_open}
+  bind:open={pane_open}
   max_width="34em"
   toggle_props={{
     title: pane_open ? `` : `Structure type identification`,

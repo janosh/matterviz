@@ -25,7 +25,9 @@ export function is_structure_file(filename: string): boolean {
   const name = strip_compression_extensions(filename)
 
   if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || XDATCAR_REGEX.test(name)) return false
-  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) return true
+  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) {
+    return true
+  }
   if (XYZ_EXTXYZ_REGEX.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
   if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
   return (

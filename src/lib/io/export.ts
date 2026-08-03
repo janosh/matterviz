@@ -20,20 +20,32 @@ export const scene_registry = new WeakMap<
 export const dpi_to_scale = (png_dpi: number): number =>
   Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
 
+const device_timeout_ms = 5000
+const blob_timeout_ms = 5000
+
 function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
+    let settled = false
+    const finish = (error?: Error, blob?: Blob): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (error) reject(error)
+      else if (blob) resolve(blob)
+      else reject(new Error(failure_message))
+    }
+    const timer = setTimeout(
+      () =>
+        finish(new Error(`${failure_message}: toBlob timed out after ${blob_timeout_ms}ms`)),
+      blob_timeout_ms,
+    )
     try {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error(failure_message))),
-        `image/png`,
-      )
+      canvas.toBlob((blob) => finish(undefined, blob ?? undefined), `image/png`)
     } catch (error) {
-      reject(to_error(error))
+      finish(to_error(error))
     }
   })
 }
-
-const device_timeout_ms = 5000
 
 // Wait for the GPU device, but never indefinitely: an unfulfilled device request would leave
 // the export promise pending forever, giving the user neither a file nor an error.
@@ -56,13 +68,30 @@ async function device_ready(renderer: WebGPURenderer): Promise<boolean> {
 // Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time. Awaits the
 // device since render() throws before init() resolves and this runs outside Threlte's loop.
 // Without one, capture whatever the canvas holds — stale beats an export that never resolves.
+// Software WebGPU (CI) can throw on createBuffer during render; swallow and keep going.
 async function render_for_capture(
   renderer: WebGPURenderer,
   scene: Scene | null,
   camera: Camera | null,
 ): Promise<void> {
   if (!scene || !camera) return
-  if (await device_ready(renderer)) renderer.render(scene, camera)
+  if (!(await device_ready(renderer))) return
+  try {
+    renderer.render(scene, camera)
+  } catch (error) {
+    console.warn(`PNG capture re-render failed; exporting current canvas buffer`, error)
+  }
+}
+
+// Capture at the renderer's current pixel ratio after an optional re-render.
+async function capture_native(
+  canvas: HTMLCanvasElement,
+  renderer: WebGPURenderer | undefined,
+  scene: Scene | null,
+  camera: Camera | null,
+): Promise<Blob> {
+  if (renderer) await render_for_capture(renderer, scene, camera)
+  return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
 }
 
 // Capture a canvas as a PNG Blob at the given DPI.
@@ -80,10 +109,7 @@ export async function canvas_to_png_blob(
   const resolution_multiplier = dpi_to_scale(png_dpi)
   const renderer = renderer_registry.get(canvas)
 
-  if (resolution_multiplier <= 1.1) {
-    if (renderer) await render_for_capture(renderer, scene, camera)
-    return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
-  }
+  if (resolution_multiplier <= 1.1) return capture_native(canvas, renderer, scene, camera)
 
   if (!renderer) {
     const scaled_canvas = document.createElement(`canvas`)
@@ -108,6 +134,14 @@ export async function canvas_to_png_blob(
     renderer.setSize(orig_size.width, orig_size.height, false)
     await render_for_capture(renderer, scene, camera)
     return await canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
+  } catch (error) {
+    // High-DPI needs larger mapped GPU buffers; CI's software WebGPU often refuses them.
+    console.warn(
+      `High-DPI PNG capture failed; falling back to native canvas resolution`,
+      error,
+    )
+    restore()
+    return await capture_native(canvas, renderer, scene, camera)
   } finally {
     restore()
   }
@@ -140,7 +174,7 @@ export function export_canvas_as_png(
 
   canvas_to_png_blob(canvas, png_dpi, scene, camera)
     .then((blob) => download(blob, filename, `image/png`))
-    .catch((error) => console.error(`Error exporting PNG:`, error))
+    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
 }
 
 export interface SvgExportOptions {
@@ -378,7 +412,7 @@ export function export_svg_as_png(
   }
   svg_to_png_blob(svg_element, png_dpi, inline_styles, options)
     .then((blob) => download(blob, filename, `image/png`))
-    .catch((error) => console.error(`Error exporting PNG:`, error))
+    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
 }
 
 // Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately

@@ -23,16 +23,16 @@ describe(`to_query`, () => {
 })
 
 describe(`download`, () => {
-  test(`releases browser resources when the synthetic click throws`, () => {
+  test(`keeps its link detached and releases browser resources when clicking throws`, () => {
     const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
     vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
-    const remove_link = vi.spyOn(Element.prototype, `remove`)
+    const append_link = vi.spyOn(Element.prototype, `append`)
     vi.spyOn(HTMLAnchorElement.prototype, `click`).mockImplementation(() => {
       throw new Error(`click failed`)
     })
 
     expect(() => download(`content`, `test.txt`, `text/plain`)).toThrow(`click failed`)
-    expect(remove_link).toHaveBeenCalledOnce()
+    expect(append_link).not.toHaveBeenCalled()
     expect(revoke_url).toHaveBeenCalledExactlyOnceWith(`blob:test`)
   })
 })

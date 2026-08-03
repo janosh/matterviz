@@ -33,7 +33,7 @@
 </script>
 
 <DraggablePane
-  bind:show={controls_open}
+  bind:open={controls_open}
   pane_props={{ class: `bz-controls` }}
   toggle_props={{ class: `controls-toggle`, title: `Brillouin zone controls` }}
   open_icon="Cross"

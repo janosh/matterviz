@@ -55,6 +55,9 @@
     return { x: Math.max(0, cx), y: Math.max(0, cy) }
   })
 
+  // Position flipping alone cannot keep a nowrap chip inside a small plot when the
+  // label path is long — cap width to the constrained box and let the text wrap.
+  const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
   const style = $derived(
     `position: ${fixed ? `fixed` : `absolute`}; pointer-events: none;
     left: ${pos.x}px; top: ${pos.y}px; ${rest.style ?? ``}`,
@@ -63,9 +66,10 @@
 
 <div
   {...rest}
-  class={[`plot-tooltip`, rest.class]}
+  class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
   style:background-color={bg_color}
   style:color={text_color}
+  style:max-width={max_width != null ? `${max_width}px` : undefined}
   {style}
   bind:this={wrapper}
 >
@@ -74,10 +78,15 @@
 
 <style>
   .plot-tooltip {
+    box-sizing: border-box;
     padding: var(--plot-tooltip-padding, 2px 6px);
     border-radius: var(--plot-tooltip-border-radius, 4px);
     font-size: var(--plot-tooltip-font-size, 0.8em);
     white-space: nowrap;
     z-index: var(--plot-tooltip-z-index, 1000);
+  }
+  .plot-tooltip-wrap {
+    white-space: normal;
+    overflow-wrap: break-word; /* mid-token only when that token alone exceeds the line */
   }
 </style>

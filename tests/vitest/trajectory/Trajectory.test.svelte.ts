@@ -1,9 +1,5 @@
-import {
-  Trajectory,
-  type TrajectoryType,
-  type TrajectoryXQuantity,
-  type TrajHandlerData,
-} from '$lib/trajectory'
+import type { TrajectoryType, TrajectoryXQuantity, TrajHandlerData } from '$lib/trajectory'
+import { Trajectory } from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { make_trajectory_frame, resize_element } from '../setup'
