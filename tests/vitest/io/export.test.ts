@@ -174,31 +174,68 @@ describe(`canvas_to_png_blob`, () => {
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
   })
 
-  test.each([`toBlob`, `setSize`, `render`] as const)(
-    `restores renderer state when %s throws during high-DPI capture`,
+  test.each([`setSize`, `toBlob`] as const)(
+    `falls back to native resolution when high-DPI %s fails`,
     async (failure_stage) => {
+      let to_blob_calls = 0
       const to_blob_impl =
         failure_stage === `toBlob`
-          ? () => {
-              throw new Error(`toBlob failed`)
+          ? (callback: BlobCallback) => {
+              to_blob_calls += 1
+              if (to_blob_calls === 1) throw new Error(`toBlob failed`)
+              callback(new Blob([`fallback`], { type: `image/png` }))
             }
           : undefined
       const { canvas, renderer } = make_canvas_with_renderer(to_blob_impl)
-      if (failure_stage !== `toBlob`) {
-        const failing_method = renderer[failure_stage]
-        if (!failing_method) throw new Error(`Mock renderer is missing ${failure_stage}`)
-        vi.mocked(failing_method).mockImplementationOnce(() => {
-          throw new Error(`${failure_stage} failed`)
+      if (failure_stage === `setSize`) {
+        const set_size = renderer.setSize
+        if (!set_size) throw new Error(`Mock renderer is missing setSize`)
+        vi.mocked(set_size).mockImplementationOnce(() => {
+          throw new Error(`setSize failed`)
         })
       }
 
-      await expect(canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)).rejects.toThrow(
-        `${failure_stage} failed`,
-      )
+      const blob = await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
+      expect(blob).toBeInstanceOf(Blob)
       expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
       expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
     },
   )
+
+  test(`high-DPI render failures still export the current canvas buffer`, async () => {
+    const { canvas, renderer } = make_canvas_with_renderer()
+    const render = renderer.render
+    if (!render) throw new Error(`Mock renderer is missing render`)
+    vi.mocked(render).mockImplementationOnce(() => {
+      throw new Error(`render failed`)
+    })
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    try {
+      const blob = await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
+      expect(blob).toBeInstanceOf(Blob)
+      expect(warn_spy).toHaveBeenCalledWith(
+        expect.stringContaining(`re-render failed`),
+        expect.any(Error),
+      )
+      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    } finally {
+      warn_spy.mockRestore()
+    }
+  })
+
+  test(`rejects when toBlob never calls back`, async () => {
+    vi.useFakeTimers()
+    try {
+      const canvas = make_mock_canvas(() => {}) // never invokes callback
+      await expect(async () => {
+        const pending = canvas_to_png_blob(canvas, 72)
+        await vi.advanceTimersByTimeAsync(6000)
+        await pending
+      }).rejects.toThrow(`toBlob timed out`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   test(`caps DPI multiplier at 10x`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
