@@ -4,8 +4,16 @@ import {
   STRUCTURE_EXTENSIONS,
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS_REGEX,
+  VASP_STRUCTURE_FILES,
+  VASP_VOLUMETRIC_FILES,
+  XYZ_EXTENSIONS,
 } from '$lib/constants'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
+import {
+  FERMI_FILE_EXTENSIONS,
+  FERMI_FILE_RE,
+  VOLUMETRIC_EXT_RE,
+  VOLUMETRIC_VASP_RE,
+} from '$lib/file-viewer/types'
 import {
   detect_compression_format,
   is_browser_decompressible_format,
@@ -49,30 +57,19 @@ export const is_matterviz_filename = (filename: unknown): boolean => {
 // What `is_matterviz_filename` answers, as a literal list, for hosts that cannot call a
 // predicate: native open dialogs and OS file associations take an extension array.
 // `eligibility.test.ts` checks both directions — every entry is one the predicate accepts,
-// and every extension named by the constants and regexes below is present. The tail is
-// spelled out rather than derived because .h5/.hdf5 live in inline regexes and the VASP
-// names have no extension. JSON/YAML are left out because the viewer takes them only with
-// a structure keyword in the name — a host that wants every .json adds it itself.
+// and every canonical filename family is present. HDF5 remains explicit because its
+// detection is keyword-gated. JSON/YAML are left out because the viewer takes them only
+// with a structure keyword in the name — a host that wants every .json adds it itself.
 export const MATTERVIZ_FILE_EXTENSIONS: readonly string[] = Object.freeze([
   ...new Set([
     ...[...STRUCTURE_EXTENSIONS, ...TRAJ_EXTENSIONS].map((ext) => ext.slice(1)),
-    `xyz`, // XYZ_EXTXYZ_REGEX
-    `extxyz`,
+    ...XYZ_EXTENSIONS.map((ext) => ext.slice(1)),
     `h5`, // is_trajectory_file, keyword-gated
     `hdf5`,
-    `bxsf`, // FERMI_FILE_RE
-    `frmsf`,
-    `xdatcar`, // XDATCAR_REGEX and VASP_STRUCTURE_FILES_REGEX, matched as bare filenames
-    `contcar`,
-    `outcar`,
-    `chgcar`, // VOLUMETRIC_VASP_RE, likewise bare filenames
-    `aeccar`,
-    `aeccar0`,
-    `aeccar1`,
-    `aeccar2`,
-    `elfcar`,
-    `locpot`,
-    `parchg`,
+    ...FERMI_FILE_EXTENSIONS.map((ext) => ext.slice(1)),
+    `xdatcar`, // XDATCAR_REGEX, matched as a bare filename
+    ...VASP_STRUCTURE_FILES,
+    ...VASP_VOLUMETRIC_FILES,
   ]),
 ])
 

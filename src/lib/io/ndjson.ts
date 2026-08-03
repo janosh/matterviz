@@ -56,7 +56,17 @@ export const flatten_row = (
       const path = prefix ? `${prefix}.${key}` : key
       if (value && typeof value === `object` && !Array.isArray(value) && depth < max_depth) {
         visit(value as Record<string, unknown>, path, depth + 1)
-      } else flat[path] = flatten_value(value)
+      } else {
+        const flat_value = flatten_value(value)
+        if (path === `__proto__`) {
+          Object.defineProperty(flat, path, {
+            value: flat_value,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          })
+        } else flat[path] = flat_value
+      }
     }
   }
   visit(row, ``, 1)

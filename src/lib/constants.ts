@@ -54,6 +54,9 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 const ext_regex = (exts: readonly string[]): RegExp =>
   new RegExp(`\\.(${exts.map((ext) => ext.slice(1)).join(`|`)})$`, `i`)
 
+const filename_token_regex = (filenames: readonly string[]): RegExp =>
+  new RegExp(`(?:^|[\\\\/_.-])(?:${filenames.join(`|`)})(?:[\\\\/_.-]|$)`, `i`)
+
 // File extensions for different file types
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
 export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
@@ -76,15 +79,22 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS
 // Bare VASP filenames that carry atomic coordinates. INCAR, KPOINTS and POTCAR are left
 // out on purpose: they are run inputs with no coordinates, so treating them as structures
 // only earns the caller `Unable to determine file format` once a parser actually runs.
-export const VASP_STRUCTURE_FILES_REGEX =
-  /(?:^|[\\/_.-])(?:poscar|contcar|outcar)(?:[\\/_.-]|$)/i
-export const VASP_VOLUMETRIC_REGEX =
-  /(?:^|[\\/_.-])(?:chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
+export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`, `outcar`])
+export const VASP_STRUCTURE_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
+// oxfmt-ignore
+export const VASP_VOLUMETRIC_FILES = Object.freeze([
+  `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
+])
+export const VASP_VOLUMETRIC_REGEX = filename_token_regex(VASP_VOLUMETRIC_FILES)
 export const XDATCAR_REGEX = /xdatcar/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
-export const XYZ_EXTXYZ_REGEX = /\.(?:xyz|extxyz)$/i
+export const XYZ_EXTENSIONS = Object.freeze([`.xyz`, `.extxyz`])
+export const XYZ_EXTXYZ_REGEX = new RegExp(
+  `\\.(?:${XYZ_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
+  `i`,
+)
 
 // Compression extensions regex (shared across files)
 export const COMPRESSION_EXTENSIONS_REGEX = ext_regex(COMPRESSION_EXTENSIONS)

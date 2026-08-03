@@ -192,6 +192,9 @@ describe(`parse_in_worker`, () => {
 
     await expect(frame_loader.load_frame(``, 1)).resolves.toMatchObject({ step: 1 })
     frame_loader.dispose()
+    await expect(frame_loader.load_frame(``, 1)).rejects.toThrow(
+      `Indexed frame loader was disposed`,
+    )
   })
 
   it(`settles every pending request after a worker message error`, async () => {
@@ -396,6 +399,24 @@ describe(`parse_in_worker`, () => {
       expect(fallback_parse).not.toHaveBeenCalled()
     },
   )
+
+  it(`falls back when worker event-handler setup fails`, async () => {
+    const terminate = vi.fn()
+    const worker: WorkerLike = {
+      postMessage: vi.fn(),
+      addEventListener: () => {
+        throw new Error(`listener setup failed`)
+      },
+      terminate,
+    }
+    await expect(
+      parse_in_worker(`data_si`, `structure.cif`, false, {
+        worker_factory: () => worker,
+        fallback_parse: async () => structure_result,
+      }),
+    ).resolves.toEqual(structure_result)
+    expect(terminate).toHaveBeenCalledOnce()
+  })
 
   it.each([
     [`worker construction failure`, true, unavailable_worker_factory, null],

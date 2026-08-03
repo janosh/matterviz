@@ -113,6 +113,7 @@ const bind_indexed_frame_loader = (
   if (!frame_port) throw new Error(`Indexed parse worker result is missing its frame port`)
 
   let next_id = 0
+  let disposed_error: Error | null = null
   const pending = new SvelteMap<
     number,
     {
@@ -133,25 +134,10 @@ const bind_indexed_frame_loader = (
     if (error) request.reject(new Error(error))
     else request.resolve(frame_result)
   })
-  frame_port.start()
-
-  const rpc = <Result>(
-    method: FrameWorkerMethod,
-    args: unknown[] = [],
-    on_progress?: (progress: ParseProgress) => void,
-  ): Promise<Result> =>
-    new Promise((resolve, reject) => {
-      const id = next_id++
-      pending.set(id, { resolve: (value) => resolve(value as Result), reject, on_progress })
-      try {
-        frame_port.postMessage({ id, method, args })
-      } catch (error) {
-        pending.delete(id)
-        reject(to_error(error))
-      }
-    })
 
   const dispose = (error = new Error(`Indexed frame loader was disposed`)): void => {
+    if (disposed_error) return
+    disposed_error = error
     active_frame_loader_disposers.delete(dispose)
     for (const request of pending.values()) request.reject(error)
     pending.clear()
@@ -161,6 +147,27 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
+  }
+  frame_port.start()
+
+  const rpc = <Result>(
+    method: FrameWorkerMethod,
+    args: unknown[] = [],
+    on_progress?: (progress: ParseProgress) => void,
+  ): Promise<Result> => {
+    if (disposed_error) return Promise.reject(disposed_error)
+    return new Promise((resolve, reject) => {
+      const id = next_id++
+      pending.set(id, { resolve: (value) => resolve(value as Result), reject, on_progress })
+      try {
+        frame_port.postMessage({ id, method, args })
+      } catch (error) {
+        const post_error = to_error(error)
+        pending.delete(id)
+        reject(post_error)
+        dispose(post_error)
+      }
+    })
   }
   active_frame_loader_disposers.add(dispose)
   trajectory.frame_loader = {
@@ -345,6 +352,8 @@ const ensure_worker = (factory: WorkerFactory): WorkerLike | null => {
     worker.addEventListener(`error`, (event) => handle_worker_error(worker, event))
     worker.addEventListener(`messageerror`, () => handle_worker_messageerror(worker))
   } catch {
+    shared_worker?.terminate()
+    shared_worker = null
     worker_unusable = true
   }
   return shared_worker
