@@ -227,11 +227,21 @@ describe(`canvas_to_png_blob`, () => {
     vi.useFakeTimers()
     try {
       const canvas = make_mock_canvas(() => {}) // never invokes callback
-      await expect(async () => {
-        const pending = canvas_to_png_blob(canvas, 72)
-        await vi.advanceTimersByTimeAsync(6000)
-        await pending
-      }).rejects.toThrow(`toBlob timed out`)
+      let outcome: { error: Error } | { blob: Blob } | undefined
+      // Attach handlers before the timeout fires so the rejection is never unhandled.
+      const pending = canvas_to_png_blob(canvas, 72).then(
+        (blob) => {
+          outcome = { blob }
+        },
+        (error: unknown) => {
+          outcome = { error: error instanceof Error ? error : new Error(String(error)) }
+        },
+      )
+      await vi.advanceTimersByTimeAsync(6000)
+      await pending
+      expect(outcome).toEqual({ error: expect.any(Error) })
+      if (!outcome || !(`error` in outcome)) throw new Error(`expected timeout rejection`)
+      expect(outcome.error.message).toContain(`toBlob timed out`)
     } finally {
       vi.useRealTimers()
     }
