@@ -1,5 +1,6 @@
 import type { ParseResult } from '$lib/file-viewer/parse'
 import {
+  estimate_decoded_base64_bytes,
   MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
   parse_in_worker,
   reset_parse_worker,
@@ -457,6 +458,15 @@ describe(`parse_in_worker`, () => {
       }
     },
   )
+
+  it.each([
+    [`TQ==`, 1],
+    [`TWE=`, 2],
+    [`TWFu`, 3],
+    [`T W\nFu`, 3],
+  ])(`estimates decoded base64 size for %s`, (content, expected_bytes) => {
+    expect(estimate_decoded_base64_bytes(content)).toBe(expected_bytes)
+  })
 
   const large_xyz_frame = `1\n${`x`.repeat(600_000)}\nH 0 0 0\n`
   const large_single_frame = `1\n${`x`.repeat(1_100_000)}\nH 0 0 0\n`
