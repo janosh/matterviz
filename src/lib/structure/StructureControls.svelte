@@ -40,7 +40,7 @@
   import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
-  import Select, { Icon } from 'svelte-widgets'
+  import { Icon, MultiSelect as Select } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
 
   let {

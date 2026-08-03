@@ -4,7 +4,7 @@ import {
   STRUCT_KEYWORDS_STRICT_REGEX,
   STRUCTURE_EXTENSIONS_REGEX,
   TRAJ_KEYWORDS_REGEX,
-  VASP_FILES_REGEX,
+  VASP_STRUCTURE_FILES_REGEX,
   XDATCAR_REGEX,
   XYZ_EXTXYZ_REGEX,
 } from '$lib/constants'
@@ -25,7 +25,9 @@ export function is_structure_file(filename: string): boolean {
   const name = strip_compression_extensions(filename)
 
   if (/\.(?:traj|xtc|h5|hdf5)$/i.test(name) || XDATCAR_REGEX.test(name)) return false
-  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) return true
+  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_STRUCTURE_FILES_REGEX.test(name)) {
+    return true
+  }
   if (XYZ_EXTXYZ_REGEX.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)
   if (/\.(?:yaml|yml|xml)$/i.test(name) && STRUCT_KEYWORDS_REGEX.test(name)) return true
   return (

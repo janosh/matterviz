@@ -86,6 +86,10 @@
       "types": "./dist/file-viewer/parse.d.ts",
       "default": "./dist/file-viewer/parse.js"
     },
+    "./file-viewer/parse-in-worker": {
+      "types": "./dist/file-viewer/parse-in-worker.d.ts",
+      "default": "./dist/file-viewer/parse-in-worker.js"
+    },
     "./file-viewer/eligibility": {
       "types": "./dist/file-viewer/eligibility.d.ts",
       "default": "./dist/file-viewer/eligibility.js"

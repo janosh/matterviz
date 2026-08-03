@@ -73,8 +73,11 @@ export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
 export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS)
 
 // Special regex patterns
-export const VASP_FILES_REGEX =
-  /(?:^|[\\/_.-])(?:poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
+// Bare VASP filenames that carry atomic coordinates. INCAR, KPOINTS and POTCAR are left
+// out on purpose: they are run inputs with no coordinates, so treating them as structures
+// only earns the caller `Unable to determine file format` once a parser actually runs.
+export const VASP_STRUCTURE_FILES_REGEX =
+  /(?:^|[\\/_.-])(?:poscar|contcar|outcar)(?:[\\/_.-]|$)/i
 export const VASP_VOLUMETRIC_REGEX =
   /(?:^|[\\/_.-])(?:chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
 export const XDATCAR_REGEX = /xdatcar/i

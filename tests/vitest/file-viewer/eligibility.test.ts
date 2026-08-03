@@ -1,9 +1,12 @@
+import { VASP_STRUCTURE_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
+  MATTERVIZ_FILE_EXTENSIONS,
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
 } from '$lib/file-viewer/eligibility'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '$lib/file-viewer/types'
 import { expect, test } from 'vitest'
 
 test.each([
@@ -78,4 +81,105 @@ test.each([
   [`structure.cif.gz`, true],
 ])(`base64 policy for %s is %s`, (filename, expected) => {
   expect(should_encode_filename_as_base64(filename)).toBe(expected)
+})
+
+// The literal list and the predicate must never disagree: a host that filters an open
+// dialog by the list would silently hide a format the viewer gained, or offer one it
+// cannot open. `md_run.` supplies the trajectory keyword .h5/.hdf5 need.
+test.each(MATTERVIZ_FILE_EXTENSIONS)(`MatterViz can open md_run.%s`, (extension) => {
+  expect(is_matterviz_filename(`md_run.${extension}`)).toBe(true)
+})
+
+// The extensionless entries earn their place by matching a bare uppercase VASP filename.
+test.each([`XDATCAR`, `CONTCAR`, `OUTCAR`, `CHGCAR`, `AECCAR2`, `ELFCAR`, `LOCPOT`, `PARCHG`])(
+  `%s opens without an extension`,
+  (filename) => {
+    expect(is_matterviz_filename(filename)).toBe(true)
+  },
+)
+
+// VASP run inputs hold no coordinates. Claiming them only sends the host to a parser that
+// answers `Unable to determine file format`, so the predicate must not offer them.
+test.each([`INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`])(
+  `%s is not offered to the viewer`,
+  (filename) => {
+    expect(is_matterviz_filename(filename)).toBe(false)
+  },
+)
+
+// The reverse direction: widening a regex the predicate matches on must not silently
+// leave a host's open dialog behind. STRUCTURE_EXTENSIONS and TRAJ_EXTENSIONS are spread
+// into the list directly, so only the regex-backed names need checking here. Two shapes
+// occur: `\.(?:a|b)$` for extensions and `(?:^|[\/_.-])(?:a|b)(?:[\/_.-]|$)` for the bare
+// VASP filenames. `aeccar[012]?` stands for four names, so expand the optional class.
+const OPTIONAL_CLASS_RE = /^(?<stem>[a-z0-9]+)\[(?<chars>[a-z0-9]+)\]\?$/
+
+const regex_alternatives = (regex: RegExp): string[] =>
+  regex.source
+    .replace(`(?:^|[\\\\/_.-])`, ``)
+    .replace(`(?:[\\\\/_.-]|$)`, ``)
+    .replace(/^\\\./, ``)
+    .replace(/^\(\?:/, ``)
+    .replace(/\$$/, ``)
+    .replace(/\)$/, ``)
+    .split(`|`)
+    .flatMap((alternative) => {
+      const groups = OPTIONAL_CLASS_RE.exec(alternative)?.groups
+      if (!groups) return [alternative]
+      const { stem, chars } = groups
+      return [stem, ...chars.split(``).map((char) => `${stem}${char}`)]
+    })
+
+test.each([
+  [`FERMI_FILE_RE`, FERMI_FILE_RE],
+  [`XYZ_EXTXYZ_REGEX`, XYZ_EXTXYZ_REGEX],
+  [`VOLUMETRIC_EXT_RE`, VOLUMETRIC_EXT_RE],
+  [`VOLUMETRIC_VASP_RE`, VOLUMETRIC_VASP_RE],
+  [`VASP_STRUCTURE_FILES_REGEX`, VASP_STRUCTURE_FILES_REGEX],
+])(`every name %s matches is listed`, (_label, regex) => {
+  const names = regex_alternatives(regex)
+  expect(names.every((name) => /^[a-z0-9]+$/.test(name))).toBe(true) // extraction worked
+  expect(MATTERVIZ_FILE_EXTENSIONS).toEqual(expect.arrayContaining(names))
+})
+
+test(`extension list covers every structure/trajectory/volumetric/Fermi format`, () => {
+  expect([...MATTERVIZ_FILE_EXTENSIONS].toSorted()).toEqual([
+    `aeccar`,
+    `aeccar0`,
+    `aeccar1`,
+    `aeccar2`,
+    `bxsf`,
+    `chgcar`,
+    `cif`,
+    `contcar`,
+    `cube`,
+    `data`,
+    `dump`,
+    `elfcar`,
+    `extxyz`,
+    `frmsf`,
+    `h5`,
+    `hdf5`,
+    `lammpstrj`,
+    `lmp`,
+    `locpot`,
+    `mcif`,
+    `mmcif`,
+    `mol`,
+    `mol2`,
+    `outcar`,
+    `parchg`,
+    `pdb`,
+    `poscar`,
+    `sdf`,
+    `traj`,
+    `vasp`,
+    `xdatcar`,
+    `xtc`,
+    `xyz`,
+  ])
+  // JSON/YAML open only with a structure keyword in the name, so a blanket entry would
+  // claim every unrelated .json a host offers. Hosts that want them add their own.
+  expect(MATTERVIZ_FILE_EXTENSIONS).not.toContain(`json`)
+  expect(MATTERVIZ_FILE_EXTENSIONS).not.toContain(`yaml`)
 })
