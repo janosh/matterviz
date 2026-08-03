@@ -76,11 +76,11 @@ export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
 export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex(TRAJ_FALLBACK_EXTENSIONS)
 
 // Special regex patterns
-// Bare VASP filenames that carry atomic coordinates. INCAR, KPOINTS and POTCAR are left
-// out on purpose: they are run inputs with no coordinates, so treating them as structures
-// only earns the caller `Unable to determine file format` once a parser actually runs.
-export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`, `outcar`])
-export const VASP_STRUCTURE_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
+// Bare VASP filenames that the structure parser supports. OUTCAR, INCAR, KPOINTS and
+// POTCAR are left out because advertising unparsable run inputs only earns the caller
+// `Unable to determine file format`.
+export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
+export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
 // oxfmt-ignore
 export const VASP_VOLUMETRIC_FILES = Object.freeze([
   `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
@@ -91,10 +91,7 @@ export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(?:\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
 export const XYZ_EXTENSIONS = Object.freeze([`.xyz`, `.extxyz`])
-export const XYZ_EXTXYZ_REGEX = new RegExp(
-  `\\.(?:${XYZ_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
-  `i`,
-)
+export const XYZ_EXTXYZ_REGEX = ext_regex(XYZ_EXTENSIONS)
 
 // Compression extensions regex (shared across files)
 export const COMPRESSION_EXTENSIONS_REGEX = ext_regex(COMPRESSION_EXTENSIONS)

@@ -1,6 +1,5 @@
 import type { ParseResult } from '$lib/file-viewer/parse'
 import {
-  estimate_decoded_base64_bytes,
   MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
   parse_in_worker,
   reset_parse_worker,
@@ -157,9 +156,9 @@ describe(`parse_in_worker`, () => {
     })
 
     // Hang the next parse on this shared worker, then abort once it is active.
-    let hung_request: ParseWorkerRequest | undefined
+    const pending_requests: ParseWorkerRequest[] = []
     worker.postMessage = (message) => {
-      hung_request = message as ParseWorkerRequest
+      pending_requests.push(message as ParseWorkerRequest)
     }
     const controller = new AbortController()
     const cancelled = parse_in_worker(`large`, `slow.h5`, true, {
@@ -167,12 +166,18 @@ describe(`parse_in_worker`, () => {
       signal: controller.signal,
       fallback_parse: vi.fn(),
     })
-    await vi.waitFor(() => expect(hung_request).toBeDefined())
+    await vi.waitFor(() => expect(pending_requests).toHaveLength(1))
     controller.abort()
     await expect(cancelled).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).not.toHaveBeenCalled()
 
-    if (!hung_request) throw new Error(`expected a hung worker request`)
+    const queued = parse_in_worker(`data_si`, `queued.cif`, false, {
+      worker_factory: () => worker,
+    })
+    await Promise.resolve()
+    expect(pending_requests).toHaveLength(1)
+
+    const [hung_request] = pending_requests
     const late_frame_channel = new MessageChannel()
     const late_dispose = new Promise<FrameWorkerRequest>((resolve) => {
       late_frame_channel.port1.addEventListener(
@@ -189,6 +194,12 @@ describe(`parse_in_worker`, () => {
     })
     await expect(late_dispose).resolves.toMatchObject({ method: `dispose` })
     late_frame_channel.port1.close()
+    await vi.waitFor(() => expect(pending_requests).toHaveLength(2))
+    emit_worker_message(worker, {
+      id: pending_requests[1].id,
+      result: structure_result,
+    })
+    await expect(queued).resolves.toEqual(structure_result)
 
     await expect(frame_loader.load_frame(``, 1)).resolves.toMatchObject({ step: 1 })
     frame_loader.dispose()
@@ -447,15 +458,6 @@ describe(`parse_in_worker`, () => {
     },
   )
 
-  it.each([
-    [`TQ==`, 1],
-    [`TWE=`, 2],
-    [`TWFu`, 3],
-    [`T W\nFu`, 3],
-  ])(`estimates decoded base64 size for %s`, (content, expected_bytes) => {
-    expect(estimate_decoded_base64_bytes(content)).toBe(expected_bytes)
-  })
-
   const large_xyz_frame = `1\n${`x`.repeat(600_000)}\nH 0 0 0\n`
   const large_single_frame = `1\n${`x`.repeat(1_100_000)}\nH 0 0 0\n`
   it.each([
@@ -473,7 +475,25 @@ describe(`parse_in_worker`, () => {
     },
   )
 
+  it(`keeps indexable XYZ data indexed during main-thread fallback`, async () => {
+    const content = `1\nframe\nH 0 0 0\n`.repeat(64)
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const result = await parse_in_worker(content, `movie.xyz`, false, {
+      worker_factory: parse_error_worker_factory,
+    })
+    warn.mockRestore()
+
+    expect(result).toMatchObject({
+      type: `trajectory`,
+      data: { is_indexed: true, total_frames: 64 },
+    })
+    const trajectory = result.data as TrajectoryType
+    trajectory.frame_loader?.dispose?.()
+  })
+
   it(`returns cloneable indexed worker results with live frame RPC`, async () => {
+    const { TrajFrameReader } = await import(`$lib/trajectory/parse`)
+    const dispose_spy = vi.spyOn(TrajFrameReader.prototype, `dispose`)
     const { handle_parse_worker_request } = await import(`$lib/file-viewer/parse-worker`)
     const { response, transfer } = await handle_parse_worker_request({
       id: 7,
@@ -506,6 +526,8 @@ describe(`parse_in_worker`, () => {
     })
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
     frame_port.postMessage({ id: 9, method: `dispose`, args: [] })
+    await vi.waitFor(() => expect(dispose_spy).toHaveBeenCalledOnce())
+    dispose_spy.mockRestore()
     frame_port.close()
   })
 
@@ -619,7 +641,10 @@ describe(`parse_in_worker`, () => {
     [`unavailable-worker fallback`, `data_si`, unavailable_worker_factory],
   ])(`cancels %s before its parser settles`, async (_label, content, worker_factory) => {
     const deferred_parse = Promise.withResolvers<ParseResult>()
-    const fallback_parse = vi.fn(() => deferred_parse.promise)
+    const fallback_parse = vi
+      .fn()
+      .mockImplementationOnce(() => deferred_parse.promise)
+      .mockResolvedValue(structure_result)
     const controller = new AbortController()
     const options = {
       fallback_parse,
@@ -634,10 +659,9 @@ describe(`parse_in_worker`, () => {
     await vi.waitFor(() => expect(fallback_parse).toHaveBeenCalledOnce())
     controller.abort()
     await expect(parsing).rejects.toMatchObject({ name: `AbortError` })
-    expect(fallback_parse).toHaveBeenCalledOnce()
-    deferred_parse.resolve(structure_result)
+    await vi.waitFor(() => expect(fallback_parse).toHaveBeenCalledTimes(2))
     await expect(queued).resolves.toEqual(structure_result)
-    expect(fallback_parse).toHaveBeenCalledTimes(2)
+    deferred_parse.resolve(structure_result)
   })
 
   it(`routes malformed LARGE_FILE markers to fallback validation`, async () => {

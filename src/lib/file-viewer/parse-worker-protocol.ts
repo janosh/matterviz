@@ -1,6 +1,7 @@
 // Wire protocol shared by the parse worker (parse-worker.ts) and its main-thread
 // client (parse-in-worker.ts). Kept in its own module so the worker never pulls in
 // the client (which constructs the worker) and vice versa.
+import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ParseProgress } from '$lib/trajectory'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type { ParseResult } from './parse'
@@ -50,7 +51,7 @@ export const should_index_worker_xyz = (
   filename: string,
   is_base64: boolean,
 ): boolean => {
-  if (is_base64 || !/\.(?:xyz|extxyz)$/i.test(filename)) return false
+  if (is_base64 || !XYZ_EXTXYZ_REGEX.test(filename)) return false
   const frame_count = count_xyz_frames(content)
   return (
     frame_count >= 2 &&

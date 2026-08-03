@@ -76,6 +76,10 @@ describe(`package.json exports`, () => {
     expect(pkg.exports[subpath]).toBeDefined()
   })
 
+  test(`worker-backed parser ships its sibling worker entry`, () => {
+    expect(existsSync(join(repo_root, `dist/file-viewer/parse-worker.js`))).toBe(true)
+  })
+
   test(
     `built structure and element entry points retain strict public exports`,
     { timeout: 15_000 },

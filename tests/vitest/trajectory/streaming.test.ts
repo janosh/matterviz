@@ -197,6 +197,17 @@ describe(`Trajectory Streaming`, () => {
   })
 
   describe(`Frame Indexing`, () => {
+    it(`releases cached XYZ payloads on disposal`, async () => {
+      const reader = new TrajFrameReader(`test.xyz`)
+      await reader.get_total_frames(create_synthetic_xyz(2))
+      const reader_state = reader as unknown as { xyz_cache?: unknown }
+      expect(reader_state.xyz_cache).toBeDefined()
+
+      reader.dispose()
+
+      expect(reader_state.xyz_cache).toBeUndefined()
+    })
+
     it.each([
       [`XYZ`, create_synthetic_xyz(10), `test.xyz`, 2, [0, 2, 4, 6, 8]], // 10 frames, every 2nd
       [`ASE`, create_synthetic_ase(20), `test.traj`, 5, [0, 5, 10, 15]], // 20 frames, every 5th

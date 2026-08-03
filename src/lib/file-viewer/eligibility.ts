@@ -54,20 +54,22 @@ export const is_matterviz_filename = (filename: unknown): boolean => {
   )
 }
 
-// What `is_matterviz_filename` answers, as a literal list, for hosts that cannot call a
-// predicate: native open dialogs and OS file associations take an extension array.
-// `eligibility.test.ts` checks both directions — every entry is one the predicate accepts,
-// and every canonical filename family is present. HDF5 remains explicit because its
-// detection is keyword-gated. JSON/YAML are left out because the viewer takes them only
-// with a structure keyword in the name — a host that wants every .json adds it itself.
+// `is_matterviz_filename` as a literal list, for hosts that take an extension array
+// instead of a predicate (native open dialogs, OS file associations). `h5`/`hdf5` and the
+// bare VASP names are spelled out because those are keyword- or filename-gated, not
+// extension-gated. JSON/YAML are left out: the viewer takes them only with a structure
+// keyword in the name, so a blanket entry would claim every unrelated .json.
 export const MATTERVIZ_FILE_EXTENSIONS: readonly string[] = Object.freeze([
   ...new Set([
-    ...[...STRUCTURE_EXTENSIONS, ...TRAJ_EXTENSIONS].map((ext) => ext.slice(1)),
-    ...XYZ_EXTENSIONS.map((ext) => ext.slice(1)),
-    `h5`, // is_trajectory_file, keyword-gated
+    ...[
+      ...STRUCTURE_EXTENSIONS,
+      ...TRAJ_EXTENSIONS,
+      ...XYZ_EXTENSIONS,
+      ...FERMI_FILE_EXTENSIONS,
+    ].map((ext) => ext.slice(1)),
+    `h5`,
     `hdf5`,
-    ...FERMI_FILE_EXTENSIONS.map((ext) => ext.slice(1)),
-    `xdatcar`, // XDATCAR_REGEX, matched as a bare filename
+    `xdatcar`,
     ...VASP_STRUCTURE_FILES,
     ...VASP_VOLUMETRIC_FILES,
   ]),

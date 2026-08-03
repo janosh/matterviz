@@ -1,10 +1,4 @@
-import {
-  STRUCTURE_EXTENSIONS,
-  TRAJ_EXTENSIONS,
-  VASP_STRUCTURE_FILES,
-  VASP_VOLUMETRIC_FILES,
-  XYZ_EXTENSIONS,
-} from '$lib/constants'
+import { VASP_STRUCTURE_FILES, VASP_VOLUMETRIC_FILES } from '$lib/constants'
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
@@ -12,7 +6,6 @@ import {
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
 } from '$lib/file-viewer/eligibility'
-import { FERMI_FILE_EXTENSIONS } from '$lib/file-viewer/types'
 import { expect, test } from 'vitest'
 
 const vasp_filenames = [`xdatcar`, ...VASP_STRUCTURE_FILES, ...VASP_VOLUMETRIC_FILES]
@@ -106,25 +99,24 @@ test.each(vasp_filenames.map((filename) => filename.toUpperCase()))(
   },
 )
 
-// VASP run inputs hold no coordinates. Claiming them only sends the host to a parser that
-// answers `Unable to determine file format`, so the predicate must not offer them.
-test.each([`INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`])(
+// Unsupported VASP outputs and run inputs only send the host to a parser that answers
+// `Unable to determine file format`, so the predicate must not offer them.
+test.each([`OUTCAR`, `INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`])(
   `%s is not offered to the viewer`,
   (filename) => {
     expect(is_matterviz_filename(filename)).toBe(false)
   },
 )
 
-test(`extension list covers every structure/trajectory/volumetric/Fermi format`, () => {
+test(`extension list matches the explicit host allowlist`, () => {
   // oxfmt-ignore
-  const canonical_extensions = [
-    ...[...STRUCTURE_EXTENSIONS, ...TRAJ_EXTENSIONS, ...XYZ_EXTENSIONS, ...FERMI_FILE_EXTENSIONS]
-      .map((extension) => extension.slice(1)),
-    `h5`, `hdf5`, ...vasp_filenames,
+  const expected_extensions = [
+    `cif`, `mcif`, `poscar`, `vasp`, `cube`, `lmp`, `data`, `dump`, `pdb`, `mol`, `mol2`,
+    `sdf`, `mmcif`, `traj`, `xtc`, `lammpstrj`, `xyz`, `extxyz`, `bxsf`, `frmsf`, `h5`,
+    `hdf5`, `xdatcar`, `contcar`, `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`,
+    `elfcar`, `locpot`, `parchg`,
   ]
-  expect([...MATTERVIZ_FILE_EXTENSIONS].toSorted()).toEqual(
-    [...new Set(canonical_extensions)].toSorted(),
-  )
+  expect(MATTERVIZ_FILE_EXTENSIONS).toEqual(expected_extensions)
   // JSON/YAML open only with a structure keyword in the name, so a blanket entry would
   // claim every unrelated .json a host offers. Hosts that want them add their own.
   expect(MATTERVIZ_FILE_EXTENSIONS).not.toContain(`json`)

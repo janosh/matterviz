@@ -77,7 +77,7 @@
             "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"
           },
           {
-            "filenamePattern": "*{poscar,xdatcar,contcar,outcar}"
+            "filenamePattern": "*{poscar,xdatcar,contcar}"
           },
           {
             "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*"

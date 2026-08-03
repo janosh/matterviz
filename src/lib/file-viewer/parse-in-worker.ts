@@ -1,13 +1,12 @@
-// parse_in_worker: run parse_file_content in a module Web Worker
-// (parse-worker.ts) so parsing large files doesn't block the UI thread,
-// with a main-thread fallback whenever the worker path fails (worker
-// construction blocked, worker script/wasm asset fails to load, or the parse
-// itself errors. The fallback re-parses on the main thread so callers get
-// the same behavior and error messages as before the worker existed).
+// parse_in_worker: run parse_file_content in a module Web Worker (parse-worker.ts) so
+// parsing large files doesn't block the UI thread. Whenever the worker path fails (blocked
+// construction, script/wasm asset that won't load, or a parse error) the same input is
+// re-parsed on the main thread, so callers see the behavior and errors they would have
+// without a worker at all.
 //
-// Worker.postMessage takes no targetOrigin (that's window.postMessage) and
-// vite's static worker detection requires the literal `./` URL form, so both
-// unicorn rules below are false positives here.
+// Worker.postMessage takes no targetOrigin (that's window.postMessage) and vite's static
+// worker detection requires the literal `./` URL form, so both unicorn rules are false
+// positives here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
 import type {
@@ -18,24 +17,19 @@ import type {
   TrajectoryPositionStream,
   TrajectoryType,
 } from '$lib/trajectory'
+import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { to_error } from '$lib/utils'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import { parse_file_content, type ParseResult } from './parse'
-import type {
-  FrameWorkerMethod,
-  FrameWorkerResponse,
-  ParseWorkerRequest,
-  ParseWorkerResponse,
+import {
+  should_index_worker_xyz,
+  type FrameWorkerMethod,
+  type FrameWorkerResponse,
+  type ParseWorkerRequest,
+  type ParseWorkerResponse,
 } from './parse-worker-protocol'
 
-export { should_index_worker_xyz } from './parse-worker-protocol'
-export type {
-  FrameWorkerMethod,
-  FrameWorkerRequest,
-  FrameWorkerResponse,
-  ParseWorkerRequest,
-  ParseWorkerResponse,
-} from './parse-worker-protocol'
+export * from './parse-worker-protocol'
 
 // Minimal Worker surface so tests can inject a fake without a real thread
 export type WorkerLike = Pick<Worker, `postMessage` | `addEventListener` | `terminate`>
@@ -46,9 +40,6 @@ export interface ParseInWorkerOptions {
   // Injectable for tests; the default is the library's own parser, which handles
   // LARGE_FILE markers by asking the host for the file over the bridge.
   fallback_parse?: typeof parse_file_content
-  // Ordinary worker failures fall back on the UI thread only for inputs within
-  // the existing limits: 25 MiB UTF-8 text or 50 MiB decoded binary.
-  // LARGE_FILE markers keep their optimized host fallback regardless of size.
   fallback_on_worker_error?: boolean
   signal?: AbortSignal
   timeout_ms?: number // tests use small values; default WORKER_TIMEOUT_MS
@@ -73,6 +64,7 @@ let shared_worker: WorkerLike | null = null
 let worker_unusable = false
 let next_request_id = 0
 let fallback_task: Promise<ParseOutcome> | null = null
+let abandoned_worker_request_id: number | null = null
 let draining_queue = false
 const queued_jobs: ParseJob[] = []
 const active_frame_loader_disposers = new SvelteSet<(error?: Error) => void>()
@@ -107,9 +99,11 @@ const bind_indexed_frame_loader = (
   result: ParseResult,
   frame_port: MessagePort | undefined,
 ): ParseResult => {
-  if (result.type !== `trajectory`) return result
-  const trajectory = result.data as TrajectoryType
-  if (trajectory.is_indexed !== true) return result
+  const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
+  if (trajectory?.is_indexed !== true) {
+    dispose_unbound_frame_port(frame_port)
+    return result
+  }
   if (!frame_port) throw new Error(`Indexed parse worker result is missing its frame port`)
 
   let next_id = 0
@@ -147,6 +141,10 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
+    if (active_frame_loader_disposers.size === 0 && abandoned_worker_request_id !== null) {
+      terminate_worker()
+      queueMicrotask(drain_queue)
+    }
   }
   frame_port.start()
 
@@ -223,6 +221,24 @@ const ordinary_fallback_is_safe = (job: ParseJob): boolean =>
       MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
     : !utf8_size_exceeds(job.request.content, MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES)
 
+// Default fallback. Mirrors the worker's indexed-XYZ branch so a fallback parse yields the
+// same shape; materializing every frame of a long trajectory would blow up the UI thread.
+const parse_on_main_thread = async (
+  content: string,
+  filename: string,
+  is_base64 = false,
+): Promise<ParseResult> =>
+  should_index_worker_xyz(content, filename, is_base64)
+    ? {
+        type: `trajectory`,
+        filename,
+        data: await parse_trajectory_async(content, filename, undefined, {
+          use_indexing: true,
+          extract_plot_metadata: true,
+        }),
+      }
+    : parse_file_content(content, filename, is_base64)
+
 const settle_job = (job: ParseJob, outcome: ParseOutcome): void => {
   const queue_idx = queued_jobs.indexOf(job)
   if (queue_idx === -1) return
@@ -236,15 +252,22 @@ const settle_job = (job: ParseJob, outcome: ParseOutcome): void => {
 
 const terminate_worker = (): void => {
   const error = new Error(`Parse worker terminated`)
-  for (const dispose of active_frame_loader_disposers) dispose(error)
-  shared_worker?.terminate()
+  const worker = shared_worker
   shared_worker = null
+  abandoned_worker_request_id = null
+  for (const dispose of active_frame_loader_disposers) dispose(error)
+  worker?.terminate()
 }
 
-// Soft abort/timeout: keep the worker while indexed frame ports are live.
-// Late responses for the abandoned job are ignored (request id mismatch).
+// Soft abort/timeout: keep the worker while indexed frame ports are live, but do not
+// post another parse until the abandoned request responds or the last loader is disposed.
 const terminate_idle_worker = (): void => {
   if (active_frame_loader_disposers.size === 0) terminate_worker()
+}
+
+const abandon_or_terminate_worker_job = (job: ParseJob): void => {
+  if (active_frame_loader_disposers.size === 0) terminate_worker()
+  else abandoned_worker_request_id = job.request.id
 }
 
 const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
@@ -270,7 +293,7 @@ const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
       error,
     )
   }
-  const fallback_parse = job.options.fallback_parse ?? parse_file_content
+  const fallback_parse = job.options.fallback_parse ?? parse_on_main_thread
   const { content, filename, is_base64 } = job.request
   const fallback = Promise.resolve()
     .then(() => fallback_parse(content, filename, is_base64))
@@ -301,6 +324,12 @@ const handle_worker_message = (
   const { id, result, error, frame_port } = event.data ?? {}
   if (shared_worker !== worker) {
     dispose_unbound_frame_port(frame_port)
+    return
+  }
+  if (id === abandoned_worker_request_id) {
+    abandoned_worker_request_id = null
+    dispose_unbound_frame_port(frame_port)
+    queueMicrotask(drain_queue)
     return
   }
   const job = queued_jobs[0]
@@ -360,20 +389,22 @@ const ensure_worker = (factory: WorkerFactory): WorkerLike | null => {
 }
 
 const abort_job = (job: ParseJob): void => {
-  const queue_idx = queued_jobs.indexOf(job)
-  if (queue_idx === -1) return
-  if (queue_idx === 0 && job.phase === `worker`) terminate_idle_worker()
+  if (queued_jobs.indexOf(job) === 0) {
+    if (job.phase === `worker`) abandon_or_terminate_worker_job(job)
+    // Release the queue now; the orphaned fallback promise settles into a removed job.
+    else if (job.phase === `fallback`) fallback_task = null
+  }
   settle_job(job, { error: parse_abort_error() })
 }
 
 const time_out_active_job = (job: ParseJob, timeout_ms: number): void => {
   if (queued_jobs[0] !== job || job.phase !== `worker`) return
-  terminate_idle_worker()
+  abandon_or_terminate_worker_job(job)
   run_fallback(job, new Error(`Parse worker timed out after ${timeout_ms / 1000}s`))
 }
 
 function drain_queue(): void {
-  if (fallback_task || draining_queue) return
+  if (fallback_task || abandoned_worker_request_id !== null || draining_queue) return
   draining_queue = true
   try {
     const job = queued_jobs[0]

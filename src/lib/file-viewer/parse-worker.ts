@@ -22,41 +22,60 @@ const error_message = (error: unknown): string =>
 
 const create_frame_loader_port = (frame_loader: FrameLoader, content: string): MessagePort => {
   const channel = new MessageChannel()
+  // Dropped on dispose so a closed viewer stops pinning the source string (100+ MB for the
+  // trajectories worth indexing) and the loader's frame index for the worker's whole life.
+  let state: { loader: FrameLoader; data: string } | null = {
+    loader: frame_loader,
+    data: content,
+  }
+  const dispose = (): void => {
+    state?.loader.dispose?.()
+    state = null
+    channel.port1.close()
+  }
+  const post_response = (response: unknown): void => {
+    if (!state) return
+    try {
+      channel.port1.postMessage(response)
+    } catch {
+      dispose()
+    }
+  }
   channel.port1.addEventListener(`message`, (event: MessageEvent<FrameWorkerRequest>) => {
     const { id, method, args } = event.data
-    if (method === `dispose`) {
-      channel.port1.close()
+    if (method === `dispose` || !state) {
+      dispose()
       return
     }
+    const { loader, data } = state
     void (async () => {
-      const on_progress = (progress: ParseProgress): void =>
-        channel.port1.postMessage({ id, progress })
+      const on_progress = (progress: ParseProgress): void => post_response({ id, progress })
       try {
         let result: unknown
         if (method === `get_total_frames`) {
-          result = await frame_loader.get_total_frames(content)
+          result = await loader.get_total_frames(data)
         } else if (method === `build_frame_index`) {
-          result = await frame_loader.build_frame_index(content, Number(args[0]), on_progress)
+          result = await loader.build_frame_index(data, Number(args[0]), on_progress)
         } else if (method === `load_frame`) {
-          result = await frame_loader.load_frame(content, Number(args[0]))
+          result = await loader.load_frame(data, Number(args[0]))
         } else if (method === `extract_plot_metadata`) {
-          result = await frame_loader.extract_plot_metadata(
-            content,
+          result = await loader.extract_plot_metadata(
+            data,
             args[0] as Parameters<FrameLoader[`extract_plot_metadata`]>[1],
             on_progress,
           )
-        } else if (method === `stream_positions` && frame_loader.stream_positions) {
-          result = await frame_loader.stream_positions(
-            content,
+        } else if (method === `stream_positions` && loader.stream_positions) {
+          result = await loader.stream_positions(
+            data,
             args[0] as Parameters<NonNullable<FrameLoader[`stream_positions`]>>[1],
             on_progress,
           )
         } else {
           throw new Error(`Unsupported indexed frame worker method: ${method}`)
         }
-        channel.port1.postMessage({ id, result })
+        post_response({ id, result })
       } catch (error) {
-        channel.port1.postMessage({ id, error: error_message(error) })
+        post_response({ id, error: error_message(error) })
       }
     })()
   })
@@ -77,7 +96,6 @@ export const handle_parse_worker_request = async (
     }
     const indexed = await parse_trajectory_async(content, filename, undefined, {
       use_indexing: true,
-      index_sample_rate: 1,
       extract_plot_metadata: true,
     })
     const frame_loader = indexed.frame_loader
@@ -102,6 +120,12 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
       // The DOM lib types `self` as Window; the worker scope takes the list.
       ;(self as unknown as Worker).postMessage(response, transfer)
     } catch (error) {
+      try {
+        response.frame_port?.postMessage({ id: 0, method: `dispose`, args: [] })
+      } catch {
+        // The failed transfer may already have detached the port.
+      }
+      response.frame_port?.close()
       self.postMessage({
         id,
         error: `Failed to clone parse result: ${error_message(error)}`,
