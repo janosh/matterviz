@@ -1,6 +1,6 @@
 import type { ParseResult } from '$lib/file-viewer/parse'
 import {
-  estimate_decoded_base64_bytes,
+  MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
   MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
   parse_in_worker,
   reset_parse_worker,
@@ -172,11 +172,12 @@ describe(`parse_in_worker`, () => {
     await expect(cancelled).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).not.toHaveBeenCalled()
 
+    // The next parse goes out right away instead of waiting on the abandoned request. A
+    // worker hung mid-parse would otherwise stall the queue with no timeout to break it.
     const queued = parse_in_worker(`data_si`, `queued.cif`, false, {
       worker_factory: () => worker,
     })
-    await Promise.resolve()
-    expect(pending_requests).toHaveLength(1)
+    await vi.waitFor(() => expect(pending_requests).toHaveLength(2))
 
     const [hung_request] = pending_requests
     const late_frame_channel = new MessageChannel()
@@ -195,7 +196,6 @@ describe(`parse_in_worker`, () => {
     })
     await expect(late_dispose).resolves.toMatchObject({ method: `dispose` })
     late_frame_channel.port1.close()
-    await vi.waitFor(() => expect(pending_requests).toHaveLength(2))
     emit_worker_message(worker, {
       id: pending_requests[1].id,
       result: structure_result,
@@ -232,7 +232,9 @@ describe(`parse_in_worker`, () => {
 
     await expect(pending_parse).resolves.toEqual(structure_result)
     await expect(queued_opt_out).rejects.toThrow(`failed to deserialize`)
-    await expect(queued_large).rejects.toThrow(`main-thread fallback is disabled`)
+    await expect(queued_large).rejects.toThrow(
+      `main-thread fallback is disabled above ${MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES / 1024 ** 2} MiB text or ${MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES / 1024 ** 2} MiB decoded binary`,
+    )
     expect(worker.terminate).toHaveBeenCalledOnce()
     await expect(parse_in_worker(`c`, `c.cif`, false, worker_options)).resolves.toEqual(
       structure_result,
@@ -459,13 +461,26 @@ describe(`parse_in_worker`, () => {
     },
   )
 
+  // base64 content is ASCII, so the decoded-size ceiling maps to 4/3 as many characters.
+  // The last case sits past the text ceiling but well inside the roomier base64 one.
   it.each([
-    [`TQ==`, 1],
-    [`TWE=`, 2],
-    [`TWFu`, 3],
-    [`T W\nFu`, 3],
-  ])(`estimates decoded base64 size for %s`, (content, expected_bytes) => {
-    expect(estimate_decoded_base64_bytes(content)).toBe(expected_bytes)
+    [`oversized text`, MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES + 1, false, false],
+    [
+      `oversized base64`,
+      Math.ceil((MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3),
+      true,
+      false,
+    ],
+    [`text-sized base64`, MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES + 1, true, true],
+  ])(`main-thread fallback for %s`, async (_label, length, is_base64, expect_fallback) => {
+    const fallback_parse = vi.fn().mockResolvedValue(structure_result)
+    const parsing = parse_in_worker(`x`.repeat(length), `huge.h5`, is_base64, {
+      worker_factory: parse_error_worker_factory,
+      fallback_parse,
+    })
+    if (expect_fallback) await expect(parsing).resolves.toEqual(structure_result)
+    else await expect(parsing).rejects.toThrow(`main-thread fallback is disabled`)
+    expect(fallback_parse).toHaveBeenCalledTimes(expect_fallback ? 1 : 0)
   })
 
   const large_xyz_frame = `1\n${`x`.repeat(600_000)}\nH 0 0 0\n`
@@ -537,6 +552,14 @@ describe(`parse_in_worker`, () => {
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
     frame_port.postMessage({ id: 9, method: `dispose`, args: [] })
     await vi.waitFor(() => expect(dispose_spy).toHaveBeenCalledOnce())
+    let follow_up_response: FrameWorkerResponse | undefined
+    frame_port.addEventListener(`message`, (event: MessageEvent<FrameWorkerResponse>) => {
+      follow_up_response = event.data
+    })
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    frame_port.postMessage({ id: 10, method: `load_frame`, args: [0] })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(follow_up_response).toBeUndefined()
     dispose_spy.mockRestore()
     frame_port.close()
   })

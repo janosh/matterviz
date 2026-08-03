@@ -51,7 +51,7 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 )
 
 // Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
-const ext_regex = (exts: readonly string[]): RegExp =>
+export const ext_regex = (exts: readonly string[]): RegExp =>
   new RegExp(`\\.(${exts.map((ext) => ext.slice(1)).join(`|`)})$`, `i`)
 
 const filename_token_regex = (filenames: readonly string[]): RegExp =>

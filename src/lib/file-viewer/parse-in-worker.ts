@@ -48,6 +48,7 @@ export interface ParseInWorkerOptions {
 // Generous ceiling: a 231 MB spike file parsed in ~5 s; a request past two
 // minutes means a hung worker, and the fallback re-parse is the better UX.
 const WORKER_TIMEOUT_MS = 120_000
+const BYTES_PER_MIB = 1024 ** 2
 export const MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES = 25 * 1024 * 1024
 export const MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES = 50 * 1024 * 1024
 
@@ -64,7 +65,6 @@ let shared_worker: WorkerLike | null = null
 let worker_unusable = false
 let next_request_id = 0
 let fallback_task: Promise<ParseOutcome> | null = null
-let abandoned_worker_request_id: number | null = null
 let draining_queue = false
 const queued_jobs: ParseJob[] = []
 const active_frame_loader_disposers = new SvelteSet<(error?: Error) => void>()
@@ -141,10 +141,6 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
-    if (active_frame_loader_disposers.size === 0 && abandoned_worker_request_id !== null) {
-      terminate_worker()
-      queueMicrotask(drain_queue)
-    }
   }
   frame_port.start()
 
@@ -183,43 +179,20 @@ const bind_indexed_frame_loader = (
   return result
 }
 
-const utf8_size_exceeds = (text: string, max_bytes: number): boolean => {
-  let bytes = 0
-  for (let char_idx = 0; char_idx < text.length; char_idx++) {
-    const code = text.charCodeAt(char_idx)
-    if (code <= 0x7f) bytes += 1
-    else if (code <= 0x7ff) bytes += 2
-    else if (
-      code >= 0xd800 &&
-      code <= 0xdbff &&
-      text.charCodeAt(char_idx + 1) >= 0xdc00 &&
-      text.charCodeAt(char_idx + 1) <= 0xdfff
-    ) {
-      bytes += 4
-      char_idx++
-    } else bytes += 3
-    if (bytes > max_bytes) return true
-  }
-  return false
-}
+// The length test short-circuits the Blob copy for inputs already past the limit, since
+// UTF-8 never spends less than one byte per UTF-16 code unit.
+const utf8_size_exceeds = (text: string, max_bytes: number): boolean =>
+  text.length > max_bytes || new Blob([text]).size > max_bytes
 
-export const estimate_decoded_base64_bytes = (content: string): number => {
-  let encoded_chars = 0
-  let trailing_padding = 0
-  for (const char of content) {
-    const code = char.charCodeAt(0)
-    if (code === 9 || code === 10 || code === 13 || code === 32) continue
-    encoded_chars++
-    trailing_padding = char === `=` ? Math.min(2, trailing_padding + 1) : 0
-  }
-  return Math.max(0, Math.floor((encoded_chars * 3) / 4) - trailing_padding)
-}
-
-const ordinary_fallback_is_safe = (job: ParseJob): boolean =>
-  job.request.is_base64
-    ? estimate_decoded_base64_bytes(job.request.content) <=
-      MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
-    : !utf8_size_exceeds(job.request.content, MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES)
+// Ordinary worker failures re-parse on the UI thread only within the limits above. base64
+// payloads are ASCII, so their 4-chars-per-3-bytes ratio bounds the decoded size.
+const ordinary_fallback_is_safe = ({ request }: ParseJob): boolean =>
+  !utf8_size_exceeds(
+    request.content,
+    request.is_base64
+      ? (MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES * 4) / 3
+      : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
+  )
 
 // Default fallback. Mirrors the worker's indexed-XYZ branch so a fallback parse yields the
 // same shape; materializing every frame of a long trajectory would blow up the UI thread.
@@ -254,20 +227,15 @@ const terminate_worker = (): void => {
   const error = new Error(`Parse worker terminated`)
   const worker = shared_worker
   shared_worker = null
-  abandoned_worker_request_id = null
   for (const dispose of active_frame_loader_disposers) dispose(error)
   worker?.terminate()
 }
 
-// Soft abort/timeout: keep the worker while indexed frame ports are live, but do not
-// post another parse until the abandoned request responds or the last loader is disposed.
+// Soft abort/timeout: keep the worker alive while indexed frame ports still need it. Its
+// answer to the abandoned job is dropped on the id mismatch in handle_worker_message, and
+// the next job goes straight out rather than waiting on a worker that may never reply.
 const terminate_idle_worker = (): void => {
   if (active_frame_loader_disposers.size === 0) terminate_worker()
-}
-
-const abandon_or_terminate_worker_job = (job: ParseJob): void => {
-  if (active_frame_loader_disposers.size === 0) terminate_worker()
-  else abandoned_worker_request_id = job.request.id
 }
 
 const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
@@ -281,7 +249,7 @@ const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
   if (error && !job.fallback_only && !ordinary_fallback_is_safe(job)) {
     settle_job(job, {
       error: new Error(
-        `Parse worker failed for a large file; main-thread fallback is disabled above 25 MiB text or 50 MiB decoded binary`,
+        `Parse worker failed for a large file; main-thread fallback is disabled above ${MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES / BYTES_PER_MIB} MiB text or ${MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES / BYTES_PER_MIB} MiB decoded binary`,
         { cause: error },
       ),
     })
@@ -324,12 +292,6 @@ const handle_worker_message = (
   const { id, result, error, frame_port } = event.data ?? {}
   if (shared_worker !== worker) {
     dispose_unbound_frame_port(frame_port)
-    return
-  }
-  if (id === abandoned_worker_request_id) {
-    abandoned_worker_request_id = null
-    dispose_unbound_frame_port(frame_port)
-    queueMicrotask(drain_queue)
     return
   }
   const job = queued_jobs[0]
@@ -390,7 +352,7 @@ const ensure_worker = (factory: WorkerFactory): WorkerLike | null => {
 
 const abort_job = (job: ParseJob): void => {
   if (queued_jobs.indexOf(job) === 0) {
-    if (job.phase === `worker`) abandon_or_terminate_worker_job(job)
+    if (job.phase === `worker`) terminate_idle_worker()
     // Release the queue now; the orphaned fallback promise settles into a removed job.
     else if (job.phase === `fallback`) fallback_task = null
   }
@@ -399,12 +361,12 @@ const abort_job = (job: ParseJob): void => {
 
 const time_out_active_job = (job: ParseJob, timeout_ms: number): void => {
   if (queued_jobs[0] !== job || job.phase !== `worker`) return
-  abandon_or_terminate_worker_job(job)
+  terminate_idle_worker()
   run_fallback(job, new Error(`Parse worker timed out after ${timeout_ms / 1000}s`))
 }
 
 function drain_queue(): void {
-  if (fallback_task || abandoned_worker_request_id !== null || draining_queue) return
+  if (fallback_task || draining_queue) return
   draining_queue = true
   try {
     const job = queued_jobs[0]
