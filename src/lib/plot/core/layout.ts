@@ -150,12 +150,25 @@ export interface AutoPaddingConfig {
 }
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
-export const measure_max_tick_width = (ticks: (string | number)[], format?: string): number =>
+export const measure_max_tick_width = (
+  ticks: (string | number)[],
+  format?: string,
+  tick_labels?: AxisConfig[`ticks`],
+): number =>
   ticks.length === 0
     ? 0
     : Math.max(
         ...ticks.map((tick) => {
-          const label = typeof tick === `string` ? tick : format_value_or_num(tick, format)
+          const custom_label =
+            typeof tick === `number` &&
+            tick_labels &&
+            typeof tick_labels === `object` &&
+            !Array.isArray(tick_labels)
+              ? tick_labels[tick]
+              : undefined
+          const label =
+            custom_label ??
+            (typeof tick === `string` ? tick : format_value_or_num(tick, format))
           return measure_text_width(label, `12px sans-serif`)
         }),
       )
@@ -217,7 +230,9 @@ export const calc_auto_padding = ({
     const inside = axis.tick?.label?.inside ?? false
     const tick_shift = axis.tick?.label?.shift?.x ?? 0
     const has_outside_ticks = ticks.length > 0 && !inside
-    const tick_width = has_outside_ticks ? measure_max_tick_width(ticks, axis.format) : 0
+    const tick_width = has_outside_ticks
+      ? measure_max_tick_width(ticks, axis.format, axis.ticks)
+      : 0
     const tick_offset = !has_outside_ticks
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
@@ -298,7 +313,7 @@ export const resolve_tick_layout = (
   // y/y2 labels stack vertically and never crowd; a lone label has no neighbour to hit
   const can_collide = (side === `x` || side === `x2`) && ticks.length > 1
   if (configured === `auto` && !can_collide) return { rotation: 0, band: TICK_LABEL_HEIGHT }
-  const widest = measure_max_tick_width(ticks, axis.format)
+  const widest = measure_max_tick_width(ticks, axis.format, axis.ticks)
   // Which sign trails up-and-to-the-left — the direction that keeps the last label on the
   // figure — is set by which side of the baseline the labels sit on: x2 puts them above,
   // and so does an x axis labelled `inside`.
