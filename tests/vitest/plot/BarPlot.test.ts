@@ -98,13 +98,7 @@ describe(`BarPlot`, () => {
       `y`,
       `vertical`,
     ],
-    [
-      `value-axis zero when horizontal`,
-      [-1.1, 1.4, 3.4],
-      undefined,
-      `x`,
-      `horizontal`,
-    ],
+    [`value-axis zero when horizontal`, [-1.1, 1.4, 3.4], undefined, `x`, `horizontal`],
   ] as const)(
     `categorical bars render the %s`,
     async (_name, y, display, axis, orientation) => {
