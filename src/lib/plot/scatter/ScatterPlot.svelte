@@ -118,7 +118,6 @@
     create_size_scale,
     generate_ticks,
     get_nice_data_range,
-    resolve_tick_labels,
   } from '$lib/plot/core/scales'
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
   import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
@@ -397,10 +396,7 @@
             padding,
             default_padding,
             width,
-            x_axis: {
-              ...final_x_axis,
-              tick_values: resolve_tick_labels(x_tick_values, final_x_axis.ticks),
-            },
+            x_axis: { ...final_x_axis, tick_values: x_tick_values },
             x2_axis: { ...final_x2_axis, tick_values: x2_tick_values },
             y_axis: { ...final_y_axis, tick_values: y_tick_values },
             y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },
