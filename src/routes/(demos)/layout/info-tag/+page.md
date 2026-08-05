@@ -10,13 +10,14 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
 <script lang="ts">
   import { InfoTag } from 'matterviz'
   import { Icon } from 'svelte-widgets'
+  import { CheckCircle, XCircle } from 'svelte-widgets/icons'
 
   const sizes = [`sm`, `md`, `lg`] as const
   const tags = [
     { label: `Band Gap:`, value: `1.12 eV`, variant: `default` },
-    { label: ``, value: `Stable`, variant: `success`, icon: `CheckCircle` },
+    { label: ``, value: `Stable`, variant: `success`, icon: CheckCircle },
     { label: `⚠️`, value: `Metastable`, variant: `warning` },
-    { label: ``, value: `Failed`, variant: `error`, icon: `XCircle` },
+    { label: ``, value: `Failed`, variant: `error`, icon: XCircle },
     { label: `ℹ️`, value: `MP`, variant: `info` },
   ] as const
 </script>
@@ -150,6 +151,7 @@ Combine tags with icons to display material properties with dynamic styling:
 <script lang="ts">
   import { InfoTag } from 'matterviz'
   import { Icon } from 'svelte-widgets'
+  import { Alert, CheckCircle, XCircle } from 'svelte-widgets/icons'
 
   const materials = [
     {
@@ -179,7 +181,7 @@ Combine tags with icons to display material properties with dynamic styling:
     ehull <= 0 ? `success` : ehull <= 0.05 ? `warning` : `error`
 
   const stability_icon = (ehull: number) =>
-    ehull <= 0 ? `CheckCircle` : ehull <= 0.05 ? `Alert` : `XCircle`
+    ehull <= 0 ? CheckCircle : ehull <= 0.05 ? Alert : XCircle
 </script>
 
 <div

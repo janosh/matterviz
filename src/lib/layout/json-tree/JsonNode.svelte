@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Copy } from 'svelte-widgets/icons'
   import { build_path } from '$lib/json-path'
   import { getContext, onMount } from 'svelte'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
@@ -263,7 +264,7 @@
           {#if expandable && is_collapsed}
             ▸
           {:else}
-            <Icon icon="Copy" style="width: 10px; height: 10px; vertical-align: baseline" />
+            <Icon icon={Copy} style="width: 10px; height: 10px; vertical-align: baseline" />
           {/if}
         </span>
       </button>

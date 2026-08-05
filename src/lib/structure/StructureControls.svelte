@@ -41,6 +41,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import { Icon, MultiSelect as Select } from 'svelte-widgets'
+  import { Cross, Reset, Settings } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 
   let {
@@ -431,8 +432,8 @@
     ...toggle_props,
     class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
-  open_icon="Cross"
-  closed_icon="Settings"
+  open_icon={Cross}
+  closed_icon={Settings}
   {...rest}
 >
   {#if volumetric_data?.length}
@@ -609,7 +610,7 @@
   >
     {#if on_reset_camera}
       <button type="button" class="reset-camera" title={reset_text} onclick={on_reset_camera}>
-        <Icon icon="Reset" />
+        <Icon icon={Reset} />
         <span>Reset view <kbd>r</kbd></span>
       </button>
     {/if}

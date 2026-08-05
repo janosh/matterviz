@@ -1,7 +1,15 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import { ContextMenu, Icon, icon_data, type IconName } from 'svelte-widgets'
+  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
+  import {
+    Circle,
+    ColorPalette,
+    Copy,
+    Download,
+    Graph,
+    ScatterPlot,
+  } from 'svelte-widgets/icons'
   import { untrack } from 'svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
@@ -44,16 +52,16 @@
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
 
-  // ContextMenu widens action.icon to string; narrow it rather than asserting
-  const is_icon_name = (val: unknown): val is IconName =>
-    typeof val === `string` && val in icon_data
+  // ContextMenu types action.icon as unknown; narrow to a glyph object
+  const is_icon_data = (val: unknown): val is IconData =>
+    typeof val === `object` && val !== null && (`d` in val || `markup` in val)
 
   const mode_actions = (
     [
-      [`pie`, `Circle`, `Pie Chart`],
-      [`bubble`, `ScatterPlot`, `Bubble Chart`],
-      [`bar`, `Graph`, `Bar Chart`],
-    ] as const satisfies readonly (readonly [CompositionChartMode, IconName, string])[]
+      [`pie`, Circle, `Pie Chart`],
+      [`bubble`, ScatterPlot, `Bubble Chart`],
+      [`bar`, Graph, `Bar Chart`],
+    ] as const
   ).map(([id, icon, label]) => ({
     id,
     icon,
@@ -65,19 +73,17 @@
     [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
   ).map((id) => ({
     id,
-    icon: `ColorPalette` satisfies IconName,
+    icon: ColorPalette,
     label: id,
     action: () => (current_color_scheme = id),
   }))
 
-  const export_actions = (
-    [
-      [`copy_formula`, `Copy`, `Copy Formula`],
-      [`copy_data`, `Copy`, `Copy Data`],
-      [`export_svg`, `Download`, `Export SVG`],
-      [`export_png`, `Download`, `Export PNG`],
-    ] as const satisfies readonly (readonly [string, IconName, string])[]
-  ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
+  const export_actions = [
+    [`copy_formula`, Copy, `Copy Formula`],
+    [`copy_data`, Copy, `Copy Data`],
+    [`export_svg`, Download, `Export SVG`],
+    [`export_png`, Download, `Export PNG`],
+  ].map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
 
   const context_menu_actions = $derived([
     { title: `Display Mode`, selected: current_mode, actions: mode_actions },
@@ -137,7 +143,7 @@ path below, which has no pointer position to read -->
     class={[`composition`, rest.class]}
   />
   {#snippet item({ action })}
-    {#if is_icon_name(action.icon)}
+    {#if is_icon_data(action.icon)}
       <Icon icon={action.icon} />
     {/if}
     {action.label}

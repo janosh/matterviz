@@ -2,6 +2,7 @@
   // Toggles a bindable `fullscreen` flag (plot components manage browser fullscreen
   // themselves). For chromes that call the browser API directly, use FullscreenButton.
   import { Icon } from 'svelte-widgets'
+  import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   let {
@@ -19,7 +20,7 @@
   aria-label={fullscreen ? `Exit fullscreen` : `Enter fullscreen`}
   type="button"
 >
-  <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" width="18" height="18" />
+  <Icon icon={fullscreen ? ExitFullscreen : Fullscreen} width="18" height="18" />
 </button>
 
 <style>

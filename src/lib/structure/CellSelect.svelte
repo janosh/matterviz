@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Check } from 'svelte-widgets/icons'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
@@ -197,7 +198,7 @@
           onclick={handle_input_submit}
           title="Apply"
         >
-          <Icon icon="Check" />
+          <Icon icon={Check} />
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Info } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -14,7 +15,7 @@
 
 {#if visible}
   <div {...rest} class={[`drag-overlay`, rest.class]}>
-    <Icon icon="Info" />
+    <Icon icon={Info} />
     <span>{message}</span>
   </div>
 {/if}

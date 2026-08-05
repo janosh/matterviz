@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
   import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Label, RowData } from '$lib/table'
@@ -184,7 +185,7 @@
             }}
           />%
           <button class="zoom-reset-btn" onclick={reset_zoom} title="Reset zoom">
-            <Icon icon="Reset" style="width: 12px; height: 12px" />
+            <Icon icon={Reset} style="width: 12px; height: 12px" />
           </button>
         </span>
       {/if}

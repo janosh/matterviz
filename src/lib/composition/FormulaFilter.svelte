@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { get_alphabetical_formula } from '$lib/composition/format'
   import { is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -796,7 +797,7 @@
             }}
           >
             <Icon
-              icon={is_pinned(entry) ? `Star` : `Circle`}
+              icon={is_pinned(entry) ? Star : Circle}
               style="width: 0.8em; height: 0.8em"
             />
           </button>
@@ -810,7 +811,7 @@
               remove_from_history(entry)
             }}
           >
-            <Icon icon="Close" style="width: 0.7em; height: 0.7em" />
+            <Icon icon={Close} style="width: 0.7em; height: 0.7em" />
           </button>
         </div>
       {/each}
@@ -841,7 +842,7 @@
       {@attach tooltip()}
       aria-label={mode_locked ? `Unlock mode` : `Lock mode`}
     >
-      <Icon icon={mode_locked ? `Lock` : `Unlock`} style="width: 1em; height: 1em" />
+      <Icon icon={mode_locked ? Lock : Unlock} style="width: 1em; height: 1em" />
     </button>
   {/if}
   {#if show_clear_button && value && !disabled}
@@ -853,7 +854,7 @@
       {@attach tooltip()}
       aria-label="Clear filter"
     >
-      <Icon icon="Close" style="width: 1em; height: 1em" />
+      <Icon icon={Close} style="width: 1em; height: 1em" />
     </button>
   {/if}
   {#if show_examples && !disabled}
@@ -868,7 +869,7 @@
         aria-expanded={examples_open}
         aria-haspopup="menu"
       >
-        <Icon icon="Info" style="width: 1.1em; height: 1.1em" />
+        <Icon icon={Info} style="width: 1.1em; height: 1.1em" />
       </button>
       {#if examples_open}
         <div

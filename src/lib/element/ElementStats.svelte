@@ -1,9 +1,12 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib/element'
   import { Icon } from 'svelte-widgets'
+  import { CalendarBlank, Gas, Liquid, Scale, Solid, Weight } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+
+  const PHASE_ICONS = { Gas, Liquid, Solid } as const
 
   let {
     element,
@@ -22,7 +25,7 @@
         <abbr title="Dalton aka atomic mass unit">(u)</abbr>
       </p>
       <strong>
-        <Icon icon="Weight" />
+        <Icon icon={Weight} />
         {format_num(element.atomic_mass)}
       </strong>
     </section>
@@ -32,18 +35,18 @@
         <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
       </p>
       <strong>
-        <Icon icon="Scale" />
+        <Icon icon={Scale} />
         {format_num(element.density)}
       </strong>
     </section>
     <section>
       <p>Phase</p>
-      <strong> <Icon icon={element.phase} /> {element.phase}</strong>
+      <strong> <Icon icon={PHASE_ICONS[element.phase]} /> {element.phase}</strong>
     </section>
     <section>
       <p>Year of Discovery</p>
       <strong>
-        <Icon icon="CalendarBlank" />
+        <Icon icon={CalendarBlank} />
         {element.year}
       </strong>
     </section>

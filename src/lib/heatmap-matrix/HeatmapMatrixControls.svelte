@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Settings } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ComponentProps, Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
@@ -96,8 +97,8 @@
       class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
       style: merge_styles(default_toggle_style, toggle_props?.style),
     }}
-    open_icon="Cross"
-    closed_icon="Settings"
+    open_icon={Cross}
+    closed_icon={Settings}
   >
     <label>
       Ordering

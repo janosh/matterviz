@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Settings } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
@@ -129,8 +130,8 @@
     ...pane_props,
     style: `--pane-max-height: 80cqh; ${pane_props?.style ?? ``}`,
   }}
-  open_icon="Cross"
-  closed_icon="Settings"
+  open_icon={Cross}
+  closed_icon={Settings}
 >
   <!-- Camera Controls -->
   <SettingsSection

@@ -1,108 +1,114 @@
 <script lang="ts">
-  import type { IconName } from 'svelte-widgets'
+  import {
+    ColorBar,
+    ColorPalette,
+    Filter,
+    Graph,
+    HeatmapMatrix,
+    HeatmapTable,
+    Histogram,
+    ScatterPlot,
+    ScatterPlot3D,
+    SpacegroupBarPlot,
+  } from 'svelte-widgets/icons'
   import { SubpageGrid } from '$lib/layout'
 
-  const subpages: {
-    href: string
-    title: string
-    description: string
-    icon: IconName
-  }[] = [
+  const subpages = [
     {
       href: `/plot/scatter-plot`,
       title: `Scatter Plot`,
       description: `2D scatter with multiple display modes, styling controls, and multi-series support.`,
-      icon: `ScatterPlot`,
+      icon: ScatterPlot,
     },
     {
       href: `/plot/binned-scatter`,
       title: `Binned Scatter Plot`,
       description: `Adaptive density rendering for crowded point clouds with point picking and structure popups.`,
-      icon: `ScatterPlot`,
+      icon: ScatterPlot,
     },
     {
       href: `/plot/scatter-plot-3d`,
       title: `3D Scatter Plot`,
       description: `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,
-      icon: `ScatterPlot3D`,
+      icon: ScatterPlot3D,
     },
     {
       href: `/plot/bar-plot`,
       title: `Bar Plot`,
       description: `Vertical/horizontal bars with rounded corners, borders, stacked/grouped modes, and grid display.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/histogram`,
       title: `Histogram`,
       description: `Frequency distribution bars with configurable binning, border radius, and stroke styling.`,
-      icon: `Histogram`,
+      icon: Histogram,
     },
     {
       href: `/plot/box-plot`,
       title: `Box Plot`,
       description: `Distribution summaries with quartile boxes, medians, whiskers, and outliers from raw data.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/violin`,
       title: `Violin Plot`,
       description: `KDE density shapes (optionally with inner box): one-sided, two-sided, and split violins.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/sankey`,
       title: `Sankey`,
       description: `Flow diagrams for weighted transitions between categories with horizontal/vertical layout and link highlighting.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/sunburst`,
       title: `Sunburst & Icicle`,
       description: `Zoomable hierarchical rings or stacked rows with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/treemap`,
       title: `Treemap`,
       description: `Zoomable squarified rectangles for hierarchical part-of-whole data, e.g. arity/chemical-system breakdowns.`,
-      icon: `Graph`,
+      icon: Graph,
     },
     {
       href: `/plot/spacegroup-bar-plot`,
       title: `Spacegroup Bar Plot`,
       description: `Crystallographic space group distributions with automatic crystal system coloring.`,
-      icon: `SpacegroupBarPlot`,
+      icon: SpacegroupBarPlot,
     },
     {
       href: `/plot/heatmap-matrix`,
       title: `Heatmap Matrix`,
       description: `Interactive pairwise heatmap with symmetric modes, search, axis ordering, and cell values.`,
-      icon: `HeatmapMatrix`,
+      icon: HeatmapMatrix,
     },
     {
       href: `/plot/heatmap-table`,
       title: `Heatmap Table`,
       description: `Sortable data table with heatmap cell coloring, column grouping, and drag-and-drop reordering.`,
-      icon: `HeatmapTable`,
+      icon: HeatmapTable,
     },
     {
       href: `/plot/color-bar`,
       title: `Color Bar`,
       description: `Standalone color scale legend with configurable tick labels, orientation, and scale types.`,
-      icon: `ColorBar`,
+      icon: ColorBar,
     },
     {
       href: `/plot/color-scales`,
       title: `Color Scales`,
       description: `Browse and compare D3 color scales with live previews on a periodic table.`,
-      icon: `ColorPalette`,
+      icon: ColorPalette,
     },
     {
       href: `/plot/data-cleaning`,
       title: `Data Cleaning`,
       description: `Utilities for filtering NaN/Infinity values, deduplication, and multi-series normalization.`,
-      icon: `Filter`,
+      icon: Filter,
     },
   ]
 </script>

@@ -5,6 +5,16 @@
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { ContextMenu, Icon } from 'svelte-widgets'
+  import {
+    Calendar,
+    Columns,
+    Copy,
+    Cross,
+    Download,
+    Export,
+    Search as SearchIcon,
+    Settings,
+  } from 'svelte-widgets/icons'
   import { DraggablePane } from '$lib/overlays'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
@@ -1459,7 +1469,7 @@
           }}
           {@attach tooltip({ content: `Clear`, placement: `top` })}
         >
-          <Icon icon="Cross" />
+          <Icon icon={Cross} />
         </button>
       {:else}
         <button
@@ -1467,7 +1477,7 @@
           onclick={() => (search_expanded = true)}
           {@attach tooltip({ content: `Search`, placement: `top` })}
         >
-          <Icon icon="Search" />
+          <Icon icon={SearchIcon} />
         </button>
       {/if}
     {/if}
@@ -1480,7 +1490,7 @@
           onclick={() => (show_column_dropdown = !show_column_dropdown)}
           {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
-          <Icon icon="Columns" />
+          <Icon icon={Columns} />
         </button>
         {#if show_column_dropdown}
           <div class="dropdown-pane">
@@ -1508,7 +1518,7 @@
           onclick={() => (show_export_dropdown = !show_export_dropdown)}
           {@attach tooltip({ content: `Export`, placement: `top` })}
         >
-          <Icon icon="Export" />
+          <Icon icon={Export} />
         </button>
         {#if show_export_dropdown}
           <div class="dropdown-pane">
@@ -1521,7 +1531,7 @@
                     show_export_dropdown = false
                   }}
                 >
-                  <Icon icon="Download" style="width: 12px" />
+                  <Icon icon={Download} style="width: 12px" />
                   {format.toUpperCase()}
                 </button>
               {/if}
@@ -1533,7 +1543,7 @@
                 show_export_dropdown = false
               }}
             >
-              <Icon icon="Copy" style="width: 12px" /> Copy
+              <Icon icon={Copy} style="width: 12px" /> Copy
             </button>
           </div>
         {/if}
@@ -1547,7 +1557,7 @@
         title="Clear {selected_rows.length} selected rows"
       >
         <span class="badge">{selected_rows.length}</span>
-        <Icon icon="Cross" />
+        <Icon icon={Cross} />
       </button>
     {/if}
 
@@ -1559,8 +1569,8 @@
         pane_props={{
           style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
         }}
-        open_icon="Cross"
-        closed_icon="Settings"
+        open_icon={Cross}
+        closed_icon={Settings}
       >
         <SettingsSection
           title="Heatmap"
@@ -1798,7 +1808,7 @@
                       placement: `top`,
                     })}
                   >
-                    <Icon icon="Calendar" />
+                    <Icon icon={Calendar} />
                     <span id={datetime_label_id} class="sr-only">
                       Date/time format for {strip_html(col.label)}
                     </span>

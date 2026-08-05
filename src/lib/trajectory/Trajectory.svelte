@@ -4,7 +4,18 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon, type IconName } from 'svelte-widgets'
+  import { Icon } from 'svelte-widgets'
+  import {
+    ArrowDown,
+    ArrowUp,
+    Atom,
+    Check,
+    Database,
+    Graph,
+    Histogram as HistogramIcon,
+    ScatterPlot as ScatterPlotIcon,
+    TwoColumns,
+  } from 'svelte-widgets/icons'
   import * as io from '$lib/io'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
@@ -99,6 +110,13 @@
     is_complete?: boolean
   }
   const FPS_STEP = 0.5
+  const DISPLAY_MODES = [
+    { mode: `structure`, icon: Atom, label: `Structure-only` },
+    { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
+    { mode: `structure+histogram`, icon: TwoColumns, label: `Structure + Histogram` },
+    { mode: `scatter`, icon: ScatterPlotIcon, label: `Scatter-only` },
+    { mode: `histogram`, icon: HistogramIcon, label: `Histogram-only` },
+  ] as const
 
   let {
     trajectory = $bindable(),
@@ -1345,40 +1363,32 @@
   // Analyses offered by the Graph menu. Each pane is mounted separately below (they take
   // different props) but every menu entry is described here, so adding one is a list entry
   // plus a mount rather than another copy of the button markup.
-  type AnalysisEntry = {
-    // matches the `hidden` control name consumers pass via show_controls
-    control_name: string
-    label: string
-    icon: IconName
-    is_open: boolean
-    toggle: () => void
-  }
-  let analysis_entries: AnalysisEntry[] = $derived([
+  let analysis_entries = $derived([
     {
       control_name: `msd-pane`,
       label: `Mean squared displacement`,
-      icon: `Graph`,
+      icon: Graph,
       is_open: msd_pane_open,
       toggle: () => (msd_pane_open = !msd_pane_open),
     },
     {
       control_name: `vacf-pane`,
       label: `Velocity autocorrelation & VDOS`,
-      icon: `Graph`,
+      icon: Graph,
       is_open: vacf_pane_open,
       toggle: () => (vacf_pane_open = !vacf_pane_open),
     },
     {
       control_name: `structure-id-pane`,
       label: `Structure identification`,
-      icon: `Atom`,
+      icon: Atom,
       is_open: structure_id_pane_open,
       toggle: () => (structure_id_pane_open = !structure_id_pane_open),
     },
     {
       control_name: `data-inspector-pane`,
       label: `Data inspector`,
-      icon: `Database`,
+      icon: Database,
       is_open: data_inspector_open,
       toggle: () => (data_inspector_open = !data_inspector_open),
     },
@@ -1481,7 +1491,7 @@
               {current_filename}
               {#if filename_copied}
                 <Icon
-                  icon="Check"
+                  icon={Check}
                   style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
                 />
               {/if}
@@ -1631,8 +1641,8 @@
                   }}
                   style="background-color: transparent; padding: 0"
                 >
-                  <Icon icon="Graph" />
-                  <Icon icon={analysis_menu_open ? `ArrowUp` : `ArrowDown`} />
+                  <Icon icon={Graph} />
+                  <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
                 </button>
                 {#if analysis_menu_open}
                   <div class="view-mode-dropdown analysis-dropdown">
@@ -1708,21 +1718,14 @@
                   style="background-color: transparent; padding: 0"
                 >
                   <Icon
-                    icon={(
-                      {
-                        structure: `Atom`,
-                        'structure+scatter': `TwoColumns`,
-                        'structure+histogram': `TwoColumns`,
-                        scatter: `ScatterPlot`,
-                        histogram: `Histogram`,
-                      } as const
-                    )[display_mode]}
+                    icon={DISPLAY_MODES.find((entry) => entry.mode === display_mode)?.icon ??
+                      Atom}
                   />
-                  <Icon icon={view_mode_dropdown_open ? `ArrowUp` : `ArrowDown`} />
+                  <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
                 </button>
                 {#if view_mode_dropdown_open}
                   <div class="view-mode-dropdown">
-                    {#each [{ mode: `structure`, icon: `Atom`, label: `Structure-only` }, { mode: `structure+scatter`, icon: `TwoColumns`, label: `Structure + Scatter` }, { mode: `structure+histogram`, icon: `TwoColumns`, label: `Structure + Histogram` }, { mode: `scatter`, icon: `ScatterPlot`, label: `Scatter-only` }, { mode: `histogram`, icon: `Histogram`, label: `Histogram-only` }] as const as option (option.mode)}
+                    {#each DISPLAY_MODES as option (option.mode)}
                       <button
                         class="view-mode-option"
                         class:selected={display_mode === option.mode}

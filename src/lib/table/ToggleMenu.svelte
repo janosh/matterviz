@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import { type Label, strip_html } from '$lib/table'
@@ -233,7 +234,7 @@
       column_panel_open = !column_panel_open
     }}
   >
-    Columns <Icon icon="Columns" />
+    Columns <Icon icon={Columns} />
     {#if has_any_changes}
       <button
         class="reset-btn"
@@ -246,7 +247,7 @@
         aria-label="Reset all columns to defaults"
         {@attach tooltip()}
       >
-        <Icon icon="Reset" width="12px" />
+        <Icon icon={Reset} width="12px" />
       </button>
     {/if}
   </summary>
@@ -297,7 +298,7 @@
                   aria-label="Reset {section.name} to defaults"
                   {@attach tooltip()}
                 >
-                  <Icon icon="Reset" width="12px" />
+                  <Icon icon={Reset} width="12px" />
                 </button>
               {/if}
             </div>

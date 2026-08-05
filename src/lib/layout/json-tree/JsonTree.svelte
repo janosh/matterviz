@@ -1,5 +1,15 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import {
+    ArrowDown,
+    ArrowUp,
+    Collapse,
+    Copy,
+    Cross,
+    Download,
+    Expand,
+    Search,
+  } from 'svelte-widgets/icons'
   import { download } from '$lib/io/fetch'
   import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'
@@ -583,7 +593,7 @@
   {#if show_header}
     <header class="json-tree-header">
       <div class="search-wrapper">
-        <Icon icon="Search" style="width: 14px; height: 14px; opacity: 0.6" />
+        <Icon icon={Search} style="width: 14px; height: 14px; opacity: 0.6" />
         <input
           bind:this={search_input_element}
           type="search"
@@ -601,7 +611,7 @@
             title="Clear search (Esc)"
             {@attach tooltip()}
           >
-            <Icon icon="Cross" style="width: 12px; height: 12px" />
+            <Icon icon={Cross} style="width: 12px; height: 12px" />
           </button>
         {/if}
       </div>
@@ -614,7 +624,7 @@
             title="Previous match (Shift+F3)"
             {@attach tooltip()}
           >
-            <Icon icon="ArrowUp" style="width: 12px; height: 12px" />
+            <Icon icon={ArrowUp} style="width: 12px; height: 12px" />
           </button>
           <button
             type="button"
@@ -623,7 +633,7 @@
             title="Next match (F3)"
             {@attach tooltip()}
           >
-            <Icon icon="ArrowDown" style="width: 12px; height: 12px" />
+            <Icon icon={ArrowDown} style="width: 12px; height: 12px" />
           </button>
           <span class="match-count">{current_match_index + 1} of {sorted_matches.length}</span>
         </div>
@@ -651,10 +661,10 @@
       <div class="divider"></div>
       <div class="controls">
         <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
-          <Icon icon="Expand" style="width: 14px; height: 14px" />
+          <Icon icon={Expand} style="width: 14px; height: 14px" />
         </button>
         <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
-          <Icon icon="Collapse" style="width: 14px; height: 14px" />
+          <Icon icon={Collapse} style="width: 14px; height: 14px" />
         </button>
         {#each [1, 2, 3] as level (level)}
           <button
@@ -675,7 +685,7 @@
           title="Copy JSON to clipboard"
           {@attach tooltip()}
         >
-          <Icon icon="Copy" style="width: 14px; height: 14px" />
+          <Icon icon={Copy} style="width: 14px; height: 14px" />
         </button>
         <button
           type="button"
@@ -683,7 +693,7 @@
           title="Download as JSON file"
           {@attach tooltip()}
         >
-          <Icon icon="Download" style="width: 14px; height: 14px" />
+          <Icon icon={Download} style="width: 14px; height: 14px" />
         </button>
       </div>
     </header>
@@ -795,7 +805,7 @@
           onclick={() =>
             ctx_menu_action((st) => copy_to_clipboard(st.path, serialize_for_copy(st.value)))}
         >
-          <Icon icon="Copy" style="width: 12px; height: 12px" /> Copy value
+          <Icon icon={Copy} style="width: 12px; height: 12px" /> Copy value
         </button>
       </li>
       <li>

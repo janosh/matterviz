@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Settings } from 'svelte-widgets/icons'
   // Shared draggable controls-pane shell (gear toggle + settings pane) used by plot/diagram
   // controls components. Centralizes the toggle/pane styling and the `*-controls-toggle` /
   // `*-controls-pane` class convention so it lives in one place instead of being re-typed in
@@ -39,8 +40,8 @@
     class: `${controls_class}-controls-pane ${pane_props?.class ?? ``}`,
     style: `--pane-padding: 12px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
   }}
-  open_icon="Cross"
-  closed_icon="Settings"
+  open_icon={Cross}
+  closed_icon={Settings}
 >
   {@render children?.()}
 </DraggablePane>

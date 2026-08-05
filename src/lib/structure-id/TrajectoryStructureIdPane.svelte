@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Lattice } from 'svelte-widgets/icons'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { analysis_pane_setup } from '$lib/msd/collect'
@@ -110,8 +111,8 @@
     ...pane_props,
     class: `trajectory-structure-id-pane ${pane_props?.class ?? ``}`,
   }}
-  open_icon="Cross"
-  closed_icon="Lattice"
+  open_icon={Cross}
+  closed_icon={Lattice}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Type Identification</h4>

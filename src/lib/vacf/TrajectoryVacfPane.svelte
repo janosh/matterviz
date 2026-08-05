@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Graph } from 'svelte-widgets/icons'
   import { StatusMessage } from '$lib/feedback'
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import { format_bytes, format_num } from '$lib/labels'
@@ -158,8 +159,8 @@
     class: `trajectory-vacf-toggle ${toggle_props?.class ?? ``}`,
   }}
   pane_props={{ ...pane_props, class: `trajectory-vacf-pane ${pane_props?.class ?? ``}` }}
-  open_icon="Cross"
-  closed_icon="Graph"
+  open_icon={Cross}
+  closed_icon={Graph}
   {...rest}
 >
   <h4 style="margin-top: 0">Velocity Autocorrelation &amp; Vibrational DOS</h4>

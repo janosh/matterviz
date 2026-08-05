@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -102,7 +103,7 @@
       title="Reset {title.toLowerCase()} to defaults"
       aria-label="Reset {title.toLowerCase()} to defaults"
     >
-      <Icon icon="Reset" style="width: 0.9em; height: 0.9em" />
+      <Icon icon={Reset} style="width: 0.9em; height: 0.9em" />
       Reset
     </button>
   {/if}

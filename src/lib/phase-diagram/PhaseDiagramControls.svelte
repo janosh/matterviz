@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Settings } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
@@ -111,8 +112,8 @@
     class: `phase-diagram-controls-toggle`,
     ...toggle_props,
   }}
-  open_icon="Cross"
-  closed_icon="Settings"
+  open_icon={Cross}
+  closed_icon={Settings}
   {...rest}
 >
   <h4 style="margin: 0 0 8pt 0">{title}</h4>

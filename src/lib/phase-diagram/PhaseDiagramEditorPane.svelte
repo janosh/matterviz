@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Edit } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
@@ -76,8 +77,8 @@
     ...caller_toggle_props,
   }}
   max_width="600px"
-  open_icon="Cross"
-  closed_icon="Edit"
+  open_icon={Cross}
+  closed_icon={Edit}
   {icon_style}
 >
   {#if rejection_msg}

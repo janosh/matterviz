@@ -2,6 +2,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { page } from '$app/state'
   import { Icon } from 'svelte-widgets'
+  import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
     decode_structure_id,
     detect_provider_from_slug,
@@ -167,7 +168,7 @@
                 input_value = ``
               }}
             >
-              <Icon icon="Database" />
+              <Icon icon={Database} />
               {id}
             </button>
             <a
@@ -176,7 +177,7 @@
               target="_blank"
               rel="noopener noreferrer"
             >
-              <Icon icon="Link" />
+              <Icon icon={Link} />
             </a>
             {#if attributes.homepage}
               <a
@@ -185,7 +186,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <Icon icon="Globe" />
+                <Icon icon={Globe} />
               </a>
             {/if}
           </div>

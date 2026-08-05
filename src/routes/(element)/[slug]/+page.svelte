@@ -18,6 +18,19 @@
   import { normalize_static_url } from '$site/state.svelte'
   import { error } from '@sveltejs/kit'
   import { Icon, PrevNext } from 'svelte-widgets'
+  import {
+    ArrowUp,
+    Atom,
+    Circle,
+    ElectronShells,
+    Gas,
+    Info,
+    Liquid,
+    Orbit,
+    Scale,
+    Solid,
+    Weight,
+  } from 'svelte-widgets/icons'
 
   const assert_chemical_element = (value: unknown): ChemicalElement => {
     const elem = value as Partial<ChemicalElement> | null
@@ -44,21 +57,21 @@
   })
 
   const icon_property_map = {
-    'Atomic Mass': `Weight`,
-    'Atomic Number': `Info`,
-    'Atomic Radius': `Atom`,
-    'Atomic Volume': `Solid`,
-    'Boiling Point': `Gas`,
-    'Covalent Radius': `Orbit`,
-    'Electron Affinity': `Atom`,
-    'Electron Valency': `Atom`,
-    'First Ionization Energy': `ArrowUp`,
-    'Ionization Energies': `ArrowUp`,
-    'Melting Point': `Liquid`,
-    'Number of Shells': `ElectronShells`,
-    'Specific Heat': `ArrowUp`,
-    Density: `Scale`,
-    Electronegativity: `Atom`,
+    'Atomic Mass': Weight,
+    'Atomic Number': Info,
+    'Atomic Radius': Atom,
+    'Atomic Volume': Solid,
+    'Boiling Point': Gas,
+    'Covalent Radius': Orbit,
+    'Electron Affinity': Atom,
+    'Electron Valency': Atom,
+    'First Ionization Energy': ArrowUp,
+    'Ionization Energies': ArrowUp,
+    'Melting Point': Liquid,
+    'Number of Shells': ElectronShells,
+    'Specific Heat': ArrowUp,
+    Density: Scale,
+    Electronegativity: Atom,
   } as const
 
   let key_vals = $derived(
@@ -81,7 +94,7 @@
         const icon =
           label && label in icon_property_map
             ? icon_property_map[label as keyof typeof icon_property_map]
-            : `Info`
+            : Info
         return [label, value, icon] as const
       }),
   )
@@ -168,9 +181,9 @@
   <table>
     <thead>
       <tr>
-        <th><Icon icon="Circle" />&nbsp;Shell</th>
-        <th><Icon icon="Atom" />&nbsp;Electrons</th>
-        <th><Icon icon="Orbit" />&nbsp;Orbitals</th>
+        <th><Icon icon={Circle} />&nbsp;Shell</th>
+        <th><Icon icon={Atom} />&nbsp;Electrons</th>
+        <th><Icon icon={Orbit} />&nbsp;Orbitals</th>
       </tr>
     </thead>
 

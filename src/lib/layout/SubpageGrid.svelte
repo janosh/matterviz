@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Icon, type IconName } from 'svelte-widgets'
+  import { Icon, type IconData } from 'svelte-widgets'
 
   interface Props {
     title: string
     subtitle: string
-    subpages: { href: string; title: string; description: string; icon: IconName }[]
+    subpages: { href: string; title: string; description: string; icon: IconData }[]
   }
   const { title, subtitle, subpages }: Props = $props()
 </script>

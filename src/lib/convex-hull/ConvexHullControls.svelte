@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Settings } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -160,8 +161,8 @@
     class: `convex-hull-controls-toggle`,
     ...toggle_props,
   }}
-  open_icon="Cross"
-  closed_icon="Settings"
+  open_icon={Cross}
+  closed_icon={Settings}
   {...rest}
 >
   <h4>

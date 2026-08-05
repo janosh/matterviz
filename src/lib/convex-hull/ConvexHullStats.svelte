@@ -5,6 +5,7 @@
     get_reduced_formula,
   } from '$lib/composition'
   import { Icon } from 'svelte-widgets'
+  import { Check } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { escape_html } from '$lib/utils'
@@ -463,7 +464,7 @@
           <span>{@html sanitize_html(value)}</span>
           {#if key && copied.has(key)}
             <Icon
-              icon="Check"
+              icon={Check}
               style="color: var(--success-color, #10b981); width: 12px; height: 12px"
               class="copy-checkmark"
             />
@@ -505,7 +506,7 @@
           </span>
           {#if copied.has(`binary-subsystem-coverage`)}
             <Icon
-              icon="Check"
+              icon={Check}
               style="color: var(--success-color, #10b981); width: 12px; height: 12px"
               class="copy-checkmark"
             />

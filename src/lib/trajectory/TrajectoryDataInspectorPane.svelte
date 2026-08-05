@@ -6,6 +6,7 @@
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Tabs } from 'svelte-widgets'
+  import { Cross, HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import { full_data_extractor } from './extract'
   import type {
     TrajectoryDataExtractor,
@@ -250,8 +251,8 @@
     ...pane_props,
     class: `trajectory-data-inspector-pane ${pane_props?.class ?? ``}`,
   }}
-  open_icon="Cross"
-  closed_icon="HeatmapTable"
+  open_icon={Cross}
+  closed_icon={HeatmapTableIcon}
   {...rest}
 >
   <h4 style="margin: 0 0 4pt">Data Inspector</h4>
