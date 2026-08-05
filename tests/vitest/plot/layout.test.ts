@@ -1,28 +1,33 @@
 import {
+  type AutoPaddingConfig,
   auto_tick_rotation,
   AXIS_LABEL_HEIGHT,
   AXIS_LABEL_OUTER,
   calc_auto_padding,
   centered_rect,
-  DEFAULT_PLOT_PADDING,
   compute_element_placement,
   constrain_tooltip_position,
+  DEFAULT_PLOT_PADDING,
   filter_padding,
   full_footprint_or,
   LABEL_GAP_DEFAULT,
   measure_max_tick_width,
   measure_text_width,
+  type MeasuredAxis,
   pad_rect,
   point_in_rect,
   rect_within_rect,
+  resolve_tick_layout,
   sample_series_obstacle_points,
+  type Sides,
   tick_label_band,
   TICK_LABEL_HEIGHT,
-  x_axis_title_offset,
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
-import { describe, expect, it, test, vi } from 'vitest'
+import type { Vec2 } from '$lib/math'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { mock_text_measurement } from '../setup'
 
 describe(`layout utility functions`, () => {
   describe(`rectangle helpers`, () => {
@@ -216,30 +221,25 @@ describe(`layout utility functions`, () => {
       expect(result.score).toBeLessThan(-500)
     })
 
+    // The open interval the placement has to land in, given 15 points clustered in the
+    // opposite corner. Stated as bounds rather than a region name so that no branch in the
+    // test body can skip the assertions.
     test.each([
-      [
-        `top-left cluster`,
-        Array.from({ length: 15 }, () => ({ x: 100, y: 60 })),
-        `bottom-right`,
-      ],
-      [
-        `bottom-right cluster`,
-        Array.from({ length: 15 }, () => ({ x: 400, y: 280 })),
-        `top-left`,
-      ],
-    ])(`places away from %s`, (_, points, expected_region) => {
-      const result = compute_element_placement({
-        ...base_config,
-        points,
-      })
-      if (expected_region === `bottom-right`) {
-        expect(result.x).toBeGreaterThan(200)
-        expect(result.y).toBeGreaterThan(100)
-      } else if (expected_region === `top-left`) {
-        expect(result.x).toBeLessThan(200)
-        expect(result.y).toBeLessThan(150)
-      }
-    })
+      [`top-left cluster`, { x: 100, y: 60 }, [200, Infinity], [100, Infinity]],
+      [`bottom-right cluster`, { x: 400, y: 280 }, [-Infinity, 200], [-Infinity, 150]],
+    ] as [string, { x: number; y: number }, Vec2, Vec2][])(
+      `places away from %s`,
+      (_, point, [x_min, x_max], [y_min, y_max]) => {
+        const { x, y } = compute_element_placement({
+          ...base_config,
+          points: Array.from({ length: 15 }, () => point),
+        })
+        expect(x).toBeGreaterThan(x_min)
+        expect(x).toBeLessThan(x_max)
+        expect(y).toBeGreaterThan(y_min)
+        expect(y).toBeLessThan(y_max)
+      },
+    )
   })
 
   describe(`sample_series_obstacle_points`, () => {
@@ -291,88 +291,40 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`x tick label auto-rotation`, () => {
-    // jsdom has no text metrics, so stand in a proportional-ish 7px per character.
-    const with_measured_text = <T>(run: () => T): T => {
-      const spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
-        measureText: (label: string) => ({ width: label.length * 7 }),
-      } as unknown as CanvasRenderingContext2D)
-      try {
-        return run()
-      } finally {
-        spy.mockRestore()
-      }
-    }
-    // The labels from a Slurm state histogram, the case that motivated this.
-    const states = [`PENDING`, `RUNNING`, `QUEUE_HOLD`]
-
-    it(`leaves labels upright when they already fit`, () => {
-      expect(with_measured_text(() => auto_tick_rotation(states, 100))).toBe(0)
-    })
+    const px_per_char = 7
+    beforeEach(() => mock_text_measurement(px_per_char))
+    afterEach(() => vi.restoreAllMocks())
+    // 12 of these across a 400px figure leaves nowhere near enough pitch to stay upright.
+    const crowded = Array.from({ length: 12 }, () => `QUEUE_HOLD`)
+    const widest_px = `QUEUE_HOLD`.length * px_per_char
+    const plot_width = 400 - DEFAULT_PLOT_PADDING.l - DEFAULT_PLOT_PADDING.r
+    const pad_for = ({ x_axis, ...config }: Partial<AutoPaddingConfig>): Required<Sides> =>
+      calc_auto_padding({
+        padding: {},
+        default_padding: DEFAULT_PLOT_PADDING,
+        width: 400,
+        ...config,
+        x_axis: { tick_values: crowded, ...x_axis },
+      })
+    const rotation_for = (axis: MeasuredAxis, side: `x` | `x2` | `y` | `y2`): number =>
+      resolve_tick_layout({ tick_values: crowded, ...axis }, plot_width, side).rotation
 
     // Negative throughout: labels anchored at their end trail left of the tick, so the
     // rightmost one cannot run off the plot.
     it.each([
+      [`labels that already fit`, 100, 0],
       [`a shallow tilt`, 60, -30],
       [`a steeper tilt`, 30, -60],
       [`vertical labels`, 24, -90],
       // Below one line height even vertical labels touch; 90 is the best on offer.
       [`the steepest angle it has`, 8, -90],
+      [`no pitch at all to work with`, 0, 0],
     ])(`crowding at %s`, (_label, pitch, expected) => {
-      expect(with_measured_text(() => auto_tick_rotation(states, pitch))).toBe(expected)
-    })
-
-    it(`never rotates what cannot collide`, () => {
-      expect(with_measured_text(() => auto_tick_rotation([`SOME_VERY_LONG_LABEL`], 5))).toBe(0)
-      expect(with_measured_text(() => auto_tick_rotation(states, 0))).toBe(0)
-    })
-
-    it(`seats the axis title just past the labels, however far they reach`, () => {
-      const [upright, tilted] = with_measured_text(() => [
-        x_axis_title_offset(states, 0),
-        x_axis_title_offset(states, -45),
-      ])
-      // Unrotated, this is the historical constant callers hardcoded.
-      expect(upright).toBe(TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT)
-      // Rotated, it clears the taller block by exactly the same gap — no more, no less,
-      // which is what keeps the extra space from becoming a dead band.
-      expect(tilted).toBeCloseTo(
-        with_measured_text(() => tick_label_band(states, -45)) + LABEL_GAP_DEFAULT,
-        10,
-      )
-      expect(tilted).toBeGreaterThan(upright)
-    })
-
-    it(`reserves the title's own band below the labels`, () => {
-      const width = 400
-      const crowded = Array.from({ length: 12 }, () => `QUEUE_HOLD`)
-      const {
-        b: reserved,
-        l,
-        r,
-      } = with_measured_text(() =>
-        calc_auto_padding({
-          padding: {},
-          default_padding: DEFAULT_PLOT_PADDING,
-          width,
-          x_axis: { label: `state`, tick_values: crowded },
-        }),
-      )
-      // Same pitch the padding used: ticks span the plot, not the whole figure.
-      const needed = with_measured_text(() => {
-        const rotation = auto_tick_rotation(crowded, (width - l - r) / crowded.length)
-        return x_axis_title_offset(crowded, rotation) + AXIS_LABEL_HEIGHT / 2
-      })
-      // Enough for the title to sit fully inside, and not a band more than that plus the
-      // usual outer air.
-      expect(reserved).toBeGreaterThanOrEqual(needed)
-      expect(reserved).toBeLessThanOrEqual(needed + AXIS_LABEL_OUTER)
+      expect(auto_tick_rotation(widest_px, pitch)).toBe(expected)
     })
 
     it(`costs less height the shallower it tilts`, () => {
-      const bands = with_measured_text(() =>
-        [0, -30, -45, -60, -90].map((angle) => tick_label_band(states, angle)),
-      )
+      const bands = [0, -30, -45, -60, -90].map((angle) => tick_label_band(widest_px, angle))
       expect(bands[0]).toBe(TICK_LABEL_HEIGHT)
       // Strictly increasing: this is why the search takes the first angle that fits
       // rather than jumping straight to 90.
@@ -380,55 +332,70 @@ describe(`layout utility functions`, () => {
       expect(new Set(bands).size).toBe(bands.length)
     })
 
-    it(`reserves bottom padding only once labels actually rotate`, () => {
-      const base = { padding: {}, default_padding: DEFAULT_PLOT_PADDING, width: 400 }
-      const [roomy, cramped] = with_measured_text(() => [
-        calc_auto_padding({ ...base, x_axis: { tick_values: [`a`, `b`] } }),
-        calc_auto_padding({
-          ...base,
-          x_axis: { tick_values: Array.from({ length: 12 }, () => `QUEUE_HOLD`) },
-        }),
-      ])
-      expect(roomy.b).toBe(DEFAULT_PLOT_PADDING.b)
-      expect(cramped.b).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
-    })
-
+    // Rotation follows the label side; y axes and lone labels stay upright.
     it.each([
-      [`an explicit rotation of 0`, { tick: { label: { rotation: 0 } } }],
-      [`labels rendered inside the plot`, { tick: { label: { inside: true } } }],
-    ])(`keeps the default bottom padding with %s`, (_label, axis) => {
-      const pad = with_measured_text(() =>
-        calc_auto_padding({
-          padding: {},
-          default_padding: DEFAULT_PLOT_PADDING,
-          width: 400,
-          x_axis: { ...axis, tick_values: Array.from({ length: 12 }, () => `QUEUE_HOLD`) },
-        }),
-      )
-      expect(pad.b).toBe(DEFAULT_PLOT_PADDING.b)
+      [`x labels`, {}, `x`, -1],
+      [`inside x labels`, { tick: { label: { inside: true } } }, `x`, 1],
+      [`x2 labels`, {}, `x2`, 1],
+      [`inside x2 labels`, { tick: { label: { inside: true } } }, `x2`, -1],
+      [`y labels`, {}, `y`, 0],
+      [`y2 labels`, {}, `y2`, 0],
+      [`a lone label`, { tick_values: [`SOME_VERY_LONG_LABEL`] }, `x`, 0],
+    ] as [string, MeasuredAxis, `x` | `x2` | `y` | `y2`, number][])(
+      `tilt of %s`,
+      (_label, axis, side, sign) => {
+        expect(Math.sign(rotation_for(axis, side))).toBe(sign)
+      },
+    )
+
+    // Pin exact padding so tilted labels do not create clipping or dead space.
+    it.each([
+      [`no title`, {}, 0],
+      [`a title`, { label: `state` }, LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2],
+    ] as [string, MeasuredAxis, number][])(
+      `reserves the tilted labels' band below an x axis with %s`,
+      (_label, axis, title_room) => {
+        const { b: reserved, l, r } = pad_for({ x_axis: axis })
+        // Same pitch the padding used: ticks span the plot, not the whole figure
+        const rotation = auto_tick_rotation(widest_px, (400 - l - r) / crowded.length)
+        const needed = tick_label_band(widest_px, rotation) + title_room + AXIS_LABEL_OUTER
+        expect(reserved).toBe(needed)
+        expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
+      },
+    )
+
+    // The top axis mirrors the tilt and reserves the resulting band.
+    it(`mirrors the tilt on x2 and reserves the room above`, () => {
+      const angle = rotation_for({}, `x2`)
+      expect(angle).toBe(-rotation_for({}, `x`))
+      const band = tick_label_band(widest_px, angle)
+      expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT) // tilted really is taller than upright
+      const { t } = pad_for({ x_axis: { tick_values: [] }, x2_axis: { tick_values: crowded } })
+      expect(t).toBe(band + 8 + AXIS_LABEL_OUTER)
     })
 
-    it(`never overrides bottom padding the caller set`, () => {
-      const pad = with_measured_text(() =>
-        calc_auto_padding({
-          padding: { b: 30 },
-          default_padding: DEFAULT_PLOT_PADDING,
-          width: 400,
-          x_axis: { tick_values: Array.from({ length: 12 }, () => `QUEUE_HOLD`) },
-        }),
-      )
-      expect(pad.b).toBe(30)
+    const default_b = DEFAULT_PLOT_PADDING.b
+    it.each([
+      [`labels that already fit upright`, { x_axis: { tick_values: [`a`, `b`] } }, default_b],
+      [
+        `an explicit rotation of 0`,
+        { x_axis: { tick: { label: { rotation: 0 } } } },
+        default_b,
+      ],
+      [`labels rendered inside`, { x_axis: { tick: { label: { inside: true } } } }, default_b],
+      [`a bottom padding the caller set`, { padding: { b: 30 } }, 30],
+    ])(`leaves the bottom padding alone with %s`, (_label, config, expected) => {
+      expect(pad_for(config).b).toBe(expected)
     })
   })
 
   describe(`measure_max_tick_width`, () => {
-    it(`returns 0 for empty ticks`, () => {
-      expect(measure_max_tick_width([], `.2s`)).toBe(0)
-    })
-
-    it(`returns 0 in jsdom (no canvas rendering)`, () => {
-      expect(measure_text_width(`hello`)).toBe(0)
-      expect(measure_max_tick_width([1, 2, 3])).toBe(0)
+    it.each([
+      [`there are no ticks to measure`, () => measure_max_tick_width([], `.2s`)],
+      [`jsdom reports no text metrics`, () => measure_text_width(`hello`)],
+      [`numeric ticks hit that same empty canvas`, () => measure_max_tick_width([1, 2, 3])],
+    ])(`returns 0 when %s`, (_label, measure) => {
+      expect(measure()).toBe(0)
     })
 
     it(`uses the same adaptive formatter as rendered numeric ticks`, () => {

@@ -62,6 +62,7 @@
     generate_ticks,
     get_nice_data_range,
     get_tick_label,
+    resolve_tick_labels,
   } from '$lib/plot/core/scales'
   import type {
     BasePlotProps,
@@ -349,7 +350,10 @@
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...final_x_axis, tick_values: current_ticks_x },
+            x_axis: {
+              ...final_x_axis,
+              tick_values: resolve_tick_labels(current_ticks_x, final_x_axis.ticks),
+            },
             x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
             y_axis: { ...final_y_axis, tick_values: current_ticks_y },
             y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },

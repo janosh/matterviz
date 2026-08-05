@@ -196,6 +196,38 @@ export async function resize_element(
   await tick()
 }
 
+// jsdom has no text metrics, so canvas-measured tick labels all come out 0 wide and nothing
+// ever looks crowded. Stand in a proportional-ish width per character. Caller restores.
+export const mock_text_measurement = (px_per_char = 7) =>
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+    font: ``,
+    measureText: (label: string) => ({ width: label.length * px_per_char }),
+  } as unknown as CanvasRenderingContext2D)
+
+export async function with_measured_text<T>(
+  run: () => T | Promise<T>,
+  px_per_char?: number,
+): Promise<T> {
+  const spy = mock_text_measurement(px_per_char)
+  try {
+    return await run()
+  } finally {
+    spy.mockRestore()
+  }
+}
+
+export const expect_custom_x_ticks_grow_bottom_pad = async (
+  baseline_y: (ticks: Record<number, string>) => Promise<number>,
+  values: number[],
+): Promise<void> =>
+  with_measured_text(async () => {
+    const long = Object.fromEntries(values.map((value) => [value, `CATEGORY_LABEL_${value}`]))
+    const short = Object.fromEntries(values.map((value) => [value, `${value}`]))
+    const [with_long, with_short] = [await baseline_y(long), await baseline_y(short)]
+    expect(with_short).toBeGreaterThan(0)
+    expect(with_long).toBeLessThan(with_short)
+  })
+
 // Mount a component into a fresh container, find its root via `selector`, and
 // resize it so width/height-dependent rendering (SVG plots, canvases) kicks in.
 // oxlint-disable-next-line typescript-eslint/no-explicit-any

@@ -343,9 +343,9 @@
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...x_axis, tick_values: x_tick_labels },
+            x_axis: { ...x_axis, tick_values: axis_tick_labels.x },
             x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-            y_axis: { ...y_axis, tick_values: ticks.y },
+            y_axis: { ...y_axis, tick_values: axis_tick_labels.y },
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
@@ -540,14 +540,16 @@
     }
   })
 
-  let x_tick_labels = $derived(
-    resolve_tick_labels(ticks.x, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks),
-  )
+  // Horizontal padding must measure category names rather than numeric slot indices.
+  let axis_tick_labels = $derived({
+    x: resolve_tick_labels(ticks.x, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks),
+    y: resolve_tick_labels(ticks.y, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks),
+  })
 
   // Cache measured tick-label widths so expensive canvas text measurement
   // only runs when ticks/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format),
+    y_max: measure_max_tick_width(axis_tick_labels.y, y_axis.format),
     y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
   })
 
@@ -1256,6 +1258,7 @@
                         rect_h,
                         Math.min(bar_state.border_radius ?? 0, rect_w / 2, rect_h / 2),
                         is_vertical,
+                        is_vertical ? v1 > v0 : v1 < v0,
                       )}
                       fill={color}
                       opacity={mode === `overlay` ? bar_state.opacity : 1}

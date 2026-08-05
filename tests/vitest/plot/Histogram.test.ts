@@ -2,7 +2,11 @@ import { Histogram, type Vec2 } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { axis_label_pivot_y, resize_element } from '../setup'
+import {
+  axis_label_pivot_y,
+  expect_custom_x_ticks_grow_bottom_pad,
+  resize_element,
+} from '../setup'
 
 function mount_histogram(props: Record<string, unknown>) {
   document.body.innerHTML = ``
@@ -320,6 +324,18 @@ describe(`Histogram`, () => {
     } finally {
       context_spy.mockRestore()
     }
+  })
+
+  // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
+  // tick values behind them, or the labels tilt into a band nobody reserved.
+  test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
+    expect.assertions(2)
+    const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
+      mount_histogram({ series: [{ x: [], y: [0, 1, 2, 3, 4, 5] }], x_axis: { ticks } })
+      await resize_element(get_plot(), 400, 300)
+      return Number(document.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
+    }
+    await expect_custom_x_ticks_grow_bottom_pad(baseline_y, [0, 1, 2, 3, 4, 5])
   })
 
   test(`legend=null suppresses the legend even with show_legend=true`, async () => {

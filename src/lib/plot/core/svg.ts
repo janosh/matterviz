@@ -38,6 +38,8 @@ export function violin_path(
 
 // Generate SVG path for a bar with rounded corners on the "free" end (away from axis).
 // For vertical bars, rounds top corners. For horizontal bars, rounds right corners.
+// `flip` moves the rounding to the opposite end (bottom / left) for bars whose tip
+// points the other way, i.e. negative values.
 export function bar_path(
   x: number,
   y: number,
@@ -45,14 +47,23 @@ export function bar_path(
   h: number,
   r: number,
   vertical: boolean = true,
+  flip: boolean = false,
 ): string {
   if (r <= 0) return `M${x},${y}h${w}v${h}h${-w}Z`
 
-  return vertical
-    ? `M${x},${y + h}V${y + r}A${r},${r} 0 0 1 ${x + r},${y}H${
-        x + w - r
-      }A${r},${r} 0 0 1 ${x + w},${y + r}V${y + h}Z`
-    : `M${x},${y}H${x + w - r}A${r},${r} 0 0 1 ${x + w},${y + r}V${
-        y + h - r
-      }A${r},${r} 0 0 1 ${x + w - r},${y + h}H${x}Z`
+  const sweep = flip ? 0 : 1
+  if (vertical) {
+    const y_start = flip ? y : y + h
+    const y_arc = flip ? y + h - r : y + r
+    const y_tip = flip ? y + h : y
+    return `M${x},${y_start}V${y_arc}A${r},${r} 0 0 ${sweep} ${x + r},${y_tip}H${
+      x + w - r
+    }A${r},${r} 0 0 ${sweep} ${x + w},${y_arc}V${y_start}Z`
+  }
+  const x_start = flip ? x + w : x
+  const x_arc = flip ? x + r : x + w - r
+  const x_tip = flip ? x : x + w
+  return `M${x_start},${y}H${x_arc}A${r},${r} 0 0 ${sweep} ${x_tip},${y + r}V${
+    y + h - r
+  }A${r},${r} 0 0 ${sweep} ${x_arc},${y + h}H${x_start}Z`
 }

@@ -1,6 +1,9 @@
+import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
+import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { mock_text_measurement } from '../setup'
 
 // Plot geometry shared across cases: plot area is x∈[40,180], y∈[10,70]
 const pad = { t: 10, b: 30, l: 40, r: 20 }
@@ -27,7 +30,10 @@ const query = (root: Element, selector: string): Element => {
   return el
 }
 
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
 
 describe(`PlotAxis`, () => {
   // Codifies the intentionally-normalized tick geometry shared by all plots (tick-mark coords +
@@ -233,5 +239,49 @@ describe(`PlotAxis`, () => {
     const text = query(svg, `g.tick text`)
     expect(text.getAttribute(`text-anchor`)).toBe(anchor)
     expect(text.getAttribute(`transform`)).toContain(`rotate(45`)
+  })
+
+  // Long names at 20px pitch, wide enough (once text is measurable) to always auto-rotate
+  const cats = [`QUEUE_HOLD`, `PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`]
+  const mount_cat_axis = (props: Record<string, unknown>): Promise<SVGElement> => {
+    mock_text_measurement()
+    return mount_axis({
+      ticks: cats.map((_cat, idx) => 50 + idx * 20),
+      tick_label: (value: number) => cats[(value - 50) / 20] ?? null,
+      ...props,
+    })
+  }
+
+  test.each([
+    [`x`, false, -1],
+    [`x`, true, 1],
+    [`x2`, false, 1],
+    [`x2`, true, -1],
+  ] as const)(`auto-rotated %s labels (inside=%s) trail left`, async (side, inside, sign) => {
+    const svg = await mount_cat_axis({ side, axis: { tick: { label: { inside } } } })
+    const text = query(svg, `g.tick text`)
+    const transform = text.getAttribute(`transform`) ?? ``
+    const degrees = Number(/rotate\((?<deg>[-\d.]+),/.exec(transform)?.groups?.deg)
+    expect(Math.sign(degrees)).toBe(sign)
+    // `end` puts the label behind its anchor, i.e. left of the tick, for either sign
+    expect(text.getAttribute(`text-anchor`)).toBe(`end`)
+  })
+
+  test(`only outside tick labels push the x-axis title down`, async () => {
+    const label_y = height - pad.b + AXIS_TITLE_OFFSET
+    const title_y = async (inside: boolean): Promise<number> => {
+      const svg = await mount_cat_axis({
+        side: `x`,
+        axis: { label: `state`, tick: { label: { inside } } },
+        label_x: 100,
+        label_y,
+      })
+      return (
+        Number(query(svg, `foreignObject`).getAttribute(`y`)) + AXIS_LABEL_CONTAINER.y_offset
+      )
+    }
+    const [outside_title, inside_title] = [await title_y(false), await title_y(true)]
+    expect(inside_title).toBe(label_y)
+    expect(outside_title).toBeGreaterThan(label_y)
   })
 })

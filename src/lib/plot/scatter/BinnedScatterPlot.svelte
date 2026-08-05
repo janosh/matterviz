@@ -7,6 +7,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>, PointData extends Record<string, unknown> = Record<string, unknown>"
 >
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -309,7 +310,7 @@
             padding: padding_config,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...x_axis, tick_values: x_ticks },
+            x_axis: { ...x_axis, format: x_axis.format ?? `.2~g`, tick_values: x_ticks },
             y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
@@ -957,7 +958,7 @@
           title="Reset view"
           onclick={reset_view}
         >
-          <Icon icon="Reset" width="18" height="18" />
+          <Icon icon={Reset} width="18" height="18" />
         </button>
       {/if}
       {#if fullscreen_toggle}

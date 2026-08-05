@@ -98,13 +98,13 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
 type Size = { width: number; height: number }
 type ElementFootprint = Size & { offset_x: number; offset_y: number }
 
-function measure_full_footprint(el: HTMLElement): ElementFootprint {
-  const root = el.getBoundingClientRect()
+function measure_full_footprint(element: HTMLElement): ElementFootprint {
+  const root = element.getBoundingClientRect()
   let left = root.left
   let top = root.top
   let right = root.right
   let bottom = root.bottom
-  for (const child of el.querySelectorAll(`*`)) {
+  for (const child of element.querySelectorAll(`*`)) {
     const rect = child.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) continue
     left = Math.min(left, rect.left)
@@ -132,15 +132,19 @@ export const full_footprint_or = (
     ? measure_full_footprint(el)
     : { ...fallback, offset_x: 0, offset_y: 0 }
 
+// An axis plus the labels it will actually draw, so layout can measure them. Categorical
+// axes pass their category names here, not the numeric indices behind them.
+export type MeasuredAxis = AxisConfig & { tick_values?: (string | number)[] }
+
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
   padding: Partial<Sides> // User padding (undefined sides will be auto-calculated)
   default_padding: Required<Sides> // Default padding to use as baseline
-  x_axis?: AxisConfig & { tick_values?: (string | number)[] }
-  x2_axis?: AxisConfig & { tick_values?: (string | number)[] }
-  y_axis?: AxisConfig & { tick_values?: (string | number)[] }
-  y2_axis?: AxisConfig & { tick_values?: (string | number)[] }
+  x_axis?: MeasuredAxis
+  x2_axis?: MeasuredAxis
+  y_axis?: MeasuredAxis
+  y2_axis?: MeasuredAxis
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
   width?: number // Plot width, needed to know whether x tick labels have to rotate
 }
@@ -162,52 +166,31 @@ const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 // Air between neighbouring tick labels before they read as one word.
 const TICK_LABEL_GAP = 6
 
-// Shallowest rotation that keeps neighbouring x tick labels apart, given the horizontal
-// pitch between adjacent ticks. Upright labels need their full width; rotated ones sit on
-// parallel baselines whose perpendicular separation is `pitch * sin(angle)`, so they clear
-// each other once that exceeds one line height. Returns 0 when labels already fit, and the
-// steepest angle when even 90 degrees cannot (the caller has more ticks than pixels).
+// Shallowest rotation that keeps neighbouring x tick labels apart, given the widest label
+// and the horizontal pitch between adjacent ticks. Upright labels need their full width;
+// rotated ones sit on parallel baselines whose perpendicular separation is
+// `pitch * sin(angle)`, so they clear each other once that exceeds one line height. Returns
+// 0 when labels already fit, and the steepest angle when even 90 degrees cannot.
 //
 // Negative by convention: anchored at their end, labels then trail down and to the *left*
 // of their tick. Tilting the other way would push the last label off the right edge of the
 // plot, where there is no margin to spill into.
-export const auto_tick_rotation = (
-  labels: (string | number)[],
-  pitch_px: number,
-  format?: string,
-): number => {
-  if (labels.length < 2 || !(pitch_px > 0)) return 0
-  if (measure_max_tick_width(labels, format) + TICK_LABEL_GAP <= pitch_px) return 0
+export const auto_tick_rotation = (widest_px: number, pitch_px: number): number => {
+  if (!(pitch_px > 0) || widest_px + TICK_LABEL_GAP <= pitch_px) return 0
   const needed = TICK_LABEL_HEIGHT + TICK_LABEL_GAP
-  const angle =
-    TICK_ROTATION_LADDER.find(
-      (candidate) => pitch_px * Math.sin(to_radians(candidate)) >= needed,
-    ) ?? 90
-  return -angle
+  const angle = TICK_ROTATION_LADDER.find(
+    (candidate) => pitch_px * Math.sin(to_radians(candidate)) >= needed,
+  )
+  return -(angle ?? 90)
 }
 
-// Distance from an x/x2 baseline to the axis title's center, once the tick labels have
-// taken their share. Generalizes AXIS_TITLE_OFFSET, which assumed one upright line and so
-// planted the title inside a rotated label block.
-export const x_axis_title_offset = (
-  tick_labels: (string | number)[],
-  rotation: number,
-  format?: string,
-): number => tick_label_band(tick_labels, rotation, format) + LABEL_GAP_DEFAULT
-
-// Vertical space one row of x tick labels occupies at `rotation` degrees. Upright labels
-// cost one line; rotated ones project their own width downward, which is what makes a
-// shallower angle worth preferring whenever it still separates the labels.
-export const tick_label_band = (
-  labels: (string | number)[],
-  rotation: number,
-  format?: string,
-): number => {
-  if (labels.length === 0) return 0
+// Vertical space one row of tick labels occupies at `rotation` degrees. Upright labels cost
+// one line; rotated ones project their own width downward, which is what makes a shallower
+// angle worth preferring whenever it still separates the labels.
+export const tick_label_band = (widest_px: number, rotation: number): number => {
   if (rotation === 0) return TICK_LABEL_HEIGHT
   const radians = to_radians(Math.abs(rotation))
-  const widest = measure_max_tick_width(labels, format)
-  return widest * Math.sin(radians) + TICK_LABEL_HEIGHT * Math.cos(radians)
+  return widest_px * Math.sin(radians) + TICK_LABEL_HEIGHT * Math.cos(radians)
 }
 
 export const calc_auto_padding = ({
@@ -224,7 +207,7 @@ export const calc_auto_padding = ({
   // title gap, rotated title width, and outer air. Titles can render from interactive options
   // without a literal label, and still need their band when an axis intentionally has no ticks.
   const side_pad = (
-    axis: AxisConfig & { tick_values?: (string | number)[] },
+    axis: MeasuredAxis,
     default_side: number,
     side: `left` | `right`,
   ): number => {
@@ -247,6 +230,13 @@ export const calc_auto_padding = ({
       tick_width + title_gap + title_band + tick_offset + title_shift_outward,
     )
   }
+  // Resolved before the x/x2 helpers below, which need the true plot width to know whether
+  // the tick labels have to rotate. Left/right never depend on top/bottom, so there is no cycle.
+  const pad_l = padding.l ?? side_pad(y_axis, default_padding.l, `left`)
+  const pad_r = padding.r ?? side_pad(y2_axis, default_padding.r, `right`)
+  // No width means no way to tell whether labels collide, so they are treated as upright
+  const plot_width = width == null ? 0 : width - pad_l - pad_r
+
   const top_pad = (): number => {
     const ticks = x2_axis.tick_values ?? []
     const has_title = has_axis_title(x2_axis)
@@ -256,10 +246,8 @@ export const calc_auto_padding = ({
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
     // Same reach the labels will actually have; assuming one upright line here is what
     // clips a rotated top axis off the figure.
-    const x2_rotation =
-      width == null ? 0 : resolve_tick_rotation(x2_axis, ticks, width - pad_l - pad_r, true)
     const tick_band = has_outside_ticks
-      ? tick_label_band(ticks, x2_rotation, x2_axis.format) + 8 + Math.max(0, -tick_shift)
+      ? resolve_tick_layout(x2_axis, plot_width, `x2`).band + 8 + Math.max(0, -tick_shift)
       : 0
     const title_band = has_title
       ? AXIS_LABEL_HEIGHT + Math.max(0, x2_axis.label_shift?.y ?? 0)
@@ -269,23 +257,21 @@ export const calc_auto_padding = ({
     return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
   }
 
-  const pad_l = padding.l ?? side_pad(y_axis, default_padding.l, `left`)
-  const pad_r = padding.r ?? side_pad(y2_axis, default_padding.r, `right`)
-
-  // Bottom depends on the angle the x labels will render at, since a rotated label
-  // projects its own width downward. Left/right never depend on bottom, so resolving them
-  // first (above) gives the rotation search the true plot width. Reserving exactly what
-  // the title placement will use is what keeps the surplus from becoming dead space.
+  // Bottom depends on the angle the x labels will render at, since a rotated label projects
+  // its own width downward. Reserving exactly what the title placement will use is what
+  // keeps the surplus from becoming dead space.
   const bottom_pad = (): number => {
-    const ticks = x_axis.tick_values ?? []
     const inside = x_axis.tick?.label?.inside ?? false
-    if (ticks.length === 0 || inside || width == null) return default_padding.b
-    const rotation = resolve_tick_rotation(x_axis, ticks, width - pad_l - pad_r)
+    // Inside labels reach into the plot, and no labels reach nowhere: neither needs room
+    if (inside || (x_axis.tick_values ?? []).length === 0) return default_padding.b
+    const { rotation, band } = resolve_tick_layout(x_axis, plot_width, `x`)
     if (rotation === 0) return default_padding.b
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
+    // The title sits one gap past the labels and is centered, so half of it reaches further
+    // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
     const below_baseline = has_axis_title(x_axis)
-      ? x_axis_title_offset(ticks, rotation, x_axis.format) + AXIS_LABEL_HEIGHT / 2
-      : tick_label_band(ticks, rotation, x_axis.format)
+      ? band + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2
+      : band
     return Math.max(default_padding.b, below_baseline + tick_shift + AXIS_LABEL_OUTER)
   }
 
@@ -297,30 +283,47 @@ export const calc_auto_padding = ({
   }
 }
 
-// The rotation an x/x2 axis renders its tick labels at: an explicit angle when configured,
-// otherwise the shallowest one that stops them colliding. Shared by the padding math and
-// PlotAxis so the reserved band and the drawn labels can never disagree.
-// `mirror` is for the top axis, whose labels sit above the baseline: there the opposite
-// tilt is the one that trails up and to the left, keeping the last label on the figure.
-// Only the auto angle flips; an explicit rotation is passed through exactly as configured.
-export const resolve_tick_rotation = (
-  axis: AxisConfig,
-  tick_labels: (string | number)[],
+// The angle an axis tilts its tick labels to, and the vertical band they occupy once
+// tilted. Returned together because both fall out of one measurement of the widest label,
+// and because the padding math and PlotAxis have to agree on both or the space reserved
+// won't match what gets drawn. An explicit rotation is used exactly as configured; only
+// the `auto` angle is derived.
+export const resolve_tick_layout = (
+  axis: MeasuredAxis,
   plot_width: number,
-  mirror = false,
-): number => {
+  side: `x` | `x2` | `y` | `y2`,
+): { rotation: number; band: number } => {
+  const ticks = axis.tick_values ?? []
   const configured = axis.tick?.label?.rotation ?? `auto`
-  if (configured !== `auto`) return configured
-  const angle = auto_tick_rotation(
-    tick_labels,
-    plot_width / Math.max(1, tick_labels.length),
-    axis.format,
-  )
-  return mirror ? -angle : angle
+  // y/y2 labels stack vertically and never crowd; a lone label has no neighbour to hit
+  const can_collide = (side === `x` || side === `x2`) && ticks.length > 1
+  if (configured === `auto` && !can_collide) return { rotation: 0, band: TICK_LABEL_HEIGHT }
+  const widest = measure_max_tick_width(ticks, axis.format)
+  // Which sign trails up-and-to-the-left — the direction that keeps the last label on the
+  // figure — is set by which side of the baseline the labels sit on: x2 puts them above,
+  // and so does an x axis labelled `inside`.
+  const above_baseline = (side === `x2`) !== (axis.tick?.label?.inside ?? false)
+  const auto = auto_tick_rotation(widest, plot_width / ticks.length)
+  const rotation = configured === `auto` ? (above_baseline ? -auto : auto) : configured
+  return { rotation, band: tick_label_band(widest, rotation) }
 }
 
-// Constrain tooltip position within bounds, flipping to opposite side if overflow
-// offset_x/offset_y control initial positioning: positive = right/down, negative = left/up
+const constrain_axis_position = (
+  cursor: number,
+  size: number,
+  viewport_size: number,
+  offset: number,
+): number => {
+  const distance = Math.abs(offset)
+  const after = cursor + distance
+  const before = cursor - distance - size
+  const preferred = offset >= 0 ? after : before
+  const alternate = offset >= 0 ? before : after
+  const overflow = offset >= 0 ? preferred + size > viewport_size : preferred < 0
+  return Math.max(0, Math.min(overflow ? alternate : preferred, viewport_size - size))
+}
+
+// Positive offsets prefer right/down; negative offsets prefer left/up.
 export function constrain_tooltip_position(
   cursor_x: number,
   cursor_y: number,
@@ -333,46 +336,10 @@ export function constrain_tooltip_position(
   const { offset = 10 } = options
   const offset_x = options.offset_x ?? offset
   const offset_y = options.offset_y ?? offset
-
-  // Position to left of cursor if right-side placement overflows (and vice versa)
-  const flip_x =
-    offset_x >= 0
-      ? cursor_x + offset_x + tooltip_width > viewport_width
-      : cursor_x + offset_x - tooltip_width < 0
-  // Position above cursor if bottom placement overflows (and vice versa)
-  const flip_y =
-    offset_y >= 0
-      ? cursor_y + offset_y + tooltip_height > viewport_height
-      : cursor_y + offset_y - tooltip_height < 0
-
-  // Calculate position: apply offset, flip if needed
-  const abs_offset_x = Math.abs(offset_x)
-  const abs_offset_y = Math.abs(offset_y)
-
-  // Determine X position based on preferred side and flip state
-  let raw_x: number
-  if (offset_x >= 0) {
-    // Prefer right side: flip to left if overflows
-    raw_x = flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
-  } else {
-    // Prefer left side: flip to right if overflows
-    raw_x = flip_x ? cursor_x + abs_offset_x : cursor_x - abs_offset_x - tooltip_width
+  return {
+    x: constrain_axis_position(cursor_x, tooltip_width, viewport_width, offset_x),
+    y: constrain_axis_position(cursor_y, tooltip_height, viewport_height, offset_y),
   }
-
-  // Determine Y position based on preferred side and flip state
-  let raw_y: number
-  if (offset_y >= 0) {
-    // Prefer bottom: flip to top if overflows
-    raw_y = flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
-  } else {
-    // Prefer top: flip to bottom if overflows
-    raw_y = flip_y ? cursor_y + abs_offset_y : cursor_y - abs_offset_y - tooltip_height
-  }
-
-  // Clamp to viewport bounds
-  const x_pos = Math.max(0, Math.min(raw_x, viewport_width - tooltip_width))
-  const y_pos = Math.max(0, Math.min(raw_y, viewport_height - tooltip_height))
-  return { x: x_pos, y: y_pos }
 }
 
 // Continuous placement algorithm with grid sampling and overlap scoring
@@ -452,12 +419,12 @@ export const point_in_rect = (point: { x: number; y: number }, rect: Rect): bool
   point.y <= rect.y + rect.height
 
 // Check if two rectangles overlap
-export const rects_overlap = (r1: Rect, r2: Rect): boolean =>
+export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
   !(
-    r1.x + r1.width <= r2.x ||
-    r2.x + r2.width <= r1.x ||
-    r1.y + r1.height <= r2.y ||
-    r2.y + r2.height <= r1.y
+    left_rect.x + left_rect.width <= right_rect.x ||
+    right_rect.x + right_rect.width <= left_rect.x ||
+    left_rect.y + left_rect.height <= right_rect.y ||
+    right_rect.y + right_rect.height <= left_rect.y
   )
 
 // Build placement obstacles for one series' pixel-space polyline. Always includes the finite
@@ -509,7 +476,6 @@ export function compute_element_placement(
     grid_resolution: raw_resolution = 10,
   } = config
 
-  // Ensure grid_resolution >= 2 to avoid division by zero in step calculation
   const grid_resolution = Math.max(2, raw_resolution)
 
   // Measure the element's full footprint (incl. descendants that overflow its box,
@@ -553,15 +519,8 @@ export function compute_element_placement(
     score: -Infinity,
   }
 
-  // Sample candidate positions on a grid
-  const x_step =
-    effective_x_max > effective_x_min
-      ? (effective_x_max - effective_x_min) / (grid_resolution - 1)
-      : 0
-  const y_step =
-    effective_y_max > effective_y_min
-      ? (effective_y_max - effective_y_min) / (grid_resolution - 1)
-      : 0
+  const x_step = (effective_x_max - effective_x_min) / (grid_resolution - 1)
+  const y_step = (effective_y_max - effective_y_min) / (grid_resolution - 1)
 
   // Precompute plot corners (constant across all candidates)
   const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
@@ -598,10 +557,7 @@ export function compute_element_placement(
         // Track distance to nearest point for tie-breaking
         const dx = point.x - center_x
         const dy = point.y - center_y
-        const dist_sq = dx * dx + dy * dy
-        if (dist_sq < min_distance_sq) {
-          min_distance_sq = dist_sq
-        }
+        min_distance_sq = Math.min(min_distance_sq, dx * dx + dy * dy)
       }
 
       // Score: fewer overlaps = better (less negative)

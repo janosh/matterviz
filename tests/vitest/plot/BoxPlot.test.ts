@@ -2,7 +2,13 @@ import { BoxPlot, type Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, inside_clip_path, mount_sized, resize_element } from '../setup'
+import {
+  bind_props,
+  inside_clip_path,
+  mount_sized,
+  resize_element,
+  with_measured_text,
+} from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -25,71 +31,71 @@ describe(`BoxPlot`, () => {
   // Same failure mode BarPlot had: a categorical x axis whose labels auto-rotate needs
   // the padding to grow with them, or the tilted block is clipped off the figure.
   test(`long category names tilt and still fit inside the figure`, async () => {
-    const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
-    const spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
-      measureText: (label: string) => ({ width: label.length * 7 }),
-    } as unknown as CanvasRenderingContext2D)
-    try {
-      const plot = await mount_sized_box_plot({
-        series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
-        x_axis: { label: `state` },
-      })
-      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
-      expect(labels.length).toBeGreaterThan(0)
-      for (const label of labels) {
-        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
-        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
-      }
-      // Padding followed the rotation: the baseline sits higher than it would with short
-      // labels, leaving the tilted block room instead of clipping it.
-      const baseline_of = (root: HTMLElement): number =>
-        Number(root.querySelector(`g.x-axis > line`)?.getAttribute(`y1`) ?? NaN)
-      const upright = await mount_sized_box_plot({
-        series: cats.map((cat, idx) => ({
-          y: dist(40, 0, 1),
-          label: `${idx}`,
-          category: `${idx}`,
-        })),
-        x_axis: { label: `state` },
-      })
-      expect(baseline_of(plot)).toBeGreaterThan(0)
-      expect(baseline_of(plot)).toBeLessThan(baseline_of(upright))
-    } finally {
-      spy.mockRestore()
+    const mount_with_cats = (cats: string[]): Promise<HTMLElement> =>
+      with_measured_text(() =>
+        mount_sized_box_plot({
+          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
+          x_axis: { label: `state` },
+        }),
+      )
+    const baseline_of = (root: HTMLElement): number =>
+      Number(root.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
+    const plot = await mount_with_cats([
+      `PENDING`,
+      `RUNNING`,
+      `QUEUE_HOLD`,
+      `COMPLETED`,
+      `CANCELLED`,
+    ])
+    const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
+    expect(labels).toHaveLength(5) // else the loop below asserts nothing
+    for (const label of labels) {
+      expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
+      expect(label.getAttribute(`text-anchor`)).toBe(`end`)
     }
+    // Padding followed the rotation: the baseline sits higher than it would with short
+    // labels, leaving the tilted block room instead of clipping it.
+    const upright = await mount_with_cats([`0`, `1`, `2`, `3`, `4`])
+    expect(baseline_of(plot)).toBeGreaterThan(0)
+    expect(baseline_of(plot)).toBeLessThan(baseline_of(upright))
   })
 
+  // Smoke matrix: every one of these must still draw one box (and one hit target) per
+  // series with finite data. Named per row so a failure says which config broke.
   test.each([
-    { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Error` } },
-    { series: [] as BoxPlotSeries[] },
-    { series: [basic, { ...basic, color: `orangered`, label: `B` }] },
-    { series: [basic], whisker_mode: `minmax` as WhiskerMode },
-    { series: [basic], whisker_mode: `percentile` as WhiskerMode },
-    { series: [basic], whisker_mode: `std` as WhiskerMode },
-    { series: [basic], show_value_labels: true },
-    { series: [basic], show_mean: true },
-    { series: [basic], show_outliers: false },
-    { series: [basic], orientation: `horizontal` as Orientation },
-    { series: [basic], y_axis: { range: [-3, 3] as Vec2 } },
-    { series: [basic], y_axis: { format: `.2~s` } },
-    { series: [basic], show_controls: false },
-    { series: [basic], legend: null },
-    {
-      series: [
-        { ...basic, visible: false },
-        { ...basic, label: `Visible` },
-      ],
+    [`axis labels`, { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Err` } }],
+    [`no series at all`, { series: [] as BoxPlotSeries[] }],
+    [`whisker_mode=minmax`, { series: [basic], whisker_mode: `minmax` as WhiskerMode }],
+    [
+      `whisker_mode=percentile`,
+      { series: [basic], whisker_mode: `percentile` as WhiskerMode },
+    ],
+    [`whisker_mode=std`, { series: [basic], whisker_mode: `std` as WhiskerMode }],
+    [`value labels`, { series: [basic], show_value_labels: true }],
+    [`mean glyph`, { series: [basic], show_mean: true }],
+    [`outliers hidden`, { series: [basic], show_outliers: false }],
+    [`a clamped y range`, { series: [basic], y_axis: { range: [-3, 3] as Vec2 } }],
+    [`an SI tick format`, { series: [basic], y_axis: { format: `.2~s` } }],
+    [`controls hidden`, { series: [basic], show_controls: false }],
+    [
+      `an invisible series`,
+      {
+        series: [
+          { ...basic, visible: false },
+          { ...basic, label: `Visible` },
+        ],
+      },
+    ],
+    [`an empty distribution`, { series: [{ y: [] as number[], label: `Empty` }, basic] }],
+  ] as [string, Partial<ComponentProps<typeof BoxPlot>>][])(
+    `renders with %s`,
+    async (_label, props) => {
+      const plot = await mount_sized_box_plot(props)
+      const expected = rendered_box_count(props.series as BoxPlotSeries[])
+      expect(plot.querySelectorAll(`.box-series`)).toHaveLength(expected)
+      expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(expected)
     },
-    { series: [{ y: [] as number[], label: `Empty` }, basic] }, // empty distribution skipped
-  ] as Partial<ComponentProps<typeof BoxPlot>>[])(`renders various configs`, async (props) => {
-    const series = (props.series ?? []) as BoxPlotSeries[]
-    const plot = await mount_sized_box_plot(props)
-    const expected = rendered_box_count(series)
-    expect(plot.querySelectorAll(`.box-series`)).toHaveLength(expected)
-    expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(expected)
-    if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
-  })
+  )
 
   // 2 whiskers + 2 caps + 1 median render as <line>s inside .box-series (tukey, cap_fraction
   // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
@@ -217,21 +223,26 @@ describe(`BoxPlot`, () => {
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
-    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
-      measureText: () => ({ width: 120 }),
-    } as unknown as CanvasRenderingContext2D)
-    try {
-      const plot = await mount_sized_box_plot({
-        series: [basic],
-        y_axis: { label: `Value` },
-      })
-      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
-        60,
+    const plot = await with_measured_text(
+      () => mount_sized_box_plot({ series: [basic], y_axis: { label: `Value` } }),
+      60, // short y ticks still measure past the 60px default left pad
+    )
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(60)
+  })
+
+  test(`horizontal left padding fits slot names, not their indices`, async () => {
+    // slots sit on y when horizontal, so measuring the integer indices behind them left
+    // long category names overflowing the figure and the y title on top of the ticks
+    const clip_x = async (cats: string[]) => {
+      const plot = await with_measured_text(() =>
+        mount_sized_box_plot({
+          series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
+          orientation: `horizontal`,
+        }),
       )
-    } finally {
-      context_spy.mockRestore()
+      return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
     }
+    expect(await clip_x([`QUEUE_HOLD`, `COMPLETED`])).toBeGreaterThan(await clip_x([`Q`, `C`]))
   })
 
   test(`vertical rect-zoom zooms y2 but writes no phantom x2 range`, async () => {
@@ -340,11 +351,28 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  test(`legend renders when show_legend=true`, async () => {
-    const series = [basic, { ...basic, label: `B`, color: `orangered` }]
-    const plot = await mount_sized_box_plot({ series, show_legend: true })
-    expect(plot.querySelector(`.legend`)).not.toBeNull()
-  })
+  // show_legend defaults to false, so legend=null only proves anything once it's turned on
+  test.each([
+    [`renders when show_legend=true`, { show_legend: true }, true],
+    [`stays hidden by default`, {}, false],
+    [
+      `is suppressed by legend=null despite show_legend`,
+      {
+        show_legend: true,
+        legend: null,
+      },
+      false,
+    ],
+  ] as [string, Partial<ComponentProps<typeof BoxPlot>>, boolean][])(
+    `legend %s`,
+    async (_label, props, visible) => {
+      const plot = await mount_sized_box_plot({
+        series: [basic, { ...basic, label: `B`, color: `orangered` }],
+        ...props,
+      })
+      expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
+    },
+  )
 
   // === Violin support ===
   const iqr_box = (plot: HTMLElement) => plot.querySelectorAll(`.box-series rect.iqr-box`)

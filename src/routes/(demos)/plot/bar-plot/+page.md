@@ -2,7 +2,7 @@
 
 ## Crystal Structure Analysis
 
-Lattice parameters across crystal systems. Gear controls cover orientation, modes, and grid; the plot also uses rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
+Lattice parameters across materials. Gear controls cover orientation, modes, and grid; the plot also uses rounded corners (`border_radius`) and bar borders (`stroke_color`, `stroke_width`):
 
 ```svelte example
 <script lang="ts">
@@ -10,11 +10,10 @@ Lattice parameters across crystal systems. Gear controls cover orientation, mode
 
   const lattice_params = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7],
+      x: [`Diamond`, `NaCl`, `Si`, `GaAs`, `GaN`, `ZnO`, `CdTe`],
       y: [3.52, 4.05, 5.43, 6.08, 3.89, 4.95, 5.65],
       label: `Lattice Parameter a (Å)`,
       color: `#4c6ef5`,
-      labels: [`Diamond`, `NaCl`, `Si`, `GaAs`, `GaN`, `ZnO`, `CdTe`],
     },
   ]
 </script>
@@ -22,7 +21,7 @@ Lattice parameters across crystal systems. Gear controls cover orientation, mode
 <BarPlot
   series={lattice_params}
   bar={{ border_radius: 4, stroke_color: `#364fc7`, stroke_width: 1.5 }}
-  x_axis={{ label: `Crystal System` }}
+  x_axis={{ label: `Material` }}
   y_axis={{ label: `Lattice Parameter (Å)` }}
   style="height: 400px"
 />
@@ -93,6 +92,87 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
+## Automatic Tick Label Rotation
+
+Long category names no longer collide. `x`/`x2` tick labels default to `rotation: 'auto'`, which picks the shallowest tilt (30°, 45°, 60°, then 90°) that still keeps neighbouring labels apart, and the padding grows to fit whatever angle it lands on. Drag the slider to walk the ladder: upright while the names fit side by side, then one step steeper each time the ticks crowd closer than a label's line height. Narrowing your browser window has the same effect, since it's the spacing between ticks in pixels that decides.
+
+Labels trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign of rotation achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force them upright (and overlapping), or pass an explicit angle to override the choice entirely:
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  const routes = [
+    `Solid-State Sintering`,
+    `Sol-Gel`,
+    `Hydrothermal`,
+    `Chemical Vapor Deposition`,
+    `Molecular Beam Epitaxy`,
+    `Spark Plasma Sintering`,
+    `Mechanochemical Milling`,
+    `Flux Growth`,
+    `Czochralski Pulling`,
+    `Electrodeposition`,
+    `Atomic Layer Deposition`,
+    `Pulsed Laser Deposition`,
+    `Magnetron Sputtering`,
+    `Solvothermal`,
+    `Arc Melting`,
+    `Combustion Synthesis`,
+    `Zone Refining`,
+    `Bridgman Growth`,
+    `Spray Pyrolysis`,
+    `Coprecipitation`,
+    `Ball Milling`,
+    `Melt Quenching`,
+    `Vapor Transport`,
+    `Sonochemical`,
+    `Microwave Sintering`,
+    `Ion Exchange`,
+    `Topotactic Reduction`,
+    `Ammonolysis`,
+  ]
+  const sample_counts = routes.map((_route, idx) => Math.round(420 * 0.9 ** idx) + 20)
+
+  let n_categories = $state(5)
+  let rotation = $state(`auto`)
+  let inside = $state(false)
+
+  const rotations = [`auto`, 0, -45, 45, 90]
+  let series = $derived([
+    {
+      x: routes.slice(0, n_categories),
+      y: sample_counts.slice(0, n_categories),
+      color: `#4c6ef5`,
+    },
+  ])
+  let x_axis = $derived({
+    label: `Synthesis Route`,
+    tick: { label: { rotation, inside } },
+  })
+</script>
+
+<div
+  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  <label>
+    Categories: {n_categories}
+    <input type="range" bind:value={n_categories} min="2" max="28" style="width: 120px" />
+  </label>
+  <label>
+    Rotation:
+    <select bind:value={rotation}>
+      {#each rotations as angle (angle)}
+        <option value={angle}>{angle === `auto` ? `auto` : `${angle}°`}</option>
+      {/each}
+    </select>
+  </label>
+  <label><input type="checkbox" bind:checked={inside} /> Labels inside</label>
+</div>
+
+<BarPlot {series} {x_axis} y_axis={{ label: `Samples` }} style="height: 400px" />
+```
+
 ## Mode Comparison: Band Gap Measurements
 
 Compare overlay, stacked, and grouped (side-by-side) modes using band gap data from different measurement techniques. Click legend items to toggle series visibility:
@@ -101,21 +181,22 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
+  const materials = [`Si`, `GaAs`, `GaN`, `ZnO`, `Diamond`]
   const band_gaps = [
     {
-      x: [1, 2, 3, 4, 5],
+      x: materials,
       y: [1.12, 1.43, 2.26, 3.4, 5.47],
       label: `Optical Absorption`,
       color: `#4c6ef5`,
     },
     {
-      x: [1, 2, 3, 4, 5],
+      x: materials,
       y: [0.95, 1.25, 1.85, 2.98, 4.82],
       label: `Photoluminescence`,
       color: `#ff6b6b`,
     },
     {
-      x: [1, 2, 3, 4, 5],
+      x: materials,
       y: [1.28, 1.62, 2.58, 3.75, 6.15],
       label: `DFT Calculation`,
       color: `#51cf66`,
@@ -140,7 +221,7 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
 <BarPlot
   series={band_gaps}
   {mode}
-  x_axis={{ label: `Material (1=Si, 2=GaAs, 3=GaN, 4=ZnO, 5=Diamond)` }}
+  x_axis={{ label: `Material` }}
   y_axis={{ label: `Band Gap (eV)` }}
   style="height: 400px"
 />
@@ -209,16 +290,16 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
+  const quarters = [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`]
   const quarterly_data = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      x: quarters,
       y: [125000, 142000, 158000, 171000, 165000, 189000, 203000, 218000],
       label: `Sales Revenue ($)`,
       color: `#4c6ef5`,
-      labels: [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`],
     },
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      x: quarters,
       y: [12.5, 15.2, 18.3, 14.8, 13.1, 19.5, 21.2, 23.8],
       label: `Profit Margin (%)`,
       color: `#51cf66`,
@@ -256,11 +337,7 @@ Horizontal bars suit long category labels. `tick.label.inside` puts tick labels 
 
   const abundances = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
-      y: [461000, 277200, 82300, 50000, 41500, 26000, 23600, 20900],
-      label: `Abundance (ppm)`,
-      color: `#845ef7`,
-      labels: [
+      x: [
         `Oxygen`,
         `Silicon`,
         `Aluminum`,
@@ -270,11 +347,22 @@ Horizontal bars suit long category labels. `tick.label.inside` puts tick labels 
         `Magnesium`,
         `Potassium`,
       ],
+      y: [461000, 277200, 82300, 50000, 41500, 26000, 23600, 20900],
+      label: `Abundance (ppm)`,
+      color: `#845ef7`,
     },
   ]
 
   let orientation = $state(`horizontal`)
   let inside = $state(false)
+
+  // Categories sit on y when horizontal, on x when vertical, so the axis titles swap with it
+  let cat_axis = $derived({ label: `Element`, tick: { label: { inside } } })
+  let val_axis = $derived({
+    label: `Abundance (ppm)`,
+    format: `~s`,
+    tick: { label: { inside } },
+  })
 </script>
 
 <label style="margin-bottom: 1em; display: inline-block">
@@ -293,8 +381,8 @@ Horizontal bars suit long category labels. `tick.label.inside` puts tick labels 
 <BarPlot
   series={abundances}
   {orientation}
-  x_axis={{ label: `Abundance (ppm)`, format: `~s`, tick: { label: { inside } } }}
-  y_axis={{ label: `Element`, format: `~s`, tick: { label: { inside } } }}
+  x_axis={orientation === `horizontal` ? val_axis : cat_axis}
+  y_axis={orientation === `horizontal` ? cat_axis : val_axis}
   style="height: 400px"
 />
 ```
@@ -307,31 +395,32 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
+  const temps = [`300K`, `500K`, `700K`, `900K`, `1100K`]
   const phase_stability = [
     {
-      x: [1, 2, 3, 4, 5],
+      x: temps,
       y: [85, 92, 78, 95, 88],
       label: `α-phase`,
       color: `#5c7cfa`,
       metadata: [
-        { phase: `α-phase`, temp: `300K`, structure: `FCC`, stability: `High` },
-        { phase: `α-phase`, temp: `500K`, structure: `FCC`, stability: `Very High` },
-        { phase: `α-phase`, temp: `700K`, structure: `FCC`, stability: `Medium` },
-        { phase: `α-phase`, temp: `900K`, structure: `FCC`, stability: `Very High` },
-        { phase: `α-phase`, temp: `1100K`, structure: `FCC`, stability: `High` },
+        { phase: `α-phase`, structure: `FCC`, stability: `High` },
+        { phase: `α-phase`, structure: `FCC`, stability: `Very High` },
+        { phase: `α-phase`, structure: `FCC`, stability: `Medium` },
+        { phase: `α-phase`, structure: `FCC`, stability: `Very High` },
+        { phase: `α-phase`, structure: `FCC`, stability: `High` },
       ],
     },
     {
-      x: [1, 2, 3, 4, 5],
+      x: temps,
       y: [70, 75, 88, 82, 90],
       label: `β-phase`,
       color: `#ff6b6b`,
       metadata: [
-        { phase: `β-phase`, temp: `300K`, structure: `BCC`, stability: `Medium` },
-        { phase: `β-phase`, temp: `500K`, structure: `BCC`, stability: `Medium` },
-        { phase: `β-phase`, temp: `700K`, structure: `BCC`, stability: `High` },
-        { phase: `β-phase`, temp: `900K`, structure: `BCC`, stability: `High` },
-        { phase: `β-phase`, temp: `1100K`, structure: `BCC`, stability: `Very High` },
+        { phase: `β-phase`, structure: `BCC`, stability: `Medium` },
+        { phase: `β-phase`, structure: `BCC`, stability: `Medium` },
+        { phase: `β-phase`, structure: `BCC`, stability: `High` },
+        { phase: `β-phase`, structure: `BCC`, stability: `High` },
+        { phase: `β-phase`, structure: `BCC`, stability: `Very High` },
       ],
     },
   ]
@@ -339,15 +428,16 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   let clicked_info = $state(`Click a bar to see phase details`)
   let hovered_info = $state(`Hover over a bar`)
 
+  // Handlers get `category_label` alongside metadata for string-valued x
   function handle_click(data) {
-    const { metadata, y } = data
-    clicked_info = `${metadata.phase} at ${metadata.temp}: ${metadata.structure} structure, ${y}% stable (${metadata.stability})`
+    const { metadata, category_label, y } = data
+    clicked_info = `${metadata.phase} at ${category_label}: ${metadata.structure} structure, ${y}% stable (${metadata.stability})`
   }
 
   function handle_hover(data) {
     if (data) {
-      const { metadata, y } = data
-      hovered_info = `${metadata.phase} at ${metadata.temp}: ${y}% stability`
+      const { metadata, category_label, y } = data
+      hovered_info = `${metadata.phase} at ${category_label}: ${y}% stability`
     } else hovered_info = `Hover over a bar`
   }
 
@@ -357,15 +447,15 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 <BarPlot
   series={phase_stability}
   mode="grouped"
-  x_axis={{ label: `Temperature Point` }}
+  x_axis={{ label: `Temperature` }}
   y_axis={{ label: `Stability (%)` }}
   on_bar_click={handle_click}
   on_bar_hover={handle_hover}
   style="height: 400px"
 >
-  {#snippet tooltip({ metadata, y })}
+  {#snippet tooltip({ metadata, category_label, y })}
     <div style="font-weight: 600">{metadata.phase}</div>
-    <div>Temp: {metadata.temp}</div>
+    <div>Temp: {category_label}</div>
     <div>Structure: {metadata.structure}</div>
     <div>Stability: {y}% ({metadata.stability})</div>
   {/snippet}
@@ -393,14 +483,14 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
   let y_scale_type = $state(`arcsinh`)
   let arcsinh_threshold = $state(1)
 
-  // Data with wide range: negative to positive, varying magnitudes
+  // Data with wide range: negative to positive, varying magnitudes.
+  // String x values make the axis categorical, so ticks are the element symbols.
   const energy_data = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      x: [`Mg`, `Ca`, `Li`, `Na`, `K`, `Rb`, `Cs`, `Fr`],
       y: [-500, -50, -5, -0.5, 0.5, 5, 50, 500],
       label: `Energy (eV)`,
       color: `#4c6ef5`,
-      labels: [`Mg`, `Ca`, `Li`, `Na`, `K`, `Rb`, `Cs`, `Fr`],
     },
   ]
 
@@ -437,8 +527,8 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
 </p>
 
 <BarPlot series={energy_data} x_axis={{ label: `Element` }} {y_axis} style="height: 400px">
-  {#snippet tooltip({ y, labels, x })}
-    <strong>{labels?.[x - 1] ?? `Element ${x}`}</strong><br />
+  {#snippet tooltip({ y, category_label })}
+    <strong>{category_label}</strong><br />
     Energy: {y.toLocaleString()} eV
   {/snippet}
 </BarPlot>
@@ -452,16 +542,16 @@ Bar plots handle negative values automatically and display zero lines for refere
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
+  const compounds = [`TiO₂`, `CuO`, `Al₂O₃`, `Fe₂O₃`, `MgO`, `ZnO`, `NiO`, `FeO`]
   const formation_energies = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      x: compounds,
       y: [-2.45, 1.28, -1.82, 0.95, -3.12, 2.01, -0.67, -1.93],
       label: `Formation Energy`,
       color: `#4c6ef5`,
-      labels: [`TiO₂`, `CuO`, `Al₂O₃`, `Fe₂O₃`, `MgO`, `ZnO`, `NiO`, `FeO`],
     },
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      x: compounds,
       y: [-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0],
       label: `Stability Threshold`,
       color: `#51cf66`,
@@ -704,11 +794,10 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
   // Threshold mode: single series with performance tiers
   const efficiency_data = [
     {
-      x: [1, 2, 3, 4, 5, 6],
+      x: [`Dev A`, `Dev B`, `Dev C`, `Dev D`, `Dev E`, `Dev F`],
       y: [78, 92, 85, 88, 71, 95],
       label: `Device Efficiency (%)`,
       color: `#4c6ef5`,
-      labels: [`Dev A`, `Dev B`, `Dev C`, `Dev D`, `Dev E`, `Dev F`],
     },
   ]
 
@@ -819,29 +908,16 @@ Reference lines support hover effects and click handlers for interactivity:
 
   const production_data = [
     {
-      x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      x: [`Jan`, `Feb`, `Mar`, `Apr`, `May`, `Jun`, `Jul`, `Aug`, `Sep`, `Oct`, `Nov`, `Dec`],
       y: [42, 38, 45, 52, 48, 55, 61, 58, 63, 67, 71, 75],
       label: `Monthly Production`,
       color: `#4c6ef5`,
-      labels: [
-        `Jan`,
-        `Feb`,
-        `Mar`,
-        `Apr`,
-        `May`,
-        `Jun`,
-        `Jul`,
-        `Aug`,
-        `Sep`,
-        `Oct`,
-        `Nov`,
-        `Dec`,
-      ],
     },
   ]
 
   let selected_target = $state(null)
 
+  // x_span is in category-index units (Jan=0 ... Dec=11), so each quarter spans 3 slots
   const ref_lines = [
     {
       type: `horizontal`,
@@ -850,7 +926,7 @@ Reference lines support hover effects and click handlers for interactivity:
       label: `Q1 Target`,
       style: { color: `#e74c3c`, width: 2 },
       hover_style: { color: `#c0392b`, width: 4 },
-      x_span: [0.5, 3.5],
+      x_span: [-0.5, 2.5],
       annotation: { text: `Q1: 50`, position: `center`, side: `above` },
       on_click: () => (selected_target = `Q1 Target: 50 units`),
     },
@@ -861,7 +937,7 @@ Reference lines support hover effects and click handlers for interactivity:
       label: `Q2 Target`,
       style: { color: `#f39c12`, width: 2 },
       hover_style: { color: `#d68910`, width: 4 },
-      x_span: [3.5, 6.5],
+      x_span: [2.5, 5.5],
       annotation: { text: `Q2: 55`, position: `center`, side: `above` },
       on_click: () => (selected_target = `Q2 Target: 55 units`),
     },
@@ -872,7 +948,7 @@ Reference lines support hover effects and click handlers for interactivity:
       label: `Q3 Target`,
       style: { color: `#2ecc71`, width: 2 },
       hover_style: { color: `#27ae60`, width: 4 },
-      x_span: [6.5, 9.5],
+      x_span: [5.5, 8.5],
       annotation: { text: `Q3: 65`, position: `center`, side: `above` },
       on_click: () => (selected_target = `Q3 Target: 65 units`),
     },
@@ -883,7 +959,7 @@ Reference lines support hover effects and click handlers for interactivity:
       label: `Q4 Target`,
       style: { color: `#9b59b6`, width: 2 },
       hover_style: { color: `#7d3c98`, width: 4 },
-      x_span: [9.5, 12.5],
+      x_span: [8.5, 11.5],
       annotation: { text: `Q4: 75`, position: `center`, side: `above` },
       on_click: () => (selected_target = `Q4 Target: 75 units`),
     },
@@ -913,43 +989,44 @@ When comparing results from different computational methods or experimental tech
   import { BarPlot } from 'matterviz'
 
   // Comparing formation energies from different methods
+  const cathodes = [`LiCoO₂`, `LiFePO₄`, `Li₂MnO₃`, `LiNiO₂`, `LiMn₂O₄`]
   const grouped_series = [
     // DFT Methods group
     {
-      x: [1, 2, 3, 4, 5],
+      x: cathodes,
       y: [-1.2, -0.8, -2.1, -1.5, -0.9],
-      label: 'PBE',
-      legend_group: 'DFT',
-      color: '#3498db',
+      label: `PBE`,
+      legend_group: `DFT`,
+      color: `#3498db`,
     },
     {
-      x: [1, 2, 3, 4, 5],
+      x: cathodes,
       y: [-1.4, -0.9, -2.3, -1.7, -1.1],
-      label: 'r2SCAN',
-      legend_group: 'DFT',
-      color: '#2980b9',
+      label: `r2SCAN`,
+      legend_group: `DFT`,
+      color: `#2980b9`,
     },
     // ML Potentials group
     {
-      x: [1, 2, 3, 4, 5],
+      x: cathodes,
       y: [-1.1, -0.7, -2.0, -1.4, -0.8],
-      label: 'MACE',
-      legend_group: 'ML Potentials',
-      color: '#e74c3c',
+      label: `MACE`,
+      legend_group: `ML Potentials`,
+      color: `#e74c3c`,
     },
     {
-      x: [1, 2, 3, 4, 5],
+      x: cathodes,
       y: [-1.3, -0.85, -2.15, -1.55, -0.95],
-      label: 'CHGNet',
-      legend_group: 'ML Potentials',
-      color: '#c0392b',
+      label: `CHGNet`,
+      legend_group: `ML Potentials`,
+      color: `#c0392b`,
     },
     // Experiment (ungrouped reference)
     {
-      x: [1, 2, 3, 4, 5],
+      x: cathodes,
       y: [-1.25, -0.82, -2.05, -1.52, -0.88],
-      label: 'Experiment',
-      color: '#2ecc71',
+      label: `Experiment`,
+      color: `#2ecc71`,
     },
   ]
 </script>
@@ -957,8 +1034,8 @@ When comparing results from different computational methods or experimental tech
 <BarPlot
   series={grouped_series}
   mode="grouped"
-  x_axis={{ label: 'Compound (1=LiCoO₂, 2=LiFePO₄, 3=Li₂MnO₃, 4=LiNiO₂, 5=LiMn₂O₄)' }}
-  y_axis={{ label: 'Formation Energy (eV/atom)' }}
+  x_axis={{ label: `Compound` }}
+  y_axis={{ label: `Formation Energy (eV/atom)` }}
   legend={{ draggable: true }}
   style="height: 400px"
 />
@@ -1116,11 +1193,7 @@ Display multiple bar plots in a responsive 2×2 grid:
 
   const make_data = (fn, label_fn) => {
     const x_vals = Array.from({ length: 6 }, (_, idx) => idx + 1)
-    return {
-      x: x_vals,
-      y: x_vals.map(fn),
-      labels: x_vals.map(label_fn),
-    }
+    return { x: x_vals.map(label_fn), y: x_vals.map(fn) }
   }
 
   const plots = [
@@ -1213,14 +1286,13 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
-  const quarters = [1, 2, 3, 4, 5, 6, 7, 8]
+  const quarters = [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`]
   const quarterly_data = [
     {
       x: quarters,
       y: [125, 142, 158, 171, 165, 189, 203, 218],
       label: `Sales ($K)`,
       color: `#4c6ef5`,
-      labels: [`Q1-22`, `Q2-22`, `Q3-22`, `Q4-22`, `Q1-23`, `Q2-23`, `Q3-23`, `Q4-23`],
     },
     {
       x: quarters,
