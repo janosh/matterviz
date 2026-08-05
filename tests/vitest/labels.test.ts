@@ -44,6 +44,10 @@ test(`format_num uses defaults and respects overrides`, () => {
   expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
 
   expect(format_num(0)).toBe(`0`)
+  expect(format_num(0, `.2~e`)).toBe(`0`)
+  expect(format_num(-0, `.2~e`)).toBe(`0`)
+  expect(format_num(0, `$.2e`)).toBe(`$0`)
+  expect(format_num(0, `.2~%`)).toBe(`0%`)
   expect(format_num(1)).toBe(`1`)
   expect(format_num(10)).toBe(`10`)
   expect(format_num(100)).toBe(`100`)

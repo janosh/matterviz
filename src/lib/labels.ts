@@ -178,7 +178,10 @@ export const format_num = (num: number, fmt?: string | number) => {
     const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     return format(Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt)(num)
   }
-  return format(fmt)(num)
+  const formatted = format(fmt)(num)
+  return num === 0 && fmt.endsWith(`e`)
+    ? formatted.replace(/(?:\.0+)?e\+0$/, ``)
+    : formatted
 }
 
 // Format a 3D vector as "(x, y, z)" with configurable precision
