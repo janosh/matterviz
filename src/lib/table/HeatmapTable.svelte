@@ -482,12 +482,19 @@
   // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
   let data_keys = $derived.by(() => {
     const keys = new SvelteMap<string, string>()
+    const qualified_ids: string[] = []
     for (const col of columns) {
       const col_id = get_col_id(col)
       const plain_key = col.key ?? col.label
-      const qualified = col_id !== plain_key && data.some((row) => col_id in row)
-      keys.set(col_id, qualified ? col_id : plain_key)
+      keys.set(col_id, plain_key) // upgraded below if the rows carry the qualified key
+      if (col_id !== plain_key) qualified_ids.push(col_id)
     }
+    // Only a grouped column can be keyed either way, so an ungrouped table skips the row
+    // scan entirely — it costs O(rows x keys) and runs on every data change.
+    if (qualified_ids.length === 0) return keys
+    const present_keys = new SvelteSet<string>()
+    for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
+    for (const col_id of qualified_ids) if (present_keys.has(col_id)) keys.set(col_id, col_id)
     return keys
   })
   // Row key for a column, by column or by ID (sort/context-menu state holds IDs)

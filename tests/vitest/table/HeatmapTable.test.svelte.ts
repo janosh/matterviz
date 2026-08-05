@@ -19,6 +19,14 @@ const col_values = (col_name: string): (string | undefined)[] =>
     cell.textContent?.trim(),
   )
 
+const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
+  const cell = document.querySelector<HTMLTableCellElement>(
+    `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
+  )
+  if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
+  return cell
+}
+
 describe(`HeatmapTable`, () => {
   const sample_data = [
     { Model: `Model A`, Score: 0.95, Value: 100 },
@@ -2048,9 +2056,8 @@ describe(`HeatmapTable`, () => {
 
     it(`maps the density prop onto the cell padding var`, () => {
       mount_table({ data: metric_rows, columns: metrics, density: `compact` })
-      expect(document.querySelector(`.table-container`)?.getAttribute(`data-density`)).toBe(
-        `compact`,
-      )
+      const style = getComputedStyle(document.querySelector(`.table-container`) as HTMLElement)
+      expect(style.getPropertyValue(`--heatmap-density-padding`)).toBe(`0 4pt`)
     })
 
     // Keyboard parity: arrows walk the active cell, Shift extends the rectangle,
@@ -2308,13 +2315,6 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`cell range selection and column copy`, () => {
-    const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
-      const cell = document.querySelector<HTMLTableCellElement>(
-        `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
-      )
-      if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
-      return cell
-    }
     const pointer = (type: string, init: MouseEventInit = {}) =>
       new MouseEvent(type, { button: 0, bubbles: true, ...init })
     const drag_cells = (
@@ -2548,20 +2548,13 @@ describe(`HeatmapTable`, () => {
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
 
-      const visible_cell = document.querySelector<HTMLElement>(
-        `td[data-row-idx="${start}"][data-col-idx="0"]`,
-      )
-      assert(visible_cell)
-      visible_cell.dispatchEvent(
+      cell_at(start, 0).dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }),
       )
       await tick()
       expect(scroller.scrollTop).toBe(30 * row_height_px)
 
-      const last_cell = document.querySelector(
-        `td[data-row-idx="${end - 1}"][data-col-idx="0"]`,
-      ) as HTMLElement
-      last_cell.dispatchEvent(
+      cell_at(end - 1, 0).dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
       )
       await tick()
