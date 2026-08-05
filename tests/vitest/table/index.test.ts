@@ -76,7 +76,7 @@ describe(`column stats and color domains`, () => {
 
   it(`falls back to min/max when quantiles are not requested`, () => {
     const stats = compute_column_stats(values, undefined, false)
-    expect(stats).toMatchObject({ q_lo: 0, q_hi: 10_000, min: 0, max: 10_000 })
+    expect(stats).toMatchObject({ q_lo: 0, q_hi: 10_000, median: null, min: 0, max: 10_000 })
   })
 
   it.each([

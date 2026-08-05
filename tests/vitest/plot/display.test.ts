@@ -20,19 +20,35 @@ describe(`resolve_plot_display`, () => {
 })
 
 describe(`sync_category_zero_display`, () => {
-  test(`clears category zeros and restores them on orientation flip`, () => {
-    const display = { ...DEFAULTS.bar.display }
-    const previous = sync_category_zero_display(display, DEFAULTS.bar.display, `x`, null)
-    expect(display).toMatchObject({ x_zero_line: false, y_zero_line: true })
+  test(`restores only helper-owned category zeros on orientation flips`, () => {
+    let display = { ...DEFAULTS.bar.display }
+    let previous = sync_category_zero_display(display, DEFAULTS.bar.display, `x`, [null, []])
+    expect(display).toMatchObject({ x_zero_line: false, x2_zero_line: false })
+    previous = sync_category_zero_display(display, DEFAULTS.bar.display, `y`, previous)
+    expect(display).toMatchObject({
+      x_zero_line: true,
+      y_zero_line: false,
+      y2_zero_line: false,
+    })
+    expect(display).toHaveProperty(`x2_zero_line`, undefined)
+
+    display.x_zero_line = false
+    previous = sync_category_zero_display(display, DEFAULTS.bar.display, `x`, previous)
     sync_category_zero_display(display, DEFAULTS.bar.display, `y`, previous)
-    expect(display).toMatchObject({ x_zero_line: true, y_zero_line: false })
+    expect(display.x_zero_line).toBe(false)
+    expect(display).toHaveProperty(`x2_zero_line`, undefined)
+
+    display = { ...DEFAULTS.bar.display, x_zero_line: false }
+    previous = sync_category_zero_display(display, DEFAULTS.bar.display, `x`, previous)
+    sync_category_zero_display(display, DEFAULTS.bar.display, `y`, previous)
+    expect(display.x_zero_line).toBe(false)
   })
 
   test.each([
     [`unchanged axis`, { ...DEFAULTS.bar.display, x_zero_line: true }, `x`],
     [`explicit first mount`, { x_zero_line: true, y_zero_line: false }, null],
-  ] as const)(`preserves an explicit category line on %s`, (_case, display, previous) => {
-    sync_category_zero_display(display, DEFAULTS.bar.display, `x`, previous)
+  ] as const)(`preserves an explicit category line on %s`, (_case, display, axis) => {
+    sync_category_zero_display(display, DEFAULTS.bar.display, `x`, [axis, []])
     expect(display.x_zero_line).toBe(true)
   })
 })

@@ -1238,13 +1238,9 @@
     }
   }
 
-  // Get current view mode label
-  let current_view_label = $derived.by(() => {
-    if (display_mode === `structure`) return `Structure Only`
-    if (display_mode === `scatter`) return `Scatter Only`
-    if (display_mode === `histogram`) return `Histogram Only`
-    if (display_mode === `structure+histogram`) return `Structure + Histogram`
-    if (display_mode === `structure+scatter`) return `Structure + Scatter`
+  let current_display_mode = $derived.by(() => {
+    const option = DISPLAY_MODES.find((entry) => entry.mode === display_mode)
+    if (option) return option
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
@@ -1712,15 +1708,12 @@
                     view_mode_dropdown_open = !view_mode_dropdown_open
                     analysis_menu_open = false
                   }}
-                  title={current_view_label}
+                  title={current_display_mode.label}
                   class="view-mode-button"
                   class:active={view_mode_dropdown_open}
                   style="background-color: transparent; padding: 0"
                 >
-                  <Icon
-                    icon={DISPLAY_MODES.find((entry) => entry.mode === display_mode)?.icon ??
-                      Atom}
-                  />
+                  <Icon icon={current_display_mode.icon} />
                   <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
                 </button>
                 {#if view_mode_dropdown_open}

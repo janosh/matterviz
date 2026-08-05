@@ -884,22 +884,25 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Multi-Column Sorting`, () => {
-    it(`Shift+click adds numbered sort badges, regular click clears them`, async () => {
+    it(`Shift+click toggles multi-sort columns and regular click clears them`, async () => {
       mount_table({ data: sample_data, columns: sample_columns })
-
       const headers = document.querySelectorAll(`th`)
-      headers[0].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-      await tick()
-      headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-      await tick()
+      const shift_click = async (idx: number) => {
+        headers[idx].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
+        await tick()
+      }
 
-      // With 2 columns in multi-sort, numbered badges should appear
+      await shift_click(0)
+      await shift_click(1)
       expect(headers[0].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
       expect(headers[0].textContent).toMatch(/[↑↓]/)
       expect(headers[1].textContent).toMatch(/[↑↓]/)
 
-      // Regular click clears multi-sort, leaving only the third header sorted
+      await shift_click(0)
+      expect(headers[0].textContent).not.toMatch(/[↑↓]/)
+      expect(headers[1].innerHTML).not.toContain(`<sup>`)
+
       headers[2].click()
       await tick()
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
@@ -1927,15 +1930,21 @@ describe(`HeatmapTable`, () => {
 
     // Wide tables render only the columns near the viewport, with spacer cells holding the
     // scroll width. Sticky columns are exempt: they're pinned on screen at any scroll.
-    it(`windows columns horizontally and always keeps sticky ones`, async () => {
-      const wide_columns: Label[] = Array.from({ length: 60 }, (_v, idx) => ({
+    // 60 columns, one row: `extra` marks whichever of them is sticky or grouped
+    const wide_table = (extra: (idx: number) => Partial<Label> = () => ({})) => {
+      const columns: Label[] = Array.from({ length: 60 }, (_val, idx) => ({
         label: `C${idx}`,
-        ...(idx === 0 ? { sticky: true } : {}),
+        ...extra(idx),
       }))
-      const wide_row = Object.fromEntries(wide_columns.map((col, idx) => [col.label, idx]))
+      return {
+        columns,
+        data: [Object.fromEntries(columns.map((col, idx) => [col.label, idx]))],
+      }
+    }
+
+    it(`windows columns horizontally and always keeps sticky ones`, async () => {
       mount_table({
-        data: [wide_row],
-        columns: wide_columns,
+        ...wide_table((idx) => (idx === 0 ? { sticky: true } : {})),
         virtual_columns: true,
         scroll_style: `max-width: 400px`,
       })
@@ -1943,7 +1952,7 @@ describe(`HeatmapTable`, () => {
 
       const rendered = document.querySelectorAll(`tbody td:not(.col-spacer)`)
       expect(rendered.length).toBeGreaterThan(0)
-      expect(rendered.length).toBeLessThan(wide_columns.length)
+      expect(rendered.length).toBeLessThan(60)
       expect(document.querySelector(`td[data-col="C0"]`)).not.toBeNull()
       expect(document.querySelector(`tbody td.col-spacer`)).not.toBeNull()
 
@@ -1972,15 +1981,7 @@ describe(`HeatmapTable`, () => {
       ],
       [`group headers make windowing unsafe`, () => ({ group: `G` })],
     ])(`renders every column when %s`, async (_reason, extra) => {
-      const columns: Label[] = Array.from({ length: 60 }, (_val, idx) => ({
-        label: `C${idx}`,
-        ...extra(idx),
-      }))
-      mount_table({
-        data: [Object.fromEntries(columns.map((col, idx) => [col.label, idx]))],
-        columns,
-        virtual_columns: true,
-      })
+      mount_table({ ...wide_table(extra), virtual_columns: true })
       await tick()
       expect(document.querySelectorAll(`tbody td:not(.col-spacer)`)).toHaveLength(60)
     })
@@ -2022,6 +2023,12 @@ describe(`HeatmapTable`, () => {
       await tick()
       const options = document.querySelectorAll(`.column-filter-options label`)
       expect(options).toHaveLength(60)
+      const event = new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true })
+      vi.spyOn(event, `stopPropagation`)
+      document.querySelector<HTMLElement>(`.column-filter-panel`)?.dispatchEvent(event)
+      await tick()
+      expect(document.querySelector(`.column-filter-panel`)).toBeNull()
+      expect(event.stopPropagation).toHaveBeenCalledOnce()
     })
 
     it(`omits summary statistics for columns that aren't fully numeric`, () => {
@@ -2091,7 +2098,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Export Enhancements`, () => {
     // Shared helper: mount, optionally interact, trigger an export, return blob text
-    async function export_csv_text(
+    async function export_table_text(
       props: Partial<ComponentProps<typeof HeatmapTable>>,
       before_export?: () => Promise<void>,
       format = `CSV`,
@@ -2107,10 +2114,10 @@ describe(`HeatmapTable`, () => {
         mount_table({ export_data: true, ...props } as ComponentProps<typeof HeatmapTable>)
         if (before_export) await before_export()
         await open_export_menu()
-        const csv_btn = Array.from(
+        const format_btn = Array.from(
           document.querySelectorAll(`.dropdown-pane .dropdown-option`),
         ).find((btn) => btn.textContent?.includes(format)) as HTMLButtonElement
-        csv_btn.click()
+        format_btn.click()
         await tick()
 
         return await (create_url.mock.calls[0][0] as Blob).text()
@@ -2123,7 +2130,7 @@ describe(`HeatmapTable`, () => {
     }
 
     it(`escapes GitHub markdown without breaking rows or alignment`, async () => {
-      const text = await export_csv_text(
+      const text = await export_table_text(
         {
           data: [{ Model: `a\nb`, Escaped: `c\\|d`, Score: 1 }],
           columns: [{ label: `Model` }, { label: `Escaped` }, { label: `Score` }],
@@ -2139,7 +2146,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`emits LaTeX booktabs with escaped control characters`, async () => {
-      const text = await export_csv_text(
+      const text = await export_table_text(
         {
           data: [{ Model: `C:\\tmp Fe_2 & Co x^2 100%`, Score: 1 }],
           columns: [{ label: `Model` }, { label: `Score` }],
@@ -2156,7 +2163,11 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`copy to clipboard writes TSV`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, export_data: true })
+      mount_table({
+        data: [{ Model: `Model\tA\nB`, Score: 1, Value: 2 }],
+        columns: sample_columns,
+        export_data: true,
+      })
       await open_export_menu()
 
       const copy_btn = Array.from(
@@ -2165,15 +2176,13 @@ describe(`HeatmapTable`, () => {
       copy_btn.click()
       await tick()
 
-      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1)
-      const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string
-      expect(written).toContain(`Model\tScore\tValue`)
-      expect(written).toContain(`Model A`)
+      expect(navigator.clipboard.writeText).toHaveBeenCalledExactlyOnceWith(
+        `Model\tScore\tValue\nModel A B\t1\t2`,
+      )
     })
 
     it(`strips HTML from column headers`, async () => {
-      const text = await export_csv_text({
+      const text = await export_table_text({
         data: [{ 'E<sub>form</sub>': -1.5, Name: `Fe` }],
         columns: [
           { label: `E<sub>form</sub>`, description: `` },
@@ -2188,7 +2197,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`exports only selected rows`, async () => {
-      const text = await export_csv_text(
+      const text = await export_table_text(
         { data: sample_data, columns: sample_columns, show_row_select: true },
         async () => {
           ;(
@@ -2211,7 +2220,7 @@ describe(`HeatmapTable`, () => {
       // a bare CR is a record separator to most readers, so it must be quoted too
       { desc: `carriage returns`, val: `line1\rline2`, expected: `"line1\rline2"` },
     ])(`CSV quoting for $desc`, async ({ val, expected }) => {
-      const text = await export_csv_text({
+      const text = await export_table_text({
         data: [{ Name: val }],
         columns: [{ label: `Name`, description: `` }],
       })
@@ -2522,6 +2531,7 @@ describe(`HeatmapTable`, () => {
         show_row_numbers: true,
         sort_data: false,
         virtual: true,
+        keyboard_cells: true,
       })
       const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
       assert(scroller)
@@ -2537,6 +2547,28 @@ describe(`HeatmapTable`, () => {
       expect(spacers()[1].style.height).toBe(`${(many_rows.length - end) * row_height_px}px`)
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
+
+      const visible_cell = document.querySelector<HTMLElement>(
+        `td[data-row-idx="${start}"][data-col-idx="0"]`,
+      )
+      assert(visible_cell)
+      visible_cell.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }),
+      )
+      await tick()
+      expect(scroller.scrollTop).toBe(30 * row_height_px)
+
+      const last_cell = document.querySelector(
+        `td[data-row-idx="${end - 1}"][data-col-idx="0"]`,
+      ) as HTMLElement
+      last_cell.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      await tick()
+      expect(scroller.scrollTop).toBe(end * row_height_px)
+      expect(document.activeElement).toBe(
+        document.querySelector(`td[data-row-idx="${end}"][data-col-idx="0"]`),
+      )
     })
 
     it(`reports the rendered range via on_visible_range`, async () => {

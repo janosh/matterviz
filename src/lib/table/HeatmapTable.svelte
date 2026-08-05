@@ -13,7 +13,6 @@
     Download,
     Export,
     Filter,
-    FilterOff,
     Search as SearchIcon,
     Settings,
   } from 'svelte-widgets/icons'
@@ -1100,75 +1099,52 @@
 
     const col_id = get_col_id(col)
 
-    // Shift+click for multi-column sort
+    // Shift-click toggles this column in multi-sort and clears single-column sorting.
     if (event.shiftKey) {
-      const existing_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
-      if (existing_idx !== -1) {
-        // Toggle direction or remove if clicked again
-        const existing = multi_sort[existing_idx]
-        if (existing.ascending === (col.better === `lower`)) {
-          // Remove from multi-sort
-          multi_sort = multi_sort.filter((_, idx) => idx !== existing_idx)
-        } else {
-          // Toggle direction
-          multi_sort = multi_sort.map((sort_entry, idx) =>
-            idx === existing_idx
-              ? { ...sort_entry, ascending: !sort_entry.ascending }
-              : sort_entry,
-          )
-        }
-      } else {
-        // Add to multi-sort
-        multi_sort = [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
-      }
-      // Clear single sort when using multi-sort
+      multi_sort = multi_sort.some((entry) => entry.column === col_id)
+        ? multi_sort.filter((entry) => entry.column !== col_id)
+        : [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
       sort = { column: ``, dir: `asc` }
-    } else {
-      // Regular click - single column sort
-      multi_sort = [] // Clear multi-sort
-      // Use sort_state.column for comparison since it includes initial_sort fallback
-      const first_dir = col.better === `lower` ? `asc` : `desc`
-      const on_this_col = sort_state.column === col_id
-      const flipped = sort_state.ascending ? `desc` : `asc`
-      // Third click on the same column clears the sort, restoring the data's own order.
-      // Two cases keep the plain asc/desc cycle: an initial_sort (sort_state falls back to
-      // it, so "cleared" would re-apply it and the cycle would stick) and server-side
-      // sorting (onsort takes a direction, so there's no way to ask for unsorted).
-      const cleared =
-        on_this_col &&
-        tri_state_sort &&
-        !initial_sort_config &&
-        !onsort &&
-        flipped === first_dir
-      const new_dir = on_this_col ? flipped : first_dir
+      return
+    }
+    multi_sort = []
+    const first_dir = col.better === `lower` ? `asc` : `desc`
+    const on_this_col = sort_state.column === col_id
+    const flipped = sort_state.ascending ? `desc` : `asc`
+    // Third click on the same column clears the sort, restoring the data's own order.
+    // Two cases keep the plain asc/desc cycle: an initial_sort (sort_state falls back to
+    // it, so "cleared" would re-apply it and the cycle would stick) and server-side
+    // sorting (onsort takes a direction, so there's no way to ask for unsorted).
+    const cleared =
+      on_this_col && tri_state_sort && !initial_sort_config && !onsort && flipped === first_dir
+    const new_dir = on_this_col ? flipped : first_dir
 
-      // Save previous sort state in case we need to revert on error
-      const prev_sort = { ...sort }
-      sort = cleared ? { column: ``, dir: `asc` } : { column: col_id, dir: new_dir }
-      if (cleared) return
+    // Save previous sort state in case we need to revert on error
+    const prev_sort = { ...sort }
+    sort = cleared ? { column: ``, dir: `asc` } : { column: col_id, dir: new_dir }
+    if (cleared) return
 
-      // If onsort callback provided, fetch new data from server
-      if (onsort) {
-        loading = true
-        const request_id = ++sort_request_id
-        try {
-          const result = await onsort(col_id, new_dir)
-          // Only update if this is still the most recent request (avoid race condition)
-          if (request_id === sort_request_id) {
-            data = result
-          }
-        } catch (err) {
-          console.error(`Sort callback failed:`, err)
-          // Revert sort state on failure so UI doesn't show wrong direction
-          if (request_id === sort_request_id) {
-            sort = prev_sort
-            onsorterror?.(err, col_id, new_dir)
-          }
-        } finally {
-          // Only clear loading if this is still the most recent request
-          if (request_id === sort_request_id) {
-            loading = false
-          }
+    // If onsort callback provided, fetch new data from server
+    if (onsort) {
+      loading = true
+      const request_id = ++sort_request_id
+      try {
+        const result = await onsort(col_id, new_dir)
+        // Only update if this is still the most recent request (avoid race condition)
+        if (request_id === sort_request_id) {
+          data = result
+        }
+      } catch (err) {
+        console.error(`Sort callback failed:`, err)
+        // Revert sort state on failure so UI doesn't show wrong direction
+        if (request_id === sort_request_id) {
+          sort = prev_sort
+          onsorterror?.(err, col_id, new_dir)
+        }
+      } finally {
+        // Only clear loading if this is still the most recent request
+        if (request_id === sort_request_id) {
+          loading = false
         }
       }
     }
@@ -1645,6 +1621,14 @@
       if (page !== current_page) keyboard_paging = true
       current_page = page
     }
+    if (
+      virtual_config &&
+      scroll_el &&
+      (row_idx < virtual_range.start || row_idx >= virtual_range.end)
+    ) {
+      scroll_el.scrollTop = row_idx * avg_row_height
+      sync_viewport()
+    }
     active_cell = { row: row_idx, col: col_idx }
     // The row may not be rendered yet (page flip or virtual window), so wait a tick
     void tick().then(() => {
@@ -1772,7 +1756,8 @@
   // the shared RFC 4180 escaper.
   function serialize_table(delimiter: string, csv_quote = false): string {
     const { headers, rows } = table_matrix()
-    const quote = (str: string) => (csv_quote ? escape_csv_field(str) : str)
+    const quote = (str: string) =>
+      csv_quote ? escape_csv_field(str) : str.replaceAll(/[\t\r\n]+/g, ` `)
     return [headers, ...rows].map((cells) => cells.map(quote).join(delimiter)).join(`\n`)
   }
 
@@ -1780,13 +1765,13 @@
     download(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
   }
 
-  // GitHub-flavoured markdown: header, alignment row, then the body. Numeric columns get
-  // a right-aligned marker so the rendered table reads like the one on screen.
+  const get_numeric_col_flags = () =>
+    visible_columns.map((col) => numeric_columns.has(get_col_id(col)))
+
+  // GitHub-flavoured markdown: header, alignment row, then the body
   function export_markdown(filename: string) {
     const { headers, rows } = table_matrix()
-    const align = visible_columns.map((col) =>
-      numeric_columns.has(get_col_id(col)) ? `---:` : `:---`,
-    )
+    const align = get_numeric_col_flags().map((is_numeric) => (is_numeric ? `---:` : `:---`))
     // Backslash first (or it would re-escape the one we add for `|`), and newlines become
     // <br>: a literal line break would end the table row mid-cell.
     const escape_md = (text: string) =>
@@ -1817,8 +1802,8 @@
     const escape_tex = (text: string) =>
       text.replaceAll(/(?<special>[\\^~&%$#_{}])/g, (char) => TEX_ESCAPES[char] ?? char)
     const line = (cells: string[]) => `  ${cells.map(escape_tex).join(` & `)} \\\\`
-    const spec = visible_columns
-      .map((col) => (numeric_columns.has(get_col_id(col)) ? `r` : `l`))
+    const spec = get_numeric_col_flags()
+      .map((is_numeric) => (is_numeric ? `r` : `l`))
       .join(``)
     const text = [
       `\\begin{tabular}{${spec}}`,
@@ -1853,6 +1838,19 @@
 
   function copy_to_clipboard() {
     navigator.clipboard.writeText(serialize_table(`\t`))
+  }
+
+  // Separate color settings so resetting them preserves widths, filters and date formats.
+  function split_color_prefs() {
+    const color: Record<string, ColumnPrefs> = {}
+    const remaining: Record<string, ColumnPrefs> = {}
+    for (const [col_id, { better, color_scale, ...kept }] of Object.entries(column_prefs)) {
+      if (better || color_scale) {
+        color[col_id] = { ...(better && { better }), ...(color_scale && { color_scale }) }
+      }
+      if (Object.keys(kept).length > 0) remaining[col_id] = kept
+    }
+    return { color, rest: remaining }
   }
 
   // Column visibility toggle
@@ -2008,14 +2006,17 @@
         filter_panel_col_id = filter_panel_col_id === col_id ? null : col_id
       }}
     >
-      <Icon icon={active ? FilterOff : Filter} />
+      <Icon icon={Filter} />
     </button>
     {#if filter_panel_col_id === col_id && filter_panel}
       <!-- svelte-ignore a11y_no_static_element_interactions (guard so panel input never reaches the header) -->
       <div
         class="column-filter-panel"
         onclick={stop_event}
-        onkeydown={stop_event}
+        onkeydown={(event) => {
+          stop_event(event)
+          if (event.key === `Escape`) filter_panel_col_id = null
+        }}
         onmousedown={stop_event}
         onpointerdown={stop_event}
       >
@@ -2208,23 +2209,8 @@
         {#if colored_columns.length > 0}
           <SettingsSection
             title="Column Colors"
-            current_values={Object.fromEntries(
-              Object.entries(column_prefs)
-                .map(([col_id, { better, color_scale }]) => [
-                  col_id,
-                  { ...(better && { better }), ...(color_scale && { color_scale }) },
-                ])
-                .filter(([, prefs]) => Object.keys(prefs).length > 0),
-            )}
-            on_reset={() => {
-              // keep widths/filters/date formats; only the color choices reset here
-              column_prefs = Object.fromEntries(
-                Object.entries(column_prefs).map(([col_id, prefs]) => {
-                  const { better: _b, color_scale: _c, ...rest } = prefs
-                  return [col_id, rest]
-                }),
-              )
-            }}
+            current_values={split_color_prefs().color}
+            on_reset={() => (column_prefs = split_color_prefs().rest)}
           >
             {#each colored_columns as col (get_col_id(col))}
               {@const col_id = get_col_id(col)}
@@ -2661,7 +2647,7 @@
                 >
                   {#if !leading_label && col_idx === 0}
                     <span class="summary-label">{stat}</span>
-                  {:else if stats && is_numeric}
+                  {:else if stats && is_numeric && stats[stat] != null}
                     <!-- only columns that are numeric throughout get a statistic; a mixed
                          text column would otherwise report a mean of the few parseable cells -->
                     {format_num(stats[stat], col.format ?? default_num_format)}
@@ -2827,7 +2813,7 @@
   }
   /* clears the group-header row above it, which sticks at top: 0 (var unset without one) */
   thead tr:not(.group-header) th {
-    top: var(--group-header-height, 0px);
+    top: var(--group-header-height, 0);
   }
   th:hover {
     background: var(--heatmap-header-hover-bg, var(--nav-bg));
@@ -2837,14 +2823,16 @@
     overflow: visible;
     z-index: 30;
   }
-  .column-filter {
+  .column-filter,
+  .datetime-format-control {
     display: inline-flex;
     align-items: center;
     margin-left: 3px;
     position: relative;
     vertical-align: middle;
   }
-  .column-filter-trigger {
+  .column-filter-trigger,
+  .datetime-format-trigger {
     display: inline-grid;
     place-items: center;
     width: 14px;
@@ -2856,10 +2844,14 @@
     color: inherit;
     cursor: pointer;
     line-height: 1;
+  }
+  .column-filter-trigger {
     opacity: 0.55;
   }
   .column-filter-trigger:hover,
-  .column-filter-trigger[aria-expanded='true'] {
+  .column-filter-trigger[aria-expanded='true'],
+  .datetime-format-trigger:hover,
+  .datetime-format-trigger[aria-expanded='true'] {
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
     opacity: 1;
   }
@@ -2868,24 +2860,29 @@
     opacity: 1;
     color: var(--accent-color, #4a9eff);
   }
-  .column-filter-trigger :global(svg) {
+  .column-filter-trigger :global(svg),
+  .datetime-format-trigger :global(svg) {
     width: 10px;
     height: 10px;
   }
-  .column-filter-panel {
+  .column-filter-panel,
+  .datetime-format-select {
     position: absolute;
     top: calc(100% + 2px);
     right: 0;
     z-index: 40;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
+    border-radius: 4px;
+    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: inherit;
+  }
+  .column-filter-panel {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 11em;
     padding: 6px;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
-    border-radius: 4px;
-    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
     font-weight: normal;
     label {
       display: flex;
@@ -2947,33 +2944,7 @@
     text-align: var(--heatmap-numeric-text-align, right);
     font-variant-numeric: tabular-nums; /* equal digit widths, so decimals line up */
   }
-  .datetime-format-control {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 3px;
-    position: relative;
-    vertical-align: middle;
-  }
-  .datetime-format-trigger {
-    display: inline-grid;
-    place-items: center;
-    width: 14px;
-    height: 14px;
-    padding: 0;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    line-height: 1;
-  }
-  .datetime-format-trigger:hover,
-  .datetime-format-trigger[aria-expanded='true'] {
-    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
-  }
   .datetime-format-trigger :global(svg) {
-    width: 10px;
-    height: 10px;
     opacity: 0.75;
     transform: translateY(-1px);
   }
@@ -2989,18 +2960,9 @@
     border: 0;
   }
   .datetime-format-select {
-    position: absolute;
-    top: calc(100% + 2px);
-    right: 0;
-    z-index: 20;
     min-width: max-content;
     max-width: 10em;
     padding: 2px;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
-    border-radius: 3px;
-    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-    color: inherit;
     cursor: pointer;
     font-size: 0.9em;
     line-height: 1.35;

@@ -1,5 +1,6 @@
 import { format_value_or_num } from '$lib/labels'
 import { euclidean_dist, to_radians } from '$lib/math'
+import { get_tick_label } from '$lib/plot/core/scales'
 import type { AxisConfig } from '$lib/plot/core/types'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -154,15 +155,13 @@ export const measure_max_tick_width = (
   format?: string,
   tick_labels?: AxisConfig[`ticks`],
 ): number => {
-  const labels =
-    tick_labels && typeof tick_labels === `object` && !Array.isArray(tick_labels)
-      ? tick_labels
-      : {}
   if (ticks.length === 0) return 0
   return Math.max(
     ...ticks.map((tick) =>
       measure_text_width(
-        typeof tick === `string` ? tick : (labels[tick] ?? format_value_or_num(tick, format)),
+        typeof tick === `string`
+          ? tick
+          : (get_tick_label(tick, tick_labels) ?? format_value_or_num(tick, format)),
         `12px sans-serif`,
       ),
     ),

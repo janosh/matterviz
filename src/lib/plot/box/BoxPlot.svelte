@@ -289,13 +289,13 @@
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
   // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
-  let prev_cat_axis: `x` | `y` | null = null
+  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = [null, []]
   $effect.pre(() => {
-    prev_cat_axis = sync_category_zero_display(
+    category_zero_sync = sync_category_zero_display(
       display,
       DEFAULTS.box.display,
       slot_list.length > 0 ? cat_axis : null,
-      prev_cat_axis,
+      category_zero_sync,
     )
   })
 

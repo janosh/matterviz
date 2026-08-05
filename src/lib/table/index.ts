@@ -169,7 +169,7 @@ export type ColumnStats = {
   q_lo: number // 5th percentile
   q_hi: number // 95th percentile
   mean: number
-  median: number
+  median: number | null
   count: number
   best: number | null
 }
@@ -178,8 +178,7 @@ export function compute_column_stats(
   values: (number | null | undefined)[],
   better?: `higher` | `lower`,
   // Quantiles cost up to six quickselect passes per column and only two features use
-  // them (quantile normalization, a median summary), so they're opt-in. When skipped,
-  // q_lo/q_hi/median fall back to the min/max already in hand.
+  // them (quantile normalization, a median summary), so they're opt-in.
   with_quantiles = true,
 ): ColumnStats | null {
   const nums = values.filter(
@@ -203,8 +202,8 @@ export function compute_column_stats(
     max: highest,
     q_lo: with_quantiles ? quantile_unordered(scratch, 0.05) : lowest,
     q_hi: with_quantiles ? quantile_unordered(scratch, 0.95) : highest,
-    median: with_quantiles ? quantile_unordered(scratch, 0.5) : (lowest + highest) / 2,
     mean: sum / nums.length,
+    median: with_quantiles ? quantile_unordered(scratch, 0.5) : null,
     count: nums.length,
     best: better === `lower` ? lowest : better === `higher` ? highest : null,
   }
@@ -255,11 +254,9 @@ export function make_cell_color_scale(
     (v): v is number =>
       typeof v === `number` && Number.isFinite(v) && (scale_type === `log` ? v > 0 : true),
   )
+  // a log column of nothing but zeros still colors them at the low end, hence the includes
   const has_log_zero = scale_type === `log` && all_values.includes(0)
-
-  if (numeric_vals.length === 0 && !has_log_zero && !domain) {
-    return () => NULL_CELL_COLOR
-  }
+  if (numeric_vals.length === 0 && !has_log_zero && !domain) return () => NULL_CELL_COLOR
 
   const range = domain ? [...domain] : [min(numeric_vals) ?? 0, max(numeric_vals) ?? 1]
 
@@ -279,8 +276,6 @@ export function make_cell_color_scale(
   // Use log scale for positive values, otherwise linear/sequential scale
   const use_log = scale_type === `log` && range[0] > 0 && range[1] > 0
   const log_scale = use_log ? scaleLog().domain(range).range([0, 1]).clamp(true) : null
-  // Clamp whenever the caller supplied the domain: a quantile-clipped or shared-group
-  // domain deliberately excludes values, which must saturate rather than extrapolate.
   const seq_scale = scaleSequential()
     .domain(range)
     .interpolator(interpolator)
