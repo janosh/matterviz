@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Graph } from 'svelte-widgets/icons'
   import { StatusMessage } from '$lib/feedback'
   import { format_bytes, format_num } from '$lib/labels'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
@@ -153,8 +154,8 @@
     class: `trajectory-msd-toggle ${toggle_props?.class ?? ``}`,
   }}
   pane_props={{ ...pane_props, class: `trajectory-msd-pane ${pane_props?.class ?? ``}` }}
-  open_icon="Cross"
-  closed_icon="Graph"
+  open_icon={Cross}
+  closed_icon={Graph}
   {...rest}
 >
   <h4 style="margin-top: 0">Mean Squared Displacement</h4>

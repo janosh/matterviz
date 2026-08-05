@@ -674,3 +674,69 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
 
 <HeatmapTable {data} {columns} bind:heatmap_opacity style="margin: 0 auto" />
 ```
+
+## Filters, Summaries and Normalization
+
+Everything the table learned in one place: per-column filters (funnel icons in the headers), a summary row that follows the filter, diverging color normalization centered on zero for formation energies, quantile clipping so the one outlier doesn't flatten the conductivity column, a shared color domain across the two error columns so they're directly comparable, data bars instead of a fill, and a ring on each column's best value.
+
+```svelte example
+<script lang="ts">
+  import { HeatmapTable } from 'matterviz'
+
+  const rows = [
+    { Material: `Fe2O3`, E_form: -8.5, MAE: 0.042, RMSE: 0.089, sigma: 1.2e-6, Tier: `oxide` },
+    { Material: `TiO2`, E_form: -9.8, MAE: 0.038, RMSE: 0.076, sigma: 4.5e-7, Tier: `oxide` },
+    { Material: `ZnO`, E_form: -3.6, MAE: 0.051, RMSE: 0.102, sigma: 2.1e-5, Tier: `oxide` },
+    { Material: `Cu2O`, E_form: 1.7, MAE: 0.029, RMSE: 0.058, sigma: 8.9e-3, Tier: `oxide` },
+    { Material: `NaCl`, E_form: -4.1, MAE: 0.044, RMSE: 0.091, sigma: 1.1e-9, Tier: `halide` },
+    { Material: `KBr`, E_form: 2.4, MAE: 0.035, RMSE: 0.071, sigma: 3.3e-9, Tier: `halide` },
+    { Material: `LiF`, E_form: -6.2, MAE: 0.031, RMSE: 0.063, sigma: 6_000, Tier: `halide` },
+  ]
+
+  let density = $state(`cosy`)
+
+  const columns = [
+    { label: `Material`, sticky: true },
+    // diverging: zero sits at the scale's midpoint, so sign reads at a glance
+    { label: `E_form`, color_scale: `interpolateRdBu`, normalize: `diverging`, format: `.1f` },
+    // one shared domain, so MAE and RMSE cells are comparable to each other
+    {
+      label: `MAE`,
+      better: `lower`,
+      domain_group: `error`,
+      highlight_best: true,
+      format: `.3f`,
+    },
+    { label: `RMSE`, better: `lower`, domain_group: `error`, format: `.3f` },
+    // spans 12 orders of magnitude; quantile clipping keeps the middle legible
+    { label: `sigma`, normalize: `quantile`, render_as: `bar`, format: `.1e` },
+    { label: `Tier` },
+  ]
+</script>
+
+<label>
+  Density:
+  <select bind:value={density}>
+    {#each [`compact`, `cosy`, `comfortable`] as option (option)}
+      <option value={option}>{option}</option>
+    {/each}
+  </select>
+</label>
+
+<HeatmapTable
+  data={rows}
+  {columns}
+  {density}
+  show_filters
+  summary={[`mean`, `min`, `max`]}
+  export_data
+  keyboard_cells
+  style="margin-top: 1em"
+/>
+
+<p style="font-size: 0.85em; opacity: 0.75">
+  Click a funnel to filter a column — the summary row follows. Click a header three times to
+  clear the sort. Focus a cell and use arrows (Shift extends the selection, Alt moves the
+  column). Export now offers Markdown and LaTeX alongside CSV/JSON.
+</p>
+```

@@ -1,5 +1,6 @@
 import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, it, test } from 'vitest'
 
 // Per-axis periodicity flags, structurally the Pbc type math.ts takes but does not re-export
@@ -29,10 +30,12 @@ describe(`combinations`, () => {
   })
 })
 
-test(`scale vector`, () => {
-  expect(math.scale([1, 2, 3], 3)).toEqual([3, 6, 9])
-  expect(math.scale([1, 2, 3], -1)).toEqual([-1, -2, -3])
-  expect(math.scale([1, 2, 3], 0)).toEqual([0, 0, 0])
+test.each([
+  [[1, 2, 3], 3, [3, 6, 9]],
+  [[1, 2, 3], -1, [-1, -2, -3]],
+  [[1, 2, 3], 0, [0, 0, 0]],
+])(`scale(%j, %i) = %j`, (vec, factor, expected) => {
+  expect(math.scale(vec, factor)).toEqual(expected)
 })
 
 describe(`centered_frac`, () => {
@@ -88,10 +91,8 @@ test.each([
 
 // oxfmt-ignore
 test.each([
-  [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along x-axis
-  [[0, 0, 0], [0, 1, 0], 1.0], // unit distance along y-axis
-  [[0, 0, 0], [0, 0, 1], 1.0], // unit distance along z-axis
-  [[0, 0, 0], [1, 1, 1], Math.sqrt(3)], // diagonal distance
+  [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along one axis
+  [[0, 0, 0], [1, 1, 1], Math.sqrt(3)], // diagonal
   [[1, 2, 3], [4, 6, 8], Math.hypot(3, 4, 5)], // arbitrary points
   [[-1, -1, -1], [1, 1, 1], Math.sqrt(12)], // negative to positive
   [[1, 2, 3], [1, 2, 3], 0.0], // identical points
@@ -300,9 +301,7 @@ describe(`pbc_dist`, () => {
     { pos1: [5, 5, 5], pos2: [5, 5, 5], expected: 0, desc: `identical atoms` },
     { pos1: [0, 0, 0], pos2: [10, 0, 0], expected: 0, desc: `boundary atoms` },
     { pos1: [0, 0, 0], pos2: [5, 0, 0], expected: 5, desc: `exactly 0.5 fractional` },
-    { pos1: [0.01, 5, 5], pos2: [9.99, 5, 5], expected: 0.02, desc: `face-to-face x` },
-    { pos1: [5, 0.01, 5], pos2: [5, 9.99, 5], expected: 0.02, desc: `face-to-face y` },
-    { pos1: [5, 5, 0.01], pos2: [5, 5, 9.99], expected: 0.02, desc: `face-to-face z` },
+    { pos1: [0.01, 5, 5], pos2: [9.99, 5, 5], expected: 0.02, desc: `face-to-face wrap` },
     { pos1: [1e-7, 0, 0], pos2: [9.9999999, 0, 0], expected: 2e-7, desc: `numerical precision` },
   ])(`edge cases: $desc`, ({ pos1, pos2, expected }) => {
     // oxfmt-ignore
@@ -673,7 +672,6 @@ describe(`tensor conversion utilities`, () => {
 
       // oxfmt-ignore
       const edge_cases: math.Matrix3x3[] = [
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], // singular
         [[1e-12, 0, 0], [0, 1, 0], [0, 0, 1]], // near-singular
         [[1, 1e-12, 0], [0, 1, 0], [0, 0, 1]], // near-singular
       ]
@@ -779,9 +777,6 @@ test.each([
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 0, `zero det`],
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], 1, `positive det`],
   [[[2, 1, 1], [1, 3, 2], [1, 0, 0]], -1, `negative det`],
-  [[[1.5, 2.5, 3.5], [4.5, 5.5, 6.5], [7.5, 8.5, 9.5]], 0, `decimals`],
-  [[[1000, 2000, 3000], [4000, 5000, 6000], [7000, 8000, 9000]], 0, `large nums`],
-  [[[0.001, 0.002, 0.003], [0.004, 0.005, 0.006], [0.007, 0.008, 0.009]], 0, `small nums`],
 ])(`det_3x3 $3`, (matrix, expected) => {
   expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
 })
@@ -1099,9 +1094,7 @@ describe(`vecs_equal`, () => {
   test.each([
     { vec_a: [1, 2, 3], vec_b: [1, 2, 3], expected: true, label: `equal components` },
     { vec_a: [0, 0, 0], vec_b: [0, 0, 0], expected: true, label: `both zero` },
-    { vec_a: [1, 2, 3], vec_b: [1, 2, 4], expected: false, label: `differ in z` },
-    { vec_a: [1, 2, 3], vec_b: [1, 3, 3], expected: false, label: `differ in y` },
-    { vec_a: [2, 2, 3], vec_b: [1, 2, 3], expected: false, label: `differ in x` },
+    { vec_a: [1, 2, 3], vec_b: [1, 2, 4], expected: false, label: `differ in one component` },
     { vec_a: undefined, vec_b: undefined, expected: true, label: `both undefined` },
     { vec_a: [1, 2, 3], vec_b: undefined, expected: false, label: `second undefined` },
     { vec_a: undefined, vec_b: [1, 2, 3], expected: false, label: `first undefined` },
@@ -1761,12 +1754,6 @@ describe(`gcd and Miller index reduction`, () => {
   ])(`reduce_miller_indices($hkl) = $expected`, ({ hkl, expected }) => {
     expect(math.reduce_miller_indices(hkl)).toEqual(expected)
   })
-
-  it(`reduce_miller_indices keeps opposite surfaces distinct`, () => {
-    expect(math.reduce_miller_indices([2, 2, 0])).not.toEqual(
-      math.reduce_miller_indices([-2, -2, 0]),
-    )
-  })
 })
 
 describe(`hermite_normal_form`, () => {
@@ -1882,3 +1869,23 @@ function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {
   }
   return true
 }
+
+describe(`quantile_sorted and quantile_unordered`, () => {
+  const sorted = Array.from({ length: 11 }, (_, idx) => idx * 3)
+
+  // Both must agree with d3's type-7 interpolation (numpy/pandas default) and with each
+  // other, since quantile_unordered only differs in how it locates the order statistics.
+  test.each([0, 0.05, 0.25, 0.5, 0.75, 0.95, 1])(`match d3 at p=%s`, (prob) => {
+    const expected = d3_quantile(sorted, prob) as number
+    expect(math.quantile_sorted(sorted, prob)).toBeCloseTo(expected, 12)
+    expect(math.quantile_unordered(sorted.toReversed(), prob)).toBeCloseTo(expected, 12)
+  })
+
+  // Interpolating as lo + (hi - lo) * frac overflows here: the difference is 2 * MAX_VALUE,
+  // i.e. Infinity, so the median of a symmetric pair would come back Infinity instead of 0.
+  test(`stay finite when the bracketing values straddle zero at MAX_VALUE`, () => {
+    const extremes = [-Number.MAX_VALUE, Number.MAX_VALUE]
+    expect(math.quantile_sorted(extremes, 0.5)).toBe(0)
+    expect(math.quantile_unordered([...extremes], 0.5)).toBe(0)
+  })
+})

@@ -1,4 +1,11 @@
-import { HeatmapTable, type Label, type RowData } from '$lib'
+import {
+  type ColumnFilter,
+  type ColumnPrefs,
+  HeatmapTable,
+  type Label,
+  type RowData,
+  type SummaryStat,
+} from '$lib'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
 import { bind_props } from '../setup'
@@ -11,6 +18,14 @@ const col_values = (col_name: string): (string | undefined)[] =>
   [...document.querySelectorAll(`td[data-col="${col_name}"]`)].map((cell) =>
     cell.textContent?.trim(),
   )
+
+const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
+  const cell = document.querySelector<HTMLTableCellElement>(
+    `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
+  )
+  if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
+  return cell
+}
 
 describe(`HeatmapTable`, () => {
   const sample_data = [
@@ -57,6 +72,7 @@ describe(`HeatmapTable`, () => {
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
+    expect(document.querySelectorAll(`td.row-num-col`)).toHaveLength(0)
     expect(document.querySelector(`tfoot`)).toBeNull() // no footer snippet -> no tfoot
     expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
   })
@@ -90,16 +106,12 @@ describe(`HeatmapTable`, () => {
     await vi.waitFor(() => expect(alpha_orig()).toBe(`tip alpha v2`))
   })
 
-  it(`handles empty data and filters undefined rows`, async () => {
-    const state = $state({ data: [{ Model: undefined, Score: undefined }, ...sample_data] })
-
-    mount_table(bind_props({ columns: sample_columns }, state))
-
+  it(`filters rows whose values are all undefined`, () => {
+    mount_table({
+      data: [{ Model: undefined, Score: undefined }, ...sample_data],
+      columns: sample_columns,
+    })
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
-
-    state.data = []
-    await tick()
-    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(1)
   })
 
   describe(`Sorting and Data Updates`, () => {
@@ -251,6 +263,42 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Number`)).toEqual([`10,000`, `1,000`, `50`])
     })
 
+    // Marked-up numbers read as numbers everywhere: sorted as 9 < 10 rather than as the
+    // text `<b>10</b>` < `<b>9</b>`, and right-aligned like any other numeric column.
+    it(`sorts markup-wrapped numbers numerically`, async () => {
+      mount_table({
+        data: [`10`, `9`, `100`].map((num) => ({ Marked: `<b>${num}</b>` })),
+        columns: [{ label: `Marked`, description: `` }],
+        initial_sort: `Marked`,
+      })
+      await tick()
+      expect(col_values(`Marked`)).toEqual([`9`, `10`, `100`])
+      expect(
+        document.querySelector(`td[data-col="Marked"]`)?.classList.contains(`numeric-col`),
+      ).toBe(true)
+    })
+
+    // A data-sort-value that isn't a number still orders the column, taking precedence over
+    // the visible text it labels.
+    it(`sorts by a non-numeric data-sort-value`, async () => {
+      // the leading title attribute orders the raw markup opposite to the sort keys, so
+      // neither the visible text nor the unparsed string can produce the expected order
+      const tiers = [
+        [`a`, `3`, `Zulu`],
+        [`b`, `2`, `Mike`],
+        [`c`, `1`, `Alpha`],
+      ]
+      mount_table({
+        data: tiers.toReversed().map(([key, title, name]) => ({
+          Tier: `<span title="${title}" data-sort-value="${key}">${name}</span>`,
+        })),
+        columns: [{ label: `Tier`, description: `` }],
+        initial_sort: `Tier`,
+      })
+      await tick()
+      expect(col_values(`Tier`)).toEqual([`Zulu`, `Mike`, `Alpha`])
+    })
+
     it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
       const data = [`10`, `abc`, `9`, `def`, `2`, `a1`].map((Mixed) => ({ Mixed }))
       const columns: Label[] = [{ label: `Mixed`, description: `` }]
@@ -302,7 +350,11 @@ describe(`HeatmapTable`, () => {
         desc: `string shorthand defaults to asc`,
       },
     ] as const)(`initial_sort $desc`, ({ initial_sort, expected }) => {
-      mount_table({ data: sample_data, columns: sample_columns, initial_sort })
+      mount_table({
+        data: [sample_data[1], sample_data[2], sample_data[0]],
+        columns: sample_columns,
+        initial_sort,
+      })
 
       expect(col_values(`Score`)).toEqual(expected)
     })
@@ -437,7 +489,7 @@ describe(`HeatmapTable`, () => {
       scale_type: `log`,
       description: ``,
     }
-    const data = [10, 100, 1000].map((val) => ({ [c1.label]: val, [c2.label]: val }))
+    const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
 
     mount_table({ data, columns: [c1, c2] })
 
@@ -448,7 +500,7 @@ describe(`HeatmapTable`, () => {
     const linear_styles = styles_of(`Linear`)
     const log_styles = styles_of(`Log`)
 
-    // Both scale types color every cell, but map the same values differently
+    // Both scale types color every cell, including zero, but map positive values differently
     expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
     expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
     expect(linear_styles).not.toEqual(log_styles)
@@ -532,23 +584,12 @@ describe(`HeatmapTable`, () => {
       description: ``,
     }
 
-    // --cell-bg CSS custom property is set inline per cell; the stylesheet applies
-    // color-mix(in srgb, var(--cell-bg) var(--heatmap-opacity, 100%), transparent)
-    // Zero values must still color (regression); false path is the unique toggle edge.
-    it.each([
-      { show_heatmap: true, desc: `sets --cell-bg when show_heatmap is true (default)` },
-      { show_heatmap: false, desc: `does not set --cell-bg when show_heatmap is false` },
-    ])(`$desc`, ({ show_heatmap }) => {
+    it(`does not set cell colors when show_heatmap is false`, () => {
       const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
-      mount_table({ data, columns: [heatmap_val_col], show_heatmap })
+      mount_table({ data, columns: [heatmap_val_col], show_heatmap: false })
 
       for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
-        const style_attr = cell.getAttribute(`style`) ?? ``
-        if (show_heatmap) {
-          expect(style_attr).toContain(`--cell-bg:`)
-        } else {
-          expect(style_attr).not.toContain(`--cell-bg:`)
-        }
+        expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
       }
     })
   })
@@ -657,17 +698,6 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`tbody tr`)?.getAttribute(`style`)).toContain(
         `background-color: yellow`,
       )
-    })
-
-    it(`applies container styles from props`, () => {
-      mount_table({
-        data: [{ col: `value` }],
-        columns: [{ label: `col`, description: `` }],
-        style: `max-height: 200px; border: 1px solid blue;`,
-      })
-      const style = document.querySelector(`.table-container`)?.getAttribute(`style`)
-      expect(style).toContain(`max-height: 200px`)
-      expect(style).toContain(`border: 1px solid blue`)
     })
   })
 
@@ -837,30 +867,40 @@ describe(`HeatmapTable`, () => {
       ]
     }
 
-    it(`renders one unchecked checkbox per row`, () => {
+    it(`selecting every row checks the header and shows the total`, async () => {
+      const state = $state({ selected_rows: [] as RowData[] })
+      mount_table(
+        bind_props(
+          { data: sample_data, columns: sample_columns, show_row_select: true },
+          state,
+        ),
+      )
+      const checkboxes = [
+        ...document.querySelectorAll<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
+      ]
+      for (const checkbox of checkboxes) {
+        checkbox.click()
+        await tick()
+      }
+
+      expect(checkboxes.every((checkbox) => checkbox.checked)).toBe(true)
+      const select_all = document.querySelector(
+        `th.select-col input[type="checkbox"]`,
+      ) as HTMLInputElement
+      expect(select_all.checked).toBe(true)
+      expect(state.selected_rows.map((row) => row.Model)).toEqual([
+        `Model A`,
+        `Model B`,
+        `Model C`,
+      ])
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`3`)
+    })
+
+    it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {
       const checkboxes = mount_selectable()
       expect(checkboxes).toHaveLength(3)
       expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true)
-    })
-
-    it.each([
-      { clicks: 2, badge_count: `2` },
-      { clicks: 3, badge_count: `3` }, // all rows selected
-    ])(
-      `selection badge shows $badge_count after clicking $clicks checkbox(es)`,
-      async ({ clicks, badge_count }) => {
-        const checkboxes = mount_selectable()
-        for (const checkbox of checkboxes.slice(0, clicks)) checkbox.click()
-        await tick()
-
-        expect(checkboxes[0].checked).toBe(true)
-        const badge = document.querySelector(`.selection-badge .badge`)
-        expect(badge?.textContent).toContain(badge_count)
-      },
-    )
-
-    it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {
-      mount_selectable()[0].click()
+      checkboxes[0].click()
       await tick()
 
       expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`1`)
@@ -877,22 +917,25 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Multi-Column Sorting`, () => {
-    it(`Shift+click adds numbered sort badges, regular click clears them`, async () => {
+    it(`Shift+click toggles multi-sort columns and regular click clears them`, async () => {
       mount_table({ data: sample_data, columns: sample_columns })
-
       const headers = document.querySelectorAll(`th`)
-      headers[0].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-      await tick()
-      headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
-      await tick()
+      const shift_click = async (idx: number) => {
+        headers[idx].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
+        await tick()
+      }
 
-      // With 2 columns in multi-sort, numbered badges should appear
+      await shift_click(0)
+      await shift_click(1)
       expect(headers[0].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
       expect(headers[0].textContent).toMatch(/[↑↓]/)
       expect(headers[1].textContent).toMatch(/[↑↓]/)
 
-      // Regular click clears multi-sort, leaving only the third header sorted
+      await shift_click(0)
+      expect(headers[0].textContent).not.toMatch(/[↑↓]/)
+      expect(headers[1].innerHTML).not.toContain(`<sup>`)
+
       headers[2].click()
       await tick()
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
@@ -1069,13 +1112,6 @@ describe(`HeatmapTable`, () => {
         position: `bottom`,
       },
       {
-        desc: `renders object config with permanent class at position top`,
-        sort_hint: { text: `Sort hint text`, position: `top`, permanent: true },
-        text: `Sort hint text`,
-        permanent: true,
-        position: `top`,
-      },
-      {
         desc: `applies custom style, class, position, and permanent together`,
         sort_hint: {
           text: `Full config hint`,
@@ -1153,6 +1189,204 @@ describe(`HeatmapTable`, () => {
       // Group B values: Item 1=100, Item 2=50, Item 3=75
       // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
       expect(col_values(`Name`)).toEqual([`Item 1`, `Item 3`, `Item 2`])
+    })
+
+    it(`renders, sorts, and colors plainly keyed grouped columns`, async () => {
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        {
+          label: `Mass`,
+          group: `Physical`,
+          color_scale: `interpolateViridis`,
+          description: ``,
+        },
+        { label: `Charge`, group: `Physical`, description: `` },
+      ]
+      mount_table({
+        data: [
+          { Name: `O`, Mass: 16, Charge: -2 },
+          { Name: `Fe`, Mass: 55.85, Charge: 3 },
+        ],
+        columns,
+      })
+
+      expect(col_values(`Mass`)).toEqual([`16`, `55.9`])
+      expect(col_values(`Charge`)).toEqual([`−2`, `3`])
+      expect(document.body.textContent).not.toContain(`n/a`)
+      document.querySelectorAll<HTMLElement>(`thead tr:last-child th`)[1].click()
+      await tick()
+      expect(col_values(`Name`)).toEqual([`Fe`, `O`])
+      for (const cell of document.querySelectorAll(`td[data-col="Mass"]`)) {
+        expect(cell.getAttribute(`style`)).toContain(`--cell-bg:`)
+      }
+    })
+
+    it(`finds qualified grouped keys after the first 50 rows`, () => {
+      const data = Array.from({ length: 51 }, (_, idx) =>
+        idx === 50 ? { Name: `late`, 'Mass (Physical)': 55.85 } : { Name: `row-${idx}` },
+      )
+      mount_table({
+        data,
+        columns: [
+          { label: `Name`, description: `` },
+          { label: `Mass`, group: `Physical`, description: `` },
+        ],
+      })
+      expect(col_values(`Mass`).at(-1)).toBe(`55.9`)
+    })
+
+    // Right-aligned digits are what make a column scannable; text and dates stay left.
+    it(`right-aligns only all-numeric columns`, () => {
+      mount_table({
+        data: [
+          { Name: `A`, Mass: 55.85, Mixed: 1, When: `2026-06-21`, Marked: `<b>1.5</b>` },
+          {
+            Name: `B`,
+            Mass: 16,
+            Mixed: `n/a-ish text`,
+            When: `2026-06-22`,
+            Marked: `<b data-sort-value="2.5">2.5 eV</b>`,
+          },
+        ],
+        columns: [`Name`, `Mass`, `Mixed`, `When`, `Marked`].map((label) => ({
+          label,
+          description: ``,
+        })),
+      })
+      const aligned = (col: string) =>
+        document.querySelector(`td[data-col="${col}"]`)?.classList.contains(`numeric-col`)
+
+      expect(aligned(`Mass`)).toBe(true)
+      expect(aligned(`Name`)).toBe(false)
+      expect(aligned(`Mixed`)).toBe(false) // one non-numeric value disqualifies the column
+      expect(aligned(`When`)).toBe(false) // dates read as text
+      // markup and data-sort-value read as the numbers they sort by
+      expect(aligned(`Marked`)).toBe(true)
+      // header follows its column so the two line up
+      const headers = [...document.querySelectorAll(`thead th`)]
+      expect(headers.map((th) => th.classList.contains(`numeric-col`))).toEqual([
+        false,
+        true,
+        false,
+        false,
+        true,
+      ])
+    })
+
+    // A sampled scan of the leading rows would right-align this column and offer it a
+    // range filter, then render text in it.
+    it(`disqualifies a column whose only text value is past the first 50 rows`, () => {
+      mount_table({
+        data: Array.from({ length: 60 }, (_, idx) => ({
+          Name: `row-${idx}`,
+          Mass: idx === 59 ? `unknown` : idx,
+        })),
+        columns: [`Name`, `Mass`].map((label) => ({ label, description: `` })),
+      })
+      expect(
+        document.querySelector(`td[data-col="Mass"]`)?.classList.contains(`numeric-col`),
+      ).toBe(false)
+    })
+
+    // aria-grabbed follows the drag state reactively rather than being poked onto the DOM
+    // by the drag handlers, so it can't fall out of sync with what the component thinks.
+    it(`marks the dragged header grabbed until the drag ends`, async () => {
+      mount_table({ data: sample_data, columns: sample_columns })
+      const header = document.querySelector(`thead tr:last-child th`) as HTMLElement
+      const drag = (type: string) => {
+        const event = new Event(type, { bubbles: true })
+        Object.defineProperty(event, `dataTransfer`, {
+          value: { effectAllowed: ``, dropEffect: ``, setData: vi.fn() },
+        })
+        header.dispatchEvent(event)
+      }
+
+      expect(header.getAttribute(`aria-grabbed`)).toBeNull()
+      drag(`dragstart`)
+      await tick()
+      expect(header.getAttribute(`aria-grabbed`)).toBe(`true`)
+      drag(`dragend`)
+      await tick()
+      expect(header.getAttribute(`aria-grabbed`)).toBeNull()
+    })
+
+    // Sticky columns all pin to the same edge, so any after the first must clear the ones
+    // before it. Widths only exist after layout, hence the measured offsetWidth.
+    it(`stacks multiple sticky columns instead of overlapping them`, async () => {
+      let first_width = 80
+      let resize_callback: ResizeObserverCallback | undefined
+      vi.stubGlobal(
+        `ResizeObserver`,
+        class ResizeObserver {
+          constructor(callback: ResizeObserverCallback) {
+            resize_callback = callback
+          }
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      )
+      const width_spy = vi
+        .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
+        .mockImplementation(function (this: HTMLElement) {
+          return this.dataset.colId === `Name` ? first_width : 80
+        })
+      try {
+        mount_table({
+          data: [{ Name: `A`, Tag: `x`, Value: 1 }],
+          columns: [
+            { label: `Name`, sticky: true, description: `` },
+            { label: `Tag`, sticky: true, description: `` },
+            { label: `Value`, description: `` },
+          ],
+        })
+        await tick()
+
+        const left_of = (selector: string) =>
+          document.querySelector<HTMLElement>(selector)?.style.left
+        expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
+        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
+        expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+
+        first_width = 120
+        resize_callback?.([], {} as ResizeObserver)
+        await tick()
+        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
+        expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
+      } finally {
+        width_spy.mockRestore()
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it(`clears the grouped-header offset when the final group is hidden`, async () => {
+      const height_spy = vi
+        .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+        .mockReturnValue(24)
+      try {
+        const state = $state({ hidden_columns: [] as string[] })
+        mount_table(
+          bind_props(
+            {
+              data: [{ Name: `Fe`, Mass: 55.85 }],
+              columns: [
+                { label: `Name`, description: `` },
+                { label: `Mass`, group: `Physical`, description: `` },
+              ],
+            },
+            state,
+          ),
+        )
+        await tick()
+        const table = document.querySelector(`table`)
+        expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 24px`)
+
+        state.hidden_columns = [`Mass (Physical)`]
+        await tick()
+        expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 0px`)
+      } finally {
+        height_spy.mockRestore()
+      }
     })
 
     // Negatives must still enter the linear scale domain (not filtered as invalid).
@@ -1274,20 +1508,13 @@ describe(`HeatmapTable`, () => {
     })
 
     describe(`loading state`, () => {
-      it.each([
-        [true, `shows overlay and spinner`],
-        [false, `hides overlay`],
-      ])(`loading=%s %s`, (loading) => {
-        mount_table({ data: initial_data, columns: sample_columns, loading })
+      it(`renders an absolutely positioned overlay and spinner`, () => {
+        mount_table({ data: initial_data, columns: sample_columns, loading: true })
         const container = document.body.lastElementChild as HTMLElement
         const overlay = container.querySelector(`.loading-overlay`)
-        if (loading) {
-          expect(overlay).not.toBeNull()
-          expect(container.querySelector(`[role="status"]`)).not.toBeNull()
-          expect(getComputedStyle(overlay as HTMLElement).position).toBe(`absolute`)
-        } else {
-          expect(overlay).toBeNull()
-        }
+        expect(overlay).not.toBeNull()
+        expect(container.querySelector(`[role="status"]`)).not.toBeNull()
+        expect(getComputedStyle(overlay as HTMLElement).position).toBe(`absolute`)
       })
 
       it(`manages loading state during async onsort`, async () => {
@@ -1313,29 +1540,17 @@ describe(`HeatmapTable`, () => {
     })
 
     describe(`sort_data prop`, () => {
-      it.each([
-        {
-          sort_data: false,
-          expected_order: [`X`, `Y`, `Z`],
-          desc: `preserves original order`,
-        },
-        { sort_data: true, expected_order: [`Z`, `Y`, `X`], desc: `sorts client-side` },
-      ])(`sort_data=$sort_data $desc`, async ({ sort_data, expected_order }) => {
+      it(`sort_data=false preserves the original order`, async () => {
         const unsorted = [
           { Model: `X`, Score: 0.1, Value: 100 },
           { Model: `Y`, Score: 0.5, Value: 200 },
           { Model: `Z`, Score: 0.9, Value: 300 },
         ]
-        mount_table({ data: unsorted, columns: sample_columns, sort_data })
+        mount_table({ data: unsorted, columns: sample_columns, sort_data: false })
 
-        const table = document.body.lastElementChild as HTMLElement
-        table.querySelectorAll(`th`)[1].click()
+        document.querySelectorAll(`th`)[1].click()
         await tick()
-
-        const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`)).map((cell) =>
-          cell.textContent?.trim(),
-        )
-        expect(models).toEqual(expected_order)
+        expect(col_values(`Model`)).toEqual([`X`, `Y`, `Z`])
       })
 
       it(`onsort implicitly disables client-side sorting`, async () => {
@@ -1365,29 +1580,6 @@ describe(`HeatmapTable`, () => {
     })
 
     describe(`integration scenarios`, () => {
-      it(`other features work with async sort props`, () => {
-        mount_table({
-          data: large_data,
-          columns: sample_columns,
-          onsort: vi.fn().mockResolvedValue(large_data),
-          pagination: { page_size: 10 },
-          search: { expanded: true },
-          sort_data: false,
-        })
-
-        const table = document.body.lastElementChild as HTMLElement
-
-        // Pagination works
-        expect(table.querySelector(`.pagination`)).not.toBeNull()
-        expect(table.querySelectorAll(`tbody tr`)).toHaveLength(10)
-
-        // Search works
-        expect(table.querySelector(`input[type="search"]`)).not.toBeNull()
-
-        // Column reorder works (headers are draggable)
-        expect(table.querySelector(`th`)?.getAttribute(`draggable`)).toBe(`true`)
-      })
-
       it(`handles race condition: stale responses are ignored`, async () => {
         // Simulate two async sorts where the first resolves after the second
         let resolve_first!: (value: typeof initial_data) => void
@@ -1441,17 +1633,20 @@ describe(`HeatmapTable`, () => {
         })
       })
 
-      it(`reverts sort state on onsort callback failure`, async () => {
+      it(`reverts sort state and reports onsort callback failures`, async () => {
         // First call succeeds, second call fails
+        const error = new Error(`Network error`)
         const onsort_mock = vi
           .fn()
           .mockResolvedValueOnce(initial_data) // First sort succeeds
-          .mockRejectedValueOnce(new Error(`Network error`)) // Second sort fails
+          .mockRejectedValueOnce(error) // Second sort fails
+        const onsorterror_mock = vi.fn()
 
         mount_table({
           data: initial_data,
           columns: sample_columns,
           onsort: onsort_mock,
+          onsorterror: onsorterror_mock,
         })
 
         const headers = document.querySelectorAll(`th`)
@@ -1473,28 +1668,7 @@ describe(`HeatmapTable`, () => {
         await vi.waitFor(() => {
           expect(headers[1].getAttribute(`aria-sort`)).toBe(`none`)
           expect(headers[0].getAttribute(`aria-sort`)).not.toBe(`none`)
-        })
-      })
-
-      it(`calls onsorterror callback with error details on failure`, async () => {
-        const error = new Error(`Server unavailable`)
-        const onsort_mock = vi.fn().mockRejectedValue(error)
-        const onsorterror_mock = vi.fn()
-
-        mount_table({
-          data: initial_data,
-          columns: sample_columns,
-          onsort: onsort_mock,
-          onsorterror: onsorterror_mock,
-        })
-
-        // Click Score header (better: higher → first click = desc)
-        document.querySelectorAll(`th`)[1].click()
-        await tick()
-
-        await vi.waitFor(() => {
-          expect(onsorterror_mock).toHaveBeenCalledTimes(1)
-          expect(onsorterror_mock).toHaveBeenCalledWith(error, `Score`, `desc`)
+          expect(onsorterror_mock).toHaveBeenCalledExactlyOnceWith(error, `Score`, `desc`)
         })
       })
     })
@@ -1546,11 +1720,6 @@ describe(`HeatmapTable`, () => {
       expect(
         [...document.querySelectorAll(`td.row-num-col`)].map((td) => td.textContent?.trim()),
       ).toEqual([`1`, `2`, `3`])
-    })
-
-    it(`hides row numbers by default`, () => {
-      mount_table({ data: sample_data, columns: sample_columns })
-      expect(document.querySelectorAll(`td.row-num-col`)).toHaveLength(0)
     })
   })
 
@@ -1614,11 +1783,324 @@ describe(`HeatmapTable`, () => {
     })
   })
 
+  describe(`Filtering, summaries and per-column state`, () => {
+    const metrics: Label[] = [{ label: `Model` }, { label: `Score` }, { label: `Tier` }]
+    const metric_rows = [
+      { Model: `A`, Score: 10, Tier: `alpha` },
+      { Model: `B`, Score: 20, Tier: `beta` },
+      { Model: `C`, Score: 30, Tier: `alpha` },
+    ]
+    const rendered_models = () => col_values(`Model`)
+
+    // Filters live in column_prefs, so setting them from the outside is the same code path
+    // the funnel UI drives — and doubles as the persistence test for that prop.
+    it.each<[string, ColumnFilter, string, string[]]>([
+      [`numeric lower bound`, { kind: `numeric`, min: 20 }, `Score`, [`B`, `C`]],
+      [`numeric range`, { kind: `numeric`, min: 15, max: 25 }, `Score`, [`B`]],
+      [`category allow-list`, { kind: `category`, values: [`alpha`] }, `Tier`, [`A`, `C`]],
+      [`substring`, { kind: `text`, text: `bet` }, `Tier`, [`B`]],
+    ])(`filters rows by %s`, (_desc, filter, col_id, expected) => {
+      mount_table({
+        data: metric_rows,
+        columns: metrics,
+        column_prefs: { [col_id]: { filter } },
+      })
+      expect(rendered_models()).toEqual(expected)
+    })
+
+    it(`combines a column filter with the global search`, () => {
+      mount_table({
+        data: metric_rows,
+        columns: metrics,
+        search: true,
+        search_query: `alpha`,
+        column_prefs: { Score: { filter: { kind: `numeric`, min: 20 } } },
+      })
+      expect(rendered_models()).toEqual([`C`]) // alpha AND score >= 20
+    })
+
+    // Summary rows read the same stats the color scales use, so they must shrink with the
+    // filter rather than describing the untouched data.
+    it(`summarizes only the rows left after filtering`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        summary: [`mean`, `count`] as SummaryStat[],
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+      })
+      mount_table(props)
+      const summary_cells = () =>
+        [...document.querySelectorAll(`tfoot .summary-row`)].map((row) =>
+          [...row.querySelectorAll(`td`)].map((cell) => cell.textContent?.trim()),
+        )
+
+      expect(summary_cells()).toEqual([
+        [`mean`, `20`, ``],
+        [`count`, `3`, ``],
+      ])
+      props.column_prefs = { Score: { filter: { kind: `numeric`, min: 20 } } }
+      await tick()
+      expect(summary_cells()).toEqual([
+        [`mean`, `25`, ``],
+        [`count`, `2`, ``],
+      ])
+    })
+
+    it.each([
+      [`higher`, [`0%`, `50%`, `100%`], `30`],
+      [`lower`, [`100%`, `50%`, `0%`], `10`],
+      [undefined, [`0%`, `50%`, `100%`], undefined],
+    ] as const)(
+      `sizes data bars and highlights best for better=%s`,
+      (better, widths, best) => {
+        mount_table({
+          data: metric_rows,
+          columns: [
+            { label: `Model` },
+            { label: `Score`, better, render_as: `bar`, highlight_best: true },
+          ],
+        })
+        expect(
+          [...document.querySelectorAll(`td[data-col="Score"] .data-bar`)].map(
+            (bar) => (bar as HTMLElement).style.width,
+          ),
+        ).toEqual(widths)
+        expect(
+          document.querySelector(`td.best-cell[data-col="Score"]`)?.textContent?.trim(),
+        ).toBe(best)
+      },
+    )
+
+    it(`clears the sort on the third click`, async () => {
+      const unsorted = [
+        { Model: `A`, Score: 20, Tier: `alpha` },
+        { Model: `B`, Score: 10, Tier: `beta` },
+        { Model: `C`, Score: 30, Tier: `alpha` },
+      ]
+      mount_table({ data: unsorted, columns: metrics })
+      const score_header = document.querySelectorAll(`thead th`)[1] as HTMLElement
+      for (const expected of [
+        [`C`, `A`, `B`],
+        [`B`, `A`, `C`],
+        [`A`, `B`, `C`],
+      ]) {
+        score_header.click()
+        await tick()
+        expect(rendered_models()).toEqual(expected)
+      }
+      expect(score_header.textContent).not.toMatch(/[↑↓]/)
+    })
+
+    it(`keeps cycling asc/desc when tri_state_sort is off`, async () => {
+      const unsorted = [
+        { Model: `A`, Score: 20 },
+        { Model: `B`, Score: 10 },
+      ]
+      mount_table({
+        data: unsorted,
+        columns: [{ label: `Model` }, { label: `Score` }],
+        tri_state_sort: false,
+      })
+      const header = document.querySelectorAll(`thead th`)[1] as HTMLElement
+      for (const expected of [
+        [`A`, `B`],
+        [`B`, `A`],
+        [`A`, `B`],
+      ]) {
+        header.click()
+        await tick()
+        expect(rendered_models()).toEqual(expected)
+      }
+    })
+
+    // Wide tables render only the columns near the viewport, with spacer cells holding the
+    // scroll width. Sticky columns are exempt: they're pinned on screen at any scroll.
+    // 60 columns, one row: `extra` marks whichever of them is sticky or grouped
+    const wide_table = (extra: (idx: number) => Partial<Label> = () => ({})) => {
+      const columns: Label[] = Array.from({ length: 60 }, (_val, idx) => ({
+        label: `C${idx}`,
+        ...extra(idx),
+      }))
+      return {
+        columns,
+        data: [Object.fromEntries(columns.map((col, idx) => [col.label, idx]))],
+      }
+    }
+
+    it(`windows columns horizontally and always keeps sticky ones`, async () => {
+      mount_table({
+        ...wide_table((idx) => (idx === 0 ? { sticky: true } : {})),
+        virtual_columns: true,
+        scroll_style: `max-width: 400px`,
+      })
+      await tick()
+
+      const rendered = document.querySelectorAll(`tbody td:not(.col-spacer)`)
+      expect(rendered.length).toBeGreaterThan(0)
+      expect(rendered.length).toBeLessThan(60)
+      expect(document.querySelector(`td[data-col="C0"]`)).not.toBeNull()
+      expect(document.querySelector(`tbody td.col-spacer`)).not.toBeNull()
+
+      // Scroll right: the window must move off zero, the sticky column must survive it,
+      // and indices must stay ABSOLUTE (a relative 0..N numbering would break selection
+      // coordinates and copy ranges).
+      const scroller = document.querySelector(`.table-scroll`) as HTMLElement
+      Object.defineProperty(scroller, `scrollLeft`, { value: 3000, configurable: true })
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+
+      const scrolled = [...document.querySelectorAll(`tbody td:not(.col-spacer)`)]
+      const indices = scrolled.map((cell) => Number(cell.getAttribute(`data-col-idx`)))
+      expect(indices).toEqual([...indices].toSorted((one, two) => one - two))
+      expect(indices[0]).toBe(0) // sticky C0 still rendered
+      expect(Math.max(...indices)).toBeGreaterThan(20) // window really moved right
+      expect(indices).not.toContain(15) // and left the early columns behind
+      // aria keeps the true column count/position for assistive tech
+      expect(document.querySelector(`table`)?.getAttribute(`aria-colcount`)).toBe(`60`)
+    })
+
+    // The label lives in the first cell of the summary row, so it disappears once the
+    // window scrolls column 0 out of the DOM unless it follows the window.
+    it(`keeps the summary label visible after scrolling right`, async () => {
+      mount_table({
+        ...wide_table(),
+        virtual_columns: true,
+        scroll_style: `max-width: 400px`,
+        summary: [`mean`] as SummaryStat[],
+      })
+      await tick()
+      const scroller = document.querySelector(`.table-scroll`) as HTMLElement
+      Object.defineProperty(scroller, `scrollLeft`, { value: 3000, configurable: true })
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+
+      expect(document.querySelector(`td[data-col="C0"]`)).toBeNull() // window moved off 0
+      expect(document.querySelector(`.summary-label`)?.textContent).toBe(`mean`)
+    })
+
+    it.each([
+      [
+        `a sticky column isn't in the leading run`,
+        (idx: number) => (idx === 30 ? { sticky: true } : {}),
+      ],
+      [`group headers make windowing unsafe`, () => ({ group: `G` })],
+    ])(`renders every column when %s`, async (_reason, extra) => {
+      mount_table({ ...wide_table(extra), virtual_columns: true })
+      await tick()
+      expect(document.querySelectorAll(`tbody td:not(.col-spacer)`)).toHaveLength(60)
+    })
+
+    // column_prefs holds widths and colors as well as filters, so a resize must not look
+    // like a filter change — that re-filtered every row and wiped the cell selection.
+    it(`keeps the cell selection when an unrelated pref changes`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+      })
+      mount_table(props)
+      await tick()
+      const cell = document.querySelector(
+        `td[data-row-idx="1"][data-col-idx="1"]`,
+      ) as HTMLElement
+      cell.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+
+      props.column_prefs = { Score: { width: 180 } } // a resize, not a filter
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell.style.width).toBe(`180px`)
+    })
+
+    // Past the auto-detect cap a checklist would be unusable, but a column explicitly
+    // configured as `category` must still get its full option list rather than an empty panel.
+    it(`lists every option for an explicitly categorical column past the cap`, async () => {
+      const many = Array.from({ length: 60 }, (_v, idx) => ({ Tag: `t${idx}`, Score: idx }))
+      mount_table({
+        data: many,
+        columns: [{ label: `Tag`, filter: `category` }, { label: `Score` }],
+        show_filters: true,
+      })
+      await tick()
+      ;(document.querySelector(`.column-filter-trigger`) as HTMLButtonElement).click()
+      await tick()
+      const options = document.querySelectorAll(`.column-filter-options label`)
+      expect(options).toHaveLength(60)
+      const event = new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true })
+      vi.spyOn(event, `stopPropagation`)
+      document.querySelector<HTMLElement>(`.column-filter-panel`)?.dispatchEvent(event)
+      await tick()
+      expect(document.querySelector(`.column-filter-panel`)).toBeNull()
+      expect(event.stopPropagation).toHaveBeenCalledOnce()
+    })
+
+    it(`omits summary statistics for columns that aren't fully numeric`, () => {
+      mount_table({
+        data: [
+          { Model: `A`, Score: 10, Mixed: `ok` },
+          { Model: `B`, Score: 20, Mixed: 2 },
+        ],
+        columns: [{ label: `Model` }, { label: `Score` }, { label: `Mixed` }],
+        summary: [`mean`],
+      })
+      const cells = [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
+        cell.textContent?.trim(),
+      )
+      expect(cells).toEqual([`mean`, `15`, ``]) // Mixed has a text value -> no mean
+    })
+
+    it(`maps the density prop onto the cell padding var`, () => {
+      mount_table({ data: metric_rows, columns: metrics, density: `compact` })
+      const style = getComputedStyle(document.querySelector(`.table-container`) as HTMLElement)
+      expect(style.getPropertyValue(`--heatmap-density-padding`)).toBe(`0 4pt`)
+    })
+
+    // Keyboard parity: arrows walk the active cell, Shift extends the rectangle,
+    // Alt moves the column. All three were mouse-only before.
+    it(`navigates, extends selection and moves columns from the keyboard`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        keyboard_cells: true,
+        column_order: [] as string[],
+      })
+      mount_table(props as ComponentProps<typeof HeatmapTable>)
+      await tick() // let column_order initialize; that write clears any pending selection
+
+      // exactly one cell owns the tab stop, and it moves with the arrows
+      expect(cell_at(0, 0).getAttribute(`tabindex`)).toBe(`0`)
+      expect([...document.querySelectorAll(`td[tabindex="0"]`)]).toHaveLength(1)
+
+      cell_at(0, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell_at(1, 0).classList.contains(`cell-selected`)).toBe(true)
+      expect(cell_at(1, 0).getAttribute(`tabindex`)).toBe(`0`)
+      expect(document.activeElement).toBe(cell_at(1, 0))
+
+      cell_at(1, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowRight`, shiftKey: true, bubbles: true }),
+      )
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
+
+      cell_at(1, 1).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowLeft`, altKey: true, bubbles: true }),
+      )
+      await tick()
+      expect(props.column_order).toEqual([`Score`, `Model`, `Tier`])
+    })
+  })
+
   describe(`Export Enhancements`, () => {
-    // Shared helper: mount, optionally interact, trigger CSV export, return blob text
-    async function export_csv_text(
+    // Shared helper: mount, optionally interact, trigger an export, return blob text
+    async function export_table_text(
       props: Partial<ComponentProps<typeof HeatmapTable>>,
       before_export?: () => Promise<void>,
+      format = `CSV`,
     ): Promise<string> {
       const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
       const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
@@ -1631,10 +2113,10 @@ describe(`HeatmapTable`, () => {
         mount_table({ export_data: true, ...props } as ComponentProps<typeof HeatmapTable>)
         if (before_export) await before_export()
         await open_export_menu()
-        const csv_btn = Array.from(
+        const format_btn = Array.from(
           document.querySelectorAll(`.dropdown-pane .dropdown-option`),
-        ).find((btn) => btn.textContent?.includes(`CSV`)) as HTMLButtonElement
-        csv_btn.click()
+        ).find((btn) => btn.textContent?.includes(format)) as HTMLButtonElement
+        format_btn.click()
         await tick()
 
         return await (create_url.mock.calls[0][0] as Blob).text()
@@ -1646,8 +2128,45 @@ describe(`HeatmapTable`, () => {
       }
     }
 
+    it(`escapes GitHub markdown without breaking rows or alignment`, async () => {
+      const text = await export_table_text(
+        {
+          data: [{ Model: `a\nb`, Escaped: `c\\|d`, Score: 1 }],
+          columns: [{ label: `Model` }, { label: `Escaped` }, { label: `Score` }],
+        },
+        undefined,
+        `MD`,
+      )
+      expect(text.split(`\n`)).toEqual([
+        `| Model | Escaped | Score |`,
+        `| :--- | :--- | ---: |`,
+        `| a<br>b | c\\\\\\|d | 1 |`,
+      ])
+    })
+
+    it(`emits LaTeX booktabs with escaped control characters`, async () => {
+      const text = await export_table_text(
+        {
+          data: [{ Model: `C:\\tmp Fe_2 & Co x^2 100%`, Score: 1 }],
+          columns: [{ label: `Model` }, { label: `Score` }],
+        },
+        undefined,
+        `TEX`,
+      )
+      expect(text).toContain(`\\begin{tabular}{lr}`)
+      expect(text).toContain(`\\toprule`)
+      expect(text).toContain(
+        `C:\\textbackslash{}tmp Fe\\_2 \\& Co x\\textasciicircum{}2 100\\% & 1 \\\\`,
+      )
+      expect(text).toContain(`\\bottomrule`)
+    })
+
     it(`copy to clipboard writes TSV`, async () => {
-      mount_table({ data: sample_data, columns: sample_columns, export_data: true })
+      mount_table({
+        data: [{ Model: `Model\tA\nB`, Score: 1, Value: 2 }],
+        columns: sample_columns,
+        export_data: true,
+      })
       await open_export_menu()
 
       const copy_btn = Array.from(
@@ -1656,15 +2175,13 @@ describe(`HeatmapTable`, () => {
       copy_btn.click()
       await tick()
 
-      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1)
-      const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string
-      expect(written).toContain(`Model\tScore\tValue`)
-      expect(written).toContain(`Model A`)
+      expect(navigator.clipboard.writeText).toHaveBeenCalledExactlyOnceWith(
+        `Model\tScore\tValue\nModel A B\t1\t2`,
+      )
     })
 
     it(`strips HTML from column headers`, async () => {
-      const text = await export_csv_text({
+      const text = await export_table_text({
         data: [{ 'E<sub>form</sub>': -1.5, Name: `Fe` }],
         columns: [
           { label: `E<sub>form</sub>`, description: `` },
@@ -1679,7 +2196,7 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`exports only selected rows`, async () => {
-      const text = await export_csv_text(
+      const text = await export_table_text(
         { data: sample_data, columns: sample_columns, show_row_select: true },
         async () => {
           ;(
@@ -1702,7 +2219,7 @@ describe(`HeatmapTable`, () => {
       // a bare CR is a record separator to most readers, so it must be quoted too
       { desc: `carriage returns`, val: `line1\rline2`, expected: `"line1\rline2"` },
     ])(`CSV quoting for $desc`, async ({ val, expected }) => {
-      const text = await export_csv_text({
+      const text = await export_table_text({
         data: [{ Name: val }],
         columns: [{ label: `Name`, description: `` }],
       })
@@ -1711,37 +2228,25 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`root_style prop`, () => {
-    it.each([
-      {
-        desc: `applies root_style to container`,
-        props: { root_style: `margin: 0; max-width: 500px` },
-        fragments: [`margin: 0`, `max-width: 500px`],
-      },
-      {
-        desc: `merges root_style with rest style`,
-        props: { root_style: `flex: 1`, style: `color: red` },
-        fragments: [`color: red`],
-        // happy-dom normalizes `flex: 1` to longhand properties
-        pattern: /flex-grow:\s*1|flex:\s*1/,
-      },
-    ])(`$desc`, ({ props, fragments, pattern }) => {
-      mount_table({ data: sample_data, columns: sample_columns, ...props })
+    it(`merges root_style with the regular style prop`, () => {
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        root_style: `flex: 1`,
+        style: `color: red`,
+      })
 
       const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
-      for (const fragment of fragments) expect(style).toContain(fragment)
-      if (pattern) expect(style).toMatch(pattern)
+      expect(style).toContain(`color: red`)
+      // happy-dom normalizes `flex: 1` to longhand properties
+      expect(style).toMatch(/flex-grow:\s*1|flex:\s*1/)
     })
   })
 
   describe(`Controls Pane`, () => {
-    it.each([
-      [false, null],
-      [true, `.pane-toggle`],
-    ] as const)(`show_controls=%s -> gear icon %s`, (show_controls, expected_selector) => {
-      mount_table({ data: sample_data, columns: sample_columns, show_controls })
-      const toggle = document.querySelector(`.pane-toggle`)
-      if (expected_selector) expect(toggle).not.toBeNull()
-      else expect(toggle).toBeNull()
+    it(`hides the gear icon when show_controls is false`, () => {
+      mount_table({ data: sample_data, columns: sample_columns, show_controls: false })
+      expect(document.querySelector(`.pane-toggle`)).toBeNull()
     })
   })
 
@@ -1790,13 +2295,6 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`cell range selection and column copy`, () => {
-    const cell_at = (row_idx: number, col_idx: number): HTMLTableCellElement => {
-      const cell = document.querySelector<HTMLTableCellElement>(
-        `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
-      )
-      if (!cell) throw new Error(`cell (${row_idx}, ${col_idx}) not found`)
-      return cell
-    }
     const pointer = (type: string, init: MouseEventInit = {}) =>
       new MouseEvent(type, { button: 0, bubbles: true, ...init })
     const drag_cells = (
@@ -2013,6 +2511,7 @@ describe(`HeatmapTable`, () => {
         show_row_numbers: true,
         sort_data: false,
         virtual: true,
+        keyboard_cells: true,
       })
       const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
       assert(scroller)
@@ -2028,6 +2527,21 @@ describe(`HeatmapTable`, () => {
       expect(spacers()[1].style.height).toBe(`${(many_rows.length - end) * row_height_px}px`)
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
+
+      cell_at(start, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }),
+      )
+      await tick()
+      expect(scroller.scrollTop).toBe(30 * row_height_px)
+
+      cell_at(end - 1, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      await tick()
+      expect(scroller.scrollTop).toBe(end * row_height_px)
+      expect(document.activeElement).toBe(
+        document.querySelector(`td[data-row-idx="${end}"][data-col-idx="0"]`),
+      )
     })
 
     it(`reports the rendered range via on_visible_range`, async () => {

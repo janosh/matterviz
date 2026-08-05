@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Close } from 'svelte-widgets/icons'
   import { sanitize_html } from '$lib/sanitize'
   import type { AxisConfig, DataSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'
@@ -151,7 +152,7 @@
           title="Clear filter (Escape)"
           aria-label="Clear filter"
         >
-          <Icon icon="Close" style="width: 12px; height: 12px" />
+          <Icon icon={Close} style="width: 12px; height: 12px" />
         </button>
       {/if}
     </div>

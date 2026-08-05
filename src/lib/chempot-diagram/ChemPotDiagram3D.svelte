@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Filter } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
@@ -1975,8 +1976,8 @@
         class: `chempot-formula-toggle`,
         title: `Formula overlays`,
       }}
-      open_icon="Cross"
-      closed_icon="Filter"
+      open_icon={Cross}
+      closed_icon={Filter}
     >
       <h4>Formula Overlays</h4>
       <div class="overlay-actions">

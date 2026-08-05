@@ -614,7 +614,9 @@ Categorized data with color coding, custom tick intervals, and negative values:
 
 ## Time-Based Data with Custom Formatting
 
-Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels inside the plot for a tighter layout:
+Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels inside the plot for a tighter layout.
+
+Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format and raise the tick count until the labels stop fitting side by side. They tilt to the shallowest angle that keeps them apart (and the plot area shrinks to make room) rather than overlapping. `rotation: 0` opts out and keeps them upright:
 
 ```svelte example
 <script lang="ts">
@@ -659,9 +661,11 @@ Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels 
   ]
 
   // Format options
-  let date_format = $state('%b %d')
+  let date_format = $state('%Y-%m-%d')
   let y_format = $state('.1f')
   let inside = $state(false)
+  let n_ticks = $state(7)
+  let rotation = $state('auto')
 </script>
 
 <div>
@@ -682,6 +686,18 @@ Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels 
     </select>
   </label>
   <label style="margin-left: 1em">
+    Date Ticks: {n_ticks}
+    <input type="range" bind:value={n_ticks} min="3" max="20" style="width: 100px" />
+  </label>
+  <label style="margin-left: 1em">
+    Rotation:
+    <select bind:value={rotation}>
+      {#each ['auto', 0, -45, 90] as angle (angle)}
+        <option value={angle}>{angle === 'auto' ? 'auto' : `${angle}°`}</option>
+      {/each}
+    </select>
+  </label>
+  <label style="margin-left: 1em">
     <input type="checkbox" bind:checked={inside} />
     Tick Labels Inside
   </label>
@@ -691,9 +707,9 @@ Time on the x-axis with custom formatting. `tick.label.inside` puts tick labels 
     x_axis={{
       scale_type: 'time',
       format: date_format,
-      ticks: -7,
+      ticks: n_ticks,
       label: 'Date',
-      tick: { label: { inside } },
+      tick: { label: { inside, rotation } },
     }}
     y_axis={{ format: y_format, ticks: 5, label: 'Value', tick: { label: { inside } } }}
     style="height: 350px"

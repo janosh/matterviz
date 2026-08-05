@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Info } from 'svelte-widgets/icons'
   import type { PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import { DraggablePane } from '$lib/overlays'
@@ -111,8 +112,8 @@
     bind:open={pane_open}
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
     pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
-    open_icon="Cross"
-    closed_icon="Info"
+    open_icon={Cross}
+    closed_icon={Info}
   >
     <InfoPaneCards
       cards={pane_data.map(({ title, items }) => ({ title, rows: items }))}

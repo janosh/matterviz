@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Check, Close } from 'svelte-widgets/icons'
   import { create_clipboard_feedback } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
@@ -77,14 +78,14 @@
   <em>{@html sanitize_html(value)}</em>
   {#if copied.has(`value`)}
     <Icon
-      icon="Check"
+      icon={Check}
       style="color: var(--success-color, #10b981); width: 12px; height: 12px"
       class="copy-checkmark"
     />
   {/if}
   {#if removable && !disabled}
     <button type="button" onclick={handle_remove} aria-label="Remove">
-      <Icon icon="Close" style="width: 10px; height: 10px" />
+      <Icon icon={Close} style="width: 10px; height: 10px" />
     </button>
   {/if}
   {@render children?.()}

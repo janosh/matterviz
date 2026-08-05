@@ -364,7 +364,9 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
-    target.querySelector<HTMLButtonElement>(`.view-mode-button`)?.click()
+    const view_mode_button = target.querySelector<HTMLButtonElement>(`.view-mode-button`)
+    if (!view_mode_button) throw new Error(`view mode button not found`)
+    view_mode_button.click()
     await tick()
 
     const dropdown = target.querySelector<HTMLElement>(`.view-mode-dropdown`)
@@ -383,6 +385,7 @@ describe(`Trajectory`, () => {
     await tick()
 
     expect(props.display_mode).toBe(`scatter`)
+    expect(view_mode_button.title).toBe(`Scatter-only`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 

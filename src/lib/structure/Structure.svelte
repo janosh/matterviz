@@ -5,7 +5,22 @@
   import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { Icon } from 'svelte-widgets'
+  import { Icon, type IconData } from 'svelte-widgets'
+  import {
+    Angle,
+    ArrowDown,
+    ArrowUp,
+    BrillouinZone,
+    Edit,
+    Grid2x2,
+    HeatmapMatrix,
+    Link,
+    Orbit,
+    Redo,
+    Reset,
+    Ruler,
+    Undo,
+  } from 'svelte-widgets/icons'
   import * as io from '$lib/io'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { webgpu_available } from '$lib/scene'
@@ -108,9 +123,9 @@
   const DEFAULT_MULTI_VIEW_MIN_PANE_HEIGHT = 200
   const DEFAULT_MULTI_VIEW_GAP = 2
   const STRUCTURE_LAYOUTS = {
-    single: { mode: `single`, icon: `BrillouinZone`, label: `3D single view` },
-    multi: { mode: `multi`, icon: `Grid2x2`, label: `3D 2×2 grid` },
-    slice: { mode: `slice`, icon: `HeatmapMatrix`, label: `2D cross-section` },
+    single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
+    multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
+    slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
   } as const
   const finite_nonnegative = (value: number, fallback: number) =>
     Math.max(0, Number.isFinite(value) ? value : fallback)
@@ -366,11 +381,11 @@
   // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
   // them straight to the MeasureMode/BondEditMode props.
   const MEASURE_MODES = [
-    { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
-    { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
-    { mode: `dihedral`, icon: `Orbit`, label: `Dihedral`, scale: 1.1 },
-    { mode: `edit-atoms`, icon: `Edit`, label: `Edit Atoms`, scale: 1.0 },
-    { mode: `edit-bonds`, icon: `Link`, label: `Edit Bonds`, scale: 1.0 },
+    { mode: `distance`, icon: Ruler, label: `Distance`, scale: 1.1 },
+    { mode: `angle`, icon: Angle, label: `Angle`, scale: 1.3 },
+    { mode: `dihedral`, icon: Orbit, label: `Dihedral`, scale: 1.1 },
+    { mode: `edit-atoms`, icon: Edit, label: `Edit Atoms`, scale: 1.0 },
+    { mode: `edit-bonds`, icon: Link, label: `Edit Bonds`, scale: 1.0 },
   ] as const
   const BOND_EDIT_MODES = [
     { mode: `add`, label: `Add`, title: `Add: click two atoms` },
@@ -1850,10 +1865,7 @@
             {@attach tooltip()}
           >
             <Icon icon={current_layout.icon} />
-            <Icon
-              class="view-mode-caret"
-              icon="Arrow{view_layout_menu_open ? `Up` : `Down`}"
-            />
+            <Icon class="view-mode-caret" icon={view_layout_menu_open ? ArrowUp : ArrowDown} />
           </button>
           {#if view_layout_menu_open}
             <div class="view-mode-dropdown">
@@ -1884,7 +1896,7 @@
                     view_layout_menu_open = false
                   }}
                 >
-                  <Icon icon="Reset" />
+                  <Icon icon={Reset} />
                   <span>Reset view <kbd>r</kbd></span>
                 </button>
               {/if}
@@ -1913,18 +1925,10 @@
               </span>
             {:else}
               <Icon
-                icon={(
-                  {
-                    distance: `Ruler`,
-                    angle: `Angle`,
-                    dihedral: `Orbit`,
-                    'edit-bonds': `Link`,
-                    'edit-atoms': `Edit`,
-                  } as const
-                )[measure_mode]}
+                icon={MEASURE_MODES.find(({ mode }) => mode === measure_mode)?.icon ?? Ruler}
               />
             {/if}
-            <Icon class="view-mode-caret" icon="Arrow{measure_menu_open ? `Up` : `Down`}" />
+            <Icon class="view-mode-caret" icon={measure_menu_open ? ArrowUp : ArrowDown} />
           </button>
           {#if show_selection_reset}
             <button
@@ -1935,7 +1939,7 @@
                 clear_bond_edits()
               }}
             >
-              <Icon icon="Reset" style="margin-left: -4px" />
+              <Icon icon={Reset} style="margin-left: -4px" />
             </button>
           {/if}
           {#if measure_menu_open}
@@ -1963,7 +1967,7 @@
 
         {#snippet undo_redo_snippet(
           buttons: {
-            icon: `Undo` | `Redo`
+            icon: IconData
             title: string
             stack: unknown[]
             action: () => void
@@ -1991,9 +1995,9 @@
         {#if measure_mode === `edit-atoms` && !measure_menu_open}
           <div class="edit-mode-toolbar" aria-label="Atom editing controls">
             {@render undo_redo_snippet([
-              { icon: `Undo`, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
+              { icon: Undo, title: `Undo (Cmd/Ctrl+Z)`, stack: undo_stack, action: undo },
               {
-                icon: `Redo`,
+                icon: Redo,
                 title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
                 stack: redo_stack,
                 action: redo,
@@ -2076,13 +2080,13 @@
             </div>
             {@render undo_redo_snippet([
               {
-                icon: `Undo`,
+                icon: Undo,
                 title: `Undo bond edit (Cmd/Ctrl+Z)`,
                 stack: bond_undo_stack,
                 action: undo_bond_edit,
               },
               {
-                icon: `Redo`,
+                icon: Redo,
                 title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
                 stack: bond_redo_stack,
                 action: redo_bond_edit,

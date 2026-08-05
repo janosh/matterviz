@@ -6,6 +6,7 @@
   import type { ElementSymbol } from '$lib/element'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
   import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
@@ -542,7 +543,7 @@
         title="Reset view and settings"
         class="control-btn reset-camera-btn"
       >
-        <Icon icon="Reset" />
+        <Icon icon={Reset} />
       </button>
     {/if}
 

@@ -13,6 +13,7 @@
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
   import { CopyButton, Icon } from 'svelte-widgets'
+  import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 
   const default_trajectory_file = `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
@@ -34,7 +35,7 @@
 <h2 style="margin-block: 1em">Installation</h2>
 <p class="install">
   <span>
-    {#each [[`VSCode`, vscode_ext_url], [`Cursor`, open_vsx_ext_url]] as const as [ext_name, ext_url] (ext_name)}
+    {#each [[`VSCode`, vscode_ext_url, VSCode], [`Cursor`, open_vsx_ext_url, Cursor]] as const as [ext_name, ext_url, icon] (ext_name)}
       {#if ext_name !== `VSCode`}/{/if}
       <a
         href={ext_url}
@@ -43,7 +44,7 @@
         target="_blank"
         rel="noopener noreferrer"
       >
-        <Icon icon={ext_name} />
+        <Icon {icon} />
         {ext_name}
       </a>
     {/each}
@@ -59,7 +60,7 @@
       style="display: inline-flex; gap: 4pt; line-height: 1.3"
     >
       <a href="https://www.npmjs.com/package/matterviz">
-        <Icon icon="NPM" style="transform: scale(2.4); padding-inline: 12pt" />
+        <Icon icon={NPM} style="transform: scale(2.4); padding-inline: 12pt" />
       </a>
       install matterviz
       <CopyButton content="npm install matterviz" style="background: transparent" />

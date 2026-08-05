@@ -1,4 +1,5 @@
 import { type D3InterpolateName, get_d3_interpolator, pick_contrast_color } from '$lib/colors'
+import { quantile_unordered } from '$lib/math'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
@@ -39,6 +40,19 @@ export type Label = {
   better?: `higher` | `lower`
   color_scale?: D3InterpolateName | null
   scale_type?: `linear` | `log`
+  // How to map values onto the color scale (default `minmax`). See ColorNormalizeMode.
+  normalize?: ColorNormalizeMode
+  // Columns sharing a tag are colored on one merged domain, so their cells are
+  // directly comparable instead of each being normalized to its own range.
+  domain_group?: string
+  // Draw an in-cell proportional bar instead of (or alongside) the heatmap fill. Bars
+  // read magnitude more precisely than color and stay legible without color vision.
+  render_as?: `heatmap` | `bar` | `both`
+  // Ring the column's best cell (needs `better` to know which end wins)
+  highlight_best?: boolean
+  // Per-column filter control shown in the header. `auto` picks numeric/category/text
+  // from the data; false suppresses it for that column.
+  filter?: `auto` | `numeric` | `text` | `category` | false
   sticky?: boolean
   visible?: boolean
   sortable?: boolean
@@ -61,6 +75,27 @@ export type CellSnippet = Snippet<[CellSnippetArgs]>
 
 // Type for special_cells prop - maps column labels to cell snippets
 export type SpecialCells = Record<string, CellSnippet>
+
+// Statistics a summary row can show. Each names a field of ColumnStats.
+export type SummaryStat = `mean` | `median` | `min` | `max` | `count`
+
+// Per-column user tuning, keyed by column ID. Bindable as one `column_prefs` prop so a
+// host can persist everything the user adjusted (widths, color choices, filters) in a
+// single blob, and so future per-column settings don't each need their own prop.
+export type ColumnPrefs = {
+  width?: number
+  better?: `higher` | `lower`
+  color_scale?: D3InterpolateName
+  datetime_format?: DateTimeFormatMode
+  filter?: ColumnFilter
+}
+
+// Active filter on one column. `values` is a category allow-list, `min`/`max` bound a
+// numeric range (either end optional), `text` is a case-insensitive substring.
+export type ColumnFilter =
+  | { kind: `numeric`; min?: number; max?: number }
+  | { kind: `text`; text: string }
+  | { kind: `category`; values: string[] }
 
 // Externally bindable table sort used by HeatmapTable's `sort` prop.
 export type SortDir = `asc` | `desc`
@@ -109,8 +144,10 @@ export type Search =
   | boolean
   | { placeholder?: string; expanded?: boolean; keys?: string[]; fuzzy?: boolean }
 
-// Export configuration (boolean to enable, object for full control)
-export type ExportData = boolean | { formats?: (`csv` | `json`)[]; filename?: string }
+// Export configuration (boolean to enable, object for full control). `md` emits
+// GitHub-flavoured markdown, `tex` a LaTeX booktabs tabular.
+export type ExportFormat = `csv` | `json` | `md` | `tex`
+export type ExportData = boolean | { formats?: ExportFormat[]; filename?: string }
 
 // Callback type for async server-side sorting
 export type OnSortCallback = (column: string, dir: SortDir) => Promise<RowData[]>
@@ -121,6 +158,96 @@ export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``
 export type CellColor = { bg: string | null; text: string | null }
 const NULL_CELL_COLOR: CellColor = { bg: null, text: null }
 
+// Numeric summary of one column. The color-scale domain, the summary row, best-cell
+// highlighting and data bars all reduce the same values, so the O(rows) scan runs once
+// per column here instead of once per feature. `best` is null unless the column declares
+// which direction is better.
+export type ColumnStats = {
+  values: number[]
+  min: number
+  max: number
+  q_lo: number // 5th percentile
+  q_hi: number // 95th percentile
+  mean: number
+  median: number | null
+  count: number
+  best: number | null
+}
+
+export function compute_column_stats(
+  values: (number | null | undefined)[],
+  better?: `higher` | `lower`,
+  // Quantiles cost up to six quickselect passes per column and only two features use
+  // them (quantile normalization, a median summary), so they're opt-in.
+  with_quantiles = true,
+): ColumnStats | null {
+  // Collect and reduce in one pass: a `.filter()` here would allocate a second full-length
+  // array per column, on top of the one the caller already built.
+  const nums: number[] = []
+  let sum = 0
+  let lowest = Infinity
+  let highest = -Infinity
+  for (const val of values) {
+    if (typeof val !== `number` || !Number.isFinite(val)) continue
+    nums.push(val)
+    sum += val
+    if (val < lowest) lowest = val
+    if (val > highest) highest = val
+  }
+  if (nums.length === 0) return null
+  // A running mean only when the plain sum overflowed past ~1.8e308, so a column of huge
+  // values still reports a real mean rather than Infinity.
+  let mean = sum / nums.length
+  if (!Number.isFinite(mean)) {
+    mean = 0
+    for (const [idx, val] of nums.entries()) mean += (val - mean) / (idx + 1)
+  }
+  // quantile_unordered partially sorts in place, so hand it a copy we own. Successive
+  // calls on the same scratch array stay correct (quickselect works on any ordering).
+  const scratch = with_quantiles ? [...nums] : []
+  return {
+    values: nums,
+    min: lowest,
+    max: highest,
+    q_lo: with_quantiles ? quantile_unordered(scratch, 0.05) : lowest,
+    q_hi: with_quantiles ? quantile_unordered(scratch, 0.95) : highest,
+    mean,
+    median: with_quantiles ? quantile_unordered(scratch, 0.5) : null,
+    count: nums.length,
+    best: better === `lower` ? lowest : better === `higher` ? highest : null,
+  }
+}
+
+// How a column's color domain is derived from its values:
+// - minmax (default): the full data range, so the extremes anchor the scale
+// - diverging: symmetric about zero, so the interpolator's midpoint lands on 0 and equal
+//   magnitudes of either sign read as equally intense (formation energies, residuals)
+// - quantile: clipped to the 5th–95th percentile, so a lone outlier can't flatten the rest
+export type ColorNormalizeMode = `minmax` | `diverging` | `quantile`
+
+export function resolve_color_domain(
+  stats: ColumnStats,
+  mode: ColorNormalizeMode = `minmax`,
+): [number, number] {
+  if (mode === `diverging`) {
+    const reach = Math.max(Math.abs(stats.min), Math.abs(stats.max)) || 1
+    return [-reach, reach]
+  }
+  if (mode === `quantile` && stats.q_lo < stats.q_hi) return [stats.q_lo, stats.q_hi]
+  return [stats.min, stats.max]
+}
+
+// Widest domain covering every column in a shared-domain group, so comparable metrics
+// are colored on one scale instead of each being normalized to its own range.
+// Reduced rather than spread into Math.min/max, which throws RangeError past ~65k args.
+export const merge_domains = (domains: [number, number][]): [number, number] | null =>
+  domains.length === 0
+    ? null
+    : domains.reduce(([lo, hi], [next_lo, next_hi]): [number, number] => [
+        Math.min(lo, next_lo),
+        Math.max(hi, next_hi),
+      ])
+
 // Build a memoized value→color mapper for one column. The O(column-length)
 // work (numeric filter + min/max) and d3 scale construction happen ONCE here;
 // the returned function is O(1) per cell. HeatmapTable derives one mapper per
@@ -130,34 +257,51 @@ export function make_cell_color_scale(
   better: `higher` | `lower` | undefined, // sort direction
   color_scale: D3InterpolateName | null = `interpolateViridis`, // color scale name
   scale_type: `linear` | `log` = `linear`, // scale type
+  // Overrides the min/max taken from all_values (quantile clipping, a shared group).
+  // Supplying it also clamps the scale: excluded values must saturate, not extrapolate.
+  domain?: [number, number],
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
 
   const numeric_vals = all_values.filter(
     (v): v is number =>
-      typeof v === `number` && !Number.isNaN(v) && (scale_type === `log` ? v > 0 : true), // Only filter non-positives for log scale
+      typeof v === `number` && Number.isFinite(v) && (scale_type === `log` ? v > 0 : true),
   )
+  // a log column of nothing but zeros still colors them at the low end, hence the includes
+  const has_log_zero = scale_type === `log` && all_values.includes(0)
+  if (numeric_vals.length === 0 && !has_log_zero && !domain) return () => NULL_CELL_COLOR
 
-  if (numeric_vals.length === 0) return () => NULL_CELL_COLOR
+  // On a log scale numeric_vals holds only positives, so its min doubles as the smallest
+  // positive value.
+  const lowest = min(numeric_vals)
+  const range = domain ? [...domain] : [lowest ?? 0, max(numeric_vals) ?? 1]
 
-  const range = [min(numeric_vals) ?? 0, max(numeric_vals) ?? 1]
-
-  // Reverse the range if lower values are better
+  // A supplied domain may reach to or below zero (quantile clipping, a shared group), which
+  // a log scale can't take. Lift its low end to the column's smallest positive value so log
+  // columns stay logarithmic instead of silently rendering linear.
+  if (scale_type === `log` && range[0] <= 0 && lowest != null && range[1] > 0) {
+    range[0] = lowest
+  }
   if (better === `lower`) range.reverse()
 
   const interpolator = get_d3_interpolator(color_scale)
-
-  // Use log scale for positive values, otherwise linear/sequential scale
   const use_log = scale_type === `log` && range[0] > 0 && range[1] > 0
   const log_scale = use_log ? scaleLog().domain(range).range([0, 1]).clamp(true) : null
-  const seq_scale = scaleSequential().domain(range).interpolator(interpolator)
+  const seq_scale = scaleSequential()
+    .domain(range)
+    .interpolator(interpolator)
+    .clamp(Boolean(domain))
 
   return (val) => {
-    // Skip color calculation for null/undefined/NaN values
-    if (val == null || Number.isNaN(val)) return NULL_CELL_COLOR
-    // Log scale cannot handle non-positive values, return null colors
-    if (scale_type === `log` && val <= 0) return NULL_CELL_COLOR
-    const bg = log_scale ? interpolator(log_scale(val)) : seq_scale(val)
+    // Skip null/undefined and non-finite values. Infinity must be excluded here too:
+    // compute_column_stats drops it from the domain, so coloring it would paint a cell
+    // the scale never accounted for.
+    if (val == null || !Number.isFinite(val)) return NULL_CELL_COLOR
+    // Zero sits below the positive log domain and uses its low-end color; negatives remain invalid.
+    if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
+    const color_val =
+      scale_type === `log` && val === 0 ? range[better === `lower` ? 1 : 0] : val
+    const bg = log_scale ? interpolator(log_scale(color_val)) : seq_scale(color_val)
     return { bg, text: pick_contrast_color({ bg_color: bg }) }
   }
 }

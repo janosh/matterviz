@@ -5,6 +5,7 @@
   // popup driven by the shared canvas-interactions scaffold
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -106,7 +107,7 @@
   <section class="control-buttons {controls_config.class}">
     {#if controls_config.visible(`reset`)}
       <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
-        <Icon icon="Reset" />
+        <Icon icon={Reset} />
       </button>
     {/if}
 

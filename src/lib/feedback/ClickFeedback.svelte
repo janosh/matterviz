@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { Icon, type IconName } from 'svelte-widgets'
-
+  import { Icon, type IconData } from 'svelte-widgets'
+  import { Check } from 'svelte-widgets/icons'
   // Generic feedback component that shows a transient icon at a specific position.
   // Commonly used for copy-to-clipboard feedback, but can display icons for
   // various user interactions.
   let {
     visible = $bindable(false),
     position = { x: 0, y: 0 },
-    icon = `Check`,
+    icon = Check,
   }: {
     visible?: boolean
     position: { x: number; y: number }
-    icon?: IconName
+    icon?: IconData
   } = $props()
 </script>
 

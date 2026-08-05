@@ -13,21 +13,13 @@ describe(`bar_path`, () => {
     },
   )
 
-  it(`returns vertical bar path with rounded top corners`, () => {
-    const path = bar_path(10, 20, 40, 60, 5, true)
-    // Path should: start bottom-left, go up, arc top-left, horizontal across, arc top-right, go down, close
-    expect(path).toBe(`M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`)
-  })
-
-  it(`returns horizontal bar path with rounded right corners`, () => {
-    const path = bar_path(10, 20, 40, 60, 5, false)
-    // Path should: start top-left, go right, arc top-right, go down, arc bottom-right, go left, close
-    expect(path).toBe(`M10,20H45A5,5 0 0 1 50,25V75A5,5 0 0 1 45,80H10Z`)
-  })
-
-  it(`defaults to vertical orientation when not specified`, () => {
-    const explicit = bar_path(0, 0, 10, 20, 3, true)
-    const implicit = bar_path(0, 0, 10, 20, 3)
-    expect(implicit).toBe(explicit)
+  it.each([
+    [`vertical default`, undefined, false, `M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`],
+    [`vertical top`, true, false, `M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`],
+    [`horizontal right`, false, false, `M10,20H45A5,5 0 0 1 50,25V75A5,5 0 0 1 45,80H10Z`],
+    [`vertical bottom`, true, true, `M10,20V75A5,5 0 0 0 15,80H45A5,5 0 0 0 50,75V20Z`],
+    [`horizontal left`, false, true, `M50,20H15A5,5 0 0 0 10,25V75A5,5 0 0 0 15,80H50Z`],
+  ])(`rounds the %s corners`, (_name, vertical, flip, expected) => {
+    expect(bar_path(10, 20, 40, 60, 5, vertical, flip)).toBe(expected)
   })
 })

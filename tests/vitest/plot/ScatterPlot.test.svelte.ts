@@ -5,7 +5,14 @@ import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transfo
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, mount_sized, resize_element, svg_query } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_custom_x_ticks_grow_bottom_pad,
+  mount_sized,
+  resize_element,
+  svg_query,
+} from '../setup'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -33,6 +40,19 @@ const hover = async (element: Element): Promise<void> => {
 }
 
 describe(`ScatterPlot`, () => {
+  // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
+  // tick values behind them, or the labels tilt into a band nobody reserved.
+  test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
+    expect.assertions(2)
+    const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
+      const plot = await mount_sized_scatter_plot({ series: [basic], x_axis: { ticks } })
+      // ScatterPlot draws no x spine, so read the baseline off a tick group's translate
+      const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
+      return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
+    }
+    await expect_custom_x_ticks_grow_bottom_pad(baseline_y, [1, 2, 3, 4, 5])
+  })
+
   test.each([
     {
       series: [basic],

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
+  import { Check, Copy } from 'svelte-widgets/icons'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   let {
@@ -22,7 +23,7 @@
   {title}
   {onclick}
 >
-  <Icon icon={copied ? `Check` : `Copy`} />
+  <Icon icon={copied ? Check : Copy} />
 </button>
 
 <style>

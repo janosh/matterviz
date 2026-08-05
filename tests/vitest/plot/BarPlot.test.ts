@@ -2,7 +2,12 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { axis_label_pivot_y, inside_clip_path, mount_sized } from '../setup'
+import {
+  axis_label_pivot_y,
+  inside_clip_path,
+  mount_sized,
+  with_measured_text,
+} from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -17,12 +22,7 @@ const mount_sized_bar_plot = (
 
 describe(`BarPlot`, () => {
   test.each([
-    {
-      name: `empty data`,
-      series: [],
-      expected_series: 0,
-      expected_bars: 0,
-    },
+    { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },
     {
       name: `all-negative values`,
       series: [{ x: [1, 2, 3, 4], y: [-10, -20, -15, -25] }],
@@ -39,16 +39,37 @@ describe(`BarPlot`, () => {
       expected_series: 2,
       expected_bars: 10,
     },
+    {
+      name: `horizontal grouped mode`,
+      series: [basic, { ...basic, color: `orangered` }],
+      props: { orientation: `horizontal`, mode: `grouped` },
+      expected_series: 2,
+      expected_bars: 10,
+    },
+    {
+      name: `bar and line series side by side`,
+      series: [basic, { x: [1, 2, 3, 4, 5], y: [12, 18, 20, 22, 16], render_mode: `line` }],
+      props: { mode: `stacked` },
+      expected_series: 1,
+      expected_bars: 5,
+      expected_lines: 1,
+    },
   ] satisfies {
     name: string
     series: BarSeries[]
+    props?: Partial<ComponentProps<typeof BarPlot>>
     expected_series: number
     expected_bars: number
-  }[])(`renders $name`, async ({ series, expected_series, expected_bars }) => {
-    const plot = await mount_sized_bar_plot({ series })
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(expected_series)
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(expected_bars)
-  })
+    expected_lines?: number
+  }[])(
+    `renders $name`,
+    async ({ series, props, expected_series, expected_bars, expected_lines = 0 }) => {
+      const plot = await mount_sized_bar_plot({ series, ...props })
+      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(expected_series)
+      expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(expected_bars)
+      expect(plot.querySelectorAll(`.line-series`)).toHaveLength(expected_lines)
+    },
+  )
 
   test.each([`vertical`, `horizontal`] as const)(
     `omits zero-valued bars in %s orientation`,
@@ -58,6 +79,65 @@ describe(`BarPlot`, () => {
         orientation,
       })
       expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(2)
+    },
+  )
+
+  test.each([
+    [`value-axis zero line by default`, [1.1, 1.4, 3.4], undefined, `y`, `vertical`],
+    [
+      `explicitly enabled category zero line`,
+      [-1.1, 1.4, 3.4],
+      { x_zero_line: true, y_zero_line: false },
+      `x`,
+      `vertical`,
+    ],
+    [
+      `value-axis zero with partial display props`,
+      [-1.1, 1.4, 3.4],
+      { x_grid: false },
+      `y`,
+      `vertical`,
+    ],
+    [`value-axis zero when horizontal`, [-1.1, 1.4, 3.4], undefined, `x`, `horizontal`],
+  ] as const)(
+    `categorical bars render the %s`,
+    async (_name, y, display, axis, orientation) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...y] }],
+        orientation,
+        ...(display ? { display } : {}),
+      })
+      const lines = plot.querySelectorAll(`.zero-line`)
+      expect(lines).toHaveLength(1)
+      expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
+    },
+  )
+
+  test.each([`vertical`, `horizontal`] as const)(
+    `rounds corners on the free end of %s bars`,
+    async (orientation) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1, 2], y: [-10, 10] }],
+        orientation,
+        bar: { border_radius: 4 },
+      })
+      // The rounded end is where the first arc lands: compare it against the path's
+      // start point along the value axis to tell which end got the corners.
+      const start_re = /^M(?<x>-?[\d.]+),(?<y>-?[\d.]+)/
+      const arc_re = /A[\d.]+,[\d.]+ 0 0 [01] (?<x>-?[\d.]+),(?<y>-?[\d.]+)/
+      const rounded_beyond_start = (path: Element) => {
+        const path_str = path.getAttribute(`d`) ?? ``
+        const start = start_re.exec(path_str)?.groups
+        const arc = arc_re.exec(path_str)?.groups
+        if (!start || !arc) throw new Error(`unexpected bar path ${path_str}`)
+        const key = orientation === `vertical` ? `y` : `x`
+        return Number(arc[key]) > Number(start[key])
+      }
+      const [neg_bar, pos_bar] = plot.querySelectorAll(`path[role="button"]`)
+      // vertical: negative bar rounds at the bottom (larger y), positive at the top
+      // horizontal: negative bar rounds on the left (smaller x), positive on the right
+      expect(rounded_beyond_start(neg_bar)).toBe(orientation === `vertical`)
+      expect(rounded_beyond_start(pos_bar)).toBe(orientation === `horizontal`)
     },
   )
 
@@ -117,32 +197,11 @@ describe(`BarPlot`, () => {
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
-    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-      font: ``,
-      measureText: () => ({ width: 120 }),
-    } as unknown as CanvasRenderingContext2D)
-    try {
-      const plot = await mount_sized_bar_plot({
-        series: [basic],
-        y_axis: { label: `Value` },
-      })
-      expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
-        60,
-      )
-    } finally {
-      context_spy.mockRestore()
-    }
-  })
-
-  test(`horizontal grouped mode renders all bars`, async () => {
-    const series = [basic, { ...basic, color: `orangered` }]
-    const plot = await mount_sized_bar_plot({
-      series,
-      orientation: `horizontal`,
-      mode: `grouped`,
-    })
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(10)
+    const plot = await with_measured_text(
+      () => mount_sized_bar_plot({ series: [basic], y_axis: { label: `Value` } }),
+      60, // 2-digit y ticks measure 120px wide, far past the 60px default left pad
+    )
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(60)
   })
 
   test(`line markers render zero-valued color and size inputs`, async () => {
@@ -193,24 +252,6 @@ describe(`BarPlot`, () => {
     expect(on_point_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
     hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
-  })
-
-  test(`mixed bar and line series`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [
-        basic,
-        {
-          x: [1, 2, 3, 4, 5],
-          y: [12, 18, 20, 22, 16],
-          render_mode: `line` as const,
-          line_style: { stroke_width: 3, line_dash: `5,5` },
-        },
-      ],
-      mode: `stacked`,
-    })
-    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
-    expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
-    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(5)
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
@@ -327,6 +368,57 @@ describe(`BarPlot`, () => {
       },
     )
 
+    const x_tick_labels = (plot: HTMLElement): Element[] => [
+      ...plot.querySelectorAll(`g.x-axis g.tick text`),
+    ]
+
+    test(`long category names auto-rotate`, async () => {
+      const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
+      const plot = await with_measured_text(() =>
+        mount_sized_bar_plot({
+          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+          x_axis: { label: `state` },
+        }),
+      )
+      const labels = x_tick_labels(plot)
+      expect(labels.length).toBeGreaterThan(0)
+      for (const label of labels) {
+        // Negative angle anchored at the label's end, so it trails left of its tick and
+        // the rightmost one cannot spill past the plot's right edge.
+        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
+        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
+      }
+    })
+
+    // Horizontal orientation moves the categories onto y, so the left padding has to be
+    // measured from the category names. Measuring ticks.y sizes it from the integer slot
+    // indices instead, leaving the names to overrun the reserved gutter.
+    test(`horizontal orientation sizes left padding from category names`, async () => {
+      const left_pad_for = (cats: string[]) =>
+        with_measured_text(async () => {
+          const plot = await mount_sized_bar_plot({
+            series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+            orientation: `horizontal`,
+          })
+          return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
+        })
+      const long = await left_pad_for([`QUEUE_HOLD`, `COMPLETED`, `CANCELLED`])
+      const short = await left_pad_for([`A`, `B`, `C`])
+      expect(short).toBeGreaterThan(0)
+      expect(long).toBeGreaterThan(short)
+    })
+
+    test(`short category names stay upright`, async () => {
+      const plot = await with_measured_text(() =>
+        mount_sized_bar_plot({
+          series: [{ x: [`A`, `B`, `C`], y: [1, 2, 3], color: `blue` }],
+        }),
+      )
+      const labels = x_tick_labels(plot)
+      expect(labels).toHaveLength(3) // else the loop below asserts nothing
+      for (const label of labels) expect(label.getAttribute(`transform`)).toBeNull()
+    })
+
     // categorical ticks are generated for every category regardless of the view, so
     // a panned/zoomed range must cull the ones that fall outside the plot area
     test(`ticks panned outside the plot area are culled`, async () => {
@@ -401,12 +493,10 @@ describe(`BarPlot`, () => {
   ])(`legend $label`, async ({ props, visible }) => {
     mount(BarPlot, { target: document.body, props })
     await tick()
-    const legend = document.querySelector(`.legend`)
-    if (visible) expect(legend).toBeInstanceOf(HTMLElement)
-    else expect(legend).toBeNull()
+    expect(Boolean(document.querySelector(`.legend`))).toBe(visible)
   })
 
-  describe(`legend grouping`, () => {
+  test(`renders grouped and ungrouped legend entries`, async () => {
     const grouped_series: BarSeries[] = [
       {
         x: [1, 2, 3],
@@ -436,14 +526,12 @@ describe(`BarPlot`, () => {
         color: `green`,
       },
     ]
-
-    test(`renders grouped and ungrouped legend entries`, async () => {
-      const plot = await mount_sized_bar_plot({ series: grouped_series })
-      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
-      for (const label of [`DFT`, `ML`, `Experiment`]) {
-        expect(plot.textContent).toContain(label)
-      }
-    })
+    const plot = await mount_sized_bar_plot({ series: grouped_series })
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
+    // the two DFT series collapse under one group entry, the ungrouped one stands alone
+    for (const label of [`DFT`, `ML`, `Experiment`]) {
+      expect(plot.textContent).toContain(label)
+    }
   })
 
   test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {

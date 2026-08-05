@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Info } from 'svelte-widgets/icons'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
@@ -314,8 +315,8 @@
     class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
   pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
-  open_icon="Cross"
-  closed_icon="Info"
+  open_icon={Cross}
+  closed_icon={Info}
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>

@@ -4,15 +4,30 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ContextMenu, Icon } from 'svelte-widgets'
+  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
+  import {
+    Calendar,
+    Columns,
+    Copy,
+    Cross,
+    Download,
+    Export,
+    Filter,
+    Search as SearchIcon,
+    Settings,
+  } from 'svelte-widgets/icons'
   import { DraggablePane } from '$lib/overlays'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
     CellColor,
     CellSnippet,
     CellVal,
+    ColumnFilter,
+    ColumnPrefs,
+    ColumnStats,
     DateTimeFormatMode,
     ExportData,
+    ExportFormat,
     InitialSort,
     Label,
     MultiSortState,
@@ -25,15 +40,23 @@
     SortHint,
     SortState,
     SpecialCells,
+    SummaryStat,
     TableSort,
   } from '$lib/table'
-  import { make_cell_color_scale, strip_html } from '$lib/table'
+  import {
+    compute_column_stats,
+    make_cell_color_scale,
+    merge_domains,
+    resolve_color_domain,
+    strip_html,
+  } from '$lib/table'
+  import type { D3InterpolateName } from '$lib/colors'
   import { sanitize_html } from '$lib/sanitize'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, tick } from 'svelte'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Helper to check if value is invalid (null, undefined, NaN)
   const is_invalid = (val: unknown) =>
@@ -90,11 +113,15 @@
     }
   }
 
-  const close_datetime_select_on_outside_pointerdown = (event: PointerEvent) => {
-    if (datetime_select_open_col_id === null) return
-    if (event.target instanceof Element && event.target.closest(`.datetime-format-control`))
-      return
-    datetime_select_open_col_id = null
+  // Close a header popover when the pointer goes down anywhere outside it
+  const close_header_popovers_on_outside_pointerdown = (event: PointerEvent) => {
+    const target = event.target instanceof Element ? event.target : null
+    if (datetime_select_open_col_id !== null && !target?.closest(`.datetime-format-control`)) {
+      datetime_select_open_col_id = null
+    }
+    if (filter_panel_col_id !== null && !target?.closest(`.column-filter`)) {
+      filter_panel_col_id = null
+    }
   }
 
   const NUMERIC_WITH_ERROR_RE =
@@ -127,19 +154,24 @@
   const get_data_sort_value = (val: string): string | null =>
     val.match(DATA_SORT_VALUE_RE)?.groups?.value ?? null
 
-  // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
+  // The one numeric reading of a cell: an explicit data-sort-value wins, then the visible
+  // text with markup stripped and uncertainty notation ("1.23 ± 0.05", "1.23(5)") trimmed.
+  // Sorting, coloring, filtering and the summary row all go through this, so a cell can't
+  // sort as 10 while coloring as if it held no number.
+  function parse_numeric_val(val: CellVal): number | null {
+    if (typeof val === `number`) return Number.isFinite(val) ? val : null
+    if (typeof val !== `string`) return null
+    const sort_attr = get_data_sort_value(val)
+    const num = sort_attr == null ? parse_numeric_string(strip_html(val)) : Number(sort_attr)
+    return num !== null && Number.isFinite(num) ? num : null
+  }
+
   const get_sort_val = (val: CellVal): string | number => {
     if (val instanceof Date) return val.getTime()
-    if (typeof val === `string`) {
-      // Check for HTML data-sort-value attribute first
-      const sort_attr = get_data_sort_value(val)
-      if (sort_attr != null) {
-        const num = Number(sort_attr)
-        return isNaN(num) ? sort_attr : num
-      }
-      const num = parse_numeric_string(val)
-      if (num !== null) return num
-    }
+    const num = parse_numeric_val(val)
+    if (num !== null) return num
+    // a data-sort-value that isn't a number still overrides the visible text
+    if (typeof val === `string`) return get_data_sort_value(val) ?? val
     return val as string | number
   }
 
@@ -164,13 +196,20 @@
     onrowdblclick,
     row_title,
     column_order = $bindable([]),
+    column_prefs = $bindable({}),
     export_data = false,
     show_column_toggle = false,
+    show_filters = false,
+    summary = false,
+    tri_state_sort = true,
+    density = `cosy`,
+    keyboard_cells = false,
     search = false,
     search_query = $bindable(``),
     show_row_select = false,
     pagination = false,
     virtual = false,
+    virtual_columns = false,
     on_visible_range,
     controls_target = undefined,
     selected_rows = $bindable([]),
@@ -214,8 +253,26 @@
     // - Grouped columns: `${col.key ?? col.label} (${col.group})`
     // This allows persisting/restoring column order across sessions.
     column_order?: string[]
+    // Per-column user tuning (width, color scale, gradient direction, date format,
+    // filter), keyed by column ID. Bindable so hosts can persist and restore it.
+    column_prefs?: Record<string, ColumnPrefs>
     export_data?: ExportData
     show_column_toggle?: boolean
+    // Show a per-column filter funnel in each header (range, checklist or substring,
+    // picked from the column's data). Individual columns opt out with `filter: false`.
+    show_filters?: boolean
+    // Append summary rows for every numeric column, computed over the rows left after
+    // search and filters. `true` shows mean; pass an array to pick and order the stats.
+    summary?: boolean | SummaryStat[]
+    // Let a third click on the same column clear the sort (back to the data's own order).
+    // Ignored when initial_sort or onsort is set, which have no "unsorted" state.
+    tri_state_sort?: boolean
+    // Row height preset, driving --heatmap-cell-padding
+    density?: `compact` | `cosy` | `comfortable`
+    // Make cells keyboard-navigable: arrows move the active cell, Shift+arrow extends the
+    // selection, Alt+Left/Right moves a column. Off by default so tables that only display
+    // data don't add a tab stop; rows with onrowclick keep their own row-level keys.
+    keyboard_cells?: boolean
     search?: Search
     // Current search/filter query. Bindable so parents can control or persist it.
     search_query?: string
@@ -226,6 +283,10 @@
     // Inactive when pagination is enabled. Off by default (every row renders);
     // pass true (or a config object) to enable.
     virtual?: VirtualScroll
+    // Opt-in horizontal windowing for very wide tables: only columns near the viewport
+    // render, with spacer cells preserving scroll width. Sticky columns always render.
+    // Ignored when the table has group headers, whose colspans need every column.
+    virtual_columns?: boolean | { overscan?: number }
     // Notifies the parent which slice of the sorted+filtered rows is rendered
     // (e.g. to progressively fetch more data as the user scrolls near the end).
     on_visible_range?: (range: { start: number; end: number; total: number }) => void
@@ -328,11 +389,10 @@
   )
 
   // Normalize export_data config
-  type ExportFormat = `csv` | `json`
   let export_config = $derived(
     export_data
       ? {
-          formats: [`csv`, `json`] as ExportFormat[],
+          formats: [`csv`, `json`, `md`, `tex`] as ExportFormat[],
           filename: `table-export`,
           ...(typeof export_data === `object` ? export_data : {}),
         }
@@ -355,19 +415,15 @@
   // Pagination state
   let current_page = $state(1)
 
-  // Dropdown states
-  let show_column_dropdown = $state(false)
-  let show_export_dropdown = $state(false)
+  // Which toolbar dropdown is open, if any — they overlap, so only one ever is
+  let open_dropdown = $state<`columns` | `export` | null>(null)
 
-  // Per-column gradient direction overrides (user-toggled via header)
-  let better_overrides = new SvelteMap<string, `higher` | `lower`>()
-
-  // Per-column color scale overrides
-  let color_scale_overrides = new SvelteMap<string, string>()
-
-  // Per-column date/time display overrides (user-toggled via header)
-  let datetime_format_overrides = new SvelteMap<string, DateTimeFormatMode>()
   let datetime_select_open_col_id = $state<string | null>(null)
+  // Column whose filter panel is open. Options and filter kind are derived for this one
+  // column only: scanning every column for distinct values would be O(rows x columns).
+  let filter_panel_col_id = $state<string | null>(null)
+  // Above this many distinct values a column gets a substring box instead of a checklist
+  const CATEGORY_LIMIT = 40
 
   const color_scale_options = [
     `interpolateViridis`,
@@ -384,11 +440,33 @@
   // Columns that have a color gradient
   let colored_columns = $derived(columns.filter((col) => col.color_scale != null))
 
+  // Measured left offsets keep successive sticky columns from overlapping.
+  let sticky_offsets = $state<Record<string, number>>({})
+
   // Column resize state
   let resize_col_id = $state<string | null>(null)
   let resize_start_x = $state(0)
   let resize_start_width = $state(0)
-  let column_widths = $state<Record<string, number>>({})
+
+  // Everything the user tunes per column lives in the bindable column_prefs record, so a
+  // host can persist and restore it wholesale. Reads fall back to the column's config.
+  const prefs_of = (col_id: string): ColumnPrefs => column_prefs[col_id] ?? {}
+  function set_pref<Key extends keyof ColumnPrefs>(
+    col_id: string,
+    key: Key,
+    value: ColumnPrefs[Key],
+  ) {
+    // Rebuild without the key rather than deleting it, so clearing a pref leaves no
+    // undefined-valued entry behind for hosts that serialize column_prefs
+    const { [key]: _dropped, ...kept } = prefs_of(col_id)
+    const next = value === undefined ? kept : { ...kept, [key]: value }
+    column_prefs = { ...column_prefs, [col_id]: next }
+  }
+  const better_of = (col: Label): `higher` | `lower` | undefined =>
+    prefs_of(get_col_id(col)).better ?? col.better
+  const color_scale_of = (col: Label): D3InterpolateName | null | undefined =>
+    prefs_of(get_col_id(col)).color_scale ?? col.color_scale
+  const width_of = (col_id: string): number | undefined => prefs_of(col_id).width
 
   // Auto-discover columns from data keys when none are provided
   $effect.pre(() => {
@@ -405,8 +483,35 @@
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
     col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+
+  // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
+  let data_keys = $derived.by(() => {
+    const keys = new SvelteMap<string, string>()
+    const qualified_ids: string[] = []
+    for (const col of columns) {
+      const col_id = get_col_id(col)
+      const plain_key = col.key ?? col.label
+      keys.set(col_id, plain_key) // upgraded below if the rows carry the qualified key
+      if (col_id !== plain_key) qualified_ids.push(col_id)
+    }
+    // Only a grouped column can be keyed either way, so an ungrouped table skips the row
+    // scan entirely — it costs O(rows x keys) and runs on every data change.
+    if (qualified_ids.length === 0) return keys
+    const present_keys = new SvelteSet<string>()
+    for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
+    for (const col_id of qualified_ids) if (present_keys.has(col_id)) keys.set(col_id, col_id)
+    return keys
+  })
+  // Row key for a column, by column or by ID (sort/context-menu state holds IDs)
+  const key_of_id = (col_id: string): string => data_keys.get(col_id) ?? col_id
+  const cell_key = (col: Label): string => key_of_id(get_col_id(col))
+  // Sticky columns pin to a measured offset (see sticky_offsets); the rest never set `left`
+  const sticky_left = (col: Label): string | undefined =>
+    col.sticky ? `${sticky_offsets[get_col_id(col)] ?? 0}px` : undefined
   const get_datetime_label_id = (col_id: string) =>
     `datetime-format-label-${encodeURIComponent(col_id)}`
+  // Keep date/time control events from sorting or dragging their parent header.
+  const stop_event = (event: Event) => event.stopPropagation()
 
   const has_explicit_datetime_format = (col: Label): boolean =>
     col.format_type === `datetime` || Boolean(col.datetime_format)
@@ -421,25 +526,17 @@
 
   const parse_datetime_string = (val: string): number | null => {
     const clean = strip_html(val).trim()
-    const date_only = clean.match(DATE_ONLY_RE)
-    if (date_only?.groups) {
-      const year = Number(date_only.groups.year)
-      const month = Number(date_only.groups.month)
-      const day = Number(date_only.groups.day)
-      return new Date(year, month - 1, day).getTime()
+    const date_only = clean.match(DATE_ONLY_RE)?.groups
+    // built as local midnight, where Date.parse would read a bare date as UTC
+    if (date_only) {
+      const { year, month, day } = date_only
+      return new Date(Number(year), Number(month) - 1, Number(day)).getTime()
     }
     if (!DATE_TIME_RE.test(clean)) return null
     const parsed = Date.parse(
       clean.replace(` `, `T`).replace(/\.(?<millis>\d{3})\d+/, `.$<millis>`),
     )
     return Number.isNaN(parsed) ? null : parsed
-  }
-
-  const value_datetime_kind = (val: CellVal, col: Label): DateTimeColumnKind | null => {
-    if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim())) {
-      return `date`
-    }
-    return parse_datetime_val(val, col) === null ? null : `datetime`
   }
 
   const parse_datetime_val = (val: CellVal, col: Label): number | null => {
@@ -462,15 +559,17 @@
     if (col.datetime_format === `time`) return `time`
     if (col.datetime_format || col.format_type === `datetime`) return `datetime`
 
-    const col_id = get_col_id(col)
+    // A single value carrying a time of day makes the whole column a datetime column;
+    // bare dates only settle it if nothing richer turns up in the sample.
+    const row_key = cell_key(col)
     let has_date_value = false
     for (const row of data.slice(0, 25)) {
-      const kind = value_datetime_kind(row[col_id], col)
-      if (kind === `datetime`) return `datetime`
-      if (kind === `date`) has_date_value = true
+      const val = row[row_key]
+      if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim())) {
+        has_date_value = true
+      } else if (parse_datetime_val(val, col) !== null) return `datetime`
     }
-    if (has_date_value) return `date`
-    return null
+    return has_date_value ? `date` : null
   }
 
   let datetime_column_kinds = $derived.by(() => {
@@ -485,6 +584,27 @@
   const is_datetime_column = (col: Label): boolean =>
     datetime_column_kinds.has(get_col_id(col))
 
+  // Right-align all-numeric columns, excluding dates and custom-rendered cells. Every row
+  // counts rather than a sample, else a column that turns to text near the end is
+  // right-aligned and offered a range filter. `every` bails on the first non-numeric value,
+  // so text columns cost one cell, not a full pass.
+  let numeric_columns = $derived.by(() => {
+    const col_ids = new SvelteSet<string>()
+    for (const col of columns) {
+      if (is_datetime_column(col) || special_cells?.[col.label]) continue
+      const row_key = cell_key(col)
+      let any_value = false
+      const all_numeric = data.every((row) => {
+        const val = row[row_key]
+        if (is_invalid(val) || val === ``) return true
+        any_value = true
+        return parse_numeric_val(val) !== null
+      })
+      if (all_numeric && any_value) col_ids.add(get_col_id(col))
+    }
+    return col_ids
+  })
+
   const datetime_column_kind = (col: Label): DateTimeColumnKind =>
     datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
 
@@ -494,7 +614,7 @@
   const datetime_mode = (col: Label): DateTimeFormatMode => {
     const options = datetime_format_options(col)
     const selected =
-      datetime_format_overrides.get(get_col_id(col)) ??
+      prefs_of(get_col_id(col)).datetime_format ??
       col.datetime_format ??
       datetime_column_kind(col)
     return options.includes(selected) ? selected : options[0]
@@ -502,22 +622,17 @@
 
   function set_datetime_format(col: Label, mode: DateTimeFormatMode) {
     if (datetime_format_options(col).includes(mode)) {
-      datetime_format_overrides.set(get_col_id(col), mode)
+      set_pref(get_col_id(col), `datetime_format`, mode)
     }
   }
 
-  const pad2 = (val: number): string => String(val).padStart(2, `0`)
-
-  function format_date(date: Date): string {
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-  }
-
-  function format_time(date: Date): string {
-    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  }
-
-  function format_datetime(date: Date): string {
-    return `${format_date(date)} ${format_time(date)}`
+  // Local-time parts, zero-padded. Not toISOString(), which would shift to UTC.
+  const date_parts = (date: Date): { date: string; time: string } => {
+    const pad = (val: number) => String(val).padStart(2, `0`)
+    return {
+      date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+      time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    }
   }
 
   // Ticks once a minute while any column shows relative times, so "Xm ago"
@@ -547,8 +662,8 @@
     ] as const
 
     for (const [suffix, minutes_per_unit] of units) {
+      // leading zeros are skipped, so "2h 5m" never renders as "0y 0mo 0w 2h 5m"
       const value = Math.floor(remaining_minutes / minutes_per_unit)
-      if (value === 0 && parts.length === 0 && suffix !== `m`) continue
       if (value > 0 || suffix === `m`) parts.push(`${value}${suffix}`)
       remaining_minutes -= value * minutes_per_unit
       if (parts.length >= 3) break
@@ -560,64 +675,45 @@
   function format_datetime_cell(val: CellVal, col: Label): string | null {
     const timestamp = parse_datetime_val(val, col)
     if (timestamp === null) return null
-    const date = new Date(timestamp)
     const mode = datetime_mode(col)
-    if (mode === `date`) return format_date(date)
-    if (mode === `time`) return format_time(date)
-    if (mode === `datetime`) return format_datetime(date)
-    if (mode === `iso`) return date.toISOString()
-    return format_since_now(timestamp)
+    if (mode === `relative`) return format_since_now(timestamp)
+    const stamp = new Date(timestamp)
+    if (mode === `iso`) return stamp.toISOString()
+    const { date, time } = date_parts(stamp)
+    return mode === `date` ? date : mode === `time` ? time : `${date} ${time}`
   }
 
-  // Sync column_order with columns: initialize if empty, remove stale IDs, append new IDs
+  // Sync column_order with columns: drop stale IDs, append new ones, keep the user's order.
+  // An empty column_order needs no special case: nothing is kept, so every ID is appended.
   $effect(() => {
     if (columns.length === 0) return
     const col_ids = columns.map(get_col_id)
-
-    // Case 1: First render - initialize with default order
-    if (column_order.length === 0) {
-      column_order = col_ids
-      return
-    }
-
-    // Case 2: Sync needed - keep valid IDs in their order, append any new ones
     const valid_ids = new Set(col_ids)
     const kept = column_order.filter((id) => valid_ids.has(id))
-    const new_ids = col_ids.filter((id) => !kept.includes(id))
-    const new_order = [...kept, ...new_ids]
+    const new_order = [...kept, ...col_ids.filter((id) => !kept.includes(id))]
 
-    // Skip assignment if content is unchanged to prevent infinite effect loop.
-    // After drag reorder, column_order differs from col_ids (default order) but the
-    // computed new_order equals the current column_order — assigning a new array
-    // reference would re-trigger this effect endlessly.
-    if (
+    // Assign only on a real change, or the new array reference re-triggers this effect
+    // forever: after a drag reorder column_order differs from the default col_ids order,
+    // yet new_order recomputes to exactly the current column_order.
+    const unchanged =
       new_order.length === column_order.length &&
       new_order.every((id, idx) => id === column_order[idx])
-    )
-      return
-
-    column_order = new_order
+    if (!unchanged) column_order = new_order
   })
 
-  // Reorder columns based on column_order
+  // column_order first, then any column it doesn't mention (e.g. one just added)
   let ordered_columns = $derived.by(() => {
     if (column_order.length === 0) return columns
-
-    const col_map = new SvelteMap(columns.map((col) => [get_col_id(col), col]))
-
-    // Add columns in specified order, then any remaining columns that weren't in the order list
-    const ordered = column_order
-      .map((id) => col_map.get(id))
-      .filter((col): col is Label => col != null)
-
+    const by_id = new SvelteMap(columns.map((col) => [get_col_id(col), col]))
+    const ordered = column_order.map((id) => by_id.get(id)).filter((col) => col != null)
     const ordered_ids = new Set(ordered.map(get_col_id))
-    const remaining = columns.filter((col) => !ordered_ids.has(get_col_id(col)))
-
-    return [...ordered, ...remaining]
+    return [...ordered, ...columns.filter((col) => !ordered_ids.has(get_col_id(col)))]
   })
 
   let drag_col_id = $state<string | null>(null)
   let drag_over_col_id = $state<string | null>(null)
+  // Offset the second sticky header row by the first row's height.
+  let group_header_height = $state(0)
 
   // Merge root_style with rest.style for root div; omit style from rest to avoid duplicate
   let rest_props = $derived.by(() => {
@@ -732,10 +828,98 @@
     })
   }
 
-  // Filter data based on search query
+  // Per-column filters, paired with the row key they test. Empty when nothing is filtered,
+  // which lets the row loops below short-circuit entirely. Taken over every column, not
+  // just visible ones: hiding a column shouldn't silently change which rows show.
+  //
+  // Cached against a content key because column_prefs also holds widths and color choices:
+  // without this, dragging a resize handle would hand filtered_data a fresh array on every
+  // mousemove, re-filtering every row and wiping the user's cell selection.
+  let filter_cache: { key: string; filters: { key: string; filter: ColumnFilter }[] } = {
+    key: ``,
+    filters: [],
+  }
+  let active_filters = $derived.by(() => {
+    const filters = columns
+      .map((col) => ({ key: cell_key(col), filter: prefs_of(get_col_id(col)).filter }))
+      .filter((entry): entry is { key: string; filter: ColumnFilter } => Boolean(entry.filter))
+    const key = JSON.stringify(filters)
+    if (key !== filter_cache.key) filter_cache = { key, filters }
+    return filter_cache.filters
+  })
+  const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
+    if (filter.kind === `numeric`) {
+      const num = parse_numeric_val(val)
+      if (num === null) return false
+      return (
+        (filter.min == null || num >= filter.min) && (filter.max == null || num <= filter.max)
+      )
+    }
+    const text = is_invalid(val) ? `` : strip_html(String(val)).trim()
+    if (filter.kind === `category`) return filter.values.includes(text)
+    return text.toLowerCase().includes(filter.text.toLowerCase())
+  }
+
+  // Options and control type for the one open panel, derived together because both come
+  // from the same scan. Distinct values are read from `data`, not filtered_data, so a
+  // column's own filter never removes the options you'd use to widen it — and the cap
+  // applies only to auto-detection, since an explicit `category` column must list them all
+  // or its checklist renders empty.
+  let filter_panel = $derived.by(() => {
+    const col = columns.find((candidate) => get_col_id(candidate) === filter_panel_col_id)
+    if (!col) return null
+    const capped = col.filter !== `category`
+    const row_key = cell_key(col)
+    const seen = new SvelteSet<string>()
+    for (const row of data) {
+      const val = row[row_key]
+      if (!is_invalid(val)) seen.add(strip_html(String(val)).trim())
+      if (capped && seen.size > CATEGORY_LIMIT) {
+        seen.clear() // too many to pick from: fall back to a substring box
+        break
+      }
+    }
+    const options = [...seen].toSorted()
+    const configured = col.filter && col.filter !== `auto` ? col.filter : null
+    const detected = numeric_columns.has(get_col_id(col))
+      ? `numeric`
+      : options.length > 0
+        ? `category`
+        : `text`
+    return { options, kind: configured ?? detected }
+  })
+  const set_filter = (col_id: string, filter: ColumnFilter | undefined) =>
+    set_pref(col_id, `filter`, filter)
+  // A numeric filter with neither bound, or a category filter allowing everything, is the
+  // same as no filter — drop it so the funnel icon and row count stay honest.
+  function update_numeric_filter(col_id: string, bound: `min` | `max`, raw: string) {
+    const current = prefs_of(col_id).filter
+    const base = current?.kind === `numeric` ? current : { kind: `numeric` as const }
+    const value = raw.trim() === `` ? undefined : Number(raw)
+    const next = { ...base, [bound]: Number.isFinite(value) ? value : undefined }
+    set_filter(col_id, next.min == null && next.max == null ? undefined : next)
+  }
+  function toggle_category(col_id: string, value: string, options: string[]) {
+    const current = prefs_of(col_id).filter
+    const selected = current?.kind === `category` ? current.values : options
+    const next = selected.includes(value)
+      ? selected.filter((entry) => entry !== value)
+      : [...selected, value]
+    set_filter(
+      col_id,
+      next.length === options.length ? undefined : { kind: `category`, values: next },
+    )
+  }
+
+  // Rows surviving the global query and every per-column filter
   let filtered_data = $derived.by(() => {
+    const base_rows = data.filter((row) => Object.values(row).some((val) => val !== undefined))
     const base_data =
-      data?.filter?.((row) => Object.values(row).some((val) => val !== undefined)) ?? []
+      active_filters.length === 0
+        ? base_rows
+        : base_rows.filter((row) =>
+            active_filters.every(({ key, filter }) => cell_matches_filter(row[key], filter)),
+          )
 
     const query = search_query.toLowerCase().trim()
     if (!query) return base_data
@@ -758,8 +942,9 @@
         // criteria hold column IDs; skip stale entries referencing removed columns
         if (!valid_column_ids.has(column)) continue
 
-        const val1 = row1[column]
-        const val2 = row2[column]
+        const row_key = key_of_id(column)
+        const val1 = row1[row_key]
+        const val2 = row2[row_key]
 
         if (val1 === val2) continue
 
@@ -782,7 +967,7 @@
           // number<string is false both ways, breaking the comparator: numbers sort first
           return (typeof sort_val1 === `number` ? -1 : 1) * modifier
         } else if (sort_val1 !== sort_val2) {
-          return (sort_val1 ?? 0) < (sort_val2 ?? 0) ? -modifier : modifier
+          return sort_val1 < sort_val2 ? -modifier : modifier
         }
       }
       return 0
@@ -796,7 +981,8 @@
   let scroll_top = $state(0)
   let viewport_height = $state(0)
   let avg_row_height = $state(33) // refined from rendered rows after mount
-
+  let scroll_left = $state(0)
+  let viewport_width = $state(0)
   let virtual_config = $derived(
     pagination_config || !virtual
       ? null
@@ -825,6 +1011,8 @@
     if (!scroll_el) return
     scroll_top = scroll_el.scrollTop
     viewport_height = scroll_el.clientHeight
+    scroll_left = scroll_el.scrollLeft
+    viewport_width = scroll_el.clientWidth
   }
 
   // Refine the row-height estimate from actually rendered rows (needed for
@@ -847,7 +1035,8 @@
 
   // Track scroll-container resizes (e.g. dashboard card resizing)
   $effect(() => {
-    if (!virtual_config || !scroll_el || typeof ResizeObserver === `undefined`) return
+    const windowing = virtual_config || virtual_cols_config
+    if (!windowing || !scroll_el || typeof ResizeObserver === `undefined`) return
     const observer = new ResizeObserver(sync_viewport)
     observer.observe(scroll_el)
     return () => observer.disconnect()
@@ -901,114 +1090,131 @@
     group: string | undefined,
     event: MouseEvent | KeyboardEvent,
   ) {
-    // Find the column using both label and group if provided
     const col = ordered_columns.find(
-      (candidate_col) => candidate_col.label === column && candidate_col.group === group,
+      (candidate) => candidate.label === column && candidate.group === group,
     )
-
-    if (!col) return // Skip if column not found
-    if (col.sortable === false) return // Skip sorting if column marked as unsortable
+    if (!col || col.sortable === false) return
 
     const col_id = get_col_id(col)
 
-    // Shift+click for multi-column sort
+    // Shift-click toggles this column in multi-sort and clears single-column sorting.
     if (event.shiftKey) {
-      const existing_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
-      if (existing_idx !== -1) {
-        // Toggle direction or remove if clicked again
-        const existing = multi_sort[existing_idx]
-        if (existing.ascending === (col.better === `lower`)) {
-          // Remove from multi-sort
-          multi_sort = multi_sort.filter((_, idx) => idx !== existing_idx)
-        } else {
-          // Toggle direction
-          multi_sort = multi_sort.map((sort_entry, idx) =>
-            idx === existing_idx
-              ? { ...sort_entry, ascending: !sort_entry.ascending }
-              : sort_entry,
-          )
-        }
-      } else {
-        // Add to multi-sort
-        multi_sort = [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
-      }
-      // Clear single sort when using multi-sort
+      multi_sort = multi_sort.some((entry) => entry.column === col_id)
+        ? multi_sort.filter((entry) => entry.column !== col_id)
+        : [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
       sort = { column: ``, dir: `asc` }
-    } else {
-      // Regular click - single column sort
-      multi_sort = [] // Clear multi-sort
-      // Use sort_state.column for comparison since it includes initial_sort fallback
-      const new_dir =
-        sort_state.column !== col_id
-          ? col.better === `lower`
-            ? `asc`
-            : `desc`
-          : sort_state.ascending
-            ? `desc`
-            : `asc`
+      return
+    }
+    multi_sort = []
+    const first_dir = col.better === `lower` ? `asc` : `desc`
+    const on_this_col = sort_state.column === col_id
+    const flipped = sort_state.ascending ? `desc` : `asc`
+    // Third click on the same column clears the sort, restoring the data's own order.
+    // Two cases keep the plain asc/desc cycle: an initial_sort (sort_state falls back to
+    // it, so "cleared" would re-apply it and the cycle would stick) and server-side
+    // sorting (onsort takes a direction, so there's no way to ask for unsorted).
+    const cleared =
+      on_this_col && tri_state_sort && !initial_sort_config && !onsort && flipped === first_dir
+    const new_dir = on_this_col ? flipped : first_dir
 
-      // Save previous sort state in case we need to revert on error
-      const prev_sort = { ...sort }
-      sort = { column: col_id, dir: new_dir }
+    const prev_sort = { ...sort }
+    sort = cleared ? { column: ``, dir: `asc` } : { column: col_id, dir: new_dir }
+    if (cleared || !onsort) return
 
-      // If onsort callback provided, fetch new data from server
-      if (onsort) {
-        loading = true
-        const request_id = ++sort_request_id
-        try {
-          const result = await onsort(col_id, new_dir)
-          // Only update if this is still the most recent request (avoid race condition)
-          if (request_id === sort_request_id) {
-            data = result
-          }
-        } catch (err) {
-          console.error(`Sort callback failed:`, err)
-          // Revert sort state on failure so UI doesn't show wrong direction
-          if (request_id === sort_request_id) {
-            sort = prev_sort
-            onsorterror?.(err, col_id, new_dir)
-          }
-        } finally {
-          // Only clear loading if this is still the most recent request
-          if (request_id === sort_request_id) {
-            loading = false
-          }
-        }
+    // Server-side sort. Every write is gated on still being the newest request, so a slow
+    // response can't overwrite the data or spinner state of the sort that superseded it.
+    loading = true
+    const request_id = ++sort_request_id
+    try {
+      const result = await onsort(col_id, new_dir)
+      if (request_id === sort_request_id) data = result
+    } catch (err) {
+      console.error(`Sort callback failed:`, err)
+      if (request_id === sort_request_id) {
+        sort = prev_sort // else the header shows a direction the data isn't in
+        onsorterror?.(err, col_id, new_dir)
       }
+    } finally {
+      if (request_id === sort_request_id) loading = false
     }
   }
 
-  // Extract numeric value from strings with uncertainty notation: "1.23 ± 0.05", "1.23 +- 0.05", "1.23(5)"
-  function parse_numeric_val(val: CellVal): number | null {
-    if (typeof val === `number`) return Number.isNaN(val) ? null : val
-    return typeof val === `string` ? parse_numeric_string(val) : null
-  }
+  // One numeric pass per visible column, shared by the color scales, the summary row,
+  // best-cell highlighting and data bars. Quantiles are skipped unless requested.
+  let needs_quantiles = $derived(
+    (Array.isArray(summary) && summary.includes(`median`)) ||
+      columns.some((col) => col.normalize === `quantile`),
+  )
+  // Each column's stats carry the color domain they resolve to, since every consumer
+  // (color scale, data bar) needs both together.
+  let column_stats = $derived.by(() => {
+    const stats = new SvelteMap<string, ColumnStats & { domain: [number, number] }>()
+    const groups = new SvelteMap<string, [number, number][]>()
+    for (const col of visible_columns) {
+      const parsed = filtered_data.map((row) => parse_numeric_val(row[cell_key(col)]))
+      const col_stats = compute_column_stats(parsed, better_of(col), needs_quantiles)
+      if (!col_stats) continue
+      const domain = resolve_color_domain(col_stats, col.normalize)
+      stats.set(get_col_id(col), { ...col_stats, domain })
+      const group = col.domain_group
+      if (group) groups.set(group, [...(groups.get(group) ?? []), domain])
+    }
+    // Columns sharing a tag end up on one merged domain, so their cells compare directly
+    for (const col of visible_columns) {
+      const entry = stats.get(get_col_id(col))
+      const merged = col.domain_group && merge_domains(groups.get(col.domain_group) ?? [])
+      if (entry && merged) entry.domain = merged
+    }
+    return stats
+  })
 
-  // Memoized per-column color scales: the O(rows) numeric scan + min/max +
-  // d3 scale construction run once per column when data/filter/overrides
-  // change, instead of once per CELL per render (which made a 50-row page over
-  // a 2,000-row snapshot rescan the full column 500+ times). Built from
-  // filtered_data (not sorted_data) since min/max don't depend on row order,
-  // so re-sorting doesn't rebuild the scales. Only visible columns get scales
-  // since calc_color is only ever invoked for visible cells.
+  // Construct each color mapper once per visible column, not once per rendered cell.
   let column_color_scales = $derived.by(() => {
     const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
     for (const col of visible_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
-      const parsed_vals = filtered_data.map((row) => parse_numeric_val(row[col_id]))
-      const better = better_overrides.get(col_id) ?? col.better
-      const scale = (color_scale_overrides.get(col_id) ??
-        col.color_scale ??
-        `interpolateViridis`) as Parameters<typeof make_cell_color_scale>[2]
+      const stats = column_stats.get(col_id)
+      const scale = color_scale_of(col) ?? `interpolateViridis`
       scales.set(
         col_id,
-        make_cell_color_scale(parsed_vals, better, scale, col.scale_type || `linear`),
+        make_cell_color_scale(
+          stats?.values ?? [],
+          better_of(col),
+          scale,
+          col.scale_type || `linear`,
+          // minmax needs no explicit domain; leaving it off keeps the existing
+          // unclamped behavior for every column that doesn't opt into normalization
+          col.normalize || col.domain_group ? stats?.domain : undefined,
+        ),
       )
     }
     return scales
   })
+
+  // Best value per column, for the leaderboard ring. Needs `better` to know which end
+  // wins, so a column without a direction highlights nothing.
+  const is_best_cell = (val: CellVal, col: Label): boolean => {
+    if (!col.highlight_best) return false
+    const best = column_stats.get(get_col_id(col))?.best
+    return best != null && parse_numeric_val(val) === best
+  }
+
+  // Fraction of the column's domain a value fills, for in-cell data bars. Clamped so a
+  // quantile-clipped domain saturates instead of overflowing the cell.
+  const bar_fraction = (val: CellVal, col: Label): number | null => {
+    const col_id = get_col_id(col)
+    const num = parse_numeric_val(val)
+    const stats = column_stats.get(col_id)
+    if (num === null || !stats) return null
+    const [lo, hi] = stats.domain
+    if (hi === lo) return 1
+    const frac = (num - lo) / (hi - lo)
+    // `lower is better` puts the best value at the full end, matching the color scale
+    const oriented = better_of(col) === `lower` ? 1 - frac : frac
+    return Math.max(0, Math.min(1, oriented))
+  }
 
   function calc_color(val: CellVal, col: Label): CellColor {
     const color_fn = column_color_scales.get(get_col_id(col))
@@ -1032,28 +1238,120 @@
       (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     ),
   )
-  // total cell count per body row (for spacer + empty-message colspans)
-  let body_colspan = $derived(
-    visible_columns.length + (show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0),
-  )
+  let has_group_header = $derived(visible_columns.some((col) => col.group))
 
-  // Arrow (plus a numbered badge under multi-sort) for actively sorted columns
-  const sort_indicator = (col: Label, current_sort_state: SortState) => {
+  // --- Column virtualization: the horizontal twin of the row window. Off by default, and
+  // ignored when group headers are present because their colspans assume every column of
+  // the group renders. Sticky columns are exempt from windowing since they're pinned on
+  // screen at any scroll — but only a leading run of them keeps its place: a sticky column
+  // from the middle would render right after the window, at the wrong position (and the
+  // single left/right spacer pair could not stand in for the columns it skipped).
+  let sticky_cols_lead = $derived(
+    visible_columns.findIndex((col) => !col.sticky) >=
+      visible_columns.findLastIndex((col) => col.sticky),
+  )
+  let virtual_cols_config = $derived(
+    !virtual_columns || has_group_header || !sticky_cols_lead
+      ? null
+      : {
+          overscan: 3,
+          col_width: 120,
+          ...(typeof virtual_columns === `object` ? virtual_columns : {}),
+        },
+  )
+  let column_window = $derived.by(() => {
+    const total = visible_columns.length
+    if (!virtual_cols_config) return { start: 0, end: total }
+    // Before the first measurement, assume a viewport rather than rendering every column
+    const width = viewport_width || 1200
+    // A fixed estimate, never measured back from the window it chose: that feedback loop
+    // oscillates instead of settling when columns differ in width.
+    const { col_width } = virtual_cols_config
+    const first = Math.floor(scroll_left / col_width)
+    const visible_count = Math.ceil(width / col_width)
+    return {
+      start: Math.max(0, first - virtual_cols_config.overscan),
+      end: Math.min(total, first + visible_count + virtual_cols_config.overscan),
+    }
+  })
+  // [absolute index, column] pairs for the cells actually rendered. The index stays
+  // absolute so cell-selection coordinates and copy ranges are unaffected by windowing.
+  let rendered_columns = $derived.by(() => {
+    const pairs = visible_columns.map((col, col_idx) => [col_idx, col] as const)
+    if (!virtual_cols_config) return pairs
+    const { start, end } = column_window
+    return pairs.filter(([col_idx, col]) => col.sticky || (col_idx >= start && col_idx < end))
+  })
+  // Widths standing in for the columns skipped either side, so the horizontal scrollbar
+  // and the sticky offsets keep the geometry of the full table.
+  let col_spacers = $derived.by(() => {
+    if (!virtual_cols_config) return { left: 0, right: 0 }
+    const skipped = (from: number, to: number) =>
+      visible_columns.slice(from, to).filter((col) => !col.sticky).length *
+      virtual_cols_config.col_width
+    return {
+      left: skipped(0, column_window.start),
+      right: skipped(column_window.end, visible_columns.length),
+    }
+  })
+  // Seed the viewport size once mounted, so the first window is sized from the real
+  // container instead of the fallback guess
+  $effect(() => {
+    if (virtual_cols_config && scroll_el) sync_viewport()
+  })
+  let summary_stats = $derived<SummaryStat[]>(
+    summary === true ? [`mean`] : summary === false ? [] : summary,
+  )
+  $effect(() => {
+    const sticky_ids = visible_columns.filter((col) => col.sticky).map(get_col_id)
+    void column_prefs // rerun after a manual column resize
+    if (!container_el || sticky_ids.length < 2) {
+      if (Object.keys(sticky_offsets).length > 0) sticky_offsets = {}
+      return
+    }
+    const headers = sticky_ids.map((col_id) =>
+      container_el?.querySelector<HTMLElement>(
+        `thead th[data-col-id="${CSS.escape(col_id)}"]`,
+      ),
+    )
+    const update_offsets = () => {
+      let offset = 0
+      const offsets: Record<string, number> = {}
+      sticky_ids.forEach((col_id, idx) => {
+        offsets[col_id] = offset
+        offset += headers[idx]?.offsetWidth ?? 0
+      })
+      if (!sticky_ids.every((col_id) => sticky_offsets[col_id] === offsets[col_id])) {
+        sticky_offsets = offsets
+      }
+    }
+    update_offsets()
+    if (typeof ResizeObserver === `undefined`) return
+    const observer = new ResizeObserver(update_offsets)
+    for (const header of headers) if (header) observer.observe(header)
+    return () => observer.disconnect()
+  })
+  // Cells rendered before the data columns: the select checkbox and the row number
+  let leading_cols = $derived((show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0))
+  // total cell count per body row (for spacer + empty-message colspans)
+  let body_colspan = $derived(visible_columns.length + leading_cols)
+
+  // Sort arrow for an actively sorted column, plus its 1-based place under multi-sort
+  const sort_indicator = (col: Label): { ascending: boolean; rank: number | null } | null => {
     if (col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)) {
-      return ``
+      return null
     }
     const col_id = get_col_id(col)
     const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
     const active =
       multi_idx !== -1
         ? multi_sort[multi_idx]
-        : current_sort_state.column === col_id
-          ? current_sort_state
+        : sort_state.column === col_id
+          ? sort_state
           : null
-    if (!active) return ``
-    const badge =
-      multi_idx !== -1 && multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
-    return `<span style="font-size: 0.8em;">${active.ascending ? `↓` : `↑`}${badge}</span>`
+    if (!active) return null
+    const ranked = multi_idx !== -1 && multi_sort.length > 1
+    return { ascending: active.ascending, rank: ranked ? multi_idx + 1 : null }
   }
 
   // Context menu state for column right-click (headers and body cells). `at` is what
@@ -1064,9 +1362,8 @@
   // toggling off re-selects nothing, so the section's radios all read unchecked
   const toggle_better = (direction: `higher` | `lower`) => {
     if (!context_menu_col) return
-    if (better_overrides.get(context_menu_col) === direction) {
-      better_overrides.delete(context_menu_col)
-    } else better_overrides.set(context_menu_col, direction)
+    const current = prefs_of(context_menu_col).better
+    set_pref(context_menu_col, `better`, current === direction ? undefined : direction)
   }
 
   const better_section = {
@@ -1096,6 +1393,8 @@
     end_col: number
   }
   let selected_cell_rects = $state<CellRect[]>([])
+  // Roving tabindex anchor: exactly one cell is tabbable, and arrow keys move it
+  let active_cell = $state<{ row: number; col: number }>({ row: 0, col: 0 })
   let cell_drag_active = $state(false)
   let cell_drag_moved = false
   let suppress_row_click = false
@@ -1124,11 +1423,34 @@
   // nor column reorder/hide (col indices point into visible_columns). Depends
   // on sorted_data + current_page + visible_columns (not the virtual window)
   // so plain scrolling in infinite mode doesn't wipe an active selection.
+  // Keyboard navigation off the end of a page turns the page itself; those
+  // coordinates are absolute and still valid, so that one case is exempt.
+  let keyboard_paging = false
   $effect(() => {
     void sorted_data
     void current_page
     void visible_columns
+    if (keyboard_paging) {
+      keyboard_paging = false
+      return
+    }
     selected_cell_rects = []
+  })
+
+  // The cell that actually carries the tab stop. active_cell can point off the rendered
+  // page or outside the column window (after paging, hiding a column, shrinking the data
+  // or scrolling horizontally); without clamping, every cell would be tabindex=-1 and the
+  // table would drop out of the tab order entirely.
+  let tab_stop = $derived.by(() => {
+    const rows = display_rows.length
+    if (rows === 0 || rendered_columns.length === 0) return { row: -1, col: -1 }
+    const first_row = display_range.start
+    const row = Math.min(Math.max(active_cell.row, first_row), first_row + rows - 1)
+    const col =
+      rendered_columns.find(([col_idx]) => col_idx >= active_cell.col)?.[0] ??
+      rendered_columns.at(-1)?.[0] ??
+      -1
+    return { row, col }
   })
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
@@ -1210,9 +1532,7 @@
       for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
         const cells: string[] = []
         for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
-          cells.push(
-            cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]),
-          )
+          cells.push(cell_copy_text(sorted_data[row_idx][cell_key(visible_columns[col_idx])]))
         }
         lines.push(cells.join(`\t`))
       }
@@ -1223,9 +1543,91 @@
 
   // Every sorted+filtered value of one column (all pages), one per line
   function copy_column_values(col_id: string) {
+    const row_key = key_of_id(col_id)
     void navigator.clipboard?.writeText(
-      sorted_data.map((row) => cell_copy_text(row[col_id])).join(`\n`),
+      sorted_data.map((row) => cell_copy_text(row[row_key])).join(`\n`),
     )
+  }
+
+  // Keyboard equivalents of the mouse-only interactions. Arrow keys walk the active cell,
+  // Shift+arrow grows the selection rectangle from it, Alt+arrow moves the whole column.
+  // Only runs while a cell has focus, so page-level arrow scrolling is untouched otherwise.
+  const ARROW_DELTAS: Record<string, [row: number, col: number]> = {
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+  }
+  function handle_cell_keydown(event: KeyboardEvent, row_idx: number, col_idx: number) {
+    const delta = ARROW_DELTAS[event.key]
+    if (!delta) return
+    if (is_interactive_cell_target(event.target)) return
+    const [row_step, col_step] = delta
+    // Alt+Up/Down means nothing here; leave it to the browser rather than swallowing it
+    if (event.altKey && col_step === 0) return
+    event.preventDefault()
+    // Rows carry their own Arrow handling when onrowclick is set; without this the key
+    // would move the cell and then also move focus to a <tr>
+    event.stopPropagation()
+
+    if (event.altKey) {
+      // Alt+Left/Right reorders columns, the keyboard counterpart of header dragging
+      move_column(visible_columns[col_idx], col_step)
+      return
+    }
+    const next_row = Math.min(sorted_data.length - 1, Math.max(0, row_idx + row_step))
+    const next_col = Math.min(visible_columns.length - 1, Math.max(0, col_idx + col_step))
+    // Shift grows the newest rectangle from where it started; a plain arrow replaces the
+    // selection with the 1x1 cell it lands on.
+    const anchor = event.shiftKey
+      ? (selected_cell_rects.at(-1) ?? { start_row: row_idx, start_col: col_idx })
+      : { start_row: next_row, start_col: next_col }
+    const kept = event.shiftKey ? selected_cell_rects.slice(0, -1) : []
+    selected_cell_rects = [...kept, { ...anchor, end_row: next_row, end_col: next_col }]
+    focus_cell(next_row, next_col)
+  }
+
+  // Move focus to a cell by its absolute coordinates, paging/scrolling it into view first
+  function focus_cell(row_idx: number, col_idx: number) {
+    if (pagination_config) {
+      const page = Math.floor(row_idx / effective_page_size) + 1
+      // flag before the write so the selection-clearing effect lets this one through
+      if (page !== current_page) keyboard_paging = true
+      current_page = page
+    }
+    if (
+      virtual_config &&
+      scroll_el &&
+      (row_idx < virtual_range.start || row_idx >= virtual_range.end)
+    ) {
+      scroll_el.scrollTop = row_idx * avg_row_height
+      sync_viewport()
+    }
+    active_cell = { row: row_idx, col: col_idx }
+    // The row may not be rendered yet (page flip or virtual window), so wait a tick
+    void tick().then(() => {
+      container_el
+        ?.querySelector<HTMLElement>(
+          `td[data-row-idx="${row_idx}"][data-col-idx="${col_idx}"]`,
+        )
+        ?.focus()
+    })
+  }
+
+  // Shift a column left/right within its group, mirroring what a drag-and-drop does
+  function move_column(col: Label | undefined, step: number) {
+    if (!col) return
+    const col_id = get_col_id(col)
+    const from = column_order.indexOf(col_id)
+    const neighbour = visible_columns[visible_columns.indexOf(col) + step]
+    // Group headers must stay contiguous, same rule the drop handler enforces
+    if (from === -1 || !neighbour || neighbour.group !== col.group) return
+    const to = column_order.indexOf(get_col_id(neighbour))
+    if (to === -1) return
+    const next = [...column_order]
+    next.splice(from, 1)
+    next.splice(to, 0, col_id)
+    column_order = next
   }
 
   function handle_cell_selection_keydown(event: KeyboardEvent) {
@@ -1267,23 +1669,55 @@
     },
     // Gradient direction only applies to heatmap-colored columns
     ...(allow_better_toggle && context_menu_column?.color_scale != null
-      ? [{ ...better_section, selected: better_overrides.get(context_menu_col ?? ``) ?? `` }]
+      ? [{ ...better_section, selected: prefs_of(context_menu_col ?? ``).better ?? `` }]
       : []),
   ])
 
   // Row selection via an ID-indexed Set so per-row checks are O(1) instead of
   // linear scans over selected_rows (matters for large virtualized datasets)
-  let selected_id_set = $derived(new Set(selected_rows.map((row) => get_row_id(row))))
+  let selected_id_set = $derived(new SvelteSet(selected_rows.map((row) => get_row_id(row))))
+
+  function append_selected_rows(rows: RowData[]) {
+    const row_ids = rows.map(get_row_id)
+    const start_idx = selected_rows.length
+    selected_rows = [...selected_rows, ...rows]
+    // A bound parent may deep-proxy assigned rows, changing their object identity.
+    for (const [row_idx, row_id] of row_ids.entries()) {
+      const stored_row = selected_rows[start_idx + row_idx]
+      if (stored_row) row_id_map.set(stored_row, row_id)
+    }
+  }
 
   function toggle_row_select(row: RowData) {
     const row_id = get_row_id(row)
-    selected_rows = selected_id_set.has(row_id)
-      ? selected_rows.filter((selected_row) => get_row_id(selected_row) !== row_id)
-      : [...selected_rows, row]
+    if (selected_id_set.has(row_id)) {
+      selected_rows = selected_rows.filter(
+        (selected_row) => get_row_id(selected_row) !== row_id,
+      )
+    } else {
+      append_selected_rows([row])
+    }
   }
 
-  function is_row_selected(row: RowData): boolean {
-    return selected_id_set.has(get_row_id(row))
+  const is_row_selected = (row: RowData): boolean => selected_id_set.has(get_row_id(row))
+
+  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one
+  function handle_row_keydown(
+    event: KeyboardEvent & { currentTarget: HTMLElement },
+    row: RowData,
+  ) {
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      onrowclick?.(event, row)
+      return
+    }
+    if (event.key !== `ArrowDown` && event.key !== `ArrowUp`) return
+    event.preventDefault()
+    const sibling =
+      event.key === `ArrowDown`
+        ? event.currentTarget.nextElementSibling
+        : event.currentTarget.previousElementSibling
+    if (sibling instanceof HTMLElement) sibling.focus()
   }
 
   // Select-all scope: the current page under pagination, every sorted+filtered
@@ -1296,12 +1730,12 @@
 
   function toggle_select_all() {
     if (all_page_selected) {
-      const scope_ids = new Set(select_all_rows.map(get_row_id))
+      const scope_ids = new SvelteSet(select_all_rows.map(get_row_id))
       selected_rows = selected_rows.filter((row) => !scope_ids.has(get_row_id(row)))
     } else {
-      const already = new Set(selected_rows.map(get_row_id))
-      const new_rows = select_all_rows.filter((row) => !already.has(get_row_id(row)))
-      selected_rows = [...selected_rows, ...new_rows]
+      append_selected_rows(
+        select_all_rows.filter((row) => !selected_id_set.has(get_row_id(row))),
+      )
     }
   }
 
@@ -1310,45 +1744,115 @@
     show_row_select && selected_rows.length > 0 ? selected_rows : sorted_data,
   )
 
-  // Serialize table as delimited text (shared by CSV export and clipboard copy).
-  // TSV skips quoting; CSV goes through the shared RFC 4180 escaper.
+  // Visible table cells as plain text, one array per row. The single extraction every
+  // exporter builds on, so CSV, TSV, markdown and LaTeX can't drift apart.
+  function table_matrix(): { headers: string[]; rows: string[][] } {
+    return {
+      headers: visible_columns.map((col) => strip_html(col.label)),
+      rows: export_rows.map((row) =>
+        visible_columns.map((col) => {
+          const val = row[cell_key(col)]
+          return val == null ? `` : strip_html(String(val))
+        }),
+      ),
+    }
+  }
+
+  // Delimited text (CSV export and clipboard copy). TSV skips quoting; CSV goes through
+  // the shared RFC 4180 escaper.
   function serialize_table(delimiter: string, csv_quote = false): string {
-    const quote = (str: string) => (csv_quote ? escape_csv_field(str) : str)
-    const headers = visible_columns.map((col) => quote(strip_html(col.label)))
-    const rows = export_rows.map((row) =>
-      visible_columns.map((col) => {
-        const val = row[get_col_id(col)]
-        if (val == null) return ``
-        return quote(strip_html(String(val)))
-      }),
-    )
-    return [headers.join(delimiter), ...rows.map((row) => row.join(delimiter))].join(`\n`)
+    const { headers, rows } = table_matrix()
+    const quote = (str: string) =>
+      csv_quote ? escape_csv_field(str) : str.replaceAll(/[\t\r\n]+/g, ` `)
+    return [headers, ...rows].map((cells) => cells.map(quote).join(delimiter)).join(`\n`)
   }
 
-  function export_csv(filename: string) {
-    download(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
+  const get_numeric_col_flags = () =>
+    visible_columns.map((col) => numeric_columns.has(get_col_id(col)))
+
+  // GitHub-flavoured markdown: header, alignment row, then the body
+  function export_markdown(): string {
+    const { headers, rows } = table_matrix()
+    const align = get_numeric_col_flags().map((is_numeric) => (is_numeric ? `---:` : `:---`))
+    // Backslash first (or it would re-escape the one we add for `|`), and newlines become
+    // <br>: a literal line break would end the table row mid-cell.
+    const escape_md = (text: string) =>
+      text.replaceAll(`\\`, `\\\\`).replaceAll(`|`, `\\|`).replaceAll(/\r?\n/g, `<br>`)
+    const line = (cells: string[]) => `| ${cells.map(escape_md).join(` | `)} |`
+    return [line(headers), line(align), ...rows.map(line)].join(`\n`)
   }
 
-  function export_json(filename: string) {
+  // LaTeX booktabs, the table style journals expect. `&` and friends are escaped so a
+  // cell containing them doesn't break the document.
+  function export_latex(): string {
+    const { headers, rows } = table_matrix()
+    // One pass over a character map: escaping in stages would re-escape the backslashes
+    // and braces of the replacements themselves.
+    const TEX_ESCAPES: Record<string, string> = {
+      '\\': `\\textbackslash{}`,
+      '^': `\\textasciicircum{}`,
+      '~': `\\textasciitilde{}`,
+      '&': `\\&`,
+      '%': `\\%`,
+      $: `\\$`,
+      '#': `\\#`,
+      _: `\\_`,
+      '{': `\\{`,
+      '}': `\\}`,
+    }
+    const escape_tex = (text: string) =>
+      text.replaceAll(/(?<special>[\\^~&%$#_{}])/g, (char) => TEX_ESCAPES[char] ?? char)
+    const line = (cells: string[]) => `  ${cells.map(escape_tex).join(` & `)} \\\\`
+    const spec = get_numeric_col_flags()
+      .map((is_numeric) => (is_numeric ? `r` : `l`))
+      .join(``)
+    return [
+      `\\begin{tabular}{${spec}}`,
+      `  \\toprule`,
+      line(headers),
+      `  \\midrule`,
+      ...rows.map(line),
+      `  \\bottomrule`,
+      `\\end{tabular}`,
+    ].join(`\n`)
+  }
+
+  function export_json(): string {
     const rows = export_rows.map((row) => {
       const clean_row: Record<string, unknown> = {}
       for (const col of visible_columns) {
-        const col_id = get_col_id(col)
-        const val = row[col_id]
+        const val = row[cell_key(col)]
         clean_row[strip_html(col.label)] = typeof val === `string` ? strip_html(val) : val
       }
       return clean_row
     })
-    download(JSON.stringify(rows, null, 2), `${filename}.json`, `application/json`)
+    return JSON.stringify(rows, null, 2)
   }
 
+  // Renderers only: the format doubles as the file extension and the table carries the MIME
+  // type, so the download call itself lives in one place (the export menu).
   const export_actions = [
-    [`csv`, export_csv],
-    [`json`, export_json],
+    [`csv`, `text/csv`, () => serialize_table(`,`, true)],
+    [`json`, `application/json`, export_json],
+    [`md`, `text/markdown`, export_markdown],
+    [`tex`, `text/x-tex`, export_latex],
   ] as const
 
   function copy_to_clipboard() {
     navigator.clipboard.writeText(serialize_table(`\t`))
+  }
+
+  // Separate color settings so resetting them preserves widths, filters and date formats.
+  function split_color_prefs() {
+    const color: Record<string, ColumnPrefs> = {}
+    const remaining: Record<string, ColumnPrefs> = {}
+    for (const [col_id, { better, color_scale, ...kept }] of Object.entries(column_prefs)) {
+      if (better || color_scale) {
+        color[col_id] = { ...(better && { better }), ...(color_scale && { color_scale }) }
+      }
+      if (Object.keys(kept).length > 0) remaining[col_id] = kept
+    }
+    return { color, rest: remaining }
   }
 
   // Column visibility toggle
@@ -1375,13 +1879,33 @@
     if (!resize_col_id) return
     const delta = event.clientX - resize_start_x
     const new_width = Math.min(500, Math.max(50, resize_start_width + delta))
-    column_widths = { ...column_widths, [resize_col_id]: new_width }
+    set_pref(resize_col_id, `width`, new_width)
   }
 
   function stop_resize() {
     resize_col_id = null
     document.removeEventListener(`mousemove`, handle_resize)
     document.removeEventListener(`mouseup`, stop_resize)
+  }
+
+  // Double-click the handle to fit the column to its widest rendered cell. Cells clip with
+  // ellipsis, so scrollWidth is the untruncated content width; the header counts too.
+  // Only the rendered rows by design: measuring every row of a virtualized or paged table
+  // would mean laying the whole dataset out off-screen on a double-click.
+  function autofit_column(event: MouseEvent, col_id: string) {
+    event.preventDefault()
+    event.stopPropagation()
+    const cells = container_el?.querySelectorAll<HTMLElement>(
+      `th[data-col-id="${CSS.escape(col_id)}"], td[data-col-idx="${visible_columns.findIndex(
+        (col) => get_col_id(col) === col_id,
+      )}"]`,
+    )
+    let widest = 0
+    for (const element of cells ?? []) {
+      const padding = element.offsetWidth - element.clientWidth
+      widest = Math.max(widest, element.scrollWidth + padding)
+    }
+    if (widest > 0) set_pref(col_id, `width`, Math.min(500, Math.max(50, widest + 8)))
   }
 
   // Normalize sort_hint to a config object with defaults
@@ -1398,12 +1922,169 @@
 
 <svelte:window
   onpointerdown={(event) => {
-    close_datetime_select_on_outside_pointerdown(event)
+    close_header_popovers_on_outside_pointerdown(event)
     clear_cell_selection_on_outside_pointerdown(event)
   }}
   onpointerup={end_cell_drag}
   onkeydown={handle_cell_selection_keydown}
 />
+
+<!-- Shared toolbar dropdown; `id` also tracks the single open pane. -->
+{#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
+  <button
+    class="icon-btn"
+    class:active
+    onclick={on_click}
+    {@attach tooltip({ content: tip, placement: `top` })}
+  >
+    <Icon {icon} />
+  </button>
+{/snippet}
+
+{#snippet dropdown(id: `columns` | `export`, icon: IconData, options: Snippet)}
+  <div class="dropdown-wrapper">
+    {@render icon_btn(
+      icon,
+      id === `columns` ? `Columns` : `Export`,
+      () => (open_dropdown = open_dropdown === id ? null : id),
+      open_dropdown === id,
+    )}
+    {#if open_dropdown === id}
+      <div class="dropdown-pane">{@render options()}</div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet column_options()}
+  {#each ordered_columns as col (get_col_id(col))}
+    {@const col_id = get_col_id(col)}
+    <label class="dropdown-option">
+      <input
+        type="checkbox"
+        checked={!hidden_columns.includes(col_id)}
+        onchange={() => toggle_column(col_id)}
+      />
+      {@html sanitize_html(col.label)}
+    </label>
+  {/each}
+{/snippet}
+
+{#snippet export_options()}
+  {#each export_actions as [format, mime, render] (format)}
+    {#if export_config?.formats.includes(format)}
+      <button
+        class="dropdown-option"
+        onclick={() => {
+          const name = export_config?.filename ?? `table-export`
+          download(render(), `${name}.${format}`, mime)
+          open_dropdown = null
+        }}
+      >
+        <Icon icon={Download} style="width: 12px" />
+        {format.toUpperCase()}
+      </button>
+    {/if}
+  {/each}
+  <button
+    class="dropdown-option"
+    onclick={() => {
+      copy_to_clipboard()
+      open_dropdown = null
+    }}
+  >
+    <Icon icon={Copy} style="width: 12px" /> Copy
+  </button>
+{/snippet}
+
+<!-- Per-column filter: funnel button in the header opening a panel whose controls depend
+     on the column's data — a range for numbers, a checklist for few distinct values,
+     a substring box otherwise. Every event stops at the panel so the sortable, draggable
+     header underneath doesn't react. -->
+{#snippet column_filter(col: Label, col_id: string)}
+  {@const active = prefs_of(col_id).filter}
+  <span class="column-filter">
+    <button
+      type="button"
+      class="column-filter-trigger"
+      class:active={Boolean(active)}
+      aria-label="Filter {strip_html(col.label)}"
+      aria-expanded={filter_panel_col_id === col_id}
+      onkeydown={stop_event}
+      onmousedown={stop_event}
+      onpointerdown={stop_event}
+      onclick={(event) => {
+        stop_event(event)
+        filter_panel_col_id = filter_panel_col_id === col_id ? null : col_id
+      }}
+    >
+      <Icon icon={Filter} />
+    </button>
+    {#if filter_panel_col_id === col_id && filter_panel}
+      <!-- svelte-ignore a11y_no_static_element_interactions (guard so panel input never reaches the header) -->
+      <div
+        class="column-filter-panel"
+        onclick={stop_event}
+        onkeydown={(event) => {
+          stop_event(event)
+          if (event.key === `Escape`) filter_panel_col_id = null
+        }}
+        onmousedown={stop_event}
+        onpointerdown={stop_event}
+      >
+        {#if filter_panel.kind === `numeric`}
+          {@const range = active?.kind === `numeric` ? active : null}
+          {@const stats = column_stats.get(col_id)}
+          {#each [`min`, `max`] as const as bound (bound)}
+            <label>
+              {bound === `min` ? `Min` : `Max`}
+              <input
+                type="number"
+                value={range?.[bound] ?? ``}
+                placeholder={stats ? format_num(stats[bound], `.3~g`) : ``}
+                oninput={(event) =>
+                  update_numeric_filter(col_id, bound, event.currentTarget.value)}
+              />
+            </label>
+          {/each}
+        {:else if filter_panel.kind === `category`}
+          {@const selected = active?.kind === `category` ? active.values : null}
+          {@const options = filter_panel.options}
+          <div class="column-filter-options">
+            {#each options as option (option)}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selected === null || selected.includes(option)}
+                  onchange={() => toggle_category(col_id, option, options)}
+                />
+                {option || `(blank)`}
+              </label>
+            {/each}
+          </div>
+        {:else}
+          <input
+            type="search"
+            placeholder="Contains..."
+            value={active?.kind === `text` ? active.text : ``}
+            oninput={(event) => {
+              const text = event.currentTarget.value
+              set_filter(col_id, text ? { kind: `text`, text } : undefined)
+            }}
+          />
+        {/if}
+        {#if active}
+          <button
+            type="button"
+            class="column-filter-clear"
+            onclick={() => set_filter(col_id, undefined)}
+          >
+            Clear filter
+          </button>
+        {/if}
+      </div>
+    {/if}
+  </span>
+{/snippet}
 
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
@@ -1424,20 +2105,19 @@
   bind:this={container_el}
   class={[`table-container`, rest_props.class]}
   class:cell-dragging={cell_drag_active}
+  data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onclickcapture={suppress_click_after_cell_drag}
   onmouseleave={() => {
-    show_column_dropdown = false
-    show_export_dropdown = false
+    open_dropdown = null
     context_menu_at = null
   }}
 >
-  <!-- Control buttons: render inline above the table, or teleport into a host
-       toolbar (controls_target) so embedding panels reuse their own header row -->
+  <!-- Render controls inline or teleport them into an embedding toolbar. -->
   <section
     class="control-buttons"
     class:portaled={Boolean(controls_target)}
-    class:force-visible={controls_open || show_column_dropdown || show_export_dropdown}
+    class:force-visible={controls_open || open_dropdown !== null}
     {@attach portal(controls_target)}
   >
     {#if search_config}
@@ -1451,93 +2131,21 @@
             if (!search_query) search_expanded = false
           }}
         />
-        <button
-          class="icon-btn"
-          onclick={() => {
-            search_query = ``
-            search_expanded = false
-          }}
-          {@attach tooltip({ content: `Clear`, placement: `top` })}
-        >
-          <Icon icon="Cross" />
-        </button>
+        {@render icon_btn(Cross, `Clear`, () => {
+          search_query = ``
+          search_expanded = false
+        })}
       {:else}
-        <button
-          class="icon-btn"
-          onclick={() => (search_expanded = true)}
-          {@attach tooltip({ content: `Search`, placement: `top` })}
-        >
-          <Icon icon="Search" />
-        </button>
+        {@render icon_btn(SearchIcon, `Search`, () => (search_expanded = true))}
       {/if}
     {/if}
 
     {#if show_column_toggle}
-      <div class="dropdown-wrapper">
-        <button
-          class="icon-btn"
-          class:active={show_column_dropdown}
-          onclick={() => (show_column_dropdown = !show_column_dropdown)}
-          {@attach tooltip({ content: `Columns`, placement: `top` })}
-        >
-          <Icon icon="Columns" />
-        </button>
-        {#if show_column_dropdown}
-          <div class="dropdown-pane">
-            {#each ordered_columns as col (get_col_id(col))}
-              {@const col_id = get_col_id(col)}
-              <label class="dropdown-option">
-                <input
-                  type="checkbox"
-                  checked={!hidden_columns.includes(col_id)}
-                  onchange={() => toggle_column(col_id)}
-                />
-                {@html sanitize_html(col.label)}
-              </label>
-            {/each}
-          </div>
-        {/if}
-      </div>
+      {@render dropdown(`columns`, Columns, column_options)}
     {/if}
 
     {#if export_config}
-      <div class="dropdown-wrapper">
-        <button
-          class="icon-btn"
-          class:active={show_export_dropdown}
-          onclick={() => (show_export_dropdown = !show_export_dropdown)}
-          {@attach tooltip({ content: `Export`, placement: `top` })}
-        >
-          <Icon icon="Export" />
-        </button>
-        {#if show_export_dropdown}
-          <div class="dropdown-pane">
-            {#each export_actions as [format, export_fn] (format)}
-              {#if export_config.formats.includes(format)}
-                <button
-                  class="dropdown-option"
-                  onclick={() => {
-                    export_fn(export_config.filename)
-                    show_export_dropdown = false
-                  }}
-                >
-                  <Icon icon="Download" style="width: 12px" />
-                  {format.toUpperCase()}
-                </button>
-              {/if}
-            {/each}
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                copy_to_clipboard()
-                show_export_dropdown = false
-              }}
-            >
-              <Icon icon="Copy" style="width: 12px" /> Copy
-            </button>
-          </div>
-        {/if}
-      </div>
+      {@render dropdown(`export`, Export, export_options)}
     {/if}
 
     {#if show_row_select && selected_rows.length > 0}
@@ -1547,7 +2155,7 @@
         title="Clear {selected_rows.length} selected rows"
       >
         <span class="badge">{selected_rows.length}</span>
-        <Icon icon="Cross" />
+        <Icon icon={Cross} />
       </button>
     {/if}
 
@@ -1559,8 +2167,8 @@
         pane_props={{
           style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
         }}
-        open_icon="Cross"
-        closed_icon="Settings"
+        open_icon={Cross}
+        closed_icon={Settings}
       >
         <SettingsSection
           title="Heatmap"
@@ -1600,28 +2208,19 @@
         {#if colored_columns.length > 0}
           <SettingsSection
             title="Column Colors"
-            current_values={Object.fromEntries([
-              ...better_overrides,
-              ...color_scale_overrides,
-            ])}
-            on_reset={() => {
-              better_overrides.clear()
-              color_scale_overrides.clear()
-            }}
+            current_values={split_color_prefs().color}
+            on_reset={() => (column_prefs = split_color_prefs().rest)}
           >
             {#each colored_columns as col (get_col_id(col))}
               {@const col_id = get_col_id(col)}
               <div class="col-color-row">
                 <span class="col-color-label">{@html sanitize_html(col.label)}</span>
                 <select
-                  value={color_scale_overrides.get(col_id) ??
-                    col.color_scale ??
-                    `interpolateViridis`}
+                  value={color_scale_of(col) ?? `interpolateViridis`}
                   onchange={(event) => {
-                    const val = event.currentTarget.value
-                    if (val === (col.color_scale ?? `interpolateViridis`))
-                      color_scale_overrides.delete(col_id)
-                    else color_scale_overrides.set(col_id, val)
+                    const val = event.currentTarget.value as D3InterpolateName
+                    const is_default = val === (col.color_scale ?? `interpolateViridis`)
+                    set_pref(col_id, `color_scale`, is_default ? undefined : val)
                   }}
                 >
                   {#each color_scale_options as scale (scale)}
@@ -1629,11 +2228,10 @@
                   {/each}
                 </select>
                 <select
-                  value={better_overrides.get(col_id) ?? col.better ?? ``}
+                  value={better_of(col) ?? ``}
                   onchange={(event) => {
-                    const val = event.currentTarget.value
-                    if (!val) better_overrides.delete(col_id)
-                    else better_overrides.set(col_id, val as `higher` | `lower`)
+                    const val = event.currentTarget.value as `higher` | `lower` | ``
+                    set_pref(col_id, `better`, val || undefined)
                   }}
                 >
                   <option value="">Default</option>
@@ -1659,7 +2257,7 @@
     style={scroll_style}
     class:has-scroll={scroll_style}
     bind:this={scroll_el}
-    onscroll={virtual_config ? sync_viewport : undefined}
+    onscroll={virtual_config || virtual_cols_config ? sync_viewport : undefined}
   >
     {#if loading}
       <div class="loading-overlay">
@@ -1668,12 +2266,17 @@
         />
       </div>
     {/if}
-    <table class:fixed-header={fixed_header} class={heatmap_class}>
+    <table
+      class:fixed-header={fixed_header}
+      class={heatmap_class}
+      style:--group-header-height="{has_group_header ? group_header_height : 0}px"
+      aria-colcount={virtual_cols_config ? body_colspan : undefined}
+    >
       <thead>
         <!-- Don't add a table row for group headers if there are none -->
-        {#if visible_columns.some((col) => col.group)}
+        {#if has_group_header}
           <!-- First level headers -->
-          <tr class="group-header">
+          <tr class="group-header" bind:clientHeight={group_header_height}>
             {#if show_row_select}
               <th class="select-col"></th>
             {/if}
@@ -1682,18 +2285,15 @@
             {/if}
             {#each visible_columns as col (get_col_id(col))}
               {#if !col.group}
-                <th class:sticky-col={col.sticky}></th>
-              {:else}
-                <!-- Only render the group header once per group (on its first column) -->
-                {#if visible_columns.find((column) => column.group === col.group) === col}
-                  <th
-                    title={col.description}
-                    colspan={visible_columns.filter((column) => column.group === col.group)
-                      .length}
-                  >
-                    {@html sanitize_html(col.group)}
-                  </th>
-                {/if}
+                <th class:sticky-col={col.sticky} style:left={sticky_left(col)}></th>
+                <!-- the group header renders once per group, on the group's first column -->
+              {:else if visible_columns.find((one) => one.group === col.group) === col}
+                <th
+                  title={col.description}
+                  colspan={visible_columns.filter((one) => one.group === col.group).length}
+                >
+                  {@html sanitize_html(col.group)}
+                </th>
               {/if}
             {/each}
           </tr>
@@ -1715,15 +2315,19 @@
           {#if show_row_numbers}
             <th class="row-num-col">#</th>
           {/if}
-          {#each visible_columns as col (get_col_id(col))}
+          {@render col_spacer(col_spacers.left, `th`)}
+          {#each rendered_columns as [_col_idx, col] (get_col_id(col))}
             {@const col_id = get_col_id(col)}
             {@const is_datetime = is_datetime_column(col)}
             {@const dt_mode = datetime_mode(col)}
             {@const datetime_label_id = get_datetime_label_id(col_id)}
             {@const drag_side = drag_over_col_id === col_id ? get_drag_side(col_id) : null}
-            {@const col_width = column_widths[col_id]}
+            {@const col_width = width_of(col_id)}
+            {@const sorted_by = sort_indicator(col)}
             <th
               title={col.description}
+              data-col-id={col_id}
+              style:left={sticky_left(col)}
               tabindex={col.sortable === false ? undefined : 0}
               role={col.sortable === false ? undefined : `button`}
               oncontextmenu={(event) => open_column_context_menu(event, col_id)}
@@ -1746,10 +2350,11 @@
                 col_width ? `; width: ${col_width}px; min-width: ${col_width}px` : ``
               }`}
               class:sticky-col={col.sticky}
+              class:numeric-col={numeric_columns.has(col_id)}
               class:not-sortable={col.sortable === false}
-              class:dragging={drag_col_id === col_id}
               class:resizing={resize_col_id === col_id}
               class:datetime-select-open={datetime_select_open_col_id === col_id}
+              class:filter-panel-open={filter_panel_col_id === col_id}
               data-drag-side={drag_side}
               draggable="true"
               aria-dropeffect="move"
@@ -1758,24 +2363,28 @@
                   ? `ascending`
                   : `descending`
                 : `none`}
-              ondragstart={(event: DragEvent & { currentTarget: HTMLElement }) => {
-                handle_drag_start(event, col)
-                event.currentTarget.setAttribute(`aria-grabbed`, `true`)
-              }}
+              aria-grabbed={drag_col_id === col_id ? `true` : undefined}
+              ondragstart={(event) => handle_drag_start(event, col)}
               ondragover={(event) => handle_drag_over(event, col)}
               ondragleave={() => (drag_over_col_id = null)}
               ondrop={(event) => handle_drop(event, col)}
-              ondragend={(event: DragEvent & { currentTarget: HTMLElement }) => {
-                reset_drag_state()
-                event.currentTarget.removeAttribute(`aria-grabbed`)
-              }}
+              ondragend={reset_drag_state}
             >
               {#if header_cell}
                 {@render header_cell({ col })}
               {:else}
                 {@html sanitize_html(col.label)}
               {/if}
-              {@html sanitize_html(sort_indicator(col, sort_state))}
+              {#if sorted_by}
+                <span style="font-size: 0.8em"
+                  >{sorted_by.ascending ? `↓` : `↑`}{#if sorted_by.rank}<sup
+                      >{sorted_by.rank}</sup
+                    >{/if}</span
+                >
+              {/if}
+              {#if show_filters && col.filter !== false}
+                {@render column_filter(col, col_id)}
+              {/if}
               {#if is_datetime}
                 <span class="datetime-format-control">
                   <button
@@ -1785,11 +2394,11 @@
                     aria-haspopup="listbox"
                     aria-expanded={datetime_select_open_col_id === col_id}
                     data-mode={dt_mode}
-                    onkeydown={(event) => event.stopPropagation()}
-                    onmousedown={(event) => event.stopPropagation()}
-                    onpointerdown={(event) => event.stopPropagation()}
+                    onkeydown={stop_event}
+                    onmousedown={stop_event}
+                    onpointerdown={stop_event}
                     onclick={(event) => {
-                      event.stopPropagation()
+                      stop_event(event)
                       datetime_select_open_col_id =
                         datetime_select_open_col_id === col_id ? null : col_id
                     }}
@@ -1798,7 +2407,7 @@
                       placement: `top`,
                     })}
                   >
-                    <Icon icon="Calendar" />
+                    <Icon icon={Calendar} />
                     <span id={datetime_label_id} class="sr-only">
                       Date/time format for {strip_html(col.label)}
                     </span>
@@ -1810,19 +2419,19 @@
                       value={dt_mode}
                       size={datetime_format_options(col).length}
                       onclick={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         if (event.currentTarget.value === dt_mode) {
                           datetime_select_open_col_id = null
                         }
                       }}
                       onkeydown={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         if (event.key === `Escape`) datetime_select_open_col_id = null
                       }}
-                      onmousedown={(event) => event.stopPropagation()}
-                      onpointerdown={(event) => event.stopPropagation()}
+                      onmousedown={stop_event}
+                      onpointerdown={stop_event}
                       oninput={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         set_datetime_format(
                           col,
                           event.currentTarget.value as DateTimeFormatMode,
@@ -1842,6 +2451,7 @@
               <span
                 class="resize-handle"
                 onmousedown={(event) => start_resize(event, col)}
+                ondblclick={(event) => autofit_column(event, col_id)}
                 role="separator"
                 aria-orientation="vertical"
                 aria-valuenow={col_width ?? 100}
@@ -1850,8 +2460,20 @@
               ></span>
             </th>
           {/each}
+          {@render col_spacer(col_spacers.right, `th`)}
         </tr>
       </thead>
+      {#snippet col_spacer(width: number, tag: `th` | `td`)}
+        <!-- stands in for the columns outside the horizontal window -->
+        {#if width > 0}
+          <svelte:element
+            this={tag}
+            class="col-spacer"
+            aria-hidden="true"
+            style:width="{width}px"
+          />
+        {/if}
+      {/snippet}
       {#snippet virtual_spacer(height: number)}
         <!-- preserves scroll geometry for the unrendered rows above/below the window -->
         {#if height > 0}
@@ -1878,22 +2500,7 @@
               : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
-            onkeydown={onrowclick
-              ? (event) => {
-                  if (event.key === `Enter` || event.key === ` `) {
-                    event.preventDefault()
-                    onrowclick(event, row)
-                  } else if (event.key === `ArrowDown`) {
-                    event.preventDefault()
-                    const next = event.currentTarget.nextElementSibling
-                    if (next instanceof HTMLElement) next.focus()
-                  } else if (event.key === `ArrowUp`) {
-                    event.preventDefault()
-                    const prev = event.currentTarget.previousElementSibling
-                    if (prev instanceof HTMLElement) prev.focus()
-                  }
-                }
-              : undefined}
+            onkeydown={onrowclick ? (event) => handle_row_keydown(event, row) : undefined}
           >
             {#if show_row_select}
               <td class="select-col">
@@ -1907,11 +2514,12 @@
             {#if show_row_numbers}
               <td class="row-num-col">{abs_idx + 1}</td>
             {/if}
-            {#each visible_columns as col, col_idx (get_col_id(col))}
+            {@render col_spacer(col_spacers.left, `td`)}
+            {#each rendered_columns as [col_idx, col] (get_col_id(col))}
               {@const col_id = get_col_id(col)}
-              {@const val = row[col_id]}
+              {@const val = row[cell_key(col)]}
               {@const color = calc_color(val, col)}
-              {@const col_width = column_widths[col_id]}
+              {@const col_width = width_of(col_id)}
               {@const date_val = is_datetime_column(col)
                 ? format_datetime_cell(val, col)
                 : null}
@@ -1920,20 +2528,52 @@
                 data-sort-value={get_cell_sort_attr(val)}
                 data-row-idx={abs_idx}
                 data-col-idx={col_idx}
+                aria-colindex={virtual_cols_config ? col_idx + 1 + leading_cols : undefined}
+                style:left={sticky_left(col)}
                 class:sticky-col={col.sticky}
+                class:numeric-col={numeric_columns.has(col_id)}
                 class:cell-selected={selected_cell_keys.has(`${abs_idx}:${col_idx}`)}
+                class:best-cell={is_best_cell(val, col)}
+                tabindex={!keyboard_cells
+                  ? undefined
+                  : tab_stop.row === abs_idx && tab_stop.col === col_idx
+                    ? 0
+                    : -1}
+                onkeydown={keyboard_cells
+                  ? (event) => handle_cell_keydown(event, abs_idx, col_idx)
+                  : undefined}
+                onfocus={keyboard_cells
+                  ? () => (active_cell = { row: abs_idx, col: col_idx })
+                  : undefined}
                 onpointerdown={(event) => start_cell_drag(event, abs_idx, col_idx)}
                 oncontextmenu={(event) => {
                   // keep the native context menu for links/buttons/inputs inside cells
                   if (is_interactive_cell_target(event.target)) return
                   open_column_context_menu(event, col_id)
                 }}
-                style:--cell-bg={color.bg}
-                style:color={color.text}
+                style:--cell-bg={col.render_as === `bar` ? null : color.bg}
+                style:color={col.render_as === `bar` ? null : color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
                   col_width ? `; width: ${col_width}px; max-width: ${col_width}px` : ``
                 }`}
               >
+                {#if col.render_as === `bar` || col.render_as === `both`}
+                  {@const fraction = bar_fraction(val, col)}
+                  {#if fraction !== null}
+                    <!-- sits behind the cell text, so the number stays readable -->
+                    <!-- With `both`, the fill already paints the cell in color.bg, so a bar
+                         of that same color would be invisible; contrast against the text
+                         instead. `bar` alone has no fill to clash with. -->
+                    <span
+                      class="data-bar"
+                      aria-hidden="true"
+                      style:width="{fraction * 100}%"
+                      style:background={col.render_as === `both`
+                        ? `currentColor`
+                        : (color.bg ?? `var(--accent-color, #4a9eff)`)}
+                    ></span>
+                  {/if}
+                {/if}
                 {#if special_cells?.[col.label]}
                   {@render special_cells[col.label]({ row, col, val })}
                 {:else if cell}
@@ -1949,6 +2589,7 @@
                 {/if}
               </td>
             {/each}
+            {@render col_spacer(col_spacers.right, `td`)}
           </tr>
         {:else}
           {#if empty_message}
@@ -1959,9 +2600,44 @@
         {/each}
         {@render virtual_spacer(spacer_bottom)}
       </tbody>
-      {#if footer}
+      {#if footer || summary_stats.length > 0}
         <tfoot>
-          {@render footer()}
+          <!-- One row per requested statistic, computed from column_stats and therefore
+               already reflecting the active search and column filters -->
+          {#each summary_stats as stat (stat)}
+            <!-- Without a leading cell the label takes the first *rendered* column, not
+                 column 0, which horizontal windowing may have scrolled out of the DOM -->
+            {@const label_col = leading_cols > 0 ? null : rendered_columns[0]?.[0]}
+            <tr class="summary-row">
+              <!-- The stat name goes in a leading cell when there is one, so a numeric
+                   first column doesn't lose its own value to the label -->
+              {#if show_row_select}
+                <td class="select-col">{show_row_numbers ? `` : stat}</td>
+              {/if}
+              {#if show_row_numbers}<td class="row-num-col">{stat}</td>{/if}
+              {@render col_spacer(col_spacers.left, `td`)}
+              {#each rendered_columns as [col_idx, col] (get_col_id(col))}
+                {@const col_id = get_col_id(col)}
+                {@const is_numeric = numeric_columns.has(col_id)}
+                {@const stats = column_stats.get(col_id)}
+                <td
+                  class:sticky-col={col.sticky}
+                  class:numeric-col={is_numeric}
+                  style:left={sticky_left(col)}
+                >
+                  {#if col_idx === label_col}
+                    <span class="summary-label">{stat}</span>
+                  {:else if stats && is_numeric && stats[stat] != null}
+                    <!-- only columns that are numeric throughout get a statistic; a mixed
+                         text column would otherwise report a mean of the few parseable cells -->
+                    {format_num(stats[stat], col.format ?? default_num_format)}
+                  {/if}
+                </td>
+              {/each}
+              {@render col_spacer(col_spacers.right, `td`)}
+            </tr>
+          {/each}
+          {@render footer?.()}
         </tfoot>
       {/if}
     </table>
@@ -2024,9 +2700,10 @@
     </div>
   {/if}
 
-  <!-- empty region snippet: the right-click targets are the column headers and cells,
-  which record which column was hit, so the menu must not also trigger off <body> -->
+  <!-- trigger="none": the right-click targets are the column headers and cells, which
+  record which column was hit, so the menu must not also trigger off <body> -->
   <ContextMenu
+    trigger="none"
     bind:at={context_menu_at}
     actions={context_menu_actions}
     on_select={() => (context_menu_col = null)}
@@ -2039,12 +2716,21 @@
       `--context-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
       `--context-menu-z-index: 200`,
     ].join(`; `)}
-  >
-    {#snippet children()}{/snippet}
-  </ContextMenu>
+  />
 </div>
 
 <style>
+  /* Density presets feed the same --heatmap-cell-padding consumers can already set,
+     so an explicit override still wins over the preset. */
+  .table-container[data-density='compact'] {
+    --heatmap-density-padding: 0 4pt;
+  }
+  .table-container[data-density='cosy'] {
+    --heatmap-density-padding: 1pt 5pt;
+  }
+  .table-container[data-density='comfortable'] {
+    --heatmap-density-padding: 5pt 8pt;
+  }
   .table-container {
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
@@ -2074,19 +2760,15 @@
     cursor: cell;
     user-select: none;
   }
-  /* background-image stacks on top of the per-cell heatmap background-color,
-     so selected heatmap cells stay tinted underneath */
+  /* Keep background-image free for the row-hover wash. */
   td.cell-selected {
-    background-image: linear-gradient(
-      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent),
-      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent)
-    );
-    box-shadow: inset 0 0 0 1px
-      color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent),
+      inset 0 0 0 100vmax color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent);
   }
   th,
   td {
-    padding: var(--heatmap-cell-padding, 1pt 5pt);
+    padding: var(--heatmap-cell-padding, var(--heatmap-density-padding, 1pt 5pt));
     text-align: var(--heatmap-text-align, left);
     border: var(--heatmap-cell-border, none);
     white-space: nowrap;
@@ -2108,13 +2790,19 @@
     cursor: pointer;
     user-select: none;
   }
+  /* clears the group-header row above it, which sticks at top: 0 (var unset without one) */
+  thead tr:not(.group-header) th {
+    top: var(--group-header-height, 0);
+  }
   th:hover {
     background: var(--heatmap-header-hover-bg, var(--nav-bg));
   }
-  th.datetime-select-open {
+  th.datetime-select-open,
+  th.filter-panel-open {
     overflow: visible;
     z-index: 30;
   }
+  .column-filter,
   .datetime-format-control {
     display: inline-flex;
     align-items: center;
@@ -2122,6 +2810,7 @@
     position: relative;
     vertical-align: middle;
   }
+  .column-filter-trigger,
   .datetime-format-trigger {
     display: inline-grid;
     place-items: center;
@@ -2133,15 +2822,108 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
+    :global(svg) {
+      width: 10px;
+      height: 10px;
+    }
     line-height: 1;
   }
+  .column-filter-trigger {
+    opacity: 0.55;
+  }
+  .column-filter-trigger:hover,
+  .column-filter-trigger[aria-expanded='true'],
   .datetime-format-trigger:hover,
   .datetime-format-trigger[aria-expanded='true'] {
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
+    opacity: 1;
+  }
+  /* an active filter is easy to forget about, so it stays fully lit and accented */
+  .column-filter-trigger.active {
+    opacity: 1;
+    color: var(--accent-color, #4a9eff);
+  }
+
+  .column-filter-panel,
+  .datetime-format-select {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: 40;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
+    border-radius: 4px;
+    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    color: inherit;
+  }
+  .column-filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 11em;
+    padding: 6px;
+    font-weight: normal;
+    label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      justify-content: space-between;
+    }
+    input[type='number'],
+    input[type='search'] {
+      width: 6em;
+      min-width: 0;
+      padding: 1px 3px;
+    }
+  }
+  .column-filter-options {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 14em;
+    overflow-y: auto;
+    label {
+      justify-content: flex-start;
+    }
+  }
+  .column-filter-clear {
+    padding: 2px 4px;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.9em;
+  }
+  /* Data bars: a proportional fill behind the cell text. Magnitude by length reads more
+     precisely than by color and survives color-vision deficiency. */
+  td:has(.data-bar) {
+    position: relative;
+  }
+  .data-bar {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: var(--heatmap-data-bar-height, 70%);
+    border-radius: 2px;
+    opacity: var(--heatmap-data-bar-opacity, 0.35);
+    pointer-events: none;
+  }
+  /* Leaderboard marker for the column's winning value. Outline, not box-shadow: the
+     selection ring is a box-shadow at equal specificity, and whichever rule came last
+     would erase the other. */
+  td.best-cell {
+    outline: 2px solid var(--heatmap-best-cell-color, var(--accent-color, #4a9eff));
+    outline-offset: -2px;
+    font-weight: 600;
+  }
+  th.numeric-col,
+  td.numeric-col {
+    text-align: var(--heatmap-numeric-text-align, right);
+    font-variant-numeric: tabular-nums; /* equal digit widths, so decimals line up */
   }
   .datetime-format-trigger :global(svg) {
-    width: 10px;
-    height: 10px;
     opacity: 0.75;
     transform: translateY(-1px);
   }
@@ -2157,18 +2939,9 @@
     border: 0;
   }
   .datetime-format-select {
-    position: absolute;
-    top: calc(100% + 2px);
-    right: 0;
-    z-index: 20;
     min-width: max-content;
     max-width: 10em;
     padding: 2px;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
-    border-radius: 3px;
-    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-    color: inherit;
     cursor: pointer;
     font-size: 0.9em;
     line-height: 1.35;
@@ -2183,7 +2956,8 @@
       inset;
     color: inherit;
   }
-  th.dragging {
+  /* styled off aria-grabbed rather than a second class computed from the same state */
+  th[aria-grabbed='true'] {
     opacity: 0.4;
     cursor: grabbing;
   }
@@ -2196,20 +2970,18 @@
   th[draggable='true'] {
     cursor: grab;
   }
-  th.sticky-col {
-    position: sticky;
-    left: 0;
-    top: 0;
-    background: var(--heatmap-header-bg, var(--page-bg, Canvas));
-    z-index: 4; /* Higher than regular th (2) to stay above when both scroll */
+  /* `left` comes from sticky_left() inline, since it depends on the widths to the left */
+  th.sticky-col,
+  td.sticky-col {
     border-right: 1px solid var(--border, #ddd);
+  }
+  th.sticky-col {
+    z-index: 4; /* Higher than regular th (2) to stay above when both scroll */
   }
   td.sticky-col {
     position: sticky;
-    left: 0;
     background: var(--heatmap-sticky-cell-bg, var(--page-bg, Canvas));
     z-index: 1;
-    border-right: 1px solid var(--border, #ddd);
   }
   /* separate odd-row var so consumers with striped rows can composite their stripe
   color over the opaque sticky background (which must stay opaque to occlude columns
@@ -2222,7 +2994,14 @@
     );
   }
   tbody tr:hover {
-    filter: var(--heatmap-row-hover-filter, brightness(1.1));
+    filter: var(--heatmap-row-hover-filter, none);
+  }
+  /* Tint cells because their opaque backgrounds hide a row-level wash. */
+  tbody tr:hover td {
+    background-image: linear-gradient(
+      var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16)),
+      var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16))
+    );
   }
   tbody tr[tabindex] {
     cursor: pointer;
@@ -2305,15 +3084,15 @@
     /* row-count badge next to the clear icon makes this one wider */
     inline-size: auto;
     padding: 0 4px;
-  }
-  .selection-badge .badge {
-    background: var(--highlight, #4a9eff);
-    color: white;
-    font-size: 0.7em;
-    padding: 1px 4px;
-    border-radius: 8px;
-    min-width: 14px;
-    text-align: center;
+    .badge {
+      background: var(--highlight, #4a9eff);
+      color: white;
+      font-size: 0.7em;
+      padding: 1px 4px;
+      border-radius: 8px;
+      min-width: 14px;
+      text-align: center;
+    }
   }
   .dropdown-wrapper {
     position: relative;
@@ -2340,7 +3119,6 @@
     gap: 8px;
     padding: 3px 6px;
     cursor: pointer;
-    font-size: 0.95em;
     white-space: nowrap;
     background: transparent;
     border: none;
@@ -2366,7 +3144,8 @@
     width: 110px;
     box-sizing: border-box;
   }
-  .search-input:focus {
+  .search-input:focus,
+  .page-input:focus {
     outline: 1px solid var(--highlight, #4a9eff);
   }
   .search-input::placeholder {
@@ -2409,9 +3188,10 @@
     border-top: 1px solid var(--highlight, #4a9eff);
     border-bottom: 1px solid var(--highlight, #4a9eff);
   }
-  /* Virtualized rows: spacers keep scroll geometry; the count line replaces
-     pagination in infinite-scroll mode */
-  .virtual-spacer td {
+  /* Spacers stand in for the rows/columns outside the window and carry their whole size
+     as width/height, so any padding or border would overshoot it */
+  .virtual-spacer td,
+  .col-spacer {
     padding: 0;
     border: none;
   }
@@ -2453,26 +3233,24 @@
     align-items: center;
     gap: 4px;
   }
-  .page-input {
-    min-width: 1em !important; /* Override global min-width: 40px from app.css */
+  .page-input,
+  .page-size-select {
     padding: 2px 4px;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
     border-radius: 3px;
     background: light-dark(#fff, #333);
     color: inherit;
+  }
+  .page-input {
+    min-width: 1em !important; /* Override global min-width: 40px from app.css */
     font-size: inherit;
     text-align: center;
-    -moz-appearance: textfield;
     appearance: textfield;
   }
   .page-input::-webkit-outer-spin-button,
   .page-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
-    appearance: none;
     margin: 0;
-  }
-  .page-input:focus {
-    outline: 1px solid var(--highlight, #4a9eff);
   }
   .row-count {
     color: var(--text-muted);
@@ -2504,7 +3282,6 @@
     bottom: 0;
     width: 4px;
     cursor: col-resize;
-    background: transparent;
   }
   .resize-handle:hover,
   th.resizing .resize-handle {

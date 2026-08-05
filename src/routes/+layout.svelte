@@ -19,11 +19,11 @@
   import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import { CommandMenu, CopyButton, GitHubCorner, Icon, Nav } from 'svelte-widgets'
+  import { Search } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
   import { heading_anchors } from 'svelte-widgets/heading-anchors'
 
   let { children }: { children?: Snippet<[]> } = $props()
-
   let cmd_palette_open = $state(false)
 
   $effect(() => {
@@ -119,6 +119,7 @@
     '/reciprocal/dos': `DOS`,
     '/reciprocal/bands-and-dos': `Bands + DOS`,
     '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
+    '/reciprocal/ir-raman': `IR + Raman`,
   }}
   menu_props={{
     style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,
@@ -137,7 +138,7 @@
     style="background: transparent"
     {@attach tooltip({ content: `Search (⌘K)` })}
   >
-    <Icon icon="Search" style="width: 1.4em; height: 1.4em" />
+    <Icon icon={Search} style="width: 1.4em; height: 1.4em" />
   </button>
 </Nav>
 

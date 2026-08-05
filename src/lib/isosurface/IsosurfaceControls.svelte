@@ -4,6 +4,7 @@
   // surfaces under their geometry-source volume and exposes cross-volume scalar
   // coloring (color source, colormap, value range) per surface.
   import { Icon } from 'svelte-widgets'
+  import { Reset } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
@@ -445,7 +446,7 @@
                   aria-label={reset_color_label}
                   {@attach tooltip({ content: reset_color_label })}
                 >
-                  <Icon icon="Reset" aria-hidden="true" style="--icon-size: 12px" />
+                  <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
                 </button>
               {/if}
               {#if warning}
@@ -553,7 +554,7 @@
           aria-label="Reset display range"
           {@attach tooltip({ content: `Follow the structure supercell again` })}
         >
-          <Icon icon="Reset" aria-hidden="true" style="--icon-size: 12px" />
+          <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
         </button>
       {/if}
     </div>

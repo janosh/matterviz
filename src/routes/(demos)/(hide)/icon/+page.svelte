@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { Icon, icon_data, type IconName } from 'svelte-widgets'
+  import { Icon } from 'svelte-widgets'
   import { fuzzy_match } from 'svelte-widgets/utils'
   import { highlight_matches } from 'svelte-widgets/attachments'
+  // Namespace import is gallery-only: computed access pins every glyph into the bundle.
+  import * as icons from 'svelte-widgets/icons'
+  import type { IconData } from 'svelte-widgets'
 
   let filter_text = $state(``)
   let copied_text = $state<string | null>(null)
@@ -12,15 +15,11 @@
     setTimeout(() => (copied_text = null), 1500)
   }
 
-  const icon_names = Object.keys(icon_data) as IconName[]
-  // a glyph is either one path `d` or its own markup, so copy whichever it carries
-  const icon_svg = (name: IconName): string => {
-    const entry = icon_data[name]
-    return `markup` in entry ? entry.markup : entry.d
-  }
+  const icon_entries = Object.entries(icons)
+  const icon_svg = (entry: IconData): string => entry.d ?? entry.markup
 
   let filtered_icons = $derived(
-    icon_names.filter((name) => !filter_text || fuzzy_match(filter_text, name)),
+    icon_entries.filter(([name]) => !filter_text || fuzzy_match(filter_text, name)),
   )
 </script>
 
@@ -31,18 +30,19 @@
     ><code>Icon</code></a
   >
   component renders SVG icons from a built-in library of
-  <strong>{icon_names.length}</strong> icons. Pass an icon name to the
+  <strong>{icon_entries.length}</strong> icons. Import each glyph from
+  <code>svelte-widgets/icons</code> and pass the value to the
   <code>icon</code> prop, or provide custom <code>path</code> and
   <code>viewBox</code> props for custom SVGs.
 </p>
 
 <div class="controls">
   <label>
-    <Icon icon="Search" style="font-size: 1.2em" />
+    <Icon icon={icons.Search} style="font-size: 1.2em" />
     <input type="text" placeholder="Filter icons (fuzzy search)..." bind:value={filter_text} />
   </label>
   <span class="count">
-    {filtered_icons.length} / {icon_names.length} icons
+    {filtered_icons.length} / {icon_entries.length} icons
   </span>
 </div>
 
@@ -54,15 +54,15 @@
     css_class: `text-filter-highlight`,
   })}
 >
-  {#each filtered_icons as icon_name (icon_name)}
+  {#each filtered_icons as [icon_name, glyph] (icon_name)}
     <div class="icon-card">
       <button
         class="svg-btn"
-        class:copied={copied_text === icon_svg(icon_name)}
-        onclick={() => copy(icon_svg(icon_name))}
+        class:copied={copied_text === icon_svg(glyph)}
+        onclick={() => copy(icon_svg(glyph))}
         title="Click to copy SVG path"
       >
-        <Icon icon={icon_name} style="font-size: 2em" />
+        <Icon icon={glyph} style="font-size: 2em" />
       </button>
       <button
         class="name-btn"
@@ -78,7 +78,7 @@
 
 {#if filtered_icons.length === 0}
   <div class="no-results">
-    <Icon icon="Search" style="font-size: 3em; opacity: 0.3" />
+    <Icon icon={icons.Search} style="font-size: 3em; opacity: 0.3" />
     <p>No icons match "{filter_text}"</p>
   </div>
 {/if}
@@ -89,14 +89,15 @@
 <code
     >{`${`<`}script>
   import { Icon } from 'svelte-widgets'
+  import { GitHub, Settings } from 'svelte-widgets/icons'
 ${`<`}/script>
 
-<!-- Using built-in icon -->
-<Icon icon="GitHub" />
+<!-- Pass the glyph binding, not its name -->
+<Icon icon={GitHub} />
 
 <!-- With custom size -->
-<Icon icon="Settings" style="font-size: 2em" />
-<Icon icon="Settings" style="--icon-size: 32px" />`}</code
+<Icon icon={Settings} style="font-size: 2em" />
+<Icon icon={Settings} style="--icon-size: 32px" />`}</code
   ></pre>
 
 <style>

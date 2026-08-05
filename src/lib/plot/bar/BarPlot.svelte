@@ -78,6 +78,7 @@
     place_decorations,
     placed_coords,
   } from '$lib/plot/core/auto-place'
+  import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
   import {
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
@@ -118,7 +119,8 @@
     x2_axis: x2_axis_prop = $bindable({}),
     y_axis = $bindable({}),
     y2_axis: y2_axis_prop = $bindable({}),
-    display = $bindable(DEFAULTS.bar.display),
+    // Clone so controls / categorical sync never mutate shared DEFAULTS.
+    display = $bindable({ ...DEFAULTS.bar.display }),
     range_padding = 0,
     padding = {},
     legend = {},
@@ -252,6 +254,29 @@
   let { category_list, internal_series } = $derived(
     normalize_categorical(series, x_axis.categories),
   )
+  let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
+
+  // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
+  let category_zero_sync: ReturnType<typeof sync_category_zero_display> = {
+    axis: null,
+    disabled_keys: [],
+  }
+  $effect.pre(() => {
+    category_zero_sync = sync_category_zero_display(
+      display,
+      DEFAULTS.bar.display,
+      category_list.length > 0 ? cat_axis : null,
+      category_zero_sync,
+    )
+  })
+
+  const resolved_display = $derived(
+    resolve_plot_display(
+      display,
+      DEFAULTS.bar.display,
+      category_list.length > 0 ? cat_axis : null,
+    ),
+  )
 
   let category_indices = $derived(
     category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
@@ -341,8 +366,18 @@
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
+            width,
+            x_axis: {
+              ...x_axis,
+              ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
+              tick_values: ticks.x,
+            },
             x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-            y_axis: { ...y_axis, tick_values: ticks.y },
+            y_axis: {
+              ...y_axis,
+              ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
+              tick_values: ticks.y,
+            },
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
@@ -498,7 +533,6 @@
 
   // Auto-generate tick labels for categorical data (unless user provides explicit ticks)
   // In vertical mode categories are on x-axis; in horizontal mode on y-axis
-  let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
   let effective_cat_ticks = $derived.by(() => {
     if (category_list.length === 0) return undefined
     // Only respect user ticks when they're a Record (custom label mapping),
@@ -539,9 +573,14 @@
 
   // Cache measured tick-label widths so expensive canvas text measurement
   // only runs when ticks/format change, not on every template rerender.
+  // Pass the category map so horizontal orientation measures names, not slot indices.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, y_axis.format),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format),
+    y_max: measure_max_tick_width(
+      ticks.y,
+      y_axis.format,
+      cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
+    ),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format, y2_axis.ticks),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -939,7 +978,7 @@
         {pad}
         {width}
         {height}
-        show_grid={display.x_grid}
+        show_grid={resolved_display.x_grid}
         tick_label={(tick) =>
           get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
@@ -959,7 +998,7 @@
           {pad}
           {width}
           {height}
-          show_grid={display.x2_grid}
+          show_grid={resolved_display.x2_grid}
           tick_label={(tick) => get_tick_label(tick, x2_axis.ticks)}
           label_x={pad.l + chart_width / 2 + (x2_axis.label_shift?.x ?? 0)}
           label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
@@ -978,7 +1017,7 @@
         {pad}
         {width}
         {height}
-        show_grid={display.y_grid}
+        show_grid={resolved_display.y_grid}
         tick_label={(tick) =>
           get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
         label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
@@ -998,7 +1037,7 @@
           {pad}
           {width}
           {height}
-          show_grid={display.y2_grid}
+          show_grid={resolved_display.y2_grid}
           tick_label={(tick) => get_tick_label(tick, y2_axis.ticks)}
           label_x={y2_axis_label_x(y2_axis, width, pad.r, tick_label_widths.y2_max)}
           label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
@@ -1020,7 +1059,7 @@
            is allowed to overflow the plot edges. -->
       <g clip-path="url(#{clip_path_id})">
         <ZeroLines
-          {display}
+          display={resolved_display}
           x_scale_fn={scales.x}
           x2_scale_fn={scales.x2}
           y_scale_fn={scales.y}
@@ -1249,6 +1288,7 @@
                         rect_h,
                         Math.min(bar_state.border_radius ?? 0, rect_w / 2, rect_h / 2),
                         is_vertical,
+                        is_vertical ? v1 > v0 : v1 < v0,
                       )}
                       fill={color}
                       opacity={mode === `overlay` ? bar_state.opacity : 1}

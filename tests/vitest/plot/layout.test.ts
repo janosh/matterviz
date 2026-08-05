@@ -1,24 +1,32 @@
 import {
+  type AutoPaddingConfig,
+  auto_tick_rotation,
   AXIS_LABEL_HEIGHT,
   AXIS_LABEL_OUTER,
   calc_auto_padding,
   centered_rect,
   compute_element_placement,
   constrain_tooltip_position,
+  DEFAULT_PLOT_PADDING,
   filter_padding,
   full_footprint_or,
   LABEL_GAP_DEFAULT,
   measure_max_tick_width,
   measure_text_width,
+  type MeasuredAxis,
   pad_rect,
   point_in_rect,
   rect_within_rect,
+  resolve_tick_layout,
   sample_series_obstacle_points,
+  type Sides,
+  tick_label_band,
   TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
-import { describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { mock_text_measurement } from '../setup'
 
 describe(`layout utility functions`, () => {
   describe(`rectangle helpers`, () => {
@@ -63,31 +71,25 @@ describe(`layout utility functions`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
 
     it.each([
-      // Null/undefined/empty -> defaults
       [undefined, defaults],
       [null, defaults],
       [{}, defaults],
-      // Partial override
       [
         { t: 10, l: 30 },
         { t: 10, b: 60, l: 30, r: 20 },
       ],
-      // Full override
       [
         { t: 5, b: 10, l: 15, r: 25 },
         { t: 5, b: 10, l: 15, r: 25 },
       ],
-      // Filters undefined values (preserves defaults)
       [
         { t: 10, b: undefined, r: 5 },
         { t: 10, b: 60, l: 60, r: 5 },
       ],
-      // Zero values are preserved (not filtered)
       [
         { t: 0, b: 0 },
         { t: 0, b: 0, l: 60, r: 20 },
       ],
-      // Negative values are preserved
       [{ t: -5 }, { t: -5, b: 60, l: 60, r: 20 }],
     ])(`filter_padding(%j) -> %j`, (padding, expected) => {
       expect(filter_padding(padding, defaults)).toEqual(expected)
@@ -95,8 +97,6 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`constrain_tooltip_position`, () => {
-    // [desc, cursor_x, cursor_y, tip_w, tip_h, vp_w, vp_h, exp_x, exp_y]
-    // Default offset is 10px in each direction
     test.each([
       [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
       [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
@@ -111,8 +111,7 @@ describe(`layout utility functions`, () => {
       expect(constrain_tooltip_position(cx, cy, tw, th, vw, vh)).toEqual({ x: ex, y: ey })
     })
 
-    // Custom offsets — all use 100x50 tooltip in 800x600 viewport
-    // [desc, cursor_x, cursor_y, offset_x, offset_y, exp_x, exp_y]
+    // Custom offsets use a 100x50 tooltip in an 800x600 viewport.
     test.each([
       [`neg y above cursor`, 300, 200, 5, -10, 305, 140],
       [`neg y flips down near top`, 300, 50, 5, -10, 305, 60],
@@ -150,6 +149,11 @@ describe(`layout utility functions`, () => {
         plot_bounds.y + plot_bounds.height - axis_clearance,
       )
       expect(Number.isFinite(result.score)).toBe(true)
+      const non_finite = compute_element_placement({
+        ...base_config,
+        points: [{ x: NaN, y: NaN }],
+      })
+      expect(Number.isFinite(non_finite.score)).toBe(true)
     })
 
     it(`keeps descendants overflowing left and top inside the valid region`, () => {
@@ -186,7 +190,6 @@ describe(`layout utility functions`, () => {
       const { axis_clearance: _omitted, ...config } = base_config
       const result = compute_element_placement(config)
       const { plot_bounds, element_size } = base_config
-      // margin to the nearest horizontal/vertical edge equals the default clearance
       const x_margin = Math.min(
         result.x - plot_bounds.x,
         plot_bounds.x + plot_bounds.width - (result.x + element_size.width),
@@ -213,28 +216,15 @@ describe(`layout utility functions`, () => {
     })
 
     test.each([
-      [
-        `top-left cluster`,
-        Array.from({ length: 15 }, () => ({ x: 100, y: 60 })),
-        `bottom-right`,
-      ],
-      [
-        `bottom-right cluster`,
-        Array.from({ length: 15 }, () => ({ x: 400, y: 280 })),
-        `top-left`,
-      ],
-    ])(`places away from %s`, (_, points, expected_region) => {
-      const result = compute_element_placement({
+      [`top-left cluster`, { x: 100, y: 60 }, [200, 100], 1],
+      [`bottom-right cluster`, { x: 400, y: 280 }, [200, 150], -1],
+    ] as const)(`places away from %s`, (_, point, [x_split, y_split], direction) => {
+      const { x, y } = compute_element_placement({
         ...base_config,
-        points,
+        points: Array.from({ length: 15 }, () => point),
       })
-      if (expected_region === `bottom-right`) {
-        expect(result.x).toBeGreaterThan(200)
-        expect(result.y).toBeGreaterThan(100)
-      } else if (expected_region === `top-left`) {
-        expect(result.x).toBeLessThan(200)
-        expect(result.y).toBeLessThan(150)
-      }
+      expect(Math.sign(x - x_split)).toBe(direction)
+      expect(Math.sign(y - y_split)).toBe(direction)
     })
   })
 
@@ -242,9 +232,8 @@ describe(`layout utility functions`, () => {
     const sparse_line = [
       { x: 0, y: 0 },
       { x: 100, y: 100 },
-    ] // one long segment
+    ]
 
-    // Cases that add no interior samples → output is exactly the input vertices
     it.each([
       { name: `points-only series`, points: sparse_line, draws_line: false, step: 12 },
       {
@@ -264,9 +253,7 @@ describe(`layout utility functions`, () => {
     it(`samples interior points along the segment when the series draws a line`, () => {
       const result = sample_series_obstacle_points(sparse_line, true, 12)
       expect(result).toHaveLength(12)
-      // every interior sample lies on the segment (here x === y)
       for (const point of result) expect(point.x).toBeCloseTo(point.y)
-      // interior samples fall strictly between the endpoints
       const interior = result.filter((point) => point.x > 0 && point.x < 100)
       expect(interior).toHaveLength(10)
     })
@@ -274,11 +261,10 @@ describe(`layout utility functions`, () => {
     it(`breaks the line at non-finite vertices (no sampling across gaps)`, () => {
       const with_gap = [
         { x: 0, y: 0 },
-        { x: NaN, y: NaN }, // gap: e.g. missing/clamped data
+        { x: NaN, y: NaN },
         { x: 100, y: 100 },
       ]
       const result = sample_series_obstacle_points(with_gap, true, 12)
-      // only the two finite vertices survive; the gap prevents segment sampling
       expect(result).toEqual([
         { x: 0, y: 0 },
         { x: 100, y: 100 },
@@ -286,14 +272,104 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`measure_max_tick_width`, () => {
-    it(`returns 0 for empty ticks`, () => {
-      expect(measure_max_tick_width([], `.2s`)).toBe(0)
+  describe(`x tick label auto-rotation`, () => {
+    const px_per_char = 7
+    beforeEach(() => mock_text_measurement(px_per_char))
+    afterEach(() => vi.restoreAllMocks())
+    const crowded = Array.from({ length: 12 }, () => `QUEUE_HOLD`)
+    const widest_px = `QUEUE_HOLD`.length * px_per_char
+    const plot_width = 400 - DEFAULT_PLOT_PADDING.l - DEFAULT_PLOT_PADDING.r
+    const pad_for = ({ x_axis, ...config }: Partial<AutoPaddingConfig>): Required<Sides> =>
+      calc_auto_padding({
+        padding: {},
+        default_padding: DEFAULT_PLOT_PADDING,
+        width: 400,
+        ...config,
+        x_axis: { tick_values: crowded, ...x_axis },
+      })
+    const rotation_for = (axis: MeasuredAxis, side: `x` | `x2` | `y` | `y2`): number =>
+      resolve_tick_layout({ tick_values: crowded, ...axis }, plot_width, side).rotation
+
+    // Negative throughout: labels anchored at their end trail left of the tick, so the
+    // rightmost one cannot run off the plot.
+    it.each([
+      [`labels that already fit`, 100, 0],
+      [`a shallow tilt`, 60, -30],
+      [`a steeper tilt`, 30, -60],
+      [`vertical labels`, 24, -90],
+      // Below one line height even vertical labels touch; 90 is the best on offer.
+      [`the steepest angle it has`, 8, -90],
+      [`no pitch at all to work with`, 0, 0],
+    ])(`crowding at %s`, (_label, pitch, expected) => {
+      expect(auto_tick_rotation(widest_px, pitch)).toBe(expected)
     })
 
-    it(`returns 0 in jsdom (no canvas rendering)`, () => {
-      expect(measure_text_width(`hello`)).toBe(0)
-      expect(measure_max_tick_width([1, 2, 3])).toBe(0)
+    it(`costs less height the shallower it tilts`, () => {
+      const bands = [0, -30, -45, -60, -90].map((angle) => tick_label_band(widest_px, angle))
+      expect(bands[0]).toBe(TICK_LABEL_HEIGHT)
+      expect(bands.slice(1).every((band, idx) => band > bands[idx])).toBe(true)
+    })
+
+    // Rotation follows the label side; y axes and lone labels stay upright.
+    it.each([
+      [`x labels`, {}, `x`, -1],
+      [`inside x labels`, { tick: { label: { inside: true } } }, `x`, 1],
+      [`x2 labels`, {}, `x2`, 1],
+      [`inside x2 labels`, { tick: { label: { inside: true } } }, `x2`, -1],
+      [`y labels`, {}, `y`, 0],
+      [`a lone label`, { tick_values: [`SOME_VERY_LONG_LABEL`] }, `x`, 0],
+    ] as [string, MeasuredAxis, `x` | `x2` | `y` | `y2`, number][])(
+      `tilt of %s`,
+      (_label, axis, side, sign) => {
+        expect(Math.sign(rotation_for(axis, side))).toBe(sign)
+      },
+    )
+
+    it.each([
+      [`no title`, {}, 0],
+      [`a title`, { label: `state` }, LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2],
+    ] as [string, MeasuredAxis, number][])(
+      `reserves the tilted labels' band below an x axis with %s`,
+      (_label, axis, title_room) => {
+        const { b: reserved, l, r } = pad_for({ x_axis: axis })
+        const rotation = auto_tick_rotation(widest_px, (400 - l - r) / crowded.length)
+        const needed = tick_label_band(widest_px, rotation) + title_room + AXIS_LABEL_OUTER
+        expect(reserved).toBe(needed)
+        expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
+      },
+    )
+
+    it(`mirrors the tilt on x2 and reserves the room above`, () => {
+      const angle = rotation_for({}, `x2`)
+      expect(angle).toBe(-rotation_for({}, `x`))
+      const band = tick_label_band(widest_px, angle)
+      expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
+      const { t } = pad_for({ x_axis: { tick_values: [] }, x2_axis: { tick_values: crowded } })
+      expect(t).toBe(band + 8 + AXIS_LABEL_OUTER)
+    })
+
+    const default_b = DEFAULT_PLOT_PADDING.b
+    it.each([
+      [`labels that already fit upright`, { x_axis: { tick_values: [`a`, `b`] } }, default_b],
+      [
+        `an explicit rotation of 0`,
+        { x_axis: { tick: { label: { rotation: 0 } } } },
+        default_b,
+      ],
+      [`labels rendered inside`, { x_axis: { tick: { label: { inside: true } } } }, default_b],
+      [`a bottom padding the caller set`, { padding: { b: 30 } }, 30],
+    ])(`leaves the bottom padding alone with %s`, (_label, config, expected) => {
+      expect(pad_for(config).b).toBe(expected)
+    })
+  })
+
+  describe(`measure_max_tick_width`, () => {
+    it.each([
+      [`there are no ticks to measure`, () => measure_max_tick_width([], `.2s`)],
+      [`jsdom reports no text metrics`, () => measure_text_width(`hello`)],
+      [`numeric ticks hit that same empty canvas`, () => measure_max_tick_width([1, 2, 3])],
+    ])(`returns 0 when %s`, (_label, measure) => {
+      expect(measure()).toBe(0)
     })
 
     it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
@@ -308,6 +384,29 @@ describe(`layout utility functions`, () => {
       try {
         expect(measure_max_tick_width([4500])).toBe(4)
         expect(measured_labels).toEqual([`4.5k`])
+      } finally {
+        context_spy.mockRestore()
+      }
+    })
+
+    it(`prefers a custom ticks Record over the numeric format`, () => {
+      const measured_labels: string[] = []
+      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: (label: string) => {
+          measured_labels.push(label)
+          return { width: label.length * 7 }
+        },
+      } as unknown as CanvasRenderingContext2D)
+      try {
+        expect(
+          measure_max_tick_width([0, 1, 2], `.2~g`, {
+            0: `QUEUE_HOLD`,
+            1: `RUNNING`,
+            2: `DONE`,
+          }),
+        ).toBe(`QUEUE_HOLD`.length * 7)
+        expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
       } finally {
         context_spy.mockRestore()
       }
@@ -351,22 +450,16 @@ describe(`layout utility functions`, () => {
       expect(result.t).toBe(10)
     })
 
-    it(`reserves the top tick band and outer air for x2 ticks`, () => {
-      const result = calc_auto_padding({
+    it.each([
+      [`ticks`, [0, 1, 2], TICK_LABEL_HEIGHT + 8 + AXIS_LABEL_OUTER],
+      [`no ticks`, [], defaults.t],
+    ])(`sets top padding for x2 with %s`, (_label, tick_values, expected) => {
+      const { t } = calc_auto_padding({
         padding: {},
         default_padding: defaults,
-        x2_axis: { tick_values: [0, 1, 2] },
+        x2_axis: { tick_values },
       })
-      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + AXIS_LABEL_OUTER)
-    })
-
-    it(`does not expand top padding when x2 has no ticks`, () => {
-      const result = calc_auto_padding({
-        padding: {},
-        default_padding: defaults,
-        x2_axis: { tick_values: [] },
-      })
-      expect(result.t).toBe(defaults.t)
+      expect(t).toBe(expected)
     })
 
     it(`reserves x2 title, gap, and outward shifts`, () => {

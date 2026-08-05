@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, type IconName } from 'svelte-widgets'
+  import { Icon, type IconData } from 'svelte-widgets'
+  import { Cross, DragIndicator, Reset } from 'svelte-widgets/icons'
 
   let {
     show_controls = false,
@@ -15,7 +16,7 @@
 {#snippet control_button(
   callback: () => void,
   css_class: string,
-  icon: IconName,
+  icon: IconData,
   label: string,
 )}
   <button
@@ -33,13 +34,13 @@
 {/snippet}
 
 <div class="control-tab">
-  <Icon icon="DragIndicator" class="drag-handle" style="width: 1em; height: 1em" />
+  <Icon icon={DragIndicator} class="drag-handle" style="width: 1em; height: 1em" />
   {#if show_controls}
     {#if on_reset}
-      {@render control_button(on_reset, `reset-button`, `Reset`, `Reset pane position`)}
+      {@render control_button(on_reset, `reset-button`, Reset, `Reset pane position`)}
     {/if}
     {#if on_close}
-      {@render control_button(on_close, `close-button`, `Cross`, `Close pane`)}
+      {@render control_button(on_close, `close-button`, Cross, `Close pane`)}
     {/if}
   {/if}
 </div>

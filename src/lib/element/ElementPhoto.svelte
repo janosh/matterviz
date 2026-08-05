@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ChemicalElement } from '$lib/element'
   import { Icon } from 'svelte-widgets'
+  import { NoImage } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -26,7 +27,7 @@
   {#if hidden && missing_msg}
     <div {...rest}>
       <span>
-        <Icon icon="NoImage" />&nbsp;{missing_msg}
+        <Icon icon={NoImage} />&nbsp;{missing_msg}
         {name}
       </span>
     </div>

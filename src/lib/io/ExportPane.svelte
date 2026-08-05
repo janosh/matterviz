@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Cross, Export } from 'svelte-widgets/icons'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { create_clipboard_feedback, DraggablePane } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
@@ -59,8 +60,8 @@
     class: `export-pane ${rest.class ?? ``} ${pane_props?.class ?? ``}`.trim(),
   }}
   {toggle_props}
-  open_icon="Cross"
-  closed_icon="Export"
+  open_icon={Cross}
+  closed_icon={Export}
   {icon_style}
 >
   {#each sections as section, sec_idx (section.title ?? sec_idx)}

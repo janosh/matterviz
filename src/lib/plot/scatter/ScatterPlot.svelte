@@ -395,6 +395,8 @@
         ? calc_auto_padding({
             padding,
             default_padding,
+            width,
+            x_axis: { ...final_x_axis, tick_values: x_tick_values },
             x2_axis: { ...final_x2_axis, tick_values: x2_tick_values },
             y_axis: { ...final_y_axis, tick_values: y_tick_values },
             y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },
@@ -1087,9 +1089,9 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format),
-    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format),
-    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format),
+    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format, final_x2_axis.ticks),
+    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format, final_y_axis.ticks),
+    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format, final_y2_axis.ticks),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
