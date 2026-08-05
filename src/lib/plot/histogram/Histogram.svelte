@@ -338,6 +338,7 @@
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
+    const current_ticks_x = untrack(() => ticks.x)
     const current_ticks_x2 = untrack(() => ticks.x2)
     const current_ticks_y = untrack(() => ticks.y)
     const current_ticks_y2 = untrack(() => ticks.y2)
@@ -347,6 +348,8 @@
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
+            width,
+            x_axis: { ...final_x_axis, tick_values: current_ticks_x },
             x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
             y_axis: { ...final_y_axis, tick_values: current_ticks_y },
             y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },

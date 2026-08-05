@@ -62,6 +62,7 @@
     create_size_scale,
     generate_ticks,
     get_tick_label,
+    resolve_tick_labels,
   } from '$lib/plot/core/scales'
   import { DEFAULT_MARKERS, is_time_scale, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { DEFAULTS } from '$lib/settings'
@@ -341,6 +342,8 @@
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
+            width,
+            x_axis: { ...x_axis, tick_values: x_tick_labels },
             x2_axis: { ...x2_axis, tick_values: ticks.x2 },
             y_axis: { ...y_axis, tick_values: ticks.y },
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
@@ -536,6 +539,10 @@
       x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
     }
   })
+
+  let x_tick_labels = $derived(
+    resolve_tick_labels(ticks.x, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks),
+  )
 
   // Cache measured tick-label widths so expensive canvas text measurement
   // only runs when ticks/format change, not on every template rerender.

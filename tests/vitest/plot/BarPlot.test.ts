@@ -1,4 +1,6 @@
 import { BarPlot } from '$lib'
+import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
+import { tick_label_band, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -326,6 +328,70 @@ describe(`BarPlot`, () => {
         expect(tick_count).toBeLessThanOrEqual(max_ticks)
       },
     )
+
+    // jsdom reports no text metrics, so nothing would ever look crowded without this.
+    const with_measured_text = async <T>(run: () => Promise<T>): Promise<T> => {
+      const spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: (label: string) => ({ width: label.length * 7 }),
+      } as unknown as CanvasRenderingContext2D)
+      try {
+        return await run()
+      } finally {
+        spy.mockRestore()
+      }
+    }
+    const x_tick_transforms = (plot: HTMLElement): (string | null)[] =>
+      [...plot.querySelectorAll(`g.x-axis g.tick text`)].map((el) =>
+        el.getAttribute(`transform`),
+      )
+
+    test(`long category names tilt instead of overlapping`, async () => {
+      const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
+      const plot = await with_measured_text(() =>
+        mount_sized_bar_plot({
+          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+          x_axis: { label: `state` },
+        }),
+      )
+      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
+      expect(labels.length).toBeGreaterThan(0)
+      for (const label of labels) {
+        // Negative angle anchored at the label's end, so it trails left of its tick and
+        // the rightmost one cannot spill past the plot's right edge.
+        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
+        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
+      }
+
+      // The title must clear the tilted block rather than sit inside it. An x title is a
+      // foreignObject positioned half its height above its center.
+      const baseline_y = Number(
+        plot.querySelector(`g.x-axis > line`)?.getAttribute(`y1`) ?? NaN,
+      )
+      const title_center =
+        Number(plot.querySelector(`g.x-axis foreignObject`)?.getAttribute(`y`) ?? NaN) +
+        AXIS_LABEL_CONTAINER.y_offset
+      // How far the labels actually reach at the angle the plot chose.
+      const angle = Number(
+        /^rotate\((?<deg>-[\d.]+),/.exec(labels[0]?.getAttribute(`transform`) ?? ``)?.groups
+          ?.deg ?? NaN,
+      )
+      const reach = await with_measured_text(() =>
+        Promise.resolve(tick_label_band(cats, angle)),
+      )
+      expect(baseline_y).toBeGreaterThan(0)
+      expect(reach).toBeGreaterThan(TICK_LABEL_HEIGHT) // tilted labels really are taller
+      expect(title_center).toBeGreaterThanOrEqual(baseline_y + reach)
+    })
+
+    test(`short category names stay upright`, async () => {
+      const plot = await with_measured_text(() =>
+        mount_sized_bar_plot({
+          series: [{ x: [`A`, `B`, `C`], y: [1, 2, 3], color: `blue` }],
+        }),
+      )
+      for (const transform of x_tick_transforms(plot)) expect(transform).toBeNull()
+    })
 
     // categorical ticks are generated for every category regardless of the view, so
     // a panned/zoomed range must cull the ones that fall outside the plot area

@@ -1,5 +1,5 @@
 import { format_value_or_num } from '$lib/labels'
-import { euclidean_dist } from '$lib/math'
+import { euclidean_dist, to_radians } from '$lib/math'
 import type { AxisConfig } from '$lib/plot/core/types'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -137,10 +137,12 @@ export const full_footprint_or = (
 export interface AutoPaddingConfig {
   padding: Partial<Sides> // User padding (undefined sides will be auto-calculated)
   default_padding: Required<Sides> // Default padding to use as baseline
+  x_axis?: AxisConfig & { tick_values?: (string | number)[] }
   x2_axis?: AxisConfig & { tick_values?: (string | number)[] }
   y_axis?: AxisConfig & { tick_values?: (string | number)[] }
   y2_axis?: AxisConfig & { tick_values?: (string | number)[] }
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
+  width?: number // Plot width, needed to know whether x tick labels have to rotate
 }
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
@@ -154,13 +156,69 @@ export const measure_max_tick_width = (ticks: (string | number)[], format?: stri
         }),
       )
 
+// Candidate x tick-label rotations, shallowest first. Each step buys horizontal room but
+// spends plot height, so the search takes the first angle that clears the overlap.
+const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
+// Air between neighbouring tick labels before they read as one word.
+const TICK_LABEL_GAP = 6
+
+// Shallowest rotation that keeps neighbouring x tick labels apart, given the horizontal
+// pitch between adjacent ticks. Upright labels need their full width; rotated ones sit on
+// parallel baselines whose perpendicular separation is `pitch * sin(angle)`, so they clear
+// each other once that exceeds one line height. Returns 0 when labels already fit, and the
+// steepest angle when even 90 degrees cannot (the caller has more ticks than pixels).
+//
+// Negative by convention: anchored at their end, labels then trail down and to the *left*
+// of their tick. Tilting the other way would push the last label off the right edge of the
+// plot, where there is no margin to spill into.
+export const auto_tick_rotation = (
+  labels: (string | number)[],
+  pitch_px: number,
+  format?: string,
+): number => {
+  if (labels.length < 2 || !(pitch_px > 0)) return 0
+  if (measure_max_tick_width(labels, format) + TICK_LABEL_GAP <= pitch_px) return 0
+  const needed = TICK_LABEL_HEIGHT + TICK_LABEL_GAP
+  const angle =
+    TICK_ROTATION_LADDER.find(
+      (candidate) => pitch_px * Math.sin(to_radians(candidate)) >= needed,
+    ) ?? 90
+  return -angle
+}
+
+// Distance from an x/x2 baseline to the axis title's center, once the tick labels have
+// taken their share. Generalizes AXIS_TITLE_OFFSET, which assumed one upright line and so
+// planted the title inside a rotated label block.
+export const x_axis_title_offset = (
+  tick_labels: (string | number)[],
+  rotation: number,
+  format?: string,
+): number => tick_label_band(tick_labels, rotation, format) + LABEL_GAP_DEFAULT
+
+// Vertical space one row of x tick labels occupies at `rotation` degrees. Upright labels
+// cost one line; rotated ones project their own width downward, which is what makes a
+// shallower angle worth preferring whenever it still separates the labels.
+export const tick_label_band = (
+  labels: (string | number)[],
+  rotation: number,
+  format?: string,
+): number => {
+  if (labels.length === 0) return 0
+  if (rotation === 0) return TICK_LABEL_HEIGHT
+  const radians = to_radians(Math.abs(rotation))
+  const widest = measure_max_tick_width(labels, format)
+  return widest * Math.sin(radians) + TICK_LABEL_HEIGHT * Math.cos(radians)
+}
+
 export const calc_auto_padding = ({
   padding,
   default_padding,
+  x_axis = {},
   x2_axis = {},
   y_axis = {},
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
+  width,
 }: AutoPaddingConfig): Required<Sides> => {
   // Padding for a vertical-axis side (y/y2): reserve outside tick offsets, the widest tick,
   // title gap, rotated title width, and outer air. Titles can render from interactive options
@@ -196,7 +254,13 @@ export const calc_auto_padding = ({
     const inside = x2_axis.tick?.label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
-    const tick_band = has_outside_ticks ? TICK_LABEL_HEIGHT + 8 + Math.max(0, -tick_shift) : 0
+    // Same reach the labels will actually have; assuming one upright line here is what
+    // clips a rotated top axis off the figure.
+    const x2_rotation =
+      width == null ? 0 : resolve_tick_rotation(x2_axis, ticks, width - pad_l - pad_r, true)
+    const tick_band = has_outside_ticks
+      ? tick_label_band(ticks, x2_rotation, x2_axis.format) + 8 + Math.max(0, -tick_shift)
+      : 0
     const title_band = has_title
       ? AXIS_LABEL_HEIGHT + Math.max(0, x2_axis.label_shift?.y ?? 0)
       : 0
@@ -205,12 +269,54 @@ export const calc_auto_padding = ({
     return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
   }
 
+  const pad_l = padding.l ?? side_pad(y_axis, default_padding.l, `left`)
+  const pad_r = padding.r ?? side_pad(y2_axis, default_padding.r, `right`)
+
+  // Bottom depends on the angle the x labels will render at, since a rotated label
+  // projects its own width downward. Left/right never depend on bottom, so resolving them
+  // first (above) gives the rotation search the true plot width. Reserving exactly what
+  // the title placement will use is what keeps the surplus from becoming dead space.
+  const bottom_pad = (): number => {
+    const ticks = x_axis.tick_values ?? []
+    const inside = x_axis.tick?.label?.inside ?? false
+    if (ticks.length === 0 || inside || width == null) return default_padding.b
+    const rotation = resolve_tick_rotation(x_axis, ticks, width - pad_l - pad_r)
+    if (rotation === 0) return default_padding.b
+    const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
+    const below_baseline = has_axis_title(x_axis)
+      ? x_axis_title_offset(ticks, rotation, x_axis.format) + AXIS_LABEL_HEIGHT / 2
+      : tick_label_band(ticks, rotation, x_axis.format)
+    return Math.max(default_padding.b, below_baseline + tick_shift + AXIS_LABEL_OUTER)
+  }
+
   return {
     t: padding.t ?? top_pad(),
-    b: padding.b ?? default_padding.b,
-    l: padding.l ?? side_pad(y_axis, default_padding.l, `left`),
-    r: padding.r ?? side_pad(y2_axis, default_padding.r, `right`),
+    b: padding.b ?? bottom_pad(),
+    l: pad_l,
+    r: pad_r,
   }
+}
+
+// The rotation an x/x2 axis renders its tick labels at: an explicit angle when configured,
+// otherwise the shallowest one that stops them colliding. Shared by the padding math and
+// PlotAxis so the reserved band and the drawn labels can never disagree.
+// `mirror` is for the top axis, whose labels sit above the baseline: there the opposite
+// tilt is the one that trails up and to the left, keeping the last label on the figure.
+// Only the auto angle flips; an explicit rotation is passed through exactly as configured.
+export const resolve_tick_rotation = (
+  axis: AxisConfig,
+  tick_labels: (string | number)[],
+  plot_width: number,
+  mirror = false,
+): number => {
+  const configured = axis.tick?.label?.rotation ?? `auto`
+  if (configured !== `auto`) return configured
+  const angle = auto_tick_rotation(
+    tick_labels,
+    plot_width / Math.max(1, tick_labels.length),
+    axis.format,
+  )
+  return mirror ? -angle : angle
 }
 
 // Constrain tooltip position within bounds, flipping to opposite side if overflow

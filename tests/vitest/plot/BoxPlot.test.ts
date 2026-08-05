@@ -22,6 +22,44 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
+  // Same failure mode BarPlot had: a categorical x axis whose labels auto-rotate needs
+  // the padding to grow with them, or the tilted block is clipped off the figure.
+  test(`long category names tilt and still fit inside the figure`, async () => {
+    const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: (label: string) => ({ width: label.length * 7 }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      const plot = await mount_sized_box_plot({
+        series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
+        x_axis: { label: `state` },
+      })
+      const labels = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
+      expect(labels.length).toBeGreaterThan(0)
+      for (const label of labels) {
+        expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
+        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
+      }
+      // Padding followed the rotation: the baseline sits higher than it would with short
+      // labels, leaving the tilted block room instead of clipping it.
+      const baseline_of = (root: HTMLElement): number =>
+        Number(root.querySelector(`g.x-axis > line`)?.getAttribute(`y1`) ?? NaN)
+      const upright = await mount_sized_box_plot({
+        series: cats.map((cat, idx) => ({
+          y: dist(40, 0, 1),
+          label: `${idx}`,
+          category: `${idx}`,
+        })),
+        x_axis: { label: `state` },
+      })
+      expect(baseline_of(plot)).toBeGreaterThan(0)
+      expect(baseline_of(plot)).toBeLessThan(baseline_of(upright))
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   test.each([
     { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Error` } },
     { series: [] as BoxPlotSeries[] },

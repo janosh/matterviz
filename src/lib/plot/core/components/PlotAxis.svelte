@@ -3,7 +3,12 @@
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import type { Sides } from '$lib/plot/core/layout'
+  import {
+    AXIS_TITLE_OFFSET,
+    resolve_tick_rotation,
+    type Sides,
+    x_axis_title_offset,
+  } from '$lib/plot/core/layout'
   import type { AxisConfig } from '$lib/plot/core/types'
   import { DEFAULT_GRID_STYLE } from '$lib/plot/core/types'
 
@@ -50,9 +55,22 @@
     on_axis_change?: (key: string) => void
   } = $props()
 
+  const tick_text = (tick: number): string =>
+    tick_label?.(tick) ?? format_value_or_num(tick, axis.format)
+
   const is_x = $derived(side === `x` || side === `x2`)
   const inside = $derived(axis.tick?.label?.inside ?? false)
-  const rotation = $derived(axis.tick?.label?.rotation ?? 0)
+  const tick_texts = $derived(ticks.map(tick_text))
+  // y/y2 labels stack vertically and never crowd each other, so only x/x2 auto-rotate.
+  // Resolved through the same helper calc_auto_padding uses, so the band reserved for these
+  // labels always matches the angle they actually render at.
+  const rotation = $derived(
+    is_x
+      ? resolve_tick_rotation(axis, tick_texts, width - pad.l - pad.r, side === `x2`)
+      : typeof axis.tick?.label?.rotation === `number`
+        ? axis.tick.label.rotation
+        : 0,
+  )
   const shift_x = $derived(axis.tick?.label?.shift?.x ?? 0)
   const shift_y = $derived(axis.tick?.label?.shift?.y ?? 0)
   const stroke = $derived(axis.color || `var(--border-color, gray)`)
@@ -66,6 +84,15 @@
     Boolean(axis.label || axis.options?.length) && label_x != null && label_y != null,
   )
 
+  // Callers place the title AXIS_TITLE_OFFSET past the baseline, which budgets for one
+  // upright tick line. Rotated labels reach further, so push the title out by whatever
+  // they need beyond that. calc_auto_padding reserves the same surplus, so it stays in.
+  const rotated_title_shift = $derived(
+    is_x && rotation !== 0
+      ? Math.max(0, x_axis_title_offset(tick_texts, rotation, axis.format) - AXIS_TITLE_OFFSET)
+      : 0,
+  )
+
   // Tick-invariant label geometry (depends only on side/inside/rotation/shift)
   const text_x = $derived(
     is_x ? shift_x : (side === `y` ? (inside ? 8 : -8) : inside ? -8 : 8) + shift_x,
@@ -73,15 +100,19 @@
   const text_y = $derived(
     is_x ? (side === `x` ? (inside ? -8 : 8) : inside ? 8 : -8) + shift_y : shift_y,
   )
+  // A tilted label pivots about its anchor, so the anchor picks which way it trails: end
+  // sends it left of the tick, start sends it right. Auto-rotation is negative and wants
+  // `end`, keeping the last label inside the plot; an explicit positive angle keeps the
+  // original rightward trail.
   const text_anchor = $derived(
     is_x
       ? rotation === 0
         ? `middle`
         : side === `x`
-          ? inside
+          ? rotation < 0 !== inside
             ? `end`
             : `start`
-          : inside
+          : rotation < 0 !== inside
             ? `start`
             : `end` // x2 rotates opposite to x
       : side === `y`
@@ -134,8 +165,6 @@
   const in_plot = (pos: number): boolean =>
     !domain ||
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)
-  const tick_text = (tick: number): string =>
-    tick_label?.(tick) ?? format_value_or_num(tick, axis.format)
 </script>
 
 <g class="{side}-axis">
@@ -195,7 +224,7 @@
   {#if show_label}
     <AxisLabel
       x={label_x ?? 0}
-      y={label_y ?? 0}
+      y={(label_y ?? 0) + (side === `x` ? rotated_title_shift : -rotated_title_shift)}
       rotate={side === `y` || side === `y2`}
       label={axis.label ?? ``}
       options={axis.options}

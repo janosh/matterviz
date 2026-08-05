@@ -75,6 +75,7 @@
     generate_ticks,
     get_nice_data_range,
     get_tick_label,
+    resolve_tick_labels,
   } from '$lib/plot/core/scales'
   import { DEFAULT_SERIES_COLORS } from '$lib/plot/core/types'
   import { unique_id } from '$lib/plot/core/utils'
@@ -487,6 +488,8 @@
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
+            width,
+            x_axis: { ...x_axis, tick_values: x_tick_labels },
             x2_axis: { ...x2_axis, tick_values: ticks.x2 },
             y_axis: { ...y_axis, tick_values: ticks.y },
             y2_axis: { ...y2_axis, tick_values: ticks.y2 },
@@ -645,6 +648,10 @@
       x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
     }
   })
+
+  let x_tick_labels = $derived(
+    resolve_tick_labels(ticks.x, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks),
+  )
 
   let tick_label_widths = $derived({
     y_max: measure_max_tick_width(ticks.y, y_axis.format),

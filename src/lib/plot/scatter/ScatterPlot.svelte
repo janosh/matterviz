@@ -395,6 +395,8 @@
         ? calc_auto_padding({
             padding,
             default_padding,
+            width,
+            x_axis: { ...final_x_axis, tick_values: x_tick_values },
             x2_axis: { ...final_x2_axis, tick_values: x2_tick_values },
             y_axis: { ...final_y_axis, tick_values: y_tick_values },
             y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },

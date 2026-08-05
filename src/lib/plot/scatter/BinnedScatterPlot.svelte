@@ -308,6 +308,8 @@
         ? calc_auto_padding({
             padding: padding_config,
             default_padding: DEFAULT_PLOT_PADDING,
+            width,
+            x_axis: { ...x_axis, tick_values: x_ticks },
             y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
