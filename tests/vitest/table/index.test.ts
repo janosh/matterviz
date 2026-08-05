@@ -1,10 +1,128 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { CellVal } from '$lib/table'
-import { calc_cell_color, strip_html } from '$lib/table'
+import {
+  calc_cell_color,
+  compute_column_stats,
+  make_cell_color_scale,
+  merge_domains,
+  resolve_color_domain,
+  strip_html,
+} from '$lib/table'
 import { describe, expect, it } from 'vitest'
 
+describe(`column stats and color domains`, () => {
+  const values = [...Array.from({ length: 20 }, (_v, idx) => idx * 5), 10_000]
+
+  it(`summarizes a column in one pass, ignoring non-numeric entries`, () => {
+    const stats = compute_column_stats([1, 2, 3, null, undefined, NaN], `higher`)
+    expect(stats).toMatchObject({ min: 1, max: 3, mean: 2, median: 2, count: 3, best: 3 })
+    expect(compute_column_stats([1, 2, 3], `lower`)?.best).toBe(1)
+    expect(compute_column_stats([1, 2, 3])?.best).toBeNull()
+    expect(compute_column_stats([null, undefined, NaN])).toBeNull()
+  })
+
+  // Pinned exactly: a loose "somewhere below the outlier" bound would pass for almost any
+  // wrong quantile implementation. 21 values -> q05 index 1.0, q95 index 19.0.
+  it(`clips a quantile domain inside the outlier-driven full range`, () => {
+    const stats = compute_column_stats(values)
+    if (!stats) throw new Error(`expected stats`)
+    expect(resolve_color_domain(stats, `minmax`)).toEqual([0, 10_000])
+    expect(resolve_color_domain(stats, `quantile`)).toEqual([5, 95])
+    expect([stats.q_lo, stats.median, stats.q_hi]).toEqual([5, 50, 95])
+  })
+
+  it.each([
+    [`a single value`, [7], { min: 7, max: 7, mean: 7, median: 7, q_lo: 7, q_hi: 7 }],
+    [`all-equal values`, [3, 3, 3], { min: 3, max: 3, mean: 3, median: 3, q_lo: 3, q_hi: 3 }],
+  ])(`handles %s without collapsing`, (_desc, input, expected) => {
+    const stats = compute_column_stats(input)
+    expect(stats).toMatchObject(expected)
+    // a zero-width quantile range must fall back to min/max, not produce an empty domain
+    if (stats)
+      expect(resolve_color_domain(stats, `quantile`)).toEqual([expected.min, expected.max])
+  })
+
+  it(`treats non-finite values as uncolorable everywhere`, () => {
+    expect(compute_column_stats([1, 2, Infinity, -Infinity])).toMatchObject({
+      min: 1,
+      max: 2,
+      count: 2,
+    })
+    const scale = make_cell_color_scale([1, 2, Infinity], `higher`)
+    expect(scale(Infinity).bg).toBeNull()
+    expect(scale(2).bg).not.toBeNull()
+  })
+
+  it(`keeps log scaling when a supplied domain reaches zero`, () => {
+    const log_scale = make_cell_color_scale(
+      [1, 10, 100],
+      `higher`,
+      `interpolateViridis`,
+      `log`,
+      [0, 100],
+    )
+    const linear_scale = make_cell_color_scale(
+      [1, 10, 100],
+      `higher`,
+      `interpolateViridis`,
+      `linear`,
+      [0, 100],
+    )
+    expect(log_scale(10).bg).not.toBe(linear_scale(10).bg)
+    expect(log_scale(10).bg).toBe(
+      make_cell_color_scale([1, 100], `higher`, `interpolateViridis`, `log`)(10).bg,
+    )
+  })
+
+  it(`falls back to min/max when quantiles are not requested`, () => {
+    const stats = compute_column_stats(values, undefined, false)
+    expect(stats).toMatchObject({ q_lo: 0, q_hi: 10_000, min: 0, max: 10_000 })
+  })
+
+  it.each([
+    [
+      [-2, -1, 5],
+      [-5, 5],
+    ],
+    [
+      [-8, 1, 2],
+      [-8, 8],
+    ],
+    [
+      [1, 2, 3],
+      [-3, 3],
+    ],
+  ])(`centers a diverging domain on zero for %s`, (input, expected) => {
+    const stats = compute_column_stats(input)
+    if (!stats) throw new Error(`expected stats`)
+    expect(resolve_color_domain(stats, `diverging`)).toEqual(expected)
+  })
+
+  it(`merges a shared-domain group to its widest extent`, () => {
+    expect(
+      merge_domains([
+        [0, 5],
+        [-2, 3],
+        [1, 9],
+      ]),
+    ).toEqual([-2, 9])
+    expect(merge_domains([])).toBeNull()
+  })
+
+  it(`clamps values outside a supplied domain`, () => {
+    const scale = make_cell_color_scale(
+      [0, 10, 10_000],
+      `higher`,
+      `interpolateViridis`,
+      `linear`,
+      [0, 10],
+    )
+    expect(scale(10_000).bg).toBe(scale(10).bg)
+    expect(scale(5).bg).not.toBe(scale(10).bg)
+  })
+})
+
 describe(`calc_cell_color`, () => {
-  // Tests for cases that should return null colors
   it.each<{
     name: string
     val: number | null | undefined
@@ -66,7 +184,6 @@ describe(`calc_cell_color`, () => {
     expect(result).toEqual({ bg: null, text: null })
   })
 
-  // Tests for cases that should return valid colors
   it.each([
     {
       name: `higher-is-better`,

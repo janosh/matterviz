@@ -254,7 +254,7 @@
   let { category_list, internal_series } = $derived(
     normalize_categorical(series, x_axis.categories),
   )
-  let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
+  let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
   // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
   let prev_cat_axis: `x` | `y` | null = null

@@ -1,4 +1,11 @@
-import { HeatmapTable, type Label, type RowData } from '$lib'
+import {
+  type ColumnFilter,
+  type ColumnPrefs,
+  HeatmapTable,
+  type Label,
+  type RowData,
+  type SummaryStat,
+} from '$lib'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
 import { bind_props } from '../setup'
@@ -1788,11 +1795,306 @@ describe(`HeatmapTable`, () => {
     })
   })
 
+  describe(`Filtering, summaries and per-column state`, () => {
+    const metrics: Label[] = [{ label: `Model` }, { label: `Score` }, { label: `Tier` }]
+    const metric_rows = [
+      { Model: `A`, Score: 10, Tier: `alpha` },
+      { Model: `B`, Score: 20, Tier: `beta` },
+      { Model: `C`, Score: 30, Tier: `alpha` },
+    ]
+    const rendered_models = () => col_values(`Model`)
+
+    // Filters live in column_prefs, so setting them from the outside is the same code path
+    // the funnel UI drives — and doubles as the persistence test for that prop.
+    it.each<[string, ColumnFilter, string, string[]]>([
+      [`numeric lower bound`, { kind: `numeric`, min: 20 }, `Score`, [`B`, `C`]],
+      [`numeric range`, { kind: `numeric`, min: 15, max: 25 }, `Score`, [`B`]],
+      [`category allow-list`, { kind: `category`, values: [`alpha`] }, `Tier`, [`A`, `C`]],
+      [`substring`, { kind: `text`, text: `bet` }, `Tier`, [`B`]],
+    ])(`filters rows by %s`, (_desc, filter, col_id, expected) => {
+      mount_table({
+        data: metric_rows,
+        columns: metrics,
+        column_prefs: { [col_id]: { filter } },
+      })
+      expect(rendered_models()).toEqual(expected)
+    })
+
+    it(`combines a column filter with the global search`, () => {
+      mount_table({
+        data: metric_rows,
+        columns: metrics,
+        search: true,
+        search_query: `alpha`,
+        column_prefs: { Score: { filter: { kind: `numeric`, min: 20 } } },
+      })
+      expect(rendered_models()).toEqual([`C`]) // alpha AND score >= 20
+    })
+
+    // Summary rows read the same stats the color scales use, so they must shrink with the
+    // filter rather than describing the untouched data.
+    it(`summarizes only the rows left after filtering`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        summary: [`mean`, `count`] as SummaryStat[],
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+      })
+      mount_table(props)
+      const summary_cells = () =>
+        [...document.querySelectorAll(`tfoot .summary-row`)].map((row) =>
+          [...row.querySelectorAll(`td`)].map((cell) => cell.textContent?.trim()),
+        )
+
+      expect(summary_cells()).toEqual([
+        [`mean`, `20`, ``],
+        [`count`, `3`, ``],
+      ])
+      props.column_prefs = { Score: { filter: { kind: `numeric`, min: 20 } } }
+      await tick()
+      expect(summary_cells()).toEqual([
+        [`mean`, `25`, ``],
+        [`count`, `2`, ``],
+      ])
+    })
+
+    it.each([
+      [`higher`, [`0%`, `50%`, `100%`], `30`],
+      [`lower`, [`100%`, `50%`, `0%`], `10`],
+      [undefined, [`0%`, `50%`, `100%`], undefined],
+    ] as const)(
+      `sizes data bars and highlights best for better=%s`,
+      (better, widths, best) => {
+        mount_table({
+          data: metric_rows,
+          columns: [
+            { label: `Model` },
+            { label: `Score`, better, render_as: `bar`, highlight_best: true },
+          ],
+        })
+        expect(
+          [...document.querySelectorAll(`td[data-col="Score"] .data-bar`)].map(
+            (bar) => (bar as HTMLElement).style.width,
+          ),
+        ).toEqual(widths)
+        expect(
+          document.querySelector(`td.best-cell[data-col="Score"]`)?.textContent?.trim(),
+        ).toBe(best)
+      },
+    )
+
+    it(`clears the sort on the third click`, async () => {
+      const unsorted = [
+        { Model: `A`, Score: 20, Tier: `alpha` },
+        { Model: `B`, Score: 10, Tier: `beta` },
+        { Model: `C`, Score: 30, Tier: `alpha` },
+      ]
+      mount_table({ data: unsorted, columns: metrics })
+      const score_header = document.querySelectorAll(`thead th`)[1] as HTMLElement
+      for (const expected of [
+        [`C`, `A`, `B`],
+        [`B`, `A`, `C`],
+        [`A`, `B`, `C`],
+      ]) {
+        score_header.click()
+        await tick()
+        expect(rendered_models()).toEqual(expected)
+      }
+      expect(score_header.textContent).not.toMatch(/[↑↓]/)
+    })
+
+    it(`keeps cycling asc/desc when tri_state_sort is off`, async () => {
+      const unsorted = [
+        { Model: `A`, Score: 20 },
+        { Model: `B`, Score: 10 },
+      ]
+      mount_table({
+        data: unsorted,
+        columns: [{ label: `Model` }, { label: `Score` }],
+        tri_state_sort: false,
+      })
+      const header = document.querySelectorAll(`thead th`)[1] as HTMLElement
+      for (const expected of [
+        [`A`, `B`],
+        [`B`, `A`],
+        [`A`, `B`],
+      ]) {
+        header.click()
+        await tick()
+        expect(rendered_models()).toEqual(expected)
+      }
+    })
+
+    // Wide tables render only the columns near the viewport, with spacer cells holding the
+    // scroll width. Sticky columns are exempt: they're pinned on screen at any scroll.
+    it(`windows columns horizontally and always keeps sticky ones`, async () => {
+      const wide_columns: Label[] = Array.from({ length: 60 }, (_v, idx) => ({
+        label: `C${idx}`,
+        ...(idx === 0 ? { sticky: true } : {}),
+      }))
+      const wide_row = Object.fromEntries(wide_columns.map((col, idx) => [col.label, idx]))
+      mount_table({
+        data: [wide_row],
+        columns: wide_columns,
+        virtual_columns: true,
+        scroll_style: `max-width: 400px`,
+      })
+      await tick()
+
+      const rendered = document.querySelectorAll(`tbody td:not(.col-spacer)`)
+      expect(rendered.length).toBeGreaterThan(0)
+      expect(rendered.length).toBeLessThan(wide_columns.length)
+      expect(document.querySelector(`td[data-col="C0"]`)).not.toBeNull()
+      expect(document.querySelector(`tbody td.col-spacer`)).not.toBeNull()
+
+      // Scroll right: the window must move off zero, the sticky column must survive it,
+      // and indices must stay ABSOLUTE (a relative 0..N numbering would break selection
+      // coordinates and copy ranges).
+      const scroller = document.querySelector(`.table-scroll`) as HTMLElement
+      Object.defineProperty(scroller, `scrollLeft`, { value: 3000, configurable: true })
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+
+      const scrolled = [...document.querySelectorAll(`tbody td:not(.col-spacer)`)]
+      const indices = scrolled.map((cell) => Number(cell.getAttribute(`data-col-idx`)))
+      expect(indices).toEqual([...indices].toSorted((one, two) => one - two))
+      expect(indices[0]).toBe(0) // sticky C0 still rendered
+      expect(Math.max(...indices)).toBeGreaterThan(20) // window really moved right
+      expect(indices).not.toContain(15) // and left the early columns behind
+      // aria keeps the true column count/position for assistive tech
+      expect(document.querySelector(`table`)?.getAttribute(`aria-colcount`)).toBe(`60`)
+    })
+
+    it.each([
+      [
+        `a sticky column isn't in the leading run`,
+        (idx: number) => (idx === 30 ? { sticky: true } : {}),
+      ],
+      [`group headers make windowing unsafe`, () => ({ group: `G` })],
+    ])(`renders every column when %s`, async (_reason, extra) => {
+      const columns: Label[] = Array.from({ length: 60 }, (_val, idx) => ({
+        label: `C${idx}`,
+        ...extra(idx),
+      }))
+      mount_table({
+        data: [Object.fromEntries(columns.map((col, idx) => [col.label, idx]))],
+        columns,
+        virtual_columns: true,
+      })
+      await tick()
+      expect(document.querySelectorAll(`tbody td:not(.col-spacer)`)).toHaveLength(60)
+    })
+
+    // column_prefs holds widths and colors as well as filters, so a resize must not look
+    // like a filter change — that re-filtered every row and wiped the cell selection.
+    it(`keeps the cell selection when an unrelated pref changes`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+      })
+      mount_table(props)
+      await tick()
+      const cell = document.querySelector(
+        `td[data-row-idx="1"][data-col-idx="1"]`,
+      ) as HTMLElement
+      cell.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+
+      props.column_prefs = { Score: { width: 180 } } // a resize, not a filter
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell.style.width).toBe(`180px`)
+    })
+
+    // Past the auto-detect cap a checklist would be unusable, but a column explicitly
+    // configured as `category` must still get its full option list rather than an empty panel.
+    it(`lists every option for an explicitly categorical column past the cap`, async () => {
+      const many = Array.from({ length: 60 }, (_v, idx) => ({ Tag: `t${idx}`, Score: idx }))
+      mount_table({
+        data: many,
+        columns: [{ label: `Tag`, filter: `category` }, { label: `Score` }],
+        show_filters: true,
+      })
+      await tick()
+      ;(document.querySelector(`.column-filter-trigger`) as HTMLButtonElement).click()
+      await tick()
+      const options = document.querySelectorAll(`.column-filter-options label`)
+      expect(options).toHaveLength(60)
+    })
+
+    it(`omits summary statistics for columns that aren't fully numeric`, () => {
+      mount_table({
+        data: [
+          { Model: `A`, Score: 10, Mixed: `ok` },
+          { Model: `B`, Score: 20, Mixed: 2 },
+        ],
+        columns: [{ label: `Model` }, { label: `Score` }, { label: `Mixed` }],
+        summary: [`mean`],
+      })
+      const cells = [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
+        cell.textContent?.trim(),
+      )
+      expect(cells).toEqual([`mean`, `15`, ``]) // Mixed has a text value -> no mean
+    })
+
+    it(`maps the density prop onto the cell padding var`, () => {
+      mount_table({ data: metric_rows, columns: metrics, density: `compact` })
+      expect(document.querySelector(`.table-container`)?.getAttribute(`data-density`)).toBe(
+        `compact`,
+      )
+    })
+
+    // Keyboard parity: arrows walk the active cell, Shift extends the rectangle,
+    // Alt moves the column. All three were mouse-only before.
+    it(`navigates, extends selection and moves columns from the keyboard`, async () => {
+      const props = $state({
+        data: metric_rows,
+        columns: metrics,
+        keyboard_cells: true,
+        column_order: [] as string[],
+      })
+      mount_table(props as ComponentProps<typeof HeatmapTable>)
+      await tick() // let column_order initialize; that write clears any pending selection
+      const cell = (row: number, col: number) =>
+        document.querySelector(
+          `td[data-row-idx="${row}"][data-col-idx="${col}"]`,
+        ) as HTMLElement
+
+      // exactly one cell owns the tab stop, and it moves with the arrows
+      expect(cell(0, 0).getAttribute(`tabindex`)).toBe(`0`)
+      expect([...document.querySelectorAll(`td[tabindex="0"]`)]).toHaveLength(1)
+
+      cell(0, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(1)
+      expect(cell(1, 0).classList.contains(`cell-selected`)).toBe(true)
+      expect(cell(1, 0).getAttribute(`tabindex`)).toBe(`0`)
+      expect(document.activeElement).toBe(cell(1, 0))
+
+      cell(1, 0).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowRight`, shiftKey: true, bubbles: true }),
+      )
+      await tick()
+      expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
+
+      cell(1, 1).dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowLeft`, altKey: true, bubbles: true }),
+      )
+      await tick()
+      expect(props.column_order).toEqual([`Score`, `Model`, `Tier`])
+    })
+  })
+
   describe(`Export Enhancements`, () => {
-    // Shared helper: mount, optionally interact, trigger CSV export, return blob text
+    // Shared helper: mount, optionally interact, trigger an export, return blob text
     async function export_csv_text(
       props: Partial<ComponentProps<typeof HeatmapTable>>,
       before_export?: () => Promise<void>,
+      format = `CSV`,
     ): Promise<string> {
       const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
       const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
@@ -1807,7 +2109,7 @@ describe(`HeatmapTable`, () => {
         await open_export_menu()
         const csv_btn = Array.from(
           document.querySelectorAll(`.dropdown-pane .dropdown-option`),
-        ).find((btn) => btn.textContent?.includes(`CSV`)) as HTMLButtonElement
+        ).find((btn) => btn.textContent?.includes(format)) as HTMLButtonElement
         csv_btn.click()
         await tick()
 
@@ -1819,6 +2121,39 @@ describe(`HeatmapTable`, () => {
         append_spy.mockRestore()
       }
     }
+
+    it(`escapes GitHub markdown without breaking rows or alignment`, async () => {
+      const text = await export_csv_text(
+        {
+          data: [{ Model: `a\nb`, Escaped: `c\\|d`, Score: 1 }],
+          columns: [{ label: `Model` }, { label: `Escaped` }, { label: `Score` }],
+        },
+        undefined,
+        `MD`,
+      )
+      expect(text.split(`\n`)).toEqual([
+        `| Model | Escaped | Score |`,
+        `| :--- | :--- | ---: |`,
+        `| a<br>b | c\\\\\\|d | 1 |`,
+      ])
+    })
+
+    it(`emits LaTeX booktabs with escaped control characters`, async () => {
+      const text = await export_csv_text(
+        {
+          data: [{ Model: `C:\\tmp Fe_2 & Co x^2 100%`, Score: 1 }],
+          columns: [{ label: `Model` }, { label: `Score` }],
+        },
+        undefined,
+        `TEX`,
+      )
+      expect(text).toContain(`\\begin{tabular}{lr}`)
+      expect(text).toContain(`\\toprule`)
+      expect(text).toContain(
+        `C:\\textbackslash{}tmp Fe\\_2 \\& Co x\\textasciicircum{}2 100\\% & 1 \\\\`,
+      )
+      expect(text).toContain(`\\bottomrule`)
+    })
 
     it(`copy to clipboard writes TSV`, async () => {
       mount_table({ data: sample_data, columns: sample_columns, export_data: true })

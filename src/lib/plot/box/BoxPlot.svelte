@@ -286,7 +286,7 @@
       ? [...new Set(series.map(slot_key))]
       : series.map((srs, idx) => srs.label ?? `${idx}`),
   )
-  let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
+  let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
   // Keep category-axis zeros off (and settings checkboxes in sync) across orientation flips.
   let prev_cat_axis: `x` | `y` | null = null
