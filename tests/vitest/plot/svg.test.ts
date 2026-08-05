@@ -14,17 +14,12 @@ describe(`bar_path`, () => {
   )
 
   it.each([
+    [`vertical default`, undefined, false, `M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`],
     [`vertical top`, true, false, `M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`],
     [`horizontal right`, false, false, `M10,20H45A5,5 0 0 1 50,25V75A5,5 0 0 1 45,80H10Z`],
     [`vertical bottom`, true, true, `M10,20V75A5,5 0 0 0 15,80H45A5,5 0 0 0 50,75V20Z`],
     [`horizontal left`, false, true, `M50,20H15A5,5 0 0 0 10,25V75A5,5 0 0 0 15,80H50Z`],
   ])(`rounds the %s corners`, (_name, vertical, flip, expected) => {
     expect(bar_path(10, 20, 40, 60, 5, vertical, flip)).toBe(expected)
-  })
-
-  it(`defaults to vertical orientation when not specified`, () => {
-    const explicit = bar_path(0, 0, 10, 20, 3, true)
-    const implicit = bar_path(0, 0, 10, 20, 3)
-    expect(implicit).toBe(explicit)
   })
 })

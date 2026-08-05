@@ -55,13 +55,6 @@ describe(`calc_cell_color`, () => {
       color_scale: `interpolateViridis`,
     },
     {
-      name: `zero with log scale`,
-      val: 0,
-      all_values: [0, 50, 100],
-      color_scale: `interpolateViridis`,
-      scale_type: `log`,
-    },
-    {
       name: `negative with log scale`,
       val: -5,
       all_values: [-5, 50, 100],
@@ -88,6 +81,13 @@ describe(`calc_cell_color`, () => {
       val: 0,
       all_values: [0, 50, 100],
       better: `higher` as const,
+    },
+    {
+      name: `all-zero log scale`,
+      val: 0,
+      all_values: [0, 0],
+      better: `higher` as const,
+      scale_type: `log` as const,
     },
     {
       name: `negative with linear scale`,
@@ -145,6 +145,15 @@ describe(`calc_cell_color`, () => {
     expect(low_higher).not.toBe(high_higher)
     expect(low_higher).toBe(calc_cell_color(100, values, `lower`).bg)
     expect(high_higher).toBe(calc_cell_color(1, values, `lower`).bg)
+  })
+
+  it(`maps log-scale zero to the lowest positive endpoint color`, () => {
+    const values = [0, 10, 100]
+    for (const better of [`higher`, `lower`] as const) {
+      expect(calc_cell_color(0, values, better, undefined, `log`).bg).toBe(
+        calc_cell_color(10, values, better, undefined, `log`).bg,
+      )
+    }
   })
 
   it(`falls back to viridis for invalid color scale name`, () => {

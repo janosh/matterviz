@@ -3,7 +3,7 @@
 
 import { ascending } from 'd3-array'
 import type { Vec2 } from '$lib/math'
-import { quantile_unordered } from '$lib/plot/box/quantile'
+import { quantile_unordered } from '$lib/math'
 import type { HandlerProps } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 import { clamp01 } from '$lib/utils'

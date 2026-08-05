@@ -4,7 +4,7 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ContextMenu, Icon } from 'svelte-widgets'
+  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -43,7 +43,7 @@
   import type { Snippet } from 'svelte'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Helper to check if value is invalid (null, undefined, NaN)
   const is_invalid = (val: unknown) =>
@@ -365,9 +365,8 @@
   // Pagination state
   let current_page = $state(1)
 
-  // Dropdown states
-  let show_column_dropdown = $state(false)
-  let show_export_dropdown = $state(false)
+  // Which toolbar dropdown is open, if any — they overlap, so only one ever is
+  let open_dropdown = $state<`columns` | `export` | null>(null)
 
   // Per-column gradient direction overrides (user-toggled via header)
   let better_overrides = new SvelteMap<string, `higher` | `lower`>()
@@ -394,6 +393,9 @@
   // Columns that have a color gradient
   let colored_columns = $derived(columns.filter((col) => col.color_scale != null))
 
+  // Measured left offsets keep successive sticky columns from overlapping.
+  let sticky_offsets = $state<Record<string, number>>({})
+
   // Column resize state
   let resize_col_id = $state<string | null>(null)
   let resize_start_x = $state(0)
@@ -415,8 +417,28 @@
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
     col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+
+  // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
+  let data_keys = $derived.by(() => {
+    const keys = new SvelteMap<string, string>()
+    for (const col of columns) {
+      const col_id = get_col_id(col)
+      const plain_key = col.key ?? col.label
+      const qualified = col_id !== plain_key && data.some((row) => col_id in row)
+      keys.set(col_id, qualified ? col_id : plain_key)
+    }
+    return keys
+  })
+  // Row key for a column, by column or by ID (sort/context-menu state holds IDs)
+  const key_of_id = (col_id: string): string => data_keys.get(col_id) ?? col_id
+  const cell_key = (col: Label): string => key_of_id(get_col_id(col))
+  // Sticky columns pin to a measured offset (see sticky_offsets); the rest never set `left`
+  const sticky_left = (col: Label): string | undefined =>
+    col.sticky ? `${sticky_offsets[get_col_id(col)] ?? 0}px` : undefined
   const get_datetime_label_id = (col_id: string) =>
     `datetime-format-label-${encodeURIComponent(col_id)}`
+  // Keep date/time control events from sorting or dragging their parent header.
+  const stop_event = (event: Event) => event.stopPropagation()
 
   const has_explicit_datetime_format = (col: Label): boolean =>
     col.format_type === `datetime` || Boolean(col.datetime_format)
@@ -472,10 +494,10 @@
     if (col.datetime_format === `time`) return `time`
     if (col.datetime_format || col.format_type === `datetime`) return `datetime`
 
-    const col_id = get_col_id(col)
+    const row_key = cell_key(col)
     let has_date_value = false
     for (const row of data.slice(0, 25)) {
-      const kind = value_datetime_kind(row[col_id], col)
+      const kind = value_datetime_kind(row[row_key], col)
       if (kind === `datetime`) return `datetime`
       if (kind === `date`) has_date_value = true
     }
@@ -494,6 +516,23 @@
 
   const is_datetime_column = (col: Label): boolean =>
     datetime_column_kinds.has(get_col_id(col))
+
+  // Right-align all-numeric columns, excluding dates and custom-rendered cells.
+  let numeric_columns = $derived.by(() => {
+    const col_ids = new SvelteSet<string>()
+    for (const col of columns) {
+      if (is_datetime_column(col) || special_cells?.[col.label]) continue
+      const row_key = cell_key(col)
+      const vals = data
+        .slice(0, 50)
+        .map((row) => row[row_key])
+        .filter((val) => !is_invalid(val) && val !== ``)
+      if (vals.length > 0 && vals.every((val) => parse_numeric_val(val) !== null)) {
+        col_ids.add(get_col_id(col))
+      }
+    }
+    return col_ids
+  })
 
   const datetime_column_kind = (col: Label): DateTimeColumnKind =>
     datetime_column_kinds.get(get_col_id(col)) ?? `datetime`
@@ -516,18 +555,13 @@
     }
   }
 
-  const pad2 = (val: number): string => String(val).padStart(2, `0`)
-
-  function format_date(date: Date): string {
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-  }
-
-  function format_time(date: Date): string {
-    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-  }
-
-  function format_datetime(date: Date): string {
-    return `${format_date(date)} ${format_time(date)}`
+  // Local-time parts, zero-padded. Not toISOString(), which would shift to UTC.
+  const date_parts = (date: Date): { date: string; time: string } => {
+    const pad = (val: number) => String(val).padStart(2, `0`)
+    return {
+      date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+      time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    }
   }
 
   // Ticks once a minute while any column shows relative times, so "Xm ago"
@@ -570,43 +604,30 @@
   function format_datetime_cell(val: CellVal, col: Label): string | null {
     const timestamp = parse_datetime_val(val, col)
     if (timestamp === null) return null
-    const date = new Date(timestamp)
     const mode = datetime_mode(col)
-    if (mode === `date`) return format_date(date)
-    if (mode === `time`) return format_time(date)
-    if (mode === `datetime`) return format_datetime(date)
-    if (mode === `iso`) return date.toISOString()
-    return format_since_now(timestamp)
+    if (mode === `relative`) return format_since_now(timestamp)
+    const stamp = new Date(timestamp)
+    if (mode === `iso`) return stamp.toISOString()
+    const { date, time } = date_parts(stamp)
+    return mode === `date` ? date : mode === `time` ? time : `${date} ${time}`
   }
 
-  // Sync column_order with columns: initialize if empty, remove stale IDs, append new IDs
+  // Sync column_order with columns: drop stale IDs, append new ones, keep the user's order.
+  // An empty column_order needs no special case: nothing is kept, so every ID is appended.
   $effect(() => {
     if (columns.length === 0) return
     const col_ids = columns.map(get_col_id)
-
-    // Case 1: First render - initialize with default order
-    if (column_order.length === 0) {
-      column_order = col_ids
-      return
-    }
-
-    // Case 2: Sync needed - keep valid IDs in their order, append any new ones
     const valid_ids = new Set(col_ids)
     const kept = column_order.filter((id) => valid_ids.has(id))
-    const new_ids = col_ids.filter((id) => !kept.includes(id))
-    const new_order = [...kept, ...new_ids]
+    const new_order = [...kept, ...col_ids.filter((id) => !kept.includes(id))]
 
-    // Skip assignment if content is unchanged to prevent infinite effect loop.
-    // After drag reorder, column_order differs from col_ids (default order) but the
-    // computed new_order equals the current column_order — assigning a new array
-    // reference would re-trigger this effect endlessly.
-    if (
+    // Assign only on a real change, or the new array reference re-triggers this effect
+    // forever: after a drag reorder column_order differs from the default col_ids order,
+    // yet new_order recomputes to exactly the current column_order.
+    const unchanged =
       new_order.length === column_order.length &&
       new_order.every((id, idx) => id === column_order[idx])
-    )
-      return
-
-    column_order = new_order
+    if (!unchanged) column_order = new_order
   })
 
   // Reorder columns based on column_order
@@ -628,6 +649,8 @@
 
   let drag_col_id = $state<string | null>(null)
   let drag_over_col_id = $state<string | null>(null)
+  // Offset the second sticky header row by the first row's height.
+  let group_header_height = $state(0)
 
   // Merge root_style with rest.style for root div; omit style from rest to avoid duplicate
   let rest_props = $derived.by(() => {
@@ -768,8 +791,9 @@
         // criteria hold column IDs; skip stale entries referencing removed columns
         if (!valid_column_ids.has(column)) continue
 
-        const val1 = row1[column]
-        const val2 = row2[column]
+        const row_key = key_of_id(column)
+        const val1 = row1[row_key]
+        const val2 = row2[row_key]
 
         if (val1 === val2) continue
 
@@ -1007,7 +1031,7 @@
     for (const col of visible_columns) {
       if (col.color_scale === null) continue
       const col_id = get_col_id(col)
-      const parsed_vals = filtered_data.map((row) => parse_numeric_val(row[col_id]))
+      const parsed_vals = filtered_data.map((row) => parse_numeric_val(row[cell_key(col)]))
       const better = better_overrides.get(col_id) ?? col.better
       const scale = (color_scale_overrides.get(col_id) ??
         col.color_scale ??
@@ -1042,28 +1066,57 @@
       (col) => col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     ),
   )
+  let has_group_header = $derived(visible_columns.some((col) => col.group))
+  $effect(() => {
+    const sticky_ids = visible_columns.filter((col) => col.sticky).map(get_col_id)
+    void column_widths // rerun after manual column resizing
+    if (!container_el || sticky_ids.length < 2) {
+      if (Object.keys(sticky_offsets).length > 0) sticky_offsets = {}
+      return
+    }
+    const headers = sticky_ids.map((col_id) =>
+      container_el?.querySelector<HTMLElement>(
+        `thead th[data-col-id="${CSS.escape(col_id)}"]`,
+      ),
+    )
+    const update_offsets = () => {
+      let offset = 0
+      const offsets: Record<string, number> = {}
+      sticky_ids.forEach((col_id, idx) => {
+        offsets[col_id] = offset
+        offset += headers[idx]?.offsetWidth ?? 0
+      })
+      if (!sticky_ids.every((col_id) => sticky_offsets[col_id] === offsets[col_id])) {
+        sticky_offsets = offsets
+      }
+    }
+    update_offsets()
+    if (typeof ResizeObserver === `undefined`) return
+    const observer = new ResizeObserver(update_offsets)
+    for (const header of headers) if (header) observer.observe(header)
+    return () => observer.disconnect()
+  })
   // total cell count per body row (for spacer + empty-message colspans)
   let body_colspan = $derived(
     visible_columns.length + (show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0),
   )
 
-  // Arrow (plus a numbered badge under multi-sort) for actively sorted columns
-  const sort_indicator = (col: Label, current_sort_state: SortState) => {
+  // Sort arrow for an actively sorted column, plus its 1-based place under multi-sort
+  const sort_indicator = (col: Label): { ascending: boolean; rank: number | null } | null => {
     if (col.show_sort_indicator === false || col.style?.includes(`--hide-sort-indicator`)) {
-      return ``
+      return null
     }
     const col_id = get_col_id(col)
     const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
     const active =
       multi_idx !== -1
         ? multi_sort[multi_idx]
-        : current_sort_state.column === col_id
-          ? current_sort_state
+        : sort_state.column === col_id
+          ? sort_state
           : null
-    if (!active) return ``
-    const badge =
-      multi_idx !== -1 && multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
-    return `<span style="font-size: 0.8em;">${active.ascending ? `↓` : `↑`}${badge}</span>`
+    if (!active) return null
+    const ranked = multi_idx !== -1 && multi_sort.length > 1
+    return { ascending: active.ascending, rank: ranked ? multi_idx + 1 : null }
   }
 
   // Context menu state for column right-click (headers and body cells). `at` is what
@@ -1220,9 +1273,7 @@
       for (let row_idx = row_lo; row_idx <= row_hi; row_idx++) {
         const cells: string[] = []
         for (let col_idx = col_lo; col_idx <= col_hi; col_idx++) {
-          cells.push(
-            cell_copy_text(sorted_data[row_idx][get_col_id(visible_columns[col_idx])]),
-          )
+          cells.push(cell_copy_text(sorted_data[row_idx][cell_key(visible_columns[col_idx])]))
         }
         lines.push(cells.join(`\t`))
       }
@@ -1233,8 +1284,9 @@
 
   // Every sorted+filtered value of one column (all pages), one per line
   function copy_column_values(col_id: string) {
+    const row_key = key_of_id(col_id)
     void navigator.clipboard?.writeText(
-      sorted_data.map((row) => cell_copy_text(row[col_id])).join(`\n`),
+      sorted_data.map((row) => cell_copy_text(row[row_key])).join(`\n`),
     )
   }
 
@@ -1327,7 +1379,7 @@
     const headers = visible_columns.map((col) => quote(strip_html(col.label)))
     const rows = export_rows.map((row) =>
       visible_columns.map((col) => {
-        const val = row[get_col_id(col)]
+        const val = row[cell_key(col)]
         if (val == null) return ``
         return quote(strip_html(String(val)))
       }),
@@ -1343,8 +1395,7 @@
     const rows = export_rows.map((row) => {
       const clean_row: Record<string, unknown> = {}
       for (const col of visible_columns) {
-        const col_id = get_col_id(col)
-        const val = row[col_id]
+        const val = row[cell_key(col)]
         clean_row[strip_html(col.label)] = typeof val === `string` ? strip_html(val) : val
       }
       return clean_row
@@ -1415,6 +1466,66 @@
   onkeydown={handle_cell_selection_keydown}
 />
 
+<!-- Shared toolbar dropdown; `id` also tracks the single open pane. -->
+{#snippet dropdown(id: `columns` | `export`, icon: IconData, options: Snippet)}
+  <div class="dropdown-wrapper">
+    <button
+      class="icon-btn"
+      class:active={open_dropdown === id}
+      onclick={() => (open_dropdown = open_dropdown === id ? null : id)}
+      {@attach tooltip({
+        content: id === `columns` ? `Columns` : `Export`,
+        placement: `top`,
+      })}
+    >
+      <Icon {icon} />
+    </button>
+    {#if open_dropdown === id}
+      <div class="dropdown-pane">{@render options()}</div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet column_options()}
+  {#each ordered_columns as col (get_col_id(col))}
+    {@const col_id = get_col_id(col)}
+    <label class="dropdown-option">
+      <input
+        type="checkbox"
+        checked={!hidden_columns.includes(col_id)}
+        onchange={() => toggle_column(col_id)}
+      />
+      {@html sanitize_html(col.label)}
+    </label>
+  {/each}
+{/snippet}
+
+{#snippet export_options()}
+  {#each export_actions as [format, export_fn] (format)}
+    {#if export_config?.formats.includes(format)}
+      <button
+        class="dropdown-option"
+        onclick={() => {
+          export_fn(export_config?.filename ?? `table-export`)
+          open_dropdown = null
+        }}
+      >
+        <Icon icon={Download} style="width: 12px" />
+        {format.toUpperCase()}
+      </button>
+    {/if}
+  {/each}
+  <button
+    class="dropdown-option"
+    onclick={() => {
+      copy_to_clipboard()
+      open_dropdown = null
+    }}
+  >
+    <Icon icon={Copy} style="width: 12px" /> Copy
+  </button>
+{/snippet}
+
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
     <div
@@ -1437,17 +1548,15 @@
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onclickcapture={suppress_click_after_cell_drag}
   onmouseleave={() => {
-    show_column_dropdown = false
-    show_export_dropdown = false
+    open_dropdown = null
     context_menu_at = null
   }}
 >
-  <!-- Control buttons: render inline above the table, or teleport into a host
-       toolbar (controls_target) so embedding panels reuse their own header row -->
+  <!-- Render controls inline or teleport them into an embedding toolbar. -->
   <section
     class="control-buttons"
     class:portaled={Boolean(controls_target)}
-    class:force-visible={controls_open || show_column_dropdown || show_export_dropdown}
+    class:force-visible={controls_open || open_dropdown !== null}
     {@attach portal(controls_target)}
   >
     {#if search_config}
@@ -1483,71 +1592,11 @@
     {/if}
 
     {#if show_column_toggle}
-      <div class="dropdown-wrapper">
-        <button
-          class="icon-btn"
-          class:active={show_column_dropdown}
-          onclick={() => (show_column_dropdown = !show_column_dropdown)}
-          {@attach tooltip({ content: `Columns`, placement: `top` })}
-        >
-          <Icon icon={Columns} />
-        </button>
-        {#if show_column_dropdown}
-          <div class="dropdown-pane">
-            {#each ordered_columns as col (get_col_id(col))}
-              {@const col_id = get_col_id(col)}
-              <label class="dropdown-option">
-                <input
-                  type="checkbox"
-                  checked={!hidden_columns.includes(col_id)}
-                  onchange={() => toggle_column(col_id)}
-                />
-                {@html sanitize_html(col.label)}
-              </label>
-            {/each}
-          </div>
-        {/if}
-      </div>
+      {@render dropdown(`columns`, Columns, column_options)}
     {/if}
 
     {#if export_config}
-      <div class="dropdown-wrapper">
-        <button
-          class="icon-btn"
-          class:active={show_export_dropdown}
-          onclick={() => (show_export_dropdown = !show_export_dropdown)}
-          {@attach tooltip({ content: `Export`, placement: `top` })}
-        >
-          <Icon icon={Export} />
-        </button>
-        {#if show_export_dropdown}
-          <div class="dropdown-pane">
-            {#each export_actions as [format, export_fn] (format)}
-              {#if export_config.formats.includes(format)}
-                <button
-                  class="dropdown-option"
-                  onclick={() => {
-                    export_fn(export_config.filename)
-                    show_export_dropdown = false
-                  }}
-                >
-                  <Icon icon={Download} style="width: 12px" />
-                  {format.toUpperCase()}
-                </button>
-              {/if}
-            {/each}
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                copy_to_clipboard()
-                show_export_dropdown = false
-              }}
-            >
-              <Icon icon={Copy} style="width: 12px" /> Copy
-            </button>
-          </div>
-        {/if}
-      </div>
+      {@render dropdown(`export`, Export, export_options)}
     {/if}
 
     {#if show_row_select && selected_rows.length > 0}
@@ -1678,12 +1727,16 @@
         />
       </div>
     {/if}
-    <table class:fixed-header={fixed_header} class={heatmap_class}>
+    <table
+      class:fixed-header={fixed_header}
+      class={heatmap_class}
+      style:--group-header-height="{has_group_header ? group_header_height : 0}px"
+    >
       <thead>
         <!-- Don't add a table row for group headers if there are none -->
-        {#if visible_columns.some((col) => col.group)}
+        {#if has_group_header}
           <!-- First level headers -->
-          <tr class="group-header">
+          <tr class="group-header" bind:clientHeight={group_header_height}>
             {#if show_row_select}
               <th class="select-col"></th>
             {/if}
@@ -1692,7 +1745,7 @@
             {/if}
             {#each visible_columns as col (get_col_id(col))}
               {#if !col.group}
-                <th class:sticky-col={col.sticky}></th>
+                <th class:sticky-col={col.sticky} style:left={sticky_left(col)}></th>
               {:else}
                 <!-- Only render the group header once per group (on its first column) -->
                 {#if visible_columns.find((column) => column.group === col.group) === col}
@@ -1732,8 +1785,11 @@
             {@const datetime_label_id = get_datetime_label_id(col_id)}
             {@const drag_side = drag_over_col_id === col_id ? get_drag_side(col_id) : null}
             {@const col_width = column_widths[col_id]}
+            {@const sorted_by = sort_indicator(col)}
             <th
               title={col.description}
+              data-col-id={col_id}
+              style:left={sticky_left(col)}
               tabindex={col.sortable === false ? undefined : 0}
               role={col.sortable === false ? undefined : `button`}
               oncontextmenu={(event) => open_column_context_menu(event, col_id)}
@@ -1756,6 +1812,7 @@
                 col_width ? `; width: ${col_width}px; min-width: ${col_width}px` : ``
               }`}
               class:sticky-col={col.sticky}
+              class:numeric-col={numeric_columns.has(col_id)}
               class:not-sortable={col.sortable === false}
               class:dragging={drag_col_id === col_id}
               class:resizing={resize_col_id === col_id}
@@ -1768,24 +1825,25 @@
                   ? `ascending`
                   : `descending`
                 : `none`}
-              ondragstart={(event: DragEvent & { currentTarget: HTMLElement }) => {
-                handle_drag_start(event, col)
-                event.currentTarget.setAttribute(`aria-grabbed`, `true`)
-              }}
+              aria-grabbed={drag_col_id === col_id ? `true` : undefined}
+              ondragstart={(event) => handle_drag_start(event, col)}
               ondragover={(event) => handle_drag_over(event, col)}
               ondragleave={() => (drag_over_col_id = null)}
               ondrop={(event) => handle_drop(event, col)}
-              ondragend={(event: DragEvent & { currentTarget: HTMLElement }) => {
-                reset_drag_state()
-                event.currentTarget.removeAttribute(`aria-grabbed`)
-              }}
+              ondragend={reset_drag_state}
             >
               {#if header_cell}
                 {@render header_cell({ col })}
               {:else}
                 {@html sanitize_html(col.label)}
               {/if}
-              {@html sanitize_html(sort_indicator(col, sort_state))}
+              {#if sorted_by}
+                <span style="font-size: 0.8em"
+                  >{sorted_by.ascending ? `↓` : `↑`}{#if sorted_by.rank}<sup
+                      >{sorted_by.rank}</sup
+                    >{/if}</span
+                >
+              {/if}
               {#if is_datetime}
                 <span class="datetime-format-control">
                   <button
@@ -1795,11 +1853,11 @@
                     aria-haspopup="listbox"
                     aria-expanded={datetime_select_open_col_id === col_id}
                     data-mode={dt_mode}
-                    onkeydown={(event) => event.stopPropagation()}
-                    onmousedown={(event) => event.stopPropagation()}
-                    onpointerdown={(event) => event.stopPropagation()}
+                    onkeydown={stop_event}
+                    onmousedown={stop_event}
+                    onpointerdown={stop_event}
                     onclick={(event) => {
-                      event.stopPropagation()
+                      stop_event(event)
                       datetime_select_open_col_id =
                         datetime_select_open_col_id === col_id ? null : col_id
                     }}
@@ -1820,19 +1878,19 @@
                       value={dt_mode}
                       size={datetime_format_options(col).length}
                       onclick={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         if (event.currentTarget.value === dt_mode) {
                           datetime_select_open_col_id = null
                         }
                       }}
                       onkeydown={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         if (event.key === `Escape`) datetime_select_open_col_id = null
                       }}
-                      onmousedown={(event) => event.stopPropagation()}
-                      onpointerdown={(event) => event.stopPropagation()}
+                      onmousedown={stop_event}
+                      onpointerdown={stop_event}
                       oninput={(event) => {
-                        event.stopPropagation()
+                        stop_event(event)
                         set_datetime_format(
                           col,
                           event.currentTarget.value as DateTimeFormatMode,
@@ -1919,7 +1977,7 @@
             {/if}
             {#each visible_columns as col, col_idx (get_col_id(col))}
               {@const col_id = get_col_id(col)}
-              {@const val = row[col_id]}
+              {@const val = row[cell_key(col)]}
               {@const color = calc_color(val, col)}
               {@const col_width = column_widths[col_id]}
               {@const date_val = is_datetime_column(col)
@@ -1930,7 +1988,9 @@
                 data-sort-value={get_cell_sort_attr(val)}
                 data-row-idx={abs_idx}
                 data-col-idx={col_idx}
+                style:left={sticky_left(col)}
                 class:sticky-col={col.sticky}
+                class:numeric-col={numeric_columns.has(col_id)}
                 class:cell-selected={selected_cell_keys.has(`${abs_idx}:${col_idx}`)}
                 onpointerdown={(event) => start_cell_drag(event, abs_idx, col_idx)}
                 oncontextmenu={(event) => {
@@ -2084,15 +2144,11 @@
     cursor: cell;
     user-select: none;
   }
-  /* background-image stacks on top of the per-cell heatmap background-color,
-     so selected heatmap cells stay tinted underneath */
+  /* Keep background-image free for the row-hover wash. */
   td.cell-selected {
-    background-image: linear-gradient(
-      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent),
-      color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent)
-    );
-    box-shadow: inset 0 0 0 1px
-      color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #4a9eff) 55%, transparent),
+      inset 0 0 0 100vmax color-mix(in srgb, var(--accent-color, #4a9eff) 30%, transparent);
   }
   th,
   td {
@@ -2118,12 +2174,21 @@
     cursor: pointer;
     user-select: none;
   }
+  /* clears the group-header row above it, which sticks at top: 0 (var unset without one) */
+  thead tr:not(.group-header) th {
+    top: var(--group-header-height, 0px);
+  }
   th:hover {
     background: var(--heatmap-header-hover-bg, var(--nav-bg));
   }
   th.datetime-select-open {
     overflow: visible;
     z-index: 30;
+  }
+  th.numeric-col,
+  td.numeric-col {
+    text-align: var(--heatmap-numeric-text-align, right);
+    font-variant-numeric: tabular-nums; /* equal digit widths, so decimals line up */
   }
   .datetime-format-control {
     display: inline-flex;
@@ -2232,7 +2297,14 @@
     );
   }
   tbody tr:hover {
-    filter: var(--heatmap-row-hover-filter, brightness(1.1));
+    filter: var(--heatmap-row-hover-filter, none);
+  }
+  /* Tint cells because their opaque backgrounds hide a row-level wash. */
+  tbody tr:hover td {
+    background-image: linear-gradient(
+      var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16)),
+      var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16))
+    );
   }
   tbody tr[tabindex] {
     cursor: pointer;

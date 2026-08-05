@@ -97,18 +97,18 @@
 
   // Tick-invariant line geometry within the per-tick group (origin sits on the axis).
   // Keep tick marks' y1="0"/x1="0" explicit: BarPlot's grid test selects `.tick line:not([y1='0'])`.
-  const grid_line = $derived({
-    x: { y1: -plot_h, y2: 0 },
-    x2: { y1: 0, y2: plot_h },
-    y: { x1: 0, x2: plot_w },
-    y2: { x1: -plot_w, x2: 0 },
-  }[side])
-  const tick_mark = $derived({
-    x: { y1: 0, y2: inside ? -5 : 5 },
-    x2: { y1: inside ? 0 : -5, y2: inside ? 5 : 0 },
-    y: { x1: inside ? 0 : -5, x2: inside ? 5 : 0 },
-    y2: { x1: inside ? -5 : 0, x2: inside ? 0 : 5 },
-  }[side])
+  const grid_line = $derived.by(() => {
+    if (side === `x`) return { y1: -plot_h, y2: 0 }
+    if (side === `x2`) return { y1: 0, y2: plot_h }
+    if (side === `y`) return { x1: 0, x2: plot_w }
+    return { x1: -plot_w, x2: 0 }
+  })
+  const tick_mark = $derived.by(() => {
+    if (side === `x`) return { y1: 0, y2: inside ? -5 : 5 }
+    if (side === `x2`) return { y1: inside ? 0 : -5, y2: inside ? 5 : 0 }
+    if (side === `y`) return { x1: inside ? 0 : -5, x2: inside ? 5 : 0 }
+    return { x1: inside ? -5 : 0, x2: inside ? 0 : 5 }
+  })
 
   // ScatterPlot mode: cull ticks whose pixel pos is off-plot and hide labels outside the data domain
   const in_domain = (tick: number): boolean =>
@@ -120,27 +120,15 @@
 
 <g class="{side}-axis">
   {#if show_baseline}
-    {#if is_x}
-      <line
-        x1={pad.l}
-        x2={width - pad.r}
-        y1={axis_y}
-        y2={axis_y}
-        {stroke}
-        stroke-width="1"
-        pointer-events="none"
-      />
-    {:else}
-      <line
-        x1={axis_x}
-        x2={axis_x}
-        y1={pad.t}
-        y2={height - pad.b}
-        {stroke}
-        stroke-width="1"
-        pointer-events="none"
-      />
-    {/if}
+    <line
+      x1={is_x ? pad.l : axis_x}
+      x2={is_x ? width - pad.r : axis_x}
+      y1={is_x ? axis_y : pad.t}
+      y2={is_x ? axis_y : height - pad.b}
+      {stroke}
+      stroke-width="1"
+      pointer-events="none"
+    />
   {/if}
   {#each ticks as tick, idx (tick)}
     {@const pos = place(tick)}

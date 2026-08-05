@@ -119,18 +119,6 @@ Labels trail up-and-to-the-**left** of their tick, so the last one can't run off
     `Solvothermal`,
     `Arc Melting`,
     `Combustion Synthesis`,
-    `Zone Refining`,
-    `Bridgman Growth`,
-    `Spray Pyrolysis`,
-    `Coprecipitation`,
-    `Ball Milling`,
-    `Melt Quenching`,
-    `Vapor Transport`,
-    `Sonochemical`,
-    `Microwave Sintering`,
-    `Ion Exchange`,
-    `Topotactic Reduction`,
-    `Ammonolysis`,
   ]
   const sample_counts = routes.map((_route, idx) => Math.round(420 * 0.9 ** idx) + 20)
 
@@ -138,7 +126,6 @@ Labels trail up-and-to-the-**left** of their tick, so the last one can't run off
   let rotation = $state(`auto`)
   let inside = $state(false)
 
-  const rotations = [`auto`, 0, -45, 45, 90]
   let series = $derived([
     {
       x: routes.slice(0, n_categories),
@@ -157,12 +144,18 @@ Labels trail up-and-to-the-**left** of their tick, so the last one can't run off
 >
   <label>
     Categories: {n_categories}
-    <input type="range" bind:value={n_categories} min="2" max="28" style="width: 120px" />
+    <input
+      type="range"
+      bind:value={n_categories}
+      min="2"
+      max={routes.length}
+      style="width: 120px"
+    />
   </label>
   <label>
     Rotation:
     <select bind:value={rotation}>
-      {#each rotations as angle (angle)}
+      {#each [`auto`, 0, -45, 45, 90] as angle (angle)}
         <option value={angle}>{angle === `auto` ? `auto` : `${angle}°`}</option>
       {/each}
     </select>
@@ -536,7 +529,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
 
 ## Formation Energy Diagram
 
-Bar plots handle negative values automatically and display zero lines for reference. The threshold line uses `markers: 'line'` to show only the line without marker points:
+Bar plots handle negative values automatically and keep a value-axis zero line for reference. Categorical axes omit their zero line by default (toggle it in the settings pane if needed). The threshold line uses `markers: 'line'` to show only the line without marker points:
 
 ```svelte example
 <script lang="ts">

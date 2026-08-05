@@ -707,7 +707,7 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
     x_axis={{
       scale_type: 'time',
       format: date_format,
-      ticks: -n_ticks,
+      ticks: n_ticks,
       label: 'Date',
       tick: { label: { inside, rotation } },
     }}

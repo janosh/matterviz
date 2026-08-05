@@ -42,6 +42,7 @@ test(`format_num uses defaults and respects overrides`, () => {
   // Explicit format overrides still win
   expect(format_num(1234, gt_1_fmt)).toBe(d3_format(gt_1_fmt)(1234))
   expect(format_num(0.123, lt_1_fmt)).toBe(d3_format(lt_1_fmt)(0.123))
+  expect(format_num(1.2, `.3f`)).toBe(`1.200`)
 
   expect(format_num(0)).toBe(`0`)
   expect(format_num(0, `.2~e`)).toBe(`0`)

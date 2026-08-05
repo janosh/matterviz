@@ -25,7 +25,6 @@ import {
   y_axis_label_x,
   y2_axis_label_x,
 } from '$lib/plot/core/layout'
-import type { Vec2 } from '$lib/math'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_text_measurement } from '../setup'
 
@@ -150,6 +149,11 @@ describe(`layout utility functions`, () => {
         plot_bounds.y + plot_bounds.height - axis_clearance,
       )
       expect(Number.isFinite(result.score)).toBe(true)
+      const non_finite = compute_element_placement({
+        ...base_config,
+        points: [{ x: NaN, y: NaN }],
+      })
+      expect(Number.isFinite(non_finite.score)).toBe(true)
     })
 
     it(`keeps descendants overflowing left and top inside the valid region`, () => {
@@ -212,21 +216,16 @@ describe(`layout utility functions`, () => {
     })
 
     test.each([
-      [`top-left cluster`, { x: 100, y: 60 }, [200, Infinity], [100, Infinity]],
-      [`bottom-right cluster`, { x: 400, y: 280 }, [-Infinity, 200], [-Infinity, 150]],
-    ] as [string, { x: number; y: number }, Vec2, Vec2][])(
-      `places away from %s`,
-      (_, point, [x_min, x_max], [y_min, y_max]) => {
-        const { x, y } = compute_element_placement({
-          ...base_config,
-          points: Array.from({ length: 15 }, () => point),
-        })
-        expect(x).toBeGreaterThan(x_min)
-        expect(x).toBeLessThan(x_max)
-        expect(y).toBeGreaterThan(y_min)
-        expect(y).toBeLessThan(y_max)
-      },
-    )
+      [`top-left cluster`, { x: 100, y: 60 }, [200, 100], 1],
+      [`bottom-right cluster`, { x: 400, y: 280 }, [200, 150], -1],
+    ] as const)(`places away from %s`, (_, point, [x_split, y_split], direction) => {
+      const { x, y } = compute_element_placement({
+        ...base_config,
+        points: Array.from({ length: 15 }, () => point),
+      })
+      expect(Math.sign(x - x_split)).toBe(direction)
+      expect(Math.sign(y - y_split)).toBe(direction)
+    })
   })
 
   describe(`sample_series_obstacle_points`, () => {

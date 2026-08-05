@@ -82,6 +82,43 @@ describe(`BarPlot`, () => {
     },
   )
 
+  test.each([
+    [`value-axis zero line by default`, [1.1, 1.4, 3.4], undefined, `y`, `vertical`],
+    [
+      `explicitly enabled category zero line`,
+      [-1.1, 1.4, 3.4],
+      { x_zero_line: true, y_zero_line: false },
+      `x`,
+      `vertical`,
+    ],
+    [
+      `value-axis zero with partial display props`,
+      [-1.1, 1.4, 3.4],
+      { x_grid: false },
+      `y`,
+      `vertical`,
+    ],
+    [
+      `value-axis zero when horizontal`,
+      [-1.1, 1.4, 3.4],
+      undefined,
+      `x`,
+      `horizontal`,
+    ],
+  ] as const)(
+    `categorical bars render the %s`,
+    async (_name, y, display, axis, orientation) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...y] }],
+        orientation,
+        ...(display ? { display } : {}),
+      })
+      const lines = plot.querySelectorAll(`.zero-line`)
+      expect(lines).toHaveLength(1)
+      expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
+    },
+  )
+
   test.each([`vertical`, `horizontal`] as const)(
     `rounds corners on the free end of %s bars`,
     async (orientation) => {

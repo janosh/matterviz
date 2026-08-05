@@ -5,7 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import { quickselect } from '$lib/plot/box/quantile'
+  import { quickselect } from '$lib/math'
   import { clamp01 } from '$lib/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

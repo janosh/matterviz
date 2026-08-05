@@ -437,7 +437,7 @@ describe(`HeatmapTable`, () => {
       scale_type: `log`,
       description: ``,
     }
-    const data = [10, 100, 1000].map((val) => ({ [c1.label]: val, [c2.label]: val }))
+    const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
 
     mount_table({ data, columns: [c1, c2] })
 
@@ -448,7 +448,7 @@ describe(`HeatmapTable`, () => {
     const linear_styles = styles_of(`Linear`)
     const log_styles = styles_of(`Log`)
 
-    // Both scale types color every cell, but map the same values differently
+    // Both scale types color every cell, including zero, but map positive values differently
     expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
     expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
     expect(linear_styles).not.toEqual(log_styles)
@@ -1153,6 +1153,180 @@ describe(`HeatmapTable`, () => {
       // Group B values: Item 1=100, Item 2=50, Item 3=75
       // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
       expect(col_values(`Name`)).toEqual([`Item 1`, `Item 3`, `Item 2`])
+    })
+
+    it(`renders, sorts, and colors plainly keyed grouped columns`, async () => {
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        {
+          label: `Mass`,
+          group: `Physical`,
+          color_scale: `interpolateViridis`,
+          description: ``,
+        },
+        { label: `Charge`, group: `Physical`, description: `` },
+      ]
+      mount_table({
+        data: [
+          { Name: `O`, Mass: 16, Charge: -2 },
+          { Name: `Fe`, Mass: 55.85, Charge: 3 },
+        ],
+        columns,
+      })
+
+      expect(col_values(`Mass`)).toEqual([`16`, `55.9`])
+      expect(col_values(`Charge`)).toEqual([`−2`, `3`])
+      expect(document.body.textContent).not.toContain(`n/a`)
+      document.querySelectorAll<HTMLElement>(`thead tr:last-child th`)[1].click()
+      await tick()
+      expect(col_values(`Name`)).toEqual([`Fe`, `O`])
+      for (const cell of document.querySelectorAll(`td[data-col="Mass"]`)) {
+        expect(cell.getAttribute(`style`)).toContain(`--cell-bg:`)
+      }
+    })
+
+    it(`finds qualified grouped keys after the first 50 rows`, () => {
+      const data = Array.from({ length: 51 }, (_, idx) =>
+        idx === 50 ? { Name: `late`, 'Mass (Physical)': 55.85 } : { Name: `row-${idx}` },
+      )
+      mount_table({
+        data,
+        columns: [
+          { label: `Name`, description: `` },
+          { label: `Mass`, group: `Physical`, description: `` },
+        ],
+      })
+      expect(col_values(`Mass`).at(-1)).toBe(`55.9`)
+    })
+
+    // Right-aligned digits are what make a column scannable; text and dates stay left.
+    it(`right-aligns only all-numeric columns`, () => {
+      mount_table({
+        data: [
+          { Name: `A`, Mass: 55.85, Mixed: 1, When: `2026-06-21` },
+          { Name: `B`, Mass: 16, Mixed: `n/a-ish text`, When: `2026-06-22` },
+        ],
+        columns: [`Name`, `Mass`, `Mixed`, `When`].map((label) => ({
+          label,
+          description: ``,
+        })),
+      })
+      const aligned = (col: string) =>
+        document.querySelector(`td[data-col="${col}"]`)?.classList.contains(`numeric-col`)
+
+      expect(aligned(`Mass`)).toBe(true)
+      expect(aligned(`Name`)).toBe(false)
+      expect(aligned(`Mixed`)).toBe(false) // one non-numeric value disqualifies the column
+      expect(aligned(`When`)).toBe(false) // dates read as text
+      // header follows its column so the two line up
+      const headers = [...document.querySelectorAll(`thead th`)]
+      expect(headers.map((th) => th.classList.contains(`numeric-col`))).toEqual([
+        false,
+        true,
+        false,
+        false,
+      ])
+    })
+
+    // aria-grabbed follows the drag state reactively rather than being poked onto the DOM
+    // by the drag handlers, so it can't fall out of sync with what the component thinks.
+    it(`marks the dragged header grabbed until the drag ends`, async () => {
+      mount_table({ data: sample_data, columns: sample_columns })
+      const header = document.querySelector(`thead tr:last-child th`) as HTMLElement
+      const drag = (type: string) => {
+        const event = new Event(type, { bubbles: true })
+        Object.defineProperty(event, `dataTransfer`, {
+          value: { effectAllowed: ``, dropEffect: ``, setData: vi.fn() },
+        })
+        header.dispatchEvent(event)
+      }
+
+      expect(header.getAttribute(`aria-grabbed`)).toBeNull()
+      drag(`dragstart`)
+      await tick()
+      expect(header.getAttribute(`aria-grabbed`)).toBe(`true`)
+      drag(`dragend`)
+      await tick()
+      expect(header.getAttribute(`aria-grabbed`)).toBeNull()
+    })
+
+    // Sticky columns all pin to the same edge, so any after the first must clear the ones
+    // before it. Widths only exist after layout, hence the measured offsetWidth.
+    it(`stacks multiple sticky columns instead of overlapping them`, async () => {
+      let first_width = 80
+      let resize_callback: ResizeObserverCallback | undefined
+      vi.stubGlobal(
+        `ResizeObserver`,
+        class ResizeObserver {
+          constructor(callback: ResizeObserverCallback) {
+            resize_callback = callback
+          }
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      )
+      const width_spy = vi
+        .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
+        .mockImplementation(function (this: HTMLElement) {
+          return this.dataset.colId === `Name` ? first_width : 80
+        })
+      try {
+        mount_table({
+          data: [{ Name: `A`, Tag: `x`, Value: 1 }],
+          columns: [
+            { label: `Name`, sticky: true, description: `` },
+            { label: `Tag`, sticky: true, description: `` },
+            { label: `Value`, description: `` },
+          ],
+        })
+        await tick()
+
+        const left_of = (selector: string) =>
+          document.querySelector<HTMLElement>(selector)?.style.left
+        expect(left_of(`thead th[data-col-id="Name"]`)).toBe(`0px`)
+        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`80px`)
+        expect(left_of(`td[data-col="Tag"]`)).toBe(`80px`)
+
+        first_width = 120
+        resize_callback?.([], {} as ResizeObserver)
+        await tick()
+        expect(left_of(`thead th[data-col-id="Tag"]`)).toBe(`120px`)
+        expect(left_of(`td[data-col="Tag"]`)).toBe(`120px`)
+      } finally {
+        width_spy.mockRestore()
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it(`clears the grouped-header offset when the final group is hidden`, async () => {
+      const height_spy = vi
+        .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+        .mockReturnValue(24)
+      try {
+        const state = $state({ hidden_columns: [] as string[] })
+        mount_table(
+          bind_props(
+            {
+              data: [{ Name: `Fe`, Mass: 55.85 }],
+              columns: [
+                { label: `Name`, description: `` },
+                { label: `Mass`, group: `Physical`, description: `` },
+              ],
+            },
+            state,
+          ),
+        )
+        await tick()
+        const table = document.querySelector(`table`)
+        expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 24px`)
+
+        state.hidden_columns = [`Mass (Physical)`]
+        await tick()
+        expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 0px`)
+      } finally {
+        height_spy.mockRestore()
+      }
     })
 
     // Negatives must still enter the linear scale domain (not filtered as invalid).

@@ -1019,9 +1019,6 @@
       display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`
     ],
   )
-  let current_measure = $derived(
-    MEASURE_MODES.find((entry) => entry.mode === measure_mode) ?? MEASURE_MODES[0],
-  )
   let multi_view_unavailable_reason = $derived(
     views.length < 2
       ? `Configure at least two views to enable multi-view`
@@ -1927,7 +1924,9 @@
                 {measured_sites.length}/{MAX_SELECTED_SITES}
               </span>
             {:else}
-              <Icon icon={current_measure.icon} />
+              <Icon
+                icon={MEASURE_MODES.find(({ mode }) => mode === measure_mode)?.icon ?? Ruler}
+              />
             {/if}
             <Icon class="view-mode-caret" icon={measure_menu_open ? ArrowUp : ArrowDown} />
           </button>

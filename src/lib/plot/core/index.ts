@@ -1,6 +1,7 @@
 // Shared cross-chart foundation: types, scales, layout, interactions + primitive components
 export * from './components'
 export * from './data-cleaning'
+export * from './display'
 export * from './fill-utils'
 export * from './interactions'
 export * from './layout'

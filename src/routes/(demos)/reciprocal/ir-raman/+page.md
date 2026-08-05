@@ -103,12 +103,16 @@ IR spectra are conventionally plotted as transmittance, with absorption bands po
 
 ## Mode table
 
-Every computed quantity is available per mode, so the raw numbers can be tabulated instead of plotted.
+Selected computed quantities are available per mode, so the raw numbers can be tabulated instead of plotted.
 
 ```svelte example
 <script lang="ts">
-  import { convert_frequencies } from '$lib/spectral'
-  import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
+  import {
+    convert_frequencies,
+    parse_born,
+    parse_phonon_modes,
+    spectrum_from_phonon_data,
+  } from '$lib/spectral'
   import { HeatmapTable, type Label } from '$lib/table'
   import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
   import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
@@ -119,17 +123,25 @@ Every computed quantity is available per mode, so the raw numbers can be tabulat
     parse_born(born_file),
     { raman_tensors: raman_data.raman_tensors },
   )
-  const mode_data = spectrum.modes.map((mode) => ({
-    mode: raman_data.mode_labels[mode.mode_idx],
-    frequency: convert_frequencies([mode.frequency], `cm-1`)[0],
-    ir_intensity: mode.ir_intensity,
-    raman_activity: mode.raman_activity ?? 0,
-    character: mode.is_acoustic
-      ? `acoustic`
-      : mode.ir_intensity > 1e-12
-        ? `IR`
-        : `Raman/silent`,
-  }))
+  const frequencies = convert_frequencies(
+    spectrum.modes.map((mode) => mode.frequency),
+    `cm-1`,
+  )
+  const mode_data = spectrum.modes.map((mode, idx) => {
+    const activity = [
+      mode.ir_intensity > 1e-12 && `IR`,
+      (mode.raman_activity ?? 0) > 1e-12 && `Raman`,
+    ]
+      .filter(Boolean)
+      .join(` + `)
+    return {
+      mode: raman_data.mode_labels[mode.mode_idx],
+      frequency: frequencies[idx],
+      ir_intensity: mode.ir_intensity,
+      raman_activity: mode.raman_activity ?? 0,
+      character: mode.is_acoustic ? `acoustic` : activity || `silent`,
+    }
+  })
   const mode_columns = [
     { label: `Mode`, key: `mode`, color_scale: null, sticky: true },
     { label: `ω (cm⁻¹)`, key: `frequency`, format: `.1f` },

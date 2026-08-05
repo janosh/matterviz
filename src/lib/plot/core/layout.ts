@@ -69,14 +69,13 @@ export function y2_axis_label_x(
   )
 }
 
-// Filter undefined values from padding to prevent overriding defaults when spreading
-// Guards against undefined/null padding inputs (common for optional props)
+// Ignore undefined sides so optional props never override defaults.
 export const filter_padding = (
   padding: Partial<Sides> | undefined | null,
   defaults: Required<Sides>,
 ): Required<Sides> => ({
   ...defaults,
-  ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
+  ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, val]) => val !== undefined)),
 })
 
 // Measure text width using canvas (singleton pattern for performance)
@@ -556,7 +555,8 @@ export function compute_element_placement(
         }
         const dx = point.x - center_x
         const dy = point.y - center_y
-        min_distance_sq = Math.min(min_distance_sq, dx * dx + dy * dy)
+        const distance_sq = dx * dx + dy * dy
+        if (distance_sq < min_distance_sq) min_distance_sq = distance_sq
       }
 
       // No points means no nearest-point bonus.

@@ -1089,17 +1089,9 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    x2_max: measure_max_tick_width(
-      x2_tick_values,
-      final_x2_axis.format,
-      final_x2_axis.ticks,
-    ),
+    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format, final_x2_axis.ticks),
     y_max: measure_max_tick_width(y_tick_values, final_y_axis.format, final_y_axis.ticks),
-    y2_max: measure_max_tick_width(
-      y2_tick_values,
-      final_y2_axis.format,
-      final_y2_axis.ticks,
-    ),
+    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format, final_y2_axis.ticks),
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2

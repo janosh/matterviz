@@ -135,10 +135,11 @@ export function make_cell_color_scale(
 
   const numeric_vals = all_values.filter(
     (v): v is number =>
-      typeof v === `number` && !Number.isNaN(v) && (scale_type === `log` ? v > 0 : true), // Only filter non-positives for log scale
+      typeof v === `number` && !Number.isNaN(v) && (scale_type === `log` ? v > 0 : true),
   )
+  const has_log_zero = scale_type === `log` && all_values.includes(0)
 
-  if (numeric_vals.length === 0) return () => NULL_CELL_COLOR
+  if (numeric_vals.length === 0 && !has_log_zero) return () => NULL_CELL_COLOR
 
   const range = [min(numeric_vals) ?? 0, max(numeric_vals) ?? 1]
 
@@ -155,9 +156,11 @@ export function make_cell_color_scale(
   return (val) => {
     // Skip color calculation for null/undefined/NaN values
     if (val == null || Number.isNaN(val)) return NULL_CELL_COLOR
-    // Log scale cannot handle non-positive values, return null colors
-    if (scale_type === `log` && val <= 0) return NULL_CELL_COLOR
-    const bg = log_scale ? interpolator(log_scale(val)) : seq_scale(val)
+    // Zero sits below the positive log domain and uses its low-end color; negatives remain invalid.
+    if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
+    const color_val =
+      scale_type === `log` && val === 0 ? range[better === `lower` ? 1 : 0] : val
+    const bg = log_scale ? interpolator(log_scale(color_val)) : seq_scale(color_val)
     return { bg, text: pick_contrast_color({ bg_color: bg }) }
   }
 }

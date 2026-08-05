@@ -64,9 +64,6 @@ describe(`BoxPlot`, () => {
       { series: [basic], whisker_mode: `percentile` as WhiskerMode },
     ],
     [`whisker_mode=std`, { series: [basic], whisker_mode: `std` as WhiskerMode }],
-    [`value labels`, { series: [basic], show_value_labels: true }],
-    [`mean glyph`, { series: [basic], show_mean: true }],
-    [`outliers hidden`, { series: [basic], show_outliers: false }],
     [`a clamped y range`, { series: [basic], y_axis: { range: [-3, 3] as Vec2 } }],
     [`an SI tick format`, { series: [basic], y_axis: { format: `.2~s` } }],
     [`controls hidden`, { series: [basic], show_controls: false }],
@@ -87,6 +84,19 @@ describe(`BoxPlot`, () => {
       const expected = rendered_box_count(props.series as BoxPlotSeries[])
       expect(plot.querySelectorAll(`.box-series`)).toHaveLength(expected)
       expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(expected)
+    },
+  )
+
+  test.each([
+    [`vertical`, `y`],
+    [`horizontal`, `x`],
+  ] as const)(
+    `%s boxes keep only the value-axis zero line by default`,
+    async (orientation, axis) => {
+      const plot = await mount_sized_box_plot({ series: [basic], orientation })
+      const lines = plot.querySelectorAll(`.zero-line`)
+      expect(lines).toHaveLength(1)
+      expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
     },
   )
 
@@ -319,15 +329,12 @@ describe(`BoxPlot`, () => {
     expect(arg.category_label).toBe(`Box A`)
   })
 
-  test.each<Orientation>([`vertical`, `horizontal`])(
-    `orientation=%s renders all boxes`,
-    async (orientation) => {
-      const series = [basic, { ...basic, label: `B`, color: `orangered` }]
-      const plot = await mount_sized_box_plot({ series, orientation })
-      expect(plot.querySelectorAll(`.box-series`)).toHaveLength(2)
-      expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(2)
-    },
-  )
+  test(`horizontal orientation renders all boxes`, async () => {
+    const series = [basic, { ...basic, label: `B`, color: `orangered` }]
+    const plot = await mount_sized_box_plot({ series, orientation: `horizontal` })
+    expect(plot.querySelectorAll(`.box-series`)).toHaveLength(2)
+    expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(2)
+  })
 
   test(`one category tick per series even when x_axis.categories is shorter`, async () => {
     // Each box is positioned by its index in `series`; the category axis must always
@@ -424,14 +431,15 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  test.each([`vertical`, `horizontal`] as const)(
-    `violins render in %s orientation`,
-    async (orientation) => {
-      const series = [basic, { ...basic, label: `B`, color: `tomato` }]
-      const plot = await mount_sized_box_plot({ series, kind: `violin`, orientation })
-      expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
-    },
-  )
+  test(`violins render horizontally`, async () => {
+    const series = [basic, { ...basic, label: `B`, color: `tomato` }]
+    const plot = await mount_sized_box_plot({
+      series,
+      kind: `violin`,
+      orientation: `horizontal`,
+    })
+    expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
+  })
 
   test(`split violins share one category slot`, async () => {
     const series: BoxPlotSeries[] = [

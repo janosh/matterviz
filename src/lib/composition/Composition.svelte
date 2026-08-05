@@ -52,9 +52,8 @@
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
 
-  // ContextMenu types action.icon as unknown; narrow to a glyph object
-  const is_icon_data = (val: unknown): val is IconData =>
-    typeof val === `object` && val !== null && (`d` in val || `markup` in val)
+  const is_icon_data = (icon: unknown): icon is IconData =>
+    typeof icon === `object` && icon !== null && (`d` in icon || `markup` in icon)
 
   const mode_actions = (
     [
@@ -78,12 +77,14 @@
     action: () => (current_color_scheme = id),
   }))
 
-  const export_actions = [
-    [`copy_formula`, Copy, `Copy Formula`],
-    [`copy_data`, Copy, `Copy Data`],
-    [`export_svg`, Download, `Export SVG`],
-    [`export_png`, Download, `Export PNG`],
-  ].map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
+  const export_actions = (
+    [
+      [`copy_formula`, Copy, `Copy Formula`],
+      [`copy_data`, Copy, `Copy Data`],
+      [`export_svg`, Download, `Export SVG`],
+      [`export_png`, Download, `Export PNG`],
+    ] as const
+  ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
 
   const context_menu_actions = $derived([
     { title: `Display Mode`, selected: current_mode, actions: mode_actions },
@@ -91,7 +92,6 @@
     { title: `Export`, actions: export_actions },
   ])
 
-  // Handle export actions
   function handle_export(export_type: string) {
     try {
       if (export_type === `copy_formula`) {

@@ -2,7 +2,7 @@
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
 import type { Vec2 } from '$lib/math'
-import { quantile_sorted, quantile_unordered } from '$lib/plot/box/quantile'
+import { quantile_sorted, quantile_unordered } from '$lib/math'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
