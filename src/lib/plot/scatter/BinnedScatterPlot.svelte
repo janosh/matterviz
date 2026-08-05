@@ -302,7 +302,9 @@
       default_count: 6,
     }),
   )
-  let y_tick_width = $derived(measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`))
+  let y_tick_width = $derived(
+    measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`, y_axis.ticks),
+  )
   $effect(() => {
     const new_pad =
       width > 0 && height > 0

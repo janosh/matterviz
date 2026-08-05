@@ -50,6 +50,10 @@ export const format_power_ten = (text: string): string =>
     )
     .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
 
+// d3 scientific formats render 0 as "0e+0" / "0.00e+0"; collapse to a plain 0
+const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
+  num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
+
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`
@@ -78,7 +82,8 @@ export function format_value(value: number, formatter?: string): string {
   const out = formatted.includes(`.`)
     ? formatted.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``)
     : formatted
-  return out === `-0` ? `0` : out
+  const cleaned = out === `-0` ? `0` : out
+  return strip_scientific_zero(cleaned, formatter, value)
 }
 
 // Human-readable label + unit (null when dimensionless) for displayable element
@@ -178,10 +183,7 @@ export const format_num = (num: number, fmt?: string | number) => {
     const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     return format(Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt)(num)
   }
-  const formatted = format(fmt)(num)
-  return num === 0 && fmt.endsWith(`e`)
-    ? formatted.replace(/(?:\.0+)?e\+0$/, ``)
-    : formatted
+  return strip_scientific_zero(format(fmt)(num), fmt, num)
 }
 
 // Format a 3D vector as "(x, y, z)" with configurable precision

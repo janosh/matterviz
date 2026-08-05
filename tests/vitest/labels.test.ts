@@ -290,6 +290,10 @@ describe(`format_value`, () => {
     { value: -0, formatter: `.0f`, expected: `0` },
     { value: -0, formatter: `.0%`, expected: `0%` },
     { value: -0, formatter: `$,.2f`, expected: `$0.00` },
+    // Scientific zeros collapse to plain 0 (same path plot ticks use via format_value_or_num)
+    { value: 0, formatter: `.2~e`, expected: `0` },
+    { value: -0, formatter: `.2e`, expected: `0` },
+    { value: 0, formatter: `$.2e`, expected: `$0` },
     { value: -0.001, formatter: `.2f`, expected: `0` },
     { value: 0.0001, formatter: `.4f`, expected: `0.0001` },
     { value: 999.9999, formatter: `.2f`, expected: `1000` },

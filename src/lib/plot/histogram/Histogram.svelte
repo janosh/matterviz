@@ -336,22 +336,19 @@
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
   let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
 
-  // Update padding based on tick label widths (untrack breaks circular dependency)
+  // Track tick values so x auto-rotation / bottom pad recompute when ticks change.
+  // sides_equal stops the pad write from looping when nothing moved.
   $effect(() => {
-    const current_ticks_x2 = untrack(() => ticks.x2)
-    const current_ticks_y = untrack(() => ticks.y)
-    const current_ticks_y2 = untrack(() => ticks.y2)
-
     const new_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...final_x_axis, tick_values: untrack(() => ticks.x) },
-            x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
-            y_axis: { ...final_y_axis, tick_values: current_ticks_y },
-            y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
+            x_axis: { ...final_x_axis, tick_values: ticks.x },
+            x2_axis: { ...final_x2_axis, tick_values: ticks.x2 },
+            y_axis: { ...final_y_axis, tick_values: ticks.y },
+            y2_axis: { ...final_y2_axis, tick_values: ticks.y2 },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
 
@@ -487,8 +484,8 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, final_y_axis.format),
-    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format),
+    y_max: measure_max_tick_width(ticks.y, final_y_axis.format, final_y_axis.ticks),
+    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format, final_y2_axis.ticks),
   })
 
   let legend_data = $derived(prepare_legend_data(series))

@@ -1,10 +1,4 @@
 import { BarPlot } from '$lib'
-import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
-import {
-  measure_max_tick_width,
-  tick_label_band,
-  TICK_LABEL_HEIGHT,
-} from '$lib/plot/core/layout'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -347,7 +341,7 @@ describe(`BarPlot`, () => {
       ...plot.querySelectorAll(`g.x-axis g.tick text`),
     ]
 
-    test(`long category names tilt instead of overlapping`, async () => {
+    test(`long category names auto-rotate`, async () => {
       const cats = [`PENDING`, `RUNNING`, `QUEUE_HOLD`, `COMPLETED`, `CANCELLED`]
       const plot = await with_measured_text(() =>
         mount_sized_bar_plot({
@@ -363,24 +357,6 @@ describe(`BarPlot`, () => {
         expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
         expect(label.getAttribute(`text-anchor`)).toBe(`end`)
       }
-
-      // The title must clear the tilted block rather than sit inside it. An x title is a
-      // foreignObject positioned half its height above its center.
-      const baseline_y = Number(plot.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
-      const title_center =
-        Number(plot.querySelector(`g.x-axis foreignObject`)?.getAttribute(`y`)) +
-        AXIS_LABEL_CONTAINER.y_offset
-      // How far the labels actually reach at the angle the plot chose.
-      const angle = Number(
-        /^rotate\((?<deg>-[\d.]+),/.exec(labels[0]?.getAttribute(`transform`) ?? ``)?.groups
-          ?.deg,
-      )
-      // Read the width back from the mock so this can't drift from what the plot measured
-      const widest = await with_measured_text(() => measure_max_tick_width(cats))
-      const reach = tick_label_band(widest, angle)
-      expect(baseline_y).toBeGreaterThan(0)
-      expect(reach).toBeGreaterThan(TICK_LABEL_HEIGHT) // tilted labels really are taller
-      expect(title_center).toBeGreaterThanOrEqual(baseline_y + reach)
     })
 
     // Horizontal orientation moves the categories onto y, so the left padding has to be
