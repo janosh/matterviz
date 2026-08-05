@@ -154,24 +154,21 @@ export const measure_max_tick_width = (
   ticks: (string | number)[],
   format?: string,
   tick_labels?: AxisConfig[`ticks`],
-): number =>
-  ticks.length === 0
-    ? 0
-    : Math.max(
-        ...ticks.map((tick) => {
-          const custom_label =
-            typeof tick === `number` &&
-            tick_labels &&
-            typeof tick_labels === `object` &&
-            !Array.isArray(tick_labels)
-              ? tick_labels[tick]
-              : undefined
-          const label =
-            custom_label ??
-            (typeof tick === `string` ? tick : format_value_or_num(tick, format))
-          return measure_text_width(label, `12px sans-serif`)
-        }),
-      )
+): number => {
+  const labels =
+    tick_labels && typeof tick_labels === `object` && !Array.isArray(tick_labels)
+      ? tick_labels
+      : {}
+  if (ticks.length === 0) return 0
+  return Math.max(
+    ...ticks.map((tick) =>
+      measure_text_width(
+        typeof tick === `string` ? tick : (labels[tick] ?? format_value_or_num(tick, format)),
+        `12px sans-serif`,
+      ),
+    ),
+  )
+}
 
 // Candidate x tick-label rotations, shallowest first. Each step buys horizontal room but
 // spends plot height, so the search takes the first angle that clears the overlap.
@@ -442,10 +439,8 @@ export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
     right_rect.y + right_rect.height <= left_rect.y
   )
 
-// Build placement obstacles for one series' pixel-space polyline. Always includes the finite
-// vertices; when the series draws a connecting line, also walks each segment between
-// consecutive finite vertices at ~step px so legend/colorbar auto-placement avoids the line,
-// not just sparse markers (e.g. a steep y=x^2 line has few markers but a long visible segment).
+// Include finite vertices and, for connected series, sample long segments so auto-placed
+// legends and colorbars avoid lines between sparse markers.
 export function sample_series_obstacle_points(
   pixel_points: { x: number; y: number }[],
   draws_line: boolean,
@@ -473,11 +468,8 @@ export function sample_series_obstacle_points(
   return obstacles
 }
 
-// Find the best placement position using continuous grid sampling
-// Scores each candidate position by:
-// 1. Number of data points overlapping the element bounds (fewer = better)
-// 2. Overlap with exclusion rectangles (heavy penalty)
-// 3. Distance to nearest point (tie-breaker, farther = better)
+// Score grid positions by point overlap, exclusion rectangles, nearest-point distance,
+// and corner proximity.
 export function compute_element_placement(
   config: ElementPlacementConfig,
 ): ElementPlacementResult {
@@ -493,9 +485,7 @@ export function compute_element_placement(
 
   const grid_resolution = Math.max(2, raw_resolution)
 
-  // Measure the element's full footprint (incl. descendants that overflow its box,
-  // such as colorbar tick labels) once it's laid out; fall back to element_size before
-  // first render. Centralizing this keeps every plot's auto-placement overlap-free.
+  // Include overflowing descendants such as colorbar tick labels after first render.
   const {
     width: elem_width,
     height: elem_height,
@@ -503,7 +493,6 @@ export function compute_element_placement(
     offset_y,
   } = full_footprint_or(element, element_size)
 
-  // Calculate valid placement region (plot bounds minus axis clearance)
   const plot_left = plot_bounds.x + axis_clearance
   const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
   const plot_top = plot_bounds.y + axis_clearance
@@ -513,13 +502,11 @@ export function compute_element_placement(
   const valid_x_max = plot_right - offset_x - elem_width
   const valid_y_max = plot_bottom - offset_y - elem_height
 
-  // Handle case where element is too large for the valid region
   const effective_x_min = Math.min(valid_x_min, valid_x_max)
   const effective_x_max = Math.max(valid_x_min, valid_x_max)
   const effective_y_min = Math.min(valid_y_min, valid_y_max)
   const effective_y_max = Math.max(valid_y_min, valid_y_max)
 
-  // Subsample points for performance
   const sampled_points =
     points.length > MAX_SAMPLE_POINTS
       ? Array.from(
@@ -537,7 +524,6 @@ export function compute_element_placement(
   const x_step = (effective_x_max - effective_x_min) / (grid_resolution - 1)
   const y_step = (effective_y_max - effective_y_min) / (grid_resolution - 1)
 
-  // Precompute plot corners (constant across all candidates)
   const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
 
   for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
@@ -559,7 +545,6 @@ export function compute_element_placement(
         }
       }
 
-      // Count points overlapping this candidate position
       let overlap_count = 0
       let min_distance_sq = Infinity
       const center_x = cand_rect.x + elem_width / 2
@@ -569,31 +554,24 @@ export function compute_element_placement(
         if (point_in_rect(point, cand_rect)) {
           overlap_count++
         }
-        // Track distance to nearest point for tie-breaking
         const dx = point.x - center_x
         const dy = point.y - center_y
         min_distance_sq = Math.min(min_distance_sq, dx * dx + dy * dy)
       }
 
-      // Score: fewer overlaps = better (less negative)
-      // Add small distance bonus for tie-breaking
-      // When no points exist, min_distance_sq stays Infinity - treat as 0 (no distance bonus)
+      // No points means no nearest-point bonus.
       const min_distance = min_distance_sq === Infinity ? 0 : Math.sqrt(min_distance_sq)
 
-      // Corner preference: use element's actual corner (not center) for distance
-      // This ensures a wide element at the left edge gets proper corner credit
-      // (measured footprint, same as cand_rect — not the element_size fallback)
+      // Score corner proximity from the measured footprint, not its center.
       const elem_right = cand_rect.x + elem_width
       const elem_bottom = cand_rect.y + elem_height
 
-      // Distance from element's matching corner to each plot corner
       const min_corner_dist = Math.min(
         euclidean_dist([cand_rect.x, cand_rect.y], [plot_left, plot_top]), // top-left
         euclidean_dist([elem_right, cand_rect.y], [plot_right, plot_top]), // top-right
         euclidean_dist([cand_rect.x, elem_bottom], [plot_left, plot_bottom]), // bottom-left
         euclidean_dist([elem_right, elem_bottom], [plot_right, plot_bottom]), // bottom-right
       )
-      // Higher bonus for positions closer to corners (0 = at corner, 1 = far from all)
       const corner_bonus =
         max_corner_dist > 0 ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT : 0
 
