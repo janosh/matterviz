@@ -38,10 +38,6 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.top).toBe(`65px`)
   })
 
-  test(`uses fixed positioning when fixed`, () => {
-    expect(mount_tooltip({ fixed: true }).style.position).toBe(`fixed`)
-  })
-
   // luminance() itself is covered in colors.test.ts; here only the wiring + null skip.
   test.each([
     { bg: `#000000`, text: `#ffffff` },

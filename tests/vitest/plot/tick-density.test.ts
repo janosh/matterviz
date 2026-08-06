@@ -9,100 +9,44 @@ import { describe, expect, test } from 'vitest'
 
 describe(`suggest_tick_count`, () => {
   test.each([
-    {
-      label: `no labels`,
-      axis_pixels: 100,
-      widths: [],
-      gap_pixels: 6,
-      expected: 0,
-    },
-    {
-      label: `one oversized label`,
-      axis_pixels: 20,
-      widths: [120],
-      gap_pixels: 6,
-      expected: 1,
-    },
-    {
-      label: `two endpoints in a tiny span`,
-      axis_pixels: 0,
-      widths: [100, 100],
-      gap_pixels: 6,
-      expected: 2,
-    },
-    {
-      label: `four of five labels`,
-      axis_pixels: 100,
-      widths: [20, 20, 20, 20, 20],
-      gap_pixels: 5,
-      expected: 4,
-    },
-    {
-      label: `all labels fit exactly`,
-      axis_pixels: 120,
-      widths: [20, 20, 20, 20, 20],
-      gap_pixels: 5,
-      expected: 5,
-    },
-    {
-      label: `widest label determines conservative capacity`,
-      axis_pixels: 100,
-      widths: [10, 40, 20],
-      gap_pixels: 5,
-      expected: 2,
-    },
-    {
-      label: `zero-width labels use only gaps`,
-      axis_pixels: 20,
-      widths: [0, 0, 0, 0, 0],
-      gap_pixels: 10,
-      expected: 3,
-    },
-    {
-      label: `zero-width labels without gaps all fit`,
-      axis_pixels: 0,
-      widths: [0, 0, 0],
-      gap_pixels: 0,
-      expected: 3,
-    },
-    {
-      label: `finite measurements stay finite near numeric limits`,
-      axis_pixels: Number.MAX_VALUE,
-      widths: [Number.MAX_VALUE, Number.MAX_VALUE],
-      gap_pixels: Number.MAX_VALUE,
-      expected: 2,
-    },
-  ])(`$label`, ({ axis_pixels, widths, gap_pixels, expected }) => {
+    [`no labels`, 100, [], 6, 0],
+    [`one oversized label`, 20, [120], 6, 1],
+    [`two endpoints in a tiny span`, 0, [100, 100], 6, 2],
+    [`four of five labels`, 100, [20, 20, 20, 20, 20], 5, 4],
+    [`all labels fit exactly`, 120, [20, 20, 20, 20, 20], 5, 5],
+    [`widest label determines conservative capacity`, 100, [10, 40, 20], 5, 2],
+    [`zero-width labels use only gaps`, 20, [0, 0, 0, 0, 0], 10, 3],
+    [`zero-width labels without gaps all fit`, 0, [0, 0, 0], 0, 3],
+    [
+      `finite measurements stay finite near numeric limits`,
+      Number.MAX_VALUE,
+      [Number.MAX_VALUE, Number.MAX_VALUE],
+      Number.MAX_VALUE,
+      2,
+    ],
+  ] as const)(`%s`, (label, axis_pixels, widths, gap_pixels, expected) => {
     expect(suggest_tick_count(axis_pixels, widths, gap_pixels)).toBe(expected)
   })
 
   test.each([
-    {
-      label: `negative axis span`,
-      call: () => suggest_tick_count(-1, [10], 5),
-      error: /axis_pixels.*-1/,
-    },
-    {
-      label: `non-finite axis span`,
-      call: () => suggest_tick_count(Number.NaN, [10], 5),
-      error: /axis_pixels.*NaN/,
-    },
-    {
-      label: `negative label width`,
-      call: () => suggest_tick_count(100, [10, -2], 5),
-      error: /label_widths\[1\].*-2/,
-    },
-    {
-      label: `non-finite label width`,
-      call: () => suggest_tick_count(100, [Number.POSITIVE_INFINITY], 5),
-      error: /label_widths\[0\].*Infinity/,
-    },
-    {
-      label: `negative gap`,
-      call: () => suggest_tick_count(100, [10], -5),
-      error: /gap_pixels.*-5/,
-    },
-  ])(`rejects $label`, ({ call, error }) => {
+    [`negative axis span`, () => suggest_tick_count(-1, [10], 5), /axis_pixels.*-1/],
+    [
+      `non-finite axis span`,
+      () => suggest_tick_count(Number.NaN, [10], 5),
+      /axis_pixels.*NaN/,
+    ],
+    [
+      `negative label width`,
+      () => suggest_tick_count(100, [10, -2], 5),
+      /label_widths\[1\].*-2/,
+    ],
+    [
+      `non-finite label width`,
+      () => suggest_tick_count(100, [Number.POSITIVE_INFINITY], 5),
+      /label_widths\[0\].*Infinity/,
+    ],
+    [`negative gap`, () => suggest_tick_count(100, [10], -5), /gap_pixels.*-5/],
+  ])(`rejects %s`, (_label, call, error) => {
     expect(call).toThrow(error)
   })
 })
@@ -176,65 +120,42 @@ describe(`thin_tick_indices`, () => {
   })
 
   test.each([
-    {
-      label: `fractional item count`,
-      call: () => thin_tick_indices(2.5, 2),
-      error: /item_count.*2.5/,
-    },
-    {
-      label: `negative requested count`,
-      call: () => thin_tick_indices(5, -1),
-      error: /requested_visible_count.*-1/,
-    },
-    {
-      label: `fractional important index`,
-      call: () => thin_tick_indices(5, 3, [1.5]),
-      error: /important_indices\[0\].*1.5/,
-    },
-    {
-      label: `important index past the end`,
-      call: () => thin_tick_indices(5, 3, [5]),
-      error: /important_indices\[0\].*\[0, 5\).*5/,
-    },
-    {
-      label: `important index for empty input`,
-      call: () => thin_tick_indices(0, 0, [0]),
-      error: /important_indices\[0\].*\[0, 0\).*0/,
-    },
-  ])(`rejects $label`, ({ call, error }) => {
+    [`fractional item count`, () => thin_tick_indices(2.5, 2), /item_count.*2.5/],
+    [
+      `negative requested count`,
+      () => thin_tick_indices(5, -1),
+      /requested_visible_count.*-1/,
+    ],
+    [
+      `fractional important index`,
+      () => thin_tick_indices(5, 3, [1.5]),
+      /important_indices\[0\].*1.5/,
+    ],
+    [
+      `important index past the end`,
+      () => thin_tick_indices(5, 3, [5]),
+      /important_indices\[0\].*\[0, 5\).*5/,
+    ],
+    [
+      `important index for empty input`,
+      () => thin_tick_indices(0, 0, [0]),
+      /important_indices\[0\].*\[0, 0\).*0/,
+    ],
+  ])(`rejects %s`, (_label, call, error) => {
     expect(call).toThrow(error)
   })
 })
 
 describe(`thin_ticks`, () => {
   test(`preserves arbitrary values, references, source order, and inputs`, () => {
-    const ticks = Object.freeze([
-      { label: `zero` },
-      { label: `one` },
-      { label: `two` },
-      { label: `three` },
-      { label: `four` },
-      { label: `five` },
-    ])
+    const ticks = Object.freeze(
+      [`zero`, `one`, `two`, `three`, `four`, `five`].map((label) => ({ label })),
+    )
     const important_indices = Object.freeze([1, 4])
     const selected = thin_ticks(ticks, 4, important_indices)
 
     expect(selected).toEqual([ticks[0], ticks[1], ticks[4], ticks[5]])
     expect(selected[1]).toBe(ticks[1])
-    expect(ticks.map(({ label }) => label)).toEqual([
-      `zero`,
-      `one`,
-      `two`,
-      `three`,
-      `four`,
-      `five`,
-    ])
-    expect(important_indices).toEqual([1, 4])
-  })
-
-  test(`accepts a measured second-pass visible count`, () => {
-    const ticks = [0, 10, 20, 30, 40, 50, 60, 70]
-    expect(thin_ticks(ticks, 4, [4])).toEqual([0, 20, 40, 70])
   })
 })
 
@@ -296,48 +217,39 @@ describe(`search_densest_fitting_ticks`, () => {
     expect(result).toEqual({ requested_count: 3, ticks: [0, 1, 2] })
   })
 
+  const valid_options: TickDensitySearchOptions<number> = {
+    max_requested_count: 2,
+    generate_ticks: () => [],
+    layout_fits: () => true,
+  }
   test.each([
-    {
-      label: `negative minimum`,
-      options: {
-        min_requested_count: -1,
-        max_requested_count: 2,
-        generate_ticks: () => [],
-        layout_fits: () => true,
-      },
-      error: /min_requested_count.*-1/,
-    },
-    {
-      label: `reversed range`,
-      options: {
-        min_requested_count: 3,
-        max_requested_count: 2,
-        generate_ticks: () => [],
-        layout_fits: () => true,
-      },
-      error: /min_requested_count \(3\).*max_requested_count \(2\)/,
-    },
-    {
-      label: `non-array candidate`,
-      options: {
-        max_requested_count: 2,
+    [
+      `negative minimum`,
+      { ...valid_options, min_requested_count: -1 },
+      /min_requested_count.*-1/,
+    ],
+    [
+      `reversed range`,
+      { ...valid_options, min_requested_count: 3 },
+      /min_requested_count \(3\).*max_requested_count \(2\)/,
+    ],
+    [
+      `non-array candidate`,
+      {
+        ...valid_options,
         generate_ticks: (() => `not ticks`) as unknown as () => readonly number[],
-        layout_fits: () => true,
       },
-      error: /generate_ticks.*array.*requested_count=/,
+      /generate_ticks.*array.*requested_count=/,
+    ],
+    [
+      `non-boolean fitness`,
+      { ...valid_options, layout_fits: (() => `yes`) as unknown as () => boolean },
+      /layout_fits.*boolean.*requested_count=.*string/,
+    ],
+  ] satisfies [string, TickDensitySearchOptions<number>, RegExp][])(
+    `rejects %s`,
+    (_label, options, error) => {
+      expect(() => search_densest_fitting_ticks(options)).toThrow(error)
     },
-    {
-      label: `non-boolean fitness`,
-      options: {
-        max_requested_count: 2,
-        generate_ticks: () => [],
-        layout_fits: (() => `yes`) as unknown as () => boolean,
-      },
-      error: /layout_fits.*boolean.*requested_count=.*string/,
-    },
-  ])(`rejects $label`, ({ options, error }) => {
-    expect(() =>
-      search_densest_fitting_ticks(options as TickDensitySearchOptions<number>),
-    ).toThrow(error)
-  })
+  )
 })

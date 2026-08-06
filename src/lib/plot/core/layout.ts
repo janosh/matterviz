@@ -1,4 +1,3 @@
-import { euclidean_dist } from '$lib/math'
 import {
   resolve_tick_layout,
   TICK_LABEL_HEIGHT,
@@ -206,15 +205,9 @@ export function resolve_axis_title_layout(
   font: Readonly<FontSpec> = DEFAULT_AXIS_TITLE_FONT,
 ): AxisTitleLayout {
   const { label, segments, interactive } = selected_axis_title(axis)
+  const shared = { label, line_height: font.line_height, interactive }
   if (!label) {
-    return {
-      label,
-      lines: [],
-      width: 0,
-      height: 0,
-      line_height: font.line_height,
-      interactive,
-    }
+    return { ...shared, lines: [], width: 0, height: 0 }
   }
   const safe_width =
     Number.isFinite(available_width) && available_width > 0
@@ -227,12 +220,10 @@ export function resolve_axis_title_layout(
     // PortalSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
     const width = label_metrics.width + arrow_width + 8 + 0.3 * font.font_size
     return {
-      label,
+      ...shared,
       lines: [{ text: label, segments, metrics: label_metrics }],
       width,
       height: Math.max(24, font.line_height),
-      line_height: font.line_height,
-      interactive,
     }
   }
   const lines = split_axis_title_paragraphs(segments).flatMap((paragraph) => {
@@ -252,12 +243,10 @@ export function resolve_axis_title_layout(
     }))
   })
   return {
-    label,
+    ...shared,
     lines,
     width: Math.max(0, ...lines.map(({ metrics }) => metrics.width)),
     height: lines.length * font.line_height,
-    line_height: font.line_height,
-    interactive,
   }
 }
 
@@ -410,6 +399,17 @@ export const calc_auto_padding = ({
   width,
   height,
 }: AutoPaddingConfig): Required<Sides> => {
+  const title_layout_for = (axis: MeasuredAxis, available_width: number): AxisTitleLayout =>
+    resolve_axis_title_layout(
+      axis,
+      available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH,
+    )
+  const horizontal_tick_layout = (
+    axis: MeasuredAxis,
+    available_width: number,
+    side: `x` | `x2`,
+  ) =>
+    resolve_tick_layout(project_measured_axis(axis, 0, available_width), available_width, side)
   // Resolve vertical density against the current drawable height. Explicit top/bottom padding
   // is stable; otherwise the default bands provide a deterministic first pass.
   const initial_plot_height =
@@ -465,8 +465,7 @@ export const calc_auto_padding = ({
 
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
-    const title_width = available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH
-    const title_layout = resolve_axis_title_layout(x2_axis, title_width)
+    const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_padding.t
     const inside = x2_axis.tick?.label?.inside ?? false
@@ -475,11 +474,7 @@ export const calc_auto_padding = ({
     // Same reach the labels will actually have; assuming one upright line here is what
     // clips a rotated top axis off the figure.
     const tick_band = has_outside_ticks
-      ? resolve_tick_layout(
-          project_measured_axis(x2_axis, 0, available_width),
-          available_width,
-          `x2`,
-        ).band +
+      ? horizontal_tick_layout(x2_axis, available_width, `x2`).band +
         8 +
         Math.max(0, -tick_shift)
       : 0
@@ -497,15 +492,10 @@ export const calc_auto_padding = ({
     const inside = x_axis.tick?.label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
-    const title_width = available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH
-    const title_height = resolve_axis_title_layout(x_axis, title_width).height
+    const title_height = title_layout_for(x_axis, available_width).height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
     const tick_layout = has_outside_ticks
-      ? resolve_tick_layout(
-          project_measured_axis(x_axis, 0, available_width),
-          available_width,
-          `x`,
-        )
+      ? horizontal_tick_layout(x_axis, available_width, `x`)
       : null
     const band = tick_layout?.band ?? TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
@@ -668,23 +658,25 @@ export function sample_series_obstacle_points(
   step: number,
   obstacles: { x: number; y: number }[] = [],
 ): { x: number; y: number }[] {
-  let prev: { x: number; y: number } | null = null
+  let previous: { x: number; y: number } | null = null
   for (const point of pixel_points) {
     if (!isFinite(point.x) || !isFinite(point.y)) {
-      prev = null // non-finite breaks the line; don't sample across the gap
+      previous = null // non-finite breaks the line; don't sample across the gap
       continue
     }
     obstacles.push(point)
-    if (draws_line && prev && step > 0) {
-      const n_samples = Math.floor(Math.hypot(point.x - prev.x, point.y - prev.y) / step)
+    if (draws_line && previous && step > 0) {
+      const n_samples = Math.floor(
+        Math.hypot(point.x - previous.x, point.y - previous.y) / step,
+      )
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
-        const x = prev.x + (point.x - prev.x) * frac
-        const y = prev.y + (point.y - prev.y) * frac
+        const x = previous.x + (point.x - previous.x) * frac
+        const y = previous.y + (point.y - previous.y) * frac
         obstacles.push({ x, y })
       }
     }
-    prev = point
+    previous = point
   }
   return obstacles
 }
@@ -745,7 +737,7 @@ export function compute_element_placement(
   const x_step = (effective_x_max - effective_x_min) / (grid_resolution - 1)
   const y_step = (effective_y_max - effective_y_min) / (grid_resolution - 1)
 
-  const max_corner_dist = euclidean_dist([plot_left, plot_top], [plot_right, plot_bottom])
+  const max_corner_dist = Math.hypot(plot_right - plot_left, plot_bottom - plot_top)
 
   for (let grid_x = 0; grid_x < grid_resolution; grid_x++) {
     for (let grid_y = 0; grid_y < grid_resolution; grid_y++) {

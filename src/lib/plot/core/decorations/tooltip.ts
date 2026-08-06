@@ -1,10 +1,7 @@
 import type { Rect } from '$lib/plot/core/layout'
 
-export type TooltipPlacementDirection =
-  | `right-below`
-  | `left-below`
-  | `right-above`
-  | `left-above`
+const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const
+export type TooltipPlacementDirection = (typeof DIRECTIONS)[number]
 
 export type TooltipPlacementConfig = {
   anchor: { x: number; y: number }
@@ -24,13 +21,6 @@ export type TooltipPlacementCandidate = {
   flip_penalty: number
   score: number
 }
-
-const DIRECTIONS: readonly TooltipPlacementDirection[] = [
-  `right-below`,
-  `left-below`,
-  `right-above`,
-  `left-above`,
-]
 
 // Pixel overlap dominates displacement caused by clamping, which in turn dominates flipping.
 // Candidate order remains the final tie-breaker.
@@ -107,13 +97,11 @@ export function get_tooltip_placement_candidates({
       0,
     )
     const distance_penalty = Math.hypot(x - raw_x, y - raw_y)
-    const horizontal_flip = right !== preferred_right
-    const vertical_flip = below !== preferred_below
     // A flip's cost is the physical move to the opposite side. This selects the relevant
     // axis at a single edge instead of relying on quadrant order when one-axis flips tie.
     const flip_penalty =
-      (horizontal_flip ? width + 2 * offset_x : 0) +
-      (vertical_flip ? height + 2 * offset_y : 0)
+      (right !== preferred_right ? width + 2 * offset_x : 0) +
+      (below !== preferred_below ? height + 2 * offset_y : 0)
     const score = -(
       overlap_area * OVERLAP_WEIGHT +
       distance_penalty * DISTANCE_WEIGHT +
@@ -132,11 +120,7 @@ export function get_tooltip_placement_candidates({
   })
 }
 
-export const place_tooltip = (config: TooltipPlacementConfig): TooltipPlacementCandidate => {
-  const candidates = get_tooltip_placement_candidates(config)
-  let best_candidate = candidates[0]
-  for (const candidate of candidates.slice(1)) {
-    if (candidate.score > best_candidate.score) best_candidate = candidate
-  }
-  return best_candidate
-}
+export const place_tooltip = (config: TooltipPlacementConfig): TooltipPlacementCandidate =>
+  get_tooltip_placement_candidates(config).reduce((best, candidate) =>
+    candidate.score > best.score ? candidate : best,
+  )

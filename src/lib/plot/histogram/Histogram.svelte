@@ -331,12 +331,11 @@
     // untrack the reads of `ranges` so the writes below can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
     const init = untrack(() => ranges.initial)
-    if (!vec2_equal(init.x, next.x)) [ranges.initial.x, ranges.current.x] = [next.x, next.x]
-    if (!vec2_equal(init.x2, next.x2))
-      [ranges.initial.x2, ranges.current.x2] = [next.x2, next.x2]
-    if (!vec2_equal(init.y, next.y)) [ranges.initial.y, ranges.current.y] = [next.y, next.y]
-    if (!vec2_equal(init.y2, next.y2))
-      [ranges.initial.y2, ranges.current.y2] = [next.y2, next.y2]
+    for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
+      if (vec2_equal(init[axis], next[axis])) continue
+      ranges.initial[axis] = next[axis]
+      ranges.current[axis] = next[axis]
+    }
   })
 
   // Layout: dynamic padding based on tick label widths
@@ -357,6 +356,12 @@
     )
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
+    const measure_axis = (
+      axis: typeof final_x_axis,
+      axis_ticks: number[],
+      scale: typeof padding_scales.x,
+      extent: typeof x_extent,
+    ) => measured_axis(axis, axis_ticks, scale, extent, tick_font)
     const axis_pad =
       width && height
         ? calc_auto_padding({
@@ -364,34 +369,10 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: measured_axis(
-              final_x_axis,
-              ticks.x,
-              padding_scales.x,
-              x_extent,
-              tick_font,
-            ),
-            x2_axis: measured_axis(
-              final_x2_axis,
-              ticks.x2,
-              padding_scales.x2,
-              x_extent,
-              tick_font,
-            ),
-            y_axis: measured_axis(
-              final_y_axis,
-              ticks.y,
-              padding_scales.y,
-              y_extent,
-              tick_font,
-            ),
-            y2_axis: measured_axis(
-              final_y2_axis,
-              ticks.y2,
-              padding_scales.y2,
-              y_extent,
-              tick_font,
-            ),
+            x_axis: measure_axis(final_x_axis, ticks.x, padding_scales.x, x_extent),
+            x2_axis: measure_axis(final_x2_axis, ticks.x2, padding_scales.x2, x_extent),
+            y_axis: measure_axis(final_y_axis, ticks.y, padding_scales.y, y_extent),
+            y2_axis: measure_axis(final_y2_axis, ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
@@ -566,14 +547,12 @@
 
   let legend_data = $derived(prepare_legend_data(series))
 
-  const get_legend_placement = () =>
-    !should_show_legend || !width || !height || legend_has_explicit_pos
-      ? null
-      : (legend_placement ?? null)
-
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: get_legend_placement,
+    placement: () =>
+      !should_show_legend || !width || !height || legend_has_explicit_pos
+        ? null
+        : (legend_placement ?? null),
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
@@ -666,9 +645,7 @@
   )
 
   // Set theme-aware background when entering fullscreen
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--histogram-fullscreen-bg`)
-  })
+  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--histogram-fullscreen-bg`))
 
   // State accessors for shared axis change handler
   // Spread into existing state in each setter to preserve merged type structure

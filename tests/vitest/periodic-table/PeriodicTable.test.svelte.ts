@@ -50,7 +50,7 @@ describe(`PeriodicTable`, () => {
     expect(document.querySelector(`img`)).toBeNull()
   })
 
-  test(`arrow navigation moves focus and Enter activates the focused tile`, async () => {
+  test(`arrow navigation moves focus and resets its tab stop on blur`, async () => {
     let active_element: (typeof element_data)[0] | null = null
     const onactivate = vi.fn<(element: ChemicalElement) => void>()
 
@@ -82,6 +82,14 @@ describe(`PeriodicTable`, () => {
     expect(onactivate).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ symbol: `Li` }),
     )
+
+    const outside_input = document.createElement(`input`)
+    document.body.append(outside_input)
+    outside_input.focus()
+    await tick()
+    expect(active_element).toBeNull()
+    expect(hydrogen.tabIndex).toBe(0)
+    expect(lithium.tabIndex).toBe(-1)
   })
 
   test(`arrow keys outside the table do not change its active element`, () => {

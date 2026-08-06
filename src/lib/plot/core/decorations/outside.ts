@@ -9,12 +9,7 @@ import type {
 
 export const DEFAULT_DECORATION_GAP = 8
 
-const standard_items = (
-  items: readonly DecorationItem[],
-): {
-  legend: LegendDecorationItem | undefined
-  colorbar: ColorbarDecorationItem | undefined
-} => {
+const standard_items = (items: readonly DecorationItem[]) => {
   const legends = items.filter((item): item is LegendDecorationItem => item.kind === `legend`)
   const colorbars = items.filter(
     (item): item is ColorbarDecorationItem => item.kind === `colorbar`,

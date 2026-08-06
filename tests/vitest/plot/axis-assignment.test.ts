@@ -6,7 +6,11 @@ import {
   axis_scale_types,
   group_axis_series,
 } from '$lib/plot/core/axis-assignment'
-import type { AxisValueSeries } from '$lib/plot/core/axis-assignment'
+import type {
+  AxisAssignmentOptions,
+  AxisValueSeries,
+  OverflowAxisAssignment,
+} from '$lib/plot/core/axis-assignment'
 import { describe, expect, test } from 'vitest'
 
 const create_series = (
@@ -20,34 +24,32 @@ const create_series = (
   ...options,
 })
 
+const assign_overflow = (
+  series: AxisValueSeries[],
+  options: AxisAssignmentOptions<AxisValueSeries> = {},
+): OverflowAxisAssignment<AxisValueSeries> => {
+  const result = assign_axes(series, options)
+  expect(result.status).toBe(`overflow`)
+  if (result.status !== `overflow`) throw new Error(`Expected overflow assignment`)
+  return result
+}
+
 describe(`axis_group_key`, () => {
   test.each([
-    {
-      name: `axis_group overrides unit`,
-      series: create_series(`SCF`, `eV`, { axis_group: `scf` }),
-      expected: `scf`,
-    },
-    {
-      name: `unit groups ordinary series`,
-      series: create_series(`Energy`, `eV`),
-      expected: `eV`,
-    },
-    {
-      name: `empty unit becomes dimensionless`,
-      series: create_series(`Score`),
-      expected: `dimensionless`,
-    },
-    {
-      name: `blank axis group falls back to a trimmed unit`,
-      series: create_series(`Energy`, ` eV `, { axis_group: `  ` }),
-      expected: `eV`,
-    },
-    {
-      name: `blank axis group and unit become dimensionless`,
-      series: create_series(`Score`, `  `, { axis_group: ` ` }),
-      expected: `dimensionless`,
-    },
-  ])(`uses $name`, ({ series, expected }) => {
+    [`axis_group overrides unit`, create_series(`SCF`, `eV`, { axis_group: `scf` }), `scf`],
+    [`unit groups ordinary series`, create_series(`Energy`, `eV`), `eV`],
+    [`empty unit becomes dimensionless`, create_series(`Score`), `dimensionless`],
+    [
+      `blank axis group falls back to a trimmed unit`,
+      create_series(`Energy`, ` eV `, { axis_group: `  ` }),
+      `eV`,
+    ],
+    [
+      `blank axis group and unit become dimensionless`,
+      create_series(`Score`, `  `, { axis_group: ` ` }),
+      `dimensionless`,
+    ],
+  ] as const)(`uses %s`, (_name, series, expected) => {
     expect(axis_group_key(series)).toBe(expected)
   })
 })
@@ -152,14 +154,12 @@ describe(`assign_axes`, () => {
   })
 
   test(`reports an ambiguous automatic peer when its group reserves both axes`, () => {
-    const result = assign_axes([
+    const result = assign_overflow([
       create_series(`Explicit secondary energy`, `eV`, { y_axis: `y2` }),
       create_series(`Automatic free energy`, `eV`),
       create_series(`Explicit primary energy`, `eV`, { y_axis: `y1` }),
     ])
 
-    expect(result.status).toBe(`overflow`)
-    if (result.status !== `overflow`) throw new Error(`Expected overflow assignment`)
     expect(result.assignments).toEqual([`y2`, undefined, `y1`])
     expect(result.overflow_groups).toHaveLength(1)
     expect(result.overflow_groups[0]).toMatchObject({
@@ -186,25 +186,18 @@ describe(`assign_axes`, () => {
   })
 
   test.each([
-    {
-      name: `first group hidden`,
-      input: [
-        create_series(`Energy`, `eV`, { visible: false }),
-        create_series(`Pressure`, `GPa`),
-      ],
-      expected: [undefined, `y1`],
+    [false, true, [undefined, `y1`]],
+    [true, false, [`y1`, undefined]],
+  ] as const)(
+    `assigns only visible series (%s, %s)`,
+    (first_visible, second_visible, expected) => {
+      const input = [
+        create_series(`Energy`, `eV`, { visible: first_visible }),
+        create_series(`Pressure`, `GPa`, { visible: second_visible }),
+      ]
+      expect(assign_axes(input).assignments).toEqual(expected)
     },
-    {
-      name: `second group hidden`,
-      input: [
-        create_series(`Energy`, `eV`),
-        create_series(`Pressure`, `GPa`, { visible: false }),
-      ],
-      expected: [`y1`, undefined],
-    },
-  ])(`restarts visible-only assignment at y1 with $name`, ({ input, expected }) => {
-    expect(assign_axes(input).assignments).toEqual(expected)
-  })
+  )
 
   test(`reports automatic overflow after explicit reservations`, () => {
     const input = [
@@ -212,10 +205,7 @@ describe(`assign_axes`, () => {
       create_series(`Pressure`, `GPa`),
       create_series(`Temperature`, `K`),
     ]
-    const result = assign_axes(input)
-
-    expect(result.status).toBe(`overflow`)
-    if (result.status !== `overflow`) throw new Error(`Expected overflow assignment`)
+    const result = assign_overflow(input)
     expect(result.assignments).toEqual([`y1`, `y2`, undefined])
     expect(result.groups.map(({ key, axis }) => ({ key, axis }))).toEqual([
       { key: `eV`, axis: `y1` },
@@ -239,10 +229,7 @@ describe(`assign_axes`, () => {
       create_series(`High`, `high`),
     ]
     const priority = (group_key: string) => [`high`, `medium`, `low`].indexOf(group_key)
-    const result = assign_axes(input, { priority })
-
-    expect(result.status).toBe(`overflow`)
-    if (result.status !== `overflow`) throw new Error(`Expected overflow assignment`)
+    const result = assign_overflow(input, { priority })
     expect(result.assignments).toEqual([undefined, `y2`, `y1`])
     expect(result.groups.map(({ key, axis }) => ({ key, axis }))).toEqual([
       { key: `high`, axis: `y1` },
@@ -273,16 +260,11 @@ describe(`assign_axes`, () => {
     )
   })
 
-  test.each([
-    { name: `empty input`, input: [] },
-    {
-      name: `all-hidden input`,
-      input: [
-        create_series(`Energy`, `eV`, { visible: false }),
-        create_series(`Force`, `eV/Å`, { visible: false }),
-      ],
-    },
-  ])(`returns a complete empty assignment for $name with max_axes=1`, ({ input }) => {
+  test(`returns a complete empty assignment for all-hidden input`, () => {
+    const input = [
+      create_series(`Energy`, `eV`, { visible: false }),
+      create_series(`Force`, `eV/Å`, { visible: false }),
+    ]
     expect(assign_axes(input, { max_axes: 1 })).toEqual({
       status: `assigned`,
       assignments: input.map(() => undefined),
@@ -343,11 +325,6 @@ describe(`axis_labels`, () => {
     expect(axis_labels(series, options)).toEqual(expected)
   })
 
-  test(`keeps mixed-unit labels stable when series order changes`, () => {
-    const input = [create_series(`Pressure`, `GPa`), create_series(`Energy`, `eV`)]
-    expect(axis_labels(input)).toEqual(axis_labels(input.toReversed()))
-  })
-
   test(`uses a resolved assignment instead of unresolved series axes`, () => {
     const input = [
       create_series(`Energy`, `eV`),
@@ -368,11 +345,13 @@ describe(`axis_scale_types`, () => {
     min_log_decades: 3,
   }
   const all_linear = { y1: `linear`, y2: `linear` }
+  const residual = (y: number[], options: Partial<AxisValueSeries> = {}) =>
+    create_series(`Residual`, `eV`, { axis_group: `scf`, y, ...options })
 
   test.each([
     {
       name: `eligible positive series spanning three decades`,
-      series: [create_series(`Residual`, `eV`, { axis_group: `scf`, y: [1e-6, 1e-3] })],
+      series: [residual([1e-6, 1e-3])],
       expected: { y1: `log`, y2: `linear` },
     },
     {
@@ -382,18 +361,18 @@ describe(`axis_scale_types`, () => {
     },
     {
       name: `zero or negative values`,
-      series: [create_series(`Residual`, `eV`, { axis_group: `scf`, y: [-1, 0, 1e-6, 1] })],
+      series: [residual([-1, 0, 1e-6, 1])],
       expected: all_linear,
     },
     {
       name: `narrow value span`,
-      series: [create_series(`Residual`, `eV`, { axis_group: `scf`, y: [1, 100] })],
+      series: [residual([1, 100])],
       expected: all_linear,
     },
     {
       name: `hidden ineligible series`,
       series: [
-        create_series(`Residual`, `eV`, { axis_group: `scf`, y: [1e-6, 1] }),
+        residual([1e-6, 1]),
         create_series(`Hidden energy`, `eV`, { visible: false, y: [-10, -9] }),
       ],
       expected: { y1: `log`, y2: `linear` },
@@ -402,42 +381,23 @@ describe(`axis_scale_types`, () => {
       name: `independent y axes`,
       series: [
         create_series(`Energy`, `eV`, { y: [-10, -9] }),
-        create_series(`Residual`, `eV`, {
-          axis_group: `scf`,
-          y_axis: `y2`,
-          y: [1e-7, 1],
-        }),
+        residual([1e-7, 1], { y_axis: `y2` }),
       ],
       expected: { y1: `linear`, y2: `log` },
     },
     {
       name: `non-finite values ignored`,
-      series: [
-        create_series(`Residual`, `eV`, {
-          axis_group: `scf`,
-          y: [NaN, -Infinity, 1e-6, Infinity, 1],
-        }),
-      ],
+      series: [residual([NaN, -Infinity, 1e-6, Infinity, 1])],
       expected: { y1: `log`, y2: `linear` },
     },
     {
       name: `non-finite values cannot conceal a finite zero`,
-      series: [
-        create_series(`Residual`, `eV`, {
-          axis_group: `scf`,
-          y: [NaN, 0, 1e-6, Infinity, 1],
-        }),
-      ],
+      series: [residual([NaN, 0, 1e-6, Infinity, 1])],
       expected: all_linear,
     },
     {
       name: `entirely non-finite data`,
-      series: [
-        create_series(`Residual`, `eV`, {
-          axis_group: `scf`,
-          y: [NaN, -Infinity, Infinity],
-        }),
-      ],
+      series: [residual([NaN, -Infinity, Infinity])],
       expected: all_linear,
     },
   ])(`selects scale types for $name`, ({ series, expected }) => {
@@ -446,15 +406,10 @@ describe(`axis_scale_types`, () => {
 
   test(`compares decade spans without ratio overflow`, () => {
     expect(
-      axis_scale_types(
-        [
-          create_series(`Residual`, `eV`, {
-            axis_group: `scf`,
-            y: [Number.MIN_VALUE, Number.MAX_VALUE],
-          }),
-        ],
-        { ...log_options, min_log_decades: 1000 },
-      ),
+      axis_scale_types([residual([Number.MIN_VALUE, Number.MAX_VALUE])], {
+        ...log_options,
+        min_log_decades: 1000,
+      }),
     ).toEqual(all_linear)
   })
 

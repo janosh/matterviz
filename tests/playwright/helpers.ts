@@ -18,6 +18,18 @@ export const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
     (text) => text.trim() !== `` && Number.isFinite(Number(text)),
   )
 
+export const expect_synced_y_ticks = (
+  source_plot: Locator,
+  target_plot: Locator,
+  expected?: string[],
+) =>
+  expect(async () => {
+    const source_ticks = await numeric_y_ticks(source_plot)
+    expect(source_ticks.length).toBeGreaterThan(0)
+    if (expected) expect(source_ticks).toEqual(expected)
+    expect(await numeric_y_ticks(target_plot)).toEqual(source_ticks)
+  }).toPass({ timeout: 10_000 })
+
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time
 export const get_canvas_timeout = (): number =>
@@ -239,6 +251,11 @@ export async function drag_plot_area(page: Page, { clip, svg_box }: PlotArea): P
   )
   await page.mouse.up()
 }
+
+export const reset_plot_area = (plot: Locator, { clip }: PlotArea): Promise<void> =>
+  get_chart_svg(plot).dblclick({
+    position: { x: clip.x + clip.width / 2, y: clip.y + clip.height / 2 },
+  })
 
 export async function expect_bottom_within(outer: Locator, inner: Locator): Promise<void> {
   const [outer_box, inner_box] = await Promise.all([outer.boundingBox(), inner.boundingBox()])

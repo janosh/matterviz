@@ -54,8 +54,7 @@
       band_structs,
       doses,
       shared_y_axis,
-      JSON.stringify(bands_props.y_axis),
-      JSON.stringify(dos_props.y_axis),
+      JSON.stringify({ bands: bands_props.y_axis, dos: dos_props.y_axis }),
     ]
     if (prev_sources?.every((source, idx) => source === sources[idx])) return
     prev_sources = sources
@@ -65,11 +64,8 @@
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
-    if (!sync_y_zoom) {
-      synced_zoom_range = null
-      return
-    }
-    if (!shared_frequency_range) return
+    if (!sync_y_zoom) synced_zoom_range = null
+    if (!sync_y_zoom || !shared_frequency_range) return
     const update = reconcile_shared_axis_ranges(
       y_axes,
       shared_frequency_range,

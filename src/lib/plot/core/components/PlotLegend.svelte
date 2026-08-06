@@ -154,22 +154,17 @@
     if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }
 
+  const group_indices = (items: readonly LegendItem[]): number[] =>
+    items.map(({ series_idx }) => series_idx)
   const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
-    on_group_toggle?.(
-      group_name,
-      items.map((item) => item.series_idx),
-    )
+    on_group_toggle?.(group_name, group_indices(items))
 
   function cleanup_drag_listeners() {
-    if (is_dragging) {
-      // Remove global event listeners
-      window.removeEventListener(`mousemove`, handle_window_mouse_move)
-      window.removeEventListener(`mouseup`, handle_window_mouse_up)
-
-      // Reset cursor and text selection
-      document.body.style.cursor = `default`
-      document.body.style.userSelect = `auto`
-    }
+    if (!is_dragging) return
+    window.removeEventListener(`mousemove`, handle_window_mouse_move)
+    window.removeEventListener(`mouseup`, handle_window_mouse_up)
+    document.body.style.cursor = `default`
+    document.body.style.userSelect = `auto`
   }
   onDestroy(() => {
     cleanup_drag_listeners()
@@ -191,7 +186,6 @@
 
     on_drag_start(event)
 
-    // Add global event listeners
     window.addEventListener(`mousemove`, handle_window_mouse_move)
     window.addEventListener(`mouseup`, handle_window_mouse_up)
   }
@@ -210,7 +204,6 @@
 
     on_drag_end(event)
 
-    // Remove global event listeners
     window.removeEventListener(`mousemove`, handle_window_mouse_move)
     window.removeEventListener(`mouseup`, handle_window_mouse_up)
   }
@@ -224,27 +217,24 @@
     }[layout] + style,
   )
 
-  // Extracted toggle handlers to reduce duplication
-  function toggle_item(item: LegendItem) {
+  const run_item_action = (
+    item: LegendItem,
+    fill_action: typeof on_fill_toggle,
+    series_action: (series_idx: number) => void,
+  ): void => {
     if (
       item.item_type === `fill` &&
-      on_fill_toggle &&
+      fill_action &&
       item.fill_source_type &&
       item.fill_source_idx !== undefined
     ) {
-      on_fill_toggle(item.fill_source_type, item.fill_source_idx)
-    } else on_toggle(item.series_idx)
+      fill_action(item.fill_source_type, item.fill_source_idx)
+    } else series_action(item.series_idx)
   }
-  function double_click_item(item: LegendItem) {
-    if (
-      item.item_type === `fill` &&
-      on_fill_double_click &&
-      item.fill_source_type &&
-      item.fill_source_idx !== undefined
-    ) {
-      on_fill_double_click(item.fill_source_type, item.fill_source_idx)
-    } else on_double_click(item.series_idx)
-  }
+  const toggle_item = (item: LegendItem): void =>
+    run_item_action(item, on_fill_toggle, on_toggle)
+  const double_click_item = (item: LegendItem): void =>
+    run_item_action(item, on_fill_double_click, on_double_click)
 
   const stop_and_run = (event: Event, action: () => void): void => {
     event.preventDefault()
@@ -418,10 +408,7 @@
           stop_and_run(event, () => handle_group_click(cell.group, group_items))}
         ondblclick={(event) =>
           stop_and_run(event, () =>
-            on_group_double_click?.(
-              cell.group,
-              group_items.map((item) => item.series_idx),
-            ),
+            on_group_double_click?.(cell.group, group_indices(group_items)),
           )}
         onkeydown={(event) =>
           keyboard_activate(event, () => handle_group_click(cell.group, group_items))}

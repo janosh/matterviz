@@ -211,9 +211,9 @@ export function assign_facet_panels<Datum>(
     const row_start = panel.row ?? 0
     const row_limit =
       panel.row === undefined ? (rows ?? Number.POSITIVE_INFINITY) : panel.row + 1
+    const column_start = panel.column ?? 0
+    const column_limit = panel.column === undefined ? columns : panel.column + 1
     for (let row_idx = row_start; row_idx < row_limit; row_idx++) {
-      const column_start = panel.column ?? 0
-      const column_limit = panel.column === undefined ? columns : panel.column + 1
       for (let column_idx = column_start; column_idx < column_limit; column_idx++) {
         if (!fits(row_idx, column_idx, row_span, column_span)) continue
         position = { row: row_idx, column: column_idx }
@@ -282,26 +282,28 @@ export function reconcile_facet_ranges<Datum>(
   overrides: readonly KeyedFacetAxisRanges[] = [],
 ): KeyedFacetAxisRanges[] {
   const resolved_modes = axis_modes_with_defaults(modes)
+  const reports_by_key = new SvelteMap(reports.map((report) => [report.key, report]))
+  const overrides_by_key = new SvelteMap(overrides.map((entry) => [entry.key, entry.ranges]))
   return layout.panels.map((panel) => {
     const ranges: FacetAxisRanges = {}
     for (const axis of FACET_AXES) {
-      const override = overrides.find((entry) => entry.key === panel.key)?.ranges[axis]
+      const override = overrides_by_key.get(panel.key)?.[axis]
       if (is_valid_range(override)) {
         ranges[axis] = override
         continue
       }
       const mode = resolved_modes[axis]
+      if (mode === `free`) {
+        const own_range = reports_by_key.get(panel.key)?.ranges?.[axis]
+        if (is_valid_range(own_range)) ranges[axis] = own_range
+        continue
+      }
       const grouped_panels = layout.panels.filter((candidate) =>
         facet_panels_share_axis(panel, candidate, mode),
       )
       const grouped_ranges = grouped_panels.map(
-        (candidate) => reports.find((report) => report.key === candidate.key)?.ranges?.[axis],
+        (candidate) => reports_by_key.get(candidate.key)?.ranges?.[axis],
       )
-      if (mode === `free`) {
-        const own_range = grouped_ranges[0]
-        if (is_valid_range(own_range)) ranges[axis] = own_range
-        continue
-      }
       const shared_range = union_ranges(grouped_ranges)
       if (shared_range) ranges[axis] = shared_range
     }
@@ -327,15 +329,13 @@ export function propagate_facet_range<Datum>(
   }
   const mode = axis_modes_with_defaults(modes)[axis]
   return layout.panels.map((panel) => {
-    const previous_ranges = current.find((entry) => entry.key === panel.key)?.ranges ?? {}
+    const previous_ranges = current.find((entry) => entry.key === panel.key)?.ranges
     if (!facet_panels_share_axis(source_panel, panel, mode)) {
       return { key: panel.key, ranges: { ...previous_ranges } }
     }
-    const ranges: FacetAxisRanges = {}
-    for (const candidate_axis of FACET_AXES) {
-      const previous_range = previous_ranges[candidate_axis]
-      if (candidate_axis !== axis && previous_range) ranges[candidate_axis] = previous_range
-    }
+    const ranges = Object.fromEntries(
+      Object.entries(previous_ranges ?? {}).filter(([candidate]) => candidate !== axis),
+    ) as FacetAxisRanges
     if (range !== null) ranges[axis] = [range[0], range[1]]
     return { key: panel.key, ranges }
   })
@@ -358,26 +358,19 @@ const is_outer_axis = (
   panel: PositionedFacetPanel,
   layout: Pick<FacetGridLayout, `panels`>,
 ): boolean => {
-  const row_overlaps = (candidate: PositionedFacetPanel): boolean =>
-    candidate.row < panel.row + panel.row_span &&
-    candidate.row + candidate.row_span > panel.row
-  const column_overlaps = (candidate: PositionedFacetPanel): boolean =>
-    candidate.column < panel.column + panel.column_span &&
-    candidate.column + candidate.column_span > panel.column
+  const horizontal_axis = axis === `x` || axis === `x2`
   return !layout.panels.some((candidate) => {
     if (candidate.key === panel.key) return false
-    if (axis === `x`) {
-      return candidate.row >= panel.row + panel.row_span && column_overlaps(candidate)
-    }
-    if (axis === `x2`) {
-      return candidate.row + candidate.row_span <= panel.row && column_overlaps(candidate)
-    }
-    if (axis === `y`) {
-      return (
-        candidate.column + candidate.column_span <= panel.column && row_overlaps(candidate)
-      )
-    }
-    return candidate.column >= panel.column + panel.column_span && row_overlaps(candidate)
+    const overlaps = horizontal_axis
+      ? candidate.column < panel.column + panel.column_span &&
+        candidate.column + candidate.column_span > panel.column
+      : candidate.row < panel.row + panel.row_span &&
+        candidate.row + candidate.row_span > panel.row
+    if (!overlaps) return false
+    if (axis === `x`) return candidate.row >= panel.row + panel.row_span
+    if (axis === `x2`) return candidate.row + candidate.row_span <= panel.row
+    if (axis === `y`) return candidate.column + candidate.column_span <= panel.column
+    return candidate.column >= panel.column + panel.column_span
   })
 }
 
@@ -444,11 +437,12 @@ export function compute_facet_geometry<Datum>(
   const has_legend = legend_width > 0
   const has_colorbar = colorbar_width > 0
   const side_band_count = Number(has_legend) + Number(has_colorbar)
+  const title_gap = has_title ? shared_band_gap : 0
   const panel_grid: Rect = {
     x: 0,
-    y: has_title ? title_height + shared_band_gap : 0,
+    y: title_height + title_gap,
     width: width - legend_width - colorbar_width - side_band_count * shared_band_gap,
-    height: height - title_height - (has_title ? shared_band_gap : 0),
+    height: height - title_height - title_gap,
   }
   if (panel_grid.width < 0 || panel_grid.height < 0) {
     throw new RangeError(
@@ -505,7 +499,6 @@ export function compute_facet_geometry<Datum>(
   }
   const cell_width = available_width / layout.columns
   const cell_height = available_height / layout.rows
-
   resolved.panels = layout.panels.map((panel) => ({
     key: panel.key,
     rect: {
@@ -518,9 +511,7 @@ export function compute_facet_geometry<Datum>(
   return resolved
 }
 
-export function compute_facet_rects<Datum>(
+export const compute_facet_rects = <Datum>(
   layout: FacetGridLayout<Datum>,
   geometry: FacetGridGeometry,
-): { key: FacetKey; rect: Rect }[] {
-  return compute_facet_geometry(layout, geometry).panels
-}
+): { key: FacetKey; rect: Rect }[] => compute_facet_geometry(layout, geometry).panels

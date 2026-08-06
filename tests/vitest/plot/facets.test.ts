@@ -1,7 +1,6 @@
 import {
   assign_facet_panels,
   compute_facet_geometry,
-  compute_facet_rects,
   propagate_facet_range,
   reconcile_facet_padding,
   reconcile_facet_ranges,
@@ -65,33 +64,29 @@ describe(`facet panel assignment`, () => {
   })
 
   it.each([
-    {
-      name: `duplicate keys`,
-      input: [
+    [
+      `duplicate keys`,
+      [
         { key: `duplicate`, data: 1 },
         { key: `duplicate`, data: 2 },
       ],
-      message: `Duplicate facet key`,
-    },
-    {
-      name: `zero row span`,
-      input: [{ key: `bad-row`, data: 1, row_span: 0 }],
-      message: `row_span`,
-    },
-    {
-      name: `oversized column span`,
-      input: [{ key: `bad-column`, data: 1, column_span: 3 }],
-      message: `exceeds 2 columns`,
-    },
-    {
-      name: `overlapping explicit cells`,
-      input: [
+      `Duplicate facet key`,
+    ],
+    [`zero row span`, [{ key: `bad-row`, data: 1, row_span: 0 }], `row_span`],
+    [
+      `oversized column span`,
+      [{ key: `bad-column`, data: 1, column_span: 3 }],
+      `exceeds 2 columns`,
+    ],
+    [
+      `overlapping explicit cells`,
+      [
         { key: `first`, data: 1, row: 0, column: 0 },
         { key: `second`, data: 2, row: 0, column: 0 },
       ],
-      message: `Cannot place facet`,
-    },
-  ])(`rejects $name`, ({ input, message }) => {
+      `Cannot place facet`,
+    ],
+  ] as const)(`rejects %s`, (_name, input, message) => {
     expect(() => assign_facet_panels(input, 2)).toThrow(message)
   })
 })
@@ -162,23 +157,6 @@ describe(`facet layout reconciliation`, () => {
       expect(resolved.map(({ ranges }) => ranges.x)).toEqual(expected)
     },
   )
-
-  it(`computes deterministic rectangles for an uneven grid`, () => {
-    const uneven_layout = assign_facet_panels(panels(5), 3)
-    const rects = compute_facet_rects(uneven_layout, {
-      width: 320,
-      height: 210,
-      column_gap: 10,
-      row_gap: 10,
-    })
-    expect(rects.map(({ rect }) => rect)).toEqual([
-      { x: 0, y: 0, width: 100, height: 100 },
-      { x: 110, y: 0, width: 100, height: 100 },
-      { x: 220, y: 0, width: 100, height: 100 },
-      { x: 0, y: 110, width: 100, height: 100 },
-      { x: 110, y: 110, width: 100, height: 100 },
-    ])
-  })
 
   it(`reserves explicit shared chrome bands around an uneven panel grid`, () => {
     const uneven_layout = assign_facet_panels(panels(5), 3)

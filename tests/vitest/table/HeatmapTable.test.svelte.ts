@@ -584,24 +584,15 @@ describe(`HeatmapTable`, () => {
       description: ``,
     }
 
-    it(`does not set cell colors when show_heatmap is false`, () => {
+    it.each([
+      [`show_heatmap is false`, { show_heatmap: false }],
+      [
+        `column preferences disable the color scale`,
+        { column_prefs: { Val: { color_scale: null } } },
+      ],
+    ] as const)(`does not set cell colors when %s`, (_name, props) => {
       const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
-      mount_table({ data, columns: [heatmap_val_col], show_heatmap: false })
-
-      const cells = Array.from(document.querySelectorAll(`td[data-col="Val"]`))
-      expect(cells).toHaveLength(data.length)
-      for (const cell of cells) {
-        expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
-      }
-    })
-
-    it(`lets column preferences disable a configured color scale`, () => {
-      const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
-      mount_table({
-        data,
-        columns: [heatmap_val_col],
-        column_prefs: { Val: { color_scale: null } },
-      })
+      mount_table({ data, columns: [heatmap_val_col], ...props })
 
       const cells = Array.from(document.querySelectorAll(`td[data-col="Val"]`))
       expect(cells).toHaveLength(data.length)

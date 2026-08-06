@@ -65,7 +65,6 @@
   <FacetGrid
     {panels}
     columns={2}
-    rows={2}
     gap={8}
     axis_modes={{ x: `shared`, y: `shared` }}
     axis_visibility={{ x: `outer`, x2: `none`, y: `outer`, y2: `none` }}

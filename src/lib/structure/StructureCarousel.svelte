@@ -90,9 +90,7 @@
   // titlebar-safe cards as the measured viewport permits; only stretch cards
   // when more items remain, so short carousels keep their compact width.
   const horizontal_capacity = $derived(
-    carousel_width > 0
-      ? Math.max(1, Math.floor((carousel_width + gap) / (safe_min_card_width + gap)))
-      : 1,
+    Math.max(1, Math.floor((carousel_width + gap) / (safe_min_card_width + gap))),
   )
   const horizontal_card_width = $derived(
     carousel_width > 0 && items.length > horizontal_capacity

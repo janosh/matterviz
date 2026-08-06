@@ -3,10 +3,7 @@ import type { DecorationSize, LegendDecorationItem } from './types'
 
 export type LegendOrientation = `horizontal` | `vertical`
 
-export type LegendItemExtent = {
-  width?: number
-  height?: number
-}
+export type LegendItemExtent = Partial<DecorationSize>
 
 export type LegendTrackSuggestionConfig = {
   item_count: number
@@ -56,24 +53,18 @@ export function get_legend_grid_cells({
   show_filter?: boolean
 }): LegendGridCell[] {
   const normalized_filter = show_filter ? filter_query.trim().toLowerCase() : ``
-  const visible_indices = items.flatMap((item, item_idx) =>
-    !normalized_filter ||
-    `${item.legend_group ?? ``} ${item.label}`.toLowerCase().includes(normalized_filter)
-      ? [item_idx]
-      : [],
-  )
-  const cells: LegendGridCell[] = show_filter ? [{ kind: `filter` }] : []
-  if (show_filter && normalized_filter && visible_indices.length === 0) {
-    cells.push({ kind: `empty` })
-    return cells
-  }
   const grouped_items = new SvelteMap<string | null, number[]>()
-
-  for (const item_idx of visible_indices) {
-    const group = items[item_idx]?.legend_group ?? null
+  for (const [item_idx, item] of items.entries()) {
+    const searchable_text = `${item.legend_group ?? ``} ${item.label}`.toLowerCase()
+    if (normalized_filter && !searchable_text.includes(normalized_filter)) continue
+    const group = item.legend_group ?? null
     const item_indices = grouped_items.get(group)
     if (item_indices) item_indices.push(item_idx)
     else grouped_items.set(group, [item_idx])
+  }
+  const cells: LegendGridCell[] = show_filter ? [{ kind: `filter` }] : []
+  if (show_filter && normalized_filter && grouped_items.size === 0) {
+    return [...cells, { kind: `empty` }]
   }
   for (const [group, item_indices] of grouped_items) {
     if (group !== null) cells.push({ kind: `group`, group })
@@ -127,10 +118,6 @@ export const resolve_legend_layout_tracks = (
     : layout_tracks
 
 const DEFAULT_ITEM_EXTENT = { width: 96, height: 20 } as const
-const DEFAULT_TRACK_GAP: Record<LegendOrientation, number> = {
-  horizontal: 6,
-  vertical: 1,
-}
 
 const assert_non_negative = (value: number, name: string, allow_infinity = false): void => {
   if (value < 0 || Number.isNaN(value) || (!allow_infinity && !Number.isFinite(value))) {
@@ -146,7 +133,7 @@ export const suggest_legend_tracks = ({
   available_edge_length,
   item_extents = [],
   estimated_item_extent = DEFAULT_ITEM_EXTENT,
-  gap = DEFAULT_TRACK_GAP[orientation],
+  gap = orientation === `horizontal` ? 6 : 1,
 }: LegendTrackSuggestionConfig): number => {
   if (!Number.isInteger(item_count) || item_count < 0) {
     throw new Error(`item_count must be a non-negative integer, got ${item_count}`)
@@ -174,8 +161,7 @@ export const suggest_legend_tracks = ({
       track_extents[track_idx] = Math.max(track_extents[track_idx], extent)
     }
     const required_edge_length =
-      track_extents.reduce((total, extent) => total + extent, 0) +
-      gap * Math.max(0, track_count - 1)
+      track_extents.reduce((total, extent) => total + extent, 0) + gap * (track_count - 1)
     if (required_edge_length <= available_edge_length) best_track_count = track_count
   }
   return best_track_count

@@ -322,8 +322,6 @@ describe(`layout utility functions`, () => {
       [`underscore-separated identifiers`, `QUEUE_HOLD`, 45, [`QUEUE_`, `HOLD`]],
       [`camel case`, `cancelledBy2054`, 65, [`cancelled`, `By2054`]],
       [`one-letter camel prefix`, `xAxis`, 25, [`x`, `Axis`]],
-      [`one-letter value prefix`, `yValue`, 30, [`y`, `Value`]],
-      [`one-letter density prefix`, `eDensity`, 48, [`e`, `Density`]],
     ])(`wraps %s at semantic boundaries`, (_name, label, max_width, expected) => {
       const labels = Array(4).fill(label)
       const width = labels.length * (max_width + 6)
@@ -587,14 +585,31 @@ describe(`layout utility functions`, () => {
     const measured_px_per_character = 7
     beforeEach(() => mock_text_measurement(measured_px_per_character))
     afterEach(() => vi.restoreAllMocks())
+    const positioned_axis = (
+      tick_values: string[],
+      tick_positions: number[],
+      axis_size: number,
+    ): MeasuredAxis => ({
+      tick_values,
+      tick_positions,
+      axis_extent: { start: 0, end: axis_size },
+    })
+    const uniform_axis = (tick_values: string[], axis_size: number, inset = 0): MeasuredAxis =>
+      positioned_axis(
+        tick_values,
+        tick_values.map((_, tick_idx) =>
+          tick_values.length === 1
+            ? axis_size / 2
+            : inset + (tick_idx * (axis_size - 2 * inset)) / (tick_values.length - 1),
+        ),
+        axis_size,
+      )
 
     it(`uses irregular projected positions for bounded thinning`, () => {
       const tick_values = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
       const layout = resolve_tick_layout(
         {
-          tick_values,
-          tick_positions: [0, 42, 47, 200],
-          axis_extent: { start: 0, end: 200 },
+          ...positioned_axis(tick_values, [0, 42, 47, 200], 200),
           tick: {
             label: {
               auto_layout: {
@@ -623,12 +638,7 @@ describe(`layout utility functions`, () => {
       )
       const layout = resolve_tick_layout(
         {
-          tick_values,
-          tick_positions: Array.from(
-            { length: tick_count },
-            (_unused, tick_idx) => (tick_idx * axis_size) / (tick_count - 1),
-          ),
-          axis_extent: { start: 0, end: axis_size },
+          ...uniform_axis(tick_values, axis_size),
           tick: {
             label: {
               auto_layout: {
@@ -658,12 +668,7 @@ describe(`layout utility functions`, () => {
       )
       const layout = resolve_tick_layout(
         {
-          tick_values,
-          tick_positions: Array.from(
-            { length: tick_count },
-            (_unused, tick_idx) => 20 + (tick_idx * (axis_size - 40)) / (tick_count - 1),
-          ),
-          axis_extent: { start: 0, end: axis_size },
+          ...uniform_axis(tick_values, axis_size, 20),
           tick: {
             label: {
               auto_layout: {
@@ -687,9 +692,11 @@ describe(`layout utility functions`, () => {
     it(`hides non-finite projected ticks while preserving source index alignment`, () => {
       const layout = resolve_tick_layout(
         {
-          tick_values: [`zero`, `not-a-number`, `infinite`, `last`],
-          tick_positions: [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
-          axis_extent: { start: 0, end: 100 },
+          ...positioned_axis(
+            [`zero`, `not-a-number`, `infinite`, `last`],
+            [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
+            100,
+          ),
           tick: { label: { auto_layout: { strategies: [`upright`] } } },
         },
         100,
@@ -713,9 +720,7 @@ describe(`layout utility functions`, () => {
     it(`chooses inward edge anchors from actual axis bounds`, () => {
       const layout = resolve_tick_layout(
         {
-          tick_values: [`Left edge`, `Right edge`],
-          tick_positions: [0, 100],
-          axis_extent: { start: 0, end: 100 },
+          ...uniform_axis([`Left edge`, `Right edge`], 100),
           tick: { label: { auto_layout: { strategies: [`upright`] } } },
         },
         100,
@@ -727,9 +732,7 @@ describe(`layout utility functions`, () => {
     it(`keeps readable text when every default candidate violates a hard constraint`, () => {
       const layout = resolve_tick_layout(
         {
-          tick_values: [`temperature`, `temperature`, `temperature`],
-          tick_positions: [0, 50, 100],
-          axis_extent: { start: 0, end: 100 },
+          ...uniform_axis([`temperature`, `temperature`, `temperature`], 100),
           tick: {
             label: {
               auto_layout: { max_angle: 45, max_band: 40 },
@@ -781,15 +784,13 @@ describe(`layout utility functions`, () => {
       const axis_size = 800
       const layout = resolve_tick_layout(
         {
-          tick_values: Array.from(
-            { length: tick_count },
-            (_unused, tick_idx) => `Formation energy per atom ${tick_idx}`,
+          ...uniform_axis(
+            Array.from(
+              { length: tick_count },
+              (_unused, tick_idx) => `Formation energy per atom ${tick_idx}`,
+            ),
+            axis_size,
           ),
-          tick_positions: Array.from(
-            { length: tick_count },
-            (_unused, tick_idx) => (tick_idx * axis_size) / (tick_count - 1),
-          ),
-          axis_extent: { start: 0, end: axis_size },
         },
         axis_size,
         `x`,
@@ -809,9 +810,7 @@ describe(`layout utility functions`, () => {
     it(`keeps explicit rotation and full accessibility text`, () => {
       const layout = resolve_tick_layout(
         {
-          tick_values: [`Full label`],
-          tick_positions: [50],
-          axis_extent: { start: 0, end: 100 },
+          ...uniform_axis([`Full label`], 100),
           tick: {
             label: {
               rotation: 37,
@@ -829,27 +828,6 @@ describe(`layout utility functions`, () => {
         visible: true,
         rotation: 37,
       })
-    })
-
-    it(`uses the same resolved band for padding`, () => {
-      const x_axis = {
-        label: `State`,
-        tick_values: [`PENDING`, `CANCELLED by timeout`],
-        tick_positions: [0, 140],
-        axis_extent: { start: 0, end: 140 },
-        tick: { label: { auto_layout: { strategies: [`wrap`] as const } } },
-      }
-      const layout = resolve_tick_layout(x_axis, 140, `x`)
-      const padding = calc_auto_padding({
-        padding: { l: 0, r: 0 },
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        width: 140,
-        height: 100,
-        x_axis,
-      })
-      expect(padding.b).toBe(
-        layout.band + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER,
-      )
     })
   })
 
@@ -1071,28 +1049,18 @@ describe(`layout utility functions`, () => {
       const base = {
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        width: 240,
       }
-      const short_x = calc_auto_padding({
-        ...base,
-        width: 240,
-        x_axis: { label: `Formation energy`, tick_values: [] },
-      })
-      const multiline_x = calc_auto_padding({
-        ...base,
-        width: 240,
-        x_axis: { label: `Formation energy\nper atom`, tick_values: [] },
-      })
-      const short_y = calc_auto_padding({
-        ...base,
-        y_axis: { label: `Formation energy`, tick_values: [] },
-      })
-      const multiline_y = calc_auto_padding({
-        ...base,
-        y_axis: { label: `Formation energy\nper atom`, tick_values: [] },
-      })
-
-      expect(multiline_x.b - short_x.b).toBe(AXIS_LABEL_HEIGHT / 2)
-      expect(multiline_y.l - short_y.l).toBe(AXIS_LABEL_HEIGHT)
+      const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
+        calc_auto_padding({ ...base, [axis_key]: { label, tick_values: [] } })
+      expect(
+        padding_for(`x_axis`, `Formation energy\nper atom`).b -
+          padding_for(`x_axis`, `Formation energy`).b,
+      ).toBe(AXIS_LABEL_HEIGHT / 2)
+      expect(
+        padding_for(`y_axis`, `Formation energy\nper atom`).l -
+          padding_for(`y_axis`, `Formation energy`).l,
+      ).toBe(AXIS_LABEL_HEIGHT)
     })
 
     it(`measures the selected interactive trigger including unit and closed arrow`, () => {

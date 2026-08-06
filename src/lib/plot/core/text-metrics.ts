@@ -221,15 +221,13 @@ const cached_line_metrics = (
   font_css: string,
   font: Readonly<FontSpec>,
 ): TextLineMetrics => {
-  const font_cache = (line_metrics_by_font[font_css] ??= Object.create(null))
-  let metrics = font_cache[text]
-  if (!metrics) {
-    // Panning a numeric axis mints new labels forever, so the cache needs a ceiling.
-    if (cached_line_count >= MAX_CACHED_LINES) clear_text_metrics_cache()
-    metrics = uncached_line_metrics(text, font, font_css)
-    ;(line_metrics_by_font[font_css] ??= Object.create(null))[text] = metrics
-    cached_line_count += 1
-  }
+  const cached = line_metrics_by_font[font_css]?.[text]
+  if (cached) return cached
+  // Panning a numeric axis mints new labels forever, so the cache needs a ceiling.
+  if (cached_line_count >= MAX_CACHED_LINES) clear_text_metrics_cache()
+  const metrics = uncached_line_metrics(text, font, font_css)
+  ;(line_metrics_by_font[font_css] ??= Object.create(null))[text] = metrics
+  cached_line_count += 1
   return metrics
 }
 
@@ -239,7 +237,7 @@ const css_by_font_spec = new WeakMap<Readonly<FontSpec>, string>()
 const canonical_font_css = (font: Readonly<FontSpec>): string => {
   let font_css = css_by_font_spec.get(font)
   if (font_css === undefined) {
-    font_css = font_spec_to_css(normalize_font_spec(font))
+    font_css = font_spec_to_css(font)
     css_by_font_spec.set(font, font_css)
   }
   return font_css
@@ -290,11 +288,9 @@ export function wrap_text_paragraph(
   preserve_empty_line = false,
 ): string[] {
   // No-break spaces stay within words and must not become wrapping opportunities.
-  const words = paragraph
-    .trim()
-    .split(/[^\S\u00A0\u202F]+/u)
-    .filter(Boolean)
-  if (words.length === 0) return preserve_empty_line ? [``] : []
+  const trimmed = paragraph.trim()
+  if (!trimmed) return preserve_empty_line ? [``] : []
+  const words = trimmed.split(/[^\S\u00A0\u202F]+/u)
   if (available_width <= 0) return [words.join(` `)]
 
   const lines: string[] = []

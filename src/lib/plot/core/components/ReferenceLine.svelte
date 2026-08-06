@@ -6,10 +6,10 @@
     resolve_line_endpoints,
     resolve_reference_annotation,
   } from '$lib/plot/core/reference-line'
-  import { project_obstacles } from '$lib/plot/core/decorations'
-  import type {
-    DecorationPoint,
-    ReferenceAnnotationCandidate,
+  import {
+    project_obstacles,
+    type DecorationPoint,
+    type ReferenceAnnotationCandidate,
   } from '$lib/plot/core/decorations'
   import type { Rect } from '$lib/plot/core/layout'
   import type { RefLine, RefLineEvent, RefLineStyle } from '$lib/plot/core/types'
@@ -186,6 +186,9 @@
     <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_pos && ref_line.annotation}
       {@const anno = ref_line.annotation}
+      {@const annotation_transform = annotation_pos.rotation
+        ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
+        : undefined}
       {#if anno.background}
         {@const background_rect = reference_annotation_text_rect(
           annotation_pos,
@@ -199,9 +202,7 @@
           fill={anno.background}
           rx="2"
           ry="2"
-          transform={annotation_pos.rotation
-            ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-            : undefined}
+          transform={annotation_transform}
           style:pointer-events="none"
         />
       {/if}
@@ -210,9 +211,7 @@
         y={annotation_pos.y}
         text-anchor={annotation_pos.text_anchor}
         dominant-baseline={annotation_pos.dominant_baseline}
-        transform={annotation_pos.rotation
-          ? `rotate(${annotation_pos.rotation}, ${annotation_pos.x}, ${annotation_pos.y})`
-          : undefined}
+        transform={annotation_transform}
         fill={anno.color ?? style.color}
         font-size={anno.font_size ?? `12px`}
         font-family={anno.font_family ?? `inherit`}

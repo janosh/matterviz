@@ -65,10 +65,10 @@ const sorted_mandatory_indices = (
     }
   })
 
-  const candidates = item_count === 0 ? [...important_indices] : [0, ...important_indices]
-  if (item_count > 1) candidates.push(item_count - 1)
-  const sorted = candidates.toSorted((left, right) => left - right)
-  return sorted.filter((item_idx, sorted_idx) => item_idx !== sorted[sorted_idx - 1])
+  if (item_count === 0) return []
+  return [0, ...important_indices, item_count - 1]
+    .toSorted((left, right) => left - right)
+    .filter((item_idx, sorted_idx, sorted) => item_idx !== sorted[sorted_idx - 1])
 }
 
 // Return an increasing subsequence of item indices. The requested count is a target rather

@@ -168,17 +168,7 @@ function mock_label_measurement(width: number, height: number) {
     .spyOn(HTMLElement.prototype, `getBoundingClientRect`)
     .mockImplementation(function (this: HTMLElement) {
       if (this instanceof HTMLElement && this.classList.contains(`point-label-measure`)) {
-        return {
-          bottom: height,
-          height,
-          left: 0,
-          right: width,
-          top: 0,
-          width,
-          x: 0,
-          y: 0,
-          toJSON: () => ({}),
-        }
+        return DOMRect.fromRect({ width, height })
       }
       return original_get_bounding_client_rect.call(this)
     })

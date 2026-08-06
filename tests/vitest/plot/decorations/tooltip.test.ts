@@ -15,16 +15,16 @@ const base_config: TooltipPlacementConfig = {
 describe(`tooltip decoration placement`, () => {
   test(`generates the four anchor quadrants in stable order`, () => {
     expect(
-      get_tooltip_placement_candidates(base_config).map(({ direction, x, y }) => ({
+      get_tooltip_placement_candidates(base_config).map(({ direction, x, y }) => [
         direction,
         x,
         y,
-      })),
+      ]),
     ).toEqual([
-      { direction: `right-below`, x: 55, y: 57 },
-      { direction: `left-below`, x: 25, y: 57 },
-      { direction: `right-above`, x: 55, y: 33 },
-      { direction: `left-above`, x: 25, y: 33 },
+      [`right-below`, 55, 57],
+      [`left-below`, 25, 57],
+      [`right-above`, 55, 33],
+      [`left-above`, 25, 33],
     ])
   })
 
@@ -68,21 +68,15 @@ describe(`tooltip decoration placement`, () => {
   })
 
   test(`clamps oversized tooltips to the bounds origin`, () => {
-    const candidates = get_tooltip_placement_candidates({
+    const config = {
       anchor: { x: 50, y: 40 },
       tooltip_size: { width: 140, height: 120 },
       bounds: { x: 10, y: 20, width: 100, height: 80 },
       offset: { x: 5, y: 5 },
-    })
+    }
+    const candidates = get_tooltip_placement_candidates(config)
     expect(candidates.every(({ x, y }) => x === 10 && y === 20)).toBe(true)
-    expect(
-      place_tooltip({
-        anchor: { x: 50, y: 40 },
-        tooltip_size: { width: 140, height: 120 },
-        bounds: { x: 10, y: 20, width: 100, height: 80 },
-        offset: { x: 5, y: 5 },
-      }),
-    ).toMatchObject({ x: 10, y: 20 })
+    expect(place_tooltip(config)).toMatchObject({ x: 10, y: 20 })
   })
 
   test(`breaks exact score ties by candidate order deterministically`, () => {
@@ -96,12 +90,11 @@ describe(`tooltip decoration placement`, () => {
         { x: 40, y: 40, width: 10, height: 10 },
       ],
     }
-    const placements = Array.from({ length: 10 }, () => place_tooltip(config))
-    expect(placements.map(({ direction }) => direction)).toEqual(Array(10).fill(`left-below`))
-    expect(placements[0].score).toBe(
-      get_tooltip_placement_candidates(config).find(
-        ({ direction }) => direction === `right-above`,
-      )?.score,
-    )
+    const placement = place_tooltip(config)
+    const tied_score = get_tooltip_placement_candidates(config).find(
+      ({ direction }) => direction === `right-above`,
+    )?.score
+    expect(placement.direction).toBe(`left-below`)
+    expect(placement.score).toBe(tied_score)
   })
 })

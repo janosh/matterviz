@@ -1410,7 +1410,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
     tick: {
       label: {
         rotation: `auto` as const,
-        max_lines: 3,
         auto_layout: {
           strategies: adaptive_strategies,
           scoring: { mode: scoring_mode },
@@ -1459,7 +1458,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
       {orientation}
       x_axis={orientation === `vertical` ? category_axis : value_axis}
       y_axis={orientation === `vertical` ? value_axis : category_axis}
-      show_legend={false}
       show_controls={false}
       style="height: 430px"
     />

@@ -1,12 +1,14 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
   drag_plot_area,
   expect_canvas_changed,
+  expect_synced_y_ticks,
   get_chart_svg,
   IS_CI,
   measure_plot_area,
   numeric_y_ticks,
+  reset_plot_area,
 } from '../helpers'
 
 const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
@@ -30,17 +32,6 @@ async function get_default_desktop_plots(page: Page) {
   )
   return { bands_plot, dos_plot }
 }
-
-const expect_synced_y_ticks = (
-  source_plot: Locator,
-  target_plot: Locator,
-  expected?: string[],
-) =>
-  expect(async () => {
-    const source_ticks = await numeric_y_ticks(source_plot)
-    if (expected) expect(source_ticks).toEqual(expected)
-    expect(await numeric_y_ticks(target_plot)).toEqual(source_ticks)
-  }).toPass({ timeout: 10_000 })
 
 // Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
 test.describe.configure({ mode: `serial` })
@@ -158,38 +149,26 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
           await dos_clip.getAttribute(attribute),
         )
       }
-      expect(await numeric_y_ticks(bands_plot)).toEqual(await numeric_y_ticks(dos_plot))
     }).toPass({ timeout: 30_000 })
+    await expect_synced_y_ticks(bands_plot, dos_plot)
   })
 
   test(`desktop y-axis zoom and reset propagate from either panel`, async ({ page }) => {
     const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
-    const bands_svg = get_chart_svg(bands_plot)
-    const dos_svg = get_chart_svg(dos_plot)
     const bands_area = await measure_plot_area(bands_plot)
-    await expect.poll(() => numeric_y_ticks(bands_plot), { timeout: 10_000 }).not.toEqual([])
+    await expect_synced_y_ticks(bands_plot, dos_plot)
     const initial_bands_ticks = await numeric_y_ticks(bands_plot)
     await drag_plot_area(page, bands_area)
     await expect.poll(() => numeric_y_ticks(bands_plot)).not.toEqual(initial_bands_ticks)
     await expect_synced_y_ticks(bands_plot, dos_plot)
 
-    await bands_svg.dblclick({
-      position: {
-        x: bands_area.clip.x + bands_area.clip.width / 2,
-        y: bands_area.clip.y + bands_area.clip.height / 2,
-      },
-    })
+    await reset_plot_area(bands_plot, bands_area)
     await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
     const dos_area = await measure_plot_area(dos_plot)
     await drag_plot_area(page, dos_area)
     await expect.poll(() => numeric_y_ticks(dos_plot)).not.toEqual(initial_bands_ticks)
     await expect_synced_y_ticks(dos_plot, bands_plot)
-    await dos_svg.dblclick({
-      position: {
-        x: dos_area.clip.x + dos_area.clip.width / 2,
-        y: dos_area.clip.y + dos_area.clip.height / 2,
-      },
-    })
+    await reset_plot_area(dos_plot, dos_area)
     await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
   })
 

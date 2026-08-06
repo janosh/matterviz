@@ -63,10 +63,10 @@ describe(`resolve_plot_title`, () => {
   })
 
   it.each([
-    { align: `start`, expected_x: 10 },
-    { align: `middle`, expected_x: 60 },
-    { align: `end`, expected_x: 110 },
-  ] as const)(`align=$align anchors every line at x=$expected_x`, ({ align, expected_x }) => {
+    [`start`, 10],
+    [`middle`, 60],
+    [`end`, 110],
+  ] as const)(`align=%s anchors every line at x=%i`, (align, expected_x) => {
     const layout = resolve_plot_title(
       { text: `Title`, subtitle: `Subtitle`, align },
       { x: 10, y: 8, width: 100 },
@@ -115,11 +115,10 @@ describe(`resolve_plot_title`, () => {
   })
 
   it.each([
-    { label: `undefined`, config: undefined },
-    { label: `null`, config: null },
-    { label: `empty object`, config: {} },
-    { label: `blank strings`, config: { text: `  `, subtitle: `\n` } },
-  ])(`returns an empty zero-height layout for $label config`, ({ config }) => {
+    [`undefined`, undefined],
+    [`empty object`, {}],
+    [`blank strings`, { text: `  `, subtitle: `\n` }],
+  ] as const)(`returns an empty zero-height layout for %s config`, (_name, config) => {
     const layout = resolve_plot_title(config, { width: 100 }, fixed_width_measure(5))
     expect(layout.lines).toEqual([])
     expect(layout.title).toBeNull()
@@ -171,9 +170,9 @@ describe(`resolve_plot_title`, () => {
   })
 
   it.each([
-    { config: { max_lines: 0 }, message: `max_lines` },
-    { config: { gap: -1 }, message: `gap` },
-  ])(`rejects invalid $message`, ({ config, message }) => {
+    [`max_lines`, { max_lines: 0 }],
+    [`gap`, { gap: -1 }],
+  ] as const)(`rejects invalid %s`, (message, config) => {
     expect(() => resolve_plot_title(config, { width: 100 }, fixed_width_measure(5))).toThrow(
       message,
     )

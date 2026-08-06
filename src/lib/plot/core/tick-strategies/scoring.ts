@@ -41,7 +41,6 @@ export const TICK_SCORE_PRESETS = {
   },
 } as const satisfies Readonly<Record<TickScoringMode, TickScoreWeights>>
 
-const SCORE_MODES = [`auto`, `readable`, `compact`] as const
 const WEIGHT_KEYS = [
   `hidden_labels`,
   `information_loss`,
@@ -63,7 +62,7 @@ const STRATEGY_TIE_PRIORITY = {
 } as const satisfies Readonly<Record<TickStrategy, number>>
 
 const is_score_mode = (mode: string): mode is TickScoringMode =>
-  SCORE_MODES.some((candidate_mode) => candidate_mode === mode)
+  Object.hasOwn(TICK_SCORE_PRESETS, mode)
 
 const validate_nonnegative = (value: number, context: string): void => {
   if (!Number.isFinite(value) || value < 0) {
@@ -114,10 +113,10 @@ const penalties_for = (
   measurements: TickCandidateMeasurements,
 ): TickScorePenalties => {
   const visible_labels = candidate.labels.filter(({ visible }) => visible)
-  const max_line_count =
-    visible_labels.length === 0
-      ? 1
-      : Math.max(...visible_labels.map(({ display_lines }) => display_lines.length))
+  const max_line_count = visible_labels.reduce(
+    (count, { display_lines }) => Math.max(count, display_lines.length),
+    1,
+  )
   return {
     hidden_labels: candidate.labels.length - visible_labels.length,
     information_loss: visible_labels.reduce(
@@ -147,6 +146,7 @@ const sum_penalties = (penalties: TickScorePenalties): number =>
   WEIGHT_KEYS.reduce((total, key) => total + penalties[key], 0)
 
 const retains_meaningful_content = (candidate: TickStrategyCandidate): boolean =>
+  candidate.labels.some(({ visible }) => visible) &&
   candidate.labels.every(
     ({ visible, full_text, display_lines, information_loss }) =>
       !visible ||

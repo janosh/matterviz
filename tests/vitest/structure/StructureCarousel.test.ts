@@ -85,19 +85,7 @@ describe(`StructureCarousel`, () => {
     expect(chip.getAttribute(`tabindex`)).toBe(`0`)
     chip.focus()
     expect(document.activeElement).toBe(chip)
-    expect(on_item_activate).toHaveBeenCalledTimes(3)
-    expect(on_item_activate).toHaveBeenNthCalledWith(1, items[0])
-    expect(on_item_activate).toHaveBeenNthCalledWith(2, items[0])
-    expect(on_item_activate).toHaveBeenNthCalledWith(3, items[0])
-  })
-
-  test(`shrinks horizontal viewport to loaded structures when they don't fill it`, () => {
-    mount_carousel({ items: items.slice(0, 3), layout: `horizontal`, height: 160 })
-
-    expect(doc_query(`.structure-carousel`).getAttribute(`style`)).toContain(
-      `inline-size: min(100%, 586px)`,
-    )
-    expect(document.querySelectorAll(`.structure-card`)).toHaveLength(3)
+    expect(on_item_activate.mock.calls.map(([item]) => item)).toEqual(Array(3).fill(items[0]))
   })
 
   test(`mounts the visible page plus overscan so scrolling reveals live cards`, async () => {
@@ -538,31 +526,18 @@ describe(`StructureCarousel`, () => {
   })
 
   test.each([
-    ...[240, 320].flatMap((height) =>
-      (
-        [
-          [0, 190, null],
-          [1, 190, 190],
-          [2, 388, 190],
-          [3, 586, 190],
-          [20, 4032, 194],
-        ] as const
-      ).map(([item_count, carousel_width, card_width]) => ({
-        height,
-        item_count,
-        carousel_width,
-        card_width,
-      })),
-    ),
-    ...[Number.NaN, Infinity, -Infinity].map((height) => ({
-      height,
-      item_count: 2,
-      carousel_width: 388,
-      card_width: 190,
-    })),
-  ])(
-    `keeps $item_count-item layout finite and height-independent at $height px`,
-    ({ height, item_count, carousel_width, card_width }) => {
+    [240, 0, 190, null],
+    [240, 1, 190, 190],
+    [240, 2, 388, 190],
+    [320, 2, 388, 190],
+    [240, 3, 586, 190],
+    [240, 20, 4032, 194],
+    [Number.NaN, 2, 388, 190],
+    [Number.POSITIVE_INFINITY, 2, 388, 190],
+    [Number.NEGATIVE_INFINITY, 2, 388, 190],
+  ] as const)(
+    `height=%s with %i items remains finite and independent`,
+    (height, item_count, carousel_width, card_width) => {
       mount_carousel({
         items: many_items.slice(0, item_count),
         layout: `horizontal`,

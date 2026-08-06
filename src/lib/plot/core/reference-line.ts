@@ -5,18 +5,16 @@ import {
   get_decoration_placement,
   place_reference_annotation,
   solve_decorations,
+  type DecorationPoint,
+  type DecorationScene,
+  type DecorationSolution,
+  type ReferenceAnnotationBaseline,
+  type ReferenceAnnotationCandidate,
+  type ReferenceAnnotationDecorationItem,
+  type ReferenceAnnotationPosition,
+  type ReferenceAnnotationSide,
+  type ReferenceAnnotationTextAnchor,
 } from '$lib/plot/core/decorations'
-import type {
-  DecorationPoint,
-  DecorationScene,
-  DecorationSolution,
-  ReferenceAnnotationCandidate,
-  ReferenceAnnotationDecorationItem,
-  ReferenceAnnotationPosition,
-  ReferenceAnnotationSide,
-  ReferenceAnnotationTextAnchor,
-  ReferenceAnnotationBaseline,
-} from '$lib/plot/core/decorations/types'
 import type { Rect } from '$lib/plot/core/layout'
 import type {
   LayerZIndex,
@@ -371,9 +369,8 @@ export function calculate_annotation_position(
   // Calculate rotation if needed (keep text readable)
   let rotation: number | undefined
   if (annotation.rotate && len > 0) {
-    rotation = Math.atan2(dy, dx) * (180 / Math.PI)
-    if (rotation > 90) rotation -= 180
-    else if (rotation < -90) rotation += 180
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+    rotation = angle > 90 ? angle - 180 : angle < -90 ? angle + 180 : angle
   }
 
   return {

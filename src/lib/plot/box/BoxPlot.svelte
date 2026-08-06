@@ -552,6 +552,12 @@
     const padding_ticks = get_plot_ticks(padding_scales)
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
+    const measure_axis = (
+      axis: typeof x_axis,
+      axis_ticks: number[],
+      scale: typeof padding_scales.x,
+      extent: typeof x_extent,
+    ) => measured_axis(axis, axis_ticks, scale, extent, tick_font)
     const axis_pad =
       width && height
         ? calc_auto_padding({
@@ -559,34 +565,20 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: measured_axis(
+            x_axis: measure_axis(
               { ...x_axis, ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks },
               padding_ticks.x,
               padding_scales.x,
               x_extent,
-              tick_font,
             ),
-            x2_axis: measured_axis(
-              x2_axis,
-              padding_ticks.x2,
-              padding_scales.x2,
-              x_extent,
-              tick_font,
-            ),
-            y_axis: measured_axis(
+            x2_axis: measure_axis(x2_axis, padding_ticks.x2, padding_scales.x2, x_extent),
+            y_axis: measure_axis(
               { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
               padding_ticks.y,
               padding_scales.y,
               y_extent,
-              tick_font,
             ),
-            y2_axis: measured_axis(
-              y2_axis,
-              padding_ticks.y2,
-              padding_scales.y2,
-              y_extent,
-              tick_font,
-            ),
+            y2_axis: measure_axis(y2_axis, padding_ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
@@ -825,14 +817,12 @@
 
   let hovered_legend_series_idx = $state<number | null>(null)
 
-  const get_legend_placement = () =>
-    !should_show_legend || !width || !height || legend_has_explicit_pos
-      ? null
-      : (legend_placement ?? null)
-
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: get_legend_placement,
+    placement: () =>
+      !should_show_legend || !width || !height || legend_has_explicit_pos
+        ? null
+        : (legend_placement ?? null),
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,

@@ -117,11 +117,11 @@ describe(`tick strategy candidates`, () => {
     const candidate = create_tick_candidate({
       id: `unabridged`,
       strategy: `upright`,
-      labels: [`abcdefgh`, `AB👩‍🔬CDEF`, `xyz`, `abcd`],
+      labels: [`abcdefgh`, `AB👩‍🔬CDEF`, `xyz`, `abcd`, `Formation energy per atom`],
     })
     const ellipsized = generate_ellipsis_candidate(candidate, {
       id: `ellipsized`,
-      max_width_px: [5, 5, 0, 3],
+      max_width_px: [5, 5, 0, 3, 2],
       measure_text,
     })
 
@@ -130,6 +130,7 @@ describe(`tick strategy candidates`, () => {
       `AB👩‍🔬C…`,
       `xyz`,
       `abc…`,
+      `Formation energy per atom`,
     ])
     ellipsized.labels.slice(0, 2).forEach((label, label_idx) => {
       expect(measure_text(label.display_lines[0])).toBeLessThanOrEqual([5, 5, 0][label_idx])
@@ -142,94 +143,82 @@ describe(`tick strategy candidates`, () => {
       true,
       false,
       true,
+      false,
     ])
   })
 
-  test(`keeps meaningful source text when ellipsis would retain too little information`, () => {
-    const candidate = create_tick_candidate({
-      id: `long-label`,
-      strategy: `upright`,
-      labels: [`Formation energy per atom`],
-    })
-    const ellipsized = generate_ellipsis_candidate(candidate, {
-      id: `not-bare`,
-      max_width_px: 2,
-      measure_text: (text) => Array.from(text).length,
-    })
-
-    expect(ellipsized.labels[0]).toMatchObject({
-      display_lines: [`Formation energy per atom`],
-      information_loss: 0,
-    })
-  })
+  const invalid_candidate =
+    (overrides: Partial<Parameters<typeof create_tick_candidate>[0]>): (() => unknown) =>
+    () =>
+      create_tick_candidate({ ...base_candidate, ...overrides })
+  const invalid_abbreviation =
+    (abbreviations: Record<string, string>): (() => unknown) =>
+    () =>
+      generate_abbreviated_candidate(base_candidate, { id: `invalid`, abbreviations })
+  const invalid_ellipsis =
+    (
+      max_width_px: number | readonly number[],
+      measure_text: (text: string) => number,
+    ): (() => unknown) =>
+    () =>
+      generate_ellipsis_candidate(base_candidate, {
+        id: `invalid`,
+        max_width_px,
+        measure_text,
+      })
 
   test.each([
-    [`an empty id`, { id: ` ` }, /id must not be empty/u],
+    [`an empty id`, invalid_candidate({ id: ` ` }), /id must not be empty/u],
     [
       `an unknown strategy`,
-      { strategy: `unknown` as unknown as TickStrategy },
+      invalid_candidate({ strategy: `unknown` as unknown as TickStrategy }),
       /unknown strategy/u,
     ],
     [
       `a non-finite rotation`,
-      { strategy: `rotate` as const, rotation_deg: Infinity },
+      invalid_candidate({ strategy: `rotate`, rotation_deg: Infinity }),
       /rotation_deg must be finite/u,
     ],
     [
       `information loss outside [0, 1]`,
-      {
-        strategy: `abbreviate` as const,
+      invalid_candidate({
+        strategy: `abbreviate`,
         labels: [{ full_text: `Alpha`, information_loss: 1.1 }],
-      },
+      }),
       /information_loss.*\[0, 1\]/u,
     ],
-  ] as const)(`rejects %s`, (_name, overrides, expected_error) => {
-    expect(() => create_tick_candidate({ ...base_candidate, ...overrides })).toThrow(
-      expected_error,
-    )
-  })
-
-  test(`rejects a visible index outside the source candidate`, () => {
-    expect(() =>
-      generate_thinned_candidate(
-        base_candidate,
-        new SvelteSet([base_candidate.labels.length]),
-        { id: `invalid-thinning` },
-      ),
-    ).toThrow(/candidate "upright".*outside/u)
-  })
-
-  test.each([
-    [`empty key`, { [``]: `value` }],
-    [`empty value`, { alpha: ` ` }],
-  ])(`rejects an abbreviation with an %s`, (_name, abbreviations) => {
-    expect(() =>
-      generate_abbreviated_candidate(base_candidate, {
-        id: `invalid-abbreviation`,
-        abbreviations,
-      }),
-    ).toThrow(/abbreviation keys and values must not be empty/u)
-  })
-
-  test.each([
+    [
+      `an out-of-range visible index`,
+      () =>
+        generate_thinned_candidate(
+          base_candidate,
+          new SvelteSet([base_candidate.labels.length]),
+          { id: `invalid-thinning` },
+        ),
+      /candidate "upright".*outside/u,
+    ],
+    [
+      `an empty abbreviation key`,
+      invalid_abbreviation({ [``]: `value` }),
+      /abbreviation keys and values must not be empty/u,
+    ],
+    [
+      `an empty abbreviation value`,
+      invalid_abbreviation({ alpha: ` ` }),
+      /abbreviation keys and values must not be empty/u,
+    ],
     [
       `negative ellipsis width`,
-      { max_width_px: -1, measure_text: (text: string) => text.length },
+      invalid_ellipsis(-1, (text) => text.length),
       /finite non-negative/u,
     ],
     [
       `mismatched ellipsis widths`,
-      { max_width_px: [10], measure_text: (text: string) => text.length },
+      invalid_ellipsis([10], (text) => text.length),
       /must match/u,
     ],
-    [
-      `invalid text measurement`,
-      { max_width_px: 10, measure_text: () => Number.NaN },
-      /measured width/u,
-    ],
-  ])(`rejects %s`, (_name, options, expected_error) => {
-    expect(() =>
-      generate_ellipsis_candidate(base_candidate, { id: `invalid`, ...options }),
-    ).toThrow(expected_error)
+    [`invalid text measurement`, invalid_ellipsis(10, () => Number.NaN), /measured width/u],
+  ])(`rejects %s`, (_name, call, expected_error) => {
+    expect(call).toThrow(expected_error)
   })
 })

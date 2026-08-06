@@ -8,7 +8,6 @@ import {
   detect_tick_label_collisions_pairwise,
   detect_tick_label_collisions_sweep,
   is_tick_label_anchor,
-  type TickAxisSide,
   type TickLabelDimensions,
   type TickLabelItem,
   validate_tick_label_anchor,
@@ -36,43 +35,11 @@ const tick_item = (
 
 describe(`rotated multiline AABBs`, () => {
   test.each([
-    {
-      name: `x below its origin`,
-      side: `x`,
-      anchor: `start`,
-      expected: { min_x: 10, min_y: 20, max_x: 30, max_y: 30, width: 20, height: 10 },
-    },
-    {
-      name: `x2 above its origin`,
-      side: `x2`,
-      anchor: `start`,
-      expected: { min_x: 10, min_y: 10, max_x: 30, max_y: 20, width: 20, height: 10 },
-    },
-    {
-      name: `y ending at its origin`,
-      side: `y`,
-      anchor: `end`,
-      expected: { min_x: 0, min_y: 5, max_x: 20, max_y: 15, width: 20, height: 10 },
-    },
-    {
-      name: `y2 starting at its origin`,
-      side: `y2`,
-      anchor: `start`,
-      expected: { min_x: 20, min_y: 5, max_x: 40, max_y: 15, width: 20, height: 10 },
-    },
-  ] satisfies {
-    name: string
-    side: TickAxisSide
-    anchor: `start` | `middle` | `end`
-    expected: {
-      min_x: number
-      min_y: number
-      max_x: number
-      max_y: number
-      width: number
-      height: number
-    }
-  }[])(`places multiline blocks on $name`, ({ side, anchor, expected }) => {
+    [`x below its origin`, `x`, `start`, [10, 20, 30, 30, 20, 10]],
+    [`x2 above its origin`, `x2`, `start`, [10, 10, 30, 20, 20, 10]],
+    [`y ending at its origin`, `y`, `end`, [0, 5, 20, 15, 20, 10]],
+    [`y2 starting at its origin`, `y2`, `start`, [20, 5, 40, 15, 20, 10]],
+  ] as const)(`places multiline blocks on %s`, (_name, side, anchor, expected) => {
     const aabb = calculate_rotated_tick_label_aabb({
       position: { axis: 10, cross_axis: 20 },
       side,
@@ -80,7 +47,9 @@ describe(`rotated multiline AABBs`, () => {
       rotation: 0,
       dimensions: { line_widths: [10, 20], line_height: 5 },
     })
-    expect(aabb).toEqual(expected)
+    expect([aabb.min_x, aabb.min_y, aabb.max_x, aabb.max_y, aabb.width, aabb.height]).toEqual(
+      expected,
+    )
   })
 
   it.each([
@@ -113,14 +82,9 @@ describe(`rotated multiline AABBs`, () => {
       rotation: 90,
       dimensions: { line_widths: [10, 20], line_height: 5 },
     })
-    expect(aabb).toEqual({
-      min_x: 0,
-      min_y: 20,
-      max_x: 10,
-      max_y: 40,
-      width: 10,
-      height: 20,
-    })
+    expect([aabb.min_x, aabb.min_y, aabb.max_x, aabb.max_y, aabb.width, aabb.height]).toEqual([
+      0, 20, 10, 40, 10, 20,
+    ])
   })
 })
 
@@ -211,25 +175,21 @@ describe(`actual-position collision detection`, () => {
     })
   })
 
-  test.each([`x`, `x2`, `y`, `y2`] as const)(`detects overlap along the %s axis`, (side) => {
-    const labels = calculate_tick_label_geometry({
-      items: [tick_item(`first`, 10), tick_item(`second`, 18)],
-      side,
-      axis_extent: { start: -100, end: 100 },
-    })
-    expect(detect_tick_label_collisions_sweep(labels).count).toBe(1)
-  })
-
   test.each([`x`, `x2`, `y`, `y2`] as const)(
-    `%s labels honor exact and insufficient gaps`,
+    `%s labels detect overlap and honor exact gaps`,
     (side) => {
-      const labels = calculate_tick_label_geometry({
-        items: [tick_item(`first`, 0, 10), tick_item(`second`, 15, 10)],
-        side,
-        axis_extent: { start: -100, end: 100 },
-      })
-      expect(detect_tick_label_collisions_sweep(labels, 5).has_collisions).toBe(false)
-      expect(detect_tick_label_collisions_sweep(labels, 5.01).has_collisions).toBe(true)
+      const collides = (second_position: number, gap = 0): boolean =>
+        detect_tick_label_collisions_sweep(
+          calculate_tick_label_geometry({
+            items: [tick_item(`first`, 0, 10), tick_item(`second`, second_position, 10)],
+            side,
+            axis_extent: { start: -100, end: 100 },
+          }),
+          gap,
+        ).has_collisions
+      expect(collides(8)).toBe(true)
+      expect(collides(15, 5)).toBe(false)
+      expect(collides(15, 5.01)).toBe(true)
     },
   )
 
@@ -259,6 +219,31 @@ describe(`actual-position collision detection`, () => {
     expect(sweep.pairs).toEqual(pairwise.pairs)
     expect(sweep.colliding_indices).toEqual(pairwise.colliding_indices)
     expect(irregular_labels).toEqual(labels_before)
+  })
+
+  it(`bounds sparse sweep geometry reads below pairwise growth`, () => {
+    const item_count = 500
+    const labels = calculate_tick_label_geometry({
+      items: Array.from({ length: item_count }, (_unused, item_idx) =>
+        tick_item(`item-${item_idx}`, item_idx * 30, 10),
+      ),
+      side: `x`,
+      axis_extent: { start: 0, end: item_count * 30 },
+    })
+    let aabb_reads = 0
+    const instrumented = labels.map((label) => {
+      const { aabb } = label
+      return Object.defineProperty({ ...label }, `aabb`, {
+        enumerable: true,
+        get: () => {
+          aabb_reads++
+          return aabb
+        },
+      })
+    })
+
+    expect(detect_tick_label_collisions_sweep(instrumented).pairs).toEqual([])
+    expect(aabb_reads).toBeLessThan(item_count * 100)
   })
 
   it(`reports no collisions when every pair meets the configured gap`, () => {
@@ -402,27 +387,27 @@ describe(`geometry summaries and measurement`, () => {
   })
 
   it.each([
-    {
-      name: `missing dimensions`,
-      item: { id: `bad`, lines: [`bad`], position: { axis: 0, cross_axis: 0 } },
-      message: `needs explicit dimensions or a measurement callback`,
-    },
-    {
-      name: `mismatched multiline widths`,
-      item: {
+    [
+      `missing dimensions`,
+      { id: `bad`, lines: [`bad`], position: { axis: 0, cross_axis: 0 } },
+      `needs explicit dimensions or a measurement callback`,
+    ],
+    [
+      `mismatched multiline widths`,
+      {
         id: `bad`,
         lines: [`one`, `two`],
         position: { axis: 0, cross_axis: 0 },
         dimensions: dimensions(10),
       },
-      message: `1 entries for 2 lines`,
-    },
-    {
-      name: `invalid stagger row`,
-      item: tick_item(`bad`, 0, 10, { stagger_row: 0.5 }),
-      message: `stagger_row must be a non-negative integer`,
-    },
-  ])(`rejects $name`, ({ item, message }) => {
+      `1 entries for 2 lines`,
+    ],
+    [
+      `invalid stagger row`,
+      tick_item(`bad`, 0, 10, { stagger_row: 0.5 }),
+      `stagger_row must be a non-negative integer`,
+    ],
+  ] as const)(`rejects %s`, (_name, item, message) => {
     expect(() =>
       calculate_tick_label_geometry({
         items: [item],

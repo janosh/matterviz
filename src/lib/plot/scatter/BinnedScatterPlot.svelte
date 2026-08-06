@@ -367,15 +367,11 @@
   })
   // Keep density bins independent of decoration reservations. Their normalized occupied
   // cells are the immutable obstacle field passed to the decoration solver.
-  let base_plot_width = $derived(
-    Math.max(1, width - decoration_base_pad.l - decoration_base_pad.r),
-  )
-  let base_plot_height = $derived(
-    Math.max(1, height - decoration_base_pad.t - decoration_base_pad.b),
-  )
+  const density_bin_count = (total: number, start: number, end: number): number =>
+    Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   let density_bins = $derived({
-    x: Math.max(8, Math.ceil(base_plot_width / density_settings.bin_px)),
-    y: Math.max(8, Math.ceil(base_plot_height / density_settings.bin_px)),
+    x: density_bin_count(width, decoration_base_pad.l, decoration_base_pad.r),
+    y: density_bin_count(height, decoration_base_pad.t, decoration_base_pad.b),
   })
   // Bin in scale space so the heatmap, hover, and zoom stay aligned with log/arcsinh axes
   let bin_transforms = $derived({
@@ -460,10 +456,7 @@
       items.push({
         id: `density-colorbar`,
         kind: `colorbar`,
-        footprint: {
-          width: colorbar_footprint.width,
-          height: colorbar_footprint.height,
-        },
+        footprint: colorbar_footprint,
         horizontal: color_bar_props.orientation !== `vertical`,
         clearance: 12,
       })
@@ -472,10 +465,7 @@
       items.push({
         id: `free-annotation`,
         kind: `free-annotation`,
-        footprint: {
-          width: annotation_footprint.width,
-          height: annotation_footprint.height,
-        },
+        footprint: annotation_footprint,
         clearance: 12,
       })
     }
@@ -512,7 +502,6 @@
   )
   let decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
-  const get_color_bar_placement = () => colorbar_placement ?? null
   const get_annotation_placement = () =>
     annotation_placement
       ? {
@@ -521,7 +510,7 @@
         }
       : null
   const colorbar_tween = create_placed_tween({
-    placement: get_color_bar_placement,
+    placement: () => colorbar_placement ?? null,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
@@ -605,12 +594,10 @@
     set_auto_range()
   }
 
-  function point_radius_for_value(size_value: number | null | undefined): number {
-    if (size_value == null || !Number.isFinite(size_value)) {
-      return min_point_radius
-    }
-    return size_scale_fn(size_value)
-  }
+  const point_radius_for_value = (size_value: number | null | undefined): number =>
+    size_value == null || !Number.isFinite(size_value)
+      ? min_point_radius
+      : size_scale_fn(size_value)
 
   function resize_canvas() {
     if (!canvas) return

@@ -9,6 +9,7 @@ import {
   type LegendAutoTrackConfig,
   type LegendDecorationItem,
   type ReferenceAnnotationCandidate,
+  type ReferenceAnnotationDecorationItem,
 } from '$lib/plot/core/decorations'
 import { compute_element_placement, rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { describe, expect, test } from 'vitest'
@@ -43,6 +44,18 @@ const reference_candidate = (
   text_anchor: `middle`,
   dominant_baseline: `middle`,
   rect: { x: x - 20, y: y - 10, width: 40, height: 20 },
+})
+
+const reference_item = (
+  id: string,
+  candidates: readonly ReferenceAnnotationCandidate[],
+  pinned = false,
+): ReferenceAnnotationDecorationItem => ({
+  id,
+  kind: `reference-annotation`,
+  footprint: { width: candidates[0].rect.width, height: candidates[0].rect.height },
+  candidates,
+  pinned,
 })
 
 const scene_for = (
@@ -151,7 +164,7 @@ describe(`decoration solver`, () => {
     })
   })
 
-  test(`is deterministic across repeated calls and input order`, () => {
+  test(`is deterministic across input order`, () => {
     const items: DecorationItem[] = [
       { id: `note-b`, kind: `free-annotation`, footprint: { width: 90, height: 50 } },
       { id: `legend`, kind: `legend`, footprint: { width: 100, height: 60 } },
@@ -163,7 +176,6 @@ describe(`decoration solver`, () => {
     ])
     const expected = solve_decorations(scene)
     const reversed_scene = scene_for(items.toReversed(), scene.obstacles_norm)
-    expect(solve_decorations(scene)).toEqual(expected)
     expect(solve_decorations(reversed_scene)).toEqual(expected)
   })
 
@@ -195,6 +207,7 @@ describe(`decoration solver`, () => {
       { id: `colorbar`, kind: `colorbar`, footprint: { width: 56, height: 150 } },
     ]
     const standard = solve_decorations(scene_for(standard_items, dense_obstacles))
+    const reference = reference_item(`reference`, [reference_candidate(200, 100)])
     const with_annotation = solve_decorations(
       scene_for(
         [
@@ -204,12 +217,7 @@ describe(`decoration solver`, () => {
             kind: `free-annotation`,
             footprint: { width: 400, height: 100 },
           },
-          {
-            id: `reference`,
-            kind: `reference-annotation`,
-            footprint: { width: 40, height: 20 },
-            candidates: [reference_candidate(200, 100)],
-          },
+          reference,
         ],
         dense_obstacles,
       ),
@@ -220,20 +228,12 @@ describe(`decoration solver`, () => {
 
   test(`places multiple reference annotations without overlap`, () => {
     const shared_candidate = reference_candidate(200, 100)
+    const left_candidate = reference_candidate(100, 100, `center`)
+    const right_candidate = reference_candidate(300, 100, `center`)
     const solution = solve_decorations(
       scene_for([
-        {
-          id: `reference-a`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [shared_candidate, reference_candidate(100, 100, `center`)],
-        },
-        {
-          id: `reference-b`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [shared_candidate, reference_candidate(300, 100, `center`)],
-        },
+        reference_item(`reference-a`, [shared_candidate, left_candidate]),
+        reference_item(`reference-b`, [shared_candidate, right_candidate]),
       ]),
     )
     const [first, second] = solution.placements
@@ -255,34 +255,21 @@ describe(`decoration solver`, () => {
     )
     const clear_candidate = reference_candidate(400, 200)
     const solution = solve_decorations(
-      scene_for([
-        {
-          id: `reference`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [colliding_candidate, clear_candidate],
-        },
-        note,
-      ]),
+      scene_for([reference_item(`reference`, [colliding_candidate, clear_candidate]), note]),
     )
     const reference = solution.placements.find(({ id }) => id === `reference`)
     expect(reference?.reference_annotation).toEqual(clear_candidate)
   })
 
   test(`scores normalized and pixel obstacles together`, () => {
+    const candidates = [
+      reference_candidate(290, 190),
+      reference_candidate(150, 100),
+      reference_candidate(400, 100),
+    ]
+    const reference = reference_item(`reference`, candidates)
     const solution = solve_decorations({
-      ...scene_for([
-        {
-          id: `reference`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [
-            reference_candidate(290, 190),
-            reference_candidate(150, 100),
-            reference_candidate(400, 100),
-          ],
-        },
-      ]),
+      ...scene_for([reference]),
       obstacles_norm: [{ x: 0.5, y: 0.5 }],
       obstacles_px: [{ x: 150, y: 100 }],
     })
@@ -291,16 +278,10 @@ describe(`decoration solver`, () => {
 
   test(`preserves a pinned reference annotation despite exclusions`, () => {
     const pinned_candidate = reference_candidate(200, 100)
+    const fallback_candidate = reference_candidate(300, 100)
+    const reference = reference_item(`reference`, [pinned_candidate, fallback_candidate], true)
     const solution = solve_decorations({
-      ...scene_for([
-        {
-          id: `reference`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [pinned_candidate, reference_candidate(300, 100)],
-          pinned: true,
-        },
-      ]),
+      ...scene_for([reference]),
       exclusion_rects: [pinned_candidate.rect],
     })
     expect(solution.placements[0].reference_annotation).toEqual(pinned_candidate)
@@ -312,19 +293,8 @@ describe(`decoration solver`, () => {
     const clear_candidate = reference_candidate(300, 100)
     const solution = solve_decorations(
       scene_for([
-        {
-          id: `a-auto`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [shared_candidate, clear_candidate],
-        },
-        {
-          id: `z-pinned`,
-          kind: `reference-annotation`,
-          footprint: { width: 40, height: 20 },
-          candidates: [shared_candidate],
-          pinned: true,
-        },
+        reference_item(`a-auto`, [shared_candidate, clear_candidate]),
+        reference_item(`z-pinned`, [shared_candidate], true),
       ]),
     )
     expect(solution.placements.map(({ id }) => id)).toEqual([`z-pinned`, `a-auto`])

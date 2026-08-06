@@ -58,8 +58,7 @@
   const layout_reports = new SvelteMap<FacetKey, FacetPanelLayoutReport>()
   const range_overrides = new SvelteMap<FacetKey, FacetAxisRanges>()
   type PanelCallbacks = Pick<FacetPanelContext<Datum>, `report_layout` | `update_range`>
-  // Native Map avoids reactive dependencies when callback identities are looked up.
-  const panel_callbacks = new Map<FacetKey, PanelCallbacks>()
+  const panel_callbacks = new SvelteMap<FacetKey, PanelCallbacks>()
 
   const layout = $derived(assign_facet_panels(panels, columns, rows))
   const active_shared_bands = $derived.by((): FacetSharedBandSizes => {
@@ -134,21 +133,25 @@
     }
   }
 
+  const ranges_equal = (
+    left: FacetAxisRanges | undefined,
+    right: FacetAxisRanges | undefined,
+  ): boolean =>
+    FACET_AXES.every(
+      (axis) =>
+        Object.is(left?.[axis]?.[0], right?.[axis]?.[0]) &&
+        Object.is(left?.[axis]?.[1], right?.[axis]?.[1]),
+    )
+
   const reports_equal = (
     left: FacetPanelLayoutReport | undefined,
     right: FacetPanelLayoutReport,
-  ): boolean => {
-    if (!left) return false
-    const padding_equal = ([`t`, `b`, `l`, `r`] as const).every((side) =>
-      Object.is(left.padding?.[side], right.padding?.[side]),
-    )
-    const ranges_equal = FACET_AXES.every(
-      (axis) =>
-        Object.is(left.ranges?.[axis]?.[0], right.ranges?.[axis]?.[0]) &&
-        Object.is(left.ranges?.[axis]?.[1], right.ranges?.[axis]?.[1]),
-    )
-    return padding_equal && ranges_equal
-  }
+  ): boolean =>
+    Boolean(left) &&
+    ([`t`, `b`, `l`, `r`] as const).every((side) =>
+      Object.is(left?.padding?.[side], right.padding?.[side]),
+    ) &&
+    ranges_equal(left?.ranges, right.ranges)
 
   const preserve_resolved_echoes = (
     key: FacetKey,
@@ -194,13 +197,6 @@
     }
   }
 
-  const ranges_equal = (left: FacetAxisRanges | undefined, right: FacetAxisRanges): boolean =>
-    FACET_AXES.every(
-      (axis) =>
-        Object.is(left?.[axis]?.[0], right[axis]?.[0]) &&
-        Object.is(left?.[axis]?.[1], right[axis]?.[1]),
-    )
-
   // Stable callback identities and value equality make repeated layout reports a no-op.
   // Resolved echoes retain intrinsic reports; range updates atomically update the linked group.
   const create_panel_callbacks = (key: FacetKey): PanelCallbacks => ({
@@ -213,11 +209,14 @@
     },
     update_range: (axis, range): void => {
       if (!layout.panels.some((panel) => panel.key === key)) return
-      const current = [...range_overrides.entries()].map(([panel_key, ranges]) => ({
-        key: panel_key,
-        ranges,
-      }))
-      const next = propagate_facet_range(layout, current, key, axis, range, axis_modes)
+      const next = propagate_facet_range(
+        layout,
+        keyed_range_overrides,
+        key,
+        axis,
+        range,
+        axis_modes,
+      )
       for (const entry of next) {
         if (Object.keys(entry.ranges).length === 0) {
           range_overrides.delete(entry.key)

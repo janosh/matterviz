@@ -62,17 +62,8 @@ export interface TickScoringConfig {
   weights?: Partial<TickScoreWeights>
 }
 
-export interface TickScorePenalties {
-  hidden_labels: number
-  information_loss: number
-  band_fraction: number
-  // Absolute rotation normalized to a quarter turn.
-  rotation_magnitude: number
-  // Additional lines beyond a single line.
-  line_count: number
-  // Additional stagger rows beyond the baseline row.
-  stagger_rows: number
-}
+// The same dimensions hold raw penalties and their weighted contributions.
+export type TickScorePenalties = TickScoreWeights
 
 export interface TickScoreResult {
   candidate: TickStrategyCandidate

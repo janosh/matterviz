@@ -393,51 +393,46 @@ test.describe(`Legend Placement Stability`, () => {
     await expect(colorbar).toBeVisible()
     await expect(colorbar).toHaveAttribute(`data-decoration-x`, /.+/)
 
-    const geometry = async () => {
-      const plot_box = await plot.boundingBox()
-      const colorbar_box = await colorbar.boundingBox()
-      if (!plot_box || !colorbar_box) throw new Error(`missing plot/colorbar geometry`)
-      return {
-        x: colorbar_box.x - plot_box.x,
-        y: colorbar_box.y - plot_box.y,
-        width: colorbar_box.width,
-        height: colorbar_box.height,
-        solved_x: Number(await colorbar.getAttribute(`data-decoration-x`)),
-        solved_y: Number(await colorbar.getAttribute(`data-decoration-y`)),
-        solved_width: Number(await colorbar.getAttribute(`data-decoration-width`)),
-        solved_height: Number(await colorbar.getAttribute(`data-decoration-height`)),
-      }
-    }
+    const dimensions = [`x`, `y`, `width`, `height`] as const
+    const geometry = () =>
+      plot.evaluate((plot_element, dimension_names) => {
+        const colorbar_element = plot_element.querySelector<HTMLElement>(`.colorbar-wrapper`)
+        if (!colorbar_element) throw new Error(`missing colorbar geometry`)
+        const plot_box = plot_element.getBoundingClientRect()
+        const colorbar_box = colorbar_element.getBoundingClientRect()
+        return {
+          actual: [
+            colorbar_box.x - plot_box.x,
+            colorbar_box.y - plot_box.y,
+            colorbar_box.width,
+            colorbar_box.height,
+          ],
+          solved: dimension_names.map((dimension) =>
+            Number(colorbar_element.getAttribute(`data-decoration-${dimension}`)),
+          ),
+        }
+      }, dimensions)
     const wait_for_geometry_stable = async () => {
-      let stable_geometry = await geometry()
+      let stable_geometry: number[] = []
       await expect(async () => {
         const first = await geometry()
         await page.waitForTimeout(100)
         const second = await geometry()
-        const second_values = Object.values(second)
-        expect(
-          Object.values(first).every(
-            (value, value_idx) => Math.abs(value - second_values[value_idx]) < 1,
-          ),
-        ).toBe(true)
-        stable_geometry = second
+        for (const [dimension_idx, value] of second.actual.entries()) {
+          expect(Math.abs(value - first.actual[dimension_idx])).toBeLessThan(1)
+          expect(value).toBeCloseTo(second.solved[dimension_idx], 0)
+        }
+        stable_geometry = second.actual
       }).toPass({ timeout: 3000 })
       return stable_geometry
     }
     const before = await wait_for_geometry_stable()
-    expect(before.x).toBeCloseTo(before.solved_x, 0)
-    expect(before.y).toBeCloseTo(before.solved_y, 0)
-    expect(before.width).toBeCloseTo(before.solved_width, 0)
-    expect(before.height).toBeCloseTo(before.solved_height, 0)
 
     await page.setViewportSize({ width: 900, height: 700 })
     const after = await wait_for_geometry_stable()
-    expect(after.x).toBeCloseTo(after.solved_x, 0)
-    expect(after.y).toBeCloseTo(after.solved_y, 0)
-    expect(after.width).toBeCloseTo(after.solved_width, 0)
-    expect(after.height).toBeCloseTo(after.solved_height, 0)
-    expect(after.width).toBeCloseTo(before.width, 0)
-    expect(after.height).toBeCloseTo(before.height, 0)
+    for (const dimension_idx of [2, 3] as const) {
+      expect(after[dimension_idx]).toBeCloseTo(before[dimension_idx], 0)
+    }
   })
 
   test(`legend repositions appropriately after viewport resize`, async ({ page }) => {

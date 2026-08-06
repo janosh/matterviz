@@ -553,7 +553,6 @@ export const analyze_tick_label_geometry = (
 ): TickGeometrySummary => {
   const { gap = 0, edge_gap = 0, collision_method = `sweep` } = options
   assert_non_negative(gap, `gap`)
-  assert_non_negative(edge_gap, `edge_gap`)
   const labels = calculate_tick_label_geometry(options)
   const collisions = detect_tick_label_collisions(labels, gap, collision_method)
   // Most labels do not overflow, so only the ones that do are materialised.

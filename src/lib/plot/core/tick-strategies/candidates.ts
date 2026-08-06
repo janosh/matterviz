@@ -192,6 +192,19 @@ const combined_information_loss = (
   return 1 - (1 - previous_loss) * (1 - next_loss)
 }
 
+const replace_display_lines = (
+  label: TickCandidateLabel,
+  display_lines: string[],
+): TickCandidateLabelInput => ({
+  ...label,
+  display_lines,
+  information_loss: combined_information_loss(
+    label.information_loss,
+    label.display_lines,
+    display_lines,
+  ),
+})
+
 export const generate_stagger_candidate = (
   candidate: TickStrategyCandidate,
   { id, first_row = 0 }: StaggerCandidateOptions,
@@ -283,15 +296,7 @@ export const generate_abbreviated_candidate = (
     const display_lines = NO_BREAK_CHARACTER.test(label.full_text)
       ? [...label.display_lines]
       : label.display_lines.map((line) => abbreviate_line(line, abbreviations))
-    return {
-      ...label,
-      display_lines,
-      information_loss: combined_information_loss(
-        label.information_loss,
-        label.display_lines,
-        display_lines,
-      ),
-    }
+    return replace_display_lines(label, display_lines)
   })
   return transformed_candidate(candidate, id, `abbreviate`, labels)
 }
@@ -360,15 +365,7 @@ export const generate_ellipsis_candidate = (
         `candidate "${id}" label ${label.tick_index} line ${line_idx}`,
       ),
     )
-    return {
-      ...label,
-      display_lines,
-      information_loss: combined_information_loss(
-        label.information_loss,
-        label.display_lines,
-        display_lines,
-      ),
-    }
+    return replace_display_lines(label, display_lines)
   })
   return transformed_candidate(candidate, id, `ellipsis`, labels)
 }

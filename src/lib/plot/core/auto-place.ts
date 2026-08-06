@@ -1,11 +1,8 @@
 import {
   compute_element_placement,
   sample_series_obstacle_points,
+  type Sides,
 } from '$lib/plot/core/layout'
-import type { Sides } from '$lib/plot/core/layout'
-
-// Shared "move a decoration (legend/colorbar) outside the plot when interior overlap is
-// unavoidable" logic, reused by every 2D plot (ScatterPlot/BarPlot/Histogram/BinnedScatterPlot).
 
 const DECOR_GAP = 8 // px gap between an outside decoration and the plot edge
 
@@ -27,55 +24,45 @@ export const measured_footprint = (
     ? { width: el.offsetWidth, height: el.offsetHeight }
     : fallback
 
-// Build the obstacle field in normalized [0,1] plot coords from one or more series. Callers pass
-// points already normalized to [0,1] with y=0 at the top. Built from data (not pixel scales) so the
-// crowding decision below is independent of any margins reserved for outside decorations — this
-// prevents a reserve -> data-shift -> re-decide oscillation loop.
+// Build normalized obstacles from data so decoration reservations cannot change the result and
+// cause a reserve -> data-shift -> re-decide loop.
 export function build_obstacles_norm(
   series: { points: Pt[]; draws_line?: boolean }[],
   base_w: number,
   base_h: number,
 ): Pt[] {
   const step = 12 / Math.max(base_w, base_h, 1)
-  const out: Pt[] = []
-  // Appends straight into `out`: the sampler already drops non-finite points and interpolates
-  // only between finite ones, so re-filtering its output just walked the dataset a second time.
-  for (const srs of series) {
-    sample_series_obstacle_points(srs.points, srs.draws_line ?? false, step, out)
+  const obstacles: Pt[] = []
+  for (const { points, draws_line = false } of series) {
+    sample_series_obstacle_points(points, draws_line, step, obstacles)
   }
-  return out
+  return obstacles
 }
 
-// Build an obstacle segment for one bar, clipped to the visible [0,1]x[0,1] box (null if off-plot).
-// Clipping is essential: when zoomed in, off-screen bars normalize to huge coords and would make
-// sample_series_obstacle_points emit millions of points. `cross` is the fixed bar position; `a`/`b`
-// are the span endpoints (baseline -> tip) along the other axis.
+// Clip bars before sampling so zoomed, off-screen spans cannot emit millions of points.
 export function clip_bar(
   vertical: boolean,
   cross: number,
-  a: number,
-  b: number,
+  span_start: number,
+  span_end: number,
 ): { points: Pt[]; draws_line: boolean } | null {
   if (!(cross >= 0 && cross <= 1)) return null
-  const lo = Math.max(0, Math.min(a, b))
-  const hi = Math.min(1, Math.max(a, b))
-  if (hi < lo) return null
+  const lower = Math.max(0, Math.min(span_start, span_end))
+  const upper = Math.min(1, Math.max(span_start, span_end))
+  if (upper < lower) return null
   const points = vertical
     ? [
-        { x: cross, y: lo },
-        { x: cross, y: hi },
+        { x: cross, y: lower },
+        { x: cross, y: upper },
       ]
     : [
-        { x: lo, y: cross },
-        { x: hi, y: cross },
+        { x: lower, y: cross },
+        { x: upper, y: cross },
       ]
   return { points, draws_line: true }
 }
 
-// A decoration is "crowded out" only when even the emptiest interior spot is at least this dense
-// relative to the plot-wide average. A single clear region (e.g. one sparse quadrant) keeps the
-// decoration inside; a roughly uniformly-full plot pushes it out. Using a relative ratio (not "any
-// overlap") keeps the decision stable for wide decorations that merely clip a dense neighbor.
+// Keep a decoration inside if its emptiest placement is sparse relative to the plot-wide average.
 const CROWDING_RATIO = 0.5
 
 // True when even the best interior spot for `footprint` (px) is too dense to host the decoration
@@ -87,25 +74,32 @@ function is_crowded(
   clearance: number,
 ): boolean {
   if (obstacles.length === 0 || base_w <= 0 || base_h <= 0) return false
-  const fw = footprint.width / base_w
-  const fh = footprint.height / base_h
-  if (fw >= 1 || fh >= 1) return true // too big to fit inside -> outside
-  const best = compute_element_placement({
+  const footprint_width = footprint.width / base_w
+  const footprint_height = footprint.height / base_h
+  if (footprint_width >= 1 || footprint_height >= 1) return true
+  const placement = compute_element_placement({
     plot_bounds: { x: 0, y: 0, width: 1, height: 1 },
-    element_size: { width: fw, height: fh },
+    element_size: { width: footprint_width, height: footprint_height },
     axis_clearance: clearance / Math.min(base_w, base_h),
     points: [...obstacles],
   })
-  // Counted in place: filter() would copy the whole obstacle field just to take its length,
-  // once for the legend and once for the colorbar on every render.
-  const box_right = best.x + fw
-  const box_bottom = best.y + fh
-  let in_box = 0
-  for (const pt of obstacles) {
-    if (pt.x >= best.x && pt.x <= box_right && pt.y >= best.y && pt.y <= box_bottom) in_box++
+  const right = placement.x + footprint_width
+  const bottom = placement.y + footprint_height
+  let obstacle_count = 0
+  for (const point of obstacles) {
+    if (
+      point.x >= placement.x &&
+      point.x <= right &&
+      point.y >= placement.y &&
+      point.y <= bottom
+    ) {
+      obstacle_count++
+    }
   }
   // expected count if obstacles were spread uniformly = total * box-area fraction
-  return in_box > CROWDING_RATIO * obstacles.length * fw * fh
+  return (
+    obstacle_count > CROWDING_RATIO * obstacles.length * footprint_width * footprint_height
+  )
 }
 
 export type DecorationInput = { footprint: Size; clearance?: number }
@@ -117,10 +111,8 @@ export type DecorationLayout = {
   colorbar_outside: boolean
 }
 
-// Decide which decorations must move outside (interior placement unavoidably overlaps data), the
-// reserved padding, and the outside positions/styles. `base_pad` must be decoration-independent so
-// the crowding decision can't see the reservation it produces.
-export function place_decorations(cfg: {
+// Decide which decorations move outside and reserve their margin space.
+export function place_decorations(config: {
   base_pad: Required<Sides>
   width: number
   height: number
@@ -129,50 +121,45 @@ export function place_decorations(cfg: {
   colorbar?: (DecorationInput & { horizontal?: boolean }) | null
   gap?: number
 }): DecorationLayout {
-  const { base_pad, width, height, obstacles_norm, legend, colorbar, gap = DECOR_GAP } = cfg
+  const { base_pad, width, height, obstacles_norm, legend, colorbar, gap = DECOR_GAP } = config
   const base_w = width - base_pad.l - base_pad.r
   const base_h = height - base_pad.t - base_pad.b
 
   const colorbar_outside =
     colorbar != null &&
     is_crowded(obstacles_norm, colorbar.footprint, base_w, base_h, colorbar.clearance ?? 15)
-  const cbar_horizontal = colorbar?.horizontal ?? false
-  const colorbar_takes_right = colorbar_outside && !cbar_horizontal // vertical colorbar -> right
-  const cbar_w = colorbar?.footprint.width ?? 0
-  const cbar_h = colorbar?.footprint.height ?? 0
+  const colorbar_horizontal = colorbar?.horizontal ?? false
+  const colorbar_takes_right = colorbar_outside && !colorbar_horizontal
+  const { width: colorbar_width = 0, height: colorbar_height = 0 } = colorbar?.footprint ?? {}
 
   const legend_outside =
     legend != null &&
     is_crowded(obstacles_norm, legend.footprint, base_w, base_h, legend.clearance ?? 12)
-  const legend_w = legend?.footprint.width ?? 0
-  const legend_h = legend?.footprint.height ?? 0
+  const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
   // Put a narrow/tall legend on the right (wastes less reserved margin than a wide bottom strip);
   // a wide/short legend goes below. Skip the right side if a vertical colorbar already took it.
   const legend_right =
-    legend_outside && !colorbar_takes_right && legend_h * base_w > legend_w * base_h
+    legend_outside && !colorbar_takes_right && legend_height * base_w > legend_width * base_h
   const legend_bottom = legend_outside && !legend_right
 
-  // colorbar: horizontal -> above (reserves top), vertical -> right. legend: right or bottom.
-  // A right legend replaces the plot's right margin (it sits flush at the edge), so reserve only its
-  // width + a gap on each side instead of stacking it on top of base_pad.r (which left a wide gap).
+  // Horizontal colorbar -> top; vertical colorbar -> right; legend -> right or bottom.
   const pad: Required<Sides> = {
-    t: base_pad.t + (colorbar_outside && cbar_horizontal ? cbar_h + gap : 0),
+    t: base_pad.t + (colorbar_outside && colorbar_horizontal ? colorbar_height + gap : 0),
     l: base_pad.l,
-    b: base_pad.b + (legend_bottom ? legend_h + gap : 0),
+    b: base_pad.b + (legend_bottom ? legend_height + gap : 0),
     r: legend_right
-      ? Math.max(base_pad.r, legend_w + 2 * gap)
-      : base_pad.r + (colorbar_takes_right ? cbar_w + gap : 0),
+      ? Math.max(base_pad.r, legend_width + 2 * gap)
+      : base_pad.r + (colorbar_takes_right ? colorbar_width + gap : 0),
   }
 
-  // right: flush to the right edge, vertically centered in the plot area; bottom: centered below
   const legend_pos: Pt = legend_right
     ? {
-        x: width - legend_w - gap,
-        y: base_pad.t + (height - base_pad.t - base_pad.b - legend_h) / 2,
+        x: width - legend_width - gap,
+        y: base_pad.t + (height - base_pad.t - base_pad.b - legend_height) / 2,
       }
     : {
-        x: base_pad.l + (width - base_pad.l - base_pad.r - legend_w) / 2,
-        y: height - legend_h - gap,
+        x: base_pad.l + (width - base_pad.l - base_pad.r - legend_width) / 2,
+        y: height - legend_height - gap,
       }
 
   return { pad, legend_outside, legend_pos, colorbar_outside }

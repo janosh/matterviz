@@ -15,30 +15,26 @@ import { describe, expect, it } from 'vitest'
 
 describe(`shared range helpers`, () => {
   it.each([
-    {
-      name: `unions overlapping and disjoint ranges`,
-      ranges: [
+    [
+      `unions overlapping and disjoint ranges`,
+      [
         [-2, 4],
         [1, 8],
         [20, 30],
       ],
-      expected: [-2, 30],
-    },
-    {
-      name: `normalizes reversed ranges`,
-      ranges: [
+      [-2, 30],
+    ],
+    [
+      `normalizes reversed ranges`,
+      [
         [5, 1],
         [-3, -8],
       ],
-      expected: [-8, 5],
-    },
-    {
-      name: `ignores missing and invalid ranges`,
-      ranges: [undefined, null, [NaN, 4], [2, 6]],
-      expected: [2, 6],
-    },
-    { name: `returns undefined without a finite range`, ranges: [], expected: undefined },
-  ])(`union_ranges $name`, ({ ranges, expected }) => {
+      [-8, 5],
+    ],
+    [`ignores missing and invalid ranges`, [undefined, null, [NaN, 4], [2, 6]], [2, 6]],
+    [`returns undefined without a finite range`, [], undefined],
+  ] as const)(`union_ranges %s`, (_name, ranges, expected) => {
     expect(union_ranges(ranges)).toEqual(expected)
   })
 
@@ -73,37 +69,32 @@ describe(`shared axis range propagation`, () => {
   const zoomed_range: Vec2 = [2, 8]
 
   it.each([
-    {
-      name: `detects one changed panel`,
-      panel_ranges: [shared_range, zoomed_range, shared_range],
-      current: null,
-      expected: zoomed_range,
-    },
-    {
-      name: `does nothing for two simultaneous changes`,
-      panel_ranges: [zoomed_range, [3, 7]],
-      current: null,
-      expected: undefined,
-    },
-    {
-      name: `resets when a synced panel returns to shared`,
-      panel_ranges: [zoomed_range, shared_range],
-      current: zoomed_range,
-      expected: null,
-    },
-    {
-      name: `resets when a synced panel becomes invalid`,
-      panel_ranges: [zoomed_range, undefined],
-      current: zoomed_range,
-      expected: null,
-    },
-    {
-      name: `does nothing when all panels retain the synced range`,
-      panel_ranges: [zoomed_range, zoomed_range],
-      current: zoomed_range,
-      expected: undefined,
-    },
-  ])(`$name`, ({ panel_ranges, current, expected }) => {
+    [
+      `detects one changed panel`,
+      [shared_range, zoomed_range, shared_range],
+      null,
+      zoomed_range,
+    ],
+    [`does nothing for two simultaneous changes`, [zoomed_range, [3, 7]], null, undefined],
+    [
+      `resets when a synced panel returns to shared`,
+      [zoomed_range, shared_range],
+      zoomed_range,
+      null,
+    ],
+    [
+      `resets when a synced panel becomes invalid`,
+      [zoomed_range, undefined],
+      zoomed_range,
+      null,
+    ],
+    [
+      `does nothing when all panels retain the synced range`,
+      [zoomed_range, zoomed_range],
+      zoomed_range,
+      undefined,
+    ],
+  ] as const)(`%s`, (_name, panel_ranges, current, expected) => {
     expect(detect_shared_range_change(panel_ranges, shared_range, current)).toEqual(expected)
   })
 

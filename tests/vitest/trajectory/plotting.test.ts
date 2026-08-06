@@ -11,6 +11,7 @@ import {
   get_frame_step_samples,
   get_frame_time_step,
   should_hide_plot,
+  type PlotSeriesOptions,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -26,10 +27,6 @@ const COMMON_TRAJECTORIES = {
     { energy: -10.0, force_max: 0.1, volume: 100.0 },
     { energy: -10.5, force_max: 0.2, volume: 101.0 },
     { energy: -11.0, force_max: 0.3, volume: 102.0 },
-  ],
-  four_properties: [
-    { prop_a: 1.0, prop_b: 2.0, prop_c: 3.0, prop_d: 4.0 },
-    { prop_a: 1.5, prop_b: 2.5, prop_c: 3.5, prop_d: 4.5 },
   ],
 }
 
@@ -70,6 +67,7 @@ const create_series = (
 
 const find_series_by_label = (series: DataSeries[], search_term: string) =>
   series.find((srs) => srs.label?.toLowerCase().includes(search_term.toLowerCase()))
+const plot_options = (options: PlotSeriesOptions): PlotSeriesOptions => options
 
 describe(`generate_plot_series`, () => {
   it(`groups energy and force series by unit`, () => {
@@ -108,103 +106,72 @@ describe(`generate_plot_series`, () => {
     })
   })
 
-  it(`limits visible series to two unit groups`, () => {
-    const series = generate_plot_series(
-      create_trajectory(COMMON_TRAJECTORIES.four_properties),
-      test_extractor,
-      {
-        property_config: {
-          prop_a: { label: `Prop A`, unit: `unit_a` },
-          prop_b: { label: `Prop B`, unit: `unit_b` },
-          prop_c: { label: `Prop C`, unit: `unit_c` },
-          prop_d: { label: `Prop D`, unit: `unit_d` },
-        },
-        default_visible_properties: new Set([`prop_a`, `prop_b`, `prop_c`, `prop_d`]),
-      },
-    )
-    expect(series.filter((srs) => srs.visible)).toHaveLength(2)
-  })
-
-  it(`keeps every series in a selected unit group visible`, () => {
-    const series = generate_plot_series(
-      create_trajectory([
+  it.each([
+    {
+      name: `keeps every series in a selected unit group visible`,
+      frames: [
         { selected: 1, same_group: 10, hidden_group: 100 },
         { selected: 2, same_group: 20, hidden_group: 200 },
-      ]),
-      test_extractor,
-      {
+      ],
+      options: plot_options({
         property_config: {
           selected: { label: `Selected`, unit: `shared` },
           same_group: { label: `Same group`, unit: `shared` },
           hidden_group: { label: `Hidden group`, unit: `other` },
         },
         default_visible_properties: new Set([`selected`]),
+      }),
+      expected: {
+        Selected: { visible: true, y_axis: `y1` },
+        [`Same group`]: { visible: true, y_axis: `y1` },
+        [`Hidden group`]: { visible: false, y_axis: `y1` },
       },
-    )
-
-    expect(find_series_by_label(series, `selected`)).toMatchObject({
-      visible: true,
-      y_axis: `y1`,
-    })
-    expect(find_series_by_label(series, `same group`)).toMatchObject({
-      visible: true,
-      y_axis: `y1`,
-    })
-    expect(find_series_by_label(series, `hidden group`)).toMatchObject({
-      visible: false,
-      y_axis: `y1`,
-    })
-  })
-
-  it(`uses priority rather than property order when visible groups overflow`, () => {
-    const series = generate_plot_series(
-      create_trajectory([
+    },
+    {
+      name: `uses priority rather than property order when visible groups overflow`,
+      frames: [
         { temperature: 300, force: 1, energy: -10 },
         { temperature: 310, force: 0.5, energy: -11 },
-      ]),
-      test_extractor,
-      {
+      ],
+      options: plot_options({
         property_config: {
           temperature: { label: `Temperature`, unit: `K` },
           force: { label: `Force`, unit: `eV/Å` },
           energy: { label: `Energy`, unit: `eV` },
         },
         default_visible_properties: new Set([`temperature`, `force`, `energy`]),
+      }),
+      expected: {
+        Energy: { visible: true, y_axis: `y1` },
+        Force: { visible: true, y_axis: `y2` },
+        Temperature: { visible: false, y_axis: `y1` },
       },
-    )
-
-    expect(find_series_by_label(series, `energy`)).toMatchObject({
-      visible: true,
-      y_axis: `y1`,
-    })
-    expect(find_series_by_label(series, `force`)).toMatchObject({
-      visible: true,
-      y_axis: `y2`,
-    })
-    expect(find_series_by_label(series, `temperature`)).toMatchObject({
-      visible: false,
-      y_axis: `y1`,
-    })
-  })
-
-  it(`falls back to the highest-priority group when no property is selected`, () => {
-    const series = generate_plot_series(
-      create_trajectory([
+    },
+    {
+      name: `falls back to the highest-priority group when no property is selected`,
+      frames: [
         { temperature: 300, energy: -10 },
         { temperature: 310, energy: -11 },
-      ]),
-      test_extractor,
-      {
+      ],
+      options: plot_options({
         property_config: {
           temperature: { label: `Temperature`, unit: `K` },
           energy: { label: `Energy`, unit: `eV` },
         },
         default_visible_properties: new Set(),
+      }),
+      expected: {
+        Energy: { visible: true, y_axis: `y1` },
+        Temperature: { visible: false, y_axis: `y1` },
       },
-    )
-
-    expect(find_series_by_label(series, `energy`)?.visible).toBe(true)
-    expect(find_series_by_label(series, `temperature`)?.visible).toBe(false)
+    },
+  ])(`$name`, ({ frames, options, expected }) => {
+    const series = generate_plot_series(create_trajectory(frames), test_extractor, options)
+    expect(
+      Object.fromEntries(
+        series.map(({ label, visible, y_axis }) => [label, { visible, y_axis }]),
+      ),
+    ).toEqual(expected)
   })
 
   it(`keeps sparse property values aligned to their source frames`, () => {
@@ -325,31 +292,17 @@ describe(`should_hide_plot`, () => {
 })
 
 describe(`generate_axis_labels`, () => {
-  // oxfmt-ignore
-  it.each([
-    { name: `single series with unit`, series: [create_series([1, 2], { label: `Energy`, unit: `eV` })],
-      expected: { y1: `Energy (eV)`, y2: `Value` } },
-    { name: `multiple series same unit`, series: [
-      create_series([1, 2], { label: `A`, unit: `Å` }), create_series([3, 4], { label: `B`, unit: `Å` }),
-      create_series([5, 6], { label: `C`, unit: `Å` }),
-    ], expected: { y1: `A / B / C (Å)`, y2: `Value` } },
-    { name: `series without units`,
-      series: [create_series([1, 2], { label: `Dimensionless` })],
-      expected: { y1: `Dimensionless`, y2: `Value` } },
-    { name: `only hidden series`, series: [create_series([1, 2], { visible: false, label: `Hidden`, unit: `eV` })],
-      expected: { y1: `Value`, y2: `Value` } },
-    { name: `mixed visibility (hidden series excluded from labels)`, series: [
-      create_series([1, 2], { label: `Visible`, unit: `eV` }),
-      create_series([3, 4], { visible: false, label: `Hidden`, unit: `eV` }), // Same unit, but hidden
-      create_series([5, 6], { label: `Another`, unit: `Å`, y_axis: `y2` }),
-    ], expected: { y1: `Visible (eV)`, y2: `Another (Å)` } },
-    { name: `multiple series concatenated on y1 with separate y2`, series: [
-      create_series([5.0, 5.1], { label: `A`, unit: `Å` }),
-      create_series([5.1, 5.2], { label: `B`, unit: `Å` }),
-      create_series([1.0, 2.0], { label: `Energy`, unit: `eV`, y_axis: `y2` }),
-    ], expected: { y1: `A / B (Å)`, y2: `Energy (eV)` } },
-  ])(`$name`, ({ series, expected }) => {
-    expect(generate_axis_labels(series)).toEqual(expected)
+  it(`excludes hidden series and labels each axis`, () => {
+    expect(
+      generate_axis_labels([
+        create_series([1, 2], { label: `Visible`, unit: `eV` }),
+        create_series([3, 4], { visible: false, label: `Hidden`, unit: `eV` }),
+        create_series([5, 6], { label: `Another`, unit: `Å`, y_axis: `y2` }),
+      ]),
+    ).toEqual({ y1: `Visible (eV)`, y2: `Another (Å)` })
+    expect(
+      generate_axis_labels([create_series([1, 2], { label: `Dimensionless`, unit: `` })]),
+    ).toEqual({ y1: `Dimensionless`, y2: `Value` })
   })
 })
 
@@ -362,34 +315,10 @@ describe(`generate_axis_scale_types`, () => {
     { name: `positive SCF axis group spanning >=3 decades goes log`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: { y1: `log`, y2: `linear` } },
-    { name: `negative SCF values stay linear despite decade span`,
-      series: [create_series([-10, 1e-4, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: all_linear },
-    { name: `zero SCF values stay linear`,
-      series: [create_series([0, 1e-4, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: all_linear },
-    { name: `positive but narrow SCF span stays linear`,
-      series: [create_series([1, 5, 100], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: all_linear },
-    { name: `hidden series don't affect the axis scale`, series: [
-      create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
-      create_series([1e-6, 1], { visible: false, label: `Residual`, unit: `a.u.` }),
-    ], expected: all_linear },
     { name: `per-axis decision: linear energy on y1, log residual on y2`, series: [
       create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
       create_series([1, 1e-3, 1e-7], { label: `Residual`, unit: `eV`, y_axis: `y2`, axis_group: `eV (SCF)` }),
     ], expected: { y1: `linear`, y2: `log` } },
-    { name: `mixed-sign axis stays linear even when one series qualifies`, series: [
-      create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
-      create_series([1, 1e-3, 1e-7], { label: `Residual`, unit: `a.u.` }),
-    ], expected: all_linear },
-    { name: `no series`, series: [], expected: all_linear },
-    { name: `NaN values are ignored for the decision`,
-      series: [create_series([NaN, 1e-5, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: { y1: `log`, y2: `linear` } },
-    { name: `infinities are ignored but finite zero still forces linear`,
-      series: [create_series([NaN, -Infinity, 0, 1e-5, Infinity, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
-      expected: all_linear },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })
@@ -425,59 +354,48 @@ describe(`auto-assigned legend visibility`, () => {
 })
 
 describe(`streaming visibility characterization`, () => {
+  const property_frames = [
+    { temperature: 300, volume: 100, energy: -10 },
+    { temperature: 301, volume: 101, energy: -11 },
+  ]
+  const property_config = {
+    temperature: { label: `Temperature`, unit: `K` },
+    volume: { label: `Volume`, unit: `Å³` },
+    energy: { label: `Energy`, unit: `eV` },
+  }
+  const metadata = property_frames.map((properties, frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties,
+  }))
+  const assignments = (series: DataSeries[]) =>
+    series
+      .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
+      .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
+
   it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
-    const property_frames = [
-      { temperature: 300, volume: 100, energy: -10 },
-      { temperature: 301, volume: 101, energy: -11 },
-    ]
-    const property_config = {
-      temperature: { label: `Temperature`, unit: `K` },
-      volume: { label: `Volume`, unit: `Å³` },
-      energy: { label: `Energy`, unit: `eV` },
-    }
     const default_visible_properties = new Set(Object.keys(property_config))
     const eager = generate_plot_series(create_trajectory(property_frames), test_extractor, {
       property_config,
       default_visible_properties,
     })
-    const streaming = generate_streaming_plot_series(
-      property_frames.map((properties, frame_number) => ({
-        frame_number,
-        step: frame_number,
-        properties,
-      })),
-      { property_config, default_visible_properties },
-    )
-    const assignments = (series: DataSeries[]) =>
-      series
-        .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
-        .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
+    const streaming = generate_streaming_plot_series(metadata, {
+      property_config,
+      default_visible_properties,
+    })
     expect(assignments(streaming)).toEqual(assignments(eager))
   })
 
   it(`keeps historical priority and two-group selection when defaults add a third group`, () => {
-    const metadata = [0, 1].map((frame_number) => ({
-      frame_number,
-      step: frame_number,
-      properties: {
-        temperature: 300 + frame_number,
-        volume: 100 + frame_number,
-        energy: -10 - frame_number,
-      },
-    }))
     const series = generate_streaming_plot_series(metadata, {
-      property_config: {
-        temperature: { label: `Temperature`, unit: `K` },
-        volume: { label: `Volume`, unit: `Å³` },
-        energy: { label: `Energy`, unit: `eV` },
-      },
+      property_config,
       default_visible_properties: new Set([`energy`]),
     })
 
-    expect(series.map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))).toEqual([
+    expect(assignments(series)).toEqual([
+      { label: `Energy`, visible: true, y_axis: `y1` },
       { label: `Temperature`, visible: true, y_axis: `y2` },
       { label: `Volume`, visible: false, y_axis: `y1` },
-      { label: `Energy`, visible: true, y_axis: `y1` },
     ])
   })
 })

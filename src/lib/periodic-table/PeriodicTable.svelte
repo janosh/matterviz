@@ -143,12 +143,12 @@
   // `onenter` is the legacy activation prop. Route it through the same tile
   // interaction as `onactivate` so pointer, Enter, and Space cannot diverge.
   let activation_callback = $derived(onactivate ?? onenter)
-  const element_href = (element: ChemicalElement): string | undefined => {
-    if (!links) return undefined
-    return typeof links === `string`
-      ? `/${element[links]}`.toLowerCase()
-      : links[element.symbol]
-  }
+  const element_href = (element: ChemicalElement): string | undefined =>
+    !links
+      ? undefined
+      : typeof links === `string`
+        ? `/${element[links]}`.toLowerCase()
+        : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
     Boolean(element_href(element) || activation_callback)
   let focused_symbol = $state<ElementSymbol | null>(null)
@@ -382,7 +382,10 @@
         focused_symbol = symbol
         set_active_element(element)
       }}
-      onblur={() => set_active_element(null)}
+      onblur={() => {
+        focused_symbol = null
+        set_active_element(null)
+      }}
       role={tile_activation ? `button` : href ? `link` : tile_props?.role}
       tabindex={element_is_interactive(element)
         ? roving_symbol === symbol

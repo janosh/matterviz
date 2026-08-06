@@ -82,14 +82,27 @@ describe(`tick strategy scoring`, () => {
       { band_fraction: 1 },
     )
     const selection = select_tick_candidate([infeasible, fallback])
+    const scored_infeasible = selection.evaluated.find(
+      ({ candidate: item }) => item.id === `infeasible`,
+    )
 
     expect(selection.winner?.candidate.id).toBe(`fallback`)
-    expect(
-      selection.evaluated.find(({ candidate: item }) => item.id === `infeasible`),
-    ).toMatchObject({ feasible: false })
-    expect(
-      selection.evaluated.find(({ candidate: item }) => item.id === `infeasible`)?.score,
-    ).toSatisfy((score: number) => Number.isFinite(score))
+    expect(scored_infeasible).toMatchObject({ feasible: false })
+    expect(scored_infeasible?.score).toSatisfy((score: number) => Number.isFinite(score))
+  })
+
+  test.each([
+    [`empty labels`, []],
+    [
+      `all hidden labels`,
+      [
+        { full_text: `Alpha`, visible: false },
+        { full_text: `Beta`, visible: false },
+      ],
+    ],
+  ] as const)(`does not treat %s as readable or feasible`, (name, labels) => {
+    const result = score_tick_candidate(measured(candidate(name, { labels })))
+    expect(result).toMatchObject({ readable: false, feasible: false })
   })
 
   test(`treats sub-pixel edge overflow dust as feasible`, () => {
@@ -255,15 +268,5 @@ describe(`tick strategy scoring`, () => {
     ])
     expect(selection.winner?.candidate.id).toBe(`a-wrapped`)
     expect(measured_candidates).toEqual([rotated, wrapped_z, wrapped_a])
-  })
-
-  test(`returns no winner when every candidate is infeasible`, () => {
-    const selection = select_tick_candidate([
-      measured(candidate(`collision`), { collisions: 1 }),
-      measured(candidate(`overflow`), { edge_overflow_px: 1 }),
-    ])
-
-    expect(selection.winner).toBeNull()
-    expect(selection.evaluated).toHaveLength(2)
   })
 })

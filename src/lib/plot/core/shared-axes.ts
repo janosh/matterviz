@@ -27,21 +27,15 @@ export const ranges_equal = (
   right: Vec2 | undefined | null,
   tolerance: number | RangeTolerance = DEFAULT_RANGE_TOLERANCE,
 ): boolean => {
-  const resolved_tolerance =
-    typeof tolerance === `number` ? { absolute: tolerance, relative: 0 } : tolerance
-  const absolute_tolerance = Math.max(
-    0,
-    resolved_tolerance.absolute ?? DEFAULT_RANGE_TOLERANCE.absolute,
-  )
-  const relative_tolerance = Math.max(
-    0,
-    resolved_tolerance.relative ?? DEFAULT_RANGE_TOLERANCE.relative,
-  )
   if (!is_valid_range(left) || !is_valid_range(right)) return false
+  const {
+    absolute = DEFAULT_RANGE_TOLERANCE.absolute,
+    relative = DEFAULT_RANGE_TOLERANCE.relative,
+  } = typeof tolerance === `number` ? { absolute: tolerance, relative: 0 } : tolerance
   // Scale the relative term by the plotted spans, not endpoint magnitude. This
   // keeps narrow ranges around a large offset from accepting visibly large shifts.
   const span_scale = Math.max(Math.abs(left[1] - left[0]), Math.abs(right[1] - right[0]))
-  const safe_tolerance = absolute_tolerance + relative_tolerance * span_scale
+  const safe_tolerance = Math.max(0, absolute) + Math.max(0, relative) * span_scale
   return (
     Math.abs(left[0] - right[0]) <= safe_tolerance &&
     Math.abs(left[1] - right[1]) <= safe_tolerance
@@ -105,18 +99,16 @@ export function detect_shared_range_change(
   shared_range: Vec2,
   current_synced_range: Vec2 | null,
 ): Vec2 | null | undefined {
-  const valid_ranges = panel_ranges.map((range) => (is_valid_range(range) ? range : undefined))
-
   if (
     current_synced_range !== null &&
-    valid_ranges.some((range) => range === undefined || ranges_equal(range, shared_range))
+    panel_ranges.some((range) => !is_valid_range(range) || ranges_equal(range, shared_range))
   ) {
     return null
   }
 
-  const changed_ranges = valid_ranges.filter(
+  const changed_ranges = panel_ranges.filter(
     (range): range is Vec2 =>
-      range !== undefined &&
+      is_valid_range(range) &&
       !ranges_equal(range, shared_range) &&
       !ranges_equal(range, current_synced_range),
   )
@@ -141,9 +133,9 @@ export function reconcile_shared_axis_ranges(
     current_synced_range,
   )
   const next_range =
-    synced_range === undefined
-      ? (current_synced_range ?? shared_range)
-      : (synced_range ?? shared_range)
+    synced_range === null
+      ? shared_range
+      : (synced_range ?? current_synced_range ?? shared_range)
   const next_axes = axes.map((axis) =>
     synced_range === undefined
       ? propagate_shared_axis_range(axis, next_range)

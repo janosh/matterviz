@@ -1377,7 +1377,6 @@ Plot titles, subtitles, and axis-title blocks use measured font metrics. Resize 
     y_axis={{
       label: `Number of structures retained after all validation and quality-control filters`,
     }}
-    show_legend={false}
     show_controls={false}
     style="height: 480px"
   />

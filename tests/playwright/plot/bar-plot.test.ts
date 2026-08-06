@@ -1,3 +1,4 @@
+import { rects_overlap } from '$lib/plot/core/layout'
 import { expect, test } from '@playwright/test'
 import { get_tick_range, is_present } from '../helpers'
 
@@ -44,6 +45,7 @@ test.describe(`BarPlot Component Tests`, () => {
   test(`legend renders for multiple series and toggles visibility`, async ({ page }) => {
     const section = page.locator(`#legend-bar`)
     const plot = section.locator(`.bar-plot`)
+    const bars = plot.locator(`svg path[aria-label^="bar "]`)
     await expect(plot).toBeVisible()
 
     const legend = plot.locator(`.legend`)
@@ -75,21 +77,27 @@ test.describe(`BarPlot Component Tests`, () => {
       .not.toBe(plot_width_before)
     await expect.poll(legend_bar_overlap_count).toBe(0)
 
+    await bars.first().hover({ force: true })
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible()
+    const [legend_box, tooltip_box] = await Promise.all([
+      legend.boundingBox(),
+      tooltip.boundingBox(),
+    ])
+    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
+    expect(rects_overlap(legend_box, tooltip_box)).toBe(false)
+
     // Initial: both visible -> bars exist
-    const initial_bars = await plot.locator(`svg path[aria-label^="bar "]`).count()
+    const initial_bars = await bars.count()
     expect(initial_bars).toBeGreaterThan(0)
 
     // Toggle first series -> bar count should decrease
     await items.first().click()
-    await expect
-      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
-      .toBeLessThan(initial_bars)
+    await expect.poll(() => bars.count()).toBeLessThan(initial_bars)
 
     // Toggle back -> bar count should be restored to initial
     await items.first().click()
-    await expect
-      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
-      .toBe(initial_bars)
+    await expect.poll(() => bars.count()).toBe(initial_bars)
   })
 
   test(`zoom drag and double-click reset works`, async ({ page }) => {
@@ -171,26 +179,6 @@ test.describe(`BarPlot Component Tests`, () => {
     // Check cursor is not pointer (no click handler)
     const cursor = await bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
     expect(cursor).not.toBe(`pointer`)
-  })
-
-  test(`tooltip avoids the solved legend rectangle`, async ({ page }) => {
-    const plot = page.locator(`#legend-bar .bar-plot`)
-    const legend = plot.locator(`.legend`)
-    await expect(legend).toBeVisible()
-    await plot.locator(`svg path[aria-label^="bar "]`).first().hover({ force: true })
-    const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible()
-    const [legend_box, tooltip_box] = await Promise.all([
-      legend.boundingBox(),
-      tooltip.boundingBox(),
-    ])
-    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
-    const overlaps =
-      legend_box.x < tooltip_box.x + tooltip_box.width &&
-      legend_box.x + legend_box.width > tooltip_box.x &&
-      legend_box.y < tooltip_box.y + tooltip_box.height &&
-      legend_box.y + legend_box.height > tooltip_box.y
-    expect(overlaps).toBe(false)
   })
 
   test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {

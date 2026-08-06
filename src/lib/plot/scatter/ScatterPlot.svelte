@@ -374,16 +374,12 @@
   // immediately when toggled (not delayed until next data change)
   $effect.pre(() => {
     const mode = y2_sync_config.mode
-    if (mode !== prev_sync_mode) {
-      // When sync mode becomes enabled (or changes), apply sync immediately
-      if (mode !== `none`) {
-        ranges.current.y2 = sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync_config)
-      } else {
-        // When switching to independent mode, reset Y2 to its data range
-        ranges.current.y2 = [...ranges.initial.y2] as Vec2
-      }
-      prev_sync_mode = mode
-    }
+    if (mode === prev_sync_mode) return
+    ranges.current.y2 =
+      mode === `none`
+        ? ([...ranges.initial.y2] as Vec2)
+        : sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync_config)
+    prev_sync_mode = mode
   })
 
   // Fill region hover state
@@ -668,10 +664,7 @@
       items.push({
         id: `colorbar`,
         kind: `colorbar`,
-        footprint: {
-          width: colorbar_footprint.width,
-          height: colorbar_footprint.height,
-        },
+        footprint: colorbar_footprint,
         horizontal: colorbar_is_horizontal,
         clearance: color_bar.axis_clearance,
       })
@@ -745,49 +738,24 @@
   let all_color_values = $derived(series_value_arrays.color_values)
 
   // Compute auto ranges based on data and limits
-  let auto_x_range = $derived(
+  const auto_range = (
+    points: SimplePoint[],
+    key: keyof SimplePoint,
+    axis: typeof final_x_axis,
+    time_scale = false,
+  ): Vec2 =>
     get_nice_data_range(
-      all_points,
-      ({ x }) => x,
-      final_x_axis.range ?? [null, null],
-      final_x_axis.scale_type ?? `linear`,
+      points,
+      (point) => point[key],
+      axis.range ?? [null, null],
+      axis.scale_type ?? `linear`,
       range_padding,
-      is_time_x,
-    ),
-  )
-
-  let auto_y_range = $derived(
-    get_nice_data_range(
-      y1_points,
-      ({ y }) => y,
-      final_y_axis.range ?? [null, null],
-      final_y_axis.scale_type ?? `linear`,
-      range_padding,
-      false,
-    ),
-  )
-
-  let auto_x2_range = $derived(
-    get_nice_data_range(
-      x2_points,
-      ({ x }) => x,
-      final_x2_axis.range ?? [null, null],
-      final_x2_axis.scale_type ?? `linear`,
-      range_padding,
-      is_time_x2,
-    ),
-  )
-
-  let auto_y2_range = $derived(
-    get_nice_data_range(
-      y2_points,
-      ({ y }) => y,
-      final_y2_axis.range ?? [null, null],
-      final_y2_axis.scale_type ?? `linear`,
-      range_padding,
-      false,
-    ),
-  )
+      time_scale,
+    )
+  let auto_x_range = $derived(auto_range(all_points, `x`, final_x_axis, is_time_x))
+  let auto_y_range = $derived(auto_range(y1_points, `y`, final_y_axis))
+  let auto_x2_range = $derived(auto_range(x2_points, `x`, final_x2_axis, is_time_x2))
+  let auto_y2_range = $derived(auto_range(y2_points, `y`, final_y2_axis))
 
   // Facet reports and intrinsic padding measurement stay data-local. Shared ranges/padding are
   // applied only after these values are computed, so grid output never becomes the next report.
@@ -1202,8 +1170,6 @@
     get_decoration_placement(decoration_solution, `colorbar`),
   )
 
-  const get_legend_placement = () => legend_placement ?? null
-  const get_color_bar_placement = () => colorbar_placement ?? null
   const placement_signature = (placement: DecorationPlacement | undefined): string =>
     placement
       ? `${placement.location}:${placement.side}:${placement.x}:${placement.y}:${placement.footprint.width}:${placement.footprint.height}`
@@ -1212,7 +1178,7 @@
   // Tweened colorbar/legend coordinates retain the established resize, hover-lock, responsive,
   // and manual-drag behavior while both targets now come from one deterministic solve.
   const legend_tween = create_placed_tween({
-    placement: get_legend_placement,
+    placement: () => legend_placement ?? null,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
@@ -1224,7 +1190,7 @@
     manual_position: () => legend_manual_position,
   })
   const colorbar_tween = create_placed_tween({
-    placement: get_color_bar_placement,
+    placement: () => colorbar_placement ?? null,
     dims: () => ({ width, height }),
     responsive: () => color_bar?.responsive ?? false,
     element: () => colorbar_element,
@@ -1635,9 +1601,7 @@
   )
 
   // Set theme-aware background when entering fullscreen
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`)
-  })
+  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`))
 
   // State accessors for shared axis change handler
   // Spread into existing state in each setter to preserve merged type structure

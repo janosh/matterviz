@@ -136,8 +136,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       side: null,
     }
     placements.push(with_auto_legend_tracks(placement, item, scene))
-    const placement_rect = { x: result.x, y: result.y, ...item.footprint }
-    decoration_rects.push(placement_rect)
+    decoration_rects.push({ x: result.x, y: result.y, ...item.footprint })
   }
 
   return {

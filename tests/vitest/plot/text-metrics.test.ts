@@ -132,60 +132,21 @@ describe(`text metrics`, () => {
   })
 
   it.each([
-    {
-      name: `word boundaries`,
-      paragraph: `alpha beta gamma`,
-      width: 50,
-      preserve_empty_line: false,
-      expected: [`alpha beta`, `gamma`],
+    [`word boundaries`, `alpha beta gamma`, 50, false, [`alpha beta`, `gamma`]],
+    [`no-break spaces`, `10\u00A0eV 20\u202FkPa`, 30, false, [`10\u00A0eV`, `20\u202FkPa`]],
+    [`overlong words`, `abcdefghij`, 20, false, [`abcd`, `efgh`, `ij`]],
+    [`non-positive widths`, `alpha beta`, 0, false, [`alpha beta`]],
+    [`discarded empty paragraphs`, `   `, 50, false, []],
+    [`preserved empty paragraphs`, `   `, 50, true, [``]],
+  ] as const)(
+    `wraps %s with shared greedy semantics`,
+    (_name, paragraph, width, preserve_empty_line, expected) => {
+      const measure = (text: string) => ({ width: Array.from(text).length * 5 })
+      expect(
+        wrap_text_paragraph(paragraph, width, TEST_FONT, measure, preserve_empty_line),
+      ).toEqual(expected)
     },
-    {
-      name: `no-break spaces`,
-      paragraph: `10\u00A0eV 20\u202FkPa`,
-      width: 30,
-      preserve_empty_line: false,
-      expected: [`10\u00A0eV`, `20\u202FkPa`],
-    },
-    {
-      name: `overlong words`,
-      paragraph: `abcdefghij`,
-      width: 20,
-      preserve_empty_line: false,
-      expected: [`abcd`, `efgh`, `ij`],
-    },
-    {
-      name: `non-positive widths`,
-      paragraph: `alpha beta`,
-      width: 0,
-      preserve_empty_line: false,
-      expected: [`alpha beta`],
-    },
-    {
-      name: `discarded empty paragraphs`,
-      paragraph: `   `,
-      width: 50,
-      preserve_empty_line: false,
-      expected: [],
-    },
-    {
-      name: `preserved empty paragraphs`,
-      paragraph: `   `,
-      width: 50,
-      preserve_empty_line: true,
-      expected: [``],
-    },
-  ])(`wraps $name with shared greedy semantics`, (test_case) => {
-    const measure = (text: string) => ({ width: Array.from(text).length * 5 })
-    expect(
-      wrap_text_paragraph(
-        test_case.paragraph,
-        test_case.width,
-        TEST_FONT,
-        measure,
-        test_case.preserve_empty_line,
-      ),
-    ).toEqual(test_case.expected)
-  })
+  )
 
   it(`clears cached measurements and increments the revision`, () => {
     const { measure_text } = mock_canvas()

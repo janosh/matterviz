@@ -106,37 +106,29 @@ const normalized_font = (
   overrides: PlotTitleFontOverrides | undefined,
   fallback: Readonly<FontSpec>,
 ): FontSpec => {
-  const positive_number = (value: number, fallback_value: number): number =>
-    Number.isFinite(value) && value > 0 ? value : fallback_value
-  const nonempty_string = (value: string, fallback_value: string): string =>
-    value.trim() || fallback_value
+  type StringKey =
+    | `font_family`
+    | `font_style`
+    | `font_variant`
+    | `font_weight`
+    | `font_stretch`
+  const string_value = (key: StringKey): string => {
+    const value = overrides?.[key]?.trim()
+    return value?.length ? value : fallback[key]
+  }
+  const positive_value = (key: `font_size` | `line_height`): number => {
+    const value = overrides?.[key]
+    return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback[key]
+  }
 
   return {
-    font_family: nonempty_string(
-      overrides?.font_family ?? fallback.font_family,
-      fallback.font_family,
-    ),
-    font_size: positive_number(overrides?.font_size ?? fallback.font_size, fallback.font_size),
-    font_style: nonempty_string(
-      overrides?.font_style ?? fallback.font_style,
-      fallback.font_style,
-    ),
-    font_variant: nonempty_string(
-      overrides?.font_variant ?? fallback.font_variant,
-      fallback.font_variant,
-    ),
-    font_weight: nonempty_string(
-      overrides?.font_weight ?? fallback.font_weight,
-      fallback.font_weight,
-    ),
-    font_stretch: nonempty_string(
-      overrides?.font_stretch ?? fallback.font_stretch,
-      fallback.font_stretch,
-    ),
-    line_height: positive_number(
-      overrides?.line_height ?? fallback.line_height,
-      fallback.line_height,
-    ),
+    font_family: string_value(`font_family`),
+    font_size: positive_value(`font_size`),
+    font_style: string_value(`font_style`),
+    font_variant: string_value(`font_variant`),
+    font_weight: string_value(`font_weight`),
+    font_stretch: string_value(`font_stretch`),
+    line_height: positive_value(`line_height`),
   }
 }
 
@@ -226,20 +218,16 @@ const validate_layout_input = (
   input: PlotTitleLayoutInput,
 ): { gap: number; max_lines: number } => {
   const { gap = DEFAULT_PLOT_TITLE_GAP, max_lines } = config ?? {}
-  if (!Number.isFinite(input.width) || input.width < 0) {
+  const assert_finite = (value: number, name: string, non_negative = false): void => {
+    if (Number.isFinite(value) && (!non_negative || value >= 0)) return
     throw new Error(
-      `Plot title width must be a finite non-negative number, got ${input.width}`,
+      `Plot title ${name} must be ${non_negative ? `a finite non-negative number` : `finite`}, got ${value}`,
     )
   }
-  if (input.x !== undefined && !Number.isFinite(input.x)) {
-    throw new Error(`Plot title x must be finite, got ${input.x}`)
-  }
-  if (input.y !== undefined && !Number.isFinite(input.y)) {
-    throw new Error(`Plot title y must be finite, got ${input.y}`)
-  }
-  if (!Number.isFinite(gap) || gap < 0) {
-    throw new Error(`Plot title gap must be a finite non-negative number, got ${gap}`)
-  }
+  assert_finite(input.width, `width`, true)
+  if (input.x !== undefined) assert_finite(input.x, `x`)
+  if (input.y !== undefined) assert_finite(input.y, `y`)
+  assert_finite(gap, `gap`, true)
   if (max_lines !== undefined && (!Number.isInteger(max_lines) || max_lines < 1)) {
     throw new Error(`Plot title max_lines must be a positive integer, got ${max_lines}`)
   }

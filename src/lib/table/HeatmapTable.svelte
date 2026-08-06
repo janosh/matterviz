@@ -1853,12 +1853,8 @@
     const color: Record<string, ColumnPrefs> = {}
     const remaining: Record<string, ColumnPrefs> = {}
     for (const [col_id, { better, color_scale, ...kept }] of Object.entries(column_prefs)) {
-      if (better || color_scale !== undefined) {
-        color[col_id] = {
-          ...(better && { better }),
-          ...(color_scale !== undefined && { color_scale }),
-        }
-      }
+      if (better) color[col_id] = { better }
+      if (color_scale !== undefined) color[col_id] = { ...color[col_id], color_scale }
       if (Object.keys(kept).length > 0) remaining[col_id] = kept
     }
     return { color, rest: remaining }

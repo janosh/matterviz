@@ -1,4 +1,5 @@
 import type { ScaleType } from './types'
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 export type AxisSlot = `y1` | `y2`
 
@@ -145,9 +146,9 @@ const series_on_axis = <Series extends AxisAssignableSeries>(
   options: Pick<AxisLabelOptions<Series>, `is_visible` | `axis`>,
 ): Series[] =>
   series.filter(
-    (srs, series_idx) =>
-      (options.is_visible ?? default_is_visible)(srs, series_idx) &&
-      resolved_axis(srs, series_idx, options.axis) === axis,
+    (series_data, series_idx) =>
+      (options.is_visible ?? default_is_visible)(series_data, series_idx) &&
+      resolved_axis(series_data, series_idx, options.axis) === axis,
   )
 
 // Group visible series by axis_group (when present) or unit. Groups are sorted by ascending
@@ -157,33 +158,29 @@ export function group_axis_series<Series extends AxisAssignableSeries>(
   options: AxisGroupingOptions<Series> = {},
 ): AxisGroup<Series>[] {
   const { is_visible = default_is_visible, priority = () => 0 } = options
-  const groups: {
-    key: string
-    series: Series[]
-    series_indices: number[]
-  }[] = []
+  const groups = new SvelteMap<string, { series: Series[]; series_indices: number[] }>()
 
-  series.forEach((srs, series_idx) => {
-    if (!is_visible(srs, series_idx)) return
-    const key = axis_group_key(srs)
-    let group = groups.find((candidate) => candidate.key === key)
+  series.forEach((series_data, series_idx) => {
+    if (!is_visible(series_data, series_idx)) return
+    const key = axis_group_key(series_data)
+    let group = groups.get(key)
     if (!group) {
-      group = { key, series: [], series_indices: [] }
-      groups.push(group)
+      group = { series: [], series_indices: [] }
+      groups.set(key, group)
     }
-    group.series.push(srs)
+    group.series.push(series_data)
     group.series_indices.push(series_idx)
   })
 
-  return groups
-    .map((group) => {
-      const group_priority = priority(group.key, group.series)
+  return [...groups]
+    .map(([key, group]) => {
+      const group_priority = priority(key, group.series)
       if (!Number.isFinite(group_priority)) {
         throw new TypeError(
-          `Axis priority must be finite for group "${group.key}", got ${group_priority}`,
+          `Axis priority must be finite for group "${key}", got ${group_priority}`,
         )
       }
-      return { ...group, priority: group_priority }
+      return { key, ...group, priority: group_priority }
     })
     .toSorted((group_a, group_b) => group_a.priority - group_b.priority)
 }
@@ -201,32 +198,33 @@ export function assign_axes<Series extends AxisAssignableSeries>(
 
   const supported_axes: readonly AxisSlot[] = max_axes === 1 ? [`y1`] : [`y1`, `y2`]
   const assignments = Array<AxisSlot | undefined>(series.length).fill(undefined)
-  series.forEach((srs, series_idx) => {
-    if (!is_visible(srs, series_idx) || srs.y_axis === undefined) return
-    if (!supported_axes.includes(srs.y_axis)) {
+  series.forEach((series_data, series_idx) => {
+    if (!is_visible(series_data, series_idx) || series_data.y_axis === undefined) return
+    if (!supported_axes.includes(series_data.y_axis)) {
       throw new Error(
-        `Series ${series_idx} explicitly uses ${srs.y_axis}, which is unavailable with max_axes=${max_axes}`,
+        `Series ${series_idx} explicitly uses ${series_data.y_axis}, which is unavailable with max_axes=${max_axes}`,
       )
     }
-    assignments[series_idx] = srs.y_axis
+    assignments[series_idx] = series_data.y_axis
   })
 
   const candidate_groups = group_axis_series(series, options)
-  const explicit_axes_by_group = candidate_groups.map((group) =>
-    supported_axes.filter((axis) => group.series.some((srs) => srs.y_axis === axis)),
-  )
   const reserved_axes = supported_axes.filter((axis) =>
-    explicit_axes_by_group.some((explicit_axes) => explicit_axes.includes(axis)),
+    candidate_groups.some((group) =>
+      group.series.some((series_data) => series_data.y_axis === axis),
+    ),
   )
   const available_axes = supported_axes.filter((axis) => !reserved_axes.includes(axis))
   const assigned_groups: AssignedAxisGroup<Series>[] = []
   const overflow_groups: AxisGroup<Series>[] = []
-  const attempted_automatic_groups: AxisGroup<Series>[] = []
+  const attempted_group_keys: string[] = []
   let automatic_group_idx = 0
-  for (const [group_idx, group] of candidate_groups.entries()) {
-    const explicit_axes = explicit_axes_by_group[group_idx]
+  for (const group of candidate_groups) {
+    const explicit_axes = supported_axes.filter((axis) =>
+      group.series.some((series_data) => series_data.y_axis === axis),
+    )
     if (explicit_axes.length === 0) {
-      attempted_automatic_groups.push(group)
+      attempted_group_keys.push(group.key)
       const axis = available_axes[automatic_group_idx++]
       if (axis === undefined) {
         overflow_groups.push(group)
@@ -245,14 +243,14 @@ export function assign_axes<Series extends AxisAssignableSeries>(
     }
     const automatic_group = {
       ...group,
-      series: group.series.filter((srs) => srs.y_axis === undefined),
+      series: group.series.filter((series_data) => series_data.y_axis === undefined),
       series_indices: group.series_indices.filter(
-        (_series_idx, idx) => group.series[idx].y_axis === undefined,
+        (_series_idx, series_idx) => group.series[series_idx].y_axis === undefined,
       ),
     }
     if (automatic_group.series.length > 0) {
       overflow_groups.push(automatic_group)
-      attempted_automatic_groups.push(automatic_group)
+      attempted_group_keys.push(automatic_group.key)
     }
   }
   if (overflow_groups.length > 0) {
@@ -261,11 +259,7 @@ export function assign_axes<Series extends AxisAssignableSeries>(
       assignments,
       groups: assigned_groups,
       overflow_groups,
-      error: new AxisAssignmentOverflowError(
-        attempted_automatic_groups.map((group) => group.key),
-        max_axes,
-        reserved_axes,
-      ),
+      error: new AxisAssignmentOverflowError(attempted_group_keys, max_axes, reserved_axes),
     }
   }
   return { status: `assigned`, assignments, groups: assigned_groups, overflow_groups: [] }
@@ -280,19 +274,15 @@ function label_for_axis<Series extends AxisAssignableSeries>(
   const axis_series = series_on_axis(series, axis, options)
   if (axis_series.length === 0) return fallback_label
 
-  const unit_groups: { unit: string; labels: string[] }[] = []
-  for (const srs of axis_series) {
-    const unit = srs.unit?.trim() ?? ``
-    let unit_group = unit_groups.find((group) => group.unit === unit)
-    if (!unit_group) {
-      unit_group = { unit, labels: [] }
-      unit_groups.push(unit_group)
-    }
-    const label = srs.label ?? fallback_label
-    if (!unit_group.labels.includes(label)) unit_group.labels.push(label)
+  const labels_by_unit = new SvelteMap<string, SvelteSet<string>>()
+  for (const series_data of axis_series) {
+    const unit = series_data.unit?.trim() ?? ``
+    const labels = labels_by_unit.get(unit) ?? new SvelteSet<string>()
+    labels.add(series_data.label ?? fallback_label)
+    labels_by_unit.set(unit, labels)
   }
-  const formatted_groups = unit_groups.map(({ unit, labels }) => {
-    const combined_label = labels.toSorted().join(` / `)
+  const formatted_groups = [...labels_by_unit].map(([unit, labels]) => {
+    const combined_label = [...labels].toSorted().join(` / `)
     return unit ? `${combined_label} (${unit})` : combined_label
   })
   return formatted_groups.toSorted().join(` / `)
@@ -321,14 +311,17 @@ export function axis_scale_types<Series extends AxisValueSeries>(
 
   const scale_for_axis = (axis: AxisSlot): ScaleType => {
     const axis_series = series_on_axis(series, axis, options)
-    if (axis_series.length === 0 || axis_series.some((srs) => !can_use_log_scale(srs))) {
+    if (
+      axis_series.length === 0 ||
+      axis_series.some((series_data) => !can_use_log_scale(series_data))
+    ) {
       return `linear`
     }
 
     let min_value = Infinity
     let max_value = -Infinity
-    for (const srs of axis_series) {
-      for (const value of srs.y) {
+    for (const series_data of axis_series) {
+      for (const value of series_data.y) {
         if (!Number.isFinite(value)) continue
         min_value = Math.min(min_value, value)
         max_value = Math.max(max_value, value)

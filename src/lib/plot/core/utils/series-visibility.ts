@@ -68,19 +68,16 @@ export function toggle_series_visibility<Series extends VisSeries>(
 
   return series.map((srs, idx) => {
     const is_target = toggled.label ? srs.label === toggled.label : idx === series_idx
-    if (is_target) {
-      return { ...srs, visible: new_visibility }
-    }
-    if (
+    const hide_incompatible =
+      !is_target &&
       new_visibility &&
       target_axis !== undefined &&
       get_axis(srs, idx) === target_axis &&
       !have_compatible_units(toggled, srs) &&
       (srs.visible ?? true)
-    ) {
-      return { ...srs, visible: false }
-    }
-    return srs
+    return is_target || hide_incompatible
+      ? { ...srs, visible: is_target ? new_visibility : false }
+      : srs
   })
 }
 

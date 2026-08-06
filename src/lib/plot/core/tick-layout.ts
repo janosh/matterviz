@@ -24,7 +24,6 @@ import {
   select_tick_candidate,
   TICK_STRATEGIES,
   type MeasuredTickCandidate,
-  type TickScoringConfig,
   type TickStrategy,
   type TickStrategyCandidate,
 } from '$lib/plot/core/tick-strategies'
@@ -267,13 +266,6 @@ const effective_side = (side: TickLayoutSide, inside: boolean): TickLayoutSide =
   return `y`
 }
 
-const resolve_positions = (positions: readonly number[], tick_count: number): number[] => {
-  if (positions.length !== tick_count) {
-    throw new Error(`tick_positions has ${positions.length} entries for ${tick_count} ticks`)
-  }
-  return [...positions]
-}
-
 const resolve_axis_extent = (
   axis: MeasuredAxis,
   axis_size: number,
@@ -315,7 +307,7 @@ const rotation_angles = (max_angle: number): number[] => {
   if (max_angle === 0) return []
   const angles = TICK_ROTATION_LADDER.filter((angle) => angle <= max_angle) as number[]
   if (!angles.includes(max_angle)) angles.push(max_angle)
-  return angles.toSorted((left, right) => left - right)
+  return angles
 }
 
 const auto_rotation_sign = (side: TickLayoutSide, inside: boolean): 1 | -1 =>
@@ -436,18 +428,10 @@ const measure_candidate = ({
 }
 
 const adaptive_thin_indices = (item_count: number, requested_count: number): number[] => {
-  if (requested_count >= item_count) {
-    return Array.from({ length: item_count }, (_unused, tick_idx) => tick_idx)
-  }
   return Array.from({ length: requested_count }, (_unused, visible_idx) =>
     Math.min(item_count - 1, Math.floor(((visible_idx + 0.5) * item_count) / requested_count)),
   ).filter((tick_idx, selected_idx, selected) => tick_idx !== selected[selected_idx - 1])
 }
-
-const scoring_config = (config: TickAutoLayoutConfig): TickScoringConfig => ({
-  mode: config.scoring?.mode,
-  weights: config.scoring?.weights,
-})
 
 const empty_layout = (): ResolvedTickLayout => ({
   rotation: 0,
@@ -623,9 +607,12 @@ const compute_tick_layout = (
   const axis_position_shift = is_horizontal
     ? (axis.tick?.label?.shift?.x ?? 0)
     : (axis.tick?.label?.shift?.y ?? 0)
-  const positions = resolve_positions(axis.tick_positions, ticks.length).map(
-    (position) => position + axis_position_shift,
-  )
+  if (axis.tick_positions.length !== ticks.length) {
+    throw new Error(
+      `tick_positions has ${axis.tick_positions.length} entries for ${ticks.length} ticks`,
+    )
+  }
+  const positions = axis.tick_positions.map((position) => position + axis_position_shift)
   const renderable_indices: number[] = []
   const base_labels = full_texts.map((full_text, tick_idx) => {
     const visible = Number.isFinite(positions[tick_idx])
@@ -801,9 +788,12 @@ const compute_tick_layout = (
   )
   const selection = select_tick_candidate(
     measured_candidates.map(({ measured }) => measured),
-    scoring_config(auto_layout),
+    {
+      mode: auto_layout.scoring?.mode,
+      weights: auto_layout.scoring?.weights,
+    },
   )
-  const winner_id = selection.winner?.candidate.id ?? selection.evaluated[0]?.candidate.id
+  const winner_id = (selection.winner ?? selection.evaluated[0])?.candidate.id
   const winner =
     measured_candidates.find(({ candidate }) => candidate.id === winner_id) ??
     measured_candidates[0]

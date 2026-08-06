@@ -18,9 +18,12 @@ const item_extents = [
 describe(`suggest_legend_tracks`, () => {
   test.each([
     { orientation: `horizontal`, available_edge_length: 400, item_count: 4, expected: 4 },
+    { orientation: `horizontal`, available_edge_length: 250, item_count: 4, expected: 3 },
     { orientation: `horizontal`, available_edge_length: 170, item_count: 4, expected: 2 },
+    { orientation: `horizontal`, available_edge_length: 120, item_count: 4, expected: 1 },
     { orientation: `vertical`, available_edge_length: 110, item_count: 5, expected: 5 },
     { orientation: `vertical`, available_edge_length: 45, item_count: 5, expected: 2 },
+    { orientation: `vertical`, available_edge_length: 0, item_count: 0, expected: 0 },
   ] as const)(
     `suggests $expected $orientation tracks for a $available_edge_length px edge`,
     ({ orientation, available_edge_length, item_count, expected }) => {
@@ -35,49 +38,23 @@ describe(`suggest_legend_tracks`, () => {
     },
   )
 
-  test(`uses estimates for unmeasured items`, () => {
-    expect(
-      suggest_legend_tracks({
-        item_count: 6,
-        orientation: `horizontal`,
-        available_edge_length: 162,
-        estimated_item_extent: { width: 50 },
-      }),
-    ).toBe(3)
-    expect(
-      suggest_legend_tracks({
-        item_count: 3,
-        orientation: `horizontal`,
-        available_edge_length: 160,
-        item_extents: [{ width: 120 }, { width: 40 }],
-        estimated_item_extent: { width: 50 },
-      }),
-    ).toBe(1)
-  })
-
-  test(`returns zero tracks for zero items`, () => {
-    expect(
-      suggest_legend_tracks({
-        item_count: 0,
-        orientation: `vertical`,
-        available_edge_length: 0,
-      }),
-    ).toBe(0)
-  })
-
-  test(`returns stable suggestions when an edge shrinks and grows`, () => {
-    const resize_lengths = [120, 170, 250, 170, 120]
-    expect(
-      resize_lengths.map((available_edge_length) =>
+  test.each([
+    [6, 162, undefined, 3],
+    [3, 160, [{ width: 120 }, { width: 40 }], 1],
+  ] as const)(
+    `uses estimates for %i items with a %i px edge`,
+    (item_count, available_edge_length, measured_extents, expected) => {
+      expect(
         suggest_legend_tracks({
-          item_count: 4,
+          item_count,
           orientation: `horizontal`,
           available_edge_length,
-          item_extents,
+          item_extents: measured_extents,
+          estimated_item_extent: { width: 50 },
         }),
-      ),
-    ).toEqual([1, 2, 3, 2, 1])
-  })
+      ).toBe(expected)
+    },
+  )
 })
 
 describe(`get_legend_grid_cells`, () => {
@@ -114,20 +91,17 @@ describe(`get_legend_grid_cells`, () => {
 })
 
 test(`builds solver legend items and resolves their track count`, () => {
-  const disabled = create_legend_decoration_item({
-    enabled: false,
-    footprint: { width: 100, height: 50 },
-    items: [],
-  })
-  expect(disabled).toBeNull()
+  const footprint = { width: 100, height: 50 }
+  const items = [
+    { label: `A`, legend_group: `Group` },
+    { label: `B`, legend_group: `Group` },
+  ]
+  expect(create_legend_decoration_item({ enabled: false, footprint, items: [] })).toBeNull()
 
   const item = create_legend_decoration_item({
     enabled: true,
-    footprint: { width: 100, height: 50 },
-    items: [
-      { label: `A`, legend_group: `Group` },
-      { label: `B`, legend_group: `Group` },
-    ],
+    footprint,
+    items,
     config: {
       axis_clearance: 8,
       layout: `horizontal`,
@@ -144,11 +118,8 @@ test(`builds solver legend items and resolves their track count`, () => {
   expect(
     create_legend_decoration_item({
       enabled: true,
-      footprint: { width: 100, height: 50 },
-      items: [
-        { label: `A`, legend_group: `Group` },
-        { label: `B`, legend_group: `Group` },
-      ],
+      footprint,
+      items,
       config: { layout_tracks: `auto`, filter_threshold: 2, filter_query: `A` },
     }),
   ).toMatchObject({ auto_tracks: { item_count: 3 } })

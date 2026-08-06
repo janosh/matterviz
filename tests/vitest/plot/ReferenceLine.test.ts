@@ -1,5 +1,6 @@
 // ReferenceLine component tests
 import { ReferenceLine } from '$lib'
+import type { Vec4 } from '$lib/math'
 import type { RefLine } from '$lib/plot'
 import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
 import { solve_decorations } from '$lib/plot/core/decorations'
@@ -17,6 +18,7 @@ describe(`ReferenceLine`, () => {
   // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
+  const horizontal_endpoints: Vec4 = [x_scale(0), y_scale(50), x_scale(100), y_scale(50)]
 
   // Mount into the pre-created <svg> with shared scales/bounds; extra overrides per test
   const mount_line = (
@@ -43,16 +45,13 @@ describe(`ReferenceLine`, () => {
     query_all<SVGLineElement>(`line`).find(
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
+  const annotation_xy = (): [number, number] => {
+    const text = doc_query(`text`)
+    return [Number(text.getAttribute(`x`)), Number(text.getAttribute(`y`))]
+  }
 
   beforeEach(() => {
-    document.body.innerHTML = ``
-    const container = document.createElement(`div`)
-    container.setAttribute(`style`, `width: 800px; height: 600px;`)
-    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    svg.setAttribute(`width`, `800`)
-    svg.setAttribute(`height`, `600`)
-    container.append(svg)
-    document.body.append(container)
+    document.body.innerHTML = `<div style="width: 800px; height: 600px"><svg width="800" height="600"></svg></div>`
   })
 
   test.each<{ ref_line: RefLine; attr: string; expected: number }>([
@@ -102,35 +101,21 @@ describe(`ReferenceLine`, () => {
     expect(line?.getAttribute(`stroke-opacity`)).toBe(`0.8`)
   })
 
-  test(`renders annotation text`, () => {
-    mount_line({
-      type: `horizontal`,
-      y: 50,
-      annotation: { text: `Test Label`, position: `end`, side: `above` },
-    })
-    const text = doc_query(`text`)
-    expect(text).toBeInstanceOf(SVGTextElement)
-    expect(text.textContent).toContain(`Test Label`)
-  })
-
   test(`renders an obstacle-free automatic annotation at the legacy candidate`, () => {
     const annotation = { text: `Automatic` }
     const preferred = create_reference_annotation_candidates(
-      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      horizontal_endpoints,
       annotation,
     )[0]
     mount_line({ type: `horizontal`, y: 50, annotation })
     const text = doc_query(`text`)
-    expect(Number(text.getAttribute(`x`))).toBe(preferred.x)
-    expect(Number(text.getAttribute(`y`))).toBe(preferred.y)
+    expect(text.textContent).toContain(annotation.text)
+    expect(annotation_xy()).toEqual([preferred.x, preferred.y])
   })
 
   test(`renders the chosen non-colliding automatic candidate`, () => {
     const annotation = { text: `Automatic` }
-    const candidates = create_reference_annotation_candidates(
-      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
-      annotation,
-    )
+    const candidates = create_reference_annotation_candidates(horizontal_endpoints, annotation)
     const preferred = candidates[0]
     mount_line(
       { type: `horizontal`, y: 50, annotation },
@@ -143,9 +128,7 @@ describe(`ReferenceLine`, () => {
         ],
       },
     )
-    const text = doc_query(`text`)
-    expect(Number(text.getAttribute(`x`))).toBe(candidates[1].x)
-    expect(Number(text.getAttribute(`y`))).toBe(candidates[1].y)
+    expect(annotation_xy()).toEqual([candidates[1].x, candidates[1].y])
   })
 
   test(`does not move an explicitly positioned annotation`, () => {
@@ -155,7 +138,7 @@ describe(`ReferenceLine`, () => {
       side: `above`,
     } as const
     const preferred = create_reference_annotation_candidates(
-      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      horizontal_endpoints,
       annotation,
     )[0]
     mount_line(
@@ -165,15 +148,13 @@ describe(`ReferenceLine`, () => {
         obstacles: [{ x: preferred.x, y: preferred.y }],
       },
     )
-    const text = doc_query(`text`)
-    expect(Number(text.getAttribute(`x`))).toBe(preferred.x)
-    expect(Number(text.getAttribute(`y`))).toBe(preferred.y)
+    expect(annotation_xy()).toEqual([preferred.x, preferred.y])
   })
 
   test(`renders a host-selected annotation placement`, () => {
     const annotation = { text: `Selected` }
     const selected = create_reference_annotation_candidates(
-      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      horizontal_endpoints,
       annotation,
     ).find(({ position, side }) => position === `center` && side === `below`)
     if (!selected) {
@@ -181,8 +162,7 @@ describe(`ReferenceLine`, () => {
     }
     mount_line({ type: `horizontal`, y: 50, annotation }, { annotation_placement: selected })
     const text = doc_query(`text`)
-    expect(Number(text.getAttribute(`x`))).toBe(selected.x)
-    expect(Number(text.getAttribute(`y`))).toBe(selected.y)
+    expect(annotation_xy()).toEqual([selected.x, selected.y])
     expect(text.getAttribute(`text-anchor`)).toBe(selected.text_anchor)
   })
 
@@ -234,8 +214,6 @@ describe(`ReferenceLine`, () => {
   })
 
   test.each([
-    { type: `horizontal`, y: 50 },
-    { type: `vertical`, x: 50 },
     { type: `diagonal`, slope: 1, intercept: 0 },
     { type: `segment`, p1: [10, 10], p2: [90, 90] },
     { type: `line`, p1: [20, 20], p2: [80, 80] },

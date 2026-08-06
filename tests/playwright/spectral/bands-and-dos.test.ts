@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { drag_plot_area, get_chart_svg, measure_plot_area, numeric_y_ticks } from '../helpers'
+import {
+  drag_plot_area,
+  expect_synced_y_ticks,
+  get_chart_svg,
+  measure_plot_area,
+  numeric_y_ticks,
+  reset_plot_area,
+} from '../helpers'
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -79,42 +86,23 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const initial_ticks = await numeric_y_ticks(dos_plot)
     const dos_area = await measure_plot_area(dos_plot)
     await drag_plot_area(page, dos_area)
-    await expect(async () => {
-      const dos_ticks = await numeric_y_ticks(dos_plot)
-      expect(dos_ticks).not.toEqual(initial_ticks)
-      expect(await numeric_y_ticks(bands_plot)).toEqual(dos_ticks)
-    }).toPass({ timeout: 10_000 })
+    await expect.poll(() => numeric_y_ticks(dos_plot)).not.toEqual(initial_ticks)
+    await expect_synced_y_ticks(dos_plot, bands_plot)
     const zoomed_ticks = await numeric_y_ticks(dos_plot)
 
     await page.getByTestId(`toggle-y-zoom-sync`).click()
     const bands_area = await measure_plot_area(bands_plot)
-    await get_chart_svg(bands_plot).dblclick({
-      position: {
-        x: bands_area.clip.x + bands_area.clip.width / 2,
-        y: bands_area.clip.y + bands_area.clip.height / 2,
-      },
-    })
+    await reset_plot_area(bands_plot, bands_area)
     await expect(async () => {
       expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
       expect(await numeric_y_ticks(dos_plot)).toEqual(zoomed_ticks)
     }).toPass({ timeout: 10_000 })
 
     await page.getByTestId(`toggle-y-zoom-sync`).click()
-    await expect(async () => {
-      expect(await numeric_y_ticks(bands_plot)).toEqual(zoomed_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(zoomed_ticks)
-    }).toPass({ timeout: 10_000 })
+    await expect_synced_y_ticks(bands_plot, dos_plot, zoomed_ticks)
 
-    await get_chart_svg(dos_plot).dblclick({
-      position: {
-        x: dos_area.clip.x + dos_area.clip.width / 2,
-        y: dos_area.clip.y + dos_area.clip.height / 2,
-      },
-    })
-    await expect(async () => {
-      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(initial_ticks)
-    }).toPass({ timeout: 10_000 })
+    await reset_plot_area(dos_plot, dos_area)
+    await expect_synced_y_ticks(bands_plot, dos_plot, initial_ticks)
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
