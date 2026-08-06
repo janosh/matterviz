@@ -550,6 +550,8 @@
       height,
     )
     const padding_ticks = get_plot_ticks(padding_scales)
+    const x2_pad_axis = show_x2 ? x2_axis : {}
+    const y2_pad_axis = show_y2 ? y2_axis : {}
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const measure_axis = (
@@ -571,14 +573,14 @@
               padding_scales.x,
               x_extent,
             ),
-            x2_axis: measure_axis(x2_axis, padding_ticks.x2, padding_scales.x2, x_extent),
+            x2_axis: measure_axis(x2_pad_axis, padding_ticks.x2, padding_scales.x2, x_extent),
             y_axis: measure_axis(
               { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
               padding_ticks.y,
               padding_scales.y,
               y_extent,
             ),
-            y2_axis: measure_axis(y2_axis, padding_ticks.y2, padding_scales.y2, y_extent),
+            y2_axis: measure_axis(y2_pad_axis, padding_ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)

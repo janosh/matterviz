@@ -354,10 +354,12 @@
       width,
       height,
     )
+    const padding_x2_axis = x2_series.length > 0 ? final_x2_axis : {}
+    const padding_y2_axis = y2_series.length > 0 ? final_y2_axis : {}
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const measure_axis = (
-      axis: typeof final_x_axis,
+      axis: Partial<typeof final_x_axis>,
       axis_ticks: number[],
       scale: typeof padding_scales.x,
       extent: typeof x_extent,
@@ -370,9 +372,9 @@
             width,
             height,
             x_axis: measure_axis(final_x_axis, ticks.x, padding_scales.x, x_extent),
-            x2_axis: measure_axis(final_x2_axis, ticks.x2, padding_scales.x2, x_extent),
+            x2_axis: measure_axis(padding_x2_axis, ticks.x2, padding_scales.x2, x_extent),
             y_axis: measure_axis(final_y_axis, ticks.y, padding_scales.y, y_extent),
-            y2_axis: measure_axis(final_y2_axis, ticks.y2, padding_scales.y2, y_extent),
+            y2_axis: measure_axis(padding_y2_axis, ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)

@@ -62,6 +62,16 @@ const plot_cases = [
       ),
   ],
 ] satisfies [string, () => Promise<HTMLElement>][]
+const hidden_axis_props = {
+  x2_axis: { label: `Unused top` },
+  y2_axis: { label: `Unused right` },
+}
+const hidden_axis_cases = [
+  [`BarPlot`, BarPlot, { series: xy_series() }, `.bar-plot`, 20],
+  [`BoxPlot`, BoxPlot, { series: y_series() }, `.box-plot`, 20],
+  [`Histogram`, Histogram, { series: histogram_series() }, `.histogram`, 20],
+  [`ScatterPlot`, ScatterPlot, { series: xy_series() }, `.scatter`, 5],
+] as const
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -87,6 +97,22 @@ describe(`Cartesian plot titles`, () => {
         Number(subtitle_text?.querySelector(`tspan:last-child`)?.getAttribute(`y`)),
       ).toBeLessThan(Number(clip_rect?.getAttribute(`y`)))
       expect(Number(clip_rect?.getAttribute(`y`))).toBeGreaterThan(17)
+    },
+  )
+
+  test.each(hidden_axis_cases)(
+    `%s does not reserve padding for hidden secondary axes`,
+    async (_, component, props, selector, expected_top) => {
+      const root = await mount_sized(
+        component,
+        { ...hidden_axis_props, ...props },
+        { selector },
+      )
+      const clip_rect = root.querySelector(`clipPath rect`)
+      const clip_x = Number(clip_rect?.getAttribute(`x`))
+      expect(root.querySelector(`.x2-axis, .y2-axis`)).toBeNull()
+      expect(Number(clip_rect?.getAttribute(`y`))).toBe(expected_top)
+      expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(20)
     },
   )
 

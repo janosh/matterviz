@@ -493,7 +493,7 @@
               tick_font,
             ),
             x2_axis: measured_axis(
-              final_x2_axis,
+              x2_points.length > 0 ? final_x2_axis : {},
               measured_ticks.x2,
               (tick) =>
                 is_time_x2 ? measured_scales.x2(new Date(tick)) : measured_scales.x2(tick),
@@ -508,7 +508,7 @@
               tick_font,
             ),
             y2_axis: measured_axis(
-              final_y2_axis,
+              y2_points.length > 0 ? final_y2_axis : {},
               measured_ticks.y2,
               measured_scales.y2,
               y_extent,
