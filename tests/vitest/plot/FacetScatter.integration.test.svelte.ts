@@ -146,9 +146,6 @@ const clip_rect = (panel: ParentNode): Record<`x` | `y` | `width` | `height`, nu
   ) as Record<`x` | `y` | `width` | `height`, number>
 }
 
-const first_marker_transform = (panel: ParentNode): string =>
-  panel.querySelector(`.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
-
 describe(`FacetGrid + ScatterPlot`, () => {
   afterEach(async () => {
     for (const { component, target } of mounted_grids.splice(0)) {
@@ -170,12 +167,6 @@ describe(`FacetGrid + ScatterPlot`, () => {
     await vi.waitFor(() => {
       expect(ranges(`x`)).toEqual(keys.map(() => context_for(keys[0]).ranges.x))
       expect(ranges(`y`)).toEqual(keys.map(() => context_for(keys[0]).ranges.y))
-      expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual(
-        keys.map(() => ({ x: 90, y: 20, width: 665, height: 525 })),
-      )
-      expect(keys.map((key) => first_marker_transform(panel_for(key)))).toEqual(
-        keys.map(() => first_marker_transform(panel_for(keys[0]))),
-      )
     })
 
     expect(panel_for(`top-left`).querySelector(`.x-axis`)).toBeNull()
@@ -187,19 +178,24 @@ describe(`FacetGrid + ScatterPlot`, () => {
     expect(panel_for(`top-right`).querySelector(`.y-axis`)).toBeNull()
     expect(panel_for(`bottom-right`).querySelector(`.y-axis`)).toBeNull()
 
-    const scatters = [...root.querySelectorAll<HTMLElement>(`.scatter`)]
-    for (const scatter of scatters) {
+    for (const key of keys) {
+      const scatter = panel_for(key).querySelector<HTMLElement>(`.scatter`)
+      if (!scatter) throw new Error(`No ScatterPlot for facet "${key}"`)
+      const { width, height } = context_for(key).rect
       Object.defineProperties(scatter, {
-        clientWidth: { value: 500, configurable: true },
-        clientHeight: { value: 320, configurable: true },
+        clientWidth: { value: width, configurable: true },
+        clientHeight: { value: height, configurable: true },
       })
       ControlledResizeObserver.notify(scatter)
     }
     await tick()
     await vi.waitFor(() =>
-      expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual(
-        keys.map(() => ({ x: 90, y: 20, width: 365, height: 245 })),
-      ),
+      expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual([
+        { x: 90, y: 20, width: 332.5, height: 262.5 },
+        { x: 0, y: 20, width: 332.5, height: 262.5 },
+        { x: 90, y: 0, width: 332.5, height: 262.5 },
+        { x: 0, y: 0, width: 332.5, height: 262.5 },
+      ]),
     )
 
     expect(scatter_mounts()).toBe(4)
@@ -256,11 +252,16 @@ describe(`FacetGrid + ScatterPlot`, () => {
     const keys = auto_panels.map(({ key }) => String(key))
 
     await vi.waitFor(() => {
-      const resolved_padding = context_for(keys[0]).padding
-      expect(Object.values(resolved_padding)).toHaveLength(4)
-      expect(keys.map((key) => context_for(key).padding)).toEqual(
-        keys.map(() => resolved_padding),
-      )
+      const { t = 0, l = 0 } = context_for(`top-left`).padding
+      const { b = 0 } = context_for(`bottom-left`).padding
+      const { r = 0 } = context_for(`top-right`).padding
+      expect([t, b, l, r].every((size) => size > 0)).toBe(true)
+      expect(keys.map((key) => context_for(key).padding)).toEqual([
+        { t, b: 0, l, r: 0 },
+        { t, b: 0, l: 0, r },
+        { t: 0, b, l, r: 0 },
+        { t: 0, b, l: 0, r },
+      ])
     })
     for (let settle_idx = 0; settle_idx < 10; settle_idx++) await tick()
 

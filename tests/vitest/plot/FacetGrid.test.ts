@@ -177,6 +177,7 @@ describe(`FacetGrid`, () => {
     const band_context_getters: (() => FacetSharedBandContext)[] = []
     const { root, context_getters } = await mount_grid(make_panels(`left`, `right`), {
       columns: 2,
+      gap: 8,
       title: make_band_snippet(band_context_getters, `title`),
       legend: make_band_snippet(band_context_getters, `legend`),
       shared_bands: { title_height: 20, legend_width: 20 },
@@ -215,8 +216,9 @@ describe(`FacetGrid`, () => {
 
     const left = context_for(context_getters, `left`)
     const right = context_for(context_getters, `right`)
-    expect(left.padding).toEqual({ t: 20, b: 40, l: 70, r: 25 })
-    expect(right.padding).toEqual(left.padding)
+    expect(left.padding).toEqual({ t: 20, b: 40, l: 70, r: 0 })
+    expect(right.padding).toEqual({ t: 20, b: 40, l: 70, r: 25 })
+    expect([left.rect.width, right.rect.width]).toEqual([387.5, 412.5])
     expect([left.ranges.x, right.ranges.x]).toEqual([
       [0, 10],
       [0, 10],
@@ -334,9 +336,13 @@ describe(`FacetGrid`, () => {
 
     const resized_left = context_for(context_getters, `left`)
     const resized_right = context_for(context_getters, `right`)
-    expect(resized_left.rect).toEqual({ x: 0, y: 0, width: 195, height: 200 })
-    expect(resized_right.rect).toEqual({ x: 205, y: 0, width: 195, height: 200 })
-    expect(resized_left.padding).toEqual({ l: 60 })
+    expect(resized_left.rect).toEqual({ x: 0, y: 0, width: 225, height: 200 })
+    expect(resized_right.rect).toEqual({ x: 235, y: 0, width: 165, height: 200 })
+    expect(
+      root.querySelector<HTMLElement>(`.facet-grid-panels`)?.style.gridTemplateColumns,
+    ).toBe(`225px 165px`)
+    expect(resized_left.padding).toEqual({ t: 0, b: 0, l: 60, r: 0 })
+    expect(resized_right.padding).toEqual({ t: 0, b: 0, l: 0, r: 0 })
     expect(resized_left.ranges.x).toEqual([-2, 2])
     expect(resized_left.report_layout).toBe(report_layout)
 

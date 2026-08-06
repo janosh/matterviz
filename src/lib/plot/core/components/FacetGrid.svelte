@@ -92,8 +92,31 @@
   const resolved_ranges = $derived(
     reconcile_facet_ranges(layout, keyed_reports, axis_modes, keyed_range_overrides),
   )
+  const has_resolved_padding = $derived(Object.keys(resolved_padding).length > 0)
+  const panel_layouts = $derived(
+    layout.panels.map((panel) => {
+      const resolved_visibility = resolve_facet_axis_visibility(
+        panel,
+        layout,
+        axis_modes,
+        axis_visibility,
+      )
+      return {
+        ...panel,
+        axis_visibility: resolved_visibility,
+        padding: has_resolved_padding
+          ? {
+              t: resolved_visibility.x2 ? (resolved_padding.t ?? 0) : 0,
+              b: resolved_visibility.x ? (resolved_padding.b ?? 0) : 0,
+              l: resolved_visibility.y ? (resolved_padding.l ?? 0) : 0,
+              r: resolved_visibility.y2 ? (resolved_padding.r ?? 0) : 0,
+            }
+          : {},
+      }
+    }),
+  )
   const zero_rect = () => ({ x: 0, y: 0, width: 0, height: 0 })
-  const resolved_geometry = $derived.by((): ResolvedFacetGridGeometry => {
+  const base_geometry = $derived.by((): ResolvedFacetGridGeometry => {
     if (grid_width <= 0 || grid_height <= 0) {
       return {
         panel_grid: zero_rect(),
@@ -110,6 +133,55 @@
       column_gap,
       shared_bands: active_shared_bands,
     })
+  })
+  const panel_tracks = $derived.by(() => {
+    const { width, height } = base_geometry.panel_grid
+    const track_sizes = (horizontal: boolean): number[] => {
+      const count = horizontal ? layout.columns : layout.rows
+      const extent = horizontal ? width : height
+      const track_gap = horizontal ? column_gap : row_gap
+      if (count === 0 || extent <= 0) return Array<number>(count).fill(0)
+      const starts = Array<number>(count).fill(0)
+      const ends = Array<number>(count).fill(0)
+      for (const panel of panel_layouts) {
+        const start_idx = horizontal ? panel.column : panel.row
+        const end_idx = start_idx + (horizontal ? panel.column_span : panel.row_span) - 1
+        const start_pad = (horizontal ? panel.padding.l : panel.padding.t) ?? 0
+        const end_pad = (horizontal ? panel.padding.r : panel.padding.b) ?? 0
+        starts[start_idx] = Math.max(starts[start_idx], start_pad)
+        ends[end_idx] = Math.max(ends[end_idx], end_pad)
+      }
+      const fixed_sizes = starts.map((start, track_idx) => start + ends[track_idx])
+      const fixed_total = fixed_sizes.reduce((total, size) => total + size, 0)
+      const core_size = Math.max(0, (extent - track_gap * (count - 1) - fixed_total) / count)
+      return fixed_sizes.map((fixed_size) => fixed_size + core_size)
+    }
+    return { columns: track_sizes(true), rows: track_sizes(false) }
+  })
+  const resolved_geometry = $derived.by((): ResolvedFacetGridGeometry => {
+    if (grid_width <= 0 || grid_height <= 0) return base_geometry
+    const { panel_grid } = base_geometry
+    const sum = (sizes: number[]): number => sizes.reduce((total, size) => total + size, 0)
+    const track_offset = (
+      start: number,
+      sizes: number[],
+      track_idx: number,
+      track_gap: number,
+    ) => start + sum(sizes.slice(0, track_idx)) + track_gap * track_idx
+    const track_span = (sizes: number[], track_idx: number, span: number, track_gap: number) =>
+      sum(sizes.slice(track_idx, track_idx + span)) + track_gap * (span - 1)
+    return {
+      ...base_geometry,
+      panels: panel_layouts.map((panel) => ({
+        key: panel.key,
+        rect: {
+          x: track_offset(panel_grid.x, panel_tracks.columns, panel.column, column_gap),
+          y: track_offset(panel_grid.y, panel_tracks.rows, panel.row, row_gap),
+          width: track_span(panel_tracks.columns, panel.column, panel.column_span, column_gap),
+          height: track_span(panel_tracks.rows, panel.row, panel.row_span, row_gap),
+        },
+      })),
+    }
   })
 
   const normalize_report = (
@@ -245,7 +317,7 @@
   $effect.pre(sync_panel_keys)
 
   const contexts = $derived(
-    layout.panels.map((panel): FacetPanelContext<Datum> => {
+    panel_layouts.map((panel): FacetPanelContext<Datum> => {
       const callbacks = panel_callbacks.get(panel.key)
       if (!callbacks) {
         throw new Error(`Missing callback state for facet "${panel.key}"`)
@@ -255,14 +327,7 @@
         rect:
           resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ??
           zero_rect(),
-        padding: resolved_padding,
         ranges: resolved_ranges.find((entry) => entry.key === panel.key)?.ranges ?? {},
-        axis_visibility: resolve_facet_axis_visibility(
-          panel,
-          layout,
-          axis_modes,
-          axis_visibility,
-        ),
         ...callbacks,
       }
     }),
@@ -340,8 +405,8 @@
     data-columns={layout.columns}
     style:grid-row={content_row}
     style:grid-column="1"
-    style:grid-template-columns={`repeat(${layout.columns}, minmax(0, 1fr))`}
-    style:grid-template-rows={layout.rows ? `repeat(${layout.rows}, minmax(0, 1fr))` : `none`}
+    style:grid-template-columns={panel_tracks.columns.map((size) => `${size}px`).join(` `)}
+    style:grid-template-rows={panel_tracks.rows.map((size) => `${size}px`).join(` `) || `none`}
     style:row-gap={`${row_gap}px`}
     style:column-gap={`${column_gap}px`}
   >

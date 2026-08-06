@@ -85,7 +85,7 @@
           <span><i style:background={color}></i>{label}</span>
         {/each}
         <small style="opacity: 0.7"
-          >Wheel or drag in any panel; double-click to reset all linked panels.</small
+          >Drag to zoom; focus and Shift+wheel to pan; double-click to reset all linked panels.</small
         >
       </div>
     {/snippet}
