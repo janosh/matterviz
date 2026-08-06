@@ -169,6 +169,26 @@ test.describe(`BarPlot Component Tests`, () => {
     expect(cursor).not.toBe(`pointer`)
   })
 
+  test(`tooltip avoids the solved legend rectangle`, async ({ page }) => {
+    const plot = page.locator(`#legend-bar .bar-plot`)
+    const legend = plot.locator(`.legend`)
+    await expect(legend).toBeVisible()
+    await plot.locator(`svg path[aria-label^="bar "]`).first().hover({ force: true })
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible()
+    const [legend_box, tooltip_box] = await Promise.all([
+      legend.boundingBox(),
+      tooltip.boundingBox(),
+    ])
+    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
+    const overlaps =
+      legend_box.x < tooltip_box.x + tooltip_box.width &&
+      legend_box.x + legend_box.width > tooltip_box.x &&
+      legend_box.y < tooltip_box.y + tooltip_box.height &&
+      legend_box.y + legend_box.height > tooltip_box.y
+    expect(overlaps).toBe(false)
+  })
+
   test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {
     const section = page.locator(`#handlers-bar`)
     const plot = section.locator(`.bar-plot`)

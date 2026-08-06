@@ -1,8 +1,13 @@
 // Reference line utilities: helper functions and coordinate resolution
 import type { Vec2, Vec4 } from '$lib/math'
-import { place_reference_annotation } from '$lib/plot/core/decorations/reference-annotations'
+import {
+  decoration_placement_rects,
+  place_reference_annotation,
+  solve_decorations,
+} from '$lib/plot/core/decorations'
 import type {
   DecorationPoint,
+  DecorationSolution,
   ReferenceAnnotationCandidate,
   ReferenceAnnotationDecorationItem,
   ReferenceAnnotationPosition,
@@ -10,15 +15,30 @@ import type {
   ReferenceAnnotationTextAnchor,
   ReferenceAnnotationBaseline,
 } from '$lib/plot/core/decorations/types'
-import type { Rect } from '$lib/plot/core/layout'
+import type { Rect, Sides } from '$lib/plot/core/layout'
 import type {
   LayerZIndex,
   RefLine,
   RefLineAnnotation,
   RefLineValue,
 } from '$lib/plot/core/types'
+import {
+  DEFAULT_FONT_SPEC,
+  measure_text_line,
+  resolve_font_spec,
+} from '$lib/plot/core/text-metrics'
 
 export type IndexedRefLine = RefLine & { idx: number }
+export type ReferenceLineRanges = { x: Vec2; x2?: Vec2; y: Vec2; y2?: Vec2 }
+export type ReferenceLineScales = {
+  x: (val: number) => number
+  x2?: (val: number) => number
+  y: (val: number) => number
+  y2?: (val: number) => number
+}
+
+export const reference_annotation_id = (line_idx: number): string =>
+  `reference-annotation-${line_idx}`
 
 // Create indexed ref_lines, filtering out invisible ones
 export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLine[] =>
@@ -374,6 +394,8 @@ export function calculate_annotation_position(
 export interface ReferenceAnnotationMetrics {
   text_width: number
   font_size: number
+  text_ascent: number
+  text_descent: number
   padding: number
 }
 
@@ -417,10 +439,46 @@ export const estimate_reference_annotation_metrics = (
     annotation.padding >= 0
       ? annotation.padding
       : 2
-  return {
-    text_width: annotation.text.length * font_size * 0.6,
+  const font_family =
+    annotation.font_family && annotation.font_family !== `inherit`
+      ? annotation.font_family
+      : undefined
+  const inherited_font = resolve_font_spec(
+    typeof document === `undefined` ? null : document.documentElement,
+    { ...DEFAULT_FONT_SPEC, font_size, line_height: font_size * 1.2 },
+  )
+  const text_metrics = measure_text_line(annotation.text, {
+    ...inherited_font,
+    ...(font_family ? { font_family } : {}),
     font_size,
+    line_height: font_size * 1.2,
+  })
+  return {
+    text_width: text_metrics.width,
+    font_size,
+    text_ascent: text_metrics.ascent,
+    text_descent: text_metrics.descent,
     padding,
+  }
+}
+
+export const reference_annotation_text_rect = (
+  anchor: AnnotationPosition,
+  metrics: ReferenceAnnotationMetrics,
+): Rect => {
+  const anchor_fraction = { start: 0, middle: 0.5, end: 1 }[anchor.text_anchor]
+  const text_height = metrics.text_ascent + metrics.text_descent
+  const text_top =
+    anchor.dominant_baseline === `hanging`
+      ? anchor.y
+      : anchor.dominant_baseline === `middle`
+        ? anchor.y - text_height / 2
+        : anchor.y - metrics.text_ascent
+  return {
+    x: anchor.x - metrics.padding - metrics.text_width * anchor_fraction,
+    y: text_top - metrics.padding,
+    width: metrics.text_width + 2 * metrics.padding,
+    height: text_height + 2 * metrics.padding,
   }
 }
 
@@ -468,13 +526,7 @@ const annotation_candidate = (
     position,
     side,
   })
-  const anchor_fraction = { start: 0, middle: 0.5, end: 1 }[anchor.text_anchor]
-  const unrotated_rect: Rect = {
-    x: anchor.x - metrics.padding - metrics.text_width * anchor_fraction,
-    y: anchor.y - metrics.font_size * 0.8 - metrics.padding,
-    width: metrics.text_width + 2 * metrics.padding,
-    height: metrics.font_size * 1.2 + 2 * metrics.padding,
-  }
+  const unrotated_rect = reference_annotation_text_rect(anchor, metrics)
   return {
     position,
     side,
@@ -530,6 +582,99 @@ export function create_reference_annotation_item({
     pinned: annotation.position !== undefined || annotation.side !== undefined,
   }
 }
+
+export function create_reference_annotation_items({
+  lines,
+  ranges,
+  scales,
+  clearance,
+  grid_resolution,
+}: {
+  lines: readonly IndexedRefLine[]
+  ranges: ReferenceLineRanges
+  scales: ReferenceLineScales
+  clearance?: number
+}): ReferenceAnnotationDecorationItem[] {
+  const items: ReferenceAnnotationDecorationItem[] = []
+  for (const line of lines) {
+    if (!line.annotation) continue
+    const x_range = line.x_axis === `x2` ? (ranges.x2 ?? ranges.x) : ranges.x
+    const y_range = line.y_axis === `y2` ? (ranges.y2 ?? ranges.y) : ranges.y
+    const endpoints = resolve_line_endpoints(
+      line,
+      {
+        x_min: x_range[0],
+        x_max: x_range[1],
+        y_min: y_range[0],
+        y_max: y_range[1],
+      },
+      {
+        x_scale: scales.x,
+        x2_scale: scales.x2,
+        y_scale: scales.y,
+        y2_scale: scales.y2,
+      },
+    )
+    if (!endpoints) continue
+    items.push(
+      create_reference_annotation_item({
+        id: reference_annotation_id(line.idx),
+        endpoints,
+        annotation: line.annotation,
+        clearance,
+      }),
+    )
+  }
+  return items
+}
+
+export function solve_reference_annotations({
+  base_solution,
+  pad,
+  width,
+  height,
+  obstacles_norm,
+  exclusion_rects = [],
+  lines,
+  ranges,
+  scales,
+  clearance,
+}: {
+  base_solution: DecorationSolution
+  pad: Required<Sides>
+  width: number
+  height: number
+  obstacles_norm: readonly DecorationPoint[]
+  exclusion_rects?: readonly Rect[]
+  lines: readonly IndexedRefLine[]
+  ranges: ReferenceLineRanges
+  scales: ReferenceLineScales
+  clearance?: number
+  grid_resolution?: number
+}): DecorationSolution {
+  const annotations = solve_decorations({
+    base_pad: pad,
+    width,
+    height,
+    obstacles_norm,
+    exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],
+    items: create_reference_annotation_items({ lines, ranges, scales, clearance }),
+    grid_resolution,
+  })
+  return {
+    ...base_solution,
+    pad,
+    plot_bounds: annotations.plot_bounds,
+    placements: [...base_solution.placements, ...annotations.placements],
+  }
+}
+
+export const get_reference_annotation_placement = (
+  solution: DecorationSolution,
+  line_idx: number,
+): ReferenceAnnotationCandidate | undefined =>
+  solution.placements.find(({ id }) => id === reference_annotation_id(line_idx))
+    ?.reference_annotation
 
 export function resolve_reference_annotation(
   endpoints: Vec4,

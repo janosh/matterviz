@@ -25,6 +25,11 @@ export interface TextBlockMetrics {
   readonly lines: readonly TextLineMetrics[]
 }
 
+export type TextWidthMeasure = (
+  text: string,
+  font: Readonly<FontSpec>,
+) => { readonly width: number }
+
 export interface FontReadiness {
   readonly ready: PromiseLike<unknown>
 }
@@ -74,6 +79,11 @@ const parse_font_size = (value: string, fallback: number): number => {
   const parsed = leading_number(value)
   return positive_number(parsed, fallback)
 }
+
+const FONT_SHORTHAND_SIZE =
+  /(?:^|\s)(?<font_size>[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(?:px|pt|pc|in|cm|mm|q|em|rem|ex|ch|cap|ic|lh|rlh|vw|vh|vmin|vmax)(?=\/|\s|$)/iu
+const parse_font_shorthand_size = (value: string, fallback: number): number =>
+  positive_number(Number(FONT_SHORTHAND_SIZE.exec(value)?.groups?.font_size), fallback)
 
 const parse_line_height = (
   value: string,
@@ -188,11 +198,7 @@ const cached_line_metrics = (
   font_css: string,
   font: Readonly<FontSpec>,
 ): TextLineMetrics => {
-  let font_cache = line_metrics_by_font[font_css]
-  if (!font_cache) {
-    font_cache = Object.create(null)
-    line_metrics_by_font[font_css] = font_cache
-  }
+  const font_cache = (line_metrics_by_font[font_css] ??= Object.create(null))
   let metrics = font_cache[text]
   if (!metrics) {
     // Panning a numeric axis mints new labels forever, so the cache needs a ceiling.
@@ -230,12 +236,63 @@ export function measure_text_line(
   )
 }
 
+const split_overlong_word = (
+  word: string,
+  available_width: number,
+  font: Readonly<FontSpec>,
+  measure: TextWidthMeasure,
+): string[] => {
+  if (measure(word, font).width <= available_width) return [word]
+
+  const chunks: string[] = []
+  let chunk = ``
+  for (const character of word) {
+    const candidate = `${chunk}${character}`
+    if (chunk && measure(candidate, font).width > available_width) {
+      chunks.push(chunk)
+      chunk = character
+    } else chunk = candidate
+  }
+  if (chunk) chunks.push(chunk)
+  return chunks
+}
+
+// Greedily wrap one paragraph at word boundaries, splitting only words wider than the line.
+// Callers choose whether an empty paragraph contributes a blank line.
+export function wrap_text_paragraph(
+  paragraph: string,
+  available_width: number,
+  font: Readonly<FontSpec>,
+  measure: TextWidthMeasure = measure_text_line,
+  preserve_empty_line = false,
+): string[] {
+  const words = paragraph.trim().split(/\s+/u).filter(Boolean)
+  if (words.length === 0) return preserve_empty_line ? [``] : []
+  if (available_width <= 0) return [words.join(` `)]
+
+  const lines: string[] = []
+  let line = ``
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word
+    if (measure(candidate, font).width <= available_width) {
+      line = candidate
+      continue
+    }
+    if (line) lines.push(line)
+    const chunks = split_overlong_word(word, available_width, font, measure)
+    lines.push(...chunks.slice(0, -1))
+    line = chunks.at(-1) ?? ``
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
 // Width for callers that already hold a canvas font shorthand rather than a FontSpec. Shares
 // one canvas and one cache with measure_text_line, so a single invalidation covers both.
 export const measure_css_text_width = (text: string, font_css: string): number =>
   cached_line_metrics(text, font_css, {
     ...DEFAULT_FONT_SPEC,
-    font_size: parse_font_size(font_css, DEFAULT_FONT_SPEC.font_size),
+    font_size: parse_font_shorthand_size(font_css, DEFAULT_FONT_SPEC.font_size),
   }).width
 
 export function measure_text_block(

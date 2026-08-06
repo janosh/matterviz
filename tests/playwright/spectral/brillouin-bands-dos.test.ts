@@ -178,7 +178,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     expect(await numeric_y_ticks(bands_plot)).toEqual(await numeric_y_ticks(dos_plot))
   })
 
-  test(`desktop y-axis zoom and reset propagate between bands and DOS`, async ({ page }) => {
+  test(`desktop y-axis zoom and reset propagate from either panel`, async ({ page }) => {
     await page.setViewportSize({ width: 1400, height: 800 })
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     const plots = container.locator(`.scatter`)
@@ -186,8 +186,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const bands_plot = plots.first()
     const dos_plot = plots.nth(1)
     const bands_svg = get_chart_svg(bands_plot)
+    const dos_svg = get_chart_svg(dos_plot)
     await expect(bands_svg).toBeVisible({ timeout: 30_000 })
-    await expect(get_chart_svg(dos_plot)).toBeVisible({ timeout: 30_000 })
+    await expect(dos_svg).toBeVisible({ timeout: 30_000 })
     const clip = await bands_plot.locator(`clipPath rect`).evaluate((element) => ({
       x: Number(element.getAttribute(`x`)),
       y: Number(element.getAttribute(`y`)),
@@ -199,8 +200,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       throw new Error(`Could not measure the bands plot area`)
     }
 
-    const initial_ticks = await numeric_y_ticks(bands_plot)
-    expect(initial_ticks).toEqual(await numeric_y_ticks(dos_plot))
+    const initial_bands_ticks = await numeric_y_ticks(bands_plot)
 
     await page.mouse.move(
       svg_box.x + clip.x + clip.width * 0.15,
@@ -216,7 +216,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     await expect(async () => {
       const bands_ticks = await numeric_y_ticks(bands_plot)
-      expect(bands_ticks).not.toEqual(initial_ticks)
+      expect(bands_ticks).not.toEqual(initial_bands_ticks)
       expect(await numeric_y_ticks(dos_plot)).toEqual(bands_ticks)
     }).toPass({ timeout: 10_000 })
 
@@ -226,9 +226,48 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
         y: clip.y + clip.height / 2,
       },
     })
+    let reset_ticks: string[] = []
     await expect(async () => {
-      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(initial_ticks)
+      reset_ticks = await numeric_y_ticks(bands_plot)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(reset_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    const dos_clip = await dos_plot.locator(`clipPath rect`).evaluate((element) => ({
+      x: Number(element.getAttribute(`x`)),
+      y: Number(element.getAttribute(`y`)),
+      width: Number(element.getAttribute(`width`)),
+      height: Number(element.getAttribute(`height`)),
+    }))
+    const dos_svg_box = await dos_svg.boundingBox()
+    if (!dos_svg_box || Object.values(dos_clip).some((value) => !Number.isFinite(value))) {
+      throw new Error(`Could not measure the DOS plot area`)
+    }
+    await page.mouse.move(
+      dos_svg_box.x + dos_clip.x + dos_clip.width * 0.15,
+      dos_svg_box.y + dos_clip.y + dos_clip.height * 0.15,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      dos_svg_box.x + dos_clip.x + dos_clip.width * 0.85,
+      dos_svg_box.y + dos_clip.y + dos_clip.height * 0.75,
+      { steps: 5 },
+    )
+    await page.mouse.up()
+
+    await expect(async () => {
+      const dos_ticks = await numeric_y_ticks(dos_plot)
+      expect(dos_ticks).not.toEqual(reset_ticks)
+      expect(await numeric_y_ticks(bands_plot)).toEqual(dos_ticks)
+    }).toPass({ timeout: 10_000 })
+    await dos_svg.dblclick({
+      position: {
+        x: dos_clip.x + dos_clip.width / 2,
+        y: dos_clip.y + dos_clip.height / 2,
+      },
+    })
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(reset_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(reset_ticks)
     }).toPass({ timeout: 10_000 })
   })
 

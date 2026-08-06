@@ -146,18 +146,36 @@ describe(`PlotAxis`, () => {
     },
   )
 
-  test(`unit_on_first_tick appends unit only to the first tick`, async () => {
+  test(`unit_on_first_tick appends unit to the first actually rendered label`, async () => {
     const svg = await mount_axis({
       side: `y`,
-      ticks: [50, 100],
+      ticks: [20, 50],
       axis: { unit: `eV` },
       unit_on_first_tick: true,
+      domain: [30, 60],
     })
     const texts = svg.querySelectorAll(`g.tick text`)
+    expect(texts).toHaveLength(1)
     expect(texts[0]?.textContent).toContain(`eV`)
-    expect(texts[1]?.textContent).not.toContain(`eV`)
     expect(texts[0]?.getAttribute(`aria-label`)).toBe(`50 eV`)
-    expect(texts[1]?.getAttribute(`aria-label`)).toBe(`100`)
+  })
+
+  test(`non-finite projected ticks stay hidden with aligned accessible labels`, async () => {
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [40, 60, 80, 100],
+      place: (value: number) =>
+        value === 60 ? Number.NaN : value === 80 ? Number.POSITIVE_INFINITY : value,
+      tick_label: (value: number) => `tick-${value}`,
+    })
+
+    const tick_groups = svg.querySelectorAll(`g.tick`)
+    const texts = svg.querySelectorAll(`g.tick text`)
+    expect(tick_groups).toHaveLength(2)
+    expect([...texts].map((text) => text.getAttribute(`aria-label`))).toEqual([
+      `tick-40`,
+      `tick-100`,
+    ])
   })
 
   test(`tick_label overrides the formatted value`, async () => {
@@ -218,8 +236,7 @@ describe(`PlotAxis`, () => {
     const foreign_obj = query(svg, `.x-axis foreignObject`)
     const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
     const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
-    expect(foreign_obj_w).toBeGreaterThan(0)
-    expect(foreign_obj_w).toBeLessThanOrEqual(Math.max(plot_width - pad.l - pad.r, 200))
+    expect(foreign_obj_w).toBe(`Energy`.length * 7)
     expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
   })
 
@@ -276,13 +293,11 @@ describe(`PlotAxis`, () => {
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([
     [`x`, `start`],
-    // The x2 tick sits near the leading edge, so adaptive geometry flips its default anchor
-    // inward to avoid clipping while preserving the explicit angle.
-    [`x2`, `start`],
+    [`x2`, `end`],
   ])(`%s rotated tick label anchors to %s`, async (side, anchor) => {
     const svg = await mount_axis({
       side,
-      ticks: [50],
+      ticks: [100],
       axis: { tick: { label: { rotation: 45 } } },
     })
     const text = query(svg, `g.tick text`)
@@ -315,11 +330,11 @@ describe(`PlotAxis`, () => {
         },
       },
     })
-    const text = query(svg, `g.tick text`)
+    const text = query(svg, `g.tick:nth-of-type(3) text`)
     const transform = text.getAttribute(`transform`) ?? ``
     const degrees = Number(/rotate\((?<deg>[-\d.]+),/.exec(transform)?.groups?.deg)
     expect(Math.sign(degrees)).toBe(sign)
-    expect([`start`, `middle`, `end`]).toContain(text.getAttribute(`text-anchor`))
+    expect(text.getAttribute(`text-anchor`)).toBe(`end`)
   })
 
   test.each([

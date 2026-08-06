@@ -1,3 +1,6 @@
+import { SvelteMap } from 'svelte/reactivity'
+import type { DecorationSize, LegendDecorationItem } from './types'
+
 export type LegendOrientation = `horizontal` | `vertical`
 
 export type LegendItemExtent = {
@@ -14,6 +17,113 @@ export type LegendTrackSuggestionConfig = {
   estimated_item_extent?: LegendItemExtent
   gap?: number
 }
+
+export type LegendGridItem = {
+  label: string
+  legend_group?: string
+}
+
+export type LegendGridCell =
+  | { kind: `filter` }
+  | { kind: `empty` }
+  | { kind: `group`; group: string }
+  | { kind: `item`; item_idx: number }
+
+export type LegendDecorationConfig = {
+  axis_clearance?: number
+  layout_tracks?: number | `auto`
+  layout?: LegendOrientation
+  item_extents?: readonly (LegendItemExtent | undefined)[]
+  estimated_item_extent?: LegendItemExtent
+  collapsed_groups?: ReadonlySet<string>
+  filterable?: boolean
+  filter_threshold?: number
+}
+
+// Return the cells the legend grid actually renders. Keeping headers, the optional filter,
+// collapsed groups, and filtered items here prevents placement and rendering from counting
+// different grids.
+export function get_legend_grid_cells({
+  items,
+  collapsed_groups,
+  filter_query = ``,
+  show_filter = false,
+}: {
+  items: readonly LegendGridItem[]
+  collapsed_groups?: ReadonlySet<string>
+  filter_query?: string
+  show_filter?: boolean
+}): LegendGridCell[] {
+  const normalized_filter = filter_query.trim().toLowerCase()
+  const visible_indices = items.flatMap((item, item_idx) =>
+    !normalized_filter ||
+    `${item.legend_group ?? ``} ${item.label}`.toLowerCase().includes(normalized_filter)
+      ? [item_idx]
+      : [],
+  )
+  const cells: LegendGridCell[] = show_filter ? [{ kind: `filter` }] : []
+  if (show_filter && normalized_filter && visible_indices.length === 0) {
+    cells.push({ kind: `empty` })
+    return cells
+  }
+  const grouped_items = new SvelteMap<string | null, number[]>()
+
+  for (const item_idx of visible_indices) {
+    const group = items[item_idx]?.legend_group ?? null
+    const item_indices = grouped_items.get(group)
+    if (item_indices) item_indices.push(item_idx)
+    else grouped_items.set(group, [item_idx])
+  }
+  for (const [group, item_indices] of grouped_items) {
+    if (group !== null) cells.push({ kind: `group`, group })
+    if (group !== null && collapsed_groups?.has(group)) continue
+    for (const item_idx of item_indices) cells.push({ kind: `item`, item_idx })
+  }
+  return cells
+}
+
+export const create_legend_decoration_item = ({
+  enabled,
+  footprint,
+  items,
+  config,
+}: {
+  enabled: boolean
+  footprint: DecorationSize
+  items: readonly LegendGridItem[]
+  config?: LegendDecorationConfig | null
+}): LegendDecorationItem | null => {
+  if (!enabled) return null
+  return {
+    id: `legend`,
+    kind: `legend`,
+    footprint,
+    clearance: config?.axis_clearance,
+    auto_tracks:
+      config?.layout_tracks === `auto`
+        ? {
+            item_count: get_legend_grid_cells({
+              items,
+              collapsed_groups: config.collapsed_groups,
+              show_filter:
+                (config.filterable ?? true) &&
+                items.length >= (config.filter_threshold ?? 12),
+            }).length,
+            orientation: config.layout ?? `vertical`,
+            item_extents: config.item_extents,
+            estimated_item_extent: config.estimated_item_extent,
+          }
+        : undefined,
+  }
+}
+
+export const resolve_legend_layout_tracks = (
+  layout_tracks: number | `auto` | undefined,
+  placement?: { layout_tracks?: number } | null,
+): number | `auto` | undefined =>
+  layout_tracks === `auto` && placement
+    ? Math.max(1, placement.layout_tracks ?? 1)
+    : layout_tracks
 
 const DEFAULT_ITEM_EXTENT = { width: 96, height: 20 } as const
 const DEFAULT_TRACK_GAP: Record<LegendOrientation, number> = {

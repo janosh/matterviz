@@ -9,6 +9,11 @@ type VisSeries = {
   y?: unknown
 }
 
+export type SeriesAxisAccessor<Series extends VisSeries> = (
+  series: Series,
+  series_idx: number,
+) => string | undefined
+
 type SeriesSource = [string, string, string, ...unknown[]]
 
 export type SeriesVisibilitySnapshot = {
@@ -53,24 +58,27 @@ export function have_compatible_units(series1: VisSeries, series2: VisSeries): b
 export function toggle_series_visibility<Series extends VisSeries>(
   series: Series[],
   series_idx: number,
+  get_axis: SeriesAxisAccessor<Series> = (srs) => srs.y_axis ?? `y1`,
 ): Series[] {
   if (series_idx < 0 || series_idx >= series.length || !series[series_idx]) return series
 
   const toggled = series[series_idx]
   const new_visibility = !(toggled.visible ?? true)
-  const target_axis = toggled.y_axis ?? `y1`
+  const target_axis = get_axis(toggled, series_idx)
 
   return series.map((srs, idx) => {
-    if (
-      (toggled.label && srs.label === toggled.label) ||
-      (idx === series_idx && !toggled.label)
-    ) {
+    const is_target = toggled.label ? srs.label === toggled.label : idx === series_idx
+    if (is_target) {
       return { ...srs, visible: new_visibility }
     }
-    if (new_visibility && (srs.y_axis ?? `y1`) === target_axis) {
-      if (!have_compatible_units(toggled, srs) && (srs.visible ?? true)) {
-        return { ...srs, visible: false }
-      }
+    if (
+      new_visibility &&
+      target_axis !== undefined &&
+      get_axis(srs, idx) === target_axis &&
+      !have_compatible_units(toggled, srs) &&
+      (srs.visible ?? true)
+    ) {
+      return { ...srs, visible: false }
     }
     return srs
   })
@@ -80,20 +88,12 @@ export function toggle_group_visibility<Series extends VisSeries>(
   series: Series[],
   series_indices: number[],
 ): Series[] {
-  // Filter to valid indices upfront
   const valid_indices = series_indices.filter((idx) => idx >= 0 && idx < series.length)
   if (valid_indices.length === 0) return series
 
-  const idx_set = new Set(valid_indices)
-
-  // Check if all series in the group are currently visible
   const all_visible = valid_indices.every((idx) => series[idx].visible ?? true)
-
-  // Toggle: if all visible, hide all; otherwise show all
-  const new_visibility = !all_visible
-
   return series.map((srs, idx) =>
-    idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs,
+    valid_indices.includes(idx) ? { ...srs, visible: !all_visible } : srs,
   )
 }
 
@@ -111,11 +111,12 @@ export function handle_legend_double_click<Series extends VisSeries>(
 
   const { label } = series[idx]
   const current = series.map((srs) => srs.visible ?? true)
-  const current_source = prev_snapshot
-    ? series_source(series, prev_snapshot.visibility.length)
-    : []
   const prev_visibility =
-    prev_snapshot && same_series_source(current_source, prev_snapshot.source)
+    prev_snapshot &&
+    same_series_source(
+      series_source(series, prev_snapshot.visibility.length),
+      prev_snapshot.source,
+    )
       ? prev_snapshot.visibility
       : null
   // Only check original series (ignore new ones added after isolation)
@@ -161,6 +162,7 @@ export function handle_legend_double_click<Series extends VisSeries>(
 export function create_legend_visibility<Series extends VisSeries>(
   get_series: () => Series[],
   set_series: (series: Series[]) => void,
+  get_axis: SeriesAxisAccessor<Series> = (srs) => srs.y_axis,
 ): {
   on_toggle: (series_idx: number) => void
   on_group_toggle: (group_name: string, series_indices: number[]) => void
@@ -168,7 +170,11 @@ export function create_legend_visibility<Series extends VisSeries>(
 } {
   let prev_visibility: SeriesVisibilitySnapshot | null = null
   return {
-    on_toggle: (series_idx) => set_series(toggle_series_visibility(get_series(), series_idx)),
+    // Raw host series only carry user-explicit axes. Automatic axes are resolved
+    // after a legend toggle, so treating missing axes as y1 would hide a series
+    // that can move to y2.
+    on_toggle: (series_idx) =>
+      set_series(toggle_series_visibility(get_series(), series_idx, get_axis)),
     on_group_toggle: (_group_name, series_indices) =>
       set_series(toggle_group_visibility(get_series(), series_indices)),
     on_double_click: (series_idx) => {

@@ -1,4 +1,5 @@
-import { suggest_legend_tracks } from '$lib/plot/core/decorations'
+import { get_legend_grid_cells, suggest_legend_tracks } from '$lib/plot/core/decorations'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 const item_extents = [
@@ -71,5 +72,38 @@ describe(`suggest_legend_tracks`, () => {
         }),
       ),
     ).toEqual([1, 2, 3, 2, 1])
+  })
+})
+
+describe(`get_legend_grid_cells`, () => {
+  test(`counts filter, group headers, series, and fill entries in render order`, () => {
+    const cells = get_legend_grid_cells({
+      items: [
+        { label: `Series A`, legend_group: `Signals` },
+        { label: `Fill A`, legend_group: `Signals` },
+        { label: `Ungrouped` },
+      ],
+      show_filter: true,
+    })
+    expect(cells.map(({ kind }) => kind)).toEqual([`filter`, `group`, `item`, `item`, `item`])
+  })
+
+  test(`omits collapsed items and retains the empty filtered cell`, () => {
+    expect(
+      get_legend_grid_cells({
+        items: [
+          { label: `A`, legend_group: `Group` },
+          { label: `B`, legend_group: `Group` },
+        ],
+        collapsed_groups: new SvelteSet([`Group`]),
+      }).map(({ kind }) => kind),
+    ).toEqual([`group`])
+    expect(
+      get_legend_grid_cells({
+        items: [{ label: `A` }],
+        filter_query: `missing`,
+        show_filter: true,
+      }).map(({ kind }) => kind),
+    ).toEqual([`filter`, `empty`])
   })
 })

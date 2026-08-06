@@ -7,7 +7,6 @@
     reconcile_facet_padding,
     reconcile_facet_ranges,
     resolve_facet_axis_visibility,
-    type FacetAxis,
     type FacetAxisModes,
     type FacetAxisRanges,
     type FacetAxisVisibilityModes,
@@ -15,7 +14,6 @@
     type FacetPanel,
     type FacetPanelContext,
     type FacetPanelLayoutReport,
-    type FacetRangeUpdate,
     type FacetSharedBandContext,
     type FacetSharedBandSizes,
     type ResolvedFacetGridGeometry,
@@ -23,7 +21,7 @@
   import { is_valid_range } from '$lib/plot/core/shared-axes'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
     panels,
@@ -59,14 +57,8 @@
   let [grid_width, grid_height] = $state([0, 0])
   const layout_reports = new SvelteMap<FacetKey, FacetPanelLayoutReport>()
   const range_overrides = new SvelteMap<FacetKey, FacetAxisRanges>()
-  const report_callbacks: {
-    key: FacetKey
-    callback: (report: FacetPanelLayoutReport) => void
-  }[] = []
-  const range_update_callbacks: {
-    key: FacetKey
-    callback: (axis: FacetAxis, range: FacetRangeUpdate) => void
-  }[] = []
+  type PanelCallbacks = Pick<FacetPanelContext<Datum>, `report_layout` | `update_range`>
+  const panel_callbacks = new SvelteMap<FacetKey, PanelCallbacks>()
 
   const layout = $derived(assign_facet_panels(panels, columns, rows))
   const active_shared_bands = $derived.by((): FacetSharedBandSizes => {
@@ -207,19 +199,6 @@
   // Stable callback identities plus value equality make repeated child layout reports a no-op.
   // Resolved padding/range echoes retain the last intrinsic report, preventing a child effect
   // from turning grid-supplied geometry into a new intrinsic input and cycling indefinitely.
-  const report_callback_for = (key: FacetKey): ((report: FacetPanelLayoutReport) => void) => {
-    const existing = report_callbacks.find((entry) => entry.key === key)
-    if (existing) return existing.callback
-    const callback = (report: FacetPanelLayoutReport): void => {
-      if (!layout.panels.some((panel) => panel.key === key)) return
-      const normalized = preserve_resolved_echoes(key, normalize_report(key, report))
-      if (reports_equal(layout_reports.get(key), normalized)) return
-      layout_reports.set(key, normalized)
-    }
-    report_callbacks.push({ key, callback })
-    return callback
-  }
-
   const ranges_equal = (left: FacetAxisRanges | undefined, right: FacetAxisRanges): boolean =>
     FACET_AXES.every(
       (axis) =>
@@ -229,10 +208,16 @@
 
   // Each panel keeps one callback for its lifetime. The callback reads current layout/modes,
   // then atomically updates every member of the relevant shared/row/column group.
-  const range_update_callback_for = (key: FacetKey) => {
-    const existing = range_update_callbacks.find((entry) => entry.key === key)
-    if (existing) return existing.callback
-    const callback = (axis: FacetAxis, range: FacetRangeUpdate): void => {
+  const create_panel_callbacks = (key: FacetKey): PanelCallbacks => ({
+    report_layout: (report): void => {
+      if (!layout.panels.some((panel) => panel.key === key)) return
+      const normalized = preserve_resolved_echoes(key, normalize_report(key, report))
+      if (!reports_equal(layout_reports.get(key), normalized)) {
+        layout_reports.set(key, normalized)
+      }
+    },
+    update_range: (axis, range): void => {
+      if (!layout.panels.some((panel) => panel.key === key)) return
       const current = [...range_overrides.entries()].map(([panel_key, ranges]) => ({
         key: panel_key,
         ranges,
@@ -245,14 +230,33 @@
           range_overrides.set(entry.key, entry.ranges)
         }
       }
+    },
+  })
+
+  // Keep all per-panel state and callback identities bounded to the active panel keys.
+  const sync_panel_keys = (): void => {
+    const current_keys = new SvelteSet(layout.panels.map(({ key }) => key))
+    for (const { key } of layout.panels) {
+      if (!panel_callbacks.has(key)) panel_callbacks.set(key, create_panel_callbacks(key))
     }
-    range_update_callbacks.push({ key, callback })
-    return callback
+    for (const state of [layout_reports, range_overrides, panel_callbacks]) {
+      for (const key of state.keys()) {
+        if (!current_keys.has(key)) state.delete(key)
+      }
+    }
   }
 
+  // Effects do not run during SSR, so seed callbacks synchronously for the initial panel set.
+  sync_panel_keys()
+  $effect.pre(sync_panel_keys)
+
   const contexts = $derived(
-    layout.panels.map(
-      (panel): FacetPanelContext<Datum> => ({
+    layout.panels.map((panel): FacetPanelContext<Datum> => {
+      const callbacks = panel_callbacks.get(panel.key)
+      if (!callbacks) {
+        throw new Error(`Missing callback state for facet "${panel.key}"`)
+      }
+      return {
         ...panel,
         rect: resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ?? {
           x: 0,
@@ -268,10 +272,9 @@
           axis_modes,
           axis_visibility,
         ),
-        report_layout: report_callback_for(panel.key),
-        update_range: range_update_callback_for(panel.key),
-      }),
-    ),
+        ...callbacks,
+      }
+    }),
   )
 
   let previous_linked_group_signature: string | undefined
@@ -297,24 +300,6 @@
     previous_linked_group_signature = next_signature
   })
 
-  // Discard state for removed panels so reusing a key never inherits stale geometry or zoom.
-  $effect(() => {
-    const current_keys = new Set(layout.panels.map((panel) => panel.key))
-    for (const key of layout_reports.keys()) {
-      if (!current_keys.has(key)) layout_reports.delete(key)
-    }
-    for (const key of range_overrides.keys()) {
-      if (!current_keys.has(key)) range_overrides.delete(key)
-    }
-  })
-
-  const update_grid_size = (element: HTMLElement): void => {
-    const next_width = Math.round(element.clientWidth)
-    const next_height = Math.round(element.clientHeight)
-    if (next_width !== grid_width) grid_width = next_width
-    if (next_height !== grid_height) grid_height = next_height
-  }
-
   const root_columns = $derived(
     [
       `minmax(0, 1fr)`,
@@ -338,7 +323,6 @@
   style:column-gap={legend || colorbar ? `${active_shared_bands.gap ?? 0}px` : `0`}
   bind:clientWidth={grid_width}
   bind:clientHeight={grid_height}
-  onresize={(event) => update_grid_size(event.currentTarget)}
 >
   {#if title && resolved_geometry.title}
     <div

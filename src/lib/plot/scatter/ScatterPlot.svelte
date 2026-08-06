@@ -72,6 +72,9 @@
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
   import {
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    resolve_legend_layout_tracks,
     solve_decorations,
     type DecorationItem,
     type DecorationPlacement,
@@ -113,7 +116,6 @@
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
     filter_padding,
-    full_footprint_or,
     resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
@@ -122,7 +124,12 @@
   import type { FontSpec } from '$lib/plot/core/text-metrics'
   import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    get_reference_annotation_placement,
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_color_scale,
     create_scale,
@@ -543,13 +550,11 @@
       ? COLOR_BAR_DEFAULTS.horizontal_footprint
       : COLOR_BAR_DEFAULTS.vertical_footprint,
   )
-  // full footprint (not the offset box): colorbar tick labels are absolutely
-  // positioned outside the bar and must count toward reserved margins
   let colorbar_size_revision = $state(0)
   let legend_size_revision = $state(0)
   const colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return full_footprint_or(colorbar_element, colorbar_fallback_size)
+    return measured_footprint(colorbar_element, colorbar_fallback_size)
   })
   const legend_footprint = $derived.by(() => {
     void legend_size_revision
@@ -610,50 +615,69 @@
     }
     if (colorbar_element && color_bar?.wrapper_style) {
       rects.push({
-        x: colorbar_element.offsetLeft + colorbar_footprint.offset_x,
-        y: colorbar_element.offsetTop + colorbar_footprint.offset_y,
-        width: colorbar_footprint.width,
-        height: colorbar_footprint.height,
+        x: colorbar_element.offsetLeft,
+        y: colorbar_element.offsetTop,
+        ...colorbar_footprint,
       })
     }
     return rects
   })
 
-  const decoration_solution = $derived.by(() => {
-    const items: DecorationItem[] = []
-    // Gate on legend_element (the actual render signal), not legend_data, whose fill entries read
-    // computed_fills -> pad and would make this derived reference itself.
-    if (
-      legend != null &&
-      legend_element != null &&
-      !legend_has_explicit_pos &&
-      !legend_is_dragging &&
-      !legend_manual_position
-    ) {
-      items.push({
-        id: `legend`,
-        kind: `legend`,
-        footprint: legend_footprint,
-        clearance: legend.axis_clearance,
-        auto_tracks:
-          legend.layout_tracks === `auto`
-            ? {
-                item_count: series_with_ids.filter(Boolean).length,
-                orientation: legend.layout ?? `vertical`,
-                item_extents: legend.item_extents,
-                estimated_item_extent: legend.estimated_item_extent,
-              }
-            : undefined,
-      })
-    }
-    // Gate on a measured colorbar: its outside style stretches it to full width, so deciding from
-    // the wide pre-measure fallback would flip-flop placement between interior and outside.
+  const legend_track_items = $derived.by(() => {
+    const candidates: { label: string; legend_group?: string }[] = [
+      ...series_with_ids.filter(Boolean).map((series_data, series_idx) => {
+        const metadata_label =
+          typeof series_data.metadata === `object` &&
+          series_data.metadata !== null &&
+          `label` in series_data.metadata &&
+          typeof series_data.metadata.label === `string`
+            ? series_data.metadata.label
+            : undefined
+        return {
+          label: series_data.label ?? metadata_label ?? `Series ${series_idx + 1}`,
+          legend_group: series_data.legend_group,
+        }
+      }),
+      ...fill_regions.flatMap((fill) =>
+        fill.show_in_legend !== false && fill.label
+          ? [{ label: fill.label, legend_group: fill.legend_group }]
+          : [],
+      ),
+      ...error_bands.flatMap((band) =>
+        band.show_in_legend !== false && band.label ? [{ label: band.label }] : [],
+      ),
+    ]
+    const seen = new SvelteSet<string>()
+    return candidates.filter(({ label, legend_group }) => {
+      const key = `${legend_group ?? ``}::${label}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })
+
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, { top: true, right: true }),
+  )
+  const base_decoration_items = $derived.by(() => {
+    const legend_item = create_legend_decoration_item({
+      enabled:
+        legend != null &&
+        legend_element != null &&
+        !legend_has_explicit_pos &&
+        !legend_is_dragging &&
+        !legend_manual_position,
+      footprint: legend_footprint,
+      items: legend_track_items,
+      config: legend,
+    })
+    const items: DecorationItem[] = legend_item ? [legend_item] : []
     if (
       color_bar &&
       all_color_values.length > 0 &&
       !color_bar.wrapper_style &&
-      (colorbar_element?.offsetWidth ?? 0) > 0 &&
-      (colorbar_element?.offsetHeight ?? 0) > 0
+      width > 0 &&
+      height > 0
     ) {
       items.push({
         id: `colorbar`,
@@ -666,27 +690,20 @@
         clearance: color_bar.axis_clearance,
       })
     }
-    return solve_decorations({
+    return items
+  })
+  const base_decoration_solution = $derived(
+    solve_decorations({
       base_pad: effective_base_pad,
       width,
       height,
       obstacles_norm,
       exclusion_rects: pinned_decoration_rects,
-      items,
-    })
-  })
-  const legend_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
-  const colorbar_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `colorbar`),
-  )
-  // Resolve marginals and reserve outer-band padding so the plot shrinks to make room
-  const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: true, right: true }),
+      items: base_decoration_items,
+    }),
   )
   const pad = $derived(
-    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
   )
   // Map series to the generic marginal input, reusing the line/legend color fallback
   const marginal_series = $derived<MarginalSeriesInput[]>(
@@ -711,11 +728,6 @@
   const marginal_has_axis = $derived(
     marginal_axis_presence(x2_points.length > 0, y2_points.length > 0),
   )
-  const effective_cbar_wrapper_style = $derived(
-    color_bar?.wrapper_style ??
-      (colorbar_placement?.location === `outside` ? colorbar_placement.style : undefined),
-  )
-
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
     x: pad.l || 0,
@@ -1184,16 +1196,36 @@
   })
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      pad,
+      width,
+      height,
+      obstacles_norm,
+      exclusion_rects: pinned_decoration_rects,
+      lines: indexed_ref_lines,
+      ranges: {
+        x: [x_min, x_max],
+        x2: [x2_min, x2_max],
+        y: [y_min, y_max],
+        y2: [y2_min, y2_max],
+      },
+      scales: { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn },
+      clearance: 4,
+    }),
+  )
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const colorbar_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `colorbar`),
+  )
 
   const get_legend_placement = () => legend_placement ?? null
-  const get_color_bar_placement = () =>
-    colorbar_placement
-      ? {
-          x: colorbar_placement.x - colorbar_footprint.offset_x,
-          y: colorbar_placement.y - colorbar_footprint.offset_y,
-        }
-      : null
+  const get_color_bar_placement = () => colorbar_placement ?? null
   const placement_signature = (placement: DecorationPlacement | undefined): string =>
     placement
       ? `${placement.location}:${placement.side}:${placement.x}:${placement.y}:${placement.footprint.width}:${placement.footprint.height}`
@@ -1224,11 +1256,7 @@
   })
   const decoration_exclusion_rects = $derived([
     ...pinned_decoration_rects,
-    ...decoration_solution.placements.map(({ x, y, footprint }) => ({
-      x,
-      y,
-      ...footprint,
-    })),
+    ...decoration_placement_rects(decoration_solution),
   ])
 
   // Generate axis ticks - consolidated into single derived for efficiency
@@ -1703,7 +1731,7 @@
       y2_scale={y2_scale_fn}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
-      exclusion_rects={decoration_exclusion_rects}
+      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -2239,11 +2267,9 @@
         data-decoration-y={colorbar_placement?.y}
         data-decoration-width={colorbar_placement?.footprint.width}
         data-decoration-height={colorbar_placement?.footprint.height}
-        style={`${
-          // explicit wrapper_style or auto-outside places the colorbar; else auto-placement coords
-          effective_cbar_wrapper_style ??
-          `position: absolute; left: ${colorbar_tween.coords.current.x}px; top: ${colorbar_tween.coords.current.y}px`
-        }; pointer-events: auto;`}
+        style={`position: absolute; left: ${colorbar_tween.coords.current.x}px; top: ${
+          colorbar_tween.coords.current.y
+        }px; ${color_bar.wrapper_style ?? ``}; pointer-events: auto;`}
       >
         <ColorBar
           tick_labels={4}
@@ -2255,7 +2281,7 @@
           bar_style="width: {COLOR_BAR_DEFAULTS.width}px; height: {COLOR_BAR_DEFAULTS.horizontal_bar_height}px; {color_bar?.style ??
             ``}"
           {...color_bar}
-          wrapper_style={effective_cbar_wrapper_style ? `height: 100%; width: 100%;` : ``}
+          wrapper_style={color_bar.wrapper_style ? `height: 100%; width: 100%;` : ``}
         />
       </div>
     {/if}
@@ -2303,9 +2329,7 @@
           ?.idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        layout_tracks={legend.layout_tracks === `auto` && legend_placement
-          ? Math.max(1, legend_placement.layout_tracks ?? 1)
-          : legend.layout_tracks}
+        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}

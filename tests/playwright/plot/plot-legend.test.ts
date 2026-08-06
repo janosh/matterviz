@@ -387,6 +387,45 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
+  test(`colorbar placement matches its natural CSS box across resize`, async ({ page }) => {
+    const plot = page.locator(`#color-scale #color-scale-toggle .scatter`)
+    const colorbar = plot.locator(`.colorbar-wrapper`)
+    await expect(colorbar).toBeVisible()
+    await expect(colorbar).toHaveAttribute(`data-decoration-x`, /.+/)
+    await wait_for_position_stable(colorbar)
+
+    const geometry = async () => {
+      const plot_box = await plot.boundingBox()
+      const colorbar_box = await colorbar.boundingBox()
+      if (!plot_box || !colorbar_box) throw new Error(`missing plot/colorbar geometry`)
+      return {
+        x: colorbar_box.x - plot_box.x,
+        y: colorbar_box.y - plot_box.y,
+        width: colorbar_box.width,
+        height: colorbar_box.height,
+        solved_x: Number(await colorbar.getAttribute(`data-decoration-x`)),
+        solved_y: Number(await colorbar.getAttribute(`data-decoration-y`)),
+        solved_width: Number(await colorbar.getAttribute(`data-decoration-width`)),
+        solved_height: Number(await colorbar.getAttribute(`data-decoration-height`)),
+      }
+    }
+    const before = await geometry()
+    expect(before.x).toBeCloseTo(before.solved_x, 0)
+    expect(before.y).toBeCloseTo(before.solved_y, 0)
+    expect(before.width).toBeCloseTo(before.solved_width, 0)
+    expect(before.height).toBeCloseTo(before.solved_height, 0)
+
+    await page.setViewportSize({ width: 900, height: 700 })
+    await wait_for_position_stable(colorbar)
+    const after = await geometry()
+    expect(after.x).toBeCloseTo(after.solved_x, 0)
+    expect(after.y).toBeCloseTo(after.solved_y, 0)
+    expect(after.width).toBeCloseTo(after.solved_width, 0)
+    expect(after.height).toBeCloseTo(after.solved_height, 0)
+    expect(after.width).toBeCloseTo(before.width, 0)
+    expect(after.height).toBeCloseTo(before.height, 0)
+  })
+
   test(`legend repositions appropriately after viewport resize`, async ({ page }) => {
     const plot = page.locator(`#legend-multi-default.scatter`)
     const legend = plot.locator(`.legend`)

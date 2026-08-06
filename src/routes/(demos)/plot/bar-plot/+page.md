@@ -1372,3 +1372,94 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
   style="height: 400px"
 />
 ```
+
+## Adaptive Tick Strategies Under Pressure
+
+`tick.label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, abbreviated, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  const synthesis_routes = [
+    `Chemical Vapor Deposition`,
+    `Molecular Beam Epitaxy`,
+    `Spark Plasma Sintering`,
+    `Mechanochemical Ball Milling`,
+    `Atomic Layer Deposition`,
+    `Pulsed Laser Deposition`,
+    `High Pressure Solid State`,
+    `Solution Combustion Synthesis`,
+  ]
+  const observations = [18_400, 14_800, 9_600, 7_900, 6_700, 5_400, 4_100, 3_600]
+  const adaptive_strategies = [
+    `upright`,
+    `wrap`,
+    `rotate`,
+    `stagger`,
+    `thin`,
+    `abbreviate`,
+    `ellipsis`,
+  ] as const
+
+  let chart_width = $state(360)
+  let orientation = $state<`vertical` | `horizontal`>(`vertical`)
+  let scoring_mode = $state<`readable` | `compact`>(`compact`)
+  const category_axis = $derived({
+    label: `Synthesis route used for the final experimental protocol`,
+    tick: {
+      label: {
+        rotation: `auto` as const,
+        max_lines: 3,
+        auto_layout: {
+          strategies: adaptive_strategies,
+          scoring: { mode: scoring_mode },
+          max_angle: 60,
+          max_band: 76,
+          min_visible_ticks: 3,
+          edge_gap: 6,
+          endpoint_policy: `adaptive` as const,
+        },
+      },
+    },
+  })
+  const value_axis = {
+    label: `Number of structures surviving all validation and quality-control filters`,
+    format: `~s`,
+  }
+  const series = [{ x: synthesis_routes, y: observations, color: `#4c6ef5` }]
+</script>
+
+<div data-testid="adaptive-tick-demo">
+  <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
+    <label
+      >Width: {chart_width}px
+      <input type="range" bind:value={chart_width} min="280" max="900" step="20" /></label
+    >
+    <label
+      >Category axis: <select bind:value={orientation}
+        ><option value="vertical">x (bottom)</option><option value="horizontal"
+          >y (left)</option
+        ></select
+      ></label
+    >
+    <label
+      >Scoring: <select bind:value={scoring_mode}
+        ><option value="compact">compact</option><option value="readable">readable</option
+        ></select
+      ></label
+    >
+  </div>
+  <div style={`width: min(100%, ${chart_width}px); margin: 1em auto`}>
+    <BarPlot
+      {series}
+      {orientation}
+      x_axis={orientation === `vertical` ? category_axis : value_axis}
+      y_axis={orientation === `vertical` ? value_axis : category_axis}
+      show_legend={false}
+      show_controls={false}
+      style="height: 430px"
+    />
+  </div>
+</div>
+```

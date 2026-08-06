@@ -4,6 +4,8 @@
     type PlotTitleBlockLayout,
     type PlotTitleConfig,
   } from '$lib/plot/core/plot-title'
+  import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
+  import { onMount } from 'svelte'
 
   let {
     config,
@@ -20,22 +22,36 @@
     metrics_revision?: number
   } = $props()
 
+  let font_metrics_revision = $state(0)
+  onMount(() => {
+    let mounted = true
+    void invalidate_text_metrics_after_fonts_ready().then((revision) => {
+      if (mounted) font_metrics_revision = revision
+    })
+    return () => {
+      mounted = false
+    }
+  })
+
   // Measurement populates text-metrics' cache, so it cannot run inside $derived. Resolve once
   // during SSR/initialization, then refresh before DOM updates when geometry or metrics change.
-  const resolve_layout = () => resolve_plot_title(config, { width, x, y, metrics_revision })
+  const resolve_layout = () =>
+    resolve_plot_title(config, {
+      width,
+      x,
+      y,
+      metrics_revision: Math.max(metrics_revision, font_metrics_revision),
+    })
   let layout = $state.raw(resolve_layout())
   $effect.pre(() => {
     layout = resolve_layout()
   })
 </script>
 
-{#snippet title_block(
-  block: PlotTitleBlockLayout,
-  class_name: string,
-  role: `heading` | `note`,
-)}
+{#snippet title_block(block: PlotTitleBlockLayout)}
+  {@const is_title = block.kind === `title`}
   <text
-    class={class_name}
+    class="plot-{block.kind}-text"
     x={block.x}
     text-anchor={layout.align}
     font-family={block.font.font_family}
@@ -46,8 +62,8 @@
     font-stretch={block.font.font_stretch}
     fill="currentColor"
     pointer-events="none"
-    {role}
-    aria-level={role === `heading` ? 2 : undefined}
+    role={is_title ? `heading` : `note`}
+    aria-level={is_title ? 2 : undefined}
     aria-label={block.label}
   >
     {#each block.lines as line}
@@ -59,10 +75,10 @@
 {#if layout.title || layout.subtitle}
   <g class="plot-title">
     {#if layout.title}
-      {@render title_block(layout.title, `plot-title-text`, `heading`)}
+      {@render title_block(layout.title)}
     {/if}
     {#if layout.subtitle}
-      {@render title_block(layout.subtitle, `plot-subtitle-text`, `note`)}
+      {@render title_block(layout.subtitle)}
     {/if}
   </g>
 {/if}

@@ -1324,3 +1324,62 @@ Two normal distributions on independent x-scales. Bottom: mass in kg (blue). Top
   style="height: 400px"
 />
 ```
+
+## Responsive Title, Subtitle, and Axis Titles
+
+Plot titles, subtitles, and axis-title blocks use measured font metrics. Resize this container to see long text wrap and the plot padding update without clipping the data area.
+
+```svelte example
+<script lang="ts">
+  import { Histogram } from 'matterviz'
+
+  const volume_samples = Array.from(
+    { length: 700 },
+    (_, sample_idx) =>
+      14 +
+      2.7 * Math.sin(sample_idx * 1.618) +
+      1.3 * Math.cos(sample_idx * 0.271) +
+      (sample_idx % 11) / 10,
+  )
+  let plot_width = $state(420)
+  let title_align = $state<`start` | `middle` | `end`>(`start`)
+</script>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
+  <label
+    >Width: {plot_width}px
+    <input type="range" bind:value={plot_width} min="300" max="900" step="20" /></label
+  >
+  <label
+    >Title alignment: <select bind:value={title_align}
+      ><option value="start">start</option><option value="middle">middle</option><option
+        value="end">end</option
+      ></select
+    ></label
+  >
+</div>
+
+<div style={`width: min(100%, ${plot_width}px); margin: 1em auto`}>
+  <Histogram
+    series={[
+      { y: volume_samples, label: `Relaxed structures`, line_style: { stroke: `#7950f2` } },
+    ]}
+    bins={36}
+    title={{
+      text: `Distribution of symmetry-standardized atomic volumes after structural relaxation`,
+      subtitle: `700 deterministic samples; drag the width control to exercise live text measurement`,
+      align: title_align,
+      max_lines: 3,
+    }}
+    x_axis={{
+      label: `Atomic volume after symmetry-standardized structural relaxation (A^3/atom)`,
+    }}
+    y_axis={{
+      label: `Number of structures retained after all validation and quality-control filters`,
+    }}
+    show_legend={false}
+    show_controls={false}
+    style="height: 480px"
+  />
+</div>
+```

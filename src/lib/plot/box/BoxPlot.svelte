@@ -42,8 +42,10 @@
   import {
     build_obstacles_norm,
     clip_bar,
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    resolve_legend_layout_tracks,
     solve_decorations,
-    type DecorationItem,
   } from '$lib/plot/core/decorations'
   import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
@@ -70,7 +72,12 @@
   import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    get_reference_annotation_placement,
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_axis_scales,
     generate_ticks,
@@ -254,7 +261,8 @@
 
   let hovered_ref_line_idx = $state<number | null>(null)
 
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // === Box stats + slot model ===
   const box_color = (idx: number): string =>
@@ -603,62 +611,37 @@
   })
 
   const should_show_legend = $derived(show_legend ?? false)
-  const decoration_solution = $derived.by(() => {
-    const items: DecorationItem[] = []
-    if (
-      legend != null &&
-      should_show_legend &&
-      legend_element != null &&
-      !legend_has_explicit_pos
-    ) {
-      items.push({
-        id: `legend`,
-        kind: `legend`,
-        footprint: legend_footprint,
-        clearance: legend.axis_clearance,
-        auto_tracks:
-          legend.layout_tracks === `auto`
-            ? {
-                item_count: series.length,
-                orientation: legend.layout ?? `vertical`,
-                item_extents: legend.item_extents,
-                estimated_item_extent: legend.estimated_item_extent,
-              }
-            : undefined,
-      })
-    }
-    return solve_decorations({
-      base_pad,
-      width,
-      height,
-      obstacles_norm,
-      items,
-    })
-  })
-  const legend_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
-  const legend_exclusion_rects = $derived(
-    legend_placement
-      ? [
-          {
-            x: legend_placement.x,
-            y: legend_placement.y,
-            ...legend_placement.footprint,
-          },
-        ]
-      : [],
-  )
-  // Marginals are opt-in (default prop `false`) and bind to the VALUE axis, pooling each box's
-  // raw samples. The default side follows orientation (value axis = y when vertical, x when
-  // horizontal) so the `marginals` boolean / type-string shorthand land on a meaningful side.
-  // Each box is tagged with its value axis so a primary-axis marginal ignores secondary boxes.
+  // Marginals are opt-in and bind to the value axis.
   const marginal_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
     normalize_marginals(marginals, marginal_vertical ? { right: true } : { top: true }),
   )
+  const legend_item = $derived(
+    create_legend_decoration_item({
+      enabled:
+        legend != null &&
+        should_show_legend &&
+        legend_element != null &&
+        !legend_has_explicit_pos,
+      footprint: legend_footprint,
+      items: series.map((series_data, series_idx) => ({
+        label: series_data.label ?? `Box ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
+      config: legend,
+    }),
+  )
+  const base_decoration_solution = $derived(
+    solve_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      items: legend_item ? [legend_item] : [],
+    }),
+  )
   const pad = $derived(
-    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     visible_boxes.map((box_item) => {
@@ -686,6 +669,25 @@
       width,
       height,
     ),
+  )
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      pad,
+      width,
+      height,
+      obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: ranges.current,
+      scales,
+      clearance: 4,
+    }),
+  )
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const decoration_exclusion_rects = $derived(
+    decoration_placement_rects(decoration_solution),
   )
 
   // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
@@ -940,7 +942,7 @@
       y2_scale={scales.y2}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
-      exclusion_rects={legend_exclusion_rects}
+      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -1338,9 +1340,7 @@
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
-        layout_tracks={legend.layout_tracks === `auto` && legend_placement
-          ? Math.max(1, legend_placement.layout_tracks ?? 1)
-          : legend.layout_tracks}
+        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
@@ -1362,6 +1362,7 @@
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
+        exclusion_rects={decoration_exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
       >

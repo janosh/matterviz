@@ -90,7 +90,7 @@ const CROWDING_RATIO = 0.5
 
 // True when even the best interior spot for `footprint` (px) is too dense to host the decoration
 function is_crowded(
-  obstacles: Pt[],
+  obstacles: readonly Pt[],
   footprint: Size,
   base_w: number,
   base_h: number,
@@ -104,7 +104,7 @@ function is_crowded(
     plot_bounds: { x: 0, y: 0, width: 1, height: 1 },
     element_size: { width: fw, height: fh },
     axis_clearance: clearance / Math.min(base_w, base_h),
-    points: obstacles,
+    points: [...obstacles],
   })
   // Counted in place: filter() would copy the whole obstacle field just to take its length,
   // once for the legend and once for the colorbar on every render.
@@ -125,7 +125,6 @@ export type DecorationLayout = {
   legend_outside: boolean
   legend_pos: Pt // outside position (right or bottom margin; valid when legend_outside)
   colorbar_outside: boolean
-  colorbar_style: string // wrapper style for the reserved margin ('' when interior)
 }
 
 // Decide which decorations must move outside (interior placement unavoidably overlaps data), the
@@ -135,7 +134,7 @@ export function place_decorations(cfg: {
   base_pad: Required<Sides>
   width: number
   height: number
-  obstacles_norm: Pt[]
+  obstacles_norm: readonly Pt[]
   legend?: DecorationInput | null // null = no auto-placeable legend
   colorbar?: (DecorationInput & { horizontal?: boolean }) | null
   gap?: number
@@ -171,19 +170,9 @@ export function place_decorations(cfg: {
     l: base_pad.l,
     b: base_pad.b + (legend_bottom ? legend_h + gap : 0),
     r: legend_right
-      ? legend_w + 2 * gap
+      ? Math.max(base_pad.r, legend_w + 2 * gap)
       : base_pad.r + (colorbar_takes_right ? cbar_w + gap : 0),
   }
-
-  const colorbar_style = !colorbar_outside
-    ? ``
-    : cbar_horizontal
-      ? `position: absolute; top: ${gap}px; inset-inline: 0; margin-inline: auto; width: calc(100% - ${
-          base_pad.l + base_pad.r
-        }px); max-width: 100%;`
-      : `position: absolute; right: ${gap}px; inset-block: 0; margin-block: auto; height: calc(100% - ${
-          base_pad.t + base_pad.b
-        }px); max-height: 100%;`
 
   // right: flush to the right edge, vertically centered in the plot area; bottom: centered below
   const legend_pos: Pt = legend_right
@@ -196,5 +185,5 @@ export function place_decorations(cfg: {
         y: height - legend_h - gap,
       }
 
-  return { pad, legend_outside, legend_pos, colorbar_outside, colorbar_style }
+  return { pad, legend_outside, legend_pos, colorbar_outside }
 }

@@ -7,11 +7,11 @@ import {
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
+  wrap_text_paragraph,
   type FontSpec,
   type TextLineMetrics,
 } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
-import { untrack } from 'svelte'
 
 export {
   clear_tick_metrics_cache,
@@ -54,8 +54,14 @@ export const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
   line_height: AXIS_LABEL_HEIGHT,
 })
 
+export interface AxisTitleSegment {
+  readonly text: string
+  readonly shift?: `sub` | `super`
+}
+
 export interface AxisTitleLine {
   readonly text: string
+  readonly segments: readonly AxisTitleSegment[]
   readonly metrics: TextLineMetrics
 }
 
@@ -69,9 +75,8 @@ export interface AxisTitleLayout {
   readonly interactive: boolean
 }
 
-const decode_axis_title = (value: string): string =>
+const decode_axis_title_text = (value: string): string =>
   value
-    .replaceAll(/<\/?(?:sub|sup)\b[^>]*>/giu, ``)
     .replaceAll(`&nbsp;`, `\u00A0`)
     .replaceAll(`&amp;`, `&`)
     .replaceAll(`&lt;`, `<`)
@@ -79,67 +84,135 @@ const decode_axis_title = (value: string): string =>
     .replaceAll(`&quot;`, `"`)
     .replaceAll(`&#39;`, `'`)
 
+const append_axis_title_segment = (
+  segments: AxisTitleSegment[],
+  text: string,
+  shift?: AxisTitleSegment[`shift`],
+): void => {
+  if (!text) return
+  const previous = segments.at(-1)
+  if (previous && previous.shift === shift) {
+    segments[segments.length - 1] = { text: `${previous.text}${text}`, shift }
+  } else segments.push({ text, shift })
+}
+
+const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
+  const segments: AxisTitleSegment[] = []
+  const active_tags: (`sub` | `sup`)[] = []
+  const tag_pattern = /<(?<closing>\/?)(?<tag>sub|sup)\b[^>]*>/giu
+  let cursor = 0
+  for (const match of value.matchAll(tag_pattern)) {
+    const match_idx = match.index ?? 0
+    const active_tag = active_tags.at(-1)
+    append_axis_title_segment(
+      segments,
+      decode_axis_title_text(value.slice(cursor, match_idx)),
+      active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
+    )
+    const tag = match.groups?.tag?.toLowerCase() as `sub` | `sup` | undefined
+    if (tag && match.groups?.closing) {
+      const tag_idx = active_tags.lastIndexOf(tag)
+      if (tag_idx !== -1) active_tags.splice(tag_idx, 1)
+    } else if (tag) active_tags.push(tag)
+    cursor = match_idx + match[0].length
+  }
+  const active_tag = active_tags.at(-1)
+  append_axis_title_segment(
+    segments,
+    decode_axis_title_text(value.slice(cursor)),
+    active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
+  )
+
+  while (segments[0]) {
+    const text = segments[0].text.trimStart()
+    if (text) {
+      segments[0] = { ...segments[0], text }
+      break
+    }
+    segments.shift()
+  }
+  while (segments.at(-1)) {
+    const last_idx = segments.length - 1
+    const text = segments[last_idx].text.trimEnd()
+    if (text) {
+      segments[last_idx] = { ...segments[last_idx], text }
+      break
+    }
+    segments.pop()
+  }
+  return segments
+}
+
 const selected_axis_title = (
   axis: Pick<AxisConfig, `label` | `options` | `selected_key`>,
-): { label: string; interactive: boolean } => {
-  if (axis.options?.length) {
-    const option = axis.options.find(({ key }) => key === axis.selected_key) ?? axis.options[0]
-    return {
-      label: decode_axis_title(
-        option.unit ? `${option.label} (${option.unit})` : option.label,
-      ).trim(),
-      interactive: true,
-    }
+): { label: string; segments: AxisTitleSegment[]; interactive: boolean } => {
+  const option =
+    axis.options?.find(({ key }) => key === axis.selected_key) ?? axis.options?.[0]
+  const value = option
+    ? option.unit
+      ? `${option.label} (${option.unit})`
+      : option.label
+    : (axis.label ?? ``)
+  const segments = parse_axis_title_segments(value)
+  return {
+    label: segments.map(({ text }) => text).join(``),
+    segments,
+    interactive: option !== undefined,
   }
-  return { label: decode_axis_title(axis.label ?? ``).trim(), interactive: false }
 }
 
-// Measurement fills a module-level metrics cache, so reading it inside an
-// effect would otherwise re-run that effect once the cache warms.
-const measure_line = (text: string, font: Readonly<FontSpec>): TextLineMetrics =>
-  untrack(() => measure_text_line(text, font))
-
-const split_axis_title_word = (
-  word: string,
-  available_width: number,
-  font: Readonly<FontSpec>,
-): string[] => {
-  if (measure_line(word, font).width <= available_width) return [word]
-  const chunks: string[] = []
-  let chunk = ``
-  for (const character of word) {
-    const candidate = `${chunk}${character}`
-    if (chunk && measure_line(candidate, font).width > available_width) {
-      chunks.push(chunk)
-      chunk = character
-    } else chunk = candidate
+const split_axis_title_paragraphs = (
+  segments: readonly AxisTitleSegment[],
+): AxisTitleSegment[][] => {
+  const paragraphs: AxisTitleSegment[][] = [[]]
+  for (const segment of segments) {
+    const parts = segment.text.split(/\r\n|\r|\n/u)
+    for (const [part_idx, part] of parts.entries()) {
+      append_axis_title_segment(paragraphs.at(-1) ?? [], part, segment.shift)
+      if (part_idx < parts.length - 1) paragraphs.push([])
+    }
   }
-  if (chunk) chunks.push(chunk)
-  return chunks
+  return paragraphs
 }
 
-const wrap_axis_title_paragraph = (
-  paragraph: string,
-  available_width: number,
-  font: Readonly<FontSpec>,
-): string[] => {
-  const words = paragraph.trim().split(/\s+/u).filter(Boolean)
-  if (words.length === 0) return [``]
-  const lines: string[] = []
-  let line = ``
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word
-    if (measure_line(candidate, font).width <= available_width) {
-      line = candidate
-      continue
+const normalized_axis_title_characters = (
+  segments: readonly AxisTitleSegment[],
+): AxisTitleSegment[] => {
+  const normalized: AxisTitleSegment[] = []
+  let pending_space = false
+  for (const { text, shift } of segments) {
+    for (const character of text) {
+      if (/\s/u.test(character)) {
+        pending_space = normalized.length > 0
+        continue
+      }
+      if (pending_space) normalized.push({ text: ` ` })
+      normalized.push({ text: character, shift })
+      pending_space = false
     }
-    if (line) lines.push(line)
-    const chunks = split_axis_title_word(word, available_width, font)
-    lines.push(...chunks.slice(0, -1))
-    line = chunks.at(-1) ?? ``
   }
-  if (line) lines.push(line)
-  return lines
+  return normalized
+}
+
+const segments_for_wrapped_lines = (
+  paragraph: readonly AxisTitleSegment[],
+  lines: readonly string[],
+): AxisTitleSegment[][] => {
+  const characters = normalized_axis_title_characters(paragraph)
+  let character_idx = 0
+  return lines.map((line) => {
+    while (characters[character_idx]?.text === ` `) character_idx += 1
+    const line_characters = characters.slice(
+      character_idx,
+      character_idx + Array.from(line).length,
+    )
+    character_idx += line_characters.length
+    const segments: AxisTitleSegment[] = []
+    for (const { text, shift } of line_characters) {
+      append_axis_title_segment(segments, text, shift)
+    }
+    return segments
+  })
 }
 
 // Resolve the rendered title block from the same deterministic text metrics used by padding.
@@ -149,7 +222,7 @@ export function resolve_axis_title_layout(
   available_width = AXIS_TITLE_WRAP_WIDTH,
   font: Readonly<FontSpec> = DEFAULT_AXIS_TITLE_FONT,
 ): AxisTitleLayout {
-  const { label, interactive } = selected_axis_title(axis)
+  const { label, segments, interactive } = selected_axis_title(axis)
   if (!label) {
     return {
       label,
@@ -165,24 +238,36 @@ export function resolve_axis_title_layout(
       ? available_width
       : AXIS_TITLE_WRAP_WIDTH
   if (interactive) {
-    const label_metrics = measure_line(label, font)
+    const label_metrics = measure_text_line(label, font)
     const arrow_font = { ...font, font_size: font.font_size * 1.4 }
-    const arrow_width = measure_line(`▾`, arrow_font).width
+    const arrow_width = measure_text_line(`▾`, arrow_font).width
     // PortalSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
     const width = label_metrics.width + arrow_width + 8 + 0.3 * font.font_size
     return {
       label,
-      lines: [{ text: label, metrics: label_metrics }],
+      lines: [{ text: label, segments, metrics: label_metrics }],
       width,
       height: Math.max(24, font.line_height),
       line_height: font.line_height,
       interactive,
     }
   }
-  const text_lines = label
-    .split(/\r\n|\r|\n/u)
-    .flatMap((paragraph) => wrap_axis_title_paragraph(paragraph, safe_width, font))
-  const lines = text_lines.map((text) => ({ text, metrics: measure_line(text, font) }))
+  const lines = split_axis_title_paragraphs(segments).flatMap((paragraph) => {
+    const paragraph_text = paragraph.map(({ text }) => text).join(``)
+    const text_lines = wrap_text_paragraph(
+      paragraph_text,
+      safe_width,
+      font,
+      measure_text_line,
+      true,
+    )
+    const line_segments = segments_for_wrapped_lines(paragraph, text_lines)
+    return text_lines.map((text, line_idx) => ({
+      text,
+      segments: line_segments[line_idx],
+      metrics: measure_text_line(text, font),
+    }))
+  })
   return {
     label,
     lines,
@@ -440,13 +525,6 @@ export const calc_auto_padding = ({
     // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
     const below_baseline =
       title_height > 0 ? band + LABEL_GAP_DEFAULT + title_height / 2 : band
-    if (
-      tick_layout?.rotation === 0 &&
-      band <= TICK_LABEL_HEIGHT &&
-      below_baseline + tick_shift + AXIS_LABEL_OUTER <= default_padding.b
-    ) {
-      return default_padding.b
-    }
     return Math.max(default_padding.b, below_baseline + tick_shift + AXIS_LABEL_OUTER)
   }
 

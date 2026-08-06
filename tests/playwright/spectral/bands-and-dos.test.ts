@@ -1,5 +1,10 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Locator, test } from '@playwright/test'
 import { get_chart_svg } from '../helpers'
+
+const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
+  (await plot.locator(`g.y-axis text`).allTextContents()).filter(
+    (text) => text.trim() !== `` && Number.isFinite(Number(text)),
+  )
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -75,6 +80,57 @@ test.describe(`BandsAndDos Component Tests`, () => {
       expect(bands_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
       expect(dos_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
     }).toPass({ timeout: 15_000 })
+  })
+
+  test(`DOS y-axis zoom and reset propagate to both panels`, async ({ page }) => {
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
+    const plots = container.locator(`.scatter`)
+    await expect(plots).toHaveCount(2)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
+    const dos_svg = get_chart_svg(dos_plot)
+    await expect(dos_svg).toBeVisible()
+    const clip = await dos_plot.locator(`clipPath rect`).evaluate((element) => ({
+      x: Number(element.getAttribute(`x`)),
+      y: Number(element.getAttribute(`y`)),
+      width: Number(element.getAttribute(`width`)),
+      height: Number(element.getAttribute(`height`)),
+    }))
+    const svg_box = await dos_svg.boundingBox()
+    if (!svg_box || Object.values(clip).some((value) => !Number.isFinite(value))) {
+      throw new Error(`Could not measure the DOS plot area`)
+    }
+
+    const initial_ticks = await numeric_y_ticks(dos_plot)
+    expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.15,
+      svg_box.y + clip.y + clip.height * 0.15,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.85,
+      svg_box.y + clip.y + clip.height * 0.75,
+      { steps: 5 },
+    )
+    await page.mouse.up()
+
+    await expect(async () => {
+      const dos_ticks = await numeric_y_ticks(dos_plot)
+      expect(dos_ticks).not.toEqual(initial_ticks)
+      expect(await numeric_y_ticks(bands_plot)).toEqual(dos_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    await dos_svg.dblclick({
+      position: {
+        x: clip.x + clip.width / 2,
+        y: clip.y + clip.height / 2,
+      },
+    })
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(initial_ticks)
+    }).toPass({ timeout: 10_000 })
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {

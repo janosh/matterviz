@@ -58,11 +58,18 @@
   import {
     build_obstacles_norm,
     clip_bar,
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    resolve_legend_layout_tracks,
     solve_decorations,
-    type DecorationItem,
   } from '$lib/plot/core/decorations'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    get_reference_annotation_placement,
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_axis_scales,
     create_color_scale,
@@ -251,7 +258,8 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // Assign visible series without an explicit value axis by unit/group. The value axis is
   // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
@@ -605,56 +613,7 @@
     return build_obstacles_norm(obstacle_series, base_w, base_h)
   })
 
-  const decoration_solution = $derived.by(() => {
-    const items: DecorationItem[] = []
-    if (
-      legend != null &&
-      should_show_legend &&
-      legend_element != null &&
-      !legend_has_explicit_pos
-    ) {
-      items.push({
-        id: `legend`,
-        kind: `legend`,
-        footprint: legend_footprint,
-        clearance: legend.axis_clearance,
-        auto_tracks:
-          legend.layout_tracks === `auto`
-            ? {
-                item_count: series.length,
-                orientation: legend.layout ?? `vertical`,
-                item_extents: legend.item_extents,
-                estimated_item_extent: legend.estimated_item_extent,
-              }
-            : undefined,
-      })
-    }
-    return solve_decorations({
-      base_pad,
-      width,
-      height,
-      obstacles_norm,
-      items,
-    })
-  })
-  const solved_legend = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
-  const legend_exclusion_rects = $derived(
-    solved_legend
-      ? [
-          {
-            x: solved_legend.x,
-            y: solved_legend.y,
-            width: solved_legend.footprint.width,
-            height: solved_legend.footprint.height,
-          },
-        ]
-      : [],
-  )
-  // Resolve marginals: a cumulative/Pareto CDF over the CATEGORY axis weighted by bar height.
-  // Categories sit on x (vertical) or y (horizontal), so the default side and the value array
-  // flip with orientation. The value axis carries no marginal (a bar's height isn't a sample).
+  // Resolve marginals before decoration placement so both share one final plot box.
   const marginal_is_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
     normalize_marginals(
@@ -662,8 +621,32 @@
       marginal_is_vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
     ),
   )
+  const legend_item = $derived(
+    create_legend_decoration_item({
+      enabled:
+        legend != null &&
+        should_show_legend &&
+        legend_element != null &&
+        !legend_has_explicit_pos,
+      footprint: legend_footprint,
+      items: series.map((series_data, series_idx) => ({
+        label: series_data.label ?? `Series ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
+      config: legend,
+    }),
+  )
+  const base_decoration_solution = $derived(
+    solve_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      items: legend_item ? [legend_item] : [],
+    }),
+  )
   const pad = $derived(
-    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     internal_series.map((srs) => ({
@@ -693,6 +676,25 @@
       width,
       height,
     ),
+  )
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      pad,
+      width,
+      height,
+      obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: ranges.current,
+      scales,
+      clearance: 4,
+    }),
+  )
+  const solved_legend = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const decoration_exclusion_rects = $derived(
+    decoration_placement_rects(decoration_solution),
   )
 
   // Compute plot center for point tweening origin
@@ -901,6 +903,7 @@
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series = next),
+    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
   )
 
   // Legend placement stability state (legend_element declared above for the auto-place block)
@@ -1070,7 +1073,7 @@
       y2_scale={scales.y2}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
-      exclusion_rects={legend_exclusion_rects}
+      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -1571,14 +1574,10 @@
           : legend_tween.placed()
             ? legend_tween.coords.current
             : solved_legend_pos}
-      {@const solved_layout_tracks =
-        legend.layout_tracks === `auto` && solved_legend
-          ? Math.max(1, solved_legend.layout_tracks ?? 1)
-          : legend.layout_tracks}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
-        layout_tracks={solved_layout_tracks}
+        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, solved_legend)}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
@@ -1609,6 +1608,7 @@
         y={cy}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
+        exclusion_rects={decoration_exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
       >

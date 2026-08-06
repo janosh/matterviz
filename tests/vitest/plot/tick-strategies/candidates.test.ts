@@ -124,9 +124,9 @@ describe(`tick strategy candidates`, () => {
     expect(ellipsized.labels.map(({ display_lines }) => display_lines[0])).toEqual([
       `abcd…`,
       `AB👩‍🔬C…`,
-      ``,
+      `xyz`,
     ])
-    ellipsized.labels.forEach((label, label_idx) => {
+    ellipsized.labels.slice(0, 2).forEach((label, label_idx) => {
       expect(measure_text(label.display_lines[0])).toBeLessThanOrEqual([5, 5, 0][label_idx])
     })
     expect(ellipsized.labels.map(({ full_text }) => full_text)).toEqual([
@@ -134,7 +134,29 @@ describe(`tick strategy candidates`, () => {
       `AB👩‍🔬CDEF`,
       `xyz`,
     ])
-    expect(ellipsized.labels.every(({ information_loss }) => information_loss > 0)).toBe(true)
+    expect(ellipsized.labels.map(({ information_loss }) => information_loss > 0)).toEqual([
+      true,
+      true,
+      false,
+    ])
+  })
+
+  test(`keeps meaningful source text when ellipsis would retain too little information`, () => {
+    const candidate = create_tick_candidate({
+      id: `long-label`,
+      strategy: `upright`,
+      labels: [`Formation energy per atom`],
+    })
+    const ellipsized = generate_ellipsis_candidate(candidate, {
+      id: `not-bare`,
+      max_width_px: 2,
+      measure_text: (text) => Array.from(text).length,
+    })
+
+    expect(ellipsized.labels[0]).toMatchObject({
+      display_lines: [`Formation energy per atom`],
+      information_loss: 0,
+    })
   })
 
   test.each([

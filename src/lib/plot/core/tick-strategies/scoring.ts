@@ -1,4 +1,4 @@
-import { validate_tick_candidate } from './candidates'
+import { validate_tick_candidate_once } from './candidates'
 import type {
   MeasuredTickCandidate,
   TickCandidateMeasurements,
@@ -40,6 +40,7 @@ export const TICK_SCORE_PRESETS = {
 } as const satisfies Readonly<Record<TickScoringMode, TickScoreWeights>>
 
 const SCORE_MODES = [`auto`, `readable`, `compact`] as const
+const MAX_FEASIBLE_INFORMATION_LOSS = 0.75
 const WEIGHT_KEYS = [
   `hidden_labels`,
   `information_loss`,
@@ -144,22 +145,37 @@ const multiply_penalties = (
 const sum_penalties = (penalties: TickScorePenalties): number =>
   WEIGHT_KEYS.reduce((total, key) => total + penalties[key], 0)
 
+const retains_meaningful_content = (candidate: TickStrategyCandidate): boolean =>
+  candidate.labels
+    .filter(({ visible }) => visible)
+    .every(
+      ({ full_text, display_lines, information_loss }) =>
+        information_loss <= MAX_FEASIBLE_INFORMATION_LOSS &&
+        (!/[\p{L}\p{N}]/u.test(full_text) ||
+          display_lines.some((line) => /[\p{L}\p{N}]/u.test(line))),
+    )
+
 const score_with_weights = (
   { candidate, measurements }: MeasuredTickCandidate,
   weights: TickScoreWeights,
 ): TickScoreResult => {
-  validate_tick_candidate(candidate)
+  validate_tick_candidate_once(candidate)
   validate_measurements(measurements, candidate.id)
   const penalties = penalties_for(candidate, measurements)
   const weighted_penalties = multiply_penalties(penalties, weights)
-  const feasible = measurements.collisions === 0 && measurements.edge_overflow_px === 0
+  const feasible =
+    measurements.collisions === 0 &&
+    measurements.edge_overflow_px === 0 &&
+    retains_meaningful_content(candidate)
   return {
     candidate,
     measurements,
     feasible,
     penalties,
     weighted_penalties,
-    score: feasible ? sum_penalties(weighted_penalties) : Number.POSITIVE_INFINITY,
+    // Keep a finite readability score for hard-constraint failures. If no candidate is fully
+    // feasible, the layout fallback can still prefer readable text over total information loss.
+    score: sum_penalties(weighted_penalties),
   }
 }
 
@@ -174,6 +190,18 @@ const lexical_compare = (left: string, right: string): number =>
 
 const compare_scores = (left: TickScoreResult, right: TickScoreResult): number => {
   if (left.feasible !== right.feasible) return left.feasible ? -1 : 1
+  if (!left.feasible) {
+    const left_readable = retains_meaningful_content(left.candidate)
+    const right_readable = retains_meaningful_content(right.candidate)
+    if (left_readable !== right_readable) return left_readable ? -1 : 1
+    if (left_readable) {
+      const collision_order = left.measurements.collisions - right.measurements.collisions
+      if (collision_order !== 0) return collision_order
+      const overflow_order =
+        left.measurements.edge_overflow_px - right.measurements.edge_overflow_px
+      if (overflow_order !== 0) return overflow_order
+    }
+  }
   if (left.score !== right.score) return left.score - right.score
   const strategy_order =
     STRATEGY_TIE_ORDER.indexOf(left.candidate.strategy) -

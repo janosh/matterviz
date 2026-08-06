@@ -2,13 +2,11 @@
   import type { Vec2 } from '$lib/math'
   import {
     axis_with_range,
-    detect_shared_range_change,
     max_side_padding,
-    propagate_shared_axis_range,
+    reconcile_shared_axis_ranges,
   } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
@@ -40,59 +38,37 @@
   )
   let fermi_level = $derived(extract_efermi(band_structs) ?? extract_efermi(doses))
 
-  const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
-    shared_y_axis ? axis_with_range(bands_props.y_axis, range) : { ...bands_props.y_axis }
-  const dos_default_axis = (range = shared_frequency_range): AxisConfig =>
+  const default_y_axes = (): AxisConfig[] =>
     shared_y_axis
-      ? axis_with_range(dos_props.y_axis, range, ``)
-      : {
-          label: ``,
-          ...dos_props.y_axis,
-        }
+      ? [
+          axis_with_range(bands_props.y_axis, shared_frequency_range),
+          axis_with_range(dos_props.y_axis, shared_frequency_range, ``),
+        ]
+      : [{ ...bands_props.y_axis }, { label: ``, ...dos_props.y_axis }]
 
   let synced_zoom_range = $state<Vec2 | null>(null)
-  let bands_y_axis = $state<AxisConfig>(bands_default_axis())
-  let dos_y_axis = $state<AxisConfig>(dos_default_axis())
-  let prev_sources: unknown[] | undefined
+  let y_axes = $state(default_y_axes())
   $effect(() => {
-    const sources = [band_structs, doses, shared_y_axis, bands_props.y_axis, dos_props.y_axis]
-    if (prev_sources?.every((source, idx) => source === sources[idx])) return
-    prev_sources = sources
+    y_axes = default_y_axes()
     synced_zoom_range = null
-    bands_y_axis = bands_default_axis()
-    dos_y_axis = dos_default_axis()
   })
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
-    const result = detect_shared_range_change(
-      [bands_y_axis.range, dos_y_axis.range],
+    const update = reconcile_shared_axis_ranges(
+      y_axes,
       shared_frequency_range,
-      untrack(() => synced_zoom_range),
+      synced_zoom_range,
     )
-    if (result !== undefined) synced_zoom_range = result
-  })
-
-  // Propagate only after a child resets to auto-range. Read the current axis untracked
-  // so a child zoom is detected above rather than immediately overwritten here.
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_axis = untrack(() => bands_y_axis)
-    const next_axis = propagate_shared_axis_range(current_axis, base_range)
-    if (next_axis !== current_axis) bands_y_axis = next_axis
-  })
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_axis = untrack(() => dos_y_axis)
-    const next_axis = propagate_shared_axis_range(current_axis, base_range)
-    if (next_axis !== current_axis) dos_y_axis = next_axis
+    if (!update) return
+    synced_zoom_range = update.synced_range
+    y_axes = update.axes
   })
 
   let hovered_frequency = $state<number | null>(null)
 
-  // Keep the existing baseline while honoring larger caller padding on either plot.
-  // Side-wise maxima guarantee identical y-scale pixel spans.
+  // Side-wise maxima preserve caller padding while keeping y-scale pixel spans identical.
   let shared_tb_padding = $derived(
     max_side_padding([{ t: 20, b: 50 }, bands_props.padding, dos_props.padding], [`t`, `b`]),
   )
@@ -108,7 +84,7 @@
     {...bands_props}
     {band_structs}
     {fermi_level}
-    bind:y_axis={bands_y_axis}
+    bind:y_axis={y_axes[0]}
     reference_frequency={hovered_frequency}
     padding={{ r: 15, ...bands_props.padding, ...shared_tb_padding }}
   />
@@ -118,7 +94,7 @@
     {doses}
     {fermi_level}
     orientation="horizontal"
-    bind:y_axis={dos_y_axis}
+    bind:y_axis={y_axes[1]}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{ l: 15, ...dos_props.padding, ...shared_tb_padding }}

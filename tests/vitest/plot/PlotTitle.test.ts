@@ -91,6 +91,49 @@ describe(`PlotTitle`, () => {
     await unmount(component)
   })
 
+  test(`remeasures after document fonts become ready`, async () => {
+    vi.restoreAllMocks()
+    let pixels_per_character = 5
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: (text: string) => ({
+        width: Array.from(text).length * pixels_per_character,
+        actualBoundingBoxAscent: 8,
+        actualBoundingBoxDescent: 2,
+      }),
+    } as unknown as CanvasRenderingContext2D)
+    let resolve_fonts: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      resolve_fonts = resolve
+    })
+    const original_fonts = Object.getOwnPropertyDescriptor(document, `fonts`)
+    Object.defineProperty(document, `fonts`, {
+      value: { ready },
+      configurable: true,
+    })
+
+    try {
+      const { component, svg } = mount_title(
+        { text: `alpha beta`, font: { font_size: 10, line_height: 12 } },
+        { width: 50 },
+      )
+      expect(svg.querySelectorAll(`.plot-title-text tspan`)).toHaveLength(1)
+
+      pixels_per_character = 6
+      resolve_fonts?.()
+      await vi.waitFor(() =>
+        expect(svg.querySelectorAll(`.plot-title-text tspan`)).toHaveLength(2),
+      )
+      expect(
+        [...svg.querySelectorAll(`.plot-title-text tspan`)].map((line) => line.textContent),
+      ).toEqual([`alpha`, `beta`])
+      await unmount(component)
+    } finally {
+      if (original_fonts) Object.defineProperty(document, `fonts`, original_fonts)
+      else Reflect.deleteProperty(document, `fonts`)
+    }
+  })
+
   test.each([
     { align: `start`, expected_x: `10` },
     { align: `middle`, expected_x: `60` },

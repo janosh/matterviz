@@ -2,11 +2,10 @@
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
-  import { max_side_padding, propagate_shared_axis_range } from '$lib/plot/core/shared-axes'
+  import { max_side_padding, reconcile_shared_axis_ranges } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
@@ -85,65 +84,34 @@
   let is_mobile = $derived(clientWidth < tablet_width)
   let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
 
-  const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
-    helpers.axis_with_range(bands_props.y_axis, range)
-  const dos_default_axis = (range = shared_frequency_range): AxisConfig =>
-    is_desktop ? helpers.axis_with_range(dos_props.y_axis, range, ``) : { ...dos_props.y_axis }
+  const default_y_axes = (): AxisConfig[] => [
+    helpers.axis_with_range(bands_props.y_axis, shared_frequency_range),
+    is_desktop
+      ? helpers.axis_with_range(dos_props.y_axis, shared_frequency_range, ``)
+      : { ...dos_props.y_axis },
+  ]
 
   let synced_zoom_range = $state<Vec2 | null>(null)
-  let bands_y_axis = $state<AxisConfig>(bands_default_axis())
-  let dos_y_axis = $state<AxisConfig>(dos_default_axis())
-  let prev_sources: unknown[] | undefined
+  let y_axes = $state(default_y_axes())
   $effect(() => {
-    const sources = [band_structs, doses, is_desktop, bands_props.y_axis, dos_props.y_axis]
-    if (prev_sources?.every((source, idx) => source === sources[idx])) return
-    prev_sources = sources
+    y_axes = default_y_axes()
     synced_zoom_range = null
-    bands_y_axis = bands_default_axis()
-    dos_y_axis = dos_default_axis()
   })
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
-    const result = helpers.detect_zoom_change(
-      bands_y_axis.range,
-      dos_y_axis.range,
+    const update = reconcile_shared_axis_ranges(
+      is_desktop ? y_axes : y_axes.slice(0, 1),
       shared_frequency_range,
-      untrack(() => synced_zoom_range),
-      is_desktop, // DOS sync only enabled on desktop
+      synced_zoom_range,
     )
-    if (result === undefined) return
+    if (!update) return
 
-    synced_zoom_range = result
-    const next_range = result ?? shared_frequency_range
-    const current_bands_axis = untrack(() => bands_y_axis)
-    const next_bands_axis = helpers.sync_axis_range(current_bands_axis, next_range)
-    if (next_bands_axis !== current_bands_axis) bands_y_axis = next_bands_axis
-
+    synced_zoom_range = update.synced_range
     // A vertical DOS uses y for density, so cross-plot range linking only applies
     // to the desktop layout where both frequency/energy dimensions are y axes.
-    if (is_desktop) {
-      const current_dos_axis = untrack(() => dos_y_axis)
-      const next_dos_axis = helpers.sync_axis_range(current_dos_axis, next_range)
-      if (next_dos_axis !== current_dos_axis) dos_y_axis = next_dos_axis
-    }
-  })
-
-  // Restore a shared range after a child resets to auto-range. Keep child axes
-  // untracked so a live zoom reaches the detector above before propagation runs.
-  $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_axis = untrack(() => bands_y_axis)
-    const next_axis = propagate_shared_axis_range(current_axis, base_range)
-    if (next_axis !== current_axis) bands_y_axis = next_axis
-  })
-
-  $effect(() => {
-    const base_range = is_desktop ? (synced_zoom_range ?? shared_frequency_range) : undefined
-    const current_axis = untrack(() => dos_y_axis)
-    const next_axis = propagate_shared_axis_range(current_axis, base_range)
-    if (next_axis !== current_axis) dos_y_axis = next_axis
+    y_axes = is_desktop ? update.axes : [update.axes[0], y_axes[1]]
   })
 
   let hovered_frequency = $state<number | null>(null)
@@ -171,7 +139,7 @@
       ...bands_props.padding,
       ...(is_desktop ? shared_tb_padding : {}),
     }}
-    bind:y_axis={bands_y_axis}
+    bind:y_axis={y_axes[0]}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
     highlighted_qpoint_index={active_qpoint_index}
@@ -211,7 +179,7 @@
       ...helpers.axis_with_range(undefined, is_desktop ? undefined : shared_frequency_range),
       ...dos_props.x_axis,
     }}
-    bind:y_axis={dos_y_axis}
+    bind:y_axis={y_axes[1]}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{

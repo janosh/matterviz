@@ -19,16 +19,18 @@ const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
 
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
-export function detect_zoom_change(
+export const detect_zoom_change = (
   bands_range: unknown,
   dos_range: unknown,
   shared_range: Vec2,
   current_synced: Vec2 | null,
   dos_enabled = true,
-): Vec2 | null | undefined {
-  const panel_ranges = dos_enabled ? [bands_range, dos_range] : [bands_range]
-  return detect_shared_range_change(panel_ranges, shared_range, current_synced)
-}
+): Vec2 | null | undefined =>
+  detect_shared_range_change(
+    dos_enabled ? [bands_range, dos_range] : [bands_range],
+    shared_range,
+    current_synced,
+  )
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s

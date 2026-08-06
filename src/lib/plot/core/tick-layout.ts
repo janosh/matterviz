@@ -29,23 +29,21 @@ import {
   type TickStrategyCandidate,
 } from '$lib/plot/core/tick-strategies'
 import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
+import { SvelteSet } from 'svelte/reactivity'
 
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 6
 export const TICK_STAGGER_GAP = 4
 
-// Memoised: the wrap search measures O(segments²) substrings per label, and calc_auto_padding
-// plus every PlotAxis re-resolve the same layout on each resize or zoom frame. A plain Map on
-// purpose — a SvelteMap would let each cache miss invalidate the $derived reading it.
-const layout_cache = new Map<string, ResolvedTickLayout>()
-// Zooming a numeric axis mints new tick labels forever, so the memo needs a ceiling.
-const MAX_CACHED_LAYOUTS = 500
+// Keep only the duplicate calc_auto_padding/PlotAxis lookup. Resizes and zooms change the exact
+// geometry key, so retaining older layouts only accumulates entries that cannot be reused.
+let cached_layout: { key: string; value: ResolvedTickLayout } | undefined
 
 // Drop memoised layouts and the text metrics they were derived from. Call after the rendering
 // font changes (web font load) or, in tests, between cases that stub canvas measurement.
 export const clear_tick_metrics_cache = (): void => {
-  layout_cache.clear()
+  cached_layout = undefined
   clear_text_metrics_cache()
 }
 
@@ -120,7 +118,7 @@ export const measure_max_tick_width = (
 const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 const DEFAULT_TICK_LABEL_MAX_LINES = 3
 const DEFAULT_MAX_BAND_FOR_SCORING = 80
-const DEFAULT_VERTICAL_WRAP_WIDTH = 120
+const DEFAULT_VERTICAL_WRAP_WIDTH = DEFAULT_MAX_BAND_FOR_SCORING
 const DEFAULT_STRATEGY_ORDER: readonly TickStrategy[] = [
   `upright`,
   `wrap`,
@@ -243,11 +241,6 @@ const resolve_positions = (positions: readonly number[], tick_count: number): nu
   if (positions.length !== tick_count) {
     throw new Error(`tick_positions has ${positions.length} entries for ${tick_count} ticks`)
   }
-  positions.forEach((position, tick_idx) => {
-    if (!Number.isFinite(position)) {
-      throw new TypeError(`tick_positions[${tick_idx}] must be finite, got ${position}`)
-    }
-  })
   return [...positions]
 }
 
@@ -261,6 +254,7 @@ const resolve_axis_extent = (
   let start = 0
   let end = axis_size
   for (const position of positions) {
+    if (!Number.isFinite(position)) continue
     if (position < start) start = position
     if (position > end) end = position
   }
@@ -272,6 +266,7 @@ const local_axis_widths = (positions: readonly number[], extent: TickAxisExtent)
   const extent_max = Math.max(extent.start, extent.end)
   const spatial_order = positions
     .map((position, tick_idx) => ({ position, tick_idx }))
+    .filter(({ position }) => Number.isFinite(position))
     .toSorted(
       (left, right) => left.position - right.position || left.tick_idx - right.tick_idx,
     )
@@ -299,6 +294,7 @@ const auto_rotation_sign = (side: TickLayoutSide, inside: boolean): 1 | -1 =>
 interface CandidateGeometry {
   candidate: TickStrategyCandidate
   labels: readonly TickLabelGeometry[]
+  colliding_label_count: number
   band: number
   stagger_step: number
   measured: MeasuredTickCandidate
@@ -333,6 +329,7 @@ const measure_candidate = ({
   max_band,
   min_visible_ticks,
   preserve_endpoints,
+  renderable_indices,
 }: {
   candidate: TickStrategyCandidate
   side: TickLayoutSide
@@ -343,6 +340,7 @@ const measure_candidate = ({
   max_band?: number
   min_visible_ticks: number
   preserve_endpoints: boolean
+  renderable_indices: readonly number[]
 }): CandidateGeometry => {
   const visible_labels = candidate.labels.filter(({ visible }) => visible)
   const item_for = (label: (typeof candidate.labels)[number], cross_axis: number) => ({
@@ -379,10 +377,14 @@ const measure_candidate = ({
       })
     : baseline
   const band = outward_band(geometry.labels, side)
+  const first_renderable_idx = renderable_indices[0]
+  const last_renderable_idx = renderable_indices.at(-1)
   const endpoint_violation =
     preserve_endpoints &&
-    candidate.labels.length > 0 &&
-    (!candidate.labels[0].visible || !candidate.labels.at(-1)?.visible)
+    first_renderable_idx != null &&
+    last_renderable_idx != null &&
+    (!candidate.labels[first_renderable_idx].visible ||
+      !candidate.labels[last_renderable_idx].visible)
   const visible_count_violation = visible_labels.length < min_visible_ticks
   const band_overflow = max_band == null ? 0 : Math.max(0, band - max_band)
   const measurements = {
@@ -396,6 +398,7 @@ const measure_candidate = ({
   return {
     candidate,
     labels: geometry.labels,
+    colliding_label_count: geometry.collisions.colliding_indices.length,
     band,
     stagger_step,
     measured: { candidate, measurements },
@@ -595,29 +598,37 @@ const compute_tick_layout = (
   const positions = resolve_positions(axis.tick_positions, ticks.length).map(
     (position) => position + axis_position_shift,
   )
+  const renderable_indices: number[] = []
+  const base_labels = full_texts.map((full_text, tick_idx) => {
+    const visible = Number.isFinite(positions[tick_idx])
+    if (visible) renderable_indices.push(tick_idx)
+    return { full_text, visible }
+  })
   const axis_extent = resolve_axis_extent(axis, axis_size, positions)
   const geometry_side = effective_side(side, axis.tick?.label?.inside ?? false)
   const configured = axis.tick?.label?.rotation ?? `auto`
   const explicit_lines = full_texts.map(explicit_tick_lines)
-  const explicit_candidate = create_tick_candidate({
-    id: `explicit`,
-    strategy: configured === 0 ? `upright` : `rotate`,
-    rotation_deg: configured === `auto` ? 0 : configured,
-    labels: full_texts.map((full_text, tick_idx) => ({
-      full_text,
-      display_lines: explicit_lines[tick_idx],
-    })),
-  })
+  const explicit_labels = base_labels.map((label, tick_idx) => ({
+    ...label,
+    display_lines: explicit_lines[tick_idx],
+  }))
   const common_config = {
     side: geometry_side,
     positions,
     axis_extent,
     font,
     edge_gap: 0,
-    min_visible_ticks: Math.min(1, ticks.length),
+    min_visible_ticks: Math.min(1, renderable_indices.length),
     preserve_endpoints: false,
+    renderable_indices,
   }
   if (configured !== `auto`) {
+    const explicit_candidate = create_tick_candidate({
+      id: `explicit`,
+      strategy: configured === 0 ? `upright` : `rotate`,
+      rotation_deg: configured,
+      labels: explicit_labels,
+    })
     const measured = measure_candidate({ candidate: explicit_candidate, ...common_config })
     return finalize_layout(measured, ticks, side, is_horizontal)
   }
@@ -634,7 +645,7 @@ const compute_tick_layout = (
       : finite_nonnegative(auto_layout.max_band, `auto_layout.max_band`)
   const edge_gap = finite_nonnegative(auto_layout.edge_gap ?? 0, `auto_layout.edge_gap`)
   const min_visible_ticks = Math.min(
-    ticks.length,
+    renderable_indices.length,
     positive_integer(
       auto_layout.min_visible_ticks ?? Math.min(2, ticks.length),
       `auto_layout.min_visible_ticks`,
@@ -655,10 +666,7 @@ const compute_tick_layout = (
   const upright = create_tick_candidate({
     id: `upright`,
     strategy: `upright`,
-    labels: full_texts.map((full_text, tick_idx) => ({
-      full_text,
-      display_lines: explicit_lines[tick_idx],
-    })),
+    labels: explicit_labels,
   })
   if (strategies.includes(`upright`)) candidates.push(upright)
 
@@ -676,10 +684,10 @@ const compute_tick_layout = (
       create_tick_candidate({
         id: `wrap`,
         strategy: `wrap`,
-        labels: full_texts.map((full_text, tick_idx) => ({
-          full_text,
+        labels: base_labels.map((label, tick_idx) => ({
+          ...label,
           display_lines: wrap_tick_label(
-            full_text,
+            label.full_text,
             is_horizontal ? slot_widths[tick_idx] : vertical_wrap_width,
             max_lines,
             font,
@@ -688,25 +696,25 @@ const compute_tick_layout = (
       }),
     )
   }
-  if (strategies.includes(`stagger`) && ticks.length > 1) {
+  if (strategies.includes(`stagger`) && renderable_indices.length > 1) {
     candidates.push(generate_stagger_candidate(upright, { id: `stagger` }))
   }
   if (strategies.includes(`abbreviate`)) {
     candidates.push(generate_abbreviated_candidate(upright, { id: `abbreviate` }))
   }
-  if (strategies.includes(`rotate`) && ticks.length > 1) {
-    const sign = auto_rotation_sign(side, axis.tick?.label?.inside ?? false)
-    for (const angle of rotation_angles(max_angle)) {
-      candidates.push(
-        create_tick_candidate({
-          id: `rotate-${angle}`,
-          strategy: `rotate`,
-          labels: full_texts,
-          rotation_deg: sign * angle,
-        }),
-      )
-    }
-  }
+  const rotation_sign = auto_rotation_sign(side, axis.tick?.label?.inside ?? false)
+  const rotated_candidates: TickStrategyCandidate[] =
+    strategies.includes(`rotate`) && renderable_indices.length > 1
+      ? rotation_angles(max_angle).map((angle) =>
+          create_tick_candidate({
+            id: `rotate-${angle}`,
+            strategy: `rotate`,
+            labels: base_labels,
+            rotation_deg: rotation_sign * angle,
+          }),
+        )
+      : []
+  candidates.push(...rotated_candidates)
   if (strategies.includes(`ellipsis`)) {
     candidates.push(
       generate_ellipsis_candidate(upright, {
@@ -719,28 +727,41 @@ const compute_tick_layout = (
 
   // One bounded density pass: estimate a target once from measured labels, then score that
   // stable subset with the other candidates. No reactive feedback from selected labels occurs.
-  if (strategies.includes(`thin`) && ticks.length > min_visible_ticks) {
+  if (strategies.includes(`thin`) && renderable_indices.length > min_visible_ticks) {
     upright_geometry ??= measure_candidate({ candidate: upright, ...candidate_config })
-    const axis_label_sizes = upright.labels.map((label) =>
-      is_horizontal
+    const axis_label_sizes = renderable_indices.map((tick_idx) => {
+      const label = upright.labels[tick_idx]
+      return is_horizontal
         ? Math.max(...label.display_lines.map((line) => measure_text_width(line, font)))
-        : label.display_lines.length * font.line_height,
-    )
+        : label.display_lines.length * font.line_height
+    })
     const extent_size = Math.abs(axis_extent.end - axis_extent.start)
     const density_count = suggest_tick_count(extent_size, axis_label_sizes, TICK_LABEL_GAP)
+    const non_colliding_count =
+      renderable_indices.length - upright_geometry.colliding_label_count
+    // Labels outside every collision can remain. When every label collides, that count is zero,
+    // so fall back to the independent density estimate instead of collapsing to the minimum.
+    const collision_limited_count =
+      non_colliding_count > 0 ? non_colliding_count : density_count
     const requested_count = Math.max(
       min_visible_ticks,
-      Math.min(
-        ticks.length - upright_geometry.measured.measurements.collisions,
-        density_count,
-      ),
+      Math.min(renderable_indices.length, density_count, collision_limited_count),
     )
-    const selected_indices =
+    const selected_renderable_indices =
       auto_layout.endpoint_policy === `adaptive`
-        ? adaptive_thin_indices(ticks.length, requested_count)
-        : thin_tick_indices(ticks.length, requested_count)
+        ? adaptive_thin_indices(renderable_indices.length, requested_count)
+        : thin_tick_indices(renderable_indices.length, requested_count)
+    const selected_indices = new SvelteSet(
+      selected_renderable_indices.map((tick_idx) => renderable_indices[tick_idx]),
+    )
+    // Compose only thinning with the fixed rotation ladder. This adds at most four candidates,
+    // avoiding the combinatorial search that arbitrary strategy composition would create.
     candidates.push(
-      generate_thinned_candidate(upright, new Set(selected_indices), { id: `thin` }),
+      ...[upright, ...rotated_candidates].map((candidate) =>
+        generate_thinned_candidate(candidate, selected_indices, {
+          id: candidate === upright ? `thin` : `thin-${candidate.id}`,
+        }),
+      ),
     )
   }
 
@@ -754,17 +775,10 @@ const compute_tick_layout = (
     measured_candidates.map(({ measured }) => measured),
     scoring_config(auto_layout),
   )
+  const winner_id = selection.winner?.candidate.id ?? selection.evaluated[0]?.candidate.id
   const winner =
-    measured_candidates.find(
-      ({ candidate }) => candidate.id === selection.winner?.candidate.id,
-    ) ??
-    measured_candidates.toSorted(
-      (left, right) =>
-        left.measured.measurements.collisions - right.measured.measurements.collisions ||
-        left.measured.measurements.edge_overflow_px -
-          right.measured.measurements.edge_overflow_px ||
-        left.band - right.band,
-    )[0]
+    measured_candidates.find(({ candidate }) => candidate.id === winner_id) ??
+    measured_candidates[0]
   return finalize_layout(winner, ticks, side, is_horizontal)
 }
 
@@ -838,10 +852,8 @@ export const resolve_tick_layout = (
     `${font.font_family},${font.font_size},${font.font_style},${font.font_variant},${font.font_weight},${font.font_stretch},${font.line_height}`,
     full_texts.join(`\u0000`),
   ].join(`|`)
-  const memoized = layout_cache.get(key)
-  if (memoized) return memoized
+  if (cached_layout?.key === key) return cached_layout.value
   const resolved = compute_tick_layout(axis, axis_size, side, full_texts)
-  if (layout_cache.size >= MAX_CACHED_LAYOUTS) layout_cache.clear()
-  layout_cache.set(key, resolved)
+  cached_layout = { key, value: resolved }
   return resolved
 }

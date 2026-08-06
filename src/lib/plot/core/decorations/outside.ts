@@ -35,7 +35,7 @@ export const place_outside_decorations = (scene: DecorationScene): DecorationLay
     base_pad: scene.base_pad,
     width: scene.width,
     height: scene.height,
-    obstacles_norm: [...scene.obstacles_norm],
+    obstacles_norm: scene.obstacles_norm,
     legend: legend ? { footprint: legend.footprint, clearance: legend.clearance } : null,
     colorbar: colorbar
       ? {
@@ -72,7 +72,6 @@ export const get_outside_placement = (
       ...placement,
       ...layout.legend_pos,
       side,
-      style: ``,
     }
   }
   if (item.kind === `colorbar` && layout.colorbar_outside) {
@@ -82,7 +81,6 @@ export const get_outside_placement = (
       x: horizontal ? base_pad.l + (base_width - item_width) / 2 : width - item_width - gap,
       y: horizontal ? gap : base_pad.t + (base_height - item_height) / 2,
       side: horizontal ? `top` : `right`,
-      style: layout.colorbar_style,
     }
   }
   return null

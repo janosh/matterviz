@@ -165,7 +165,7 @@ describe(`PlotLegend`, () => {
     const wrapper = doc_query(`.legend`)
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`) // Still 1 column
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(2, auto)`) // 2 rows defined
-    expect(wrapper.style.gridAutoFlow).toBe(``) // Preserve existing numeric layout behavior
+    expect(wrapper.style.gridAutoFlow).toBe(`column`)
   })
 
   test.each([

@@ -119,4 +119,31 @@ describe(`Cartesian plot titles`, () => {
     expect(decorated.colorbar_outside).toBe(true)
     expect(decorated.pad.t - base_pad.t).toBe(40)
   })
+
+  test(`wrapped horizontal and vertical axis titles preserve sub/sup markup`, async () => {
+    mock_text_measurement(7)
+    const root = await mount_sized(
+      ScatterPlot,
+      {
+        series: xy_series(),
+        x_axis: { label: `Long formation E<sub>hull</sub> relative energy scale` },
+        y_axis: { label: `Long squared x<sup>2</sup> response property scale` },
+        controls: { show: false },
+        fullscreen_toggle: false,
+        legend: null,
+        point_tween: { duration: 0 },
+      },
+      { selector: `.scatter`, width: 320, height: 260 },
+    )
+    const x_label = root.querySelector(`.axis-label.x-label`)
+    const y_label = root.querySelector(`.axis-label.y-label`)
+
+    expect(x_label?.querySelectorAll(`.static-label > span`).length).toBeGreaterThan(1)
+    expect(x_label?.querySelector(`sub`)?.textContent).toBe(`hull`)
+    expect(
+      [...(y_label?.children ?? [])].filter((child) => child.tagName.toLowerCase() === `tspan`)
+        .length,
+    ).toBeGreaterThan(1)
+    expect(y_label?.querySelector(`tspan[baseline-shift="super"]`)?.textContent).toBe(`2`)
+  })
 })

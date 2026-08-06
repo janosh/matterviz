@@ -79,7 +79,7 @@ export interface TickScoreResult {
   feasible: boolean
   penalties: TickScorePenalties
   weighted_penalties: TickScorePenalties
-  // Lower is better. Infeasible candidates always score positive infinity.
+  // Lower is better. Infeasible candidates retain a finite score for deterministic fallback.
   score: number
 }
 

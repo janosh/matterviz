@@ -6,7 +6,53 @@ import type {
   FacetSharedBandSizes,
 } from '$lib/plot/core/facets'
 import { createRawSnippet, mount, tick, type Snippet } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
+
+class ControlledResizeObserver implements ResizeObserver {
+  static instances: ControlledResizeObserver[] = []
+  readonly observed_elements: Element[] = []
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    ControlledResizeObserver.instances.push(this)
+  }
+
+  observe(element: Element): void {
+    if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
+    queueMicrotask(() => this.notify(element))
+  }
+
+  unobserve(element: Element): void {
+    const element_idx = this.observed_elements.indexOf(element)
+    if (element_idx !== -1) this.observed_elements.splice(element_idx, 1)
+  }
+
+  disconnect(): void {
+    this.observed_elements.length = 0
+  }
+
+  notify(element: Element): void {
+    if (!this.observed_elements.includes(element)) return
+    this.callback(
+      [
+        {
+          target: element,
+          contentRect: DOMRect.fromRect({
+            width: element instanceof HTMLElement ? element.clientWidth : 0,
+            height: element instanceof HTMLElement ? element.clientHeight : 0,
+          }),
+        } as ResizeObserverEntry,
+      ],
+      this,
+    )
+  }
+
+  static notify(element: Element): void {
+    for (const observer of ControlledResizeObserver.instances) observer.notify(element)
+  }
+}
+
+globalThis.ResizeObserver = ControlledResizeObserver
 
 const make_panel_snippet = (context_getters: (() => FacetPanelContext)[]) =>
   createRawSnippet<[FacetPanelContext]>((get_context) => {
@@ -20,7 +66,7 @@ const context_for = (
   context_getters: (() => FacetPanelContext)[],
   key: string,
 ): FacetPanelContext => {
-  const context_getter = context_getters.find((get_context) => get_context().key === key)
+  const context_getter = context_getters.findLast((get_context) => get_context().key === key)
   if (!context_getter) throw new Error(`No facet context for key "${key}"`)
   return context_getter()
 }
@@ -43,10 +89,13 @@ const mount_grid = async (
   const target = document.createElement(`div`)
   document.body.append(target)
   const context_getters: (() => FacetPanelContext)[] = []
+  const panel_state = new SvelteMap<`panels`, readonly FacetPanel[]>([[`panels`, panels]])
   mount(FacetGrid, {
     target,
     props: {
-      panels,
+      get panels() {
+        return panel_state.get(`panels`) ?? []
+      },
       columns: options.columns ?? 1,
       gap: options.gap,
       axis_modes: options.axis_modes,
@@ -61,7 +110,11 @@ const mount_grid = async (
   await tick()
   const root = target.querySelector<HTMLElement>(`.facet-grid`)
   if (!root) throw new Error(`FacetGrid root not found`)
-  return { root, context_getters }
+  return {
+    root,
+    context_getters,
+    set_panels: (next_panels: readonly FacetPanel[]) => panel_state.set(`panels`, next_panels),
+  }
 }
 
 describe(`FacetGrid`, () => {
@@ -250,7 +303,12 @@ describe(`FacetGrid`, () => {
       clientWidth: { value: 400, configurable: true },
       clientHeight: { value: 200, configurable: true },
     })
-    root.dispatchEvent(new Event(`resize`))
+    expect(
+      ControlledResizeObserver.instances.some(({ observed_elements }) =>
+        observed_elements.includes(root),
+      ),
+    ).toBe(true)
+    ControlledResizeObserver.notify(root)
     await tick()
 
     const resized_left = context_for(context_getters, `left`)
@@ -263,8 +321,36 @@ describe(`FacetGrid`, () => {
 
     // An identical report and resize are both no-ops, so the resolved context stays stable.
     resized_left.report_layout({ padding: { l: 60 }, ranges: { x: [-2, 2] } })
-    root.dispatchEvent(new Event(`resize`))
+    ControlledResizeObserver.notify(root)
     await tick()
     expect(context_for(context_getters, `left`)).toBe(resized_left)
+  })
+
+  test(`prunes callback identities when a panel key leaves the grid`, async () => {
+    const { context_getters, set_panels } = await mount_grid(
+      [
+        { key: `kept`, data: 1 },
+        { key: `removed`, data: 2 },
+      ],
+      { columns: 2 },
+    )
+    const removed = context_for(context_getters, `removed`)
+
+    set_panels([{ key: `kept`, data: 1 }])
+    await tick()
+    removed.report_layout({ padding: { l: 99 } })
+    removed.update_range(`x`, [4, 6])
+
+    set_panels([
+      { key: `kept`, data: 1 },
+      { key: `removed`, data: 3 },
+    ])
+    await tick()
+    const readded = context_for(context_getters, `removed`)
+
+    expect(readded.report_layout).not.toBe(removed.report_layout)
+    expect(readded.update_range).not.toBe(removed.update_range)
+    expect(readded.padding).toEqual({})
+    expect(readded.ranges).toEqual({})
   })
 })

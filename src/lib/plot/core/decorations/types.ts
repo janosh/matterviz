@@ -90,7 +90,6 @@ export type DecorationPlacement = {
   score: number | null
   location: `interior` | `outside`
   side: DecorationSide | null
-  style: string
   layout_tracks?: number
   reference_annotation?: ReferenceAnnotationCandidate
 }

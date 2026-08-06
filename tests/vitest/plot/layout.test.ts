@@ -608,6 +608,102 @@ describe(`layout utility functions`, () => {
       expect(layout.labels.map(({ visible }) => visible)).toEqual([true, false, false, true])
     })
 
+    it(`uses density rather than collision-pair count for a 500-tick axis`, () => {
+      const tick_count = 500
+      const axis_size = 1200
+      const tick_values = Array.from(
+        { length: tick_count },
+        (_unused, tick_idx) => `Phase ${tick_idx} formation energy average temperature`,
+      )
+      const layout = resolve_tick_layout(
+        {
+          tick_values,
+          tick_positions: Array.from(
+            { length: tick_count },
+            (_unused, tick_idx) => (tick_idx * axis_size) / (tick_count - 1),
+          ),
+          axis_extent: { start: 0, end: axis_size },
+          tick: {
+            label: {
+              auto_layout: {
+                strategies: [`thin`],
+                min_visible_ticks: 2,
+                endpoint_policy: `preserve`,
+              },
+            },
+          },
+        },
+        axis_size,
+        `x`,
+      )
+
+      expect(layout.strategy).toBe(`thin`)
+      expect(layout.visible_tick_indices).toHaveLength(3)
+      expect(layout.visible_tick_indices.length).toBeGreaterThan(2)
+      expect(layout.visible_tick_indices).toEqual([0, 250, 499])
+    })
+
+    it(`combines bounded thinning with rotation when neither strategy fits alone`, () => {
+      const tick_count = 8
+      const axis_size = 120
+      const tick_values = Array.from(
+        { length: tick_count },
+        (_unused, tick_idx) => `Category label ${tick_idx}`,
+      )
+      const layout = resolve_tick_layout(
+        {
+          tick_values,
+          tick_positions: Array.from(
+            { length: tick_count },
+            (_unused, tick_idx) => 20 + (tick_idx * (axis_size - 40)) / (tick_count - 1),
+          ),
+          axis_extent: { start: 0, end: axis_size },
+          tick: {
+            label: {
+              auto_layout: {
+                strategies: [`thin`, `rotate`],
+                min_visible_ticks: 4,
+                max_angle: 90,
+                max_band: 140,
+                endpoint_policy: `preserve`,
+              },
+            },
+          },
+        },
+        axis_size,
+        `x`,
+      )
+
+      expect(layout).toMatchObject({ strategy: `thin`, rotation: -90 })
+      expect(layout.visible_tick_indices).toHaveLength(4)
+    })
+
+    it(`hides non-finite projected ticks while preserving source index alignment`, () => {
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`zero`, `not-a-number`, `infinite`, `last`],
+          tick_positions: [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
+          axis_extent: { start: 0, end: 100 },
+          tick: { label: { auto_layout: { strategies: [`upright`] } } },
+        },
+        100,
+        `x`,
+      )
+
+      expect(layout.labels).toHaveLength(4)
+      expect(layout.lines).toHaveLength(4)
+      expect(
+        layout.labels.map(({ tick_index, visible }) => ({ tick_index, visible })),
+      ).toEqual([
+        { tick_index: 0, visible: true },
+        { tick_index: 1, visible: false },
+        { tick_index: 2, visible: false },
+        { tick_index: 3, visible: true },
+      ])
+      expect(layout.visible_tick_indices).toEqual([0, 3])
+      expect(layout.visible_ticks).toEqual([`zero`, `last`])
+    })
+
     it(`chooses inward edge anchors from actual axis bounds`, () => {
       const layout = resolve_tick_layout(
         {
@@ -622,7 +718,7 @@ describe(`layout utility functions`, () => {
       expect(layout.labels.map(({ anchor }) => anchor)).toEqual([`start`, `end`])
     })
 
-    it(`scores the aggressive default strategy set exhaustively`, () => {
+    it(`keeps readable text when every default candidate violates a hard constraint`, () => {
       const layout = resolve_tick_layout(
         {
           tick_values: [`temperature`, `temperature`, `temperature`],
@@ -637,39 +733,70 @@ describe(`layout utility functions`, () => {
         100,
         `x`,
       )
-      expect(layout.strategy).toBe(`ellipsis`)
-      expect(layout.labels.map(({ display_text }) => display_text)).toEqual([
-        `t…`,
-        `tempe…`,
-        `t…`,
-      ])
+      expect(layout.strategy).not.toBe(`ellipsis`)
+      expect(
+        layout.labels.filter(({ visible }) => visible).map(({ display_text }) => display_text),
+      ).toEqual(Array(layout.visible_tick_indices.length).fill(`temperature`))
       expect(layout.labels.map(({ full_text }) => full_text)).toEqual(
         Array(3).fill(`temperature`),
       )
     })
 
-    it(`wraps vertical-axis labels and honors max_lines`, () => {
-      const layout = resolve_tick_layout(
-        {
-          tick_values: [`Formation Energy`],
-          tick_positions: [50],
-          axis_extent: { start: 100, end: 0 },
-          tick: {
-            label: {
-              max_lines: 2,
-              auto_layout: { strategies: [`wrap`], max_band: 70 },
+    it.each([`y`, `y2`] as const)(
+      `wraps %s-axis labels by default and honors max_lines`,
+      (side) => {
+        const layout = resolve_tick_layout(
+          {
+            tick_values: [`Formation Energy`],
+            tick_positions: [50],
+            axis_extent: { start: 100, end: 0 },
+            tick: {
+              label: {
+                max_lines: 2,
+                auto_layout: { strategies: [`wrap`] },
+              },
             },
           },
+          100,
+          side,
+        )
+        expect(layout).toMatchObject({
+          rotation: 0,
+          strategy: `wrap`,
+          lines: [[`Formation`, `Energy`]],
+        })
+        expect(layout.band).toBe(63)
+      },
+    )
+
+    it(`never renders blank or bare-ellipsis labels under default scoring`, () => {
+      const tick_count = 50
+      const axis_size = 800
+      const layout = resolve_tick_layout(
+        {
+          tick_values: Array.from(
+            { length: tick_count },
+            (_unused, tick_idx) => `Formation energy per atom ${tick_idx}`,
+          ),
+          tick_positions: Array.from(
+            { length: tick_count },
+            (_unused, tick_idx) => (tick_idx * axis_size) / (tick_count - 1),
+          ),
+          axis_extent: { start: 0, end: axis_size },
         },
-        100,
-        `y`,
+        axis_size,
+        `x`,
       )
-      expect(layout).toMatchObject({
-        rotation: 0,
-        strategy: `wrap`,
-        lines: [[`Formation`, `Energy`]],
-      })
-      expect(layout.band).toBe(63)
+      const visible_texts = layout.labels
+        .filter(({ visible }) => visible)
+        .map(({ display_text }) => display_text)
+
+      expect(visible_texts.length).toBeGreaterThanOrEqual(2)
+      expect(
+        visible_texts.every(
+          (display_text) => display_text.trim() !== `` && !/^…+$/u.test(display_text.trim()),
+        ),
+      ).toBe(true)
     })
 
     it(`keeps explicit rotation and full accessibility text`, () => {
@@ -963,6 +1090,20 @@ describe(`layout utility functions`, () => {
         interactive: true,
       })
       expect(layout.width).toBeGreaterThan(plain_width)
+    })
+
+    it(`retains subscript and superscript segments when axis titles wrap`, () => {
+      mock_text_measurement(7)
+      const layout = resolve_axis_title_layout(
+        { label: `Formation E<sub>hull</sub> relative to x<sup>2</sup>` },
+        80,
+      )
+      const segments = layout.lines.flatMap((line) => line.segments)
+
+      expect(layout.lines.length).toBeGreaterThan(1)
+      expect(layout.label).toBe(`Formation Ehull relative to x2`)
+      expect(segments).toContainEqual({ text: `hull`, shift: `sub` })
+      expect(segments).toContainEqual({ text: `2`, shift: `super` })
     })
   })
 

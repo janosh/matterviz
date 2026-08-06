@@ -1,6 +1,8 @@
 <script lang="ts">
   // ReferenceLine: 2D reference lines with annotations (horizontal, vertical, diagonal, segment, line)
   import {
+    estimate_reference_annotation_metrics,
+    reference_annotation_text_rect,
     resolve_line_endpoints,
     resolve_reference_annotation,
   } from '$lib/plot/core/reference-line'
@@ -184,21 +186,17 @@
     <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_pos && ref_line.annotation}
       {@const anno = ref_line.annotation}
-      {@const anno_padding = anno.padding ?? 2}
-      {@const font_size = parseFloat(String(anno.font_size ?? 12))}
-      {@const text_width = anno.text.length * font_size * 0.6}
-      {@const anchor_offset =
-        {
-          start: 0,
-          middle: text_width / 2,
-          end: text_width,
-        }[annotation_pos.text_anchor] ?? 0}
+      {@const annotation_metrics = estimate_reference_annotation_metrics(anno)}
+      {@const background_rect = reference_annotation_text_rect(
+        annotation_pos,
+        annotation_metrics,
+      )}
       {#if anno.background}
         <rect
-          x={annotation_pos.x - anno_padding - anchor_offset}
-          y={annotation_pos.y - font_size * 0.8 - anno_padding}
-          width={text_width + anno_padding * 2}
-          height={font_size * 1.2 + anno_padding * 2}
+          x={background_rect.x}
+          y={background_rect.y}
+          width={background_rect.width}
+          height={background_rect.height}
           fill={anno.background}
           rx="2"
           ry="2"

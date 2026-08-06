@@ -3,6 +3,7 @@ import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
   create_reference_annotation_candidates,
+  estimate_reference_annotation_metrics,
   group_ref_lines_by_z,
   index_ref_lines,
   normalize_point,
@@ -12,6 +13,7 @@ import {
   span_or,
 } from '$lib/plot/core/reference-line'
 import type { RefLine } from '$lib/plot/core/types'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {
@@ -305,6 +307,32 @@ describe(`calculate_annotation_position`, () => {
 
 describe(`reference annotation candidates`, () => {
   const endpoints: [number, number, number, number] = [0, 100, 200, 100]
+
+  test(`uses measured glyph width and ascent for annotation footprints`, () => {
+    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({
+        width: 37,
+        actualBoundingBoxAscent: 9,
+        actualBoundingBoxDescent: 3,
+      }),
+    } as unknown as CanvasRenderingContext2D)
+    try {
+      clear_text_metrics_cache()
+      const metrics = estimate_reference_annotation_metrics({ text: `Wiii`, padding: 3 })
+      const candidate = create_reference_annotation_candidates(
+        endpoints,
+        { text: `Wiii`, padding: 3 },
+        metrics,
+      )[0]
+      expect(metrics).toMatchObject({ text_width: 37, text_ascent: 9, text_descent: 3 })
+      expect(candidate.rect.width).toBe(43)
+      expect(candidate.rect.height).toBe(18)
+    } finally {
+      context_spy.mockRestore()
+      clear_text_metrics_cache()
+    }
+  })
 
   test(`keeps the legacy end-above placement when there are no obstacles`, () => {
     const annotation = { text: `Threshold` }

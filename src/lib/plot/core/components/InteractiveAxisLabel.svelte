@@ -2,6 +2,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
+  import type { AxisTitleSegment } from '$lib/plot/core/layout'
   import type { AxisOption } from '$lib/plot/core/types'
 
   let {
@@ -13,6 +14,7 @@
     color = $bindable(),
     on_select,
     lines,
+    line_segments,
     ...rest
   }: {
     label?: string
@@ -24,10 +26,15 @@
     on_select?: (key: string) => void
     // Pre-wrapped plain-text lines resolved from the same metrics used by plot padding.
     lines?: readonly string[]
+    // Semantic spans matching `lines`, retained when wrapping labels with sub/sup markup.
+    line_segments?: readonly (readonly AxisTitleSegment[])[]
     [key: string]: unknown
   } = $props()
 
   let is_interactive = $derived(Boolean(options?.length))
+  let wrapped_segments = $derived(
+    line_segments ?? lines?.map((text): AxisTitleSegment[] => [{ text }]),
+  )
 
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
@@ -63,9 +70,19 @@
     {/if}
   {:else}
     <span class="static-label">
-      {#if lines && lines.length > 1}
-        {#each lines as line}
-          <span>{line}</span>
+      {#if wrapped_segments && wrapped_segments.length > 1}
+        {#each wrapped_segments as segments}
+          <span>
+            {#each segments as segment}
+              {#if segment.shift === `sub`}
+                <sub>{segment.text}</sub>
+              {:else if segment.shift === `super`}
+                <sup>{segment.text}</sup>
+              {:else}
+                {segment.text}
+              {/if}
+            {/each}
+          </span>
         {/each}
       {:else}
         {@html sanitize_html(label)}

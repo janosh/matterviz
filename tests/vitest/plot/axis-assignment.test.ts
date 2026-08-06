@@ -33,9 +33,19 @@ describe(`axis_group_key`, () => {
       expected: `eV`,
     },
     {
-      name: `explicit empty unit remains the group key`,
+      name: `empty unit becomes dimensionless`,
       series: create_series(`Score`),
-      expected: ``,
+      expected: `dimensionless`,
+    },
+    {
+      name: `blank axis group falls back to a trimmed unit`,
+      series: create_series(`Energy`, ` eV `, { axis_group: `  ` }),
+      expected: `eV`,
+    },
+    {
+      name: `blank axis group and unit become dimensionless`,
+      series: create_series(`Score`, `  `, { axis_group: ` ` }),
+      expected: `dimensionless`,
     },
   ])(`uses $name`, ({ series, expected }) => {
     expect(axis_group_key(series)).toBe(expected)
@@ -257,6 +267,24 @@ describe(`assign_axes`, () => {
     expect(result.status).toBe(max_axes === 1 ? `overflow` : `assigned`)
   })
 
+  test.each([
+    { name: `empty input`, input: [] },
+    {
+      name: `all-hidden input`,
+      input: [
+        create_series(`Energy`, `eV`, { visible: false }),
+        create_series(`Force`, `eV/Å`, { visible: false }),
+      ],
+    },
+  ])(`returns a complete empty assignment for $name with max_axes=1`, ({ input }) => {
+    expect(assign_axes(input, { max_axes: 1 })).toEqual({
+      status: `assigned`,
+      assignments: input.map(() => undefined),
+      groups: [],
+      overflow_groups: [],
+    })
+  })
+
   test(`rejects non-finite priorities with group context`, () => {
     expect(() =>
       assign_axes([create_series(`Energy`, `eV`)], { priority: () => Infinity }),
@@ -312,6 +340,19 @@ describe(`axis_labels`, () => {
   test(`keeps mixed-unit labels stable when series order changes`, () => {
     const input = [create_series(`Pressure`, `GPa`), create_series(`Energy`, `eV`)]
     expect(axis_labels(input)).toEqual(axis_labels(input.toReversed()))
+  })
+
+  test(`uses a resolved assignment instead of unresolved series axes`, () => {
+    const input = [
+      create_series(`Energy`, `eV`),
+      create_series(`Residual`, `eV`, { axis_group: `scf` }),
+    ]
+    const assignment = assign_axes(input)
+
+    expect(axis_labels(input, { axis: assignment.assignments })).toEqual({
+      y1: `Energy (eV)`,
+      y2: `Residual (eV)`,
+    })
   })
 })
 
@@ -418,5 +459,18 @@ describe(`axis_scale_types`, () => {
         min_log_decades: NaN,
       }),
     ).toThrow(`min_log_decades must be a non-negative finite number, got NaN`)
+  })
+
+  test(`uses an axis accessor for unresolved series`, () => {
+    const input = [
+      create_series(`Energy`, `eV`, { y: [-10, -9] }),
+      create_series(`Residual`, `eV`, { axis_group: `scf`, y: [1e-6, 1] }),
+    ]
+    expect(
+      axis_scale_types(input, {
+        ...log_options,
+        axis: (_series, series_idx) => (series_idx === 0 ? `y1` : `y2`),
+      }),
+    ).toEqual({ y1: `linear`, y2: `log` })
   })
 })

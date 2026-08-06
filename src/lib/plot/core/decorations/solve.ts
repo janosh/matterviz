@@ -38,6 +38,11 @@ const validate_unique_ids = (items: readonly DecorationItem[]): void => {
   }
 }
 
+export const decoration_placement_rects = ({
+  placements,
+}: Pick<DecorationSolution, `placements`>): Rect[] =>
+  placements.map(({ x, y, footprint }) => ({ x, y, ...footprint }))
+
 const with_auto_legend_tracks = (
   placement: DecorationPlacement,
   item: DecorationItem,
@@ -102,7 +107,6 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
         score,
         location: `interior`,
         side: null,
-        style: ``,
         reference_annotation: candidate,
       })
       decoration_rects.push(candidate.rect)
@@ -125,7 +129,6 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       score: result.score,
       location: `interior`,
       side: null,
-      style: ``,
     }
     placements.push(with_auto_legend_tracks(placement, item, scene))
     const placement_rect = { x: result.x, y: result.y, ...item.footprint }

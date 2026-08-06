@@ -1,4 +1,10 @@
 import type { DataSeries } from '$lib/plot'
+import {
+  axis_labels as shared_axis_labels,
+  axis_scale_types as shared_axis_scale_types,
+} from '$lib/plot/core/axis-assignment'
+import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+import { SCF_AXIS_GROUP } from '$lib/labels'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
   available_x_quantities,
@@ -351,6 +357,17 @@ describe(`generate_axis_labels`, () => {
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_labels(series)).toEqual(expected)
   })
+
+  it(`matches the shared axis label helper`, () => {
+    const series = [
+      create_series([1, 2], true, `Energy`, `eV`, `y1`),
+      create_series([1e-6, 1], true, `Residual`, `eV`, `y2`, SCF_AXIS_GROUP),
+      create_series([3, 4], false, `Hidden`, `GPa`, `y1`),
+    ]
+    expect(generate_axis_labels(series)).toEqual(
+      shared_axis_labels(series, { is_visible: (srs) => srs.visible === true }),
+    )
+  })
 })
 
 describe(`generate_axis_scale_types`, () => {
@@ -392,6 +409,107 @@ describe(`generate_axis_scale_types`, () => {
       expected: all_linear },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
+  })
+
+  it(`matches the shared axis scale helper`, () => {
+    const series = [
+      create_series([-10, -9], true, `Energy`, `eV`, `y1`),
+      create_series([1e-6, 1], true, `Residual`, `eV`, `y2`, SCF_AXIS_GROUP),
+    ]
+    expect(generate_axis_scale_types(series)).toEqual(
+      shared_axis_scale_types(series, {
+        is_visible: (srs) => srs.visible === true,
+        can_use_log_scale: (srs) => srs.axis_group === SCF_AXIS_GROUP,
+        min_log_decades: 3,
+      }),
+    )
+  })
+})
+
+describe(`auto-assigned legend visibility`, () => {
+  it.each([
+    {
+      name: `automatic axes preserve a dual-axis partner`,
+      axes: [undefined, undefined],
+      expected_after_restore: [true, true],
+    },
+    {
+      name: `explicit same-axis assignments hide an incompatible partner`,
+      axes: [`y1`, `y1`] as const,
+      expected_after_restore: [true, false],
+    },
+  ])(`round-trips visibility when $name`, ({ axes, expected_after_restore }) => {
+    let series: DataSeries[] = [
+      { x: [0, 1], y: [1, 2], unit: `eV`, visible: true, y_axis: axes[0] },
+      { x: [0, 1], y: [3, 4], unit: `GPa`, visible: true, y_axis: axes[1] },
+    ]
+    const legend_visibility = create_legend_visibility(
+      () => series,
+      (next_series) => (series = next_series),
+    )
+
+    legend_visibility.on_toggle(0)
+    expect(series.map((srs) => srs.visible)).toEqual([false, true])
+    legend_visibility.on_toggle(0)
+    expect(series.map((srs) => srs.visible)).toEqual(expected_after_restore)
+  })
+})
+
+describe(`streaming visibility characterization`, () => {
+  it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
+    const property_frames = [
+      { temperature: 300, volume: 100, energy: -10 },
+      { temperature: 301, volume: 101, energy: -11 },
+    ]
+    const property_config = {
+      temperature: { label: `Temperature`, unit: `K` },
+      volume: { label: `Volume`, unit: `Å³` },
+      energy: { label: `Energy`, unit: `eV` },
+    }
+    const default_visible_properties = new Set(Object.keys(property_config))
+    const eager = generate_plot_series(create_trajectory(property_frames), test_extractor, {
+      property_config,
+      default_visible_properties,
+    })
+    const streaming = generate_streaming_plot_series(
+      property_frames.map((properties, frame_number) => ({
+        frame_number,
+        step: frame_number,
+        properties,
+      })),
+      { property_config, default_visible_properties },
+    )
+    const assignments = (series: DataSeries[]) =>
+      series
+        .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
+        .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
+    expect(assignments(streaming)).toEqual(assignments(eager))
+  })
+
+  it(`keeps historical priority and two-group selection when defaults add a third group`, () => {
+    const metadata = [0, 1].map((frame_number) => ({
+      frame_number,
+      step: frame_number,
+      properties: {
+        temperature: 300 + frame_number,
+        volume: 100 + frame_number,
+        energy: -10 - frame_number,
+      },
+    }))
+    const series = generate_streaming_plot_series(metadata, {
+      property_config: {
+        temperature: { label: `Temperature`, unit: `K` },
+        volume: { label: `Volume`, unit: `Å³` },
+        energy: { label: `Energy`, unit: `eV` },
+      },
+      default_visible_properties: new Set([`energy`]),
+    })
+
+    expect(series.map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))).toEqual([
+      { label: `Temperature`, visible: true, y_axis: `y2` },
+      { label: `Volume`, visible: false, y_axis: `y1` },
+      { label: `Energy`, visible: true, y_axis: `y1` },
+    ])
   })
 })
 

@@ -740,6 +740,16 @@ describe(`BarPlot`, () => {
       expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
+      plot
+        .querySelector(`.legend-item`)
+        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(
+        [...plot.querySelectorAll(`.legend-item`)].every(
+          (item) => !item.classList.contains(`hidden`),
+        ),
+      ).toBe(true)
+      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
     },
   )
 
@@ -843,5 +853,42 @@ describe(`BarPlot`, () => {
     const order = (el: Element) => bars.compareDocumentPosition(el)
     expect(Boolean(order(labels.behind) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
     expect(Boolean(order(labels.front) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+  })
+
+  test(`shared solver separates nearby annotations and keeps explicit placement pinned`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic],
+      ref_lines: [
+        { type: `horizontal`, y: 15, annotation: { text: `automatic A` } },
+        { type: `horizontal`, y: 15.1, annotation: { text: `automatic B` } },
+        {
+          type: `horizontal`,
+          y: 15.2,
+          annotation: { text: `pinned`, position: `end`, side: `above` },
+        },
+      ],
+    })
+    await tick()
+    const labels = [...plot.querySelectorAll<SVGTextElement>(`.reference-line text`)]
+    const geometry = (text: string) => {
+      const label = labels.find((element) => element.textContent === text)
+      if (!label) throw new Error(`missing ${text} annotation`)
+      return {
+        x: label.getAttribute(`x`),
+        y: label.getAttribute(`y`),
+        anchor: label.getAttribute(`text-anchor`),
+        baseline: label.getAttribute(`dominant-baseline`),
+      }
+    }
+    const automatic_a = geometry(`automatic A`)
+    const automatic_b = geometry(`automatic B`)
+    expect({
+      anchor: automatic_a.anchor,
+      baseline: automatic_a.baseline,
+    }).not.toEqual({
+      anchor: automatic_b.anchor,
+      baseline: automatic_b.baseline,
+    })
+    expect(geometry(`pinned`)).toMatchObject({ anchor: `end`, baseline: `auto` })
   })
 })

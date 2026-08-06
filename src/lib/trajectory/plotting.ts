@@ -1,5 +1,4 @@
 // Plotting utilities for trajectory visualization
-import { SvelteSet } from 'svelte/reactivity'
 import { PLOT_COLORS } from '$lib/colors'
 import { SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
@@ -400,44 +399,27 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
   return 1000 // Default low priority
 }
 
-// Keep Trajectory's policy (default property matching, energy/force priority,
-// and hiding groups beyond y1/y2) around the generic pure assignment helper.
+// Keep Trajectory's group-level visibility, priority, and two-axis cap.
 function assign_trajectory_axes(
   series: readonly DataSeries[],
   is_visible: (series: DataSeries, series_idx: number) => boolean,
 ): DataSeries[] {
-  const requested_group_keys = new SvelteSet(
-    group_axis_series(series, {
-      is_visible: () => true,
-      priority: calculate_priority,
-    })
-      .filter((group) =>
-        group.series.some((srs, group_idx) =>
-          is_visible(srs, group.series_indices[group_idx]),
-        ),
-      )
-      .map((group) => group.key),
-  )
-  let assignment = assign_axes(series, {
-    // Trajectory visibility is group-level: selecting one property keeps every
-    // series with the same unit/axis_group visible, matching the original policy.
-    is_visible: (srs) => requested_group_keys.has(axis_group_key(srs)),
+  const groups = group_axis_series(series, {
+    is_visible: () => true,
     priority: calculate_priority,
   })
-  if (assignment.groups.length === 0) {
-    assignment = assign_axes(series, {
-      is_visible: () => true,
-      priority: calculate_priority,
-      max_axes: 1,
-    })
-  }
-
-  // assignment.groups deliberately excludes overflow_groups. Trajectory keeps
-  // its existing behavior by showing only the two highest-priority groups.
+  const requested_groups = groups.filter((group) =>
+    group.series.some((srs, group_idx) => is_visible(srs, group.series_indices[group_idx])),
+  )
+  const selected_groups = requested_groups.length > 0 ? requested_groups : groups.slice(0, 1)
+  const { assignments } = assign_axes(series, {
+    is_visible: (srs) => selected_groups.some((group) => group.key === axis_group_key(srs)),
+    priority: calculate_priority,
+  })
   return series.map((srs, series_idx) => ({
     ...srs,
-    visible: assignment.assignments[series_idx] !== undefined,
-    y_axis: assignment.assignments[series_idx] ?? `y1`,
+    visible: assignments[series_idx] !== undefined,
+    y_axis: assignments[series_idx] ?? `y1`,
   }))
 }
 
@@ -493,31 +475,30 @@ export function should_hide_plot(
 
 const series_is_visible = (series: DataSeries): boolean => series.visible === true
 
-export function generate_axis_labels(plot_series: DataSeries[]): {
+export const generate_axis_labels = (
+  plot_series: DataSeries[],
+): {
   y1: string
   y2: string
-} {
-  return get_axis_labels(plot_series, { is_visible: series_is_visible })
-}
+} => get_axis_labels(plot_series, { is_visible: series_is_visible })
 
 // Log-scale heuristic: a y-axis defaults to log scale when every visible series on
 // it is strictly positive AND their combined values span at least this many decades.
 // SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
 // hockey sticks on linear axes; plain energies (large negative) stay linear.
 const LOG_SCALE_MIN_DECADE_SPAN = 3
-const LOG_SCALE_AXIS_GROUPS = new Set([SCF_AXIS_GROUP])
 
-export function generate_axis_scale_types(plot_series: DataSeries[]): {
+export const generate_axis_scale_types = (
+  plot_series: DataSeries[],
+): {
   y1: ScaleType
   y2: ScaleType
-} {
-  return get_axis_scale_types(plot_series, {
-    can_use_log_scale: (srs) =>
-      Boolean(srs.axis_group && LOG_SCALE_AXIS_GROUPS.has(srs.axis_group)),
+} =>
+  get_axis_scale_types(plot_series, {
+    can_use_log_scale: (srs) => srs.axis_group === SCF_AXIS_GROUP,
     is_visible: series_is_visible,
     min_log_decades: LOG_SCALE_MIN_DECADE_SPAN,
   })
-}
 
 // Streaming plot generation (simplified)
 interface StreamingPlotOptions {

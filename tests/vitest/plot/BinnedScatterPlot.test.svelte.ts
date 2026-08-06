@@ -508,8 +508,10 @@ describe(`BinnedScatterPlot`, () => {
     )
 
     const ref_group = document.querySelector(`.reference-lines`)
-    expect(ref_group?.getAttribute(`clip-path`)).toBe(`url(#${clip_path?.id})`)
-    const line = ref_group?.querySelector(`line`)
+    expect(ref_group?.querySelector(`g[clip-path]`)?.getAttribute(`clip-path`)).toBe(
+      `url(#${clip_path?.id})`,
+    )
+    const line = ref_group?.querySelector(`line:not([stroke="transparent"])`)
     expect(line).toBeInstanceOf(SVGLineElement)
     expect([`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line?.getAttribute(attr)))).toEqual(
       coords,
@@ -533,6 +535,33 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     expect(document.querySelectorAll(`.reference-lines line`)).toHaveLength(0)
+  })
+
+  test(`renders solver-placed non-overlapping RefLine annotations`, async () => {
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      ...unit_axes,
+      overlays: {
+        ref_lines: [
+          { type: `horizontal`, y: 0.5, annotation: { text: `near A` } },
+          { type: `horizontal`, y: 0.51, annotation: { text: `near B` } },
+        ],
+      },
+      density: hidden_density,
+    })
+    await settle()
+
+    const labels = [...document.querySelectorAll<SVGTextElement>(`.reference-lines text`)]
+    expect(labels.map((label) => label.textContent)).toEqual([`near A`, `near B`])
+    expect(
+      labels.map((label) => [
+        label.getAttribute(`text-anchor`),
+        label.getAttribute(`dominant-baseline`),
+      ]),
+    ).toEqual([
+      [`end`, `auto`],
+      [`end`, `hanging`],
+    ])
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {

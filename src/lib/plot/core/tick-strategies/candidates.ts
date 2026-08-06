@@ -65,6 +65,8 @@ const NO_BREAK_CHARACTER = /[\u00A0\u2011\u202F\u2060]/u
 const PROTECTED_SEGMENT = /(?<protected>\([^()]*\)|\[[^\][]*\]|\{[^{}]*\})/gu
 const WORD = /\p{L}[\p{L}\p{M}]*/gu
 const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
+const MIN_RETAINED_INFORMATION_FRACTION = 0.25
+const produced_candidates = new WeakSet<TickStrategyCandidate>()
 
 const is_tick_strategy = (value: string): value is TickStrategy =>
   TICK_STRATEGIES.some((strategy) => strategy === value)
@@ -120,6 +122,13 @@ export const validate_tick_candidate = (candidate: TickStrategyCandidate): void 
   })
 }
 
+// Candidate factories validate their output once. Transforming or scoring those immutable-by-
+// contract values should not scan every label again, while hand-built candidates still get the
+// full runtime validation at each public entry point.
+export const validate_tick_candidate_once = (candidate: TickStrategyCandidate): void => {
+  if (!produced_candidates.has(candidate)) validate_tick_candidate(candidate)
+}
+
 export const create_tick_candidate = ({
   id,
   strategy,
@@ -143,6 +152,7 @@ export const create_tick_candidate = ({
     }),
   }
   validate_tick_candidate(candidate)
+  produced_candidates.add(candidate)
   return candidate
 }
 
@@ -186,7 +196,7 @@ export const generate_stagger_candidate = (
   candidate: TickStrategyCandidate,
   { id, first_row = 0 }: StaggerCandidateOptions,
 ): TickStrategyCandidate => {
-  validate_tick_candidate(candidate)
+  validate_tick_candidate_once(candidate)
   let visible_order = 0
   const labels = copy_labels_as_input(candidate, (label) => {
     const stagger_row: TickStaggerRow = (visible_order + first_row) % 2 === 0 ? 0 : 1
@@ -204,7 +214,7 @@ export const generate_thinned_candidate = (
   visible_indices: ReadonlySet<number>,
   { id }: TickCandidateTransformOptions,
 ): TickStrategyCandidate => {
-  validate_tick_candidate(candidate)
+  validate_tick_candidate_once(candidate)
   for (const tick_index of visible_indices) {
     if (
       !Number.isInteger(tick_index) ||
@@ -256,7 +266,7 @@ export const generate_abbreviated_candidate = (
   candidate: TickStrategyCandidate,
   { id, abbreviations: custom_abbreviations = {} }: AbbreviationCandidateOptions,
 ): TickStrategyCandidate => {
-  validate_tick_candidate(candidate)
+  validate_tick_candidate_once(candidate)
   for (const [word, abbreviation] of Object.entries(custom_abbreviations)) {
     if (!word.trim() || !abbreviation.trim()) {
       throw new Error(
@@ -303,7 +313,7 @@ const ellipsize_line = (
   context: string,
 ): string => {
   if (measured_width(text, measure_text, context) <= max_width_px) return text
-  if (measured_width(ellipsis, measure_text, context) > max_width_px) return ``
+  if (measured_width(ellipsis, measure_text, context) > max_width_px) return text
 
   const characters = graphemes(text)
   let longest_fitting = ``
@@ -316,6 +326,14 @@ const ellipsize_line = (
       longest_fitting = prefix
     }
   }
+  const source_information = information_grapheme_count(text)
+  const retained_information = information_grapheme_count(longest_fitting)
+  if (
+    source_information === 0 ||
+    retained_information / source_information < MIN_RETAINED_INFORMATION_FRACTION
+  ) {
+    return text
+  }
   return `${longest_fitting}${ellipsis}`
 }
 
@@ -323,7 +341,7 @@ export const generate_ellipsis_candidate = (
   candidate: TickStrategyCandidate,
   { id, max_width_px, measure_text, ellipsis = `…` }: EllipsisCandidateOptions,
 ): TickStrategyCandidate => {
-  validate_tick_candidate(candidate)
+  validate_tick_candidate_once(candidate)
   if (!ellipsis) throw new Error(`candidate "${id}" ellipsis must not be empty`)
   if (typeof max_width_px !== `number` && max_width_px.length !== candidate.labels.length) {
     throw new Error(

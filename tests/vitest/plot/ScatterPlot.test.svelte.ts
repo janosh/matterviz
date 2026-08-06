@@ -843,6 +843,36 @@ describe(`ScatterPlot`, () => {
     )
   })
 
+  test(`solver auto tracks count grouped series, fill entries, and group headers`, async () => {
+    mock_decoration_measurements()
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { ...basic, label: `A`, legend_group: `Signals` },
+        { ...basic, label: `B`, legend_group: `Signals` },
+      ],
+      fill_regions: [
+        {
+          label: `Band`,
+          legend_group: `Signals`,
+          lower: 2,
+          upper: 4,
+          fill: `steelblue`,
+        },
+      ],
+      legend: {
+        layout: `vertical`,
+        layout_tracks: `auto`,
+        item_extents: Array.from({ length: 4 }, () => ({ height: 20 })),
+      },
+    })
+
+    await vi.waitFor(() =>
+      expect(plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateRows).toBe(
+        `repeat(4, auto)`,
+      ),
+    )
+  })
+
   test(`keeps the unified decoration solution disjoint across resize`, async () => {
     mock_decoration_measurements()
     const plot = await mount_sized_scatter_plot({

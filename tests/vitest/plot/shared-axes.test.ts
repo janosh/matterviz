@@ -5,6 +5,7 @@ import {
   is_valid_range,
   max_side_padding,
   propagate_shared_axis_range,
+  reconcile_shared_axis_ranges,
   ranges_equal,
   sync_axis_range,
   union_ranges,
@@ -55,6 +56,15 @@ describe(`shared range helpers`, () => {
     expect(ranges_equal([0, 10], [0.001, 10.001], 0.001)).toBe(true)
     expect(ranges_equal([0, 10], [0.001, 10], -1)).toBe(false)
     expect(ranges_equal([0, 10], undefined)).toBe(false)
+  })
+
+  it(`combines span-relative and absolute tolerance without swallowing small-range zooms`, () => {
+    expect(ranges_equal([0, 10], [0.0005, 10.0005])).toBe(true)
+    expect(ranges_equal([0, 1e-6], [1e-7, 1.1e-6])).toBe(false)
+    expect(ranges_equal([1_000_000, 1_000_000.0001], [1_000_000.00001, 1_000_000.00011])).toBe(
+      false,
+    )
+    expect(ranges_equal([0, 1e-6], [1e-7, 1.1e-6], { absolute: 2e-7, relative: 0 })).toBe(true)
   })
 })
 
@@ -129,6 +139,58 @@ describe(`shared axis range propagation`, () => {
     })
     expect(propagate_shared_axis_range({ label: `Y` }, undefined)).toEqual({
       label: `Y`,
+    })
+  })
+
+  it(`propagates a second-panel zoom and reset to both axes`, () => {
+    const bands_axis: AxisConfig = { label: `Bands`, range: shared_range }
+    const dos_axis: AxisConfig = { label: `DOS`, range: zoomed_range }
+    const zoom_update = reconcile_shared_axis_ranges(
+      [bands_axis, dos_axis],
+      shared_range,
+      null,
+    )
+    expect(zoom_update).toEqual({
+      synced_range: zoomed_range,
+      axes: [
+        { label: `Bands`, range: zoomed_range },
+        { label: `DOS`, range: zoomed_range },
+      ],
+    })
+
+    const reset_update = reconcile_shared_axis_ranges(
+      [{ label: `Bands`, range: zoomed_range }, { label: `DOS` }],
+      shared_range,
+      zoomed_range,
+    )
+    expect(reset_update).toEqual({
+      synced_range: null,
+      axes: [
+        { label: `Bands`, range: shared_range },
+        { label: `DOS`, range: shared_range },
+      ],
+    })
+  })
+
+  it(`reconciles zoom and reset with one participating panel`, () => {
+    expect(reconcile_shared_axis_ranges([{ label: `Bands` }], shared_range, null)).toEqual({
+      synced_range: null,
+      axes: [{ label: `Bands`, range: shared_range }],
+    })
+    const zoom_update = reconcile_shared_axis_ranges(
+      [{ label: `Bands`, range: zoomed_range }],
+      shared_range,
+      null,
+    )
+    expect(zoom_update).toEqual({
+      synced_range: zoomed_range,
+      axes: [{ label: `Bands`, range: zoomed_range }],
+    })
+    expect(
+      reconcile_shared_axis_ranges([{ label: `Bands` }], shared_range, zoomed_range),
+    ).toEqual({
+      synced_range: null,
+      axes: [{ label: `Bands`, range: shared_range }],
     })
   })
 })

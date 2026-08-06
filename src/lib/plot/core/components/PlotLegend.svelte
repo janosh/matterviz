@@ -2,6 +2,7 @@
   import { add_alpha } from '$lib/colors'
   import type { LegendItem, Orientation } from '$lib/plot'
   import {
+    get_legend_grid_cells,
     suggest_legend_tracks,
     type LegendItemExtent,
   } from '$lib/plot/core/decorations/tracks'
@@ -139,28 +140,41 @@
     return { width: estimate_text_width(label) + fixed_width, height: 20 }
   }
 
+  let legend_grid_cells = $derived(
+    get_legend_grid_cells({
+      items: series_data.map((item) => ({
+        label: strip_html(item.label),
+        legend_group: item.legend_group,
+      })),
+      collapsed_groups,
+      filter_query: show_filter ? legend_filter : ``,
+      show_filter,
+    }),
+  )
+
   // Model direct grid children in render order without feeding layout through a DOM observer.
   let auto_item_extents = $derived.by<LegendItemExtent[]>(() => {
     if (layout_tracks !== `auto`) return []
-    const estimates: Required<LegendItemExtent>[] = []
-    if (show_filter) estimates.push(estimate_item_extent(``, `filter`))
-    if (show_filter && legend_filter && filtered_grouped_series.length === 0) {
-      estimates.push(estimate_item_extent(`No legend items`, `empty`))
-    }
-    for (const { group_name, items } of filtered_grouped_series) {
-      const is_grouped = group_name !== null && has_groups
-      if (is_grouped) {
-        estimates.push(estimate_item_extent(group_name, `group`))
-        if (collapsed_groups.has(group_name)) continue
+    return legend_grid_cells.map((cell, cell_idx) => {
+      let estimate: Required<LegendItemExtent>
+      if (cell.kind === `filter`) estimate = estimate_item_extent(``, `filter`)
+      else if (cell.kind === `empty`)
+        estimate = estimate_item_extent(`No legend items`, `empty`)
+      else if (cell.kind === `group`) estimate = estimate_item_extent(cell.group, `group`)
+      else {
+        const item = series_data[cell.item_idx]
+        estimate = estimate_item_extent(
+          item?.label ?? ``,
+          item?.legend_group && has_groups ? `indented-item` : `item`,
+        )
       }
-      const kind = is_grouped ? `indented-item` : `item`
-      for (const item of items) estimates.push(estimate_item_extent(item.label, kind))
-    }
-    return estimates.map((estimate, item_idx) => ({
-      width: item_extents?.[item_idx]?.width ?? estimated_item_extent?.width ?? estimate.width,
-      height:
-        item_extents?.[item_idx]?.height ?? estimated_item_extent?.height ?? estimate.height,
-    }))
+      return {
+        width:
+          item_extents?.[cell_idx]?.width ?? estimated_item_extent?.width ?? estimate.width,
+        height:
+          item_extents?.[cell_idx]?.height ?? estimated_item_extent?.height ?? estimate.height,
+      }
+    })
   })
 
   let resolved_layout_tracks = $derived(
@@ -251,9 +265,7 @@
   let div_style = $derived(
     {
       horizontal: `grid-template-columns: repeat(${resolved_layout_tracks}, auto);`,
-      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto;${
-        layout_tracks === `auto` ? ` grid-auto-flow: column;` : ``
-      }`,
+      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto; grid-auto-flow: column;`,
     }[layout] + style,
   )
 

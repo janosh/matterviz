@@ -17,8 +17,14 @@
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
+  import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
-  import { solve_decorations, type DecorationItem } from '$lib/plot/core/decorations'
+  import {
+    decoration_placement_rects,
+    solve_decorations,
+    type DecorationItem,
+  } from '$lib/plot/core/decorations'
+  import { measured_footprint } from '$lib/plot/core/auto-place'
   import { sorted_range } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
@@ -77,12 +83,12 @@
     InternalPoint,
     ScatterHandlerProps,
   } from '$lib/plot/core/types'
+  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
-    COLOR_BAR_DEFAULTS,
-    REF_LINE_STYLE_DEFAULTS,
-    SCALE_DEFAULTS,
-  } from '$lib/plot/core/types'
-  import { resolve_line_endpoints } from '$lib/plot/core/reference-line'
+    get_reference_annotation_placement,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -200,7 +206,7 @@
   )
   // The solver owns decoration reservations and receives only the decoration-independent
   // base, so its output never feeds a previous reservation back into itself.
-  let pad = $derived.by(() => decoration_solution.pad)
+  let pad = $derived.by(() => base_decoration_solution.pad)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
       x: srs.x,
@@ -224,23 +230,7 @@
         : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  // Resolve declarative RefLines against current axis ranges. Annotation, legend,
-  // and interaction fields are ignored.
-  let resolved_ref_lines = $derived.by(() => {
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
-    return (overlays_config.ref_lines ?? []).flatMap((line) => {
-      if (line.visible === false) return []
-      const endpoints = resolve_line_endpoints(
-        line,
-        { x_min, x_max, y_min, y_max },
-        { x_scale: x_scale_fn, y_scale: y_scale_fn },
-      )
-      if (!endpoints) return []
-      const [x1, y1, x2, y2] = endpoints
-      return { x1, y1, x2, y2, ...REF_LINE_STYLE_DEFAULTS, ...line.style }
-    })
-  })
+  let indexed_ref_lines = $derived(index_ref_lines(overlays_config.ref_lines))
   let point_labels_settings = $derived({
     font_size: point_labels.font_size ?? `11px`,
     max_count: point_labels.max_count ?? 50,
@@ -445,7 +435,7 @@
   const annotation_fallback_size = { width: 120, height: 50 }
   let colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return full_footprint_or(colorbar_element, colorbar_fallback_size)
+    return measured_footprint(colorbar_element, colorbar_fallback_size)
   })
   let annotation_footprint = $derived.by(() => {
     void annotation_size_revision
@@ -484,13 +474,27 @@
     }
     return items
   })
-  let decoration_solution = $derived(
+  let base_decoration_solution = $derived(
     solve_decorations({
       width,
       height,
       base_pad: decoration_base_pad,
       obstacles_norm: bin_obstacles_norm,
       items: decoration_items,
+      grid_resolution: 12,
+    }),
+  )
+  let decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      pad,
+      width,
+      height,
+      obstacles_norm: bin_obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: { x: x_range, y: y_range },
+      scales: { x: x_scale_fn, y: y_scale_fn },
+      clearance: 4,
       grid_resolution: 12,
     }),
   )
@@ -501,21 +505,10 @@
     decoration_solution.placements.find(({ id }) => id === `free-annotation`),
   )
   let decoration_exclusion_rects = $derived(
-    decoration_solution.placements.map(({ x, y, footprint }) => ({
-      x,
-      y,
-      width: footprint.width,
-      height: footprint.height,
-    })),
+    decoration_placement_rects(decoration_solution),
   )
 
-  const get_color_bar_placement = () =>
-    colorbar_placement
-      ? {
-          x: colorbar_placement.x - colorbar_footprint.offset_x,
-          y: colorbar_placement.y - colorbar_footprint.offset_y,
-        }
-      : null
+  const get_color_bar_placement = () => colorbar_placement ?? null
   const get_annotation_placement = () =>
     annotation_placement
       ? {
@@ -1076,17 +1069,19 @@
       width={Math.max(0, width - base_pad.l - base_pad.r)}
     />
 
-    <g class="reference-lines" clip-path="url(#{clip_path_id})">
-      {#each resolved_ref_lines as line}
-        <line
-          x1={line.x1}
-          x2={line.x2}
-          y1={line.y1}
-          y2={line.y2}
-          stroke={line.color}
-          stroke-width={line.width}
-          stroke-dasharray={line.dash || null}
-          stroke-opacity={line.opacity}
+    <g class="reference-lines">
+      {#each indexed_ref_lines as line (line.id ?? line.idx)}
+        <ReferenceLine
+          ref_line={line}
+          line_idx={line.idx}
+          x_min={range_bounds(x_range)[0]}
+          x_max={range_bounds(x_range)[1]}
+          y_min={range_bounds(y_range)[0]}
+          y_max={range_bounds(y_range)[1]}
+          x_scale={x_scale_fn}
+          y_scale={y_scale_fn}
+          {clip_path_id}
+          annotation_placement={reference_annotation_placement(line.idx)}
         />
       {/each}
     </g>

@@ -1,6 +1,7 @@
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
+  wrap_text_paragraph,
   type FontSpec,
   type TextLineMetrics,
 } from './text-metrics'
@@ -127,58 +128,6 @@ const normalized_font = (
 
 const normalize_label = (value: string | undefined): string => value?.trim() ?? ``
 
-const split_long_word = (
-  word: string,
-  available_width: number,
-  font: Readonly<FontSpec>,
-  measure: PlotTitleMeasure,
-): string[] => {
-  if (available_width <= 0 || measure(word, font).width <= available_width) return [word]
-
-  const chunks: string[] = []
-  let chunk = ``
-  for (const character of word) {
-    const candidate = `${chunk}${character}`
-    if (chunk && measure(candidate, font).width > available_width) {
-      chunks.push(chunk)
-      chunk = character
-    } else chunk = candidate
-  }
-  if (chunk) chunks.push(chunk)
-  return chunks
-}
-
-const wrap_paragraph = (
-  paragraph: string,
-  available_width: number,
-  font: Readonly<FontSpec>,
-  measure: PlotTitleMeasure,
-): string[] => {
-  const words = paragraph.trim().split(/\s+/u).filter(Boolean)
-  if (words.length === 0) return []
-  if (available_width <= 0) return [words.join(` `)]
-
-  const lines: string[] = []
-  let line = ``
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word
-    if (line && measure(candidate, font).width <= available_width) {
-      line = candidate
-      continue
-    }
-    if (line) {
-      lines.push(line)
-      line = ``
-    }
-
-    const chunks = split_long_word(word, available_width, font, measure)
-    lines.push(...chunks.slice(0, -1))
-    line = chunks.at(-1) ?? ``
-  }
-  if (line) lines.push(line)
-  return lines
-}
-
 const truncate_with_ellipsis = (
   line: string,
   available_width: number,
@@ -205,7 +154,7 @@ const wrapped_lines = (
 ): string[] => {
   const lines = label
     .split(/\r\n|\r|\n/u)
-    .flatMap((paragraph) => wrap_paragraph(paragraph, available_width, font, measure))
+    .flatMap((paragraph) => wrap_text_paragraph(paragraph, available_width, font, measure))
   if (lines.length <= max_lines) return lines
 
   const visible_lines = lines.slice(0, max_lines)

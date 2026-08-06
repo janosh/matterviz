@@ -52,12 +52,19 @@
   import {
     build_obstacles_norm,
     clip_bar,
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    resolve_legend_layout_tracks,
     solve_decorations,
-    type DecorationItem,
   } from '$lib/plot/core/decorations'
   import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    get_reference_annotation_placement,
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_axis_scales,
     generate_ticks,
@@ -215,7 +222,8 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -426,56 +434,34 @@
     return build_obstacles_norm(bars, base_w, base_h)
   })
 
-  const decoration_solution = $derived.by(() => {
-    const items: DecorationItem[] = []
-    if (should_show_legend && legend_element != null && !legend_has_explicit_pos) {
-      items.push({
-        id: `legend`,
-        kind: `legend`,
-        footprint: legend_footprint,
-        clearance: legend?.axis_clearance,
-        auto_tracks:
-          legend?.layout_tracks === `auto`
-            ? {
-                item_count: series.length,
-                orientation: legend.layout ?? `vertical`,
-                item_extents: legend.item_extents,
-                estimated_item_extent: legend.estimated_item_extent,
-              }
-            : undefined,
-      })
-    }
-    return solve_decorations({
+  // Pass the histogram's `bins` as the marginal's histogram bin count (not strip thickness)
+  // so a histogram marginal inherits the main binning; CDF marginals ignore it.
+  const resolved_marginals = $derived(
+    normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
+  )
+
+  const legend_item = $derived(
+    create_legend_decoration_item({
+      enabled: should_show_legend && legend_element != null && !legend_has_explicit_pos,
+      footprint: legend_footprint,
+      items: series.map((series_data, series_idx) => ({
+        label: series_data.label ?? `Series ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
+      config: legend,
+    }),
+  )
+  const base_decoration_solution = $derived.by(() =>
+    solve_decorations({
       base_pad,
       width,
       height,
       obstacles_norm,
-      items,
-    })
-  })
-  const legend_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
-  const legend_exclusion_rects = $derived(
-    legend_placement
-      ? [
-          {
-            x: legend_placement.x,
-            y: legend_placement.y,
-            ...legend_placement.footprint,
-          },
-        ]
-      : [],
-  )
-  // Resolve marginals (default: CDF strip on top) and reserve outer-band padding. Pass the
-  // histogram's `bins` as the marginal's histogram bin count (NOT `size`/thickness) so a
-  // `histogram` marginal inherits the main binning via normalize_marginals' merge; `cdf`
-  // ignores `bins`. Samples lie along x and equal series.y, so the adapter maps y -> x.
-  const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
+      items: legend_item ? [legend_item] : [],
+    }),
   )
   const pad = $derived(
-    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
   )
   // a lone series uses the configured bar color; with multiple, each gets its own
   const series_color = (series_data: DataSeries) =>
@@ -503,6 +489,25 @@
       width,
       height,
     ),
+  )
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      pad,
+      width,
+      height,
+      obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: ranges.current,
+      scales,
+      clearance: 4,
+    }),
+  )
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const decoration_exclusion_rects = $derived(
+    decoration_placement_rects(decoration_solution),
   )
 
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
@@ -715,7 +720,7 @@
       y2_scale={scales.y2}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
-      exclusion_rects={legend_exclusion_rects}
+      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -1004,6 +1009,7 @@
       y={tooltip_y}
       offset={{ x: 5, y: -10 }}
       constrain_to={{ width, height }}
+      exclusion_rects={decoration_exclusion_rects}
       fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}
     >
       {#if tooltip}
@@ -1059,9 +1065,7 @@
     <PlotLegend
       bind:root_element={legend_element}
       {...legend}
-      layout_tracks={legend.layout_tracks === `auto` && legend_placement
-        ? Math.max(1, legend_placement.layout_tracks ?? 1)
-        : legend.layout_tracks}
+      layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
       series_data={legend_data}
       on_toggle={legend?.on_toggle ??
         ((series_idx: number) => {

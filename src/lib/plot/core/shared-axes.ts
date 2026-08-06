@@ -5,6 +5,12 @@ import type { AxisConfig } from '$lib/plot/core/types'
 export type PaddingSide = keyof Required<Sides>
 
 const PADDING_SIDES: readonly PaddingSide[] = [`t`, `b`, `l`, `r`]
+const DEFAULT_RANGE_TOLERANCE = { absolute: 1e-9, relative: 1e-4 }
+
+export interface RangeTolerance {
+  absolute?: number
+  relative?: number
+}
 
 // A usable axis range is exactly two finite endpoints. Reversed and degenerate
 // ranges remain valid because callers may intentionally invert or collapse an axis.
@@ -14,17 +20,29 @@ export const is_valid_range = (range: unknown): range is Vec2 =>
   Number.isFinite(range[0]) &&
   Number.isFinite(range[1])
 
-// Compare two finite ranges endpoint-by-endpoint. Negative tolerances are clamped
-// to zero so exact equality remains available without a separate helper.
+// Compare finite ranges endpoint-by-endpoint with absolute + span-relative tolerance.
+// A numeric tolerance remains an absolute threshold; negative values clamp to zero.
 export const ranges_equal = (
   left: Vec2 | undefined | null,
   right: Vec2 | undefined | null,
-  tolerance = 0.001,
+  tolerance: number | RangeTolerance = DEFAULT_RANGE_TOLERANCE,
 ): boolean => {
-  const safe_tolerance = Math.max(0, tolerance)
+  const resolved_tolerance =
+    typeof tolerance === `number` ? { absolute: tolerance, relative: 0 } : tolerance
+  const absolute_tolerance = Math.max(
+    0,
+    resolved_tolerance.absolute ?? DEFAULT_RANGE_TOLERANCE.absolute,
+  )
+  const relative_tolerance = Math.max(
+    0,
+    resolved_tolerance.relative ?? DEFAULT_RANGE_TOLERANCE.relative,
+  )
+  if (!is_valid_range(left) || !is_valid_range(right)) return false
+  // Scale the relative term by the plotted spans, not endpoint magnitude. This
+  // keeps narrow ranges around a large offset from accepting visibly large shifts.
+  const span_scale = Math.max(Math.abs(left[1] - left[0]), Math.abs(right[1] - right[0]))
+  const safe_tolerance = absolute_tolerance + relative_tolerance * span_scale
   return (
-    is_valid_range(left) &&
-    is_valid_range(right) &&
     Math.abs(left[0] - right[0]) <= safe_tolerance &&
     Math.abs(left[1] - right[1]) <= safe_tolerance
   )
@@ -103,6 +121,41 @@ export function detect_shared_range_change(
       !ranges_equal(range, current_synced_range),
   )
   return changed_ranges.length === 1 ? changed_ranges[0] : undefined
+}
+
+export interface SharedAxisRangeUpdate {
+  synced_range: Vec2 | null
+  axes: AxisConfig[]
+}
+
+// Detect a zoom/reset from any participating panel and apply the result to every
+// panel in one pure operation. An empty/single-panel list follows the same rules.
+export function reconcile_shared_axis_ranges(
+  axes: readonly AxisConfig[],
+  shared_range: Vec2,
+  current_synced_range: Vec2 | null,
+): SharedAxisRangeUpdate | undefined {
+  const synced_range = detect_shared_range_change(
+    axes.map((axis) => axis.range),
+    shared_range,
+    current_synced_range,
+  )
+  const next_range =
+    synced_range === undefined
+      ? (current_synced_range ?? shared_range)
+      : (synced_range ?? shared_range)
+  const next_axes = axes.map((axis) =>
+    synced_range === undefined
+      ? propagate_shared_axis_range(axis, next_range)
+      : sync_axis_range(axis, next_range),
+  )
+  if (synced_range === undefined && next_axes.every((axis, idx) => axis === axes[idx])) {
+    return undefined
+  }
+  return {
+    synced_range: synced_range === undefined ? current_synced_range : synced_range,
+    axes: next_axes,
+  }
 }
 
 // Reconcile selected padding sides by taking their largest finite value. Undefined

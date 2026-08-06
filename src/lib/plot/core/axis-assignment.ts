@@ -1,4 +1,3 @@
-import { SvelteSet } from 'svelte/reactivity'
 import type { ScaleType } from './types'
 
 export type AxisSlot = `y1` | `y2`
@@ -69,14 +68,23 @@ export type AxisAssignmentResult<Series extends AxisAssignableSeries> =
 
 export interface AxisLabelOptions<Series extends AxisAssignableSeries> {
   is_visible?: (series: Series, series_idx: number) => boolean
+  // A resolved assignment array or accessor is authoritative: undefined entries
+  // stay unassigned instead of falling back to y1.
+  axis?: readonly (AxisSlot | undefined)[] | AxisAccessor<Series>
   fallback_label?: string
 }
 
 export interface AxisScaleTypeOptions<Series extends AxisValueSeries> {
   is_visible?: (series: Series, series_idx: number) => boolean
+  axis?: readonly (AxisSlot | undefined)[] | AxisAccessor<Series>
   can_use_log_scale: (series: Series) => boolean
   min_log_decades?: number
 }
+
+export type AxisAccessor<Series extends AxisAssignableSeries> = (
+  series: Series,
+  series_idx: number,
+) => AxisSlot | undefined
 
 export class AxisAssignmentOverflowError extends Error {
   readonly group_keys: readonly string[]
@@ -113,7 +121,17 @@ export class AxisAssignmentOverflowError extends Error {
 const default_is_visible = (series: AxisAssignableSeries): boolean => series.visible !== false
 
 export const axis_group_key = (series: AxisAssignableSeries): string =>
-  series.axis_group ?? series.unit ?? `dimensionless`
+  series.axis_group?.trim() || series.unit?.trim() || `dimensionless`
+
+const resolved_axis = <Series extends AxisAssignableSeries>(
+  series: Series,
+  series_idx: number,
+  axis: readonly (AxisSlot | undefined)[] | AxisAccessor<Series> | undefined,
+): AxisSlot | undefined => {
+  if (typeof axis === `function`) return axis(series, series_idx)
+  if (axis !== undefined) return axis[series_idx]
+  return series.y_axis ?? `y1`
+}
 
 // Group visible series by axis_group (when present) or unit. Groups are sorted
 // by caller priority, then first input occurrence so ties are deterministic.
@@ -165,10 +183,7 @@ export function assign_axes<Series extends AxisAssignableSeries>(
   }
 
   const supported_axes: readonly AxisSlot[] = max_axes === 1 ? [`y1`] : [`y1`, `y2`]
-  const assignments: (AxisSlot | undefined)[] = Array.from(
-    { length: series.length },
-    () => undefined,
-  )
+  const assignments = Array<AxisSlot | undefined>(series.length).fill(undefined)
   series.forEach((srs, series_idx) => {
     if (!is_visible(srs, series_idx) || srs.y_axis === undefined) return
     if (!supported_axes.includes(srs.y_axis)) {
@@ -180,59 +195,50 @@ export function assign_axes<Series extends AxisAssignableSeries>(
   })
 
   const candidate_groups = group_axis_series(series, options)
-  const explicit_axes_for_group = (group: AxisGroup<Series>): AxisSlot[] =>
-    supported_axes.filter((axis) => group.series.some((srs) => srs.y_axis === axis))
+  const explicit_axes_by_group = candidate_groups.map((group) =>
+    supported_axes.filter((axis) => group.series.some((srs) => srs.y_axis === axis)),
+  )
   const reserved_axes = supported_axes.filter((axis) =>
-    candidate_groups.some((group) => explicit_axes_for_group(group).includes(axis)),
+    explicit_axes_by_group.some((explicit_axes) => explicit_axes.includes(axis)),
   )
   const available_axes = supported_axes.filter((axis) => !reserved_axes.includes(axis))
-  const automatic_groups = candidate_groups.filter(
-    (group) => explicit_axes_for_group(group).length === 0,
-  )
-  const assigned_automatic_groups = automatic_groups.slice(0, available_axes.length)
-  const automatic_part = (group: AxisGroup<Series>): AxisGroup<Series> => {
-    const automatic_indices = group.series
-      .map((srs, group_idx) => (srs.y_axis === undefined ? group_idx : -1))
-      .filter((group_idx) => group_idx >= 0)
-    return {
+  const assigned_groups: AssignedAxisGroup<Series>[] = []
+  const overflow_groups: AxisGroup<Series>[] = []
+  const attempted_automatic_groups: AxisGroup<Series>[] = []
+  let automatic_group_idx = 0
+  for (const [group_idx, group] of candidate_groups.entries()) {
+    const explicit_axes = explicit_axes_by_group[group_idx]
+    if (explicit_axes.length === 0) {
+      attempted_automatic_groups.push(group)
+      const axis = available_axes[automatic_group_idx++]
+      if (axis === undefined) {
+        overflow_groups.push(group)
+        continue
+      }
+      assigned_groups.push({ ...group, axis })
+      group.series_indices.forEach((series_idx) => (assignments[series_idx] = axis))
+      continue
+    }
+
+    const axis = explicit_axes[0]
+    assigned_groups.push({ ...group, axis })
+    if (explicit_axes.length === 1) {
+      group.series_indices.forEach((series_idx) => (assignments[series_idx] ??= axis))
+      continue
+    }
+    const automatic_group = {
       ...group,
-      series: automatic_indices.map((group_idx) => group.series[group_idx]),
-      series_indices: automatic_indices.map((group_idx) => group.series_indices[group_idx]),
+      series: group.series.filter((srs) => srs.y_axis === undefined),
+      series_indices: group.series_indices.filter(
+        (_series_idx, idx) => group.series[idx].y_axis === undefined,
+      ),
+    }
+    if (automatic_group.series.length > 0) {
+      overflow_groups.push(automatic_group)
+      attempted_automatic_groups.push(automatic_group)
     }
   }
-  const assigned_groups = candidate_groups.flatMap((group) => {
-    const explicit_axes = explicit_axes_for_group(group)
-    const automatic_group_idx = assigned_automatic_groups.indexOf(group)
-    const axis =
-      explicit_axes[0] ??
-      (automatic_group_idx === -1 ? undefined : available_axes[automatic_group_idx])
-    return axis === undefined ? [] : [{ ...group, axis }]
-  })
-  for (const group of assigned_groups) {
-    const conflicting_explicit_axes = explicit_axes_for_group(group).length > 1
-    group.series_indices.forEach((series_idx, group_idx) => {
-      if (conflicting_explicit_axes && group.series[group_idx].y_axis === undefined) return
-      assignments[series_idx] ??= group.axis
-    })
-  }
-
-  const unassigned_automatic_groups = new SvelteSet(
-    automatic_groups.slice(available_axes.length),
-  )
-  const overflow_groups = candidate_groups.flatMap((group) => {
-    if (unassigned_automatic_groups.has(group)) return [group]
-    if (explicit_axes_for_group(group).length <= 1) return []
-    const group_automatic_part = automatic_part(group)
-    return group_automatic_part.series.length === 0 ? [] : [group_automatic_part]
-  })
   if (overflow_groups.length > 0) {
-    const attempted_automatic_groups = candidate_groups.flatMap((group) => {
-      const explicit_axes = explicit_axes_for_group(group)
-      if (explicit_axes.length === 0) return [group]
-      if (explicit_axes.length === 1) return []
-      const group_automatic_part = automatic_part(group)
-      return group_automatic_part.series.length === 0 ? [] : [group_automatic_part]
-    })
     return {
       status: `overflow`,
       assignments,
@@ -253,15 +259,21 @@ function label_for_axis<Series extends AxisAssignableSeries>(
   axis: AxisSlot,
   options: AxisLabelOptions<Series>,
 ): string {
-  const { is_visible = default_is_visible, fallback_label = `Value` } = options
+  const {
+    is_visible = default_is_visible,
+    axis: resolved_assignment,
+    fallback_label = `Value`,
+  } = options
   const axis_series = series.filter(
-    (srs, series_idx) => is_visible(srs, series_idx) && (srs.y_axis ?? `y1`) === axis,
+    (srs, series_idx) =>
+      is_visible(srs, series_idx) &&
+      resolved_axis(srs, series_idx, resolved_assignment) === axis,
   )
   if (axis_series.length === 0) return fallback_label
 
   const unit_groups: { unit: string; labels: string[] }[] = []
   for (const srs of axis_series) {
-    const unit = srs.unit ?? ``
+    const unit = srs.unit?.trim() ?? ``
     let unit_group = unit_groups.find((group) => group.unit === unit)
     if (!unit_group) {
       unit_group = { unit, labels: [] }
@@ -291,7 +303,12 @@ export function axis_scale_types<Series extends AxisValueSeries>(
   series: readonly Series[],
   options: AxisScaleTypeOptions<Series>,
 ): Record<AxisSlot, ScaleType> {
-  const { is_visible = default_is_visible, can_use_log_scale, min_log_decades = 3 } = options
+  const {
+    is_visible = default_is_visible,
+    axis: resolved_assignment,
+    can_use_log_scale,
+    min_log_decades = 3,
+  } = options
   if (!Number.isFinite(min_log_decades) || min_log_decades < 0) {
     throw new Error(
       `min_log_decades must be a non-negative finite number, got ${min_log_decades}`,
@@ -300,7 +317,9 @@ export function axis_scale_types<Series extends AxisValueSeries>(
 
   const scale_for_axis = (axis: AxisSlot): ScaleType => {
     const axis_series = series.filter(
-      (srs, series_idx) => is_visible(srs, series_idx) && (srs.y_axis ?? `y1`) === axis,
+      (srs, series_idx) =>
+        is_visible(srs, series_idx) &&
+        resolved_axis(srs, series_idx, resolved_assignment) === axis,
     )
     if (axis_series.length === 0 || axis_series.some((srs) => !can_use_log_scale(srs))) {
       return `linear`

@@ -70,6 +70,7 @@
   const is_x = $derived(side === `x` || side === `x2`)
   const inside = $derived(axis.tick?.label?.inside ?? false)
   const tick_texts = $derived(ticks.map(tick_text))
+  const tick_positions = $derived(ticks.map(place))
   const plot_w = $derived(Math.max(0, width - pad.l - pad.r))
   const plot_h = $derived(Math.max(0, height - pad.b - pad.t))
   let axis_group: SVGGElement | undefined = $state()
@@ -106,7 +107,7 @@
       {
         ...axis,
         tick_values: tick_texts,
-        tick_positions: ticks.map(place),
+        tick_positions,
         axis_extent: {
           start: is_x ? pad.l : height - pad.b,
           end: is_x ? width - pad.r : pad.t,
@@ -162,6 +163,13 @@
   const in_plot = (pos: number): boolean =>
     !domain ||
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)
+  const first_rendered_label_idx = $derived(
+    tick_layout.visible_tick_indices.find((idx) => {
+      const tick = ticks[idx]
+      const pos = tick_positions[idx]
+      return Number.isFinite(pos) && in_plot(pos) && in_domain(tick)
+    }),
+  )
 </script>
 
 <g class="{side}-axis" bind:this={axis_group}>
@@ -176,13 +184,14 @@
       pointer-events="none"
     />
   {/if}
-  {#each tick_layout.visible_tick_indices as idx, visible_idx (idx)}
+  {#each tick_layout.visible_tick_indices as idx (idx)}
     {@const tick = ticks[idx]}
-    {@const pos = place(tick)}
-    {#if isFinite(pos) && in_plot(pos)}
+    {@const pos = tick_positions[idx]}
+    {#if Number.isFinite(pos) && in_plot(pos)}
       {@const label = tick_layout.labels[idx]}
       {@const label_lines = label.lines}
-      {@const tick_unit = unit_on_first_tick && visible_idx === 0 ? axis.unit : undefined}
+      {@const tick_unit =
+        unit_on_first_tick && idx === first_rendered_label_idx ? axis.unit : undefined}
       {@const label_x_offset =
         text_x +
         (is_x ? 0 : -stagger_direction * label.stagger_row * tick_layout.stagger_step)}

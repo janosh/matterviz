@@ -85,7 +85,10 @@ describe(`tick strategy scoring`, () => {
     expect(selection.winner?.candidate.id).toBe(`fallback`)
     expect(
       selection.evaluated.find(({ candidate: item }) => item.id === `infeasible`),
-    ).toMatchObject({ feasible: false, score: Number.POSITIVE_INFINITY })
+    ).toMatchObject({ feasible: false })
+    expect(
+      selection.evaluated.find(({ candidate: item }) => item.id === `infeasible`)?.score,
+    ).toSatisfy((score: number) => Number.isFinite(score))
   })
 
   test.each([
@@ -115,6 +118,57 @@ describe(`tick strategy scoring`, () => {
 
     expect(selection.evaluated).toHaveLength(3)
     expect(selection.winner?.candidate.id).toBe(`global-minimum`)
+  })
+
+  test(`rejects information-destroying text and ranks readable fallback first`, () => {
+    const readable_collision = measured(candidate(`readable-collision`), {
+      collisions: 1,
+      band_fraction: 0.2,
+    })
+    const bare_ellipsis = measured(
+      candidate(`bare-ellipsis`, {
+        strategy: `ellipsis`,
+        labels: [
+          {
+            full_text: `Formation energy`,
+            display_lines: [`…`],
+            information_loss: 1,
+          },
+          {
+            full_text: `Average temperature`,
+            display_lines: [``],
+            information_loss: 1,
+          },
+        ],
+      }),
+      { band_fraction: 0.1 },
+    )
+    const selection = select_tick_candidate([bare_ellipsis, readable_collision])
+
+    expect(selection.winner).toBeNull()
+    expect(selection.evaluated.map(({ candidate: item }) => item.id)).toEqual([
+      `readable-collision`,
+      `bare-ellipsis`,
+    ])
+    expect(selection.evaluated[1]).toMatchObject({ feasible: false })
+  })
+
+  test(`ranks readable infeasible candidates by geometric violation before soft cost`, () => {
+    const crowded_upright = measured(candidate(`crowded-upright`), {
+      collisions: 20,
+      band_fraction: 0.1,
+    })
+    const clearer_rotation = measured(
+      candidate(`clearer-rotation`, { strategy: `rotate`, rotation_deg: 90 }),
+      { collisions: 2, band_fraction: 2 },
+    )
+    const selection = select_tick_candidate([crowded_upright, clearer_rotation])
+
+    expect(selection.winner).toBeNull()
+    expect(selection.evaluated.map(({ candidate: item }) => item.id)).toEqual([
+      `clearer-rotation`,
+      `crowded-upright`,
+    ])
   })
 
   test(`valid custom weights override the selected mode`, () => {

@@ -18,15 +18,13 @@ const place = (overrides: Partial<Parameters<typeof place_decorations>[0]> = {})
 
 describe(`place_decorations`, () => {
   test.each([
-    { horizontal: true, edge: `top`, inset: `inset-inline` },
-    { horizontal: false, edge: `right`, inset: `inset-block` },
+    { horizontal: true, edge: `top` },
+    { horizontal: false, edge: `right` },
   ])(
     `crowded colorbar (horizontal=$horizontal) moves to the $edge margin`,
-    ({ horizontal, edge, inset }) => {
+    ({ horizontal }) => {
       const layout = place({ colorbar: { footprint: { width: 220, height: 56 }, horizontal } })
       expect(layout.colorbar_outside).toBe(true)
-      expect(layout.colorbar_style).toContain(`${edge}:`)
-      expect(layout.colorbar_style).toContain(inset)
       // horizontal reserves top padding; vertical reserves right padding
       if (horizontal) {
         expect(layout.pad.t).toBeGreaterThan(base_pad.t)
@@ -78,8 +76,17 @@ describe(`place_decorations`, () => {
     })
     expect(layout.legend_outside).toBe(false)
     expect(layout.colorbar_outside).toBe(false)
-    expect(layout.colorbar_style).toBe(``)
     expect(layout.pad).toEqual(base_pad)
+  })
+
+  test(`never reduces a large base padding when reserving a right legend`, () => {
+    const large_right_pad = { ...base_pad, r: 180 }
+    const layout = place({
+      base_pad: large_right_pad,
+      legend: { footprint: { width: 80, height: 200 } },
+    })
+    expect(layout.legend_outside).toBe(true)
+    expect(layout.pad).toMatchObject(large_right_pad)
   })
 
   test(`a decoration larger than the plot moves outside even over sparse data`, () => {

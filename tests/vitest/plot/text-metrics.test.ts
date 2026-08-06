@@ -4,9 +4,11 @@ import {
   font_spec_to_css,
   get_text_metrics_revision,
   invalidate_text_metrics_after_fonts_ready,
+  measure_css_text_width,
   measure_text_block,
   measure_text_line,
   resolve_font_spec,
+  wrap_text_paragraph,
   type FontSpec,
 } from '$lib/plot/core/text-metrics'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -108,6 +110,61 @@ describe(`text metrics`, () => {
     expect(other.width).toBe(40)
     expect(measure_text).toHaveBeenCalledTimes(2)
     expect(context.font).toBe(`italic small-caps 700 condensed 20px "Inter", sans-serif`)
+  })
+
+  it(`parses font size after shorthand qualifiers for deterministic fallback width`, () => {
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(null)
+
+    expect(measure_css_text_width(`abcd`, `bold 18px "Inter", sans-serif`)).toBeCloseTo(43.2)
+  })
+
+  it.each([
+    {
+      name: `word boundaries`,
+      paragraph: `alpha beta gamma`,
+      width: 50,
+      preserve_empty_line: false,
+      expected: [`alpha beta`, `gamma`],
+    },
+    {
+      name: `overlong words`,
+      paragraph: `abcdefghij`,
+      width: 20,
+      preserve_empty_line: false,
+      expected: [`abcd`, `efgh`, `ij`],
+    },
+    {
+      name: `non-positive widths`,
+      paragraph: `alpha beta`,
+      width: 0,
+      preserve_empty_line: false,
+      expected: [`alpha beta`],
+    },
+    {
+      name: `discarded empty paragraphs`,
+      paragraph: `   `,
+      width: 50,
+      preserve_empty_line: false,
+      expected: [],
+    },
+    {
+      name: `preserved empty paragraphs`,
+      paragraph: `   `,
+      width: 50,
+      preserve_empty_line: true,
+      expected: [``],
+    },
+  ])(`wraps $name with shared greedy semantics`, (test_case) => {
+    const measure = (text: string) => ({ width: Array.from(text).length * 5 })
+    expect(
+      wrap_text_paragraph(
+        test_case.paragraph,
+        test_case.width,
+        TEST_FONT,
+        measure,
+        test_case.preserve_empty_line,
+      ),
+    ).toEqual(test_case.expected)
   })
 
   it(`clears cached measurements and increments the revision`, () => {
