@@ -125,7 +125,8 @@ export const axis_group_key = (series: AxisAssignableSeries): string => {
   const axis_group = series.axis_group?.trim()
   if (axis_group) return axis_group
   const unit = series.unit?.trim()
-  return unit ? unit : `dimensionless`
+  if (unit) return unit
+  return `dimensionless`
 }
 
 const resolved_axis = <Series extends AxisAssignableSeries>(

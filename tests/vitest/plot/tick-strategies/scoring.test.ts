@@ -210,17 +210,13 @@ describe(`tick strategy scoring`, () => {
   })
 
   test.each([
-    [`a fractional collision count`, `collisions`, 0.5],
-    [`a negative collision count`, `collisions`, -1],
-    [`negative edge overflow`, `edge_overflow_px`, -1],
-    [`a negative band fraction`, `band_fraction`, -1],
-    [`a non-finite band fraction`, `band_fraction`, Infinity],
-  ] as const)(`rejects %s`, (_name, metric, value) => {
+    [`a fractional collision count`, `collisions`, 0.5, /integer/u],
+    [`a negative collision count`, `collisions`, -1, /finite non-negative/u],
+    [`negative edge overflow`, `edge_overflow_px`, -1, /finite non-negative/u],
+    [`a negative band fraction`, `band_fraction`, -1, /finite non-negative/u],
+    [`a non-finite band fraction`, `band_fraction`, Infinity, /finite non-negative/u],
+  ] as const)(`rejects %s`, (_name, metric, value, expected_error) => {
     const metric_overrides: Partial<TickCandidateMeasurements> = { [metric]: value }
-    const expected_error =
-      metric === `collisions` && Number.isFinite(value) && !Number.isInteger(value)
-        ? `collisions must be an integer`
-        : `${metric} must be a finite non-negative number`
     expect(() =>
       score_tick_candidate(measured(candidate(`invalid-measurement`), metric_overrides)),
     ).toThrow(expected_error)

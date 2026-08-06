@@ -486,14 +486,12 @@ export const generate_axis_labels = (
 // it is strictly positive AND their combined values span at least three decades.
 // SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
 // hockey sticks on linear axes; plain energies (large negative) stay linear.
-export const TRAJECTORY_AXIS_SCALE_OPTIONS = {
-  can_use_log_scale: (series: DataSeries) => series.axis_group === SCF_AXIS_GROUP,
-  is_visible: series_is_visible,
-  min_log_decades: 3,
-} as const
-
 export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
-  get_axis_scale_types(plot_series, TRAJECTORY_AXIS_SCALE_OPTIONS)
+  get_axis_scale_types(plot_series, {
+    can_use_log_scale: (series) => series.axis_group === SCF_AXIS_GROUP,
+    is_visible: series_is_visible,
+    min_log_decades: 3,
+  })
 
 // Streaming plot generation (simplified)
 interface StreamingPlotOptions {

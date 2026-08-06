@@ -1,6 +1,4 @@
-import { SCF_AXIS_GROUP } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
-import { axis_scale_types as shared_axis_scale_types } from '$lib/plot/core/axis-assignment'
 import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
@@ -13,7 +11,6 @@ import {
   get_frame_step_samples,
   get_frame_time_step,
   should_hide_plot,
-  TRAJECTORY_AXIS_SCALE_OPTIONS,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -395,13 +392,6 @@ describe(`generate_axis_scale_types`, () => {
       expected: all_linear },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
-  })
-
-  it(`matches the shared axis scale helper`, () => {
-    const series = [create_series([1e-6, 1], { axis_group: SCF_AXIS_GROUP })]
-    expect(generate_axis_scale_types(series)).toEqual(
-      shared_axis_scale_types(series, TRAJECTORY_AXIS_SCALE_OPTIONS),
-    )
   })
 })
 
