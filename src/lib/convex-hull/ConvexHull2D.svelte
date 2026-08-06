@@ -85,6 +85,7 @@
     gas_pressures = $bindable({}),
     children,
     tooltip: custom_tooltip,
+    title,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & {
     highlight_style?: HighlightStyle
@@ -622,6 +623,7 @@
     {...rest}
     class={[`convex-hull-2d`, rest.class, drag_over && `dragover`]}
     style={`${style}; ${rest.style ?? ``}`}
+    title={title ?? undefined}
     data-has-selection={selected_entry !== null}
     bind:wrapper
     bind:fullscreen

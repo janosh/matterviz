@@ -1,6 +1,10 @@
 <script lang="ts">
   import { add_alpha } from '$lib/colors'
   import type { LegendItem, Orientation } from '$lib/plot'
+  import {
+    suggest_legend_tracks,
+    type LegendItemExtent,
+  } from '$lib/plot/core/decorations/tracks'
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'
   import { strip_html } from '$lib/table'
@@ -15,6 +19,9 @@
     series_data = [],
     layout = `vertical`,
     layout_tracks = 1, // Default to 1 column/row
+    available_edge_length = Number.POSITIVE_INFINITY,
+    item_extents,
+    estimated_item_extent,
     style = ``,
     item_style = ``,
     collapsed_groups = $bindable(new SvelteSet<string>()),
@@ -39,7 +46,12 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `style`> & {
     series_data: LegendItem[]
     layout?: Orientation
-    layout_tracks?: number // Number of columns for horizontal, rows for vertical
+    layout_tracks?: number | `auto` // Number of columns for horizontal, rows for vertical
+    // Length available along the layout edge. Infinity keeps all auto tracks on one edge.
+    available_edge_length?: number
+    // Optional measured grid-cell extents in rendered child order (including group/filter cells).
+    item_extents?: readonly (LegendItemExtent | undefined)[]
+    estimated_item_extent?: LegendItemExtent
     style?: string // Inline styles forwarded to wrapper div
     item_style?: string
     // Bindable set of collapsed group names (pass initial values to collapse groups by default)
@@ -116,6 +128,55 @@
       .filter(({ items }) => items.length > 0)
   })
 
+  const estimate_text_width = (text: string): number => Array.from(strip_html(text)).length * 7
+  const estimate_item_extent = (
+    label: string,
+    kind: `item` | `indented-item` | `group` | `filter` | `empty`,
+  ): Required<LegendItemExtent> => {
+    if (kind === `filter`) return { width: 160, height: 25 }
+    if (kind === `empty`) return { width: estimate_text_width(label) + 11, height: 20 }
+    const fixed_width = kind === `group` ? 27 : kind === `indented-item` ? 52 : 39
+    return { width: estimate_text_width(label) + fixed_width, height: 20 }
+  }
+
+  // Model direct grid children in render order without feeding layout through a DOM observer.
+  let auto_item_extents = $derived.by<LegendItemExtent[]>(() => {
+    if (layout_tracks !== `auto`) return []
+    const estimates: Required<LegendItemExtent>[] = []
+    if (show_filter) estimates.push(estimate_item_extent(``, `filter`))
+    if (show_filter && legend_filter && filtered_grouped_series.length === 0) {
+      estimates.push(estimate_item_extent(`No legend items`, `empty`))
+    }
+    for (const { group_name, items } of filtered_grouped_series) {
+      const is_grouped = group_name !== null && has_groups
+      if (is_grouped) {
+        estimates.push(estimate_item_extent(group_name, `group`))
+        if (collapsed_groups.has(group_name)) continue
+      }
+      const kind = is_grouped ? `indented-item` : `item`
+      for (const item of items) estimates.push(estimate_item_extent(item.label, kind))
+    }
+    return estimates.map((estimate, item_idx) => ({
+      width: item_extents?.[item_idx]?.width ?? estimated_item_extent?.width ?? estimate.width,
+      height:
+        item_extents?.[item_idx]?.height ?? estimated_item_extent?.height ?? estimate.height,
+    }))
+  })
+
+  let resolved_layout_tracks = $derived(
+    layout_tracks === `auto`
+      ? Math.max(
+          1,
+          suggest_legend_tracks({
+            item_count: auto_item_extents.length,
+            orientation: layout,
+            available_edge_length,
+            item_extents: auto_item_extents,
+          }),
+        )
+      : layout_tracks,
+  )
+
   function toggle_group_collapse(group_name: string) {
     // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
     if (!(collapsed_groups instanceof SvelteSet)) {
@@ -189,8 +250,10 @@
 
   let div_style = $derived(
     {
-      horizontal: `grid-template-columns: repeat(${layout_tracks}, auto);`,
-      vertical: `grid-template-rows: repeat(${layout_tracks}, auto); grid-template-columns: auto;`,
+      horizontal: `grid-template-columns: repeat(${resolved_layout_tracks}, auto);`,
+      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto;${
+        layout_tracks === `auto` ? ` grid-auto-flow: column;` : ``
+      }`,
     }[layout] + style,
   )
 

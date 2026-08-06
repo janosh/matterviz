@@ -52,6 +52,18 @@ test.describe(`BandsAndDos Component Tests`, () => {
       expect(Math.abs(bands_box.height - dos_box.height)).toBeLessThan(tolerance)
     }
 
+    // Shared top/bottom padding must align the actual drawable regions, not only
+    // the equal-height outer plot containers.
+    const bands_clip = plots.first().locator(`clipPath rect`)
+    const dos_clip = plots.nth(1).locator(`clipPath rect`)
+    await expect(bands_clip).toHaveCount(1)
+    await expect(dos_clip).toHaveCount(1)
+    for (const attribute of [`y`, `height`]) {
+      expect(await bands_clip.getAttribute(attribute)).toBe(
+        await dos_clip.getAttribute(attribute),
+      )
+    }
+
     // Verify shared y-axis: tick values should overlap significantly
     await expect(async () => {
       const bands_y_ticks = await plots.first().locator(`g.y-axis text`).allTextContents()

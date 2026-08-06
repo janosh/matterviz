@@ -1,6 +1,8 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
+  import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
+  import type { Rect } from '$lib/plot/core/layout'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -11,6 +13,7 @@
     offset = { x: 6, y: 0 },
     fixed = false,
     constrain_to,
+    exclusion_rects,
     fallback_size,
     wrapper = $bindable(),
     children,
@@ -22,6 +25,7 @@
     offset?: { x: number; y: number }
     fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
     constrain_to?: { width: number; height: number } // flip/clamp within these bounds (offset consumed by constraining)
+    exclusion_rects?: readonly Rect[] // Decorations to avoid; absolute mode also needs constrain_to
     fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // Bindable reference for measuring tooltip size
     children: Snippet
@@ -34,6 +38,25 @@
 
   // For fixed positioning (viewport coords), flip to opposite side when near viewport edges
   const pos = $derived.by(() => {
+    const exclusion_bounds = constrain_to
+      ? { x: 0, y: 0, width: constrain_to.width, height: constrain_to.height }
+      : fixed
+        ? { x: 0, y: 0, width: globalThis.innerWidth, height: globalThis.innerHeight }
+        : undefined
+    if (exclusion_rects && exclusion_bounds) {
+      const measured_width = wrapper?.offsetWidth ?? 0
+      const measured_height = wrapper?.offsetHeight ?? 0
+      return place_tooltip({
+        anchor: { x, y },
+        tooltip_size: {
+          width: measured_width > 0 ? measured_width : (fallback_size?.width ?? 0),
+          height: measured_height > 0 ? measured_height : (fallback_size?.height ?? 0),
+        },
+        bounds: exclusion_bounds,
+        exclusion_rects,
+        offset,
+      })
+    }
     if (constrain_to) {
       return constrain_tooltip_position(
         x,

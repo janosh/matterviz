@@ -50,12 +50,14 @@ describe(`PeriodicTable`, () => {
     expect(document.querySelector(`img`)).toBeNull()
   })
 
-  test(`keyboard navigation works`, () => {
+  test(`arrow navigation moves focus and Enter activates the focused tile`, async () => {
     let active_element: (typeof element_data)[0] | null = null
+    const onactivate = vi.fn<(element: ChemicalElement) => void>()
 
     mount(PeriodicTable, {
       target: document.body,
       props: {
+        onactivate,
         get active_element() {
           return active_element
         },
@@ -65,10 +67,44 @@ describe(`PeriodicTable`, () => {
       },
     })
 
-    // Set initial active element
-    active_element = element_data[0]
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown` }))
-    expect(active_element?.symbol).toBe(`Li`)
+    const hydrogen = doc_query(`[data-element-symbol="H"]`)
+    const lithium = doc_query(`[data-element-symbol="Li"]`)
+    hydrogen.focus()
+    hydrogen.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+    await tick()
+
+    expect(active_element).toMatchObject({ symbol: `Li` })
+    expect(document.activeElement).toBe(lithium)
+    expect(hydrogen.tabIndex).toBe(-1)
+    expect(lithium.tabIndex).toBe(0)
+
+    lithium.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    expect(onactivate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ symbol: `Li` }),
+    )
+  })
+
+  test(`arrow keys outside the table do not change its active element`, () => {
+    let active_element: (typeof element_data)[0] | null = null
+    mount(PeriodicTable, {
+      target: document.body,
+      props: {
+        onactivate: vi.fn(),
+        get active_element() {
+          return active_element
+        },
+        set active_element(val) {
+          active_element = val
+        },
+      },
+    })
+    const input = document.createElement(`input`)
+    document.body.append(input)
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+
+    expect(active_element).toBeNull()
+    expect(document.activeElement).toBe(input)
   })
 
   test(`tile content can be hidden`, () => {
@@ -99,17 +135,47 @@ describe(`PeriodicTable`, () => {
     expect(tile.style.cursor).toBe(`pointer`) // user style still applied
   })
 
-  test(`onactivate handles pointer and keyboard activation`, () => {
+  test.each([`onactivate`, `legacy onenter`] as const)(
+    `%s handles pointer and keyboard activation`,
+    (callback_name) => {
+      const callback = vi.fn<(element: ChemicalElement) => void>()
+      const props =
+        callback_name === `onactivate` ? { onactivate: callback } : { onenter: callback }
+      mount(PeriodicTable, { target: document.body, props })
+      const tile = doc_query(`.element-tile`)
+      tile.click()
+      for (const key of [`Enter`, ` `]) {
+        tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      }
+      expect(tile.getAttribute(`role`)).toBe(`button`)
+      expect(tile.getAttribute(`tabindex`)).toBe(`0`)
+      expect(document.querySelectorAll<HTMLElement>(`.element-tile`)[1].tabIndex).toBe(-1)
+      expect(callback.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
+    },
+  )
+
+  test(`links keep native semantics when an activation callback is also supplied`, async () => {
     const onactivate = vi.fn<(element: ChemicalElement) => void>()
-    mount(PeriodicTable, { target: document.body, props: { onactivate } })
-    const tile = doc_query(`.element-tile`)
+    const warning = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { links: `symbol`, onactivate },
+    })
+    await tick()
+    const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
+    tile.addEventListener(`click`, (event) => event.preventDefault())
     tile.click()
     for (const key of [`Enter`, ` `]) {
       tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
     }
-    expect(tile.getAttribute(`role`)).toBe(`button`)
-    expect(tile.getAttribute(`tabindex`)).toBe(`0`)
-    expect(onactivate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
+
+    expect(tile.tagName).toBe(`A`)
+    expect(tile.getAttribute(`role`)).toBe(`link`)
+    expect(tile.getAttribute(`href`)).toBe(`/h`)
+    expect(onactivate).not.toHaveBeenCalled()
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(`native link activation`),
+    )
   })
 
   test(`tile_props interactions remain intact without onactivate`, () => {

@@ -12,6 +12,7 @@
     axis_type = `x`,
     color = $bindable(),
     on_select,
+    lines,
     ...rest
   }: {
     label?: string
@@ -21,6 +22,8 @@
     axis_type?: `x` | `x2` | `y` | `y2`
     color?: string | null
     on_select?: (key: string) => void
+    // Pre-wrapped plain-text lines resolved from the same metrics used by plot padding.
+    lines?: readonly string[]
     [key: string]: unknown
   } = $props()
 
@@ -59,7 +62,15 @@
       />
     {/if}
   {:else}
-    <span class="static-label">{@html sanitize_html(label)}</span>
+    <span class="static-label">
+      {#if lines && lines.length > 1}
+        {#each lines as line}
+          <span>{line}</span>
+        {/each}
+      {:else}
+        {@html sanitize_html(label)}
+      {/if}
+    </span>
   {/if}
 </div>
 
@@ -72,10 +83,17 @@
     width: 100%;
     height: 100%;
     pointer-events: auto;
+    white-space: normal;
   }
   .static-label {
     display: inline-flex;
-    align-items: baseline;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: pre-wrap;
+    width: 100%;
   }
   .loading :global(.axis-trigger) {
     opacity: 0.7;

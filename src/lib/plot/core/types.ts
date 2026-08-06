@@ -7,7 +7,9 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
 import type { Sides } from '$lib/plot/core/layout'
 import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
+import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
+import type { TickScoringConfig, TickStrategy } from '$lib/plot/core/tick-strategies'
 import type { FillGradient } from '$lib/plot/core/types/fills'
 
 export type { TweenOptions } from 'svelte/motion'
@@ -441,6 +443,9 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   // are displayed together under a collapsible header. Click the header to toggle
   // visibility of all series in the group, or the chevron to collapse/expand.
   legend_group?: string
+  unit?: string // Optional value unit used for automatic axis assignment
+  // Override unit-based automatic axis grouping (e.g. a separately scaled residual).
+  axis_group?: string
   color?: string
   bar_width?: number | readonly number[]
   visible?: boolean
@@ -465,6 +470,24 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   point_offset?: Point2D[] | Point2D
 }
 
+export type TickEndpointPolicy = `preserve` | `adaptive`
+
+export interface TickAutoLayoutConfig {
+  // Candidate strategies evaluated exhaustively. Defaults to every adaptive strategy.
+  strategies?: readonly TickStrategy[]
+  scoring?: TickScoringConfig
+  // Largest automatic absolute rotation in degrees (default: 90).
+  max_angle?: number
+  // Hard limit on the outward label band in pixels.
+  max_band?: number
+  // Smallest number of labels a thinning candidate may retain (default: 2).
+  min_visible_ticks?: number
+  // Clear space retained at both ends of the rendered axis extent, in pixels.
+  edge_gap?: number
+  // Whether thinning must retain endpoints (default) or may choose interior representatives.
+  endpoint_policy?: TickEndpointPolicy
+}
+
 // Tick label configuration
 export interface TickLabelConfig {
   inside?: boolean // Render tick labels inside the plot area (default: false/outside)
@@ -473,6 +496,7 @@ export interface TickLabelConfig {
   rotation?: number | `auto`
   // Maximum auto-wrapped lines (default: 3). Pass 1 to disable wrapping.
   max_lines?: number
+  auto_layout?: TickAutoLayoutConfig
 }
 
 // Tick configuration
@@ -662,6 +686,7 @@ export interface PlotControlsProps extends PlotConfig {
 export interface BasePlotProps {
   range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
   padding?: Sides
+  title?: string | PlotTitleConfig
   // State
   hovered?: boolean
   // Controls

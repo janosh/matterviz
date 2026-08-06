@@ -11,13 +11,13 @@
     RefLineEvent,
   } from '$lib/plot'
   import {
-    compute_element_placement,
     HistogramControls,
     PlotAxis,
     PlotLegend,
     PlotMarginals,
     ReferenceLine,
   } from '$lib/plot'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -42,19 +42,20 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
-    measure_max_tick_width,
   } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
   import {
     build_obstacles_norm,
     clip_bar,
-    has_explicit_position,
-    measured_footprint,
-    place_decorations,
-    placed_coords,
-  } from '$lib/plot/core/auto-place'
+    solve_decorations,
+    type DecorationItem,
+  } from '$lib/plot/core/decorations'
+  import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
@@ -94,6 +95,7 @@
     display: display_init = DEFAULTS.histogram.display,
     range_padding = 0,
     padding = {},
+    title,
     bins = $bindable(100),
     show_legend = $bindable(true),
     legend = {},
@@ -334,23 +336,57 @@
 
   // Layout: dynamic padding based on tick label widths
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
   let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  const title_config = $derived(normalize_plot_title(title))
 
   // Track tick values so x auto-rotation / bottom pad recompute when ticks change.
   // sides_equal stops the pad write from looping when nothing moved.
   $effect(() => {
-    const new_pad =
+    const axis_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...final_x_axis, tick_values: ticks.x },
-            x2_axis: { ...final_x2_axis, tick_values: ticks.x2 },
-            y_axis: { ...final_y_axis, tick_values: ticks.y },
-            y2_axis: { ...final_y2_axis, tick_values: ticks.y2 },
+            height,
+            x_axis: {
+              ...final_x_axis,
+              tick_values: ticks.x,
+              tick_positions: ticks.x.map(scales.x),
+              axis_extent: { start: pad.l, end: width - pad.r },
+              tick_font,
+            },
+            x2_axis: {
+              ...final_x2_axis,
+              tick_values: ticks.x2,
+              tick_positions: ticks.x2.map(scales.x2),
+              axis_extent: { start: pad.l, end: width - pad.r },
+              tick_font,
+            },
+            y_axis: {
+              ...final_y_axis,
+              tick_values: ticks.y,
+              tick_positions: ticks.y.map(scales.y),
+              axis_extent: { start: height - pad.b, end: pad.t },
+              tick_font,
+            },
+            y2_axis: {
+              ...final_y2_axis,
+              tick_values: ticks.y2,
+              tick_positions: ticks.y2.map(scales.y2),
+              axis_extent: { start: height - pad.b, end: pad.t },
+              tick_font,
+            },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const title_height =
+      width && height
+        ? resolve_plot_title(title_config, {
+            width: Math.max(0, width - axis_pad.l - axis_pad.r),
+          }).block_height
+        : 0
+    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
@@ -390,19 +426,46 @@
     return build_obstacles_norm(bars, base_w, base_h)
   })
 
-  // Move the legend to the bottom margin when no interior spot avoids the bars
-  const decor = $derived(
-    place_decorations({
+  const decoration_solution = $derived.by(() => {
+    const items: DecorationItem[] = []
+    if (should_show_legend && legend_element != null && !legend_has_explicit_pos) {
+      items.push({
+        id: `legend`,
+        kind: `legend`,
+        footprint: legend_footprint,
+        clearance: legend?.axis_clearance,
+        auto_tracks:
+          legend?.layout_tracks === `auto`
+            ? {
+                item_count: series.length,
+                orientation: legend.layout ?? `vertical`,
+                item_extents: legend.item_extents,
+                estimated_item_extent: legend.estimated_item_extent,
+              }
+            : undefined,
+      })
+    }
+    return solve_decorations({
       base_pad,
       width,
       height,
       obstacles_norm,
-      // gate on legend_element (the render signal) not legend_data, whose entries can read pad
-      legend:
-        should_show_legend && legend_element != null && !legend_has_explicit_pos
-          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-          : null,
-    }),
+      items,
+    })
+  })
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const legend_exclusion_rects = $derived(
+    legend_placement
+      ? [
+          {
+            x: legend_placement.x,
+            y: legend_placement.y,
+            ...legend_placement.footprint,
+          },
+        ]
+      : [],
   )
   // Resolve marginals (default: CDF strip on top) and reserve outer-band padding. Pass the
   // histogram's `bins` as the marginal's histogram bin count (NOT `size`/thickness) so a
@@ -411,7 +474,9 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
   )
-  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const pad = $derived(
+    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+  )
   // a lone series uses the configured bar color; with multiple, each gets its own
   const series_color = (series_data: DataSeries) =>
     selected_series.length === 1 ? final_bar.color : extract_series_color(series_data)
@@ -481,54 +546,38 @@
     return { x, x2, y, y2 }
   })
 
-  // Cache measured tick-label widths so expensive text measurement only runs
-  // when tick values/format change, not on every template rerender.
+  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(ticks.y, final_y_axis.format, final_y_axis.ticks),
-    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format, final_y2_axis.ticks),
+    y_max: resolve_tick_layout(
+      {
+        ...final_y_axis,
+        tick_values: ticks.y,
+        tick_positions: ticks.y.map(scales.y),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      Math.max(0, height - pad.t - pad.b),
+      `y`,
+    ).band,
+    y2_max: resolve_tick_layout(
+      {
+        ...final_y2_axis,
+        tick_values: ticks.y2,
+        tick_positions: ticks.y2.map(scales.y2),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      Math.max(0, height - pad.t - pad.b),
+      `y2`,
+    ).band,
   })
 
   let legend_data = $derived(prepare_legend_data(series))
 
-  // Collect histogram bar positions for legend placement
-  let hist_points_for_placement = $derived.by(() => {
-    if (!width || !height || histogram_data.length === 0) return []
-
-    const points: { x: number; y: number }[] = []
-
-    for (const { bins: series_bins, x_scale, y_scale } of histogram_data) {
-      for (const series_bin of series_bins) {
-        if (series_bin.length > 0) {
-          const bar_x = x_scale(((series_bin.x0 ?? 0) + (series_bin.x1 ?? 0)) / 2)
-          const bar_y = y_scale(series_bin.length)
-          if (isFinite(bar_x) && isFinite(bar_y)) {
-            // Add multiple points for taller bars to increase their weight
-            // Cap to prevent O(N·count/10) blow-ups for large counts
-            const weight = Math.min(20, Math.ceil(series_bin.length / 10))
-            for (let idx = 0; idx < weight; idx++) points.push({ x: bar_x, y: bar_y })
-          }
-        }
-      }
-    }
-    return points
-  })
-
-  // Calculate best legend placement using continuous grid sampling
-  const get_legend_placement = () => {
-    if (!should_show_legend || !width || !height) return null
-
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
-
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 }, // fallback before first render
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: hist_points_for_placement,
-    })
-  }
+  const get_legend_placement = () =>
+    !should_show_legend || !width || !height || legend_has_explicit_pos
+      ? null
+      : (legend_placement ?? null)
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
@@ -666,6 +715,7 @@
       y2_scale={scales.y2}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
+      exclusion_rects={legend_exclusion_rects}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -712,7 +762,9 @@
     bind:this={svg_element}
     role="application"
     aria-label={rest[`aria-label`] ??
-      ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) || `Histogram`)}
+      (title_config?.text ||
+        [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
+        `Histogram`)}
     tabindex="0"
     onfocusin={() => pan_zoom.set_focused(true)}
     onfocusout={() => pan_zoom.set_focused(false)}
@@ -732,6 +784,12 @@
     style:cursor={pan_zoom.cursor}
     onkeydown={pan_zoom.on_key_down}
   >
+    <PlotTitle
+      config={title_config}
+      x={base_pad.l}
+      y={decoration_solution.pad.t - base_pad.t}
+      width={Math.max(0, width - base_pad.l - base_pad.r)}
+    />
     <!-- Define clip path for chart area -->
     <defs>
       <clipPath id={clip_path_id}>
@@ -782,6 +840,7 @@
       ticks={ticks.x}
       place={scales.x}
       axis={final_x_axis}
+      on_tick_font={(font) => (tick_font = font)}
       domain={ranges.current.x}
       {pad}
       {width}
@@ -990,16 +1049,19 @@
   {/if}
 
   {#if should_show_legend && legend}
-    {@const legend_pos = placed_coords(
-      decor.legend_outside,
-      decor.legend_pos,
-      legend_tween.placed(),
-      legend_tween.coords.current,
-      { x: pad.l + 10, y: pad.t + 10 },
-    )}
+    {@const solved_legend_pos = legend_placement ?? { x: pad.l + 10, y: pad.t + 10 }}
+    {@const legend_pos =
+      legend_placement?.location === `outside`
+        ? solved_legend_pos
+        : legend_tween.placed()
+          ? legend_tween.coords.current
+          : solved_legend_pos}
     <PlotLegend
       bind:root_element={legend_element}
       {...legend}
+      layout_tracks={legend.layout_tracks === `auto` && legend_placement
+        ? Math.max(1, legend_placement.layout_tracks ?? 1)
+        : legend.layout_tracks}
       series_data={legend_data}
       on_toggle={legend?.on_toggle ??
         ((series_idx: number) => {

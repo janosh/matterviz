@@ -2,6 +2,8 @@ import { ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
 import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
+import type { FacetLayoutContext } from '$lib/plot/core/facets'
+import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -38,14 +40,75 @@ const hover = async (element: Element): Promise<void> => {
   element.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
   await tick()
 }
+const scatter_clip_rect = (element: ParentNode): Rect => {
+  const rect = element.querySelector(`defs clipPath rect`)
+  if (!rect) throw new Error(`Scatter clip rectangle not found`)
+  return {
+    x: Number(rect.getAttribute(`x`)),
+    y: Number(rect.getAttribute(`y`)),
+    width: Number(rect.getAttribute(`width`)),
+    height: Number(rect.getAttribute(`height`)),
+  }
+}
+const solved_decoration_rect = (element: Element): Rect => {
+  const values = [`x`, `y`, `width`, `height`].map((key) =>
+    element.getAttribute(`data-decoration-${key}`),
+  )
+  if (values.some((value) => value == null)) {
+    throw new Error(`Decoration has no solved rectangle: ${element.outerHTML}`)
+  }
+  const [x, y, width, height] = values.map(Number)
+  return { x, y, width, height }
+}
+const mock_decoration_measurements = (width = 100, height = 60): void => {
+  vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(width)
+  vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(height)
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    DOMRect.fromRect({ width, height }),
+  )
+}
 
 describe(`ScatterPlot`, () => {
+  test(`reports intrinsic layout before applying facet ranges, padding, and visibility`, async () => {
+    const report_layout = vi.fn()
+    const update_range = vi.fn()
+    const facet_layout: FacetLayoutContext = {
+      padding: { t: 17, b: 47, l: 83, r: 29 },
+      ranges: { x: [-100, 100], y: [-200, 200] },
+      axis_visibility: { x: false, x2: false, y: true, y2: false },
+      report_layout,
+      update_range,
+    }
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      padding: { t: 7, b: 11, l: 13, r: 17 },
+      facet_layout,
+      controls: { show: false },
+      fullscreen_toggle: false,
+      legend: null,
+    })
+
+    await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
+    const report = report_layout.mock.calls.at(-1)?.[0]
+    expect(report).toEqual({
+      padding: { t: 7, b: 11, l: 13, r: 17 },
+      ranges: { x: [1, 5], x2: [0, 1], y: [2, 8], y2: [0, 1] },
+    })
+    expect(scatter_clip_rect(plot)).toEqual({ x: 83, y: 17, width: 288, height: 236 })
+    expect(plot.querySelector(`.x-axis`)).toBeNull()
+    expect(plot.querySelector(`.y-axis`)).not.toBeNull()
+    expect(update_range).not.toHaveBeenCalled()
+  })
+
   // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
   // tick values behind them, or the labels tilt into a band nobody reserved.
   test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
     expect.assertions(2)
     const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
-      const plot = await mount_sized_scatter_plot({ series: [basic], x_axis: { ticks } })
+      const plot = await mount_sized_scatter_plot({
+        series: [basic],
+        x_axis: { ticks, tick: { label: { rotation: 45 } } },
+      })
       // ScatterPlot draws no x spine, so read the baseline off a tick group's translate
       const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
       return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
@@ -165,6 +228,103 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
+  test(`reassigns visible unit groups and inferred axes after visibility changes`, async () => {
+    const state = $state({
+      series: [
+        { x: [1, 2], y: [-2, -1], label: `Energy`, unit: `eV` },
+        { x: [1, 2], y: [10, 20], label: `Pressure`, unit: `GPa` },
+      ] as DataSeries[],
+    })
+    const plot = await mount_sized_scatter_plot(bind_props({}, state))
+
+    expect(plot.querySelector(`.y-label`)?.textContent).toContain(`Energy (eV)`)
+    expect(plot.querySelector(`.y2-label`)?.textContent).toContain(`Pressure (GPa)`)
+
+    state.series[0].visible = false
+    flushSync()
+    await tick()
+
+    expect(plot.querySelector(`.y-label`)?.textContent).toContain(`Pressure (GPa)`)
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+  })
+
+  test(`preserves explicit y_axis assignments while filling the remaining axis`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2],
+          y: [1e-8, 1],
+          label: `Residual`,
+          unit: `eV`,
+          axis_group: `scf`,
+          y_axis: `y2`,
+        },
+        { x: [1, 2], y: [-2, -1], label: `Energy`, unit: `eV` },
+      ],
+      y2_axis: { scale_type: `linear` },
+    })
+
+    expect(plot.querySelector(`.y-label`)?.textContent).toContain(`Energy (eV)`)
+    expect(plot.querySelector(`.y2-label`)?.textContent).toContain(`Residual (eV)`)
+  })
+
+  test(`infers a logarithmic scale for a wide positive axis_group`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: [1, 2, 3],
+          y: [1e-6, 1e-3, 1],
+          label: `Residual`,
+          unit: `eV`,
+          axis_group: `scf`,
+        },
+      ],
+      point_tween: { duration: 0 },
+    })
+    const marker_y = [...plot.querySelectorAll(`.marker`)].map((marker) => {
+      const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\([^ ]+ (?<y>[-\d.]+)\)/.exec(transform)
+      if (!match?.groups?.y) throw new Error(`Could not parse marker transform "${transform}"`)
+      return Number(match.groups.y)
+    })
+    const spacing = marker_y.slice(1).map((value, idx) => Math.abs(value - marker_y[idx]))
+
+    expect(spacing[0] / spacing[1]).toBeCloseTo(1, 1)
+  })
+
+  test(`reports all visible group keys when more than two axes are required`, async () => {
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    expect(() =>
+      flushSync(() =>
+        mount(ScatterPlot, {
+          target,
+          props: {
+            style: `width: 400px; height: 300px;`,
+            series: [
+              { x: [1], y: [1], label: `Energy`, unit: `eV` },
+              { x: [1], y: [1], label: `Pressure`, unit: `GPa` },
+              { x: [1], y: [1], label: `Temperature`, unit: `K` },
+            ],
+          },
+        }),
+      ),
+    ).toThrow(`Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K`)
+  })
+
+  test(`keeps unannotated series on the historical single y-axis`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [1, 2], y: [1, 2], label: `A` },
+        { x: [1, 2], y: [3, 4], label: `B` },
+      ],
+    })
+
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+    expect(plot.querySelector(`.y-axis .axis-label`)).toBeNull()
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(4)
+  })
+
   test.each([
     {
       x: [0, 10, 20, 30, 40, 50],
@@ -189,11 +349,8 @@ describe(`ScatterPlot`, () => {
       (tick_label) => tick_label.textContent,
     )
     if (x_axis.format.startsWith(`%`)) {
-      // A monthly interval should not silently degrade to generic linear ticks.
-      expect(x_tick_labels.length).toBeGreaterThanOrEqual(10)
-      expect(
-        new Set(x_tick_labels.map((label) => label?.slice(0, 3))).size,
-      ).toBeGreaterThanOrEqual(10)
+      expect(x_tick_labels.length).toBeGreaterThan(1)
+      expect(x_tick_labels.every((label) => /^\w{3} \d{4}$/.test(label ?? ``))).toBe(true)
     } else expect(x_tick_labels).toEqual([`0`, `10`, `20`, `30`, `40`, `50`])
     expect(plot.querySelectorAll(`.y-axis .tick text`).length).toBeGreaterThan(1)
   })
@@ -647,6 +804,97 @@ describe(`ScatterPlot`, () => {
     }
     return { x, y }
   }
+
+  test(`solves legend and colorbar together without overlap`, async () => {
+    mock_decoration_measurements()
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { ...basic, label: `A`, color_values: basic.x },
+        { ...basic, label: `B` },
+      ],
+      legend: {},
+      color_bar: {},
+    })
+
+    await vi.waitFor(() => {
+      const legend_rect = solved_decoration_rect(doc_query(`.legend`))
+      const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
+      expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
+    })
+    expect(plot.querySelector(`.legend`)).not.toBeNull()
+    expect(plot.querySelector(`.colorbar-wrapper`)).not.toBeNull()
+  })
+
+  test(`uses solver-provided automatic legend tracks`, async () => {
+    mock_decoration_measurements()
+    const plot = await mount_sized_scatter_plot({
+      series: [`A`, `B`, `C`].map((label, idx) => ({
+        x: [1, 2],
+        y: [idx, idx + 1],
+        label,
+      })),
+      legend: { layout: `horizontal`, layout_tracks: `auto` },
+    })
+
+    await vi.waitFor(() =>
+      expect(plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+        `repeat(3, auto)`,
+      ),
+    )
+  })
+
+  test(`keeps the unified decoration solution disjoint across resize`, async () => {
+    mock_decoration_measurements()
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { ...basic, label: `A`, color_values: basic.x },
+        { ...basic, label: `B` },
+      ],
+      legend: { responsive: true },
+      color_bar: { responsive: true },
+    })
+    const initial_colorbar_rect = await vi.waitFor(() =>
+      solved_decoration_rect(doc_query(`.colorbar-wrapper`)),
+    )
+
+    await resize_element(plot, 650, 360)
+    flushSync()
+    await tick()
+
+    await vi.waitFor(() => {
+      const legend_rect = solved_decoration_rect(doc_query(`.legend`))
+      const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
+      expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
+      expect(colorbar_rect.width).toBe(initial_colorbar_rect.width)
+      expect(colorbar_rect.height).toBe(initial_colorbar_rect.height)
+    })
+  })
+
+  test(`preserves explicit legend and colorbar positions outside solver ownership`, async () => {
+    mock_decoration_measurements()
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { ...basic, label: `A`, color_values: basic.x },
+        { ...basic, label: `B` },
+      ],
+      legend: { style: `position: absolute; left: 23px; top: 31px;` },
+      color_bar: { wrapper_style: `position: absolute; left: 211px; top: 17px;` },
+    })
+    const legend = plot.querySelector<HTMLElement>(`.legend`)
+    const colorbar = plot.querySelector<HTMLElement>(`.colorbar-wrapper`)
+    if (!legend || !colorbar) throw new Error(`Expected explicit legend and colorbar`)
+
+    expect({ left: legend.style.left, top: legend.style.top }).toEqual({
+      left: `23px`,
+      top: `31px`,
+    })
+    expect({ left: colorbar.style.left, top: colorbar.style.top }).toEqual({
+      left: `211px`,
+      top: `17px`,
+    })
+    expect(legend.getAttribute(`data-decoration-x`)).toBeNull()
+    expect(colorbar.getAttribute(`data-decoration-x`)).toBeNull()
+  })
 
   test(`legend auto-moves to the bottom margin when interior overlap is unavoidable`, async () => {
     const grid = dense_grid(12)

@@ -303,7 +303,8 @@ describe(`Histogram`, () => {
     })
     await resize_element(get_plot(), 400, 300)
     const clip_rect = document.querySelector(`clipPath rect`)
-    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
+    const clip_x = Number(clip_rect?.getAttribute(`x`))
+    expect(Number(clip_rect?.getAttribute(`width`))).toBe(400 - clip_x - 10)
     expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
   })
 
@@ -331,7 +332,15 @@ describe(`Histogram`, () => {
   test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
     expect.assertions(2)
     const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
-      mount_histogram({ series: [{ x: [], y: [0, 1, 2, 3, 4, 5] }], x_axis: { ticks } })
+      mount_histogram({
+        series: [{ x: [], y: [0, 1, 2, 3, 4, 5] }],
+        x_axis: {
+          ticks,
+          tick: {
+            label: { auto_layout: { strategies: [`upright`, `rotate`] } },
+          },
+        },
+      })
       await resize_element(get_plot(), 400, 300)
       return Number(document.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
     }
@@ -391,23 +400,145 @@ describe(`Histogram`, () => {
     expect(get_y_tick_numbers()).toEqual(ticks_before.y)
   })
 
-  test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {
-    // near-uniform distribution -> every bin is tall -> filled bars cover the plot so no interior
-    // spot avoids overlap and the legend must drop into the reserved bottom margin
-    const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
+  test(`legend stays inside a sparse histogram without covering bars`, async () => {
     mount_histogram({
       series: [
-        { x: [], y: uniform, label: `A` },
-        { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
+        { x: [], y: Array.from({ length: 100 }, () => 0), label: `A` },
+        { x: [], y: Array.from({ length: 100 }, () => 1), label: `B` },
       ],
-      bins: 40,
+      bins: 20,
+      mode: `overlay`,
       show_legend: true,
       legend: {},
     })
-    await tick()
+    await resize_element(get_plot(), 400, 300)
     const legend = document.querySelector<HTMLElement>(`.legend`)
-    expect(legend).toBeInstanceOf(HTMLElement)
-    // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
-    expect(Number(legend?.style.top.replace(`px`, ``) ?? `0`)).toBeGreaterThan(150)
+    const clip_rect = document.querySelector(`clipPath rect`)
+    if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
+    const clip_bottom =
+      Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
+    expect(Number(legend.style.top.replace(`px`, ``))).toBeLessThan(clip_bottom)
+  })
+
+  test(`legend uses its measured size outside dense bars without padding drift`, async () => {
+    // near-uniform distribution -> every bin is tall -> filled bars cover the plot so no interior
+    // spot avoids overlap and the legend must drop into the reserved bottom margin
+    const width_spy = vi
+      .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
+      .mockReturnValue(180)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
+      .mockReturnValue(44)
+    try {
+      const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
+      mount_histogram({
+        series: [
+          { x: [], y: uniform, label: `A` },
+          { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
+        ],
+        bins: 40,
+        mode: `overlay`,
+        show_legend: true,
+        legend: {},
+      })
+      await resize_element(get_plot(), 400, 300)
+      const initial_legend = document.querySelector<HTMLElement>(`.legend`)
+      if (!initial_legend) throw new Error(`legend not found`)
+      expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
+
+      mount_histogram({
+        series: [
+          { x: [], y: uniform, label: `A` },
+          { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
+        ],
+        bins: 40,
+        mode: `overlay`,
+        show_legend: true,
+        legend: {},
+        style: `width: 640px; height: 340px;`,
+      })
+      await resize_element(get_plot(), 640, 340)
+      const resized_legend = document.querySelector<HTMLElement>(`.legend`)
+      const resized_clip = document.querySelector(`clipPath rect`)
+      if (!resized_legend || !resized_clip) {
+        throw new Error(`legend or clip rectangle not found`)
+      }
+      expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
+        Number(initial_legend.style.left.replace(`px`, ``)),
+      )
+      expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
+      const resized_clip_attrs = [`x`, `y`, `width`, `height`].map((attr) =>
+        resized_clip.getAttribute(attr),
+      )
+      mount_histogram({
+        series: [
+          { x: [], y: uniform, label: `A` },
+          { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
+        ],
+        bins: 40,
+        mode: `overlay`,
+        show_legend: true,
+        legend: {},
+        style: `width: 640px; height: 340px;`,
+      })
+      await resize_element(get_plot(), 640, 340)
+      expect(
+        [`x`, `y`, `width`, `height`].map((attr) =>
+          document.querySelector(`clipPath rect`)?.getAttribute(attr),
+        ),
+      ).toEqual(resized_clip_attrs)
+    } finally {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
+    }
+  })
+
+  test(`preserves explicit legend position and solver auto tracks`, async () => {
+    const series = Array.from({ length: 4 }, (_, series_idx) => ({
+      x: [],
+      y: [series_idx, series_idx + 0.5, series_idx + 1],
+      label: `Series ${series_idx}`,
+    }))
+    const item_extents = series.map(() => ({ width: 70, height: 20 }))
+    mount_histogram({
+      series,
+      mode: `overlay`,
+      show_legend: true,
+      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+    })
+    await resize_element(get_plot(), 400, 300)
+    const auto_legend = document.querySelector<HTMLElement>(`.legend`)
+    expect(auto_legend?.style.gridTemplateColumns).toBe(`repeat(4, auto)`)
+    mount_histogram({
+      series,
+      mode: `overlay`,
+      show_legend: true,
+      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+      style: `width: 280px; height: 300px;`,
+    })
+    await resize_element(get_plot(), 280, 300)
+    expect(document.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+      `repeat(2, auto)`,
+    )
+
+    mount_histogram({
+      series: series.slice(0, 2),
+      mode: `overlay`,
+      show_legend: true,
+      legend: { style: `position: absolute; left: 17px; top: 23px;` },
+    })
+    await resize_element(get_plot(), 400, 300)
+    const pinned_legend = document.querySelector<HTMLElement>(`.legend`)
+    const pinned_clip = [`x`, `y`, `width`, `height`].map((attr) =>
+      document.querySelector(`clipPath rect`)?.getAttribute(attr),
+    )
+    mount_histogram({ series: series.slice(0, 2), mode: `overlay`, show_legend: false })
+    await resize_element(get_plot(), 400, 300)
+    const baseline_clip = [`x`, `y`, `width`, `height`].map((attr) =>
+      document.querySelector(`clipPath rect`)?.getAttribute(attr),
+    )
+    expect(pinned_legend?.style.left).toBe(`17px`)
+    expect(pinned_legend?.style.top).toBe(`23px`)
+    expect(pinned_clip).toEqual(baseline_clip)
   })
 })

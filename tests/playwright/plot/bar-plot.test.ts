@@ -51,6 +51,26 @@ test.describe(`BarPlot Component Tests`, () => {
     const items = legend.locator(`.legend-item`)
     await expect(items).toHaveCount(2)
 
+    const legend_bar_overlap_count = () =>
+      plot.evaluate((root) => {
+        const legend_rect = root.querySelector(`.legend`)?.getBoundingClientRect()
+        if (!legend_rect) throw new Error(`Missing legend geometry`)
+        return [...root.querySelectorAll<SVGGraphicsElement>(`svg path[aria-label^="bar "]`)]
+          .map((bar_path) => bar_path.getBoundingClientRect())
+          .filter(
+            (bar_rect) =>
+              legend_rect.left < bar_rect.right &&
+              legend_rect.right > bar_rect.left &&
+              legend_rect.top < bar_rect.bottom &&
+              legend_rect.bottom > bar_rect.top,
+          ).length
+      })
+    await expect.poll(legend_bar_overlap_count).toBe(0)
+
+    // Container resize reruns the unified solver without accumulating its old reservation.
+    await page.setViewportSize({ width: 640, height: 900 })
+    await expect.poll(legend_bar_overlap_count).toBe(0)
+
     // Initial: both visible -> bars exist
     const initial_bars = await plot.locator(`svg path[aria-label^="bar "]`).count()
     expect(initial_bars).toBeGreaterThan(0)

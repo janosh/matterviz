@@ -1,6 +1,6 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { IS_CI } from '../helpers'
+import { get_chart_svg, IS_CI } from '../helpers'
 
 const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
 const default_bz_canvas_selector = `[data-testid="bz-bands-dos-default"] canvas`
@@ -15,6 +15,11 @@ async function screenshot_default_bz_canvas(page: Page): Promise<Buffer> {
   if (!screenshot) throw new Error(`Could not capture BZ canvas screenshot`)
   return screenshot
 }
+
+const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
+  (await plot.locator(`g.y-axis text`).allTextContents()).filter(
+    (text) => text.trim() !== `` && Number.isFinite(Number(text)),
+  )
 
 // Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
 test.describe.configure({ mode: `serial` })
@@ -149,19 +154,82 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   })
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 })
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const bands_y = await container
-      .locator(`svg:has(g.x-axis)`)
-      .first()
-      .locator(`g.y-axis text`)
-      .allTextContents()
-    const dos_y = await container
-      .locator(`svg:has(g.y-axis)`)
-      .nth(1)
-      .locator(`g.y-axis text`)
-      .allTextContents()
+    const plots = container.locator(`.scatter`)
+    await expect(plots).toHaveCount(2)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
+    await expect(get_chart_svg(bands_plot)).toBeVisible({ timeout: 30_000 })
+    await expect(get_chart_svg(dos_plot)).toBeVisible({ timeout: 30_000 })
 
-    expect(bands_y.some((tick) => dos_y.includes(tick))).toBe(true)
+    // Equal outer panel heights are insufficient: the clipped drawable regions
+    // must use the same top offset and height for matching y coordinates.
+    const bands_clip = bands_plot.locator(`clipPath rect`)
+    const dos_clip = dos_plot.locator(`clipPath rect`)
+    await expect(bands_clip).toHaveCount(1)
+    await expect(dos_clip).toHaveCount(1)
+    for (const attribute of [`y`, `height`]) {
+      expect(await bands_clip.getAttribute(attribute)).toBe(
+        await dos_clip.getAttribute(attribute),
+      )
+    }
+
+    expect(await numeric_y_ticks(bands_plot)).toEqual(await numeric_y_ticks(dos_plot))
+  })
+
+  test(`desktop y-axis zoom and reset propagate between bands and DOS`, async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 })
+    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
+    const plots = container.locator(`.scatter`)
+    await expect(plots).toHaveCount(2)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
+    const bands_svg = get_chart_svg(bands_plot)
+    await expect(bands_svg).toBeVisible({ timeout: 30_000 })
+    await expect(get_chart_svg(dos_plot)).toBeVisible({ timeout: 30_000 })
+    const clip = await bands_plot.locator(`clipPath rect`).evaluate((element) => ({
+      x: Number(element.getAttribute(`x`)),
+      y: Number(element.getAttribute(`y`)),
+      width: Number(element.getAttribute(`width`)),
+      height: Number(element.getAttribute(`height`)),
+    }))
+    const svg_box = await bands_svg.boundingBox()
+    if (!svg_box || Object.values(clip).some((value) => !Number.isFinite(value))) {
+      throw new Error(`Could not measure the bands plot area`)
+    }
+
+    const initial_ticks = await numeric_y_ticks(bands_plot)
+    expect(initial_ticks).toEqual(await numeric_y_ticks(dos_plot))
+
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.15,
+      svg_box.y + clip.y + clip.height * 0.15,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      svg_box.x + clip.x + clip.width * 0.85,
+      svg_box.y + clip.y + clip.height * 0.75,
+      { steps: 5 },
+    )
+    await page.mouse.up()
+
+    await expect(async () => {
+      const bands_ticks = await numeric_y_ticks(bands_plot)
+      expect(bands_ticks).not.toEqual(initial_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(bands_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    await bands_svg.dblclick({
+      position: {
+        x: clip.x + clip.width / 2,
+        y: clip.y + clip.height / 2,
+      },
+    })
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(initial_ticks)
+    }).toPass({ timeout: 10_000 })
   })
 
   test(`desktop layout: three columns side by side`, async ({ page }) => {

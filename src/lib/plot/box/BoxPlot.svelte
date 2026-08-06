@@ -25,12 +25,12 @@
   } from '$lib/plot'
   import {
     BoxPlotControls,
-    compute_element_placement,
     PlotAxis,
     PlotLegend,
     PlotMarginals,
     ReferenceLine,
   } from '$lib/plot'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -42,11 +42,10 @@
   import {
     build_obstacles_norm,
     clip_bar,
-    has_explicit_position,
-    measured_footprint,
-    place_decorations,
-    placed_coords,
-  } from '$lib/plot/core/auto-place'
+    solve_decorations,
+    type DecorationItem,
+  } from '$lib/plot/core/decorations'
+  import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
@@ -62,11 +61,13 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
-    measure_max_tick_width,
   } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
@@ -130,6 +131,7 @@
     display = $bindable({ ...DEFAULTS.box.display }),
     range_padding = 0,
     padding = {},
+    title,
     legend = {},
     show_legend,
     box = {},
@@ -503,30 +505,58 @@
     }
   })
 
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
   let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  const title_config = $derived(normalize_plot_title(title))
 
   $effect(() => {
     // dynamic padding from tick label widths
-    const new_pad =
+    const axis_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
+            height,
             x_axis: {
               ...x_axis,
               ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
               tick_values: ticks.x,
+              tick_positions: ticks.x.map(scales.x),
+              axis_extent: { start: pad.l, end: width - pad.r },
+              tick_font,
             },
-            x2_axis: { ...x2_axis, tick_values: ticks.x2 },
+            x2_axis: {
+              ...x2_axis,
+              tick_values: ticks.x2,
+              tick_positions: ticks.x2.map(scales.x2),
+              axis_extent: { start: pad.l, end: width - pad.r },
+              tick_font,
+            },
             y_axis: {
               ...y_axis,
               ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
               tick_values: ticks.y,
+              tick_positions: ticks.y.map(scales.y),
+              axis_extent: { start: height - pad.b, end: pad.t },
+              tick_font,
             },
-            y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+            y2_axis: {
+              ...y2_axis,
+              tick_values: ticks.y2,
+              tick_positions: ticks.y2.map(scales.y2),
+              axis_extent: { start: height - pad.b, end: pad.t },
+              tick_font,
+            },
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const title_height =
+      width && height
+        ? resolve_plot_title(title_config, {
+            width: Math.max(0, width - axis_pad.l - axis_pad.r),
+          }).block_height
+        : 0
+    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
@@ -573,20 +603,51 @@
   })
 
   const should_show_legend = $derived(show_legend ?? false)
-  const decor = $derived(
-    place_decorations({
+  const decoration_solution = $derived.by(() => {
+    const items: DecorationItem[] = []
+    if (
+      legend != null &&
+      should_show_legend &&
+      legend_element != null &&
+      !legend_has_explicit_pos
+    ) {
+      items.push({
+        id: `legend`,
+        kind: `legend`,
+        footprint: legend_footprint,
+        clearance: legend.axis_clearance,
+        auto_tracks:
+          legend.layout_tracks === `auto`
+            ? {
+                item_count: series.length,
+                orientation: legend.layout ?? `vertical`,
+                item_extents: legend.item_extents,
+                estimated_item_extent: legend.estimated_item_extent,
+              }
+            : undefined,
+      })
+    }
+    return solve_decorations({
       base_pad,
       width,
       height,
       obstacles_norm,
-      legend:
-        legend != null &&
-        should_show_legend &&
-        legend_element != null &&
-        !legend_has_explicit_pos
-          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-          : null,
-    }),
+      items,
+    })
+  })
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const legend_exclusion_rects = $derived(
+    legend_placement
+      ? [
+          {
+            x: legend_placement.x,
+            y: legend_placement.y,
+            ...legend_placement.footprint,
+          },
+        ]
+      : [],
   )
   // Marginals are opt-in (default prop `false`) and bind to the VALUE axis, pooling each box's
   // raw samples. The default side follows orientation (value axis = y when vertical, x when
@@ -596,7 +657,9 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, marginal_vertical ? { right: true } : { top: true }),
   )
-  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const pad = $derived(
+    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+  )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     visible_boxes.map((box_item) => {
       const secondary = is_secondary(box_item.series)
@@ -681,15 +744,31 @@
     }
   })
 
-  // Horizontal padding must measure category names rather than numeric slot indices.
-  // Pass the slot-name map so horizontal orientation measures names, not slot indices.
+  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
   let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(
-      ticks.y,
-      y_axis.format,
-      cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-    ),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format, y2_axis.ticks),
+    y_max: resolve_tick_layout(
+      {
+        ...y_axis,
+        ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
+        tick_values: ticks.y,
+        tick_positions: ticks.y.map(scales.y),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      chart_height,
+      `y`,
+    ).band,
+    y2_max: resolve_tick_layout(
+      {
+        ...y2_axis,
+        tick_values: ticks.y2,
+        tick_positions: ticks.y2.map(scales.y2),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      chart_height,
+      `y2`,
+    ).band,
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -751,33 +830,12 @@
     (next) => (series = next),
   )
 
-  let box_points_for_placement = $derived.by(() => {
-    if (!width || !height || visible_boxes.length === 0) return []
-    const vertical = orientation === `vertical`
-    return visible_boxes
-      .map((box_item) => {
-        const val_scale = box_val_scale(box_item.series)
-        const cat_scale = vertical ? scales.x : scales.y
-        const cc = cat_scale(box_item.slot)
-        const vc = val_scale(box_item.stats.median)
-        return vertical ? { x: cc, y: vc } : { x: vc, y: cc }
-      })
-      .filter(({ x, y }) => isFinite(x) && isFinite(y))
-  })
-
   let hovered_legend_series_idx = $state<number | null>(null)
 
-  const get_legend_placement = () => {
-    if (!should_show_legend || !width || !height) return null
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: box_points_for_placement,
-    })
-  }
+  const get_legend_placement = () =>
+    !should_show_legend || !width || !height || legend_has_explicit_pos
+      ? null
+      : (legend_placement ?? null)
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
@@ -882,6 +940,7 @@
       y2_scale={scales.y2}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
+      exclusion_rects={legend_exclusion_rects}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -927,7 +986,9 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-        ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Box plot`)}
+        (title_config?.text ||
+          [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
+          `Box plot`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -945,6 +1006,12 @@
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor}
     >
+      <PlotTitle
+        config={title_config}
+        x={base_pad.l}
+        y={decoration_solution.pad.t - base_pad.t}
+        width={Math.max(0, width - base_pad.l - base_pad.r)}
+      />
       <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       {@render user_content?.({
@@ -969,6 +1036,7 @@
         ticks={ticks.x}
         place={scales.x}
         axis={x_axis}
+        on_tick_font={(font) => (tick_font = font)}
         domain={ranges.current.x}
         {pad}
         {width}
@@ -1260,16 +1328,19 @@
     </svg>
 
     {#if legend && should_show_legend}
-      {@const legend_pos = placed_coords(
-        decor.legend_outside,
-        decor.legend_pos,
-        legend_tween.placed(),
-        legend_tween.coords.current,
-        { x: pad.l + 10, y: pad.t + 10 },
-      )}
+      {@const solved_legend_pos = legend_placement ?? { x: pad.l + 10, y: pad.t + 10 }}
+      {@const legend_pos =
+        legend_placement?.location === `outside`
+          ? solved_legend_pos
+          : legend_tween.placed()
+            ? legend_tween.coords.current
+            : solved_legend_pos}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
+        layout_tracks={legend.layout_tracks === `auto` && legend_placement
+          ? Math.max(1, legend_placement.layout_tracks ?? 1)
+          : legend.layout_tracks}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}

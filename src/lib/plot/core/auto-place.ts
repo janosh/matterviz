@@ -48,15 +48,10 @@ export function build_obstacles_norm(
 ): Pt[] {
   const step = 12 / Math.max(base_w, base_h, 1)
   const out: Pt[] = []
+  // Appends straight into `out`: the sampler already drops non-finite points and interpolates
+  // only between finite ones, so re-filtering its output just walked the dataset a second time.
   for (const srs of series) {
-    // avoid out.push(...arr): a long series would overflow the call-stack arg limit
-    for (const pt of sample_series_obstacle_points(
-      srs.points,
-      srs.draws_line ?? false,
-      step,
-    )) {
-      if (isFinite(pt.x) && isFinite(pt.y)) out.push(pt)
-    }
+    sample_series_obstacle_points(srs.points, srs.draws_line ?? false, step, out)
   }
   return out
 }
@@ -111,9 +106,14 @@ function is_crowded(
     axis_clearance: clearance / Math.min(base_w, base_h),
     points: obstacles,
   })
-  const in_box = obstacles.filter(
-    (pt) => pt.x >= best.x && pt.x <= best.x + fw && pt.y >= best.y && pt.y <= best.y + fh,
-  ).length
+  // Counted in place: filter() would copy the whole obstacle field just to take its length,
+  // once for the legend and once for the colorbar on every render.
+  const box_right = best.x + fw
+  const box_bottom = best.y + fh
+  let in_box = 0
+  for (const pt of obstacles) {
+    if (pt.x >= best.x && pt.x <= box_right && pt.y >= best.y && pt.y <= box_bottom) in_box++
+  }
   // expected count if obstacles were spread uniformly = total * box-area fraction
   return in_box > CROWDING_RATIO * obstacles.length * fw * fh
 }

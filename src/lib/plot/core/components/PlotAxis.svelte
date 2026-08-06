@@ -3,9 +3,21 @@
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import { resolve_tick_layout, type Sides, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+  import {
+    clear_tick_metrics_cache,
+    resolve_tick_layout,
+    type Sides,
+    TICK_LABEL_HEIGHT,
+  } from '$lib/plot/core/layout'
+  import {
+    DEFAULT_FONT_SPEC,
+    invalidate_text_metrics_after_fonts_ready,
+    resolve_font_spec,
+    type FontSpec,
+  } from '$lib/plot/core/text-metrics'
   import type { AxisConfig } from '$lib/plot/core/types'
   import { DEFAULT_GRID_STYLE } from '$lib/plot/core/types'
+  import { onMount, tick as svelte_tick } from 'svelte'
 
   type Side = `x` | `x2` | `y` | `y2`
 
@@ -30,6 +42,7 @@
     label_y,
     axis_loading = false,
     on_axis_change,
+    on_tick_font,
   }: {
     side: Side
     ticks: number[]
@@ -48,6 +61,7 @@
     label_y?: number
     axis_loading?: boolean
     on_axis_change?: (key: string) => void
+    on_tick_font?: (font: Readonly<FontSpec>) => void
   } = $props()
 
   const tick_text = (tick: number): string =>
@@ -56,12 +70,52 @@
   const is_x = $derived(side === `x` || side === `x2`)
   const inside = $derived(axis.tick?.label?.inside ?? false)
   const tick_texts = $derived(ticks.map(tick_text))
-  const plot_w = $derived(width - pad.l - pad.r)
-  const plot_h = $derived(height - pad.b - pad.t)
+  const plot_w = $derived(Math.max(0, width - pad.l - pad.r))
+  const plot_h = $derived(Math.max(0, height - pad.b - pad.t))
+  let axis_group: SVGGElement | undefined = $state()
+  let tick_font = $state({ ...DEFAULT_FONT_SPEC })
+  onMount(() => {
+    let mounted = true
+    const resolve_rendered_font = async (): Promise<void> => {
+      await svelte_tick()
+      if (!mounted) return
+      const tick_text_element = axis_group?.querySelector<SVGTextElement>(`.tick text`)
+      const computed_size = tick_text_element?.ownerDocument.defaultView
+        ?.getComputedStyle(tick_text_element)
+        .fontSize.trim()
+      // Browsers resolve computed font sizes to px. jsdom can return the authored `em` value;
+      // treating that number as pixels would make every label appear to fit.
+      tick_font = computed_size?.endsWith(`px`)
+        ? resolve_font_spec(tick_text_element)
+        : { ...DEFAULT_FONT_SPEC }
+      on_tick_font?.(tick_font)
+    }
+    void resolve_rendered_font()
+    void invalidate_text_metrics_after_fonts_ready().then(() => {
+      clear_tick_metrics_cache()
+      return resolve_rendered_font()
+    })
+    return () => {
+      mounted = false
+    }
+  })
   // Resolved through the same helper calc_auto_padding uses, so the band reserved for these
   // labels always matches the angle they actually render at.
   const tick_layout = $derived(
-    resolve_tick_layout({ ...axis, tick_values: tick_texts }, plot_w, side),
+    resolve_tick_layout(
+      {
+        ...axis,
+        tick_values: tick_texts,
+        tick_positions: ticks.map(place),
+        axis_extent: {
+          start: is_x ? pad.l : height - pad.b,
+          end: is_x ? width - pad.r : pad.t,
+        },
+        tick_font,
+      },
+      is_x ? plot_w : plot_h,
+      side,
+    ),
   )
   const rotation = $derived(tick_layout.rotation)
   const shift_x = $derived(axis.tick?.label?.shift?.x ?? 0)
@@ -84,16 +138,8 @@
   const flipped = $derived((side === `x2` || side === `y2`) !== inside)
   const text_x = $derived((is_x ? 0 : flipped ? 8 : -8) + shift_x)
   const text_y = $derived((is_x ? (flipped ? -8 : 8) : 0) + shift_y)
-  // Rotated labels anchor toward their ticks while trailing left inside the figure.
-  const text_anchor = $derived.by(() => {
-    if (!is_x) return flipped ? `start` : `end`
-    if (rotation === 0) return `middle`
-    return flipped === rotation > 0 ? `end` : `start`
-  })
   const text_baseline = $derived(is_x ? (flipped ? `auto` : `hanging`) : `central`)
-  const text_transform = $derived(
-    rotation !== 0 ? `rotate(${rotation}, ${text_x}, ${text_y})` : undefined,
-  )
+  const stagger_direction = $derived(flipped ? -1 : 1)
 
   // Tick-invariant line geometry within the per-tick group (origin sits on the axis).
   // Keep tick marks' y1="0"/x1="0" explicit: BarPlot's grid test selects `.tick line:not([y1='0'])`.
@@ -118,7 +164,7 @@
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)
 </script>
 
-<g class="{side}-axis">
+<g class="{side}-axis" bind:this={axis_group}>
   {#if show_baseline}
     <line
       x1={is_x ? pad.l : axis_x}
@@ -130,11 +176,22 @@
       pointer-events="none"
     />
   {/if}
-  {#each ticks as tick, idx (tick)}
+  {#each tick_layout.visible_tick_indices as idx, visible_idx (idx)}
+    {@const tick = ticks[idx]}
     {@const pos = place(tick)}
     {#if isFinite(pos) && in_plot(pos)}
-      {@const label_lines = tick_layout.lines[idx]}
-      {@const tick_unit = unit_on_first_tick && idx === 0 ? axis.unit : undefined}
+      {@const label = tick_layout.labels[idx]}
+      {@const label_lines = label.lines}
+      {@const tick_unit = unit_on_first_tick && visible_idx === 0 ? axis.unit : undefined}
+      {@const label_x_offset =
+        text_x +
+        (is_x ? 0 : -stagger_direction * label.stagger_row * tick_layout.stagger_step)}
+      {@const label_y_offset =
+        text_y + (is_x ? stagger_direction * label.stagger_row * tick_layout.stagger_step : 0)}
+      {@const label_transform =
+        rotation !== 0
+          ? `rotate(${rotation}, ${label_x_offset}, ${label_y_offset})`
+          : undefined}
       <g class="tick" transform="translate({is_x ? pos : axis_x}, {is_x ? axis_y : pos})">
         {#if show_grid}
           <line
@@ -146,24 +203,27 @@
         {/if}
         <line {...tick_mark} {stroke} stroke-width="1" pointer-events="none" />
         {#if in_domain(tick)}
+          <!-- aria-label: wrapping drops the break character, so the tspans read as one word -->
           <text
-            x={text_x}
-            y={text_y}
-            text-anchor={text_anchor}
+            x={label_x_offset}
+            y={label_y_offset}
+            text-anchor={label.anchor}
             dominant-baseline={text_baseline}
             fill={tick_color?.(tick) ?? text_fill}
-            transform={text_transform}
-            aria-label={tick_unit ? `${tick_texts[idx]} ${tick_unit}` : tick_texts[idx]}
+            transform={label_transform}
+            aria-label={tick_unit ? `${label.full_text} ${tick_unit}` : label.full_text}
           >
             {#each label_lines as line, line_idx}
               <tspan
+                x={label_x_offset}
                 aria-hidden="true"
-                x={text_x}
                 dy={line_idx === 0
-                  ? flipped
-                    ? -(label_lines.length - 1) * TICK_LABEL_HEIGHT
-                    : 0
-                  : TICK_LABEL_HEIGHT}
+                  ? is_x
+                    ? flipped
+                      ? -(label_lines.length - 1) * tick_font.line_height
+                      : 0
+                    : -((label_lines.length - 1) * tick_font.line_height) / 2
+                  : tick_font.line_height}
               >
                 {line}{#if tick_unit && line_idx === label_lines.length - 1}&zwnj;&ensp;{tick_unit}{/if}
               </tspan>

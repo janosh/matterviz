@@ -72,15 +72,34 @@
   // px per arrow-key press when resizing via keyboard
   const keyboard_resize_step_px = 16
   const is_horizontal = $derived(layout === `horizontal`)
+  const safe_min_card_width = $derived(
+    Number.isFinite(min_card_width) ? Math.max(1, min_card_width) : 190,
+  )
   const effective_height = $derived(
-    is_horizontal && resizable ? (resized_height ?? height) : height,
+    Math.max(1, is_horizontal && resizable ? (resized_height ?? height) : height),
   )
   const effective_width = $derived(
     !is_horizontal && resizable
-      ? (resized_width ?? (carousel_width > 0 ? carousel_width : min_card_width))
-      : min_card_width,
+      ? (resized_width ?? (carousel_width > 0 ? carousel_width : safe_min_card_width))
+      : safe_min_card_width,
   )
-  const card_width = $derived(is_horizontal ? effective_height : effective_width)
+  // Viewer height and horizontal card width are independent. Fit as many
+  // titlebar-safe cards as the measured viewport permits; only stretch cards
+  // when more items remain, so short carousels keep their compact width.
+  const horizontal_capacity = $derived(
+    carousel_width > 0
+      ? Math.max(1, Math.floor((carousel_width + gap) / (safe_min_card_width + gap)))
+      : 1,
+  )
+  const horizontal_card_width = $derived(
+    carousel_width > 0 && items.length > horizontal_capacity
+      ? Math.max(
+          safe_min_card_width,
+          (carousel_width - gap * (horizontal_capacity - 1)) / horizontal_capacity,
+        )
+      : safe_min_card_width,
+  )
+  const card_width = $derived(is_horizontal ? horizontal_card_width : effective_width)
   // stride follows the scroll axis: card inline-size horizontally, block-size vertically
   const item_stride = $derived((is_horizontal ? card_width : effective_height) + gap)
   const scroll_extent = $derived(items.length === 0 ? 0 : items.length * item_stride - gap)
@@ -97,7 +116,9 @@
   // partial card at either edge, since an unaligned offset shows both and
   // page_size floors — padded by `overscan` per side, clamped so a negative one
   // can't push the window past the first visible card.
-  const overscan_cards = $derived(Math.max(0, Math.floor(overscan)))
+  const overscan_cards = $derived(
+    Number.isFinite(overscan) ? Math.max(0, Math.floor(overscan)) : 0,
+  )
   const window_size = $derived(Math.min(items.length, page_size + 2 + 2 * overscan_cards))
   const window_start = $derived(
     Math.max(0, Math.min(first_visible_idx - overscan_cards, items.length - window_size)),
@@ -139,7 +160,10 @@
       .filter(Boolean)
       .join(`; `),
   )
-  const rows_block_size = $derived(Math.max(1, Math.floor(visible_rows)) * item_stride - gap)
+  const rows_block_size = $derived(
+    (Number.isFinite(visible_rows) ? Math.max(1, Math.floor(visible_rows)) : 1) * item_stride -
+      gap,
+  )
   const track_style = $derived(
     is_horizontal
       ? `overflow-x: auto; overflow-y: hidden; block-size: ${effective_height}px`
@@ -298,7 +322,7 @@
     if (axis === `height`) {
       resized_height = Math.max(min_resize_size, next_size)
     } else {
-      const clamped = Math.max(min_card_width, next_size)
+      const clamped = Math.max(safe_min_card_width, next_size)
       const parent_width = carousel?.parentElement?.clientWidth ?? Number.POSITIVE_INFINITY
       resized_width = Math.min(clamped, parent_width > 0 ? parent_width : clamped)
     }
@@ -532,10 +556,10 @@
   .structure-card :global(.card-info[role='button']) {
     pointer-events: auto;
     cursor: pointer;
-  }
-  .structure-card :global(.card-info[role='button']:focus-visible) {
-    outline: 2px solid var(--accent-color, Highlight);
-    outline-offset: 2px;
+    &:focus-visible {
+      outline: 2px solid var(--accent-color, Highlight);
+      outline-offset: 2px;
+    }
   }
   .structure-card :global(.card-info strong),
   .structure-card :global(.card-info span) {

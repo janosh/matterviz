@@ -464,9 +464,10 @@
   }
   const better_of = (col: Label): `higher` | `lower` | undefined =>
     prefs_of(get_col_id(col)).better ?? col.better
+  // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back
   const color_scale_of = (col: Label): D3InterpolateName | null | undefined => {
-    const prefs = prefs_of(get_col_id(col))
-    return `color_scale` in prefs ? prefs.color_scale : col.color_scale
+    const pref = prefs_of(get_col_id(col)).color_scale
+    return pref === undefined ? col.color_scale : pref
   }
   const width_of = (col_id: string): number | undefined => prefs_of(col_id).width
 

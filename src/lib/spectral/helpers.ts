@@ -3,62 +3,19 @@ import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
 import { euclidean_dist, is_square_matrix } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import type { AxisConfig } from '$lib/plot/core/types'
+import { detect_shared_range_change } from '$lib/plot/core/shared-axes'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
+export {
+  axis_with_range,
+  is_valid_range,
+  ranges_equal,
+  sync_axis_range,
+} from '$lib/plot/core/shared-axes'
+
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
   key in SUBSCRIPT_MAP
-
-// Check if range is a valid [min, max] tuple (strict 2-element array of finite numbers)
-export const is_valid_range = (range: unknown): range is Vec2 =>
-  Array.isArray(range) &&
-  range.length === 2 &&
-  Number.isFinite(range[0]) &&
-  Number.isFinite(range[1])
-
-// Check if two ranges are approximately equal (within tolerance)
-// Returns false if either range is invalid (null, undefined, or fails is_valid_range)
-// Negative tol is clamped to 0; tol=0 checks exact equality
-export const ranges_equal = (
-  a: Vec2 | undefined | null,
-  b: Vec2 | undefined | null,
-  tol = 0.001,
-): boolean => {
-  const safe_tol = Math.max(0, tol)
-  return (
-    is_valid_range(a) &&
-    is_valid_range(b) &&
-    Math.abs(a[0] - b[0]) <= safe_tol &&
-    Math.abs(a[1] - b[1]) <= safe_tol
-  )
-}
-
-export const axis_with_range = (
-  axis: AxisConfig | undefined,
-  range: Vec2 | undefined,
-  label?: string,
-): AxisConfig => ({
-  ...axis,
-  ...(label !== undefined && { label }),
-  ...(is_valid_range(range) && { range }),
-})
-
-// Sync a ScatterPlot's internal y-axis range back onto a parent bindable axis.
-// Returns a new axis when the range changed (or became invalid and must be
-// cleared), otherwise the same reference so callers can skip reassignment and
-// avoid reactive churn (assign only when `result !== axis`).
-export function sync_axis_range(axis: AxisConfig, range: unknown): AxisConfig {
-  if (is_valid_range(range)) {
-    if (axis.range?.[0] === range[0] && axis.range?.[1] === range[1]) return axis
-    return { ...axis, range }
-  }
-  if (`range` in axis) {
-    const { range: _omit, ...rest } = axis
-    return rest
-  }
-  return axis
-}
 
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
@@ -69,31 +26,8 @@ export function detect_zoom_change(
   current_synced: Vec2 | null,
   dos_enabled = true,
 ): Vec2 | null | undefined {
-  const bands_valid = is_valid_range(bands_range)
-  const dos_valid = dos_enabled && is_valid_range(dos_range)
-
-  // Reset if either becomes invalid (auto-range reset) or returns to shared range
-  if (current_synced !== null) {
-    const bands_at_shared = bands_valid && ranges_equal(bands_range, shared_range)
-    const dos_at_shared = dos_valid && ranges_equal(dos_range, shared_range)
-    if (bands_at_shared || dos_at_shared || !bands_valid || (dos_enabled && !dos_valid)) {
-      return null
-    }
-  }
-
-  // Check for new zoom from either plot
-  const bands_is_new =
-    bands_valid &&
-    !ranges_equal(bands_range, shared_range) &&
-    !ranges_equal(bands_range, current_synced)
-  const dos_is_new =
-    dos_valid &&
-    !ranges_equal(dos_range, shared_range) &&
-    !ranges_equal(dos_range, current_synced)
-
-  if (bands_is_new && !dos_is_new) return bands_range
-  if (dos_is_new && !bands_is_new) return dos_range
-  return undefined // no change
+  const panel_ranges = dos_enabled ? [bands_range, dos_range] : [bands_range]
+  return detect_shared_range_change(panel_ranges, shared_range, current_synced)
 }
 
 // Physical constants for unit conversions (SI units)
@@ -1156,8 +1090,17 @@ export function compute_frequency_range(
   doses: unknown,
   padding_factor = 0.02,
 ): Vec2 | undefined {
-  let [min_val, max_val, is_phonon] = [Infinity, -Infinity, false]
+  let [min_val, max_val] = [Infinity, -Infinity]
+  let is_phonon = false
   const all_freqs: number[] = []
+  const collect_frequencies = (values: readonly number[]): void => {
+    for (const value of values) {
+      if (!Number.isFinite(value)) continue
+      all_freqs.push(value)
+      min_val = Math.min(min_val, value)
+      max_val = Math.max(max_val, value)
+    }
+  }
 
   // Check raw band_structs for electronic markers before normalization
   // (normalized structures always have qpoints, so we can't detect from them)
@@ -1184,14 +1127,7 @@ export function compute_frequency_range(
 
   for (const bs of bs_list) {
     if (!bs) continue
-    for (const band of bs.bands) {
-      for (const val of band) {
-        if (!Number.isFinite(val)) continue
-        all_freqs.push(val)
-        min_val = Math.min(min_val, val)
-        max_val = Math.max(max_val, val)
-      }
-    }
+    for (const band of bs.bands) collect_frequencies(band)
   }
 
   const dos_list =
@@ -1205,12 +1141,7 @@ export function compute_frequency_range(
     // DOS type detection: explicit type field is authoritative
     if (dos.type === `phonon`) is_phonon = true
     if (dos.type === `electronic`) is_phonon = false
-    for (const val of dos.type === `phonon` ? dos.frequencies : dos.energies) {
-      if (!Number.isFinite(val)) continue
-      all_freqs.push(val)
-      min_val = Math.min(min_val, val)
-      max_val = Math.max(max_val, val)
-    }
+    collect_frequencies(dos.type === `phonon` ? dos.frequencies : dos.energies)
   }
 
   if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined

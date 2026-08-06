@@ -2,10 +2,12 @@ import type { Vec2 } from '$lib/math'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
+  create_reference_annotation_candidates,
   group_ref_lines_by_z,
   index_ref_lines,
   normalize_point,
   normalize_value,
+  resolve_reference_annotation,
   resolve_line_endpoints,
   span_or,
 } from '$lib/plot/core/reference-line'
@@ -299,6 +301,78 @@ describe(`calculate_annotation_position`, () => {
       expect(pos.y).toBe(expected_y)
     },
   )
+})
+
+describe(`reference annotation candidates`, () => {
+  const endpoints: [number, number, number, number] = [0, 100, 200, 100]
+
+  test(`keeps the legacy end-above placement when there are no obstacles`, () => {
+    const annotation = { text: `Threshold` }
+    const legacy = calculate_annotation_position(...endpoints, {})
+    const resolved = resolve_reference_annotation(endpoints, annotation)
+    expect(resolved).toMatchObject({
+      position: `end`,
+      side: `above`,
+      x: legacy.x,
+      y: legacy.y,
+      text_anchor: legacy.text_anchor,
+      dominant_baseline: legacy.dominant_baseline,
+    })
+  })
+
+  test(`moves an automatic annotation away from a colliding obstacle`, () => {
+    const annotation = { text: `Threshold` }
+    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
+    const resolved = resolve_reference_annotation(endpoints, annotation, {
+      obstacles: [
+        {
+          x: preferred.rect.x + preferred.rect.width / 2,
+          y: preferred.rect.y + preferred.rect.height / 2,
+        },
+      ],
+    })
+    expect(resolved.side).toBe(`below`)
+    expect(resolved.rect).not.toEqual(preferred.rect)
+  })
+
+  test(`keeps explicit position and side pinned through collisions`, () => {
+    const annotation = {
+      text: `Pinned`,
+      position: `end`,
+      side: `above`,
+    } as const
+    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
+    const resolved = resolve_reference_annotation(endpoints, annotation, {
+      exclusion_rects: [preferred.rect],
+      obstacles: [{ x: preferred.x, y: preferred.y }],
+    })
+    expect(resolved).toEqual(preferred)
+  })
+
+  test(`builds deterministic rotated candidates across positions and sides`, () => {
+    const diagonal_endpoints: [number, number, number, number] = [0, 0, 100, 100]
+    const candidates = create_reference_annotation_candidates(diagonal_endpoints, {
+      text: `Diagonal`,
+      rotate: true,
+    })
+    expect(candidates).toHaveLength(12)
+    expect(candidates.map(({ position, side }) => `${position}-${side}`)).toEqual([
+      `end-above`,
+      `end-below`,
+      `end-right`,
+      `end-left`,
+      `center-above`,
+      `center-below`,
+      `center-right`,
+      `center-left`,
+      `start-above`,
+      `start-below`,
+      `start-right`,
+      `start-left`,
+    ])
+    expect(candidates.every(({ rotation }) => rotation === 45)).toBe(true)
+    expect(candidates[0].rect.height).toBeGreaterThan(20)
+  })
 })
 
 describe(`index_ref_lines`, () => {

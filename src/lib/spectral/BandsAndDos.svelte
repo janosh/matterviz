@@ -1,19 +1,18 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
+  import {
+    axis_with_range,
+    detect_shared_range_change,
+    max_side_padding,
+    propagate_shared_axis_range,
+  } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import {
-    axis_with_range,
-    compute_frequency_range,
-    detect_zoom_change,
-    extract_efermi,
-    is_valid_range,
-    ranges_equal,
-  } from './helpers'
+  import { compute_frequency_range, extract_efermi } from './helpers'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
   let {
@@ -67,43 +66,36 @@
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
     if (!sync_y_zoom || !shared_frequency_range) return
-    const result = detect_zoom_change(
-      bands_y_axis.range,
-      dos_y_axis.range,
+    const result = detect_shared_range_change(
+      [bands_y_axis.range, dos_y_axis.range],
       shared_frequency_range,
       untrack(() => synced_zoom_range),
     )
     if (result !== undefined) synced_zoom_range = result
   })
 
-  // Propagate the synced range to a child y-axis (untrack current to avoid overwriting
-  // child zoom). Skips when the current range already matches base, or is valid but
-  // differs (child zoom in progress).
-  const propagate_synced_range = (
-    current_range: Vec2 | undefined,
-    apply: (base_range: Vec2 | undefined) => void,
-  ) => {
+  // Propagate only after a child resets to auto-range. Read the current axis untracked
+  // so a child zoom is detected above rather than immediately overwritten here.
+  $effect(() => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    if (ranges_equal(current_range, base_range) || is_valid_range(current_range)) return
-    apply(base_range)
-  }
-  $effect(() =>
-    propagate_synced_range(
-      untrack(() => bands_y_axis.range) as Vec2 | undefined,
-      (base_range) => (bands_y_axis = bands_default_axis(base_range)),
-    ),
-  )
-  $effect(() =>
-    propagate_synced_range(
-      untrack(() => dos_y_axis.range) as Vec2 | undefined,
-      (base_range) => (dos_y_axis = dos_default_axis(base_range)),
-    ),
-  )
+    const current_axis = untrack(() => bands_y_axis)
+    const next_axis = propagate_shared_axis_range(current_axis, base_range)
+    if (next_axis !== current_axis) bands_y_axis = next_axis
+  })
+  $effect(() => {
+    const base_range = synced_zoom_range ?? shared_frequency_range
+    const current_axis = untrack(() => dos_y_axis)
+    const next_axis = propagate_shared_axis_range(current_axis, base_range)
+    if (next_axis !== current_axis) dos_y_axis = next_axis
+  })
 
   let hovered_frequency = $state<number | null>(null)
 
-  // Ensure both plots use identical top/bottom padding for aligned y_scale_fn
-  const shared_tb_padding = { t: 20, b: 50 }
+  // Keep the existing baseline while honoring larger caller padding on either plot.
+  // Side-wise maxima guarantee identical y-scale pixel spans.
+  let shared_tb_padding = $derived(
+    max_side_padding([{ t: 20, b: 50 }, bands_props.padding, dos_props.padding], [`t`, `b`]),
+  )
 </script>
 
 <div

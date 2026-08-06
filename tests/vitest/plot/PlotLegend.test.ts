@@ -165,6 +165,83 @@ describe(`PlotLegend`, () => {
     const wrapper = doc_query(`.legend`)
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`) // Still 1 column
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(2, auto)`) // 2 rows defined
+    expect(wrapper.style.gridAutoFlow).toBe(``) // Preserve existing numeric layout behavior
+  })
+
+  test.each([
+    {
+      layout: `horizontal`,
+      available_edge_length: 166,
+      item_extents: default_series_data.map(() => ({ width: 80, height: 20 })),
+      expected_columns: `repeat(2, auto)`,
+      expected_rows: ``,
+      expected_auto_flow: ``,
+    },
+    {
+      layout: `vertical`,
+      available_edge_length: 41,
+      item_extents: default_series_data.map(() => ({ width: 80, height: 20 })),
+      expected_columns: `auto`,
+      expected_rows: `repeat(2, auto)`,
+      expected_auto_flow: `column`,
+    },
+  ] as const)(
+    `auto-selects tracks for a $layout legend`,
+    ({
+      layout,
+      available_edge_length,
+      item_extents,
+      expected_columns,
+      expected_rows,
+      expected_auto_flow,
+    }) => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: {
+          series_data: default_series_data,
+          layout,
+          layout_tracks: `auto`,
+          available_edge_length,
+          item_extents,
+        },
+      })
+
+      const wrapper = doc_query(`.legend`)
+      expect(wrapper.style.gridTemplateColumns).toBe(expected_columns)
+      expect(wrapper.style.gridTemplateRows).toBe(expected_rows)
+      expect(wrapper.style.gridAutoFlow).toBe(expected_auto_flow)
+    },
+  )
+
+  test(`auto tracks include grouped legend headers`, () => {
+    const series_data: LegendItem[] = [
+      {
+        label: `First`,
+        visible: true,
+        series_idx: 0,
+        legend_group: `Group`,
+        display_style: {},
+      },
+      {
+        label: `Second`,
+        visible: true,
+        series_idx: 1,
+        legend_group: `Group`,
+        display_style: {},
+      },
+    ]
+    mount(PlotLegend, {
+      target: document.body,
+      props: {
+        series_data,
+        layout: `vertical`,
+        layout_tracks: `auto`,
+        available_edge_length: 32,
+        estimated_item_extent: { height: 10 },
+      },
+    })
+
+    expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(3, auto)`)
   })
 
   test(`reports hovered item and marks active series`, () => {
@@ -359,6 +436,14 @@ describe(`PlotLegend`, () => {
     expect(wrapper).toBeInstanceOf(HTMLElement)
     expect(wrapper.querySelector(`.legend-item`)).toBeNull()
     expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
+  })
+
+  test(`keeps an auto-layout empty legend on one valid CSS track`, () => {
+    mount(PlotLegend, {
+      target: document.body,
+      props: { series_data: [], layout_tracks: `auto`, available_edge_length: 0 },
+    })
+    expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(1, auto)`)
   })
 
   describe(`legend groups`, () => {

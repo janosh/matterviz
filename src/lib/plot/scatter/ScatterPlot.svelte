@@ -34,7 +34,6 @@
   } from '$lib/plot'
   import {
     ColorBar,
-    compute_element_placement,
     FillArea,
     get_tick_label,
     Line,
@@ -48,6 +47,7 @@
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -60,12 +60,22 @@
     build_obstacles_norm,
     has_explicit_position,
     measured_footprint,
-    place_decorations,
-    placed_coords,
   } from '$lib/plot/core/auto-place'
+  import {
+    assign_axes,
+    axis_group_key,
+    axis_labels,
+    axis_scale_types,
+  } from '$lib/plot/core/axis-assignment'
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
+  import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
+  import {
+    solve_decorations,
+    type DecorationItem,
+    type DecorationPlacement,
+  } from '$lib/plot/core/decorations'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     COLOR_BAR_DEFAULTS,
@@ -104,12 +114,13 @@
     calc_auto_padding,
     filter_padding,
     full_footprint_or,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
-    measure_max_tick_width,
-    sample_series_obstacle_points,
   } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import {
@@ -135,6 +146,7 @@
     styles: styles_init = {},
     controls: controls_init = {},
     padding = {},
+    title,
     range_padding = 0,
     current_x_value = null,
     tooltip_point = $bindable(null),
@@ -174,6 +186,7 @@
     on_error,
     pan = {},
     marginals = false,
+    facet_layout,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
     Omit<BasePlotProps, `change`> &
@@ -232,7 +245,72 @@
       on_error?: (error: AxisLoadError) => void
       pan?: PanConfig
       marginals?: MarginalsProp
+      facet_layout?: FacetLayoutContext
     } = $props()
+
+  // Assign visible series by unit/axis_group while preserving every explicit y_axis.
+  // Dimensionless series retain the historical y1 default. Re-running this derived after a
+  // legend toggle lets the remaining visible group move back to y1.
+  const assigned_series = $derived.by(() => {
+    const valid_series = series.filter((srs): srs is DataSeries<Metadata> =>
+      Boolean(srs && typeof srs === `object`),
+    )
+    const assignment = assign_axes(valid_series, {
+      priority: (group_key) => (group_key === `dimensionless` ? -1 : 0),
+    })
+    if (assignment.status === `overflow`) throw assignment.error
+
+    const occupied_axes = new SvelteSet(
+      assignment.groups.flatMap(({ series: group_series }) =>
+        group_series.flatMap((srs) =>
+          srs.visible !== false && srs.y_axis ? [srs.y_axis] : [],
+        ),
+      ),
+    )
+    const available_axes = ([`y1`, `y2`] as const).filter((axis) => !occupied_axes.has(axis))
+    const group_axes: { key: string; axis: `y1` | `y2` }[] = []
+
+    for (const group of assignment.groups) {
+      const explicit_axes = group.series
+        .flatMap((srs) => (srs.visible !== false && srs.y_axis ? [srs.y_axis] : []))
+        .filter((axis, axis_idx, axes) => axes.indexOf(axis) === axis_idx)
+      if (explicit_axes.length === 1) {
+        group_axes.push({ key: group.key, axis: explicit_axes[0] })
+      }
+    }
+    for (const group of assignment.groups) {
+      if (group_axes.some(({ key }) => key === group.key)) continue
+      group_axes.push({ key: group.key, axis: available_axes.shift() ?? group.axis })
+    }
+
+    return series.map((srs) => {
+      if (!srs || typeof srs !== `object` || srs.visible === false || srs.y_axis) return srs
+      const assigned_axis = group_axes.find(({ key }) => key === axis_group_key(srs))?.axis
+      return assigned_axis ? { ...srs, y_axis: assigned_axis } : srs
+    })
+  })
+
+  const inferred_y_axes = $derived.by(() => {
+    const valid_series = assigned_series.filter((srs): srs is DataSeries<Metadata> =>
+      Boolean(srs && typeof srs === `object`),
+    )
+    const labels = axis_labels(valid_series)
+    const scale_types = axis_scale_types(valid_series, {
+      // axis_group is the explicit signal that otherwise unit-compatible data needs an
+      // independent scale (for example, positive SCF residuals spanning many decades).
+      can_use_log_scale: (srs) => srs.axis_group != null,
+    })
+    const inferred = (axis: `y1` | `y2`) => {
+      const has_metadata = valid_series.some(
+        (srs) =>
+          srs.visible !== false &&
+          (srs.y_axis ?? `y1`) === axis &&
+          (srs.unit !== undefined || srs.axis_group !== undefined),
+      )
+      return has_metadata ? { label: labels[axis], scale_type: scale_types[axis] } : {}
+    }
+    return { y1: inferred(`y1`), y2: inferred(`y2`) }
+  })
 
   // Merged axis/display values with defaults (use $derived to avoid breaking $bindable)
   const final_x_axis = $derived({
@@ -240,13 +318,13 @@
     label_shift: { x: 0, y: 0 },
     ...x_axis,
   })
-  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...inferred_y_axes.y1, ...y_axis })
   const final_x2_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: AXIS_TITLE_OFFSET }, // x2-axis label above top edge
     ...x2_axis,
   })
-  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
+  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...inferred_y_axes.y2, ...y2_axis })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
   let is_time_x = $derived(is_time_scale(final_x_axis.scale_type))
   let is_time_x2 = $derived(is_time_scale(final_x2_axis.scale_type))
@@ -277,7 +355,7 @@
 
   // Assign stable IDs to series for keying
   let series_with_ids = $derived(
-    series.map((srs: DataSeries<Metadata>, idx: number) => {
+    assigned_series.map((srs: DataSeries<Metadata>, idx: number) => {
       if (!srs || typeof srs !== `object`) return srs
       // Use series.id if provided, otherwise fall back to index
       // prevents re-mounts when series are reordered if stable IDs are provided
@@ -386,34 +464,80 @@
 
   // Layout: tick-label padding (decoration reservations are added in `pad` below)
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
   let base_pad = $state(untrack(() => filter_padding(padding, default_padding)))
+  const effective_base_pad = $derived(
+    facet_layout ? { ...base_pad, ...facet_layout.padding } : base_pad,
+  )
+  const title_config = $derived(normalize_plot_title(title))
 
   // Update padding when format or ticks change
   $effect(() => {
-    const new_pad =
+    const measured_pad = facet_layout ? base_pad : pad
+    const measured_ticks = facet_layout
+      ? intrinsic_axis_ticks
+      : { x: x_tick_values, x2: x2_tick_values, y: y_tick_values, y2: y2_tick_values }
+    const measured_scales = facet_layout
+      ? intrinsic_scale_fns
+      : { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn }
+    const axis_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding,
             width,
-            x_axis: { ...final_x_axis, tick_values: x_tick_values },
-            x2_axis: { ...final_x2_axis, tick_values: x2_tick_values },
-            y_axis: { ...final_y_axis, tick_values: y_tick_values },
-            y2_axis: { ...final_y2_axis, tick_values: y2_tick_values },
+            height,
+            x_axis: {
+              ...final_x_axis,
+              tick_values: measured_ticks.x,
+              tick_positions: measured_ticks.x.map((tick) =>
+                is_time_x ? measured_scales.x(new Date(tick)) : measured_scales.x(tick),
+              ),
+              axis_extent: { start: measured_pad.l, end: width - measured_pad.r },
+              tick_font,
+            },
+            x2_axis: {
+              ...final_x2_axis,
+              tick_values: measured_ticks.x2,
+              tick_positions: measured_ticks.x2.map((tick) =>
+                is_time_x2 ? measured_scales.x2(new Date(tick)) : measured_scales.x2(tick),
+              ),
+              axis_extent: { start: measured_pad.l, end: width - measured_pad.r },
+              tick_font,
+            },
+            y_axis: {
+              ...final_y_axis,
+              tick_values: measured_ticks.y,
+              tick_positions: measured_ticks.y.map(measured_scales.y),
+              axis_extent: { start: height - measured_pad.b, end: measured_pad.t },
+              tick_font,
+            },
+            y2_axis: {
+              ...final_y2_axis,
+              tick_values: measured_ticks.y2,
+              tick_positions: measured_ticks.y2.map(measured_scales.y2),
+              axis_extent: { start: height - measured_pad.b, end: measured_pad.t },
+              tick_font,
+            },
           })
         : filter_padding(padding, default_padding)
+    const title_height =
+      width && height
+        ? resolve_plot_title(title_config, {
+            width: Math.max(0, width - axis_pad.l - axis_pad.r),
+          }).block_height
+        : 0
+    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
-  // === Auto-move legend/colorbar outside the plot when interior overlap is unavoidable ===
-  // (shared logic lives in auto-place.ts so every 2D plot reuses it)
+  // === Unified automatic legend/colorbar layout ===
   // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too
   const colorbar_is_horizontal = $derived(
     (color_bar?.orientation ?? `horizontal`) === `horizontal`,
   )
-  // Fallback estimate (with room for tick labels) used before the colorbar first
-  // renders; compute_element_placement measures the real footprint once it's laid out
+  // Fallback estimate (with room for tick labels) used before the colorbar first renders
   const colorbar_fallback_size = $derived(
     colorbar_is_horizontal
       ? COLOR_BAR_DEFAULTS.horizontal_footprint
@@ -433,70 +557,137 @@
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
-  // Plot-specific obstacle field: series points/lines normalized to [0,1] (y=0 at top)
+  // Plot-specific immutable obstacle field: visible series points and sampled line segments in
+  // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
   const obstacles_norm = $derived.by(() => {
     if (!width || !height || !filtered_series) return []
-    const base_w = width - base_pad.l - base_pad.r
-    const base_h = height - base_pad.t - base_pad.b
+    const base_w = width - effective_base_pad.l - effective_base_pad.r
+    const base_h = height - effective_base_pad.t - effective_base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
-    const norm_x = is_time_x
-      ? scaleTime()
-          .domain([new Date(x_min), new Date(x_max)])
-          .range([0, 1])
-      : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
-    const norm_y = create_scale(final_y_axis.scale_type ?? `linear`, [y_min, y_max], [0, 1])
     return build_obstacles_norm(
       filtered_series
         .filter((srs) => srs?.filtered_data)
-        .map((srs) => ({
-          points: srs.filtered_data.map((pt) => ({
-            x: is_time_x ? norm_x(new Date(pt.x)) : norm_x(pt.x),
-            y: 1 - norm_y(pt.y), // norm_y is 0 at bottom; invert so 0 = top
-          })),
-          draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
-        })),
+        .map((srs) => {
+          const uses_x2 = srs.x_axis === `x2`
+          const uses_y2 = srs.y_axis === `y2`
+          const x_config = uses_x2 ? final_x2_axis : final_x_axis
+          const y_config = uses_y2 ? final_y2_axis : final_y_axis
+          const x_range = uses_x2 ? ([x2_min, x2_max] as Vec2) : ([x_min, x_max] as Vec2)
+          const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
+          const time_x = uses_x2 ? is_time_x2 : is_time_x
+          const norm_x = time_x
+            ? scaleTime()
+                .domain(x_range.map((value) => new Date(value)))
+                .range([0, 1])
+            : create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
+          const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
+          return {
+            points: srs.filtered_data.map((point) => ({
+              x: time_x ? norm_x(new Date(point.x)) : norm_x(point.x),
+              y: 1 - norm_y(point.y),
+            })),
+            draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+          }
+        }),
       base_w,
       base_h,
     )
   })
 
-  const decor = $derived.by(() =>
-    place_decorations({
-      base_pad,
+  // Explicit styles and a dragged legend stay outside solver ownership, but their measured
+  // rectangles remain exclusions for the automatic item.
+  const pinned_decoration_rects = $derived.by((): Rect[] => {
+    const rects: Rect[] = []
+    if (
+      legend_element &&
+      (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
+    ) {
+      const position = legend_manual_position ?? {
+        x: legend_element.offsetLeft,
+        y: legend_element.offsetTop,
+      }
+      rects.push({ ...position, ...legend_footprint })
+    }
+    if (colorbar_element && color_bar?.wrapper_style) {
+      rects.push({
+        x: colorbar_element.offsetLeft + colorbar_footprint.offset_x,
+        y: colorbar_element.offsetTop + colorbar_footprint.offset_y,
+        width: colorbar_footprint.width,
+        height: colorbar_footprint.height,
+      })
+    }
+    return rects
+  })
+
+  const decoration_solution = $derived.by(() => {
+    const items: DecorationItem[] = []
+    // Gate on legend_element (the actual render signal), not legend_data, whose fill entries read
+    // computed_fills -> pad and would make this derived reference itself.
+    if (
+      legend != null &&
+      legend_element != null &&
+      !legend_has_explicit_pos &&
+      !legend_is_dragging &&
+      !legend_manual_position
+    ) {
+      items.push({
+        id: `legend`,
+        kind: `legend`,
+        footprint: legend_footprint,
+        clearance: legend.axis_clearance,
+        auto_tracks:
+          legend.layout_tracks === `auto`
+            ? {
+                item_count: series_with_ids.filter(Boolean).length,
+                orientation: legend.layout ?? `vertical`,
+                item_extents: legend.item_extents,
+                estimated_item_extent: legend.estimated_item_extent,
+              }
+            : undefined,
+      })
+    }
+    // Gate on a measured colorbar: its outside style stretches it to full width, so deciding from
+    // the wide pre-measure fallback would flip-flop placement between interior and outside.
+    if (
+      color_bar &&
+      all_color_values.length > 0 &&
+      !color_bar.wrapper_style &&
+      (colorbar_element?.offsetWidth ?? 0) > 0 &&
+      (colorbar_element?.offsetHeight ?? 0) > 0
+    ) {
+      items.push({
+        id: `colorbar`,
+        kind: `colorbar`,
+        footprint: {
+          width: colorbar_footprint.width,
+          height: colorbar_footprint.height,
+        },
+        horizontal: colorbar_is_horizontal,
+        clearance: color_bar.axis_clearance,
+      })
+    }
+    return solve_decorations({
+      base_pad: effective_base_pad,
       width,
       height,
       obstacles_norm,
-      // gate on legend_element (the actual render signal) not legend_data, whose fill entries read
-      // computed_fills -> pad and would make this derived reference itself
-      legend:
-        legend != null &&
-        legend_element != null &&
-        !legend_has_explicit_pos &&
-        !legend_is_dragging &&
-        !legend_manual_position
-          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-          : null,
-      // gate on a measured colorbar: its outside style stretches it to full width, so deciding from
-      // the (wide) pre-measure fallback would flip-flop placement between interior and outside
-      colorbar:
-        Boolean(color_bar) &&
-        all_color_values.length > 0 &&
-        !color_bar?.wrapper_style &&
-        (colorbar_element?.offsetWidth ?? 0) > 0 &&
-        (colorbar_element?.offsetHeight ?? 0) > 0
-          ? {
-              footprint: colorbar_footprint,
-              horizontal: colorbar_is_horizontal,
-              clearance: color_bar?.axis_clearance,
-            }
-          : null,
-    }),
+      exclusion_rects: pinned_decoration_rects,
+      items,
+    })
+  })
+  const legend_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `legend`),
+  )
+  const colorbar_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `colorbar`),
   )
   // Resolve marginals and reserve outer-band padding so the plot shrinks to make room
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const pad = $derived(
+    add_sides(decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+  )
   // Map series to the generic marginal input, reusing the line/legend color fallback
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series_with_ids.map((srs, idx) => {
@@ -520,11 +711,9 @@
   const marginal_has_axis = $derived(
     marginal_axis_presence(x2_points.length > 0, y2_points.length > 0),
   )
-  const legend_auto_outside = $derived(decor.legend_outside)
-  const legend_outside_x = $derived(decor.legend_pos.x)
-  const legend_outside_y = $derived(decor.legend_pos.y)
   const effective_cbar_wrapper_style = $derived(
-    color_bar?.wrapper_style ?? (decor.colorbar_outside ? decor.colorbar_style : undefined),
+    color_bar?.wrapper_style ??
+      (colorbar_placement?.location === `outside` ? colorbar_placement.style : undefined),
   )
 
   // Reactive clip area dimensions to ensure proper responsiveness
@@ -602,6 +791,82 @@
     ),
   )
 
+  // Facet reports and intrinsic padding measurement stay data-local. Shared ranges/padding are
+  // applied only after these values are computed, so grid output never becomes the next report.
+  const intrinsic_scale_fns = $derived({
+    x: is_time_x
+      ? scaleTime()
+          .domain(auto_x_range.map((value) => new Date(value)))
+          .range([base_pad.l, width - base_pad.r])
+      : create_scale(final_x_axis.scale_type ?? `linear`, auto_x_range, [
+          base_pad.l,
+          width - base_pad.r,
+        ]),
+    x2: is_time_x2
+      ? scaleTime()
+          .domain(auto_x2_range.map((value) => new Date(value)))
+          .range([base_pad.l, width - base_pad.r])
+      : create_scale(final_x2_axis.scale_type ?? `linear`, auto_x2_range, [
+          base_pad.l,
+          width - base_pad.r,
+        ]),
+    y: create_scale(final_y_axis.scale_type ?? `linear`, auto_y_range, [
+      height - base_pad.b,
+      base_pad.t,
+    ]),
+    y2: create_scale(final_y2_axis.scale_type ?? `linear`, auto_y2_range, [
+      height - base_pad.b,
+      base_pad.t,
+    ]),
+  })
+  const intrinsic_axis_ticks = $derived({
+    x: generate_ticks(
+      auto_x_range,
+      final_x_axis.scale_type ?? `linear`,
+      final_x_axis.ticks,
+      intrinsic_scale_fns.x,
+    ),
+    x2:
+      x2_points.length > 0
+        ? generate_ticks(
+            auto_x2_range,
+            final_x2_axis.scale_type ?? `linear`,
+            final_x2_axis.ticks,
+            intrinsic_scale_fns.x2,
+          )
+        : [],
+    y: generate_ticks(
+      auto_y_range,
+      final_y_axis.scale_type ?? `linear`,
+      final_y_axis.ticks,
+      intrinsic_scale_fns.y,
+      { default_count: 5 },
+    ),
+    y2:
+      y2_points.length > 0
+        ? generate_ticks(
+            auto_y2_range,
+            final_y2_axis.scale_type ?? `linear`,
+            final_y2_axis.ticks,
+            intrinsic_scale_fns.y2,
+            { default_count: 5 },
+          )
+        : [],
+  })
+
+  $effect(() => {
+    if (!facet_layout) return
+    facet_layout.report_layout({
+      padding: { ...base_pad },
+      ranges: {
+        x: [...auto_x_range] as Vec2,
+        x2: [...auto_x2_range] as Vec2,
+        y: [...auto_y_range] as Vec2,
+        y2: [...auto_y2_range] as Vec2,
+      },
+    })
+  })
+
   // Update zoom ranges when auto ranges or explicit ranges change
   // - Explicit ranges (from zoom/pan): apply directly
   // - Auto ranges (from data changes): use lazy expansion to preserve view context
@@ -660,6 +925,17 @@
         )
       } else if (result.changed) {
         ranges.current.y2 = result.range
+      }
+    }
+
+    if (facet_layout) {
+      for (const axis of FACET_AXES) {
+        const facet_range = facet_layout.ranges[axis]
+        if (!facet_range) continue
+        const current_range = untrack(() => ranges.current[axis])
+        if (facet_range[0] !== current_range[0] || facet_range[1] !== current_range[1]) {
+          ranges.current[axis] = [facet_range[0], facet_range[1]]
+        }
       }
     }
   })
@@ -768,35 +1044,6 @@
     const [sparse_radius, dense_radius] = markers.includes(`line`) ? [2.5, 2] : [3, 2.5]
     return visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
   }
-
-  // Obstacle field for legend/colorbar auto-placement. Sampling only data points lets the
-  // legend land on top of a steep connecting line whose markers are sparse (e.g. y=x^2), so
-  // sample_series_obstacle_points also walks each drawn segment at a fixed pixel cadence.
-  const SEGMENT_SAMPLE_STEP = 12 // px between samples taken along a connecting line
-  let plot_points_for_placement = $derived.by(() => {
-    if (!width || !height || !filtered_series) return []
-
-    const points: { x: number; y: number }[] = []
-
-    for (const series_data of filtered_series) {
-      if (!series_data?.filtered_data) continue
-      const use_x2_scale = series_data.x_axis === `x2`
-      const active_x_scale = use_x2_scale ? x2_scale_fn : x_scale_fn
-      const active_is_time_x = use_x2_scale ? is_time_x2 : is_time_x
-      const active_y_scale = series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn
-      const draws_line =
-        styles.show_lines && (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)
-
-      const pixel_points = series_data.filtered_data.map((point) => ({
-        x: active_is_time_x ? active_x_scale(new Date(point.x)) : active_x_scale(point.x),
-        y: active_y_scale(point.y),
-      }))
-      points.push(
-        ...sample_series_obstacle_points(pixel_points, draws_line, SEGMENT_SAMPLE_STEP),
-      )
-    }
-    return points
-  })
 
   const fill_hover_key = (
     source_type: `fill_region` | `error_band`,
@@ -939,81 +1186,29 @@
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
 
-  // Calculate best legend placement using continuous grid sampling
-  const get_legend_placement = () => {
-    const should_place =
-      legend != null && (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)
+  const get_legend_placement = () => legend_placement ?? null
+  const get_color_bar_placement = () =>
+    colorbar_placement
+      ? {
+          x: colorbar_placement.x - colorbar_footprint.offset_x,
+          y: colorbar_placement.y - colorbar_footprint.offset_y,
+        }
+      : null
+  const placement_signature = (placement: DecorationPlacement | undefined): string =>
+    placement
+      ? `${placement.location}:${placement.side}:${placement.x}:${placement.y}:${placement.footprint.width}:${placement.footprint.height}`
+      : `none`
 
-    if (!should_place || !width || !height) return null
-
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
-
-    const placement_config = {
-      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element: legend_element,
-      element_size: { width: 120, height: 80 }, // fallback before first render
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: plot_points_for_placement,
-    }
-
-    return compute_element_placement(placement_config)
-  }
-
-  // Calculate color bar placement (coordinates with legend to avoid overlap)
-  const get_color_bar_placement = () => {
-    if (!color_bar || all_color_values.length === 0 || !width || !height) return null
-
-    const plot_width = width - pad.l - pad.r
-    const plot_height = height - pad.t - pad.b
-
-    // Build exclusion rects (avoid legend if it's placed)
-    const exclude_rects: Rect[] = []
-    const legend_placement =
-      legend_is_dragging && legend_manual_position
-        ? legend_manual_position
-        : legend_has_explicit_pos && legend_element
-          ? { x: legend_element.offsetLeft, y: legend_element.offsetTop }
-          : legend_auto_outside
-            ? { x: legend_outside_x, y: legend_outside_y }
-            : legend_tween.placed()
-              ? legend_tween.coords.target
-              : get_legend_placement()
-    if (legend_element && legend_placement) {
-      exclude_rects.push({
-        x: legend_placement.x,
-        y: legend_placement.y,
-        width: legend_element.offsetWidth || 120,
-        height: legend_element.offsetHeight || 80,
-      })
-    }
-
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element: colorbar_element,
-      element_size: colorbar_fallback_size,
-      // Small gap from the corner; the full-footprint measurement reserves the tick
-      // labels, so this alone keeps the colorbar off the axes
-      axis_clearance: color_bar?.axis_clearance ?? 15,
-      exclude_rects,
-      points: plot_points_for_placement,
-    })
-  }
-
-  // Active legend placement (null if user set explicit position in style)
-  const get_active_legend_placement = () =>
-    legend_has_explicit_pos ? null : get_legend_placement()
-
-  // Tweened colorbar/legend coordinates with shared placement stability gating
+  // Tweened colorbar/legend coordinates retain the established resize, hover-lock, responsive,
+  // and manual-drag behavior while both targets now come from one deterministic solve.
   const legend_tween = create_placed_tween({
-    placement: get_active_legend_placement,
+    placement: get_legend_placement,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
     on_element_resize: () => (legend_size_revision += 1),
-    placement_revision: () => colorbar_size_revision,
+    placement_revision: () => placement_signature(legend_placement),
     // Leave coords alone mid-drag; once dragged, the manual position wins permanently
     suspended: () => legend_is_dragging,
     manual_position: () => legend_manual_position,
@@ -1025,11 +1220,16 @@
     element: () => colorbar_element,
     tween: () => color_bar?.tween,
     on_element_resize: () => (colorbar_size_revision += 1),
-    placement_revision: () =>
-      `${legend_size_revision}:${legend_tween.coords.target.x}:${legend_tween.coords.target.y}:${
-        legend_auto_outside ? `${legend_outside_x}:${legend_outside_y}` : `inside`
-      }:${legend?.style ?? ``}`,
+    placement_revision: () => placement_signature(colorbar_placement),
   })
+  const decoration_exclusion_rects = $derived([
+    ...pinned_decoration_rects,
+    ...decoration_solution.placements.map(({ x, y, footprint }) => ({
+      x,
+      y,
+      ...footprint,
+    })),
+  ])
 
   // Generate axis ticks - consolidated into single derived for efficiency
   let axis_ticks = $derived.by(() => {
@@ -1086,13 +1286,36 @@
   let y_tick_values = $derived(axis_ticks.y)
   let y2_tick_values = $derived(axis_ticks.y2)
 
-  // Cache measured tick-label widths so expensive text measurement only runs
-  // when tick values/format change, not on every template rerender.
+  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
   let tick_label_widths = $derived({
-    x2_max: measure_max_tick_width(x2_tick_values, final_x2_axis.format, final_x2_axis.ticks),
-    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format, final_y_axis.ticks),
-    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format, final_y2_axis.ticks),
+    y_max: resolve_tick_layout(
+      {
+        ...final_y_axis,
+        tick_values: y_tick_values,
+        tick_positions: y_tick_values.map(y_scale_fn),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      Math.max(0, height - pad.t - pad.b),
+      `y`,
+    ).band,
+    y2_max: resolve_tick_layout(
+      {
+        ...final_y2_axis,
+        tick_values: y2_tick_values,
+        tick_positions: y2_tick_values.map(y2_scale_fn),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      Math.max(0, height - pad.t - pad.b),
+      `y2`,
+    ).band,
   })
+
+  const update_facet_range = (axis: FacetAxis, range: Vec2): void => {
+    ranges.current[axis] = range
+    facet_layout?.update_range(axis, range)
+  }
 
   // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
   // writes through get_synced_y2 (write-order contract: y is written before y2, so
@@ -1111,6 +1334,11 @@
     }),
     pan: () => pan,
     set_range: (axis, range) => {
+      if (facet_layout) {
+        const next_range = axis === `y2` ? get_synced_y2(ranges.current.y, range) : range
+        update_facet_range(axis, next_range)
+        return
+      }
       if (axis === `y2`) ranges.current.y2 = get_synced_y2(ranges.current.y, range)
       else ranges.current[axis] = range
     },
@@ -1121,13 +1349,21 @@
       const next_x = invert_rect_range(x_scale_fn, start.x, current.x)
       const next_y = invert_rect_range(y_scale_fn, start.y, current.y)
       if (!next_x || !next_y) return
-      x_axis = { ...x_axis, range: next_x }
-      y_axis = { ...y_axis, range: next_y }
+      if (facet_layout) {
+        update_facet_range(`x`, next_x)
+        update_facet_range(`y`, next_y)
+      } else {
+        x_axis = { ...x_axis, range: next_x }
+        y_axis = { ...y_axis, range: next_y }
+      }
 
       // X2 axis: invert screen coords using x2 scale
       const next_x2 =
         x2_points.length > 0 ? invert_rect_range(x2_scale_fn, start.x, current.x) : null
-      if (next_x2) x2_axis = { ...x2_axis, range: next_x2 }
+      if (next_x2) {
+        if (facet_layout) update_facet_range(`x2`, next_x2)
+        else x2_axis = { ...x2_axis, range: next_x2 }
+      }
 
       // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
       // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
@@ -1135,9 +1371,16 @@
         y2_points.length > 0 && y2_sync_config.mode === `none`
           ? invert_rect_range(y2_scale_fn, start.y, current.y)
           : null
-      if (next_y2) y2_axis = { ...y2_axis, range: next_y2 }
+      if (next_y2) {
+        if (facet_layout) update_facet_range(`y2`, next_y2)
+        else y2_axis = { ...y2_axis, range: next_y2 }
+      }
     },
     on_reset: () => {
+      if (facet_layout) {
+        for (const axis of FACET_AXES) facet_layout.update_range(axis, null)
+        return
+      }
       // Reset to current auto ranges (not stale initial ranges which may have expanded)
       // This ensures lazy expansion restarts fresh from current data bounds
       ranges.initial = {
@@ -1460,6 +1703,7 @@
       y2_scale={y2_scale_fn}
       {clip_path_id}
       hovered_line_idx={hovered_ref_line_idx}
+      exclusion_rects={decoration_exclusion_rects}
       on_click={(event: RefLineEvent) => {
         line.on_click?.(event)
         on_ref_line_click?.(event)
@@ -1505,7 +1749,8 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-        ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
+        (title_config?.text ||
+          [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
           `Scatter plot`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
@@ -1533,6 +1778,12 @@
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor}
     >
+      <PlotTitle
+        config={title_config}
+        x={effective_base_pad.l}
+        y={decoration_solution.pad.t - effective_base_pad.t}
+        width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
+      />
       {@render user_content?.({
         height,
         width,
@@ -1553,23 +1804,26 @@
       <!-- Reference lines: below grid -->
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-      <PlotAxis
-        side="x"
-        ticks={x_tick_values}
-        place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
-        axis={final_x_axis}
-        {pad}
-        {width}
-        {height}
-        show_grid={final_display.x_grid}
-        show_baseline={false}
-        domain={[x_min, x_max]}
-        tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
-        label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `x`}
-        on_axis_change={(key) => handle_axis_change(`x`, key)}
-      />
+      {#if facet_layout?.axis_visibility.x !== false}
+        <PlotAxis
+          side="x"
+          ticks={x_tick_values}
+          place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
+          axis={final_x_axis}
+          on_tick_font={(font) => (tick_font = font)}
+          {pad}
+          {width}
+          {height}
+          show_grid={final_display.x_grid}
+          show_baseline={false}
+          domain={[x_min, x_max]}
+          tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
+          label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
+          label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `x`}
+          on_axis_change={(key) => handle_axis_change(`x`, key)}
+        />
+      {/if}
 
       <!-- Current frame indicator -->
       {#if current_x_value != null}
@@ -1594,27 +1848,29 @@
         {/if}
       {/if}
 
-      <PlotAxis
-        side="y"
-        ticks={y_tick_values}
-        place={y_scale_fn}
-        axis={final_y_axis}
-        {pad}
-        {width}
-        {height}
-        show_grid={final_display.y_grid}
-        show_baseline={false}
-        domain={[y_min, y_max]}
-        unit_on_first_tick
-        tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-        label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
-        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `y`}
-        on_axis_change={(key) => handle_axis_change(`y`, key)}
-      />
+      {#if facet_layout?.axis_visibility.y !== false}
+        <PlotAxis
+          side="y"
+          ticks={y_tick_values}
+          place={y_scale_fn}
+          axis={final_y_axis}
+          {pad}
+          {width}
+          {height}
+          show_grid={final_display.y_grid}
+          show_baseline={false}
+          domain={[y_min, y_max]}
+          unit_on_first_tick
+          tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
+          label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
+          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `y`}
+          on_axis_change={(key) => handle_axis_change(`y`, key)}
+        />
+      {/if}
 
       <!-- Y2-axis (Right) -->
-      {#if y2_points.length > 0}
+      {#if y2_points.length > 0 && facet_layout?.axis_visibility.y2 !== false}
         <PlotAxis
           side="y2"
           ticks={y2_tick_values}
@@ -1636,7 +1892,7 @@
       {/if}
 
       <!-- X2-axis (Top) -->
-      {#if x2_points.length > 0}
+      {#if x2_points.length > 0 && facet_layout?.axis_visibility.x2 !== false}
         <PlotAxis
           side="x2"
           ticks={x2_tick_values}
@@ -1912,6 +2168,7 @@
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
         fallback_size={{ width: 120, height: 50 }}
+        exclusion_rects={decoration_exclusion_rects}
         bg_color={tooltip_bg_color}
       >
         {#if tooltip}
@@ -1976,6 +2233,12 @@
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
+        data-decoration-location={colorbar_placement?.location}
+        data-decoration-side={colorbar_placement?.side}
+        data-decoration-x={colorbar_placement?.x}
+        data-decoration-y={colorbar_placement?.y}
+        data-decoration-width={colorbar_placement?.footprint.width}
+        data-decoration-height={colorbar_placement?.footprint.height}
         style={`${
           // explicit wrapper_style or auto-outside places the colorbar; else auto-placement coords
           effective_cbar_wrapper_style ??
@@ -2000,19 +2263,23 @@
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
     {#if legend != null && legend_data.length > 0 && (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)}
-      {@const default_x = pad.l + 10}
-      {@const default_y = pad.t + 10}
-      {@const auto_position = placed_coords(
-        legend_auto_outside,
-        { x: legend_outside_x, y: legend_outside_y },
-        legend_tween.placed(),
-        legend_tween.coords.current,
-        { x: default_x, y: default_y },
-      )}
+      {@const solved_position = legend_placement ?? { x: pad.l + 10, y: pad.t + 10 }}
+      {@const auto_position =
+        legend_placement?.location === `outside`
+          ? solved_position
+          : legend_tween.placed()
+            ? legend_tween.coords.current
+            : solved_position}
       {@const current_position =
         legend_is_dragging && legend_manual_position ? legend_manual_position : auto_position}
       <PlotLegend
         bind:root_element={legend_element}
+        data-decoration-location={legend_placement?.location}
+        data-decoration-side={legend_placement?.side}
+        data-decoration-x={legend_placement?.x}
+        data-decoration-y={legend_placement?.y}
+        data-decoration-width={legend_placement?.footprint.width}
+        data-decoration-height={legend_placement?.footprint.height}
         series_data={legend_data}
         on_drag_start={handle_legend_drag_start}
         on_drag={handle_legend_drag}
@@ -2036,6 +2303,9 @@
           ?.idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
+        layout_tracks={legend.layout_tracks === `auto` && legend_placement
+          ? Math.max(1, legend_placement.layout_tracks ?? 1)
+          : legend.layout_tracks}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}

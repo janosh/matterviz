@@ -15,23 +15,30 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
+  import { solve_decorations, type DecorationItem } from '$lib/plot/core/decorations'
   import { sorted_range } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
-    compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
-    measure_max_tick_width,
     point_in_rect,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import {
+    normalize_plot_title,
+    resolve_plot_title,
+    type PlotTitleConfig,
+  } from '$lib/plot/core/plot-title'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -121,6 +128,7 @@
     density: density_config = {},
     overlays: overlays_config = {},
     padding: padding_config = {},
+    title,
     tooltip,
     point_data,
     point_labels = {},
@@ -144,6 +152,7 @@
     density?: BinnedDensityConfig
     overlays?: BinnedOverlaysConfig
     padding?: Sides
+    title?: string | PlotTitleConfig
     tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
     point_data?: BinnedPointDataFn<Metadata, PointData>
     point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
@@ -176,6 +185,7 @@
   let colorbar_element = $state<HTMLDivElement>()
   let annotation_element = $state<HTMLDivElement>()
   let colorbar_size_revision = $state(0)
+  let annotation_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
@@ -183,8 +193,14 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
+  const title_config = $derived(normalize_plot_title(title))
   let base_pad = $derived(filter_padding(padding_config, DEFAULT_PLOT_PADDING))
-  let pad = $derived(add_sides(base_pad, reserve_marginal_pad(resolved_marginals)))
+  let decoration_base_pad = $derived(
+    add_sides(base_pad, reserve_marginal_pad(resolved_marginals)),
+  )
+  // The solver owns decoration reservations and receives only the decoration-independent
+  // base, so its output never feeds a previous reservation back into itself.
+  let pad = $derived.by(() => decoration_solution.pad)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
       x: srs.x,
@@ -302,25 +318,67 @@
       default_count: 6,
     }),
   )
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
   let y_tick_width = $derived(
-    measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`, y_axis.ticks),
+    resolve_tick_layout(
+      {
+        ...y_axis,
+        format: y_axis.format ?? `.2~g`,
+        tick_values: y_ticks,
+        tick_positions: y_ticks.map(y_scale_fn),
+        axis_extent: { start: height - pad.b, end: pad.t },
+        tick_font,
+      },
+      plot_height,
+      `y`,
+    ).band,
   )
   $effect(() => {
-    const new_pad =
+    const axis_pad =
       width > 0 && height > 0
         ? calc_auto_padding({
             padding: padding_config,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...x_axis, format: x_axis.format ?? `.2~g`, tick_values: x_ticks },
-            y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
+            height,
+            x_axis: {
+              ...x_axis,
+              format: x_axis.format ?? `.2~g`,
+              tick_values: x_ticks,
+              tick_positions: x_ticks.map(x_scale_fn),
+              axis_extent: { start: pad.l, end: width - pad.r },
+              tick_font,
+            },
+            y_axis: {
+              ...y_axis,
+              format: y_axis.format ?? `.2~g`,
+              tick_values: y_ticks,
+              tick_positions: y_ticks.map(y_scale_fn),
+              axis_extent: { start: height - pad.b, end: pad.t },
+              tick_font,
+            },
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
+    const title_height =
+      width > 0 && height > 0
+        ? resolve_plot_title(title_config, {
+            width: Math.max(0, width - axis_pad.l - axis_pad.r),
+          }).block_height
+        : 0
+    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
+  // Keep density bins independent of decoration reservations. Their normalized occupied
+  // cells are the immutable obstacle field passed to the decoration solver.
+  let base_plot_width = $derived(
+    Math.max(1, width - decoration_base_pad.l - decoration_base_pad.r),
+  )
+  let base_plot_height = $derived(
+    Math.max(1, height - decoration_base_pad.t - decoration_base_pad.b),
+  )
   let density_bins = $derived({
-    x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),
-    y: Math.max(8, Math.ceil(plot_height / density_settings.bin_px)),
+    x: Math.max(8, Math.ceil(base_plot_width / density_settings.bin_px)),
+    y: Math.max(8, Math.ceil(base_plot_height / density_settings.bin_px)),
   })
   // Bin in scale space so the heatmap, hover, and zoom stay aligned with log/arcsinh axes
   let bin_transforms = $derived({
@@ -358,10 +416,8 @@
         `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.binned_bar_height}px; ${color_bar.style ?? ``}`,
     }
   })
-  let density_placement_points = $derived.by(() => {
+  let bin_obstacles_norm = $derived.by(() => {
     const points: Point2D[] = []
-    const bin_w = plot_width / density_result.x_bins
-    const bin_h = plot_height / density_result.y_bins
     let occupied_count = 0
     for (const count of density_result.counts) {
       if (count) occupied_count++
@@ -374,82 +430,118 @@
       const x_bin = idx % density_result.x_bins
       const y_bin = Math.floor(idx / density_result.x_bins)
       points.push({
-        x: pad.l + (x_bin + 0.5) * bin_w,
-        y: pad.t + (density_result.y_bins - y_bin - 0.5) * bin_h,
+        x: (x_bin + 0.5) / density_result.x_bins,
+        y: 1 - (y_bin + 0.5) / density_result.y_bins,
       })
     }
     return points
   })
-  // Fallback sizes (incl. room for tick labels) used before the colorbar first
-  // renders; compute_element_placement measures the real footprint once laid out
+  // Fallback sizes include room for overflowing tick labels before the first measurement.
   let colorbar_fallback_size = $derived(
     color_bar_props?.orientation === `vertical`
       ? COLOR_BAR_DEFAULTS.vertical_footprint
       : COLOR_BAR_DEFAULTS.horizontal_footprint,
   )
-  const get_color_bar_placement = () => {
-    if (
-      !color_bar_props ||
-      render_mode !== `density` ||
-      density_result.max_count <= 0 ||
-      !width ||
-      !height
-    ) {
-      return null
-    }
-
-    return compute_element_placement({
-      plot_bounds: plot_rect,
-      element: colorbar_element,
-      element_size: colorbar_fallback_size,
-      // Small gap from the corner; the full-footprint measurement reserves the tick
-      // labels, so this alone keeps the colorbar off the axes
-      axis_clearance: 12,
-      points: density_placement_points,
-      grid_resolution: 12,
-    })
-  }
-  // Fallback footprint before the annotation snippet first renders; the real
-  // footprint is measured once laid out (mirrors colorbar_fallback_size above)
   const annotation_fallback_size = { width: 120, height: 50 }
-  // Auto-place the annotation snippet like the colorbar, but with the already-placed
-  // colorbar's footprint as an exclusion zone so the two never overlap.
-  const get_annotation_placement = () => {
-    if (!annotation || !width || !height) return null
-
-    const color_bar_placement = colorbar_tween.placed()
-      ? colorbar_tween.coords.target
-      : get_color_bar_placement()
-    const colorbar_footprint = full_footprint_or(colorbar_element, colorbar_fallback_size)
-    const colorbar_rect = color_bar_placement && {
-      ...colorbar_footprint,
-      x: color_bar_placement.x + colorbar_footprint.offset_x,
-      y: color_bar_placement.y + colorbar_footprint.offset_y,
+  let colorbar_footprint = $derived.by(() => {
+    void colorbar_size_revision
+    return full_footprint_or(colorbar_element, colorbar_fallback_size)
+  })
+  let annotation_footprint = $derived.by(() => {
+    void annotation_size_revision
+    return full_footprint_or(annotation_element, annotation_fallback_size)
+  })
+  let decoration_items = $derived.by<DecorationItem[]>(() => {
+    const items: DecorationItem[] = []
+    if (
+      color_bar_props &&
+      render_mode === `density` &&
+      density_result.max_count > 0 &&
+      width > 0 &&
+      height > 0
+    ) {
+      items.push({
+        id: `density-colorbar`,
+        kind: `colorbar`,
+        footprint: {
+          width: colorbar_footprint.width,
+          height: colorbar_footprint.height,
+        },
+        horizontal: color_bar_props.orientation !== `vertical`,
+        clearance: 12,
+      })
     }
-    return compute_element_placement({
-      plot_bounds: plot_rect,
-      element: annotation_element,
-      element_size: annotation_fallback_size,
-      axis_clearance: 12,
-      exclude_rects: colorbar_rect ? [colorbar_rect] : [],
-      points: density_placement_points,
+    if (annotation && width > 0 && height > 0) {
+      items.push({
+        id: `free-annotation`,
+        kind: `free-annotation`,
+        footprint: {
+          width: annotation_footprint.width,
+          height: annotation_footprint.height,
+        },
+        clearance: 12,
+      })
+    }
+    return items
+  })
+  let decoration_solution = $derived(
+    solve_decorations({
+      width,
+      height,
+      base_pad: decoration_base_pad,
+      obstacles_norm: bin_obstacles_norm,
+      items: decoration_items,
       grid_resolution: 12,
-    })
-  }
+    }),
+  )
+  let colorbar_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `density-colorbar`),
+  )
+  let annotation_placement = $derived(
+    decoration_solution.placements.find(({ id }) => id === `free-annotation`),
+  )
+  let decoration_exclusion_rects = $derived(
+    decoration_solution.placements.map(({ x, y, footprint }) => ({
+      x,
+      y,
+      width: footprint.width,
+      height: footprint.height,
+    })),
+  )
+
+  const get_color_bar_placement = () =>
+    colorbar_placement
+      ? {
+          x: colorbar_placement.x - colorbar_footprint.offset_x,
+          y: colorbar_placement.y - colorbar_footprint.offset_y,
+        }
+      : null
+  const get_annotation_placement = () =>
+    annotation_placement
+      ? {
+          x: annotation_placement.x - annotation_footprint.offset_x,
+          y: annotation_placement.y - annotation_footprint.offset_y,
+        }
+      : null
   const colorbar_tween = create_placed_tween({
     placement: get_color_bar_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
     on_element_resize: () => (colorbar_size_revision += 1),
+    placement_revision: () =>
+      colorbar_placement &&
+      `${colorbar_placement.location}:${colorbar_placement.x}:${colorbar_placement.y}`,
   })
   const annotation_tween = create_placed_tween({
     placement: get_annotation_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => annotation_element,
+    on_element_resize: () => (annotation_size_revision += 1),
     placement_revision: () =>
-      `${colorbar_size_revision}:${colorbar_tween.coords.target.x}:${colorbar_tween.coords.target.y}`,
+      annotation_placement &&
+      `${annotation_placement.x}:${annotation_placement.y}:${colorbar_size_revision}`,
   })
 
   let auto_render_mode = $derived.by((): RenderMode => {
@@ -977,6 +1069,12 @@
         <rect x={pad.l} y={pad.t} width={plot_width} height={plot_height} />
       </clipPath>
     </defs>
+    <PlotTitle
+      config={title_config}
+      x={base_pad.l}
+      y={decoration_solution.pad.t - decoration_base_pad.t}
+      width={Math.max(0, width - base_pad.l - base_pad.r)}
+    />
 
     <g class="reference-lines" clip-path="url(#{clip_path_id})">
       {#each resolved_ref_lines as line}
@@ -997,6 +1095,7 @@
       ticks={x_ticks}
       place={(tick) => x_scale_fn(tick)}
       axis={x_axis}
+      on_tick_font={(font) => (tick_font = font)}
       {pad}
       {width}
       {height}
@@ -1089,6 +1188,12 @@
     <div
       bind:this={colorbar_element}
       class="color-bar"
+      data-decoration-location={colorbar_placement?.location}
+      data-decoration-side={colorbar_placement?.side}
+      data-decoration-x={colorbar_placement?.x}
+      data-decoration-y={colorbar_placement?.y}
+      data-decoration-width={colorbar_placement?.footprint.width}
+      data-decoration-height={colorbar_placement?.footprint.height}
       style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
         .y}px"
     >
@@ -1105,6 +1210,11 @@
     <div
       bind:this={annotation_element}
       class="annotation"
+      data-decoration-location={annotation_placement?.location}
+      data-decoration-x={annotation_placement?.x}
+      data-decoration-y={annotation_placement?.y}
+      data-decoration-width={annotation_placement?.footprint.width}
+      data-decoration-height={annotation_placement?.footprint.height}
       style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords.current
         .y}px"
     >
@@ -1117,6 +1227,9 @@
       x={tooltip_pos.x}
       y={tooltip_pos.y}
       offset={{ x: 0, y: 0 }}
+      constrain_to={{ width, height }}
+      exclusion_rects={decoration_exclusion_rects}
+      fallback_size={{ width: 150, height: 64 }}
       bg_color={hovered_bin_color}
     >
       {hovered_bin.count.toLocaleString()} samples<br />
@@ -1127,7 +1240,14 @@
     </PlotTooltip>
   {:else if hovered_point}
     {@const props = point_payload(hovered_point)}
-    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
+    <PlotTooltip
+      x={tooltip_pos.x}
+      y={tooltip_pos.y}
+      offset={{ x: 0, y: 0 }}
+      constrain_to={{ width, height }}
+      exclusion_rects={decoration_exclusion_rects}
+      fallback_size={{ width: 120, height: 44 }}
+    >
       {#if tooltip}
         {@render tooltip(props)}
       {:else}

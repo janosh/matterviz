@@ -1,6 +1,22 @@
 // Reference line utilities: helper functions and coordinate resolution
 import type { Vec2, Vec4 } from '$lib/math'
-import type { LayerZIndex, RefLine, RefLineValue } from '$lib/plot/core/types'
+import { place_reference_annotation } from '$lib/plot/core/decorations/reference-annotations'
+import type {
+  DecorationPoint,
+  ReferenceAnnotationCandidate,
+  ReferenceAnnotationDecorationItem,
+  ReferenceAnnotationPosition,
+  ReferenceAnnotationSide,
+  ReferenceAnnotationTextAnchor,
+  ReferenceAnnotationBaseline,
+} from '$lib/plot/core/decorations/types'
+import type { Rect } from '$lib/plot/core/layout'
+import type {
+  LayerZIndex,
+  RefLine,
+  RefLineAnnotation,
+  RefLineValue,
+} from '$lib/plot/core/types'
 
 export type IndexedRefLine = RefLine & { idx: number }
 
@@ -247,11 +263,11 @@ export function resolve_line_endpoints(
   return [x1_px, y1_px, x2_px, y2_px]
 }
 
-interface AnnotationPosition {
+export interface AnnotationPosition {
   x: number
   y: number
-  text_anchor: `start` | `middle` | `end`
-  dominant_baseline: `auto` | `middle` | `hanging`
+  text_anchor: ReferenceAnnotationTextAnchor
+  dominant_baseline: ReferenceAnnotationBaseline
   rotation?: number
 }
 
@@ -353,6 +369,186 @@ export function calculate_annotation_position(
   }
 
   return { x: final_x, y: final_y, text_anchor, dominant_baseline, rotation }
+}
+
+export interface ReferenceAnnotationMetrics {
+  text_width: number
+  font_size: number
+  padding: number
+}
+
+export type ReferenceAnnotationItemInput = {
+  id: string
+  endpoints: Vec4
+  annotation: RefLineAnnotation
+  metrics?: ReferenceAnnotationMetrics
+  clearance?: number
+}
+
+export type ReferenceAnnotationResolveConfig = {
+  metrics?: ReferenceAnnotationMetrics
+  clearance?: number
+  obstacles?: readonly DecorationPoint[]
+  exclusion_rects?: readonly Rect[]
+}
+
+const AUTO_ANNOTATION_POSITIONS: readonly ReferenceAnnotationPosition[] = [
+  `end`,
+  `center`,
+  `start`,
+]
+const AUTO_ANNOTATION_SIDES: readonly ReferenceAnnotationSide[] = [
+  `above`,
+  `below`,
+  `right`,
+  `left`,
+]
+
+export const estimate_reference_annotation_metrics = (
+  annotation: RefLineAnnotation,
+): ReferenceAnnotationMetrics => {
+  const font_size_match = /^[-+]?(?:\d+\.?\d*|\.\d+)/u.exec(annotation.font_size ?? `12`)
+  const parsed_font_size = Number(font_size_match?.[0])
+  const font_size =
+    Number.isFinite(parsed_font_size) && parsed_font_size > 0 ? parsed_font_size : 12
+  const padding =
+    typeof annotation.padding === `number` &&
+    Number.isFinite(annotation.padding) &&
+    annotation.padding >= 0
+      ? annotation.padding
+      : 2
+  return {
+    text_width: annotation.text.length * font_size * 0.6,
+    font_size,
+    padding,
+  }
+}
+
+const rotate_rect_around = (
+  rect: Rect,
+  pivot: DecorationPoint,
+  rotation_degrees: number | undefined,
+): Rect => {
+  if (!rotation_degrees) return rect
+  const rotation_radians = (rotation_degrees * Math.PI) / 180
+  const cos_rotation = Math.cos(rotation_radians)
+  const sin_rotation = Math.sin(rotation_radians)
+  const corners = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height },
+  ].map(({ x, y }) => {
+    const delta_x = x - pivot.x
+    const delta_y = y - pivot.y
+    return {
+      x: pivot.x + delta_x * cos_rotation - delta_y * sin_rotation,
+      y: pivot.y + delta_x * sin_rotation + delta_y * cos_rotation,
+    }
+  })
+  const x_values = corners.map(({ x }) => x)
+  const y_values = corners.map(({ y }) => y)
+  const x_min = Math.min(...x_values)
+  const x_max = Math.max(...x_values)
+  const y_min = Math.min(...y_values)
+  const y_max = Math.max(...y_values)
+  return { x: x_min, y: y_min, width: x_max - x_min, height: y_max - y_min }
+}
+
+const annotation_candidate = (
+  endpoints: Vec4,
+  annotation: RefLineAnnotation,
+  metrics: ReferenceAnnotationMetrics,
+  position: ReferenceAnnotationPosition,
+  side: ReferenceAnnotationSide,
+): ReferenceAnnotationCandidate => {
+  const [x1, y1, x2, y2] = endpoints
+  const anchor = calculate_annotation_position(x1, y1, x2, y2, {
+    ...annotation,
+    position,
+    side,
+  })
+  const anchor_fraction = { start: 0, middle: 0.5, end: 1 }[anchor.text_anchor]
+  const unrotated_rect: Rect = {
+    x: anchor.x - metrics.padding - metrics.text_width * anchor_fraction,
+    y: anchor.y - metrics.font_size * 0.8 - metrics.padding,
+    width: metrics.text_width + 2 * metrics.padding,
+    height: metrics.font_size * 1.2 + 2 * metrics.padding,
+  }
+  return {
+    position,
+    side,
+    ...anchor,
+    rect: rotate_rect_around(unrotated_rect, anchor, anchor.rotation),
+  }
+}
+
+// Existing explicit position/side requests are pinned. Unspecified annotations receive a stable
+// preferred-first cross product of line positions and sides for obstacle-aware selection.
+export function create_reference_annotation_candidates(
+  endpoints: Vec4,
+  annotation: RefLineAnnotation,
+  metrics: ReferenceAnnotationMetrics = estimate_reference_annotation_metrics(annotation),
+): ReferenceAnnotationCandidate[] {
+  const preferred_position = annotation.position ?? `end`
+  const preferred_side = annotation.side ?? `above`
+  if (annotation.position !== undefined || annotation.side !== undefined) {
+    return [
+      annotation_candidate(endpoints, annotation, metrics, preferred_position, preferred_side),
+    ]
+  }
+  const positions = [
+    preferred_position,
+    ...AUTO_ANNOTATION_POSITIONS.filter((position) => position !== preferred_position),
+  ]
+  const sides = [
+    preferred_side,
+    ...AUTO_ANNOTATION_SIDES.filter((side) => side !== preferred_side),
+  ]
+  return positions.flatMap((position) =>
+    sides.map((side) => annotation_candidate(endpoints, annotation, metrics, position, side)),
+  )
+}
+
+export function create_reference_annotation_item({
+  id,
+  endpoints,
+  annotation,
+  metrics = estimate_reference_annotation_metrics(annotation),
+  clearance,
+}: ReferenceAnnotationItemInput): ReferenceAnnotationDecorationItem {
+  const candidates = create_reference_annotation_candidates(endpoints, annotation, metrics)
+  return {
+    id,
+    kind: `reference-annotation`,
+    footprint: {
+      width: candidates[0].rect.width,
+      height: candidates[0].rect.height,
+    },
+    clearance,
+    candidates,
+    pinned: annotation.position !== undefined || annotation.side !== undefined,
+  }
+}
+
+export function resolve_reference_annotation(
+  endpoints: Vec4,
+  annotation: RefLineAnnotation,
+  {
+    metrics = estimate_reference_annotation_metrics(annotation),
+    clearance,
+    obstacles = [],
+    exclusion_rects = [],
+  }: ReferenceAnnotationResolveConfig = {},
+): ReferenceAnnotationCandidate {
+  const item = create_reference_annotation_item({
+    id: `reference-annotation`,
+    endpoints,
+    annotation,
+    metrics,
+    clearance,
+  })
+  return place_reference_annotation({ item, obstacles, exclusion_rects }).candidate
 }
 
 export interface Scene3DParams {

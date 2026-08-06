@@ -1,9 +1,15 @@
 <script lang="ts">
   // ReferenceLine: 2D reference lines with annotations (horizontal, vertical, diagonal, segment, line)
   import {
-    calculate_annotation_position,
     resolve_line_endpoints,
+    resolve_reference_annotation,
   } from '$lib/plot/core/reference-line'
+  import { project_obstacles } from '$lib/plot/core/decorations'
+  import type {
+    DecorationPoint,
+    ReferenceAnnotationCandidate,
+  } from '$lib/plot/core/decorations'
+  import type { Rect } from '$lib/plot/core/layout'
   import type { RefLine, RefLineEvent, RefLineStyle } from '$lib/plot/core/types'
   import { REF_LINE_STYLE_DEFAULTS } from '$lib/plot/core/types'
 
@@ -20,6 +26,11 @@
     y2_scale,
     clip_path_id,
     hovered_line_idx = null,
+    exclusion_rects = [],
+    obstacles = [],
+    obstacles_norm = [],
+    annotation_clearance,
+    annotation_placement,
     on_click,
     on_hover,
   }: {
@@ -35,6 +46,11 @@
     y2_scale?: (val: number) => number
     clip_path_id: string
     hovered_line_idx?: number | null
+    exclusion_rects?: readonly Rect[]
+    obstacles?: readonly DecorationPoint[]
+    obstacles_norm?: readonly DecorationPoint[]
+    annotation_clearance?: number
+    annotation_placement?: ReferenceAnnotationCandidate
     on_click?: (event: RefLineEvent) => void
     on_hover?: (event: RefLineEvent | null) => void
   } = $props()
@@ -62,16 +78,33 @@
     ...(is_hovered && ref_line.hover_style),
   })
 
+  let annotation_plot_bounds = $derived.by((): Rect => {
+    const active_x_scale = ref_line.x_axis === `x2` && x2_scale ? x2_scale : x_scale
+    const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
+    const x_pixels = [active_x_scale(x_min), active_x_scale(x_max)]
+    const y_pixels = [active_y_scale(y_min), active_y_scale(y_max)]
+    const x_left = Math.min(...x_pixels)
+    const y_top = Math.min(...y_pixels)
+    return {
+      x: x_left,
+      y: y_top,
+      width: Math.max(...x_pixels) - x_left,
+      height: Math.max(...y_pixels) - y_top,
+    }
+  })
+  let annotation_obstacles = $derived([
+    ...obstacles,
+    ...project_obstacles(obstacles_norm, annotation_plot_bounds),
+  ])
   let annotation_pos = $derived(
-    endpoints && ref_line.annotation
-      ? calculate_annotation_position(
-          endpoints[0],
-          endpoints[1],
-          endpoints[2],
-          endpoints[3],
-          ref_line.annotation,
-        )
-      : null,
+    annotation_placement ??
+      (endpoints && ref_line.annotation
+        ? resolve_reference_annotation(endpoints, ref_line.annotation, {
+            clearance: annotation_clearance,
+            exclusion_rects,
+            obstacles: annotation_obstacles,
+          })
+        : null),
   )
 
   const make_event = (event: MouseEvent | KeyboardEvent | FocusEvent): RefLineEvent => ({

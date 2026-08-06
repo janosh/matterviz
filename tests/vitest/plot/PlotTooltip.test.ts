@@ -1,6 +1,6 @@
 import { PlotTooltip } from '$lib/plot'
-import { createRawSnippet, mount, type ComponentProps } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 const make_children = (text: string = `Test`) =>
@@ -76,5 +76,72 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
     expect(tooltip.style.maxWidth).toBe(`84px`)
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
+  })
+
+  test.each([
+    { fixed: false, position: `absolute` },
+    { fixed: true, position: `fixed` },
+  ])(`preserves $position placement without exclusions`, ({ fixed, position }) => {
+    const tooltip = mount_tooltip({
+      x: 50,
+      y: 40,
+      fixed,
+      offset: { x: -10, y: -5 },
+    })
+    expect(tooltip.style.position).toBe(position)
+    expect(tooltip.style.left).toBe(`40px`)
+    expect(tooltip.style.top).toBe(`35px`)
+  })
+
+  test(`uses fallback size for decoration-aware placement before measurement`, () => {
+    const tooltip = mount_tooltip({
+      x: 50,
+      y: 50,
+      offset: { x: 0, y: 0 },
+      constrain_to: { width: 100, height: 100 },
+      fallback_size: { width: 20, height: 10 },
+      exclusion_rects: [{ x: 50, y: 50, width: 20, height: 10 }],
+    })
+    expect(tooltip.style.position).toBe(`absolute`)
+    expect(tooltip.style.left).toBe(`50px`)
+    expect(tooltip.style.top).toBe(`40px`)
+  })
+
+  test(`prefers measured size over fallback size`, () => {
+    const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(40)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
+      .mockReturnValue(20)
+    try {
+      const tooltip = mount_tooltip({
+        x: 75,
+        y: 50,
+        offset: { x: 0, y: 0 },
+        constrain_to: { width: 100, height: 100 },
+        fallback_size: { width: 10, height: 10 },
+        exclusion_rects: [],
+      })
+      flushSync()
+      expect(tooltip.style.left).toBe(`35px`)
+      expect(tooltip.style.top).toBe(`50px`)
+    } finally {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
+    }
+  })
+
+  test(`keeps decoration-aware placement fixed when requested`, () => {
+    const tooltip = mount_tooltip({
+      x: 95,
+      y: 50,
+      fixed: true,
+      offset: { x: 5, y: 5 },
+      constrain_to: { width: 100, height: 100 },
+      fallback_size: { width: 20, height: 10 },
+      exclusion_rects: [],
+    })
+    expect(tooltip.style.position).toBe(`fixed`)
+    expect(tooltip.style.left).toBe(`70px`)
+    expect(tooltip.style.top).toBe(`55px`)
   })
 })

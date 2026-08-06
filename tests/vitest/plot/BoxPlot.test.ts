@@ -20,7 +20,8 @@ const basic: BoxPlotSeries = { y: dist(80, 0, 1), label: `Box A`, color: `steelb
 
 const mount_sized_box_plot = (
   props: Partial<ComponentProps<typeof BoxPlot>>,
-): Promise<HTMLElement> => mount_sized(BoxPlot, props, { selector: `.box-plot` })
+  size: { width?: number; height?: number } = {},
+): Promise<HTMLElement> => mount_sized(BoxPlot, props, { selector: `.box-plot`, ...size })
 
 // Boxes only render when they have at least one finite value (finite median)
 const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
@@ -373,6 +374,116 @@ describe(`BoxPlot`, () => {
       expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
     },
   )
+
+  test.each([
+    {
+      name: `keeps a sparse plot legend inside`,
+      series: [
+        { ...basic, label: `A` },
+        { ...basic, y: dist(80, 3, 0.5), label: `B` },
+      ],
+      outside: false,
+    },
+    {
+      name: `moves the legend outside densely filled boxes`,
+      series: Array.from({ length: 24 }, (_, series_idx) => ({
+        y: [-20, -10, 0, 10, 20],
+        label: `Box ${series_idx}`,
+      })),
+      outside: true,
+    },
+  ])(`$name without colliding with the chart`, async ({ series, outside }) => {
+    const plot = await mount_sized_box_plot({ series, show_legend: true })
+    await tick()
+    const legend = plot.querySelector<HTMLElement>(`.legend`)
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
+    const legend_top = Number(legend.style.top.replace(`px`, ``))
+    const clip_bottom =
+      Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
+    expect(legend_top > clip_bottom).toBe(outside)
+  })
+
+  test(`uses measured legend size across plot sizes without padding drift`, async () => {
+    const width_spy = vi
+      .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
+      .mockReturnValue(180)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
+      .mockReturnValue(44)
+    try {
+      const series = Array.from({ length: 8 }, (_, series_idx) => ({
+        y: [-20, -10, 0, 10, 20],
+        label: `Box ${series_idx}`,
+      }))
+      const initial_plot = await mount_sized_box_plot({ series, show_legend: true })
+      const initial_legend = initial_plot.querySelector<HTMLElement>(`.legend`)
+      const resized_plot = await mount_sized_box_plot(
+        { series, show_legend: true },
+        { width: 640, height: 340 },
+      )
+      const resized_legend = resized_plot.querySelector<HTMLElement>(`.legend`)
+      const resized_clip = resized_plot.querySelector(`clipPath rect`)
+      if (!initial_legend || !resized_legend || !resized_clip) {
+        throw new Error(`legend or clip rectangle not found`)
+      }
+      expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
+      expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
+        Number(initial_legend.style.left.replace(`px`, ``)),
+      )
+      expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
+      expect(Number(resized_clip.getAttribute(`height`))).toBe(340 - 20 - 60 - 44 - 8)
+    } finally {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
+    }
+  })
+
+  test(`preserves explicit legend position and auto tracks on resize`, async () => {
+    const item_extents = Array.from({ length: 4 }, () => ({ width: 70, height: 20 }))
+    const auto = await mount_sized_box_plot({
+      series: Array.from({ length: 4 }, (_, series_idx) => ({
+        ...basic,
+        label: `Box ${series_idx}`,
+      })),
+      show_legend: true,
+      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+    })
+    const auto_legend = auto.querySelector<HTMLElement>(`.legend`)
+    expect(auto_legend?.style.gridTemplateColumns).toBe(`repeat(4, auto)`)
+    const narrow = await mount_sized_box_plot(
+      {
+        series: Array.from({ length: 4 }, (_, series_idx) => ({
+          ...basic,
+          label: `Box ${series_idx}`,
+        })),
+        show_legend: true,
+        legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+      },
+      { width: 280, height: 300 },
+    )
+    expect(narrow.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+      `repeat(2, auto)`,
+    )
+
+    const pinned = await mount_sized_box_plot({
+      series: [basic, { ...basic, label: `B` }],
+      show_legend: true,
+      legend: { style: `position: absolute; left: 17px; top: 23px;` },
+    })
+    const pinned_legend = pinned.querySelector<HTMLElement>(`.legend`)
+    const pinned_clip = pinned.querySelector(`clipPath rect`)
+    const baseline = await mount_sized_box_plot({
+      series: [basic, { ...basic, label: `B` }],
+      show_legend: false,
+    })
+    const baseline_clip = baseline.querySelector(`clipPath rect`)
+    expect(pinned_legend?.style.left).toBe(`17px`)
+    expect(pinned_legend?.style.top).toBe(`23px`)
+    expect(
+      [`x`, `y`, `width`, `height`].map((attr) => pinned_clip?.getAttribute(attr)),
+    ).toEqual([`x`, `y`, `width`, `height`].map((attr) => baseline_clip?.getAttribute(attr)))
+  })
 
   // === Violin support ===
   const iqr_box = (plot: HTMLElement) => plot.querySelectorAll(`.box-series rect.iqr-box`)

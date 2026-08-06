@@ -1,6 +1,7 @@
 // ReferenceLine component tests
 import { ReferenceLine } from '$lib'
 import type { RefLine } from '$lib/plot'
+import { create_reference_annotation_candidates } from '$lib/plot/core/reference-line'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -84,6 +85,76 @@ describe(`ReferenceLine`, () => {
     const text = doc_query(`text`)
     expect(text).toBeInstanceOf(SVGTextElement)
     expect(text.textContent).toContain(`Test Label`)
+  })
+
+  test(`renders an obstacle-free automatic annotation at the legacy candidate`, () => {
+    const annotation = { text: `Automatic` }
+    const preferred = create_reference_annotation_candidates(
+      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      annotation,
+    )[0]
+    mount_line({ type: `horizontal`, y: 50, annotation })
+    const text = doc_query(`text`)
+    expect(Number(text.getAttribute(`x`))).toBe(preferred.x)
+    expect(Number(text.getAttribute(`y`))).toBe(preferred.y)
+  })
+
+  test(`renders the chosen non-colliding automatic candidate`, () => {
+    const annotation = { text: `Automatic` }
+    const candidates = create_reference_annotation_candidates(
+      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      annotation,
+    )
+    const preferred = candidates[0]
+    mount_line(
+      { type: `horizontal`, y: 50, annotation },
+      {
+        obstacles: [
+          {
+            x: preferred.rect.x + preferred.rect.width / 2,
+            y: preferred.rect.y + preferred.rect.height / 2,
+          },
+        ],
+      },
+    )
+    const text = doc_query(`text`)
+    expect(Number(text.getAttribute(`x`))).toBe(candidates[1].x)
+    expect(Number(text.getAttribute(`y`))).toBe(candidates[1].y)
+  })
+
+  test(`does not move an explicitly positioned annotation`, () => {
+    const annotation = {
+      text: `Pinned`,
+      position: `end`,
+      side: `above`,
+    } as const
+    const preferred = create_reference_annotation_candidates(
+      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      annotation,
+    )[0]
+    mount_line(
+      { type: `horizontal`, y: 50, annotation },
+      {
+        exclusion_rects: [preferred.rect],
+        obstacles: [{ x: preferred.x, y: preferred.y }],
+      },
+    )
+    const text = doc_query(`text`)
+    expect(Number(text.getAttribute(`x`))).toBe(preferred.x)
+    expect(Number(text.getAttribute(`y`))).toBe(preferred.y)
+  })
+
+  test(`renders a host-selected annotation placement`, () => {
+    const annotation = { text: `Selected` }
+    const selected = create_reference_annotation_candidates(
+      [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
+      annotation,
+    )[5]
+    mount_line({ type: `horizontal`, y: 50, annotation }, { annotation_placement: selected })
+    const text = doc_query(`text`)
+    expect(Number(text.getAttribute(`x`))).toBe(selected.x)
+    expect(Number(text.getAttribute(`y`))).toBe(selected.y)
+    expect(text.getAttribute(`text-anchor`)).toBe(selected.text_anchor)
   })
 
   test.each([

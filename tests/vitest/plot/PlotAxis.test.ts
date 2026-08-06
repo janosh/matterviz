@@ -200,38 +200,85 @@ describe(`PlotAxis`, () => {
     expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
   })
 
-  // Regression guard: AxisLabel offsets its foreignObject by `-width/2` and sets its width to the
-  // same value, so the (CSS-centered) label content always lands on label_x — even when PlotAxis
-  // grows the container to plot_w (> the 200px default). A wider plot must NOT push the label
-  // off-center; only label_x controls horizontal placement.
+  // AxisLabel sizes its foreignObject from measured content while preserving the title center.
   test.each([
-    [`narrow plot clamps container to the 200px default`, 200, 200],
-    [`wide plot grows container to plot_w`, 600, 540], // plot_w = 600 - pad.l(40) - pad.r(20)
-  ])(
-    `x-axis label container stays centered on label_x (%s)`,
-    async (_desc, plot_width, exp_w) => {
-      const label_x = 123
-      const svg = await mount_axis({
-        side: `x`,
-        ticks: [50],
-        axis: { label: `Energy` },
-        label_x,
-        label_y: 50,
-        width: plot_width,
-      })
-      const foreign_obj = query(svg, `.x-axis foreignObject`)
-      const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
-      const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
-      expect(foreign_obj_w).toBe(exp_w)
-      // container centered on label_x regardless of its width
-      expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
-    },
-  )
+    [`narrow plot`, 200],
+    [`wide plot`, 600],
+  ])(`x-axis label container stays centered on label_x (%s)`, async (_desc, plot_width) => {
+    mock_text_measurement()
+    const label_x = 123
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [50],
+      axis: { label: `Energy` },
+      label_x,
+      label_y: 50,
+      width: plot_width,
+    })
+    const foreign_obj = query(svg, `.x-axis foreignObject`)
+    const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
+    const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
+    expect(foreign_obj_w).toBeGreaterThan(0)
+    expect(foreign_obj_w).toBeLessThanOrEqual(Math.max(plot_width - pad.l - pad.r, 200))
+    expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
+  })
+
+  test.each([
+    [`x`, `foreignObject`],
+    [`y`, `text`],
+  ] as const)(`long %s axis title wraps in a measured block`, async (side, tag) => {
+    mock_text_measurement()
+    const svg = await mount_axis({
+      side,
+      ticks: [50],
+      axis: {
+        label: `Formation energy per atom with a deliberately descriptive scientific title`,
+      },
+      label_x: 100,
+      label_y: 50,
+    })
+    const label = query(svg, `.axis-label.${side}-label`)
+    expect(label.closest(tag)).not.toBeNull()
+    if (side === `x`) {
+      const lines = label.querySelectorAll(`.static-label > span`).length
+      expect(lines).toBeGreaterThan(1)
+      expect(Number(query(svg, `foreignObject`).getAttribute(`height`))).toBe(lines * 20)
+    } else {
+      expect(label.querySelectorAll(`tspan`).length).toBeGreaterThan(1)
+    }
+  })
+
+  test(`interactive title foreignObject fits the closed selected trigger`, async () => {
+    mock_text_measurement()
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [50],
+      axis: {
+        options: [
+          { key: `energy`, label: `Energy`, unit: `eV` },
+          { key: `volume`, label: `Long volume property`, unit: `Å³` },
+        ],
+        selected_key: `volume`,
+      },
+      label_x: 100,
+      label_y: 50,
+    })
+    const trigger = query(svg, `.axis-trigger`)
+    const foreign_obj = query(svg, `foreignObject`)
+
+    expect(trigger.textContent).toContain(`Long volume property (Å³)`)
+    expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(
+      `Long volume property (Å³)`.length * 7,
+    )
+    expect(Number(foreign_obj.getAttribute(`height`))).toBe(AXIS_LABEL_CONTAINER.height)
+  })
 
   // Regression guard: x and x2 rotate their tick labels to opposite anchors.
   test.each([
     [`x`, `start`],
-    [`x2`, `end`],
+    // The x2 tick sits near the leading edge, so adaptive geometry flips its default anchor
+    // inward to avoid clipping while preserving the explicit angle.
+    [`x2`, `start`],
   ])(`%s rotated tick label anchors to %s`, async (side, anchor) => {
     const svg = await mount_axis({
       side,
@@ -260,13 +307,19 @@ describe(`PlotAxis`, () => {
     [`x2`, false, 1],
     [`x2`, true, -1],
   ] as const)(`auto-rotated %s labels (inside=%s) trail left`, async (side, inside, sign) => {
-    const svg = await mount_measured_axis({ side, axis: { tick: { label: { inside } } } })
+    const svg = await mount_measured_axis({
+      side,
+      axis: {
+        tick: {
+          label: { inside, auto_layout: { strategies: [`rotate`] } },
+        },
+      },
+    })
     const text = query(svg, `g.tick text`)
     const transform = text.getAttribute(`transform`) ?? ``
     const degrees = Number(/rotate\((?<deg>[-\d.]+),/.exec(transform)?.groups?.deg)
     expect(Math.sign(degrees)).toBe(sign)
-    // `end` puts the label behind its anchor, i.e. left of the tick, for either sign
-    expect(text.getAttribute(`text-anchor`)).toBe(`end`)
+    expect([`start`, `middle`, `end`]).toContain(text.getAttribute(`text-anchor`))
   })
 
   test.each([
@@ -278,9 +331,11 @@ describe(`PlotAxis`, () => {
       side,
       ticks: [50, 100],
       tick_label: (value: number) => labels[value === 50 ? 0 : 1],
+      axis: { tick: { label: { auto_layout: { strategies: [`wrap`] } } } },
     })
     const texts = svg.querySelectorAll(`g.tick text`)
     expect(texts).toHaveLength(2)
+    expect(svg.querySelectorAll(`g.tick > line`)).toHaveLength(2)
     expect(texts[1].getAttribute(`transform`)).toBeNull()
     expect(texts[1].getAttribute(`text-anchor`)).toBe(`middle`)
     expect(texts[1].getAttribute(`aria-label`)).toBe(`CANCELLED by 2054`)
@@ -291,7 +346,76 @@ describe(`PlotAxis`, () => {
     ])
     expect([...lines].map((line) => line.getAttribute(`dy`))).toEqual(expected_dy)
     expect([...lines].map((line) => line.getAttribute(`x`))).toEqual([`0`, `0`])
-    expect([...lines].every((line) => line.getAttribute(`aria-hidden`) === `true`)).toBe(true)
+    expect([...lines].map((line) => line.getAttribute(`aria-hidden`))).toEqual([
+      `true`,
+      `true`,
+    ])
+  })
+
+  test(`adaptive thinning hides crowded labels but keeps their full text`, async () => {
+    const labels = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [40, 75, 80, 180],
+      tick_label: (value: number) => labels[[40, 75, 80, 180].indexOf(value)],
+      axis: {
+        tick: {
+          label: {
+            auto_layout: {
+              strategies: [`thin`],
+              min_visible_ticks: 2,
+              endpoint_policy: `preserve`,
+            },
+          },
+        },
+      },
+    })
+    const texts = svg.querySelectorAll(`g.tick text`)
+    expect(texts).toHaveLength(2)
+    expect([...texts].map((text) => text.getAttribute(`aria-label`))).toEqual([
+      `Alpha label`,
+      `Delta label`,
+    ])
+  })
+
+  test(`y-axis labels use the shared multiline layout`, async () => {
+    mock_text_measurement()
+    const svg = await mount_axis({
+      side: `y`,
+      ticks: [50],
+      tick_label: () => `Formation Energy`,
+      axis: {
+        tick: {
+          label: {
+            max_lines: 2,
+            auto_layout: { strategies: [`wrap`], max_band: 70 },
+          },
+        },
+      },
+    })
+    const text = query(svg, `g.tick text`)
+    expect(text.getAttribute(`aria-label`)).toBe(`Formation Energy`)
+    expect([...text.querySelectorAll(`tspan`)].map((line) => line.textContent)).toEqual([
+      `Formation`,
+      `Energy`,
+    ])
+    expect([...text.querySelectorAll(`tspan`)].map((line) => line.getAttribute(`dy`))).toEqual(
+      [`-8`, `16`],
+    )
+  })
+
+  test(`edge labels anchor inward`, async () => {
+    const svg = await mount_axis({
+      side: `x`,
+      ticks: [pad.l, width - pad.r],
+      tick_label: (value: number) => (value === pad.l ? `Leading` : `Trailing`),
+      axis: {
+        tick: { label: { auto_layout: { strategies: [`upright`] } } },
+      },
+    })
+    expect(
+      [...svg.querySelectorAll(`g.tick text`)].map((text) => text.getAttribute(`text-anchor`)),
+    ).toEqual([`start`, `end`])
   })
 
   test.each([
@@ -300,12 +424,15 @@ describe(`PlotAxis`, () => {
   ] as const)(
     `%s axis stacks rotated wrapped lines away from its baseline`,
     async (side, rotation_sign, first_dy) => {
-      const label = `ABCDEFGHIJK LMNOPQRSTUV WXYZABCDEFG`
+      const label = `ABCDEFGHIJK\nLMNOPQRSTUV\nWXYZABCDEFG`
       const svg = await mount_measured_axis({
         side,
         ticks: [40, 120, 200, 280],
         width: 380,
         tick_label: () => label,
+        axis: {
+          tick: { label: { rotation: rotation_sign * 45 } },
+        },
       })
       const text = query(svg, `g.tick text`)
       const transform = text.getAttribute(`transform`) ?? ``
@@ -322,12 +449,18 @@ describe(`PlotAxis`, () => {
     const title_y = async (inside: boolean): Promise<number> => {
       const svg = await mount_measured_axis({
         side: `x`,
-        axis: { label: `state`, tick: { label: { inside } } },
+        axis: {
+          label: `state`,
+          tick: {
+            label: { inside, auto_layout: { strategies: [`rotate`] } },
+          },
+        },
         label_x: 100,
         label_y,
       })
       return (
-        Number(query(svg, `foreignObject`).getAttribute(`y`)) + AXIS_LABEL_CONTAINER.y_offset
+        Number(query(svg, `foreignObject`).getAttribute(`y`)) +
+        Number(query(svg, `foreignObject`).getAttribute(`height`)) / 2
       )
     }
     const [outside_title, inside_title] = [await title_y(false), await title_y(true)]

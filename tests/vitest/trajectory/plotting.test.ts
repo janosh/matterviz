@@ -124,6 +124,88 @@ describe(`generate_plot_series`, () => {
     expect(series.filter((srs) => srs.visible)).toHaveLength(2)
   })
 
+  it(`keeps every series in a selected unit group visible`, () => {
+    const series = generate_plot_series(
+      create_trajectory([
+        { selected: 1, same_group: 10, hidden_group: 100 },
+        { selected: 2, same_group: 20, hidden_group: 200 },
+      ]),
+      test_extractor,
+      {
+        property_config: {
+          selected: { label: `Selected`, unit: `shared` },
+          same_group: { label: `Same group`, unit: `shared` },
+          hidden_group: { label: `Hidden group`, unit: `other` },
+        },
+        default_visible_properties: new Set([`selected`]),
+      },
+    )
+
+    expect(find_series_by_label(series, `selected`)).toMatchObject({
+      visible: true,
+      y_axis: `y1`,
+    })
+    expect(find_series_by_label(series, `same group`)).toMatchObject({
+      visible: true,
+      y_axis: `y1`,
+    })
+    expect(find_series_by_label(series, `hidden group`)).toMatchObject({
+      visible: false,
+      y_axis: `y1`,
+    })
+  })
+
+  it(`uses priority rather than property order when visible groups overflow`, () => {
+    const series = generate_plot_series(
+      create_trajectory([
+        { temperature: 300, force: 1, energy: -10 },
+        { temperature: 310, force: 0.5, energy: -11 },
+      ]),
+      test_extractor,
+      {
+        property_config: {
+          temperature: { label: `Temperature`, unit: `K` },
+          force: { label: `Force`, unit: `eV/Å` },
+          energy: { label: `Energy`, unit: `eV` },
+        },
+        default_visible_properties: new Set([`temperature`, `force`, `energy`]),
+      },
+    )
+
+    expect(find_series_by_label(series, `energy`)).toMatchObject({
+      visible: true,
+      y_axis: `y1`,
+    })
+    expect(find_series_by_label(series, `force`)).toMatchObject({
+      visible: true,
+      y_axis: `y2`,
+    })
+    expect(find_series_by_label(series, `temperature`)).toMatchObject({
+      visible: false,
+      y_axis: `y1`,
+    })
+  })
+
+  it(`falls back to the highest-priority group when no property is selected`, () => {
+    const series = generate_plot_series(
+      create_trajectory([
+        { temperature: 300, energy: -10 },
+        { temperature: 310, energy: -11 },
+      ]),
+      test_extractor,
+      {
+        property_config: {
+          temperature: { label: `Temperature`, unit: `K` },
+          energy: { label: `Energy`, unit: `eV` },
+        },
+        default_visible_properties: new Set(),
+      },
+    )
+
+    expect(find_series_by_label(series, `energy`)?.visible).toBe(true)
+    expect(find_series_by_label(series, `temperature`)?.visible).toBe(false)
+  })
+
   it(`keeps sparse property values aligned to their source frames`, () => {
     const series = generate_plot_series(
       create_trajectory([
@@ -305,6 +387,9 @@ describe(`generate_axis_scale_types`, () => {
     { name: `NaN values are ignored for the decision`,
       series: [create_series([NaN, 1e-5, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
       expected: { y1: `log`, y2: `linear` } },
+    { name: `infinities are ignored but finite zero still forces linear`,
+      series: [create_series([NaN, -Infinity, 0, 1e-5, Infinity, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      expected: all_linear },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })
