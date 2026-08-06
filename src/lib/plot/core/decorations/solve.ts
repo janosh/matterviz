@@ -43,6 +43,11 @@ export const decoration_placement_rects = ({
 }: Pick<DecorationSolution, `placements`>): Rect[] =>
   placements.map(({ x, y, footprint }) => ({ x, y, ...footprint }))
 
+export const get_decoration_placement = (
+  { placements }: Pick<DecorationSolution, `placements`>,
+  id: string,
+): DecorationPlacement | undefined => placements.find((placement) => placement.id === id)
+
 const with_auto_legend_tracks = (
   placement: DecorationPlacement,
   item: DecorationItem,

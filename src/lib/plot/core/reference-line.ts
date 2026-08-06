@@ -2,11 +2,13 @@
 import type { Vec2, Vec4 } from '$lib/math'
 import {
   decoration_placement_rects,
+  get_decoration_placement,
   place_reference_annotation,
   solve_decorations,
 } from '$lib/plot/core/decorations'
 import type {
   DecorationPoint,
+  DecorationScene,
   DecorationSolution,
   ReferenceAnnotationCandidate,
   ReferenceAnnotationDecorationItem,
@@ -15,7 +17,7 @@ import type {
   ReferenceAnnotationTextAnchor,
   ReferenceAnnotationBaseline,
 } from '$lib/plot/core/decorations/types'
-import type { Rect, Sides } from '$lib/plot/core/layout'
+import type { Rect } from '$lib/plot/core/layout'
 import type {
   LayerZIndex,
   RefLine,
@@ -94,16 +96,16 @@ export function normalize_value(value: RefLineValue): number {
   if (typeof value === `number`) return value
   if (value instanceof Date) return value.getTime()
   // Empty/whitespace strings are invalid (Number("") returns 0 silently)
-  if (typeof value === `string` && value.trim() === ``) {
+  if (value.trim() === ``) {
     console.warn(`Invalid RefLineValue: empty string, defaulting to 0`)
     return 0
   }
   // Try numeric conversion first (handles "42", "3.14", "-5")
-  const num = Number(value)
-  if (!isNaN(num)) return num
+  const numeric_value = Number(value)
+  if (!Number.isNaN(numeric_value)) return numeric_value
   // Then try as ISO date string (handles "2024-06-15")
-  const parsed = Date.parse(value)
-  if (!isNaN(parsed)) return parsed
+  const parsed_date = Date.parse(value)
+  if (!Number.isNaN(parsed_date)) return parsed_date
   console.warn(`Invalid RefLineValue: "${value}", defaulting to 0`)
   return 0
 }
@@ -246,12 +248,8 @@ export function resolve_line_endpoints(
   } else if (line_type === `segment`) {
     const [p1x, p1y] = normalize_point(ref_line.p1)
     const [p2x, p2y] = normalize_point(ref_line.p2)
-
-    // Determine clipping bounds (span constraints override plot bounds)
-    const clip_x_min = ref_line.x_span?.[0] ?? x_min
-    const clip_x_max = ref_line.x_span?.[1] ?? x_max
-    const clip_y_min = ref_line.y_span?.[0] ?? y_min
-    const clip_y_max = ref_line.y_span?.[1] ?? y_max
+    const [clip_x_min, clip_x_max] = span_or(ref_line.x_span, [x_min, x_max])
+    const [clip_y_min, clip_y_max] = span_or(ref_line.y_span, [y_min, y_max])
 
     const clipped = clip_segment_to_rect(
       p1x,
@@ -269,18 +267,13 @@ export function resolve_line_endpoints(
     return null
   }
 
-  // Convert data coordinates to screen pixels
-  const x1_px = active_x_scale(x1_data)
-  const y1_px = active_y_scale(y1_data)
-  const x2_px = active_x_scale(x2_data)
-  const y2_px = active_y_scale(y2_data)
-
-  // Validate that pixels are finite
-  if (!isFinite(x1_px) || !isFinite(y1_px) || !isFinite(x2_px) || !isFinite(y2_px)) {
-    return null
-  }
-
-  return [x1_px, y1_px, x2_px, y2_px]
+  const pixels: Vec4 = [
+    active_x_scale(x1_data),
+    active_y_scale(y1_data),
+    active_x_scale(x2_data),
+    active_y_scale(y2_data),
+  ]
+  return pixels.every(Number.isFinite) ? pixels : null
 }
 
 export interface AnnotationPosition {
@@ -289,6 +282,17 @@ export interface AnnotationPosition {
   text_anchor: ReferenceAnnotationTextAnchor
   dominant_baseline: ReferenceAnnotationBaseline
   rotation?: number
+}
+
+const POSITION_TEXT_ANCHOR: Record<
+  ReferenceAnnotationPosition,
+  ReferenceAnnotationTextAnchor
+> = { start: `start`, center: `middle`, end: `end` }
+const SIDE_BASELINE: Record<ReferenceAnnotationSide, ReferenceAnnotationBaseline> = {
+  above: `auto`,
+  below: `hanging`,
+  left: `middle`,
+  right: `middle`,
 }
 
 // Calculate annotation position given line endpoints and annotation config
@@ -356,29 +360,9 @@ export function calculate_annotation_position(
     perp_y = sign * ny * gap
   }
 
-  const final_x = base_x + perp_x + offset_x
-  const final_y = base_y + perp_y + offset_y
-
-  // Text anchor and baseline based on position/side
-  // For left/right sides, anchor is determined by side (text extends away from line)
-  // For above/below sides, anchor is determined by position along line
-  let text_anchor: `start` | `middle` | `end`
-  if (side === `left`) {
-    text_anchor = `end` // text ends at gap point, extends left
-  } else if (side === `right`) {
-    text_anchor = `start` // text starts at gap point, extends right
-  } else {
-    text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ?? `middle`) as
-      | `start`
-      | `middle`
-      | `end`
-  }
-  const dominant_baseline = ({
-    above: `auto`,
-    below: `hanging`,
-    left: `middle`,
-    right: `middle`,
-  }[side] ?? `middle`) as `auto` | `middle` | `hanging`
+  const text_anchor =
+    side === `left` ? `end` : side === `right` ? `start` : POSITION_TEXT_ANCHOR[position]
+  const dominant_baseline = SIDE_BASELINE[side]
 
   // Calculate rotation if needed (keep text readable)
   let rotation: number | undefined
@@ -388,7 +372,13 @@ export function calculate_annotation_position(
     else if (rotation < -90) rotation += 180
   }
 
-  return { x: final_x, y: final_y, text_anchor, dominant_baseline, rotation }
+  return {
+    x: base_x + perp_x + offset_x,
+    y: base_y + perp_y + offset_y,
+    text_anchor,
+    dominant_baseline,
+    rotation,
+  }
 }
 
 export interface ReferenceAnnotationMetrics {
@@ -504,12 +494,10 @@ const rotate_rect_around = (
       y: pivot.y + delta_x * sin_rotation + delta_y * cos_rotation,
     }
   })
-  const x_values = corners.map(({ x }) => x)
-  const y_values = corners.map(({ y }) => y)
-  const x_min = Math.min(...x_values)
-  const x_max = Math.max(...x_values)
-  const y_min = Math.min(...y_values)
-  const y_max = Math.max(...y_values)
+  const x_min = Math.min(...corners.map(({ x }) => x))
+  const x_max = Math.max(...corners.map(({ x }) => x))
+  const y_min = Math.min(...corners.map(({ y }) => y))
+  const y_max = Math.max(...corners.map(({ y }) => y))
   return { x: x_min, y: y_min, width: x_max - x_min, height: y_max - y_min }
 }
 
@@ -549,16 +537,10 @@ export function create_reference_annotation_candidates(
       annotation_candidate(endpoints, annotation, metrics, preferred_position, preferred_side),
     ]
   }
-  const positions = [
-    preferred_position,
-    ...AUTO_ANNOTATION_POSITIONS.filter((position) => position !== preferred_position),
-  ]
-  const sides = [
-    preferred_side,
-    ...AUTO_ANNOTATION_SIDES.filter((side) => side !== preferred_side),
-  ]
-  return positions.flatMap((position) =>
-    sides.map((side) => annotation_candidate(endpoints, annotation, metrics, position, side)),
+  return AUTO_ANNOTATION_POSITIONS.flatMap((position) =>
+    AUTO_ANNOTATION_SIDES.map((side) =>
+      annotation_candidate(endpoints, annotation, metrics, position, side),
+    ),
   )
 }
 
@@ -588,7 +570,6 @@ export function create_reference_annotation_items({
   ranges,
   scales,
   clearance,
-  grid_resolution,
 }: {
   lines: readonly IndexedRefLine[]
   ranges: ReferenceLineRanges
@@ -597,7 +578,8 @@ export function create_reference_annotation_items({
 }): ReferenceAnnotationDecorationItem[] {
   const items: ReferenceAnnotationDecorationItem[] = []
   for (const line of lines) {
-    if (!line.annotation) continue
+    const { annotation } = line
+    if (!annotation) continue
     const x_range = line.x_axis === `x2` ? (ranges.x2 ?? ranges.x) : ranges.x
     const y_range = line.y_axis === `y2` ? (ranges.y2 ?? ranges.y) : ranges.y
     const endpoints = resolve_line_endpoints(
@@ -620,7 +602,7 @@ export function create_reference_annotation_items({
       create_reference_annotation_item({
         id: reference_annotation_id(line.idx),
         endpoints,
-        annotation: line.annotation,
+        annotation,
         clearance,
       }),
     )
@@ -630,40 +612,27 @@ export function create_reference_annotation_items({
 
 export function solve_reference_annotations({
   base_solution,
-  pad,
-  width,
-  height,
-  obstacles_norm,
   exclusion_rects = [],
   lines,
   ranges,
   scales,
-  clearance,
-}: {
+  clearance = 4,
+  ...scene
+}: Omit<DecorationScene, `items`> & {
   base_solution: DecorationSolution
-  pad: Required<Sides>
-  width: number
-  height: number
-  obstacles_norm: readonly DecorationPoint[]
-  exclusion_rects?: readonly Rect[]
   lines: readonly IndexedRefLine[]
   ranges: ReferenceLineRanges
   scales: ReferenceLineScales
   clearance?: number
-  grid_resolution?: number
 }): DecorationSolution {
   const annotations = solve_decorations({
-    base_pad: pad,
-    width,
-    height,
-    obstacles_norm,
+    ...scene,
     exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],
     items: create_reference_annotation_items({ lines, ranges, scales, clearance }),
-    grid_resolution,
   })
   return {
     ...base_solution,
-    pad,
+    pad: scene.base_pad,
     plot_bounds: annotations.plot_bounds,
     placements: [...base_solution.placements, ...annotations.placements],
   }
@@ -673,8 +642,7 @@ export const get_reference_annotation_placement = (
   solution: DecorationSolution,
   line_idx: number,
 ): ReferenceAnnotationCandidate | undefined =>
-  solution.placements.find(({ id }) => id === reference_annotation_id(line_idx))
-    ?.reference_annotation
+  get_decoration_placement(solution, reference_annotation_id(line_idx))?.reference_annotation
 
 export function resolve_reference_annotation(
   endpoints: Vec4,
@@ -718,9 +686,7 @@ export function normalize_to_scene(
   scene_size: number,
 ): number {
   const range = max_val - min_val
-  // When range is zero (min === max), return center position
-  if (range === 0) return 0
-  return ((value - min_val) / range - 0.5) * scene_size
+  return range === 0 ? 0 : ((value - min_val) / range - 0.5) * scene_size
 }
 
 // Create a function to convert user data coordinates to Three.js coordinates

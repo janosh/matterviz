@@ -21,6 +21,7 @@
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import {
     decoration_placement_rects,
+    get_decoration_placement,
     solve_decorations,
     type DecorationItem,
   } from '$lib/plot/core/decorations'
@@ -487,26 +488,23 @@
   let decoration_solution = $derived(
     solve_reference_annotations({
       base_solution: base_decoration_solution,
-      pad,
+      base_pad: pad,
       width,
       height,
       obstacles_norm: bin_obstacles_norm,
       lines: indexed_ref_lines,
       ranges: { x: x_range, y: y_range },
       scales: { x: x_scale_fn, y: y_scale_fn },
-      clearance: 4,
       grid_resolution: 12,
     }),
   )
   let colorbar_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `density-colorbar`),
+    get_decoration_placement(decoration_solution, `density-colorbar`),
   )
   let annotation_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `free-annotation`),
+    get_decoration_placement(decoration_solution, `free-annotation`),
   )
-  let decoration_exclusion_rects = $derived(
-    decoration_placement_rects(decoration_solution),
-  )
+  let decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
   const get_color_bar_placement = () => colorbar_placement ?? null
   const get_annotation_placement = () =>
@@ -1081,7 +1079,10 @@
           x_scale={x_scale_fn}
           y_scale={y_scale_fn}
           {clip_path_id}
-          annotation_placement={reference_annotation_placement(line.idx)}
+          annotation_placement={get_reference_annotation_placement(
+            decoration_solution,
+            line.idx,
+          )}
         />
       {/each}
     </g>

@@ -106,8 +106,7 @@ export const create_legend_decoration_item = ({
               items,
               collapsed_groups: config.collapsed_groups,
               show_filter:
-                (config.filterable ?? true) &&
-                items.length >= (config.filter_threshold ?? 12),
+                (config.filterable ?? true) && items.length >= (config.filter_threshold ?? 12),
             }).length,
             orientation: config.layout ?? `vertical`,
             item_extents: config.item_extents,

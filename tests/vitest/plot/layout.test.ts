@@ -436,7 +436,13 @@ describe(`layout utility functions`, () => {
       expect(x_layout([`-alpha`], 10).lines).toEqual([[`-alpha`]])
     })
 
-    it.each([`solid‑state`, `10 eV`, `10 eV`])(`does not split %s`, (label) => {
+    // Named explicitly: these differ only by invisible code points, so `%s` would print
+    // tests that look identical and a regression could not be traced back to one input.
+    it.each([
+      [`a non-breaking hyphen`, `solid\u2011state`],
+      [`a no-break space`, `10\u00A0eV`],
+      [`a narrow no-break space`, `10\u202FeV`],
+    ])(`does not split across %s`, (_name, label) => {
       expect(x_layout([label], 10).lines).toEqual([[label]])
     })
 
@@ -573,14 +579,9 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`adaptive tick layout`, () => {
-    beforeEach(() => {
-      clear_tick_metrics_cache()
-      mock_text_measurement(7)
-    })
-    afterEach(() => {
-      clear_tick_metrics_cache()
-      vi.restoreAllMocks()
-    })
+    // The root beforeEach in tests/vitest/setup.ts already drops the memoised metrics.
+    beforeEach(() => mock_text_measurement(7))
+    afterEach(() => vi.restoreAllMocks())
 
     it(`uses irregular projected positions for bounded thinning`, () => {
       const tick_values = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
@@ -637,9 +638,9 @@ describe(`layout utility functions`, () => {
         `x`,
       )
 
+      // Density-based, so both endpoints survive and the interior collapses to one tick —
+      // a collision-pair count would have thinned all the way down to min_visible_ticks.
       expect(layout.strategy).toBe(`thin`)
-      expect(layout.visible_tick_indices).toHaveLength(3)
-      expect(layout.visible_tick_indices.length).toBeGreaterThan(2)
       expect(layout.visible_tick_indices).toEqual([0, 250, 499])
     })
 
@@ -847,54 +848,56 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`measure_max_tick_width`, () => {
-    it.each([[`there are no ticks to measure`, () => measure_max_tick_width([], `.2s`)]])(
-      `returns 0 when %s`,
-      (_label, measure) => expect(measure()).toBe(0),
-    )
+    it(`returns 0 when there are no ticks to measure`, () => {
+      expect(measure_max_tick_width([], `.2s`)).toBe(0)
+    })
 
     it(`uses deterministic pre-mount metrics when canvas has no text metrics`, () => {
       expect(measure_text_width(`hello`)).toBe(36)
       expect(measure_max_tick_width([1, 2, 3])).toBeCloseTo(7.2)
     })
 
-    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+    // Records the exact strings handed to the canvas, which is what proves the formatter
+    // and the custom-label lookup ran before measurement rather than after it.
+    const with_recorded_labels = <T>(
+      px_per_char: number,
+      run: () => T,
+    ): { result: T; measured_labels: string[] } => {
       const measured_labels: string[] = []
       const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
         font: ``,
         measureText: (label: string) => {
           measured_labels.push(label)
-          return { width: label.length }
+          return { width: label.length * px_per_char }
         },
       } as unknown as CanvasRenderingContext2D)
+      // Self-contained so two calls in one test cannot read each other's cached widths.
+      clear_tick_metrics_cache()
       try {
-        expect(measure_max_tick_width([4500])).toBe(4)
-        expect(measured_labels).toEqual([`4.5k`])
+        return { result: run(), measured_labels }
       } finally {
         context_spy.mockRestore()
       }
+    }
+
+    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+      const { result, measured_labels } = with_recorded_labels(1, () =>
+        measure_max_tick_width([4500]),
+      )
+      expect(result).toBe(4)
+      expect(measured_labels).toEqual([`4.5k`])
     })
 
     it(`prefers a custom ticks Record over the numeric format`, () => {
-      const measured_labels: string[] = []
-      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
-        measureText: (label: string) => {
-          measured_labels.push(label)
-          return { width: label.length * 7 }
-        },
-      } as unknown as CanvasRenderingContext2D)
-      try {
-        expect(
-          measure_max_tick_width([0, 1, 2], `.2~g`, {
-            0: `QUEUE_HOLD`,
-            1: `RUNNING`,
-            2: `DONE`,
-          }),
-        ).toBe(`QUEUE_HOLD`.length * 7)
-        expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
-      } finally {
-        context_spy.mockRestore()
-      }
+      const { result, measured_labels } = with_recorded_labels(7, () =>
+        measure_max_tick_width([0, 1, 2], `.2~g`, {
+          0: `QUEUE_HOLD`,
+          1: `RUNNING`,
+          2: `DONE`,
+        }),
+      )
+      expect(result).toBe(`QUEUE_HOLD`.length * 7)
+      expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
     })
   })
 

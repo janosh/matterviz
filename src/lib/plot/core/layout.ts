@@ -148,11 +148,9 @@ const selected_axis_title = (
 ): { label: string; segments: AxisTitleSegment[]; interactive: boolean } => {
   const option =
     axis.options?.find(({ key }) => key === axis.selected_key) ?? axis.options?.[0]
-  const value = option
-    ? option.unit
-      ? `${option.label} (${option.unit})`
-      : option.label
-    : (axis.label ?? ``)
+  const value = option?.unit
+    ? `${option.label} (${option.unit})`
+    : (option?.label ?? axis.label ?? ``)
   const segments = parse_axis_title_segments(value)
   return {
     label: segments.map(({ text }) => text).join(``),

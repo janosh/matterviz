@@ -186,12 +186,11 @@
     <!-- Annotation (outside clip-path to remain visible) -->
     {#if annotation_pos && ref_line.annotation}
       {@const anno = ref_line.annotation}
-      {@const annotation_metrics = estimate_reference_annotation_metrics(anno)}
-      {@const background_rect = reference_annotation_text_rect(
-        annotation_pos,
-        annotation_metrics,
-      )}
       {#if anno.background}
+        {@const background_rect = reference_annotation_text_rect(
+          annotation_pos,
+          estimate_reference_annotation_metrics(anno),
+        )}
         <rect
           x={background_rect.x}
           y={background_rect.y}

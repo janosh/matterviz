@@ -1,4 +1,9 @@
-import { get_legend_grid_cells, suggest_legend_tracks } from '$lib/plot/core/decorations'
+import {
+  create_legend_decoration_item,
+  get_legend_grid_cells,
+  resolve_legend_layout_tracks,
+  suggest_legend_tracks,
+} from '$lib/plot/core/decorations'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
@@ -106,4 +111,37 @@ describe(`get_legend_grid_cells`, () => {
       }).map(({ kind }) => kind),
     ).toEqual([`filter`, `empty`])
   })
+})
+
+test(`builds solver legend items and resolves their track count`, () => {
+  const disabled = create_legend_decoration_item({
+    enabled: false,
+    footprint: { width: 100, height: 50 },
+    items: [],
+  })
+  expect(disabled).toBeNull()
+
+  const item = create_legend_decoration_item({
+    enabled: true,
+    footprint: { width: 100, height: 50 },
+    items: [
+      { label: `A`, legend_group: `Group` },
+      { label: `B`, legend_group: `Group` },
+    ],
+    config: {
+      axis_clearance: 8,
+      layout: `horizontal`,
+      layout_tracks: `auto`,
+      filter_threshold: 2,
+    },
+  })
+  expect(item).toMatchObject({
+    id: `legend`,
+    kind: `legend`,
+    clearance: 8,
+    auto_tracks: { item_count: 4, orientation: `horizontal` },
+  })
+  expect(resolve_legend_layout_tracks(`auto`, { layout_tracks: 0 })).toBe(1)
+  expect(resolve_legend_layout_tracks(`auto`, null)).toBe(`auto`)
+  expect(resolve_legend_layout_tracks(2, { layout_tracks: 4 })).toBe(2)
 })

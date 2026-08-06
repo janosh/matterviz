@@ -60,6 +60,7 @@
     clip_bar,
     create_legend_decoration_item,
     decoration_placement_rects,
+    get_decoration_placement,
     resolve_legend_layout_tracks,
     solve_decorations,
   } from '$lib/plot/core/decorations'
@@ -680,22 +681,17 @@
   const decoration_solution = $derived(
     solve_reference_annotations({
       base_solution: base_decoration_solution,
-      pad,
+      base_pad: pad,
       width,
       height,
       obstacles_norm,
       lines: indexed_ref_lines,
       ranges: ranges.current,
       scales,
-      clearance: 4,
     }),
   )
-  const solved_legend = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
-  const decoration_exclusion_rects = $derived(
-    decoration_placement_rects(decoration_solution),
-  )
+  const solved_legend = $derived(get_decoration_placement(decoration_solution, `legend`))
+  const decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
   // Compute plot center for point tweening origin
   let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)

@@ -74,6 +74,7 @@
   import {
     create_legend_decoration_item,
     decoration_placement_rects,
+    get_decoration_placement,
     resolve_legend_layout_tracks,
     solve_decorations,
     type DecorationItem,
@@ -1201,7 +1202,7 @@
   const decoration_solution = $derived(
     solve_reference_annotations({
       base_solution: base_decoration_solution,
-      pad,
+      base_pad: pad,
       width,
       height,
       obstacles_norm,
@@ -1214,14 +1215,11 @@
         y2: [y2_min, y2_max],
       },
       scales: { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn },
-      clearance: 4,
     }),
   )
-  const legend_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `legend`),
-  )
+  const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
   const colorbar_placement = $derived(
-    decoration_solution.placements.find(({ id }) => id === `colorbar`),
+    get_decoration_placement(decoration_solution, `colorbar`),
   )
 
   const get_legend_placement = () => legend_placement ?? null

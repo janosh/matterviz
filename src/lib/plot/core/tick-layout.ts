@@ -36,17 +36,6 @@ export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 6
 export const TICK_STAGGER_GAP = 4
 
-// Keep only the duplicate calc_auto_padding/PlotAxis lookup. Resizes and zooms change the exact
-// geometry key, so retaining older layouts only accumulates entries that cannot be reused.
-let cached_layout: { key: string; value: ResolvedTickLayout } | undefined
-
-// Drop memoised layouts and the text metrics they were derived from. Call after the rendering
-// font changes (web font load) or, in tests, between cases that stub canvas measurement.
-export const clear_tick_metrics_cache = (): void => {
-  cached_layout = undefined
-  clear_text_metrics_cache()
-}
-
 // Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas
 // font shorthand, while tick layout holds the FontSpec resolved off a rendered tick.
 export const measure_text_width = (
@@ -90,6 +79,19 @@ export interface ResolvedTickLayout {
   visible_ticks: (string | number)[]
   strategy: TickStrategy
   stagger_step: number
+}
+
+// Retain the latest exact layout per side for duplicate padding/render lookups. Resizes and
+// zooms replace these entries instead of accumulating geometry keys that cannot be reused.
+let cached_layouts: Partial<
+  Record<TickLayoutSide, { key: string; value: ResolvedTickLayout }>
+> = {}
+
+// Drop memoised layouts and the text metrics they were derived from. Call after the rendering
+// font changes (web font load) or, in tests, between cases that stub canvas measurement.
+export const clear_tick_metrics_cache = (): void => {
+  cached_layouts = {}
+  clear_text_metrics_cache()
 }
 
 const tick_text = (
@@ -852,8 +854,9 @@ export const resolve_tick_layout = (
     `${font.font_family},${font.font_size},${font.font_style},${font.font_variant},${font.font_weight},${font.font_stretch},${font.line_height}`,
     full_texts.join(`\u0000`),
   ].join(`|`)
-  if (cached_layout?.key === key) return cached_layout.value
+  const cached = cached_layouts[side]
+  if (cached?.key === key) return cached.value
   const resolved = compute_tick_layout(axis, axis_size, side, full_texts)
-  cached_layout = { key, value: resolved }
+  cached_layouts[side] = { key, value: resolved }
   return resolved
 }
