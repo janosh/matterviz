@@ -30,7 +30,7 @@ import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 6
-export const TICK_STAGGER_GAP = 4
+const TICK_STAGGER_GAP = 4
 
 // Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas
 // font shorthand, while tick layout holds the FontSpec resolved off a rendered tick.
@@ -411,9 +411,7 @@ const measure_candidate = ({
   const measurements = {
     collisions:
       geometry.collisions.count + Number(endpoint_violation) + Number(visible_count_violation),
-    edge_overflow_px:
-      geometry.overflows.reduce((total, overflow) => total + overflow.total, 0) +
-      band_overflow,
+    edge_overflow_px: geometry.edge_overflow_px + band_overflow,
     band_fraction: band / Math.max(1, max_band ?? DEFAULT_MAX_BAND_FOR_SCORING),
   }
   return {
@@ -439,6 +437,7 @@ const upright_layout = (
   full_texts: readonly string[],
 ): ResolvedTickLayout => {
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
+  const label_side = effective_side(side, axis.tick?.label?.inside ?? false)
   const lines = full_texts.map(explicit_tick_lines)
   const labels = full_texts.map(
     (full_text, tick_index): ResolvedTickLabel => ({
@@ -448,7 +447,7 @@ const upright_layout = (
       lines: lines[tick_index],
       visible: true,
       stagger_row: 0,
-      anchor: side === `y` ? `end` : side === `y2` ? `start` : `middle`,
+      anchor: label_side === `y` ? `end` : label_side === `y2` ? `start` : `middle`,
       rotation: 0,
     }),
   )
@@ -610,7 +609,7 @@ const compute_tick_layout = (
           rotation_sources.map(([id_prefix, labels]) =>
             create_tick_candidate({
               id: `${id_prefix}-${angle}`,
-              strategy: `rotate`,
+              strategy: id_prefix === `wrap-rotate` ? `wrap` : `rotate`,
               labels,
               rotation_deg: rotation_sign * angle,
             }),

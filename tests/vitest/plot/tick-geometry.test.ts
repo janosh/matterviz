@@ -160,15 +160,9 @@ describe(`actual-position collision detection`, () => {
   })
 
   it(`uses irregular nonmonotonic positions rather than nominal tick pitch`, () => {
-    const sweep = detect_tick_label_collisions_sweep(irregular_labels)
-    expect(sweep.pairs).toEqual([
-      { first_idx: 1, second_idx: 2, first_id: `left`, second_id: `near-left` },
-    ])
-    expect(sweep).toMatchObject({
+    expect(detect_tick_label_collisions_sweep(irregular_labels)).toEqual({
       colliding_indices: [1, 2],
-      colliding_ids: [`left`, `near-left`],
       count: 1,
-      has_collisions: true,
     })
   })
 
@@ -183,7 +177,7 @@ describe(`actual-position collision detection`, () => {
             axis_extent: { start: -100, end: 100 },
           }),
           gap,
-        ).has_collisions
+        ).count > 0
       expect(collides(8)).toBe(true)
       expect(collides(15, 5)).toBe(false)
       expect(collides(15, 5.01)).toBe(true)
@@ -206,7 +200,7 @@ describe(`actual-position collision detection`, () => {
       axis_extent: { start: 0, end: 100 },
     })
     expect(labels.map(({ stagger_row }) => stagger_row)).toEqual([0, 1])
-    expect(detect_tick_label_collisions_sweep(labels).has_collisions).toBe(false)
+    expect(detect_tick_label_collisions_sweep(labels).count).toBe(0)
   })
 
   it(`uses signed rotation for cross-axis collision distances`, () => {
@@ -228,7 +222,7 @@ describe(`actual-position collision detection`, () => {
       side: `x`,
       axis_extent: { start: 0, end: 100 },
     })
-    expect(detect_tick_label_collisions_sweep(labels).has_collisions).toBe(true)
+    expect(detect_tick_label_collisions_sweep(labels).count).toBe(1)
   })
 
   it(`separates rotated labels whose AABBs overlap`, () => {
@@ -241,7 +235,7 @@ describe(`actual-position collision detection`, () => {
       side: `x`,
       axis_extent: { start: 0, end: 100 },
     })
-    expect(detect_tick_label_collisions_sweep(labels).pairs).toEqual([])
+    expect(detect_tick_label_collisions_sweep(labels).count).toBe(0)
   })
 
   it(`detects collisions without mutating labels`, () => {
@@ -250,7 +244,7 @@ describe(`actual-position collision detection`, () => {
     expect(irregular_labels).toEqual(labels_before)
   })
 
-  it(`bounds sparse sweep geometry reads below pairwise growth`, () => {
+  it(`keeps sparse sweep geometry reads below quadratic growth`, () => {
     const item_count = 500
     const labels = calculate_tick_label_geometry({
       items: Array.from({ length: item_count }, (_unused, item_idx) =>
@@ -271,7 +265,7 @@ describe(`actual-position collision detection`, () => {
       })
     })
 
-    expect(detect_tick_label_collisions_sweep(instrumented).pairs).toEqual([])
+    expect(detect_tick_label_collisions_sweep(instrumented).count).toBe(0)
     expect(aabb_reads).toBeLessThan(item_count * 100)
   })
 
@@ -285,12 +279,9 @@ describe(`actual-position collision detection`, () => {
       side: `x`,
       axis_extent: { start: -20, end: 60 },
     })
-    expect(detect_tick_label_collisions_sweep(labels, 5)).toMatchObject({
-      pairs: [],
+    expect(detect_tick_label_collisions_sweep(labels, 5)).toEqual({
       colliding_indices: [],
-      colliding_ids: [],
       count: 0,
-      has_collisions: false,
     })
   })
 })
@@ -391,22 +382,11 @@ describe(`geometry summaries and measurement`, () => {
     const first = analyze_tick_label_geometry(options)
     const second = analyze_tick_label_geometry(options)
     expect(second).toEqual(first)
-    expect(first.collisions).toMatchObject({
-      pairs: [
-        { first_idx: 0, second_idx: 2, first_id: `right`, second_id: `center` },
-        { first_idx: 1, second_idx: 2, first_id: `left`, second_id: `center` },
-      ],
+    expect(first.collisions).toEqual({
       colliding_indices: [0, 1, 2],
-      colliding_ids: [`right`, `left`, `center`],
       count: 2,
-      has_collisions: true,
     })
-    expect(first).toMatchObject({
-      overflows: [],
-      overflowing_indices: [],
-      overflowing_ids: [],
-      has_overflow: false,
-    })
+    expect(first.edge_overflow_px).toBe(0)
   })
 
   it.each([

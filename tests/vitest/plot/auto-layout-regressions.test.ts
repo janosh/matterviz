@@ -191,7 +191,7 @@ describe(`pure auto-layout cross-feature regressions`, () => {
         edge_gap: 2,
       })
       expect(geometry.collisions.count).toBe(0)
-      expect(geometry.has_overflow).toBe(false)
+      expect(geometry.edge_overflow_px).toBe(0)
     },
   )
 

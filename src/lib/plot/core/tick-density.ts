@@ -1,18 +1,6 @@
 // Pure tick-density helpers shared by scale generation and plot layout. These functions do
 // not depend on a particular scale implementation or on browser measurement APIs.
 
-export interface TickDensitySearchOptions<Tick> {
-  min_requested_count?: number
-  max_requested_count: number
-  generate_ticks: (requested_count: number) => readonly Tick[]
-  layout_fits: (ticks: readonly Tick[], requested_count: number) => boolean
-}
-
-export interface TickDensitySearchResult<Tick> {
-  requested_count: number
-  ticks: Tick[]
-}
-
 const assert_non_negative_finite = (name: string, value: number): void => {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(`${name} must be a non-negative finite number, got ${value}`)
@@ -131,65 +119,4 @@ export const thin_tick_indices = (
     selected_indices.push(right_idx)
   }
   return selected_indices
-}
-
-// Thin arbitrary tick values by source index while preserving their original sorted order.
-export const thin_ticks = <Tick>(
-  ticks: readonly Tick[],
-  requested_visible_count: number,
-  important_indices: readonly number[] = [],
-): Tick[] =>
-  thin_tick_indices(ticks.length, requested_visible_count, important_indices).map(
-    (tick_idx) => ticks[tick_idx],
-  )
-
-// Find the largest requested count whose generated ticks pass layout_fits. Candidate density
-// and layout fitness must be monotonic with requested count: adding requested ticks may turn a
-// fit into a rejection, but not the reverse. The binary search evaluates O(log(count range))
-// candidates and returns the requested count so a measured second pass can reproduce it.
-export const search_densest_fitting_ticks = <Tick>(
-  options: TickDensitySearchOptions<Tick>,
-): TickDensitySearchResult<Tick> | null => {
-  const { min_requested_count = 0, max_requested_count, generate_ticks, layout_fits } = options
-  assert_non_negative_integer(`min_requested_count`, min_requested_count)
-  assert_non_negative_integer(`max_requested_count`, max_requested_count)
-  if (min_requested_count > max_requested_count) {
-    throw new Error(
-      `min_requested_count (${min_requested_count}) must not exceed max_requested_count (${max_requested_count})`,
-    )
-  }
-  if (typeof generate_ticks !== `function`) {
-    throw new TypeError(`generate_ticks must be a function, got ${typeof generate_ticks}`)
-  }
-  if (typeof layout_fits !== `function`) {
-    throw new TypeError(`layout_fits must be a function, got ${typeof layout_fits}`)
-  }
-
-  let lower_count = min_requested_count
-  let upper_count = max_requested_count
-  let best_result: TickDensitySearchResult<Tick> | null = null
-
-  while (lower_count <= upper_count) {
-    const requested_count = lower_count + Math.floor((upper_count - lower_count) / 2)
-    const candidate_ticks = generate_ticks(requested_count)
-    if (!Array.isArray(candidate_ticks)) {
-      throw new TypeError(
-        `generate_ticks must return an array for requested_count=${requested_count}`,
-      )
-    }
-    const fits = layout_fits(candidate_ticks, requested_count)
-    if (typeof fits !== `boolean`) {
-      throw new TypeError(
-        `layout_fits must return a boolean for requested_count=${requested_count}, got ${typeof fits}`,
-      )
-    }
-
-    if (fits) {
-      best_result = { requested_count, ticks: [...candidate_ticks] }
-      lower_count = requested_count + 1
-    } else {
-      upper_count = requested_count - 1
-    }
-  }
-  return best_result
 }

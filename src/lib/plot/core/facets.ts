@@ -510,8 +510,3 @@ export function compute_facet_geometry<Datum>(
   }))
   return resolved
 }
-
-export const compute_facet_rects = <Datum>(
-  layout: FacetGridLayout<Datum>,
-  geometry: FacetGridGeometry,
-): { key: FacetKey; rect: Rect }[] => compute_facet_geometry(layout, geometry).panels

@@ -451,6 +451,7 @@ describe(`layout utility functions`, () => {
         tick: { label: { auto_layout: { strategies: [`wrap`, `rotate`] as const } } },
       }
       const layout = x_layout(labels, 320, wrap_and_rotate)
+      expect(layout.strategy).toBe(`wrap`)
       expect(layout.lines[0].length).toBeGreaterThan(1)
       const unwrapped = x_layout(labels, 320, {
         tick: { label: { max_lines: 1, auto_layout: { strategies: [`rotate`] as const } } },
@@ -559,9 +560,16 @@ describe(`layout utility functions`, () => {
             },
           },
         }
-        const { b: reserved, l, r } = pad_for({ x_axis: slot_axis(crowded, axis, plot_width) })
+        const tick_values = axis.tick_values ?? crowded
+        const {
+          b: reserved,
+          l,
+          r,
+        } = pad_for({
+          x_axis: slot_axis(tick_values, axis, plot_width),
+        })
         const { band } = resolve_tick_layout(
-          slot_axis(axis.tick_values ?? crowded, axis, 400 - l - r),
+          slot_axis(tick_values, axis, 400 - l - r),
           400 - l - r,
           `x`,
         )
@@ -589,16 +597,18 @@ describe(`layout utility functions`, () => {
       expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
     })
 
-    it(`reserves the full wrapped label band above an x2 axis`, () => {
+    it(`reserves room for wrapped labels above an x2 axis`, () => {
+      const axis_size = 220
+      const x2_axis = slot_axis(state_labels, {}, axis_size)
       const { t } = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        width: 220,
-        x2_axis: slot_axis(state_labels),
+        width: axis_size,
+        x2_axis,
       })
-      expect(t).toBe(
-        resolve_tick_layout(slot_axis(state_labels), 220, `x2`).band + 8 + AXIS_LABEL_OUTER,
-      )
+      const band = resolve_tick_layout(x2_axis, axis_size, `x2`).band
+      expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b
@@ -878,6 +888,24 @@ describe(`layout utility functions`, () => {
       )
       expect(layout.rotation).toBe(45)
       expect(layout.labels.every(({ rotation }) => rotation === 45)).toBe(true)
+    })
+
+    it.each([
+      [`y`, false, `end`],
+      [`y`, true, `start`],
+      [`y2`, false, `start`],
+      [`y2`, true, `end`],
+    ] as const)(`anchors collapsed %s labels inside=%s at %s`, (side, inside, expected) => {
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`Label`],
+          tick_positions: [0],
+          tick: { label: { inside } },
+        },
+        0,
+        side,
+      )
+      expect(layout.labels[0].anchor).toBe(expected)
     })
 
     it(`validates geometry and reports unknown strategies before collapsed-axis fallback`, () => {

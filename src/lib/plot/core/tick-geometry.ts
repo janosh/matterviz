@@ -65,35 +65,15 @@ export interface TickAxisEdgeOverflow {
   total: number
 }
 
-interface TickLabelOverflow extends TickAxisEdgeOverflow {
-  item_idx: number
-  id: TickLabelId
-}
-
-interface TickCollisionPair {
-  first_idx: number
-  second_idx: number
-  first_id: TickLabelId
-  second_id: TickLabelId
-}
-
 export interface TickCollisionSummary {
-  method: `sweep`
-  gap: number
-  pairs: readonly TickCollisionPair[]
   colliding_indices: readonly number[]
-  colliding_ids: readonly TickLabelId[]
   count: number
-  has_collisions: boolean
 }
 
 export interface TickGeometrySummary {
   labels: readonly TickLabelGeometry[]
   collisions: TickCollisionSummary
-  overflows: readonly TickLabelOverflow[]
-  overflowing_indices: readonly number[]
-  overflowing_ids: readonly TickLabelId[]
-  has_overflow: boolean
+  edge_overflow_px: number
 }
 
 export interface TickAnchorChoiceOptions {
@@ -492,56 +472,6 @@ const labels_collide = (
   )
 }
 
-const collision_pair = (
-  first: TickLabelGeometry,
-  second: TickLabelGeometry,
-): TickCollisionPair => {
-  const [first_label, second_label] =
-    first.item_idx < second.item_idx ? [first, second] : [second, first]
-  return {
-    first_idx: first_label.item_idx,
-    second_idx: second_label.item_idx,
-    first_id: first_label.id,
-    second_id: second_label.id,
-  }
-}
-
-const collision_pair_order = (first: TickCollisionPair, second: TickCollisionPair): number =>
-  first.first_idx - second.first_idx || first.second_idx - second.second_idx
-
-const build_collision_summary = (
-  labels: readonly TickLabelGeometry[],
-  pairs: readonly TickCollisionPair[],
-  gap: number,
-): TickCollisionSummary => {
-  const sorted_pairs = pairs.toSorted(collision_pair_order)
-  // Set/Map rather than indexOf/find: a crowded axis collides in nearly every pair, and the
-  // quadratic forms made a dense 200-tick axis cost ~40k scans per candidate layout.
-  const seen = new Set<number>()
-  for (const { first_idx, second_idx } of sorted_pairs) {
-    seen.add(first_idx)
-    seen.add(second_idx)
-  }
-  const colliding_indices = [...seen].toSorted(
-    (first_idx, second_idx) => first_idx - second_idx,
-  )
-  const label_by_idx = new Map(labels.map((label) => [label.item_idx, label]))
-  const colliding_ids = colliding_indices.map((item_idx) => {
-    const label = label_by_idx.get(item_idx)
-    if (!label) throw new Error(`Collision references missing tick label index ${item_idx}`)
-    return label.id
-  })
-  return {
-    method: `sweep`,
-    gap,
-    pairs: sorted_pairs,
-    colliding_indices,
-    colliding_ids,
-    count: sorted_pairs.length,
-    has_collisions: sorted_pairs.length > 0,
-  }
-}
-
 export const detect_tick_label_collisions_sweep = (
   labels: readonly TickLabelGeometry[],
   gap = 0,
@@ -554,7 +484,8 @@ export const detect_tick_label_collisions_sweep = (
       first.item_idx - second.item_idx,
   )
   const active: TickLabelGeometry[] = []
-  const pairs: TickCollisionPair[] = []
+  const is_colliding = Array.from({ length: labels.length }, () => false)
+  let count = 0
   for (const current of spatially_sorted) {
     for (let active_idx = active.length - 1; active_idx >= 0; active_idx--) {
       if (active[active_idx].aabb.max_x + gap <= current.aabb.min_x) {
@@ -563,12 +494,19 @@ export const detect_tick_label_collisions_sweep = (
     }
     for (const candidate of active) {
       if (labels_collide(candidate, current, gap)) {
-        pairs.push(collision_pair(candidate, current))
+        is_colliding[candidate.item_idx] = true
+        is_colliding[current.item_idx] = true
+        count += 1
       }
     }
     active.push(current)
   }
-  return build_collision_summary(labels, pairs, gap)
+  return {
+    colliding_indices: is_colliding.flatMap((collides, item_idx) =>
+      collides ? [item_idx] : [],
+    ),
+    count,
+  }
 }
 
 export const analyze_tick_label_geometry = (
@@ -578,20 +516,18 @@ export const analyze_tick_label_geometry = (
   assert_non_negative(gap, `gap`)
   const labels = calculate_tick_label_geometry(options)
   const collisions = detect_tick_label_collisions_sweep(labels, gap)
-  // Most labels do not overflow, so only the ones that do are materialised.
-  const overflows: TickLabelOverflow[] = []
+  let edge_overflow_px = 0
   for (const label of labels) {
-    const overflow = edge_overflow(label.aabb, label.side, options.axis_extent, edge_gap)
-    if (overflow.total > 0) {
-      overflows.push({ item_idx: label.item_idx, id: label.id, ...overflow })
-    }
+    edge_overflow_px += edge_overflow(
+      label.aabb,
+      label.side,
+      options.axis_extent,
+      edge_gap,
+    ).total
   }
   return {
     labels,
     collisions,
-    overflows,
-    overflowing_indices: overflows.map(({ item_idx }) => item_idx),
-    overflowing_ids: overflows.map(({ id }) => id),
-    has_overflow: overflows.length > 0,
+    edge_overflow_px,
   }
 }
