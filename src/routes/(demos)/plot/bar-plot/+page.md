@@ -1403,7 +1403,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
 
   let chart_width = $state(360)
   let orientation = $state<`vertical` | `horizontal`>(`vertical`)
-  let scoring_mode = $state<`readable` | `compact`>(`compact`)
   const category_axis = $derived({
     label: `Synthesis route used for the final experimental protocol`,
     tick: {
@@ -1411,7 +1410,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
         rotation: `auto` as const,
         auto_layout: {
           strategies: adaptive_strategies,
-          scoring: { mode: scoring_mode },
           max_angle: 60,
           max_band: 76,
           min_visible_ticks: 3,
@@ -1441,12 +1439,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
       >Category axis: <select bind:value={orientation}
         ><option value="vertical">x (bottom)</option><option value="horizontal"
           >y (left)</option
-        ></select
-      ></label
-    >
-    <label
-      >Scoring: <select bind:value={scoring_mode}
-        ><option value="compact">compact</option><option value="readable">readable</option
         ></select
       ></label
     >

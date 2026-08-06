@@ -9,7 +9,7 @@ import type { Sides } from '$lib/plot/core/layout'
 import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
 import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
 import type { TicksOption } from '$lib/plot/core/scales'
-import type { TickScoringConfig, TickStrategy } from '$lib/plot/core/tick-strategies'
+import type { TickStrategy } from '$lib/plot/core/tick-strategies'
 import type { FillGradient } from '$lib/plot/core/types/fills'
 
 export type { TweenOptions } from 'svelte/motion'
@@ -473,9 +473,8 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
 export type TickEndpointPolicy = `preserve` | `adaptive`
 
 export interface TickAutoLayoutConfig {
-  // Candidate strategies evaluated exhaustively. Defaults to every adaptive strategy.
+  // Defaults to upright, wrap, rotate, thin, and collision-gated stagger. Ellipsis is opt-in.
   strategies?: readonly TickStrategy[]
-  scoring?: TickScoringConfig
   // Largest automatic absolute rotation in degrees (default: 90).
   max_angle?: number
   // Hard limit on the outward label band in pixels.

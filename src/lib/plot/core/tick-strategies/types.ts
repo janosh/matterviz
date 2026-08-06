@@ -6,10 +6,8 @@ export const TICK_STRATEGIES = [
   `thin`,
   `ellipsis`,
 ] as const
-export const MIN_RETAINED_INFORMATION_FRACTION = 0.25
 
 export type TickStrategy = (typeof TICK_STRATEGIES)[number]
-export type TickScoringMode = `auto` | `readable` | `compact`
 export type TickStaggerRow = 0 | 1
 
 // Every candidate retains the original text independently from its visual lines. Renderers can
@@ -33,51 +31,14 @@ export interface TickStrategyCandidate {
   rotation_deg: number
 }
 
-export interface TickCandidateMeasurements {
-  // Number of colliding label pairs after layout.
-  collisions: number
-  // Total pixels extending beyond the axis' available edge bounds.
-  edge_overflow_px: number
-  // Candidate's outward label band divided by the caller's available band.
-  band_fraction: number
-}
-
 export interface MeasuredTickCandidate {
   candidate: TickStrategyCandidate
-  measurements: TickCandidateMeasurements
-}
-
-export interface TickScoreWeights {
-  hidden_labels: number
-  information_loss: number
-  band_fraction: number
-  rotation_magnitude: number
-  line_count: number
-  stagger_rows: number
-}
-
-export interface TickScoringConfig {
-  mode?: TickScoringMode
-  weights?: Partial<TickScoreWeights>
-}
-
-// The same dimensions hold raw penalties and their weighted contributions.
-export type TickScorePenalties = TickScoreWeights
-
-export interface TickScoreResult {
-  candidate: TickStrategyCandidate
-  measurements: TickCandidateMeasurements
-  readable: boolean
-  feasible: boolean
-  penalties: TickScorePenalties
-  weighted_penalties: TickScorePenalties
-  // Lower is better. Infeasible candidates retain a finite score for deterministic fallback.
-  score: number
-}
-
-export interface TickSelectionResult {
-  // Null means every candidate violated a hard feasibility constraint.
-  winner: TickScoreResult | null
-  // Includes every candidate, including infeasible ones, in deterministic rank order.
-  evaluated: readonly TickScoreResult[]
+  measurements: {
+    // Number of colliding label pairs after layout.
+    collisions: number
+    // Total pixels extending beyond the axis' available edge bounds.
+    edge_overflow_px: number
+    // Candidate's outward label band divided by the caller's available band.
+    band_fraction: number
+  }
 }

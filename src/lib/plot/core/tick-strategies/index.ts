@@ -4,12 +4,4 @@ export {
   generate_stagger_candidate,
   generate_thinned_candidate,
 } from './candidates'
-export { select_tick_candidate } from './scoring'
-export {
-  TICK_STRATEGIES,
-  type MeasuredTickCandidate,
-  type TickCandidateMeasurements,
-  type TickScoringConfig,
-  type TickStrategy,
-  type TickStrategyCandidate,
-} from './types'
+export { TICK_STRATEGIES, type TickStrategy, type TickStrategyCandidate } from './types'

@@ -550,8 +550,7 @@
       height,
     )
     const padding_ticks = get_plot_ticks(padding_scales)
-    const x2_pad_axis = show_x2 ? x2_axis : {}
-    const y2_pad_axis = show_y2 ? y2_axis : {}
+    const [x2_pad_axis, y2_pad_axis] = [show_x2 ? x2_axis : {}, show_y2 ? y2_axis : {}]
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const measure_axis = (

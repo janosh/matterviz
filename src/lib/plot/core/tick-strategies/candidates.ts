@@ -1,11 +1,12 @@
 import {
-  MIN_RETAINED_INFORMATION_FRACTION,
   TICK_STRATEGIES,
   type TickCandidateLabel,
   type TickStaggerRow,
   type TickStrategy,
   type TickStrategyCandidate,
 } from './types'
+
+const MIN_RETAINED_INFORMATION_FRACTION = 0.25
 
 interface TickCandidateLabelInput {
   full_text: string
@@ -88,10 +89,8 @@ const validate_tick_candidate = (candidate: TickStrategyCandidate): void => {
   })
 }
 
-// Candidate factories validate their output once. Transforming or scoring those immutable-by-
-// contract values should not scan every label again, while hand-built candidates still get the
-// full runtime validation at each public entry point.
-export const validate_tick_candidate_once = (candidate: TickStrategyCandidate): void => {
+// Factories validate output once; transforms skip rescanning immutable results but still validate hand-built inputs.
+const validate_tick_candidate_once = (candidate: TickStrategyCandidate): void => {
   if (!produced_candidates.has(candidate)) validate_tick_candidate(candidate)
 }
 

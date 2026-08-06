@@ -12,6 +12,7 @@ const title = {
   align: `start`,
 } as const
 const xy_series = () => [{ x: [0, 1, 2], y: [1, 2, 3] }]
+const xy_props = () => ({ series: xy_series() })
 const y_series = () => [{ y: [1, 2, 3] }]
 const histogram_series = () => [{ x: [], y: [1, 2, 3] }]
 const shared_props = {
@@ -19,59 +20,18 @@ const shared_props = {
   padding: { t: 17 },
   x2_axis: { label: `Upper axis`, tick_values: [0, 1, 2], tick_positions: [0, 50, 100] },
 }
-const plot_cases = [
-  [
-    `BarPlot`,
-    () =>
-      mount_sized(
-        BarPlot,
-        { ...shared_props, series: xy_series() },
-        { selector: `.bar-plot` },
-      ),
-  ],
-  [
-    `BoxPlot`,
-    () =>
-      mount_sized(BoxPlot, { ...shared_props, series: y_series() }, { selector: `.box-plot` }),
-  ],
-  [
-    `Histogram`,
-    () =>
-      mount_sized(
-        Histogram,
-        { ...shared_props, series: histogram_series() },
-        { selector: `.histogram` },
-      ),
-  ],
-  [
-    `ScatterPlot`,
-    () =>
-      mount_sized(
-        ScatterPlot,
-        { ...shared_props, series: xy_series() },
-        { selector: `.scatter` },
-      ),
-  ],
-  [
-    `BinnedScatterPlot`,
-    () =>
-      mount_sized(
-        BinnedScatterPlot,
-        { ...shared_props, series: xy_series() },
-        { selector: `.binned-scatter` },
-      ),
-  ],
-] satisfies [string, () => Promise<HTMLElement>][]
 const hidden_axis_props = {
   x2_axis: { label: `Unused top` },
   y2_axis: { label: `Unused right` },
 }
-const hidden_axis_cases = [
-  [`BarPlot`, BarPlot, { series: xy_series() }, `.bar-plot`, 20],
-  [`BoxPlot`, BoxPlot, { series: y_series() }, `.box-plot`, 20],
-  [`Histogram`, Histogram, { series: histogram_series() }, `.histogram`, 20],
-  [`ScatterPlot`, ScatterPlot, { series: xy_series() }, `.scatter`, 5],
+const plot_cases = [
+  [`BarPlot`, BarPlot, xy_props, `.bar-plot`],
+  [`BoxPlot`, BoxPlot, () => ({ series: y_series() }), `.box-plot`],
+  [`Histogram`, Histogram, () => ({ series: histogram_series() }), `.histogram`],
+  [`ScatterPlot`, ScatterPlot, xy_props, `.scatter`],
+  [`BinnedScatterPlot`, BinnedScatterPlot, xy_props, `.binned-scatter`],
 ] as const
+const hidden_axis_cases = plot_cases.slice(0, -1)
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -81,8 +41,12 @@ afterEach(() => {
 describe(`Cartesian plot titles`, () => {
   test.each(plot_cases)(
     `%s renders a measured title block before its plot area`,
-    async (_, mount) => {
-      const root = await mount()
+    async (_, component, get_props, selector) => {
+      const root = await mount_sized(
+        component,
+        { ...shared_props, ...get_props() },
+        { selector },
+      )
       const title_text = root.querySelector(`.plot-title-text`)
       const subtitle_text = root.querySelector(`.plot-subtitle-text`)
       const clip_rect = title_text?.closest(`svg`)?.querySelector(`clipPath rect`)
@@ -102,16 +66,16 @@ describe(`Cartesian plot titles`, () => {
 
   test.each(hidden_axis_cases)(
     `%s does not reserve padding for hidden secondary axes`,
-    async (_, component, props, selector, expected_top) => {
+    async (_, component, get_props, selector) => {
       const root = await mount_sized(
         component,
-        { ...hidden_axis_props, ...props },
+        { ...hidden_axis_props, ...get_props() },
         { selector },
       )
       const clip_rect = root.querySelector(`clipPath rect`)
       const clip_x = Number(clip_rect?.getAttribute(`x`))
       expect(root.querySelector(`.x2-axis, .y2-axis`)).toBeNull()
-      expect(Number(clip_rect?.getAttribute(`y`))).toBe(expected_top)
+      expect(Number(clip_rect?.getAttribute(`y`))).toBe(component === ScatterPlot ? 5 : 20)
       expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(20)
     },
   )

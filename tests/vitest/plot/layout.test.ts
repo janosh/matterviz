@@ -821,54 +821,19 @@ describe(`layout utility functions`, () => {
       },
     )
 
-    it(`never renders blank or bare-ellipsis labels under default scoring`, () => {
-      const tick_count = 50
-      const axis_size = 800
+    it(`uses ellipsis only when explicitly enabled and keeps the full text`, () => {
+      const tick_values = [`Formation`, `Temperature`]
       const layout = resolve_tick_layout(
         {
-          ...uniform_axis(
-            Array.from(
-              { length: tick_count },
-              (_unused, tick_idx) => `Formation energy per atom ${tick_idx}`,
-            ),
-            axis_size,
-          ),
+          ...uniform_axis(tick_values, 120),
+          tick: { label: { auto_layout: { strategies: [`ellipsis`] } } },
         },
-        axis_size,
+        120,
         `x`,
       )
-      const visible_texts = layout.labels
-        .filter(({ visible }) => visible)
-        .map(({ lines }) => lines.join(`\n`))
-
-      expect(visible_texts.length).toBeGreaterThanOrEqual(2)
-      expect(
-        visible_texts.every(
-          (display_text) => display_text.trim() !== `` && !/^…+$/u.test(display_text.trim()),
-        ),
-      ).toBe(true)
-    })
-
-    it(`keeps explicit rotation and full accessibility text`, () => {
-      const layout = resolve_tick_layout(
-        {
-          ...uniform_axis([`Full label`], 100),
-          tick: {
-            label: {
-              rotation: 37,
-              auto_layout: { strategies: [`ellipsis`, `thin`] },
-            },
-          },
-        },
-        100,
-        `x`,
-      )
-      expect(layout.rotation).toBe(37)
-      expect(layout.labels[0]).toMatchObject({
-        full_text: `Full label`,
-        visible: true,
-        rotation: 37,
-      })
+      expect(layout.strategy).toBe(`ellipsis`)
+      expect(layout.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
+      expect(layout.labels.every(({ lines }) => lines[0].endsWith(`…`))).toBe(true)
     })
 
     it(`keeps explicit rotation when the axis geometry collapses`, () => {

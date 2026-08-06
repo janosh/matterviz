@@ -19,12 +19,12 @@ import {
   generate_stagger_candidate,
   generate_ellipsis_candidate,
   generate_thinned_candidate,
-  select_tick_candidate,
   TICK_STRATEGIES,
-  type MeasuredTickCandidate,
   type TickStrategy,
   type TickStrategyCandidate,
 } from '$lib/plot/core/tick-strategies'
+import { select_tick_candidate } from '$lib/plot/core/tick-strategies/scoring'
+import type { MeasuredTickCandidate } from '$lib/plot/core/tick-strategies/types'
 import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
 
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
@@ -143,17 +143,8 @@ const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 const DEFAULT_TICK_LABEL_MAX_LINES = 3
 const DEFAULT_MAX_BAND_FOR_SCORING = 80
 const DEFAULT_VERTICAL_WRAP_WIDTH = DEFAULT_MAX_BAND_FOR_SCORING
-// `abbreviate` is gone: across 240 sampled axis shapes it never won a single layout, and
-// shortening words is a lossy edit nobody asked for. `stagger` stays — it is the only thing
-// that separates vertical ticks a few px apart, where rotation is wrong and thinning is capped.
-const DEFAULT_STRATEGY_ORDER: readonly TickStrategy[] = [
-  `upright`,
-  `wrap`,
-  `stagger`,
-  `thin`,
-  `rotate`,
-  `ellipsis`,
-]
+// Ellipsis is opt-in; default staggering is only generated when upright labels collide.
+const DEFAULT_STRATEGY_ORDER = [`upright`, `wrap`, `rotate`, `thin`, `stagger`] as const
 
 // Split on semantic boundaries without changing the displayed text. Whitespace, separators,
 // and lower-to-upper camel-case transitions are useful wrap points; ordinary words stay intact.
@@ -309,13 +300,11 @@ const rotation_angles = (max_angle: number): number[] => {
 const auto_rotation_sign = (side: TickLayoutSide, inside: boolean): 1 | -1 =>
   (side === `x2` || side === `y2`) !== inside ? 1 : -1
 
-interface CandidateGeometry {
-  candidate: TickStrategyCandidate
+interface CandidateGeometry extends MeasuredTickCandidate {
   labels: readonly TickLabelGeometry[]
   colliding_label_count: number
   band: number
   stagger_step: number
-  measured: MeasuredTickCandidate
 }
 
 // How far labels reach away from their baseline: x/x2 measure vertically, y/y2 horizontally,
@@ -417,7 +406,7 @@ const measure_candidate = ({
     stagger_step,
     colliding_label_count: geometry.collisions.colliding_indices.length,
     band,
-    measured: { candidate, measurements },
+    measurements,
   }
 }
 
@@ -544,13 +533,12 @@ const compute_tick_layout = (
       `auto_layout.min_visible_ticks`,
     ),
   )
-  const preserve_endpoints = (auto_layout.endpoint_policy ?? `preserve`) === `preserve`
   const candidate_config = {
     ...common_config,
     edge_gap,
     max_band,
     min_visible_ticks,
-    preserve_endpoints,
+    preserve_endpoints: (auto_layout.endpoint_policy ?? `preserve`) === `preserve`,
   }
   const candidates: TickStrategyCandidate[] = []
   // Density estimation and the final scoring pass both want the upright geometry; measuring
@@ -588,7 +576,9 @@ const compute_tick_layout = (
     )
   }
   if (strategies.includes(`stagger`) && renderable_indices.length > 1) {
-    candidates.push(generate_stagger_candidate(upright, { id: `stagger` }))
+    upright_geometry ??= measure_candidate({ candidate: upright, ...candidate_config })
+    if (upright_geometry.colliding_label_count > 0)
+      candidates.push(generate_stagger_candidate(upright, { id: `stagger` }))
   }
   const rotation_sign = auto_rotation_sign(side, axis.tick?.label?.inside ?? false)
   // Horizontal only: rotating a y label trades width for vertical extent, which the scorer
@@ -666,17 +656,7 @@ const compute_tick_layout = (
       ? upright_geometry
       : measure_candidate({ candidate, ...candidate_config }),
   )
-  const selection = select_tick_candidate(
-    measured_candidates.map(({ measured }) => measured),
-    {
-      mode: auto_layout.scoring?.mode,
-      weights: auto_layout.scoring?.weights,
-    },
-  )
-  const winner_id = (selection.winner ?? selection.evaluated[0])?.candidate.id
-  const winner =
-    measured_candidates.find(({ candidate }) => candidate.id === winner_id) ??
-    measured_candidates[0]
+  const winner = select_tick_candidate(measured_candidates) ?? measured_candidates[0]
   return finalize_layout(winner, side)
 }
 
@@ -733,8 +713,6 @@ export const resolve_tick_layout = (
     label?.shift?.x ?? ``,
     label?.shift?.y ?? ``,
     auto_layout?.strategies?.join(`,`) ?? ``,
-    auto_layout?.scoring?.mode ?? ``,
-    JSON.stringify(auto_layout?.scoring?.weights ?? {}),
     auto_layout?.max_angle ?? ``,
     auto_layout?.max_band ?? ``,
     auto_layout?.min_visible_ticks ?? ``,

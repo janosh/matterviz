@@ -51,6 +51,7 @@ type TickRegressionCase = {
   labels?: string[]
   tick_font: FontSpec
   max_band: number
+  expected_strategy?: `stagger`
 }
 
 const tick_cases: TickRegressionCase[] = [
@@ -96,6 +97,7 @@ const tick_cases: TickRegressionCase[] = [
     labels: [`Alpha`, `Beta`, `Gamma`, `Delta`, `Epsilon`, `Zeta`],
     tick_font: font(14, 18),
     max_band: 110,
+    expected_strategy: `stagger`,
   },
   {
     name: `large 24-tick axis`,
@@ -131,7 +133,7 @@ describe(`pure auto-layout cross-feature regressions`, () => {
 
   test.each(tick_cases)(
     `selects a feasible tick layout for $name`,
-    ({ side, size, positions, labels, tick_font, max_band }) => {
+    ({ side, size, positions, labels, tick_font, max_band, expected_strategy }) => {
       const tick_values = labels ?? dense_labels(positions.length)
       const reversed = side === `y`
       const axis_extent = reversed ? { start: size, end: 0 } : { start: 0, end: size }
@@ -164,6 +166,7 @@ describe(`pure auto-layout cross-feature regressions`, () => {
       expect(first.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
       expect(first.labels[0].visible).toBe(true)
       expect(first.labels.at(-1)?.visible).toBe(true)
+      if (expected_strategy) expect(first.strategy).toBe(expected_strategy)
 
       const outward_direction = side === `x` || side === `y2` ? 1 : -1
       const items: TickLabelItem[] = first.labels
