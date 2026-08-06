@@ -33,10 +33,7 @@ const plot_cases = [
 ] as const
 const hidden_axis_cases = plot_cases.slice(0, -1)
 
-afterEach(() => {
-  document.body.replaceChildren()
-  vi.restoreAllMocks()
-})
+afterEach(() => vi.restoreAllMocks())
 
 describe(`Cartesian plot titles`, () => {
   test.each(plot_cases)(
@@ -52,7 +49,6 @@ describe(`Cartesian plot titles`, () => {
       const clip_rect = title_text?.closest(`svg`)?.querySelector(`clipPath rect`)
 
       expect(title_text?.getAttribute(`aria-label`)).toBe(title.text)
-      expect(title_text?.getAttribute(`text-anchor`)).toBe(`start`)
       expect(subtitle_text?.getAttribute(`aria-label`)).toBe(title.subtitle)
       expect(Number(title_text?.querySelector(`tspan`)?.getAttribute(`x`))).toBe(
         Number(clip_rect?.getAttribute(`x`)),

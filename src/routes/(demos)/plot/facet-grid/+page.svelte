@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { FacetGrid, ScatterPlot } from 'matterviz'
+  import {
+    BarPlot,
+    BinnedScatterPlot,
+    BoxPlot,
+    FacetGrid,
+    Histogram,
+    ScatterPlot,
+  } from 'matterviz'
+  import type { Component } from 'svelte'
 
   const strain_values = [-6, -4, -2, 0, 2, 4, 6]
   const method_configs = [
@@ -12,8 +20,44 @@
     { key: `magnesium-oxide`, title: `Magnesium oxide`, offset: 0.08, curvature: 0.0032 },
     { key: `lithium-fluoride`, title: `Lithium fluoride`, offset: 0.12, curvature: 0.004 },
   ]
+  type FacetPlot = Component<Record<string, unknown>>
+  const plot_config = (component: unknown, props: Record<string, unknown>) => ({
+    component: component as FacetPlot,
+    props,
+  })
+  const strain_axis = { label: `Isotropic strain (%)`, format: `.0f` }
+  const energy_axis = { label: `Relative energy (eV/atom)` }
+  const standard_props = { legend: null, show_controls: false }
+  const plot_configs = {
+    scatter: plot_config(ScatterPlot, {
+      x_axis: strain_axis,
+      y_axis: energy_axis,
+      range_padding: 0.04,
+      legend: null,
+      controls: { show: false },
+      point_tween: { duration: 0 },
+      line_tween: { duration: 0 },
+    }),
+    bar: plot_config(BarPlot, { x_axis: strain_axis, y_axis: energy_axis, ...standard_props }),
+    box: plot_config(BoxPlot, {
+      x_axis: { label: `Method` },
+      y_axis: energy_axis,
+      ...standard_props,
+    }),
+    histogram: plot_config(Histogram, {
+      x_axis: energy_axis,
+      y_axis: { label: `Count` },
+      ...standard_props,
+    }),
+    binned: plot_config(BinnedScatterPlot, {
+      x_axis: strain_axis,
+      y_axis: energy_axis,
+      density: { color_bar: null },
+    }),
+  }
 
   let point_radius = $state(4)
+  let plot_type = $state<keyof typeof plot_configs>(`scatter`)
   let panels = $derived(
     panel_specs.map(({ key, title, offset, curvature }, panel_idx) => ({
       key,
@@ -29,6 +73,7 @@
               0.006 * Math.sin(strain * 0.8 + phase + panel_idx),
           ),
           label,
+          color,
           markers: `line+points` as const,
           line_style: { stroke: color, stroke_width: 2 },
           point_style: {
@@ -49,17 +94,30 @@
 
 <h1>Facet Grid</h1>
 <p>
-  <code>FacetGrid</code> coordinates child plots without hiding their APIs. Each
-  <code>ScatterPlot</code>
+  <code>FacetGrid</code> coordinates Cartesian child plots without hiding their APIs. Each plot
   reports intrinsic ranges and padding through <code>facet_layout</code>; the grid reconciles
-  them, renders only outer axes, and propagates pan, zoom, and reset updates across the shared
-  axis groups.
+  them, renders only outer axes, and propagates pan, zoom, and reset updates across shared axis
+  groups.
 </p>
 
-<label class="point-size"
-  >Point radius: {point_radius}px
-  <input type="range" bind:value={point_radius} min="2" max="8" step="0.5" /></label
->
+<div class="demo-controls">
+  <label
+    >Plot type
+    <select bind:value={plot_type}>
+      <option value="scatter">Scatter</option>
+      <option value="bar">Bar</option>
+      <option value="box">Box</option>
+      <option value="histogram">Histogram</option>
+      <option value="binned">Binned scatter</option>
+    </select>
+  </label>
+  {#if plot_type === `scatter`}
+    <label
+      >Point radius: {point_radius}px
+      <input type="range" bind:value={point_radius} min="2" max="8" step="0.5" /></label
+    >
+  {/if}
+</div>
 
 <div data-testid="facet-grid-demo" style="height: 720px; min-width: 0">
   <FacetGrid
@@ -72,7 +130,7 @@
   >
     {#snippet title()}
       <div class="shared-title">
-        <strong style="font-size: 1.15em">Equation-of-state comparison</strong>
+        <strong style="font-size: 1.15em">Equation-of-state comparison · {plot_type}</strong>
         <span style="opacity: 0.7"
           >Shared x/y ranges, padding, and linked zoom across four materials</span
         >
@@ -90,20 +148,15 @@
       </div>
     {/snippet}
     {#snippet children(context)}
+      {@const Plot = plot_configs[plot_type].component}
       <div class="facet-panel">
         <strong style="text-align: center">{context.data.title}</strong>
-        <ScatterPlot
+        <Plot
           series={context.data.series}
           facet_layout={context}
-          x_axis={{ label: `Isotropic strain (%)`, format: `.0f` }}
-          y_axis={{ label: `Relative energy after full electronic relaxation (eV/atom)` }}
-          range_padding={0.04}
-          legend={null}
-          controls={{ show: false }}
           fullscreen_toggle={false}
-          point_tween={{ duration: 0 }}
-          line_tween={{ duration: 0 }}
           style="height: 100%; min-height: 0"
+          {...plot_configs[plot_type].props}
         />
       </div>
     {/snippet}
@@ -111,11 +164,16 @@
 </div>
 
 <style>
-  .point-size {
+  .demo-controls {
     display: flex;
     align-items: center;
     gap: 0.6em;
     margin-block: 1em;
+  }
+  .demo-controls label {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
   }
   .shared-title {
     display: grid;

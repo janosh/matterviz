@@ -47,6 +47,8 @@
     reserve_marginal_pad,
   } from '$lib/plot/core/marginals'
   import { type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -167,6 +169,7 @@
     on_error,
     pan = {},
     marginals = false,
+    facet_layout,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
@@ -221,6 +224,7 @@
       on_error?: (error: AxisLoadError) => void
       pan?: PanConfig
       marginals?: MarginalsProp
+      facet_layout?: FacetLayoutContext
     } = $props()
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
@@ -410,6 +414,15 @@
     initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  const facet = create_facet_plot_adapter({
+    axes: FACET_AXES,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => auto_ranges,
+    ranges: () => ranges.current,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
 
   $effect(() => {
     // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
@@ -427,19 +440,20 @@
     if (!axis_ranges_equal(init, next)) {
       ranges = { initial: { ...next }, current: { ...next } }
     }
+    facet.apply_ranges()
   })
 
   // Layout: dynamic padding based on tick label widths
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
   let tick_font = $state<Readonly<FontSpec> | undefined>()
-  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
   const title_config = $derived(normalize_plot_title(title))
 
   // Update padding when format or ticks change
   $effect(() => {
+    const padding_ranges = facet_layout ? auto_ranges : ranges.current
     const padding_scales = create_axis_scales(
       { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
-      ranges.current,
+      padding_ranges,
       base_pad,
       width,
       height,
@@ -460,13 +474,13 @@
       x:
         category_indices && cat_axis === `x` && width && height
           ? cat_tick_indices
-          : padding_axis_ticks(x_axis, ranges.current.x, padding_scales.x, 8),
+          : padding_axis_ticks(x_axis, padding_ranges.x, padding_scales.x, 8),
       y:
         category_indices && cat_axis === `y` && width && height
           ? cat_tick_indices
-          : padding_axis_ticks(y_axis, ranges.current.y, padding_scales.y, 6),
-      y2: padding_axis_ticks(y2_axis, ranges.current.y2, padding_scales.y2, 6, show_y2),
-      x2: padding_axis_ticks(x2_axis, ranges.current.x2, padding_scales.x2, 8, show_x2),
+          : padding_axis_ticks(y_axis, padding_ranges.y, padding_scales.y, 6),
+      y2: padding_axis_ticks(y2_axis, padding_ranges.y2, padding_scales.y2, 6, show_y2),
+      x2: padding_axis_ticks(x2_axis, padding_ranges.x2, padding_scales.x2, 8, show_x2),
     }
     const [x2_pad_axis, y2_pad_axis] = [show_x2 ? x2_axis : {}, show_y2 ? y2_axis : {}]
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
@@ -521,8 +535,8 @@
   // line series contribute sampled polylines.
   const obstacles_norm = $derived.by(() => {
     if (!width || !height || visible_series.length === 0) return []
-    const base_w = width - base_pad.l - base_pad.r
-    const base_h = height - base_pad.t - base_pad.b
+    const base_w = width - effective_base_pad.l - effective_base_pad.r
+    const base_h = height - effective_base_pad.t - effective_base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
     const obstacle_series: {
       points: { x: number; y: number }[]
@@ -532,7 +546,7 @@
     const obstacle_scales = create_axis_scales(
       { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
       ranges.current,
-      base_pad,
+      effective_base_pad,
       width,
       height,
     )
@@ -543,11 +557,11 @@
       const x_scale = srs.x_axis === `x2` ? obstacle_scales.x2 : obstacle_scales.x
       const y_scale = srs.y_axis === `y2` ? obstacle_scales.y2 : obstacle_scales.y
       const category_scale = vertical
-        ? (value: number) => x_scale(value) - base_pad.l
-        : (value: number) => obstacle_scales.y(value) - base_pad.t
+        ? (value: number) => x_scale(value) - effective_base_pad.l
+        : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
       const value_scale = vertical
-        ? (value: number) => y_scale(value) - base_pad.t
-        : (value: number) => x_scale(value) - base_pad.l
+        ? (value: number) => y_scale(value) - effective_base_pad.t
+        : (value: number) => x_scale(value) - effective_base_pad.l
 
       if (is_line) {
         const line_points = srs.x.map((x_val, point_idx) => {
@@ -627,7 +641,7 @@
   )
   const base_decoration_solution = $derived(
     solve_decorations({
-      base_pad,
+      base_pad: effective_base_pad,
       width,
       height,
       obstacles_norm,
@@ -791,23 +805,30 @@
       height: chart_height,
     }),
     pan: () => pan,
-    set_range: (axis, range) => (ranges.current[axis] = range),
+    set_range: facet.update_range,
     svg: () => svg_element,
     on_rect_zoom: (start, current) => {
       // Update axis ranges to trigger reactivity and prevent effect from overriding
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
-      x_axis = { ...x_axis, range: next_x }
+      if (!facet.update_range(`x`, next_x)) x_axis = { ...x_axis, range: next_x }
       // gate x2/y2 on whether they actually render (show_x2/show_y2 also require vertical);
       // otherwise their [0, 1] sentinel scales would store a phantom range in the bindable prop
       const next_x2 = show_x2 ? invert_rect_range(scales.x2, start.x, current.x) : null
-      if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      if (next_x2 && !facet.update_range(`x2`, next_x2)) {
+        x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
-      if (next_y) y_axis = { ...y_axis, range: next_y }
+      if (next_y && !facet.update_range(`y`, next_y)) {
+        y_axis = { ...y_axis, range: next_y }
+      }
       const next_y2 = show_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null
-      if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      if (next_y2 && !facet.update_range(`y2`, next_y2)) {
+        y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      }
     },
     on_reset: () => {
+      if (facet.reset_ranges()) return
       // Reset zoom to initial ranges (undo any pan/zoom)
       ranges.current = {
         x: [...ranges.initial.x] as Vec2,
@@ -1103,9 +1124,9 @@
     >
       <PlotTitle
         config={title_config}
-        x={base_pad.l}
-        y={decoration_solution.pad.t - base_pad.t}
-        width={Math.max(0, width - base_pad.l - base_pad.r)}
+        x={effective_base_pad.l}
+        y={decoration_solution.pad.t - effective_base_pad.t}
+        width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
       />
       <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
@@ -1129,27 +1150,29 @@
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
       <!-- X-axis -->
-      <PlotAxis
-        side="x"
-        ticks={ticks.x}
-        place={scales.x}
-        axis={x_axis}
-        on_tick_font={(font) => (tick_font = font)}
-        domain={ranges.current.x}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.x_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
-        label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `x`}
-        on_axis_change={(key) => handle_axis_change(`x`, key)}
-      />
+      {#if facet.axis_visible(`x`)}
+        <PlotAxis
+          side="x"
+          ticks={ticks.x}
+          place={scales.x}
+          axis={x_axis}
+          on_tick_font={(font) => (tick_font = font)}
+          domain={ranges.current.x}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.x_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+          label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
+          label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `x`}
+          on_axis_change={(key) => handle_axis_change(`x`, key)}
+        />
+      {/if}
 
       <!-- X2-axis (Top): category axis when vertical, value axis when horizontal -->
-      {#if show_x2}
+      {#if show_x2 && facet.axis_visible(`x2`)}
         <PlotAxis
           side="x2"
           ticks={ticks.x2}
@@ -1169,26 +1192,28 @@
       {/if}
 
       <!-- Y-axis -->
-      <PlotAxis
-        side="y"
-        ticks={ticks.y}
-        place={scales.y}
-        axis={y_axis}
-        domain={ranges.current.y}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.y_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
-        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
-        label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `y`}
-        on_axis_change={(key) => handle_axis_change(`y`, key)}
-      />
+      {#if facet.axis_visible(`y`)}
+        <PlotAxis
+          side="y"
+          ticks={ticks.y}
+          place={scales.y}
+          axis={y_axis}
+          domain={ranges.current.y}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.y_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+          label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
+          label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `y`}
+          on_axis_change={(key) => handle_axis_change(`y`, key)}
+        />
+      {/if}
 
       <!-- Y2-axis (Right): only rendered in vertical orientation -->
-      {#if show_y2}
+      {#if show_y2 && facet.axis_visible(`y2`)}
         <PlotAxis
           side="y2"
           ticks={ticks.y2}

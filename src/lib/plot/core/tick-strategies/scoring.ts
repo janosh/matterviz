@@ -16,14 +16,10 @@ const score_candidate = <Candidate extends MeasuredTickCandidate>(measured: Cand
   let max_line_count = 1
   for (const { display_lines } of visible_labels)
     max_line_count = Math.max(max_line_count, display_lines.length)
-  const readable = visible_labels.length > 0
   const feasible =
-    measurements.collisions === 0 &&
-    measurements.edge_overflow_px <= TICK_GEOMETRY_EPSILON &&
-    readable
+    measurements.collisions === 0 && measurements.edge_overflow_px <= TICK_GEOMETRY_EPSILON
   return {
     measured,
-    readable,
     feasible,
     // A finite fallback score preserves readable text when every candidate violates a constraint.
     score:
@@ -43,11 +39,8 @@ const compare_scores = (left: ScoredCandidate, right: ScoredCandidate): number =
   const { candidate: right_candidate, measurements: right_measurements } = right.measured
   const fallback_order = left.feasible
     ? 0
-    : Number(right.readable) - Number(left.readable) ||
-      (left.readable
-        ? left_measurements.collisions - right_measurements.collisions ||
-          left_measurements.edge_overflow_px - right_measurements.edge_overflow_px
-        : 0)
+    : left_measurements.collisions - right_measurements.collisions ||
+      left_measurements.edge_overflow_px - right_measurements.edge_overflow_px
   return (
     Number(right.feasible) - Number(left.feasible) ||
     fallback_order ||

@@ -141,8 +141,7 @@ export const measure_max_tick_width = (
 
 const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 const DEFAULT_TICK_LABEL_MAX_LINES = 3
-const DEFAULT_MAX_BAND_FOR_SCORING = 80
-const DEFAULT_VERTICAL_WRAP_WIDTH = DEFAULT_MAX_BAND_FOR_SCORING
+const DEFAULT_AUTO_LABEL_BAND = 80
 // Ellipsis is opt-in; default staggering is only generated when upright labels collide.
 const DEFAULT_STRATEGY_ORDER = [`upright`, `wrap`, `rotate`, `thin`, `stagger`] as const
 
@@ -220,11 +219,9 @@ const wrap_tick_label = (
 }
 
 const resolved_strategies = (config: TickAutoLayoutConfig): readonly TickStrategy[] => {
-  // Plain Set, not SvelteSet: these are throwaway dedupes inside a pure layout computation,
-  // so reactive signal allocation would be pure overhead on the per-frame path.
   const strategies = config.strategies ?? DEFAULT_STRATEGY_ORDER
   if (strategies.length === 0) throw new Error(`tick auto_layout.strategies must not be empty`)
-  return [...new Set(strategies)].filter((strategy) => {
+  return strategies.filter((strategy) => {
     if (TICK_STRATEGIES.some((candidate) => candidate === strategy)) return true
     console.error(`Ignoring unknown tick auto-layout strategy "${strategy}"`)
     return false
@@ -398,7 +395,7 @@ const measure_candidate = ({
     collisions:
       geometry.collisions.count + Number(endpoint_violation) + Number(visible_count_violation),
     edge_overflow_px: geometry.edge_overflow_px + band_overflow,
-    band_fraction: band / Math.max(1, max_band ?? DEFAULT_MAX_BAND_FOR_SCORING),
+    band_fraction: band / Math.max(1, max_band ?? DEFAULT_AUTO_LABEL_BAND),
   }
   return {
     candidate,
@@ -559,7 +556,7 @@ const compute_tick_layout = (
   let wrapped_labels: typeof explicit_labels | undefined
   if (strategies.includes(`wrap`) && max_lines > 1) {
     const vertical_wrap_width = Math.min(
-      max_band ?? DEFAULT_VERTICAL_WRAP_WIDTH,
+      max_band ?? DEFAULT_AUTO_LABEL_BAND,
       measure_max_tick_width(ticks, axis.format, axis.ticks, font),
     )
     wrapped_labels = base_labels.map((label, tick_idx) => ({
@@ -605,7 +602,7 @@ const compute_tick_layout = (
     candidates.push(
       generate_ellipsis_candidate(upright, {
         id: `ellipsis`,
-        max_width_px: is_horizontal ? slot_widths : (max_band ?? DEFAULT_VERTICAL_WRAP_WIDTH),
+        max_width_px: is_horizontal ? slot_widths : (max_band ?? DEFAULT_AUTO_LABEL_BAND),
         measure_text: (text) => measure_text_width(text, font),
       }),
     )

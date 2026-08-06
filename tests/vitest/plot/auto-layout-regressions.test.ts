@@ -123,13 +123,9 @@ describe(`pure auto-layout cross-feature regressions`, () => {
   beforeEach(() => {
     // Exercise deterministic SSR metrics so the font matrix affects both width and line height.
     vi.stubGlobal(`document`, undefined)
-    clear_tick_metrics_cache()
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    clear_tick_metrics_cache()
-  })
+  afterEach(() => vi.unstubAllGlobals())
 
   test.each(tick_cases)(
     `selects a feasible tick layout for $name`,

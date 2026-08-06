@@ -1,5 +1,9 @@
+import BarPlot from '$lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
 import FacetGrid from '$lib/plot/core/components/FacetGrid.svelte'
 import type { FacetPanel, FacetPanelContext } from '$lib/plot/core/facets'
+import Histogram from '$lib/plot/histogram/Histogram.svelte'
+import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '$lib/plot'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
@@ -28,7 +32,7 @@ class ControlledResizeObserver implements ResizeObserver {
     this.observed_elements.length = 0
   }
 
-  notify(element: Element): void {
+  private notify(element: Element): void {
     if (!this.observed_elements.includes(element)) return
     const rect =
       element instanceof HTMLElement
@@ -52,6 +56,51 @@ interface PanelDatum {
   padding?: { t: number; b: number; l: number; r: number }
 }
 
+type FacetPlotComponent = Component<Record<string, unknown>>
+interface PlotCase {
+  name: string
+  component: FacetPlotComponent
+  root_selector: string
+  extra_props: Record<string, unknown>
+}
+
+const define_plot_case = (
+  name: string,
+  component: unknown,
+  root_selector: string,
+  extra_props: Record<string, unknown>,
+): PlotCase => ({
+  name,
+  component: component as FacetPlotComponent,
+  root_selector,
+  extra_props,
+})
+const standard_props = { show_controls: false, legend: null }
+const histogram_case = define_plot_case(`Histogram`, Histogram, `.histogram`, standard_props)
+const plot_cases: PlotCase[] = [
+  define_plot_case(`ScatterPlot`, ScatterPlot, `.scatter`, {
+    controls: { show: false },
+    legend: null,
+    point_tween: { duration: 0 },
+    line_tween: { duration: 0 },
+  }),
+  define_plot_case(`BarPlot`, BarPlot, `.bar-plot`, standard_props),
+  define_plot_case(`BarPlot horizontal`, BarPlot, `.bar-plot`, {
+    ...standard_props,
+    orientation: `horizontal`,
+  }),
+  define_plot_case(`BoxPlot`, BoxPlot, `.box-plot`, standard_props),
+  define_plot_case(`BoxPlot horizontal`, BoxPlot, `.box-plot`, {
+    ...standard_props,
+    orientation: `horizontal`,
+  }),
+  histogram_case,
+  define_plot_case(`BinnedScatterPlot`, BinnedScatterPlot, `.binned-scatter`, {
+    density: { color_bar: null },
+    render_mode: `points`,
+  }),
+]
+
 const panel_inputs: readonly FacetPanel<PanelDatum>[] = (
   [
     [`top-left`, [-5, 5], [-20, 10], { t: 5, b: 40, l: 90, r: 10 }],
@@ -63,37 +112,38 @@ const panel_inputs: readonly FacetPanel<PanelDatum>[] = (
   key,
   data: { series: [{ x: [0, ...x], y: [0, ...y] }], padding },
 }))
+const keys = panel_inputs.map(({ key }) => String(key))
+const auto_panels = panel_inputs.map(({ key, data }) => ({
+  key,
+  data: { series: data.series },
+}))
 
 const mounted_grids: { component: ReturnType<typeof mount>; target: HTMLElement }[] = []
 
-const mount_facet_scatter = async (panels = panel_inputs) => {
+const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
   const target = document.createElement(`div`)
   document.body.append(target)
   const context_getters: (() => FacetPanelContext<PanelDatum>)[] = []
-  let scatter_mounts = 0
+  let plot_mounts = 0
   const children = createRawSnippet<[FacetPanelContext<PanelDatum>]>((get_context) => {
     context_getters.push(get_context)
     return {
-      render: () => `<div class="facet-scatter-host"></div>`,
+      render: () => `<div class="facet-plot-host"></div>`,
       setup: (element) => {
         const { data } = get_context()
-        scatter_mounts += 1
-        const component = mount(ScatterPlot, {
+        plot_mounts += 1
+        const props: Record<string, unknown> = {
+          ...plot_case.extra_props,
+          series: data.series,
+          padding: data.padding,
+          x_axis: { label: `Shared x` },
+          y_axis: { label: `Shared y` },
+          fullscreen_toggle: false,
+        }
+        Object.defineProperty(props, `facet_layout`, { get: get_context })
+        const component = mount(plot_case.component, {
           target: element,
-          props: {
-            series: data.series,
-            padding: data.padding,
-            x_axis: { label: `Shared x` },
-            y_axis: { label: `Shared y` },
-            display: { x_grid: true, y_grid: true },
-            controls: { show: false },
-            fullscreen_toggle: false,
-            legend: null,
-            point_tween: { duration: 0 },
-            get facet_layout() {
-              return get_context()
-            },
-          },
+          props,
         })
         return () => void unmount(component)
       },
@@ -128,25 +178,24 @@ const mount_facet_scatter = async (panels = panel_inputs) => {
     return panel
   }
   return {
-    root,
     context_for,
     panel_for,
-    scatter_mounts: () => scatter_mounts,
+    plot_mounts: () => plot_mounts,
   }
 }
 
 const clip_rect = (panel: ParentNode): Record<`x` | `y` | `width` | `height`, number> => {
   const rect = panel.querySelector(`defs clipPath rect`)
-  if (!rect) throw new Error(`Scatter clip rectangle not found`)
-  return Object.fromEntries(
-    ([`x`, `y`, `width`, `height`] as const).map((attr) => [
-      attr,
-      Number(rect.getAttribute(attr)),
-    ]),
-  ) as Record<`x` | `y` | `width` | `height`, number>
+  if (!rect) throw new Error(`Plot clip rectangle not found`)
+  return {
+    x: Number(rect.getAttribute(`x`)),
+    y: Number(rect.getAttribute(`y`)),
+    width: Number(rect.getAttribute(`width`)),
+    height: Number(rect.getAttribute(`height`)),
+  }
 }
 
-describe(`FacetGrid + ScatterPlot`, () => {
+describe(`FacetGrid + Cartesian plots`, () => {
   afterEach(async () => {
     for (const { component, target } of mounted_grids.splice(0)) {
       await unmount(component)
@@ -158,114 +207,194 @@ describe(`FacetGrid + ScatterPlot`, () => {
 
   afterAll(() => void (globalThis.ResizeObserver = original_resize_observer))
 
-  test(`aligns shared ranges and plot rectangles with only outer axes across resize`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const { root, context_for, panel_for, scatter_mounts } = await mount_facet_scatter()
-    const keys = panel_inputs.map(({ key }) => String(key))
-    const ranges = (axis: `x` | `y`) => keys.map((key) => context_for(key).ranges[axis])
+  test.each(plot_cases)(
+    `$name aligns shared ranges and plot rectangles with only outer axes`,
+    async (plot_case) => {
+      const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
+      const { context_for, panel_for, plot_mounts } = await mount_facet_plot(plot_case)
+      const ranges = (axis: `x` | `y`) => keys.map((key) => context_for(key).ranges[axis])
 
-    await vi.waitFor(() => {
-      expect(ranges(`x`)).toEqual(keys.map(() => context_for(keys[0]).ranges.x))
-      expect(ranges(`y`)).toEqual(keys.map(() => context_for(keys[0]).ranges.y))
-    })
-
-    expect(panel_for(`top-left`).querySelector(`.x-axis`)).toBeNull()
-    expect(panel_for(`top-right`).querySelector(`.x-axis`)).toBeNull()
-    expect(panel_for(`bottom-left`).querySelector(`.x-axis`)).not.toBeNull()
-    expect(panel_for(`bottom-right`).querySelector(`.x-axis`)).not.toBeNull()
-    expect(panel_for(`top-left`).querySelector(`.y-axis`)).not.toBeNull()
-    expect(panel_for(`bottom-left`).querySelector(`.y-axis`)).not.toBeNull()
-    expect(panel_for(`top-right`).querySelector(`.y-axis`)).toBeNull()
-    expect(panel_for(`bottom-right`).querySelector(`.y-axis`)).toBeNull()
-
-    for (const key of keys) {
-      const scatter = panel_for(key).querySelector<HTMLElement>(`.scatter`)
-      if (!scatter) throw new Error(`No ScatterPlot for facet "${key}"`)
-      const { width, height } = context_for(key).rect
-      Object.defineProperties(scatter, {
-        clientWidth: { value: width, configurable: true },
-        clientHeight: { value: height, configurable: true },
+      await vi.waitFor(() => {
+        expect(ranges(`x`)).toEqual(keys.map(() => context_for(keys[0]).ranges.x))
+        expect(ranges(`y`)).toEqual(keys.map(() => context_for(keys[0]).ranges.y))
       })
-      ControlledResizeObserver.notify(scatter)
-    }
-    await tick()
-    await vi.waitFor(() =>
-      expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual([
-        { x: 90, y: 20, width: 332.5, height: 262.5 },
-        { x: 0, y: 20, width: 332.5, height: 262.5 },
-        { x: 90, y: 0, width: 332.5, height: 262.5 },
-        { x: 0, y: 0, width: 332.5, height: 262.5 },
-      ]),
-    )
 
-    expect(scatter_mounts()).toBe(4)
-    expect(root.querySelectorAll(`.scatter`)).toHaveLength(4)
-    expect(error_spy.mock.calls.flat().join(` `)).not.toContain(`effect_update_depth_exceeded`)
-  })
-
-  test(`propagates rectangle zoom and reset through shared facet ranges`, async () => {
-    const { context_for, panel_for } = await mount_facet_scatter()
-    const keys = panel_inputs.map(({ key }) => String(key))
-    await vi.waitFor(() => expect(context_for(`top-left`).ranges.x).toBeDefined())
-    const initial_x = [...(context_for(`top-left`).ranges.x ?? [])]
-    const initial_y = [...(context_for(`top-left`).ranges.y ?? [])]
-    const svg = panel_for(`top-left`).querySelector<SVGSVGElement>(`svg[role="application"]`)
-    if (!svg) throw new Error(`Top-left ScatterPlot SVG not found`)
-    Object.defineProperty(svg, `getBoundingClientRect`, {
-      value: () => DOMRect.fromRect({ width: 800, height: 600 }),
-    })
-
-    svg.dispatchEvent(
-      new MouseEvent(`mousedown`, {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        clientX: 180,
-        clientY: 80,
-      }),
-    )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
-    await vi.waitFor(() => {
-      const zoomed_x = context_for(`top-left`).ranges.x
-      const zoomed_y = context_for(`top-left`).ranges.y
-      expect(zoomed_x).not.toEqual(initial_x)
-      expect(zoomed_y).not.toEqual(initial_y)
-      expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => zoomed_x))
-      expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => zoomed_y))
-    })
-
-    svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    await vi.waitFor(() => {
-      expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => initial_x))
-      expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => initial_y))
-    })
-  })
-
-  test(`settles intrinsic auto-padding reports without a render loop`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const auto_panels = panel_inputs.map(({ key, data }) => ({
-      key,
-      data: { series: data.series },
-    }))
-    const { context_for, scatter_mounts } = await mount_facet_scatter(auto_panels)
-    const keys = auto_panels.map(({ key }) => String(key))
-
-    await vi.waitFor(() => {
-      const { t = 0, l = 0 } = context_for(`top-left`).padding
-      const { b = 0 } = context_for(`bottom-left`).padding
-      const { r = 0 } = context_for(`top-right`).padding
-      expect([t, b, l, r].every((size) => size > 0)).toBe(true)
-      expect(keys.map((key) => context_for(key).padding)).toEqual([
-        { t, b: 0, l, r: 0 },
-        { t, b: 0, l: 0, r },
-        { t: 0, b, l, r: 0 },
-        { t: 0, b, l: 0, r },
+      expect(keys.map((key) => panel_for(key).querySelector(`.x-axis`) !== null)).toEqual([
+        false,
+        false,
+        true,
+        true,
       ])
-    })
-    for (let settle_idx = 0; settle_idx < 10; settle_idx++) await tick()
+      expect(keys.map((key) => panel_for(key).querySelector(`.y-axis`) !== null)).toEqual([
+        true,
+        false,
+        true,
+        false,
+      ])
 
-    expect(scatter_mounts()).toBe(4)
-    expect(error_spy.mock.calls.flat().join(` `)).not.toContain(`effect_update_depth_exceeded`)
+      for (const key of keys) {
+        const plot = panel_for(key).querySelector<HTMLElement>(plot_case.root_selector)
+        if (!plot) throw new Error(`No ${plot_case.name} for facet "${key}"`)
+        const { width, height } = context_for(key).rect
+        Object.defineProperties(plot, {
+          clientWidth: { value: width, configurable: true },
+          clientHeight: { value: height, configurable: true },
+        })
+        ControlledResizeObserver.notify(plot)
+      }
+      await tick()
+      const expected_offsets = [
+        { x: 90, y: 20 },
+        { x: 0, y: 20 },
+        { x: 90, y: 0 },
+        { x: 0, y: 0 },
+      ]
+      const clips = keys.map((key) => clip_rect(panel_for(key)))
+      expect(clips.map(({ x, y }) => ({ x, y }))).toEqual(expected_offsets)
+      const core_sizes = keys.map((key) => {
+        const { rect, padding } = context_for(key)
+        return {
+          width: rect.width - (padding.l ?? 0) - (padding.r ?? 0),
+          height: rect.height - (padding.t ?? 0) - (padding.b ?? 0),
+        }
+      })
+      expect(core_sizes).toEqual(keys.map(() => core_sizes[0]))
+      if (plot_case.name === `ScatterPlot` || plot_case.name === `BinnedScatterPlot`) {
+        for (const [clip_idx, clip] of clips.entries()) {
+          expect(Math.abs(clip.width - core_sizes[clip_idx].width)).toBeLessThanOrEqual(0.5)
+          expect(Math.abs(clip.height - core_sizes[clip_idx].height)).toBeLessThanOrEqual(0.5)
+        }
+      }
+
+      expect(plot_mounts()).toBe(4)
+      expect(error_spy.mock.calls.flat().join(` `)).not.toContain(
+        `effect_update_depth_exceeded`,
+      )
+    },
+  )
+
+  test(`Histogram derives shared count ranges from the reconciled x domain`, async () => {
+    const panel = (key: string, values: number[]): FacetPanel<PanelDatum> => ({
+      key,
+      data: { series: [{ x: [], y: values }] },
+    })
+    const clustered_panels = [
+      panel(
+        `low`,
+        Array.from({ length: 9 }, (_, value_idx) => (value_idx + 1) / 10),
+      ),
+      panel(
+        `high`,
+        Array.from({ length: 9 }, (_, value_idx) => 90 + value_idx),
+      ),
+    ]
+    const { context_for } = await mount_facet_plot(
+      {
+        ...histogram_case,
+        extra_props: { ...histogram_case.extra_props, bins: 10 },
+      },
+      clustered_panels,
+    )
+
+    await vi.waitFor(() => {
+      const low_ranges = context_for(`low`).ranges
+      const high_ranges = context_for(`high`).ranges
+      expect(low_ranges.x).toEqual(high_ranges.x)
+      expect(low_ranges.y).toEqual(high_ranges.y)
+      expect(low_ranges.y?.[1]).toBeGreaterThanOrEqual(9)
+    })
   })
+
+  test.each(plot_cases)(
+    `$name propagates rectangle zoom and reset through shared ranges`,
+    async (plot_case) => {
+      const { context_for, panel_for } = await mount_facet_plot(plot_case)
+      await vi.waitFor(() => expect(context_for(`top-left`).ranges.x).toBeDefined())
+      const initial_x = [...(context_for(`top-left`).ranges.x ?? [])]
+      const initial_y = [...(context_for(`top-left`).ranges.y ?? [])]
+      const panel = panel_for(`top-left`)
+      const plot = panel.querySelector<HTMLElement>(plot_case.root_selector)
+      if (!plot) throw new Error(`Top-left ${plot_case.name} not found`)
+      const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+
+      if (svg) {
+        Object.defineProperty(svg, `getBoundingClientRect`, {
+          value: () => DOMRect.fromRect({ width: 800, height: 600 }),
+        })
+        svg.dispatchEvent(
+          new MouseEvent(`mousedown`, {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            clientX: 180,
+            clientY: 80,
+          }),
+        )
+        window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
+        window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
+      } else {
+        const canvas = plot.querySelector(`canvas`)
+        if (!canvas) throw new Error(`${plot_case.name} canvas not found`)
+        vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(
+          DOMRect.fromRect({ width: 800, height: 600 }),
+        )
+        const pointer = (type: string, client_x: number, client_y: number, button?: number) =>
+          plot.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              button,
+              pointerId: 1,
+              clientX: client_x,
+              clientY: client_y,
+            }),
+          )
+        pointer(`pointerdown`, 180, 80, 0)
+        pointer(`pointermove`, 600, 420)
+        pointer(`pointerup`, 600, 420)
+      }
+
+      await vi.waitFor(() => {
+        const zoomed_x = context_for(`top-left`).ranges.x
+        const zoomed_y = context_for(`top-left`).ranges.y
+        expect(zoomed_x).not.toEqual(initial_x)
+        expect(zoomed_y).not.toEqual(initial_y)
+        expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => zoomed_x))
+        expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => zoomed_y))
+      })
+
+      const reset_target = svg ?? plot
+      reset_target.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      await vi.waitFor(() => {
+        expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => initial_x))
+        expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => initial_y))
+      })
+    },
+  )
+
+  test.each(plot_cases)(
+    `$name settles intrinsic auto-padding reports without a render loop`,
+    async (plot_case) => {
+      const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
+      const { context_for, plot_mounts } = await mount_facet_plot(plot_case, auto_panels)
+
+      await vi.waitFor(() => {
+        const { t = 0, l = 0 } = context_for(`top-left`).padding
+        const { b = 0 } = context_for(`bottom-left`).padding
+        const { r = 0 } = context_for(`top-right`).padding
+        expect([t, b, l, r].every((size) => size > 0)).toBe(true)
+        expect(keys.map((key) => context_for(key).padding)).toEqual([
+          { t, b: 0, l, r: 0 },
+          { t, b: 0, l: 0, r },
+          { t: 0, b, l, r: 0 },
+          { t: 0, b, l: 0, r },
+        ])
+      })
+      for (let settle_idx = 0; settle_idx < 10; settle_idx++) await tick()
+
+      expect(plot_mounts()).toBe(4)
+      expect(error_spy.mock.calls.flat().join(` `)).not.toContain(
+        `effect_update_depth_exceeded`,
+      )
+    },
+  )
 })

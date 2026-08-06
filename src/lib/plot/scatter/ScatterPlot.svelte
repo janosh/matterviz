@@ -65,7 +65,8 @@
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
-  import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import {
     create_legend_decoration_item,
     decoration_placement_rects,
@@ -445,9 +446,37 @@
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
   let tick_font = $state<Readonly<FontSpec> | undefined>()
   let base_pad = $state(untrack(() => filter_padding(padding, default_padding)))
-  const effective_base_pad = $derived(
-    facet_layout ? { ...base_pad, ...facet_layout.padding } : base_pad,
-  )
+  const auto_range = (
+    points: SimplePoint[],
+    key: keyof SimplePoint,
+    axis: typeof final_x_axis,
+    time_scale = false,
+  ): Vec2 =>
+    get_nice_data_range(
+      points,
+      (point) => point[key],
+      axis.range ?? [null, null],
+      axis.scale_type ?? `linear`,
+      range_padding,
+      time_scale,
+    )
+  let auto_x_range = $derived(auto_range(all_points, `x`, final_x_axis, is_time_x))
+  let auto_y_range = $derived(auto_range(y1_points, `y`, final_y_axis))
+  let auto_x2_range = $derived(auto_range(x2_points, `x`, final_x2_axis, is_time_x2))
+  let auto_y2_range = $derived(auto_range(y2_points, `y`, final_y2_axis))
+  const facet = create_facet_plot_adapter({
+    axes: FACET_AXES,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => ({
+      x: auto_x_range,
+      x2: auto_x2_range,
+      y: auto_y_range,
+      y2: auto_y2_range,
+    }),
+    ranges: () => ranges.current,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
   const title_config = $derived(normalize_plot_title(title))
 
   // Update padding when format or ticks change
@@ -737,26 +766,6 @@
   })
   let all_color_values = $derived(series_value_arrays.color_values)
 
-  // Compute auto ranges based on data and limits
-  const auto_range = (
-    points: SimplePoint[],
-    key: keyof SimplePoint,
-    axis: typeof final_x_axis,
-    time_scale = false,
-  ): Vec2 =>
-    get_nice_data_range(
-      points,
-      (point) => point[key],
-      axis.range ?? [null, null],
-      axis.scale_type ?? `linear`,
-      range_padding,
-      time_scale,
-    )
-  let auto_x_range = $derived(auto_range(all_points, `x`, final_x_axis, is_time_x))
-  let auto_y_range = $derived(auto_range(y1_points, `y`, final_y_axis))
-  let auto_x2_range = $derived(auto_range(x2_points, `x`, final_x2_axis, is_time_x2))
-  let auto_y2_range = $derived(auto_range(y2_points, `y`, final_y2_axis))
-
   // Facet reports and intrinsic padding measurement stay data-local. Shared ranges/padding are
   // applied only after these values are computed, so grid output never becomes the next report.
   const intrinsic_scale_fns = $derived({
@@ -820,19 +829,6 @@
         : [],
   })
 
-  $effect(() => {
-    if (!facet_layout) return
-    facet_layout.report_layout({
-      padding: { ...base_pad },
-      ranges: {
-        x: [...auto_x_range] as Vec2,
-        x2: [...auto_x2_range] as Vec2,
-        y: [...auto_y_range] as Vec2,
-        y2: [...auto_y2_range] as Vec2,
-      },
-    })
-  })
-
   // Update zoom ranges when auto ranges or explicit ranges change
   // - Explicit ranges (from zoom/pan): apply directly
   // - Auto ranges (from data changes): use lazy expansion to preserve view context
@@ -894,16 +890,7 @@
       }
     }
 
-    if (facet_layout) {
-      for (const axis of FACET_AXES) {
-        const facet_range = facet_layout.ranges[axis]
-        if (!facet_range) continue
-        const current_range = untrack(() => ranges.current[axis])
-        if (facet_range[0] !== current_range[0] || facet_range[1] !== current_range[1]) {
-          ranges.current[axis] = [facet_range[0], facet_range[1]]
-        }
-      }
-    }
+    facet.apply_ranges()
   })
 
   let [x_min, x_max] = $derived(ranges.current.x)
@@ -1276,11 +1263,6 @@
     }
   })
 
-  const update_facet_range = (axis: FacetAxis, range: Vec2): void => {
-    ranges.current[axis] = range
-    facet_layout?.update_range(axis, range)
-  }
-
   // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
   // writes through get_synced_y2 (write-order contract: y is written before y2, so
   // the sync reads the just-updated y range).
@@ -1298,13 +1280,8 @@
     }),
     pan: () => pan,
     set_range: (axis, range) => {
-      if (facet_layout) {
-        const next_range = axis === `y2` ? get_synced_y2(ranges.current.y, range) : range
-        update_facet_range(axis, next_range)
-        return
-      }
-      if (axis === `y2`) ranges.current.y2 = get_synced_y2(ranges.current.y, range)
-      else ranges.current[axis] = range
+      const next_range = axis === `y2` ? get_synced_y2(ranges.current.y, range) : range
+      facet.update_range(axis, next_range)
     },
     svg: () => svg_element,
     on_rect_zoom: (start, current) => {
@@ -1313,11 +1290,10 @@
       const next_x = invert_rect_range(x_scale_fn, start.x, current.x)
       const next_y = invert_rect_range(y_scale_fn, start.y, current.y)
       if (!next_x || !next_y) return
-      if (facet_layout) {
-        update_facet_range(`x`, next_x)
-        update_facet_range(`y`, next_y)
-      } else {
+      if (!facet.update_range(`x`, next_x)) {
         x_axis = { ...x_axis, range: next_x }
+      }
+      if (!facet.update_range(`y`, next_y)) {
         y_axis = { ...y_axis, range: next_y }
       }
 
@@ -1325,8 +1301,7 @@
       const next_x2 =
         x2_points.length > 0 ? invert_rect_range(x2_scale_fn, start.x, current.x) : null
       if (next_x2) {
-        if (facet_layout) update_facet_range(`x2`, next_x2)
-        else x2_axis = { ...x2_axis, range: next_x2 }
+        if (!facet.update_range(`x2`, next_x2)) x2_axis = { ...x2_axis, range: next_x2 }
       }
 
       // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
@@ -1336,15 +1311,11 @@
           ? invert_rect_range(y2_scale_fn, start.y, current.y)
           : null
       if (next_y2) {
-        if (facet_layout) update_facet_range(`y2`, next_y2)
-        else y2_axis = { ...y2_axis, range: next_y2 }
+        if (!facet.update_range(`y2`, next_y2)) y2_axis = { ...y2_axis, range: next_y2 }
       }
     },
     on_reset: () => {
-      if (facet_layout) {
-        for (const axis of FACET_AXES) facet_layout.update_range(axis, null)
-        return
-      }
+      if (facet.reset_ranges()) return
       // Reset to current auto ranges (not stale initial ranges which may have expanded)
       // This ensures lazy expansion restarts fresh from current data bounds
       ranges.initial = {
@@ -1750,7 +1721,7 @@
       <!-- Reference lines: below grid -->
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-      {#if facet_layout?.axis_visibility.x !== false}
+      {#if facet.axis_visible(`x`)}
         <PlotAxis
           side="x"
           ticks={x_tick_values}
@@ -1794,7 +1765,7 @@
         {/if}
       {/if}
 
-      {#if facet_layout?.axis_visibility.y !== false}
+      {#if facet.axis_visible(`y`)}
         <PlotAxis
           side="y"
           ticks={y_tick_values}
@@ -1816,7 +1787,7 @@
       {/if}
 
       <!-- Y2-axis (Right) -->
-      {#if y2_points.length > 0 && facet_layout?.axis_visibility.y2 !== false}
+      {#if y2_points.length > 0 && facet.axis_visible(`y2`)}
         <PlotAxis
           side="y2"
           ticks={y2_tick_values}
@@ -1838,7 +1809,7 @@
       {/if}
 
       <!-- X2-axis (Top) -->
-      {#if x2_points.length > 0 && facet_layout?.axis_visibility.x2 !== false}
+      {#if x2_points.length > 0 && facet.axis_visible(`x2`)}
         <PlotAxis
           side="x2"
           ticks={x2_tick_values}

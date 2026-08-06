@@ -1741,6 +1741,7 @@ class Histogram(MatterViz):
         bar: Any | None = None,
         bins: float | None = None,
         data_loader: Any | None = None,
+        facet_layout: Any | None = None,
         legend: Any | None = None,
         marginals: Any | None = None,
         mode: Any | None = None,
@@ -1766,6 +1767,8 @@ class Histogram(MatterViz):
             mv_props["bins"] = bins
         if data_loader is not None:
             mv_props["data_loader"] = data_loader
+        if facet_layout is not None:
+            mv_props["facet_layout"] = facet_layout
         if legend is not None:
             mv_props["legend"] = legend
         if marginals is not None:

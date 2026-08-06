@@ -26,7 +26,9 @@
     type DecorationItem,
   } from '$lib/plot/core/decorations'
   import { measured_footprint } from '$lib/plot/core/auto-place'
-  import { sorted_range } from '$lib/plot/core/interactions'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import { sorted_range, vec2_equal } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
@@ -151,6 +153,7 @@
     header_controls,
     annotation,
     marginals = false,
+    facet_layout,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
     series: DensePointSeries<Metadata>[]
@@ -177,13 +180,13 @@
     // overlaps the least data, while also avoiding the auto-placed colorbar
     annotation?: Snippet<[OverlayContext]>
     marginals?: MarginalsProp
+    facet_layout?: FacetLayoutContext
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
   let width = $state(0)
   let height = $state(0)
-  let x_range = $state<Vec2>([0, 1])
-  let y_range = $state<Vec2>([0, 1])
+  let ranges = $state({ x: [0, 1] as Vec2, y: [0, 1] as Vec2 })
   let has_user_range = $state(false)
   let drag_state = $state<{ start: Point2D; current: Point2D } | null>(null)
   let suppress_next_click = false
@@ -203,9 +206,6 @@
   )
   const title_config = $derived(normalize_plot_title(title))
   let base_pad = $derived(filter_padding(padding_config, DEFAULT_PLOT_PADDING))
-  let decoration_base_pad = $derived(
-    add_sides(base_pad, reserve_marginal_pad(resolved_marginals)),
-  )
   let top_outer_marginal_offset = $derived(
     resolved_marginals.top?.placement === `outer`
       ? resolved_marginals.top.size + resolved_marginals.top.gap
@@ -264,11 +264,8 @@
 
   let x_scale_type = $derived(x_axis.scale_type ?? `linear`)
   let y_scale_type = $derived(y_axis.scale_type ?? `linear`)
-  let needs_auto_range = $derived(
-    needs_data_range(x_axis.range) || needs_data_range(y_axis.range),
-  )
   let auto_ranges = $derived(
-    needs_auto_range
+    needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
       ? series_extents(series, x_scale_type, y_scale_type)
       : { x: [0, 1] as Vec2, y: [0, 1] as Vec2 },
   )
@@ -278,21 +275,39 @@
     axis.range?.[0] ?? fallback[0],
     axis.range?.[1] ?? fallback[1],
   ]
-  const same_range = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
+  const intrinsic_ranges = $derived({
+    x: axis_range(x_axis, auto_ranges.x),
+    y: axis_range(y_axis, auto_ranges.y),
+  })
+  const facet = create_facet_plot_adapter({
+    axes: [`x`, `y`] as const,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => intrinsic_ranges,
+    ranges: () => ranges,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
+  let marginal_pad = $derived(reserve_marginal_pad(resolved_marginals))
+  let intrinsic_decoration_base_pad = $derived(add_sides(base_pad, marginal_pad))
+  let decoration_base_pad = $derived(add_sides(effective_base_pad, marginal_pad))
 
   function set_auto_range() {
-    const next_x_range = axis_range(x_axis, auto_ranges.x)
-    const next_y_range = axis_range(y_axis, auto_ranges.y)
+    const next_x_range = intrinsic_ranges.x
+    const next_y_range = intrinsic_ranges.y
     // Skip non-finite ranges (e.g. a NaN bound in an axis range prop): NaN !== NaN
-    // means same_range never settles, looping until effect_update_depth_exceeded
+    // means equality checks never settle, looping until effect_update_depth_exceeded
     if (![...next_x_range, ...next_y_range].every(Number.isFinite)) return
-    if (!same_range(x_range, next_x_range)) x_range = next_x_range
-    if (!same_range(y_range, next_y_range)) y_range = next_y_range
+    if (!vec2_equal(ranges.x, next_x_range)) ranges.x = next_x_range
+    if (!vec2_equal(ranges.y, next_y_range)) ranges.y = next_y_range
   }
 
+  let was_faceted = false
   $effect(() => {
-    if (has_user_range) return
-    set_auto_range()
+    const is_faceted = facet_layout != null
+    if (!is_faceted && was_faceted) has_user_range = false
+    if (!is_faceted && !has_user_range) set_auto_range()
+    facet.apply_ranges()
+    was_faceted = is_faceted
   })
 
   let plot_width = $derived(Math.max(1, width - pad.l - pad.r))
@@ -303,15 +318,15 @@
     width: plot_width,
     height: plot_height,
   })
-  let x_scale_fn = $derived(create_scale(x_scale_type, x_range, [pad.l, width - pad.r]))
-  let y_scale_fn = $derived(create_scale(y_scale_type, y_range, [height - pad.b, pad.t]))
+  let x_scale_fn = $derived(create_scale(x_scale_type, ranges.x, [pad.l, width - pad.r]))
+  let y_scale_fn = $derived(create_scale(y_scale_type, ranges.y, [height - pad.b, pad.t]))
   let x_ticks = $derived(
-    generate_ticks(x_range, x_scale_type, x_axis.ticks, x_scale_fn, {
+    generate_ticks(ranges.x, x_scale_type, x_axis.ticks, x_scale_fn, {
       default_count: 7,
     }),
   )
   let y_ticks = $derived(
-    generate_ticks(y_range, y_scale_type, y_axis.ticks, y_scale_fn, {
+    generate_ticks(ranges.y, y_scale_type, y_axis.ticks, y_scale_fn, {
       default_count: 6,
     }),
   )
@@ -330,15 +345,32 @@
     ).band,
   )
   $effect(() => {
-    const x_extent = { start: decoration_base_pad.l, end: width - decoration_base_pad.r }
-    const y_extent = { start: height - decoration_base_pad.b, end: decoration_base_pad.t }
-    // Set as statements, not chained: resolving the overloaded `range` on a
-    // ScaleContinuousNumeric | ArcsinhScale union widens the result to
-    // `Vec2 | ArcsinhScale`, which is no longer callable.
-    const padding_x_scale = x_scale_fn.copy()
-    const padding_y_scale = y_scale_fn.copy()
-    padding_x_scale.range([x_extent.start, x_extent.end])
-    padding_y_scale.range([y_extent.start, y_extent.end])
+    const padding_ranges = facet_layout ? intrinsic_ranges : ranges
+    const x_extent = {
+      start: intrinsic_decoration_base_pad.l,
+      end: width - intrinsic_decoration_base_pad.r,
+    }
+    const y_extent = {
+      start: height - intrinsic_decoration_base_pad.b,
+      end: intrinsic_decoration_base_pad.t,
+    }
+    const measure_axis = (
+      axis: AxisConfig,
+      range: Vec2,
+      extent: typeof x_extent,
+      default_count: number,
+    ) => {
+      const scale_type = axis.scale_type ?? `linear`
+      const scale = create_scale(scale_type, range, [extent.start, extent.end])
+      const ticks = generate_ticks(range, scale_type, axis.ticks, scale, { default_count })
+      return measured_axis(
+        { ...axis, format: axis.format ?? `.2~g` },
+        ticks,
+        scale,
+        extent,
+        tick_font,
+      )
+    }
     const axis_pad =
       width > 0 && height > 0
         ? calc_auto_padding({
@@ -346,20 +378,8 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: measured_axis(
-              { ...x_axis, format: x_axis.format ?? `.2~g` },
-              x_ticks,
-              padding_x_scale,
-              x_extent,
-              tick_font,
-            ),
-            y_axis: measured_axis(
-              { ...y_axis, format: y_axis.format ?? `.2~g` },
-              y_ticks,
-              padding_y_scale,
-              y_extent,
-              tick_font,
-            ),
+            x_axis: measure_axis(x_axis, padding_ranges.x, x_extent, 7),
+            y_axis: measure_axis(y_axis, padding_ranges.y, y_extent, 6),
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
@@ -380,10 +400,10 @@
   })
   let bin_series = $derived(has_plot_size ? series : [])
   let density_result = $derived(
-    bin_points(bin_series, x_range, y_range, density_bins.x, density_bins.y, bin_transforms),
+    bin_points(bin_series, ranges.x, ranges.y, density_bins.x, density_bins.y, bin_transforms),
   )
   const bin_at = (coords: Point2D) =>
-    density_bin_at_point(density_result, coords, plot_rect, x_range, y_range, bin_transforms)
+    density_bin_at_point(density_result, coords, plot_rect, ranges.x, ranges.y, bin_transforms)
   let auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
   let color_scale_fn = $derived(
     create_color_scale(density_settings.color_scale, auto_color_range),
@@ -489,7 +509,7 @@
       height,
       obstacles_norm: bin_obstacles_norm,
       lines: indexed_ref_lines,
-      ranges: { x: x_range, y: y_range },
+      ranges,
       scales: { x: x_scale_fn, y: y_scale_fn },
       grid_resolution: 12,
     }),
@@ -573,8 +593,8 @@
   let pick_index = $derived(
     render_mode === `points`
       ? build_pick_index(series, {
-          x_range,
-          y_range,
+          x_range: ranges.x,
+          y_range: ranges.y,
           x_scale: x_scale_fn,
           y_scale: y_scale_fn,
           radius_px: pick_radius_px,
@@ -589,8 +609,15 @@
     ...point_labels_settings.placement,
   })
 
-  const reset_view = () => {
+  const update_view_ranges = (next_x_range: Vec2, next_y_range: Vec2): void => {
+    facet.update_range(`x`, next_x_range)
+    facet.update_range(`y`, next_y_range)
+    has_user_range = true
+  }
+
+  const reset_view = (): void => {
     has_user_range = false
+    if (facet.reset_ranges()) return
     set_auto_range()
   }
 
@@ -641,8 +668,8 @@
   }
 
   function draw_points(ctx: CanvasRenderingContext2D) {
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
+    const [x_min, x_max] = range_bounds(ranges.x)
+    const [y_min, y_max] = range_bounds(ranges.y)
     const pulse = selected_pulse.unit
     for (const [series_idx, srs] of series.entries()) {
       ctx.fillStyle = srs.color ?? get_series_color(series_idx)
@@ -772,8 +799,8 @@
   let point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
 
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
+    const [x_min, x_max] = range_bounds(ranges.x)
+    const [y_min, y_max] = range_bounds(ranges.y)
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
@@ -913,9 +940,7 @@
   }
 
   function zoom_to_bin(bin: DensityBin, event: MouseEvent) {
-    x_range = bin.x_range
-    y_range = bin.y_range
-    has_user_range = true
+    update_view_ranges(bin.x_range, bin.y_range)
     hovered_bin = null
     on_density_zoom?.({ bin, event })
   }
@@ -978,9 +1003,10 @@
     }
     if (Math.abs(end.x - start.x) <= 5 || Math.abs(end.y - start.y) <= 5) return
 
-    x_range = sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x))
-    y_range = sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y))
-    has_user_range = true
+    update_view_ranges(
+      sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x)),
+      sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y)),
+    )
     suppress_next_click = true
   }
 
@@ -1055,9 +1081,9 @@
     </defs>
     <PlotTitle
       config={title_config}
-      x={base_pad.l}
+      x={effective_base_pad.l}
       y={top_outer_marginal_offset + decoration_solution.pad.t - decoration_base_pad.t}
-      width={Math.max(0, width - base_pad.l - base_pad.r)}
+      width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
     />
 
     <g class="reference-lines">
@@ -1065,10 +1091,10 @@
         <ReferenceLine
           ref_line={line}
           line_idx={line.idx}
-          x_min={range_bounds(x_range)[0]}
-          x_max={range_bounds(x_range)[1]}
-          y_min={range_bounds(y_range)[0]}
-          y_max={range_bounds(y_range)[1]}
+          x_min={range_bounds(ranges.x)[0]}
+          x_max={range_bounds(ranges.x)[1]}
+          y_min={range_bounds(ranges.y)[0]}
+          y_max={range_bounds(ranges.y)[1]}
           x_scale={x_scale_fn}
           y_scale={y_scale_fn}
           {clip_path_id}
@@ -1079,33 +1105,37 @@
         />
       {/each}
     </g>
-    <PlotAxis
-      side="x"
-      ticks={x_ticks}
-      place={(tick) => x_scale_fn(tick)}
-      axis={x_axis}
-      on_tick_font={(font) => (tick_font = font)}
-      {pad}
-      {width}
-      {height}
-      show_grid
-      tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
-      label_x={pad.l + plot_width / 2}
-      label_y={height - pad.b + AXIS_TITLE_OFFSET}
-    />
-    <PlotAxis
-      side="y"
-      ticks={y_ticks}
-      place={(tick) => y_scale_fn(tick)}
-      axis={y_axis}
-      {pad}
-      {width}
-      {height}
-      show_grid
-      tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
-      label_y={pad.t + plot_height / 2}
-    />
+    {#if facet.axis_visible(`x`)}
+      <PlotAxis
+        side="x"
+        ticks={x_ticks}
+        place={(tick) => x_scale_fn(tick)}
+        axis={x_axis}
+        on_tick_font={(font) => (tick_font = font)}
+        {pad}
+        {width}
+        {height}
+        show_grid
+        tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
+        label_x={pad.l + plot_width / 2}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET}
+      />
+    {/if}
+    {#if facet.axis_visible(`y`)}
+      <PlotAxis
+        side="y"
+        ticks={y_ticks}
+        place={(tick) => y_scale_fn(tick)}
+        axis={y_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid
+        tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
+        label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
+        label_y={pad.t + plot_height / 2}
+      />
+    {/if}
 
     <ZoomRect start={drag_state?.start ?? null} current={drag_state?.current ?? null} />
 
@@ -1137,8 +1167,8 @@
       {pad}
       has_axis={marginal_has_axis}
       axes={{
-        x1: marginal_axis(x_scale_fn, x_range, x_axis),
-        y1: marginal_axis(y_scale_fn, y_range, y_axis),
+        x1: marginal_axis(x_scale_fn, ranges.x, x_axis),
+        y1: marginal_axis(y_scale_fn, ranges.y, y_axis),
       }}
       id={clip_path_id}
     />

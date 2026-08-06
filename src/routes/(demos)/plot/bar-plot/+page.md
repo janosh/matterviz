@@ -1392,24 +1392,15 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
     `Solution Combustion Synthesis`,
   ]
   const observations = [18_400, 14_800, 9_600, 7_900, 6_700, 5_400, 4_100, 3_600]
-  const adaptive_strategies = [
-    `upright`,
-    `wrap`,
-    `rotate`,
-    `stagger`,
-    `thin`,
-    `ellipsis`,
-  ] as const
 
   let chart_width = $state(360)
   let orientation = $state<`vertical` | `horizontal`>(`vertical`)
-  const category_axis = $derived({
+  const category_axis = {
     label: `Synthesis route used for the final experimental protocol`,
     tick: {
       label: {
-        rotation: `auto` as const,
         auto_layout: {
-          strategies: adaptive_strategies,
+          strategies: [`upright`, `wrap`, `rotate`, `stagger`, `thin`, `ellipsis`] as const,
           max_angle: 60,
           max_band: 76,
           min_visible_ticks: 3,
@@ -1418,7 +1409,7 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
         },
       },
     },
-  })
+  }
   const value_axis = {
     label: `Number of structures surviving all validation and quality-control filters`,
     format: `~s`,
