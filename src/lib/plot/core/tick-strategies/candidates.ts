@@ -26,14 +26,9 @@ interface TickCandidateTransformOptions {
   id: string
 }
 
-interface StaggerCandidateOptions extends TickCandidateTransformOptions {
-  first_row?: TickStaggerRow
-}
-
 interface EllipsisCandidateOptions extends TickCandidateTransformOptions {
   max_width_px: number | readonly number[]
   measure_text: (text: string) => number
-  ellipsis?: string
 }
 
 const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
@@ -127,11 +122,6 @@ export const create_tick_candidate = ({
   return candidate
 }
 
-const copy_labels_as_input = (
-  candidate: TickStrategyCandidate,
-  transform: (label: TickCandidateLabel) => TickCandidateLabelInput,
-): TickCandidateLabelInput[] => candidate.labels.map(transform)
-
 const transformed_candidate = (
   candidate: TickStrategyCandidate,
   id: string,
@@ -154,36 +144,14 @@ const transformation_loss = (before: string, after: string): number => {
   return 1 - retained_count / before_count
 }
 
-const combined_information_loss = (
-  previous_loss: number,
-  before_lines: readonly string[],
-  after_lines: readonly string[],
-): number => {
-  const next_loss = transformation_loss(before_lines.join(`\n`), after_lines.join(`\n`))
-  return 1 - (1 - previous_loss) * (1 - next_loss)
-}
-
-const replace_display_lines = (
-  label: TickCandidateLabel,
-  display_lines: string[],
-): TickCandidateLabelInput => ({
-  ...label,
-  display_lines,
-  information_loss: combined_information_loss(
-    label.information_loss,
-    label.display_lines,
-    display_lines,
-  ),
-})
-
 export const generate_stagger_candidate = (
   candidate: TickStrategyCandidate,
-  { id, first_row = 0 }: StaggerCandidateOptions,
+  { id }: TickCandidateTransformOptions,
 ): TickStrategyCandidate => {
   validate_tick_candidate_once(candidate)
   let visible_order = 0
-  const labels = copy_labels_as_input(candidate, (label) => {
-    const stagger_row: TickStaggerRow = (visible_order + first_row) % 2 === 0 ? 0 : 1
+  const labels = candidate.labels.map((label) => {
+    const stagger_row: TickStaggerRow = visible_order % 2 === 0 ? 0 : 1
     if (label.visible) visible_order += 1
     return {
       ...label,
@@ -210,7 +178,7 @@ export const generate_thinned_candidate = (
       )
     }
   }
-  const labels = copy_labels_as_input(candidate, (label) => ({
+  const labels = candidate.labels.map((label) => ({
     ...label,
     visible: label.visible && visible_indices.has(label.tick_index),
   }))
@@ -230,19 +198,18 @@ const measured_width = (
 const ellipsize_line = (
   text: string,
   max_width_px: number,
-  ellipsis: string,
   measure_text: (text: string) => number,
   context: string,
 ): string => {
   if (measured_width(text, measure_text, context) <= max_width_px) return text
-  if (measured_width(ellipsis, measure_text, context) > max_width_px) return text
+  if (measured_width(`…`, measure_text, context) > max_width_px) return text
 
   let longest_fitting = ``
   let prefix = ``
   for (const character of graphemes(text)) {
     prefix += character
     const trimmed = prefix.replace(/[ \t]+$/u, ``)
-    if (measured_width(`${trimmed}${ellipsis}`, measure_text, context) <= max_width_px) {
+    if (measured_width(`${trimmed}…`, measure_text, context) <= max_width_px) {
       longest_fitting = trimmed
     }
   }
@@ -250,22 +217,21 @@ const ellipsize_line = (
   return source_information > 0 &&
     information_grapheme_count(longest_fitting) / source_information >=
       MIN_RETAINED_INFORMATION_FRACTION
-    ? `${longest_fitting}${ellipsis}`
+    ? `${longest_fitting}…`
     : text
 }
 
 export const generate_ellipsis_candidate = (
   candidate: TickStrategyCandidate,
-  { id, max_width_px, measure_text, ellipsis = `…` }: EllipsisCandidateOptions,
+  { id, max_width_px, measure_text }: EllipsisCandidateOptions,
 ): TickStrategyCandidate => {
   validate_tick_candidate_once(candidate)
-  if (!ellipsis) throw new Error(`candidate "${id}" ellipsis must not be empty`)
   if (typeof max_width_px !== `number` && max_width_px.length !== candidate.labels.length) {
     throw new Error(
       `candidate "${id}" max_width_px length ${max_width_px.length} must match ${candidate.labels.length} labels`,
     )
   }
-  const labels = copy_labels_as_input(candidate, (label) => {
+  const labels = candidate.labels.map((label) => {
     const label_max_width =
       typeof max_width_px === `number` ? max_width_px : max_width_px[label.tick_index]
     validate_finite_nonnegative(
@@ -276,12 +242,19 @@ export const generate_ellipsis_candidate = (
       ellipsize_line(
         line,
         label_max_width,
-        ellipsis,
         measure_text,
         `candidate "${id}" label ${label.tick_index} line ${line_idx}`,
       ),
     )
-    return replace_display_lines(label, display_lines)
+    const next_loss = transformation_loss(
+      label.display_lines.join(`\n`),
+      display_lines.join(`\n`),
+    )
+    return {
+      ...label,
+      display_lines,
+      information_loss: 1 - (1 - label.information_loss) * (1 - next_loss),
+    }
   })
   return transformed_candidate(candidate, id, `ellipsis`, labels)
 }

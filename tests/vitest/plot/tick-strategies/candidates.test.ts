@@ -45,13 +45,10 @@ describe(`tick strategy candidates`, () => {
       strategy: `upright`,
       labels: [`Alpha`, { full_text: `Beta`, visible: false }, `Gamma`, `Delta`, `Epsilon`],
     })
-    const staggered = generate_stagger_candidate(partially_hidden, {
-      id: `staggered`,
-      first_row: 1,
-    })
+    const staggered = generate_stagger_candidate(partially_hidden, { id: `staggered` })
 
     expect(staggered.labels.map(({ tick_index }) => tick_index)).toEqual([0, 1, 2, 3, 4])
-    expect(staggered.labels.map(({ stagger_row }) => stagger_row)).toEqual([1, 0, 0, 1, 0])
+    expect(staggered.labels.map(({ stagger_row }) => stagger_row)).toEqual([0, 0, 1, 0, 1])
     expect(staggered.labels.map(({ visible }) => visible)).toEqual([
       true,
       false,

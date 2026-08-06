@@ -69,7 +69,7 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
       expect(layout.visible_tick_indices.length).toBeGreaterThanOrEqual(2)
       expect(
         layout.labels.every(
-          ({ visible, display_text }) => !visible || !/^…*$/u.test(display_text.trim()),
+          ({ visible, lines }) => !visible || !/^…*$/u.test(lines.join(`\n`).trim()),
         ),
       ).toBe(true)
       return { layout, measure_text_calls }

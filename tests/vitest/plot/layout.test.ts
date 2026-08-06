@@ -332,6 +332,8 @@ describe(`layout utility functions`, () => {
       width: number,
       axis: Partial<MeasuredAxis> = {},
     ) => resolve_tick_layout(slot_axis(tick_values, axis, width), width, `x`)
+    const resolved_lines = (layout: ReturnType<typeof resolve_tick_layout>) =>
+      layout.labels.map(({ lines }) => lines)
 
     // Negative throughout: labels anchored at their end trail left of the tick, so the
     // rightmost one cannot run off the plot.
@@ -372,7 +374,7 @@ describe(`layout utility functions`, () => {
         axis_extent: { start: 0, end: width },
         tick: { label: { auto_layout: { strategies: [`wrap`], max_band: 100 } } },
       })
-      expect(layout.lines[1]).toEqual(expected)
+      expect(layout.labels[1].lines).toEqual(expected)
     })
 
     it(`memoizes wrap measurements to a quadratic bound`, () => {
@@ -410,21 +412,19 @@ describe(`layout utility functions`, () => {
 
     it(`chooses wrapping or rotation from whichever uses less vertical space`, () => {
       const wrapped = x_layout(state_labels, 220)
-      expect(wrapped).toMatchObject({
-        rotation: 0,
-        band: 2 * TICK_LABEL_HEIGHT,
-        lines: [[`PENDING`], [`CANCELLED`, `by 2054`]],
-      })
+      expect(wrapped.rotation).toBe(0)
+      expect(wrapped.band).toBe(2 * TICK_LABEL_HEIGHT)
+      expect(resolved_lines(wrapped)).toEqual([[`PENDING`], [`CANCELLED`, `by 2054`]])
 
       const wide = x_layout(state_labels, 260)
       expect(wide).toMatchObject({ rotation: 0, band: TICK_LABEL_HEIGHT })
-      expect(wide.lines).toEqual(state_labels.map((label) => [label]))
+      expect(resolved_lines(wide)).toEqual(state_labels.map((label) => [label]))
 
       const wrapping_disabled = x_layout(state_labels, 220, {
         tick: { label: { max_lines: 1 } },
       })
       expect(wrapping_disabled.rotation).toBe(-30)
-      expect(wrapping_disabled.lines).toEqual(state_labels.map((label) => [label]))
+      expect(resolved_lines(wrapping_disabled)).toEqual(state_labels.map((label) => [label]))
     })
 
     it.each([
@@ -433,15 +433,12 @@ describe(`layout utility functions`, () => {
     ] as const)(
       `wraps a lone long label instead of letting "%s" overflow`,
       (label, width, lines) => {
-        expect(
-          x_layout([label], width, {
-            tick: { label: { auto_layout: { strategies: [`upright`, `wrap`] } } },
-          }),
-        ).toMatchObject({
-          rotation: 0,
-          band: lines.length * TICK_LABEL_HEIGHT,
-          lines: [lines],
+        const layout = x_layout([label], width, {
+          tick: { label: { auto_layout: { strategies: [`upright`, `wrap`] } } },
         })
+        expect(layout.rotation).toBe(0)
+        expect(layout.band).toBe(lines.length * TICK_LABEL_HEIGHT)
+        expect(resolved_lines(layout)).toEqual([lines])
       },
     )
 
@@ -452,7 +449,7 @@ describe(`layout utility functions`, () => {
       }
       const layout = x_layout(labels, 320, wrap_and_rotate)
       expect(layout.strategy).toBe(`wrap`)
-      expect(layout.lines[0].length).toBeGreaterThan(1)
+      expect(layout.labels[0].lines.length).toBeGreaterThan(1)
       const unwrapped = x_layout(labels, 320, {
         tick: { label: { max_lines: 1, auto_layout: { strategies: [`rotate`] as const } } },
       })
@@ -463,21 +460,21 @@ describe(`layout utility functions`, () => {
       const labels = Array.from({ length: 12 }, () => `Formation Energy`)
       const layout = x_layout(labels, 680)
       expect(layout.rotation).toBe(-30)
-      expect(layout.lines).toEqual(labels.map((label) => [label]))
+      expect(resolved_lines(layout)).toEqual(labels.map((label) => [label]))
     })
 
     it(`caps wrapping and keeps separators attached`, () => {
       expect(
         x_layout([`one two three four`], 50, {
           tick: { label: { max_lines: 2, auto_layout: { strategies: [`upright`, `wrap`] } } },
-        }).lines[0],
+        }).labels[0].lines,
       ).toEqual([`one two`, `three four`])
       expect(
         x_layout([`alpha - beta`, `alpha - beta`], 120, {
           tick: { label: { max_lines: 4, auto_layout: { strategies: [`upright`, `wrap`] } } },
-        }).lines[0],
+        }).labels[0].lines,
       ).toEqual([`alpha`, `- beta`])
-      expect(x_layout([`-alpha`], 10).lines).toEqual([[`-alpha`]])
+      expect(resolved_lines(x_layout([`-alpha`], 10))).toEqual([[`-alpha`]])
     })
 
     // Named explicitly: these differ only by invisible code points, so `%s` would print
@@ -487,38 +484,43 @@ describe(`layout utility functions`, () => {
       [`a no-break space`, `10\u00A0eV`],
       [`a narrow no-break space`, `10\u202FeV`],
     ])(`does not split across %s`, (_name, label) => {
-      expect(x_layout([label], 10).lines).toEqual([[label]])
+      expect(resolved_lines(x_layout([label], 10))).toEqual([[label]])
     })
 
     it(`preserves explicit whitespace and newline breaks`, () => {
       expect(
-        x_layout([`  padded  `], 100, { tick: { label: { rotation: 0 } } }).lines,
+        resolved_lines(x_layout([`  padded  `], 100, { tick: { label: { rotation: 0 } } })),
       ).toEqual([[`  padded  `]])
       const multiline = x_layout([`top\nbottom\n`], 100, { tick: { label: { rotation: 45 } } })
-      expect(multiline.lines).toEqual([[`top`, `bottom`]])
+      expect(resolved_lines(multiline)).toEqual([[`top`, `bottom`]])
       expect(multiline.band).toBeGreaterThan(2 * TICK_LABEL_HEIGHT)
-      for (const side of [`y`, `y2`] as const)
-        expect(
-          resolve_tick_layout(slot_axis([`top\nbottom\n`], {}, 100), 100, side).lines,
-        ).toEqual(multiline.lines)
-      expect(
-        x_layout([`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`], 100, {
+      for (const side of [`y`, `y2`] as const) {
+        const vertical_layout = resolve_tick_layout(
+          slot_axis([`top\nbottom\n`], {}, 100),
+          100,
+          side,
+        )
+        expect(resolved_lines(vertical_layout)).toEqual(resolved_lines(multiline))
+      }
+      const crowded_multiline = x_layout(
+        [`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`],
+        100,
+        {
           tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
-        }),
-      ).toMatchObject({
-        rotation: -60,
-        lines: [
-          [`abcdefghij`, `klmnopqrst`],
-          [`abcdefghij`, `klmnopqrst`],
-        ],
-      })
+        },
+      )
+      expect(crowded_multiline.rotation).toBe(-60)
+      expect(resolved_lines(crowded_multiline)).toEqual([
+        [`abcdefghij`, `klmnopqrst`],
+        [`abcdefghij`, `klmnopqrst`],
+      ])
     })
 
     it(`keeps an unbreakable word intact and rotates it when crowded`, () => {
       const label = `SUPERCALIFRAGILISTIC`
       const layout = x_layout([label, label], 220)
       expect(layout.rotation).toBe(-30)
-      expect(layout.lines).toEqual([[label], [label]])
+      expect(resolved_lines(layout)).toEqual([[label], [label]])
     })
 
     const dense_numeric_axis = {
@@ -671,7 +673,6 @@ describe(`layout utility functions`, () => {
       )
       expect(layout.strategy).toBe(`thin`)
       expect(layout.visible_tick_indices).toEqual([0, 3])
-      expect(layout.visible_ticks).toEqual([`Alpha label`, `Delta label`])
       expect(layout.labels.map(({ visible }) => visible)).toEqual([true, false, false, true])
     })
 
@@ -750,7 +751,6 @@ describe(`layout utility functions`, () => {
       )
 
       expect(layout.labels).toHaveLength(4)
-      expect(layout.lines).toHaveLength(4)
       expect(
         layout.labels.map(({ tick_index, visible }) => ({ tick_index, visible })),
       ).toEqual([
@@ -760,7 +760,6 @@ describe(`layout utility functions`, () => {
         { tick_index: 3, visible: true },
       ])
       expect(layout.visible_tick_indices).toEqual([0, 3])
-      expect(layout.visible_ticks).toEqual([`zero`, `last`])
     })
 
     it(`chooses inward edge anchors from actual axis bounds`, () => {
@@ -791,7 +790,7 @@ describe(`layout utility functions`, () => {
       expect(layout.strategy).not.toBe(`ellipsis`)
       expect(layout.visible_tick_indices.length).toBeGreaterThan(0)
       expect(
-        layout.labels.filter(({ visible }) => visible).map(({ display_text }) => display_text),
+        layout.labels.filter(({ visible }) => visible).map(({ lines }) => lines.join(`\n`)),
       ).toEqual(Array(layout.visible_tick_indices.length).fill(`temperature`))
       expect(layout.labels.map(({ full_text }) => full_text)).toEqual(
         Array(3).fill(`temperature`),
@@ -816,11 +815,8 @@ describe(`layout utility functions`, () => {
           100,
           side,
         )
-        expect(layout).toMatchObject({
-          rotation: 0,
-          strategy: `wrap`,
-          lines: [[`Formation`, `Energy`]],
-        })
+        expect(layout).toMatchObject({ rotation: 0, strategy: `wrap` })
+        expect(layout.labels.map(({ lines }) => lines)).toEqual([[`Formation`, `Energy`]])
         expect(layout.band).toBe(`Formation`.length * measured_px_per_character)
       },
     )
@@ -843,7 +839,7 @@ describe(`layout utility functions`, () => {
       )
       const visible_texts = layout.labels
         .filter(({ visible }) => visible)
-        .map(({ display_text }) => display_text)
+        .map(({ lines }) => lines.join(`\n`))
 
       expect(visible_texts.length).toBeGreaterThanOrEqual(2)
       expect(
@@ -870,7 +866,6 @@ describe(`layout utility functions`, () => {
       expect(layout.rotation).toBe(37)
       expect(layout.labels[0]).toMatchObject({
         full_text: `Full label`,
-        display_text: `Full label`,
         visible: true,
         rotation: 37,
       })

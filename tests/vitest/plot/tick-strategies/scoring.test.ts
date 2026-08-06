@@ -1,8 +1,6 @@
 import { TICK_GEOMETRY_EPSILON } from '$lib/plot/core/tick-geometry'
 import {
   create_tick_candidate,
-  resolve_tick_score_weights,
-  score_tick_candidate,
   select_tick_candidate,
   type MeasuredTickCandidate,
   type TickCandidateMeasurements,
@@ -51,7 +49,7 @@ describe(`tick strategy scoring`, () => {
         { full_text: `Delta`, visible: false },
       ],
     })
-    const result = score_tick_candidate(measured(detailed))
+    const result = select_tick_candidate([measured(detailed)]).evaluated[0]
 
     expect(result.penalties).toEqual({
       hidden_labels: 1,
@@ -101,35 +99,39 @@ describe(`tick strategy scoring`, () => {
       ],
     ],
   ] as const)(`does not treat %s as readable or feasible`, (name, labels) => {
-    const result = score_tick_candidate(measured(candidate(name, { labels })))
+    const result = select_tick_candidate([measured(candidate(name, { labels }))]).evaluated[0]
     expect(result).toMatchObject({ readable: false, feasible: false })
   })
 
   test(`treats sub-pixel edge overflow dust as feasible`, () => {
-    const result = score_tick_candidate(
+    const result = select_tick_candidate([
       measured(candidate(`dust`), { edge_overflow_px: TICK_GEOMETRY_EPSILON }),
-    )
+    ]).evaluated[0]
     expect(result.feasible).toBe(true)
   })
 
   test.each([
-    [`auto`, `full-text`],
-    [`readable`, `full-text`],
-    [`compact`, `hidden-label`],
-  ] as const)(`%s mode applies its readability/space priority`, (mode, expected_id) => {
-    const full_text = measured(candidate(`full-text`), { band_fraction: 2 })
-    const hidden_label = measured(
-      candidate(`hidden-label`, {
-        strategy: `thin`,
-        labels: [`Alpha`, { full_text: `Beta`, visible: false }],
-      }),
-      { band_fraction: 0.1 },
-    )
+    [`auto`, { mode: `auto` }, `full-text`],
+    [`readable`, { mode: `readable` }, `full-text`],
+    [`compact`, { mode: `compact` }, `hidden-label`],
+    [`custom compact`, { mode: `compact`, weights: { hidden_labels: 200 } }, `full-text`],
+  ] as const)(
+    `%s scoring applies its readability/space priority`,
+    (_name, config, expected_id) => {
+      const full_text = measured(candidate(`full-text`), { band_fraction: 2 })
+      const hidden_label = measured(
+        candidate(`hidden-label`, {
+          strategy: `thin`,
+          labels: [`Alpha`, { full_text: `Beta`, visible: false }],
+        }),
+        { band_fraction: 0.1 },
+      )
 
-    expect(
-      select_tick_candidate([hidden_label, full_text], { mode }).winner?.candidate.id,
-    ).toBe(expected_id)
-  })
+      expect(
+        select_tick_candidate([hidden_label, full_text], config).winner?.candidate.id,
+      ).toBe(expected_id)
+    },
+  )
 
   test(`auto mode evaluates all candidates and chooses the global minimum`, () => {
     const first_feasible = measured(candidate(`first-feasible`), { band_fraction: 2 })
@@ -192,19 +194,6 @@ describe(`tick strategy scoring`, () => {
     ])
   })
 
-  test(`valid custom weights override the selected mode`, () => {
-    expect(
-      resolve_tick_score_weights({
-        mode: `compact`,
-        weights: { hidden_labels: 7, rotation_magnitude: 0 },
-      }),
-    ).toMatchObject({
-      hidden_labels: 7,
-      band_fraction: 60,
-      rotation_magnitude: 0,
-    })
-  })
-
   test.each([
     [
       `unknown mode`,
@@ -219,7 +208,7 @@ describe(`tick strategy scoring`, () => {
       /unknown tick scoring weight/u,
     ],
   ])(`rejects %s`, (_name, config, expected_error) => {
-    expect(() => resolve_tick_score_weights(config)).toThrow(expected_error)
+    expect(() => select_tick_candidate([], config)).toThrow(expected_error)
   })
 
   test.each([
@@ -231,7 +220,7 @@ describe(`tick strategy scoring`, () => {
   ] as const)(`rejects %s`, (_name, metric, value, expected_error) => {
     const metric_overrides: Partial<TickCandidateMeasurements> = { [metric]: value }
     expect(() =>
-      score_tick_candidate(measured(candidate(`invalid-measurement`), metric_overrides)),
+      select_tick_candidate([measured(candidate(`invalid-measurement`), metric_overrides)]),
     ).toThrow(expected_error)
   })
 

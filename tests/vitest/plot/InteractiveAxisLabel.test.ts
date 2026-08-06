@@ -25,12 +25,23 @@ describe(`InteractiveAxisLabel`, () => {
   })
 
   test.each([
-    { props: { label: `Energy (eV)` }, text: `Energy (eV)`, tag_count: 0, desc: `no options` },
+    {
+      props: { label: `Energy (eV)`, line_segments: [] },
+      text: `Energy (eV)`,
+      tag_count: 0,
+      desc: `no measured lines`,
+    },
     {
       props: { options: [], label: `E<sub>hull</sub><sup>*</sup>` },
       text: `Ehull*`,
       tag_count: 2,
       desc: `empty options with HTML`,
+    },
+    {
+      props: { line_segments: [[{ text: `Measured` }]] },
+      text: `Measured`,
+      tag_count: 0,
+      desc: `single pre-measured line`,
     },
   ])(`renders static label when $desc`, ({ props, text, tag_count }) => {
     const component = mount_label(props)

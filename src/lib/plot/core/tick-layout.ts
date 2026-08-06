@@ -75,8 +75,7 @@ export type TickLayoutSide = `x` | `x2` | `y` | `y2`
 export interface ResolvedTickLabel {
   tick_index: number
   full_text: string
-  display_text: string
-  lines: string[]
+  lines: readonly string[]
   visible: boolean
   anchor: TickLabelAnchor
   rotation: number
@@ -86,10 +85,8 @@ export interface ResolvedTickLabel {
 export interface ResolvedTickLayout {
   rotation: number
   band: number
-  lines: string[][]
   labels: ResolvedTickLabel[]
   visible_tick_indices: number[]
-  visible_ticks: (string | number)[]
   strategy: TickStrategy
   stagger_step: number
 }
@@ -443,7 +440,6 @@ const upright_layout = (
     (full_text, tick_index): ResolvedTickLabel => ({
       tick_index,
       full_text,
-      display_text: lines[tick_index].join(`\n`),
       lines: lines[tick_index],
       visible: true,
       stagger_row: 0,
@@ -461,10 +457,8 @@ const upright_layout = (
   return {
     rotation: 0,
     band,
-    lines,
     labels,
     visible_tick_indices: labels.map(({ tick_index }) => tick_index),
-    visible_ticks: [...(axis.tick_values ?? [])],
     strategy: `upright`,
     stagger_step: 0,
   }
@@ -531,7 +525,7 @@ const compute_tick_layout = (
       labels: explicit_labels,
     })
     const measured = measure_candidate({ candidate: explicit_candidate, ...common_config })
-    return finalize_layout(measured, ticks, side, is_horizontal)
+    return finalize_layout(measured, side)
   }
 
   const max_angle = finite_nonnegative(auto_layout.max_angle ?? 90, `auto_layout.max_angle`)
@@ -683,27 +677,24 @@ const compute_tick_layout = (
   const winner =
     measured_candidates.find(({ candidate }) => candidate.id === winner_id) ??
     measured_candidates[0]
-  return finalize_layout(winner, ticks, side, is_horizontal)
+  return finalize_layout(winner, side)
 }
 
 const finalize_layout = (
   winner: CandidateGeometry,
-  ticks: readonly (string | number)[],
   side: TickLayoutSide,
-  is_horizontal: boolean,
 ): ResolvedTickLayout => {
   const geometry_by_idx = new Map(winner.labels.map((label) => [label.id, label]))
   const labels = winner.candidate.labels.map(
     (label): ResolvedTickLabel => ({
       tick_index: label.tick_index,
       full_text: label.full_text,
-      display_text: label.display_lines.join(`\n`),
-      lines: [...label.display_lines],
+      lines: label.display_lines,
       visible: label.visible,
       stagger_row: label.stagger_row,
       anchor:
         geometry_by_idx.get(label.tick_index)?.anchor ??
-        (is_horizontal ? `middle` : side === `y` ? `end` : `start`),
+        (side === `x` || side === `x2` ? `middle` : side === `y` ? `end` : `start`),
       rotation: winner.candidate.rotation_deg,
     }),
   )
@@ -713,10 +704,8 @@ const finalize_layout = (
   return {
     rotation: winner.candidate.rotation_deg,
     band: winner.band,
-    lines: labels.map(({ lines: label_lines }) => label_lines),
     labels,
     visible_tick_indices,
-    visible_ticks: visible_tick_indices.map((tick_idx) => ticks[tick_idx]),
     strategy: winner.candidate.strategy,
     stagger_step: winner.stagger_step,
   }

@@ -69,9 +69,7 @@ const validate_nonnegative = (value: number, context: string): void => {
   }
 }
 
-export const resolve_tick_score_weights = (
-  config: TickScoringConfig = {},
-): TickScoreWeights => {
+const resolve_tick_score_weights = (config: TickScoringConfig = {}): TickScoreWeights => {
   const mode = config.mode ?? `auto`
   if (!is_score_mode(mode)) throw new Error(`unknown tick scoring mode "${mode}"`)
 
@@ -141,9 +139,6 @@ const multiply_penalties = (
   stagger_rows: penalties.stagger_rows * weights.stagger_rows,
 })
 
-const sum_penalties = (penalties: TickScorePenalties): number =>
-  WEIGHT_KEYS.reduce((total, key) => total + penalties[key], 0)
-
 const retains_meaningful_content = (candidate: TickStrategyCandidate): boolean =>
   candidate.labels.some(({ visible }) => visible) &&
   candidate.labels.every(
@@ -176,15 +171,9 @@ const score_with_weights = (
     weighted_penalties,
     // Keep a finite readability score for hard-constraint failures. If no candidate is fully
     // feasible, the layout fallback can still prefer readable text over total information loss.
-    score: sum_penalties(weighted_penalties),
+    score: WEIGHT_KEYS.reduce((total, key) => total + weighted_penalties[key], 0),
   }
 }
-
-export const score_tick_candidate = (
-  measured_candidate: MeasuredTickCandidate,
-  config: TickScoringConfig = {},
-): TickScoreResult =>
-  score_with_weights(measured_candidate, resolve_tick_score_weights(config))
 
 const lexical_compare = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0

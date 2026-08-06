@@ -60,55 +60,19 @@ describe(`thin_tick_indices`, () => {
     },
   )
 
-  test(`retains endpoints and important indices above the requested count`, () => {
-    expect(thin_tick_indices(10, 3, [4, 2, 4, 8])).toEqual([0, 2, 4, 8, 9])
-  })
-
-  test(`fills around important indices and returns increasing indices`, () => {
-    const selected = thin_tick_indices(10, 5, [4])
-    expect(selected).toEqual([0, 2, 4, 7, 9])
-    expect(selected).toEqual(selected.toSorted((left, right) => left - right))
-  })
-
-  test(`scales with selected output rather than the full index range`, () => {
-    expect(thin_tick_indices(1_000_000_000, 5, [500_000_000])).toEqual([
-      0, 250_000_000, 500_000_000, 750_000_000, 999_999_999,
-    ])
-  })
-
-  test(`maintains count, endpoint, important, uniqueness, and ordering invariants`, () => {
+  test(`maintains count, endpoint, uniqueness, and ordering invariants`, () => {
     for (let item_count = 0; item_count <= 30; item_count++) {
-      const important_indices = Array.from(
-        { length: item_count },
-        (_unused, item_idx) => item_idx,
-      )
-        .filter((item_idx) => item_idx % 7 === 3)
-        .toReversed()
-      const sorted_mandatory = [
-        ...(item_count > 0 ? [0] : []),
-        ...important_indices,
-        ...(item_count > 1 ? [item_count - 1] : []),
-      ].toSorted((left, right) => left - right)
-      const mandatory_count = sorted_mandatory.filter(
-        (item_idx, sorted_idx) => item_idx !== sorted_mandatory[sorted_idx - 1],
-      ).length
-
       for (let requested_count = 0; requested_count <= item_count + 2; requested_count++) {
-        const selected = thin_tick_indices(item_count, requested_count, important_indices)
-        const expected_count = Math.min(item_count, Math.max(requested_count, mandatory_count))
+        const selected = thin_tick_indices(item_count, requested_count)
+        const expected_count = Math.min(item_count, Math.max(requested_count, 2))
         expect(selected).toHaveLength(expected_count)
-        expect(selected).toEqual(selected.toSorted((left, right) => left - right))
         expect(
-          selected.every(
-            (item_idx, selected_idx) =>
-              selected_idx === 0 || item_idx > selected[selected_idx - 1],
-          ),
+          selected
+            .slice(1)
+            .every((item_idx, selected_idx) => item_idx > selected[selected_idx]),
         ).toBe(true)
         if (item_count > 0) expect(selected[0]).toBe(0)
         if (item_count > 1) expect(selected.at(-1)).toBe(item_count - 1)
-        for (const important_idx of important_indices) {
-          expect(selected).toContain(important_idx)
-        }
       }
     }
   })
@@ -119,21 +83,6 @@ describe(`thin_tick_indices`, () => {
       `negative requested count`,
       () => thin_tick_indices(5, -1),
       /requested_visible_count.*-1/,
-    ],
-    [
-      `fractional important index`,
-      () => thin_tick_indices(5, 3, [1.5]),
-      /important_indices\[0\].*1.5/,
-    ],
-    [
-      `important index past the end`,
-      () => thin_tick_indices(5, 3, [5]),
-      /important_indices\[0\].*\[0, 5\).*5/,
-    ],
-    [
-      `important index for empty input`,
-      () => thin_tick_indices(0, 0, [0]),
-      /important_indices\[0\].*\[0, 0\).*0/,
     ],
   ])(`rejects %s`, (_label, call, error) => {
     expect(call).toThrow(error)

@@ -28,8 +28,6 @@
     [key: string]: unknown
   } = $props()
 
-  let is_interactive = $derived(Boolean(options?.length))
-
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
   const stop_key = (evt: KeyboardEvent) => {
@@ -38,7 +36,7 @@
 </script>
 
 <div
-  class:interactive={is_interactive}
+  class:interactive={Boolean(options?.length)}
   class:loading
   style:color
   onmousedown={stop}
@@ -49,7 +47,7 @@
   {...rest}
   class={[`interactive-axis-label`, axis_type, rest.class]}
 >
-  {#if is_interactive && options}
+  {#if options?.length}
     <PortalSelect
       {options}
       bind:selected_key
@@ -64,7 +62,7 @@
     {/if}
   {:else}
     <span class="static-label">
-      {#if line_segments && line_segments.length > 1}
+      {#if line_segments?.length}
         {#each line_segments as segments}
           <span>
             {#each segments as segment}
