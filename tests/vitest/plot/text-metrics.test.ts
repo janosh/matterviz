@@ -140,6 +140,13 @@ describe(`text metrics`, () => {
       expected: [`alpha beta`, `gamma`],
     },
     {
+      name: `no-break spaces`,
+      paragraph: `10\u00A0eV 20\u202FkPa`,
+      width: 30,
+      preserve_empty_line: false,
+      expected: [`10\u00A0eV`, `20\u202FkPa`],
+    },
+    {
       name: `overlong words`,
       paragraph: `abcdefghij`,
       width: 20,

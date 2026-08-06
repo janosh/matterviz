@@ -392,7 +392,6 @@ test.describe(`Legend Placement Stability`, () => {
     const colorbar = plot.locator(`.colorbar-wrapper`)
     await expect(colorbar).toBeVisible()
     await expect(colorbar).toHaveAttribute(`data-decoration-x`, /.+/)
-    await wait_for_position_stable(colorbar)
 
     const geometry = async () => {
       const plot_box = await plot.boundingBox()
@@ -409,15 +408,30 @@ test.describe(`Legend Placement Stability`, () => {
         solved_height: Number(await colorbar.getAttribute(`data-decoration-height`)),
       }
     }
-    const before = await geometry()
+    const wait_for_geometry_stable = async () => {
+      let stable_geometry = await geometry()
+      await expect(async () => {
+        const first = await geometry()
+        await page.waitForTimeout(100)
+        const second = await geometry()
+        const second_values = Object.values(second)
+        expect(
+          Object.values(first).every(
+            (value, value_idx) => Math.abs(value - second_values[value_idx]) < 1,
+          ),
+        ).toBe(true)
+        stable_geometry = second
+      }).toPass({ timeout: 3000 })
+      return stable_geometry
+    }
+    const before = await wait_for_geometry_stable()
     expect(before.x).toBeCloseTo(before.solved_x, 0)
     expect(before.y).toBeCloseTo(before.solved_y, 0)
     expect(before.width).toBeCloseTo(before.solved_width, 0)
     expect(before.height).toBeCloseTo(before.solved_height, 0)
 
     await page.setViewportSize({ width: 900, height: 700 })
-    await wait_for_position_stable(colorbar)
-    const after = await geometry()
+    const after = await wait_for_geometry_stable()
     expect(after.x).toBeCloseTo(after.solved_x, 0)
     expect(after.y).toBeCloseTo(after.solved_y, 0)
     expect(after.width).toBeCloseTo(after.solved_width, 0)

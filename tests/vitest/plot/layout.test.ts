@@ -740,6 +740,7 @@ describe(`layout utility functions`, () => {
         `x`,
       )
       expect(layout.strategy).not.toBe(`ellipsis`)
+      expect(layout.visible_tick_indices.length).toBeGreaterThan(0)
       expect(
         layout.labels.filter(({ visible }) => visible).map(({ display_text }) => display_text),
       ).toEqual(Array(layout.visible_tick_indices.length).fill(`temperature`))

@@ -289,7 +289,11 @@ export function wrap_text_paragraph(
   measure: TextWidthMeasure = measure_text_line,
   preserve_empty_line = false,
 ): string[] {
-  const words = paragraph.trim().split(/\s+/u).filter(Boolean)
+  // No-break spaces stay within words and must not become wrapping opportunities.
+  const words = paragraph
+    .trim()
+    .split(/[^\S\u00A0\u202F]+/u)
+    .filter(Boolean)
   if (words.length === 0) return preserve_empty_line ? [``] : []
   if (available_width <= 0) return [words.join(` `)]
 

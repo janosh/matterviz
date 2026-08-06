@@ -30,7 +30,7 @@
   } = $props()
 </script>
 
-{#each lines as line (line.id ?? line.idx)}
+{#each lines as line (line.idx)}
   {@const x_range = line.x_axis === `x2` ? (ranges.x2 ?? ranges.x) : ranges.x}
   {@const y_range = line.y_axis === `y2` ? (ranges.y2 ?? ranges.y) : ranges.y}
   <ReferenceLine

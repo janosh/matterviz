@@ -588,7 +588,9 @@ describe(`HeatmapTable`, () => {
       const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
       mount_table({ data, columns: [heatmap_val_col], show_heatmap: false })
 
-      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
+      const cells = Array.from(document.querySelectorAll(`td[data-col="Val"]`))
+      expect(cells).toHaveLength(data.length)
+      for (const cell of cells) {
         expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
       }
     })
@@ -601,7 +603,9 @@ describe(`HeatmapTable`, () => {
         column_prefs: { Val: { color_scale: null } },
       })
 
-      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
+      const cells = Array.from(document.querySelectorAll(`td[data-col="Val"]`))
+      expect(cells).toHaveLength(data.length)
+      for (const cell of cells) {
         expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
       }
     })
