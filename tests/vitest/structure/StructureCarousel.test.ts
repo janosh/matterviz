@@ -70,6 +70,25 @@ describe(`StructureCarousel`, () => {
     expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(`translate3d(0px`)
     expect(doc_query(`.structure-card .card-info`)).not.toBeNull()
     expect(doc_query(`.structure-card strong`).textContent).toBe(`Structure 0`)
+    expect(doc_query(`.structure-card .card-info`).getAttribute(`role`)).toBeNull()
+  })
+
+  test(`activates an item by pointer or keyboard`, () => {
+    const on_item_activate = vi.fn()
+    mount_carousel({ items, on_item_activate })
+    const chip = doc_query(`.structure-card .card-info`)
+    chip.click()
+    for (const key of [`Enter`, ` `]) {
+      chip.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    expect(chip.getAttribute(`role`)).toBe(`button`)
+    expect(chip.getAttribute(`tabindex`)).toBe(`0`)
+    chip.focus()
+    expect(document.activeElement).toBe(chip)
+    expect(on_item_activate).toHaveBeenCalledTimes(3)
+    expect(on_item_activate).toHaveBeenNthCalledWith(1, items[0])
+    expect(on_item_activate).toHaveBeenNthCalledWith(2, items[0])
+    expect(on_item_activate).toHaveBeenNthCalledWith(3, items[0])
   })
 
   test(`shrinks horizontal viewport to loaded structures when they don't fill it`, () => {

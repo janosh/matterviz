@@ -23,6 +23,7 @@
     show_controls?: ShowControlsProp
     empty_message?: string
     on_prefetch_more?: () => void
+    on_item_activate?: (item: StructureCarouselItem) => void
     // Min delay between on_prefetch_more calls while the item count is
     // unchanged (i.e. while a previous prefetch is still in flight).
     prefetch_cooldown_ms?: number
@@ -42,6 +43,7 @@
     show_controls,
     empty_message = `No structures`,
     on_prefetch_more,
+    on_item_activate,
     prefetch_cooldown_ms = 1000,
     pager_target = undefined,
   }: Props = $props()
@@ -379,7 +381,21 @@
       <div class="structure-carousel-spacer" style={spacer_style}>
         {#each rendered_items as { item, idx } (item.id)}
           <article class="structure-card" style={card_style(idx)}>
-            <GlassChip class="card-info">
+            <GlassChip
+              class="card-info"
+              {...on_item_activate
+                ? {
+                    role: `button`,
+                    tabindex: 0,
+                    onclick: () => on_item_activate(item),
+                    onkeydown: (event: KeyboardEvent) => {
+                      if (event.key !== `Enter` && event.key !== ` `) return
+                      event.preventDefault()
+                      on_item_activate(item)
+                    },
+                  }
+                : {}}
+            >
               <strong title={item.label}>{item.label}</strong>
               {#if item.subtitle}
                 <span>{item.subtitle}</span>
@@ -512,6 +528,14 @@
     --glass-chip-font-size: clamp(9px, calc(var(--structure-carousel-height) * 0.062), 12px);
     line-height: 1.25;
     pointer-events: none;
+  }
+  .structure-card :global(.card-info[role='button']) {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .structure-card :global(.card-info[role='button']:focus-visible) {
+    outline: 2px solid var(--accent-color, Highlight);
+    outline-offset: 2px;
   }
   .structure-card :global(.card-info strong),
   .structure-card :global(.card-info span) {

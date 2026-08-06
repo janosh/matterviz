@@ -99,6 +99,35 @@ describe(`PeriodicTable`, () => {
     expect(tile.style.cursor).toBe(`pointer`) // user style still applied
   })
 
+  test(`onactivate handles pointer and keyboard activation`, () => {
+    const onactivate = vi.fn<(element: ChemicalElement) => void>()
+    mount(PeriodicTable, { target: document.body, props: { onactivate } })
+    const tile = doc_query(`.element-tile`)
+    tile.click()
+    for (const key of [`Enter`, ` `]) {
+      tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    expect(tile.getAttribute(`role`)).toBe(`button`)
+    expect(tile.getAttribute(`tabindex`)).toBe(`0`)
+    expect(onactivate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
+  })
+
+  test(`tile_props interactions remain intact without onactivate`, () => {
+    const onclick = vi.fn()
+    const onkeydown = vi.fn()
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { tile_props: { onclick, onkeydown, role: `checkbox`, tabindex: 2 } },
+    })
+    const tile = doc_query(`.element-tile`)
+    tile.click()
+    tile.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    expect(onclick).toHaveBeenCalledOnce()
+    expect(onkeydown).toHaveBeenCalledOnce()
+    expect(tile.getAttribute(`role`)).toBe(`checkbox`)
+    expect(tile.getAttribute(`tabindex`)).toBe(`2`)
+  })
+
   test(`PropertySelect offers heatmap options and selecting one maps to an element key`, () => {
     mount(PropertySelect, { target: document.body })
 

@@ -592,6 +592,19 @@ describe(`HeatmapTable`, () => {
         expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
       }
     })
+
+    it(`lets column preferences disable a configured color scale`, () => {
+      const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
+      mount_table({
+        data,
+        columns: [heatmap_val_col],
+        column_prefs: { Val: { color_scale: null } },
+      })
+
+      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
+        expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
+      }
+    })
   })
 
   describe(`Column grouping`, () => {

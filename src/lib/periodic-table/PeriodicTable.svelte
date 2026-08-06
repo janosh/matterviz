@@ -48,6 +48,7 @@
     bottom_left_inset,
     tooltip = false,
     onenter,
+    onactivate,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -104,6 +105,7 @@
       | boolean
     children?: Snippet
     onenter?: (element: ChemicalElement) => void
+    onactivate?: (element: ChemicalElement) => void
   } = $props()
 
   let heat_values = $derived.by(() => {
@@ -145,7 +147,9 @@
 
   function handle_key(event: KeyboardEvent) {
     if (disabled || !active_element) return
-    if (event.key === `Enter`) onenter?.(active_element)
+    if (event.key === `Enter`) {
+      onenter?.(active_element)
+    }
 
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
     if (!arrow_keys.includes(event.key)) return
@@ -330,6 +334,16 @@
       }}
       onfocus={set_active_element(element)}
       onblur={set_active_element(null)}
+      role={onactivate ? `button` : tile_props?.role}
+      tabindex={onactivate ? 0 : tile_props?.tabindex}
+      onclick={onactivate ? () => onactivate(element) : tile_props?.onclick}
+      onkeydown={onactivate
+        ? (event: KeyboardEvent) => {
+            if (event.key !== `Enter` && event.key !== ` `) return
+            event.preventDefault()
+            onactivate(element)
+          }
+        : tile_props?.onkeydown}
       {split_layout}
     />
   {/each}

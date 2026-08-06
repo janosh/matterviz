@@ -464,8 +464,10 @@
   }
   const better_of = (col: Label): `higher` | `lower` | undefined =>
     prefs_of(get_col_id(col)).better ?? col.better
-  const color_scale_of = (col: Label): D3InterpolateName | null | undefined =>
-    prefs_of(get_col_id(col)).color_scale ?? col.color_scale
+  const color_scale_of = (col: Label): D3InterpolateName | null | undefined => {
+    const prefs = prefs_of(get_col_id(col))
+    return `color_scale` in prefs ? prefs.color_scale : col.color_scale
+  }
   const width_of = (col_id: string): number | undefined => prefs_of(col_id).width
 
   // Auto-discover columns from data keys when none are provided
@@ -1173,10 +1175,11 @@
     const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
     for (const col of visible_columns) {
-      if (col.color_scale === null) continue
       const col_id = get_col_id(col)
       const stats = column_stats.get(col_id)
-      const scale = color_scale_of(col) ?? `interpolateViridis`
+      const configured_scale = color_scale_of(col)
+      if (configured_scale === null) continue
+      const scale = configured_scale ?? `interpolateViridis`
       scales.set(
         col_id,
         make_cell_color_scale(
