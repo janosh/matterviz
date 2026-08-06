@@ -17,14 +17,6 @@ export interface TextLineMetrics {
   readonly source: `canvas` | `fallback`
 }
 
-export interface TextBlockMetrics {
-  readonly width: number
-  readonly height: number
-  readonly line_height: number
-  readonly line_count: number
-  readonly lines: readonly TextLineMetrics[]
-}
-
 export type TextWidthMeasure = (
   text: string,
   font: Readonly<FontSpec>,
@@ -317,23 +309,6 @@ export const measure_css_text_width = (text: string, font_css: string): number =
     ...DEFAULT_FONT_SPEC,
     font_size: parse_font_shorthand_size(font_css, DEFAULT_FONT_SPEC.font_size),
   }).width
-
-export function measure_text_block(
-  text: string,
-  font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
-): TextBlockMetrics {
-  const normalized_font = normalize_font_spec(font)
-  const lines = text
-    .split(/\r\n|\r|\n/u)
-    .map((line) => measure_text_line(line, normalized_font))
-  return {
-    width: Math.max(0, ...lines.map(({ width }) => width)),
-    height: lines.length * normalized_font.line_height,
-    line_height: normalized_font.line_height,
-    line_count: lines.length,
-    lines,
-  }
-}
 
 // Clear cached browser and fallback measurements. The returned monotonic revision can be
 // copied into Svelte state so derived layout reruns without this pure module owning observers.

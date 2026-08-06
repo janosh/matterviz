@@ -14,7 +14,7 @@ import {
   type TickStrategyCandidate,
 } from './types'
 
-export const TICK_SCORE_PRESETS = {
+const TICK_SCORE_PRESETS = {
   auto: {
     hidden_labels: 100,
     information_loss: 80,

@@ -116,9 +116,7 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
   void (async () => {
     const { response, transfer } = await handle_parse_worker_request(event.data)
     try {
-      // Catalina WKWebView only has the legacy (message, transferList) overload.
-      // The DOM lib types `self` as Window; the worker scope takes the list.
-      ;(self as unknown as Worker).postMessage(response, transfer)
+      self.postMessage(response, { transfer })
     } catch (error) {
       dispose_frame_port(response.frame_port)
       self.postMessage({

@@ -94,8 +94,11 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    pointer-events: auto;
+    pointer-events: none;
     white-space: normal;
+  }
+  .interactive-axis-label :global(.axis-trigger) {
+    pointer-events: auto;
   }
   .static-label {
     display: inline-flex;

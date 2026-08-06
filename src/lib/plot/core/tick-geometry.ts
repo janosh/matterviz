@@ -7,7 +7,6 @@ export type TickAxisSide = `x` | `x2` | `y` | `y2`
 export type TickLabelAnchor = `start` | `middle` | `end`
 export type TickLabelRotation = number
 type TickStaggerRow = number
-type TickCollisionMethod = `pairwise` | `sweep`
 
 // `axis` is x for x/x2 and y for y/y2. `cross_axis` is the actual label origin after
 // tick offset, configured shifts, and staggering have been applied.
@@ -79,7 +78,7 @@ interface TickCollisionPair {
 }
 
 export interface TickCollisionSummary {
-  method: TickCollisionMethod
+  method: `sweep`
   gap: number
   pairs: readonly TickCollisionPair[]
   colliding_indices: readonly number[]
@@ -114,7 +113,6 @@ export interface TickGeometryOptions {
   measure?: TickLabelMeasure
   gap?: number
   edge_gap?: number
-  collision_method?: TickCollisionMethod
 }
 
 const ANCHORS: readonly TickLabelAnchor[] = [`start`, `middle`, `end`]
@@ -440,10 +438,28 @@ const aabbs_collide = (first: TickAabb, second: TickAabb, gap: number): boolean 
   return !separated_x && !separated_y
 }
 
+const intervals_collide = (
+  first: readonly [number, number],
+  second: readonly [number, number],
+  second_offset: number,
+  gap: number,
+): boolean =>
+  first[1] + gap > second[0] + second_offset && second[1] + second_offset + gap > first[0]
+
+const local_bounds = (
+  label: TickLabelGeometry,
+): readonly [x: [number, number], y: [number, number]] => {
+  let width = 0
+  for (const line_width of label.dimensions.line_widths) width = Math.max(width, line_width)
+  return [
+    anchor_x_bounds(width, label.anchor),
+    block_y_bounds(label.lines.length * label.dimensions.line_height, label.side),
+  ]
+}
+
 // Every label on an axis shares one rotation, so tilted labels sit on parallel baselines and
-// clear each other exactly when the perpendicular distance between those baselines exceeds a
-// text block's height. Their axis-aligned boxes are far wider than the glyphs and overlap long
-// before the text does, which pushed the scorer to 90° where 30° already had room to spare.
+// their axis-aligned boxes overlap long before the text does. Compare their oriented bounds after
+// the AABB broad phase so labels separated along either text axis do not force extra rotation.
 const labels_collide = (
   first: TickLabelGeometry,
   second: TickLabelGeometry,
@@ -451,21 +467,29 @@ const labels_collide = (
 ): boolean => {
   if (!aabbs_collide(first.aabb, second.aabb, gap)) return false
   const rotation = normalized_rotation(first.rotation)
-  if (rotation === 0 || rotation !== normalized_rotation(second.rotation)) {
+  if (
+    rotation === 0 ||
+    rotation !== normalized_rotation(second.rotation) ||
+    first.side !== second.side
+  ) {
     return true
   }
   const radians = (rotation * Math.PI) / 180
-  // Labels on one axis share a side, so both origins map the same way.
   const horizontal = first.side === `x` || first.side === `x2`
   const delta_along = second.position.axis - first.position.axis
   const delta_cross = second.position.cross_axis - first.position.cross_axis
   const delta_x = horizontal ? delta_along : delta_cross
   const delta_y = horizontal ? delta_cross : delta_along
-  // Distance between the two baselines, measured perpendicular to the shared text direction.
-  const perpendicular = Math.abs(-delta_x * Math.sin(radians) + delta_y * Math.cos(radians))
-  const block_height =
-    Math.max(first.lines.length, second.lines.length) * first.dimensions.line_height
-  return perpendicular < block_height + gap
+  const cosine = Math.cos(radians)
+  const sine = Math.sin(radians)
+  const offset_x = delta_x * cosine + delta_y * sine
+  const offset_y = -delta_x * sine + delta_y * cosine
+  const [first_x, first_y] = local_bounds(first)
+  const [second_x, second_y] = local_bounds(second)
+  return (
+    intervals_collide(first_x, second_x, offset_x, gap) &&
+    intervals_collide(first_y, second_y, offset_y, gap)
+  )
 }
 
 const collision_pair = (
@@ -488,7 +512,6 @@ const collision_pair_order = (first: TickCollisionPair, second: TickCollisionPai
 const build_collision_summary = (
   labels: readonly TickLabelGeometry[],
   pairs: readonly TickCollisionPair[],
-  method: TickCollisionMethod,
   gap: number,
 ): TickCollisionSummary => {
   const sorted_pairs = pairs.toSorted(collision_pair_order)
@@ -509,7 +532,7 @@ const build_collision_summary = (
     return label.id
   })
   return {
-    method,
+    method: `sweep`,
     gap,
     pairs: sorted_pairs,
     colliding_indices,
@@ -517,24 +540,6 @@ const build_collision_summary = (
     count: sorted_pairs.length,
     has_collisions: sorted_pairs.length > 0,
   }
-}
-
-export const detect_tick_label_collisions_pairwise = (
-  labels: readonly TickLabelGeometry[],
-  gap = 0,
-): TickCollisionSummary => {
-  assert_non_negative(gap, `gap`)
-  const pairs: TickCollisionPair[] = []
-  for (let first_idx = 0; first_idx < labels.length; first_idx++) {
-    for (let second_idx = first_idx + 1; second_idx < labels.length; second_idx++) {
-      const first = labels[first_idx]
-      const second = labels[second_idx]
-      if (labels_collide(first, second, gap)) {
-        pairs.push(collision_pair(first, second))
-      }
-    }
-  }
-  return build_collision_summary(labels, pairs, `pairwise`, gap)
 }
 
 export const detect_tick_label_collisions_sweep = (
@@ -563,26 +568,16 @@ export const detect_tick_label_collisions_sweep = (
     }
     active.push(current)
   }
-  return build_collision_summary(labels, pairs, `sweep`, gap)
-}
-
-const detect_tick_label_collisions = (
-  labels: readonly TickLabelGeometry[],
-  gap = 0,
-  method: TickCollisionMethod = `sweep`,
-): TickCollisionSummary => {
-  if (method === `pairwise`) return detect_tick_label_collisions_pairwise(labels, gap)
-  if (method === `sweep`) return detect_tick_label_collisions_sweep(labels, gap)
-  throw new TypeError(`collision method must be "pairwise" or "sweep", got ${String(method)}`)
+  return build_collision_summary(labels, pairs, gap)
 }
 
 export const analyze_tick_label_geometry = (
   options: TickGeometryOptions,
 ): TickGeometrySummary => {
-  const { gap = 0, edge_gap = 0, collision_method = `sweep` } = options
+  const { gap = 0, edge_gap = 0 } = options
   assert_non_negative(gap, `gap`)
   const labels = calculate_tick_label_geometry(options)
-  const collisions = detect_tick_label_collisions(labels, gap, collision_method)
+  const collisions = detect_tick_label_collisions_sweep(labels, gap)
   // Most labels do not overflow, so only the ones that do are materialised.
   const overflows: TickLabelOverflow[] = []
   for (const label of labels) {

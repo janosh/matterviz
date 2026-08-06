@@ -5,7 +5,6 @@ import {
   get_text_metrics_revision,
   invalidate_text_metrics_after_fonts_ready,
   measure_css_text_width,
-  measure_text_block,
   measure_text_line,
   resolve_font_size_css,
   resolve_font_spec,
@@ -182,40 +181,15 @@ describe(`text metrics`, () => {
     expect(measure_text).toHaveBeenCalledTimes(2)
   })
 
-  it(`measures multiline blocks with explicit line-height and shared line caching`, () => {
-    const { measure_text } = mock_canvas()
-    const first = measure_text_block(`short\nlongest\nshort`, TEST_FONT)
-    const tighter = measure_text_block(`short\nlongest`, {
-      ...TEST_FONT,
-      line_height: 18,
-    })
-
-    expect(first).toMatchObject({
-      width: 35,
-      height: 72,
-      line_height: 24,
-      line_count: 3,
-    })
-    expect(first.lines.map(({ text }) => text)).toEqual([`short`, `longest`, `short`])
-    expect(tighter).toMatchObject({ width: 35, height: 36, line_height: 18, line_count: 2 })
-    expect(measure_text).toHaveBeenCalledTimes(2)
-  })
-
   it(`returns deterministic SSR metrics without touching browser globals`, async () => {
     const font = { ...DEFAULT_FONT_SPEC, font_size: 10, line_height: 15 }
     vi.stubGlobal(`document`, undefined)
 
     expect(resolve_font_spec(null, font)).toEqual(font)
-    expect(measure_text_block(`A🙂\nx`, font)).toMatchObject({
-      width: 12,
-      height: 30,
-      line_height: 15,
-      line_count: 2,
-      lines: [
-        { text: `A🙂`, width: 12, ascent: 8, descent: 2, source: `fallback` },
-        { text: `x`, width: 6, ascent: 8, descent: 2, source: `fallback` },
-      ],
-    })
+    expect([measure_text_line(`A🙂`, font), measure_text_line(`x`, font)]).toMatchObject([
+      { text: `A🙂`, width: 12, ascent: 8, descent: 2, source: `fallback` },
+      { text: `x`, width: 6, ascent: 8, descent: 2, source: `fallback` },
+    ])
     const revision_before = get_text_metrics_revision()
     await expect(invalidate_text_metrics_after_fonts_ready()).resolves.toBe(revision_before)
   })

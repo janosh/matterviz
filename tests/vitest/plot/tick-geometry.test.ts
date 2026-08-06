@@ -5,7 +5,6 @@ import {
   choose_tick_label_anchor,
   default_tick_label_anchor,
   detect_axis_edge_overflow,
-  detect_tick_label_collisions_pairwise,
   detect_tick_label_collisions_sweep,
   is_tick_label_anchor,
   type TickLabelDimensions,
@@ -161,12 +160,10 @@ describe(`actual-position collision detection`, () => {
   })
 
   it(`uses irregular nonmonotonic positions rather than nominal tick pitch`, () => {
-    const pairwise = detect_tick_label_collisions_pairwise(irregular_labels)
     const sweep = detect_tick_label_collisions_sweep(irregular_labels)
-    expect(pairwise.pairs).toEqual([
+    expect(sweep.pairs).toEqual([
       { first_idx: 1, second_idx: 2, first_id: `left`, second_id: `near-left` },
     ])
-    expect(sweep.pairs).toEqual(pairwise.pairs)
     expect(sweep).toMatchObject({
       colliding_indices: [1, 2],
       colliding_ids: [`left`, `near-left`],
@@ -231,31 +228,25 @@ describe(`actual-position collision detection`, () => {
       side: `x`,
       axis_extent: { start: 0, end: 100 },
     })
-    expect(detect_tick_label_collisions_pairwise(labels).has_collisions).toBe(true)
     expect(detect_tick_label_collisions_sweep(labels).has_collisions).toBe(true)
   })
 
-  it(`keeps pairwise and sweep results equal for separated rotated labels`, () => {
+  it(`separates rotated labels whose AABBs overlap`, () => {
     const labels = calculate_tick_label_geometry({
       items: [
         tick_item(`first`, 0, 8, { anchor: `start`, rotation: 30 }),
-        tick_item(`second`, 20, 8, { anchor: `start`, rotation: 30 }),
+        // Their AABBs overlap, but the text blocks are disjoint along the rotated baseline.
+        tick_item(`second`, 10, 8, { anchor: `start`, rotation: 30 }),
       ],
       side: `x`,
       axis_extent: { start: 0, end: 100 },
     })
-    const pairwise = detect_tick_label_collisions_pairwise(labels)
-    const sweep = detect_tick_label_collisions_sweep(labels)
-    expect(pairwise.pairs).toEqual([])
-    expect(sweep.pairs).toEqual(pairwise.pairs)
+    expect(detect_tick_label_collisions_sweep(labels).pairs).toEqual([])
   })
 
-  it(`keeps pairwise and sweep results identical without mutating labels`, () => {
+  it(`detects collisions without mutating labels`, () => {
     const labels_before = structuredClone(irregular_labels)
-    const pairwise = detect_tick_label_collisions_pairwise(irregular_labels, 15)
-    const sweep = detect_tick_label_collisions_sweep(irregular_labels, 15)
-    expect(sweep.pairs).toEqual(pairwise.pairs)
-    expect(sweep.colliding_indices).toEqual(pairwise.colliding_indices)
+    detect_tick_label_collisions_sweep(irregular_labels, 15)
     expect(irregular_labels).toEqual(labels_before)
   })
 
@@ -294,18 +285,13 @@ describe(`actual-position collision detection`, () => {
       side: `x`,
       axis_extent: { start: -20, end: 60 },
     })
-    for (const summary of [
-      detect_tick_label_collisions_pairwise(labels, 5),
-      detect_tick_label_collisions_sweep(labels, 5),
-    ]) {
-      expect(summary).toMatchObject({
-        pairs: [],
-        colliding_indices: [],
-        colliding_ids: [],
-        count: 0,
-        has_collisions: false,
-      })
-    }
+    expect(detect_tick_label_collisions_sweep(labels, 5)).toMatchObject({
+      pairs: [],
+      colliding_indices: [],
+      colliding_ids: [],
+      count: 0,
+      has_collisions: false,
+    })
   })
 })
 
@@ -401,7 +387,6 @@ describe(`geometry summaries and measurement`, () => {
       ],
       side: `x` as const,
       axis_extent: { start: -20, end: 40 },
-      collision_method: `sweep` as const,
     }
     const first = analyze_tick_label_geometry(options)
     const second = analyze_tick_label_geometry(options)

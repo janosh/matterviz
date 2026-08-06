@@ -879,6 +879,26 @@ describe(`layout utility functions`, () => {
       expect(layout.rotation).toBe(45)
       expect(layout.labels.every(({ rotation }) => rotation === 45)).toBe(true)
     })
+
+    it(`validates geometry and reports unknown strategies before collapsed-axis fallback`, () => {
+      expect(() =>
+        resolve_tick_layout({ tick_values: [`Jan`, `Feb`], tick_positions: [50] }, 0, `x`),
+      ).toThrow(`tick_positions has 1 entries for 2 ticks`)
+      const console_error = vi.spyOn(console, `error`).mockImplementation(() => undefined)
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`Jan`, `Feb`],
+          tick_positions: [50, 50],
+          tick: { label: { auto_layout: { strategies: [`unknown`] } } },
+        } as unknown as MeasuredAxis,
+        0,
+        `x`,
+      )
+      expect(layout.strategy).toBe(`upright`)
+      expect(console_error).toHaveBeenCalledWith(
+        `Ignoring unknown tick auto-layout strategy "unknown"`,
+      )
+    })
   })
 
   describe(`measure_max_tick_width`, () => {

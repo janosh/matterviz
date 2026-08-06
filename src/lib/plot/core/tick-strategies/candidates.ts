@@ -7,7 +7,7 @@ import {
   type TickStrategyCandidate,
 } from './types'
 
-export interface TickCandidateLabelInput {
+interface TickCandidateLabelInput {
   full_text: string
   display_lines?: readonly string[]
   visible?: boolean
@@ -15,22 +15,22 @@ export interface TickCandidateLabelInput {
   information_loss?: number
 }
 
-export interface CreateTickCandidateInput {
+interface CreateTickCandidateInput {
   id: string
   strategy: TickStrategy
   labels: readonly (string | TickCandidateLabelInput)[]
   rotation_deg?: number
 }
 
-export interface TickCandidateTransformOptions {
+interface TickCandidateTransformOptions {
   id: string
 }
 
-export interface StaggerCandidateOptions extends TickCandidateTransformOptions {
+interface StaggerCandidateOptions extends TickCandidateTransformOptions {
   first_row?: TickStaggerRow
 }
 
-export interface EllipsisCandidateOptions extends TickCandidateTransformOptions {
+interface EllipsisCandidateOptions extends TickCandidateTransformOptions {
   max_width_px: number | readonly number[]
   measure_text: (text: string) => number
   ellipsis?: string
@@ -73,7 +73,7 @@ const validate_label = (label: TickCandidateLabel, candidate_id: string): void =
   }
 }
 
-export const validate_tick_candidate = (candidate: TickStrategyCandidate): void => {
+const validate_tick_candidate = (candidate: TickStrategyCandidate): void => {
   if (!candidate.id.trim()) throw new Error(`tick candidate id must not be empty`)
   if (!is_tick_strategy(candidate.strategy)) {
     throw new Error(`candidate "${candidate.id}" has unknown strategy "${candidate.strategy}"`)

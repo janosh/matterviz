@@ -27,14 +27,13 @@ describe(`normalize_value`, () => {
     [`42.5`, 42.5],
     [`-100`, -100],
     [new Date(`2024-01-01T00:00:00Z`), Date.parse(`2024-01-01T00:00:00Z`)],
-    [new Date(`invalid`), 0],
     [`2024-06-15`, Date.parse(`2024-06-15`)],
   ])(`returns %s as %s`, (input, expected) => {
     expect(normalize_value(input)).toBe(expected)
   })
 
   test.each([
-    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN].map(
+    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN, new Date(`invalid`)].map(
       (input) => [input, `Invalid RefLineValue`] as const,
     ),
     ...[``, ` `, `  \t  `].map((input) => [input, `empty string`] as const),

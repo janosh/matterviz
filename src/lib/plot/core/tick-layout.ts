@@ -236,12 +236,11 @@ const resolved_strategies = (config: TickAutoLayoutConfig): readonly TickStrateg
   // so reactive signal allocation would be pure overhead on the per-frame path.
   const strategies = config.strategies ?? DEFAULT_STRATEGY_ORDER
   if (strategies.length === 0) throw new Error(`tick auto_layout.strategies must not be empty`)
-  for (const strategy of strategies) {
-    if (!TICK_STRATEGIES.some((candidate) => candidate === strategy)) {
-      throw new Error(`unknown tick auto-layout strategy "${strategy}"`)
-    }
-  }
-  return [...new Set(strategies)]
+  return [...new Set(strategies)].filter((strategy) => {
+    if (TICK_STRATEGIES.some((candidate) => candidate === strategy)) return true
+    console.error(`Ignoring unknown tick auto-layout strategy "${strategy}"`)
+    return false
+  })
 }
 
 const finite_nonnegative = (value: number, name: string): number => {
@@ -478,8 +477,16 @@ const compute_tick_layout = (
   side: TickLayoutSide,
   full_texts: string[],
 ): ResolvedTickLayout => {
-  if (full_texts.length === 0) return upright_layout(axis, side, full_texts)
+  const ticks = axis.tick_values ?? []
+  if (axis.tick_positions.length !== ticks.length) {
+    throw new Error(
+      `tick_positions has ${axis.tick_positions.length} entries for ${ticks.length} ticks`,
+    )
+  }
   const configured = axis.tick?.label?.rotation ?? `auto`
+  const auto_layout = axis.tick?.label?.auto_layout ?? {}
+  const strategies = configured === `auto` ? resolved_strategies(auto_layout) : []
+  if (full_texts.length === 0) return upright_layout(axis, side, full_texts)
   // No axis and no spread between ticks means there is no arrangement to improve: every label
   // projects to one point, and the scorer would "fix" that pile-up by rotating labels nobody
   // can see. Real positions still get scored even when the caller omitted a plot size, so only
@@ -488,17 +495,11 @@ const compute_tick_layout = (
     const span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
     if (!(span > 0)) return upright_layout(axis, side, full_texts)
   }
-  const ticks = axis.tick_values ?? []
   const is_horizontal = side === `x` || side === `x2`
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const axis_position_shift = is_horizontal
     ? (axis.tick?.label?.shift?.x ?? 0)
     : (axis.tick?.label?.shift?.y ?? 0)
-  if (axis.tick_positions.length !== ticks.length) {
-    throw new Error(
-      `tick_positions has ${axis.tick_positions.length} entries for ${ticks.length} ticks`,
-    )
-  }
   const positions = axis.tick_positions.map((position) => position + axis_position_shift)
   const renderable_indices: number[] = []
   const base_labels = full_texts.map((full_text, tick_idx) => {
@@ -534,8 +535,6 @@ const compute_tick_layout = (
     return finalize_layout(measured, ticks, side, is_horizontal)
   }
 
-  const auto_layout = axis.tick?.label?.auto_layout ?? {}
-  const strategies = resolved_strategies(auto_layout)
   const max_angle = finite_nonnegative(auto_layout.max_angle ?? 90, `auto_layout.max_angle`)
   if (max_angle > 90) {
     throw new Error(`auto_layout.max_angle must not exceed 90, got ${max_angle}`)

@@ -47,8 +47,11 @@ describe(`InteractiveAxisLabel`, () => {
   test(`renders interactive trigger with ARIA attributes`, () => {
     const component = mount_label({ options, selected_key: `energy` })
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(true)
-    expect(get_trigger()?.textContent).toContain(`Energy (eV)`)
-    expect(get_trigger()?.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+    const trigger = get_trigger() as HTMLElement
+    expect(trigger.textContent).toContain(`Energy (eV)`)
+    expect(trigger.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+    expect(getComputedStyle(get_wrapper() as HTMLElement).pointerEvents).toBe(`none`)
+    expect(getComputedStyle(trigger).pointerEvents).toBe(`auto`)
     void unmount(component)
   })
 
