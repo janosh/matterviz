@@ -432,18 +432,8 @@ const adaptive_thin_indices = (item_count: number, requested_count: number): num
     Math.min(item_count - 1, Math.floor(((visible_idx + 0.5) * item_count) / requested_count)),
   ).filter((tick_idx, selected_idx, selected) => tick_idx !== selected[selected_idx - 1])
 
-const empty_layout = (): ResolvedTickLayout => ({
-  rotation: 0,
-  band: 0,
-  lines: [],
-  labels: [],
-  visible_tick_indices: [],
-  visible_ticks: [],
-  strategy: `upright`,
-  stagger_step: 0,
-})
-
 // Plain upright labels, every one visible. Used when there is no geometry worth scoring.
+// Degenerates to an empty layout when handed no labels.
 const upright_layout = (
   axis: MeasuredAxis,
   side: TickLayoutSide,
@@ -488,14 +478,15 @@ const compute_tick_layout = (
   side: TickLayoutSide,
   full_texts: string[],
 ): ResolvedTickLayout => {
-  if (full_texts.length === 0) return empty_layout()
+  if (full_texts.length === 0) return upright_layout(axis, side, full_texts)
+  const configured = axis.tick?.label?.rotation ?? `auto`
   // No axis and no spread between ticks means there is no arrangement to improve: every label
   // projects to one point, and the scorer would "fix" that pile-up by rotating labels nobody
-  // can see. Real positions still get scored even when the caller omitted a plot size.
-  const position_span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
-  const configured = axis.tick?.label?.rotation ?? `auto`
-  if (configured === `auto` && !(axis_size > 0) && !(position_span > 0)) {
-    return upright_layout(axis, side, full_texts)
+  // can see. Real positions still get scored even when the caller omitted a plot size, so only
+  // sized-out axes pay for the span scan.
+  if (configured === `auto` && !(axis_size > 0)) {
+    const span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
+    if (!(span > 0)) return upright_layout(axis, side, full_texts)
   }
   const ticks = axis.tick_values ?? []
   const is_horizontal = side === `x` || side === `x2`
