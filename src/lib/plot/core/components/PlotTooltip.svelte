@@ -1,6 +1,8 @@
 <script lang="ts">
   import { luminance } from '$lib/colors'
+  import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
+  import type { Rect } from '$lib/plot/core/layout'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -11,6 +13,7 @@
     offset = { x: 6, y: 0 },
     fixed = false,
     constrain_to,
+    exclusion_rects,
     fallback_size,
     wrapper = $bindable(),
     children,
@@ -22,6 +25,7 @@
     offset?: { x: number; y: number }
     fixed?: boolean // Use position: fixed (for viewport coords) vs absolute
     constrain_to?: { width: number; height: number } // flip/clamp within these bounds (offset consumed by constraining)
+    exclusion_rects?: readonly Rect[] // Decorations to avoid; absolute mode also needs constrain_to
     fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // Bindable reference for measuring tooltip size
     children: Snippet
@@ -31,15 +35,31 @@
   const text_color = $derived(
     bg_color != null ? (luminance(bg_color) > 0.5 ? `#000000` : `#ffffff`) : null,
   )
+  const measured_or_fallback = (measured?: number, fallback?: number): number =>
+    measured && measured > 0 ? measured : (fallback ?? 0)
 
   // For fixed positioning (viewport coords), flip to opposite side when near viewport edges
   const pos = $derived.by(() => {
+    const tooltip_width = measured_or_fallback(wrapper?.offsetWidth, fallback_size?.width)
+    const tooltip_height = measured_or_fallback(wrapper?.offsetHeight, fallback_size?.height)
+    const bounds =
+      constrain_to ??
+      (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
+    if (exclusion_rects && exclusion_rects.length > 0 && bounds) {
+      return place_tooltip({
+        anchor: { x, y },
+        tooltip_size: { width: tooltip_width, height: tooltip_height },
+        bounds: { x: 0, y: 0, ...bounds },
+        exclusion_rects,
+        offset,
+      })
+    }
     if (constrain_to) {
       return constrain_tooltip_position(
         x,
         y,
-        wrapper?.offsetWidth ?? fallback_size?.width ?? 0,
-        wrapper?.offsetHeight ?? fallback_size?.height ?? 0,
+        tooltip_width,
+        tooltip_height,
         constrain_to.width,
         constrain_to.height,
         { offset_x: offset.x, offset_y: offset.y },
@@ -47,12 +67,12 @@
     }
     const raw_x = x + offset.x
     const raw_y = y + offset.y
-    if (!fixed) return { x: raw_x, y: raw_y }
-    const tw = wrapper?.offsetWidth ?? 0
-    const th = wrapper?.offsetHeight ?? 0
-    const cx = raw_x + tw > globalThis.innerWidth ? x - Math.abs(offset.x) - tw : raw_x
-    const cy = raw_y + th > globalThis.innerHeight ? y - Math.abs(offset.y) - th : raw_y
-    return { x: Math.max(0, cx), y: Math.max(0, cy) }
+    if (!bounds) return { x: raw_x, y: raw_y }
+    const constrained_x =
+      raw_x + tooltip_width > bounds.width ? x - Math.abs(offset.x) - tooltip_width : raw_x
+    const constrained_y =
+      raw_y + tooltip_height > bounds.height ? y - Math.abs(offset.y) - tooltip_height : raw_y
+    return { x: Math.max(0, constrained_x), y: Math.max(0, constrained_y) }
   })
 
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the

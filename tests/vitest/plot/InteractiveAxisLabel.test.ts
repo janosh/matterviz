@@ -25,16 +25,28 @@ describe(`InteractiveAxisLabel`, () => {
   })
 
   test.each([
-    { props: { label: `Energy (eV)` }, text: `Energy (eV)`, tag_count: 0, desc: `no options` },
+    {
+      props: { label: `Energy (eV)`, line_segments: [] },
+      text: `Energy (eV)`,
+      tag_count: 0,
+      desc: `no measured lines`,
+    },
     {
       props: { options: [], label: `E<sub>hull</sub><sup>*</sup>` },
       text: `Ehull*`,
       tag_count: 2,
       desc: `empty options with HTML`,
     },
+    {
+      props: { line_segments: [[{ text: `Measured` }]] },
+      text: `Measured`,
+      tag_count: 0,
+      desc: `single pre-measured line`,
+    },
   ])(`renders static label when $desc`, ({ props, text, tag_count }) => {
     const component = mount_label(props)
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(false)
+    expect(getComputedStyle(get_wrapper() as HTMLElement).display).toBe(`flex`)
     const static_label = document.body.querySelector(`.static-label`) as HTMLElement
     expect(static_label.textContent).toContain(text)
     expect(static_label.querySelectorAll(`sub, sup`)).toHaveLength(tag_count)
@@ -46,8 +58,11 @@ describe(`InteractiveAxisLabel`, () => {
   test(`renders interactive trigger with ARIA attributes`, () => {
     const component = mount_label({ options, selected_key: `energy` })
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(true)
-    expect(get_trigger()?.textContent).toContain(`Energy (eV)`)
-    expect(get_trigger()?.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+    const trigger = get_trigger() as HTMLElement
+    expect(trigger.textContent).toContain(`Energy (eV)`)
+    expect(trigger.getAttribute(`aria-haspopup`)).toBe(`listbox`)
+    expect(getComputedStyle(get_wrapper() as HTMLElement).pointerEvents).toBe(`none`)
+    expect(getComputedStyle(trigger).pointerEvents).toBe(`auto`)
     void unmount(component)
   })
 

@@ -27,6 +27,12 @@
       icon: ScatterPlot,
     },
     {
+      href: `/plot/facet-grid`,
+      title: `Facet Grid`,
+      description: `Coordinated plot panels with shared ranges, padding, linked interactions, outer axes, and shared chrome bands.`,
+      icon: Graph,
+    },
+    {
       href: `/plot/scatter-plot-3d`,
       title: `3D Scatter Plot`,
       description: `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,

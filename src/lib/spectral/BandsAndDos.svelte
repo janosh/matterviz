@@ -1,19 +1,16 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
+  import {
+    axis_with_range,
+    max_side_padding,
+    reconcile_shared_axis_ranges,
+  } from '$lib/plot/core/shared-axes'
   import type { AxisConfig } from '$lib/plot/core/types'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import {
-    axis_with_range,
-    compute_frequency_range,
-    detect_zoom_change,
-    extract_efermi,
-    is_valid_range,
-    ranges_equal,
-  } from './helpers'
+  import { compute_frequency_range, extract_efermi } from './helpers'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
   let {
@@ -41,69 +38,50 @@
   )
   let fermi_level = $derived(extract_efermi(band_structs) ?? extract_efermi(doses))
 
-  const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
-    shared_y_axis ? axis_with_range(bands_props.y_axis, range) : { ...bands_props.y_axis }
-  const dos_default_axis = (range = shared_frequency_range): AxisConfig =>
+  const default_y_axes = (): AxisConfig[] =>
     shared_y_axis
-      ? axis_with_range(dos_props.y_axis, range, ``)
-      : {
-          label: ``,
-          ...dos_props.y_axis,
-        }
+      ? [
+          axis_with_range(bands_props.y_axis, shared_frequency_range),
+          axis_with_range(dos_props.y_axis, shared_frequency_range, ``),
+        ]
+      : [{ ...bands_props.y_axis }, { label: ``, ...dos_props.y_axis }]
 
   let synced_zoom_range = $state<Vec2 | null>(null)
-  let bands_y_axis = $state<AxisConfig>(bands_default_axis())
-  let dos_y_axis = $state<AxisConfig>(dos_default_axis())
+  let y_axes = $state(default_y_axes())
   let prev_sources: unknown[] | undefined
   $effect(() => {
-    const sources = [band_structs, doses, shared_y_axis, bands_props.y_axis, dos_props.y_axis]
+    const sources = [
+      band_structs,
+      doses,
+      shared_y_axis,
+      JSON.stringify({ bands: bands_props.y_axis, dos: dos_props.y_axis }),
+    ]
     if (prev_sources?.every((source, idx) => source === sources[idx])) return
     prev_sources = sources
+    y_axes = default_y_axes()
     synced_zoom_range = null
-    bands_y_axis = bands_default_axis()
-    dos_y_axis = dos_default_axis()
   })
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
+    if (!sync_y_zoom) synced_zoom_range = null
     if (!sync_y_zoom || !shared_frequency_range) return
-    const result = detect_zoom_change(
-      bands_y_axis.range,
-      dos_y_axis.range,
+    const update = reconcile_shared_axis_ranges(
+      y_axes,
       shared_frequency_range,
-      untrack(() => synced_zoom_range),
+      synced_zoom_range,
     )
-    if (result !== undefined) synced_zoom_range = result
+    if (!update) return
+    synced_zoom_range = update.synced_range
+    y_axes = update.axes
   })
-
-  // Propagate the synced range to a child y-axis (untrack current to avoid overwriting
-  // child zoom). Skips when the current range already matches base, or is valid but
-  // differs (child zoom in progress).
-  const propagate_synced_range = (
-    current_range: Vec2 | undefined,
-    apply: (base_range: Vec2 | undefined) => void,
-  ) => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    if (ranges_equal(current_range, base_range) || is_valid_range(current_range)) return
-    apply(base_range)
-  }
-  $effect(() =>
-    propagate_synced_range(
-      untrack(() => bands_y_axis.range) as Vec2 | undefined,
-      (base_range) => (bands_y_axis = bands_default_axis(base_range)),
-    ),
-  )
-  $effect(() =>
-    propagate_synced_range(
-      untrack(() => dos_y_axis.range) as Vec2 | undefined,
-      (base_range) => (dos_y_axis = dos_default_axis(base_range)),
-    ),
-  )
 
   let hovered_frequency = $state<number | null>(null)
 
-  // Ensure both plots use identical top/bottom padding for aligned y_scale_fn
-  const shared_tb_padding = { t: 20, b: 50 }
+  // Side-wise maxima preserve caller padding while keeping y-scale pixel spans identical.
+  let shared_tb_padding = $derived(
+    max_side_padding([{ t: 20, b: 50 }, bands_props.padding, dos_props.padding], [`t`, `b`]),
+  )
 </script>
 
 <div
@@ -116,7 +94,7 @@
     {...bands_props}
     {band_structs}
     {fermi_level}
-    bind:y_axis={bands_y_axis}
+    bind:y_axis={y_axes[0]}
     reference_frequency={hovered_frequency}
     padding={{ r: 15, ...bands_props.padding, ...shared_tb_padding }}
   />
@@ -126,7 +104,7 @@
     {doses}
     {fermi_level}
     orientation="horizontal"
-    bind:y_axis={dos_y_axis}
+    bind:y_axis={y_axes[1]}
     bind:hovered_frequency
     reference_frequency={hovered_frequency}
     padding={{ l: 15, ...dos_props.padding, ...shared_tb_padding }}

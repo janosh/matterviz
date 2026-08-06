@@ -582,13 +582,12 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         snippet_props = [prop.js_name for prop in props if prop.kind == "snippet"]
 
         # Filter to JSON-serializable value props
-        # These are handled by the base MatterViz wrapper args and must not be
-        # re-emitted as component-specific params.
-        reserved_base_args = {"id", "className", "style", "children"}
+        # Base-wrapper arguments and Svelte-only context props must not be re-emitted.
+        excluded_value_props = {"id", "className", "style", "children", "facet_layout"}
         value_props = [
             prop
             for prop in props
-            if prop.kind == "value" and prop.js_name not in reserved_base_args
+            if prop.kind == "value" and prop.js_name not in excluded_value_props
         ]
 
         # Auto-detect conversion defaults

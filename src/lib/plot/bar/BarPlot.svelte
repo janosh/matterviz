@@ -8,6 +8,7 @@
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import type {
+    AxisRanges,
     AxisLoadError,
     BarHandlerProps,
     BarMode,
@@ -28,15 +29,16 @@
     SizeScaleConfig,
     UserContentProps,
   } from '$lib/plot'
+  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import {
     BarPlotControls,
-    compute_element_placement,
     PlotAxis,
     PlotLegend,
     PlotMarginals,
-    ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -46,6 +48,8 @@
     reserve_marginal_pad,
   } from '$lib/plot/core/marginals'
   import { type AxisChangeState, create_axis_loader } from '$lib/plot/core/axis-utils'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -54,8 +58,21 @@
     invert_rect_range,
     resolve_axis_ranges,
   } from '$lib/plot/core/interactions'
-  import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import { assign_axes } from '$lib/plot/core/axis-assignment'
+  import {
+    build_obstacles_norm,
+    clip_bar,
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    get_decoration_placement,
+    resolve_legend_layout_tracks,
+    solve_decorations,
+  } from '$lib/plot/core/decorations'
+  import {
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_axis_scales,
     create_color_scale,
@@ -70,26 +87,22 @@
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
-  import {
-    build_obstacles_norm,
-    clip_bar,
-    has_explicit_position,
-    measured_footprint,
-    place_decorations,
-    placed_coords,
-  } from '$lib/plot/core/auto-place'
+  import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
   import {
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    measured_axis,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
-    measure_max_tick_width,
   } from '$lib/plot/core/layout'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import { bar_path } from '$lib/plot/core/svg'
   import { unique_id } from '$lib/plot/core/utils'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -123,6 +136,7 @@
     display = $bindable({ ...DEFAULTS.bar.display }),
     range_padding = 0,
     padding = {},
+    title,
     legend = {},
     show_legend,
     bar = {},
@@ -156,8 +170,9 @@
     on_error,
     pan = {},
     marginals = false,
+    facet_layout,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
       series?: BarSeries<Metadata>[]
@@ -210,6 +225,7 @@
       on_error?: (error: AxisLoadError) => void
       pan?: PanConfig
       marginals?: MarginalsProp
+      facet_layout?: FacetLayoutContext
     } = $props()
 
   // Initialize bar, line, y2_axis with defaults - using $derived for reactivity
@@ -248,11 +264,45 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
+
+  // Assign visible series without an explicit value axis by unit/group. The value axis is
+  // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
+  // legend toggles can reassign axes without mutating bound input series.
+  const axis_assigned_series = $derived.by<BarSeries<Metadata>[]>(() => {
+    const assignment_inputs = series.map((srs) => ({
+      ...srs,
+      y_axis:
+        orientation === `vertical`
+          ? srs.y_axis
+          : srs.x_axis === `x1`
+            ? (`y1` as const)
+            : srs.x_axis === `x2`
+              ? (`y2` as const)
+              : undefined,
+    }))
+    const assignment = assign_axes(assignment_inputs)
+    if (assignment.status === `overflow`) {
+      const axis_prop = orientation === `vertical` ? `y_axis` : `x_axis`
+      throw new Error(
+        `BarPlot cannot automatically assign visible value series in ${orientation} orientation: ${assignment.error.message}. Set ${axis_prop} explicitly or hide an axis group.`,
+        { cause: assignment.error },
+      )
+    }
+    return series.map((srs, series_idx) => {
+      if (srs.visible === false) return srs
+      const assigned_axis = assignment.assignments[series_idx]
+      if (!assigned_axis) return srs
+      return orientation === `vertical`
+        ? { ...srs, y_axis: assigned_axis }
+        : { ...srs, x_axis: assigned_axis === `y1` ? `x1` : `x2` }
+    })
+  })
 
   // === Categorical Normalization (string x values -> integer indices, see ./data) ===
   let { category_list, internal_series } = $derived(
-    normalize_categorical(series, x_axis.categories),
+    normalize_categorical(axis_assigned_series, x_axis.categories),
   )
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
@@ -282,32 +332,40 @@
     category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
   )
 
-  // Thin categorical tick labels + grid lines when many categories would overlap.
-  // Bars still render for every category (this only reduces drawn ticks/labels/grid).
-  let cat_tick_indices = $derived.by<number[]>(() => {
-    if (!category_indices) return []
-    const axis_px = (orientation === `horizontal` ? height : width) || 0
-    const max_ticks = Math.max(1, Math.floor(axis_px / 28)) // ~28px per category label
-    const step = Math.ceil(category_indices.length / max_ticks)
-    return step <= 1 ? category_indices : category_indices.filter((_, idx) => idx % step === 0)
-  })
+  // Keep every category available to the shared adaptive resolver. Its measured, bounded
+  // thinning candidate replaces the former fixed 28px/category heuristic.
+  let cat_tick_indices = $derived(category_indices ?? [])
 
   // Compute auto ranges from visible series
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
 
-  // Separate series by y-axis
-  let y1_series = $derived(visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`))
-  let y2_series = $derived(visible_series.filter((srs) => srs.y_axis === `y2`))
+  // Separate series by the orientation-dependent value axis.
+  let y1_series = $derived(
+    visible_series.filter((srs) =>
+      orientation === `vertical`
+        ? (srs.y_axis ?? `y1`) === `y1`
+        : (srs.x_axis ?? `x1`) === `x1`,
+    ),
+  )
+  let y2_series = $derived(
+    visible_series.filter((srs) =>
+      orientation === `vertical` ? srs.y_axis === `y2` : srs.x_axis === `x2`,
+    ),
+  )
   let x2_series = $derived(visible_series.filter((srs) => srs.x_axis === `x2`))
-  // Whether the secondary x2 (top) / y2 (right) axis actually renders: BarPlot only supports
-  // them in vertical orientation. Derive once so ticks, padding, axis rendering, and marginal
-  // placement stay in sync. (Data-existence checks below use the bare `*_series.length` instead.)
-  let show_x2 = $derived(x2_series.length > 0 && orientation === `vertical`)
+  // y2 is a vertical value axis; x2 is either a vertical category axis or horizontal value axis.
+  let show_x2 = $derived(x2_series.length > 0)
   let show_y2 = $derived(y2_series.length > 0 && orientation === `vertical`)
 
-  let auto_ranges = $derived(
-    compute_bar_auto_ranges({
-      visible_series,
+  let auto_ranges = $derived.by(() => {
+    // The shared range helper models x as the category axis. In horizontal orientation,
+    // classify all series as x1 for category coverage, then reuse its y2 value range for x2.
+    const range_series =
+      orientation === `horizontal`
+        ? visible_series.map((srs) => ({ ...srs, x_axis: `x1` as const }))
+        : visible_series
+    const computed = compute_bar_auto_ranges({
+      visible_series: range_series,
       y1_series,
       y2_series,
       x2_series,
@@ -315,18 +373,39 @@
       orientation,
       range_padding,
       category_count: category_list.length,
-      x_range: x_axis.range ?? [null, null],
-      x_scale_type: x_axis.scale_type ?? `linear`,
-      x_is_time: is_time_scale(x_axis.scale_type),
+      x_range:
+        orientation === `horizontal`
+          ? (y_axis.range ?? [null, null])
+          : (x_axis.range ?? [null, null]),
+      x_scale_type:
+        orientation === `horizontal`
+          ? (y_axis.scale_type ?? `linear`)
+          : (x_axis.scale_type ?? `linear`),
+      x_is_time: is_time_scale(
+        orientation === `horizontal` ? y_axis.scale_type : x_axis.scale_type,
+      ),
       x2_range: x2_axis.range ?? [null, null],
       x2_scale_type: x2_axis.scale_type ?? `linear`,
       x2_is_time: is_time_scale(x2_axis.scale_type),
-      y_range: y_axis.range ?? [null, null],
-      y_scale_type: y_axis.scale_type ?? `linear`,
-      y2_range: y2_axis.range ?? [null, null],
-      y2_scale_type: y2_axis.scale_type ?? `linear`,
-    }),
-  )
+      y_range:
+        orientation === `horizontal`
+          ? (x_axis.range ?? [null, null])
+          : (y_axis.range ?? [null, null]),
+      y_scale_type:
+        orientation === `horizontal`
+          ? (x_axis.scale_type ?? `linear`)
+          : (y_axis.scale_type ?? `linear`),
+      y2_range:
+        orientation === `horizontal`
+          ? (x2_axis.range ?? [null, null])
+          : (y2_axis.range ?? [null, null]),
+      y2_scale_type:
+        orientation === `horizontal`
+          ? (x2_axis.scale_type ?? `linear`)
+          : (y2_axis.scale_type ?? `linear`),
+    })
+    return orientation === `horizontal` ? { ...computed, x2: computed.y2 } : computed
+  })
 
   // Initialize and current ranges
   let ranges = $state<{
@@ -336,6 +415,15 @@
     initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  const facet = create_facet_plot_adapter({
+    axes: FACET_AXES,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => auto_ranges,
+    ranges: () => ranges.current,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
 
   $effect(() => {
     // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
@@ -353,39 +441,94 @@
     if (!axis_ranges_equal(init, next)) {
       ranges = { initial: { ...next }, current: { ...next } }
     }
+    facet.apply_ranges()
   })
 
   // Layout: dynamic padding based on tick label widths
   // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
-  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
+  const title_config = $derived(normalize_plot_title(title))
+
+  const get_plot_ticks = (
+    axis_scales: ReturnType<typeof create_axis_scales>,
+    axis_ranges: AxisRanges,
+  ) => {
+    const axis_ticks = (
+      axis: typeof x_axis,
+      range: Vec2,
+      scale: typeof axis_scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
+        : []
+    return {
+      x:
+        category_indices && cat_axis === `x` && width && height
+          ? cat_tick_indices
+          : axis_ticks(x_axis, axis_ranges.x, axis_scales.x, 8),
+      y:
+        category_indices && cat_axis === `y` && width && height
+          ? cat_tick_indices
+          : axis_ticks(y_axis, axis_ranges.y, axis_scales.y, 6),
+      y2: axis_ticks(y2_axis, axis_ranges.y2, axis_scales.y2, 6, show_y2),
+      x2: axis_ticks(x2_axis, axis_ranges.x2, axis_scales.x2, 8, show_x2),
+    }
+  }
 
   // Update padding when format or ticks change
   $effect(() => {
-    const new_pad =
+    const padding_ranges = facet_layout ? auto_ranges : ranges.current
+    const padding_scales = create_axis_scales(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      padding_ranges,
+      base_pad,
+      width,
+      height,
+    )
+    const padding_ticks = get_plot_ticks(padding_scales, padding_ranges)
+    const [x2_pad_axis, y2_pad_axis] = [show_x2 ? x2_axis : {}, show_y2 ? y2_axis : {}]
+    const x_extent = { start: base_pad.l, end: width - base_pad.r }
+    const y_extent = { start: height - base_pad.b, end: base_pad.t }
+    const measure_axis = (
+      axis: typeof x_axis,
+      axis_ticks: number[],
+      scale: typeof padding_scales.x,
+      axis_extent: typeof x_extent,
+    ) => measured_axis(axis, axis_ticks, scale, axis_extent, tick_font)
+    const axis_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: {
-              ...x_axis,
-              ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
-              tick_values: ticks.x,
-            },
-            x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-            y_axis: {
-              ...y_axis,
-              ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-              tick_values: ticks.y,
-            },
-            y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+            height,
+            x_axis: measure_axis(
+              { ...x_axis, ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks },
+              padding_ticks.x,
+              padding_scales.x,
+              x_extent,
+            ),
+            x2_axis: measure_axis(x2_pad_axis, padding_ticks.x2, padding_scales.x2, x_extent),
+            y_axis: measure_axis(
+              { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+              padding_ticks.y,
+              padding_scales.y,
+              y_extent,
+            ),
+            y2_axis: measure_axis(y2_pad_axis, padding_ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
+  let legend_filter_query = $derived(legend?.filter_query ?? ``)
   let legend_size_revision = $state(0)
   const legend_footprint = $derived.by(() => {
     void legend_size_revision
@@ -394,70 +537,94 @@
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
   const should_show_legend = $derived(show_legend ?? series.length > 1)
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
-  // from baseline to its tip so the legend can't hide inside a tall bar. Built from internal_series
-  // (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
+  // against the decoration-independent base plot so outside padding cannot feed back into
+  // the crowding decision. Bars contribute their grouped/stacked screen rectangles and
+  // line series contribute sampled polylines.
   const obstacles_norm = $derived.by(() => {
     if (!width || !height || visible_series.length === 0) return []
-    const base_w = width - base_pad.l - base_pad.r
-    const base_h = height - base_pad.t - base_pad.b
+    const base_w = width - effective_base_pad.l - effective_base_pad.r
+    const base_h = height - effective_base_pad.t - effective_base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
-    const bars: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
+    const obstacle_series: {
+      points: { x: number; y: number }[]
+      draws_line: boolean
+    }[] = []
     const vertical = orientation === `vertical`
+    const obstacle_scales = create_axis_scales(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      ranges.current,
+      effective_base_pad,
+      width,
+      height,
+    )
     internal_series.forEach((srs, series_idx) => {
       if (!(srs?.visible ?? true)) return
       const is_line = srs.render_mode === `line`
       const series_offsets = stacked_offsets[series_idx] ?? []
-      const [ax0, ax1] = srs.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
-      const [vy0, vy1] = srs.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
-      const [cy0, cy1] = ranges.current.y
-      const x_span = ax1 - ax0
-      const y_span = vy1 - vy0
-      const cy_span = cy1 - cy0
-      if (!(x_span > 0) || !((vertical ? y_span : cy_span) > 0)) return
+      const x_scale = srs.x_axis === `x2` ? obstacle_scales.x2 : obstacle_scales.x
+      const y_scale = srs.y_axis === `y2` ? obstacle_scales.y2 : obstacle_scales.y
+      const category_scale = vertical
+        ? (value: number) => x_scale(value) - effective_base_pad.l
+        : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
+      const value_scale = vertical
+        ? (value: number) => y_scale(value) - effective_base_pad.t
+        : (value: number) => x_scale(value) - effective_base_pad.l
+
+      if (is_line) {
+        const line_points = srs.x.map((x_val, point_idx) => {
+          const y_val = srs.y[point_idx]
+          const x = vertical ? category_scale(x_val) / base_w : value_scale(y_val) / base_w
+          const y = vertical ? value_scale(y_val) / base_h : category_scale(x_val) / base_h
+          return {
+            x: Math.max(0, Math.min(1, x)),
+            y: Math.max(0, Math.min(1, y)),
+          }
+        })
+        const markers = srs.markers ?? DEFAULT_MARKERS
+        obstacle_series.push({
+          points: line_points,
+          draws_line: markers === `line` || markers === `line+points`,
+        })
+        return
+      }
+
       srs.x.forEach((x_val, bar_idx) => {
-        const base = !is_line && mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
-        const value = base + srs.y[bar_idx]
-        // vertical: category on x, value rises on y (inverted). horizontal: category on y, value on x
-        const seg = vertical
-          ? clip_bar(
-              true,
-              (x_val - ax0) / x_span,
-              1 - (value - vy0) / y_span,
-              1 - (base - vy0) / y_span,
-            )
-          : clip_bar(
-              false,
-              1 - (x_val - cy0) / cy_span,
-              (value - ax0) / x_span,
-              (base - ax0) / x_span,
-            )
-        if (seg) bars.push(seg)
+        const value = srs.y[bar_idx]
+        const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
+        const bar_width_val = Array.isArray(srs.bar_width)
+          ? (srs.bar_width[bar_idx] ?? 0.5)
+          : (srs.bar_width ?? 0.5)
+        const rect = compute_bar_rect({
+          cat_val: x_val,
+          val: value,
+          base,
+          bar_width_val,
+          series_idx,
+          mode,
+          orientation,
+          group_info,
+          cat_scale: category_scale,
+          val_scale: value_scale,
+        })
+        const cross_start = vertical ? rect.rect_x / base_w : rect.rect_y / base_h
+        const cross_end = vertical
+          ? (rect.rect_x + rect.rect_w) / base_w
+          : (rect.rect_y + rect.rect_h) / base_h
+        const value_start = vertical ? rect.rect_y / base_h : rect.rect_x / base_w
+        const value_end = vertical
+          ? (rect.rect_y + rect.rect_h) / base_h
+          : (rect.rect_x + rect.rect_w) / base_w
+        for (const cross of [cross_start, (cross_start + cross_end) / 2, cross_end]) {
+          const segment = clip_bar(vertical, cross, value_start, value_end)
+          if (segment) obstacle_series.push(segment)
+        }
       })
     })
-    return build_obstacles_norm(bars, base_w, base_h)
+    return build_obstacles_norm(obstacle_series, base_w, base_h)
   })
 
-  // Move the legend to the bottom margin when no interior spot avoids the bars
-  const decor = $derived(
-    place_decorations({
-      base_pad,
-      width,
-      height,
-      obstacles_norm,
-      // gate on legend_element (the render signal) not legend_data, whose entries can read pad
-      legend:
-        legend != null &&
-        should_show_legend &&
-        legend_element != null &&
-        !legend_has_explicit_pos
-          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-          : null,
-    }),
-  )
-  // Resolve marginals: a cumulative/Pareto CDF over the CATEGORY axis weighted by bar height.
-  // Categories sit on x (vertical) or y (horizontal), so the default side and the value array
-  // flip with orientation. The value axis carries no marginal (a bar's height isn't a sample).
+  // Resolve marginals before decoration placement so both share one final plot box.
   const marginal_is_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
     normalize_marginals(
@@ -465,7 +632,33 @@
       marginal_is_vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
     ),
   )
-  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const legend_item = $derived(
+    create_legend_decoration_item({
+      enabled:
+        legend != null &&
+        should_show_legend &&
+        legend_element != null &&
+        !legend_has_explicit_pos,
+      footprint: legend_footprint,
+      items: series.map((series_data, series_idx) => ({
+        label: series_data.label ?? `Series ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
+      config: { ...legend, filter_query: legend_filter_query },
+    }),
+  )
+  const base_decoration_solution = $derived(
+    solve_decorations({
+      base_pad: effective_base_pad,
+      width,
+      height,
+      obstacles_norm,
+      items: legend_item ? [legend_item] : [],
+    }),
+  )
+  const pad = $derived(
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+  )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     internal_series.map((srs) => ({
       x: marginal_is_vertical ? (srs?.x ?? []) : undefined,
@@ -495,6 +688,20 @@
       height,
     ),
   )
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      base_pad: pad,
+      width,
+      height,
+      obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: ranges.current,
+      scales,
+    }),
+  )
+  const solved_legend = $derived(get_decoration_placement(decoration_solution, `legend`))
+  const decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
   // Compute plot center for point tweening origin
   let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
@@ -543,44 +750,30 @@
     return Object.fromEntries(category_list.map((cat, idx): [number, string] => [idx, cat]))
   })
 
-  let ticks = $derived.by(() => {
-    const axis_ticks = (
-      axis: typeof x_axis,
-      range: Vec2,
-      scale: typeof scales.x,
-      default_count: number,
-      show = true,
-    ) =>
-      width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
-            default_count,
-          })
-        : []
-    // categorical axes show one tick per category instead of generated numeric ticks
-    return {
-      x:
-        category_indices && cat_axis === `x` && width && height
-          ? cat_tick_indices
-          : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
-      y:
-        category_indices && cat_axis === `y` && width && height
-          ? cat_tick_indices
-          : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
-      y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
-      x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
-    }
-  })
+  // Categorical axes show one tick per category instead of generated numeric ticks.
+  let ticks = $derived(get_plot_ticks(scales, ranges.current))
 
-  // Cache measured tick-label widths so expensive canvas text measurement
-  // only runs when ticks/format change, not on every template rerender.
-  // Pass the category map so horizontal orientation measures names, not slot indices.
-  let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(
-      ticks.y,
-      y_axis.format,
-      cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-    ),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format, y2_axis.ticks),
+  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
+  let tick_label_widths = $derived.by(() => {
+    const y_extent = { start: height - pad.b, end: pad.t }
+    return {
+      y_max: resolve_tick_layout(
+        measured_axis(
+          { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+          ticks.y,
+          scales.y,
+          y_extent,
+          tick_font,
+        ),
+        chart_height,
+        `y`,
+      ).band,
+      y2_max: resolve_tick_layout(
+        measured_axis(y2_axis, ticks.y2, scales.y2, y_extent, tick_font),
+        chart_height,
+        `y2`,
+      ).band,
+    }
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -595,23 +788,30 @@
       height: chart_height,
     }),
     pan: () => pan,
-    set_range: (axis, range) => (ranges.current[axis] = range),
+    set_range: facet.update_range,
     svg: () => svg_element,
     on_rect_zoom: (start, current) => {
       // Update axis ranges to trigger reactivity and prevent effect from overriding
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
-      x_axis = { ...x_axis, range: next_x }
+      if (!facet.update_range(`x`, next_x)) x_axis = { ...x_axis, range: next_x }
       // gate x2/y2 on whether they actually render (show_x2/show_y2 also require vertical);
       // otherwise their [0, 1] sentinel scales would store a phantom range in the bindable prop
       const next_x2 = show_x2 ? invert_rect_range(scales.x2, start.x, current.x) : null
-      if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      if (next_x2 && !facet.update_range(`x2`, next_x2)) {
+        x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
-      if (next_y) y_axis = { ...y_axis, range: next_y }
+      if (next_y && !facet.update_range(`y`, next_y)) {
+        y_axis = { ...y_axis, range: next_y }
+      }
       const next_y2 = show_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null
-      if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      if (next_y2 && !facet.update_range(`y2`, next_y2)) {
+        y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      }
     },
     on_reset: () => {
+      if (facet.reset_ranges()) return
       // Reset zoom to initial ranges (undo any pan/zoom)
       ranges.current = {
         x: [...ranges.initial.x] as Vec2,
@@ -687,59 +887,22 @@
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series = next),
+    (srs) => (orientation === `vertical` ? srs.y_axis : srs.x_axis),
   )
-
-  // Collect bar and line positions for legend placement
-  let bar_points_for_placement = $derived.by(() => {
-    if (!width || !height || visible_series.length === 0) return []
-
-    return internal_series.flatMap((srs, series_idx) => {
-      if (!(srs?.visible ?? true)) return []
-      const is_line = srs.render_mode === `line`
-      const series_offsets = stacked_offsets[series_idx] ?? []
-      const use_y2 = srs.y_axis === `y2`
-      const y_scale = use_y2 ? scales.y2 : scales.y
-      const use_x2_pl = srs.x_axis === `x2`
-      const x_scale_pl = use_x2_pl ? scales.x2 : scales.x
-      return srs.x
-        .map((x_val, bar_idx) => {
-          const y_val = srs.y[bar_idx]
-          const base = !is_line && mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
-          const [bar_x, bar_y] =
-            orientation === `vertical`
-              ? [x_scale_pl(x_val), y_scale(base + y_val)]
-              : [x_scale_pl(base + y_val), scales.y(x_val)]
-          return { x: bar_x, y: bar_y }
-        })
-        .filter(({ x, y }) => isFinite(x) && isFinite(y))
-    })
-  })
 
   // Legend placement stability state (legend_element declared above for the auto-place block)
   let hovered_legend_series_idx = $state<number | null>(null)
 
-  // Calculate best legend placement using continuous grid sampling
-  const get_legend_placement = () => {
-    if (!should_show_legend || !width || !height) return null
-
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 }, // fallback before first render
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: bar_points_for_placement,
-    })
-  }
-
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: get_legend_placement,
+    placement: () =>
+      should_show_legend && solved_legend ? { x: solved_legend.x, y: solved_legend.y } : null,
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
     on_element_resize: () => (legend_size_revision += 1),
+    placement_revision: () => solved_legend?.location,
   })
 
   // Tooltip state
@@ -829,16 +992,24 @@
     on_point_hover?.(null)
   }
 
-  // Stack offsets (only for bar series in stacked mode, grouped by y-axis)
-  let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode))
+  // Stack offsets (only for bar series in stacked mode, grouped by the value axis)
+  let stacked_offsets = $derived(
+    compute_stacked_offsets(
+      orientation === `vertical`
+        ? internal_series
+        : internal_series.map((srs) => ({
+            ...srs,
+            y_axis: srs.x_axis === `x2` ? (`y2` as const) : (`y1` as const),
+          })),
+      mode,
+    ),
+  )
 
   // Calculate group positions for grouped mode (side-by-side bars)
   let group_info = $derived(compute_group_info(internal_series, mode))
 
   // Set theme-aware background when entering fullscreen
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--barplot-fullscreen-bg`)
-  })
+  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--barplot-fullscreen-bg`))
 
   // State accessors for shared axis change handler
   // Secondary axes read the merged $derived (x2_axis/y2_axis) but write the raw $bindable props
@@ -869,32 +1040,17 @@
   $effect(try_auto_load)
 </script>
 
-{#snippet ref_lines_layer(lines: IndexedRefLine[])}
-  {#each lines as line (line.id ?? line.idx)}
-    <ReferenceLine
-      ref_line={line}
-      line_idx={line.idx}
-      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
-      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
-      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
-      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
-      x_scale={scales.x}
-      x2_scale={scales.x2}
-      y_scale={scales.y}
-      y2_scale={scales.y2}
-      {clip_path_id}
-      hovered_line_idx={hovered_ref_line_idx}
-      on_click={(event: RefLineEvent) => {
-        line.on_click?.(event)
-        on_ref_line_click?.(event)
-      }}
-      on_hover={(event: RefLineEvent | null) => {
-        hovered_ref_line_idx = event?.line_idx ?? null
-        line.on_hover?.(event)
-        on_ref_line_hover?.(event)
-      }}
-    />
-  {/each}
+{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
+  <ReferenceLinesLayer
+    {lines}
+    ranges={ranges.current}
+    {scales}
+    {clip_path_id}
+    {decoration_solution}
+    bind:hovered_line_idx={hovered_ref_line_idx}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <svelte:window
@@ -929,7 +1085,9 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-        ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Bar chart`)}
+        (title_config?.text ||
+          [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
+          `Bar chart`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -947,6 +1105,12 @@
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor}
     >
+      <PlotTitle
+        config={title_config}
+        x={effective_base_pad.l}
+        y={decoration_solution.pad.t - effective_base_pad.t}
+        width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
+      />
       <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       <!-- User content (custom overlays, reference lines, etc.) -->
@@ -969,26 +1133,29 @@
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
       <!-- X-axis -->
-      <PlotAxis
-        side="x"
-        ticks={ticks.x}
-        place={scales.x}
-        axis={x_axis}
-        domain={ranges.current.x}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.x_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
-        label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `x`}
-        on_axis_change={(key) => handle_axis_change(`x`, key)}
-      />
+      {#if facet.axis_visible(`x`)}
+        <PlotAxis
+          side="x"
+          ticks={ticks.x}
+          place={scales.x}
+          axis={x_axis}
+          on_tick_font={(font) => (tick_font = font)}
+          domain={ranges.current.x}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.x_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+          label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
+          label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `x`}
+          on_axis_change={(key) => handle_axis_change(`x`, key)}
+        />
+      {/if}
 
-      <!-- X2-axis (Top): only rendered in vertical orientation -->
-      {#if show_x2}
+      <!-- X2-axis (Top): category axis when vertical, value axis when horizontal -->
+      {#if show_x2 && facet.axis_visible(`x2`)}
         <PlotAxis
           side="x2"
           ticks={ticks.x2}
@@ -1008,26 +1175,28 @@
       {/if}
 
       <!-- Y-axis -->
-      <PlotAxis
-        side="y"
-        ticks={ticks.y}
-        place={scales.y}
-        axis={y_axis}
-        domain={ranges.current.y}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.y_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
-        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
-        label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
-        axis_loading={axis_loading === `y`}
-        on_axis_change={(key) => handle_axis_change(`y`, key)}
-      />
+      {#if facet.axis_visible(`y`)}
+        <PlotAxis
+          side="y"
+          ticks={ticks.y}
+          place={scales.y}
+          axis={y_axis}
+          domain={ranges.current.y}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.y_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+          label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
+          label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `y`}
+          on_axis_change={(key) => handle_axis_change(`y`, key)}
+        />
+      {/if}
 
       <!-- Y2-axis (Right): only rendered in vertical orientation -->
-      {#if show_y2}
+      {#if show_y2 && facet.axis_visible(`y2`)}
         <PlotAxis
           side="y2"
           ticks={ticks.y2}
@@ -1368,16 +1537,18 @@
 
     <!-- Legend -->
     {#if legend && should_show_legend}
-      {@const legend_pos = placed_coords(
-        decor.legend_outside,
-        decor.legend_pos,
-        legend_tween.placed(),
-        legend_tween.coords.current,
-        { x: pad.l + 10, y: pad.t + 10 },
-      )}
+      {@const solved_legend_pos = solved_legend ?? { x: pad.l + 10, y: pad.t + 10 }}
+      {@const legend_pos =
+        solved_legend?.location === `outside`
+          ? solved_legend_pos
+          : legend_tween.placed()
+            ? legend_tween.coords.current
+            : solved_legend_pos}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
+        bind:filter_query={legend_filter_query}
+        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, solved_legend)}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
@@ -1389,8 +1560,7 @@
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`
           position: absolute;
-          left: ${legend_pos.x}px;
-          top: ${legend_pos.y}px;
+          ${legend_has_explicit_pos ? `` : `left: ${legend_pos.x}px; top: ${legend_pos.y}px;`}
           pointer-events: auto;
           ${legend?.style || ``}
         `}
@@ -1409,6 +1579,7 @@
         y={cy}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
+        exclusion_rects={decoration_exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
       >

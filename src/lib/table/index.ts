@@ -85,7 +85,7 @@ export type SummaryStat = `mean` | `median` | `min` | `max` | `count`
 export type ColumnPrefs = {
   width?: number
   better?: `higher` | `lower`
-  color_scale?: D3InterpolateName
+  color_scale?: D3InterpolateName | null
   datetime_format?: DateTimeFormatMode
   filter?: ColumnFilter
 }

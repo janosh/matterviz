@@ -23,14 +23,9 @@
     ViolinSide,
     WhiskerMode,
   } from '$lib/plot'
-  import {
-    BoxPlotControls,
-    compute_element_placement,
-    PlotAxis,
-    PlotLegend,
-    PlotMarginals,
-    ReferenceLine,
-  } from '$lib/plot'
+  import { BoxPlotControls, PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
     add_sides,
@@ -42,13 +37,17 @@
   import {
     build_obstacles_norm,
     clip_bar,
-    has_explicit_position,
-    measured_footprint,
-    place_decorations,
-    placed_coords,
-  } from '$lib/plot/core/auto-place'
+    create_legend_decoration_item,
+    decoration_placement_rects,
+    get_decoration_placement,
+    resolve_legend_layout_tracks,
+    solve_decorations,
+  } from '$lib/plot/core/decorations'
+  import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -62,14 +61,21 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    measured_axis,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
-    measure_max_tick_width,
   } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
+  import {
+    group_ref_lines_by_z,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     create_axis_scales,
     generate_ticks,
@@ -130,6 +136,7 @@
     display = $bindable({ ...DEFAULTS.box.display }),
     range_padding = 0,
     padding = {},
+    title,
     legend = {},
     show_legend,
     box = {},
@@ -173,8 +180,9 @@
     controls_extra,
     pan = {},
     marginals = false,
+    facet_layout,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
       series?: BoxPlotSeries<Metadata>[]
@@ -220,6 +228,7 @@
       on_ref_line_hover?: (event: RefLineEvent | null) => void
       pan?: PanConfig
       marginals?: MarginalsProp
+      facet_layout?: FacetLayoutContext
     } = $props()
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
@@ -252,7 +261,8 @@
 
   let hovered_ref_line_idx = $state<number | null>(null)
 
-  let ref_lines_by_z = $derived(group_ref_lines_by_z(index_ref_lines(ref_lines)))
+  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
+  let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
   // === Box stats + slot model ===
   const box_color = (idx: number): string =>
@@ -485,6 +495,45 @@
     initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  const facet = create_facet_plot_adapter({
+    axes: FACET_AXES,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => auto_ranges,
+    ranges: () => ranges.current,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
+
+  const get_plot_ticks = (
+    axis_scales: ReturnType<typeof create_axis_scales>,
+    axis_ranges = ranges.current,
+  ) => {
+    const axis_ticks = (
+      axis: typeof x_axis,
+      range: Vec2,
+      scale: typeof axis_scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
+        : []
+    return {
+      x:
+        cat_axis === `x` && width && height
+          ? slot_indices
+          : axis_ticks(x_axis, axis_ranges.x, axis_scales.x, 8),
+      y:
+        cat_axis === `y` && width && height
+          ? slot_indices
+          : axis_ticks(y_axis, axis_ranges.y, axis_scales.y, 6),
+      y2: axis_ticks(y2_axis, axis_ranges.y2, axis_scales.y2, 6, show_y2),
+      x2: axis_ticks(x2_axis, axis_ranges.x2, axis_scales.x2, 8, show_x2),
+    }
+  }
 
   $effect(() => {
     // sync ranges from axis.range overrides / auto ranges
@@ -501,36 +550,61 @@
     if (!axis_ranges_equal(init, next)) {
       ranges = { initial: { ...next }, current: { ...next } }
     }
+    facet.apply_ranges()
   })
 
-  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
+  const title_config = $derived(normalize_plot_title(title))
 
   $effect(() => {
     // dynamic padding from tick label widths
-    const new_pad =
+    const padding_ranges = facet_layout ? auto_ranges : ranges.current
+    const padding_scales = create_axis_scales(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      padding_ranges,
+      base_pad,
+      width,
+      height,
+    )
+    const padding_ticks = get_plot_ticks(padding_scales, padding_ranges)
+    const [x2_pad_axis, y2_pad_axis] = [show_x2 ? x2_axis : {}, show_y2 ? y2_axis : {}]
+    const x_extent = { start: base_pad.l, end: width - base_pad.r }
+    const y_extent = { start: height - base_pad.b, end: base_pad.t }
+    const measure_axis = (
+      axis: typeof x_axis,
+      axis_ticks: number[],
+      scale: typeof padding_scales.x,
+      extent: typeof x_extent,
+    ) => measured_axis(axis, axis_ticks, scale, extent, tick_font)
+    const axis_pad =
       width && height
         ? calc_auto_padding({
             padding,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: {
-              ...x_axis,
-              ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
-              tick_values: ticks.x,
-            },
-            x2_axis: { ...x2_axis, tick_values: ticks.x2 },
-            y_axis: {
-              ...y_axis,
-              ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-              tick_values: ticks.y,
-            },
-            y2_axis: { ...y2_axis, tick_values: ticks.y2 },
+            height,
+            x_axis: measure_axis(
+              { ...x_axis, ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks },
+              padding_ticks.x,
+              padding_scales.x,
+              x_extent,
+            ),
+            x2_axis: measure_axis(x2_pad_axis, padding_ticks.x2, padding_scales.x2, x_extent),
+            y_axis: measure_axis(
+              { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+              padding_ticks.y,
+              padding_scales.y,
+              y_extent,
+            ),
+            y2_axis: measure_axis(y2_pad_axis, padding_ticks.y2, padding_scales.y2, y_extent),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
+  let legend_filter_query = $derived(legend?.filter_query ?? ``)
   let legend_size_revision = $state(0)
   const legend_footprint = $derived.by(() => {
     void legend_size_revision
@@ -541,8 +615,8 @@
   // Obstacle field in normalized [0,1] coords: each box modeled as a whisker-spanning segment
   const obstacles_norm = $derived.by(() => {
     if (!width || !height || visible_boxes.length === 0) return []
-    const base_w = width - base_pad.l - base_pad.r
-    const base_h = height - base_pad.t - base_pad.b
+    const base_w = width - effective_base_pad.l - effective_base_pad.r
+    const base_h = height - effective_base_pad.t - effective_base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
     const vertical = orientation === `vertical`
     const segs: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
@@ -573,30 +647,38 @@
   })
 
   const should_show_legend = $derived(show_legend ?? false)
-  const decor = $derived(
-    place_decorations({
-      base_pad,
-      width,
-      height,
-      obstacles_norm,
-      legend:
-        legend != null &&
-        should_show_legend &&
-        legend_element != null &&
-        !legend_has_explicit_pos
-          ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
-          : null,
-    }),
-  )
-  // Marginals are opt-in (default prop `false`) and bind to the VALUE axis, pooling each box's
-  // raw samples. The default side follows orientation (value axis = y when vertical, x when
-  // horizontal) so the `marginals` boolean / type-string shorthand land on a meaningful side.
-  // Each box is tagged with its value axis so a primary-axis marginal ignores secondary boxes.
+  // Marginals are opt-in and bind to the value axis.
   const marginal_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
     normalize_marginals(marginals, marginal_vertical ? { right: true } : { top: true }),
   )
-  const pad = $derived(add_sides(decor.pad, reserve_marginal_pad(resolved_marginals)))
+  const legend_item = $derived(
+    create_legend_decoration_item({
+      enabled:
+        legend != null &&
+        should_show_legend &&
+        legend_element != null &&
+        !legend_has_explicit_pos,
+      footprint: legend_footprint,
+      items: series.map((series_data, series_idx) => ({
+        label: series_data.label ?? `Box ${series_idx + 1}`,
+        legend_group: series_data.legend_group,
+      })),
+      config: { ...legend, filter_query: legend_filter_query },
+    }),
+  )
+  const base_decoration_solution = $derived(
+    solve_decorations({
+      base_pad: effective_base_pad,
+      width,
+      height,
+      obstacles_norm,
+      items: legend_item ? [legend_item] : [],
+    }),
+  )
+  const pad = $derived(
+    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
+  )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     visible_boxes.map((box_item) => {
       const secondary = is_secondary(box_item.series)
@@ -624,6 +706,20 @@
       height,
     ),
   )
+  const decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      base_pad: pad,
+      width,
+      height,
+      obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges: ranges.current,
+      scales,
+    }),
+  )
+  const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
+  const decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
   // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
@@ -653,43 +749,29 @@
     return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
   })
 
-  let ticks = $derived.by(() => {
-    const axis_ticks = (
-      axis: typeof x_axis,
-      range: Vec2,
-      scale: typeof scales.x,
-      default_count: number,
-      show = true,
-    ) =>
-      width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
-            default_count,
-          })
-        : []
-    // categorical axes show one tick per slot instead of generated numeric ticks
-    return {
-      x:
-        cat_axis === `x` && width && height
-          ? slot_indices
-          : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
-      y:
-        cat_axis === `y` && width && height
-          ? slot_indices
-          : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
-      y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
-      x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
-    }
-  })
+  let ticks = $derived(get_plot_ticks(scales))
 
-  // Horizontal padding must measure category names rather than numeric slot indices.
-  // Pass the slot-name map so horizontal orientation measures names, not slot indices.
-  let tick_label_widths = $derived({
-    y_max: measure_max_tick_width(
-      ticks.y,
-      y_axis.format,
-      cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-    ),
-    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format, y2_axis.ticks),
+  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
+  let tick_label_widths = $derived.by(() => {
+    const extent = { start: height - pad.b, end: pad.t }
+    return {
+      y_max: resolve_tick_layout(
+        measured_axis(
+          { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+          ticks.y,
+          scales.y,
+          extent,
+          tick_font,
+        ),
+        chart_height,
+        `y`,
+      ).band,
+      y2_max: resolve_tick_layout(
+        measured_axis(y2_axis, ticks.y2, scales.y2, extent, tick_font),
+        chart_height,
+        `y2`,
+      ).band,
+    }
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -704,23 +786,30 @@
       height: chart_height,
     }),
     pan: () => pan,
-    set_range: (axis, range) => (ranges.current[axis] = range),
+    set_range: facet.update_range,
     svg: () => svg_element,
     on_rect_zoom: (start, current) => {
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
-      x_axis = { ...x_axis, range: next_x }
+      if (!facet.update_range(`x`, next_x)) x_axis = { ...x_axis, range: next_x }
       // the secondary value axis is x2 only in horizontal mode, y2 only in vertical
       // (is_secondary keys off orientation); writing the off-orientation axis would
       // store a phantom range from its [0, 1] sentinel scale into the bound prop
       const next_x2 = show_x2 ? invert_rect_range(scales.x2, start.x, current.x) : null
-      if (next_x2) x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      if (next_x2 && !facet.update_range(`x2`, next_x2)) {
+        x2_axis_prop = { ...x2_axis_prop, range: next_x2 }
+      }
       const next_y = invert_rect_range(scales.y, start.y, current.y)
-      if (next_y) y_axis = { ...y_axis, range: next_y }
+      if (next_y && !facet.update_range(`y`, next_y)) {
+        y_axis = { ...y_axis, range: next_y }
+      }
       const next_y2 = show_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null
-      if (next_y2) y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      if (next_y2 && !facet.update_range(`y2`, next_y2)) {
+        y2_axis_prop = { ...y2_axis_prop, range: next_y2 }
+      }
     },
     on_reset: () => {
+      if (facet.reset_ranges()) return
       ranges.current = {
         x: [...ranges.initial.x] as Vec2,
         x2: [...ranges.initial.x2] as Vec2,
@@ -751,42 +840,20 @@
     (next) => (series = next),
   )
 
-  let box_points_for_placement = $derived.by(() => {
-    if (!width || !height || visible_boxes.length === 0) return []
-    const vertical = orientation === `vertical`
-    return visible_boxes
-      .map((box_item) => {
-        const val_scale = box_val_scale(box_item.series)
-        const cat_scale = vertical ? scales.x : scales.y
-        const cc = cat_scale(box_item.slot)
-        const vc = val_scale(box_item.stats.median)
-        return vertical ? { x: cc, y: vc } : { x: vc, y: cc }
-      })
-      .filter(({ x, y }) => isFinite(x) && isFinite(y))
-  })
-
   let hovered_legend_series_idx = $state<number | null>(null)
-
-  const get_legend_placement = () => {
-    if (!should_show_legend || !width || !height) return null
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: box_points_for_placement,
-    })
-  }
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
-    placement: get_legend_placement,
+    placement: () =>
+      !should_show_legend || !width || !height || legend_has_explicit_pos
+        ? null
+        : (legend_placement ?? null),
     dims: () => ({ width, height }),
     responsive: () => legend?.responsive ?? false,
     element: () => legend_element,
     tween: () => legend?.tween,
     on_element_resize: () => (legend_size_revision += 1),
+    placement_revision: () => legend_placement?.location,
   })
 
   // === Tooltip / hover ===
@@ -867,32 +934,17 @@
   />
 {/snippet}
 
-{#snippet ref_lines_layer(lines: IndexedRefLine[])}
-  {#each lines as line (line.id ?? line.idx)}
-    <ReferenceLine
-      ref_line={line}
-      line_idx={line.idx}
-      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
-      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
-      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
-      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
-      x_scale={scales.x}
-      x2_scale={scales.x2}
-      y_scale={scales.y}
-      y2_scale={scales.y2}
-      {clip_path_id}
-      hovered_line_idx={hovered_ref_line_idx}
-      on_click={(event: RefLineEvent) => {
-        line.on_click?.(event)
-        on_ref_line_click?.(event)
-      }}
-      on_hover={(event: RefLineEvent | null) => {
-        hovered_ref_line_idx = event?.line_idx ?? null
-        line.on_hover?.(event)
-        on_ref_line_hover?.(event)
-      }}
-    />
-  {/each}
+{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
+  <ReferenceLinesLayer
+    {lines}
+    ranges={ranges.current}
+    {scales}
+    {clip_path_id}
+    {decoration_solution}
+    bind:hovered_line_idx={hovered_ref_line_idx}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <svelte:window
@@ -927,7 +979,9 @@
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ??
-        ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Box plot`)}
+        (title_config?.text ||
+          [x_axis.label, y_axis.label].filter(Boolean).join(` vs `) ||
+          `Box plot`)}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
@@ -945,6 +999,12 @@
       ontouchcancel={pan_zoom.on_touch_end}
       style:cursor={pan_zoom.cursor}
     >
+      <PlotTitle
+        config={title_config}
+        x={effective_base_pad.l}
+        y={decoration_solution.pad.t - effective_base_pad.t}
+        width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
+      />
       <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
 
       {@render user_content?.({
@@ -964,24 +1024,27 @@
 
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-      <PlotAxis
-        side="x"
-        ticks={ticks.x}
-        place={scales.x}
-        axis={x_axis}
-        domain={ranges.current.x}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.x_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
-        tick_color={cat_axis === `x` ? (tick) => slot_colors.get(tick) : undefined}
-        label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
-        label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
-      />
+      {#if facet.axis_visible(`x`)}
+        <PlotAxis
+          side="x"
+          ticks={ticks.x}
+          place={scales.x}
+          axis={x_axis}
+          on_tick_font={(font) => (tick_font = font)}
+          domain={ranges.current.x}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.x_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `x` ? effective_cat_ticks : x_axis.ticks)}
+          tick_color={cat_axis === `x` ? (tick) => slot_colors.get(tick) : undefined}
+          label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
+          label_y={height - pad.b + AXIS_TITLE_OFFSET + (x_axis.label_shift?.y ?? 0)}
+        />
+      {/if}
 
-      {#if show_x2}
+      {#if show_x2 && facet.axis_visible(`x2`)}
         <PlotAxis
           side="x2"
           ticks={ticks.x2}
@@ -998,24 +1061,26 @@
         />
       {/if}
 
-      <PlotAxis
-        side="y"
-        ticks={ticks.y}
-        place={scales.y}
-        axis={y_axis}
-        domain={ranges.current.y}
-        {pad}
-        {width}
-        {height}
-        show_grid={resolved_display.y_grid}
-        tick_label={(tick) =>
-          get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
-        tick_color={cat_axis === `y` ? (tick) => slot_colors.get(tick) : undefined}
-        label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
-        label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
-      />
+      {#if facet.axis_visible(`y`)}
+        <PlotAxis
+          side="y"
+          ticks={ticks.y}
+          place={scales.y}
+          axis={y_axis}
+          domain={ranges.current.y}
+          {pad}
+          {width}
+          {height}
+          show_grid={resolved_display.y_grid}
+          tick_label={(tick) =>
+            get_tick_label(tick, cat_axis === `y` ? effective_cat_ticks : y_axis.ticks)}
+          tick_color={cat_axis === `y` ? (tick) => slot_colors.get(tick) : undefined}
+          label_x={y_axis_label_x(y_axis, pad.l, tick_label_widths.y_max)}
+          label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
+        />
+      {/if}
 
-      {#if show_y2}
+      {#if show_y2 && facet.axis_visible(`y2`)}
         <PlotAxis
           side="y2"
           ticks={ticks.y2}
@@ -1260,16 +1325,18 @@
     </svg>
 
     {#if legend && should_show_legend}
-      {@const legend_pos = placed_coords(
-        decor.legend_outside,
-        decor.legend_pos,
-        legend_tween.placed(),
-        legend_tween.coords.current,
-        { x: pad.l + 10, y: pad.t + 10 },
-      )}
+      {@const solved_legend_pos = legend_placement ?? { x: pad.l + 10, y: pad.t + 10 }}
+      {@const legend_pos =
+        legend_placement?.location === `outside`
+          ? solved_legend_pos
+          : legend_tween.placed()
+            ? legend_tween.coords.current
+            : solved_legend_pos}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
+        bind:filter_query={legend_filter_query}
+        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}
@@ -1291,6 +1358,7 @@
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width, height }}
+        exclusion_rects={decoration_exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
       >

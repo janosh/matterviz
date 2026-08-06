@@ -1,10 +1,10 @@
 import {
   type AutoPaddingConfig,
-  auto_tick_rotation,
   AXIS_LABEL_HEIGHT,
   AXIS_LABEL_OUTER,
   calc_auto_padding,
   centered_rect,
+  clear_tick_metrics_cache,
   compute_element_placement,
   constrain_tooltip_position,
   DEFAULT_PLOT_PADDING,
@@ -17,10 +17,10 @@ import {
   pad_rect,
   point_in_rect,
   rect_within_rect,
+  resolve_axis_title_layout,
   resolve_tick_layout,
   sample_series_obstacle_points,
   type Sides,
-  tick_label_band,
   TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
@@ -29,6 +29,21 @@ import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_text_measurement } from '../setup'
 
 describe(`layout utility functions`, () => {
+  // tick_positions is required: layout reads real geometry rather than guessing equal slots.
+  // Cases that only care about tick text project evenly spaced centres over a nominal axis.
+  const slot_axis = (
+    tick_values: (string | number)[],
+    axis: Partial<MeasuredAxis> = {},
+    axis_size = 400,
+  ): MeasuredAxis => ({
+    tick_positions: Array.from(
+      { length: tick_values.length },
+      (_unused, idx) => ((idx + 0.5) * axis_size) / tick_values.length,
+    ),
+    ...axis,
+    tick_values,
+  })
+
   describe(`rectangle helpers`, () => {
     test.each([
       {
@@ -272,23 +287,53 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`x tick label auto-rotation`, () => {
+  describe(`x tick label layout`, () => {
     const px_per_char = 7
     beforeEach(() => mock_text_measurement(px_per_char))
     afterEach(() => vi.restoreAllMocks())
     const crowded = Array.from({ length: 12 }, () => `QUEUE_HOLD`)
-    const widest_px = `QUEUE_HOLD`.length * px_per_char
     const plot_width = 400 - DEFAULT_PLOT_PADDING.l - DEFAULT_PLOT_PADDING.r
-    const pad_for = ({ x_axis, ...config }: Partial<AutoPaddingConfig>): Required<Sides> =>
-      calc_auto_padding({
+    const pad_for = ({
+      x_axis,
+      x2_axis,
+      ...config
+    }: Partial<AutoPaddingConfig>): Required<Sides> => {
+      // Project over the plot width this call will actually produce, so a test that resolves
+      // the same axis by hand sees the same tick geometry the padding pass did.
+      const inner = (config.width ?? 400) - DEFAULT_PLOT_PADDING.l - DEFAULT_PLOT_PADDING.r
+      const project_axis = (
+        axis: Partial<MeasuredAxis> | undefined,
+        fallback_ticks: (string | number)[],
+      ): MeasuredAxis => {
+        const { tick_positions: _tick_positions, ...axis_config } = axis ?? {}
+        return slot_axis(axis_config.tick_values ?? fallback_ticks, axis_config, inner)
+      }
+      return calc_auto_padding({
         padding: {},
         default_padding: DEFAULT_PLOT_PADDING,
         width: 400,
         ...config,
-        x_axis: { tick_values: crowded, ...x_axis },
+        x_axis: project_axis(x_axis, crowded),
+        x2_axis: x2_axis ? project_axis(x2_axis, []) : undefined,
       })
-    const rotation_for = (axis: MeasuredAxis, side: `x` | `x2` | `y` | `y2`): number =>
-      resolve_tick_layout({ tick_values: crowded, ...axis }, plot_width, side).rotation
+    }
+    const rotation_for = (
+      axis: Partial<MeasuredAxis>,
+      side: `x` | `x2` | `y` | `y2`,
+    ): number =>
+      resolve_tick_layout(
+        slot_axis(axis.tick_values ?? crowded, axis, plot_width),
+        plot_width,
+        side,
+      ).rotation
+    const state_labels = [`PENDING`, `CANCELLED by 2054`]
+    const x_layout = (
+      tick_values: string[],
+      width: number,
+      axis: Partial<MeasuredAxis> = {},
+    ) => resolve_tick_layout(slot_axis(tick_values, axis, width), width, `x`)
+    const resolved_lines = (layout: ReturnType<typeof resolve_tick_layout>) =>
+      layout.labels.map(({ lines }) => lines)
 
     // Negative throughout: labels anchored at their end trail left of the tick, so the
     // rightmost one cannot run off the plot.
@@ -301,24 +346,198 @@ describe(`layout utility functions`, () => {
       [`the steepest angle it has`, 8, -90],
       [`no pitch at all to work with`, 0, 0],
     ])(`crowding at %s`, (_label, pitch, expected) => {
-      expect(auto_tick_rotation(widest_px, pitch)).toBe(expected)
+      const layout = x_layout(crowded, pitch * crowded.length, {
+        tick: {
+          label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
+        },
+      })
+      expect(layout.rotation).toBe(expected)
     })
 
     it(`costs less height the shallower it tilts`, () => {
-      const bands = [0, -30, -45, -60, -90].map((angle) => tick_label_band(widest_px, angle))
+      const bands = [0, -30, -45, -60, -90].map(
+        (rotation) => x_layout([`QUEUE_HOLD`], 100, { tick: { label: { rotation } } }).band,
+      )
       expect(bands[0]).toBe(TICK_LABEL_HEIGHT)
       expect(bands.slice(1).every((band, idx) => band > bands[idx])).toBe(true)
     })
 
-    // Rotation follows the label side; y axes and lone labels stay upright.
+    it.each([
+      [`words`, `CANCELLED by 2054`, 70, [`CANCELLED`, `by 2054`]],
+      [`underscore-separated identifiers`, `QUEUE_HOLD`, 45, [`QUEUE_`, `HOLD`]],
+      [`camel case`, `cancelledBy2054`, 65, [`cancelled`, `By2054`]],
+      [`one-letter camel prefix`, `xAxis`, 25, [`x`, `Axis`]],
+    ])(`wraps %s at semantic boundaries`, (_name, label, max_width, expected) => {
+      const labels = Array(4).fill(label)
+      const width = labels.length * (max_width + 6)
+      const layout = x_layout(labels, width, {
+        axis_extent: { start: 0, end: width },
+        tick: { label: { auto_layout: { strategies: [`wrap`], max_band: 100 } } },
+      })
+      expect(layout.labels[1].lines).toEqual(expected)
+    })
+
+    it(`memoizes wrap measurements to a quadratic bound`, () => {
+      const measure_text = vi.fn((label: string) => ({ width: label.length * px_per_char }))
+      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: measure_text,
+      } as unknown as CanvasRenderingContext2D)
+      clear_tick_metrics_cache()
+      const segments = [
+        `alpha`,
+        `beta`,
+        `gamma`,
+        `delta`,
+        `epsilon`,
+        `zeta`,
+        `eta`,
+        `theta`,
+        `iota`,
+        `kappa`,
+        `lambda`,
+        `mu`,
+      ]
+      x_layout([segments.join(` `)], 80, {
+        tick: {
+          label: {
+            max_lines: segments.length,
+            auto_layout: { strategies: [`wrap`] },
+          },
+        },
+      })
+
+      expect(measure_text.mock.calls.length).toBeLessThanOrEqual(segments.length ** 2 + 30)
+    })
+
+    it(`chooses wrapping or rotation from whichever uses less vertical space`, () => {
+      const wrapped = x_layout(state_labels, 220)
+      expect(wrapped.rotation).toBe(0)
+      expect(wrapped.band).toBe(2 * TICK_LABEL_HEIGHT)
+      expect(resolved_lines(wrapped)).toEqual([[`PENDING`], [`CANCELLED`, `by 2054`]])
+
+      const wide = x_layout(state_labels, 260)
+      expect(wide).toMatchObject({ rotation: 0, band: TICK_LABEL_HEIGHT })
+      expect(resolved_lines(wide)).toEqual(state_labels.map((label) => [label]))
+
+      const wrapping_disabled = x_layout(state_labels, 220, {
+        tick: { label: { max_lines: 1 } },
+      })
+      expect(wrapping_disabled.rotation).toBe(-30)
+      expect(resolved_lines(wrapping_disabled)).toEqual(state_labels.map((label) => [label]))
+    })
+
+    it.each([
+      [`CANCELLED by 2054`, 90, [`CANCELLED`, `by 2054`]],
+      [`CANCELLED by timeout 2054`, 60, [`CANCELLED`, `by timeout`, `2054`]],
+    ] as const)(
+      `wraps a lone long label instead of letting "%s" overflow`,
+      (label, width, lines) => {
+        const layout = x_layout([label], width, {
+          tick: { label: { auto_layout: { strategies: [`upright`, `wrap`] } } },
+        })
+        expect(layout.rotation).toBe(0)
+        expect(layout.band).toBe(lines.length * TICK_LABEL_HEIGHT)
+        expect(resolved_lines(layout)).toEqual([lines])
+      },
+    )
+
+    it(`wraps labels more compactly than rotating one long line`, () => {
+      const labels = [`Formation Energy Per Atom`, `Band Gap PBE Value`]
+      const wrap_and_rotate = {
+        tick: { label: { auto_layout: { strategies: [`wrap`, `rotate`] as const } } },
+      }
+      const layout = x_layout(labels, 320, wrap_and_rotate)
+      expect(layout.strategy).toBe(`wrap`)
+      expect(layout.labels[0].lines.length).toBeGreaterThan(1)
+      const unwrapped = x_layout(labels, 320, {
+        tick: { label: { max_lines: 1, auto_layout: { strategies: [`rotate`] as const } } },
+      })
+      expect(layout.band).toBeLessThan(unwrapped.band)
+    })
+
+    it(`keeps a shallower unwrapped angle for only a marginal band saving`, () => {
+      const labels = Array.from({ length: 12 }, () => `Formation Energy`)
+      const layout = x_layout(labels, 680)
+      expect(layout.rotation).toBe(-30)
+      expect(resolved_lines(layout)).toEqual(labels.map((label) => [label]))
+    })
+
+    it(`caps wrapping and keeps separators attached`, () => {
+      expect(
+        x_layout([`one two three four`], 50, {
+          tick: { label: { max_lines: 2, auto_layout: { strategies: [`upright`, `wrap`] } } },
+        }).labels[0].lines,
+      ).toEqual([`one two`, `three four`])
+      expect(
+        x_layout([`alpha - beta`, `alpha - beta`], 120, {
+          tick: { label: { max_lines: 4, auto_layout: { strategies: [`upright`, `wrap`] } } },
+        }).labels[0].lines,
+      ).toEqual([`alpha`, `- beta`])
+      expect(resolved_lines(x_layout([`-alpha`], 10))).toEqual([[`-alpha`]])
+    })
+
+    // Named explicitly: these differ only by invisible code points, so `%s` would print
+    // tests that look identical and a regression could not be traced back to one input.
+    it.each([
+      [`a non-breaking hyphen`, `solid\u2011state`],
+      [`a no-break space`, `10\u00A0eV`],
+      [`a narrow no-break space`, `10\u202FeV`],
+    ])(`does not split across %s`, (_name, label) => {
+      expect(resolved_lines(x_layout([label], 10))).toEqual([[label]])
+    })
+
+    it(`preserves explicit whitespace and newline breaks`, () => {
+      expect(
+        resolved_lines(x_layout([`  padded  `], 100, { tick: { label: { rotation: 0 } } })),
+      ).toEqual([[`  padded  `]])
+      const multiline = x_layout([`top\nbottom\n`], 100, { tick: { label: { rotation: 45 } } })
+      expect(resolved_lines(multiline)).toEqual([[`top`, `bottom`]])
+      expect(multiline.band).toBeGreaterThan(2 * TICK_LABEL_HEIGHT)
+      for (const side of [`y`, `y2`] as const) {
+        const vertical_layout = resolve_tick_layout(
+          slot_axis([`top\nbottom\n`], {}, 100),
+          100,
+          side,
+        )
+        expect(resolved_lines(vertical_layout)).toEqual(resolved_lines(multiline))
+      }
+      const crowded_multiline = x_layout(
+        [`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`],
+        100,
+        {
+          tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
+        },
+      )
+      expect(crowded_multiline.rotation).toBe(-60)
+      expect(resolved_lines(crowded_multiline)).toEqual([
+        [`abcdefghij`, `klmnopqrst`],
+        [`abcdefghij`, `klmnopqrst`],
+      ])
+    })
+
+    it(`keeps an unbreakable word intact and rotates it when crowded`, () => {
+      const label = `SUPERCALIFRAGILISTIC`
+      const layout = x_layout([label, label], 220)
+      expect(layout.rotation).toBe(-30)
+      expect(resolved_lines(layout)).toEqual([[label], [label]])
+    })
+
+    const dense_numeric_axis = {
+      tick_values: [`-6`, `-4`, `-2`, `0`, `2`, `4`, `6`],
+      tick_positions: [0, 20, 40, 60, 80, 100, 120],
+      axis_extent: { start: 120, end: 0 },
+    }
+    // Rotation follows the label side; vertical axes and lone labels stay upright.
     it.each([
       [`x labels`, {}, `x`, -1],
       [`inside x labels`, { tick: { label: { inside: true } } }, `x`, 1],
       [`x2 labels`, {}, `x2`, 1],
       [`inside x2 labels`, { tick: { label: { inside: true } } }, `x2`, -1],
-      [`y labels`, {}, `y`, 0],
+      [`y labels`, dense_numeric_axis, `y`, 0],
+      [`y2 labels`, dense_numeric_axis, `y2`, 0],
       [`a lone label`, { tick_values: [`SOME_VERY_LONG_LABEL`] }, `x`, 0],
-    ] as [string, MeasuredAxis, `x` | `x2` | `y` | `y2`, number][])(
+    ] as [string, Partial<MeasuredAxis>, `x` | `x2` | `y` | `y2`, number][])(
       `tilt of %s`,
       (_label, axis, side, sign) => {
         expect(Math.sign(rotation_for(axis, side))).toBe(sign)
@@ -328,29 +547,75 @@ describe(`layout utility functions`, () => {
     it.each([
       [`no title`, {}, 0],
       [`a title`, { label: `state` }, LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2],
-    ] as [string, MeasuredAxis, number][])(
+    ] as [string, Partial<MeasuredAxis>, number][])(
       `reserves the tilted labels' band below an x axis with %s`,
-      (_label, axis, title_room) => {
-        const { b: reserved, l, r } = pad_for({ x_axis: axis })
-        const rotation = auto_tick_rotation(widest_px, (400 - l - r) / crowded.length)
-        const needed = tick_label_band(widest_px, rotation) + title_room + AXIS_LABEL_OUTER
+      (_label, base_axis, title_room) => {
+        // Pinned to rotation: with thin/ellipsis in play the winner hides labels instead of
+        // tilting them, and this case is about the band a tilt reserves.
+        const axis: Partial<MeasuredAxis> = {
+          ...base_axis,
+          tick: {
+            ...base_axis.tick,
+            label: {
+              ...base_axis.tick?.label,
+              auto_layout: { strategies: [`upright`, `rotate`] as const },
+            },
+          },
+        }
+        const tick_values = axis.tick_values ?? crowded
+        const {
+          b: reserved,
+          l,
+          r,
+        } = pad_for({
+          x_axis: slot_axis(tick_values, axis, plot_width),
+        })
+        const { band } = resolve_tick_layout(
+          slot_axis(tick_values, axis, 400 - l - r),
+          400 - l - r,
+          `x`,
+        )
+        const needed = band + title_room + AXIS_LABEL_OUTER
         expect(reserved).toBe(needed)
         expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
       },
     )
 
     it(`mirrors the tilt on x2 and reserves the room above`, () => {
-      const angle = rotation_for({}, `x2`)
-      expect(angle).toBe(-rotation_for({}, `x`))
-      const band = tick_label_band(widest_px, angle)
+      const rotate_only = {
+        tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
+      }
+      const angle = rotation_for(rotate_only, `x2`)
+      expect(angle).toBe(-rotation_for(rotate_only, `x`))
+      const band = resolve_tick_layout(
+        slot_axis(crowded, {}, plot_width),
+        plot_width,
+        `x2`,
+      ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
-      const { t } = pad_for({ x_axis: { tick_values: [] }, x2_axis: { tick_values: crowded } })
-      expect(t).toBe(band + 8 + AXIS_LABEL_OUTER)
+      const x2_axis = slot_axis(crowded, {}, plot_width)
+      const { t } = pad_for({ x_axis: slot_axis([]), x2_axis })
+      expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
+    })
+
+    it(`reserves room for wrapped labels above an x2 axis`, () => {
+      const axis_size = 220
+      const x2_axis = slot_axis(state_labels, {}, axis_size)
+      const { t } = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        width: axis_size,
+        x2_axis,
+      })
+      const band = resolve_tick_layout(x2_axis, axis_size, `x2`).band
+      expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b
     it.each([
-      [`labels that already fit upright`, { x_axis: { tick_values: [`a`, `b`] } }, default_b],
+      [`labels that already fit upright`, { x_axis: slot_axis([`a`, `b`]) }, default_b],
       [
         `an explicit rotation of 0`,
         { x_axis: { tick: { label: { rotation: 0 } } } },
@@ -359,62 +624,328 @@ describe(`layout utility functions`, () => {
       [`labels rendered inside`, { x_axis: { tick: { label: { inside: true } } } }, default_b],
       [`a bottom padding the caller set`, { padding: { b: 30 } }, 30],
     ])(`leaves the bottom padding alone with %s`, (_label, config, expected) => {
-      expect(pad_for(config).b).toBe(expected)
+      expect(pad_for(config as Partial<AutoPaddingConfig>).b).toBe(expected)
+    })
+  })
+
+  describe(`adaptive tick layout`, () => {
+    // The root beforeEach in tests/vitest/setup.ts already drops the memoised metrics.
+    const measured_px_per_character = 7
+    beforeEach(() => mock_text_measurement(measured_px_per_character))
+    afterEach(() => vi.restoreAllMocks())
+    const positioned_axis = (
+      tick_values: string[],
+      tick_positions: number[],
+      axis_size: number,
+    ): MeasuredAxis => ({
+      tick_values,
+      tick_positions,
+      axis_extent: { start: 0, end: axis_size },
+    })
+    const uniform_axis = (tick_values: string[], axis_size: number, inset = 0): MeasuredAxis =>
+      positioned_axis(
+        tick_values,
+        tick_values.map((_, tick_idx) =>
+          tick_values.length === 1
+            ? axis_size / 2
+            : inset + (tick_idx * (axis_size - 2 * inset)) / (tick_values.length - 1),
+        ),
+        axis_size,
+      )
+
+    it(`uses irregular projected positions for bounded thinning`, () => {
+      const tick_values = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
+      const layout = resolve_tick_layout(
+        {
+          ...positioned_axis(tick_values, [0, 42, 47, 200], 200),
+          tick: {
+            label: {
+              auto_layout: {
+                strategies: [`upright`, `thin`],
+                min_visible_ticks: 2,
+                endpoint_policy: `preserve`,
+              },
+            },
+          },
+        },
+        200,
+        `x`,
+      )
+      expect(layout.strategy).toBe(`thin`)
+      expect(layout.visible_tick_indices).toEqual([0, 3])
+      expect(layout.labels.map(({ visible }) => visible)).toEqual([true, false, false, true])
+    })
+
+    it(`uses density rather than collision-pair count for a 500-tick axis`, () => {
+      const tick_count = 500
+      const axis_size = 1200
+      const tick_values = Array.from(
+        { length: tick_count },
+        (_unused, tick_idx) => `Phase ${tick_idx} formation energy average temperature`,
+      )
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis(tick_values, axis_size),
+          tick: {
+            label: {
+              auto_layout: {
+                strategies: [`thin`],
+                min_visible_ticks: 2,
+                endpoint_policy: `preserve`,
+              },
+            },
+          },
+        },
+        axis_size,
+        `x`,
+      )
+
+      // Density-based, so both endpoints survive and the interior collapses to one tick —
+      // a collision-pair count would have thinned all the way down to min_visible_ticks.
+      expect(layout.strategy).toBe(`thin`)
+      expect(layout.visible_tick_indices).toEqual([0, 250, 499])
+    })
+
+    it(`combines bounded thinning with rotation when neither strategy fits alone`, () => {
+      const tick_count = 8
+      const axis_size = 120
+      const tick_values = Array.from(
+        { length: tick_count },
+        (_unused, tick_idx) => `Category label ${tick_idx}`,
+      )
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis(tick_values, axis_size, 20),
+          tick: {
+            label: {
+              auto_layout: {
+                strategies: [`thin`, `rotate`],
+                min_visible_ticks: 4,
+                max_angle: 90,
+                max_band: 140,
+                endpoint_policy: `preserve`,
+              },
+            },
+          },
+        },
+        axis_size,
+        `x`,
+      )
+
+      expect(layout).toMatchObject({ strategy: `thin`, rotation: -90 })
+      expect(layout.visible_tick_indices).toHaveLength(4)
+    })
+
+    it(`hides non-finite projected ticks while preserving source index alignment`, () => {
+      const layout = resolve_tick_layout(
+        {
+          ...positioned_axis(
+            [`zero`, `not-a-number`, `infinite`, `last`],
+            [0, Number.NaN, Number.POSITIVE_INFINITY, 100],
+            100,
+          ),
+          tick: { label: { auto_layout: { strategies: [`upright`] } } },
+        },
+        100,
+        `x`,
+      )
+
+      expect(layout.labels).toHaveLength(4)
+      expect(
+        layout.labels.map(({ tick_index, visible }) => ({ tick_index, visible })),
+      ).toEqual([
+        { tick_index: 0, visible: true },
+        { tick_index: 1, visible: false },
+        { tick_index: 2, visible: false },
+        { tick_index: 3, visible: true },
+      ])
+      expect(layout.visible_tick_indices).toEqual([0, 3])
+    })
+
+    it(`chooses inward edge anchors from actual axis bounds`, () => {
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis([`Left edge`, `Right edge`], 100),
+          tick: { label: { auto_layout: { strategies: [`upright`] } } },
+        },
+        100,
+        `x`,
+      )
+      expect(layout.labels.map(({ anchor }) => anchor)).toEqual([`start`, `end`])
+    })
+
+    it(`keeps readable text when every default candidate violates a hard constraint`, () => {
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis([`temperature`, `temperature`, `temperature`], 100),
+          tick: {
+            label: {
+              auto_layout: { max_angle: 45, max_band: 40 },
+            },
+          },
+        },
+        100,
+        `x`,
+      )
+      expect(layout.strategy).not.toBe(`ellipsis`)
+      expect(layout.visible_tick_indices.length).toBeGreaterThan(0)
+      expect(
+        layout.labels.filter(({ visible }) => visible).map(({ lines }) => lines.join(`\n`)),
+      ).toEqual(Array(layout.visible_tick_indices.length).fill(`temperature`))
+      expect(layout.labels.map(({ full_text }) => full_text)).toEqual(
+        Array(3).fill(`temperature`),
+      )
+    })
+
+    it.each([`y`, `y2`] as const)(
+      `wraps %s-axis labels by default and honors max_lines`,
+      (side) => {
+        const layout = resolve_tick_layout(
+          {
+            tick_values: [`Formation Energy`],
+            tick_positions: [50],
+            axis_extent: { start: 100, end: 0 },
+            tick: {
+              label: {
+                max_lines: 2,
+                auto_layout: { strategies: [`wrap`] },
+              },
+            },
+          },
+          100,
+          side,
+        )
+        expect(layout).toMatchObject({ rotation: 0, strategy: `wrap` })
+        expect(layout.labels.map(({ lines }) => lines)).toEqual([[`Formation`, `Energy`]])
+        expect(layout.band).toBe(`Formation`.length * measured_px_per_character)
+      },
+    )
+
+    it(`uses ellipsis only when explicitly enabled and keeps the full text`, () => {
+      const tick_values = [`Formation`, `Temperature`]
+      const layout = resolve_tick_layout(
+        {
+          ...uniform_axis(tick_values, 120),
+          tick: { label: { auto_layout: { strategies: [`ellipsis`] } } },
+        },
+        120,
+        `x`,
+      )
+      expect(layout.strategy).toBe(`ellipsis`)
+      expect(layout.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
+      expect(layout.labels.every(({ lines }) => lines[0].endsWith(`…`))).toBe(true)
+    })
+
+    it(`keeps explicit rotation when the axis geometry collapses`, () => {
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`Jan`, `Feb`],
+          tick_positions: [50, 50],
+          tick: { label: { rotation: 45 } },
+        },
+        0,
+        `x`,
+      )
+      expect(layout.rotation).toBe(45)
+      expect(layout.labels.every(({ rotation }) => rotation === 45)).toBe(true)
+    })
+
+    it.each([
+      [`y`, false, `end`],
+      [`y`, true, `start`],
+      [`y2`, false, `start`],
+      [`y2`, true, `end`],
+    ] as const)(`anchors collapsed %s labels inside=%s at %s`, (side, inside, expected) => {
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`Label`],
+          tick_positions: [0],
+          tick: { label: { inside } },
+        },
+        0,
+        side,
+      )
+      expect(layout.labels[0].anchor).toBe(expected)
+    })
+
+    it(`validates geometry and reports unknown strategies before collapsed-axis fallback`, () => {
+      expect(() =>
+        resolve_tick_layout({ tick_values: [`Jan`, `Feb`], tick_positions: [50] }, 0, `x`),
+      ).toThrow(`tick_positions has 1 entries for 2 ticks`)
+      const console_error = vi.spyOn(console, `error`).mockImplementation(() => undefined)
+      const layout = resolve_tick_layout(
+        {
+          tick_values: [`Jan`, `Feb`],
+          tick_positions: [50, 50],
+          tick: { label: { auto_layout: { strategies: [`unknown`] } } },
+        } as unknown as MeasuredAxis,
+        0,
+        `x`,
+      )
+      expect(layout.strategy).toBe(`upright`)
+      expect(console_error).toHaveBeenCalledWith(
+        `Ignoring unknown tick auto-layout strategy "unknown"`,
+      )
     })
   })
 
   describe(`measure_max_tick_width`, () => {
-    it.each([
-      [`there are no ticks to measure`, () => measure_max_tick_width([], `.2s`)],
-      [`jsdom reports no text metrics`, () => measure_text_width(`hello`)],
-      [`numeric ticks hit that same empty canvas`, () => measure_max_tick_width([1, 2, 3])],
-    ])(`returns 0 when %s`, (_label, measure) => {
-      expect(measure()).toBe(0)
+    it(`returns 0 when there are no ticks to measure`, () => {
+      expect(measure_max_tick_width([], `.2s`)).toBe(0)
     })
 
-    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+    it(`uses deterministic pre-mount metrics when canvas has no text metrics`, () => {
+      expect(measure_text_width(`hello`)).toBe(36)
+      expect(measure_max_tick_width([1, 2, 3])).toBeCloseTo(7.2)
+    })
+
+    // Records the exact strings handed to the canvas, which is what proves the formatter
+    // and the custom-label lookup ran before measurement rather than after it.
+    const with_recorded_labels = <T>(
+      px_per_char: number,
+      run: () => T,
+    ): { result: T; measured_labels: string[] } => {
       const measured_labels: string[] = []
       const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
         font: ``,
         measureText: (label: string) => {
           measured_labels.push(label)
-          return { width: label.length }
+          return { width: label.length * px_per_char }
         },
       } as unknown as CanvasRenderingContext2D)
+      // Self-contained so two calls in one test cannot read each other's cached widths.
+      clear_tick_metrics_cache()
       try {
-        expect(measure_max_tick_width([4500])).toBe(4)
-        expect(measured_labels).toEqual([`4.5k`])
+        return { result: run(), measured_labels }
       } finally {
         context_spy.mockRestore()
       }
+    }
+
+    it(`uses the same adaptive formatter as rendered numeric ticks`, () => {
+      const { result, measured_labels } = with_recorded_labels(1, () =>
+        measure_max_tick_width([4500]),
+      )
+      expect(result).toBe(4)
+      expect(measured_labels).toEqual([`4.5k`])
     })
 
     it(`prefers a custom ticks Record over the numeric format`, () => {
-      const measured_labels: string[] = []
-      const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
-        font: ``,
-        measureText: (label: string) => {
-          measured_labels.push(label)
-          return { width: label.length * 7 }
-        },
-      } as unknown as CanvasRenderingContext2D)
-      try {
-        expect(
-          measure_max_tick_width([0, 1, 2], `.2~g`, {
-            0: `QUEUE_HOLD`,
-            1: `RUNNING`,
-            2: `DONE`,
-          }),
-        ).toBe(`QUEUE_HOLD`.length * 7)
-        expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
-      } finally {
-        context_spy.mockRestore()
-      }
+      const { result, measured_labels } = with_recorded_labels(7, () =>
+        measure_max_tick_width([0, 1, 2], `.2~g`, {
+          0: `QUEUE_HOLD`,
+          1: `RUNNING`,
+          2: `DONE`,
+        }),
+      )
+      expect(result).toBe(`QUEUE_HOLD`.length * 7)
+      expect(measured_labels).toEqual([`QUEUE_HOLD`, `RUNNING`, `DONE`])
     })
   })
 
   describe(`calc_auto_padding`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
+    afterEach(() => vi.restoreAllMocks())
 
     it(`preserves explicit padding, fills missing from defaults`, () => {
       const result = calc_auto_padding({
@@ -425,6 +956,22 @@ describe(`layout utility functions`, () => {
       expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
     })
 
+    it(`keeps provided tick positions when plot width/height are omitted`, () => {
+      mock_text_measurement(7)
+      const config = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x_axis: {
+          tick_values: Array<string>(4).fill(`formation energy per atom`),
+          tick_positions: [0, 33, 66, 100],
+          axis_extent: { start: 0, end: 100 },
+          tick: { label: { auto_layout: { strategies: [`thin`, `rotate`] as const } } },
+        },
+      }
+      // Collapsing every tick onto 0 would under-reserve compared with the sized layout.
+      expect(calc_auto_padding(config).b).toBe(calc_auto_padding({ ...config, width: 100 }).b)
+    })
+
     it.each([
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
@@ -432,18 +979,18 @@ describe(`layout utility functions`, () => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        [axis_key]: { tick_values: [1] },
+        [axis_key]: slot_axis([1]),
       })
-      expect(result[side]).toBe(8)
+      expect(result[side]).toBeCloseTo(15.2)
     })
 
     it(`explicit padding overrides auto-computed padding`, () => {
       const result = calc_auto_padding({
         padding: { l: 10, r: 10, t: 10 },
         default_padding: defaults,
-        y_axis: { tick_values: [100000, 200000] },
-        y2_axis: { tick_values: [100000, 200000] },
-        x2_axis: { tick_values: [1, 2, 3], label: `Top` },
+        y_axis: slot_axis([100000, 200000]),
+        y2_axis: slot_axis([100000, 200000]),
+        x2_axis: slot_axis([1, 2, 3], { label: `Top` }),
       })
       expect(result.l).toBe(10)
       expect(result.r).toBe(10)
@@ -457,7 +1004,7 @@ describe(`layout utility functions`, () => {
       const { t } = calc_auto_padding({
         padding: {},
         default_padding: defaults,
-        x2_axis: { tick_values },
+        x2_axis: slot_axis(tick_values),
       })
       expect(t).toBe(expected)
     })
@@ -466,20 +1013,20 @@ describe(`layout utility functions`, () => {
       const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
       const no_ticks = calc_auto_padding({
         ...base,
-        x2_axis: { tick_values: [], label: `Energy` },
+        x2_axis: slot_axis([], { label: `Energy` }),
       })
       const without = calc_auto_padding({
         ...base,
-        x2_axis: { tick_values: [1, 2] },
+        x2_axis: slot_axis([1, 2]),
       })
       const with_label = calc_auto_padding({
         ...base,
-        x2_axis: { tick_values: [1, 2], label: `Energy` },
+        x2_axis: slot_axis([1, 2], { label: `Energy` }),
       })
       const top_with_shift = (title_shift: number) =>
         calc_auto_padding({
           ...base,
-          x2_axis: { tick_values: [1, 2], label: `Energy`, label_shift: { y: title_shift } },
+          x2_axis: slot_axis([1, 2], { label: `Energy`, label_shift: { y: title_shift } }),
         }).t
       expect(no_ticks.t).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
       expect(with_label.t - without.t).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
@@ -492,7 +1039,7 @@ describe(`layout utility functions`, () => {
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        x2_axis: { tick_values: [1], tick: { label: { shift: { y: -10 } } } },
+        x2_axis: slot_axis([1], { tick: { label: { shift: { y: -10 } } } }),
       })
       expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10 + AXIS_LABEL_OUTER)
     })
@@ -504,10 +1051,10 @@ describe(`layout utility functions`, () => {
       [`r`, `y2_axis`],
     ] as const)(`%s reserves title band + outer air for the %s title`, (side, axis_key) => {
       const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
-      const without = calc_auto_padding({ ...base, [axis_key]: { tick_values: [1, 2] } })
+      const without = calc_auto_padding({ ...base, [axis_key]: slot_axis([1, 2]) })
       const with_label = calc_auto_padding({
         ...base,
-        [axis_key]: { tick_values: [1, 2], label: `Energy (eV)` },
+        [axis_key]: slot_axis([1, 2], { label: `Energy (eV)` }),
       })
       expect(with_label[side] - without[side]).toBe(
         LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER,
@@ -518,7 +1065,7 @@ describe(`layout utility functions`, () => {
       const base = {
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        y_axis: { tick_values: [1, 10], label: `E` },
+        y_axis: slot_axis([1, 10], { label: `E` }),
       }
       const unshifted = calc_auto_padding(base)
       const shifted = calc_auto_padding({
@@ -529,22 +1076,20 @@ describe(`layout utility functions`, () => {
     })
 
     it(`reserves a title band for interactive options without a literal label`, () => {
+      const axis = slot_axis([], { options: [{ key: `energy`, label: `Energy` }] })
       const result = calc_auto_padding({
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        y2_axis: {
-          tick_values: [],
-          options: [{ key: `energy`, label: `Energy` }],
-        },
+        y2_axis: axis,
       })
-      expect(result.r).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+      expect(result.r).toBe(resolve_axis_title_layout(axis).height + AXIS_LABEL_OUTER)
     })
 
     it(`right pad grows with an outward y2 tick-label shift`, () => {
       const base = {
         padding: {},
         default_padding: { t: 0, b: 0, l: 0, r: 0 },
-        y2_axis: { tick_values: [1, 10], label: `E` },
+        y2_axis: slot_axis([1, 10], { label: `E` }),
       }
       const unshifted = calc_auto_padding(base)
       const shifted = calc_auto_padding({
@@ -552,6 +1097,66 @@ describe(`layout utility functions`, () => {
         y2_axis: { ...base.y2_axis, tick: { label: { shift: { x: 20 } } } },
       })
       expect(shifted.r - unshifted.r).toBe(20)
+    })
+
+    it(`measures multiline x and y title bands instead of using a fixed estimate`, () => {
+      mock_text_measurement(7)
+      const base = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        width: 240,
+      }
+      const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
+        calc_auto_padding({ ...base, [axis_key]: slot_axis([], { label }) })
+      expect(
+        padding_for(`x_axis`, `Formation energy\nper atom`).b -
+          padding_for(`x_axis`, `Formation energy`).b,
+      ).toBe(AXIS_LABEL_HEIGHT / 2)
+      expect(
+        padding_for(`y_axis`, `Formation energy\nper atom`).l -
+          padding_for(`y_axis`, `Formation energy`).l,
+      ).toBe(AXIS_LABEL_HEIGHT)
+    })
+
+    it(`measures the selected interactive trigger including unit and closed arrow`, () => {
+      mock_text_measurement(6)
+      const axis = {
+        options: [
+          { key: `energy`, label: `Energy`, unit: `eV` },
+          { key: `volume`, label: `Long volume property`, unit: `Å³` },
+        ],
+        selected_key: `volume`,
+      }
+      const layout = resolve_axis_title_layout(axis)
+      const plain_width = resolve_axis_title_layout({
+        label: `Long volume property (Å³)`,
+      }).width
+
+      expect(layout).toMatchObject({
+        label: `Long volume property (Å³)`,
+        height: 24,
+        interactive: true,
+      })
+      expect(layout.width).toBeGreaterThan(plain_width)
+    })
+
+    it(`decodes escaped axis-title entities exactly once`, () => {
+      const { label } = resolve_axis_title_layout({ label: `A &amp;lt; B &lt; C` })
+      expect(label).toBe(`A &lt; B < C`)
+    })
+
+    it(`retains subscript and superscript segments when axis titles wrap`, () => {
+      mock_text_measurement(7)
+      const layout = resolve_axis_title_layout(
+        { label: `Formation E<sub>hull</sub> relative to x<sup>2</sup>` },
+        80,
+      )
+      const segments = layout.lines.flatMap((line) => line.segments)
+
+      expect(layout.lines.length).toBeGreaterThan(1)
+      expect(layout.label).toBe(`Formation Ehull relative to x2`)
+      expect(segments).toContainEqual({ text: `hull`, shift: `sub` })
+      expect(segments).toContainEqual({ text: `2`, shift: `super` })
     })
   })
 

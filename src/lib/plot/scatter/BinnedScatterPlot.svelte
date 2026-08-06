@@ -15,23 +15,40 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
   import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
+  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
+  import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
-  import { sorted_range } from '$lib/plot/core/interactions'
+  import {
+    decoration_placement_rects,
+    get_decoration_placement,
+    solve_decorations,
+    type DecorationItem,
+  } from '$lib/plot/core/decorations'
+  import { measured_footprint } from '$lib/plot/core/auto-place'
+  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
+  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import { sorted_range, vec2_equal } from '$lib/plot/core/interactions'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import {
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
-    compute_element_placement,
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
-    measure_max_tick_width,
+    measured_axis,
     point_in_rect,
+    resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
+  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import {
+    normalize_plot_title,
+    pad_for_plot_title,
+    type PlotTitleConfig,
+  } from '$lib/plot/core/plot-title'
   import { get_series_color } from '$lib/plot/core/data-transform'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -70,12 +87,12 @@
     InternalPoint,
     ScatterHandlerProps,
   } from '$lib/plot/core/types'
+  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
-    COLOR_BAR_DEFAULTS,
-    REF_LINE_STYLE_DEFAULTS,
-    SCALE_DEFAULTS,
-  } from '$lib/plot/core/types'
-  import { resolve_line_endpoints } from '$lib/plot/core/reference-line'
+    get_reference_annotation_placement,
+    index_ref_lines,
+    solve_reference_annotations,
+  } from '$lib/plot/core/reference-line'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -121,6 +138,7 @@
     density: density_config = {},
     overlays: overlays_config = {},
     padding: padding_config = {},
+    title,
     tooltip,
     point_data,
     point_labels = {},
@@ -135,8 +153,9 @@
     header_controls,
     annotation,
     marginals = false,
+    facet_layout,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
     series: DensePointSeries<Metadata>[]
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -144,6 +163,7 @@
     density?: BinnedDensityConfig
     overlays?: BinnedOverlaysConfig
     padding?: Sides
+    title?: string | PlotTitleConfig
     tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
     point_data?: BinnedPointDataFn<Metadata, PointData>
     point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
@@ -160,13 +180,13 @@
     // overlaps the least data, while also avoiding the auto-placed colorbar
     annotation?: Snippet<[OverlayContext]>
     marginals?: MarginalsProp
+    facet_layout?: FacetLayoutContext
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
   let width = $state(0)
   let height = $state(0)
-  let x_range = $state<Vec2>([0, 1])
-  let y_range = $state<Vec2>([0, 1])
+  let ranges = $state({ x: [0, 1] as Vec2, y: [0, 1] as Vec2 })
   let has_user_range = $state(false)
   let drag_state = $state<{ start: Point2D; current: Point2D } | null>(null)
   let suppress_next_click = false
@@ -176,6 +196,7 @@
   let colorbar_element = $state<HTMLDivElement>()
   let annotation_element = $state<HTMLDivElement>()
   let colorbar_size_revision = $state(0)
+  let annotation_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
   const clip_path_id = `binned-scatter-plot-area-${next_clip_id++}`
@@ -183,8 +204,16 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
+  const title_config = $derived(normalize_plot_title(title))
   let base_pad = $derived(filter_padding(padding_config, DEFAULT_PLOT_PADDING))
-  let pad = $derived(add_sides(base_pad, reserve_marginal_pad(resolved_marginals)))
+  let top_outer_marginal_offset = $derived(
+    resolved_marginals.top?.placement === `outer`
+      ? resolved_marginals.top.size + resolved_marginals.top.gap
+      : 0,
+  )
+  // The solver owns decoration reservations and receives only the decoration-independent
+  // base, so its output never feeds a previous reservation back into itself.
+  let pad = $derived.by(() => base_decoration_solution.pad)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
       x: srs.x,
@@ -208,23 +237,7 @@
         : density_config.auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  // Resolve declarative RefLines against current axis ranges. Annotation, legend,
-  // and interaction fields are ignored.
-  let resolved_ref_lines = $derived.by(() => {
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
-    return (overlays_config.ref_lines ?? []).flatMap((line) => {
-      if (line.visible === false) return []
-      const endpoints = resolve_line_endpoints(
-        line,
-        { x_min, x_max, y_min, y_max },
-        { x_scale: x_scale_fn, y_scale: y_scale_fn },
-      )
-      if (!endpoints) return []
-      const [x1, y1, x2, y2] = endpoints
-      return { x1, y1, x2, y2, ...REF_LINE_STYLE_DEFAULTS, ...line.style }
-    })
-  })
+  let indexed_ref_lines = $derived(index_ref_lines(overlays_config.ref_lines))
   let point_labels_settings = $derived({
     font_size: point_labels.font_size ?? `11px`,
     max_count: point_labels.max_count ?? 50,
@@ -251,11 +264,8 @@
 
   let x_scale_type = $derived(x_axis.scale_type ?? `linear`)
   let y_scale_type = $derived(y_axis.scale_type ?? `linear`)
-  let needs_auto_range = $derived(
-    needs_data_range(x_axis.range) || needs_data_range(y_axis.range),
-  )
   let auto_ranges = $derived(
-    needs_auto_range
+    needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
       ? series_extents(series, x_scale_type, y_scale_type)
       : { x: [0, 1] as Vec2, y: [0, 1] as Vec2 },
   )
@@ -265,21 +275,39 @@
     axis.range?.[0] ?? fallback[0],
     axis.range?.[1] ?? fallback[1],
   ]
-  const same_range = (a: Vec2, b: Vec2): boolean => a[0] === b[0] && a[1] === b[1]
+  const intrinsic_ranges = $derived({
+    x: axis_range(x_axis, auto_ranges.x),
+    y: axis_range(y_axis, auto_ranges.y),
+  })
+  const facet = create_facet_plot_adapter({
+    axes: [`x`, `y`] as const,
+    facet_layout: () => facet_layout,
+    intrinsic_padding: () => base_pad,
+    intrinsic_ranges: () => intrinsic_ranges,
+    ranges: () => ranges,
+  })
+  const effective_base_pad = $derived(facet.padding(base_pad))
+  let marginal_pad = $derived(reserve_marginal_pad(resolved_marginals))
+  let intrinsic_decoration_base_pad = $derived(add_sides(base_pad, marginal_pad))
+  let decoration_base_pad = $derived(add_sides(effective_base_pad, marginal_pad))
 
   function set_auto_range() {
-    const next_x_range = axis_range(x_axis, auto_ranges.x)
-    const next_y_range = axis_range(y_axis, auto_ranges.y)
+    const next_x_range = intrinsic_ranges.x
+    const next_y_range = intrinsic_ranges.y
     // Skip non-finite ranges (e.g. a NaN bound in an axis range prop): NaN !== NaN
-    // means same_range never settles, looping until effect_update_depth_exceeded
+    // means equality checks never settle, looping until effect_update_depth_exceeded
     if (![...next_x_range, ...next_y_range].every(Number.isFinite)) return
-    if (!same_range(x_range, next_x_range)) x_range = next_x_range
-    if (!same_range(y_range, next_y_range)) y_range = next_y_range
+    if (!vec2_equal(ranges.x, next_x_range)) ranges.x = next_x_range
+    if (!vec2_equal(ranges.y, next_y_range)) ranges.y = next_y_range
   }
 
+  let was_faceted = false
   $effect(() => {
-    if (has_user_range) return
-    set_auto_range()
+    const is_faceted = facet_layout != null
+    if (!is_faceted && was_faceted) has_user_range = false
+    if (!is_faceted && !has_user_range) set_auto_range()
+    facet.apply_ranges()
+    was_faceted = is_faceted
   })
 
   let plot_width = $derived(Math.max(1, width - pad.l - pad.r))
@@ -290,37 +318,80 @@
     width: plot_width,
     height: plot_height,
   })
-  let x_scale_fn = $derived(create_scale(x_scale_type, x_range, [pad.l, width - pad.r]))
-  let y_scale_fn = $derived(create_scale(y_scale_type, y_range, [height - pad.b, pad.t]))
+  let x_scale_fn = $derived(create_scale(x_scale_type, ranges.x, [pad.l, width - pad.r]))
+  let y_scale_fn = $derived(create_scale(y_scale_type, ranges.y, [height - pad.b, pad.t]))
   let x_ticks = $derived(
-    generate_ticks(x_range, x_scale_type, x_axis.ticks, x_scale_fn, {
+    generate_ticks(ranges.x, x_scale_type, x_axis.ticks, x_scale_fn, {
       default_count: 7,
     }),
   )
   let y_ticks = $derived(
-    generate_ticks(y_range, y_scale_type, y_axis.ticks, y_scale_fn, {
+    generate_ticks(ranges.y, y_scale_type, y_axis.ticks, y_scale_fn, {
       default_count: 6,
     }),
   )
+  let tick_font = $state<Readonly<FontSpec> | undefined>()
   let y_tick_width = $derived(
-    measure_max_tick_width(y_ticks, y_axis.format ?? `.2~g`, y_axis.ticks),
+    resolve_tick_layout(
+      measured_axis(
+        { ...y_axis, format: y_axis.format ?? `.2~g` },
+        y_ticks,
+        y_scale_fn,
+        { start: height - pad.b, end: pad.t },
+        tick_font,
+      ),
+      plot_height,
+      `y`,
+    ).band,
   )
   $effect(() => {
-    const new_pad =
+    const padding_ranges = facet_layout ? intrinsic_ranges : ranges
+    const x_extent = {
+      start: intrinsic_decoration_base_pad.l,
+      end: width - intrinsic_decoration_base_pad.r,
+    }
+    const y_extent = {
+      start: height - intrinsic_decoration_base_pad.b,
+      end: intrinsic_decoration_base_pad.t,
+    }
+    const measure_axis = (
+      axis: AxisConfig,
+      range: Vec2,
+      extent: typeof x_extent,
+      default_count: number,
+    ) => {
+      const scale_type = axis.scale_type ?? `linear`
+      const scale = create_scale(scale_type, range, [extent.start, extent.end])
+      const ticks = generate_ticks(range, scale_type, axis.ticks, scale, { default_count })
+      return measured_axis(
+        { ...axis, format: axis.format ?? `.2~g` },
+        ticks,
+        scale,
+        extent,
+        tick_font,
+      )
+    }
+    const axis_pad =
       width > 0 && height > 0
         ? calc_auto_padding({
             padding: padding_config,
             default_padding: DEFAULT_PLOT_PADDING,
             width,
-            x_axis: { ...x_axis, format: x_axis.format ?? `.2~g`, tick_values: x_ticks },
-            y_axis: { ...y_axis, format: y_axis.format ?? `.2~g`, tick_values: y_ticks },
+            height,
+            x_axis: measure_axis(x_axis, padding_ranges.x, x_extent, 7),
+            y_axis: measure_axis(y_axis, padding_ranges.y, y_extent, 6),
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
+  // Keep density bins independent of decoration reservations. Their normalized occupied
+  // cells are the immutable obstacle field passed to the decoration solver.
+  const density_bin_count = (total: number, start: number, end: number): number =>
+    Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   let density_bins = $derived({
-    x: Math.max(8, Math.ceil(plot_width / density_settings.bin_px)),
-    y: Math.max(8, Math.ceil(plot_height / density_settings.bin_px)),
+    x: density_bin_count(width, decoration_base_pad.l, decoration_base_pad.r),
+    y: density_bin_count(height, decoration_base_pad.t, decoration_base_pad.b),
   })
   // Bin in scale space so the heatmap, hover, and zoom stay aligned with log/arcsinh axes
   let bin_transforms = $derived({
@@ -329,10 +400,10 @@
   })
   let bin_series = $derived(has_plot_size ? series : [])
   let density_result = $derived(
-    bin_points(bin_series, x_range, y_range, density_bins.x, density_bins.y, bin_transforms),
+    bin_points(bin_series, ranges.x, ranges.y, density_bins.x, density_bins.y, bin_transforms),
   )
   const bin_at = (coords: Point2D) =>
-    density_bin_at_point(density_result, coords, plot_rect, x_range, y_range, bin_transforms)
+    density_bin_at_point(density_result, coords, plot_rect, ranges.x, ranges.y, bin_transforms)
   let auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
   let color_scale_fn = $derived(
     create_color_scale(density_settings.color_scale, auto_color_range),
@@ -358,10 +429,8 @@
         `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.binned_bar_height}px; ${color_bar.style ?? ``}`,
     }
   })
-  let density_placement_points = $derived.by(() => {
+  let bin_obstacles_norm = $derived.by(() => {
     const points: Point2D[] = []
-    const bin_w = plot_width / density_result.x_bins
-    const bin_h = plot_height / density_result.y_bins
     let occupied_count = 0
     for (const count of density_result.counts) {
       if (count) occupied_count++
@@ -374,82 +443,111 @@
       const x_bin = idx % density_result.x_bins
       const y_bin = Math.floor(idx / density_result.x_bins)
       points.push({
-        x: pad.l + (x_bin + 0.5) * bin_w,
-        y: pad.t + (density_result.y_bins - y_bin - 0.5) * bin_h,
+        x: (x_bin + 0.5) / density_result.x_bins,
+        y: 1 - (y_bin + 0.5) / density_result.y_bins,
       })
     }
     return points
   })
-  // Fallback sizes (incl. room for tick labels) used before the colorbar first
-  // renders; compute_element_placement measures the real footprint once laid out
+  // Fallback sizes include room for overflowing tick labels before the first measurement.
   let colorbar_fallback_size = $derived(
     color_bar_props?.orientation === `vertical`
       ? COLOR_BAR_DEFAULTS.vertical_footprint
       : COLOR_BAR_DEFAULTS.horizontal_footprint,
   )
-  const get_color_bar_placement = () => {
-    if (
-      !color_bar_props ||
-      render_mode !== `density` ||
-      density_result.max_count <= 0 ||
-      !width ||
-      !height
-    ) {
-      return null
-    }
-
-    return compute_element_placement({
-      plot_bounds: plot_rect,
-      element: colorbar_element,
-      element_size: colorbar_fallback_size,
-      // Small gap from the corner; the full-footprint measurement reserves the tick
-      // labels, so this alone keeps the colorbar off the axes
-      axis_clearance: 12,
-      points: density_placement_points,
-      grid_resolution: 12,
-    })
-  }
-  // Fallback footprint before the annotation snippet first renders; the real
-  // footprint is measured once laid out (mirrors colorbar_fallback_size above)
   const annotation_fallback_size = { width: 120, height: 50 }
-  // Auto-place the annotation snippet like the colorbar, but with the already-placed
-  // colorbar's footprint as an exclusion zone so the two never overlap.
-  const get_annotation_placement = () => {
-    if (!annotation || !width || !height) return null
-
-    const color_bar_placement = colorbar_tween.placed()
-      ? colorbar_tween.coords.target
-      : get_color_bar_placement()
-    const colorbar_footprint = full_footprint_or(colorbar_element, colorbar_fallback_size)
-    const colorbar_rect = color_bar_placement && {
-      ...colorbar_footprint,
-      x: color_bar_placement.x + colorbar_footprint.offset_x,
-      y: color_bar_placement.y + colorbar_footprint.offset_y,
+  let colorbar_footprint = $derived.by(() => {
+    void colorbar_size_revision
+    return measured_footprint(colorbar_element, colorbar_fallback_size)
+  })
+  let annotation_footprint = $derived.by(() => {
+    void annotation_size_revision
+    return full_footprint_or(annotation_element, annotation_fallback_size)
+  })
+  let decoration_items = $derived.by<DecorationItem[]>(() => {
+    const items: DecorationItem[] = []
+    if (
+      color_bar_props &&
+      render_mode === `density` &&
+      density_result.max_count > 0 &&
+      width > 0 &&
+      height > 0
+    ) {
+      items.push({
+        id: `density-colorbar`,
+        kind: `colorbar`,
+        footprint: colorbar_footprint,
+        horizontal: color_bar_props.orientation !== `vertical`,
+        clearance: 12,
+      })
     }
-    return compute_element_placement({
-      plot_bounds: plot_rect,
-      element: annotation_element,
-      element_size: annotation_fallback_size,
-      axis_clearance: 12,
-      exclude_rects: colorbar_rect ? [colorbar_rect] : [],
-      points: density_placement_points,
+    if (annotation && width > 0 && height > 0) {
+      items.push({
+        id: `free-annotation`,
+        kind: `free-annotation`,
+        footprint: annotation_footprint,
+        clearance: 12,
+      })
+    }
+    return items
+  })
+  let base_decoration_solution = $derived(
+    solve_decorations({
+      width,
+      height,
+      base_pad: decoration_base_pad,
+      obstacles_norm: bin_obstacles_norm,
+      items: decoration_items,
       grid_resolution: 12,
-    })
-  }
+    }),
+  )
+  let decoration_solution = $derived(
+    solve_reference_annotations({
+      base_solution: base_decoration_solution,
+      base_pad: pad,
+      width,
+      height,
+      obstacles_norm: bin_obstacles_norm,
+      lines: indexed_ref_lines,
+      ranges,
+      scales: { x: x_scale_fn, y: y_scale_fn },
+      grid_resolution: 12,
+    }),
+  )
+  let colorbar_placement = $derived(
+    get_decoration_placement(decoration_solution, `density-colorbar`),
+  )
+  let annotation_placement = $derived(
+    get_decoration_placement(decoration_solution, `free-annotation`),
+  )
+  let decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
+
+  const get_annotation_placement = () =>
+    annotation_placement
+      ? {
+          x: annotation_placement.x - annotation_footprint.offset_x,
+          y: annotation_placement.y - annotation_footprint.offset_y,
+        }
+      : null
   const colorbar_tween = create_placed_tween({
-    placement: get_color_bar_placement,
+    placement: () => colorbar_placement ?? null,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
     on_element_resize: () => (colorbar_size_revision += 1),
+    placement_revision: () =>
+      colorbar_placement &&
+      `${colorbar_placement.location}:${colorbar_placement.x}:${colorbar_placement.y}`,
   })
   const annotation_tween = create_placed_tween({
     placement: get_annotation_placement,
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => annotation_element,
+    on_element_resize: () => (annotation_size_revision += 1),
     placement_revision: () =>
-      `${colorbar_size_revision}:${colorbar_tween.coords.target.x}:${colorbar_tween.coords.target.y}`,
+      annotation_placement &&
+      `${annotation_placement.x}:${annotation_placement.y}:${colorbar_size_revision}`,
   })
 
   let auto_render_mode = $derived.by((): RenderMode => {
@@ -495,8 +593,8 @@
   let pick_index = $derived(
     render_mode === `points`
       ? build_pick_index(series, {
-          x_range,
-          y_range,
+          x_range: ranges.x,
+          y_range: ranges.y,
           x_scale: x_scale_fn,
           y_scale: y_scale_fn,
           radius_px: pick_radius_px,
@@ -511,17 +609,22 @@
     ...point_labels_settings.placement,
   })
 
-  const reset_view = () => {
+  const update_view_ranges = (next_x_range: Vec2, next_y_range: Vec2): void => {
+    facet.update_range(`x`, next_x_range)
+    facet.update_range(`y`, next_y_range)
+    has_user_range = true
+  }
+
+  const reset_view = (): void => {
     has_user_range = false
+    if (facet.reset_ranges()) return
     set_auto_range()
   }
 
-  function point_radius_for_value(size_value: number | null | undefined): number {
-    if (size_value == null || !Number.isFinite(size_value)) {
-      return min_point_radius
-    }
-    return size_scale_fn(size_value)
-  }
+  const point_radius_for_value = (size_value: number | null | undefined): number =>
+    size_value == null || !Number.isFinite(size_value)
+      ? min_point_radius
+      : size_scale_fn(size_value)
 
   function resize_canvas() {
     if (!canvas) return
@@ -565,8 +668,8 @@
   }
 
   function draw_points(ctx: CanvasRenderingContext2D) {
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
+    const [x_min, x_max] = range_bounds(ranges.x)
+    const [y_min, y_max] = range_bounds(ranges.y)
     const pulse = selected_pulse.unit
     for (const [series_idx, srs] of series.entries()) {
       ctx.fillStyle = srs.color ?? get_series_color(series_idx)
@@ -696,8 +799,8 @@
   let point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
 
-    const [x_min, x_max] = range_bounds(x_range)
-    const [y_min, y_max] = range_bounds(y_range)
+    const [x_min, x_max] = range_bounds(ranges.x)
+    const [y_min, y_max] = range_bounds(ranges.y)
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
     for (let series_idx = 0; series_idx < series.length; series_idx++) {
       const srs = series[series_idx]
@@ -837,9 +940,7 @@
   }
 
   function zoom_to_bin(bin: DensityBin, event: MouseEvent) {
-    x_range = bin.x_range
-    y_range = bin.y_range
-    has_user_range = true
+    update_view_ranges(bin.x_range, bin.y_range)
     hovered_bin = null
     on_density_zoom?.({ bin, event })
   }
@@ -902,9 +1003,10 @@
     }
     if (Math.abs(end.x - start.x) <= 5 || Math.abs(end.y - start.y) <= 5) return
 
-    x_range = sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x))
-    y_range = sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y))
-    has_user_range = true
+    update_view_ranges(
+      sorted_range(x_scale_fn.invert(start.x), x_scale_fn.invert(end.x)),
+      sorted_range(y_scale_fn.invert(start.y), y_scale_fn.invert(end.y)),
+    )
     suppress_next_click = true
   }
 
@@ -977,47 +1079,63 @@
         <rect x={pad.l} y={pad.t} width={plot_width} height={plot_height} />
       </clipPath>
     </defs>
+    <PlotTitle
+      config={title_config}
+      x={effective_base_pad.l}
+      y={top_outer_marginal_offset + decoration_solution.pad.t - decoration_base_pad.t}
+      width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
+    />
 
-    <g class="reference-lines" clip-path="url(#{clip_path_id})">
-      {#each resolved_ref_lines as line}
-        <line
-          x1={line.x1}
-          x2={line.x2}
-          y1={line.y1}
-          y2={line.y2}
-          stroke={line.color}
-          stroke-width={line.width}
-          stroke-dasharray={line.dash || null}
-          stroke-opacity={line.opacity}
+    <g class="reference-lines">
+      {#each indexed_ref_lines as line (line.id ?? line.idx)}
+        <ReferenceLine
+          ref_line={line}
+          line_idx={line.idx}
+          x_min={range_bounds(ranges.x)[0]}
+          x_max={range_bounds(ranges.x)[1]}
+          y_min={range_bounds(ranges.y)[0]}
+          y_max={range_bounds(ranges.y)[1]}
+          x_scale={x_scale_fn}
+          y_scale={y_scale_fn}
+          {clip_path_id}
+          annotation_placement={get_reference_annotation_placement(
+            decoration_solution,
+            line.idx,
+          )}
         />
       {/each}
     </g>
-    <PlotAxis
-      side="x"
-      ticks={x_ticks}
-      place={(tick) => x_scale_fn(tick)}
-      axis={x_axis}
-      {pad}
-      {width}
-      {height}
-      show_grid
-      tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
-      label_x={pad.l + plot_width / 2}
-      label_y={height - pad.b + AXIS_TITLE_OFFSET}
-    />
-    <PlotAxis
-      side="y"
-      ticks={y_ticks}
-      place={(tick) => y_scale_fn(tick)}
-      axis={y_axis}
-      {pad}
-      {width}
-      {height}
-      show_grid
-      tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
-      label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
-      label_y={pad.t + plot_height / 2}
-    />
+    {#if facet.axis_visible(`x`)}
+      <PlotAxis
+        side="x"
+        ticks={x_ticks}
+        place={(tick) => x_scale_fn(tick)}
+        axis={x_axis}
+        on_tick_font={(font) => (tick_font = font)}
+        {pad}
+        {width}
+        {height}
+        show_grid
+        tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
+        label_x={pad.l + plot_width / 2}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET}
+      />
+    {/if}
+    {#if facet.axis_visible(`y`)}
+      <PlotAxis
+        side="y"
+        ticks={y_ticks}
+        place={(tick) => y_scale_fn(tick)}
+        axis={y_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid
+        tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
+        label_x={y_axis_label_x(y_axis, pad.l, y_tick_width)}
+        label_y={pad.t + plot_height / 2}
+      />
+    {/if}
 
     <ZoomRect start={drag_state?.start ?? null} current={drag_state?.current ?? null} />
 
@@ -1049,8 +1167,8 @@
       {pad}
       has_axis={marginal_has_axis}
       axes={{
-        x1: marginal_axis(x_scale_fn, x_range, x_axis),
-        y1: marginal_axis(y_scale_fn, y_range, y_axis),
+        x1: marginal_axis(x_scale_fn, ranges.x, x_axis),
+        y1: marginal_axis(y_scale_fn, ranges.y, y_axis),
       }}
       id={clip_path_id}
     />
@@ -1089,6 +1207,12 @@
     <div
       bind:this={colorbar_element}
       class="color-bar"
+      data-decoration-location={colorbar_placement?.location}
+      data-decoration-side={colorbar_placement?.side}
+      data-decoration-x={colorbar_placement?.x}
+      data-decoration-y={colorbar_placement?.y}
+      data-decoration-width={colorbar_placement?.footprint.width}
+      data-decoration-height={colorbar_placement?.footprint.height}
       style="left: {colorbar_tween.coords.current.x}px; top: {colorbar_tween.coords.current
         .y}px"
     >
@@ -1105,6 +1229,11 @@
     <div
       bind:this={annotation_element}
       class="annotation"
+      data-decoration-location={annotation_placement?.location}
+      data-decoration-x={annotation_placement?.x}
+      data-decoration-y={annotation_placement?.y}
+      data-decoration-width={annotation_placement?.footprint.width}
+      data-decoration-height={annotation_placement?.footprint.height}
       style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords.current
         .y}px"
     >
@@ -1117,6 +1246,9 @@
       x={tooltip_pos.x}
       y={tooltip_pos.y}
       offset={{ x: 0, y: 0 }}
+      constrain_to={{ width, height }}
+      exclusion_rects={decoration_exclusion_rects}
+      fallback_size={{ width: 150, height: 64 }}
       bg_color={hovered_bin_color}
     >
       {hovered_bin.count.toLocaleString()} samples<br />
@@ -1127,7 +1259,14 @@
     </PlotTooltip>
   {:else if hovered_point}
     {@const props = point_payload(hovered_point)}
-    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
+    <PlotTooltip
+      x={tooltip_pos.x}
+      y={tooltip_pos.y}
+      offset={{ x: 0, y: 0 }}
+      constrain_to={{ width, height }}
+      exclusion_rects={decoration_exclusion_rects}
+      fallback_size={{ width: 120, height: 44 }}
+    >
       {#if tooltip}
         {@render tooltip(props)}
       {:else}

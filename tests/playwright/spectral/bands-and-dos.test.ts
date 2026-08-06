@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { get_chart_svg } from '../helpers'
+import {
+  drag_plot_area,
+  expect_synced_y_ticks,
+  get_chart_svg,
+  measure_plot_area,
+  numeric_y_ticks,
+  reset_plot_area,
+} from '../helpers'
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -38,31 +45,64 @@ test.describe(`BandsAndDos Component Tests`, () => {
   test(`shares y-axis and uses grid layout`, async ({ page }) => {
     const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     const plots = container.locator(`.scatter`)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
 
     // Check grid layout
     expect(await container.evaluate((el) => getComputedStyle(el).display)).toBe(`grid`)
 
-    // Check shared y-axis aligns plots vertically
-    const bands_box = await plots.first().boundingBox()
-    const dos_box = await plots.nth(1).boundingBox()
-    expect(bands_box).toBeTruthy()
-    expect(dos_box).toBeTruthy()
-    if (bands_box && dos_box) {
-      const tolerance = Math.max(bands_box.height, dos_box.height) * 0.05 // 5% tolerance
-      expect(Math.abs(bands_box.height - dos_box.height)).toBeLessThan(tolerance)
-    }
-
-    // Verify shared y-axis: tick values should overlap significantly
+    // Shared top/bottom padding must align the actual drawable regions, not only
+    // the equal-height outer plot containers.
+    const bands_clip = bands_plot.locator(`clipPath rect`)
+    const dos_clip = dos_plot.locator(`clipPath rect`)
     await expect(async () => {
-      const bands_y_ticks = await plots.first().locator(`g.y-axis text`).allTextContents()
-      const dos_y_ticks = await plots.nth(1).locator(`g.y-axis text`).allTextContents()
+      for (const attribute of [`y`, `height`]) {
+        expect(await bands_clip.getAttribute(attribute)).toBe(
+          await dos_clip.getAttribute(attribute),
+        )
+      }
+
+      // Verify shared y-axis: tick values should overlap significantly
+      const [bands_y_ticks, dos_y_ticks] = await Promise.all([
+        numeric_y_ticks(bands_plot),
+        numeric_y_ticks(dos_plot),
+      ])
       const common_ticks = bands_y_ticks.filter((tick) => dos_y_ticks.includes(tick))
       expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
 
       // Both should have numeric y-axis ticks
-      expect(bands_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
-      expect(dos_y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
+      expect(bands_y_ticks.length).toBeGreaterThan(2)
+      expect(dos_y_ticks.length).toBeGreaterThan(2)
     }).toPass({ timeout: 15_000 })
+  })
+
+  test(`y-axis zoom, reset, and re-enabled sync propagate without stale ranges`, async ({
+    page,
+  }) => {
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
+    const plots = container.locator(`.scatter`)
+    const bands_plot = plots.first()
+    const dos_plot = plots.nth(1)
+    const initial_ticks = await numeric_y_ticks(dos_plot)
+    const dos_area = await measure_plot_area(dos_plot)
+    await drag_plot_area(page, dos_area)
+    await expect.poll(() => numeric_y_ticks(dos_plot)).not.toEqual(initial_ticks)
+    await expect_synced_y_ticks(dos_plot, bands_plot)
+    const zoomed_ticks = await numeric_y_ticks(dos_plot)
+
+    await page.getByTestId(`toggle-y-zoom-sync`).click()
+    const bands_area = await measure_plot_area(bands_plot)
+    await reset_plot_area(bands_plot, bands_area)
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(zoomed_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    await page.getByTestId(`toggle-y-zoom-sync`).click()
+    await expect_synced_y_ticks(bands_plot, dos_plot, zoomed_ticks)
+
+    await reset_plot_area(dos_plot, dos_area)
+    await expect_synced_y_ticks(bands_plot, dos_plot, initial_ticks)
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
@@ -129,18 +169,15 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Hover over DOS plot
     const dos_svg = get_chart_svg(dos_plot)
     const dos_box = await dos_svg.boundingBox()
-    if (dos_box) {
-      await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
+    if (!dos_box) throw new Error(`Missing DOS plot geometry`)
+    await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
 
-      // Wait for hover state to update - reference lines should appear
-      await expect(async () => {
-        const hovered_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
-        const hovered_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
-
-        expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
-        expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
-      }).toPass({ timeout: 15_000 })
-    }
+    await expect(async () => {
+      const hovered_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
+      const hovered_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
+      expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
+      expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
+    }).toPass({ timeout: 15_000 })
   })
 
   test(`renders children snippet content`, async ({ page }) => {

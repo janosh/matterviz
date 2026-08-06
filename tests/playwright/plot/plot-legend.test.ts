@@ -387,6 +387,54 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
+  test(`colorbar placement matches its natural CSS box across resize`, async ({ page }) => {
+    const plot = page.locator(`#color-scale #color-scale-toggle .scatter`)
+    const colorbar = plot.locator(`.colorbar-wrapper`)
+    await expect(colorbar).toBeVisible()
+    await expect(colorbar).toHaveAttribute(`data-decoration-x`, /.+/)
+
+    const dimensions = [`x`, `y`, `width`, `height`] as const
+    const geometry = () =>
+      plot.evaluate((plot_element, dimension_names) => {
+        const colorbar_element = plot_element.querySelector<HTMLElement>(`.colorbar-wrapper`)
+        if (!colorbar_element) throw new Error(`missing colorbar geometry`)
+        const plot_box = plot_element.getBoundingClientRect()
+        const colorbar_box = colorbar_element.getBoundingClientRect()
+        return {
+          actual: [
+            colorbar_box.x - plot_box.x,
+            colorbar_box.y - plot_box.y,
+            colorbar_box.width,
+            colorbar_box.height,
+          ],
+          solved: dimension_names.map((dimension) =>
+            Number(colorbar_element.getAttribute(`data-decoration-${dimension}`)),
+          ),
+        }
+      }, dimensions)
+    const wait_for_geometry_stable = async () => {
+      let stable_geometry: number[] = []
+      await expect(async () => {
+        const first = await geometry()
+        await page.waitForTimeout(100)
+        const second = await geometry()
+        for (const [dimension_idx, value] of second.actual.entries()) {
+          expect(Math.abs(value - first.actual[dimension_idx])).toBeLessThan(1)
+          expect(value).toBeCloseTo(second.solved[dimension_idx], 0)
+        }
+        stable_geometry = second.actual
+      }).toPass({ timeout: 3000 })
+      return stable_geometry
+    }
+    const before = await wait_for_geometry_stable()
+
+    await page.setViewportSize({ width: 900, height: 700 })
+    const after = await wait_for_geometry_stable()
+    for (const dimension_idx of [2, 3] as const) {
+      expect(after[dimension_idx]).toBeCloseTo(before[dimension_idx], 0)
+    }
+  })
+
   test(`legend repositions appropriately after viewport resize`, async ({ page }) => {
     const plot = page.locator(`#legend-multi-default.scatter`)
     const legend = plot.locator(`.legend`)

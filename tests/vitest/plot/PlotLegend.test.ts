@@ -75,6 +75,7 @@ describe(`PlotLegend`, () => {
     // Default layout is vertical, 1 column
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`)
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
+    expect(wrapper.style.gridAutoFlow).toBe(``)
 
     const items = document.querySelectorAll(`.legend-item`)
     expect(items).toHaveLength(default_series_data.length)
@@ -165,6 +166,83 @@ describe(`PlotLegend`, () => {
     const wrapper = doc_query(`.legend`)
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`) // Still 1 column
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(2, auto)`) // 2 rows defined
+    expect(wrapper.style.gridAutoFlow).toBe(`column`)
+  })
+
+  test.each([
+    {
+      layout: `horizontal`,
+      available_edge_length: 166,
+      item_extents: default_series_data.map(() => ({ width: 80, height: 20 })),
+      expected_columns: `repeat(2, auto)`,
+      expected_rows: ``,
+      expected_auto_flow: ``,
+    },
+    {
+      layout: `vertical`,
+      available_edge_length: 41,
+      item_extents: default_series_data.map(() => ({ width: 80, height: 20 })),
+      expected_columns: `auto`,
+      expected_rows: `repeat(2, auto)`,
+      expected_auto_flow: `column`,
+    },
+  ] as const)(
+    `auto-selects tracks for a $layout legend`,
+    ({
+      layout,
+      available_edge_length,
+      item_extents,
+      expected_columns,
+      expected_rows,
+      expected_auto_flow,
+    }) => {
+      mount(PlotLegend, {
+        target: document.body,
+        props: {
+          series_data: default_series_data,
+          layout,
+          layout_tracks: `auto`,
+          available_edge_length,
+          item_extents,
+        },
+      })
+
+      const wrapper = doc_query(`.legend`)
+      expect(wrapper.style.gridTemplateColumns).toBe(expected_columns)
+      expect(wrapper.style.gridTemplateRows).toBe(expected_rows)
+      expect(wrapper.style.gridAutoFlow).toBe(expected_auto_flow)
+    },
+  )
+
+  test(`auto tracks include grouped legend headers`, () => {
+    const series_data: LegendItem[] = [
+      {
+        label: `First`,
+        visible: true,
+        series_idx: 0,
+        legend_group: `Group`,
+        display_style: {},
+      },
+      {
+        label: `Second`,
+        visible: true,
+        series_idx: 1,
+        legend_group: `Group`,
+        display_style: {},
+      },
+    ]
+    mount(PlotLegend, {
+      target: document.body,
+      props: {
+        series_data,
+        layout: `vertical`,
+        layout_tracks: `auto`,
+        available_edge_length: 32,
+        estimated_item_extent: { height: 10 },
+      },
+    })
+
+    expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(3, auto)`)
   })
 
   test(`reports hovered item and marks active series`, () => {
@@ -361,6 +439,14 @@ describe(`PlotLegend`, () => {
     expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
   })
 
+  test(`keeps an auto-layout empty legend on one valid CSS track`, () => {
+    mount(PlotLegend, {
+      target: document.body,
+      props: { series_data: [], layout_tracks: `auto`, available_edge_length: 0 },
+    })
+    expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(1, auto)`)
+  })
+
   describe(`legend groups`, () => {
     // Helper to create grouped test data
     const make_grouped_data = (): LegendItem[] => [
@@ -407,10 +493,11 @@ describe(`PlotLegend`, () => {
       },
     ]
 
-    test(`renders group headers and items`, () => {
+    test(`renders group controls without starting legend drag`, () => {
+      const on_drag_start = vi.fn()
       mount(PlotLegend, {
         target: document.body,
-        props: { series_data: make_grouped_data() },
+        props: { series_data: make_grouped_data(), on_drag_start },
       })
 
       expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(true)
@@ -422,6 +509,8 @@ describe(`PlotLegend`, () => {
         (header) => header.querySelector(`.group-label`)?.textContent,
       )
       expect(group_labels).toEqual([`Li₂O`, `NaCl`])
+      doc_query(`.group-chevron`).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      expect(on_drag_start).not.toHaveBeenCalled()
     })
 
     test.each([

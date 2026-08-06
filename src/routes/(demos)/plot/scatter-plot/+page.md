@@ -3491,3 +3491,119 @@ x2 range is set high→low so 380 nm aligns with 3.26 eV at the left edge.
   style="height: 400px"
 />
 ```
+
+## Unified Legend, Colorbar, and Annotation Placement
+
+The legend and colorbar are solved together against measured footprints and data density. Reference-line annotations without an explicit `position` or `side` then treat those decorations as exclusions, so all three remain readable as the data moves.
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  const cluster = (center_x, center_y, phase) =>
+    Array.from({ length: 32 }, (_, point_idx) => {
+      const angle = point_idx * 2.399 + phase
+      const radius = 4 + (point_idx % 8) * 1.4
+      return {
+        x: center_x + Math.cos(angle) * radius,
+        y: center_y + Math.sin(angle) * radius,
+        score: point_idx / 31,
+      }
+    })
+
+  let center_x = $state(72)
+  let center_y = $state(72)
+  let series = $derived(
+    [
+      { label: `Candidate set A`, color: `#4c6ef5`, points: cluster(center_x, center_y, 0) },
+      {
+        label: `Candidate set B`,
+        color: `#f59f00`,
+        points: cluster(100 - center_x, 100 - center_y, 1.2),
+      },
+    ].map(({ label, color, points }) => ({
+      label,
+      x: points.map((point) => point.x),
+      y: points.map((point) => point.y),
+      color_values: points.map((point) => point.score),
+      markers: `points` as const,
+      point_style: { fill: color, radius: 5, stroke: `white`, stroke_width: 0.5 },
+    })),
+  )
+  const ref_lines = [
+    {
+      type: `horizontal` as const,
+      y: 50,
+      style: { color: `#e03131`, width: 2, dash: `7 4` },
+      annotation: { text: `Review threshold` },
+    },
+  ]
+</script>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1em 2em">
+  <label
+    >Cluster x: {center_x}<input type="range" bind:value={center_x} min="18" max="82" /></label
+  >
+  <label
+    >Cluster y: {center_y}<input type="range" bind:value={center_y} min="18" max="82" /></label
+  >
+</div>
+
+<ScatterPlot
+  {series}
+  {ref_lines}
+  x_axis={{ label: `Composition coordinate`, range: [0, 100] }}
+  y_axis={{ label: `Stability score`, range: [0, 100] }}
+  color_scale={{ scheme: `interpolateViridis` }}
+  color_bar={{ title: `Local score`, responsive: true }}
+  legend={{ layout: `horizontal`, layout_tracks: `auto`, responsive: true, draggable: false }}
+  controls={{ show: false }}
+  style="height: 460px"
+/>
+```
+
+## Metadata-Driven Axis Assignment
+
+Series `unit` metadata groups compatible values onto one y-axis. `axis_group` explicitly separates values that need an independent scale even when the units match; labels and a logarithmic scale are then inferred from the visible series.
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  const iterations = Array.from({ length: 10 }, (_, iteration_idx) => iteration_idx)
+  let split_residual = $state(true)
+  let series = $derived([
+    {
+      x: iterations,
+      y: iterations.map((iteration_idx) => -18.4 - 2.1 * (1 - Math.exp(-iteration_idx / 2))),
+      label: `Total energy`,
+      unit: `eV`,
+      markers: `line+points` as const,
+      line_style: { stroke: `#4c6ef5`, stroke_width: 2 },
+      point_style: { fill: `#4c6ef5` },
+    },
+    {
+      x: iterations,
+      y: iterations.map((iteration_idx) => 0.2 * 10 ** -iteration_idx),
+      label: `SCF residual`,
+      unit: `eV`,
+      axis_group: split_residual ? `scf-residual` : undefined,
+      markers: `line+points` as const,
+      line_style: { stroke: `#f03e3e`, stroke_width: 2 },
+      point_style: { fill: `#f03e3e` },
+    },
+  ])
+</script>
+
+<label
+  ><input type="checkbox" bind:checked={split_residual} /> Give the residual an independent axis
+  group</label
+>
+<ScatterPlot
+  {series}
+  x_axis={{ label: `Self-consistent field iteration` }}
+  legend={{ draggable: false }}
+  controls={{ show: false }}
+  style="height: 420px"
+/>
+```

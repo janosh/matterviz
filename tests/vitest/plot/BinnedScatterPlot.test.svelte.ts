@@ -30,6 +30,8 @@ const point_mode = (config: BinnedDensityConfig = {}): BinnedDensityConfig => ({
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  emit_test_plot_resize = undefined
 })
 
 const settle = async () => {
@@ -84,6 +86,57 @@ const point_tooltip_snippet = () =>
   }))
 const svg_num = (element: Element, attr_name: string): number =>
   Number(element.getAttribute(attr_name))
+type TestRect = { x: number; y: number; width: number; height: number }
+const decoration_rect = (selector: string): TestRect => {
+  const element = doc_query(selector)
+  const numeric_data = (name: string): number => Number(element.dataset[name])
+  return {
+    x: numeric_data(`decorationX`),
+    y: numeric_data(`decorationY`),
+    width: numeric_data(`decorationWidth`),
+    height: numeric_data(`decorationHeight`),
+  }
+}
+const rects_intersect = (first: TestRect, second: TestRect): boolean =>
+  first.x < second.x + second.width &&
+  second.x < first.x + first.width &&
+  first.y < second.y + second.height &&
+  second.y < first.y + first.height
+const uniform_density_series = (columns = 32, rows = 24) => [
+  {
+    x: Array.from({ length: columns * rows }, (_value, point_idx) => point_idx % columns).map(
+      (column_idx) => (column_idx + 0.5) / columns,
+    ),
+    y: Array.from(
+      { length: columns * rows },
+      (_value, point_idx) => (Math.floor(point_idx / columns) + 0.5) / rows,
+    ),
+  },
+]
+let emit_test_plot_resize: ((next_width: number, next_height: number) => void) | undefined
+class TestResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  observe(target: Element): void {
+    if (!(target instanceof HTMLElement) || !target.classList.contains(`binned-scatter`))
+      return
+    emit_test_plot_resize = (next_width: number, next_height: number) =>
+      this.callback(
+        [
+          {
+            target,
+            contentRect: DOMRect.fromRect({ width: next_width, height: next_height }),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          },
+        ],
+        this,
+      )
+    queueMicrotask(() => emit_test_plot_resize?.(800, 600))
+  }
+  unobserve(): void {}
+  disconnect(): void {}
+}
 
 function mock_canvas_context(overrides: Partial<CanvasRenderingContext2D> = {}) {
   const ctx = {
@@ -115,17 +168,7 @@ function mock_label_measurement(width: number, height: number) {
     .spyOn(HTMLElement.prototype, `getBoundingClientRect`)
     .mockImplementation(function (this: HTMLElement) {
       if (this instanceof HTMLElement && this.classList.contains(`point-label-measure`)) {
-        return {
-          bottom: height,
-          height,
-          left: 0,
-          right: width,
-          top: 0,
-          width,
-          x: 0,
-          y: 0,
-          toJSON: () => ({}),
-        }
+        return DOMRect.fromRect({ width, height })
       }
       return original_get_bounding_client_rect.call(this)
     })
@@ -267,6 +310,67 @@ describe(`BinnedScatterPlot`, () => {
     expect(colorbar_style.height).toBe(`10px`)
   })
 
+  test.each([
+    [`horizontal`, `dense`, `outside`, `top`, { x: 80, y: 94, width: 700, height: 446 }],
+    [`vertical`, `dense`, `outside`, `right`, { x: 80, y: 30, width: 636, height: 510 }],
+    [`horizontal`, `sparse`, `interior`, null, { x: 80, y: 30, width: 700, height: 510 }],
+    [`vertical`, `sparse`, `interior`, null, { x: 80, y: 30, width: 700, height: 510 }],
+  ] as const)(
+    `solves %s colorbar placement for %s bins`,
+    async (
+      orientation,
+      density_kind,
+      expected_location,
+      expected_side,
+      expected_plot_rect,
+    ) => {
+      mount_plot({
+        series: density_kind === `dense` ? uniform_density_series() : [{ x: [0.5], y: [0.5] }],
+        density: density_mode_with_colorbar({
+          bin_px: 20,
+          color_bar: { orientation },
+        }),
+        ...unit_axes,
+        padding: { l: 80, r: 20, t: 30, b: 60 },
+      })
+      await settle()
+
+      const colorbar = doc_query(`.binned-scatter .color-bar`)
+      expect(colorbar.dataset.decorationLocation).toBe(expected_location)
+      expect(colorbar.dataset.decorationSide ?? null).toBe(expected_side)
+      const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
+      expect({
+        x: svg_num(clip_rect, `x`),
+        y: svg_num(clip_rect, `y`),
+        width: svg_num(clip_rect, `width`),
+        height: svg_num(clip_rect, `height`),
+      }).toEqual(expected_plot_rect)
+    },
+  )
+
+  test(`preserves explicit colorbar wrapper and bar styles`, async () => {
+    mount_plot({
+      series: uniform_density_series(),
+      density: density_mode_with_colorbar({
+        bin_px: 20,
+        color_bar: {
+          orientation: `vertical`,
+          wrapper_style: `border: 3px solid rgb(1, 2, 3); padding: 7px;`,
+          bar_style: `width: 14px; height: 160px;`,
+        },
+      }),
+      ...unit_axes,
+    })
+    await settle()
+
+    const wrapper = doc_query(`.binned-scatter .colorbar`)
+    const bar = doc_query(`.binned-scatter .colorbar .bar`)
+    expect(wrapper.style.border).toBe(`3px solid rgb(1, 2, 3)`)
+    expect(wrapper.style.padding).toBe(`7px`)
+    expect(bar.style.width).toBe(`14px`)
+    expect(bar.style.height).toBe(`160px`)
+  })
+
   test(`auto-places annotation snippet without overlapping the colorbar`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
@@ -277,34 +381,52 @@ describe(`BinnedScatterPlot`, () => {
 
     const anno_wrapper = doc_query(`.binned-scatter .annotation`)
     expect(anno_wrapper.querySelector(`.custom-annotation`)?.textContent).toBe(`800x600:false`)
-    // style.left/top are `${n}px` strings, so strip the unit before Number()
-    const style_px = (value: string): number => Number(value.replace(/px$/, ``))
-    // both elements report zero offset size in the test DOM, so placement uses the
-    // documented fallback footprints (annotation 120x50, colorbar 220x50)
-    const anno_rect = {
-      x: style_px(anno_wrapper.style.left),
-      y: style_px(anno_wrapper.style.top),
-      width: 120,
-      height: 50,
-    }
-    const bar_wrapper = doc_query(`.binned-scatter .color-bar`)
-    const bar_rect = {
-      x: style_px(bar_wrapper.style.left),
-      y: style_px(bar_wrapper.style.top),
-      width: COLOR_BAR_DEFAULTS.width,
-      height: 50,
-    }
+    const anno_rect = decoration_rect(`.binned-scatter .annotation`)
+    const bar_rect = decoration_rect(`.binned-scatter .color-bar`)
     for (const rect of [anno_rect, bar_rect]) {
       expect(Number.isFinite(rect.x), `${rect.x}`).toBe(true)
       expect(Number.isFinite(rect.y), `${rect.y}`).toBe(true)
+      expect(Number.isFinite(rect.width), `${rect.width}`).toBe(true)
+      expect(Number.isFinite(rect.height), `${rect.height}`).toBe(true)
     }
-    // exclude_rects wiring: annotation must not intersect the colorbar footprint
-    const rects_intersect =
-      anno_rect.x < bar_rect.x + bar_rect.width &&
-      bar_rect.x < anno_rect.x + anno_rect.width &&
-      anno_rect.y < bar_rect.y + bar_rect.height &&
-      bar_rect.y < anno_rect.y + anno_rect.height
-    expect(rects_intersect, JSON.stringify({ anno_rect, bar_rect })).toBe(false)
+    expect(rects_intersect(anno_rect, bar_rect), JSON.stringify({ anno_rect, bar_rect })).toBe(
+      false,
+    )
+  })
+
+  test(`keeps solver padding stable across repeated resizes`, async () => {
+    vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
+    mount_plot({
+      series: uniform_density_series(),
+      density: density_mode_with_colorbar({ bin_px: 20 }),
+      ...unit_axes,
+      padding: { l: 80, r: 20, t: 30, b: 60 },
+    })
+    await settle()
+
+    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
+    const plot_rect = (): TestRect => ({
+      x: svg_num(clip_rect, `x`),
+      y: svg_num(clip_rect, `y`),
+      width: svg_num(clip_rect, `width`),
+      height: svg_num(clip_rect, `height`),
+    })
+    const initial_rect = plot_rect()
+    if (!emit_test_plot_resize)
+      throw new Error(`Binned scatter ResizeObserver was not attached`)
+    emit_test_plot_resize(620, 420)
+    await settle()
+    const resized_rect = plot_rect()
+    expect(resized_rect).not.toEqual(initial_rect)
+
+    for (let repeat_idx = 0; repeat_idx < 3; repeat_idx++) {
+      emit_test_plot_resize(620, 420)
+      await settle()
+      expect(plot_rect()).toEqual(resized_rect)
+    }
+    emit_test_plot_resize(800, 600)
+    await settle()
+    expect(plot_rect()).toEqual(initial_rect)
   })
 
   test(`keeps colorbar placement frozen across data changes`, async () => {
@@ -378,8 +500,10 @@ describe(`BinnedScatterPlot`, () => {
     )
 
     const ref_group = document.querySelector(`.reference-lines`)
-    expect(ref_group?.getAttribute(`clip-path`)).toBe(`url(#${clip_path?.id})`)
-    const line = ref_group?.querySelector(`line`)
+    expect(ref_group?.querySelector(`g[clip-path]`)?.getAttribute(`clip-path`)).toBe(
+      `url(#${clip_path?.id})`,
+    )
+    const line = ref_group?.querySelector(`line:not([stroke="transparent"])`)
     expect(line).toBeInstanceOf(SVGLineElement)
     expect([`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line?.getAttribute(attr)))).toEqual(
       coords,
@@ -403,6 +527,33 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     expect(document.querySelectorAll(`.reference-lines line`)).toHaveLength(0)
+  })
+
+  test(`renders solver-placed non-overlapping RefLine annotations`, async () => {
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      ...unit_axes,
+      overlays: {
+        ref_lines: [
+          { type: `horizontal`, y: 0.5, annotation: { text: `near A` } },
+          { type: `horizontal`, y: 0.51, annotation: { text: `near B` } },
+        ],
+      },
+      density: hidden_density,
+    })
+    await settle()
+
+    const labels = [...document.querySelectorAll<SVGTextElement>(`.reference-lines text`)]
+    expect(labels.map((label) => label.textContent)).toEqual([`near A`, `near B`])
+    expect(
+      labels.map((label) => [
+        label.getAttribute(`text-anchor`),
+        label.getAttribute(`dominant-baseline`),
+      ]),
+    ).toEqual([
+      [`end`, `auto`],
+      [`end`, `hanging`],
+    ])
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
@@ -668,6 +819,24 @@ describe(`BinnedScatterPlot`, () => {
     )
     expect(marginal_fills.has(get_series_color(0))).toBe(true)
     expect(marginal_fills.has(get_series_color(1))).toBe(true)
+  })
+
+  test(`places the title below an outer top marginal`, async () => {
+    vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
+    mount_plot({
+      series: [{ x: [0.2, 0.8], y: [0.3, 0.7] }],
+      title: `Density map`,
+      marginals: {
+        top: { placement: `outer`, size: 30, gap: 7, value_axis: false },
+      },
+      density: point_mode(),
+      ...unit_axes,
+    })
+    await settle()
+
+    const marginal_rect = svg_query(`clipPath[id$="-top"] rect`)
+    const marginal_bottom = svg_num(marginal_rect, `y`) + svg_num(marginal_rect, `height`)
+    expect(svg_num(svg_query(`.plot-title tspan`), `y`)).toBeGreaterThan(marginal_bottom)
   })
 
   test(`renders point label snippets with auto-placed leader lines`, async () => {

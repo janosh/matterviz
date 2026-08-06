@@ -565,6 +565,23 @@ describe(`parse_in_worker`, () => {
     frame_port.close()
   })
 
+  it(`posts worker responses with structured serialization options`, async () => {
+    await import(`$lib/file-viewer/parse-worker`)
+    const post_message = vi.spyOn(self, `postMessage`).mockImplementation(() => {})
+    self.dispatchEvent(
+      new MessageEvent(`message`, {
+        data: { id: 11, content: `invalid`, filename: `invalid.unknown`, is_base64: false },
+      }),
+    )
+
+    await vi.waitFor(() =>
+      expect(post_message).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }), {
+        transfer: [],
+      }),
+    )
+    post_message.mockRestore()
+  })
+
   it(`marks the worker unusable after a script-level error event and stops retrying it`, async () => {
     const failing_worker: WorkerLike = {
       postMessage: () => {},

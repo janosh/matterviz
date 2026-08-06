@@ -584,11 +584,19 @@ describe(`HeatmapTable`, () => {
       description: ``,
     }
 
-    it(`does not set cell colors when show_heatmap is false`, () => {
+    it.each([
+      [`show_heatmap is false`, { show_heatmap: false }],
+      [
+        `column preferences disable the color scale`,
+        { column_prefs: { Val: { color_scale: null } } },
+      ],
+    ] as const)(`does not set cell colors when %s`, (_name, props) => {
       const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
-      mount_table({ data, columns: [heatmap_val_col], show_heatmap: false })
+      mount_table({ data, columns: [heatmap_val_col], ...props })
 
-      for (const cell of Array.from(document.querySelectorAll(`td[data-col="Val"]`))) {
+      const cells = Array.from(document.querySelectorAll(`td[data-col="Val"]`))
+      expect(cells).toHaveLength(data.length)
+      for (const cell of cells) {
         expect(cell.getAttribute(`style`) ?? ``).not.toContain(`--cell-bg:`)
       }
     })
@@ -2248,6 +2256,32 @@ describe(`HeatmapTable`, () => {
       mount_table({ data: sample_data, columns: sample_columns, show_controls: false })
       expect(document.querySelector(`.pane-toggle`)).toBeNull()
     })
+
+    it(`keeps an explicit null color preference available to reset`, async () => {
+      const props = $state({
+        data: sample_data,
+        columns: [heatmap_col],
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+        show_controls: true,
+      })
+      mount_table(props)
+      document.querySelector<HTMLButtonElement>(`.pane-toggle`)?.click()
+      await tick()
+      props.column_prefs = { Value: { color_scale: null } }
+      await tick()
+
+      const reset = await vi.waitFor(() => {
+        const button = document.querySelector<HTMLButtonElement>(
+          `[aria-label="Reset column colors to defaults"]`,
+        )
+        expect(button).not.toBeNull()
+        return button
+      })
+      assert(reset)
+      reset.click()
+      await tick()
+      expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
+    })
   })
 
   describe(`Page Size Selector`, () => {
@@ -2445,6 +2479,22 @@ describe(`HeatmapTable`, () => {
       score_header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
       expect(document.querySelector(`.context-menu`)).not.toBeNull()
+    })
+
+    it(`hides gradient controls when preferences disable the effective color scale`, async () => {
+      mount_table({
+        data: sample_data,
+        columns: [heatmap_col],
+        column_prefs: { Value: { color_scale: null } },
+        allow_better_toggle: true,
+      })
+      await tick()
+
+      document.querySelector(`th`)?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
+      await tick()
+      expect(document.querySelector(`.context-menu`)?.textContent).not.toMatch(
+        /Higher is better|Lower is better/,
+      )
     })
 
     it(`clears selection when the rendered data changes`, async () => {

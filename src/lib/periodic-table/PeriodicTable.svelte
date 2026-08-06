@@ -47,8 +47,9 @@
     inset,
     bottom_left_inset,
     tooltip = false,
-    onenter,
+    onactivate,
     children,
+    onkeydown: on_table_keydown,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     tile_props?: Partial<ComponentProps<typeof ElementTile>>
@@ -103,7 +104,7 @@
         >
       | boolean
     children?: Snippet
-    onenter?: (element: ChemicalElement) => void
+    onactivate?: (element: ChemicalElement) => void
   } = $props()
 
   let heat_values = $derived.by(() => {
@@ -133,9 +134,34 @@
     return []
   })
 
-  let set_active_element = $derived((element: ChemicalElement | null) => () => {
+  const set_active_element = (element: ChemicalElement | null): void => {
     if (disabled) return
     active_element = element
+  }
+  const element_href = (element: ChemicalElement): string | undefined =>
+    !links
+      ? undefined
+      : typeof links === `string`
+        ? `/${element[links]}`.toLowerCase()
+        : links[element.symbol]
+  const element_is_interactive = (element: ChemicalElement): boolean =>
+    Boolean(element_href(element) || onactivate)
+  let focused_symbol = $state<ElementSymbol | null>(null)
+  let first_interactive_symbol = $derived(
+    element_data.find(element_is_interactive)?.symbol ?? null,
+  )
+  let roving_symbol = $derived(
+    focused_symbol ??
+      (active_element && element_is_interactive(active_element)
+        ? active_element.symbol
+        : first_interactive_symbol),
+  )
+  $effect(() => {
+    if (links && onactivate) {
+      console.warn(
+        `PeriodicTable links use native link activation; onactivate applies only to unlinked tiles.`,
+      )
+    }
   })
 
   let window_width: number = $state(0)
@@ -143,18 +169,28 @@
   let tooltip_pos: Point2D = $state({ x: 0, y: 0 })
   let tooltip_visible: boolean = $state(false)
 
-  function handle_key(event: KeyboardEvent) {
-    if (disabled || !active_element) return
-    if (event.key === `Enter`) onenter?.(active_element)
-
+  function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
+    on_table_keydown?.(event)
+    if (disabled || event.defaultPrevented) return
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
     if (!arrow_keys.includes(event.key)) return
+
+    const event_target = event.target
+    const tile =
+      event_target instanceof Element
+        ? event_target.closest<HTMLElement>(`.element-tile`)
+        : null
+    if (!tile || !event.currentTarget.contains(tile)) return
+    const current_element = element_data.find(
+      ({ symbol }) => symbol === tile.dataset.elementSymbol,
+    )
+    if (!current_element) return
 
     event.preventDefault() // prevent scrolling the page
     event.stopPropagation()
 
     // Arrow key navigation including lanthanides (row 9) and actinides (row 10)
-    const { column: col, row } = active_element
+    const { column: col, row } = current_element
     const in_f_block = col >= 3 && col <= 17
     const row_map: Record<string, number> = {
       ArrowUp: row === 9 ? 6 : row === 10 ? 7 : row - 1,
@@ -163,9 +199,19 @@
     const target_row = row_map[event.key] ?? row
     const target_col =
       event.key === `ArrowLeft` ? col - 1 : event.key === `ArrowRight` ? col + 1 : col
-    active_element =
-      element_data.find((el) => el.column === target_col && el.row === target_row) ??
-      active_element
+    const target_element = element_data.find(
+      (element) =>
+        element.column === target_col &&
+        element.row === target_row &&
+        element_is_interactive(element),
+    )
+    if (!target_element) return
+
+    focused_symbol = target_element.symbol
+    active_element = target_element
+    event.currentTarget
+      .querySelector<HTMLElement>(`[data-element-symbol="${target_element.symbol}"]`)
+      ?.focus()
   }
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
@@ -271,9 +317,9 @@
   })
 </script>
 
-<svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
+<svelte:window bind:innerWidth={window_width} />
 
-<div {...rest} class={[`periodic-table`, rest.class]} style:gap>
+<div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
@@ -292,6 +338,8 @@
   {/if}
   {#each element_data as element (element.number)}
     {@const { column, row, category, name, symbol } = element}
+    {@const href = element_href(element)}
+    {@const tile_activation = href ? undefined : onactivate}
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
@@ -307,11 +355,8 @@
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
     <ElementTile
       {element}
-      href={links
-        ? typeof links == `string`
-          ? `/${element[links]}`.toLowerCase()
-          : links[symbol]
-        : undefined}
+      {href}
+      data-element-symbol={symbol}
       value={tile_missing ? undefined : (value ?? undefined)}
       bg_color={override ?? bg_color(value, element) ?? undefined}
       bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
@@ -320,16 +365,36 @@
       {...tile_props}
       {style}
       onmouseenter={(event: MouseEvent) => {
-        set_active_element(element)()
+        set_active_element(element)
         handle_tooltip_enter(element, event)
       }}
       onmouseleave={() => {
-        set_active_element(null)()
+        set_active_element(null)
         tooltip_visible = false
         tooltip_element = null
       }}
-      onfocus={set_active_element(element)}
-      onblur={set_active_element(null)}
+      onfocus={() => {
+        focused_symbol = symbol
+        set_active_element(element)
+      }}
+      onblur={() => {
+        focused_symbol = null
+        set_active_element(null)
+      }}
+      role={tile_activation ? `button` : href ? `link` : tile_props?.role}
+      tabindex={element_is_interactive(element)
+        ? roving_symbol === symbol
+          ? 0
+          : -1
+        : tile_props?.tabindex}
+      onclick={tile_activation ? () => tile_activation(element) : tile_props?.onclick}
+      onkeydown={tile_activation
+        ? (event: KeyboardEvent) => {
+            if (event.key !== `Enter` && event.key !== ` `) return
+            event.preventDefault()
+            tile_activation(element)
+          }
+        : tile_props?.onkeydown}
       {split_layout}
     />
   {/each}

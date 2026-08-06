@@ -16,7 +16,7 @@
     ]),
   )
 
-  const onenter = (element: ChemicalElement) => {
+  const onactivate = (element: ChemicalElement) => {
     if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
@@ -111,7 +111,7 @@
   color_scale="interpolateViridis"
   split_layout="quadrant"
   tooltip
-  {onenter}
+  {onactivate}
 >
   {#snippet inset()}
     <TableInset
@@ -176,7 +176,7 @@
   links="name"
   tooltip
   style="margin: 1em auto; max-width: 1000px"
-  {onenter}
+  {onactivate}
 >
   {#snippet inset()}
     {@const style = `display: flex; align-items: center; gap: 3pt;`}
@@ -236,7 +236,7 @@
   tile_props={{ show_name: window_width > 800 }}
   {active_elements}
   style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
-  {onenter}
+  {onactivate}
 >
   {#snippet inset()}
     <TableInset

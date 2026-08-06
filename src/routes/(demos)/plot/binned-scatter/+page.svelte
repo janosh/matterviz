@@ -239,6 +239,12 @@
   {x_axis}
   {y_axis}
   {density}
+  title={{
+    text: `Materials landscape across three chemical families`,
+    subtitle: `Adaptive density bins with coordinated annotation and colorbar placement`,
+    align: `start`,
+    max_lines: 2,
+  }}
   marginals={{ top: { type: `histogram`, size: 64 }, right: { type: `kde`, size: 64 } }}
   tooltip={point_tooltip}
   bind:render_mode
@@ -281,8 +287,8 @@
     <li>Switch to point mode to see the same materials rendered individually.</li>
     <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
     <li>
-      The stats badge (an <code>annotation</code> snippet) auto-places itself away from both the
-      data and the colorbar. Zoom around and watch it relocate.
+      The stats badge and density colorbar are measured and placed by the same decoration
+      solver, away from occupied bins and each other. Zoom around and watch them relocate.
     </li>
   </ul>
 </section>

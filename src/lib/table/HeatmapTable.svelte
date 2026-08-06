@@ -464,8 +464,11 @@
   }
   const better_of = (col: Label): `higher` | `lower` | undefined =>
     prefs_of(get_col_id(col)).better ?? col.better
-  const color_scale_of = (col: Label): D3InterpolateName | null | undefined =>
-    prefs_of(get_col_id(col)).color_scale ?? col.color_scale
+  // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back
+  const color_scale_of = (col: Label): D3InterpolateName | null | undefined => {
+    const pref = prefs_of(get_col_id(col)).color_scale
+    return pref === undefined ? col.color_scale : pref
+  }
   const width_of = (col_id: string): number | undefined => prefs_of(col_id).width
 
   // Auto-discover columns from data keys when none are provided
@@ -1173,10 +1176,11 @@
     const scales = new SvelteMap<string, (val: number | null | undefined) => CellColor>()
     if (!show_heatmap) return scales
     for (const col of visible_columns) {
-      if (col.color_scale === null) continue
       const col_id = get_col_id(col)
       const stats = column_stats.get(col_id)
-      const scale = color_scale_of(col) ?? `interpolateViridis`
+      const configured_scale = color_scale_of(col)
+      if (configured_scale === null) continue
+      const scale = configured_scale ?? `interpolateViridis`
       scales.set(
         col_id,
         make_cell_color_scale(
@@ -1668,7 +1672,9 @@
       ],
     },
     // Gradient direction only applies to heatmap-colored columns
-    ...(allow_better_toggle && context_menu_column?.color_scale != null
+    ...(allow_better_toggle &&
+    context_menu_column &&
+    color_scale_of(context_menu_column) != null
       ? [{ ...better_section, selected: prefs_of(context_menu_col ?? ``).better ?? `` }]
       : []),
   ])
@@ -1847,9 +1853,8 @@
     const color: Record<string, ColumnPrefs> = {}
     const remaining: Record<string, ColumnPrefs> = {}
     for (const [col_id, { better, color_scale, ...kept }] of Object.entries(column_prefs)) {
-      if (better || color_scale) {
-        color[col_id] = { ...(better && { better }), ...(color_scale && { color_scale }) }
-      }
+      if (better) color[col_id] = { better }
+      if (color_scale !== undefined) color[col_id] = { ...color[col_id], color_scale }
       if (Object.keys(kept).length > 0) remaining[col_id] = kept
     }
     return { color, rest: remaining }

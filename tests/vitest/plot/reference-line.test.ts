@@ -1,90 +1,91 @@
 import type { Vec2 } from '$lib/math'
+import { place_reference_annotation, solve_decorations } from '$lib/plot/core/decorations'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
+  create_reference_annotation_candidates,
+  estimate_reference_annotation_metrics,
   group_ref_lines_by_z,
   index_ref_lines,
   normalize_point,
   normalize_value,
+  reference_annotation_text_rect,
+  resolve_reference_annotation,
   resolve_line_endpoints,
+  solve_reference_annotations,
   span_or,
 } from '$lib/plot/core/reference-line'
 import type { RefLine } from '$lib/plot/core/types'
-import { describe, expect, test, vi } from 'vitest'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {
   test.each([
-    [42, 42, `number`],
-    [-3.14, -3.14, `negative number`],
-    [0, 0, `zero`],
-    [`42.5`, 42.5, `numeric string`],
-    [`-100`, -100, `negative numeric string`],
-  ])(`returns %s as %s`, (input, expected, _desc) => {
+    [42, 42],
+    [-3.14, -3.14],
+    [0, 0],
+    [`42.5`, 42.5],
+    [`-100`, -100],
+    [new Date(`2024-01-01T00:00:00Z`), Date.parse(`2024-01-01T00:00:00Z`)],
+    [`2024-06-15`, Date.parse(`2024-06-15`)],
+  ])(`returns %s as %s`, (input, expected) => {
     expect(normalize_value(input)).toBe(expected)
   })
 
-  test(`converts Date to timestamp`, () => {
-    const date = new Date(`2024-01-01T00:00:00Z`)
-    expect(normalize_value(date)).toBe(date.getTime())
-  })
-
-  test(`parses ISO date string`, () => {
-    const date_str = `2024-06-15`
-    expect(normalize_value(date_str)).toBe(Date.parse(date_str))
-  })
-
-  test(`returns 0 for invalid string with warning`, () => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    expect(normalize_value(`invalid`)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`Invalid RefLineValue`))
-    warn_spy.mockRestore()
-  })
-
-  test.each([[``], [` `], [`  \t  `]])(`returns 0 for empty/whitespace string %j`, (input) => {
+  test.each([
+    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN, new Date(`invalid`)].map(
+      (input) => [input, `Invalid RefLineValue`] as const,
+    ),
+    ...[``, ` `, `  \t  `].map((input) => [input, `empty string`] as const),
+  ])(`returns 0 for invalid value %j`, (input, warning) => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     expect(normalize_value(input)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
+    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
     warn_spy.mockRestore()
   })
 })
 
-describe(`normalize_point`, () => {
-  test(`normalizes tuple of numbers`, () => {
-    expect(normalize_point([10, 20])).toEqual([10, 20])
+test(`preserves resolved base geometry when adding reference annotations`, () => {
+  const base_solution = solve_decorations({
+    base_pad: { t: 10, r: 10, b: 10, l: 10 },
+    width: 400,
+    height: 300,
+    obstacles_norm: [],
+    items: [{ id: `legend`, kind: `legend`, footprint: { width: 30, height: 40 } }],
+  })
+  base_solution.pad = { t: 30, r: 40, b: 20, l: 25 }
+  base_solution.plot_bounds = { x: 25, y: 30, width: 335, height: 250 }
+  const base_placement = base_solution.placements[0]
+  const solution = solve_reference_annotations({
+    base_solution,
+    base_pad: base_solution.base_pad,
+    width: 400,
+    height: 300,
+    obstacles_norm: [],
+    lines: [{ idx: 0, type: `horizontal`, y: 5, annotation: { text: `Threshold` } }],
+    ranges: { x: [0, 10], y: [0, 10] },
+    scales: { x: (value) => 25 + value * 33.5, y: (value) => 280 - value * 25 },
   })
 
-  test(`normalizes tuple with Date`, () => {
-    const date = new Date(`2024-01-01`)
-    expect(normalize_point([date, 100])).toEqual([date.getTime(), 100])
-  })
+  expect(solution.pad).toBe(base_solution.pad)
+  expect(solution.plot_bounds).toBe(base_solution.plot_bounds)
+  expect(solution.placements[0]).toBe(base_placement)
+  expect(solution.placements).toHaveLength(2)
 })
 
-describe(`span_or`, () => {
-  test.each<[[number | null, number | null] | undefined, Vec2, Vec2]>([
-    [undefined, [0, 100], [0, 100]],
-    [
-      [20, 80],
-      [0, 100],
-      [20, 80],
-    ],
-    [
-      [null, 80],
-      [0, 100],
-      [0, 80],
-    ],
-    [
-      [20, null],
-      [0, 100],
-      [20, 100],
-    ],
-    [
-      [null, null],
-      [10, 50],
-      [10, 50],
-    ],
-  ])(`span_or(%j, %j) = %j`, (span, range, expected) => {
-    expect(span_or(span, range)).toEqual(expected)
-  })
+test(`normalize_point normalizes numeric and Date tuples`, () => {
+  expect(normalize_point([10, 20])).toEqual([10, 20])
+  const date = new Date(`2024-01-01`)
+  expect(normalize_point([date, 100])).toEqual([date.getTime(), 100])
+})
+
+test(`span_or fills nullish span bounds from the range`, () => {
+  const range: Vec2 = [0, 100]
+  expect(span_or(undefined, range)).toEqual(range)
+  expect(span_or([20, 80], range)).toEqual([20, 80])
+  expect(span_or([null, 80], range)).toEqual([0, 80])
+  expect(span_or([20, null], range)).toEqual([20, 100])
+  expect(span_or([null, null], [10, 50])).toEqual([10, 50])
 })
 
 describe(`resolve_line_endpoints`, () => {
@@ -93,6 +94,13 @@ describe(`resolve_line_endpoints`, () => {
     x_scale: (val: number) => 10 + val * 1.8,
     y_scale: (val: number) => 190 - val * 1.8,
   }
+  const scaled_endpoints = (expected: readonly number[]) =>
+    [
+      scales.x_scale(expected[0]),
+      scales.y_scale(expected[1]),
+      scales.x_scale(expected[2]),
+      scales.y_scale(expected[3]),
+    ].map((value) => expect.closeTo(value, 8))
 
   // Expected [x1, y1, x2, y2] in data coords. Diagonal endpoints must stay paired: each
   // must satisfy y = slope·x + intercept, spans recompute the other coordinate instead of
@@ -108,15 +116,19 @@ describe(`resolve_line_endpoints`, () => {
     [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
     [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
   ] as const)(`%o resolves expected endpoints`, (line, [x1, y1, x2, y2]) => {
-    const result = resolve_line_endpoints(line as RefLine, bounds, scales)
-    expect(result?.[0]).toBeCloseTo(scales.x_scale(x1), 8)
-    expect(result?.[1]).toBeCloseTo(scales.y_scale(y1), 8)
-    expect(result?.[2]).toBeCloseTo(scales.x_scale(x2), 8)
-    expect(result?.[3]).toBeCloseTo(scales.y_scale(y2), 8)
+    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toEqual(
+      scaled_endpoints([x1, y1, x2, y2]),
+    )
   })
 
   // Liang-Barsky segment clipping: preserves angle by computing true intersections
   test.each([
+    {
+      desc: `inside bounds`,
+      p1: [10, 10] as Vec2,
+      p2: [90, 90] as Vec2,
+      expected: [10, 10, 90, 90],
+    },
     {
       desc: `horizontal crossing x bounds`,
       p1: [-50, 50] as Vec2,
@@ -142,58 +154,43 @@ describe(`resolve_line_endpoints`, () => {
       expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
     },
   ])(`segment clipping: $desc`, ({ p1, p2, expected }) => {
-    const result = resolve_line_endpoints({ type: `segment`, p1, p2 }, bounds, scales)
-    expect(result?.[0]).toBeCloseTo(scales.x_scale(expected[0]))
-    expect(result?.[1]).toBeCloseTo(scales.y_scale(expected[1]))
-    expect(result?.[2]).toBeCloseTo(scales.x_scale(expected[2]))
-    expect(result?.[3]).toBeCloseTo(scales.y_scale(expected[3]))
+    expect(resolve_line_endpoints({ type: `segment`, p1, p2 }, bounds, scales)).toEqual(
+      scaled_endpoints(expected),
+    )
   })
 
   test(`segment with x_span and y_span clips to span bounds`, () => {
     // 45° line clipped to [20,80] x [30,70]; y_span is tighter so dominates
-    const result = resolve_line_endpoints(
-      {
-        type: `segment`,
-        p1: [-10, -10],
-        p2: [110, 110],
-        x_span: [20, 80],
-        y_span: [30, 70],
-      },
-      bounds,
-      scales,
+    const line: RefLine = {
+      type: `segment`,
+      p1: [-10, -10],
+      p2: [110, 110],
+      x_span: [20, 80],
+      y_span: [30, 70],
+    }
+    expect(resolve_line_endpoints(line, bounds, scales)).toEqual(
+      scaled_endpoints([30, 30, 70, 70]),
     )
-    expect(result?.[0]).toBeCloseTo(scales.x_scale(30))
-    expect(result?.[1]).toBeCloseTo(scales.y_scale(30))
-    expect(result?.[2]).toBeCloseTo(scales.x_scale(70))
-    expect(result?.[3]).toBeCloseTo(scales.y_scale(70))
-  })
-
-  // Lines inside bounds should return endpoints
-  test.each([
-    [{ type: `segment`, p1: [10, 10], p2: [90, 90] }, `segment inside bounds`],
-    [{ type: `diagonal`, slope: 1, intercept: 0 }, `diagonal clipped to bounds`],
-  ] as const)(`%s returns endpoints`, (line, _desc) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).not.toBeNull()
   })
 
   // Lines outside bounds should return null
   test.each([
-    [{ type: `horizontal`, y: 150 }, `horizontal outside y_max`],
-    [{ type: `diagonal`, slope: 0, intercept: 150 }, `diagonal slope=0 outside bounds`],
-    [{ type: `diagonal`, slope: 1, intercept: 200 }, `diagonal entirely above y_max`],
-    [{ type: `diagonal`, slope: 1, intercept: -200 }, `diagonal entirely below y_min`],
-    [{ type: `diagonal`, slope: -1, intercept: 300 }, `negative slope above y_max`],
-    [{ type: `diagonal`, slope: -1, intercept: -200 }, `negative slope below y_min`],
-    [{ type: `line`, p1: [0, 200], p2: [100, 300] }, `line entirely above y_max`],
-    [{ type: `line`, p1: [0, -200], p2: [100, -100] }, `line entirely below y_min`],
-    [{ type: `line`, p1: [150, 0], p2: [150, 100] }, `nearly vertical outside x_max`],
-    [{ type: `line`, p1: [-50, 0], p2: [-50, 100] }, `nearly vertical outside x_min`],
-    [{ type: `segment`, p1: [150, 150], p2: [200, 200] }, `segment outside top-right`],
-    [{ type: `segment`, p1: [-50, -50], p2: [-10, -10] }, `segment outside bottom-left`],
-    [{ type: `segment`, p1: [150, 50], p2: [200, 50] }, `segment outside x_max`],
-    [{ type: `segment`, p1: [50, 150], p2: [50, 200] }, `segment outside y_max`],
-  ] as const)(`%s returns null`, (line, _desc) => {
-    expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
+    { type: `horizontal`, y: 150 },
+    { type: `diagonal`, slope: 0, intercept: 150 },
+    { type: `diagonal`, slope: 1, intercept: 200 },
+    { type: `diagonal`, slope: 1, intercept: -200 },
+    { type: `diagonal`, slope: -1, intercept: 300 },
+    { type: `diagonal`, slope: -1, intercept: -200 },
+    { type: `line`, p1: [0, 200], p2: [100, 300] },
+    { type: `line`, p1: [0, -200], p2: [100, -100] },
+    { type: `line`, p1: [150, 0], p2: [150, 100] },
+    { type: `line`, p1: [-50, 0], p2: [-50, 100] },
+    { type: `segment`, p1: [150, 150], p2: [200, 200] },
+    { type: `segment`, p1: [-50, -50], p2: [-10, -10] },
+    { type: `segment`, p1: [150, 50], p2: [200, 50] },
+    { type: `segment`, p1: [50, 150], p2: [50, 200] },
+  ] as RefLine[])(`%o returns null`, (line) => {
+    expect(resolve_line_endpoints(line, bounds, scales)).toBeNull()
   })
 })
 
@@ -229,76 +226,210 @@ describe(`calculate_annotation_position`, () => {
     expect(pos.rotation).toBeCloseTo(45, 0)
   })
 
-  // Vertical line: (100, 0) -> (100, 200)
+  // Both vertical directions are regression coverage: bottom-to-top used to invert left/right.
   test.each([
-    [`left`, 90, 100, `end`],
-    [`right`, 110, 100, `start`],
+    [`top-to-bottom vertical`, `left`, [100, 0, 100, 200], 90, 100, `end`],
+    [`top-to-bottom vertical`, `right`, [100, 0, 100, 200], 110, 100, `start`],
+    [`bottom-to-top vertical`, `left`, [100, 200, 100, 0], 90, 100, `end`],
+    [`bottom-to-top vertical`, `right`, [100, 200, 100, 0], 110, 100, `start`],
+    [`diagonal`, `left`, [0, 0, 100, 100], 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
+    [
+      `diagonal`,
+      `right`,
+      [0, 0, 100, 100],
+      50 + 10 / Math.SQRT2,
+      50 - 10 / Math.SQRT2,
+      `start`,
+    ],
+    [`horizontal`, `left`, [0, 100, 200, 100], 100, 110, `end`],
+    [`horizontal`, `right`, [0, 100, 200, 100], 100, 90, `start`],
   ] as const)(
-    `%s side offset for vertical line`,
-    (side, expected_x, expected_y, expected_anchor) => {
-      const pos = calculate_annotation_position(100, 0, 100, 200, {
-        position: `center`,
-        side,
-        gap: 10,
-      })
-      expect(pos.x).toBe(expected_x)
-      expect(pos.y).toBe(expected_y)
-      expect(pos.text_anchor).toBe(expected_anchor)
-    },
-  )
-
-  // Regression: vertical ref lines are stored bottom->top (y1 > y2 in pixels), which used to flip
-  // left/right onto the wrong side and make the label cross the line. Sides must be screen-stable.
-  test.each([
-    [`left`, 90, `end`],
-    [`right`, 110, `start`],
-  ] as const)(
-    `%s side is screen-stable for a bottom->top vertical line`,
-    (side, expected_x, expected_anchor) => {
-      const pos = calculate_annotation_position(100, 200, 100, 0, {
-        position: `center`,
-        side,
-        gap: 10,
-      })
-      expect(pos.x).toBe(expected_x)
-      expect(pos.text_anchor).toBe(expected_anchor)
-    },
-  )
-
-  // Diagonal 45° line: (0, 0) -> (100, 100)
-  test.each([
-    [`left`, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
-    [`right`, 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
-  ] as const)(
-    `%s side perpendicular offset for diagonal`,
-    (side, expected_x, expected_y, expected_anchor) => {
-      const pos = calculate_annotation_position(0, 0, 100, 100, {
-        position: `center`,
-        side,
-        gap: 10,
-      })
+    `%s: %s side offset`,
+    (_name, side, line_endpoints, expected_x, expected_y, expected_anchor) => {
+      const pos = calculate_annotation_position(
+        line_endpoints[0],
+        line_endpoints[1],
+        line_endpoints[2],
+        line_endpoints[3],
+        {
+          position: `center`,
+          side,
+          gap: 10,
+        },
+      )
       expect(pos.x).toBeCloseTo(expected_x, 5)
       expect(pos.y).toBeCloseTo(expected_y, 5)
       expect(pos.text_anchor).toBe(expected_anchor)
     },
   )
+})
 
-  // Horizontal line left/right: perpendicular is vertical
+describe(`reference annotation candidates`, () => {
+  const endpoints: [number, number, number, number] = [0, 100, 200, 100]
+  const metrics = {
+    text_width: 40,
+    font_size: 12,
+    text_ascent: 9,
+    text_descent: 3,
+    padding: 2,
+  }
+  beforeEach(clear_text_metrics_cache)
+  afterEach(() => vi.restoreAllMocks())
+
+  test(`uses measured glyph width and ascent for annotation footprints`, () => {
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+      font: ``,
+      measureText: () => ({
+        width: 37,
+        actualBoundingBoxAscent: 9,
+        actualBoundingBoxDescent: 3,
+      }),
+    } as unknown as CanvasRenderingContext2D)
+    const measured = estimate_reference_annotation_metrics({ text: `Wiii`, padding: 3 })
+    const candidate = create_reference_annotation_candidates(
+      endpoints,
+      { text: `Wiii`, padding: 3 },
+      measured,
+    )[0]
+    expect(measured).toMatchObject({ text_width: 37, text_ascent: 9, text_descent: 3 })
+    expect([candidate.rect.width, candidate.rect.height]).toEqual([43, 18])
+  })
+
+  test(`resolves relative em font-size before measuring annotation text`, () => {
+    const context = {
+      font: ``,
+      measureText: () => ({
+        width: 20,
+        actualBoundingBoxAscent: 8,
+        actualBoundingBoxDescent: 2,
+      }),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
+      context as unknown as CanvasRenderingContext2D,
+    )
+    vi.spyOn(window, `getComputedStyle`).mockReturnValue({
+      fontFamily: `serif`,
+      fontSize: `20px`,
+      fontStyle: `normal`,
+      fontVariant: `normal`,
+      fontWeight: `400`,
+      fontStretch: `normal`,
+      lineHeight: `24px`,
+    } as CSSStyleDeclaration)
+    const measured = estimate_reference_annotation_metrics({
+      text: `Em`,
+      font_size: `1.5em`,
+    })
+    expect(measured.font_size).toBe(30)
+    expect(context.font).toContain(`30px`)
+  })
+
   test.each([
-    [`left`, 100, 110],
-    [`right`, 100, 90],
+    [`above`, `auto`, `middle`, 100 - 9 - 2],
+    [`below`, `hanging`, `middle`, 100 - 2],
+    [`left`, `middle`, `end`, 100 - (9 + 3) / 2 - 2],
+    [`right`, `middle`, `start`, 100 - (9 + 3) / 2 - 2],
   ] as const)(
-    `%s perpendicular offset for horizontal line`,
-    (side, expected_x, expected_y) => {
-      const pos = calculate_annotation_position(0, 100, 200, 100, {
-        position: `center`,
-        side,
-        gap: 10,
-      })
-      expect(pos.x).toBe(expected_x)
-      expect(pos.y).toBe(expected_y)
+    `baseline rectangle for %s starts from dominant baseline geometry`,
+    (side, dominant_baseline, text_anchor, expected_y) => {
+      const anchor = {
+        x: 100,
+        y: 100,
+        text_anchor,
+        dominant_baseline,
+      }
+      const rect = reference_annotation_text_rect(anchor, metrics)
+      expect(rect.y).toBeCloseTo(expected_y, 10)
+      expect([rect.width, rect.height]).toEqual([40 + 2 * 2, 9 + 3 + 2 * 2])
+      const candidate = create_reference_annotation_candidates(
+        endpoints,
+        { text: `Label`, side, position: `center`, gap: 0 },
+        metrics,
+      )[0]
+      expect(candidate.dominant_baseline).toBe(dominant_baseline)
+      expect(candidate.rect.y).toBeCloseTo(
+        reference_annotation_text_rect(candidate, metrics).y,
+        10,
+      )
     },
   )
+
+  test(`keeps the legacy end-above placement when there are no obstacles`, () => {
+    const annotation = { text: `Threshold` }
+    const legacy = calculate_annotation_position(...endpoints, {})
+    const resolved = resolve_reference_annotation(endpoints, annotation)
+    expect(resolved).toMatchObject({ ...legacy, position: `end`, side: `above` })
+  })
+
+  test(`moves an automatic annotation away from a colliding obstacle`, () => {
+    const annotation = { text: `Threshold` }
+    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
+    const resolved = resolve_reference_annotation(endpoints, annotation, {
+      obstacles: [{ x: preferred.x, y: preferred.y }],
+    })
+    expect(resolved.side).toBe(`below`)
+    expect(resolved.rect).not.toEqual(preferred.rect)
+  })
+
+  test.each([
+    [`keeps exclusions costlier than dense obstacles`, [0, 100], true],
+    [`prefers fewer obstacle collisions`, [100, 50], false],
+  ] as const)(`%s`, (_name, obstacle_counts, exclude_first) => {
+    const [first_candidate, second_candidate] = create_reference_annotation_candidates(
+      endpoints,
+      { text: `Dense obstacles` },
+    )
+    const points_in = (rect: typeof first_candidate.rect, count: number) =>
+      Array.from({ length: count }, () => ({
+        x: rect.x + rect.width / 2,
+        y: rect.y + rect.height / 2,
+      }))
+    const { candidate } = place_reference_annotation({
+      item: {
+        id: `dense-obstacle-order`,
+        kind: `reference-annotation`,
+        footprint: { width: 10, height: 10 },
+        candidates: [first_candidate, second_candidate],
+      },
+      obstacles: [
+        ...points_in(first_candidate.rect, obstacle_counts[0]),
+        ...points_in(second_candidate.rect, obstacle_counts[1]),
+      ],
+      exclusion_rects: exclude_first ? [first_candidate.rect] : [],
+    })
+    expect(candidate).toBe(second_candidate)
+  })
+
+  test(`keeps explicit position and side pinned through collisions`, () => {
+    const annotation = {
+      text: `Pinned`,
+      position: `end`,
+      side: `above`,
+    } as const
+    const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
+    const resolved = resolve_reference_annotation(endpoints, annotation, {
+      exclusion_rects: [preferred.rect],
+      obstacles: [{ x: preferred.x, y: preferred.y }],
+    })
+    expect(resolved).toEqual(preferred)
+  })
+
+  test(`builds deterministic rotated candidates across positions and sides`, () => {
+    const diagonal_endpoints: [number, number, number, number] = [0, 0, 100, 100]
+    const candidates = create_reference_annotation_candidates(diagonal_endpoints, {
+      text: `Diagonal`,
+      rotate: true,
+    })
+    expect(candidates).toHaveLength(12)
+    const candidate_names = [`end`, `center`, `start`].flatMap((position) =>
+      [`above`, `below`, `right`, `left`].map((side) => `${position}-${side}`),
+    )
+    expect(candidates.map(({ position, side }) => `${position}-${side}`)).toEqual(
+      candidate_names,
+    )
+    expect(candidates.every(({ rotation }) => rotation === 45)).toBe(true)
+    expect(candidates[0].rect.height).toBeGreaterThan(20)
+  })
 })
 
 describe(`index_ref_lines`, () => {

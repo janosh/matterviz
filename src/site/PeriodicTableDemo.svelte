@@ -41,7 +41,7 @@
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],
   )
 
-  const onenter = (element: ChemicalElement) => {
+  const onactivate = (element: ChemicalElement) => {
     if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
@@ -101,7 +101,7 @@
   gap={tile_gap}
   inner_transition_metal_offset={inner_transition_offset}
   show_photo
-  {onenter}
+  {onactivate}
 >
   {#snippet inset()}
     <TableInset>

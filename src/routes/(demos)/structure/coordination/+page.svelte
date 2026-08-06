@@ -105,7 +105,7 @@
       structures={selected_structures}
       strategy={multi_strategy}
       split_mode={multi_split_mode}
-      padding={{ l: 50, b: 50 }}
+      padding={{ l: 50 }}
       style="height: 100%"
     />
     <div class="selected-structures-grid">

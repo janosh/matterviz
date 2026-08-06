@@ -79,6 +79,20 @@ def test_duplicate_python_prop_error_lists_collisions(tmp_path: Path) -> None:
         generate_wrappers({"components": {"Test": {"key": "Test"}}}, str(tmp_path))
 
 
+def test_non_serializable_context_props_are_excluded(tmp_path: Path) -> None:
+    """Wrapper generation excludes Svelte-only context props."""
+    (tmp_path / "Test.svelte.d.ts").write_text(
+        "type $$ComponentProps = { series?: number[]; facet_layout?: FacetLayoutContext; }; "
+        'declare const Test: import("svelte").Component<$$ComponentProps>;',
+        encoding="utf-8",
+    )
+    generated = generate_wrappers(
+        {"components": {"Test": {"key": "Test"}}}, str(tmp_path)
+    )
+    assert "facet_layout" not in generated
+    assert "series: list[float] | None" in generated
+
+
 @pytest.mark.parametrize(
     ("ts_type", "expected"),
     [

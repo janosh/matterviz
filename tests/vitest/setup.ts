@@ -1,6 +1,8 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type { VolumetricData } from '$lib/isosurface/types'
 import * as math from '$lib/math'
+import { clear_tick_metrics_cache } from '$lib/plot/core/tick-layout'
+import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import init, { type MoyoDataset } from '@spglib/moyo-wasm'
@@ -50,6 +52,10 @@ console.warn = (...args: unknown[]) => {
 beforeEach(() => {
   document.body.innerHTML = ``
   localStorage.clear()
+  // Tick measurement is memoised across calls, so cases stubbing canvas text metrics
+  // differently (or not at all) would otherwise read each other's widths.
+  clear_tick_metrics_cache()
+  clear_text_metrics_cache()
   // Mock clientWidth/clientHeight (happy-dom has no layout engine, returns 0 by default)
   Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
     get: () => 800,

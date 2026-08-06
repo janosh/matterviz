@@ -1,3 +1,4 @@
+import { rects_overlap } from '$lib/plot/core/layout'
 import { expect, test } from '@playwright/test'
 import { get_tick_range, is_present } from '../helpers'
 
@@ -44,6 +45,7 @@ test.describe(`BarPlot Component Tests`, () => {
   test(`legend renders for multiple series and toggles visibility`, async ({ page }) => {
     const section = page.locator(`#legend-bar`)
     const plot = section.locator(`.bar-plot`)
+    const bars = plot.locator(`svg path[aria-label^="bar "]`)
     await expect(plot).toBeVisible()
 
     const legend = plot.locator(`.legend`)
@@ -51,21 +53,51 @@ test.describe(`BarPlot Component Tests`, () => {
     const items = legend.locator(`.legend-item`)
     await expect(items).toHaveCount(2)
 
+    const legend_bar_overlap_count = () =>
+      plot.evaluate((root) => {
+        const legend_rect = root.querySelector(`.legend`)?.getBoundingClientRect()
+        if (!legend_rect) throw new Error(`Missing legend geometry`)
+        return [...root.querySelectorAll<SVGGraphicsElement>(`svg path[aria-label^="bar "]`)]
+          .map((bar_path) => bar_path.getBoundingClientRect())
+          .filter(
+            (bar_rect) =>
+              legend_rect.left < bar_rect.right &&
+              legend_rect.right > bar_rect.left &&
+              legend_rect.top < bar_rect.bottom &&
+              legend_rect.bottom > bar_rect.top,
+          ).length
+      })
+    await expect.poll(legend_bar_overlap_count).toBe(0)
+
+    // Container resize reruns the unified solver without accumulating its old reservation.
+    const plot_width_before = await plot.evaluate((root) => root.clientWidth)
+    await page.setViewportSize({ width: 640, height: 900 })
+    await expect
+      .poll(() => plot.evaluate((root) => root.clientWidth))
+      .not.toBe(plot_width_before)
+    await expect.poll(legend_bar_overlap_count).toBe(0)
+
+    await bars.first().hover({ force: true })
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible()
+    const [legend_box, tooltip_box] = await Promise.all([
+      legend.boundingBox(),
+      tooltip.boundingBox(),
+    ])
+    if (!legend_box || !tooltip_box) throw new Error(`missing legend/tooltip geometry`)
+    expect(rects_overlap(legend_box, tooltip_box)).toBe(false)
+
     // Initial: both visible -> bars exist
-    const initial_bars = await plot.locator(`svg path[aria-label^="bar "]`).count()
+    const initial_bars = await bars.count()
     expect(initial_bars).toBeGreaterThan(0)
 
     // Toggle first series -> bar count should decrease
     await items.first().click()
-    await expect
-      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
-      .toBeLessThan(initial_bars)
+    await expect.poll(() => bars.count()).toBeLessThan(initial_bars)
 
     // Toggle back -> bar count should be restored to initial
     await items.first().click()
-    await expect
-      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
-      .toBe(initial_bars)
+    await expect.poll(() => bars.count()).toBe(initial_bars)
   })
 
   test(`zoom drag and double-click reset works`, async ({ page }) => {

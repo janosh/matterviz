@@ -92,11 +92,11 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
-## Automatic Tick Label Rotation
+## Automatic Tick Label Layout
 
-Long category names no longer collide. `x`/`x2` tick labels default to `rotation: 'auto'`, which picks the shallowest tilt (30°, 45°, 60°, then 90°) that still keeps neighbouring labels apart, and the padding grows to fit whatever angle it lands on. Drag the slider to walk the ladder: upright while the names fit side by side, then one step steeper each time the ticks crowd closer than a label's line height. Narrowing your browser window has the same effect, since it's the spacing between ticks in pixels that decides.
+Long category names no longer collide or waste most of the chart on a deep rotated-label gutter. `x`/`x2` tick labels default to `rotation: 'auto'`, which balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
 
-Labels trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign of rotation achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force them upright (and overlapping), or pass an explicit angle to override the choice entirely:
+Automatic wrapping uses at most three lines by default; set `tick.label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
 
 ```svelte example
 <script lang="ts">
@@ -1371,4 +1371,78 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
   show_legend
   style="height: 400px"
 />
+```
+
+## Adaptive Tick Strategies Under Pressure
+
+`tick.label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  const synthesis_routes = [
+    `Chemical Vapor Deposition`,
+    `Molecular Beam Epitaxy`,
+    `Spark Plasma Sintering`,
+    `Mechanochemical Ball Milling`,
+    `Atomic Layer Deposition`,
+    `Pulsed Laser Deposition`,
+    `High Pressure Solid State`,
+    `Solution Combustion Synthesis`,
+  ]
+  const observations = [18_400, 14_800, 9_600, 7_900, 6_700, 5_400, 4_100, 3_600]
+
+  let chart_width = $state(360)
+  let orientation = $state<`vertical` | `horizontal`>(`vertical`)
+  const category_axis = {
+    label: `Synthesis route used for the final experimental protocol`,
+    tick: {
+      label: {
+        auto_layout: {
+          strategies: [`upright`, `wrap`, `rotate`, `stagger`, `thin`, `ellipsis`] as const,
+          max_angle: 60,
+          max_band: 76,
+          min_visible_ticks: 3,
+          edge_gap: 6,
+          endpoint_policy: `adaptive` as const,
+        },
+      },
+    },
+  }
+  const value_axis = {
+    label: `Number of structures surviving all validation and quality-control filters`,
+    format: `~s`,
+  }
+  const series = [{ x: synthesis_routes, y: observations, color: `#4c6ef5` }]
+</script>
+
+<div
+  data-testid="adaptive-tick-demo"
+  style="width: min(900px, calc(100vw - 2em)); margin-left: 50%; transform: translateX(-50%)"
+>
+  <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
+    <label
+      >Width: {chart_width}px
+      <input type="range" bind:value={chart_width} min="280" max="900" step="20" /></label
+    >
+    <label
+      >Category axis: <select bind:value={orientation}
+        ><option value="vertical">x (bottom)</option><option value="horizontal"
+          >y (left)</option
+        ></select
+      ></label
+    >
+  </div>
+  <div style={`width: min(100%, ${chart_width}px); margin: 1em auto`}>
+    <BarPlot
+      {series}
+      {orientation}
+      x_axis={orientation === `vertical` ? category_axis : value_axis}
+      y_axis={orientation === `vertical` ? value_axis : category_axis}
+      show_controls={false}
+      style="height: 430px"
+    />
+  </div>
+</div>
 ```

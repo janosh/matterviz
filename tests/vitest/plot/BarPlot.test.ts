@@ -1,7 +1,7 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
   inside_clip_path,
@@ -18,9 +18,12 @@ const basic: BarSeries = {
 
 const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
-): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot` })
+  size: { width?: number; height?: number } = {},
+): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot`, ...size })
 
 describe(`BarPlot`, () => {
+  afterEach(() => vi.restoreAllMocks())
+
   test.each([
     { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },
     {
@@ -349,18 +352,22 @@ describe(`BarPlot`, () => {
       expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
     })
 
-    // every category renders a bar; x-axis ticks thin only when labels can't fit the
-    // 400px axis at ~28px each (3 fit untouched, 30 thin to every ~3rd category)
+    // Every category renders a bar; the measured thinning strategy only removes crowded ticks.
     test.each([
       { desc: `few categories keep every tick`, n_cats: 3, min_ticks: 3, max_ticks: 3 },
-      { desc: `many categories thin the ticks`, n_cats: 30, min_ticks: 3, max_ticks: 14 },
+      { desc: `many categories thin the ticks`, n_cats: 30, min_ticks: 2, max_ticks: 14 },
     ])(
       `single categorical series renders every bar ($desc)`,
       async ({ n_cats, min_ticks, max_ticks }) => {
         const cats = Array.from({ length: n_cats }, (_cat, idx) => `cat${idx}`)
-        const plot = await mount_sized_bar_plot({
-          series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
-        })
+        const plot = await with_measured_text(() =>
+          mount_sized_bar_plot({
+            series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
+            x_axis: {
+              tick: { label: { auto_layout: { strategies: [`thin`] } } },
+            },
+          }),
+        )
         expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(n_cats)
         const tick_count = plot.querySelectorAll(`g.x-axis g.tick`).length
         expect(tick_count).toBeGreaterThanOrEqual(min_ticks)
@@ -377,17 +384,21 @@ describe(`BarPlot`, () => {
       const plot = await with_measured_text(() =>
         mount_sized_bar_plot({
           series: [{ x: cats, y: cats.map((_cat, idx) => idx + 1), color: `blue` }],
-          x_axis: { label: `state` },
+          x_axis: {
+            label: `state`,
+            tick: { label: { auto_layout: { strategies: [`rotate`] } } },
+          },
         }),
       )
       const labels = x_tick_labels(plot)
-      expect(labels.length).toBeGreaterThan(0)
+      expect(labels.length).toBeGreaterThan(2)
       for (const label of labels) {
-        // Negative angle anchored at the label's end, so it trails left of its tick and
-        // the rightmost one cannot spill past the plot's right edge.
         expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
-        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
       }
+      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual([
+        `start`,
+        ...Array(labels.length - 1).fill(`end`),
+      ])
     })
 
     // Horizontal orientation moves the categories onto y, so the left padding has to be
@@ -497,34 +508,17 @@ describe(`BarPlot`, () => {
   })
 
   test(`renders grouped and ungrouped legend entries`, async () => {
+    const series = (
+      label: string,
+      y: number[],
+      color: string,
+      legend_group?: string,
+    ): BarSeries => ({ x: [1, 2, 3], y, label, color, legend_group })
     const grouped_series: BarSeries[] = [
-      {
-        x: [1, 2, 3],
-        y: [10, 20, 15],
-        label: `PBE`,
-        legend_group: `DFT`,
-        color: `blue`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [12, 18, 17],
-        label: `LDA`,
-        legend_group: `DFT`,
-        color: `lightblue`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [11, 19, 16],
-        label: `MACE`,
-        legend_group: `ML`,
-        color: `red`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [10.5, 20.5, 15.5],
-        label: `Experiment`,
-        color: `green`,
-      },
+      series(`PBE`, [10, 20, 15], `blue`, `DFT`),
+      series(`LDA`, [12, 18, 17], `lightblue`, `DFT`),
+      series(`MACE`, [11, 19, 16], `red`, `ML`),
+      series(`Experiment`, [10.5, 20.5, 15.5], `green`),
     ]
     const plot = await mount_sized_bar_plot({ series: grouped_series })
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
@@ -534,11 +528,111 @@ describe(`BarPlot`, () => {
     }
   })
 
-  test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {
-    // many full-height bars across the width -> no interior spot avoids overlap so the legend must
-    // drop into the reserved bottom margin
+  const legend_position = (plot: HTMLElement): { x: number; y: number } => {
+    const legend = plot.querySelector<HTMLElement>(`.legend`)
+    if (!legend) throw new Error(`legend not found`)
+    return {
+      x: Number(legend.style.left.replace(`px`, ``)),
+      y: Number(legend.style.top.replace(`px`, ``)),
+    }
+  }
+
+  const bar_rects = (plot: HTMLElement) =>
+    [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((path) => {
+      const path_data = path.getAttribute(`d`) ?? ``
+      const match = /^M(?<x>[\d.-]+),(?<y>[\d.-]+)h(?<width>[\d.-]+)v(?<height>[\d.-]+)/.exec(
+        path_data,
+      )?.groups
+      if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
+      return {
+        x: Number(match.x),
+        y: Number(match.y),
+        width: Number(match.width),
+        height: Number(match.height),
+      }
+    })
+
+  test(`automatic legend placement avoids sparse bar and line obstacles`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { x: [1, 2, 3], y: [8, 12, 10], label: `Bars` },
+        {
+          x: [1, 2, 3],
+          y: [9, 11, 8],
+          label: `Line`,
+          render_mode: `line`,
+          markers: `line`,
+        },
+      ],
+      show_legend: true,
+      bar: { border_radius: 0 },
+    })
+    const { x, y } = legend_position(plot)
+    const legend_rect = { x, y, width: 120, height: 60 }
+    const overlaps = bar_rects(plot).some(
+      (bar_rect) =>
+        legend_rect.x < bar_rect.x + bar_rect.width &&
+        legend_rect.x + legend_rect.width > bar_rect.x &&
+        legend_rect.y < bar_rect.y + bar_rect.height &&
+        legend_rect.y + legend_rect.height > bar_rect.y,
+    )
+    expect(overlaps).toBe(false)
+    const line_points = (
+      plot.querySelector(`.line-series polyline`)?.getAttribute(`points`) ?? ``
+    )
+      .trim()
+      .split(/\s+/)
+      .map((pair) => pair.split(`,`).map(Number))
+    const sampled_line_points = line_points.flatMap((point, point_idx) => {
+      const next_point = line_points[point_idx + 1]
+      if (!next_point) return [point]
+      return Array.from({ length: 11 }, (_, sample_idx) => {
+        const fraction = sample_idx / 10
+        return [
+          point[0] + (next_point[0] - point[0]) * fraction,
+          point[1] + (next_point[1] - point[1]) * fraction,
+        ]
+      })
+    })
+    expect(
+      sampled_line_points.some(
+        ([point_x, point_y]) =>
+          point_x >= legend_rect.x &&
+          point_x <= legend_rect.x + legend_rect.width &&
+          point_y >= legend_rect.y &&
+          point_y <= legend_rect.y + legend_rect.height,
+      ),
+    ).toBe(false)
+  })
+
+  test.each([`stacked`, `grouped`] as const)(
+    `legend moves outside dense %s bar obstacles`,
+    async (mode) => {
+      // Full-height bars across the width leave no safe interior rectangle.
+      const cats = Array.from({ length: 30 }, (_, idx) => idx)
+      const plot = await mount_sized_bar_plot({
+        series: [
+          { x: cats, y: cats.map(() => 100), label: `A` },
+          { x: cats, y: cats.map(() => 100), label: `B` },
+        ],
+        mode,
+        legend: {},
+        show_legend: true,
+      })
+      const clip_rect = plot.querySelector(`clipPath rect`)
+      const clip_bottom =
+        Number(clip_rect?.getAttribute(`y`)) + Number(clip_rect?.getAttribute(`height`))
+      expect(legend_position(plot).y).toBeGreaterThanOrEqual(clip_bottom)
+    },
+  )
+
+  test(`uses measured legend size across resize without padding drift`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
     const cats = Array.from({ length: 30 }, (_, idx) => idx)
-    await mount_sized_bar_plot({
+    const make_props = () => ({
       series: [
         { x: cats, y: cats.map(() => 100), label: `A` },
         { x: cats, y: cats.map(() => 100), label: `B` },
@@ -546,11 +640,150 @@ describe(`BarPlot`, () => {
       legend: {},
       show_legend: true,
     })
-    await tick()
-    const legend = document.querySelector<HTMLElement>(`.legend`)
-    expect(legend).toBeInstanceOf(HTMLElement)
-    // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
-    expect(Number(legend?.style.top.replace(`px`, ``) ?? `0`)).toBeGreaterThan(150)
+    const small = await mount_sized_bar_plot(make_props(), { width: 400, height: 300 })
+    const wide = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
+    const repeated = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
+    expect(legend_position(small)).toEqual({ x: 130, y: 300 - 44 - 8 })
+    expect(legend_position(wide)).toEqual({ x: 250, y: 340 - 44 - 8 })
+    const clip_geometry = (plot: HTMLElement) => {
+      const clip_rect = plot.querySelector(`clipPath rect`)
+      if (!clip_rect) throw new Error(`clip rectangle not found`)
+      return [`x`, `y`, `width`, `height`].map((attr) => clip_rect.getAttribute(attr))
+    }
+    expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
+  })
+
+  test(`preserves explicit legend position and automatic tracks on resize`, async () => {
+    const item_extents = Array.from({ length: 4 }, () => ({ width: 70, height: 20 }))
+    const make_auto_props = () =>
+      ({
+        series: Array.from({ length: 4 }, (_, series_idx) => ({
+          ...basic,
+          label: `Series ${series_idx}`,
+        })),
+        show_legend: true,
+        legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+      }) satisfies Partial<ComponentProps<typeof BarPlot>>
+    const auto_wide = await mount_sized_bar_plot(make_auto_props())
+    const auto_narrow = await mount_sized_bar_plot(make_auto_props(), { width: 280 })
+    expect(auto_wide.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+      `repeat(4, auto)`,
+    )
+    expect(auto_narrow.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+      `repeat(2, auto)`,
+    )
+
+    const mount_pinned = (style: string, size = {}) =>
+      mount_sized_bar_plot(
+        { series: multi_series, show_legend: true, legend: { style } },
+        size,
+      )
+    const plot = await mount_pinned(`right: 7px; top: 9px; background-color: rgb(1, 2, 3);`)
+    const legend = plot.querySelector<HTMLElement>(`.legend`)
+    expect(legend?.style.right).toBe(`7px`)
+    expect(legend?.style.top).toBe(`9px`)
+    expect(legend?.style.left).toBe(``)
+    expect(legend?.style.backgroundColor).toBe(`rgb(1, 2, 3)`)
+    const resized = await mount_pinned(`right: 7px; top: 9px;`, {
+      width: 520,
+      height: 340,
+    })
+    expect(resized.querySelector<HTMLElement>(`.legend`)?.style.right).toBe(`7px`)
+    expect(resized.querySelector<HTMLElement>(`.legend`)?.style.top).toBe(`9px`)
+  })
+
+  test.each([
+    { orientation: `vertical`, secondary_axis: `y2` },
+    { orientation: `horizontal`, secondary_axis: `x2` },
+  ] as const)(
+    `visible automatic axis groups reassign in $orientation orientation`,
+    async ({ orientation, secondary_axis }) => {
+      const input: BarSeries[] = [
+        { x: [1, 2], y: [1, 2], label: `Energy`, unit: `eV` },
+        { x: [1, 2], y: [100, 200], label: `Pressure`, unit: `GPa` },
+      ]
+      const plot = await mount_sized_bar_plot({
+        series: input,
+        show_legend: true,
+        bar: { border_radius: 0 },
+        orientation,
+      })
+      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
+      plot
+        .querySelector(`.legend-item`)
+        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(plot.querySelector(`.legend-item`)?.classList.contains(`hidden`)).toBe(true)
+      expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
+      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
+      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
+      plot
+        .querySelector(`.legend-item`)
+        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(
+        [...plot.querySelectorAll(`.legend-item`)].every(
+          (item) => !item.classList.contains(`hidden`),
+        ),
+      ).toBe(true)
+      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
+    },
+  )
+
+  test.each([
+    { orientation: `vertical`, secondary_axis: `y2`, explicit_axis: { y_axis: `y1` } },
+    { orientation: `horizontal`, secondary_axis: `x2`, explicit_axis: { x_axis: `x1` } },
+  ] as const)(
+    `explicit value axes reserve their slot in $orientation orientation`,
+    async ({ orientation, secondary_axis, explicit_axis }) => {
+      const plot = await mount_sized_bar_plot({
+        orientation,
+        series: [
+          { x: [1, 2], y: [1, 2], unit: `eV`, ...explicit_axis },
+          { x: [1, 2], y: [100, 200], unit: `GPa` },
+        ],
+      })
+      expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
+    },
+  )
+
+  test(`automatic y1 assignment preserves legacy unassigned geometry`, async () => {
+    const collect_geometry = async (series: BarSeries[]) => {
+      const plot = await mount_sized_bar_plot({
+        series,
+        mode: `grouped`,
+        bar: { border_radius: 0 },
+      })
+      return {
+        bars: [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((path) =>
+          path.getAttribute(`d`),
+        ),
+        clip: [...(plot.querySelector(`clipPath rect`)?.attributes ?? [])].map(
+          ({ name, value }) => [name, value],
+        ),
+        y_ticks: [...plot.querySelectorAll(`g.y-axis .tick text`)].map(
+          (tick_label) => tick_label.textContent,
+        ),
+      }
+    }
+    const input = [basic, { ...basic, label: `Second`, color: `tomato` }]
+    expect(await collect_geometry(input)).toEqual(
+      await collect_geometry(input.map((srs) => ({ ...srs, y_axis: `y1` }))),
+    )
+  })
+
+  test(`automatic axis overflow names the conflicting groups`, async () => {
+    await expect(
+      mount_sized_bar_plot({
+        series: [
+          { x: [1], y: [1], unit: `eV` },
+          { x: [1], y: [2], unit: `GPa` },
+          { x: [1], y: [3], unit: `K` },
+        ],
+      }),
+    ).rejects.toThrow(
+      `BarPlot cannot automatically assign visible value series in vertical orientation: Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K`,
+    )
   })
 
   // double-clicking a legend item isolates that series (shared helper, same as
@@ -597,5 +830,42 @@ describe(`BarPlot`, () => {
     const order = (el: Element) => bars.compareDocumentPosition(el)
     expect(Boolean(order(labels.behind) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
     expect(Boolean(order(labels.front) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+  })
+
+  test(`shared solver separates nearby annotations and keeps explicit placement pinned`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic],
+      ref_lines: [
+        { type: `horizontal`, y: 15, annotation: { text: `automatic A` } },
+        { type: `horizontal`, y: 15.1, annotation: { text: `automatic B` } },
+        {
+          type: `horizontal`,
+          y: 15.2,
+          annotation: { text: `pinned`, position: `end`, side: `above` },
+        },
+      ],
+    })
+    await tick()
+    const labels = [...plot.querySelectorAll<SVGTextElement>(`.reference-line text`)]
+    const geometry = (text: string) => {
+      const label = labels.find((element) => element.textContent === text)
+      if (!label) throw new Error(`missing ${text} annotation`)
+      return {
+        x: label.getAttribute(`x`),
+        y: label.getAttribute(`y`),
+        anchor: label.getAttribute(`text-anchor`),
+        baseline: label.getAttribute(`dominant-baseline`),
+      }
+    }
+    const automatic_a = geometry(`automatic A`)
+    const automatic_b = geometry(`automatic B`)
+    expect({
+      anchor: automatic_a.anchor,
+      baseline: automatic_a.baseline,
+    }).not.toEqual({
+      anchor: automatic_b.anchor,
+      baseline: automatic_b.baseline,
+    })
+    expect(geometry(`pinned`)).toMatchObject({ anchor: `end`, baseline: `auto` })
   })
 })
