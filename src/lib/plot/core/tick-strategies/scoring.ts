@@ -1,15 +1,17 @@
+import { TICK_GEOMETRY_EPSILON } from '$lib/plot/core/tick-geometry'
 import { validate_tick_candidate_once } from './candidates'
-import type {
-  MeasuredTickCandidate,
-  TickCandidateMeasurements,
-  TickScorePenalties,
-  TickScoreResult,
-  TickScoreWeights,
-  TickScoringConfig,
-  TickScoringMode,
-  TickSelectionResult,
-  TickStrategy,
-  TickStrategyCandidate,
+import {
+  MIN_RETAINED_INFORMATION_FRACTION,
+  type MeasuredTickCandidate,
+  type TickCandidateMeasurements,
+  type TickScorePenalties,
+  type TickScoreResult,
+  type TickScoreWeights,
+  type TickScoringConfig,
+  type TickScoringMode,
+  type TickSelectionResult,
+  type TickStrategy,
+  type TickStrategyCandidate,
 } from './types'
 
 export const TICK_SCORE_PRESETS = {
@@ -40,7 +42,6 @@ export const TICK_SCORE_PRESETS = {
 } as const satisfies Readonly<Record<TickScoringMode, TickScoreWeights>>
 
 const SCORE_MODES = [`auto`, `readable`, `compact`] as const
-const MAX_FEASIBLE_INFORMATION_LOSS = 0.75
 const WEIGHT_KEYS = [
   `hidden_labels`,
   `information_loss`,
@@ -50,16 +51,16 @@ const WEIGHT_KEYS = [
   `stagger_rows`,
 ] as const satisfies readonly (keyof TickScoreWeights)[]
 
-// The order prefers unchanged text and geometry when all configured penalties tie.
-const STRATEGY_TIE_ORDER = [
-  `upright`,
-  `wrap`,
-  `stagger`,
-  `rotate`,
-  `abbreviate`,
-  `ellipsis`,
-  `thin`,
-] as const satisfies readonly TickStrategy[]
+// The record enforces exhaustive strategy coverage while preferring unchanged text and geometry.
+const STRATEGY_TIE_PRIORITY = {
+  upright: 0,
+  wrap: 1,
+  stagger: 2,
+  rotate: 3,
+  abbreviate: 4,
+  ellipsis: 5,
+  thin: 6,
+} as const satisfies Readonly<Record<TickStrategy, number>>
 
 const is_score_mode = (mode: string): mode is TickScoringMode =>
   SCORE_MODES.some((candidate_mode) => candidate_mode === mode)
@@ -146,14 +147,13 @@ const sum_penalties = (penalties: TickScorePenalties): number =>
   WEIGHT_KEYS.reduce((total, key) => total + penalties[key], 0)
 
 const retains_meaningful_content = (candidate: TickStrategyCandidate): boolean =>
-  candidate.labels
-    .filter(({ visible }) => visible)
-    .every(
-      ({ full_text, display_lines, information_loss }) =>
-        information_loss <= MAX_FEASIBLE_INFORMATION_LOSS &&
+  candidate.labels.every(
+    ({ visible, full_text, display_lines, information_loss }) =>
+      !visible ||
+      (information_loss <= 1 - MIN_RETAINED_INFORMATION_FRACTION &&
         (!/[\p{L}\p{N}]/u.test(full_text) ||
-          display_lines.some((line) => /[\p{L}\p{N}]/u.test(line))),
-    )
+          display_lines.some((line) => /[\p{L}\p{N}]/u.test(line)))),
+  )
 
 const score_with_weights = (
   { candidate, measurements }: MeasuredTickCandidate,
@@ -163,13 +163,15 @@ const score_with_weights = (
   validate_measurements(measurements, candidate.id)
   const penalties = penalties_for(candidate, measurements)
   const weighted_penalties = multiply_penalties(penalties, weights)
+  const readable = retains_meaningful_content(candidate)
   const feasible =
     measurements.collisions === 0 &&
-    measurements.edge_overflow_px === 0 &&
-    retains_meaningful_content(candidate)
+    measurements.edge_overflow_px <= TICK_GEOMETRY_EPSILON &&
+    readable
   return {
     candidate,
     measurements,
+    readable,
     feasible,
     penalties,
     weighted_penalties,
@@ -191,10 +193,8 @@ const lexical_compare = (left: string, right: string): number =>
 const compare_scores = (left: TickScoreResult, right: TickScoreResult): number => {
   if (left.feasible !== right.feasible) return left.feasible ? -1 : 1
   if (!left.feasible) {
-    const left_readable = retains_meaningful_content(left.candidate)
-    const right_readable = retains_meaningful_content(right.candidate)
-    if (left_readable !== right_readable) return left_readable ? -1 : 1
-    if (left_readable) {
+    if (left.readable !== right.readable) return left.readable ? -1 : 1
+    if (left.readable) {
       const collision_order = left.measurements.collisions - right.measurements.collisions
       if (collision_order !== 0) return collision_order
       const overflow_order =
@@ -204,8 +204,8 @@ const compare_scores = (left: TickScoreResult, right: TickScoreResult): number =
   }
   if (left.score !== right.score) return left.score - right.score
   const strategy_order =
-    STRATEGY_TIE_ORDER.indexOf(left.candidate.strategy) -
-    STRATEGY_TIE_ORDER.indexOf(right.candidate.strategy)
+    STRATEGY_TIE_PRIORITY[left.candidate.strategy] -
+    STRATEGY_TIE_PRIORITY[right.candidate.strategy]
   if (strategy_order !== 0) return strategy_order
   const rotation_order =
     Math.abs(left.candidate.rotation_deg) - Math.abs(right.candidate.rotation_deg)
@@ -217,12 +217,10 @@ export const select_tick_candidate = (
   measured_candidates: readonly MeasuredTickCandidate[],
   config: TickScoringConfig = {},
 ): TickSelectionResult => {
-  const duplicate_id = measured_candidates.find(
-    ({ candidate }, candidate_idx) =>
-      measured_candidates.findIndex(
-        ({ candidate: other_candidate }) => other_candidate.id === candidate.id,
-      ) !== candidate_idx,
-  )?.candidate.id
+  const candidate_ids = measured_candidates.map(({ candidate }) => candidate.id)
+  const duplicate_id = candidate_ids.find(
+    (candidate_id, candidate_idx) => candidate_ids.indexOf(candidate_id) !== candidate_idx,
+  )
   if (duplicate_id !== undefined) {
     throw new Error(`tick candidate ids must be unique, found duplicate "${duplicate_id}"`)
   }

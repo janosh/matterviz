@@ -17,6 +17,7 @@ export {
   clear_tick_metrics_cache,
   measure_max_tick_width,
   measure_text_width,
+  measured_axis,
   resolve_tick_layout,
   TICK_LABEL_HEIGHT,
   type MeasuredAxis,
@@ -76,13 +77,14 @@ export interface AxisTitleLayout {
 }
 
 const decode_axis_title_text = (value: string): string =>
-  value
-    .replaceAll(`&nbsp;`, `\u00A0`)
-    .replaceAll(`&amp;`, `&`)
-    .replaceAll(`&lt;`, `<`)
-    .replaceAll(`&gt;`, `>`)
-    .replaceAll(`&quot;`, `"`)
-    .replaceAll(`&#39;`, `'`)
+  value.replaceAll(/&(?:nbsp|amp|lt|gt|quot|#39);/gu, (entity) => {
+    if (entity === `&nbsp;`) return `\u00A0`
+    if (entity === `&amp;`) return `&`
+    if (entity === `&lt;`) return `<`
+    if (entity === `&gt;`) return `>`
+    if (entity === `&quot;`) return `"`
+    return `'`
+  })
 
 const append_axis_title_segment = (
   segments: AxisTitleSegment[],
@@ -123,22 +125,12 @@ const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
     active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
   )
 
-  while (segments[0]) {
-    const text = segments[0].text.trimStart()
-    if (text) {
-      segments[0] = { ...segments[0], text }
-      break
-    }
-    segments.shift()
-  }
-  while (segments.at(-1)) {
-    const last_idx = segments.length - 1
-    const text = segments[last_idx].text.trimEnd()
-    if (text) {
-      segments[last_idx] = { ...segments[last_idx], text }
-      break
-    }
-    segments.pop()
+  while (segments[0] && !segments[0].text.trimStart()) segments.shift()
+  while (segments.at(-1) && !segments.at(-1)?.text.trimEnd()) segments.pop()
+  if (segments[0]) segments[0] = { ...segments[0], text: segments[0].text.trimStart() }
+  const last_idx = segments.length - 1
+  if (segments[last_idx]) {
+    segments[last_idx] = { ...segments[last_idx], text: segments[last_idx].text.trimEnd() }
   }
   return segments
 }
@@ -173,12 +165,13 @@ const split_axis_title_paragraphs = (
   return paragraphs
 }
 
-const normalized_axis_title_characters = (
-  segments: readonly AxisTitleSegment[],
-): AxisTitleSegment[] => {
+const segments_for_wrapped_lines = (
+  paragraph: readonly AxisTitleSegment[],
+  lines: readonly string[],
+): AxisTitleSegment[][] => {
   const normalized: AxisTitleSegment[] = []
   let pending_space = false
-  for (const { text, shift } of segments) {
+  for (const { text, shift } of paragraph) {
     for (const character of text) {
       if (/\s/u.test(character)) {
         pending_space = normalized.length > 0
@@ -189,18 +182,10 @@ const normalized_axis_title_characters = (
       pending_space = false
     }
   }
-  return normalized
-}
-
-const segments_for_wrapped_lines = (
-  paragraph: readonly AxisTitleSegment[],
-  lines: readonly string[],
-): AxisTitleSegment[][] => {
-  const characters = normalized_axis_title_characters(paragraph)
   let character_idx = 0
   return lines.map((line) => {
-    while (characters[character_idx]?.text === ` `) character_idx += 1
-    const line_characters = characters.slice(
+    while (normalized[character_idx]?.text === ` `) character_idx += 1
+    const line_characters = normalized.slice(
       character_idx,
       character_idx + Array.from(line).length,
     )
@@ -275,9 +260,6 @@ export function resolve_axis_title_layout(
     interactive,
   }
 }
-
-const has_axis_title = (axis: AxisConfig): boolean =>
-  resolve_axis_title_layout(axis).height > 0
 
 // Left y-title x: auto-padding reserves [outer | title | gap | ticks] from the plot edge
 // inward. The title is *centered* on label_x, so that center sits in the middle of the
@@ -394,6 +376,11 @@ const project_measured_axis = (
     start: Math.min(...positions),
     end: Math.max(...positions),
   }
+  const target_span = target_end - target_start
+  // Omitted/zero plot size must not collapse every tick onto 0 or invent a zero extent.
+  if (!Number.isFinite(target_span) || target_span === 0) {
+    return axis.axis_extent ? axis : { ...axis, axis_extent: source_extent }
+  }
   const source_span = source_extent.end - source_extent.start
   if (source_span === 0) {
     return {
@@ -402,7 +389,6 @@ const project_measured_axis = (
       axis_extent: { start: target_start, end: target_end },
     }
   }
-  const target_span = target_end - target_start
   return {
     ...axis,
     tick_positions: positions.map(
@@ -433,17 +419,20 @@ export const calc_auto_padding = ({
           0,
           height - (padding.t ?? default_padding.t) - (padding.b ?? default_padding.b),
         )
+  const y_title_layout = resolve_axis_title_layout(y_axis)
+  const y2_title_layout = resolve_axis_title_layout(y2_axis)
   // Padding for a vertical-axis side (y/y2): reserve outside tick offsets, the widest tick,
   // title gap, rotated title width, and outer air. Titles can render from interactive options
   // without a literal label, and still need their band when an axis intentionally has no ticks.
   const side_pad = (
     axis: MeasuredAxis,
+    title_layout: AxisTitleLayout,
     default_side: number,
     side: `left` | `right`,
     available_height: number,
   ): number => {
     const ticks = axis.tick_values ?? []
-    const has_title = has_axis_title(axis)
+    const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_side
     const inside = axis.tick?.label?.inside ?? false
     const tick_shift = axis.tick?.label?.shift?.x ?? 0
@@ -458,8 +447,7 @@ export const calc_auto_padding = ({
     const tick_offset = !has_outside_ticks
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
-    const title_height = has_title ? resolve_axis_title_layout(axis).height : 0
-    const title_band = has_title ? title_height + AXIS_LABEL_OUTER : 0
+    const title_band = has_title ? title_layout.height + AXIS_LABEL_OUTER : 0
     const title_gap = has_title && has_outside_ticks ? label_gap : 0
     const title_shift = axis.label_shift?.x ?? 0
     const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
@@ -468,12 +456,18 @@ export const calc_auto_padding = ({
       tick_width + title_gap + title_band + tick_offset + title_shift_outward,
     )
   }
-  let pad_l = padding.l ?? side_pad(y_axis, default_padding.l, `left`, initial_plot_height)
-  let pad_r = padding.r ?? side_pad(y2_axis, default_padding.r, `right`, initial_plot_height)
+  const vertical_pads = (available_height: number): [number, number] => [
+    padding.l ?? side_pad(y_axis, y_title_layout, default_padding.l, `left`, available_height),
+    padding.r ??
+      side_pad(y2_axis, y2_title_layout, default_padding.r, `right`, available_height),
+  ]
+  let [pad_l, pad_r] = vertical_pads(initial_plot_height)
 
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
-    const has_title = has_axis_title(x2_axis)
+    const title_width = available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH
+    const title_layout = resolve_axis_title_layout(x2_axis, title_width)
+    const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_padding.t
     const inside = x2_axis.tick?.label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
@@ -489,10 +483,8 @@ export const calc_auto_padding = ({
         8 +
         Math.max(0, -tick_shift)
       : 0
-    const title_width = available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH
-    const title_height = has_title ? resolve_axis_title_layout(x2_axis, title_width).height : 0
     const title_band =
-      title_height + (has_title ? Math.max(0, x2_axis.label_shift?.y ?? 0) : 0)
+      title_layout.height + (has_title ? Math.max(0, x2_axis.label_shift?.y ?? 0) : 0)
     const title_gap = has_title && has_outside_ticks ? label_gap : 0
     const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
     return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
@@ -506,9 +498,7 @@ export const calc_auto_padding = ({
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
     const title_width = available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH
-    const title_height = has_axis_title(x_axis)
-      ? resolve_axis_title_layout(x_axis, title_width).height
-      : 0
+    const title_height = resolve_axis_title_layout(x_axis, title_width).height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
     const tick_layout = has_outside_ticks
       ? resolve_tick_layout(
@@ -535,8 +525,7 @@ export const calc_auto_padding = ({
   // fixed-point oscillation while matching the final rendered plot on both dimensions.
   if (height != null) {
     const refined_plot_height = Math.max(0, height - pad_t - pad_b)
-    pad_l = padding.l ?? side_pad(y_axis, default_padding.l, `left`, refined_plot_height)
-    pad_r = padding.r ?? side_pad(y2_axis, default_padding.r, `right`, refined_plot_height)
+    ;[pad_l, pad_r] = vertical_pads(refined_plot_height)
     plot_width = width == null ? 0 : Math.max(0, width - pad_l - pad_r)
     pad_t = padding.t ?? top_pad(plot_width)
     pad_b = padding.b ?? bottom_pad(plot_width)

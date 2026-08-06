@@ -1,10 +1,6 @@
 <script lang="ts">
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
-  import {
-    AXIS_TITLE_WRAP_WIDTH,
-    resolve_axis_title_layout,
-    type AxisTitleLine,
-  } from '$lib/plot/core/layout'
+  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
   import type { AxisOption } from '$lib/plot/core/types'
   import InteractiveAxisLabel from '$lib/plot/core/components/InteractiveAxisLabel.svelte'
 
@@ -52,14 +48,6 @@
   )
 </script>
 
-{#snippet line_segments(line: AxisTitleLine)}
-  {#each line.segments as segment}
-    <tspan baseline-shift={segment.shift} font-size={segment.shift ? `75%` : undefined}>
-      {segment.text}
-    </tspan>
-  {/each}
-{/snippet}
-
 <g transform={rotate ? `rotate(-90, ${x}, ${y})` : undefined}>
   {#if use_svg_text}
     <text
@@ -72,17 +60,18 @@
       {x}
       {y}
     >
-      {#if title_layout.lines.length === 1}
-        {#each title_layout.lines as line}
-          {@render line_segments(line)}
-        {/each}
-      {:else}
-        {#each title_layout.lines as line, line_idx}
-          <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true">
-            {@render line_segments(line)}{line_idx < title_layout.lines.length - 1 ? ` ` : ``}
-          </tspan>
-        {/each}
-      {/if}
+      {#each title_layout.lines as line, line_idx}
+        <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true">
+          {#each line.segments as segment}
+            <tspan
+              baseline-shift={segment.shift}
+              font-size={segment.shift ? `75%` : undefined}
+            >
+              {segment.text}
+            </tspan>
+          {/each}{line_idx < title_layout.lines.length - 1 ? ` ` : ``}
+        </tspan>
+      {/each}
     </text>
   {:else}
     <foreignObject

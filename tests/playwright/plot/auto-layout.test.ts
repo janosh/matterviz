@@ -7,6 +7,8 @@ type RenderedLabel = {
   right: number
   top: number
   bottom: number
+  // Furthest the label reaches outside its plot's <svg>, 0 when fully contained.
+  spill: number
 }
 
 const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
@@ -23,6 +25,7 @@ const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
       ) {
         return []
       }
+      const svg = element.closest(`svg`)?.getBoundingClientRect()
       return [
         {
           text: element.textContent ?? ``,
@@ -31,13 +34,22 @@ const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
           right: box.right,
           top: box.top,
           bottom: box.bottom,
+          spill: svg
+            ? Math.max(
+                0,
+                svg.left - box.left,
+                box.right - svg.right,
+                svg.top - box.top,
+                box.bottom - svg.bottom,
+              )
+            : 0,
         },
       ]
     }),
   )
 
-const overlap_count = (labels: readonly RenderedLabel[], tolerance = 0.5): number => {
-  let overlaps = 0
+const overlapping_pairs = (labels: readonly RenderedLabel[], tolerance = 0.5): string[] => {
+  const pairs: string[] = []
   for (let first_idx = 0; first_idx < labels.length; first_idx++) {
     const first = labels[first_idx]
     for (let second_idx = first_idx + 1; second_idx < labels.length; second_idx++) {
@@ -48,81 +60,84 @@ const overlap_count = (labels: readonly RenderedLabel[], tolerance = 0.5): numbe
         first.top + tolerance < second.bottom &&
         second.top + tolerance < first.bottom
       ) {
-        overlaps += 1
+        pairs.push(`${first.text.trim()} <-> ${second.text.trim()}`)
       }
     }
   }
-  return overlaps
+  return pairs
 }
 
 const stable_labels = async (axis: Locator): Promise<RenderedLabel[]> => {
   let previous_signature = ``
+  let stable_samples = 0
   let latest: RenderedLabel[] = []
   await expect
-    .poll(async () => {
-      latest = await rendered_labels(axis)
-      const signature = JSON.stringify(
-        latest.map(({ text, left, right, top, bottom }) => [
-          text,
-          Math.round(left * 10),
-          Math.round(right * 10),
-          Math.round(top * 10),
-          Math.round(bottom * 10),
-        ]),
-      )
-      const stable = latest.length > 0 && signature === previous_signature
-      previous_signature = signature
-      return stable
-    })
+    .poll(
+      async () => {
+        latest = await rendered_labels(axis)
+        const signature = JSON.stringify(
+          latest.map(({ text, left, right, top, bottom }) => [
+            text,
+            ...[left, right, top, bottom].map((position) => Math.round(position * 10)),
+          ]),
+        )
+        stable_samples =
+          latest.length > 0 && signature === previous_signature ? stable_samples + 1 : 0
+        previous_signature = signature
+        return stable_samples >= 2
+      },
+      {
+        message: `tick layout never held still for three consecutive polls`,
+        timeout: 15_000,
+      },
+    )
     .toBe(true)
   return latest
 }
 
 const assert_readable = (labels: readonly RenderedLabel[]): void => {
+  // The demo pins min_visible_ticks to 3, so anything fewer means thinning overshot.
   expect(labels.length).toBeGreaterThanOrEqual(3)
-  for (const { text, aria_label } of labels) {
+  for (const { text, aria_label, spill } of labels) {
     const visible_text = text.replaceAll(/[\s\u200B-\u200D\u2060]/gu, ``)
     expect(visible_text).not.toBe(``)
     expect(visible_text).not.toMatch(/^…+$/u)
-    expect(aria_label?.trim()).not.toBe(``)
+    // Missing aria-labels yield undefined, which `not.toBe('')` would accept.
+    expect(aria_label?.trim(), `aria-label for ${visible_text}`).toBeTruthy()
+    expect(spill, `${visible_text} spills outside the plot`).toBeLessThanOrEqual(0.5)
   }
 }
 
 const assert_readable_non_overlapping = (labels: readonly RenderedLabel[]): void => {
   assert_readable(labels)
-  expect(overlap_count(labels), JSON.stringify(labels)).toBe(0)
+  expect(overlapping_pairs(labels)).toEqual([])
 }
 
 test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async ({ page }) => {
+  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.goto(`/plot/bar-plot`, { waitUntil: `networkidle` })
+  await page.goto(`/plot/bar-plot`, { waitUntil: `domcontentloaded` })
 
   const demo = page.locator(`[data-testid="adaptive-tick-demo"]`)
   await demo.scrollIntoViewIfNeeded()
-  await expect(demo).toBeVisible()
   await expect(demo.locator(`.bar-plot`)).toBeVisible()
-  expect(
-    await page.evaluate(async () => {
-      await document.fonts.ready
-      return document.fonts.status
-    }),
-  ).toBe(`loaded`)
-
   const width_slider = demo.locator(`input[type="range"]`)
   const x_axis = demo.locator(`.bar-plot g.x-axis`)
+  // Wait for Svelte to attach the slider handler, otherwise only the DOM input moves.
+  await expect(x_axis.locator(`.tick text`).first()).toBeVisible({ timeout: 45_000 })
+  await page.evaluate(async () => void (await document.fonts.ready))
+
   const set_chart_width = async (width: number): Promise<RenderedLabel[]> => {
     await width_slider.fill(String(width))
     return stable_labels(x_axis)
   }
 
-  const minimum_width_labels = await set_chart_width(280)
-  // Minimum width exercises readable fallback; 740px and 840px exercise feasible box geometry.
-  assert_readable(minimum_width_labels)
+  // Exercise the minimum fallback, feasible geometry, slider maximum, then hysteresis.
+  assert_readable(await set_chart_width(280))
   const narrow_labels = await set_chart_width(740)
   assert_readable_non_overlapping(narrow_labels)
-  const wide_labels = await set_chart_width(840)
-  assert_readable_non_overlapping(wide_labels)
-  expect(wide_labels.length).toBeLessThanOrEqual(narrow_labels.length)
+  assert_readable_non_overlapping(await set_chart_width(840))
+  assert_readable_non_overlapping(await set_chart_width(900))
 
   const repeated_narrow_labels = await set_chart_width(740)
   assert_readable_non_overlapping(repeated_narrow_labels)

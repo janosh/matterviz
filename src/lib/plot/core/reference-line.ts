@@ -25,8 +25,8 @@ import type {
   RefLineValue,
 } from '$lib/plot/core/types'
 import {
-  DEFAULT_FONT_SPEC,
   measure_text_line,
+  resolve_font_size_css,
   resolve_font_spec,
 } from '$lib/plot/core/text-metrics'
 
@@ -419,27 +419,25 @@ const AUTO_ANNOTATION_SIDES: readonly ReferenceAnnotationSide[] = [
 export const estimate_reference_annotation_metrics = (
   annotation: RefLineAnnotation,
 ): ReferenceAnnotationMetrics => {
-  const font_size_match = /^[-+]?(?:\d+\.?\d*|\.\d+)/u.exec(annotation.font_size ?? `12`)
-  const parsed_font_size = Number(font_size_match?.[0])
-  const font_size =
-    Number.isFinite(parsed_font_size) && parsed_font_size > 0 ? parsed_font_size : 12
   const padding =
     typeof annotation.padding === `number` &&
     Number.isFinite(annotation.padding) &&
     annotation.padding >= 0
       ? annotation.padding
       : 2
-  const font_family =
-    annotation.font_family && annotation.font_family !== `inherit`
-      ? annotation.font_family
-      : undefined
   const inherited_font = resolve_font_spec(
     typeof document === `undefined` ? null : document.documentElement,
-    { ...DEFAULT_FONT_SPEC, font_size, line_height: font_size * 1.2 },
+  )
+  // Match SVG default `12px` when unset; resolve em/rem/% against inherited size.
+  const font_size = resolve_font_size_css(
+    annotation.font_size ?? `12px`,
+    inherited_font.font_size,
   )
   const text_metrics = measure_text_line(annotation.text, {
     ...inherited_font,
-    ...(font_family ? { font_family } : {}),
+    ...(annotation.font_family && annotation.font_family !== `inherit`
+      ? { font_family: annotation.font_family }
+      : {}),
     font_size,
     line_height: font_size * 1.2,
   })

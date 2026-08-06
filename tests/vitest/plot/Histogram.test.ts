@@ -1,7 +1,7 @@
 import { Histogram, type Vec2 } from '$lib'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
   expect_custom_x_ticks_grow_bottom_pad,
@@ -62,6 +62,8 @@ const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
 }
 
 describe(`Histogram`, () => {
+  afterEach(() => vi.restoreAllMocks())
+
   test.each<{
     name: string
     series: { x: number[]; y: number[]; label?: string }[]
@@ -203,29 +205,26 @@ describe(`Histogram`, () => {
 
   test(`log y-scale: positive count-based domain; non-positive explicit bound falls back to auto`, async () => {
     const series = [{ x: [], y: [1, 1, 1, 1, 1] }]
+    const log_ticks = (range?: [number | null, number | null]) =>
+      y_ticks_after({
+        series,
+        bins: 5,
+        y_axis: { scale_type: `log`, ...(range ? { range } : {}) },
+      })
     // auto and an explicit positive lower both yield a count-based domain with no non-positive ticks
-    const auto = await y_ticks_after({ series, bins: 5, y_axis: { scale_type: `log` } })
-    expect(auto.length).toBeGreaterThan(0) // guard: Math.min(...[]) is Infinity -> false pass
-    expect(Math.min(...auto)).toBeGreaterThan(0)
-    const pinned = await y_ticks_after({
-      series,
-      bins: 5,
-      y_axis: { scale_type: `log`, range: [1, null] },
-    })
-    expect(pinned.length).toBeGreaterThan(0)
-    expect(Math.min(...pinned)).toBeGreaterThan(0)
+    const valid_ticks = [await log_ticks(), await log_ticks([1, null])]
+    for (const ticks of valid_ticks) {
+      expect(ticks.length).toBeGreaterThan(0) // guards against Math.min(...[]) === Infinity
+      expect(Math.min(...ticks)).toBeGreaterThan(0)
+    }
     // an invalid (<= 0) explicit lower is ignored, falling back to the auto minimum (the old
     // `y_limit[0] ?? ...` kept the 0 verbatim, yielding a broken log domain starting at 0)
-    const zero_lower = await y_ticks_after({
-      series,
-      bins: 5,
-      y_axis: { scale_type: `log`, range: [0, null] },
-    })
-    expect(zero_lower).toEqual(auto)
-    // a non-positive upper bound is likewise invalid on a log axis and falls back to the auto domain
-    const y_axis = { scale_type: `log`, range: [null, -5] }
-    const neg_upper = await y_ticks_after({ series, bins: 5, y_axis })
-    expect(neg_upper).toEqual(auto)
+    for (const invalid_range of [
+      [0, null],
+      [null, -5],
+    ] as const) {
+      expect(await log_ticks([...invalid_range])).toEqual(valid_ticks[0])
+    }
   })
 
   test(`log y-scale renders bins with one count at visible height`, async () => {
@@ -309,22 +308,18 @@ describe(`Histogram`, () => {
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
-    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,
       measureText: () => ({ width: 120 }),
     } as unknown as CanvasRenderingContext2D)
-    try {
-      mount_histogram({
-        series: [{ x: [], y: [1, 2, 3], label: `Main` }],
-        y_axis: { label: `Count` },
-      })
-      await resize_element(get_plot(), 400, 300)
-      expect(
-        Number(document.querySelector(`clipPath rect`)?.getAttribute(`x`)),
-      ).toBeGreaterThan(60)
-    } finally {
-      context_spy.mockRestore()
-    }
+    mount_histogram({
+      series: [{ x: [], y: [1, 2, 3], label: `Main` }],
+      y_axis: { label: `Count` },
+    })
+    await resize_element(get_plot(), 400, 300)
+    expect(Number(document.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
+      60,
+    )
   })
 
   // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
@@ -423,13 +418,7 @@ describe(`Histogram`, () => {
   test(`legend uses its measured size outside dense bars without padding drift`, async () => {
     // near-uniform distribution -> every bin is tall -> filled bars cover the plot so no interior
     // spot avoids overlap and the legend must drop into the reserved bottom margin
-    const width_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
-      .mockReturnValue(180)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
-      .mockReturnValue(44)
-    try {
+    const mount_uniform = (style?: string) => {
       const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
       mount_histogram({
         series: [
@@ -440,57 +429,38 @@ describe(`Histogram`, () => {
         mode: `overlay`,
         show_legend: true,
         legend: {},
+        ...(style === undefined ? {} : { style }),
       })
-      await resize_element(get_plot(), 400, 300)
-      const initial_legend = document.querySelector<HTMLElement>(`.legend`)
-      if (!initial_legend) throw new Error(`legend not found`)
-      expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
-
-      mount_histogram({
-        series: [
-          { x: [], y: uniform, label: `A` },
-          { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
-        ],
-        bins: 40,
-        mode: `overlay`,
-        show_legend: true,
-        legend: {},
-        style: `width: 640px; height: 340px;`,
-      })
-      await resize_element(get_plot(), 640, 340)
-      const resized_legend = document.querySelector<HTMLElement>(`.legend`)
-      const resized_clip = document.querySelector(`clipPath rect`)
-      if (!resized_legend || !resized_clip) {
-        throw new Error(`legend or clip rectangle not found`)
-      }
-      expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
-        Number(initial_legend.style.left.replace(`px`, ``)),
-      )
-      expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
-      const resized_clip_attrs = [`x`, `y`, `width`, `height`].map((attr) =>
-        resized_clip.getAttribute(attr),
-      )
-      mount_histogram({
-        series: [
-          { x: [], y: uniform, label: `A` },
-          { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
-        ],
-        bins: 40,
-        mode: `overlay`,
-        show_legend: true,
-        legend: {},
-        style: `width: 640px; height: 340px;`,
-      })
-      await resize_element(get_plot(), 640, 340)
-      expect(
-        [`x`, `y`, `width`, `height`].map((attr) =>
-          document.querySelector(`clipPath rect`)?.getAttribute(attr),
-        ),
-      ).toEqual(resized_clip_attrs)
-    } finally {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
     }
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
+    mount_uniform()
+    await resize_element(get_plot(), 400, 300)
+    const initial_legend = document.querySelector<HTMLElement>(`.legend`)
+    if (!initial_legend) throw new Error(`legend not found`)
+    expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
+
+    mount_uniform(`width: 640px; height: 340px;`)
+    await resize_element(get_plot(), 640, 340)
+    const resized_legend = document.querySelector<HTMLElement>(`.legend`)
+    const resized_clip = document.querySelector(`clipPath rect`)
+    if (!resized_legend || !resized_clip) {
+      throw new Error(`legend or clip rectangle not found`)
+    }
+    expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
+      Number(initial_legend.style.left.replace(`px`, ``)),
+    )
+    expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
+    const resized_clip_attrs = [`x`, `y`, `width`, `height`].map((attr) =>
+      resized_clip.getAttribute(attr),
+    )
+    mount_uniform(`width: 640px; height: 340px;`)
+    await resize_element(get_plot(), 640, 340)
+    expect(
+      [`x`, `y`, `width`, `height`].map((attr) =>
+        document.querySelector(`clipPath rect`)?.getAttribute(attr),
+      ),
+    ).toEqual(resized_clip_attrs)
   })
 
   test(`preserves explicit legend position and solver auto tracks`, async () => {

@@ -492,6 +492,7 @@ describe(`pure auto-layout cross-feature regressions`, () => {
         expect(resolved).toBeDefined()
         if (!resolved) throw new Error(`Missing reconciled range for "${key}"`)
         if (mode === `free`) {
+          expect(grouped_reports).toHaveLength(1)
           expect(resolved).toEqual(grouped_reports[0]?.ranges.x)
         } else {
           expect(resolved[0]).toBeLessThanOrEqual(Math.min(...endpoints))

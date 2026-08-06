@@ -7,6 +7,7 @@ import { analyze_tick_label_geometry, type TickLabelItem } from '$lib/plot/core/
 import { SvelteMap } from 'svelte/reactivity'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
+const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 const AXIS_SIZE = 1200
 const operation_measurements: {
   workload: string
@@ -73,7 +74,7 @@ const best_batch_ms = (repetitions: number, run: () => void): number => {
   return best_ms
 }
 
-describe(`adaptive layout performance`, () => {
+describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () => {
   beforeAll(() => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,
@@ -108,12 +109,9 @@ describe(`adaptive layout performance`, () => {
       expect(layout.labels).toHaveLength(tick_count)
       expect(layout.visible_tick_indices.length).toBeGreaterThanOrEqual(2)
       expect(
-        layout.labels
-          .filter(({ visible }) => visible)
-          .every(
-            ({ display_text }) =>
-              display_text.trim() !== `` && !/^…+$/u.test(display_text.trim()),
-          ),
+        layout.labels.every(
+          ({ visible, display_text }) => !visible || !/^…*$/u.test(display_text.trim()),
+        ),
       ).toBe(true)
     }
 
@@ -124,7 +122,7 @@ describe(`adaptive layout performance`, () => {
     }
     expect(calls_100).toBeGreaterThan(0)
     expect(calls_500).toBeGreaterThan(calls_100)
-    expect(calls_500 / calls_100).toBeLessThan(6)
+    expect(calls_500 / calls_100).toBeLessThan(6 * CI_MULTIPLIER)
     expect(layouts.get(500)?.visible_tick_indices.length).toBeGreaterThan(2)
   })
 
@@ -134,6 +132,7 @@ describe(`adaptive layout performance`, () => {
       ReturnType<typeof analyze_tick_label_geometry>
     >()
     const elapsed_by_count = new SvelteMap<number, number>()
+    const repetitions = 20 * CI_MULTIPLIER
 
     for (const tick_count of [100, 500]) {
       const axis_size = tick_count * 12
@@ -148,12 +147,13 @@ describe(`adaptive layout performance`, () => {
           collision_method: `sweep`,
         })
       const geometry = analyze()
-      const elapsed_ms = best_batch_ms(20, () => {
-        analyze()
-      })
+      const elapsed_ms = best_batch_ms(repetitions, analyze)
       geometry_by_count.set(tick_count, geometry)
       elapsed_by_count.set(tick_count, elapsed_ms)
-      operation_measurements.push({ workload: `geometry-20x-${tick_count}`, elapsed_ms })
+      operation_measurements.push({
+        workload: `geometry-${repetitions}x-${tick_count}`,
+        elapsed_ms,
+      })
 
       expect(geometry.labels).toHaveLength(tick_count)
       expect(geometry.collisions.count).toBe(geometry.collisions.pairs.length)
@@ -171,7 +171,7 @@ describe(`adaptive layout performance`, () => {
     if (elapsed_100 == null || elapsed_500 == null) {
       throw new Error(`Missing geometry scaling measurements`)
     }
-    expect(elapsed_500 / elapsed_100).toBeLessThan(10)
+    expect(elapsed_500 / elapsed_100).toBeLessThan(10 * CI_MULTIPLIER)
     expect(geometry_by_count.get(500)?.collisions.pairs.length).toBeGreaterThan(0)
   })
 
@@ -193,10 +193,11 @@ describe(`adaptive layout performance`, () => {
     const resized_result = resolve_tick_layout(resized_axis, AXIS_SIZE / 2, `x`)
     expect(resized_result).not.toBe(cold_result)
     expect(resized_result.labels).toHaveLength(500)
+    expect(resolve_tick_layout(axis, AXIS_SIZE, `x`)).toBe(cold_result)
     expect(measure_text).not.toHaveBeenCalled()
     operation_measurements.push({
       workload: `cache-and-resize-500`,
-      measure_text_calls: measure_text.mock.calls.length,
+      measure_text_calls: cold_measurements,
     })
   })
 })

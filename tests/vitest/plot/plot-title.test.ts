@@ -141,9 +141,9 @@ describe(`resolve_plot_title`, () => {
       text: `alpha beta`,
       font: { font_size: 10, line_height: 12 },
     }
-    clear_text_metrics_cache()
     const compact = resolve_plot_title(config, { width: 50, metrics_revision: 1 })
     pixels_per_character = 6
+    // metrics_revision stamps the result; changing mocked glyph widths still needs invalidation.
     clear_text_metrics_cache()
     const expanded = resolve_plot_title(config, { width: 50, metrics_revision: 2 })
 
@@ -156,7 +156,6 @@ describe(`resolve_plot_title`, () => {
 
   it(`uses deterministic text-metrics fallbacks during SSR`, () => {
     vi.stubGlobal(`document`, undefined)
-    clear_text_metrics_cache()
     const layout = resolve_plot_title(
       {
         text: `A🙂`,

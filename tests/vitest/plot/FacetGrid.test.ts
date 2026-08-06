@@ -5,10 +5,11 @@ import type {
   FacetSharedBandContext,
   FacetSharedBandSizes,
 } from '$lib/plot/core/facets'
-import { createRawSnippet, mount, tick, type Snippet } from 'svelte'
+import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { describe, expect, test } from 'vitest'
+import { afterAll, afterEach, describe, expect, test } from 'vitest'
 
+const original_resize_observer = globalThis.ResizeObserver
 class ControlledResizeObserver implements ResizeObserver {
   static instances: ControlledResizeObserver[] = []
   readonly observed_elements: Element[] = []
@@ -33,16 +34,12 @@ class ControlledResizeObserver implements ResizeObserver {
 
   notify(element: Element): void {
     if (!this.observed_elements.includes(element)) return
+    const rect =
+      element instanceof HTMLElement
+        ? { width: element.clientWidth, height: element.clientHeight }
+        : {}
     this.callback(
-      [
-        {
-          target: element,
-          contentRect: DOMRect.fromRect({
-            width: element instanceof HTMLElement ? element.clientWidth : 0,
-            height: element instanceof HTMLElement ? element.clientHeight : 0,
-          }),
-        } as ResizeObserverEntry,
-      ],
+      [{ target: element, contentRect: DOMRect.fromRect(rect) } as ResizeObserverEntry],
       this,
     )
   }
@@ -62,6 +59,15 @@ const make_panel_snippet = (context_getters: (() => FacetPanelContext)[]) =>
     }
   })
 
+const make_panels = (...keys: string[]): FacetPanel[] =>
+  keys.map((key, panel_idx) => ({ key, data: panel_idx + 1 }))
+
+const make_band_snippet = (context_getters: (() => FacetSharedBandContext)[], name: string) =>
+  createRawSnippet<[FacetSharedBandContext]>((get_context) => {
+    context_getters.push(get_context)
+    return { render: () => `<span>${name}</span>` }
+  })
+
 const context_for = (
   context_getters: (() => FacetPanelContext)[],
   key: string,
@@ -70,6 +76,8 @@ const context_for = (
   if (!context_getter) throw new Error(`No facet context for key "${key}"`)
   return context_getter()
 }
+
+const mounted_grids: { component: ReturnType<typeof mount>; target: HTMLElement }[] = []
 
 const mount_grid = async (
   panels: readonly FacetPanel[],
@@ -90,7 +98,7 @@ const mount_grid = async (
   document.body.append(target)
   const context_getters: (() => FacetPanelContext)[] = []
   const panel_state = new SvelteMap<`panels`, readonly FacetPanel[]>([[`panels`, panels]])
-  mount(FacetGrid, {
+  const component = mount(FacetGrid, {
     target,
     props: {
       get panels() {
@@ -106,6 +114,7 @@ const mount_grid = async (
       colorbar: options.colorbar,
     },
   })
+  mounted_grids.push({ component, target })
   await Promise.resolve()
   await tick()
   const root = target.querySelector<HTMLElement>(`.facet-grid`)
@@ -118,17 +127,22 @@ const mount_grid = async (
 }
 
 describe(`FacetGrid`, () => {
+  afterEach(async () => {
+    for (const { component, target } of mounted_grids.splice(0)) {
+      await unmount(component)
+      target.remove()
+    }
+    ControlledResizeObserver.instances.length = 0
+  })
+
+  afterAll(() => void (globalThis.ResizeObserver = original_resize_observer))
+
   test(`renders explicit shared chrome bands and passes their geometry to slots`, async () => {
     const band_context_getters: (() => FacetSharedBandContext)[] = []
-    const slot = (name: string) =>
-      createRawSnippet<[FacetSharedBandContext]>((get_context) => {
-        band_context_getters.push(get_context)
-        return { render: () => `<span>${name}</span>` }
-      })
     const { root, context_getters } = await mount_grid([{ key: `only`, data: { value: 1 } }], {
-      title: slot(`shared title`),
-      legend: slot(`shared legend`),
-      colorbar: slot(`shared colorbar`),
+      title: make_band_snippet(band_context_getters, `shared title`),
+      legend: make_band_snippet(band_context_getters, `shared legend`),
+      colorbar: make_band_snippet(band_context_getters, `shared colorbar`),
       shared_bands: {
         title_height: 40,
         legend_width: 120,
@@ -159,14 +173,35 @@ describe(`FacetGrid`, () => {
     })
   })
 
+  test(`keeps zero-size panel and shared-band rectangles independent`, async () => {
+    const band_context_getters: (() => FacetSharedBandContext)[] = []
+    const { root, context_getters } = await mount_grid(make_panels(`left`, `right`), {
+      columns: 2,
+      title: make_band_snippet(band_context_getters, `title`),
+      legend: make_band_snippet(band_context_getters, `legend`),
+      shared_bands: { title_height: 20, legend_width: 20 },
+    })
+    Object.defineProperties(root, {
+      clientWidth: { value: 0, configurable: true },
+      clientHeight: { value: 0, configurable: true },
+    })
+    ControlledResizeObserver.notify(root)
+    await tick()
+
+    const rects = [
+      context_for(context_getters, `left`).rect,
+      context_for(context_getters, `right`).rect,
+      ...band_context_getters.map((get_context) => get_context().rect),
+    ]
+    expect(rects).toEqual(rects.map(() => ({ x: 0, y: 0, width: 0, height: 0 })))
+    expect(rects.every((rect, rect_idx) => rects.indexOf(rect) === rect_idx)).toBe(true)
+  })
+
   test(`reconciles child layout reports and suppresses inner shared axes`, async () => {
-    const { context_getters } = await mount_grid(
-      [
-        { key: `left`, data: 1 },
-        { key: `right`, data: 2 },
-      ],
-      { columns: 2, axis_modes: { x: `shared`, y: `free` } },
-    )
+    const { context_getters } = await mount_grid(make_panels(`left`, `right`), {
+      columns: 2,
+      axis_modes: { x: `shared`, y: `free` },
+    })
 
     context_for(context_getters, `left`).report_layout({
       padding: { t: 5, b: 40, l: 70, r: 10 },
@@ -195,16 +230,11 @@ describe(`FacetGrid`, () => {
   })
 
   test(`propagates linked zoom and reset updates by row and column`, async () => {
-    const { context_getters } = await mount_grid(
-      [
-        { key: `top-left`, data: 1 },
-        { key: `top-right`, data: 2 },
-        { key: `bottom-left`, data: 3 },
-        { key: `bottom-right`, data: 4 },
-      ],
-      { columns: 2, axis_modes: { x: `row`, y: `col` } },
-    )
     const keys = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+    const { context_getters } = await mount_grid(make_panels(...keys), {
+      columns: 2,
+      axis_modes: { x: `row`, y: `col` },
+    })
     keys.forEach((key, panel_idx) => {
       context_for(context_getters, key).report_layout({
         ranges: {
@@ -245,13 +275,7 @@ describe(`FacetGrid`, () => {
   })
 
   test(`ignores repeated resolved layout echoes without losing intrinsic reports`, async () => {
-    const { context_getters } = await mount_grid(
-      [
-        { key: `left`, data: 1 },
-        { key: `right`, data: 2 },
-      ],
-      { columns: 2 },
-    )
+    const { context_getters } = await mount_grid(make_panels(`left`, `right`), { columns: 2 })
     context_for(context_getters, `left`).report_layout({
       padding: { l: 50 },
       ranges: { x: [0, 2] },
@@ -272,8 +296,8 @@ describe(`FacetGrid`, () => {
         padding: { l: 80 },
         ranges: { x: [0, 10] },
       })
+      await tick()
     }
-    await tick()
 
     expect(context_for(context_getters, `left`)).toBe(resolved_left)
     context_for(context_getters, `left`).update_range(`x`, [3, 4])
@@ -284,13 +308,10 @@ describe(`FacetGrid`, () => {
   })
 
   test(`keeps reports and callback identities stable through resize`, async () => {
-    const { root, context_getters } = await mount_grid(
-      [
-        { key: `left`, data: 1 },
-        { key: `right`, data: 2 },
-      ],
-      { columns: 2, gap: 10 },
-    )
+    const { root, context_getters } = await mount_grid(make_panels(`left`, `right`), {
+      columns: 2,
+      gap: 10,
+    })
     const initial_left = context_for(context_getters, `left`)
     initial_left.report_layout({
       padding: { l: 60 },
@@ -327,13 +348,9 @@ describe(`FacetGrid`, () => {
   })
 
   test(`prunes callback identities when a panel key leaves the grid`, async () => {
-    const { context_getters, set_panels } = await mount_grid(
-      [
-        { key: `kept`, data: 1 },
-        { key: `removed`, data: 2 },
-      ],
-      { columns: 2 },
-    )
+    const { context_getters, set_panels } = await mount_grid(make_panels(`kept`, `removed`), {
+      columns: 2,
+    })
     const removed = context_for(context_getters, `removed`)
 
     set_panels([{ key: `kept`, data: 1 }])
@@ -346,11 +363,11 @@ describe(`FacetGrid`, () => {
       { key: `removed`, data: 3 },
     ])
     await tick()
-    const readded = context_for(context_getters, `removed`)
+    const re_added = context_for(context_getters, `removed`)
 
-    expect(readded.report_layout).not.toBe(removed.report_layout)
-    expect(readded.update_range).not.toBe(removed.update_range)
-    expect(readded.padding).toEqual({})
-    expect(readded.ranges).toEqual({})
+    expect(re_added.report_layout).not.toBe(removed.report_layout)
+    expect(re_added.update_range).not.toBe(removed.update_range)
+    expect(re_added.padding).toEqual({})
+    expect(re_added.ranges).toEqual({})
   })
 })

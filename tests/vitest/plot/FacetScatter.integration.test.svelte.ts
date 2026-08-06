@@ -3,8 +3,9 @@ import type { FacetPanel, FacetPanelContext } from '$lib/plot/core/facets'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '$lib/plot'
 import { createRawSnippet, mount, tick, unmount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
 
+const original_resize_observer = globalThis.ResizeObserver
 class ControlledResizeObserver implements ResizeObserver {
   static instances: ControlledResizeObserver[] = []
   readonly observed_elements: Element[] = []
@@ -29,12 +30,12 @@ class ControlledResizeObserver implements ResizeObserver {
 
   notify(element: Element): void {
     if (!this.observed_elements.includes(element)) return
-    const content_rect =
+    const rect =
       element instanceof HTMLElement
-        ? DOMRect.fromRect({ width: element.clientWidth, height: element.clientHeight })
-        : DOMRect.fromRect()
+        ? { width: element.clientWidth, height: element.clientHeight }
+        : {}
     this.callback(
-      [{ target: element, contentRect: content_rect } as ResizeObserverEntry],
+      [{ target: element, contentRect: DOMRect.fromRect(rect) } as ResizeObserverEntry],
       this,
     )
   }
@@ -51,36 +52,19 @@ interface PanelDatum {
   padding?: { t: number; b: number; l: number; r: number }
 }
 
-const panel_inputs: readonly FacetPanel<PanelDatum>[] = [
-  {
-    key: `top-left`,
-    data: {
-      series: [{ x: [0, -5, 5], y: [0, -20, 10] }],
-      padding: { t: 5, b: 40, l: 90, r: 10 },
-    },
-  },
-  {
-    key: `top-right`,
-    data: {
-      series: [{ x: [0, 10, 20], y: [0, 100, 200] }],
-      padding: { t: 20, b: 30, l: 50, r: 25 },
-    },
-  },
-  {
-    key: `bottom-left`,
-    data: {
-      series: [{ x: [0, 20, 30], y: [0, 200, 300] }],
-      padding: { t: 15, b: 55, l: 60, r: 15 },
-    },
-  },
-  {
-    key: `bottom-right`,
-    data: {
-      series: [{ x: [0, 30, 40], y: [0, 300, 400] }],
-      padding: { t: 10, b: 35, l: 40, r: 45 },
-    },
-  },
-]
+const panel_inputs: readonly FacetPanel<PanelDatum>[] = (
+  [
+    [`top-left`, [-5, 5], [-20, 10], { t: 5, b: 40, l: 90, r: 10 }],
+    [`top-right`, [10, 20], [100, 200], { t: 20, b: 30, l: 50, r: 25 }],
+    [`bottom-left`, [20, 30], [200, 300], { t: 15, b: 55, l: 60, r: 15 }],
+    [`bottom-right`, [30, 40], [300, 400], { t: 10, b: 35, l: 40, r: 45 }],
+  ] as const
+).map(([key, x, y, padding]) => ({
+  key,
+  data: { series: [{ x: [0, ...x], y: [0, ...y] }], padding },
+}))
+
+const mounted_grids: { component: ReturnType<typeof mount>; target: HTMLElement }[] = []
 
 const mount_facet_scatter = async (panels = panel_inputs) => {
   const target = document.createElement(`div`)
@@ -115,7 +99,7 @@ const mount_facet_scatter = async (panels = panel_inputs) => {
       },
     }
   })
-  mount(FacetGrid, {
+  const component = mount(FacetGrid, {
     target,
     props: {
       panels,
@@ -123,6 +107,7 @@ const mount_facet_scatter = async (panels = panel_inputs) => {
       children,
     },
   })
+  mounted_grids.push({ component, target })
   await tick()
   const root = target.querySelector<HTMLElement>(`.facet-grid`)
   if (!root) throw new Error(`FacetGrid root not found`)
@@ -160,32 +145,33 @@ const first_marker_transform = (panel: ParentNode): string =>
   panel.querySelector(`.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
 
 describe(`FacetGrid + ScatterPlot`, () => {
+  afterEach(async () => {
+    for (const { component, target } of mounted_grids.splice(0)) {
+      await unmount(component)
+      target.remove()
+    }
+    ControlledResizeObserver.instances.length = 0
+    vi.restoreAllMocks()
+  })
+
+  afterAll(() => void (globalThis.ResizeObserver = original_resize_observer))
+
   test(`aligns shared ranges and plot rectangles with only outer axes across resize`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     const { root, context_for, panel_for, scatter_mounts } = await mount_facet_scatter()
     const keys = panel_inputs.map(({ key }) => String(key))
+    const ranges = (axis: `x` | `y`) => keys.map((key) => context_for(key).ranges[axis])
 
     await vi.waitFor(() => {
-      expect(keys.map((key) => context_for(key).ranges.x)).toEqual([
-        context_for(keys[0]).ranges.x,
-        context_for(keys[0]).ranges.x,
-        context_for(keys[0]).ranges.x,
-        context_for(keys[0]).ranges.x,
-      ])
-      expect(keys.map((key) => context_for(key).ranges.y)).toEqual([
-        context_for(keys[0]).ranges.y,
-        context_for(keys[0]).ranges.y,
-        context_for(keys[0]).ranges.y,
-        context_for(keys[0]).ranges.y,
-      ])
+      expect(ranges(`x`)).toEqual(keys.map(() => context_for(keys[0]).ranges.x))
+      expect(ranges(`y`)).toEqual(keys.map(() => context_for(keys[0]).ranges.y))
+      expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual(
+        keys.map(() => ({ x: 90, y: 20, width: 665, height: 525 })),
+      )
+      expect(keys.map((key) => first_marker_transform(panel_for(key)))).toEqual(
+        keys.map(() => first_marker_transform(panel_for(keys[0]))),
+      )
     })
-
-    expect(keys.map((key) => clip_rect(panel_for(key)))).toEqual(
-      keys.map(() => ({ x: 90, y: 20, width: 665, height: 525 })),
-    )
-    expect(keys.map((key) => first_marker_transform(panel_for(key)))).toEqual(
-      keys.map(() => first_marker_transform(panel_for(keys[0]))),
-    )
 
     expect(panel_for(`top-left`).querySelector(`.x-axis`)).toBeNull()
     expect(panel_for(`top-right`).querySelector(`.x-axis`)).toBeNull()

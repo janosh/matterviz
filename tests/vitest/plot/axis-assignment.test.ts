@@ -267,6 +267,12 @@ describe(`assign_axes`, () => {
     expect(result.status).toBe(max_axes === 1 ? `overflow` : `assigned`)
   })
 
+  test(`rejects an unsupported runtime max_axes value`, () => {
+    expect(() => assign_axes([], { max_axes: 3 as never })).toThrow(
+      `max_axes must be 1 or 2, got 3`,
+    )
+  })
+
   test.each([
     { name: `empty input`, input: [] },
     {

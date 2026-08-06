@@ -29,12 +29,11 @@ import {
   type TickStrategyCandidate,
 } from '$lib/plot/core/tick-strategies'
 import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
-import { SvelteSet } from 'svelte/reactivity'
 
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 6
-export const TICK_STAGGER_GAP = 4
+const TICK_STAGGER_GAP = 4
 
 // Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas
 // font shorthand, while tick layout holds the FontSpec resolved off a rendered tick.
@@ -56,6 +55,23 @@ export type MeasuredAxis = AxisConfig & {
   axis_extent?: TickAxisExtent
   tick_font?: Readonly<FontSpec>
 }
+
+// Build the measured form of an axis for `calc_auto_padding`. Generic over the
+// tick type so band axes (string categories) and continuous axes (numbers) both
+// infer their own scale signature instead of needing a cast at the call site.
+export const measured_axis = <Tick extends string | number>(
+  axis: AxisConfig,
+  tick_values: Tick[],
+  scale: (tick: Tick) => number,
+  axis_extent: TickAxisExtent,
+  tick_font?: Readonly<FontSpec>,
+): MeasuredAxis => ({
+  ...axis,
+  tick_values,
+  tick_positions: tick_values.map(scale),
+  axis_extent,
+  tick_font,
+})
 
 export type TickLayoutSide = `x` | `x2` | `y` | `y2`
 
@@ -81,11 +97,23 @@ export interface ResolvedTickLayout {
   stagger_step: number
 }
 
-// Retain the latest exact layout per side for duplicate padding/render lookups. Resizes and
-// zooms replace these entries instead of accumulating geometry keys that cannot be reused.
-let cached_layouts: Partial<
-  Record<TickLayoutSide, { key: string; value: ResolvedTickLayout }>
-> = {}
+const MAX_CACHED_LAYOUTS_PER_SIDE = 4
+type TickLayoutCacheEntry = {
+  key: string
+  full_texts: readonly string[]
+  tick_positions: readonly number[]
+  value: ResolvedTickLayout
+}
+// Keep a small per-side LRU so interleaved plots do not evict one another's padding/render
+// lookup, while still bounding geometry retained across resizes and zooms.
+let cached_layouts: Partial<Record<TickLayoutSide, TickLayoutCacheEntry[]>> = {}
+
+const arrays_equal = (
+  left: readonly (number | string)[],
+  right: readonly (number | string)[],
+): boolean =>
+  left.length === right.length &&
+  left.every((value, value_idx) => Object.is(value, right[value_idx]))
 
 // Drop memoised layouts and the text metrics they were derived from. Call after the rendering
 // font changes (web font load) or, in tests, between cases that stub canvas measurement.
@@ -753,7 +781,7 @@ const compute_tick_layout = (
       auto_layout.endpoint_policy === `adaptive`
         ? adaptive_thin_indices(renderable_indices.length, requested_count)
         : thin_tick_indices(renderable_indices.length, requested_count)
-    const selected_indices = new SvelteSet(
+    const selected_indices = new Set(
       selected_renderable_indices.map((tick_idx) => renderable_indices[tick_idx]),
     )
     // Compose only thinning with the fixed rotation ladder. This adds at most four candidates,
@@ -833,8 +861,8 @@ export const resolve_tick_layout = (
   const label = axis.tick?.label
   const auto_layout = label?.auto_layout
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
+  const tick_positions = axis.tick_positions ?? []
   const key = [
-    side,
     axis_size,
     label?.rotation ?? ``,
     label?.max_lines ?? ``,
@@ -849,14 +877,23 @@ export const resolve_tick_layout = (
     auto_layout?.min_visible_ticks ?? ``,
     auto_layout?.edge_gap ?? ``,
     auto_layout?.endpoint_policy ?? ``,
-    axis.tick_positions?.join(`,`) ?? ``,
     axis.axis_extent ? `${axis.axis_extent.start},${axis.axis_extent.end}` : ``,
     `${font.font_family},${font.font_size},${font.font_style},${font.font_variant},${font.font_weight},${font.font_stretch},${font.line_height}`,
-    full_texts.join(`\u0000`),
   ].join(`|`)
-  const cached = cached_layouts[side]
-  if (cached?.key === key) return cached.value
+  const side_cache = cached_layouts[side] ?? []
+  const cached_idx = side_cache.findIndex(
+    (entry) =>
+      entry.key === key &&
+      arrays_equal(entry.full_texts, full_texts) &&
+      arrays_equal(entry.tick_positions, tick_positions),
+  )
+  const cached = side_cache[cached_idx]
+  if (cached) {
+    if (cached_idx > 0) side_cache.unshift(...side_cache.splice(cached_idx, 1))
+    return cached.value
+  }
   const resolved = compute_tick_layout(axis, axis_size, side, full_texts)
-  cached_layouts[side] = { key, value: resolved }
+  side_cache.unshift({ key, full_texts, tick_positions: [...tick_positions], value: resolved })
+  cached_layouts[side] = side_cache.slice(0, MAX_CACHED_LAYOUTS_PER_SIDE)
   return resolved
 }

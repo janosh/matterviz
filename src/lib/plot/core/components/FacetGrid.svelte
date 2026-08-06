@@ -58,7 +58,8 @@
   const layout_reports = new SvelteMap<FacetKey, FacetPanelLayoutReport>()
   const range_overrides = new SvelteMap<FacetKey, FacetAxisRanges>()
   type PanelCallbacks = Pick<FacetPanelContext<Datum>, `report_layout` | `update_range`>
-  const panel_callbacks = new SvelteMap<FacetKey, PanelCallbacks>()
+  // Native Map: callback identities must not create reactive dependencies when looked up.
+  const panel_callbacks = new Map<FacetKey, PanelCallbacks>()
 
   const layout = $derived(assign_facet_panels(panels, columns, rows))
   const active_shared_bands = $derived.by((): FacetSharedBandSizes => {
@@ -92,18 +93,15 @@
   const resolved_ranges = $derived(
     reconcile_facet_ranges(layout, keyed_reports, axis_modes, keyed_range_overrides),
   )
+  const zero_rect = () => ({ x: 0, y: 0, width: 0, height: 0 })
   const resolved_geometry = $derived.by((): ResolvedFacetGridGeometry => {
     if (grid_width <= 0 || grid_height <= 0) {
-      const rect = { x: 0, y: 0, width: 0, height: 0 }
       return {
-        panel_grid: rect,
-        panels: layout.panels.map(({ key }) => ({
-          key,
-          rect,
-        })),
-        ...(title && { title: { band: `title`, rect } }),
-        ...(legend && { legend: { band: `legend`, rect } }),
-        ...(colorbar && { colorbar: { band: `colorbar`, rect } }),
+        panel_grid: zero_rect(),
+        panels: layout.panels.map(({ key }) => ({ key, rect: zero_rect() })),
+        ...(title && { title: { band: `title`, rect: zero_rect() } }),
+        ...(legend && { legend: { band: `legend`, rect: zero_rect() } }),
+        ...(colorbar && { colorbar: { band: `colorbar`, rect: zero_rect() } }),
       }
     }
     return compute_facet_geometry(layout, {
@@ -255,12 +253,9 @@
       }
       return {
         ...panel,
-        rect: resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ?? {
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-        },
+        rect:
+          resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ??
+          zero_rect(),
         padding: resolved_padding,
         ranges: resolved_ranges.find((entry) => entry.key === panel.key)?.ranges ?? {},
         axis_visibility: resolve_facet_axis_visibility(
@@ -309,17 +304,26 @@
   )
   const content_row = $derived(title ? 2 : 1)
   const colorbar_column = $derived(legend ? 3 : 2)
+  const observe_grid_size = (element: HTMLElement) => {
+    const update_size = () => {
+      grid_width = element.clientWidth
+      grid_height = element.clientHeight
+    }
+    update_size()
+    const observer = new ResizeObserver(update_size)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }
 </script>
 
 <div
+  {@attach observe_grid_size}
   {...rest}
   class={[`facet-grid`, rest.class]}
   style:grid-template-columns={root_columns}
   style:grid-template-rows={root_rows}
   style:row-gap={title ? `${active_shared_bands.gap ?? 0}px` : `0`}
   style:column-gap={legend || colorbar ? `${active_shared_bands.gap ?? 0}px` : `0`}
-  bind:clientWidth={grid_width}
-  bind:clientHeight={grid_height}
 >
   {#if title && resolved_geometry.title}
     <div

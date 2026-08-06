@@ -1,25 +1,37 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
-import { Buffer } from 'node:buffer'
-import { get_chart_svg, IS_CI } from '../helpers'
+import { expect, type Page, test } from '@playwright/test'
+import type { Buffer } from 'node:buffer'
+import {
+  drag_plot_area,
+  get_chart_svg,
+  IS_CI,
+  measure_plot_area,
+  numeric_y_ticks,
+} from '../helpers'
 
 const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
 const default_bz_canvas_selector = `[data-testid="bz-bands-dos-default"] canvas`
 
-async function screenshot_default_bz_canvas(page: Page): Promise<Buffer> {
-  let screenshot: Buffer | undefined
-  await expect(async () => {
-    const canvas = page.locator(default_bz_canvas_selector).first()
-    await expect(canvas).toBeVisible({ timeout: 5000 })
-    screenshot = await canvas.screenshot()
-  }).toPass({ timeout: 10_000 })
-  if (!screenshot) throw new Error(`Could not capture BZ canvas screenshot`)
-  return screenshot
-}
+const screenshot_default_bz_canvas = (page: Page): Promise<Buffer> =>
+  page.locator(default_bz_canvas_selector).first().screenshot()
 
-const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
-  (await plot.locator(`g.y-axis text`).allTextContents()).filter(
-    (text) => text.trim() !== `` && Number.isFinite(Number(text)),
+async function get_default_desktop_plots(page: Page) {
+  await page.setViewportSize({ width: 1400, height: 800 })
+  const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
+  await container.evaluate((element) => {
+    element.style.width = `1200px`
+  })
+  await expect(container).toHaveClass(/desktop/)
+  const plots = container.locator(`.scatter`)
+  const bands_plot = plots.first()
+  const dos_plot = plots.nth(1)
+  await expect(plots).toHaveCount(2)
+  await Promise.all(
+    [bands_plot, dos_plot].map((plot) =>
+      expect(get_chart_svg(plot)).toBeVisible({ timeout: 30_000 }),
+    ),
   )
+  return { bands_plot, dos_plot }
+}
 
 // Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
 test.describe.configure({ mode: `serial` })
@@ -32,10 +44,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Skip in CI - 3D WebGL canvas interactions are unreliable
     test.skip(IS_CI, `3D canvas tests are flaky in CI`)
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
-    // Wait for the default container and basic structure to be present
-    // Use longer timeout since WebGL/3D initialization can be slow in CI
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container).toBeVisible({ timeout: 20000 })
     // Wait for canvas (BZ) to be present - WebGL may take time to initialize
     await expect(container.locator(`canvas`).first()).toBeVisible({ timeout: 20000 })
   })
@@ -127,92 +136,49 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   })
 
   test(`BZ rotates with mouse drag`, async ({ page }) => {
-    // Configure retries for 3D canvas mouse drag tests which can be timing-sensitive
-    test.info().annotations.push({ type: `slow`, description: `3D canvas interaction` })
-
     const bz_canvas = page.locator(default_bz_canvas_selector).first()
     await expect(bz_canvas).toBeVisible({ timeout: 10000 })
     const initial = await screenshot_default_bz_canvas(page)
 
     const box = await bz_canvas.boundingBox()
-    if (box) {
-      const center_x = box.x + box.width / 2
-      const center_y = box.y + box.height / 2
-      await page.mouse.move(center_x, center_y)
-      await page.mouse.down()
-      await page.mouse.move(center_x + 50, center_y, { steps: 10 })
-      await page.mouse.up()
+    if (!box) throw new Error(`Missing BZ canvas geometry`)
+    const center_x = box.x + box.width / 2
+    const center_y = box.y + box.height / 2
+    await page.mouse.move(center_x, center_y)
+    await page.mouse.down()
+    await page.mouse.move(center_x + 50, center_y, { steps: 10 })
+    await page.mouse.up()
 
-      // Wait for canvas to repaint after drag with retry
-      await expect(async () => {
-        const after = await screenshot_default_bz_canvas(page)
-        expect(initial.equals(after)).toBe(false)
-      }).toPass({ timeout: 5000 })
-    }
-
-    expect(Buffer.compare(initial, await screenshot_default_bz_canvas(page))).not.toBe(0)
+    await expect(async () => {
+      expect(initial.equals(await screenshot_default_bz_canvas(page))).toBe(false)
+    }).toPass({ timeout: 5000 })
   })
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
-    await page.setViewportSize({ width: 1400, height: 800 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const plots = container.locator(`.scatter`)
-    await expect(plots).toHaveCount(2)
-    const bands_plot = plots.first()
-    const dos_plot = plots.nth(1)
-    await expect(get_chart_svg(bands_plot)).toBeVisible({ timeout: 30_000 })
-    await expect(get_chart_svg(dos_plot)).toBeVisible({ timeout: 30_000 })
+    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
 
     // Equal outer panel heights are insufficient: the clipped drawable regions
     // must use the same top offset and height for matching y coordinates.
     const bands_clip = bands_plot.locator(`clipPath rect`)
     const dos_clip = dos_plot.locator(`clipPath rect`)
-    await expect(bands_clip).toHaveCount(1)
-    await expect(dos_clip).toHaveCount(1)
-    for (const attribute of [`y`, `height`]) {
-      expect(await bands_clip.getAttribute(attribute)).toBe(
-        await dos_clip.getAttribute(attribute),
-      )
-    }
-
-    expect(await numeric_y_ticks(bands_plot)).toEqual(await numeric_y_ticks(dos_plot))
+    await expect(async () => {
+      for (const attribute of [`y`, `height`]) {
+        expect(await bands_clip.getAttribute(attribute)).toBe(
+          await dos_clip.getAttribute(attribute),
+        )
+      }
+      expect(await numeric_y_ticks(bands_plot)).toEqual(await numeric_y_ticks(dos_plot))
+    }).toPass({ timeout: 30_000 })
   })
 
   test(`desktop y-axis zoom and reset propagate from either panel`, async ({ page }) => {
-    await page.setViewportSize({ width: 1400, height: 800 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const plots = container.locator(`.scatter`)
-    await expect(plots).toHaveCount(2)
-    const bands_plot = plots.first()
-    const dos_plot = plots.nth(1)
+    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
     const bands_svg = get_chart_svg(bands_plot)
     const dos_svg = get_chart_svg(dos_plot)
-    await expect(bands_svg).toBeVisible({ timeout: 30_000 })
-    await expect(dos_svg).toBeVisible({ timeout: 30_000 })
-    const clip = await bands_plot.locator(`clipPath rect`).evaluate((element) => ({
-      x: Number(element.getAttribute(`x`)),
-      y: Number(element.getAttribute(`y`)),
-      width: Number(element.getAttribute(`width`)),
-      height: Number(element.getAttribute(`height`)),
-    }))
-    const svg_box = await bands_svg.boundingBox()
-    if (!svg_box || Object.values(clip).some((value) => !Number.isFinite(value))) {
-      throw new Error(`Could not measure the bands plot area`)
-    }
-
+    const bands_area = await measure_plot_area(bands_plot)
+    await expect.poll(() => numeric_y_ticks(bands_plot), { timeout: 10_000 }).not.toEqual([])
     const initial_bands_ticks = await numeric_y_ticks(bands_plot)
-
-    await page.mouse.move(
-      svg_box.x + clip.x + clip.width * 0.15,
-      svg_box.y + clip.y + clip.height * 0.15,
-    )
-    await page.mouse.down()
-    await page.mouse.move(
-      svg_box.x + clip.x + clip.width * 0.85,
-      svg_box.y + clip.y + clip.height * 0.75,
-      { steps: 5 },
-    )
-    await page.mouse.up()
+    await drag_plot_area(page, bands_area)
 
     await expect(async () => {
       const bands_ticks = await numeric_y_ticks(bands_plot)
@@ -222,37 +188,17 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     await bands_svg.dblclick({
       position: {
-        x: clip.x + clip.width / 2,
-        y: clip.y + clip.height / 2,
+        x: bands_area.clip.x + bands_area.clip.width / 2,
+        y: bands_area.clip.y + bands_area.clip.height / 2,
       },
     })
-    let reset_ticks: string[] = []
     await expect(async () => {
-      reset_ticks = await numeric_y_ticks(bands_plot)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(reset_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(await numeric_y_ticks(bands_plot))
     }).toPass({ timeout: 10_000 })
+    const reset_ticks = await numeric_y_ticks(bands_plot)
 
-    const dos_clip = await dos_plot.locator(`clipPath rect`).evaluate((element) => ({
-      x: Number(element.getAttribute(`x`)),
-      y: Number(element.getAttribute(`y`)),
-      width: Number(element.getAttribute(`width`)),
-      height: Number(element.getAttribute(`height`)),
-    }))
-    const dos_svg_box = await dos_svg.boundingBox()
-    if (!dos_svg_box || Object.values(dos_clip).some((value) => !Number.isFinite(value))) {
-      throw new Error(`Could not measure the DOS plot area`)
-    }
-    await page.mouse.move(
-      dos_svg_box.x + dos_clip.x + dos_clip.width * 0.15,
-      dos_svg_box.y + dos_clip.y + dos_clip.height * 0.15,
-    )
-    await page.mouse.down()
-    await page.mouse.move(
-      dos_svg_box.x + dos_clip.x + dos_clip.width * 0.85,
-      dos_svg_box.y + dos_clip.y + dos_clip.height * 0.75,
-      { steps: 5 },
-    )
-    await page.mouse.up()
+    const dos_area = await measure_plot_area(dos_plot)
+    await drag_plot_area(page, dos_area)
 
     await expect(async () => {
       const dos_ticks = await numeric_y_ticks(dos_plot)
@@ -261,8 +207,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     }).toPass({ timeout: 10_000 })
     await dos_svg.dblclick({
       position: {
-        x: dos_clip.x + dos_clip.width / 2,
-        y: dos_clip.y + dos_clip.height / 2,
+        x: dos_area.clip.x + dos_area.clip.width / 2,
+        y: dos_area.clip.y + dos_area.clip.height / 2,
       },
     })
     await expect(async () => {
@@ -286,7 +232,6 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     expect(grid_template).toContain(`dos`)
 
     // All three components should be visible
-    await expect(container.locator(`canvas`).first()).toBeVisible()
     await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
     await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
@@ -337,7 +282,6 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // All components still visible
-    await expect(container.locator(`canvas`).first()).toBeVisible()
     await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
     await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
@@ -350,20 +294,16 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const dos_svg_wide = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg_wide).toBeVisible()
     const dos_box_wide = await dos_svg_wide.boundingBox()
-    expect(dos_box_wide).toBeTruthy()
-    if (dos_box_wide) {
-      expect(dos_box_wide.width).toBeLessThan(dos_box_wide.height * 2)
-    }
+    if (!dos_box_wide) throw new Error(`Missing desktop DOS geometry`)
+    expect(dos_box_wide.width).toBeLessThan(dos_box_wide.height * 2)
 
     // Tablet/Phone: vertical DOS (wider than tall)
     await page.setViewportSize({ width: 800, height: 700 })
     const dos_svg_narrow = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg_narrow).toBeVisible()
     const dos_box_narrow = await dos_svg_narrow.boundingBox()
-    expect(dos_box_narrow).toBeTruthy()
-    if (dos_box_narrow) {
-      expect(dos_box_narrow.width).toBeGreaterThan(dos_box_narrow.height * 0.5)
-    }
+    if (!dos_box_narrow) throw new Error(`Missing tablet DOS geometry`)
+    expect(dos_box_narrow.width).toBeGreaterThan(dos_box_narrow.height * 0.5)
   })
 
   test(`BZ respects height constraints on tablet layout`, async ({ page }) => {
@@ -374,13 +314,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const canvas_box = await bz_canvas.boundingBox()
     const container_box = await container.boundingBox()
 
-    expect(canvas_box).toBeTruthy()
-    expect(container_box).toBeTruthy()
-
-    if (canvas_box && container_box) {
-      // BZ should not overflow container height
-      expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
-    }
+    if (!canvas_box || !container_box) throw new Error(`Missing tablet BZ geometry`)
+    // BZ should not overflow container height
+    expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
   })
 
   test(`grid gap is applied consistently`, async ({ page }) => {
@@ -420,18 +356,14 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // BZ should still rotate
     const initial = await bz_canvas.screenshot()
     const box = await bz_canvas.boundingBox()
-    if (box) {
-      await page.mouse.move(box.x + 50, box.y + 50)
-      await page.mouse.down()
-      await page.mouse.move(box.x + 100, box.y + 50)
-      await page.mouse.up()
-
-      // Wait for canvas to repaint after drag
-      await page.waitForFunction(
-        () => new Promise((resolve) => requestAnimationFrame(() => resolve(true))),
-      )
-    }
-    expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
+    if (!box) throw new Error(`Missing BZ canvas geometry`)
+    await page.mouse.move(box.x + 50, box.y + 50)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 100, box.y + 50)
+    await page.mouse.up()
+    await expect(async () => {
+      expect(initial.equals(await bz_canvas.screenshot())).toBe(false)
+    }).toPass({ timeout: 5000 })
 
     // Bands should still be hoverable
     await bands_svg
@@ -441,7 +373,6 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
         position: { x: 50, y: 50 },
         force: true,
       })
-    await expect(bands_svg).toBeVisible()
   })
 
   test(`hovering over DOS shows reference lines in both bands and DOS`, async ({ page }) => {

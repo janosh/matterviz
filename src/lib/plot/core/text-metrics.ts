@@ -104,6 +104,26 @@ const parse_line_height = (
   return parsed
 }
 
+// Resolve a CSS font-size to pixels. Bare numbers and px are absolute; em/rem/% scale from
+// parent_font_size (typically the inherited computed size from resolve_font_spec).
+export function resolve_font_size_css(
+  value: string | undefined,
+  parent_font_size: number = DEFAULT_FONT_SPEC.font_size,
+): number {
+  const parent = positive_number(parent_font_size, DEFAULT_FONT_SPEC.font_size)
+  const normalized = value?.trim().toLowerCase() ?? ``
+
+  const match = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(px|pt|em|rem|%)?$/u.exec(normalized)
+  if (!match) return parse_font_size(normalized, parent)
+
+  const parsed = Number(match[1])
+  if (!(parsed > 0) || !Number.isFinite(parsed)) return parent
+  const unit = match[2]
+  if (unit === `em` || unit === `rem`) return parsed * parent
+  if (unit === `%`) return (parsed / 100) * parent
+  return unit === `pt` ? parsed * (96 / 72) : parsed
+}
+
 // Resolve the inherited font actually applied to an HTML or SVG element. Computed font sizes
 // are pixels in browsers; deterministic fallback values keep this safe during SSR and tests.
 export function resolve_font_spec(

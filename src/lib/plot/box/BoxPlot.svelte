@@ -23,13 +23,8 @@
     ViolinSide,
     WhiskerMode,
   } from '$lib/plot'
-  import {
-    BoxPlotControls,
-    PlotAxis,
-    PlotLegend,
-    PlotMarginals,
-    ReferenceLine,
-  } from '$lib/plot'
+  import { BoxPlotControls, PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -64,17 +59,17 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    measured_axis,
     resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { FontSpec } from '$lib/plot/core/text-metrics'
-  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
+  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import {
-    get_reference_annotation_placement,
     group_ref_lines_by_z,
     index_ref_lines,
     solve_reference_annotations,
@@ -184,7 +179,7 @@
     pan = {},
     marginals = false,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
       series?: BoxPlotSeries<Metadata>[]
@@ -497,6 +492,33 @@
     current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
 
+  const get_plot_ticks = (axis_scales: ReturnType<typeof create_axis_scales>) => {
+    const axis_ticks = (
+      axis: typeof x_axis,
+      range: Vec2,
+      scale: typeof axis_scales.x,
+      default_count: number,
+      show = true,
+    ) =>
+      width && height && show
+        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
+            default_count,
+          })
+        : []
+    return {
+      x:
+        cat_axis === `x` && width && height
+          ? slot_indices
+          : axis_ticks(x_axis, ranges.current.x, axis_scales.x, 8),
+      y:
+        cat_axis === `y` && width && height
+          ? slot_indices
+          : axis_ticks(y_axis, ranges.current.y, axis_scales.y, 6),
+      y2: axis_ticks(y2_axis, ranges.current.y2, axis_scales.y2, 6, show_y2),
+      x2: axis_ticks(x2_axis, ranges.current.x2, axis_scales.x2, 8, show_x2),
+    }
+  }
+
   $effect(() => {
     // sync ranges from axis.range overrides / auto ranges
     // resolve_axis_ranges returns null for transient non-finite bounds (skip: writing
@@ -520,6 +542,16 @@
 
   $effect(() => {
     // dynamic padding from tick label widths
+    const padding_scales = create_axis_scales(
+      { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis },
+      ranges.current,
+      base_pad,
+      width,
+      height,
+    )
+    const padding_ticks = get_plot_ticks(padding_scales)
+    const x_extent = { start: base_pad.l, end: width - base_pad.r }
+    const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const axis_pad =
       width && height
         ? calc_auto_padding({
@@ -527,45 +559,37 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: {
-              ...x_axis,
-              ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
-              tick_values: ticks.x,
-              tick_positions: ticks.x.map(scales.x),
-              axis_extent: { start: pad.l, end: width - pad.r },
+            x_axis: measured_axis(
+              { ...x_axis, ticks: cat_axis === `x` ? effective_cat_ticks : x_axis.ticks },
+              padding_ticks.x,
+              padding_scales.x,
+              x_extent,
               tick_font,
-            },
-            x2_axis: {
-              ...x2_axis,
-              tick_values: ticks.x2,
-              tick_positions: ticks.x2.map(scales.x2),
-              axis_extent: { start: pad.l, end: width - pad.r },
+            ),
+            x2_axis: measured_axis(
+              x2_axis,
+              padding_ticks.x2,
+              padding_scales.x2,
+              x_extent,
               tick_font,
-            },
-            y_axis: {
-              ...y_axis,
-              ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-              tick_values: ticks.y,
-              tick_positions: ticks.y.map(scales.y),
-              axis_extent: { start: height - pad.b, end: pad.t },
+            ),
+            y_axis: measured_axis(
+              { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+              padding_ticks.y,
+              padding_scales.y,
+              y_extent,
               tick_font,
-            },
-            y2_axis: {
-              ...y2_axis,
-              tick_values: ticks.y2,
-              tick_positions: ticks.y2.map(scales.y2),
-              axis_extent: { start: height - pad.b, end: pad.t },
+            ),
+            y2_axis: measured_axis(
+              y2_axis,
+              padding_ticks.y2,
+              padding_scales.y2,
+              y_extent,
               tick_font,
-            },
+            ),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    const title_height =
-      width && height
-        ? resolve_plot_title(title_config, {
-            width: Math.max(0, width - axis_pad.l - axis_pad.r),
-          }).block_height
-        : 0
-    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
 
@@ -714,59 +738,29 @@
     return Object.fromEntries(slot_list.map((cat, idx) => [idx, cat]))
   })
 
-  let ticks = $derived.by(() => {
-    const axis_ticks = (
-      axis: typeof x_axis,
-      range: Vec2,
-      scale: typeof scales.x,
-      default_count: number,
-      show = true,
-    ) =>
-      width && height && show
-        ? generate_ticks(range, axis.scale_type ?? `linear`, axis.ticks, scale, {
-            default_count,
-          })
-        : []
-    // categorical axes show one tick per slot instead of generated numeric ticks
-    return {
-      x:
-        cat_axis === `x` && width && height
-          ? slot_indices
-          : axis_ticks(x_axis, ranges.current.x, scales.x, 8),
-      y:
-        cat_axis === `y` && width && height
-          ? slot_indices
-          : axis_ticks(y_axis, ranges.current.y, scales.y, 6),
-      y2: axis_ticks(y2_axis, ranges.current.y2, scales.y2, 6, show_y2),
-      x2: axis_ticks(x2_axis, ranges.current.x2, scales.x2, 8, show_x2),
-    }
-  })
+  let ticks = $derived(get_plot_ticks(scales))
 
   // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
-  let tick_label_widths = $derived({
-    y_max: resolve_tick_layout(
-      {
-        ...y_axis,
-        ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
-        tick_values: ticks.y,
-        tick_positions: ticks.y.map(scales.y),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      chart_height,
-      `y`,
-    ).band,
-    y2_max: resolve_tick_layout(
-      {
-        ...y2_axis,
-        tick_values: ticks.y2,
-        tick_positions: ticks.y2.map(scales.y2),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      chart_height,
-      `y2`,
-    ).band,
+  let tick_label_widths = $derived.by(() => {
+    const extent = { start: height - pad.b, end: pad.t }
+    return {
+      y_max: resolve_tick_layout(
+        measured_axis(
+          { ...y_axis, ticks: cat_axis === `y` ? effective_cat_ticks : y_axis.ticks },
+          ticks.y,
+          scales.y,
+          extent,
+          tick_font,
+        ),
+        chart_height,
+        `y`,
+      ).band,
+      y2_max: resolve_tick_layout(
+        measured_axis(y2_axis, ticks.y2, scales.y2, extent, tick_font),
+        chart_height,
+        `y2`,
+      ).band,
+    }
   })
 
   // Shared pan/zoom/touch/drag-rect interaction controller
@@ -923,33 +917,17 @@
   />
 {/snippet}
 
-{#snippet ref_lines_layer(lines: IndexedRefLine[])}
-  {#each lines as line (line.id ?? line.idx)}
-    <ReferenceLine
-      ref_line={line}
-      line_idx={line.idx}
-      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
-      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
-      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
-      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
-      x_scale={scales.x}
-      x2_scale={scales.x2}
-      y_scale={scales.y}
-      y2_scale={scales.y2}
-      {clip_path_id}
-      hovered_line_idx={hovered_ref_line_idx}
-      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
-      on_click={(event: RefLineEvent) => {
-        line.on_click?.(event)
-        on_ref_line_click?.(event)
-      }}
-      on_hover={(event: RefLineEvent | null) => {
-        hovered_ref_line_idx = event?.line_idx ?? null
-        line.on_hover?.(event)
-        on_ref_line_hover?.(event)
-      }}
-    />
-  {/each}
+{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
+  <ReferenceLinesLayer
+    {lines}
+    ranges={ranges.current}
+    {scales}
+    {clip_path_id}
+    {decoration_solution}
+    bind:hovered_line_idx={hovered_ref_line_idx}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <svelte:window

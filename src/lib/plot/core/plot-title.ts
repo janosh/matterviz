@@ -5,6 +5,7 @@ import {
   type FontSpec,
   type TextLineMetrics,
 } from './text-metrics'
+import type { Sides } from './layout'
 
 export type PlotTitleAlign = `start` | `middle` | `end`
 export type PlotTitleFontOverrides = Partial<FontSpec>
@@ -25,6 +26,19 @@ export type PlotTitleProp = string | PlotTitleConfig
 export const normalize_plot_title = (
   title: PlotTitleProp | null | undefined,
 ): PlotTitleConfig | null => (typeof title === `string` ? { text: title } : (title ?? null))
+
+export const pad_for_plot_title = (
+  pad: Required<Sides>,
+  config: PlotTitleConfig | null,
+  width: number,
+  height: number,
+): Required<Sides> => {
+  const title_height =
+    width > 0 && height > 0
+      ? resolve_plot_title(config, { width: Math.max(0, width - pad.l - pad.r) }).block_height
+      : 0
+  return { ...pad, t: pad.t + title_height }
+}
 
 export interface PlotTitleLayoutInput {
   width: number

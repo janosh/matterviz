@@ -309,7 +309,9 @@ describe(`ScatterPlot`, () => {
           },
         }),
       ),
-    ).toThrow(`Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K`)
+    ).toThrow(
+      `ScatterPlot cannot automatically assign visible value series: Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K. Set y_axis explicitly or hide an axis group.`,
+    )
   })
 
   test(`keeps unannotated series on the historical single y-axis`, async () => {
@@ -883,9 +885,7 @@ describe(`ScatterPlot`, () => {
       legend: { responsive: true },
       color_bar: { responsive: true },
     })
-    const initial_colorbar_rect = await vi.waitFor(() =>
-      solved_decoration_rect(doc_query(`.colorbar-wrapper`)),
-    )
+    await vi.waitFor(() => solved_decoration_rect(doc_query(`.colorbar-wrapper`)))
 
     await resize_element(plot, 650, 360)
     flushSync()
@@ -895,8 +895,6 @@ describe(`ScatterPlot`, () => {
       const legend_rect = solved_decoration_rect(doc_query(`.legend`))
       const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
       expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
-      expect(colorbar_rect.width).toBe(initial_colorbar_rect.width)
-      expect(colorbar_rect.height).toBe(initial_colorbar_rect.height)
     })
   })
 

@@ -7,6 +7,7 @@ import {
   measure_css_text_width,
   measure_text_block,
   measure_text_line,
+  resolve_font_size_css,
   resolve_font_spec,
   wrap_text_paragraph,
   type FontSpec,
@@ -66,6 +67,18 @@ describe(`text metrics`, () => {
     expect(font_spec_to_css(TEST_FONT)).toBe(
       `italic small-caps 700 condensed 16px "Inter", sans-serif`,
     )
+  })
+
+  it.each([
+    [`12px`, 16, 12],
+    [`12`, 16, 12],
+    [`1.5em`, 20, 30],
+    [`1.5rem`, 20, 30],
+    [`150%`, 20, 30],
+    [`12pt`, 16, 16],
+    [undefined, 18, 18],
+  ] as const)(`resolve_font_size_css(%j, %j) = %j`, (value, parent, expected) => {
+    expect(resolve_font_size_css(value, parent)).toBe(expected)
   })
 
   it(`resolves normal and unitless line heights deterministically`, () => {

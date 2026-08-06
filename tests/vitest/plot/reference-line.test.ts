@@ -1,4 +1,5 @@
 import type { Vec2 } from '$lib/math'
+import { place_reference_annotation } from '$lib/plot/core/decorations/reference-annotations'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
   calculate_annotation_position,
@@ -8,13 +9,14 @@ import {
   index_ref_lines,
   normalize_point,
   normalize_value,
+  reference_annotation_text_rect,
   resolve_reference_annotation,
   resolve_line_endpoints,
   span_or,
 } from '$lib/plot/core/reference-line'
 import type { RefLine } from '$lib/plot/core/types'
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 describe(`normalize_value`, () => {
   test.each([
@@ -307,9 +309,18 @@ describe(`calculate_annotation_position`, () => {
 
 describe(`reference annotation candidates`, () => {
   const endpoints: [number, number, number, number] = [0, 100, 200, 100]
+  const metrics = {
+    text_width: 40,
+    font_size: 12,
+    text_ascent: 9,
+    text_descent: 3,
+    padding: 2,
+  }
+  beforeEach(clear_text_metrics_cache)
+  afterEach(() => vi.restoreAllMocks())
 
   test(`uses measured glyph width and ascent for annotation footprints`, () => {
-    const context_spy = vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,
       measureText: () => ({
         width: 37,
@@ -317,22 +328,74 @@ describe(`reference annotation candidates`, () => {
         actualBoundingBoxDescent: 3,
       }),
     } as unknown as CanvasRenderingContext2D)
-    try {
-      clear_text_metrics_cache()
-      const metrics = estimate_reference_annotation_metrics({ text: `Wiii`, padding: 3 })
+    const measured = estimate_reference_annotation_metrics({ text: `Wiii`, padding: 3 })
+    const candidate = create_reference_annotation_candidates(
+      endpoints,
+      { text: `Wiii`, padding: 3 },
+      measured,
+    )[0]
+    expect(measured).toMatchObject({ text_width: 37, text_ascent: 9, text_descent: 3 })
+    expect([candidate.rect.width, candidate.rect.height]).toEqual([43, 18])
+  })
+
+  test(`resolves relative em font-size before measuring annotation text`, () => {
+    const context = {
+      font: ``,
+      measureText: () => ({
+        width: 20,
+        actualBoundingBoxAscent: 8,
+        actualBoundingBoxDescent: 2,
+      }),
+    }
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
+      context as unknown as CanvasRenderingContext2D,
+    )
+    vi.spyOn(window, `getComputedStyle`).mockReturnValue({
+      fontFamily: `serif`,
+      fontSize: `20px`,
+      fontStyle: `normal`,
+      fontVariant: `normal`,
+      fontWeight: `400`,
+      fontStretch: `normal`,
+      lineHeight: `24px`,
+    } as CSSStyleDeclaration)
+    const measured = estimate_reference_annotation_metrics({
+      text: `Em`,
+      font_size: `1.5em`,
+    })
+    expect(measured.font_size).toBe(30)
+    expect(context.font).toContain(`30px`)
+  })
+
+  test.each([
+    [`above`, `auto`, `middle`, 100 - 9 - 2],
+    [`below`, `hanging`, `middle`, 100 - 2],
+    [`left`, `middle`, `end`, 100 - (9 + 3) / 2 - 2],
+    [`right`, `middle`, `start`, 100 - (9 + 3) / 2 - 2],
+  ] as const)(
+    `baseline rectangle for %s starts from dominant baseline geometry`,
+    (side, dominant_baseline, text_anchor, expected_y) => {
+      const anchor = {
+        x: 100,
+        y: 100,
+        text_anchor,
+        dominant_baseline,
+      }
+      const rect = reference_annotation_text_rect(anchor, metrics)
+      expect(rect.y).toBeCloseTo(expected_y, 10)
+      expect([rect.width, rect.height]).toEqual([40 + 2 * 2, 9 + 3 + 2 * 2])
       const candidate = create_reference_annotation_candidates(
         endpoints,
-        { text: `Wiii`, padding: 3 },
+        { text: `Label`, side, position: `center`, gap: 0 },
         metrics,
       )[0]
-      expect(metrics).toMatchObject({ text_width: 37, text_ascent: 9, text_descent: 3 })
-      expect(candidate.rect.width).toBe(43)
-      expect(candidate.rect.height).toBe(18)
-    } finally {
-      context_spy.mockRestore()
-      clear_text_metrics_cache()
-    }
-  })
+      expect(candidate.dominant_baseline).toBe(dominant_baseline)
+      expect(candidate.rect.y).toBeCloseTo(
+        reference_annotation_text_rect(candidate, metrics).y,
+        10,
+      )
+    },
+  )
 
   test(`keeps the legacy end-above placement when there are no obstacles`, () => {
     const annotation = { text: `Threshold` }
@@ -361,6 +424,27 @@ describe(`reference annotation candidates`, () => {
     })
     expect(resolved.side).toBe(`below`)
     expect(resolved.rect).not.toEqual(preferred.rect)
+  })
+
+  test(`keeps exclusion collisions costlier than arbitrarily dense obstacles`, () => {
+    const [excluded_candidate, crowded_candidate] = create_reference_annotation_candidates(
+      endpoints,
+      { text: `Dense obstacles` },
+    )
+    const { candidate } = place_reference_annotation({
+      item: {
+        id: `dense-obstacles`,
+        kind: `reference-annotation`,
+        footprint: { width: 10, height: 10 },
+        candidates: [excluded_candidate, crowded_candidate],
+      },
+      exclusion_rects: [excluded_candidate.rect],
+      obstacles: Array.from({ length: 100 }, () => ({
+        x: crowded_candidate.rect.x + crowded_candidate.rect.width / 2,
+        y: crowded_candidate.rect.y + crowded_candidate.rect.height / 2,
+      })),
+    })
+    expect(candidate).toBe(crowded_candidate)
   })
 
   test(`keeps explicit position and side pinned through collisions`, () => {

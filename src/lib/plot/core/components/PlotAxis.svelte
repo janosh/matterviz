@@ -1,17 +1,24 @@
+<script module lang="ts">
+  import { clear_tick_metrics_cache } from '$lib/plot/core/layout'
+  import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
+
+  // One shared fonts-ready invalidation for every PlotAxis instance; each axis still re-resolves
+  // its own rendered font after the promise settles.
+  let fonts_ready_metrics: Promise<void> | undefined
+  const after_fonts_ready_metrics = (): Promise<void> =>
+    (fonts_ready_metrics ??= invalidate_text_metrics_after_fonts_ready().then(
+      clear_tick_metrics_cache,
+    ))
+</script>
+
 <script lang="ts">
   import { format_value_or_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import {
-    clear_tick_metrics_cache,
-    resolve_tick_layout,
-    type Sides,
-    TICK_LABEL_HEIGHT,
-  } from '$lib/plot/core/layout'
+  import { resolve_tick_layout, type Sides, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
   import {
     DEFAULT_FONT_SPEC,
-    invalidate_text_metrics_after_fonts_ready,
     resolve_font_spec,
     type FontSpec,
   } from '$lib/plot/core/text-metrics'
@@ -92,10 +99,7 @@
       on_tick_font?.(tick_font)
     }
     void resolve_rendered_font()
-    void invalidate_text_metrics_after_fonts_ready().then(() => {
-      clear_tick_metrics_cache()
-      return resolve_rendered_font()
-    })
+    void after_fonts_ready_metrics().then(resolve_rendered_font)
     return () => {
       mounted = false
     }

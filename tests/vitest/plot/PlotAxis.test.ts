@@ -368,6 +368,7 @@ describe(`PlotAxis`, () => {
   })
 
   test(`adaptive thinning hides crowded labels but keeps their full text`, async () => {
+    mock_text_measurement()
     const labels = [`Alpha label`, `Beta label`, `Gamma label`, `Delta label`]
     const svg = await mount_axis({
       side: `x`,
@@ -420,6 +421,7 @@ describe(`PlotAxis`, () => {
   })
 
   test(`edge labels anchor inward`, async () => {
+    mock_text_measurement()
     const svg = await mount_axis({
       side: `x`,
       ticks: [pad.l, width - pad.r],

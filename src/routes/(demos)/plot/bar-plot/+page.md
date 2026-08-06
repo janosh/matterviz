@@ -1430,7 +1430,10 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
   const series = [{ x: synthesis_routes, y: observations, color: `#4c6ef5` }]
 </script>
 
-<div data-testid="adaptive-tick-demo">
+<div
+  data-testid="adaptive-tick-demo"
+  style="width: min(900px, calc(100vw - 2em)); margin-left: 50%; transform: translateX(-50%)"
+>
   <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
     <label
       >Width: {chart_width}px

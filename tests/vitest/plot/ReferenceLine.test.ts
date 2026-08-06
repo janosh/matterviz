@@ -149,7 +149,10 @@ describe(`ReferenceLine`, () => {
     const selected = create_reference_annotation_candidates(
       [x_scale(0), y_scale(50), x_scale(100), y_scale(50)],
       annotation,
-    )[5]
+    ).find(({ position, side }) => position === `center` && side === `below`)
+    if (!selected) {
+      throw new Error(`expected center-below annotation candidate`)
+    }
     mount_line({ type: `horizontal`, y: 50, annotation }, { annotation_placement: selected })
     const text = doc_query(`text`)
     expect(Number(text.getAttribute(`x`))).toBe(selected.x)

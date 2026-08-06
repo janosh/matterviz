@@ -11,7 +11,7 @@
   import { strip_html } from '$lib/table'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
   const instance_id = unique_id()
@@ -82,62 +82,19 @@
   } = $props()
 
   let is_dragging = $state(false)
-  let drag_start_coords = $state<{ x: number; y: number } | null>(null)
   let legend_filter = $state(``)
 
-  // Group series by legend_group, preserving order
-  type GroupedData = {
-    group_name: string | null
-    items: LegendItem[]
-    all_items?: LegendItem[]
-  }
-  let grouped_series = $derived.by<GroupedData[]>(() => {
-    const groups: GroupedData[] = []
-    const group_map = new SvelteMap<string | null, LegendItem[]>()
-
-    for (const item of series_data) {
-      const group_key = item.legend_group ?? null
-      let group_items = group_map.get(group_key)
-      if (!group_items) {
-        group_items = []
-        group_map.set(group_key, group_items)
-        groups.push({ group_name: group_key, items: group_items })
-      }
-      group_items.push(item)
-    }
-    return groups
-  })
-
-  // Check if any grouping is present
-  let has_groups = $derived(
-    grouped_series.some((group) => group.group_name !== null && group.items.length > 0),
-  )
-
+  let has_groups = $derived(series_data.some(({ legend_group }) => legend_group != null))
   let show_filter = $derived(filterable && series_data.length >= filter_threshold)
 
-  let filtered_grouped_series = $derived.by<GroupedData[]>(() => {
-    const filter = show_filter ? legend_filter.trim().toLowerCase() : ``
-    if (!filter) return grouped_series
-    return grouped_series
-      .map(({ group_name, items }) => ({
-        group_name,
-        all_items: items,
-        items: items.filter((item) =>
-          `${group_name ?? ``} ${strip_html(item.label)}`.toLowerCase().includes(filter),
-        ),
-      }))
-      .filter(({ items }) => items.length > 0)
-  })
-
-  const estimate_text_width = (text: string): number => Array.from(strip_html(text)).length * 7
   const estimate_item_extent = (
     label: string,
     kind: `item` | `indented-item` | `group` | `filter` | `empty`,
   ): Required<LegendItemExtent> => {
     if (kind === `filter`) return { width: 160, height: 25 }
-    if (kind === `empty`) return { width: estimate_text_width(label) + 11, height: 20 }
-    const fixed_width = kind === `group` ? 27 : kind === `indented-item` ? 52 : 39
-    return { width: estimate_text_width(label) + fixed_width, height: 20 }
+    const chrome_width =
+      kind === `group` ? 27 : kind === `indented-item` ? 52 : kind === `item` ? 39 : 11
+    return { width: Array.from(strip_html(label)).length * 7 + chrome_width, height: 20 }
   }
 
   let legend_grid_cells = $derived(
@@ -156,23 +113,19 @@
   let auto_item_extents = $derived.by<LegendItemExtent[]>(() => {
     if (layout_tracks !== `auto`) return []
     return legend_grid_cells.map((cell, cell_idx) => {
-      let estimate: Required<LegendItemExtent>
-      if (cell.kind === `filter`) estimate = estimate_item_extent(``, `filter`)
-      else if (cell.kind === `empty`)
-        estimate = estimate_item_extent(`No legend items`, `empty`)
-      else if (cell.kind === `group`) estimate = estimate_item_extent(cell.group, `group`)
-      else {
-        const item = series_data[cell.item_idx]
-        estimate = estimate_item_extent(
-          item?.label ?? ``,
-          item?.legend_group && has_groups ? `indented-item` : `item`,
-        )
-      }
+      const item = cell.kind === `item` ? series_data[cell.item_idx] : undefined
+      const estimate = estimate_item_extent(
+        cell.kind === `empty`
+          ? `No legend items`
+          : cell.kind === `group`
+            ? cell.group
+            : (item?.label ?? ``),
+        cell.kind === `item` ? (item?.legend_group ? `indented-item` : `item`) : cell.kind,
+      )
+      const measured = item_extents?.[cell_idx]
       return {
-        width:
-          item_extents?.[cell_idx]?.width ?? estimated_item_extent?.width ?? estimate.width,
-        height:
-          item_extents?.[cell_idx]?.height ?? estimated_item_extent?.height ?? estimate.height,
+        width: measured?.width ?? estimated_item_extent?.width ?? estimate.width,
+        height: measured?.height ?? estimated_item_extent?.height ?? estimate.height,
       }
     })
   })
@@ -200,7 +153,7 @@
     if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }
 
-  const handle_group_click = (group_name: string, items: LegendItem[]) =>
+  const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
     on_group_toggle?.(
       group_name,
       items.map((item) => item.series_idx),
@@ -233,7 +186,6 @@
     event.stopPropagation()
 
     is_dragging = true
-    drag_start_coords = { x: event.clientX, y: event.clientY }
 
     on_drag_start(event)
 
@@ -243,7 +195,7 @@
   }
 
   function handle_window_mouse_move(event: MouseEvent) {
-    if (!is_dragging || !drag_start_coords) return
+    if (!is_dragging) return
 
     event.preventDefault()
     on_drag(event)
@@ -253,7 +205,6 @@
     if (!is_dragging) return
 
     is_dragging = false
-    drag_start_coords = null
 
     on_drag_end(event)
 
@@ -290,6 +241,23 @@
       on_fill_double_click(item.fill_source_type, item.fill_source_idx)
     } else on_double_click(item.series_idx)
   }
+
+  const stop_and_run = (event: Event, action: () => void): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    action()
+  }
+
+  const keyboard_activate = (
+    event: KeyboardEvent,
+    action: () => void,
+    stop_propagation = false,
+  ): void => {
+    if (event.key !== `Enter` && event.key !== ` `) return
+    event.preventDefault()
+    if (stop_propagation) event.stopPropagation()
+    action()
+  }
 </script>
 
 {#snippet legend_item(series: LegendItem, indent: boolean = false)}
@@ -304,22 +272,9 @@
     class:indented={indent}
     class:fill-item={is_fill_item}
     style={item_style}
-    onclick={(event: MouseEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-      toggle_item(series)
-    }}
-    ondblclick={(event: MouseEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-      double_click_item(series)
-    }}
-    onkeydown={(event) => {
-      if ([`Enter`, ` `].includes(event.key)) {
-        event.preventDefault()
-        toggle_item(series)
-      }
-    }}
+    onclick={(event) => stop_and_run(event, () => toggle_item(series))}
+    ondblclick={(event) => stop_and_run(event, () => double_click_item(series))}
+    onkeydown={(event) => keyboard_activate(event, () => toggle_item(series))}
     onmouseenter={() => on_item_hover?.(series)}
     onmouseleave={() => on_item_hover?.(null)}
     onfocus={() => on_item_hover?.(series)}
@@ -431,89 +386,65 @@
   class:is-dragging={is_dragging}
   class:grouped={has_groups}
 >
-  {#if show_filter}
-    <input
-      class="legend-filter"
-      type="search"
-      bind:value={legend_filter}
-      placeholder="Filter legend"
-      aria-label="Filter legend items"
-      onclick={(event) => event.stopPropagation()}
-      onmousedown={(event) => event.stopPropagation()}
-    />
-  {/if}
-  {#if show_filter && legend_filter && filtered_grouped_series.length === 0}
-    <span style="padding: var(--plot-legend-item-padding, 1px 8px 1px 3px); opacity: 0.7"
-      >No legend items</span
-    >
-  {/if}
-  {#each filtered_grouped_series as { group_name, items, all_items } (group_name ?? `__ungrouped__`)}
-    {#if group_name !== null && has_groups}
-      <!-- Group header -->
-      {@const group_items = all_items ?? items}
-      {@const is_collapsed = collapsed_groups.has(group_name)}
+  {#each legend_grid_cells as cell}
+    {#if cell.kind === `filter`}
+      <input
+        class="legend-filter"
+        type="search"
+        bind:value={legend_filter}
+        placeholder="Filter legend"
+        aria-label="Filter legend items"
+        onclick={(event) => event.stopPropagation()}
+        onmousedown={(event) => event.stopPropagation()}
+      />
+    {:else if cell.kind === `empty`}
+      <span style="padding: var(--plot-legend-item-padding, 1px 8px 1px 3px); opacity: 0.7"
+        >No legend items</span
+      >
+    {:else if cell.kind === `group`}
+      {@const group_items = series_data.filter(
+        ({ legend_group }) => legend_group === cell.group,
+      )}
+      {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
       <div
         class="legend-group-header"
         class:hidden={!group_visible}
-        onclick={(event: MouseEvent) => {
-          event.preventDefault()
-          event.stopPropagation()
-          handle_group_click(group_name, group_items)
-        }}
-        ondblclick={(event: MouseEvent) => {
-          event.preventDefault()
-          event.stopPropagation()
-          on_group_double_click?.(
-            group_name,
-            group_items.map((item) => item.series_idx),
-          )
-        }}
-        onkeydown={(event) => {
-          if ([`Enter`, ` `].includes(event.key)) {
-            event.preventDefault()
-            handle_group_click(group_name, group_items)
-          }
-        }}
+        onclick={(event) =>
+          stop_and_run(event, () => handle_group_click(cell.group, group_items))}
+        ondblclick={(event) =>
+          stop_and_run(event, () =>
+            on_group_double_click?.(
+              cell.group,
+              group_items.map((item) => item.series_idx),
+            ),
+          )}
+        onkeydown={(event) =>
+          keyboard_activate(event, () => handle_group_click(cell.group, group_items))}
         role="button"
         tabindex="0"
         aria-expanded={!is_collapsed}
-        aria-label="Toggle group {strip_html(group_name)}"
+        aria-label="Toggle group {strip_html(cell.group)}"
       >
         <span
           class="group-chevron"
           class:collapsed={is_collapsed}
-          onclick={(event: MouseEvent) => {
-            event.preventDefault()
-            event.stopPropagation()
-            toggle_group_collapse(group_name)
-          }}
-          onkeydown={(event) => {
-            if ([`Enter`, ` `].includes(event.key)) {
-              event.preventDefault()
-              event.stopPropagation()
-              toggle_group_collapse(group_name)
-            }
-          }}
+          onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
+          onkeydown={(event) =>
+            keyboard_activate(event, () => toggle_group_collapse(cell.group), true)}
           role="button"
           tabindex="0"
-          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {strip_html(group_name)}"
+          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {strip_html(cell.group)}"
         >
           ▶
         </span>
-        <span class="group-label">{@html sanitize_html(group_name)}</span>
+        <span class="group-label">{@html sanitize_html(cell.group)}</span>
       </div>
-      <!-- Group items (collapsible) -->
-      {#if !is_collapsed}
-        {#each items as series (series.item_type === `fill` ? `fill-${series.fill_idx}` : `series-${series.series_idx}`)}
-          {@render legend_item(series, true)}
-        {/each}
-      {/if}
     {:else}
-      <!-- Ungrouped items -->
-      {#each items as series (series.item_type === `fill` ? `fill-${series.fill_idx}` : `series-${series.series_idx}`)}
-        {@render legend_item(series, false)}
-      {/each}
+      {@const series = series_data[cell.item_idx]}
+      {#if series}
+        {@render legend_item(series, series.legend_group != null)}
+      {/if}
     {/if}
   {/each}
 </div>

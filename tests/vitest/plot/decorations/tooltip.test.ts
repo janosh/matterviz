@@ -40,7 +40,7 @@ describe(`tooltip decoration placement`, () => {
       expected: { direction: `right-above`, x: 55, y: 78 },
     },
     {
-      name: `top-left corner with left-above preference`,
+      name: `top-left corner with right-below negative offsets`,
       anchor: { x: 2, y: 2 },
       expected: { direction: `right-below`, x: 7, y: 9 },
       offset: { x: -5, y: -7 },

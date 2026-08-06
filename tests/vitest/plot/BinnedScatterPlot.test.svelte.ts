@@ -396,6 +396,8 @@ describe(`BinnedScatterPlot`, () => {
     for (const rect of [anno_rect, bar_rect]) {
       expect(Number.isFinite(rect.x), `${rect.x}`).toBe(true)
       expect(Number.isFinite(rect.y), `${rect.y}`).toBe(true)
+      expect(Number.isFinite(rect.width), `${rect.width}`).toBe(true)
+      expect(Number.isFinite(rect.height), `${rect.height}`).toBe(true)
     }
     expect(rects_intersect(anno_rect, bar_rect), JSON.stringify({ anno_rect, bar_rect })).toBe(
       false,

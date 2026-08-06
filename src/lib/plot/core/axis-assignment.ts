@@ -32,6 +32,7 @@ export interface AssignedAxisGroup<
 export interface AxisGroupingOptions<Series extends AxisAssignableSeries> {
   // Undefined visibility means visible, matching plot-series rendering.
   is_visible?: (series: Series, series_idx: number) => boolean
+  // Lower numeric values are assigned before higher ones (normally to y1, then y2).
   priority?: (group_key: string, series: readonly Series[]) => number
 }
 
@@ -120,8 +121,12 @@ export class AxisAssignmentOverflowError extends Error {
 
 const default_is_visible = (series: AxisAssignableSeries): boolean => series.visible !== false
 
-export const axis_group_key = (series: AxisAssignableSeries): string =>
-  series.axis_group?.trim() || series.unit?.trim() || `dimensionless`
+export const axis_group_key = (series: AxisAssignableSeries): string => {
+  const axis_group = series.axis_group?.trim()
+  if (axis_group) return axis_group
+  const unit = series.unit?.trim()
+  return unit ? unit : `dimensionless`
+}
 
 const resolved_axis = <Series extends AxisAssignableSeries>(
   series: Series,
@@ -133,8 +138,19 @@ const resolved_axis = <Series extends AxisAssignableSeries>(
   return series.y_axis ?? `y1`
 }
 
-// Group visible series by axis_group (when present) or unit. Groups are sorted
-// by caller priority, then first input occurrence so ties are deterministic.
+const series_on_axis = <Series extends AxisAssignableSeries>(
+  series: readonly Series[],
+  axis: AxisSlot,
+  options: Pick<AxisLabelOptions<Series>, `is_visible` | `axis`>,
+): Series[] =>
+  series.filter(
+    (srs, series_idx) =>
+      (options.is_visible ?? default_is_visible)(srs, series_idx) &&
+      resolved_axis(srs, series_idx, options.axis) === axis,
+  )
+
+// Group visible series by axis_group (when present) or unit. Groups are sorted by ascending
+// caller priority (lower values win y1), then first input occurrence so ties are deterministic.
 export function group_axis_series<Series extends AxisAssignableSeries>(
   series: readonly Series[],
   options: AxisGroupingOptions<Series> = {},
@@ -259,16 +275,8 @@ function label_for_axis<Series extends AxisAssignableSeries>(
   axis: AxisSlot,
   options: AxisLabelOptions<Series>,
 ): string {
-  const {
-    is_visible = default_is_visible,
-    axis: resolved_assignment,
-    fallback_label = `Value`,
-  } = options
-  const axis_series = series.filter(
-    (srs, series_idx) =>
-      is_visible(srs, series_idx) &&
-      resolved_axis(srs, series_idx, resolved_assignment) === axis,
-  )
+  const { fallback_label = `Value` } = options
+  const axis_series = series_on_axis(series, axis, options)
   if (axis_series.length === 0) return fallback_label
 
   const unit_groups: { unit: string; labels: string[] }[] = []
@@ -303,12 +311,7 @@ export function axis_scale_types<Series extends AxisValueSeries>(
   series: readonly Series[],
   options: AxisScaleTypeOptions<Series>,
 ): Record<AxisSlot, ScaleType> {
-  const {
-    is_visible = default_is_visible,
-    axis: resolved_assignment,
-    can_use_log_scale,
-    min_log_decades = 3,
-  } = options
+  const { can_use_log_scale, min_log_decades = 3 } = options
   if (!Number.isFinite(min_log_decades) || min_log_decades < 0) {
     throw new Error(
       `min_log_decades must be a non-negative finite number, got ${min_log_decades}`,
@@ -316,11 +319,7 @@ export function axis_scale_types<Series extends AxisValueSeries>(
   }
 
   const scale_for_axis = (axis: AxisSlot): ScaleType => {
-    const axis_series = series.filter(
-      (srs, series_idx) =>
-        is_visible(srs, series_idx) &&
-        resolved_axis(srs, series_idx, resolved_assignment) === axis,
-    )
+    const axis_series = series_on_axis(series, axis, options)
     if (axis_series.length === 0 || axis_series.some((srs) => !can_use_log_scale(srs))) {
       return `linear`
     }

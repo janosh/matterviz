@@ -52,7 +52,7 @@ export default defineConfig({
   ] as PluginOption[],
   build: {
     outDir: `lib`,
-    target: `es2022`,
+    target: `es2023`,
     modulePreload: false, // empty lists; stub above still required
     cssCodeSplit: false, // one file for package.json `style`
     // webpack minifies next; a second pass here only slows builds / stacks.

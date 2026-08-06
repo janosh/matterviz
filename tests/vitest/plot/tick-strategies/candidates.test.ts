@@ -4,6 +4,7 @@ import {
   generate_ellipsis_candidate,
   generate_stagger_candidate,
   generate_thinned_candidate,
+  type TickStrategy,
 } from '$lib/plot/core/tick-strategies'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
@@ -84,6 +85,7 @@ describe(`tick strategy candidates`, () => {
         `Minimum Pressure [GPa]`,
         `Average\u00A0Temperature (K)`,
         `Maximum\u2011Pressure`,
+        `constructor`,
       ],
     })
     const abbreviated = generate_abbreviated_candidate(candidate, {
@@ -95,6 +97,7 @@ describe(`tick strategy candidates`, () => {
       `Min. Press. [GPa]`,
       `Average\u00A0Temperature (K)`,
       `Maximum\u2011Pressure`,
+      `constructor`,
     ])
     expect(abbreviated.labels.map(({ full_text }) => full_text)).toEqual(
       candidate.labels.map(({ full_text }) => full_text),
@@ -160,27 +163,72 @@ describe(`tick strategy candidates`, () => {
   })
 
   test.each([
+    [`an empty id`, { id: ` ` }, /id must not be empty/u],
     [
-      `negative width`,
+      `an unknown strategy`,
+      { strategy: `unknown` as unknown as TickStrategy },
+      /unknown strategy/u,
+    ],
+    [
+      `a non-finite rotation`,
+      { strategy: `rotate` as const, rotation_deg: Infinity },
+      /rotation_deg must be finite/u,
+    ],
+    [
+      `information loss outside [0, 1]`,
+      {
+        strategy: `abbreviate` as const,
+        labels: [{ full_text: `Alpha`, information_loss: 1.1 }],
+      },
+      /information_loss.*\[0, 1\]/u,
+    ],
+  ] as const)(`rejects %s`, (_name, overrides, expected_error) => {
+    expect(() => create_tick_candidate({ ...base_candidate, ...overrides })).toThrow(
+      expected_error,
+    )
+  })
+
+  test(`rejects a visible index outside the source candidate`, () => {
+    expect(() =>
+      generate_thinned_candidate(
+        base_candidate,
+        new SvelteSet([base_candidate.labels.length]),
+        { id: `invalid-thinning` },
+      ),
+    ).toThrow(/candidate "upright".*outside/u)
+  })
+
+  test.each([
+    [`empty key`, { [``]: `value` }],
+    [`empty value`, { alpha: ` ` }],
+  ])(`rejects an abbreviation with an %s`, (_name, abbreviations) => {
+    expect(() =>
+      generate_abbreviated_candidate(base_candidate, {
+        id: `invalid-abbreviation`,
+        abbreviations,
+      }),
+    ).toThrow(/abbreviation keys and values must not be empty/u)
+  })
+
+  test.each([
+    [
+      `negative ellipsis width`,
       { max_width_px: -1, measure_text: (text: string) => text.length },
       /finite non-negative/u,
     ],
     [
-      `mismatched widths`,
+      `mismatched ellipsis widths`,
       { max_width_px: [10], measure_text: (text: string) => text.length },
       /must match/u,
     ],
     [
-      `invalid measurement`,
+      `invalid text measurement`,
       { max_width_px: 10, measure_text: () => Number.NaN },
       /measured width/u,
     ],
   ])(`rejects %s`, (_name, options, expected_error) => {
     expect(() =>
-      generate_ellipsis_candidate(base_candidate, {
-        id: `invalid`,
-        ...options,
-      }),
+      generate_ellipsis_candidate(base_candidate, { id: `invalid`, ...options }),
     ).toThrow(expected_error)
   })
 })

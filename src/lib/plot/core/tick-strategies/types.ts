@@ -7,6 +7,7 @@ export const TICK_STRATEGIES = [
   `abbreviate`,
   `ellipsis`,
 ] as const
+export const MIN_RETAINED_INFORMATION_FRACTION = 0.25
 
 export type TickStrategy = (typeof TICK_STRATEGIES)[number]
 export type TickScoringMode = `auto` | `readable` | `compact`
@@ -76,6 +77,7 @@ export interface TickScorePenalties {
 export interface TickScoreResult {
   candidate: TickStrategyCandidate
   measurements: TickCandidateMeasurements
+  readable: boolean
   feasible: boolean
   penalties: TickScorePenalties
   weighted_penalties: TickScorePenalties

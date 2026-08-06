@@ -13,7 +13,6 @@
     axis_type = `x`,
     color = $bindable(),
     on_select,
-    lines,
     line_segments,
     ...rest
   }: {
@@ -24,17 +23,12 @@
     axis_type?: `x` | `x2` | `y` | `y2`
     color?: string | null
     on_select?: (key: string) => void
-    // Pre-wrapped plain-text lines resolved from the same metrics used by plot padding.
-    lines?: readonly string[]
-    // Semantic spans matching `lines`, retained when wrapping labels with sub/sup markup.
+    // Pre-wrapped semantic spans matching the metrics used by plot padding.
     line_segments?: readonly (readonly AxisTitleSegment[])[]
     [key: string]: unknown
   } = $props()
 
   let is_interactive = $derived(Boolean(options?.length))
-  let wrapped_segments = $derived(
-    line_segments ?? lines?.map((text): AxisTitleSegment[] => [{ text }]),
-  )
 
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
@@ -70,8 +64,8 @@
     {/if}
   {:else}
     <span class="static-label">
-      {#if wrapped_segments && wrapped_segments.length > 1}
-        {#each wrapped_segments as segments}
+      {#if line_segments && line_segments.length > 1}
+        {#each line_segments as segments}
           <span>
             {#each segments as segment}
               {#if segment.shift === `sub`}
@@ -94,7 +88,8 @@
 <style>
   .interactive-axis-label {
     position: relative;
-    display: inline-flex;
+    /* A block flex root avoids inline-flex's baseline shift outside the SVG foreignObject. */
+    display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;

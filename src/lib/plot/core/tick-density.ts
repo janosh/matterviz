@@ -57,9 +57,6 @@ const sorted_mandatory_indices = (
   item_count: number,
   important_indices: readonly number[],
 ): number[] => {
-  const candidates = item_count === 0 ? [...important_indices] : [0, ...important_indices]
-  if (item_count > 1) candidates.push(item_count - 1)
-
   important_indices.forEach((item_idx, important_idx) => {
     if (!Number.isSafeInteger(item_idx) || item_idx < 0 || item_idx >= item_count) {
       throw new Error(
@@ -68,6 +65,8 @@ const sorted_mandatory_indices = (
     }
   })
 
+  const candidates = item_count === 0 ? [...important_indices] : [0, ...important_indices]
+  if (item_count > 1) candidates.push(item_count - 1)
   const sorted = candidates.toSorted((left, right) => left - right)
   return sorted.filter((item_idx, sorted_idx) => item_idx !== sorted[sorted_idx - 1])
 }

@@ -1,13 +1,13 @@
 // Pure geometry for tick labels placed at their rendered pixel positions. Text measurement
 // stays at the call site so this module works without DOM or Svelte APIs.
 
-export type TickLabelId = string | number
-export type TickLabelLine = string
+type TickLabelId = string | number
+type TickLabelLine = string
 export type TickAxisSide = `x` | `x2` | `y` | `y2`
 export type TickLabelAnchor = `start` | `middle` | `end`
 export type TickLabelRotation = number
-export type TickStaggerRow = number
-export type TickCollisionMethod = `pairwise` | `sweep`
+type TickStaggerRow = number
+type TickCollisionMethod = `pairwise` | `sweep`
 
 // `axis` is x for x/x2 and y for y/y2. `cross_axis` is the actual label origin after
 // tick offset, configured shifts, and staggering have been applied.
@@ -36,7 +36,7 @@ export interface TickLabelItem {
   dimensions?: TickLabelDimensions
 }
 
-export type TickLabelMeasure = (item: TickLabelItem, item_idx: number) => TickLabelDimensions
+type TickLabelMeasure = (item: TickLabelItem, item_idx: number) => TickLabelDimensions
 
 export interface TickAabb {
   min_x: number
@@ -66,12 +66,12 @@ export interface TickAxisEdgeOverflow {
   total: number
 }
 
-export interface TickLabelOverflow extends TickAxisEdgeOverflow {
+interface TickLabelOverflow extends TickAxisEdgeOverflow {
   item_idx: number
   id: TickLabelId
 }
 
-export interface TickCollisionPair {
+interface TickCollisionPair {
   first_idx: number
   second_idx: number
   first_id: TickLabelId
@@ -208,8 +208,11 @@ const block_y_bounds = (
   return [-height / 2, height / 2]
 }
 
+// Sub-pixel float dust from AABB corner math; reuse for feasibility edge checks too.
+export const TICK_GEOMETRY_EPSILON = Number.EPSILON * 16
+
 const snap_near_zero = (value: number): number =>
-  Math.abs(value) <= Number.EPSILON * 16 ? 0 : value
+  Math.abs(value) <= TICK_GEOMETRY_EPSILON ? 0 : value
 
 // Build the union of all same-anchor text lines as one block, then rotate its four corners
 // around the label origin. This is exact for the block AABB even when line widths differ.
@@ -535,7 +538,7 @@ export const detect_tick_label_collisions_sweep = (
   return build_collision_summary(labels, pairs, `sweep`, gap)
 }
 
-export const detect_tick_label_collisions = (
+const detect_tick_label_collisions = (
   labels: readonly TickLabelGeometry[],
   gap = 0,
   method: TickCollisionMethod = `sweep`,

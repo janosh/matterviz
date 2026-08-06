@@ -1,4 +1,5 @@
 import {
+  MIN_RETAINED_INFORMATION_FRACTION,
   TICK_STRATEGIES,
   type TickCandidateLabel,
   type TickStaggerRow,
@@ -65,7 +66,6 @@ const NO_BREAK_CHARACTER = /[\u00A0\u2011\u202F\u2060]/u
 const PROTECTED_SEGMENT = /(?<protected>\([^()]*\)|\[[^\][]*\]|\{[^{}]*\})/gu
 const WORD = /\p{L}[\p{L}\p{M}]*/gu
 const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
-const MIN_RETAINED_INFORMATION_FRACTION = 0.25
 const produced_candidates = new WeakSet<TickStrategyCandidate>()
 
 const is_tick_strategy = (value: string): value is TickStrategy =>
@@ -222,7 +222,7 @@ export const generate_thinned_candidate = (
       tick_index >= candidate.labels.length
     ) {
       throw new Error(
-        `candidate "${id}" visible tick index ${tick_index} is outside [0, ${candidate.labels.length})`,
+        `candidate "${candidate.id}" visible tick index ${tick_index} is outside [0, ${candidate.labels.length})`,
       )
     }
   }
@@ -247,8 +247,9 @@ const abbreviate_unprotected_text = (
   abbreviations: Readonly<Record<string, string>>,
 ): string =>
   text.replace(WORD, (word) => {
-    const abbreviation = abbreviations[word.toLowerCase()]
-    return abbreviation === undefined ? word : preserve_abbreviation_case(word, abbreviation)
+    const key = word.toLowerCase()
+    if (!Object.hasOwn(abbreviations, key)) return word
+    return preserve_abbreviation_case(word, abbreviations[key])
   })
 
 const abbreviate_line = (
@@ -317,14 +318,15 @@ const ellipsize_line = (
 
   const characters = graphemes(text)
   let longest_fitting = ``
-  for (let prefix_length = 1; prefix_length <= characters.length; prefix_length++) {
-    const prefix = characters
-      .slice(0, prefix_length)
-      .join(``)
-      .replace(/[ \t]+$/u, ``)
-    if (measured_width(`${prefix}${ellipsis}`, measure_text, context) <= max_width_px) {
-      longest_fitting = prefix
-    }
+  let prefix = ``
+  let seen_fit = false
+  for (const character of characters) {
+    prefix += character
+    const trimmed = prefix.replace(/[ \t]+$/u, ``)
+    if (measured_width(`${trimmed}${ellipsis}`, measure_text, context) <= max_width_px) {
+      longest_fitting = trimmed
+      seen_fit = true
+    } else if (seen_fit) break
   }
   const source_information = information_grapheme_count(text)
   const retained_information = information_grapheme_count(longest_fitting)

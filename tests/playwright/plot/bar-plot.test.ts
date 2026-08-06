@@ -68,7 +68,11 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect.poll(legend_bar_overlap_count).toBe(0)
 
     // Container resize reruns the unified solver without accumulating its old reservation.
+    const plot_width_before = await plot.evaluate((root) => root.clientWidth)
     await page.setViewportSize({ width: 640, height: 900 })
+    await expect
+      .poll(() => plot.evaluate((root) => root.clientWidth))
+      .not.toBe(plot_width_before)
     await expect.poll(legend_bar_overlap_count).toBe(0)
 
     // Initial: both visible -> bars exist

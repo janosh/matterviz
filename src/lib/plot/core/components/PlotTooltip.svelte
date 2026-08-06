@@ -35,24 +35,21 @@
   const text_color = $derived(
     bg_color != null ? (luminance(bg_color) > 0.5 ? `#000000` : `#ffffff`) : null,
   )
+  const measured_or_fallback = (measured?: number, fallback?: number): number =>
+    measured && measured > 0 ? measured : (fallback ?? 0)
 
   // For fixed positioning (viewport coords), flip to opposite side when near viewport edges
   const pos = $derived.by(() => {
-    const exclusion_bounds = constrain_to
-      ? { x: 0, y: 0, width: constrain_to.width, height: constrain_to.height }
-      : fixed
-        ? { x: 0, y: 0, width: globalThis.innerWidth, height: globalThis.innerHeight }
-        : undefined
-    if (exclusion_rects && exclusion_bounds) {
-      const measured_width = wrapper?.offsetWidth ?? 0
-      const measured_height = wrapper?.offsetHeight ?? 0
+    const tooltip_width = measured_or_fallback(wrapper?.offsetWidth, fallback_size?.width)
+    const tooltip_height = measured_or_fallback(wrapper?.offsetHeight, fallback_size?.height)
+    const bounds =
+      constrain_to ??
+      (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
+    if (exclusion_rects && exclusion_rects.length > 0 && bounds) {
       return place_tooltip({
         anchor: { x, y },
-        tooltip_size: {
-          width: measured_width > 0 ? measured_width : (fallback_size?.width ?? 0),
-          height: measured_height > 0 ? measured_height : (fallback_size?.height ?? 0),
-        },
-        bounds: exclusion_bounds,
+        tooltip_size: { width: tooltip_width, height: tooltip_height },
+        bounds: { x: 0, y: 0, ...bounds },
         exclusion_rects,
         offset,
       })
@@ -61,8 +58,8 @@
       return constrain_tooltip_position(
         x,
         y,
-        wrapper?.offsetWidth ?? fallback_size?.width ?? 0,
-        wrapper?.offsetHeight ?? fallback_size?.height ?? 0,
+        tooltip_width,
+        tooltip_height,
         constrain_to.width,
         constrain_to.height,
         { offset_x: offset.x, offset_y: offset.y },
@@ -70,12 +67,12 @@
     }
     const raw_x = x + offset.x
     const raw_y = y + offset.y
-    if (!fixed) return { x: raw_x, y: raw_y }
-    const tw = wrapper?.offsetWidth ?? 0
-    const th = wrapper?.offsetHeight ?? 0
-    const cx = raw_x + tw > globalThis.innerWidth ? x - Math.abs(offset.x) - tw : raw_x
-    const cy = raw_y + th > globalThis.innerHeight ? y - Math.abs(offset.y) - th : raw_y
-    return { x: Math.max(0, cx), y: Math.max(0, cy) }
+    if (!bounds) return { x: raw_x, y: raw_y }
+    const constrained_x =
+      raw_x + tooltip_width > bounds.width ? x - Math.abs(offset.x) - tooltip_width : raw_x
+    const constrained_y =
+      raw_y + tooltip_height > bounds.height ? y - Math.abs(offset.y) - tooltip_height : raw_y
+    return { x: Math.max(0, constrained_x), y: Math.max(0, constrained_y) }
   })
 
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the

@@ -10,7 +10,7 @@ import {
   axis_scale_types as get_axis_scale_types,
   group_axis_series,
 } from '$lib/plot/core/axis-assignment'
-import type { DataSeries, ScaleType } from '$lib/plot/core/types'
+import type { DataSeries } from '$lib/plot/core/types'
 import type {
   TrajectoryDataExtractor,
   TrajectoryFrame,
@@ -483,22 +483,17 @@ export const generate_axis_labels = (
 } => get_axis_labels(plot_series, { is_visible: series_is_visible })
 
 // Log-scale heuristic: a y-axis defaults to log scale when every visible series on
-// it is strictly positive AND their combined values span at least this many decades.
+// it is strictly positive AND their combined values span at least three decades.
 // SCF convergence residuals (|ΔE|, density rms) span 6+ decades and degenerate into
 // hockey sticks on linear axes; plain energies (large negative) stay linear.
-const LOG_SCALE_MIN_DECADE_SPAN = 3
+export const TRAJECTORY_AXIS_SCALE_OPTIONS = {
+  can_use_log_scale: (series: DataSeries) => series.axis_group === SCF_AXIS_GROUP,
+  is_visible: series_is_visible,
+  min_log_decades: 3,
+} as const
 
-export const generate_axis_scale_types = (
-  plot_series: DataSeries[],
-): {
-  y1: ScaleType
-  y2: ScaleType
-} =>
-  get_axis_scale_types(plot_series, {
-    can_use_log_scale: (srs) => srs.axis_group === SCF_AXIS_GROUP,
-    is_visible: series_is_visible,
-    min_log_decades: LOG_SCALE_MIN_DECADE_SPAN,
-  })
+export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
+  get_axis_scale_types(plot_series, TRAJECTORY_AXIS_SCALE_OPTIONS)
 
 // Streaming plot generation (simplified)
 interface StreamingPlotOptions {

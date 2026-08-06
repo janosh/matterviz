@@ -216,6 +216,14 @@ describe(`facet layout reconciliation`, () => {
       { x: 130, y: 180, width: 120, height: 130 },
     ])
   })
+
+  // oxfmt-ignore
+  it.each([
+    [`shared bands that exceed the grid`, assign_facet_panels(panels(1), 1), { width: 100, height: 100, shared_bands: { title_height: 90, legend_width: 50, gap: 20 } }, `Shared facet bands exceed grid size: 100x100 with title 90, legend 50, colorbar 0, gap 20`],
+    [`panel gaps that exceed the grid`, assign_facet_panels(panels(4), 2), { width: 100, height: 100, column_gap: 101, row_gap: 0 }, `Facet gaps exceed panel grid size: 100x100 with gaps 101x0`],
+  ] as const)(`rejects %s`, (_name, invalid_layout, options, expected_error) => {
+    expect(() => compute_facet_geometry(invalid_layout, options)).toThrow(expected_error)
+  })
 })
 
 describe(`facet range propagation`, () => {

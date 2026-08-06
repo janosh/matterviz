@@ -34,6 +34,7 @@
     DEFAULT_PLOT_PADDING,
     filter_padding,
     full_footprint_or,
+    measured_axis,
     point_in_rect,
     resolve_tick_layout,
     sides_equal,
@@ -43,7 +44,7 @@
   import type { FontSpec } from '$lib/plot/core/text-metrics'
   import {
     normalize_plot_title,
-    resolve_plot_title,
+    pad_for_plot_title,
     type PlotTitleConfig,
   } from '$lib/plot/core/plot-title'
   import { get_series_color } from '$lib/plot/core/data-transform'
@@ -151,7 +152,7 @@
     annotation,
     marginals = false,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
     series: DensePointSeries<Metadata>[]
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -312,19 +313,20 @@
   let tick_font = $state<Readonly<FontSpec> | undefined>()
   let y_tick_width = $derived(
     resolve_tick_layout(
-      {
-        ...y_axis,
-        format: y_axis.format ?? `.2~g`,
-        tick_values: y_ticks,
-        tick_positions: y_ticks.map(y_scale_fn),
-        axis_extent: { start: height - pad.b, end: pad.t },
+      measured_axis(
+        { ...y_axis, format: y_axis.format ?? `.2~g` },
+        y_ticks,
+        y_scale_fn,
+        { start: height - pad.b, end: pad.t },
         tick_font,
-      },
+      ),
       plot_height,
       `y`,
     ).band,
   )
   $effect(() => {
+    const x_extent = { start: decoration_base_pad.l, end: width - decoration_base_pad.r }
+    const y_extent = { start: height - decoration_base_pad.b, end: decoration_base_pad.t }
     const axis_pad =
       width > 0 && height > 0
         ? calc_auto_padding({
@@ -332,31 +334,23 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: {
-              ...x_axis,
-              format: x_axis.format ?? `.2~g`,
-              tick_values: x_ticks,
-              tick_positions: x_ticks.map(x_scale_fn),
-              axis_extent: { start: pad.l, end: width - pad.r },
+            x_axis: measured_axis(
+              { ...x_axis, format: x_axis.format ?? `.2~g` },
+              x_ticks,
+              x_scale_fn,
+              x_extent,
               tick_font,
-            },
-            y_axis: {
-              ...y_axis,
-              format: y_axis.format ?? `.2~g`,
-              tick_values: y_ticks,
-              tick_positions: y_ticks.map(y_scale_fn),
-              axis_extent: { start: height - pad.b, end: pad.t },
+            ),
+            y_axis: measured_axis(
+              { ...y_axis, format: y_axis.format ?? `.2~g` },
+              y_ticks,
+              y_scale_fn,
+              y_extent,
               tick_font,
-            },
+            ),
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
-    const title_height =
-      width > 0 && height > 0
-        ? resolve_plot_title(title_config, {
-            width: Math.max(0, width - axis_pad.l - axis_pad.r),
-          }).block_height
-        : 0
-    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
   // Keep density bins independent of decoration reservations. Their normalized occupied

@@ -492,6 +492,8 @@ export function compute_facet_geometry<Datum>(
   }
   if (layout.panels.length === 0) return resolved
   if (layout.rows < 1) throw new RangeError(`rows must be positive when panels are present`)
+  if (layout.columns < 1)
+    throw new RangeError(`columns must be positive when panels are present`)
 
   const available_width = panel_grid.width - column_gap * (layout.columns - 1)
   const available_height = panel_grid.height - row_gap * (layout.rows - 1)

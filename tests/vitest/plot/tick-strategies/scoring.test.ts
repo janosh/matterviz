@@ -1,3 +1,4 @@
+import { TICK_GEOMETRY_EPSILON } from '$lib/plot/core/tick-geometry'
 import {
   create_tick_candidate,
   resolve_tick_score_weights,
@@ -89,6 +90,13 @@ describe(`tick strategy scoring`, () => {
     expect(
       selection.evaluated.find(({ candidate: item }) => item.id === `infeasible`)?.score,
     ).toSatisfy((score: number) => Number.isFinite(score))
+  })
+
+  test(`treats sub-pixel edge overflow dust as feasible`, () => {
+    const result = score_tick_candidate(
+      measured(candidate(`dust`), { edge_overflow_px: TICK_GEOMETRY_EPSILON }),
+    )
+    expect(result.feasible).toBe(true)
   })
 
   test.each([
@@ -199,6 +207,32 @@ describe(`tick strategy scoring`, () => {
     ],
   ])(`rejects %s`, (_name, config, expected_error) => {
     expect(() => resolve_tick_score_weights(config)).toThrow(expected_error)
+  })
+
+  test.each([
+    [`a fractional collision count`, `collisions`, 0.5],
+    [`a negative collision count`, `collisions`, -1],
+    [`negative edge overflow`, `edge_overflow_px`, -1],
+    [`a negative band fraction`, `band_fraction`, -1],
+    [`a non-finite band fraction`, `band_fraction`, Infinity],
+  ] as const)(`rejects %s`, (_name, metric, value) => {
+    const metric_overrides: Partial<TickCandidateMeasurements> = { [metric]: value }
+    const expected_error =
+      metric === `collisions` && Number.isFinite(value) && !Number.isInteger(value)
+        ? `collisions must be an integer`
+        : `${metric} must be a finite non-negative number`
+    expect(() =>
+      score_tick_candidate(measured(candidate(`invalid-measurement`), metric_overrides)),
+    ).toThrow(expected_error)
+  })
+
+  test(`rejects duplicate candidate ids`, () => {
+    expect(() =>
+      select_tick_candidate([
+        measured(candidate(`duplicate`)),
+        measured(candidate(`duplicate`, { strategy: `rotate` })),
+      ]),
+    ).toThrow(`tick candidate ids must be unique, found duplicate "duplicate"`)
   })
 
   test(`breaks ties by strategy then lexical id independent of input order`, () => {

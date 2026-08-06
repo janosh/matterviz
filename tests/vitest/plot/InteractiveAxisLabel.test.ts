@@ -35,6 +35,7 @@ describe(`InteractiveAxisLabel`, () => {
   ])(`renders static label when $desc`, ({ props, text, tag_count }) => {
     const component = mount_label(props)
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(false)
+    expect(getComputedStyle(get_wrapper() as HTMLElement).display).toBe(`flex`)
     const static_label = document.body.querySelector(`.static-label`) as HTMLElement
     expect(static_label.textContent).toContain(text)
     expect(static_label.querySelectorAll(`sub, sup`)).toHaveLength(tag_count)

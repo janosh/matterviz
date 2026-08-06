@@ -41,12 +41,12 @@
     PlotLegend,
     PlotMarginals,
     PlotTooltip,
-    ReferenceLine,
     ScatterPlotControls,
     ScatterPoint,
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -61,12 +61,7 @@
     has_explicit_position,
     measured_footprint,
   } from '$lib/plot/core/auto-place'
-  import {
-    assign_axes,
-    axis_group_key,
-    axis_labels,
-    axis_scale_types,
-  } from '$lib/plot/core/axis-assignment'
+  import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
@@ -117,16 +112,16 @@
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
     filter_padding,
+    measured_axis,
     resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { FontSpec } from '$lib/plot/core/text-metrics'
-  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
+  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import {
-    get_reference_annotation_placement,
     group_ref_lines_by_z,
     index_ref_lines,
     solve_reference_annotations,
@@ -196,7 +191,7 @@
     marginals = false,
     facet_layout,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     Omit<BasePlotProps, `change`> &
     PlotConfig & {
       series?: DataSeries<Metadata>[]
@@ -260,41 +255,20 @@
   // Dimensionless series retain the historical y1 default. Re-running this derived after a
   // legend toggle lets the remaining visible group move back to y1.
   const assigned_series = $derived.by(() => {
-    const valid_series = series.filter((srs): srs is DataSeries<Metadata> =>
-      Boolean(srs && typeof srs === `object`),
-    )
-    const assignment = assign_axes(valid_series, {
+    const assignment = assign_axes(series, {
+      is_visible: (srs) => Boolean(srs && typeof srs === `object` && srs.visible !== false),
       priority: (group_key) => (group_key === `dimensionless` ? -1 : 0),
     })
-    if (assignment.status === `overflow`) throw assignment.error
-
-    const occupied_axes = new SvelteSet(
-      assignment.groups.flatMap(({ series: group_series }) =>
-        group_series.flatMap((srs) =>
-          srs.visible !== false && srs.y_axis ? [srs.y_axis] : [],
-        ),
-      ),
-    )
-    const available_axes = ([`y1`, `y2`] as const).filter((axis) => !occupied_axes.has(axis))
-    const group_axes: { key: string; axis: `y1` | `y2` }[] = []
-
-    for (const group of assignment.groups) {
-      const explicit_axes = group.series
-        .flatMap((srs) => (srs.visible !== false && srs.y_axis ? [srs.y_axis] : []))
-        .filter((axis, axis_idx, axes) => axes.indexOf(axis) === axis_idx)
-      if (explicit_axes.length === 1) {
-        group_axes.push({ key: group.key, axis: explicit_axes[0] })
-      }
-    }
-    for (const group of assignment.groups) {
-      if (group_axes.some(({ key }) => key === group.key)) continue
-      group_axes.push({ key: group.key, axis: available_axes.shift() ?? group.axis })
+    if (assignment.status === `overflow`) {
+      throw new Error(
+        `ScatterPlot cannot automatically assign visible value series: ${assignment.error.message}. Set y_axis explicitly or hide an axis group.`,
+        { cause: assignment.error },
+      )
     }
 
-    return series.map((srs) => {
-      if (!srs || typeof srs !== `object` || srs.visible === false || srs.y_axis) return srs
-      const assigned_axis = group_axes.find(({ key }) => key === axis_group_key(srs))?.axis
-      return assigned_axis ? { ...srs, y_axis: assigned_axis } : srs
+    return series.map((srs, series_idx) => {
+      const assigned_axis = assignment.assignments[series_idx]
+      return assigned_axis && !srs.y_axis ? { ...srs, y_axis: assigned_axis } : srs
     })
   })
 
@@ -481,13 +455,14 @@
 
   // Update padding when format or ticks change
   $effect(() => {
-    const measured_pad = facet_layout ? base_pad : pad
     const measured_ticks = facet_layout
       ? intrinsic_axis_ticks
       : { x: x_tick_values, x2: x2_tick_values, y: y_tick_values, y2: y2_tick_values }
     const measured_scales = facet_layout
       ? intrinsic_scale_fns
       : { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn }
+    const x_extent = { start: base_pad.l, end: width - base_pad.r }
+    const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const axis_pad =
       width && height
         ? calc_auto_padding({
@@ -495,47 +470,39 @@
             default_padding,
             width,
             height,
-            x_axis: {
-              ...final_x_axis,
-              tick_values: measured_ticks.x,
-              tick_positions: measured_ticks.x.map((tick) =>
+            x_axis: measured_axis(
+              final_x_axis,
+              measured_ticks.x,
+              (tick) =>
                 is_time_x ? measured_scales.x(new Date(tick)) : measured_scales.x(tick),
-              ),
-              axis_extent: { start: measured_pad.l, end: width - measured_pad.r },
+              x_extent,
               tick_font,
-            },
-            x2_axis: {
-              ...final_x2_axis,
-              tick_values: measured_ticks.x2,
-              tick_positions: measured_ticks.x2.map((tick) =>
+            ),
+            x2_axis: measured_axis(
+              final_x2_axis,
+              measured_ticks.x2,
+              (tick) =>
                 is_time_x2 ? measured_scales.x2(new Date(tick)) : measured_scales.x2(tick),
-              ),
-              axis_extent: { start: measured_pad.l, end: width - measured_pad.r },
+              x_extent,
               tick_font,
-            },
-            y_axis: {
-              ...final_y_axis,
-              tick_values: measured_ticks.y,
-              tick_positions: measured_ticks.y.map(measured_scales.y),
-              axis_extent: { start: height - measured_pad.b, end: measured_pad.t },
+            ),
+            y_axis: measured_axis(
+              final_y_axis,
+              measured_ticks.y,
+              measured_scales.y,
+              y_extent,
               tick_font,
-            },
-            y2_axis: {
-              ...final_y2_axis,
-              tick_values: measured_ticks.y2,
-              tick_positions: measured_ticks.y2.map(measured_scales.y2),
-              axis_extent: { start: height - measured_pad.b, end: measured_pad.t },
+            ),
+            y2_axis: measured_axis(
+              final_y2_axis,
+              measured_ticks.y2,
+              measured_scales.y2,
+              y_extent,
               tick_font,
-            },
+            ),
           })
         : filter_padding(padding, default_padding)
-    const title_height =
-      width && height
-        ? resolve_plot_title(title_config, {
-            width: Math.max(0, width - axis_pad.l - axis_pad.r),
-          }).block_height
-        : 0
-    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
@@ -1208,12 +1175,7 @@
       obstacles_norm,
       exclusion_rects: pinned_decoration_rects,
       lines: indexed_ref_lines,
-      ranges: {
-        x: [x_min, x_max],
-        x2: [x2_min, x2_max],
-        y: [y_min, y_max],
-        y2: [y2_min, y2_max],
-      },
+      ranges: ranges.current,
       scales: { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn },
     }),
   )
@@ -1313,29 +1275,21 @@
   let y2_tick_values = $derived(axis_ticks.y2)
 
   // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
-  let tick_label_widths = $derived({
-    y_max: resolve_tick_layout(
-      {
-        ...final_y_axis,
-        tick_values: y_tick_values,
-        tick_positions: y_tick_values.map(y_scale_fn),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      Math.max(0, height - pad.t - pad.b),
-      `y`,
-    ).band,
-    y2_max: resolve_tick_layout(
-      {
-        ...final_y2_axis,
-        tick_values: y2_tick_values,
-        tick_positions: y2_tick_values.map(y2_scale_fn),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      Math.max(0, height - pad.t - pad.b),
-      `y2`,
-    ).band,
+  let tick_label_widths = $derived.by(() => {
+    const y_extent = { start: height - pad.b, end: pad.t }
+    const band = Math.max(0, height - pad.t - pad.b)
+    return {
+      y_max: resolve_tick_layout(
+        measured_axis(final_y_axis, y_tick_values, y_scale_fn, y_extent, tick_font),
+        band,
+        `y`,
+      ).band,
+      y2_max: resolve_tick_layout(
+        measured_axis(final_y2_axis, y2_tick_values, y2_scale_fn, y_extent, tick_font),
+        band,
+        `y2`,
+      ).band,
+    }
   })
 
   const update_facet_range = (axis: FacetAxis, range: Vec2): void => {
@@ -1715,32 +1669,16 @@
 {/snippet}
 
 {#snippet ref_lines_layer(lines: IndexedRefLine[])}
-  {#each lines as line (line.id ?? line.idx)}
-    <ReferenceLine
-      ref_line={line}
-      line_idx={line.idx}
-      x_min={line.x_axis === `x2` ? x2_min : x_min}
-      x_max={line.x_axis === `x2` ? x2_max : x_max}
-      y_min={line.y_axis === `y2` ? y2_min : y_min}
-      y_max={line.y_axis === `y2` ? y2_max : y_max}
-      x_scale={x_scale_fn}
-      x2_scale={x2_scale_fn}
-      y_scale={y_scale_fn}
-      y2_scale={y2_scale_fn}
-      {clip_path_id}
-      hovered_line_idx={hovered_ref_line_idx}
-      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
-      on_click={(event: RefLineEvent) => {
-        line.on_click?.(event)
-        on_ref_line_click?.(event)
-      }}
-      on_hover={(event: RefLineEvent | null) => {
-        hovered_ref_line_idx = event?.line_idx ?? null
-        line.on_hover?.(event)
-        on_ref_line_hover?.(event)
-      }}
-    />
-  {/each}
+  <ReferenceLinesLayer
+    {lines}
+    ranges={ranges.current}
+    scales={{ x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn }}
+    {clip_path_id}
+    {decoration_solution}
+    bind:hovered_line_idx={hovered_ref_line_idx}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <svelte:window

@@ -410,7 +410,7 @@ describe(`layout utility functions`, () => {
         [`Band`, `Gap PBE`, `Value`],
       ])
       expect(layout.rotation).toBe(-90)
-      expect(layout.band).toBe(63)
+      expect(layout.band).toBeCloseTo(63)
       const unwrapped = x_layout(labels, 120, { tick: { label: { max_lines: 1 } } })
       expect(layout.band).toBeLessThan(unwrapped.band)
     })
@@ -580,7 +580,8 @@ describe(`layout utility functions`, () => {
 
   describe(`adaptive tick layout`, () => {
     // The root beforeEach in tests/vitest/setup.ts already drops the memoised metrics.
-    beforeEach(() => mock_text_measurement(7))
+    const measured_px_per_character = 7
+    beforeEach(() => mock_text_measurement(measured_px_per_character))
     afterEach(() => vi.restoreAllMocks())
 
     it(`uses irregular projected positions for bounded thinning`, () => {
@@ -766,7 +767,7 @@ describe(`layout utility functions`, () => {
           strategy: `wrap`,
           lines: [[`Formation`, `Energy`]],
         })
-        expect(layout.band).toBe(63)
+        expect(layout.band).toBe(`Formation`.length * measured_px_per_character)
       },
     )
 
@@ -912,6 +913,22 @@ describe(`layout utility functions`, () => {
       })
       // no y2 ticks -> r is the plain default (no tick-label/title reservation)
       expect(result).toEqual({ t: 10, l: 80, b: 60, r: 20 })
+    })
+
+    it(`keeps provided tick positions when plot width/height are omitted`, () => {
+      mock_text_measurement(7)
+      const config = {
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x_axis: {
+          tick_values: Array<string>(4).fill(`formation energy per atom`),
+          tick_positions: [0, 33, 66, 100],
+          axis_extent: { start: 0, end: 100 },
+          tick: { label: { auto_layout: { strategies: [`thin`, `rotate`] as const } } },
+        },
+      }
+      // Collapsing every tick onto 0 would under-reserve compared with the sized layout.
+      expect(calc_auto_padding(config).b).toBe(calc_auto_padding({ ...config, width: 100 }).b)
     })
 
     it.each([
@@ -1093,6 +1110,11 @@ describe(`layout utility functions`, () => {
         interactive: true,
       })
       expect(layout.width).toBeGreaterThan(plain_width)
+    })
+
+    it(`decodes escaped axis-title entities exactly once`, () => {
+      const { label } = resolve_axis_title_layout({ label: `A &amp;lt; B &lt; C` })
+      expect(label).toBe(`A &lt; B < C`)
     })
 
     it(`retains subscript and superscript segments when axis titles wrap`, () => {

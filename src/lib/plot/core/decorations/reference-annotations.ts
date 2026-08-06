@@ -68,7 +68,7 @@ export const score_reference_annotation_candidate = ({
   ).length
   return (
     -exclusion_count * EXCLUSION_PENALTY -
-    obstacle_count * OBSTACLE_PENALTY -
+    Math.min(obstacle_count * OBSTACLE_PENALTY, EXCLUSION_PENALTY / 2) -
     candidate_idx * PREFERENCE_PENALTY
   )
 }

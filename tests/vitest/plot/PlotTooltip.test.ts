@@ -107,6 +107,17 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.top).toBe(`40px`)
   })
 
+  test(`uses fallback size for constrained placement before measurement`, () => {
+    const tooltip = mount_tooltip({
+      x: 95,
+      y: 50,
+      constrain_to: { width: 100, height: 100 },
+      fallback_size: { width: 30, height: 20 },
+    })
+    expect(tooltip.style.left).toBe(`59px`)
+    expect(tooltip.style.top).toBe(`50px`)
+  })
+
   test(`prefers measured size over fallback size`, () => {
     const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(40)
     const height_spy = vi

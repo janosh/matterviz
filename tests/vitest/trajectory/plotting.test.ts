@@ -1,10 +1,7 @@
-import type { DataSeries } from '$lib/plot'
-import {
-  axis_labels as shared_axis_labels,
-  axis_scale_types as shared_axis_scale_types,
-} from '$lib/plot/core/axis-assignment'
-import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import { SCF_AXIS_GROUP } from '$lib/labels'
+import type { DataSeries } from '$lib/plot'
+import { axis_scale_types as shared_axis_scale_types } from '$lib/plot/core/axis-assignment'
+import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
 import {
   available_x_quantities,
@@ -16,6 +13,7 @@ import {
   get_frame_step_samples,
   get_frame_time_step,
   should_hide_plot,
+  TRAJECTORY_AXIS_SCALE_OPTIONS,
 } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
@@ -52,13 +50,13 @@ function test_extractor(frame: TrajectoryFrame): Record<string, number> {
   return data
 }
 
+type SeriesOptions = Partial<
+  Pick<DataSeries, `visible` | `label` | `unit` | `y_axis` | `axis_group`>
+>
+
 const create_series = (
   y_values: number[],
-  visible = true,
-  label = `Test`,
-  unit = ``,
-  y_axis: `y1` | `y2` = `y1`,
-  axis_group?: string,
+  { visible = true, label = `Test`, unit = ``, y_axis = `y1`, axis_group }: SeriesOptions = {},
 ): DataSeries => ({
   x: y_values.map((_, idx) => idx),
   y: y_values,
@@ -259,12 +257,11 @@ describe(`generate_plot_series`, () => {
     generate_plot_series(trajectory, other_extractor)
     expect(call_count).toBe(11)
 
-    const before_other_trajectory = call_count
     generate_plot_series(
       create_trajectory(COMMON_TRAJECTORIES.multi_property),
       counting_extractor,
     )
-    expect(call_count).toBeGreaterThan(before_other_trajectory)
+    expect(call_count).toBe(11 + COMMON_TRAJECTORIES.multi_property.length)
   })
 
   it.each([
@@ -299,7 +296,7 @@ describe(`generate_plot_series`, () => {
       create_trajectory(values.map((value) => ({ [key]: value }))),
       test_extractor,
     )
-    expect(series.length > 0).toBe(should_include)
+    expect(series).toHaveLength(should_include ? 1 : 0)
     if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
   })
 })
@@ -312,7 +309,7 @@ describe(`should_hide_plot`, () => {
     { name: `no series`, frames: multi, series: [], expected: true },
     { name: `constant series`, frames: multi, series: [create_series([1.0, 1.0, 1.0])], expected: true },
     { name: `varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0])], expected: false },
-    { name: `hidden varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0], false)], expected: false },
+    { name: `hidden varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0], { visible: false })], expected: false },
     { name: `single-frame trajectory`, frames: [{ energy: -10 }], series: [create_series([1.0, 2.0, 3.0])], expected: true },
     { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
     { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
@@ -333,40 +330,29 @@ describe(`should_hide_plot`, () => {
 describe(`generate_axis_labels`, () => {
   // oxfmt-ignore
   it.each([
-    { name: `single series with unit`, series: [create_series([1, 2], true, `Energy`, `eV`)],
+    { name: `single series with unit`, series: [create_series([1, 2], { label: `Energy`, unit: `eV` })],
       expected: { y1: `Energy (eV)`, y2: `Value` } },
     { name: `multiple series same unit`, series: [
-      create_series([1, 2], true, `A`, `Å`), create_series([3, 4], true, `B`, `Å`),
-      create_series([5, 6], true, `C`, `Å`),
+      create_series([1, 2], { label: `A`, unit: `Å` }), create_series([3, 4], { label: `B`, unit: `Å` }),
+      create_series([5, 6], { label: `C`, unit: `Å` }),
     ], expected: { y1: `A / B / C (Å)`, y2: `Value` } },
     { name: `series without units`,
-      series: [create_series([1, 2], true, `Dimensionless`, ``)],
+      series: [create_series([1, 2], { label: `Dimensionless` })],
       expected: { y1: `Dimensionless`, y2: `Value` } },
-    { name: `only hidden series`, series: [create_series([1, 2], false, `Hidden`, `eV`)],
+    { name: `only hidden series`, series: [create_series([1, 2], { visible: false, label: `Hidden`, unit: `eV` })],
       expected: { y1: `Value`, y2: `Value` } },
     { name: `mixed visibility (hidden series excluded from labels)`, series: [
-      create_series([1, 2], true, `Visible`, `eV`, `y1`),
-      create_series([3, 4], false, `Hidden`, `eV`, `y1`), // Same unit, but hidden
-      create_series([5, 6], true, `Another`, `Å`, `y2`),
+      create_series([1, 2], { label: `Visible`, unit: `eV` }),
+      create_series([3, 4], { visible: false, label: `Hidden`, unit: `eV` }), // Same unit, but hidden
+      create_series([5, 6], { label: `Another`, unit: `Å`, y_axis: `y2` }),
     ], expected: { y1: `Visible (eV)`, y2: `Another (Å)` } },
     { name: `multiple series concatenated on y1 with separate y2`, series: [
-      create_series([5.0, 5.1], true, `A`, `Å`, `y1`),
-      create_series([5.1, 5.2], true, `B`, `Å`, `y1`),
-      create_series([1.0, 2.0], true, `Energy`, `eV`, `y2`),
+      create_series([5.0, 5.1], { label: `A`, unit: `Å` }),
+      create_series([5.1, 5.2], { label: `B`, unit: `Å` }),
+      create_series([1.0, 2.0], { label: `Energy`, unit: `eV`, y_axis: `y2` }),
     ], expected: { y1: `A / B (Å)`, y2: `Energy (eV)` } },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_labels(series)).toEqual(expected)
-  })
-
-  it(`matches the shared axis label helper`, () => {
-    const series = [
-      create_series([1, 2], true, `Energy`, `eV`, `y1`),
-      create_series([1e-6, 1], true, `Residual`, `eV`, `y2`, SCF_AXIS_GROUP),
-      create_series([3, 4], false, `Hidden`, `GPa`, `y1`),
-    ]
-    expect(generate_axis_labels(series)).toEqual(
-      shared_axis_labels(series, { is_visible: (srs) => srs.visible === true }),
-    )
   })
 })
 
@@ -377,51 +363,44 @@ describe(`generate_axis_scale_types`, () => {
     { name: `positive non-SCF series spanning >=3 decades stays linear`,
       series: [create_series([1e-6, 1e-4, 1e-2, 1])], expected: all_linear },
     { name: `positive SCF axis group spanning >=3 decades goes log`,
-      series: [create_series([1e-6, 1e-4, 1e-2, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([1e-6, 1e-4, 1e-2, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: { y1: `log`, y2: `linear` } },
     { name: `negative SCF values stay linear despite decade span`,
-      series: [create_series([-10, 1e-4, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([-10, 1e-4, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: all_linear },
     { name: `zero SCF values stay linear`,
-      series: [create_series([0, 1e-4, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([0, 1e-4, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: all_linear },
     { name: `positive but narrow SCF span stays linear`,
-      series: [create_series([1, 5, 100], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([1, 5, 100], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: all_linear },
     { name: `hidden series don't affect the axis scale`, series: [
-      create_series([-10, -11, -12], true, `Energy`, `eV`),
-      create_series([1e-6, 1], false, `Residual`, `a.u.`),
+      create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
+      create_series([1e-6, 1], { visible: false, label: `Residual`, unit: `a.u.` }),
     ], expected: all_linear },
     { name: `per-axis decision: linear energy on y1, log residual on y2`, series: [
-      create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
-      create_series([1, 1e-3, 1e-7], true, `Residual`, `eV`, `y2`, `eV (SCF)`),
+      create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
+      create_series([1, 1e-3, 1e-7], { label: `Residual`, unit: `eV`, y_axis: `y2`, axis_group: `eV (SCF)` }),
     ], expected: { y1: `linear`, y2: `log` } },
     { name: `mixed-sign axis stays linear even when one series qualifies`, series: [
-      create_series([-10, -11, -12], true, `Energy`, `eV`, `y1`),
-      create_series([1, 1e-3, 1e-7], true, `Residual`, `a.u.`, `y1`),
+      create_series([-10, -11, -12], { label: `Energy`, unit: `eV` }),
+      create_series([1, 1e-3, 1e-7], { label: `Residual`, unit: `a.u.` }),
     ], expected: all_linear },
     { name: `no series`, series: [], expected: all_linear },
     { name: `NaN values are ignored for the decision`,
-      series: [create_series([NaN, 1e-5, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([NaN, 1e-5, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: { y1: `log`, y2: `linear` } },
     { name: `infinities are ignored but finite zero still forces linear`,
-      series: [create_series([NaN, -Infinity, 0, 1e-5, Infinity, 1], true, `SCF`, `eV`, `y1`, `eV (SCF)`)],
+      series: [create_series([NaN, -Infinity, 0, 1e-5, Infinity, 1], { label: `SCF`, unit: `eV`, axis_group: `eV (SCF)` })],
       expected: all_linear },
   ])(`$name`, ({ series, expected }) => {
     expect(generate_axis_scale_types(series)).toEqual(expected)
   })
 
   it(`matches the shared axis scale helper`, () => {
-    const series = [
-      create_series([-10, -9], true, `Energy`, `eV`, `y1`),
-      create_series([1e-6, 1], true, `Residual`, `eV`, `y2`, SCF_AXIS_GROUP),
-    ]
+    const series = [create_series([1e-6, 1], { axis_group: SCF_AXIS_GROUP })]
     expect(generate_axis_scale_types(series)).toEqual(
-      shared_axis_scale_types(series, {
-        is_visible: (srs) => srs.visible === true,
-        can_use_log_scale: (srs) => srs.axis_group === SCF_AXIS_GROUP,
-        min_log_decades: 3,
-      }),
+      shared_axis_scale_types(series, TRAJECTORY_AXIS_SCALE_OPTIONS),
     )
   })
 })

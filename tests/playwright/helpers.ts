@@ -13,6 +13,11 @@ export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
 export const is_present = <Value>(value: Value | null | undefined): value is Value =>
   value != null
 
+export const numeric_y_ticks = async (plot: Locator): Promise<string[]> =>
+  (await plot.locator(`g.y-axis text`).allTextContents()).filter(
+    (text) => text.trim() !== `` && Number.isFinite(Number(text)),
+  )
+
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time
 export const get_canvas_timeout = (): number =>
@@ -198,6 +203,42 @@ export async function set_range_input(input: Locator, value: string): Promise<vo
 // Get the chart SVG from a plot container (avoids control button SVGs)
 export const get_chart_svg = (plot: Locator): Locator =>
   plot.locator(`:scope > svg[role="application"]`)
+
+type PlotRect = { x: number; y: number; width: number; height: number }
+type PlotArea = { clip: PlotRect; svg_box: PlotRect }
+
+export async function measure_plot_area(plot: Locator): Promise<PlotArea> {
+  const clip = await plot.locator(`clipPath rect`).evaluate((element) => ({
+    x: Number(element.getAttribute(`x`)),
+    y: Number(element.getAttribute(`y`)),
+    width: Number(element.getAttribute(`width`)),
+    height: Number(element.getAttribute(`height`)),
+  }))
+  const svg_box = await get_chart_svg(plot).boundingBox()
+  if (
+    !svg_box ||
+    Object.values(clip).some((value) => !Number.isFinite(value)) ||
+    clip.width <= 0 ||
+    clip.height <= 0
+  ) {
+    throw new Error(`Could not measure plot area`)
+  }
+  return { clip, svg_box }
+}
+
+export async function drag_plot_area(page: Page, { clip, svg_box }: PlotArea): Promise<void> {
+  await page.mouse.move(
+    svg_box.x + clip.x + clip.width * 0.15,
+    svg_box.y + clip.y + clip.height * 0.15,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    svg_box.x + clip.x + clip.width * 0.85,
+    svg_box.y + clip.y + clip.height * 0.75,
+    { steps: 5 },
+  )
+  await page.mouse.up()
+}
 
 export async function expect_bottom_within(outer: Locator, inner: Locator): Promise<void> {
   const [outer_box, inner_box] = await Promise.all([outer.boundingBox(), inner.boundingBox()])

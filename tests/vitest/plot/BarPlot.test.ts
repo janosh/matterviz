@@ -1,7 +1,7 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
   inside_clip_path,
@@ -22,6 +22,8 @@ const mount_sized_bar_plot = (
 ): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot`, ...size })
 
 describe(`BarPlot`, () => {
+  afterEach(() => vi.restoreAllMocks())
+
   test.each([
     { name: `empty data`, series: [], expected_series: 0, expected_bars: 0 },
     {
@@ -505,34 +507,17 @@ describe(`BarPlot`, () => {
   })
 
   test(`renders grouped and ungrouped legend entries`, async () => {
+    const series = (
+      label: string,
+      y: number[],
+      color: string,
+      legend_group?: string,
+    ): BarSeries => ({ x: [1, 2, 3], y, label, color, legend_group })
     const grouped_series: BarSeries[] = [
-      {
-        x: [1, 2, 3],
-        y: [10, 20, 15],
-        label: `PBE`,
-        legend_group: `DFT`,
-        color: `blue`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [12, 18, 17],
-        label: `LDA`,
-        legend_group: `DFT`,
-        color: `lightblue`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [11, 19, 16],
-        label: `MACE`,
-        legend_group: `ML`,
-        color: `red`,
-      },
-      {
-        x: [1, 2, 3],
-        y: [10.5, 20.5, 15.5],
-        label: `Experiment`,
-        color: `green`,
-      },
+      series(`PBE`, [10, 20, 15], `blue`, `DFT`),
+      series(`LDA`, [12, 18, 17], `lightblue`, `DFT`),
+      series(`MACE`, [11, 19, 16], `red`, `ML`),
+      series(`Experiment`, [10.5, 20.5, 15.5], `green`),
     ]
     const plot = await mount_sized_bar_plot({ series: grouped_series })
     expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
@@ -567,6 +552,8 @@ describe(`BarPlot`, () => {
     })
 
   test(`automatic legend placement avoids sparse bar and line obstacles`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
     const plot = await mount_sized_bar_plot({
       series: [
         { x: [1, 2, 3], y: [8, 12, 10], label: `Bars` },
@@ -641,51 +628,43 @@ describe(`BarPlot`, () => {
   )
 
   test(`uses measured legend size across resize without padding drift`, async () => {
-    const width_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
-      .mockReturnValue(180)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
-      .mockReturnValue(44)
-    try {
-      const cats = Array.from({ length: 30 }, (_, idx) => idx)
-      const props = {
-        series: [
-          { x: cats, y: cats.map(() => 100), label: `A` },
-          { x: cats, y: cats.map(() => 100), label: `B` },
-        ],
-        legend: {},
-        show_legend: true,
-      }
-      const small = await mount_sized_bar_plot(props, { width: 400, height: 300 })
-      const wide = await mount_sized_bar_plot(props, { width: 640, height: 340 })
-      const repeated = await mount_sized_bar_plot(props, { width: 640, height: 340 })
-      expect(legend_position(small)).toEqual({ x: 130, y: 300 - 44 - 8 })
-      expect(legend_position(wide)).toEqual({ x: 250, y: 340 - 44 - 8 })
-      const clip_geometry = (plot: HTMLElement) => {
-        const clip_rect = plot.querySelector(`clipPath rect`)
-        if (!clip_rect) throw new Error(`clip rectangle not found`)
-        return [`x`, `y`, `width`, `height`].map((attr) => clip_rect.getAttribute(attr))
-      }
-      expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
-    } finally {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
+    const cats = Array.from({ length: 30 }, (_, idx) => idx)
+    const make_props = () => ({
+      series: [
+        { x: cats, y: cats.map(() => 100), label: `A` },
+        { x: cats, y: cats.map(() => 100), label: `B` },
+      ],
+      legend: {},
+      show_legend: true,
+    })
+    const small = await mount_sized_bar_plot(make_props(), { width: 400, height: 300 })
+    const wide = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
+    const repeated = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
+    expect(legend_position(small)).toEqual({ x: 130, y: 300 - 44 - 8 })
+    expect(legend_position(wide)).toEqual({ x: 250, y: 340 - 44 - 8 })
+    const clip_geometry = (plot: HTMLElement) => {
+      const clip_rect = plot.querySelector(`clipPath rect`)
+      if (!clip_rect) throw new Error(`clip rectangle not found`)
+      return [`x`, `y`, `width`, `height`].map((attr) => clip_rect.getAttribute(attr))
     }
+    expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
   })
 
   test(`preserves explicit legend position and automatic tracks on resize`, async () => {
     const item_extents = Array.from({ length: 4 }, () => ({ width: 70, height: 20 }))
-    const auto_props = {
-      series: Array.from({ length: 4 }, (_, series_idx) => ({
-        ...basic,
-        label: `Series ${series_idx}`,
-      })),
-      show_legend: true,
-      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-    } satisfies Partial<ComponentProps<typeof BarPlot>>
-    const auto_wide = await mount_sized_bar_plot(auto_props)
-    const auto_narrow = await mount_sized_bar_plot(auto_props, { width: 280 })
+    const make_auto_props = () =>
+      ({
+        series: Array.from({ length: 4 }, (_, series_idx) => ({
+          ...basic,
+          label: `Series ${series_idx}`,
+        })),
+        show_legend: true,
+        legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
+      }) satisfies Partial<ComponentProps<typeof BarPlot>>
+    const auto_wide = await mount_sized_bar_plot(make_auto_props())
+    const auto_narrow = await mount_sized_bar_plot(make_auto_props(), { width: 280 })
     expect(auto_wide.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
       `repeat(4, auto)`,
     )
@@ -693,24 +672,21 @@ describe(`BarPlot`, () => {
       `repeat(2, auto)`,
     )
 
-    const plot = await mount_sized_bar_plot({
-      series: multi_series,
-      show_legend: true,
-      legend: { style: `right: 7px; top: 9px; background-color: rgb(1, 2, 3);` },
-    })
+    const mount_pinned = (style: string, size = {}) =>
+      mount_sized_bar_plot(
+        { series: multi_series, show_legend: true, legend: { style } },
+        size,
+      )
+    const plot = await mount_pinned(`right: 7px; top: 9px; background-color: rgb(1, 2, 3);`)
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     expect(legend?.style.right).toBe(`7px`)
     expect(legend?.style.top).toBe(`9px`)
     expect(legend?.style.left).toBe(``)
     expect(legend?.style.backgroundColor).toBe(`rgb(1, 2, 3)`)
-    const resized = await mount_sized_bar_plot(
-      {
-        series: multi_series,
-        show_legend: true,
-        legend: { style: `right: 7px; top: 9px;` },
-      },
-      { width: 520, height: 340 },
-    )
+    const resized = await mount_pinned(`right: 7px; top: 9px;`, {
+      width: 520,
+      height: 340,
+    })
     expect(resized.querySelector<HTMLElement>(`.legend`)?.style.right).toBe(`7px`)
     expect(resized.querySelector<HTMLElement>(`.legend`)?.style.top).toBe(`9px`)
   })

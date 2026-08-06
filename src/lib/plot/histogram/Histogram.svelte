@@ -10,13 +10,8 @@
     RefLine,
     RefLineEvent,
   } from '$lib/plot'
-  import {
-    HistogramControls,
-    PlotAxis,
-    PlotLegend,
-    PlotMarginals,
-    ReferenceLine,
-  } from '$lib/plot'
+  import { HistogramControls, PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import {
@@ -42,13 +37,14 @@
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
     filter_padding,
+    measured_axis,
     resolve_tick_layout,
     sides_equal,
     y_axis_label_x,
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { FontSpec } from '$lib/plot/core/text-metrics'
-  import { normalize_plot_title, resolve_plot_title } from '$lib/plot/core/plot-title'
+  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import {
     build_obstacles_norm,
     clip_bar,
@@ -61,7 +57,6 @@
   import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import {
-    get_reference_annotation_placement,
     group_ref_lines_by_z,
     index_ref_lines,
     solve_reference_annotations,
@@ -134,7 +129,7 @@
     pan = {},
     marginals = false,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
       series: DataSeries[]
@@ -352,6 +347,8 @@
   // Track tick values so x auto-rotation / bottom pad recompute when ticks change.
   // sides_equal stops the pad write from looping when nothing moved.
   $effect(() => {
+    const x_extent = { start: base_pad.l, end: width - base_pad.r }
+    const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const axis_pad =
       width && height
         ? calc_auto_padding({
@@ -359,43 +356,13 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: {
-              ...final_x_axis,
-              tick_values: ticks.x,
-              tick_positions: ticks.x.map(scales.x),
-              axis_extent: { start: pad.l, end: width - pad.r },
-              tick_font,
-            },
-            x2_axis: {
-              ...final_x2_axis,
-              tick_values: ticks.x2,
-              tick_positions: ticks.x2.map(scales.x2),
-              axis_extent: { start: pad.l, end: width - pad.r },
-              tick_font,
-            },
-            y_axis: {
-              ...final_y_axis,
-              tick_values: ticks.y,
-              tick_positions: ticks.y.map(scales.y),
-              axis_extent: { start: height - pad.b, end: pad.t },
-              tick_font,
-            },
-            y2_axis: {
-              ...final_y2_axis,
-              tick_values: ticks.y2,
-              tick_positions: ticks.y2.map(scales.y2),
-              axis_extent: { start: height - pad.b, end: pad.t },
-              tick_font,
-            },
+            x_axis: measured_axis(final_x_axis, ticks.x, scales.x, x_extent, tick_font),
+            x2_axis: measured_axis(final_x2_axis, ticks.x2, scales.x2, x_extent, tick_font),
+            y_axis: measured_axis(final_y_axis, ticks.y, scales.y, y_extent, tick_font),
+            y2_axis: measured_axis(final_y2_axis, ticks.y2, scales.y2, y_extent, tick_font),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    const title_height =
-      width && height
-        ? resolve_plot_title(title_config, {
-            width: Math.max(0, width - axis_pad.l - axis_pad.r),
-          }).block_height
-        : 0
-    const new_pad = { ...axis_pad, t: axis_pad.t + title_height }
+    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
   })
@@ -548,29 +515,21 @@
   })
 
   // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
-  let tick_label_widths = $derived({
-    y_max: resolve_tick_layout(
-      {
-        ...final_y_axis,
-        tick_values: ticks.y,
-        tick_positions: ticks.y.map(scales.y),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      Math.max(0, height - pad.t - pad.b),
-      `y`,
-    ).band,
-    y2_max: resolve_tick_layout(
-      {
-        ...final_y2_axis,
-        tick_values: ticks.y2,
-        tick_positions: ticks.y2.map(scales.y2),
-        axis_extent: { start: height - pad.b, end: pad.t },
-        tick_font,
-      },
-      Math.max(0, height - pad.t - pad.b),
-      `y2`,
-    ).band,
+  let tick_label_widths = $derived.by(() => {
+    const extent = { start: height - pad.b, end: pad.t }
+    const band = Math.max(0, height - pad.t - pad.b)
+    return {
+      y_max: resolve_tick_layout(
+        measured_axis(final_y_axis, ticks.y, scales.y, extent, tick_font),
+        band,
+        `y`,
+      ).band,
+      y2_max: resolve_tick_layout(
+        measured_axis(final_y2_axis, ticks.y2, scales.y2, extent, tick_font),
+        band,
+        `y2`,
+      ).band,
+    }
   })
 
   let legend_data = $derived(prepare_legend_data(series))
@@ -701,33 +660,17 @@
   $effect(try_auto_load)
 </script>
 
-{#snippet ref_lines_layer(lines: IndexedRefLine[])}
-  {#each lines as line (line.id ?? line.idx)}
-    <ReferenceLine
-      ref_line={line}
-      line_idx={line.idx}
-      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
-      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
-      y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
-      y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
-      x_scale={scales.x}
-      x2_scale={scales.x2}
-      y_scale={scales.y}
-      y2_scale={scales.y2}
-      {clip_path_id}
-      hovered_line_idx={hovered_ref_line_idx}
-      annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
-      on_click={(event: RefLineEvent) => {
-        line.on_click?.(event)
-        on_ref_line_click?.(event)
-      }}
-      on_hover={(event: RefLineEvent | null) => {
-        hovered_ref_line_idx = event?.line_idx ?? null
-        line.on_hover?.(event)
-        on_ref_line_hover?.(event)
-      }}
-    />
-  {/each}
+{#snippet ref_lines_layer(lines: readonly IndexedRefLine[])}
+  <ReferenceLinesLayer
+    {lines}
+    ranges={ranges.current}
+    {scales}
+    {clip_path_id}
+    {decoration_solution}
+    bind:hovered_line_idx={hovered_ref_line_idx}
+    on_click={on_ref_line_click}
+    on_hover={on_ref_line_hover}
+  />
 {/snippet}
 
 <svelte:window
