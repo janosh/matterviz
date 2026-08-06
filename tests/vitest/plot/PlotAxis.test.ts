@@ -1,6 +1,10 @@
 import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
-import { AXIS_TITLE_OFFSET, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+import {
+  AXIS_TITLE_OFFSET,
+  AXIS_TITLE_WRAP_WIDTH,
+  TICK_LABEL_HEIGHT,
+} from '$lib/plot/core/layout'
 import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -241,7 +245,9 @@ describe(`PlotAxis`, () => {
     ])
   })
 
-  // AxisLabel sizes its foreignObject from measured content while preserving the title center.
+  // Spans the wrap budget and stays centered on label_x. Hugging the measured text instead
+  // made the box narrower than the rendered glyphs, so the browser re-wrapped a title that
+  // fits — "Model" rendered as "Mod"/"el".
   test.each([
     [`narrow plot`, 200],
     [`wide plot`, 600],
@@ -259,7 +265,7 @@ describe(`PlotAxis`, () => {
     const foreign_obj = query(svg, `.x-axis foreignObject`)
     const foreign_obj_x = Number(foreign_obj.getAttribute(`x`))
     const foreign_obj_w = Number(foreign_obj.getAttribute(`width`))
-    expect(foreign_obj_w).toBe(`Energy`.length * 7)
+    expect(foreign_obj_w).toBe(Math.max(plot_width - pad.l - pad.r, AXIS_TITLE_WRAP_WIDTH))
     expect(foreign_obj_x + foreign_obj_w / 2).toBe(label_x)
   })
 

@@ -1375,7 +1375,7 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
 
 ## Adaptive Tick Strategies Under Pressure
 
-`tick.label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, abbreviated, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
+`tick.label.auto_layout` scores upright, wrapped, rotated, staggered, thinned, and ellipsized candidates against the measured container. Resize the plot and move the category axis between x and y to see the same strategy set adapt in both directions.
 
 ```svelte example
 <script lang="ts">
@@ -1398,7 +1398,6 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
     `rotate`,
     `stagger`,
     `thin`,
-    `abbreviate`,
     `ellipsis`,
   ] as const
 

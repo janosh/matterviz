@@ -203,11 +203,10 @@
       {@const label_lines = label.lines}
       {@const tick_unit =
         unit_on_first_tick && idx === first_rendered_label_idx ? axis.unit : undefined}
-      {@const label_x_offset =
-        text_x +
-        (is_x ? 0 : -stagger_direction * label.stagger_row * tick_layout.stagger_step)}
-      {@const label_y_offset =
-        text_y + (is_x ? stagger_direction * label.stagger_row * tick_layout.stagger_step : 0)}
+      {@const stagger_offset =
+        stagger_direction * label.stagger_row * tick_layout.stagger_step}
+      {@const label_x_offset = text_x + (is_x ? 0 : -stagger_offset)}
+      {@const label_y_offset = text_y + (is_x ? stagger_offset : 0)}
       {@const label_transform =
         rotation !== 0
           ? `rotate(${rotation}, ${label_x_offset}, ${label_y_offset})`

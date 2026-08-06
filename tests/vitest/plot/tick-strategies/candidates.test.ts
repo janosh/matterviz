@@ -1,6 +1,5 @@
 import {
   create_tick_candidate,
-  generate_abbreviated_candidate,
   generate_ellipsis_candidate,
   generate_stagger_candidate,
   generate_thinned_candidate,
@@ -76,40 +75,6 @@ describe(`tick strategy candidates`, () => {
     )
   })
 
-  test(`semantic abbreviation protects units and labels with no-break characters`, () => {
-    const candidate = create_tick_candidate({
-      id: `long-labels`,
-      strategy: `upright`,
-      labels: [
-        `Average Temperature (eV/Å³)`,
-        `Minimum Pressure [GPa]`,
-        `Average\u00A0Temperature (K)`,
-        `Maximum\u2011Pressure`,
-        `constructor`,
-      ],
-    })
-    const abbreviated = generate_abbreviated_candidate(candidate, {
-      id: `abbreviated`,
-    })
-
-    expect(abbreviated.labels.map(({ display_lines }) => display_lines[0])).toEqual([
-      `Avg. Temp. (eV/Å³)`,
-      `Min. Press. [GPa]`,
-      `Average\u00A0Temperature (K)`,
-      `Maximum\u2011Pressure`,
-      `constructor`,
-    ])
-    expect(abbreviated.labels.map(({ full_text }) => full_text)).toEqual(
-      candidate.labels.map(({ full_text }) => full_text),
-    )
-    expect(
-      abbreviated.labels.slice(0, 2).every(({ information_loss }) => information_loss > 0),
-    ).toBe(true)
-    expect(
-      abbreviated.labels.slice(2).every(({ information_loss }) => information_loss === 0),
-    ).toBe(true)
-  })
-
   test(`measured ellipsis chooses the longest fitting grapheme prefix`, () => {
     const segmenter = new Intl.Segmenter(undefined, { granularity: `grapheme` })
     const measure_text = (text: string): number =>
@@ -151,10 +116,6 @@ describe(`tick strategy candidates`, () => {
     (overrides: Partial<Parameters<typeof create_tick_candidate>[0]>): (() => unknown) =>
     () =>
       create_tick_candidate({ ...base_candidate, ...overrides })
-  const invalid_abbreviation =
-    (abbreviations: Record<string, string>): (() => unknown) =>
-    () =>
-      generate_abbreviated_candidate(base_candidate, { id: `invalid`, abbreviations })
   const invalid_ellipsis =
     (
       max_width_px: number | readonly number[],
@@ -182,7 +143,7 @@ describe(`tick strategy candidates`, () => {
     [
       `information loss outside [0, 1]`,
       invalid_candidate({
-        strategy: `abbreviate`,
+        strategy: `ellipsis`,
         labels: [{ full_text: `Alpha`, information_loss: 1.1 }],
       }),
       /information_loss.*\[0, 1\]/u,
@@ -196,16 +157,6 @@ describe(`tick strategy candidates`, () => {
           { id: `invalid-thinning` },
         ),
       /candidate "upright".*outside/u,
-    ],
-    [
-      `an empty abbreviation key`,
-      invalid_abbreviation({ [``]: `value` }),
-      /abbreviation keys and values must not be empty/u,
-    ],
-    [
-      `an empty abbreviation value`,
-      invalid_abbreviation({ alpha: ` ` }),
-      /abbreviation keys and values must not be empty/u,
     ],
     [
       `negative ellipsis width`,

@@ -4,7 +4,6 @@ export const TICK_STRATEGIES = [
   `rotate`,
   `stagger`,
   `thin`,
-  `abbreviate`,
   `ellipsis`,
 ] as const
 export const MIN_RETAINED_INFORMATION_FRACTION = 0.25

@@ -47,7 +47,6 @@
     inset,
     bottom_left_inset,
     tooltip = false,
-    onenter,
     onactivate,
     children,
     onkeydown: on_table_keydown,
@@ -105,7 +104,6 @@
         >
       | boolean
     children?: Snippet
-    onenter?: (element: ChemicalElement) => void
     onactivate?: (element: ChemicalElement) => void
   } = $props()
 
@@ -140,9 +138,6 @@
     if (disabled) return
     active_element = element
   }
-  // `onenter` is the legacy activation prop. Route it through the same tile
-  // interaction as `onactivate` so pointer, Enter, and Space cannot diverge.
-  let activation_callback = $derived(onactivate ?? onenter)
   const element_href = (element: ChemicalElement): string | undefined =>
     !links
       ? undefined
@@ -150,7 +145,7 @@
         ? `/${element[links]}`.toLowerCase()
         : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
-    Boolean(element_href(element) || activation_callback)
+    Boolean(element_href(element) || onactivate)
   let focused_symbol = $state<ElementSymbol | null>(null)
   let first_interactive_symbol = $derived(
     element_data.find(element_is_interactive)?.symbol ?? null,
@@ -162,9 +157,9 @@
         : first_interactive_symbol),
   )
   $effect(() => {
-    if (links && activation_callback) {
+    if (links && onactivate) {
       console.warn(
-        `PeriodicTable links use native link activation; onactivate/onenter applies only to unlinked tiles.`,
+        `PeriodicTable links use native link activation; onactivate applies only to unlinked tiles.`,
       )
     }
   })
@@ -344,7 +339,7 @@
   {#each element_data as element (element.number)}
     {@const { column, row, category, name, symbol } = element}
     {@const href = element_href(element)}
-    {@const tile_activation = href ? undefined : activation_callback}
+    {@const tile_activation = href ? undefined : onactivate}
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}

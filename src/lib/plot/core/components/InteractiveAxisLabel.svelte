@@ -102,9 +102,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    overflow-wrap: anywhere;
     text-align: center;
-    white-space: pre-wrap;
+    /* The layout already wrapped lines; prevent a second browser wrap. */
+    white-space: nowrap;
     width: 100%;
   }
   .loading :global(.axis-trigger) {

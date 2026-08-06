@@ -143,24 +143,19 @@ describe(`PeriodicTable`, () => {
     expect(tile.style.cursor).toBe(`pointer`) // user style still applied
   })
 
-  test.each([`onactivate`, `legacy onenter`] as const)(
-    `%s handles pointer and keyboard activation`,
-    (callback_name) => {
-      const callback = vi.fn<(element: ChemicalElement) => void>()
-      const props =
-        callback_name === `onactivate` ? { onactivate: callback } : { onenter: callback }
-      mount(PeriodicTable, { target: document.body, props })
-      const tile = doc_query(`.element-tile`)
-      tile.click()
-      for (const key of [`Enter`, ` `]) {
-        tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-      }
-      expect(tile.getAttribute(`role`)).toBe(`button`)
-      expect(tile.getAttribute(`tabindex`)).toBe(`0`)
-      expect(document.querySelectorAll<HTMLElement>(`.element-tile`)[1].tabIndex).toBe(-1)
-      expect(callback.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
-    },
-  )
+  test(`onactivate handles pointer and keyboard activation`, () => {
+    const callback = vi.fn<(element: ChemicalElement) => void>()
+    mount(PeriodicTable, { target: document.body, props: { onactivate: callback } })
+    const tile = doc_query(`.element-tile`)
+    tile.click()
+    for (const key of [`Enter`, ` `]) {
+      tile.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    }
+    expect(tile.getAttribute(`role`)).toBe(`button`)
+    expect(tile.getAttribute(`tabindex`)).toBe(`0`)
+    expect(document.querySelectorAll<HTMLElement>(`.element-tile`)[1].tabIndex).toBe(-1)
+    expect(callback.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `H`, `H`])
+  })
 
   test(`links keep native semantics when an activation callback is also supplied`, async () => {
     const onactivate = vi.fn<(element: ChemicalElement) => void>()

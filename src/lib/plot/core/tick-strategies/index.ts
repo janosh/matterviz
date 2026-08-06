@@ -1,12 +1,9 @@
 export {
   create_tick_candidate,
-  DEFAULT_SEMANTIC_ABBREVIATIONS,
-  generate_abbreviated_candidate,
   generate_ellipsis_candidate,
   generate_stagger_candidate,
   generate_thinned_candidate,
   validate_tick_candidate,
-  type AbbreviationCandidateOptions,
   type CreateTickCandidateInput,
   type EllipsisCandidateOptions,
   type StaggerCandidateOptions,

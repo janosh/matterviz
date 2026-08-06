@@ -388,13 +388,16 @@ const project_measured_axis = (
   }
 }
 
+// No ticks is a value, not missing geometry.
+const EMPTY_AXIS: MeasuredAxis = { tick_values: [], tick_positions: [] }
+
 export const calc_auto_padding = ({
   padding,
   default_padding,
-  x_axis = {},
-  x2_axis = {},
-  y_axis = {},
-  y2_axis = {},
+  x_axis = EMPTY_AXIS,
+  x2_axis = EMPTY_AXIS,
+  y_axis = EMPTY_AXIS,
+  y2_axis = EMPTY_AXIS,
   label_gap = LABEL_GAP_DEFAULT,
   width,
   height,

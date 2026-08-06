@@ -30,41 +30,12 @@ export interface StaggerCandidateOptions extends TickCandidateTransformOptions {
   first_row?: TickStaggerRow
 }
 
-export interface AbbreviationCandidateOptions extends TickCandidateTransformOptions {
-  abbreviations?: Readonly<Record<string, string>>
-}
-
 export interface EllipsisCandidateOptions extends TickCandidateTransformOptions {
   max_width_px: number | readonly number[]
   measure_text: (text: string) => number
   ellipsis?: string
 }
 
-export const DEFAULT_SEMANTIC_ABBREVIATIONS = {
-  average: `avg.`,
-  concentration: `conc.`,
-  conductivity: `cond.`,
-  coordination: `coord.`,
-  density: `dens.`,
-  displacement: `disp.`,
-  distance: `dist.`,
-  formation: `form.`,
-  frequency: `freq.`,
-  intensity: `int.`,
-  magnetization: `mag.`,
-  maximum: `max.`,
-  minimum: `min.`,
-  normalized: `norm.`,
-  percentage: `pct.`,
-  pressure: `press.`,
-  probability: `prob.`,
-  temperature: `temp.`,
-  volume: `vol.`,
-} as const satisfies Readonly<Record<string, string>>
-
-const NO_BREAK_CHARACTER = /[\u00A0\u2011\u202F\u2060]/u
-const PROTECTED_SEGMENT = /(?<protected>\([^()]*\)|\[[^\][]*\]|\{[^{}]*\})/gu
-const WORD = /\p{L}[\p{L}\p{M}]*/gu
 const grapheme_segmenter = new Intl.Segmenter(`en`, { granularity: `grapheme` })
 const produced_candidates = new WeakSet<TickStrategyCandidate>()
 
@@ -244,61 +215,6 @@ export const generate_thinned_candidate = (
     visible: label.visible && visible_indices.has(label.tick_index),
   }))
   return transformed_candidate(candidate, id, `thin`, labels)
-}
-
-const preserve_abbreviation_case = (source: string, abbreviation: string): string => {
-  if (source === source.toUpperCase()) return abbreviation.toUpperCase()
-  const first_character = graphemes(source)[0] ?? ``
-  if (first_character === first_character.toUpperCase()) {
-    return abbreviation.slice(0, 1).toUpperCase() + abbreviation.slice(1)
-  }
-  return abbreviation
-}
-
-const abbreviate_unprotected_text = (
-  text: string,
-  abbreviations: Readonly<Record<string, string>>,
-): string =>
-  text.replace(WORD, (word) => {
-    const key = word.toLowerCase()
-    if (!Object.hasOwn(abbreviations, key)) return word
-    return preserve_abbreviation_case(word, abbreviations[key])
-  })
-
-const abbreviate_line = (
-  line: string,
-  abbreviations: Readonly<Record<string, string>>,
-): string =>
-  line
-    .split(PROTECTED_SEGMENT)
-    .map((segment, segment_idx) =>
-      segment_idx % 2 === 1 ? segment : abbreviate_unprotected_text(segment, abbreviations),
-    )
-    .join(``)
-
-export const generate_abbreviated_candidate = (
-  candidate: TickStrategyCandidate,
-  { id, abbreviations: custom_abbreviations = {} }: AbbreviationCandidateOptions,
-): TickStrategyCandidate => {
-  validate_tick_candidate_once(candidate)
-  for (const [word, abbreviation] of Object.entries(custom_abbreviations)) {
-    if (!word.trim() || !abbreviation.trim()) {
-      throw new Error(
-        `candidate "${id}" abbreviation keys and values must not be empty, got "${word}" -> "${abbreviation}"`,
-      )
-    }
-  }
-  const abbreviations: Readonly<Record<string, string>> = {
-    ...DEFAULT_SEMANTIC_ABBREVIATIONS,
-    ...custom_abbreviations,
-  }
-  const labels = copy_labels_as_input(candidate, (label) => {
-    const display_lines = NO_BREAK_CHARACTER.test(label.full_text)
-      ? [...label.display_lines]
-      : label.display_lines.map((line) => abbreviate_line(line, abbreviations))
-    return replace_display_lines(label, display_lines)
-  })
-  return transformed_candidate(candidate, id, `abbreviate`, labels)
 }
 
 const measured_width = (

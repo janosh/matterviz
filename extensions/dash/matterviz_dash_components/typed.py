@@ -218,7 +218,7 @@ class PeriodicTable(MatterViz):
 
     Component key: ``periodic-table/PeriodicTable``
 
-    Events: onactivate, onenter
+    Events: onactivate
 
     Unsupported snippets: children
     """

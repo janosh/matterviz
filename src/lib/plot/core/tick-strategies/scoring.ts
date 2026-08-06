@@ -56,7 +56,6 @@ const STRATEGY_TIE_PRIORITY = {
   wrap: 1,
   stagger: 2,
   rotate: 3,
-  abbreviate: 4,
   ellipsis: 5,
   thin: 6,
 } as const satisfies Readonly<Record<TickStrategy, number>>

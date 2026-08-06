@@ -440,6 +440,34 @@ const aabbs_collide = (first: TickAabb, second: TickAabb, gap: number): boolean 
   return !separated_x && !separated_y
 }
 
+// Every label on an axis shares one rotation, so tilted labels sit on parallel baselines and
+// clear each other exactly when the perpendicular distance between those baselines exceeds a
+// text block's height. Their axis-aligned boxes are far wider than the glyphs and overlap long
+// before the text does, which pushed the scorer to 90° where 30° already had room to spare.
+const labels_collide = (
+  first: TickLabelGeometry,
+  second: TickLabelGeometry,
+  gap: number,
+): boolean => {
+  if (!aabbs_collide(first.aabb, second.aabb, gap)) return false
+  const rotation = normalized_rotation(first.rotation)
+  if (rotation === 0 || rotation !== normalized_rotation(second.rotation)) {
+    return true
+  }
+  const radians = (rotation * Math.PI) / 180
+  // Labels on one axis share a side, so both origins map the same way.
+  const horizontal = first.side === `x` || first.side === `x2`
+  const delta_along = second.position.axis - first.position.axis
+  const delta_cross = second.position.cross_axis - first.position.cross_axis
+  const delta_x = horizontal ? delta_along : delta_cross
+  const delta_y = horizontal ? delta_cross : delta_along
+  // Distance between the two baselines, measured perpendicular to the shared text direction.
+  const perpendicular = Math.abs(-delta_x * Math.sin(radians) + delta_y * Math.cos(radians))
+  const block_height =
+    Math.max(first.lines.length, second.lines.length) * first.dimensions.line_height
+  return perpendicular < block_height + gap
+}
+
 const collision_pair = (
   first: TickLabelGeometry,
   second: TickLabelGeometry,
@@ -501,7 +529,7 @@ export const detect_tick_label_collisions_pairwise = (
     for (let second_idx = first_idx + 1; second_idx < labels.length; second_idx++) {
       const first = labels[first_idx]
       const second = labels[second_idx]
-      if (aabbs_collide(first.aabb, second.aabb, gap)) {
+      if (labels_collide(first, second, gap)) {
         pairs.push(collision_pair(first, second))
       }
     }
@@ -529,7 +557,7 @@ export const detect_tick_label_collisions_sweep = (
       }
     }
     for (const candidate of active) {
-      if (aabbs_collide(candidate.aabb, current.aabb, gap)) {
+      if (labels_collide(candidate, current, gap)) {
         pairs.push(collision_pair(candidate, current))
       }
     }

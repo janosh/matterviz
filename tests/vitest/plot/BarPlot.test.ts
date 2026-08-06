@@ -391,13 +391,14 @@ describe(`BarPlot`, () => {
         }),
       )
       const labels = x_tick_labels(plot)
-      expect(labels.length).toBeGreaterThan(0)
+      expect(labels.length).toBeGreaterThan(2)
       for (const label of labels) {
-        // Negative angle anchored at the label's end, so it trails left of its tick and
-        // the rightmost one cannot spill past the plot's right edge.
         expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
-        expect(label.getAttribute(`text-anchor`)).toBe(`end`)
       }
+      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual([
+        `start`,
+        ...Array(labels.length - 1).fill(`end`),
+      ])
     })
 
     // Horizontal orientation moves the categories onto y, so the left padding has to be

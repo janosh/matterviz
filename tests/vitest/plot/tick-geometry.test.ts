@@ -212,6 +212,44 @@ describe(`actual-position collision detection`, () => {
     expect(detect_tick_label_collisions_sweep(labels).has_collisions).toBe(false)
   })
 
+  it(`uses signed rotation for cross-axis collision distances`, () => {
+    const labels = calculate_tick_label_geometry({
+      items: [
+        tick_item(`first`, 0, 20, {
+          anchor: `start`,
+          dimensions: dimensions(20, 16),
+          position: { axis: 0, cross_axis: 0 },
+          rotation: -30,
+        }),
+        tick_item(`second`, 10, 20, {
+          anchor: `start`,
+          dimensions: dimensions(20, 16),
+          position: { axis: 10, cross_axis: -20 },
+          rotation: -30,
+        }),
+      ],
+      side: `x`,
+      axis_extent: { start: 0, end: 100 },
+    })
+    expect(detect_tick_label_collisions_pairwise(labels).has_collisions).toBe(true)
+    expect(detect_tick_label_collisions_sweep(labels).has_collisions).toBe(true)
+  })
+
+  it(`keeps pairwise and sweep results equal for separated rotated labels`, () => {
+    const labels = calculate_tick_label_geometry({
+      items: [
+        tick_item(`first`, 0, 8, { anchor: `start`, rotation: 30 }),
+        tick_item(`second`, 20, 8, { anchor: `start`, rotation: 30 }),
+      ],
+      side: `x`,
+      axis_extent: { start: 0, end: 100 },
+    })
+    const pairwise = detect_tick_label_collisions_pairwise(labels)
+    const sweep = detect_tick_label_collisions_sweep(labels)
+    expect(pairwise.pairs).toEqual([])
+    expect(sweep.pairs).toEqual(pairwise.pairs)
+  })
+
   it(`keeps pairwise and sweep results identical without mutating labels`, () => {
     const labels_before = structuredClone(irregular_labels)
     const pairwise = detect_tick_label_collisions_pairwise(irregular_labels, 15)

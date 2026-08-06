@@ -122,6 +122,11 @@ const assert_readable_non_overlapping = (labels: readonly RenderedLabel[]): void
 test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async ({ page }) => {
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 900 })
+  // A throw inside the tick-layout $derived aborts Svelte's update mid-flight, leaving some ticks
+  // showing values from the previous render rather than failing loudly, so treat errors as fatal.
+  const page_errors: string[] = []
+  const assert_no_page_errors = () => expect(page_errors).toEqual([])
+  page.on(`pageerror`, (error) => page_errors.push(error.message))
   await page.goto(`/plot/bar-plot`, { waitUntil: `domcontentloaded` })
 
   const demo = page.locator(`[data-testid="adaptive-tick-demo"]`)
@@ -129,8 +134,15 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
   await expect(demo.locator(`.bar-plot`)).toBeVisible()
   const width_slider = demo.locator(`input[type="range"]`)
   const x_axis = demo.locator(`.bar-plot g.x-axis`)
-  // Wait for Svelte to attach the slider handler, otherwise only the DOM input moves.
-  await expect(x_axis.locator(`.tick text`).first()).toBeVisible({ timeout: 45_000 })
+  // Wait for Svelte to attach the slider handler, otherwise only the DOM input moves. Bail on the
+  // first error instead of polling to the timeout, which would blame the missing tick element.
+  const tick_labels = x_axis.locator(`.tick text`)
+  const tick_deadline = Date.now() + 45_000
+  while (Date.now() < tick_deadline && (await tick_labels.count()) === 0) {
+    assert_no_page_errors()
+    await page.waitForTimeout(100)
+  }
+  await expect(tick_labels.first()).toBeVisible()
   await page.evaluate(async () => void (await document.fonts.ready))
 
   const set_chart_width = async (width: number): Promise<RenderedLabel[]> => {
@@ -145,4 +157,6 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
   assert_readable_non_overlapping(await set_chart_width(900))
 
   expect(layout_signature(await set_chart_width(740))).toEqual(layout_signature(narrow_labels))
+
+  assert_no_page_errors()
 })

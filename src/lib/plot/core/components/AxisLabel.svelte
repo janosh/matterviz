@@ -33,16 +33,18 @@
   } = $props()
 
   let use_svg_text = $derived(rotate && !options?.length && !loading)
+  let wrap_width = $derived(width || AXIS_TITLE_WRAP_WIDTH)
   const resolve_layout = () =>
-    resolve_axis_title_layout({ label, options, selected_key }, width || AXIS_TITLE_WRAP_WIDTH)
+    resolve_axis_title_layout({ label, options, selected_key }, wrap_width)
   // Text measurement fills a shared cache, so resolve outside $derived and refresh before DOM
   // updates. This mirrors PlotTitle and avoids Svelte's unsafe-mutation guard.
   let title_layout = $state.raw(resolve_layout())
   $effect.pre(() => {
     title_layout = resolve_layout()
   })
-  let container_width = $derived(Math.max(1, title_layout.width))
-  let container_height = $derived(Math.max(1, title_layout.height))
+  // Keep browser wrapping from splitting titles when canvas metrics under-estimate page fonts.
+  let container_width = $derived(Math.max(wrap_width, title_layout.width))
+  let container_height = $derived(Math.max(AXIS_LABEL_CONTAINER.height, title_layout.height))
   let first_line_y = $derived(
     y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
   )

@@ -3,7 +3,6 @@ import { get_tick_label } from '$lib/plot/core/scales'
 import { suggest_tick_count, thin_tick_indices } from '$lib/plot/core/tick-density'
 import {
   analyze_tick_label_geometry,
-  default_tick_label_anchor,
   type TickAxisExtent,
   type TickLabelAnchor,
   type TickLabelGeometry,
@@ -17,9 +16,8 @@ import {
 } from '$lib/plot/core/text-metrics'
 import {
   create_tick_candidate,
-  generate_abbreviated_candidate,
-  generate_ellipsis_candidate,
   generate_stagger_candidate,
+  generate_ellipsis_candidate,
   generate_thinned_candidate,
   select_tick_candidate,
   TICK_STRATEGIES,
@@ -32,7 +30,7 @@ import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 6
-const TICK_STAGGER_GAP = 4
+export const TICK_STAGGER_GAP = 4
 
 // Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas
 // font shorthand, while tick layout holds the FontSpec resolved off a rendered tick.
@@ -48,9 +46,9 @@ export const measure_text_width = (
 // axes pass their category names here, not the numeric indices behind them.
 export type MeasuredAxis = AxisConfig & {
   tick_values?: (string | number)[]
-  // Rendered pixel coordinates in tick_values order. Only callers without a scale should omit
-  // these and use the legacy equal-slot projection.
-  tick_positions?: number[]
+  // Rendered pixel coordinates in tick_values order. Required: layout is decided from real
+  // geometry, so a caller without a scale must project one rather than get an equal-slot guess.
+  tick_positions: number[]
   axis_extent?: TickAxisExtent
   tick_font?: Readonly<FontSpec>
 }
@@ -148,12 +146,14 @@ const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 const DEFAULT_TICK_LABEL_MAX_LINES = 3
 const DEFAULT_MAX_BAND_FOR_SCORING = 80
 const DEFAULT_VERTICAL_WRAP_WIDTH = DEFAULT_MAX_BAND_FOR_SCORING
+// `abbreviate` is gone: across 240 sampled axis shapes it never won a single layout, and
+// shortening words is a lossy edit nobody asked for. `stagger` stays — it is the only thing
+// that separates vertical ticks a few px apart, where rotation is wrong and thinning is capped.
 const DEFAULT_STRATEGY_ORDER: readonly TickStrategy[] = [
   `upright`,
   `wrap`,
   `stagger`,
   `thin`,
-  `abbreviate`,
   `rotate`,
   `ellipsis`,
 ]
@@ -420,18 +420,17 @@ const measure_candidate = ({
   return {
     candidate,
     labels: geometry.labels,
+    stagger_step,
     colliding_label_count: geometry.collisions.colliding_indices.length,
     band,
-    stagger_step,
     measured: { candidate, measurements },
   }
 }
 
-const adaptive_thin_indices = (item_count: number, requested_count: number): number[] => {
-  return Array.from({ length: requested_count }, (_unused, visible_idx) =>
+const adaptive_thin_indices = (item_count: number, requested_count: number): number[] =>
+  Array.from({ length: requested_count }, (_unused, visible_idx) =>
     Math.min(item_count - 1, Math.floor(((visible_idx + 0.5) * item_count) / requested_count)),
   ).filter((tick_idx, selected_idx, selected) => tick_idx !== selected[selected_idx - 1])
-}
 
 const empty_layout = (): ResolvedTickLayout => ({
   rotation: 0,
@@ -444,151 +443,43 @@ const empty_layout = (): ResolvedTickLayout => ({
   stagger_step: 0,
 })
 
-type LabelBlock = { width: number; height: number }
-
-const widest_line = (lines: readonly string[], font: Readonly<FontSpec>): number => {
-  let widest = 0
-  for (const line of lines) widest = Math.max(widest, measure_text_width(line, font))
-  return widest
-}
-
-const legacy_label_band = (
-  lines: readonly string[],
-  rotation: number,
-  font: Readonly<FontSpec>,
-  is_horizontal: boolean,
-): number => {
-  const radians = (Math.abs(rotation) * Math.PI) / 180
-  const width = widest_line(lines, font)
-  const height = lines.length * font.line_height
-  return is_horizontal
-    ? width * Math.sin(radians) + height * Math.cos(radians)
-    : width * Math.cos(radians) + height * Math.sin(radians)
-}
-
-const legacy_max_block = (
-  labels: readonly (readonly string[])[],
-  font: Readonly<FontSpec>,
-): LabelBlock => {
-  let width = 0
-  let max_lines = 0
-  for (const lines of labels) {
-    width = Math.max(width, widest_line(lines, font))
-    max_lines = Math.max(max_lines, lines.length)
-  }
-  return { width, height: max_lines * font.line_height }
-}
-
-const legacy_auto_rotation = (block: LabelBlock, pitch: number): number | null => {
-  if (!(pitch > 0) || block.width + TICK_LABEL_GAP <= pitch) return 0
-  for (const angle of TICK_ROTATION_LADDER) {
-    if (pitch * Math.sin((angle * Math.PI) / 180) >= block.height + TICK_LABEL_GAP) {
-      return angle
-    }
-  }
-  return null
-}
-
-const legacy_result = (
-  ticks: readonly (string | number)[],
-  full_texts: readonly string[],
-  lines: string[][],
-  rotation: number,
+// Plain upright labels, every one visible. Used when there is no geometry worth scoring.
+const upright_layout = (
+  axis: MeasuredAxis,
   side: TickLayoutSide,
-  font: Readonly<FontSpec>,
+  full_texts: readonly string[],
 ): ResolvedTickLayout => {
-  let band = lines.length === 0 ? font.line_height : 0
-  const is_horizontal = side === `x` || side === `x2`
-  for (const label_lines of lines) {
-    band = Math.max(band, legacy_label_band(label_lines, rotation, font, is_horizontal))
-  }
+  const font = axis.tick_font ?? DEFAULT_FONT_SPEC
+  const lines = full_texts.map(explicit_tick_lines)
   const labels = full_texts.map(
-    (full_text, tick_idx): ResolvedTickLabel => ({
-      tick_index: tick_idx,
+    (full_text, tick_index): ResolvedTickLabel => ({
+      tick_index,
       full_text,
-      display_text: lines[tick_idx].join(`\n`),
-      lines: lines[tick_idx],
+      display_text: lines[tick_index].join(`\n`),
+      lines: lines[tick_index],
       visible: true,
-      anchor: default_tick_label_anchor(effective_side(side, false), rotation),
-      rotation,
       stagger_row: 0,
+      anchor: side === `y` ? `end` : side === `y2` ? `start` : `middle`,
+      rotation: 0,
     }),
   )
+  // Band is the reach away from the axis: line stack for x/x2, text width for y/y2.
+  const is_horizontal = side === `x` || side === `x2`
+  let band = 0
+  for (const label_lines of lines) {
+    if (is_horizontal) band = Math.max(band, label_lines.length * font.line_height)
+    else for (const line of label_lines) band = Math.max(band, measure_text_width(line, font))
+  }
   return {
-    rotation,
+    rotation: 0,
     band,
     lines,
     labels,
     visible_tick_indices: labels.map(({ tick_index }) => tick_index),
-    visible_ticks: [...ticks],
-    strategy: rotation === 0 ? `upright` : `rotate`,
+    visible_ticks: [...(axis.tick_values ?? [])],
+    strategy: `upright`,
     stagger_step: 0,
   }
-}
-
-// Preserve the previous equal-pitch behavior only for callers that genuinely cannot project
-// tick positions. Plot hosts and PlotAxis always use the geometry-aware path below.
-const compute_legacy_tick_layout = (
-  axis: MeasuredAxis,
-  axis_size: number,
-  side: TickLayoutSide,
-  full_texts: string[],
-): ResolvedTickLayout => {
-  const ticks = axis.tick_values ?? []
-  const font = axis.tick_font ?? DEFAULT_FONT_SPEC
-  const is_horizontal = side === `x` || side === `x2`
-  const unwrapped = full_texts.map(explicit_tick_lines)
-  const configured = axis.tick?.label?.rotation ?? `auto`
-  if (configured !== `auto`) {
-    return legacy_result(ticks, full_texts, unwrapped, configured, side, font)
-  }
-  if (!is_horizontal || full_texts.length === 0 || !(axis_size > 0)) {
-    return legacy_result(ticks, full_texts, unwrapped, 0, side, font)
-  }
-  const pitch = axis_size / full_texts.length
-  const unwrapped_block = legacy_max_block(unwrapped, font)
-  if (unwrapped_block.width + TICK_LABEL_GAP <= pitch) {
-    return legacy_result(ticks, full_texts, unwrapped, 0, side, font)
-  }
-  const sign = auto_rotation_sign(side, axis.tick?.label?.inside ?? false)
-  const signed_angle = (angle: number): number => (angle === 0 ? 0 : sign * angle)
-  const unwrapped_angle =
-    full_texts.length === 1 ? 0 : (legacy_auto_rotation(unwrapped_block, pitch) ?? 90)
-  const unwrapped_result = legacy_result(
-    ticks,
-    full_texts,
-    unwrapped,
-    signed_angle(unwrapped_angle),
-    side,
-    font,
-  )
-  const max_lines = positive_integer(
-    Math.max(1, Math.floor(axis.tick?.label?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES)),
-    `tick.label.max_lines`,
-  )
-  if (max_lines <= 1) return unwrapped_result
-  const wrapped = full_texts.map((text) =>
-    wrap_tick_label(text, Math.max(0, pitch - TICK_LABEL_GAP), max_lines, font),
-  )
-  const wrapped_block = legacy_max_block(wrapped, font)
-  if (full_texts.length === 1) {
-    return wrapped_block.width < unwrapped_block.width
-      ? legacy_result(ticks, full_texts, wrapped, 0, side, font)
-      : unwrapped_result
-  }
-  const wrapped_angle = legacy_auto_rotation(wrapped_block, pitch)
-  if (wrapped_angle == null) return unwrapped_result
-  const wrapped_result = legacy_result(
-    ticks,
-    full_texts,
-    wrapped,
-    signed_angle(wrapped_angle),
-    side,
-    font,
-  )
-  const not_steeper = Math.abs(wrapped_result.rotation) <= Math.abs(unwrapped_result.rotation)
-  const clearly_shorter = wrapped_result.band <= unwrapped_result.band * 0.85
-  return not_steeper || clearly_shorter ? wrapped_result : unwrapped_result
 }
 
 const compute_tick_layout = (
@@ -598,8 +489,13 @@ const compute_tick_layout = (
   full_texts: string[],
 ): ResolvedTickLayout => {
   if (full_texts.length === 0) return empty_layout()
-  if (axis.tick_positions == null) {
-    return compute_legacy_tick_layout(axis, axis_size, side, full_texts)
+  // No axis and no spread between ticks means there is no arrangement to improve: every label
+  // projects to one point, and the scorer would "fix" that pile-up by rotating labels nobody
+  // can see. Real positions still get scored even when the caller omitted a plot size.
+  const position_span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
+  const configured = axis.tick?.label?.rotation ?? `auto`
+  if (configured === `auto` && !(axis_size > 0) && !(position_span > 0)) {
+    return upright_layout(axis, side, full_texts)
   }
   const ticks = axis.tick_values ?? []
   const is_horizontal = side === `x` || side === `x2`
@@ -621,7 +517,6 @@ const compute_tick_layout = (
   })
   const axis_extent = resolve_axis_extent(axis, axis_size, positions)
   const geometry_side = effective_side(side, axis.tick?.label?.inside ?? false)
-  const configured = axis.tick?.label?.rotation ?? `auto`
   const explicit_lines = full_texts.map(explicit_tick_lines)
   const explicit_labels = base_labels.map((label, tick_idx) => ({
     ...label,
@@ -690,43 +585,46 @@ const compute_tick_layout = (
     Math.max(1, Math.floor(axis.tick?.label?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES)),
     `tick.label.max_lines`,
   )
+  let wrapped_labels: typeof explicit_labels | undefined
   if (strategies.includes(`wrap`) && max_lines > 1) {
     const vertical_wrap_width = Math.min(
       max_band ?? DEFAULT_VERTICAL_WRAP_WIDTH,
       measure_max_tick_width(ticks, axis.format, axis.ticks, font),
     )
+    wrapped_labels = base_labels.map((label, tick_idx) => ({
+      ...label,
+      display_lines: wrap_tick_label(
+        label.full_text,
+        is_horizontal ? slot_widths[tick_idx] : vertical_wrap_width,
+        max_lines,
+        font,
+      ),
+    }))
     candidates.push(
-      create_tick_candidate({
-        id: `wrap`,
-        strategy: `wrap`,
-        labels: base_labels.map((label, tick_idx) => ({
-          ...label,
-          display_lines: wrap_tick_label(
-            label.full_text,
-            is_horizontal ? slot_widths[tick_idx] : vertical_wrap_width,
-            max_lines,
-            font,
-          ),
-        })),
-      }),
+      create_tick_candidate({ id: `wrap`, strategy: `wrap`, labels: wrapped_labels }),
     )
   }
   if (strategies.includes(`stagger`) && renderable_indices.length > 1) {
     candidates.push(generate_stagger_candidate(upright, { id: `stagger` }))
   }
-  if (strategies.includes(`abbreviate`)) {
-    candidates.push(generate_abbreviated_candidate(upright, { id: `abbreviate` }))
-  }
   const rotation_sign = auto_rotation_sign(side, axis.tick?.label?.inside ?? false)
+  // Horizontal only: rotating a y label trades width for vertical extent, which the scorer
+  // reads as fewer collisions, so short numeric ticks came out sideways. Vertical crowding is
+  // a job for thin/wrap.
+  // Preserve explicit newlines; wrapped blocks can also tilt as a unit.
+  const rotation_sources: [string, typeof explicit_labels][] = [[`rotate`, explicit_labels]]
+  if (wrapped_labels) rotation_sources.push([`wrap-rotate`, wrapped_labels])
   const rotated_candidates: TickStrategyCandidate[] =
-    strategies.includes(`rotate`) && renderable_indices.length > 1
-      ? rotation_angles(max_angle).map((angle) =>
-          create_tick_candidate({
-            id: `rotate-${angle}`,
-            strategy: `rotate`,
-            labels: base_labels,
-            rotation_deg: rotation_sign * angle,
-          }),
+    strategies.includes(`rotate`) && is_horizontal && renderable_indices.length > 1
+      ? rotation_angles(max_angle).flatMap((angle) =>
+          rotation_sources.map(([id_prefix, labels]) =>
+            create_tick_candidate({
+              id: `${id_prefix}-${angle}`,
+              strategy: `rotate`,
+              labels,
+              rotation_deg: rotation_sign * angle,
+            }),
+          ),
         )
       : []
   candidates.push(...rotated_candidates)
@@ -769,8 +667,7 @@ const compute_tick_layout = (
     const selected_indices = new Set(
       selected_renderable_indices.map((tick_idx) => renderable_indices[tick_idx]),
     )
-    // Compose only thinning with the fixed rotation ladder. This adds at most four candidates,
-    // avoiding the combinatorial search that arbitrary strategy composition would create.
+    // Compose thinning only with fixed rotations, avoiding arbitrary strategy combinations.
     candidates.push(
       ...[upright, ...rotated_candidates].map((candidate) =>
         generate_thinned_candidate(candidate, selected_indices, {
@@ -814,11 +711,11 @@ const finalize_layout = (
       display_text: label.display_lines.join(`\n`),
       lines: [...label.display_lines],
       visible: label.visible,
+      stagger_row: label.stagger_row,
       anchor:
         geometry_by_idx.get(label.tick_index)?.anchor ??
         (is_horizontal ? `middle` : side === `y` ? `end` : `start`),
       rotation: winner.candidate.rotation_deg,
-      stagger_row: label.stagger_row,
     }),
   )
   const visible_tick_indices = labels
@@ -849,7 +746,7 @@ export const resolve_tick_layout = (
   const label = axis.tick?.label
   const auto_layout = label?.auto_layout
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
-  const tick_positions = axis.tick_positions ?? []
+  const tick_positions = axis.tick_positions
   const key = [
     axis_size,
     label?.rotation ?? ``,

@@ -19,7 +19,7 @@
     Math.max(...element_data.map((el) => el.density || 0)),
   ] as Vec2
 
-  const onenter = (element: ChemicalElement) => {
+  const onactivate = (element: ChemicalElement) => {
     if (!element?.name) return
     goto(`/${element.name.toLowerCase()}`)
   }
@@ -39,7 +39,7 @@ The periodic table supports multiple values per element with different visual la
   heatmap_values={two_fold_data}
   color_scale="interpolateRdYlBu"
   tooltip
-  {onenter}
+  {onactivate}
 >
   {#snippet inset()}
     <TableInset

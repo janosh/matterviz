@@ -96,7 +96,10 @@ export function normalize_value(value: RefLineValue): number {
     console.warn(`Invalid RefLineValue: ${value}, defaulting to 0`)
     return 0
   }
-  if (value instanceof Date) return value.getTime()
+  if (value instanceof Date) {
+    const timestamp = value.getTime()
+    return Number.isFinite(timestamp) ? timestamp : 0
+  }
   // Empty/whitespace strings are invalid (Number("") returns 0 silently)
   if (value.trim() === ``) {
     console.warn(`Invalid RefLineValue: empty string, defaulting to 0`)

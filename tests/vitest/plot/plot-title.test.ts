@@ -116,6 +116,7 @@ describe(`resolve_plot_title`, () => {
 
   it.each([
     [`undefined`, undefined],
+    [`null`, null],
     [`empty object`, {}],
     [`blank strings`, { text: `  `, subtitle: `\n` }],
   ] as const)(`returns an empty zero-height layout for %s config`, (_name, config) => {

@@ -17,7 +17,7 @@ const histogram_series = () => [{ x: [], y: [1, 2, 3] }]
 const shared_props = {
   title,
   padding: { t: 17 },
-  x2_axis: { label: `Upper axis`, tick_values: [0, 1, 2] },
+  x2_axis: { label: `Upper axis`, tick_values: [0, 1, 2], tick_positions: [0, 50, 100] },
 }
 const plot_cases = [
   [
@@ -98,7 +98,7 @@ describe(`Cartesian plot titles`, () => {
       width,
       padding: {},
       default_padding: { t: 0, r: 0, b: 0, l: 0 },
-      x2_axis: { label: `Upper axis`, tick_values: [0, 1, 2] },
+      x2_axis: { label: `Upper axis`, tick_values: [0, 1, 2], tick_positions: [0, 50, 100] },
     })
     const title_layout = resolve_plot_title(title, {
       width: width - axis_pad.l - axis_pad.r,
