@@ -38,6 +38,7 @@ export type LegendDecorationConfig = {
   collapsed_groups?: ReadonlySet<string>
   filterable?: boolean
   filter_threshold?: number
+  filter_query?: string
 }
 
 // Return the cells the legend grid actually renders. Keeping headers, the optional filter,
@@ -54,7 +55,7 @@ export function get_legend_grid_cells({
   filter_query?: string
   show_filter?: boolean
 }): LegendGridCell[] {
-  const normalized_filter = filter_query.trim().toLowerCase()
+  const normalized_filter = show_filter ? filter_query.trim().toLowerCase() : ``
   const visible_indices = items.flatMap((item, item_idx) =>
     !normalized_filter ||
     `${item.legend_group ?? ``} ${item.label}`.toLowerCase().includes(normalized_filter)
@@ -87,17 +88,13 @@ export const create_legend_decoration_item = ({
   footprint,
   items,
   config,
-  filter_query = ``,
 }: {
   enabled: boolean
   footprint: DecorationSize
   items: readonly LegendGridItem[]
   config?: LegendDecorationConfig | null
-  filter_query?: string
 }): LegendDecorationItem | null => {
   if (!enabled) return null
-  const show_filter =
-    (config?.filterable ?? true) && items.length >= (config?.filter_threshold ?? 12)
   return {
     id: `legend`,
     kind: `legend`,
@@ -109,8 +106,9 @@ export const create_legend_decoration_item = ({
             item_count: get_legend_grid_cells({
               items,
               collapsed_groups: config.collapsed_groups,
-              filter_query: show_filter ? filter_query : ``,
-              show_filter,
+              filter_query: config.filter_query,
+              show_filter:
+                (config.filterable ?? true) && items.length >= (config.filter_threshold ?? 12),
             }).length,
             orientation: config.layout ?? `vertical`,
             item_extents: config.item_extents,

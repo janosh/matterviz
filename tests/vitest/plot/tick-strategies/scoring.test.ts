@@ -243,7 +243,8 @@ describe(`tick strategy scoring`, () => {
       line_count: 0,
       stagger_rows: 0,
     }
-    const selection = select_tick_candidate([rotated, wrapped_z, wrapped_a], {
+    const measured_candidates = [rotated, wrapped_z, wrapped_a]
+    const selection = select_tick_candidate(measured_candidates, {
       weights: zero_weights,
     })
 
@@ -253,6 +254,7 @@ describe(`tick strategy scoring`, () => {
       `rotated`,
     ])
     expect(selection.winner?.candidate.id).toBe(`a-wrapped`)
+    expect(measured_candidates).toEqual([rotated, wrapped_z, wrapped_a])
   })
 
   test(`returns no winner when every candidate is infeasible`, () => {

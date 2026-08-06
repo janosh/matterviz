@@ -1,7 +1,8 @@
-import { expect, type Page, test } from '@playwright/test'
-import type { Buffer } from 'node:buffer'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  canvas_screenshot,
   drag_plot_area,
+  expect_canvas_changed,
   get_chart_svg,
   IS_CI,
   measure_plot_area,
@@ -10,9 +11,6 @@ import {
 
 const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
 const default_bz_canvas_selector = `[data-testid="bz-bands-dos-default"] canvas`
-
-const screenshot_default_bz_canvas = (page: Page): Promise<Buffer> =>
-  page.locator(default_bz_canvas_selector).first().screenshot()
 
 async function get_default_desktop_plots(page: Page) {
   await page.setViewportSize({ width: 1400, height: 800 })
@@ -32,6 +30,17 @@ async function get_default_desktop_plots(page: Page) {
   )
   return { bands_plot, dos_plot }
 }
+
+const expect_synced_y_ticks = (
+  source_plot: Locator,
+  target_plot: Locator,
+  expected?: string[],
+) =>
+  expect(async () => {
+    const source_ticks = await numeric_y_ticks(source_plot)
+    if (expected) expect(source_ticks).toEqual(expected)
+    expect(await numeric_y_ticks(target_plot)).toEqual(source_ticks)
+  }).toPass({ timeout: 10_000 })
 
 // Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
 test.describe.configure({ mode: `serial` })
@@ -120,22 +129,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     expect(await legend.textContent()).toContain(`DFT`)
   })
 
-  test(`maintains responsive layout`, async ({ page }) => {
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-
-    await page.setViewportSize({ width: 800, height: 600 })
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    expect(await container.boundingBox()).toBeTruthy()
-
-    await page.setViewportSize({ width: 1600, height: 1200 })
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    expect(await container.boundingBox()).toBeTruthy()
-  })
-
   test(`BZ rotates with mouse drag`, async ({ page }) => {
     const bz_canvas = page.locator(default_bz_canvas_selector).first()
-    await expect(bz_canvas).toBeVisible({ timeout: 10000 })
-    const initial = await screenshot_default_bz_canvas(page)
+    const initial = await canvas_screenshot(bz_canvas)
 
     const box = await bz_canvas.boundingBox()
     if (!box) throw new Error(`Missing BZ canvas geometry`)
@@ -146,9 +142,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await page.mouse.move(center_x + 50, center_y, { steps: 10 })
     await page.mouse.up()
 
-    await expect(async () => {
-      expect(initial.equals(await screenshot_default_bz_canvas(page))).toBe(false)
-    }).toPass({ timeout: 5000 })
+    await expect_canvas_changed(bz_canvas, initial, 5000)
   })
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
@@ -176,12 +170,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect.poll(() => numeric_y_ticks(bands_plot), { timeout: 10_000 }).not.toEqual([])
     const initial_bands_ticks = await numeric_y_ticks(bands_plot)
     await drag_plot_area(page, bands_area)
-
-    await expect(async () => {
-      const bands_ticks = await numeric_y_ticks(bands_plot)
-      expect(bands_ticks).not.toEqual(initial_bands_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(bands_ticks)
-    }).toPass({ timeout: 10_000 })
+    await expect.poll(() => numeric_y_ticks(bands_plot)).not.toEqual(initial_bands_ticks)
+    await expect_synced_y_ticks(bands_plot, dos_plot)
 
     await bands_svg.dblclick({
       position: {
@@ -189,203 +179,88 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
         y: bands_area.clip.y + bands_area.clip.height / 2,
       },
     })
-    await expect(async () => {
-      const bands_ticks = await numeric_y_ticks(bands_plot)
-      expect(bands_ticks).toEqual(initial_bands_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(bands_ticks)
-    }).toPass({ timeout: 10_000 })
-    const reset_ticks = initial_bands_ticks
-
+    await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
     const dos_area = await measure_plot_area(dos_plot)
     await drag_plot_area(page, dos_area)
-
-    await expect(async () => {
-      const dos_ticks = await numeric_y_ticks(dos_plot)
-      expect(dos_ticks).not.toEqual(reset_ticks)
-      expect(await numeric_y_ticks(bands_plot)).toEqual(dos_ticks)
-    }).toPass({ timeout: 10_000 })
+    await expect.poll(() => numeric_y_ticks(dos_plot)).not.toEqual(initial_bands_ticks)
+    await expect_synced_y_ticks(dos_plot, bands_plot)
     await dos_svg.dblclick({
       position: {
         x: dos_area.clip.x + dos_area.clip.width / 2,
         y: dos_area.clip.y + dos_area.clip.height / 2,
       },
     })
-    await expect(async () => {
-      expect(await numeric_y_ticks(bands_plot)).toEqual(reset_ticks)
-      expect(await numeric_y_ticks(dos_plot)).toEqual(reset_ticks)
-    }).toPass({ timeout: 10_000 })
+    await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
   })
 
-  test(`desktop layout: three columns side by side`, async ({ page }) => {
-    await page.setViewportSize({ width: 1400, height: 800 })
+  test(`responsive breakpoints keep layout, gap, and panel geometry`, async ({ page }) => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-
-    const grid_template = await container.evaluate(
-      (el) => getComputedStyle(el).gridTemplateAreas,
-    )
-
-    // Desktop layout: bz bands dos
-    expect(grid_template).toContain(`bz`)
-    expect(grid_template).toContain(`bands`)
-    expect(grid_template).toContain(`dos`)
-
-    // All three components should be visible
-    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
-    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
-  })
-
-  test(`tablet layout: bands on top, BZ and DOS below`, async ({ page }) => {
-    await page.setViewportSize({ width: 800, height: 700 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-
-    const grid_template = await container.evaluate((el) => {
-      const style = getComputedStyle(el)
-      return {
-        areas: style.gridTemplateAreas,
-        columns: style.gridTemplateColumns,
-      }
-    })
-
-    // Tablet layout should have bands spanning top, bz and dos below
-    expect(grid_template.areas).toMatch(/bands.*bands/)
-    expect(grid_template.areas).toContain(`bz`)
-    expect(grid_template.areas).toContain(`dos`)
-
-    // Should have 2 columns
-    const column_count = grid_template.columns.split(` `).length
-    expect(column_count).toBe(2)
-  })
-
-  test(`phone layout: all stacked vertically`, async ({ page }) => {
-    await page.setViewportSize({ width: 500, height: 900 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-
-    await expect(async () => {
-      const grid_template = await container.evaluate((el) => {
-        const style = getComputedStyle(el)
+    const read_grid = () =>
+      container.evaluate((element) => {
+        const style = getComputedStyle(element)
         return {
           areas: style.gridTemplateAreas,
           columns: style.gridTemplateColumns,
+          gap: style.gap,
         }
       })
+    const set_layout = async (
+      width: number,
+      height: number,
+      mode: `desktop` | `tablet` | `phone`,
+      container_width = ``,
+    ) => {
+      await page.setViewportSize({ width, height })
+      await container.evaluate(
+        (element, forced_width) => (element.style.width = forced_width),
+        container_width,
+      )
+      await expect(container).toHaveClass(new RegExp(mode))
+      return read_grid()
+    }
+    const expect_areas = (areas: string, expected: string[]) => {
+      for (const area of expected) expect(areas).toContain(area)
+    }
 
-      // Phone layout: vertical stack
-      const area_lines = grid_template.areas.split(`"`)
-      expect(area_lines.length).toBeGreaterThanOrEqual(3)
-
-      // Should have 1 column
-      expect(grid_template.columns).not.toContain(` `)
-    }).toPass({ timeout: 5000 })
-
-    // All components still visible
-    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
-    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
-  })
-
-  test(`DOS orientation changes with viewport`, async ({ page }) => {
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-
-    // Desktop: horizontal DOS
-    await page.setViewportSize({ width: 1400, height: 800 })
-    const dos_svg_wide = container.locator(`svg:has(g.y-axis)`).nth(1)
-    await expect(dos_svg_wide).toBeVisible()
-    const dos_box_wide = await dos_svg_wide.boundingBox()
-    if (!dos_box_wide) throw new Error(`Missing desktop DOS geometry`)
-    expect(dos_box_wide.width).toBeLessThan(dos_box_wide.height * 2)
-
-    // Tablet/Phone: vertical DOS (wider than tall)
-    await page.setViewportSize({ width: 800, height: 700 })
-    const dos_svg_narrow = container.locator(`svg:has(g.y-axis)`).nth(1)
-    await expect(dos_svg_narrow).toBeVisible()
-    const dos_box_narrow = await dos_svg_narrow.boundingBox()
-    if (!dos_box_narrow) throw new Error(`Missing tablet DOS geometry`)
-    expect(dos_box_narrow.width).toBeGreaterThan(dos_box_narrow.height * 0.5)
-  })
-
-  test(`BZ respects height constraints on tablet layout`, async ({ page }) => {
-    await page.setViewportSize({ width: 800, height: 700 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const bz_canvas = container.locator(`canvas`).first()
-    await expect(bz_canvas).toBeVisible()
-    const canvas_box = await bz_canvas.boundingBox()
-    const container_box = await container.boundingBox()
-
-    if (!canvas_box || !container_box) throw new Error(`Missing tablet BZ geometry`)
-    // BZ should not overflow container height
-    expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
-  })
-
-  test(`grid gap is applied consistently`, async ({ page }) => {
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-
-    // Test desktop
-    await page.setViewportSize({ width: 1400, height: 700 })
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_desktop = await container.evaluate((el) => getComputedStyle(el).gap)
-    expect(gap_desktop).toBeTruthy()
-    expect(gap_desktop).not.toBe(`0px`)
-
-    // Test tablet
-    await page.setViewportSize({ width: 800, height: 700 })
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_tablet = await container.evaluate((el) => getComputedStyle(el).gap)
-    expect(gap_tablet).toBeTruthy()
-    expect(gap_tablet).not.toBe(`0px`)
-
-    // Test phone
-    await page.setViewportSize({ width: 500, height: 700 })
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_phone = await container.evaluate((el) => getComputedStyle(el).gap)
-    expect(gap_phone).toBeTruthy()
-    expect(gap_phone).not.toBe(`0px`)
-  })
-
-  test(`responsive layout preserves interaction`, async ({ page }) => {
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-
-    // Test at tablet size
-    await page.setViewportSize({ width: 800, height: 700 })
-    const bz_canvas = container.locator(`canvas`).first()
+    const desktop = await set_layout(1400, 800, `desktop`, `1200px`)
+    expect_areas(desktop.areas, [`bz`, `bands`, `dos`])
+    expect(desktop.gap).not.toMatch(/^$|^0px$/)
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-    await expect(bz_canvas).toBeVisible()
+    const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
+    await expect(bands_svg).toBeVisible()
+    await expect(dos_svg).toBeVisible()
+    const desktop_dos_box = await dos_svg.boundingBox()
+    if (!desktop_dos_box) throw new Error(`Missing desktop DOS geometry`)
+    expect(desktop_dos_box.width).toBeLessThan(desktop_dos_box.height * 2)
 
-    // BZ should still rotate
-    const initial = await bz_canvas.screenshot()
-    const box = await bz_canvas.boundingBox()
-    if (!box) throw new Error(`Missing BZ canvas geometry`)
-    await page.mouse.move(box.x + 50, box.y + 50)
-    await page.mouse.down()
-    await page.mouse.move(box.x + 100, box.y + 50)
-    await page.mouse.up()
-    await expect(async () => {
-      expect(initial.equals(await bz_canvas.screenshot())).toBe(false)
-    }).toPass({ timeout: 5000 })
+    const tablet = await set_layout(800, 700, `tablet`)
+    expect(tablet.areas).toMatch(/bands.*bands/)
+    expect_areas(tablet.areas, [`bz`, `dos`])
+    expect(tablet.columns.split(` `)).toHaveLength(2)
+    expect(tablet.gap).not.toMatch(/^$|^0px$/)
+    const [canvas_box, container_box, tablet_dos_box] = await Promise.all([
+      container.locator(`canvas`).first().boundingBox(),
+      container.boundingBox(),
+      dos_svg.boundingBox(),
+    ])
+    if (!canvas_box || !container_box || !tablet_dos_box) {
+      throw new Error(`Missing tablet panel geometry`)
+    }
+    expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
+    expect(tablet_dos_box.width).toBeGreaterThan(tablet_dos_box.height * 0.5)
 
-    // Bands should still be hoverable
-    await bands_svg
-      .locator(line_path_selector)
-      .first()
-      .hover({
-        position: { x: 50, y: 50 },
-        force: true,
-      })
+    const phone = await set_layout(500, 900, `phone`)
+    expect(phone.areas.split(`"`).length).toBeGreaterThanOrEqual(3)
+    expect(phone.columns).not.toContain(` `)
+    expect(phone.gap).not.toMatch(/^$|^0px$/)
+    await expect(bands_svg).toBeVisible()
+    await expect(dos_svg).toBeVisible()
   })
 
   test(`hovering over DOS shows reference lines in both bands and DOS`, async ({ page }) => {
-    // Set desktop viewport to ensure consistent layout
-    await page.setViewportSize({ width: 1400, height: 800 })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-
-    // In desktop layout (grid: bz bands dos), bands SVG is first, DOS SVG is second
-    const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-    const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
-
-    await expect(bands_svg).toBeVisible()
-    await expect(dos_svg).toBeVisible()
+    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
+    const bands_svg = get_chart_svg(bands_plot)
+    const dos_svg = get_chart_svg(dos_plot)
 
     // Get initial count of dashed lines (fermi level lines may already exist)
     const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()

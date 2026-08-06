@@ -629,8 +629,7 @@
         label: series_data.label ?? `Series ${series_idx + 1}`,
         legend_group: series_data.legend_group,
       })),
-      config: legend,
-      filter_query: legend_filter_query,
+      config: { ...legend, filter_query: legend_filter_query },
     }),
   )
   const base_decoration_solution = $derived(

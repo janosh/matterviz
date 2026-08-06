@@ -227,9 +227,11 @@ export const select_tick_candidate = (
 
   const weights = resolve_tick_score_weights(config)
   // Score the complete set before ranking: auto mode is an exhaustive comparison, not first-fit.
-  const evaluated = measured_candidates
-    .map((measured_candidate) => score_with_weights(measured_candidate, weights))
-    .toSorted(compare_scores)
+  const evaluated = measured_candidates.map((measured_candidate) =>
+    score_with_weights(measured_candidate, weights),
+  )
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- map returns a fresh array and `toSorted` is unavailable in ES2022
+  evaluated.sort(compare_scores)
   return {
     winner: evaluated.find(({ feasible }) => feasible) ?? null,
     evaluated,

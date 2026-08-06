@@ -332,6 +332,9 @@
   $effect(() => {
     const x_extent = { start: decoration_base_pad.l, end: width - decoration_base_pad.r }
     const y_extent = { start: height - decoration_base_pad.b, end: decoration_base_pad.t }
+    // Set as statements, not chained: resolving the overloaded `range` on a
+    // ScaleContinuousNumeric | ArcsinhScale union widens the result to
+    // `Vec2 | ArcsinhScale`, which is no longer callable.
     const padding_x_scale = x_scale_fn.copy()
     const padding_y_scale = y_scale_fn.copy()
     padding_x_scale.range([x_extent.start, x_extent.end])

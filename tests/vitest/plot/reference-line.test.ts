@@ -1,5 +1,5 @@
 import type { Vec2 } from '$lib/math'
-import type { DecorationSolution } from '$lib/plot/core/decorations'
+import { solve_decorations } from '$lib/plot/core/decorations'
 import { place_reference_annotation } from '$lib/plot/core/decorations/reference-annotations'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
@@ -41,63 +41,44 @@ describe(`normalize_value`, () => {
     expect(normalize_value(date_str)).toBe(Date.parse(date_str))
   })
 
-  test.each([`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN])(
-    `returns 0 for invalid or non-finite value %s with warning`,
-    (input) => {
-      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      expect(normalize_value(input)).toBe(0)
-      expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`Invalid RefLineValue`))
-      warn_spy.mockRestore()
-    },
-  )
-
-  test.each([[``], [` `], [`  \t  `]])(`returns 0 for empty/whitespace string %j`, (input) => {
+  test.each([
+    ...[`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN].map(
+      (input) => [input, `Invalid RefLineValue`] as const,
+    ),
+    ...[``, ` `, `  \t  `].map((input) => [input, `empty string`] as const),
+  ])(`returns 0 for invalid value %j`, (input, warning) => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     expect(normalize_value(input)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
+    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
     warn_spy.mockRestore()
   })
 })
 
 test(`preserves resolved base geometry when adding reference annotations`, () => {
-  const base_solution: DecorationSolution = {
+  const base_solution = solve_decorations({
     base_pad: { t: 10, r: 10, b: 10, l: 10 },
-    pad: { t: 30, r: 40, b: 20, l: 25 },
-    plot_bounds: { x: 25, y: 30, width: 335, height: 250 },
-    placements: [
-      {
-        id: `legend`,
-        kind: `legend`,
-        footprint: { width: 30, height: 40 },
-        x: 360,
-        y: 30,
-        score: 0,
-        location: `outside`,
-        side: `right`,
-      },
-    ],
-  }
+    width: 400,
+    height: 300,
+    obstacles_norm: [],
+    items: [{ id: `legend`, kind: `legend`, footprint: { width: 30, height: 40 } }],
+  })
+  base_solution.pad = { t: 30, r: 40, b: 20, l: 25 }
+  base_solution.plot_bounds = { x: 25, y: 30, width: 335, height: 250 }
+  const base_placement = base_solution.placements[0]
   const solution = solve_reference_annotations({
     base_solution,
     base_pad: base_solution.base_pad,
     width: 400,
     height: 300,
     obstacles_norm: [],
-    lines: [
-      {
-        idx: 0,
-        type: `horizontal`,
-        y: 5,
-        annotation: { text: `Threshold` },
-      },
-    ],
+    lines: [{ idx: 0, type: `horizontal`, y: 5, annotation: { text: `Threshold` } }],
     ranges: { x: [0, 10], y: [0, 10] },
     scales: { x: (value) => 25 + value * 33.5, y: (value) => 280 - value * 25 },
   })
 
   expect(solution.pad).toBe(base_solution.pad)
   expect(solution.plot_bounds).toBe(base_solution.plot_bounds)
-  expect(solution.placements[0]).toBe(base_solution.placements[0])
+  expect(solution.placements[0]).toBe(base_placement)
   expect(solution.placements).toHaveLength(2)
 })
 
@@ -473,33 +454,23 @@ describe(`reference annotation candidates`, () => {
     expect(resolved.rect).not.toEqual(preferred.rect)
   })
 
-  test(`keeps exclusion collisions costlier than arbitrarily dense obstacles`, () => {
-    const [excluded_candidate, crowded_candidate] = create_reference_annotation_candidates(
+  test.each([
+    {
+      name: `keeps exclusions costlier than dense obstacles`,
+      obstacle_counts: [0, 100],
+      exclude_first: true,
+    },
+    {
+      name: `prefers fewer obstacle collisions`,
+      obstacle_counts: [100, 50],
+      exclude_first: false,
+    },
+  ])(`$name`, ({ obstacle_counts, exclude_first }) => {
+    const [first_candidate, second_candidate] = create_reference_annotation_candidates(
       endpoints,
       { text: `Dense obstacles` },
     )
-    const { candidate } = place_reference_annotation({
-      item: {
-        id: `dense-obstacles`,
-        kind: `reference-annotation`,
-        footprint: { width: 10, height: 10 },
-        candidates: [excluded_candidate, crowded_candidate],
-      },
-      exclusion_rects: [excluded_candidate.rect],
-      obstacles: Array.from({ length: 100 }, () => ({
-        x: crowded_candidate.rect.x + crowded_candidate.rect.width / 2,
-        y: crowded_candidate.rect.y + crowded_candidate.rect.height / 2,
-      })),
-    })
-    expect(candidate).toBe(crowded_candidate)
-  })
-
-  test(`prefers fewer obstacle collisions above the exclusion threshold`, () => {
-    const [crowded_candidate, sparser_candidate] = create_reference_annotation_candidates(
-      endpoints,
-      { text: `Dense obstacles` },
-    )
-    const points_in = (rect: typeof crowded_candidate.rect, count: number) =>
+    const points_in = (rect: typeof first_candidate.rect, count: number) =>
       Array.from({ length: count }, () => ({
         x: rect.x + rect.width / 2,
         y: rect.y + rect.height / 2,
@@ -509,14 +480,15 @@ describe(`reference annotation candidates`, () => {
         id: `dense-obstacle-order`,
         kind: `reference-annotation`,
         footprint: { width: 10, height: 10 },
-        candidates: [crowded_candidate, sparser_candidate],
+        candidates: [first_candidate, second_candidate],
       },
       obstacles: [
-        ...points_in(crowded_candidate.rect, 100),
-        ...points_in(sparser_candidate.rect, 50),
+        ...points_in(first_candidate.rect, obstacle_counts[0]),
+        ...points_in(second_candidate.rect, obstacle_counts[1]),
       ],
+      exclusion_rects: exclude_first ? [first_candidate.rect] : [],
     })
-    expect(candidate).toBe(sparser_candidate)
+    expect(candidate).toBe(second_candidate)
   })
 
   test(`keeps explicit position and side pinned through collisions`, () => {

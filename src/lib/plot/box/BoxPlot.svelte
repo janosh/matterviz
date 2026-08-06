@@ -654,8 +654,7 @@
         label: series_data.label ?? `Box ${series_idx + 1}`,
         legend_group: series_data.legend_group,
       })),
-      config: legend,
-      filter_query: legend_filter_query,
+      config: { ...legend, filter_query: legend_filter_query },
     }),
   )
   const base_decoration_solution = $derived(
@@ -839,6 +838,7 @@
     element: () => legend_element,
     tween: () => legend?.tween,
     on_element_resize: () => (legend_size_revision += 1),
+    placement_revision: () => legend_placement?.location,
   })
 
   // === Tooltip / hover ===

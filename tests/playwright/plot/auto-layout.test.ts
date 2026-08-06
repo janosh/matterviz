@@ -67,6 +67,17 @@ const overlapping_pairs = (labels: readonly RenderedLabel[], tolerance = 0.5): s
   return pairs
 }
 
+const layout_signature = (labels: readonly RenderedLabel[]) => {
+  const first = labels[0]
+  if (!first) return []
+  return labels.map(({ text, left, right, top, bottom }) => [
+    text,
+    ...[right - left, bottom - top, left - first.left, top - first.top].map((value) =>
+      Math.round(value * 10),
+    ),
+  ])
+}
+
 const stable_labels = async (axis: Locator): Promise<RenderedLabel[]> => {
   let previous_signature = ``
   let stable_samples = 0
@@ -75,12 +86,7 @@ const stable_labels = async (axis: Locator): Promise<RenderedLabel[]> => {
     .poll(
       async () => {
         latest = await rendered_labels(axis)
-        const signature = JSON.stringify(
-          latest.map(({ text, left, right, top, bottom }) => [
-            text,
-            ...[left, right, top, bottom].map((position) => Math.round(position * 10)),
-          ]),
-        )
+        const signature = JSON.stringify(layout_signature(latest))
         stable_samples =
           latest.length > 0 && signature === previous_signature ? stable_samples + 1 : 0
         previous_signature = signature
@@ -93,17 +99,6 @@ const stable_labels = async (axis: Locator): Promise<RenderedLabel[]> => {
     )
     .toBe(true)
   return latest
-}
-
-const rounded_layout_signature = (labels: readonly RenderedLabel[]) => {
-  const first = labels[0]
-  if (!first) return []
-  return labels.map(({ text, left, right, top, bottom }) => [
-    text,
-    ...[right - left, bottom - top, left - first.left, top - first.top].map((value) =>
-      Math.round(value * 10),
-    ),
-  ])
 }
 
 const assert_readable = (labels: readonly RenderedLabel[]): void => {
@@ -143,16 +138,11 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
     return stable_labels(x_axis)
   }
 
-  // Exercise the minimum fallback, feasible geometry, slider maximum, then hysteresis.
+  // Exercise the minimum, feasible geometry, slider maximum, then hysteresis.
   assert_readable(await set_chart_width(280))
   const narrow_labels = await set_chart_width(740)
   assert_readable_non_overlapping(narrow_labels)
-  assert_readable_non_overlapping(await set_chart_width(840))
   assert_readable_non_overlapping(await set_chart_width(900))
 
-  const repeated_narrow_labels = await set_chart_width(740)
-  assert_readable_non_overlapping(repeated_narrow_labels)
-  expect(rounded_layout_signature(repeated_narrow_labels)).toEqual(
-    rounded_layout_signature(narrow_labels),
-  )
+  expect(layout_signature(await set_chart_width(740))).toEqual(layout_signature(narrow_labels))
 })

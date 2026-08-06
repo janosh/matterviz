@@ -453,6 +453,10 @@ describe(`layout utility functions`, () => {
       const multiline = x_layout([`top\nbottom\n`], 100, { tick: { label: { rotation: 45 } } })
       expect(multiline.lines).toEqual([[`top`, `bottom`]])
       expect(multiline.band).toBeGreaterThan(2 * TICK_LABEL_HEIGHT)
+      for (const side of [`y`, `y2`] as const)
+        expect(
+          resolve_tick_layout({ tick_values: [`top\nbottom\n`] }, 100, side).lines,
+        ).toEqual(multiline.lines)
       expect(
         x_layout([`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`], 100),
       ).toMatchObject({

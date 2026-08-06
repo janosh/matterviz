@@ -69,30 +69,46 @@ test.describe(`BandsAndDos Component Tests`, () => {
     }).toPass({ timeout: 15_000 })
   })
 
-  test(`DOS y-axis zoom and reset propagate to both panels`, async ({ page }) => {
+  test(`y-axis zoom, reset, and re-enabled sync propagate without stale ranges`, async ({
+    page,
+  }) => {
     const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     const plots = container.locator(`.scatter`)
-    await expect(plots).toHaveCount(2)
     const bands_plot = plots.first()
     const dos_plot = plots.nth(1)
-    const dos_svg = get_chart_svg(dos_plot)
-    await expect(dos_svg).toBeVisible()
-    const { clip, svg_box } = await measure_plot_area(dos_plot)
-
     const initial_ticks = await numeric_y_ticks(dos_plot)
-    expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
-    await drag_plot_area(page, { clip, svg_box })
-
+    const dos_area = await measure_plot_area(dos_plot)
+    await drag_plot_area(page, dos_area)
     await expect(async () => {
       const dos_ticks = await numeric_y_ticks(dos_plot)
       expect(dos_ticks).not.toEqual(initial_ticks)
       expect(await numeric_y_ticks(bands_plot)).toEqual(dos_ticks)
     }).toPass({ timeout: 10_000 })
+    const zoomed_ticks = await numeric_y_ticks(dos_plot)
 
-    await dos_svg.dblclick({
+    await page.getByTestId(`toggle-y-zoom-sync`).click()
+    const bands_area = await measure_plot_area(bands_plot)
+    await get_chart_svg(bands_plot).dblclick({
       position: {
-        x: clip.x + clip.width / 2,
-        y: clip.y + clip.height / 2,
+        x: bands_area.clip.x + bands_area.clip.width / 2,
+        y: bands_area.clip.y + bands_area.clip.height / 2,
+      },
+    })
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(initial_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(zoomed_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    await page.getByTestId(`toggle-y-zoom-sync`).click()
+    await expect(async () => {
+      expect(await numeric_y_ticks(bands_plot)).toEqual(zoomed_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(zoomed_ticks)
+    }).toPass({ timeout: 10_000 })
+
+    await get_chart_svg(dos_plot).dblclick({
+      position: {
+        x: dos_area.clip.x + dos_area.clip.width / 2,
+        y: dos_area.clip.y + dos_area.clip.height / 2,
       },
     })
     await expect(async () => {

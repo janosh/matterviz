@@ -393,15 +393,24 @@ describe(`BoxPlot`, () => {
       outside: true,
     },
   ])(`$name without colliding with the chart`, async ({ series, outside }) => {
-    const plot = await mount_sized_box_plot({ series, show_legend: true })
+    const plot = await mount_sized_box_plot({
+      series,
+      show_legend: true,
+      legend: { tween: { duration: 0 } },
+    })
     await tick()
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     const clip_rect = plot.querySelector(`clipPath rect`)
     if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
-    const legend_top = Number(legend.style.top.replace(`px`, ``))
-    const clip_bottom =
+    const is_outside = () =>
+      Number(legend.style.top.replace(`px`, ``)) >
       Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
-    expect(legend_top > clip_bottom).toBe(outside)
+    expect(is_outside()).toBe(outside)
+    if (!outside) return
+    const first_item = legend.querySelector(`.legend-item`)
+    if (!first_item) throw new Error(`legend item not found`)
+    first_item.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    await vi.waitFor(() => expect(is_outside()).toBe(false))
   })
 
   test(`uses measured legend size across plot sizes without padding drift`, async () => {

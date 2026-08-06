@@ -149,8 +149,7 @@ test(`builds solver legend items and resolves their track count`, () => {
         { label: `A`, legend_group: `Group` },
         { label: `B`, legend_group: `Group` },
       ],
-      config: { layout_tracks: `auto`, filter_threshold: 2 },
-      filter_query: `A`,
+      config: { layout_tracks: `auto`, filter_threshold: 2, filter_query: `A` },
     }),
   ).toMatchObject({ auto_tracks: { item_count: 3 } })
   expect(resolve_legend_layout_tracks(`auto`, { layout_tracks: 0 })).toBe(1)

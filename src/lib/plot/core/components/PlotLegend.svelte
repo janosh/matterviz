@@ -105,7 +105,7 @@
         legend_group: item.legend_group,
       })),
       collapsed_groups,
-      filter_query: show_filter ? filter_query : ``,
+      filter_query,
       show_filter,
     }),
   )

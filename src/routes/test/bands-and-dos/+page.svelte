@@ -42,14 +42,19 @@
     frequencies: [10, 20, 30, 40],
     densities: [1, 2, 1, 0],
   }
+  let sync_y_zoom = $state(true)
 </script>
 
 <h1>BandsAndDos Component Test Page</h1>
 
 <h2 id="default">Default (Shared Y-axis)</h2>
+<button data-testid="toggle-y-zoom-sync" onclick={() => (sync_y_zoom = !sync_y_zoom)}>
+  {sync_y_zoom ? `Disable` : `Enable`} y zoom sync
+</button>
 <BandsAndDos
   band_structs={mock_band_structure}
   doses={mock_dos}
+  {sync_y_zoom}
   data-testid="bands-and-dos-default"
 />
 

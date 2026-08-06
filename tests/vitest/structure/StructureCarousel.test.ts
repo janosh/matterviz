@@ -537,8 +537,8 @@ describe(`StructureCarousel`, () => {
     )
   })
 
-  test.each(
-    [240, 320].flatMap((height) =>
+  test.each([
+    ...[240, 320].flatMap((height) =>
       (
         [
           [0, 190, null],
@@ -554,7 +554,13 @@ describe(`StructureCarousel`, () => {
         card_width,
       })),
     ),
-  )(
+    ...[Number.NaN, Infinity, -Infinity].map((height) => ({
+      height,
+      item_count: 2,
+      carousel_width: 388,
+      card_width: 190,
+    })),
+  ])(
     `keeps $item_count-item layout finite and height-independent at $height px`,
     ({ height, item_count, carousel_width, card_width }) => {
       mount_carousel({
@@ -569,7 +575,9 @@ describe(`StructureCarousel`, () => {
       const track = document.querySelector(`.structure-carousel-track`)
       if (item_count === 0) expect(track).toBeNull()
       else {
-        expect(track?.getAttribute(`style`)).toContain(`block-size: ${height}px`)
+        expect(track?.getAttribute(`style`)).toContain(
+          `block-size: ${Number.isFinite(height) ? height : 1}px`,
+        )
         expect(doc_query(`.structure-card`).getAttribute(`style`)).toContain(
           `inline-size: ${card_width}px`,
         )
@@ -580,20 +588,6 @@ describe(`StructureCarousel`, () => {
       )
       for (const node of document.querySelectorAll<HTMLElement>(`[style]`)) {
         expect(node.getAttribute(`style`)).not.toMatch(/NaN|Infinity|-\d+(?:\.\d+)?px/)
-      }
-    },
-  )
-
-  test.each([Number.NaN, Infinity, -Infinity])(
-    `keeps carousel geometry finite for invalid height %s`,
-    (height) => {
-      mount_carousel({ items, layout: `horizontal`, height, resizable: true })
-
-      expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
-        `block-size: 1px`,
-      )
-      for (const node of document.querySelectorAll<HTMLElement>(`[style]`)) {
-        expect(node.getAttribute(`style`)).not.toMatch(/NaN|Infinity/)
       }
     },
   )

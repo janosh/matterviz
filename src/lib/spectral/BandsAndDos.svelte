@@ -10,7 +10,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import { axis_config_signature, compute_frequency_range, extract_efermi } from './helpers'
+  import { compute_frequency_range, extract_efermi } from './helpers'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
   let {
@@ -54,8 +54,8 @@
       band_structs,
       doses,
       shared_y_axis,
-      axis_config_signature(bands_props.y_axis),
-      axis_config_signature(dos_props.y_axis),
+      JSON.stringify(bands_props.y_axis),
+      JSON.stringify(dos_props.y_axis),
     ]
     if (prev_sources?.every((source, idx) => source === sources[idx])) return
     prev_sources = sources
@@ -65,7 +65,11 @@
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
-    if (!sync_y_zoom || !shared_frequency_range) return
+    if (!sync_y_zoom) {
+      synced_zoom_range = null
+      return
+    }
+    if (!shared_frequency_range) return
     const update = reconcile_shared_axis_ranges(
       y_axes,
       shared_frequency_range,

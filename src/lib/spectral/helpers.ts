@@ -4,7 +4,6 @@ import { is_plain_object } from '$lib/utils'
 import { euclidean_dist, is_square_matrix } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { detect_shared_range_change } from '$lib/plot/core/shared-axes'
-import type { AxisConfig } from '$lib/plot/core/types'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -32,11 +31,6 @@ export const detect_zoom_change = (
     shared_range,
     current_synced,
   )
-
-// Stable value signature for reactive axis dependencies. Equivalent freshly allocated configs
-// should not reset linked zoom state merely because their object identity changed.
-export const axis_config_signature = (axis: AxisConfig | undefined): string =>
-  JSON.stringify(axis) ?? ``
 
 // Physical constants for unit conversions (SI units)
 const PLANCK = 6.62607015e-34 // J⋅s

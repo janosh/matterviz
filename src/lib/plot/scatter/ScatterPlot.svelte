@@ -459,6 +459,10 @@
     const measured_ticks = facet_layout
       ? intrinsic_axis_ticks
       : { x: x_tick_values, x2: x2_tick_values, y: y_tick_values, y2: y2_tick_values }
+    // `range()` is set as a statement, not chained: these scales are unions of
+    // ScaleContinuousNumeric and ArcsinhScale, and resolving the overloaded
+    // `range` on a union widens the result to `Vec2 | ArcsinhScale`, which is
+    // no longer callable.
     const padding_x_scale = x_scale_fn.copy()
     const padding_x2_scale = x2_scale_fn.copy()
     const padding_y_scale = y_scale_fn.copy()
@@ -651,8 +655,7 @@
         !legend_manual_position,
       footprint: legend_footprint,
       items: legend_track_items,
-      config: legend,
-      filter_query: legend_filter_query,
+      config: { ...legend, filter_query: legend_filter_query },
     })
     const items: DecorationItem[] = legend_item ? [legend_item] : []
     if (

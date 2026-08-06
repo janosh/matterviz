@@ -13,6 +13,10 @@ const height = 100
 const plot_w = width - pad.l - pad.r // 140
 const plot_h = height - pad.t - pad.b // 60
 const place = (value: number): number => value // identity: data value === pixel
+const fonts_descriptor = Object.getOwnPropertyDescriptor(document, `fonts`)
+const set_fonts_ready = (ready: Promise<unknown>): void => {
+  Object.defineProperty(document, `fonts`, { configurable: true, value: { ready } })
+}
 
 type Side = `x` | `x2` | `y` | `y2`
 
@@ -34,36 +38,20 @@ const query = (root: Element, selector: string): Element => {
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  if (fonts_descriptor) Object.defineProperty(document, `fonts`, fonts_descriptor)
+  else Reflect.deleteProperty(document, `fonts`)
 })
 
 describe(`PlotAxis`, () => {
   test(`invalidates text metrics for each font readiness cycle`, async () => {
-    const fonts_descriptor = Object.getOwnPropertyDescriptor(document, `fonts`)
-    const set_fonts_ready = (ready: Promise<unknown>): void => {
-      Object.defineProperty(document, `fonts`, { configurable: true, value: { ready } })
-    }
-    try {
-      const first_cycle = Promise.withResolvers<undefined>()
-      set_fonts_ready(first_cycle.promise)
-      const revision_before = get_text_metrics_revision()
+    for (let cycle_idx = 0; cycle_idx < 2; cycle_idx++) {
+      const cycle = Promise.withResolvers<undefined>()
+      set_fonts_ready(cycle.promise)
+      const revision = get_text_metrics_revision()
       await mount_axis({ side: `x`, ticks: [50] })
-      first_cycle.resolve(undefined)
-      await vi.waitFor(() =>
-        expect(get_text_metrics_revision()).toBeGreaterThan(revision_before),
-      )
-
-      const second_cycle = Promise.withResolvers<undefined>()
-      set_fonts_ready(second_cycle.promise)
-      const revision_after_first = get_text_metrics_revision()
-      await mount_axis({ side: `x`, ticks: [50] })
-      expect(get_text_metrics_revision()).toBe(revision_after_first)
-      second_cycle.resolve(undefined)
-      await vi.waitFor(() =>
-        expect(get_text_metrics_revision()).toBeGreaterThan(revision_after_first),
-      )
-    } finally {
-      if (fonts_descriptor) Object.defineProperty(document, `fonts`, fonts_descriptor)
-      else Reflect.deleteProperty(document, `fonts`)
+      expect(get_text_metrics_revision()).toBe(revision)
+      cycle.resolve(undefined)
+      await vi.waitFor(() => expect(get_text_metrics_revision()).toBeGreaterThan(revision))
     }
   })
 
@@ -247,7 +235,7 @@ describe(`PlotAxis`, () => {
     expect(label.tagName.toLowerCase()).toBe(`text`)
     expect(label.closest(`foreignObject`)).toBeNull()
     expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
-    expect([...label.children].map(({ textContent }) => textContent)).toEqual([
+    expect([...label.children].map(({ textContent }) => textContent?.trim())).toEqual([
       `Energy`,
       `per atom`,
     ])

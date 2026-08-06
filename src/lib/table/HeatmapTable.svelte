@@ -1672,7 +1672,9 @@
       ],
     },
     // Gradient direction only applies to heatmap-colored columns
-    ...(allow_better_toggle && context_menu_column?.color_scale != null
+    ...(allow_better_toggle &&
+    context_menu_column &&
+    color_scale_of(context_menu_column) != null
       ? [{ ...better_section, selected: prefs_of(context_menu_col ?? ``).better ?? `` }]
       : []),
   ])
@@ -1851,8 +1853,11 @@
     const color: Record<string, ColumnPrefs> = {}
     const remaining: Record<string, ColumnPrefs> = {}
     for (const [col_id, { better, color_scale, ...kept }] of Object.entries(column_prefs)) {
-      if (better || color_scale) {
-        color[col_id] = { ...(better && { better }), ...(color_scale && { color_scale }) }
+      if (better || color_scale !== undefined) {
+        color[col_id] = {
+          ...(better && { better }),
+          ...(color_scale !== undefined && { color_scale }),
+        }
       }
       if (Object.keys(kept).length > 0) remaining[col_id] = kept
     }

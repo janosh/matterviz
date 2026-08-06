@@ -553,9 +553,7 @@ const compute_legacy_tick_layout = (
   const ticks = axis.tick_values ?? []
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const is_horizontal = side === `x` || side === `x2`
-  const unwrapped = full_texts.map((text) =>
-    is_horizontal ? explicit_tick_lines(text) : [text],
-  )
+  const unwrapped = full_texts.map(explicit_tick_lines)
   const configured = axis.tick?.label?.rotation ?? `auto`
   if (configured !== `auto`) {
     return legacy_result(ticks, full_texts, unwrapped, configured, side, font)
