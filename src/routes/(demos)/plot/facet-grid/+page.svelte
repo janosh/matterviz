@@ -137,8 +137,8 @@
     gap: 0.5em;
   }
   .shared-legend i {
-    width: 1.4em;
-    height: 3px;
+    inline-size: 1.4em;
+    block-size: 3px;
     border-radius: 2px;
   }
   .facet-panel {

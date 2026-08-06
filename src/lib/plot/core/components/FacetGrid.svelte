@@ -196,9 +196,6 @@
     }
   }
 
-  // Stable callback identities plus value equality make repeated child layout reports a no-op.
-  // Resolved padding/range echoes retain the last intrinsic report, preventing a child effect
-  // from turning grid-supplied geometry into a new intrinsic input and cycling indefinitely.
   const ranges_equal = (left: FacetAxisRanges | undefined, right: FacetAxisRanges): boolean =>
     FACET_AXES.every(
       (axis) =>
@@ -206,8 +203,8 @@
         Object.is(left?.[axis]?.[1], right[axis]?.[1]),
     )
 
-  // Each panel keeps one callback for its lifetime. The callback reads current layout/modes,
-  // then atomically updates every member of the relevant shared/row/column group.
+  // Stable callback identities and value equality make repeated layout reports a no-op.
+  // Resolved echoes retain intrinsic reports; range updates atomically update the linked group.
   const create_panel_callbacks = (key: FacetKey): PanelCallbacks => ({
     report_layout: (report): void => {
       if (!layout.panels.some((panel) => panel.key === key)) return
