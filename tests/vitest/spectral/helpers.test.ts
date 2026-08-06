@@ -3,6 +3,7 @@ import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   apply_gaussian_smearing,
+  axis_config_signature,
   axis_with_range,
   build_point_metadata,
   classify_acoustic,
@@ -32,6 +33,17 @@ import {
 import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
 import { IDENTITY_MATRIX3 } from '../setup'
+
+describe(`axis_config_signature`, () => {
+  it(`matches equivalent axis values but changes with axis content`, () => {
+    const first = { label: `Energy`, range: [0, 10] as Vec2 }
+    const equivalent = { label: `Energy`, range: [0, 10] as Vec2 }
+    expect(axis_config_signature(first)).toBe(axis_config_signature(equivalent))
+
+    equivalent.range[1] = 20
+    expect(axis_config_signature(first)).not.toBe(axis_config_signature(equivalent))
+  })
+})
 
 describe(`is_valid_range`, () => {
   it.each([

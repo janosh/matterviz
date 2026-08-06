@@ -584,6 +584,20 @@ describe(`StructureCarousel`, () => {
     },
   )
 
+  test.each([Number.NaN, Infinity, -Infinity])(
+    `keeps carousel geometry finite for invalid height %s`,
+    (height) => {
+      mount_carousel({ items, layout: `horizontal`, height, resizable: true })
+
+      expect(doc_query(`.structure-carousel-track`).getAttribute(`style`)).toContain(
+        `block-size: 1px`,
+      )
+      for (const node of document.querySelectorAll<HTMLElement>(`[style]`)) {
+        expect(node.getAttribute(`style`)).not.toMatch(/NaN|Infinity/)
+      }
+    },
+  )
+
   // Drags the layout's resize handle and returns the resulting carousel style
   const drag_resize = async (
     layout: `horizontal` | `vertical`,

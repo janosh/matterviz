@@ -5,7 +5,6 @@ import type {
   ReferenceAnnotationDecorationItem,
 } from './types'
 
-const EXCLUSION_PENALTY = 1_000_000
 const OBSTACLE_PENALTY = 10_000
 const PREFERENCE_PENALTY = 0.001
 
@@ -67,8 +66,8 @@ export const score_reference_annotation_candidate = ({
     point_in_rect(point, collision_rect),
   ).length
   return (
-    -exclusion_count * EXCLUSION_PENALTY -
-    Math.min(obstacle_count * OBSTACLE_PENALTY, EXCLUSION_PENALTY / 2) -
+    -exclusion_count * ((obstacles.length + 1) * OBSTACLE_PENALTY) -
+    obstacle_count * OBSTACLE_PENALTY -
     candidate_idx * PREFERENCE_PENALTY
   )
 }

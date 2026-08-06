@@ -206,6 +206,11 @@
   let decoration_base_pad = $derived(
     add_sides(base_pad, reserve_marginal_pad(resolved_marginals)),
   )
+  let top_outer_marginal_offset = $derived(
+    resolved_marginals.top?.placement === `outer`
+      ? resolved_marginals.top.size + resolved_marginals.top.gap
+      : 0,
+  )
   // The solver owns decoration reservations and receives only the decoration-independent
   // base, so its output never feeds a previous reservation back into itself.
   let pad = $derived.by(() => base_decoration_solution.pad)
@@ -327,6 +332,10 @@
   $effect(() => {
     const x_extent = { start: decoration_base_pad.l, end: width - decoration_base_pad.r }
     const y_extent = { start: height - decoration_base_pad.b, end: decoration_base_pad.t }
+    const padding_x_scale = x_scale_fn.copy()
+    const padding_y_scale = y_scale_fn.copy()
+    padding_x_scale.range([x_extent.start, x_extent.end])
+    padding_y_scale.range([y_extent.start, y_extent.end])
     const axis_pad =
       width > 0 && height > 0
         ? calc_auto_padding({
@@ -337,14 +346,14 @@
             x_axis: measured_axis(
               { ...x_axis, format: x_axis.format ?? `.2~g` },
               x_ticks,
-              x_scale_fn,
+              padding_x_scale,
               x_extent,
               tick_font,
             ),
             y_axis: measured_axis(
               { ...y_axis, format: y_axis.format ?? `.2~g` },
               y_ticks,
-              y_scale_fn,
+              padding_y_scale,
               y_extent,
               tick_font,
             ),
@@ -1057,7 +1066,7 @@
     <PlotTitle
       config={title_config}
       x={base_pad.l}
-      y={decoration_solution.pad.t - decoration_base_pad.t}
+      y={top_outer_marginal_offset + decoration_solution.pad.t - decoration_base_pad.t}
       width={Math.max(0, width - base_pad.l - base_pad.r)}
     />
 

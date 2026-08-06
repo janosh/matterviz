@@ -58,7 +58,7 @@
   const layout_reports = new SvelteMap<FacetKey, FacetPanelLayoutReport>()
   const range_overrides = new SvelteMap<FacetKey, FacetAxisRanges>()
   type PanelCallbacks = Pick<FacetPanelContext<Datum>, `report_layout` | `update_range`>
-  // Native Map: callback identities must not create reactive dependencies when looked up.
+  // Native Map avoids reactive dependencies when callback identities are looked up.
   const panel_callbacks = new Map<FacetKey, PanelCallbacks>()
 
   const layout = $derived(assign_facet_panels(panels, columns, rows))

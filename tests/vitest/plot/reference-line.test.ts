@@ -1,4 +1,5 @@
 import type { Vec2 } from '$lib/math'
+import type { DecorationSolution } from '$lib/plot/core/decorations'
 import { place_reference_annotation } from '$lib/plot/core/decorations/reference-annotations'
 import type { IndexedRefLine } from '$lib/plot/core/reference-line'
 import {
@@ -12,6 +13,7 @@ import {
   reference_annotation_text_rect,
   resolve_reference_annotation,
   resolve_line_endpoints,
+  solve_reference_annotations,
   span_or,
 } from '$lib/plot/core/reference-line'
 import type { RefLine } from '$lib/plot/core/types'
@@ -39,12 +41,15 @@ describe(`normalize_value`, () => {
     expect(normalize_value(date_str)).toBe(Date.parse(date_str))
   })
 
-  test(`returns 0 for invalid string with warning`, () => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    expect(normalize_value(`invalid`)).toBe(0)
-    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`Invalid RefLineValue`))
-    warn_spy.mockRestore()
-  })
+  test.each([`invalid`, `Infinity`, Infinity, -Infinity, Number.NaN])(
+    `returns 0 for invalid or non-finite value %s with warning`,
+    (input) => {
+      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      expect(normalize_value(input)).toBe(0)
+      expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`Invalid RefLineValue`))
+      warn_spy.mockRestore()
+    },
+  )
 
   test.each([[``], [` `], [`  \t  `]])(`returns 0 for empty/whitespace string %j`, (input) => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
@@ -52,6 +57,48 @@ describe(`normalize_value`, () => {
     expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
     warn_spy.mockRestore()
   })
+})
+
+test(`preserves resolved base geometry when adding reference annotations`, () => {
+  const base_solution: DecorationSolution = {
+    base_pad: { t: 10, r: 10, b: 10, l: 10 },
+    pad: { t: 30, r: 40, b: 20, l: 25 },
+    plot_bounds: { x: 25, y: 30, width: 335, height: 250 },
+    placements: [
+      {
+        id: `legend`,
+        kind: `legend`,
+        footprint: { width: 30, height: 40 },
+        x: 360,
+        y: 30,
+        score: 0,
+        location: `outside`,
+        side: `right`,
+      },
+    ],
+  }
+  const solution = solve_reference_annotations({
+    base_solution,
+    base_pad: base_solution.base_pad,
+    width: 400,
+    height: 300,
+    obstacles_norm: [],
+    lines: [
+      {
+        idx: 0,
+        type: `horizontal`,
+        y: 5,
+        annotation: { text: `Threshold` },
+      },
+    ],
+    ranges: { x: [0, 10], y: [0, 10] },
+    scales: { x: (value) => 25 + value * 33.5, y: (value) => 280 - value * 25 },
+  })
+
+  expect(solution.pad).toBe(base_solution.pad)
+  expect(solution.plot_bounds).toBe(base_solution.plot_bounds)
+  expect(solution.placements[0]).toBe(base_solution.placements[0])
+  expect(solution.placements).toHaveLength(2)
 })
 
 describe(`normalize_point`, () => {
@@ -445,6 +492,31 @@ describe(`reference annotation candidates`, () => {
       })),
     })
     expect(candidate).toBe(crowded_candidate)
+  })
+
+  test(`prefers fewer obstacle collisions above the exclusion threshold`, () => {
+    const [crowded_candidate, sparser_candidate] = create_reference_annotation_candidates(
+      endpoints,
+      { text: `Dense obstacles` },
+    )
+    const points_in = (rect: typeof crowded_candidate.rect, count: number) =>
+      Array.from({ length: count }, () => ({
+        x: rect.x + rect.width / 2,
+        y: rect.y + rect.height / 2,
+      }))
+    const { candidate } = place_reference_annotation({
+      item: {
+        id: `dense-obstacle-order`,
+        kind: `reference-annotation`,
+        footprint: { width: 10, height: 10 },
+        candidates: [crowded_candidate, sparser_candidate],
+      },
+      obstacles: [
+        ...points_in(crowded_candidate.rect, 100),
+        ...points_in(sparser_candidate.rect, 50),
+      ],
+    })
+    expect(candidate).toBe(sparser_candidate)
   })
 
   test(`keeps explicit position and side pinned through collisions`, () => {

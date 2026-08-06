@@ -10,7 +10,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import { compute_frequency_range, extract_efermi } from './helpers'
+  import { axis_config_signature, compute_frequency_range, extract_efermi } from './helpers'
   import type { BaseBandStructure, DosInput, HoveredData } from './types'
 
   let {
@@ -50,7 +50,13 @@
   let y_axes = $state(default_y_axes())
   let prev_sources: unknown[] | undefined
   $effect(() => {
-    const sources = [band_structs, doses, shared_y_axis, bands_props.y_axis, dos_props.y_axis]
+    const sources = [
+      band_structs,
+      doses,
+      shared_y_axis,
+      axis_config_signature(bands_props.y_axis),
+      axis_config_signature(dos_props.y_axis),
+    ]
     if (prev_sources?.every((source, idx) => source === sources[idx])) return
     prev_sources = sources
     y_axes = default_y_axes()

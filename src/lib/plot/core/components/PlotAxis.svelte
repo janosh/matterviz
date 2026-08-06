@@ -2,13 +2,20 @@
   import { clear_tick_metrics_cache } from '$lib/plot/core/layout'
   import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
 
-  // One shared fonts-ready invalidation for every PlotAxis instance; each axis still re-resolves
-  // its own rendered font after the promise settles.
-  let fonts_ready_metrics: Promise<void> | undefined
-  const after_fonts_ready_metrics = (): Promise<void> =>
-    (fonts_ready_metrics ??= invalidate_text_metrics_after_fonts_ready().then(
-      clear_tick_metrics_cache,
-    ))
+  // Share one invalidation per FontFaceSet readiness cycle; browsers replace `ready` whenever
+  // a later font load starts.
+  let observed_fonts_ready: PromiseLike<unknown> | undefined
+  let fonts_ready_metrics = Promise.resolve()
+  const after_fonts_ready_metrics = (): Promise<void> => {
+    const fonts_ready = document.fonts?.ready
+    if (fonts_ready !== observed_fonts_ready) {
+      observed_fonts_ready = fonts_ready
+      fonts_ready_metrics = invalidate_text_metrics_after_fonts_ready({
+        ready: fonts_ready,
+      }).then(clear_tick_metrics_cache)
+    }
+    return fonts_ready_metrics
+  }
 </script>
 
 <script lang="ts">

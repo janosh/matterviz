@@ -37,23 +37,20 @@ async function get_default_desktop_plots(page: Page) {
 test.describe.configure({ mode: `serial` })
 
 test.describe(`BrillouinBandsDos Component Tests`, () => {
-  // Increase timeout for all tests in this file - 3D rendering is slow in CI
-  test.setTimeout(60_000)
+  // Cold compilation and 3D initialization can take over a minute in development.
+  test.setTimeout(120_000)
 
   test.beforeEach(async ({ page }) => {
-    // Skip in CI - 3D WebGL canvas interactions are unreliable
     test.skip(IS_CI, `3D canvas tests are flaky in CI`)
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
-    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    // Wait for canvas (BZ) to be present - WebGL may take time to initialize
-    await expect(container.locator(`canvas`).first()).toBeVisible({ timeout: 20000 })
+    await expect(page.locator(default_bz_canvas_selector).first()).toBeVisible({
+      timeout: 20000,
+    })
   })
 
   test(`renders all three panels with content`, async ({ page }) => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
 
-    // Check all three panels render - data should be loaded after networkidle
-    await expect(container.locator(`canvas`).first()).toBeVisible()
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
     await expect(bands_svg).toBeVisible({ timeout: 10_000 })
     await expect(bands_svg.locator(line_path_selector).first()).toBeVisible({
@@ -193,9 +190,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       },
     })
     await expect(async () => {
-      expect(await numeric_y_ticks(dos_plot)).toEqual(await numeric_y_ticks(bands_plot))
+      const bands_ticks = await numeric_y_ticks(bands_plot)
+      expect(bands_ticks).toEqual(initial_bands_ticks)
+      expect(await numeric_y_ticks(dos_plot)).toEqual(bands_ticks)
     }).toPass({ timeout: 10_000 })
-    const reset_ticks = await numeric_y_ticks(bands_plot)
+    const reset_ticks = initial_bands_ticks
 
     const dos_area = await measure_plot_area(dos_plot)
     await drag_plot_area(page, dos_area)

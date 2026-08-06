@@ -122,7 +122,7 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
     }
     expect(calls_100).toBeGreaterThan(0)
     expect(calls_500).toBeGreaterThan(calls_100)
-    expect(calls_500 / calls_100).toBeLessThan(6 * CI_MULTIPLIER)
+    expect(calls_500 / calls_100).toBeLessThan(6)
     expect(layouts.get(500)?.visible_tick_indices.length).toBeGreaterThan(2)
   })
 
@@ -171,7 +171,7 @@ describe(`adaptive layout performance`, { timeout: 10_000 * CI_MULTIPLIER }, () 
     if (elapsed_100 == null || elapsed_500 == null) {
       throw new Error(`Missing geometry scaling measurements`)
     }
-    expect(elapsed_500 / elapsed_100).toBeLessThan(10 * CI_MULTIPLIER)
+    expect(elapsed_500 / elapsed_100).toBeLessThan(10)
     expect(geometry_by_count.get(500)?.collisions.pairs.length).toBeGreaterThan(0)
   })
 

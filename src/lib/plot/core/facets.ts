@@ -1,6 +1,7 @@
 import type { Vec2 } from '$lib/math'
 import type { Rect, Sides } from '$lib/plot/core/layout'
 import { is_valid_range, max_side_padding, union_ranges } from '$lib/plot/core/shared-axes'
+import { SvelteMap } from 'svelte/reactivity'
 
 export const FACET_AXES = [`x`, `x2`, `y`, `y2`] as const
 export const FACET_AXIS_MODES = [`shared`, `free`, `row`, `col`] as const
@@ -136,15 +137,15 @@ export function assign_facet_panels<Datum>(
   assert_integer(columns, `columns`, 1)
   if (rows !== undefined) assert_integer(rows, `rows`, 1)
 
+  const first_idx_by_key = new SvelteMap<FacetKey, number>()
   for (const [panel_idx, panel] of panels.entries()) {
-    const duplicate_idx = panels.findIndex(
-      (candidate, candidate_idx) => candidate_idx < panel_idx && candidate.key === panel.key,
-    )
-    if (duplicate_idx !== -1) {
+    const duplicate_idx = first_idx_by_key.get(panel.key)
+    if (duplicate_idx !== undefined) {
       throw new Error(
         `Duplicate facet key "${panel.key}" at indices ${duplicate_idx} and ${panel_idx}`,
       )
     }
+    first_idx_by_key.set(panel.key, panel_idx)
   }
 
   const occupied: boolean[][] = []

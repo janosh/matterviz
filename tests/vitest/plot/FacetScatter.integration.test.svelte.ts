@@ -2,7 +2,7 @@ import FacetGrid from '$lib/plot/core/components/FacetGrid.svelte'
 import type { FacetPanel, FacetPanelContext } from '$lib/plot/core/facets'
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '$lib/plot'
-import { createRawSnippet, mount, tick, unmount } from 'svelte'
+import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
 
 const original_resize_observer = globalThis.ResizeObserver
@@ -99,7 +99,12 @@ const mount_facet_scatter = async (panels = panel_inputs) => {
       },
     }
   })
-  const component = mount(FacetGrid, {
+  const typed_facet_grid = FacetGrid as Component<{
+    panels: readonly FacetPanel<PanelDatum>[]
+    columns: number
+    children: typeof children
+  }>
+  const component = mount(typed_facet_grid, {
     target,
     props: {
       panels,

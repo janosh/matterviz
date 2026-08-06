@@ -223,6 +223,7 @@
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
+  let legend_filter_query = $derived(legend?.filter_query ?? ``)
   let hovered_legend_series_idx = $state<number | null>(null)
 
   // Derived data
@@ -347,6 +348,18 @@
   // Track tick values so x auto-rotation / bottom pad recompute when ticks change.
   // sides_equal stops the pad write from looping when nothing moved.
   $effect(() => {
+    const {
+      x: padding_x,
+      x2: padding_x2,
+      y: padding_y,
+      y2: padding_y2,
+    } = create_axis_scales(
+      { x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis },
+      ranges.current,
+      base_pad,
+      width,
+      height,
+    )
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const axis_pad =
@@ -356,10 +369,10 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: measured_axis(final_x_axis, ticks.x, scales.x, x_extent, tick_font),
-            x2_axis: measured_axis(final_x2_axis, ticks.x2, scales.x2, x_extent, tick_font),
-            y_axis: measured_axis(final_y_axis, ticks.y, scales.y, y_extent, tick_font),
-            y2_axis: measured_axis(final_y2_axis, ticks.y2, scales.y2, y_extent, tick_font),
+            x_axis: measured_axis(final_x_axis, ticks.x, padding_x, x_extent, tick_font),
+            x2_axis: measured_axis(final_x2_axis, ticks.x2, padding_x2, x_extent, tick_font),
+            y_axis: measured_axis(final_y_axis, ticks.y, padding_y, y_extent, tick_font),
+            y2_axis: measured_axis(final_y2_axis, ticks.y2, padding_y2, y_extent, tick_font),
           })
         : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
@@ -417,6 +430,7 @@
         legend_group: series_data.legend_group,
       })),
       config: legend,
+      filter_query: legend_filter_query,
     }),
   )
   const base_decoration_solution = $derived.by(() =>
@@ -1004,6 +1018,7 @@
     <PlotLegend
       bind:root_element={legend_element}
       {...legend}
+      bind:filter_query={legend_filter_query}
       layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
       series_data={legend_data}
       on_toggle={legend?.on_toggle ??

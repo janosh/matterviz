@@ -87,13 +87,17 @@ export const create_legend_decoration_item = ({
   footprint,
   items,
   config,
+  filter_query = ``,
 }: {
   enabled: boolean
   footprint: DecorationSize
   items: readonly LegendGridItem[]
   config?: LegendDecorationConfig | null
+  filter_query?: string
 }): LegendDecorationItem | null => {
   if (!enabled) return null
+  const show_filter =
+    (config?.filterable ?? true) && items.length >= (config?.filter_threshold ?? 12)
   return {
     id: `legend`,
     kind: `legend`,
@@ -105,8 +109,8 @@ export const create_legend_decoration_item = ({
             item_count: get_legend_grid_cells({
               items,
               collapsed_groups: config.collapsed_groups,
-              show_filter:
-                (config.filterable ?? true) && items.length >= (config.filter_threshold ?? 12),
+              filter_query: show_filter ? filter_query : ``,
+              show_filter,
             }).length,
             orientation: config.layout ?? `vertical`,
             item_extents: config.item_extents,

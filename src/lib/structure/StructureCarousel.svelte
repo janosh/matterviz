@@ -75,8 +75,11 @@
   const safe_min_card_width = $derived(
     Number.isFinite(min_card_width) ? Math.max(1, min_card_width) : 190,
   )
+  const safe_height = $derived(Number.isFinite(height) ? Math.max(1, height) : 1)
   const effective_height = $derived(
-    Math.max(1, is_horizontal && resizable ? (resized_height ?? height) : height),
+    is_horizontal && resizable && resized_height != null && Number.isFinite(resized_height)
+      ? Math.max(1, resized_height)
+      : safe_height,
   )
   const effective_width = $derived(
     !is_horizontal && resizable

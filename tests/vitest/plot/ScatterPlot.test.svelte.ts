@@ -864,7 +864,6 @@ describe(`ScatterPlot`, () => {
       legend: {
         layout: `vertical`,
         layout_tracks: `auto`,
-        item_extents: Array.from({ length: 4 }, () => ({ height: 20 })),
       },
     })
 
@@ -885,7 +884,9 @@ describe(`ScatterPlot`, () => {
       legend: { responsive: true },
       color_bar: { responsive: true },
     })
-    await vi.waitFor(() => solved_decoration_rect(doc_query(`.colorbar-wrapper`)))
+    const initial_colorbar_rect = await vi.waitFor(() =>
+      solved_decoration_rect(doc_query(`.colorbar-wrapper`)),
+    )
 
     await resize_element(plot, 650, 360)
     flushSync()
@@ -895,6 +896,8 @@ describe(`ScatterPlot`, () => {
       const legend_rect = solved_decoration_rect(doc_query(`.legend`))
       const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
       expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
+      expect(colorbar_rect.width).toBe(initial_colorbar_rect.width)
+      expect(colorbar_rect.height).toBe(initial_colorbar_rect.height)
     })
   })
 

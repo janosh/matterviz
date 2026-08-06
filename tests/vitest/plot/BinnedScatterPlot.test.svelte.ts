@@ -831,6 +831,24 @@ describe(`BinnedScatterPlot`, () => {
     expect(marginal_fills.has(get_series_color(1))).toBe(true)
   })
 
+  test(`places the title below an outer top marginal`, async () => {
+    vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
+    mount_plot({
+      series: [{ x: [0.2, 0.8], y: [0.3, 0.7] }],
+      title: `Density map`,
+      marginals: {
+        top: { placement: `outer`, size: 30, gap: 7, value_axis: false },
+      },
+      density: point_mode(),
+      ...unit_axes,
+    })
+    await settle()
+
+    const marginal_rect = svg_query(`clipPath[id$="-top"] rect`)
+    const marginal_bottom = svg_num(marginal_rect, `y`) + svg_num(marginal_rect, `height`)
+    expect(svg_num(svg_query(`.plot-title tspan`), `y`)).toBeGreaterThan(marginal_bottom)
+  })
+
   test(`renders point label snippets with auto-placed leader lines`, async () => {
     mock_label_measurement(80, 20)
     mount_plot({

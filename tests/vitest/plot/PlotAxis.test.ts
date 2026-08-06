@@ -1,6 +1,7 @@
 import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
 import { AXIS_TITLE_OFFSET, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
+import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { mock_text_measurement } from '../setup'
@@ -36,6 +37,36 @@ afterEach(() => {
 })
 
 describe(`PlotAxis`, () => {
+  test(`invalidates text metrics for each font readiness cycle`, async () => {
+    const fonts_descriptor = Object.getOwnPropertyDescriptor(document, `fonts`)
+    const set_fonts_ready = (ready: Promise<unknown>): void => {
+      Object.defineProperty(document, `fonts`, { configurable: true, value: { ready } })
+    }
+    try {
+      const first_cycle = Promise.withResolvers<undefined>()
+      set_fonts_ready(first_cycle.promise)
+      const revision_before = get_text_metrics_revision()
+      await mount_axis({ side: `x`, ticks: [50] })
+      first_cycle.resolve(undefined)
+      await vi.waitFor(() =>
+        expect(get_text_metrics_revision()).toBeGreaterThan(revision_before),
+      )
+
+      const second_cycle = Promise.withResolvers<undefined>()
+      set_fonts_ready(second_cycle.promise)
+      const revision_after_first = get_text_metrics_revision()
+      await mount_axis({ side: `x`, ticks: [50] })
+      expect(get_text_metrics_revision()).toBe(revision_after_first)
+      second_cycle.resolve(undefined)
+      await vi.waitFor(() =>
+        expect(get_text_metrics_revision()).toBeGreaterThan(revision_after_first),
+      )
+    } finally {
+      if (fonts_descriptor) Object.defineProperty(document, `fonts`, fonts_descriptor)
+      else Reflect.deleteProperty(document, `fonts`)
+    }
+  })
+
   // Codifies the intentionally-normalized tick geometry shared by all plots (tick-mark coords +
   // label offset/anchor/baseline are identical across consumers now). Keyed by child selector;
   // `line` is the tick mark (grid is off by default, so it's the only <line> in the group).
@@ -208,7 +239,7 @@ describe(`PlotAxis`, () => {
     const svg = await mount_axis({
       side: `y`,
       ticks: [50],
-      axis: { label: `Energy` },
+      axis: { label: `Energy\nper atom` },
       label_x: 20,
       label_y: 50,
     })
@@ -216,6 +247,10 @@ describe(`PlotAxis`, () => {
     expect(label.tagName.toLowerCase()).toBe(`text`)
     expect(label.closest(`foreignObject`)).toBeNull()
     expect(label.parentElement?.getAttribute(`transform`)).toBe(`rotate(-90, 20, 50)`)
+    expect([...label.children].map(({ textContent }) => textContent)).toEqual([
+      `Energy`,
+      `per atom`,
+    ])
   })
 
   // AxisLabel sizes its foreignObject from measured content while preserving the title center.

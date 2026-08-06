@@ -316,27 +316,21 @@ const ellipsize_line = (
   if (measured_width(text, measure_text, context) <= max_width_px) return text
   if (measured_width(ellipsis, measure_text, context) > max_width_px) return text
 
-  const characters = graphemes(text)
   let longest_fitting = ``
   let prefix = ``
-  let seen_fit = false
-  for (const character of characters) {
+  for (const character of graphemes(text)) {
     prefix += character
     const trimmed = prefix.replace(/[ \t]+$/u, ``)
     if (measured_width(`${trimmed}${ellipsis}`, measure_text, context) <= max_width_px) {
       longest_fitting = trimmed
-      seen_fit = true
-    } else if (seen_fit) break
+    }
   }
   const source_information = information_grapheme_count(text)
-  const retained_information = information_grapheme_count(longest_fitting)
-  if (
-    source_information === 0 ||
-    retained_information / source_information < MIN_RETAINED_INFORMATION_FRACTION
-  ) {
-    return text
-  }
-  return `${longest_fitting}${ellipsis}`
+  return source_information > 0 &&
+    information_grapheme_count(longest_fitting) / source_information >=
+      MIN_RETAINED_INFORMATION_FRACTION
+    ? `${longest_fitting}${ellipsis}`
+    : text
 }
 
 export const generate_ellipsis_candidate = (

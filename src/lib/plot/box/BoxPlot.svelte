@@ -594,6 +594,7 @@
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
+  let legend_filter_query = $derived(legend?.filter_query ?? ``)
   let legend_size_revision = $state(0)
   const legend_footprint = $derived.by(() => {
     void legend_size_revision
@@ -654,6 +655,7 @@
         legend_group: series_data.legend_group,
       })),
       config: legend,
+      filter_query: legend_filter_query,
     }),
   )
   const base_decoration_solution = $derived(
@@ -1314,6 +1316,7 @@
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
+        bind:filter_query={legend_filter_query}
         layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
         series_data={legend_data}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}

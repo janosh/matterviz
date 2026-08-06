@@ -141,6 +141,18 @@ test(`builds solver legend items and resolves their track count`, () => {
     clearance: 8,
     auto_tracks: { item_count: 4, orientation: `horizontal` },
   })
+  expect(
+    create_legend_decoration_item({
+      enabled: true,
+      footprint: { width: 100, height: 50 },
+      items: [
+        { label: `A`, legend_group: `Group` },
+        { label: `B`, legend_group: `Group` },
+      ],
+      config: { layout_tracks: `auto`, filter_threshold: 2 },
+      filter_query: `A`,
+    }),
+  ).toMatchObject({ auto_tracks: { item_count: 3 } })
   expect(resolve_legend_layout_tracks(`auto`, { layout_tracks: 0 })).toBe(1)
   expect(resolve_legend_layout_tracks(`auto`, null)).toBe(`auto`)
   expect(resolve_legend_layout_tracks(2, { layout_tracks: 4 })).toBe(2)

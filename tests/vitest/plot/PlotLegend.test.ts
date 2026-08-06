@@ -75,6 +75,7 @@ describe(`PlotLegend`, () => {
     // Default layout is vertical, 1 column
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`)
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
+    expect(wrapper.style.gridAutoFlow).toBe(``)
 
     const items = document.querySelectorAll(`.legend-item`)
     expect(items).toHaveLength(default_series_data.length)
@@ -492,10 +493,11 @@ describe(`PlotLegend`, () => {
       },
     ]
 
-    test(`renders group headers and items`, () => {
+    test(`renders group controls without starting legend drag`, () => {
+      const on_drag_start = vi.fn()
       mount(PlotLegend, {
         target: document.body,
-        props: { series_data: make_grouped_data() },
+        props: { series_data: make_grouped_data(), on_drag_start },
       })
 
       expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(true)
@@ -507,6 +509,8 @@ describe(`PlotLegend`, () => {
         (header) => header.querySelector(`.group-label`)?.textContent,
       )
       expect(group_labels).toEqual([`Li₂O`, `NaCl`])
+      doc_query(`.group-chevron`).dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      expect(on_drag_start).not.toHaveBeenCalled()
     })
 
     test.each([

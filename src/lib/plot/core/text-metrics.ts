@@ -113,12 +113,15 @@ export function resolve_font_size_css(
   const parent = positive_number(parent_font_size, DEFAULT_FONT_SPEC.font_size)
   const normalized = value?.trim().toLowerCase() ?? ``
 
-  const match = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(px|pt|em|rem|%)?$/u.exec(normalized)
+  const match =
+    /^(?<magnitude>[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)(?<unit>px|pt|em|rem|%)?$/u.exec(
+      normalized,
+    )
   if (!match) return parse_font_size(normalized, parent)
 
-  const parsed = Number(match[1])
+  const parsed = Number(match.groups?.magnitude)
   if (!(parsed > 0) || !Number.isFinite(parsed)) return parent
-  const unit = match[2]
+  const unit = match.groups?.unit
   if (unit === `em` || unit === `rem`) return parsed * parent
   if (unit === `%`) return (parsed / 100) * parent
   return unit === `pt` ? parsed * (96 / 72) : parsed

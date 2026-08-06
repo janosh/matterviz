@@ -407,6 +407,7 @@
   // State for legend/colorbar placement stability
   let legend_element = $state<HTMLDivElement | undefined>()
   let colorbar_element = $state<HTMLDivElement | undefined>()
+  let legend_filter_query = $derived(legend?.filter_query ?? ``)
 
   // Module-level constants to avoid repeated allocations
   // Create and categorize points in a single pass (instead of 3 separate iterations)
@@ -458,9 +459,22 @@
     const measured_ticks = facet_layout
       ? intrinsic_axis_ticks
       : { x: x_tick_values, x2: x2_tick_values, y: y_tick_values, y2: y2_tick_values }
+    const padding_x_scale = x_scale_fn.copy()
+    const padding_x2_scale = x2_scale_fn.copy()
+    const padding_y_scale = y_scale_fn.copy()
+    const padding_y2_scale = y2_scale_fn.copy()
+    padding_x_scale.range([base_pad.l, width - base_pad.r])
+    padding_x2_scale.range([base_pad.l, width - base_pad.r])
+    padding_y_scale.range([height - base_pad.b, base_pad.t])
+    padding_y2_scale.range([height - base_pad.b, base_pad.t])
     const measured_scales = facet_layout
       ? intrinsic_scale_fns
-      : { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn }
+      : {
+          x: padding_x_scale,
+          x2: padding_x2_scale,
+          y: padding_y_scale,
+          y2: padding_y2_scale,
+        }
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
     const axis_pad =
@@ -638,6 +652,7 @@
       footprint: legend_footprint,
       items: legend_track_items,
       config: legend,
+      filter_query: legend_filter_query,
     })
     const items: DecorationItem[] = legend_item ? [legend_item] : []
     if (
@@ -2265,6 +2280,7 @@
           ?.idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
+        bind:filter_query={legend_filter_query}
         layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}

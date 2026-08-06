@@ -93,7 +93,11 @@ export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex 
 
 // Convert RefLineValue (number | Date | string) to numeric value
 export function normalize_value(value: RefLineValue): number {
-  if (typeof value === `number`) return value
+  if (typeof value === `number`) {
+    if (Number.isFinite(value)) return value
+    console.warn(`Invalid RefLineValue: ${value}, defaulting to 0`)
+    return 0
+  }
   if (value instanceof Date) return value.getTime()
   // Empty/whitespace strings are invalid (Number("") returns 0 silently)
   if (value.trim() === ``) {
@@ -102,7 +106,7 @@ export function normalize_value(value: RefLineValue): number {
   }
   // Try numeric conversion first (handles "42", "3.14", "-5")
   const numeric_value = Number(value)
-  if (!Number.isNaN(numeric_value)) return numeric_value
+  if (Number.isFinite(numeric_value)) return numeric_value
   // Then try as ISO date string (handles "2024-06-15")
   const parsed_date = Date.parse(value)
   if (!Number.isNaN(parsed_date)) return parsed_date
@@ -625,13 +629,12 @@ export function solve_reference_annotations({
 }): DecorationSolution {
   const annotations = solve_decorations({
     ...scene,
+    base_pad: base_solution.pad,
     exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],
     items: create_reference_annotation_items({ lines, ranges, scales, clearance }),
   })
   return {
     ...base_solution,
-    pad: scene.base_pad,
-    plot_bounds: annotations.plot_bounds,
     placements: [...base_solution.placements, ...annotations.placements],
   }
 }

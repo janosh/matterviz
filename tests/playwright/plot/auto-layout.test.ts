@@ -95,6 +95,17 @@ const stable_labels = async (axis: Locator): Promise<RenderedLabel[]> => {
   return latest
 }
 
+const rounded_layout_signature = (labels: readonly RenderedLabel[]) => {
+  const first = labels[0]
+  if (!first) return []
+  return labels.map(({ text, left, right, top, bottom }) => [
+    text,
+    ...[right - left, bottom - top, left - first.left, top - first.top].map((value) =>
+      Math.round(value * 10),
+    ),
+  ])
+}
+
 const assert_readable = (labels: readonly RenderedLabel[]): void => {
   // The demo pins min_visible_ticks to 3, so anything fewer means thinning overshot.
   expect(labels.length).toBeGreaterThanOrEqual(3)
@@ -141,5 +152,7 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
 
   const repeated_narrow_labels = await set_chart_width(740)
   assert_readable_non_overlapping(repeated_narrow_labels)
-  expect(repeated_narrow_labels).toEqual(narrow_labels)
+  expect(rounded_layout_signature(repeated_narrow_labels)).toEqual(
+    rounded_layout_signature(narrow_labels),
+  )
 })

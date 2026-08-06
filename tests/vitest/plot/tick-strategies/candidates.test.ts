@@ -112,15 +112,16 @@ describe(`tick strategy candidates`, () => {
 
   test(`measured ellipsis chooses the longest fitting grapheme prefix`, () => {
     const segmenter = new Intl.Segmenter(undefined, { granularity: `grapheme` })
-    const measure_text = (text: string): number => Array.from(segmenter.segment(text)).length
+    const measure_text = (text: string): number =>
+      text === `ab…` ? 4 : text === `abc…` ? 3 : Array.from(segmenter.segment(text)).length
     const candidate = create_tick_candidate({
       id: `unabridged`,
       strategy: `upright`,
-      labels: [`abcdefgh`, `AB👩‍🔬CDEF`, `xyz`],
+      labels: [`abcdefgh`, `AB👩‍🔬CDEF`, `xyz`, `abcd`],
     })
     const ellipsized = generate_ellipsis_candidate(candidate, {
       id: `ellipsized`,
-      max_width_px: [5, 5, 0],
+      max_width_px: [5, 5, 0, 3],
       measure_text,
     })
 
@@ -128,19 +129,19 @@ describe(`tick strategy candidates`, () => {
       `abcd…`,
       `AB👩‍🔬C…`,
       `xyz`,
+      `abc…`,
     ])
     ellipsized.labels.slice(0, 2).forEach((label, label_idx) => {
       expect(measure_text(label.display_lines[0])).toBeLessThanOrEqual([5, 5, 0][label_idx])
     })
-    expect(ellipsized.labels.map(({ full_text }) => full_text)).toEqual([
-      `abcdefgh`,
-      `AB👩‍🔬CDEF`,
-      `xyz`,
-    ])
+    expect(ellipsized.labels.map(({ full_text }) => full_text)).toEqual(
+      candidate.labels.map(({ full_text }) => full_text),
+    )
     expect(ellipsized.labels.map(({ information_loss }) => information_loss > 0)).toEqual([
       true,
       true,
       false,
+      true,
     ])
   })
 

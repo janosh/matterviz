@@ -41,6 +41,7 @@
     active_fill_idx = null,
     filterable = true,
     filter_threshold = 12,
+    filter_query = $bindable(``),
     draggable = true,
     root_element = $bindable<HTMLDivElement | undefined>(undefined),
     ...rest
@@ -76,13 +77,13 @@
     active_fill_idx?: number | null // highlight the fill legend item with this fill_idx
     filterable?: boolean
     filter_threshold?: number
+    filter_query?: string
     draggable?: boolean
     // Bindable reference to the root DOM element for size measurements
     root_element?: HTMLDivElement
   } = $props()
 
   let is_dragging = $state(false)
-  let legend_filter = $state(``)
 
   let has_groups = $derived(series_data.some(({ legend_group }) => legend_group != null))
   let show_filter = $derived(filterable && series_data.length >= filter_threshold)
@@ -104,7 +105,7 @@
         legend_group: item.legend_group,
       })),
       collapsed_groups,
-      filter_query: show_filter ? legend_filter : ``,
+      filter_query: show_filter ? filter_query : ``,
       show_filter,
     }),
   )
@@ -178,9 +179,10 @@
   function handle_legend_mouse_down(event: MouseEvent) {
     if (!draggable) return
 
-    // Only start drag if clicking on empty areas (not on legend items)
+    // Only start drag from non-interactive legend areas
     const target = event.target
-    if (target instanceof Element && target.closest(`.legend-item`)) return
+    if (target instanceof Element && target.closest(`.legend-item, .legend-group-header`))
+      return
 
     event.preventDefault()
     event.stopPropagation()
@@ -216,7 +218,9 @@
   let div_style = $derived(
     {
       horizontal: `grid-template-columns: repeat(${resolved_layout_tracks}, auto);`,
-      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto; grid-auto-flow: column;`,
+      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto;${
+        resolved_layout_tracks > 1 ? ` grid-auto-flow: column;` : ``
+      }`,
     }[layout] + style,
   )
 
@@ -391,7 +395,7 @@
       <input
         class="legend-filter"
         type="search"
-        bind:value={legend_filter}
+        bind:value={filter_query}
         placeholder="Filter legend"
         aria-label="Filter legend items"
         onclick={(event) => event.stopPropagation()}
