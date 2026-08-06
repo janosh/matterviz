@@ -76,7 +76,7 @@
   )
 
   // Outside x-axis titles move past the rendered tick-label band.
-  const rotated_title_shift = $derived(
+  const tick_title_shift = $derived(
     is_x && !inside ? Math.max(0, tick_layout.band - TICK_LABEL_HEIGHT) : 0,
   )
 
@@ -133,6 +133,8 @@
   {#each ticks as tick, idx (tick)}
     {@const pos = place(tick)}
     {#if isFinite(pos) && in_plot(pos)}
+      {@const label_lines = tick_layout.lines[idx]}
+      {@const tick_unit = unit_on_first_tick && idx === 0 ? axis.unit : undefined}
       <g class="tick" transform="translate({is_x ? pos : axis_x}, {is_x ? axis_y : pos})">
         {#if show_grid}
           <line
@@ -151,10 +153,21 @@
             dominant-baseline={text_baseline}
             fill={tick_color?.(tick) ?? text_fill}
             transform={text_transform}
+            aria-label={tick_unit ? `${tick_texts[idx]} ${tick_unit}` : tick_texts[idx]}
           >
-            {tick_text(
-              tick,
-            )}{#if unit_on_first_tick && idx === 0 && axis.unit}&zwnj;&ensp;{axis.unit}{/if}
+            {#each label_lines as line, line_idx}
+              <tspan
+                aria-hidden="true"
+                x={text_x}
+                dy={line_idx === 0
+                  ? flipped
+                    ? -(label_lines.length - 1) * TICK_LABEL_HEIGHT
+                    : 0
+                  : TICK_LABEL_HEIGHT}
+              >
+                {line}{#if tick_unit && line_idx === label_lines.length - 1}&zwnj;&ensp;{tick_unit}{/if}
+              </tspan>
+            {/each}
           </text>
         {/if}
       </g>
@@ -163,7 +176,7 @@
   {#if show_label}
     <AxisLabel
       x={label_x ?? 0}
-      y={(label_y ?? 0) + (side === `x` ? rotated_title_shift : -rotated_title_shift)}
+      y={(label_y ?? 0) + (side === `x` ? tick_title_shift : -tick_title_shift)}
       rotate={side === `y` || side === `y2`}
       label={axis.label ?? ``}
       options={axis.options}

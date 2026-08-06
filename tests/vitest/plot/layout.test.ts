@@ -20,7 +20,6 @@ import {
   resolve_tick_layout,
   sample_series_obstacle_points,
   type Sides,
-  tick_label_band,
   TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
@@ -272,7 +271,7 @@ describe(`layout utility functions`, () => {
     })
   })
 
-  describe(`x tick label auto-rotation`, () => {
+  describe(`x tick label layout`, () => {
     const px_per_char = 7
     beforeEach(() => mock_text_measurement(px_per_char))
     afterEach(() => vi.restoreAllMocks())
@@ -289,6 +288,9 @@ describe(`layout utility functions`, () => {
       })
     const rotation_for = (axis: MeasuredAxis, side: `x` | `x2` | `y` | `y2`): number =>
       resolve_tick_layout({ tick_values: crowded, ...axis }, plot_width, side).rotation
+    const state_labels = [`PENDING`, `CANCELLED by 2054`]
+    const x_layout = (tick_values: string[], width: number, axis: MeasuredAxis = {}) =>
+      resolve_tick_layout({ tick_values, ...axis }, width, `x`)
 
     // Negative throughout: labels anchored at their end trail left of the tick, so the
     // rightmost one cannot run off the plot.
@@ -305,9 +307,155 @@ describe(`layout utility functions`, () => {
     })
 
     it(`costs less height the shallower it tilts`, () => {
-      const bands = [0, -30, -45, -60, -90].map((angle) => tick_label_band(widest_px, angle))
+      const bands = [0, -30, -45, -60, -90].map(
+        (rotation) => x_layout([`QUEUE_HOLD`], 100, { tick: { label: { rotation } } }).band,
+      )
       expect(bands[0]).toBe(TICK_LABEL_HEIGHT)
       expect(bands.slice(1).every((band, idx) => band > bands[idx])).toBe(true)
+    })
+
+    it.each([
+      [`words`, `CANCELLED by 2054`, 70, [`CANCELLED`, `by 2054`]],
+      [`underscore-separated identifiers`, `QUEUE_HOLD`, 45, [`QUEUE_`, `HOLD`]],
+      [`camel case`, `cancelledBy2054`, 65, [`cancelled`, `By2054`]],
+    ])(`wraps %s at semantic boundaries`, (_name, label, max_width, expected) => {
+      const layout = x_layout([label, label], 2 * (max_width + 6))
+      expect(layout.lines[0]).toEqual(expected)
+    })
+
+    it(`chooses wrapping or rotation from whichever uses less vertical space`, () => {
+      const wrapped = x_layout(state_labels, 220)
+      expect(wrapped).toMatchObject({
+        rotation: 0,
+        band: 2 * TICK_LABEL_HEIGHT,
+        lines: [[`PENDING`], [`CANCELLED`, `by 2054`]],
+      })
+
+      const wide = x_layout(state_labels, 260)
+      expect(wide).toMatchObject({ rotation: 0, band: TICK_LABEL_HEIGHT })
+      expect(wide.lines).toEqual(state_labels.map((label) => [label]))
+
+      const wrapping_disabled = x_layout(state_labels, 220, {
+        tick: { label: { max_lines: 1 } },
+      })
+      expect(wrapping_disabled.rotation).toBe(-30)
+      expect(wrapping_disabled.lines).toEqual(state_labels.map((label) => [label]))
+    })
+
+    it(`wraps a lone long label instead of letting it overflow`, () => {
+      expect(x_layout([`CANCELLED by 2054`], 90)).toMatchObject({
+        rotation: 0,
+        band: 2 * TICK_LABEL_HEIGHT,
+        lines: [[`CANCELLED`, `by 2054`]],
+      })
+      expect(x_layout([`CANCELLED by timeout 2054`], 60)).toMatchObject({
+        rotation: 0,
+        band: 3 * TICK_LABEL_HEIGHT,
+        lines: [[`CANCELLED`, `by timeout`, `2054`]],
+      })
+    })
+
+    it(`rotates a wrapped block when that uses less room than one long rotated line`, () => {
+      const labels = [`Formation Energy Per Atom`, `Band Gap PBE Value`]
+      const layout = x_layout(labels, 120)
+      expect(layout.lines).toEqual([
+        [`Formation`, `Energy`, `Per Atom`],
+        [`Band`, `Gap PBE`, `Value`],
+      ])
+      expect(layout.rotation).toBe(-90)
+      expect(layout.band).toBe(63)
+      const unwrapped = x_layout(labels, 120, { tick: { label: { max_lines: 1 } } })
+      expect(layout.band).toBeLessThan(unwrapped.band)
+    })
+
+    it(`keeps a shallower unwrapped angle for only a marginal band saving`, () => {
+      const labels = Array.from({ length: 12 }, () => `Formation Energy`)
+      const layout = x_layout(labels, 680)
+      expect(layout.rotation).toBe(-30)
+      expect(layout.lines).toEqual(labels.map((label) => [label]))
+    })
+
+    it(`caps wrapping and keeps separators attached`, () => {
+      expect(
+        x_layout([`one two three four`], 50, {
+          tick: { label: { max_lines: 2 } },
+        }).lines[0],
+      ).toEqual([`one two`, `three four`])
+      expect(
+        x_layout([`alpha - beta`, `alpha - beta`], 120, {
+          tick: { label: { max_lines: 4 } },
+        }).lines[0],
+      ).toEqual([`alpha`, `- beta`])
+      expect(x_layout([`-alpha`], 10).lines).toEqual([[`-alpha`]])
+    })
+
+    it.each([`solid‑state`, `10 eV`, `10 eV`])(`does not split %s`, (label) => {
+      expect(x_layout([label], 10).lines).toEqual([[label]])
+    })
+
+    it(`preserves explicit whitespace and newline breaks`, () => {
+      expect(
+        x_layout([`  padded  `], 100, { tick: { label: { rotation: 0 } } }).lines,
+      ).toEqual([[`  padded  `]])
+      const multiline = x_layout([`top\nbottom\n`], 100, { tick: { label: { rotation: 45 } } })
+      expect(multiline.lines).toEqual([[`top`, `bottom`]])
+      expect(multiline.band).toBeGreaterThan(2 * TICK_LABEL_HEIGHT)
+      expect(
+        x_layout([`abcdefghij\nklmnopqrst`, `abcdefghij\nklmnopqrst`], 100),
+      ).toMatchObject({
+        rotation: -60,
+        lines: [
+          [`abcdefghij`, `klmnopqrst`],
+          [`abcdefghij`, `klmnopqrst`],
+        ],
+      })
+    })
+
+    it(`shrinks bottom padding to the wrapped label band`, () => {
+      const padding_for = (max_lines?: number) =>
+        pad_for({
+          width: 300,
+          x_axis: {
+            label: `slurm_state`,
+            tick_values: state_labels,
+            tick: { label: { max_lines } },
+          },
+        }).b
+      expect(padding_for()).toBe(
+        2 * TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER,
+      )
+      expect(padding_for()).toBeLessThan(padding_for(1))
+    })
+
+    it.each([180, 220, 500])(
+      `keeps rendered and reserved bands equal at width %i`,
+      (width) => {
+        const axis = {
+          label: `slurm_state`,
+          tick_values: state_labels,
+        }
+        const padding = pad_for({ width, x_axis: axis })
+        const { band, rotation } = resolve_tick_layout(
+          axis,
+          width - padding.l - padding.r,
+          `x`,
+        )
+        const expected =
+          rotation === 0 && band <= TICK_LABEL_HEIGHT
+            ? DEFAULT_PLOT_PADDING.b
+            : Math.max(
+                DEFAULT_PLOT_PADDING.b,
+                band + LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER,
+              )
+        expect(padding.b).toBe(expected)
+      },
+    )
+
+    it(`keeps an unbreakable word intact and rotates it when crowded`, () => {
+      const label = `SUPERCALIFRAGILISTIC`
+      const layout = x_layout([label, label], 220)
+      expect(layout.rotation).toBe(-30)
+      expect(layout.lines).toEqual([[label], [label]])
     })
 
     // Rotation follows the label side; y axes and lone labels stay upright.
@@ -332,8 +480,12 @@ describe(`layout utility functions`, () => {
       `reserves the tilted labels' band below an x axis with %s`,
       (_label, axis, title_room) => {
         const { b: reserved, l, r } = pad_for({ x_axis: axis })
-        const rotation = auto_tick_rotation(widest_px, (400 - l - r) / crowded.length)
-        const needed = tick_label_band(widest_px, rotation) + title_room + AXIS_LABEL_OUTER
+        const { band } = resolve_tick_layout(
+          { tick_values: crowded, ...axis },
+          400 - l - r,
+          `x`,
+        )
+        const needed = band + title_room + AXIS_LABEL_OUTER
         expect(reserved).toBe(needed)
         expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
       },
@@ -342,10 +494,20 @@ describe(`layout utility functions`, () => {
     it(`mirrors the tilt on x2 and reserves the room above`, () => {
       const angle = rotation_for({}, `x2`)
       expect(angle).toBe(-rotation_for({}, `x`))
-      const band = tick_label_band(widest_px, angle)
+      const band = resolve_tick_layout({ tick_values: crowded }, plot_width, `x2`).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
       const { t } = pad_for({ x_axis: { tick_values: [] }, x2_axis: { tick_values: crowded } })
       expect(t).toBe(band + 8 + AXIS_LABEL_OUTER)
+    })
+
+    it(`reserves the full wrapped label band above an x2 axis`, () => {
+      const { t } = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        width: 220,
+        x2_axis: { tick_values: state_labels },
+      })
+      expect(t).toBe(2 * TICK_LABEL_HEIGHT + 8 + AXIS_LABEL_OUTER)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b

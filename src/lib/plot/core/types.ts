@@ -469,9 +469,10 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
 export interface TickLabelConfig {
   inside?: boolean // Render tick labels inside the plot area (default: false/outside)
   shift?: XyShift
-  // Rotation angle in degrees, or `auto` (default on x/x2) to pick the shallowest angle
-  // that keeps neighbouring labels from overlapping. Pass 0 to force upright labels.
+  // Angle in degrees, or `auto` (default on x/x2) to wrap/rotate. Pass 0 for upright/unwrapped.
   rotation?: number | `auto`
+  // Maximum auto-wrapped lines (default: 3). Pass 1 to disable wrapping.
+  max_lines?: number
 }
 
 // Tick configuration

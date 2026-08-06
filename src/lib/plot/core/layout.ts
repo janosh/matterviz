@@ -79,10 +79,12 @@ export const filter_padding = (
   ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, val]) => val !== undefined)),
 })
 
+const TICK_FONT = `12px sans-serif`
+
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
 
-export function measure_text_width(text: string, font: string = `12px sans-serif`): number {
+export function measure_text_width(text: string, font: string = TICK_FONT): number {
   if (typeof document === `undefined`) return 0
   measurement_canvas ??= document.createElement(`canvas`)
   const ctx = measurement_canvas.getContext(`2d`)
@@ -136,6 +138,15 @@ export const full_footprint_or = (
 // axes pass their category names here, not the numeric indices behind them.
 export type MeasuredAxis = AxisConfig & { tick_values?: (string | number)[] }
 
+const tick_text = (
+  tick: string | number,
+  format?: string,
+  tick_labels?: AxisConfig[`ticks`],
+): string =>
+  typeof tick === `string`
+    ? tick
+    : (get_tick_label(tick, tick_labels) ?? format_value_or_num(tick, format))
+
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
@@ -157,14 +168,7 @@ export const measure_max_tick_width = (
 ): number => {
   if (ticks.length === 0) return 0
   return Math.max(
-    ...ticks.map((tick) =>
-      measure_text_width(
-        typeof tick === `string`
-          ? tick
-          : (get_tick_label(tick, tick_labels) ?? format_value_or_num(tick, format)),
-        `12px sans-serif`,
-      ),
-    ),
+    ...ticks.map((tick) => measure_text_width(tick_text(tick, format, tick_labels))),
   )
 }
 
@@ -173,6 +177,97 @@ export const measure_max_tick_width = (
 const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 // Air between neighbouring tick labels before they read as one word.
 const TICK_LABEL_GAP = 6
+const DEFAULT_TICK_LABEL_MAX_LINES = 3
+// A steeper wrap must save at least 15% of the outward band to justify the angle.
+const MAX_STEEPER_WRAPPED_BAND_RATIO = 0.85
+
+// Split on semantic boundaries without changing the displayed text. Whitespace, separators,
+// and lower-to-upper camel-case transitions are useful wrap points; ordinary words stay intact.
+const TICK_WRAP_BOUNDARY =
+  /(?<=[\p{L}\p{N}][_‐–—-])(?=[\p{L}\p{N}])|(?<=[^_‐–—-] )|(?<=[a-z]{2})(?=[A-Z])/u
+const tick_label_segments = (text: string): string[] => text.split(TICK_WRAP_BOUNDARY)
+
+type WrapChoice = { lines: string[]; max_width: number; balance: number }
+
+const explicit_tick_lines = (text: string): string[] =>
+  text.replaceAll(/^(?:\r?\n)+|(?:\r?\n)+$/g, ``).split(/\r?\n/)
+
+// Wrap at semantic boundaries into the fewest lines that fit max_width. If no partition fits,
+// return the narrowest partition within max_lines so the caller can compare it to rotation.
+const wrap_tick_label = (text: string, max_width: number, max_lines: number): string[] => {
+  const explicit_lines = explicit_tick_lines(text)
+  if (explicit_lines.length > 1) return explicit_lines
+
+  const normalized = text.trim().replaceAll(/[^\S\u00A0\u202F]+/gu, ` `)
+  if (measure_text_width(normalized) <= max_width) return [normalized]
+  const segments = tick_label_segments(normalized)
+  const line_limit = Math.min(max_lines, segments.length)
+  if (line_limit < 2) return [text]
+  const metrics = Array.from({ length: segments.length }, (_segment, start_idx) =>
+    Array.from({ length: segments.length + 1 }, (_, end_idx) => {
+      const line =
+        end_idx > start_idx ? segments.slice(start_idx, end_idx).join(``).trim() : ``
+      return { line, width: line ? measure_text_width(line) : 0 }
+    }),
+  )
+  let previous_choices: (WrapChoice | null)[] = metrics[0].map(({ line, width }, end_idx) =>
+    end_idx === 0 ? null : { lines: [line], max_width: width, balance: width ** 2 },
+  )
+  let narrowest = [text]
+  for (let line_count = 2; line_count <= line_limit; line_count++) {
+    const choices = Array<WrapChoice | null>(segments.length + 1).fill(null)
+    for (let end_idx = line_count; end_idx <= segments.length; end_idx++) {
+      for (let start_idx = line_count - 1; start_idx < end_idx; start_idx++) {
+        const previous = previous_choices[start_idx]
+        if (!previous) continue
+        const { line, width } = metrics[start_idx][end_idx]
+        const candidate = {
+          lines: [...previous.lines, line],
+          max_width: Math.max(previous.max_width, width),
+          balance: previous.balance + width ** 2,
+        }
+        const current = choices[end_idx]
+        if (
+          !current ||
+          candidate.max_width < current.max_width ||
+          (candidate.max_width === current.max_width && candidate.balance < current.balance)
+        ) {
+          choices[end_idx] = candidate
+        }
+      }
+    }
+    const choice = choices[segments.length]
+    if (choice) {
+      narrowest = choice.lines
+      if (choice.max_width <= max_width) return choice.lines
+    }
+    previous_choices = choices
+  }
+  return narrowest
+}
+
+type LabelBlock = { width: number; height: number }
+
+const label_block_band = (lines: string[], rotation: number): number => {
+  const radians = to_radians(Math.abs(rotation))
+  const width = Math.max(...lines.map((line) => measure_text_width(line)))
+  return width * Math.sin(radians) + lines.length * TICK_LABEL_HEIGHT * Math.cos(radians)
+}
+
+const max_label_block = (labels: string[][]): LabelBlock => ({
+  width: Math.max(...labels.flat().map((line) => measure_text_width(line))),
+  height: Math.max(...labels.map((lines) => lines.length)) * TICK_LABEL_HEIGHT,
+})
+
+const auto_block_rotation = (block: LabelBlock, pitch_px: number): number | null => {
+  if (!(pitch_px > 0) || block.width + TICK_LABEL_GAP <= pitch_px) return 0
+  for (const candidate of TICK_ROTATION_LADDER) {
+    if (pitch_px * Math.sin(to_radians(candidate)) >= block.height + TICK_LABEL_GAP) {
+      return candidate
+    }
+  }
+  return null
+}
 
 // Shallowest rotation that keeps neighbouring x tick labels apart, given the widest label
 // and the horizontal pitch between adjacent ticks. Upright labels need their full width;
@@ -184,21 +279,8 @@ const TICK_LABEL_GAP = 6
 // of their tick. Tilting the other way would push the last label off the right edge of the
 // plot, where there is no margin to spill into.
 export const auto_tick_rotation = (widest_px: number, pitch_px: number): number => {
-  if (!(pitch_px > 0) || widest_px + TICK_LABEL_GAP <= pitch_px) return 0
-  const needed = TICK_LABEL_HEIGHT + TICK_LABEL_GAP
-  const angle = TICK_ROTATION_LADDER.find(
-    (candidate) => pitch_px * Math.sin(to_radians(candidate)) >= needed,
-  )
-  return -(angle ?? 90)
-}
-
-// Vertical space one row of tick labels occupies at `rotation` degrees. Upright labels cost
-// one line; rotated ones project their own width downward, which is what makes a shallower
-// angle worth preferring whenever it still separates the labels.
-export const tick_label_band = (widest_px: number, rotation: number): number => {
-  if (rotation === 0) return TICK_LABEL_HEIGHT
-  const radians = to_radians(Math.abs(rotation))
-  return widest_px * Math.sin(radians) + TICK_LABEL_HEIGHT * Math.cos(radians)
+  const angle = auto_block_rotation({ width: widest_px, height: TICK_LABEL_HEIGHT }, pitch_px)
+  return angle === 0 ? 0 : -(angle ?? 90)
 }
 
 export const calc_auto_padding = ({
@@ -275,7 +357,7 @@ export const calc_auto_padding = ({
     // Inside labels reach into the plot, and no labels reach nowhere: neither needs room
     if (inside || (x_axis.tick_values ?? []).length === 0) return default_padding.b
     const { rotation, band } = resolve_tick_layout(x_axis, plot_width, `x`)
-    if (rotation === 0) return default_padding.b
+    if (rotation === 0 && band <= TICK_LABEL_HEIGHT) return default_padding.b
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
     // The title sits one gap past the labels and is centered, so half of it reaches further
     // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
@@ -293,29 +375,74 @@ export const calc_auto_padding = ({
   }
 }
 
-// The angle an axis tilts its tick labels to, and the vertical band they occupy once
-// tilted. Returned together because both fall out of one measurement of the widest label,
-// and because the padding math and PlotAxis have to agree on both or the space reserved
-// won't match what gets drawn. An explicit rotation is used exactly as configured; only
-// the `auto` angle is derived.
+// Resolve wrapping, rotation, and the outward band as one layout decision so padding and
+// rendering cannot disagree. Automatic labels compare wrapped and unwrapped rotations and use
+// the smaller band; explicit rotations remain exact.
 export const resolve_tick_layout = (
   axis: MeasuredAxis,
   plot_width: number,
   side: `x` | `x2` | `y` | `y2`,
-): { rotation: number; band: number } => {
+) => {
   const ticks = axis.tick_values ?? []
+  const labels = ticks.map((tick) => tick_text(tick, axis.format, axis.ticks))
+  const is_horizontal = side === `x` || side === `x2`
+  const unwrapped_lines = labels.map((label) =>
+    is_horizontal ? explicit_tick_lines(label) : [label],
+  )
   const configured = axis.tick?.label?.rotation ?? `auto`
-  // y/y2 labels stack vertically and never crowd; a lone label has no neighbour to hit
-  const can_collide = (side === `x` || side === `x2`) && ticks.length > 1
-  if (configured === `auto` && !can_collide) return { rotation: 0, band: TICK_LABEL_HEIGHT }
-  const widest = measure_max_tick_width(ticks, axis.format, axis.ticks)
+  const layout_for = (lines: string[][], rotation: number) => ({
+    rotation,
+    band:
+      lines.length === 0
+        ? TICK_LABEL_HEIGHT
+        : Math.max(...lines.map((label_lines) => label_block_band(label_lines, rotation))),
+    lines,
+  })
+
+  if (configured !== `auto`) return layout_for(unwrapped_lines, configured)
+  if (!is_horizontal || ticks.length === 0 || !(plot_width > 0)) {
+    return layout_for(unwrapped_lines, 0)
+  }
+
+  const pitch = plot_width / ticks.length
+  const unwrapped_block = max_label_block(unwrapped_lines)
+  const raw_max_lines = axis.tick?.label?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES
+  const max_lines = Number.isFinite(raw_max_lines)
+    ? Math.max(1, Math.floor(raw_max_lines))
+    : DEFAULT_TICK_LABEL_MAX_LINES
+  if (unwrapped_block.width + TICK_LABEL_GAP <= pitch) {
+    return layout_for(unwrapped_lines, 0)
+  }
+
   // Which sign trails up-and-to-the-left — the direction that keeps the last label on the
   // figure — is set by which side of the baseline the labels sit on: x2 puts them above,
   // and so does an x axis labelled `inside`.
   const above_baseline = (side === `x2`) !== (axis.tick?.label?.inside ?? false)
-  const auto = auto_tick_rotation(widest, plot_width / ticks.length)
-  const rotation = configured === `auto` ? (above_baseline ? -auto : auto) : configured
-  return { rotation, band: tick_label_band(widest, rotation) }
+  const signed_rotation = (angle: number): number =>
+    angle === 0 ? 0 : above_baseline ? angle : -angle
+
+  // A lone label has no neighbour to collide with. It may wrap to stay within the plot, but
+  // rotating it away from its centered anchor would create edge overflow rather than fix it.
+  const unwrapped_angle =
+    ticks.length === 1 ? 0 : (auto_block_rotation(unwrapped_block, pitch) ?? 90)
+  const unwrapped = layout_for(unwrapped_lines, signed_rotation(unwrapped_angle))
+  if (max_lines <= 1) return unwrapped
+  const wrapped_lines = labels.map((label) =>
+    wrap_tick_label(label, Math.max(0, pitch - TICK_LABEL_GAP), max_lines),
+  )
+  const wrapped_block = max_label_block(wrapped_lines)
+  if (ticks.length === 1) {
+    return wrapped_block.width < unwrapped_block.width
+      ? layout_for(wrapped_lines, 0)
+      : unwrapped
+  }
+
+  const wrapped_angle = auto_block_rotation(wrapped_block, pitch)
+  if (wrapped_angle == null) return unwrapped
+  const wrapped = layout_for(wrapped_lines, signed_rotation(wrapped_angle))
+  const not_steeper = Math.abs(wrapped.rotation) <= Math.abs(unwrapped.rotation)
+  const clearly_shorter = wrapped.band <= unwrapped.band * MAX_STEEPER_WRAPPED_BAND_RATIO
+  return not_steeper || clearly_shorter ? wrapped : unwrapped
 }
 
 const constrain_axis_position = (

@@ -92,11 +92,11 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
 
-## Automatic Tick Label Rotation
+## Automatic Tick Label Layout
 
-Long category names no longer collide. `x`/`x2` tick labels default to `rotation: 'auto'`, which picks the shallowest tilt (30°, 45°, 60°, then 90°) that still keeps neighbouring labels apart, and the padding grows to fit whatever angle it lands on. Drag the slider to walk the ladder: upright while the names fit side by side, then one step steeper each time the ticks crowd closer than a label's line height. Narrowing your browser window has the same effect, since it's the spacing between ticks in pixels that decides.
+Long category names no longer collide or waste most of the chart on a deep rotated-label gutter. `x`/`x2` tick labels default to `rotation: 'auto'`, which balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
 
-Labels trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign of rotation achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force them upright (and overlapping), or pass an explicit angle to override the choice entirely:
+Automatic wrapping uses at most three lines by default; set `tick.label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
 
 ```svelte example
 <script lang="ts">

@@ -1,6 +1,6 @@
 import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
-import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
+import { AXIS_TITLE_OFFSET, TICK_LABEL_HEIGHT } from '$lib/plot/core/layout'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { mock_text_measurement } from '../setup'
@@ -156,6 +156,8 @@ describe(`PlotAxis`, () => {
     const texts = svg.querySelectorAll(`g.tick text`)
     expect(texts[0]?.textContent).toContain(`eV`)
     expect(texts[1]?.textContent).not.toContain(`eV`)
+    expect(texts[0]?.getAttribute(`aria-label`)).toBe(`50 eV`)
+    expect(texts[1]?.getAttribute(`aria-label`)).toBe(`100`)
   })
 
   test(`tick_label overrides the formatted value`, async () => {
@@ -243,7 +245,7 @@ describe(`PlotAxis`, () => {
 
   // Long names at 20px pitch, wide enough (once text is measurable) to always auto-rotate
   const cats = [`QUEUE_HOLD`, `PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`]
-  const mount_cat_axis = (props: Record<string, unknown>): Promise<SVGElement> => {
+  const mount_measured_axis = (props: Record<string, unknown>): Promise<SVGElement> => {
     mock_text_measurement()
     return mount_axis({
       ticks: cats.map((_cat, idx) => 50 + idx * 20),
@@ -258,7 +260,7 @@ describe(`PlotAxis`, () => {
     [`x2`, false, 1],
     [`x2`, true, -1],
   ] as const)(`auto-rotated %s labels (inside=%s) trail left`, async (side, inside, sign) => {
-    const svg = await mount_cat_axis({ side, axis: { tick: { label: { inside } } } })
+    const svg = await mount_measured_axis({ side, axis: { tick: { label: { inside } } } })
     const text = query(svg, `g.tick text`)
     const transform = text.getAttribute(`transform`) ?? ``
     const degrees = Number(/rotate\((?<deg>[-\d.]+),/.exec(transform)?.groups?.deg)
@@ -267,10 +269,58 @@ describe(`PlotAxis`, () => {
     expect(text.getAttribute(`text-anchor`)).toBe(`end`)
   })
 
+  test.each([
+    [`x`, [`0`, `${TICK_LABEL_HEIGHT}`]],
+    [`x2`, [`${-TICK_LABEL_HEIGHT}`, `${TICK_LABEL_HEIGHT}`]],
+  ] as const)(`%s axis wraps a long semantic label upright`, async (side, expected_dy) => {
+    const labels = [`PENDING`, `CANCELLED by 2054`]
+    const svg = await mount_measured_axis({
+      side,
+      ticks: [50, 100],
+      tick_label: (value: number) => labels[value === 50 ? 0 : 1],
+    })
+    const texts = svg.querySelectorAll(`g.tick text`)
+    expect(texts).toHaveLength(2)
+    expect(texts[1].getAttribute(`transform`)).toBeNull()
+    expect(texts[1].getAttribute(`text-anchor`)).toBe(`middle`)
+    expect(texts[1].getAttribute(`aria-label`)).toBe(`CANCELLED by 2054`)
+    const lines = texts[1].querySelectorAll(`tspan`)
+    expect([...lines].map((line) => line.textContent?.trim())).toEqual([
+      `CANCELLED`,
+      `by 2054`,
+    ])
+    expect([...lines].map((line) => line.getAttribute(`dy`))).toEqual(expected_dy)
+    expect([...lines].map((line) => line.getAttribute(`x`))).toEqual([`0`, `0`])
+    expect([...lines].every((line) => line.getAttribute(`aria-hidden`) === `true`)).toBe(true)
+  })
+
+  test.each([
+    [`x`, -1, `0`],
+    [`x2`, 1, `${-2 * TICK_LABEL_HEIGHT}`],
+  ] as const)(
+    `%s axis stacks rotated wrapped lines away from its baseline`,
+    async (side, rotation_sign, first_dy) => {
+      const label = `ABCDEFGHIJK LMNOPQRSTUV WXYZABCDEFG`
+      const svg = await mount_measured_axis({
+        side,
+        ticks: [40, 120, 200, 280],
+        width: 380,
+        tick_label: () => label,
+      })
+      const text = query(svg, `g.tick text`)
+      const transform = text.getAttribute(`transform`) ?? ``
+      expect(transform).toMatch(/^rotate\(/)
+      const rotation = Number(/rotate\((?<degrees>[-\d.]+)/.exec(transform)?.groups?.degrees)
+      expect(Math.sign(rotation)).toBe(rotation_sign)
+      expect(Math.abs(rotation)).toBe(45)
+      expect(text.querySelector(`tspan`)?.getAttribute(`dy`)).toBe(first_dy)
+    },
+  )
+
   test(`only outside tick labels push the x-axis title down`, async () => {
     const label_y = height - pad.b + AXIS_TITLE_OFFSET
     const title_y = async (inside: boolean): Promise<number> => {
-      const svg = await mount_cat_axis({
+      const svg = await mount_measured_axis({
         side: `x`,
         axis: { label: `state`, tick: { label: { inside } } },
         label_x: 100,
