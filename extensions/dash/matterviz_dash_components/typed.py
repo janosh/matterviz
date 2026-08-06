@@ -1317,6 +1317,7 @@ class Bands(MatterViz):
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         error_bands: list | None = None,
+        facet_layout: Any | None = None,
         fermi_level: float | None = None,
         fill_regions: list | None = None,
         highlighted_qpoint_index: int | None = None,
@@ -1376,6 +1377,8 @@ class Bands(MatterViz):
             mv_props["data_loader"] = data_loader
         if error_bands is not None:
             mv_props["error_bands"] = error_bands
+        if facet_layout is not None:
+            mv_props["facet_layout"] = facet_layout
         if fermi_level is not None:
             mv_props["fermi_level"] = fermi_level
         if fill_regions is not None:
@@ -1473,6 +1476,7 @@ class Dos(MatterViz):
         data_loader: Any | None = None,
         doses: dict | None = None,
         error_bands: list | None = None,
+        facet_layout: Any | None = None,
         fermi_level: float | None = None,
         fill_regions: list | None = None,
         hover_config: dict | None = None,
@@ -1529,6 +1533,8 @@ class Dos(MatterViz):
             mv_props["doses"] = doses
         if error_bands is not None:
             mv_props["error_bands"] = error_bands
+        if facet_layout is not None:
+            mv_props["facet_layout"] = facet_layout
         if fermi_level is not None:
             mv_props["fermi_level"] = fermi_level
         if fill_regions is not None:
@@ -1627,6 +1633,7 @@ class ScatterPlot(MatterViz):
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         error_bands: list | None = None,
+        facet_layout: Any | None = None,
         fill_regions: list | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
@@ -1666,6 +1673,8 @@ class ScatterPlot(MatterViz):
             mv_props["data_loader"] = data_loader
         if error_bands is not None:
             mv_props["error_bands"] = error_bands
+        if facet_layout is not None:
+            mv_props["facet_layout"] = facet_layout
         if fill_regions is not None:
             mv_props["fill_regions"] = fill_regions
         if hover_config is not None:
