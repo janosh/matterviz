@@ -12,7 +12,6 @@
     AxisLoadError,
     BasePlotProps,
     ColorScaleConfig,
-    ControlsConfig,
     DataLoaderFn,
     DataSeries,
     ErrorBand,
@@ -86,7 +85,11 @@
     SCALE_DEFAULTS,
   } from '$lib/plot/core/types'
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    legend_mode_to_prop,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
   import { scaleTime } from 'd3-scale'
@@ -112,11 +115,13 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     AXIS_TITLE_OFFSET,
+    DEFAULT_PLOT_PADDING,
     calc_auto_padding,
     filter_padding,
     measured_axis,
     resolve_tick_layout,
     sides_equal,
+    stride_sample,
     y_axis_label_x,
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
@@ -129,17 +134,25 @@
     solve_reference_annotations,
   } from '$lib/plot/core/reference-line'
   import {
+    accumulate_extent,
     create_color_scale,
     create_scale,
     create_size_scale,
+    empty_extent,
     generate_ticks,
-    get_nice_data_range,
+    nice_range_from_extent,
+    type RunningExtent,
   } from '$lib/plot/core/scales'
+  import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
+  import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
+  import { color as d3_color } from 'd3-color'
   import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
 
-  // Plots with at least this many visible markers get smaller default point radii
+  // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
+  const OBSTACLE_SAMPLE_LIMIT = 500
+  const CANVAS_MARKER_THRESHOLD = 10_000
 
   let {
     series = $bindable([]),
@@ -149,7 +162,10 @@
     y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.scatter.display),
     styles: styles_init = {},
-    controls: controls_init = {},
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     padding = {},
     title,
     range_padding = 0,
@@ -166,6 +182,7 @@
     label_placement_config = {},
     hover_config = {},
     legend = {},
+    show_legend = legend_mode_to_prop(DEFAULTS.scatter.show_legend),
     point_tween,
     line_tween,
     point_events,
@@ -192,13 +209,13 @@
     pan = {},
     marginals = false,
     facet_layout,
+    marker_renderer = `auto`,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     Omit<BasePlotProps, `change`> &
     PlotConfig & {
       series?: DataSeries<Metadata>[]
       styles?: StyleOverrides
-      controls?: ControlsConfig
       current_x_value?: number | null
       tooltip_point?: InternalPoint<Metadata> | null
       selected_point?: { series_idx: number; point_idx: number } | null
@@ -222,6 +239,7 @@
       label_placement_config?: Partial<LabelPlacementConfig>
       hover_config?: Partial<HoverConfig>
       legend?: LegendConfig | null
+      show_legend?: boolean
       point_tween?: TweenOptions<Point2D>
       line_tween?: TweenOptions<string>
       point_events?: Record<
@@ -251,6 +269,9 @@
       pan?: PanConfig
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
+      // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
+      // Canvas keeps labelled, hovered, and selected points in an SVG overlay.
+      marker_renderer?: `auto` | `svg` | `canvas`
     } = $props()
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
@@ -325,8 +346,6 @@
       ...styles_init,
     })),
   )
-  let controls = $derived({ show: true, open: false, ...controls_init })
-
   let [width, height] = $state([0, 0])
   let svg_element: SVGElement | null = $state(null) // Bind the SVG element
 
@@ -407,14 +426,14 @@
   let colorbar_element = $state<HTMLDivElement | undefined>()
   let legend_filter_query = $derived(legend?.filter_query ?? ``)
 
-  // Module-level constants to avoid repeated allocations
-  // Create and categorize points in a single pass (instead of 3 separate iterations)
-  type SimplePoint = { x: number; y: number }
-  let points_by_axis = $derived.by(() => {
-    const all: SimplePoint[] = []
-    const y1: SimplePoint[] = []
-    const y2: SimplePoint[] = []
-    const x2: SimplePoint[] = []
+  // Avoid materializing point objects when only axis extrema and counts are needed.
+  let extents_by_axis = $derived.by(() => {
+    const all_x = empty_extent()
+    const y1 = empty_extent()
+    const y2 = empty_extent()
+    const x2 = empty_extent()
+    let has_x2_points = false
+    let has_y2_points = false
 
     for (const srs of series_with_ids) {
       if (!srs) continue
@@ -425,46 +444,46 @@
         y_axis: series_y_axis = `y1`,
         x_axis: x_ax = `x1`,
       } = srs as DataSeries
-      for (let idx = 0; idx < xs.length; idx++) {
-        const point = { x: xs[idx], y: ys[idx] }
-        all.push(point)
-        if (visible) {
-          if (series_y_axis === `y2`) y2.push(point)
-          else y1.push(point)
-          if (x_ax === `x2`) x2.push(point)
-        }
+      // x drives the point count: a y array of a different length is read through xs.length
+      const n_points = xs.length
+      accumulate_extent(all_x, xs, n_points)
+      if (visible) {
+        const y_extent = series_y_axis === `y2` ? y2 : y1
+        accumulate_extent(y_extent, ys, n_points)
+        if (x_ax === `x2`) accumulate_extent(x2, xs, n_points)
+        const has_drawable_point: boolean =
+          ((x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)) &&
+          xs.some(
+            (x_value, point_idx) => Number.isFinite(x_value) && Number.isFinite(ys[point_idx]),
+          )
+        has_x2_points ||= x_ax === `x2` && has_drawable_point
+        has_y2_points ||= series_y_axis === `y2` && has_drawable_point
       }
     }
-    return { all, y1, y2, x2 }
+    return { all_x, y1, y2, x2, has_x2_points, has_y2_points }
   })
 
-  let all_points = $derived(points_by_axis.all)
-  let y1_points = $derived(points_by_axis.y1)
-  let y2_points = $derived(points_by_axis.y2)
-  let x2_points = $derived(points_by_axis.x2)
+  let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
   // Layout: tick-label padding (decoration reservations are added in `pad` below)
-  const default_padding = { t: 5, b: 50, l: 50, r: 20 }
   let tick_font = $state<Readonly<FontSpec> | undefined>()
-  let base_pad = $state(untrack(() => filter_padding(padding, default_padding)))
+  let base_pad = $state(untrack(() => filter_padding(padding, DEFAULT_PLOT_PADDING)))
   const auto_range = (
-    points: SimplePoint[],
-    key: keyof SimplePoint,
+    data_extent: RunningExtent,
     axis: typeof final_x_axis,
     time_scale = false,
   ): Vec2 =>
-    get_nice_data_range(
-      points,
-      (point) => point[key],
+    nice_range_from_extent(
+      data_extent,
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
       range_padding,
       time_scale,
     )
-  let auto_x_range = $derived(auto_range(all_points, `x`, final_x_axis, is_time_x))
-  let auto_y_range = $derived(auto_range(y1_points, `y`, final_y_axis))
-  let auto_x2_range = $derived(auto_range(x2_points, `x`, final_x2_axis, is_time_x2))
-  let auto_y2_range = $derived(auto_range(y2_points, `y`, final_y2_axis))
+  let auto_x_range = $derived(auto_range(extents_by_axis.all_x, final_x_axis, is_time_x))
+  let auto_y_range = $derived(auto_range(extents_by_axis.y1, final_y_axis))
+  let auto_x2_range = $derived(auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2))
+  let auto_y2_range = $derived(auto_range(extents_by_axis.y2, final_y2_axis))
   const intrinsic_ranges = $derived({
     x: auto_x_range,
     x2: auto_x2_range,
@@ -500,15 +519,14 @@
         final_x_axis.ticks,
         axis_scales.x,
       ),
-      x2:
-        x2_points.length > 0
-          ? generate_ticks(
-              axis_ranges.x2,
-              final_x2_axis.scale_type ?? `linear`,
-              final_x2_axis.ticks,
-              axis_scales.x2,
-            )
-          : [],
+      x2: has_x2_points
+        ? generate_ticks(
+            axis_ranges.x2,
+            final_x2_axis.scale_type ?? `linear`,
+            final_x2_axis.ticks,
+            axis_scales.x2,
+          )
+        : [],
       y: generate_ticks(
         axis_ranges.y,
         final_y_axis.scale_type ?? `linear`,
@@ -516,16 +534,15 @@
         axis_scales.y,
         { default_count: 5 },
       ),
-      y2:
-        y2_points.length > 0
-          ? generate_ticks(
-              axis_ranges.y2,
-              final_y2_axis.scale_type ?? `linear`,
-              final_y2_axis.ticks,
-              axis_scales.y2,
-              { default_count: 5 },
-            )
-          : [],
+      y2: has_y2_points
+        ? generate_ticks(
+            axis_ranges.y2,
+            final_y2_axis.scale_type ?? `linear`,
+            final_y2_axis.ticks,
+            axis_scales.y2,
+            { default_count: 5 },
+          )
+        : [],
     }
   }
   const facet = create_facet_plot_adapter({
@@ -569,7 +586,7 @@
       width && height
         ? calc_auto_padding({
             padding,
-            default_padding,
+            default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
             x_axis: measured_axis(
@@ -581,7 +598,7 @@
               tick_font,
             ),
             x2_axis: measured_axis(
-              x2_points.length > 0 ? final_x2_axis : {},
+              has_x2_points ? final_x2_axis : {},
               measured_ticks.x2,
               (tick) =>
                 is_time_x2 ? measured_scales.x2(new Date(tick)) : measured_scales.x2(tick),
@@ -596,14 +613,14 @@
               tick_font,
             ),
             y2_axis: measured_axis(
-              y2_points.length > 0 ? final_y2_axis : {},
+              has_y2_points ? final_y2_axis : {},
               measured_ticks.y2,
               measured_scales.y2,
               y_extent,
               tick_font,
             ),
           })
-        : filter_padding(padding, default_padding)
+        : filter_padding(padding, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
 
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
@@ -635,35 +652,36 @@
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
   // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
   const obstacles_norm = $derived.by(() => {
-    if (!width || !height || !filtered_series) return []
+    if (!width || !height) return []
     const base_w = width - effective_base_pad.l - effective_base_pad.r
     const base_h = height - effective_base_pad.t - effective_base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
     return build_obstacles_norm(
-      filtered_series
-        .filter((srs) => srs?.filtered_data)
-        .map((srs) => {
-          const uses_x2 = srs.x_axis === `x2`
-          const uses_y2 = srs.y_axis === `y2`
-          const x_config = uses_x2 ? final_x2_axis : final_x_axis
-          const y_config = uses_y2 ? final_y2_axis : final_y_axis
-          const x_range = uses_x2 ? ([x2_min, x2_max] as Vec2) : ([x_min, x_max] as Vec2)
-          const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
-          const time_x = uses_x2 ? is_time_x2 : is_time_x
-          const norm_x = time_x
-            ? scaleTime()
-                .domain(x_range.map((value) => new Date(value)))
-                .range([0, 1])
-            : create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
-          const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
-          return {
-            points: srs.filtered_data.map((point) => ({
-              x: time_x ? norm_x(new Date(point.x)) : norm_x(point.x),
-              y: 1 - norm_y(point.y),
-            })),
-            draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
-          }
-        }),
+      filtered_series.map((srs) => {
+        const uses_x2 = srs.x_axis === `x2`
+        const uses_y2 = srs.y_axis === `y2`
+        const x_config = uses_x2 ? final_x2_axis : final_x_axis
+        const y_config = uses_y2 ? final_y2_axis : final_y_axis
+        const x_range = uses_x2 ? ([x2_min, x2_max] as Vec2) : ([x_min, x_max] as Vec2)
+        const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
+        const time_x = uses_x2 ? is_time_x2 : is_time_x
+        const norm_x = time_x
+          ? scaleTime()
+              .domain(x_range.map((value) => new Date(value)))
+              .range([0, 1])
+          : create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
+        const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
+        // Thin before projecting because the placement solver also caps its obstacle field.
+        return {
+          points: stride_sample(srs.filtered_data, OBSTACLE_SAMPLE_LIMIT).map((point) => ({
+            x:
+              (time_x ? norm_x(new Date(point.x)) : norm_x(point.x)) +
+              (point.point_offset?.x ?? 0) / base_w,
+            y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
+          })),
+          draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+        }
+      }),
       base_w,
       base_h,
     )
@@ -792,9 +810,7 @@
       }
     }),
   )
-  const marginal_has_axis = $derived(
-    marginal_axis_presence(x2_points.length > 0, y2_points.length > 0),
-  )
+  const marginal_has_axis = $derived(marginal_axis_presence(has_x2_points, has_y2_points))
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
     x: pad.l || 0,
@@ -901,14 +917,7 @@
 
   // Create auto color range
   let auto_color_range = $derived(
-    // Ensure we only calculate extent on actual numbers, filtering out nulls/undefined
-    all_color_values.length > 0
-      ? extent(
-          all_color_values.filter(
-            (color_val: number | null): color_val is number => typeof color_val === `number`,
-          ),
-        )
-      : [0, 1],
+    all_color_values.length > 0 ? extent(all_color_values) : [0, 1],
   ) as Vec2
 
   const scale_fns = $derived(create_plot_scales(ranges.current, pad))
@@ -942,7 +951,7 @@
   let line_tween_load = $derived.by(() => {
     if (!styles.show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
-    for (const srs of filtered_series ?? []) {
+    for (const srs of filtered_series) {
       if (!(srs.markers ?? DEFAULT_MARKERS).includes(`line`)) continue
       n_series += 1
       n_points += srs.x.length
@@ -954,7 +963,7 @@
   let visible_marker_count = $derived.by(() => {
     if (!styles.show_points) return 0
     let count = 0
-    for (const series_data of filtered_series ?? []) {
+    for (const series_data of filtered_series) {
       if ((series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) {
         count += series_data.filtered_data.length
       }
@@ -966,6 +975,167 @@
     const [sparse_radius, dense_radius] = markers.includes(`line`) ? [2.5, 2] : [3, 2.5]
     return visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
   }
+
+  // Apply controls to the selected series, comparing original indices so duplicate IDs work.
+  const applies_style_controls = (series_data: { orig_series_idx?: number }): boolean =>
+    show_controls &&
+    (!has_multiple_series || series_data.orig_series_idx === selected_series_idx)
+
+  // Keep canvas and SVG marker appearance in sync.
+  const point_appearance = (
+    point: InternalPoint<Metadata>,
+    series_data: DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] },
+  ) => {
+    const series_markers = series_data.markers ?? DEFAULT_MARKERS
+    const control_touched = applies_style_controls(series_data) ? touched : undefined
+    const pt = point.point_style
+    const ctrl = <T>(key: string, value: T | null | undefined): T | null =>
+      control_touched?.has(key) ? (value ?? null) : null
+    const series_idx = series_data.orig_series_idx ?? 0
+    return {
+      radius:
+        point.size_value != null
+          ? size_scale_fn(point.size_value)
+          : (ctrl(`point.size`, styles.point?.size) ??
+            pt?.radius ??
+            default_point_radius(series_markers)),
+      symbol_size: pt?.symbol_size ?? undefined,
+      symbol_type: pt?.symbol_type ?? get_series_symbol(series_idx),
+      fill:
+        point.color_value != null
+          ? color_scale_fn(point.color_value)
+          : (ctrl(`point.color`, styles.point?.color) ??
+            pt?.fill ??
+            get_series_color(series_idx)),
+      fill_opacity: ctrl(`point.opacity`, styles.point?.opacity) ?? pt?.fill_opacity ?? 1,
+      stroke: ctrl(`point.stroke_color`, styles.point?.stroke_color) ?? pt?.stroke ?? `#000`,
+      stroke_width:
+        ctrl(`point.stroke_width`, styles.point?.stroke_width) ?? pt?.stroke_width ?? 1,
+      stroke_opacity:
+        ctrl(`point.stroke_opacity`, styles.point?.stroke_opacity) ?? pt?.stroke_opacity ?? 1,
+    }
+  }
+
+  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint keyword.
+  const canvas_safe_color = (color: string): boolean =>
+    color === `none` || d3_color(color) !== null
+  const needs_svg_point_events = $derived(
+    Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
+  )
+  const use_canvas_markers = $derived.by(() => {
+    const canvas_requested =
+      marker_renderer === `canvas` ||
+      (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
+    if (!canvas_requested || needs_svg_point_events) return false
+    for (const series_data of filtered_series) {
+      if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+      for (const point of series_data.filtered_data) {
+        const { fill, stroke } = point_appearance(point, series_data)
+        if (!canvas_safe_color(fill) || !canvas_safe_color(stroke)) return false
+      }
+    }
+    return true
+  })
+  const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
+
+  // Points needing labels or effects remain in an SVG overlay.
+  const same_logical_point = (
+    point: InternalPoint<Metadata>,
+    other: { series_idx: number; point_idx: number } | null,
+  ): boolean => other?.series_idx === point.series_idx && other.point_idx === point.point_idx
+  const needs_static_svg_overlay = (point: InternalPoint<Metadata>): boolean =>
+    point.point_label?.text != null ||
+    same_logical_point(point, selected_point) ||
+    Boolean(
+      point.point_style?.is_highlighted &&
+      /pulse|glow/.test(point.point_style.highlight_effect ?? ``),
+    )
+  const static_svg_overlay_points_by_series = $derived.by(() => {
+    if (!use_canvas_markers) return []
+    return filtered_series.map((series_data) =>
+      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point)),
+    )
+  })
+  const svg_overlay_points_by_series = $derived.by(() => {
+    if (!use_canvas_markers) return []
+    return static_svg_overlay_points_by_series.map((points, series_pos) => {
+      const series_data = filtered_series[series_pos]
+      // tooltip_point may come from a previous filtered derivation, so dedupe by logical key.
+      if (
+        tooltip_point == null ||
+        tooltip_point.point_label?.text != null ||
+        tooltip_point.series_idx !== series_data.orig_series_idx ||
+        points.some((point) => same_logical_point(point, tooltip_point))
+      ) {
+        return points
+      }
+      return [...points, tooltip_point]
+    })
+  })
+  // Shared by canvas markers and the hover index so offsets can't drift between them.
+  const series_screen_scales = (series_data: { x_axis?: string; y_axis?: string }) => {
+    const use_x2 = series_data.x_axis === `x2`
+    return {
+      x_scale: use_x2 ? x2_scale_fn : x_scale_fn,
+      y_scale: series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn,
+      is_time_x: use_x2 ? is_time_x2 : is_time_x,
+    }
+  }
+  const point_screen_xy = (
+    point: InternalPoint<Metadata>,
+    scales: ReturnType<typeof series_screen_scales>,
+  ) => ({
+    cx:
+      (scales.is_time_x ? scales.x_scale(new Date(point.x)) : scales.x_scale(point.x)) +
+      (point.point_offset?.x ?? 0),
+    cy: scales.y_scale(point.y) + (point.point_offset?.y ?? 0),
+  })
+
+  const canvas_markers = $derived.by((): CanvasMarker[] => {
+    if (!use_canvas_markers || !styles.show_points) return []
+    const markers: CanvasMarker[] = []
+    for (const series_data of filtered_series) {
+      if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+      const scales = series_screen_scales(series_data)
+      const dimmed =
+        hovered_legend_series_idx !== null &&
+        hovered_legend_series_idx !== series_data.orig_series_idx
+      for (const point of series_data.filtered_data) {
+        if (needs_static_svg_overlay(point)) continue
+        markers.push({
+          ...point_screen_xy(point, scales),
+          opacity: dimmed ? 0.25 : 1,
+          ...point_appearance(point, series_data),
+        })
+      }
+    }
+    return markers
+  })
+
+  let canvas_element = $state<HTMLCanvasElement | null>(null)
+  const attach_marker_canvas = (foreign_object: SVGForeignObjectElement) => {
+    const canvas = document.createElement(`canvas`)
+    canvas.className = `marker-canvas`
+    Object.assign(canvas.style, { display: `block`, pointerEvents: `none` })
+    foreign_object.append(canvas)
+    canvas_element = canvas
+    return () => {
+      if (canvas_element === canvas) canvas_element = null
+      canvas.remove()
+    }
+  }
+  $effect(() => {
+    const canvas = canvas_element
+    if (!canvas || !width || !height) return
+    const pixel_ratio = globalThis.devicePixelRatio ?? 1
+    const [bw, bh] = [width * pixel_ratio, height * pixel_ratio]
+    if (canvas.width !== bw) canvas.width = bw
+    if (canvas.height !== bh) canvas.height = bh
+    canvas.style.width = `${width}px`
+    canvas.style.height = `${height}px`
+    const ctx = canvas.getContext(`2d`)
+    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio, clip: clip_area })
+  })
 
   const fill_hover_key = (
     source_type: `fill_region` | `error_band`,
@@ -1085,6 +1255,11 @@
   // Prepare data needed for the legend component
   let legend_data = $derived(
     build_legend_data(series_with_ids, computed_fills, color_scale_fn),
+  )
+  // legend_data already folds fill regions in and dedupes by legend_group::label, so its
+  // length is the rendered entry count the shared auto rule needs.
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, legend_data.length),
   )
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
@@ -1219,8 +1394,7 @@
       }
 
       // X2 axis: invert screen coords using x2 scale
-      const next_x2 =
-        x2_points.length > 0 ? invert_rect_range(x2_scale_fn, start.x, current.x) : null
+      const next_x2 = has_x2_points ? invert_rect_range(x2_scale_fn, start.x, current.x) : null
       if (next_x2) {
         if (!facet.update_range(`x2`, next_x2)) x2_axis = { ...x2_axis, range: next_x2 }
       }
@@ -1228,7 +1402,7 @@
       // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
       // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
       const next_y2 =
-        y2_points.length > 0 && y2_sync_config.mode === `none`
+        has_y2_points && y2_sync_config.mode === `none`
           ? invert_rect_range(y2_scale_fn, start.y, current.y)
           : null
       if (next_y2) {
@@ -1266,46 +1440,27 @@
   })
   onDestroy(() => pan_zoom.destroy())
 
+  // Lazily index screen-space markers so pointer moves probe nearby cells only.
+  const hover_index = $derived.by(() => {
+    function* entries() {
+      for (const series_data of filtered_series) {
+        const scales = series_screen_scales(series_data)
+        for (const point of series_data.filtered_data) {
+          yield { ...point_screen_xy(point, scales), point, series: series_data }
+        }
+      }
+    }
+    return build_spatial_index(entries(), hover_config.threshold_px ?? 20)
+  })
+
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    let closest_point: InternalPoint<Metadata> | null = null
-    let closest_series: DataSeries<Metadata> | null = null
-    let min_screen_dist_sq = Infinity
-    const { threshold_px = 20 } = hover_config // Use configured threshold
-    const hover_threshold_px_sq = threshold_px * threshold_px
+    const nearest = query_nearest(hover_index, { x: x_rel, y: y_rel })
 
-    // Iterate through points to find the closest one in screen coordinates
-    for (const series_data of filtered_series) {
-      if (!series_data?.filtered_data) continue
-
-      const tooltip_use_x2 = series_data.x_axis === `x2`
-      const tooltip_x_scale = tooltip_use_x2 ? x2_scale_fn : x_scale_fn
-      const tooltip_is_time_x = tooltip_use_x2 ? is_time_x2 : is_time_x
-      for (const point of series_data.filtered_data) {
-        // Calculate screen coordinates of the point
-        const point_cx = tooltip_is_time_x
-          ? tooltip_x_scale(new Date(point.x))
-          : tooltip_x_scale(point.x)
-        const point_cy = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(point.y)
-
-        // Calculate squared screen distance between mouse and point
-        const screen_dx = x_rel - point_cx
-        const screen_dy = y_rel - point_cy
-        const screen_distance_sq = screen_dx * screen_dx + screen_dy * screen_dy
-
-        // Update if this point is closer
-        if (screen_distance_sq < min_screen_dist_sq) {
-          min_screen_dist_sq = screen_distance_sq
-          closest_point = point
-          closest_series = series_data
-        }
-      }
-    }
-
-    // Check if the closest point is within the hover threshold
-    if (closest_point && closest_series && min_screen_dist_sq <= hover_threshold_px_sq) {
+    if (nearest) {
+      const { point: closest_point, series: closest_series } = nearest
       // Construct handler props synchronously to avoid stale derived reads
       const props = construct_handler_props(closest_point)
       tooltip_point = closest_point
@@ -1444,10 +1599,7 @@
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
     const handler_use_x2 = hovered_series.x_axis === `x2`
-    const handler_x_scale = handler_use_x2 ? x2_scale_fn : x_scale_fn
-    const handler_is_time_x = handler_use_x2 ? is_time_x2 : is_time_x
-    const cx = handler_is_time_x ? handler_x_scale(new Date(x)) : handler_x_scale(x)
-    const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
+    const { cx, cy } = point_screen_xy(point, series_screen_scales(hovered_series))
     const active_x_config = handler_use_x2 ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
     const coords = {
@@ -1469,7 +1621,7 @@
       x_formatted: format_value_or_num(x, active_x_config.format),
       y_formatted: format_value_or_num(y, active_y_config.format),
       color_value: color_value ?? null,
-      colorbar: {
+      color_bar: {
         value: color_value ?? null,
         title: color_bar?.title ?? null,
         scale: color_scale,
@@ -1708,7 +1860,7 @@
       {/if}
 
       <!-- Y2-axis (Right) -->
-      {#if y2_points.length > 0 && facet.axis_visible(`y2`)}
+      {#if has_y2_points && facet.axis_visible(`y2`)}
         <PlotAxis
           side="y2"
           ticks={y2_tick_values}
@@ -1730,7 +1882,7 @@
       {/if}
 
       <!-- X2-axis (Top) -->
-      {#if x2_points.length > 0 && facet.axis_visible(`x2`)}
+      {#if has_x2_points && facet.axis_visible(`x2`)}
         <PlotAxis
           side="x2"
           ticks={x2_tick_values}
@@ -1770,8 +1922,8 @@
         y2_scale_type={final_y2_axis.scale_type}
         x_is_time={is_time_x}
         x2_is_time={is_time_x2}
-        has_x2={x2_points.length > 0}
-        has_y2={y2_points.length > 0}
+        has_x2={has_x2_points}
+        has_y2={has_y2_points}
         {width}
         {height}
         {pad}
@@ -1795,7 +1947,7 @@
 
       <!-- Lines -->
       {#if styles.show_lines}
-        {#each filtered_series ?? [] as series_data (series_data._id)}
+        {#each filtered_series as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
           {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
           <g
@@ -1814,10 +1966,7 @@
               {@const finite_screen_points = all_line_points
                 .map((point) => get_screen_coords(point, series_data))
                 .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
-              {@const apply_line_controls =
-                controls.show &&
-                (!has_multiple_series ||
-                  series_data._id === series_with_ids[selected_series_idx]?._id)}
+              {@const apply_line_controls = applies_style_controls(series_data)}
               {@const ls = series_data.line_style}
               {@const tc = (key: string) => apply_line_controls && touched.has(key)}
               {@const color_fallback =
@@ -1853,18 +2002,36 @@
       <!-- Reference lines: below points -->
       {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
-      <!-- Points -->
+      {#if use_canvas_markers}
+        <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
+             explicit above-all layers. Pointer events remain on the parent SVG. -->
+        <foreignObject
+          x="0"
+          y="0"
+          {width}
+          {height}
+          pointer-events="none"
+          {@attach attach_marker_canvas}
+        ></foreignObject>
+      {/if}
+
+      <!-- Canvas mode retains only labelled/hovered/selected points here. -->
       {#if styles.show_points}
-        {#each filtered_series ?? [] as series_data (series_data._id)}
+        {#each filtered_series as series_data, series_pos (series_data._id)}
           {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
-          {@const series_default_symbol = get_series_symbol(series_data.orig_series_idx ?? 0)}
-          <g data-series-id={series_data._id}>
+          {@const rendered_points = use_canvas_markers
+            ? (svg_overlay_points_by_series[series_pos] ?? [])
+            : series_data.filtered_data}
+          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers.includes(`points`)}
-              {#each series_data.filtered_data as point (`${point.series_idx}-${point.point_idx}`)}
+              {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const point_label = point.point_label ?? {}}
+                {@const marker_screen = point_screen_xy(
+                  point,
+                  series_screen_scales(series_data),
+                )}
                 {@const label_style =
                   point_label.auto_placement &&
                   actual_label_config.max_neighbors &&
@@ -1875,14 +2042,8 @@
                   ? {
                       ...label_style,
                       offset: {
-                        x:
-                          calculated_label_pos.x -
-                          (is_time_x ? x_scale_fn(new Date(point.x)) : x_scale_fn(point.x)),
-                        y:
-                          calculated_label_pos.y -
-                          (series_data.y_axis === `y2`
-                            ? y2_scale_fn(point.y)
-                            : y_scale_fn(point.y)),
+                        x: calculated_label_pos.x - marker_screen.cx,
+                        y: calculated_label_pos.y - marker_screen.cy,
                       },
                     }
                   : label_style}
@@ -1893,18 +2054,7 @@
                 {@const screen_y = isFinite(raw_screen_y)
                   ? raw_screen_y
                   : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-                {@const apply_controls =
-                  controls.show &&
-                  (!has_multiple_series ||
-                    series_data._id === series_with_ids[selected_series_idx]?._id)}
-                {@const pt = point.point_style}
-                {@const tc = (key: string) => apply_controls && touched.has(key)}
-                {@const computed_radius =
-                  point.size_value != null
-                    ? size_scale_fn(point.size_value)
-                    : ((tc(`point.size`) ? styles.point?.size : null) ??
-                      pt?.radius ??
-                      default_point_radius(series_markers))}
+                {@const appearance = point_appearance(point, series_data)}
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}
@@ -1915,38 +2065,23 @@
                   is_selected={selected_point?.series_idx === point.series_idx &&
                     selected_point?.point_idx === point.point_idx}
                   leader_line_threshold={actual_label_config.leader_line_threshold}
+                  overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
                   style={{
-                    symbol_type: pt?.symbol_type ?? series_default_symbol,
-                    ...pt,
-                    radius: computed_radius,
-                    stroke_width:
-                      (tc(`point.stroke_width`) ? styles.point?.stroke_width : null) ??
-                      pt?.stroke_width ??
-                      1,
-                    stroke:
-                      (tc(`point.stroke_color`) ? styles.point?.stroke_color : null) ??
-                      pt?.stroke ??
-                      `#000`,
-                    stroke_opacity:
-                      (tc(`point.stroke_opacity`) ? styles.point?.stroke_opacity : null) ??
-                      pt?.stroke_opacity ??
-                      1,
-                    fill_opacity:
-                      (tc(`point.opacity`) ? styles.point?.opacity : null) ??
-                      pt?.fill_opacity ??
-                      1,
+                    symbol_type: appearance.symbol_type,
+                    ...point.point_style,
+                    radius: appearance.radius,
+                    stroke_width: appearance.stroke_width,
+                    stroke: appearance.stroke,
+                    stroke_opacity: appearance.stroke_opacity,
+                    fill_opacity: appearance.fill_opacity,
                     cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
                   }}
                   hover={point.point_hover ?? {}}
                   label={final_label}
                   offset={point.point_offset ?? { x: 0, y: 0 }}
-                  {point_tween}
+                  point_tween={effective_point_tween}
                   origin={{ x: plot_center_x, y: plot_center_y }}
-                  --point-fill-color={point.color_value != null
-                    ? color_scale_fn(point.color_value)
-                    : ((tc(`point.color`) ? styles.point?.color : null) ??
-                      pt?.fill ??
-                      series_default_color)}
+                  --point-fill-color={appearance.fill}
                   {...point_events &&
                     Object.fromEntries(
                       point_event_names.map((name) => [
@@ -2017,10 +2152,10 @@
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
           {@html sanitize_html(hp.x_axis.label || `x`)}: {hp.x_formatted}<br />
           {@html sanitize_html(hp.y_axis.label || `y`)}: {hp.y_formatted}
-          {#if hp.colorbar?.value != null}
-            <br />{@html sanitize_html(hp.colorbar.title || `Color`)}: {format_value(
-              hp.colorbar.value,
-              hp.colorbar.tick_format || `.3~g`,
+          {#if hp.color_bar?.value != null}
+            <br />{@html sanitize_html(hp.color_bar.title || `Color`)}: {format_value(
+              hp.color_bar.value,
+              hp.color_bar.tick_format || `.3~g`,
             )}
           {/if}
         {/if}
@@ -2028,15 +2163,17 @@
     {/if}
 
     <!-- Control Pane -->
-    {#if controls.show}
+    {#if show_controls}
       <ScatterPlotControls
         toggle_props={{
-          ...controls.toggle_props,
+          ...controls_toggle_props,
           style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--ctrl-btn-top, 5pt); ${
-            controls.toggle_props?.style ?? ``
+            controls_toggle_props?.style ?? ``
           }`,
         }}
-        pane_props={controls.pane_props}
+        pane_props={controls_pane_props}
+        bind:show_controls
+        bind:controls_open
         bind:x_axis
         bind:x2_axis
         bind:y_axis
@@ -2049,8 +2186,8 @@
         {auto_y2_range}
         bind:selected_series_idx
         series={series_with_ids}
-        has_x2_points={x2_points.length > 0}
-        has_y2_points={y2_points.length > 0}
+        {has_x2_points}
+        {has_y2_points}
         children={controls_extra}
         on_touch={(key: string) => touched.add(key)}
       />
@@ -2097,8 +2234,7 @@
     {/if}
 
     <!-- Legend -->
-    <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
-    {#if legend != null && legend_data.length > 0 && (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)}
+    {#if should_show_legend}
       {@const solved_position = legend_placement ?? { x: pad.l + 10, y: pad.t + 10 }}
       {@const auto_position =
         legend_placement?.location === `outside`
@@ -2140,7 +2276,7 @@
         draggable={legend?.draggable ?? true}
         {...legend}
         bind:filter_query={legend_filter_query}
-        layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, legend_placement)}
+        layout_tracks={resolve_legend_layout_tracks(legend?.layout_tracks, legend_placement)}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
         on_group_toggle={legend?.on_group_toggle ?? legend_vis.on_group_toggle}

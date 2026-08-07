@@ -1,6 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { DenseInternalPoint } from '$lib/plot/scatter/adaptive-density'
-import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
 import type {
   ColorScaleConfig,
   LabelPlacementConfig,
@@ -9,7 +8,7 @@ import type {
   SizeScaleConfig,
 } from '$lib/plot/core/types'
 import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-import type { ComponentProps, Snippet } from 'svelte'
+import type { Snippet } from 'svelte'
 
 export type BinnedColorScaleConfig = ColorScaleConfig | D3InterpolateName
 
@@ -24,7 +23,6 @@ export const DEFAULT_BINNED_SIZE_SCALE: BinnedSizeScaleConfig = {
 export type BinnedDensityConfig = {
   bin_px?: number
   color_scale?: BinnedColorScaleConfig
-  color_bar?: ComponentProps<typeof ColorBar> | null
   auto_point_mode?: false | { max_points?: number; max_points_per_px?: number }
   bin_click?: `zoom` | `point` | `none`
 }

@@ -27,6 +27,8 @@
     error_msg = $bindable(),
     x_axis = {},
     y_axis = {},
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: {
     // Precomputed per-frame results. Bindable so a parent can read back what `structures` produced.
@@ -144,6 +146,8 @@
 {:else}
   <BarPlot
     {...rest}
+    bind:show_controls
+    bind:controls_open
     {series}
     x_axis={resolved_x_axis}
     y_axis={resolved_y_axis}

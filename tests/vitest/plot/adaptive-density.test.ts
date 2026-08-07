@@ -131,6 +131,32 @@ describe(`adaptive density utilities`, () => {
     })
   })
 
+  it.each([
+    { range_padding: 0, x: [0, 2.1], y: [0, 2.2] },
+    { range_padding: 0.1, x: [-0.21, 2.31], y: [-0.22, 2.42] },
+  ])(`honours range_padding=$range_padding`, ({ range_padding, x, y }) => {
+    const extents = series_extents(series, undefined, undefined, range_padding)
+    expect(extents.x[0]).toBeCloseTo(x[0], 12)
+    expect(extents.x[1]).toBeCloseTo(x[1], 12)
+    expect(extents.y[0]).toBeCloseTo(y[0], 12)
+    expect(extents.y[1]).toBeCloseTo(y[1], 12)
+  })
+
+  it(`expands constant extents when range_padding is zero`, () => {
+    const constant_series = [{ x: [7, 7], y: [3, 3] }]
+    const linear = series_extents(constant_series, `linear`, `linear`, 0)
+    expect(linear).toEqual({ x: [6.5, 7.5], y: [2.5, 3.5] })
+    const density = bin_points(constant_series, linear.x, linear.y, 4, 4)
+    expect(density.visible_count).toBe(2)
+    expect(density.max_count).toBe(2)
+
+    const half_decade = Math.sqrt(10)
+    expect(series_extents(constant_series, `log`, `linear`, 0).x).toEqual([
+      7 / half_decade,
+      7 * half_decade,
+    ])
+  })
+
   it(`computes both extents from the same finite point pairs`, () => {
     expect(series_extents([{ x: [1, 1e9], y: [1, Number.NaN] }])).toEqual({
       x: [0.5, 1.5],

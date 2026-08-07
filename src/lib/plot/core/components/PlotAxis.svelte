@@ -119,10 +119,8 @@
         ...axis,
         tick_values: tick_texts,
         tick_positions,
-        axis_extent: {
-          start: is_x ? pad.l : height - pad.b,
-          end: is_x ? width - pad.r : pad.t,
-        },
+        // Tick labels may use outer padding; constrain their ends to the SVG, not plot area.
+        axis_extent: is_x ? { start: 0, end: width } : { start: height, end: 0 },
         tick_font,
       },
       is_x ? plot_w : plot_h,
@@ -149,7 +147,8 @@
   // `flipped` means above the baseline on x/x2 and right of the spine on y/y2.
   const flipped = $derived((side === `x2` || side === `y2`) !== inside)
   const text_x = $derived((is_x ? 0 : flipped ? 8 : -8) + shift_x)
-  const text_y = $derived((is_x ? (flipped ? -8 : 8) : 0) + shift_y)
+  // auto/hanging baselines need extra offset to match the visible gap of centered y labels
+  const text_y = $derived((is_x ? (flipped ? -12 : 12) : 0) + shift_y)
   const text_baseline = $derived(is_x ? (flipped ? `auto` : `hanging`) : `central`)
   const stagger_direction = $derived(flipped ? -1 : 1)
 

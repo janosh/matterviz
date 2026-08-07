@@ -24,9 +24,9 @@ describe(`ColorScaleSelect`, () => {
     expect(initial_selection?.textContent?.trim()).toBe(`Viridis`)
   })
 
-  test(`passes colorbar props to ColorBar snippet`, async () => {
-    // Verifies that props passed via the colorbar prop are applied to the ColorBar component.
-    const custom_colorbar_props = {
+  test(`passes color_bar props to ColorBar snippet`, async () => {
+    // Verifies that props passed via the color_bar prop are applied to the ColorBar component.
+    const custom_color_bar_props = {
       tick_align: `secondary` as const,
       title_side: `right` as const,
       wrapper_style: `border: 1px dashed red;`,
@@ -36,7 +36,7 @@ describe(`ColorScaleSelect`, () => {
       target: document.body,
       props: {
         options: [`interpolateViridis`],
-        colorbar: custom_colorbar_props,
+        color_bar: custom_color_bar_props,
         selected: [`interpolateViridis`],
       },
     })
@@ -51,7 +51,7 @@ describe(`ColorScaleSelect`, () => {
     expect(color_bar_wrapper).toBeInstanceOf(HTMLElement)
     // Check wrapper style
     expect(color_bar_wrapper.getAttribute(`style`)).toContain(
-      custom_colorbar_props.wrapper_style,
+      custom_color_bar_props.wrapper_style,
     )
 
     // Check flex direction based on title_side

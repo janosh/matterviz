@@ -85,6 +85,23 @@ describe(`BarPlot`, () => {
     },
   )
 
+  test(`rotates vertical bar labels outward`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1], y: [5], labels: [`Material 1`] }],
+      bar: { label_rotation: 90 },
+    })
+    const label = plot.querySelector(`.bar-label`)
+    expect(label).not.toBeNull()
+    expect(label?.getAttribute(`text-anchor`)).toBe(`end`)
+    expect(label?.getAttribute(`transform`)).toBe(
+      `rotate(90, ${label?.getAttribute(`x`)}, ${label?.getAttribute(`y`)})`,
+    )
+    expect(inside_clip_path(label)).toBe(false)
+    expect(plot.querySelector(`path[role="button"]`)?.getAttribute(`clip-path`)).toMatch(
+      /^url\(#chart-clip-/,
+    )
+  })
+
   test.each([
     [`value-axis zero line by default`, [1.1, 1.4, 3.4], undefined, `y`, `vertical`],
     [
@@ -161,6 +178,61 @@ describe(`BarPlot`, () => {
     expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
+
+  const valid_values = [1, 2]
+  const invalid_values = [NaN, Infinity]
+  const invalid_x = { x: invalid_values, y: valid_values }
+  const invalid_y = { x: valid_values, y: invalid_values }
+  const unpaired_values = { x: [1, NaN], y: [NaN, 2] }
+  test.each([
+    {
+      name: `vertical x2 with invalid categories`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_x, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical x2 with invalid values`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_y, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical x2 with unpaired coordinates`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...unpaired_values, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical y2 with invalid values`,
+      axis: `y2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_y, y_axis: `y2` },
+      primary_axis: { y_axis: `y1` },
+    },
+    {
+      name: `horizontal x2 with invalid values`,
+      axis: `x2`,
+      orientation: `horizontal`,
+      invalid_series: { ...invalid_y, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+  ] as const)(
+    `does not render an axis without a finite point ($name)`,
+    async ({ axis, orientation, invalid_series, primary_axis }) => {
+      const plot = await mount_sized_bar_plot({
+        orientation,
+        series: [{ ...basic, ...primary_axis }, invalid_series],
+      })
+      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+      for (const path of plot.querySelectorAll(`path[role="button"]`)) {
+        expect(path.getAttribute(`d`)).not.toContain(`NaN`)
+      }
+    },
+  )
 
   test(`y2 axis title shares the y axis title's vertical center`, async () => {
     const plot = await mount_sized_bar_plot({
@@ -395,10 +467,10 @@ describe(`BarPlot`, () => {
       for (const label of labels) {
         expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
       }
-      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual([
-        `start`,
-        ...Array(labels.length - 1).fill(`end`),
-      ])
+      // Side padding lets every label trail outward instead of flipping the first into the bars.
+      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual(
+        Array(labels.length).fill(`end`),
+      )
     })
 
     // Horizontal orientation moves the categories onto y, so the left padding has to be
@@ -544,11 +616,15 @@ describe(`BarPlot`, () => {
         path_data,
       )?.groups
       if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
+      const x = Number(match.x)
+      const y = Number(match.y)
+      const width = Number(match.width)
+      const height = Number(match.height)
       return {
-        x: Number(match.x),
-        y: Number(match.y),
-        width: Number(match.width),
-        height: Number(match.height),
+        x: Math.min(x, x + width),
+        y: Math.min(y, y + height),
+        width: Math.abs(width),
+        height: Math.abs(height),
       }
     })
 
@@ -643,13 +719,28 @@ describe(`BarPlot`, () => {
     const small = await mount_sized_bar_plot(make_props(), { width: 400, height: 300 })
     const wide = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
     const repeated = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
-    expect(legend_position(small)).toEqual({ x: 130, y: 300 - 44 - 8 })
-    expect(legend_position(wide)).toEqual({ x: 250, y: 340 - 44 - 8 })
     const clip_geometry = (plot: HTMLElement) => {
       const clip_rect = plot.querySelector(`clipPath rect`)
       if (!clip_rect) throw new Error(`clip rectangle not found`)
-      return [`x`, `y`, `width`, `height`].map((attr) => clip_rect.getAttribute(attr))
+      return Object.fromEntries(
+        [`x`, `y`, `width`, `height`].map((attr) => [
+          attr,
+          Number(clip_rect.getAttribute(attr)),
+        ]),
+      ) as Record<`x` | `y` | `width` | `height`, number>
     }
+    const expected_legend_x = (plot: HTMLElement) => {
+      const clip = clip_geometry(plot)
+      return clip.x + (clip.width - 180) / 2
+    }
+    expect(legend_position(small)).toEqual({
+      x: expected_legend_x(small),
+      y: 300 - 44 - 8,
+    })
+    expect(legend_position(wide)).toEqual({
+      x: expected_legend_x(wide),
+      y: 340 - 44 - 8,
+    })
     expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
   })
 
@@ -709,14 +800,17 @@ describe(`BarPlot`, () => {
         orientation,
       })
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
-      plot
-        .querySelector(`.legend-item`)
-        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      const first_legend_item = plot.querySelector(`.legend-item`)
+      first_legend_item?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      await tick()
+      expect(plot.querySelectorAll(`.bar-series`)[1]?.getAttribute(`opacity`)).toBe(`0.25`)
+      first_legend_item?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
       expect(plot.querySelector(`.legend-item`)?.classList.contains(`hidden`)).toBe(true)
       expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
+      expect(plot.querySelector(`.bar-series`)?.getAttribute(`opacity`)).toBe(`1`)
       plot
         .querySelector(`.legend-item`)
         ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))

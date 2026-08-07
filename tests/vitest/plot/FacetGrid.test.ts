@@ -91,7 +91,7 @@ const mount_grid = async (
     shared_bands?: FacetSharedBandSizes
     title?: Snippet<[FacetSharedBandContext]>
     legend?: Snippet<[FacetSharedBandContext]>
-    colorbar?: Snippet<[FacetSharedBandContext]>
+    color_bar?: Snippet<[FacetSharedBandContext]>
   } = {},
 ) => {
   const target = document.createElement(`div`)
@@ -111,7 +111,7 @@ const mount_grid = async (
       children: make_panel_snippet(context_getters),
       title: options.title,
       legend: options.legend,
-      colorbar: options.colorbar,
+      color_bar: options.color_bar,
     },
   })
   mounted_grids.push({ component, target })
@@ -142,11 +142,11 @@ describe(`FacetGrid`, () => {
     const { root, context_getters } = await mount_grid([{ key: `only`, data: { value: 1 } }], {
       title: make_band_snippet(band_context_getters, `shared title`),
       legend: make_band_snippet(band_context_getters, `shared legend`),
-      colorbar: make_band_snippet(band_context_getters, `shared colorbar`),
+      color_bar: make_band_snippet(band_context_getters, `shared color bar`),
       shared_bands: {
         title_height: 40,
         legend_width: 120,
-        colorbar_width: 60,
+        color_bar_width: 60,
         gap: 10,
       },
     })
@@ -155,13 +155,13 @@ describe(`FacetGrid`, () => {
     expect(root.querySelector(`.facet-test-content`)?.textContent).toBe(`only`)
     expect(root.querySelector(`[data-facet-slot="title"]`)?.textContent).toBe(`shared title`)
     expect(root.querySelector(`[data-facet-slot="legend"]`)?.textContent).toBe(`shared legend`)
-    expect(root.querySelector(`[data-facet-slot="colorbar"]`)?.textContent).toBe(
-      `shared colorbar`,
+    expect(root.querySelector(`[data-facet-slot="color_bar"]`)?.textContent).toBe(
+      `shared color bar`,
     )
     expect(band_context_getters.map((get_context) => get_context())).toEqual([
       { band: `title`, rect: { x: 0, y: 0, width: 800, height: 40 } },
       { band: `legend`, rect: { x: 610, y: 50, width: 120, height: 550 } },
-      { band: `colorbar`, rect: { x: 740, y: 50, width: 60, height: 550 } },
+      { band: `color_bar`, rect: { x: 740, y: 50, width: 60, height: 550 } },
     ])
     expect(root.style.gridTemplateColumns).toBe(`minmax(0, 1fr) 120px 60px`)
     expect(root.style.gridTemplateRows).toBe(`40px minmax(0, 1fr)`)

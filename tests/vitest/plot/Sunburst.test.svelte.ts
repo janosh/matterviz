@@ -529,7 +529,7 @@ describe(`Sunburst display options`, () => {
     const plot = await mount_sized_sunburst({
       data: tree,
       color_values: (arc: PositionedArc) => arc.value,
-      colorbar: { orientation: `vertical` },
+      color_bar: { orientation: `vertical` },
     })
     // A and B have equal values -> identical metric color despite different categories
     expect(arc_path(plot, `A`).getAttribute(`fill`)).toBe(
@@ -547,14 +547,14 @@ describe(`Sunburst display options`, () => {
     [`left`, 290, 370],
   ] as const)(
     `vertical colorbar on %s reserves capped width`,
-    async (colorbar_side, expected_center, expected_capped_center) => {
+    async (color_bar_side, expected_center, expected_capped_center) => {
       const color_values = (arc: PositionedArc): number => arc.value
       const base_props = { data: tree, color_values, inner_radius: 0.5 }
       const mount_vertical_colorbar = () =>
         mount_sized_sunburst({
           ...base_props,
-          colorbar: { orientation: `vertical` },
-          colorbar_side,
+          color_bar: { orientation: `vertical` },
+          color_bar_side,
         })
       let measured_colorbar_width = 64
       const client_width = vi
@@ -565,7 +565,7 @@ describe(`Sunburst display options`, () => {
       try {
         const without_colorbar = await mount_sized_sunburst({
           ...base_props,
-          colorbar: null,
+          color_bar: null,
         })
         const expected_path = arc_path(without_colorbar, `A`).getAttribute(`d`)
         const with_vertical_colorbar = await mount_vertical_colorbar()
@@ -580,7 +580,9 @@ describe(`Sunburst display options`, () => {
         expect(
           with_vertical_colorbar
             .querySelector(`.colorbar .tick-label`)
-            ?.classList.contains(`tick-${colorbar_side === `left` ? `secondary` : `primary`}`),
+            ?.classList.contains(
+              `tick-${color_bar_side === `left` ? `secondary` : `primary`}`,
+            ),
         ).toBe(true)
 
         measured_colorbar_width = 1000

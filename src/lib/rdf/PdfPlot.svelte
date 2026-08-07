@@ -30,7 +30,8 @@
     cutoff = $bindable(PDF_DEFAULT_CUTOFF),
     n_bins = $bindable(PDF_DEFAULT_N_BINS),
     show_partials = $bindable(false),
-    show_controls = true,
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     pbc,
     error_msg = $bindable(),
     x_axis = {},
@@ -160,6 +161,8 @@ the whole story and claiming there was nothing to plot would contradict it -->
 {:else if series.length > 0}
   <ScatterPlot
     {...rest}
+    bind:show_controls
+    bind:controls_open
     {series}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
     y_axis={{ label: is_reduced ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}

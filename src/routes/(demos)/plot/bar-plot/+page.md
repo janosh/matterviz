@@ -1166,7 +1166,8 @@ This demo stress-tests interactive axis labels with:
   {data_loader}
   {on_axis_change}
   mode="grouped"
-  bar={{ border_radius: 1, gap: 0.1 }}
+  bar={{ border_radius: 1, gap: 0.1, label_rotation: 90 }}
+  padding={{ t: 60 }}
   legend={{ layout: `horizontal`, style: `justify-content: center; font-size: 0.8em` }}
   style="height: 400px"
 />

@@ -11,7 +11,6 @@
     BoxHandlerProps,
     BoxPlotSeries,
     LegendConfig,
-    LegendItem,
     Orientation,
     PanConfig,
     PlotConfig,
@@ -44,13 +43,17 @@
     solve_decorations,
   } from '$lib/plot/core/decorations'
   import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
+  import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
     invert_rect_range,
@@ -416,7 +419,9 @@
   let secondary_boxes = $derived(
     visible_boxes.filter((box_item) => is_secondary(box_item.series)),
   )
-  let has_secondary = $derived(secondary_boxes.length > 0)
+  let has_secondary = $derived(
+    secondary_boxes.some(({ stats }) => Number.isFinite(stats.median)),
+  )
   // The secondary value axis renders transposed by orientation: x2 (top) when horizontal, y2
   // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
   // marginal placement all stay provably in sync.
@@ -646,7 +651,9 @@
     return build_obstacles_norm(segs, base_w, base_h)
   })
 
-  const should_show_legend = $derived(show_legend ?? false)
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, series.length),
+  )
   // Marginals are opt-in and bind to the value axis.
   const marginal_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(
@@ -825,14 +832,12 @@
   onDestroy(() => pan_zoom.destroy())
 
   // === Legend ===
-  let legend_data = $derived<LegendItem[]>(
-    series.map((srs, idx) => ({
-      series_idx: idx,
-      label: srs.label ?? `Box ${idx + 1}`,
-      visible: srs.visible ?? true,
-      legend_group: srs.legend_group,
-      display_style: { symbol_type: `Square` as const, symbol_color: box_color(idx) },
-    })),
+  let legend_data = $derived(
+    build_legend_items(
+      series,
+      (_srs, idx) => ({ symbol_type: `Square` as const, symbol_color: box_color(idx) }),
+      { default_label: (idx) => `Box ${idx + 1}` },
+    ),
   )
 
   const legend_vis = create_legend_visibility(

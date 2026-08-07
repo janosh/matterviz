@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -14,11 +15,19 @@
     SunburstSort,
     SunburstValueMode,
   } from '$lib/plot'
-  import { ColorBar, PlotLegend, PlotTooltip, TreemapControls } from '$lib/plot'
+  import {
+    ColorBar,
+    HierarchyColorBar,
+    PlotLegend,
+    PlotTooltip,
+    TreemapControls,
+  } from '$lib/plot'
   import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import {
     ancestor_chain,
+    color_bar_layout,
+    type ColorBarSide,
     compute_metric_colors,
     compute_node_dim,
     compute_node_infos,
@@ -26,7 +35,6 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
-    observe_size,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -94,14 +102,15 @@
     color_values,
     color_scale = SCALE_DEFAULTS.scheme,
     color_range,
-    colorbar = {},
+    color_bar = {},
+    color_bar_side = `right`,
     export_buttons = true,
     export_filename = `treemap`,
     tween,
     value_format = `,`,
     padding = DEFAULT_PADDING,
     legend = {},
-    show_legend = false,
+    show_legend,
     tooltip,
     cell_content,
     hovered = $bindable(false),
@@ -120,7 +129,9 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
-    Omit<BasePlotProps, `change`> & {
+    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
+    // forward them to the wrapper div as invalid DOM attributes.
+    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
       data?: TreemapNode<Metadata> | TreemapNode<Metadata>[]
       value_mode?: SunburstValueMode
       sort?: SunburstSort // default 'descending' (largest top-left); 'none' keeps input order
@@ -150,7 +161,8 @@
       color_values?: (rect: PositionedArc<Metadata>) => number | null
       color_scale?: D3InterpolateName
       color_range?: Vec2 // defaults to the metric's [min, max]
-      colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
+      color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
+      color_bar_side?: ColorBarSide // side reserved for vertical color bars
       export_buttons?: boolean // SVG/PNG download buttons in the controls pane
       export_filename?: string
       // Zoom transition timing (resizes/data swaps snap instantly, plotly-style).
@@ -193,16 +205,23 @@
   let muted_ids = new SvelteSet<string | number>()
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
-  let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
+  let avail_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar (via observe_size, which resets it
-  // to 0 on unmount), reserved from the chart so it never overlaps the cells;
-  // capped at half the area so a bad measurement can't collapse the chart
-  let colorbar_height = $state(0)
-  let colorbar_reserve = $derived(
-    colorbar_height > 0 ? Math.min(colorbar_height + 16, avail_height / 2) : 0,
+  // Vertical color bars sit beside the cells and reserve width; horizontal ones sit
+  // below and reserve height, so neither ever overlaps the tiling.
+  let colorbar_size = $state({ height: 0, width: 0 })
+  let cbar = $derived(
+    color_bar_layout({
+      color_bar,
+      side: color_bar_side,
+      measured: colorbar_size,
+      avail_width,
+      avail_height,
+      pad,
+      tick_space_var: `--treemap-colorbar-tick-space`,
+    }),
   )
-  let inner_height = $derived(avail_height - colorbar_reserve)
+  let { inner_width, inner_height, plot_left } = $derived(cbar)
 
   // Tree semantics (values, colors, ids, pre-order indexing) are shared with
   // Sunburst; only the pixel tiling below is treemap-specific.
@@ -327,7 +346,7 @@
 
   // Rect center in container (pad-offset) pixel space, for tooltip + legend placement
   const rect_center = (rect: Rect): { x: number; y: number } => ({
-    x: pad.l + rect.x + rect.width / 2,
+    x: plot_left + rect.x + rect.width / 2,
     y: pad.t + rect.y + rect.height / 2,
   })
 
@@ -561,7 +580,10 @@
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
   let depth1_arcs = $derived(layout.arcs.filter((arc) => arc.depth === 1))
-  let legend_visible = $derived(show_legend && legend != null && depth1_arcs.length > 1)
+  // Cells are labelled in place, so a legend stays opt-in here
+  let legend_visible = $derived(
+    resolve_legend_visibility(show_legend, legend, depth1_arcs.length, false),
+  )
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_placement = $derived.by(() => {
     if (!legend_visible || !width || !height) return null
@@ -572,7 +594,7 @@
       cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : [],
     )
     return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
+      plot_bounds: { x: plot_left, y: pad.t, width: inner_width, height: inner_height },
       element: legend_element,
       element_size: { width: 120, height: 60 },
       axis_clearance: legend?.axis_clearance,
@@ -693,7 +715,7 @@
       forward interactions to their cell instead of swallowing them -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <g
-        transform={`translate(${pad.l}, ${pad.t})`}
+        transform={`translate(${plot_left}, ${pad.t})`}
         onmousemove={handle_cell_hover_event}
         onmouseleave={() => set_cell_hover(null)}
         onfocusin={handle_cell_hover_event}
@@ -811,7 +833,7 @@
   {/if}
 
   {#if legend_visible}
-    {@const legend_left = legend_placement?.x ?? pad.l + 10}
+    {@const legend_left = legend_placement?.x ?? plot_left + 10}
     {@const legend_top = legend_placement?.y ?? pad.t + 10}
     <PlotLegend
       bind:root_element={legend_element}
@@ -829,19 +851,14 @@
     />
   {/if}
 
-  {#if metric && colorbar != null}
-    <!-- positioning + height measurement live on ColorBar's own root (via rest
-    props + attachment) instead of an extra wrapper div -->
-    <ColorBar
+  {#if metric && color_bar != null}
+    <HierarchyColorBar
+      {color_bar}
       {color_scale}
       range={metric.range}
-      {...colorbar}
-      wrapper_style="{colorbar?.orientation === `vertical`
-        ? `--cbar-height: var(--treemap-colorbar-height, 150px);`
-        : ``} {colorbar?.wrapper_style ?? ``}"
-      style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
-        ``}"
-      {@attach observe_size(({ height }) => (colorbar_height = height))}
+      layout={cbar}
+      css_prefix="treemap"
+      on_measure={(size) => (colorbar_size = size)}
     />
   {/if}
 

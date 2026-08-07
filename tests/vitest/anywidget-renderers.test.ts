@@ -108,20 +108,29 @@ describe(`drive wiring (all widgets)`, () => {
 })
 
 describe(`scatter_plot wiring`, () => {
-  test(`range traits and show_controls are mapped into consumed config props`, () => {
+  test(`range traits map into axis config while controls stay flat`, () => {
     const model = new MockModel({
       widget_type: `scatter_plot`,
       series: [],
       x_axis: { label: `Energy` },
       x_range: [0, 10],
-      controls: { open: true },
+      show_legend: false,
+      marker_renderer: `canvas`,
       show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
     })
     const stub = run_widget(`scatter_plot`, model)
     expect(stub.read().x_axis).toEqual({ label: `Energy`, range: [0, 10] })
-    expect(stub.read().controls).toEqual({ open: true, show: false })
+    expect(stub.read().show_legend).toBe(false)
+    expect(stub.read().marker_renderer).toBe(`canvas`)
+    expect(stub.read().show_controls).toBe(false)
+    expect(stub.read().controls_open).toBe(true)
+    expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
+    expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
     expect(`x_range` in stub.read()).toBe(false)
-    expect(`show_controls` in stub.read()).toBe(false)
+    expect(`controls` in stub.read()).toBe(false)
   })
 
   test(`on_point_click writes active_point with a monotonic event_id`, () => {
@@ -217,8 +226,39 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot).toEqual(
-      expect.arrayContaining([`active_point`, `hovered_point`, `selected_point`]),
+      expect.arrayContaining([
+        `active_point`,
+        `hovered_point`,
+        `selected_point`,
+        `show_legend`,
+        `marker_renderer`,
+        `show_controls`,
+        `controls_open`,
+        `controls_toggle_props`,
+        `controls_pane_props`,
+      ]),
     )
+    expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
+    for (const widget_type of [
+      `scatter_plot`,
+      `scatter_plot_3d`,
+      `bar_plot`,
+      `histogram`,
+      `band_structure`,
+      `dos`,
+      `rdf_plot`,
+      `xrd`,
+    ]) {
+      expect(WIDGET_MODEL_KEYS[widget_type]).toEqual(
+        expect.arrayContaining([
+          `show_controls`,
+          `controls_open`,
+          `controls_toggle_props`,
+          `controls_pane_props`,
+        ]),
+      )
+      expect(WIDGET_MODEL_KEYS[widget_type]).not.toContain(`controls`)
+    }
     expect(WIDGET_MODEL_KEYS.treemap).toEqual(
       expect.arrayContaining([
         `label_fit`,
@@ -228,7 +268,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `zoom_root_id`,
       ]),
     )
-    for (const key of [`color_scale`, `color_range`, `colorbar`])
+    for (const key of [`color_scale`, `color_range`, `color_bar`])
       expect(WIDGET_MODEL_KEYS.treemap).not.toContain(key)
   })
 })
@@ -246,52 +286,73 @@ describe(`widget config wiring`, () => {
   })
 
   test.each([`bar_plot`, `histogram`] as const)(
-    `%s maps range traits into axis config while keeping top-level show_controls`,
+    `%s maps range traits and forwards flat controls`,
     (widget_type) => {
       const model = new MockModel({
         widget_type,
         series: [],
         y_axis: { label: `Count` },
         y_range: [1, 5],
-        controls: { open: true },
         show_controls: false,
+        controls_open: true,
+        controls_toggle_props: { title: `Plot options` },
+        controls_pane_props: { style: `width: 20rem` },
       })
       const stub = run_widget(widget_type, model)
       expect(stub.read().y_axis).toEqual({ label: `Count`, range: [1, 5] })
       expect(stub.read().show_controls).toBe(false)
+      expect(stub.read().controls_open).toBe(true)
+      expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
+      expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
       expect(`y_range` in stub.read()).toBe(false)
       expect(`controls` in stub.read()).toBe(false)
     },
   )
 
-  test.each([`scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
-    `%s maps show_controls into controls.show`,
+  test.each([`band_structure`, `dos`, `scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
+    `%s forwards flat controls`,
     (widget_type) => {
       const model = new MockModel({
         widget_type,
-        controls: { open: true },
         show_controls: false,
+        controls_open: true,
+        controls_toggle_props: { title: `Plot options` },
+        controls_pane_props: { style: `width: 20rem` },
       })
       const stub = run_widget(widget_type, model)
-      expect(stub.read().controls).toEqual({ open: true, show: false })
-      expect(`show_controls` in stub.read()).toBe(false)
+      expect(stub.read().show_controls).toBe(false)
+      expect(stub.read().controls_open).toBe(true)
+      expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
+      expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
+      expect(`controls` in stub.read()).toBe(false)
     },
   )
 
-  test(`bands_and_dos forwards show_controls into both child prop bags`, () => {
+  test(`bands_and_dos forwards controls into both child prop bags`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
       band_type: `line`,
       show_legend: false,
       show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
     })
     const stub = run_widget(`bands_and_dos`, model)
     expect(stub.read().bands_props).toEqual({
       band_type: `line`,
       show_legend: false,
       show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
     })
-    expect((stub.read().dos_props as Record<string, unknown>).show_controls).toBe(false)
+    expect(stub.read().dos_props).toMatchObject({
+      show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
+    })
     expect(`show_controls` in stub.read()).toBe(false)
   })
 })
@@ -308,6 +369,7 @@ describe(`writeback wiring`, () => {
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
+    [`scatter_plot`, `controls_open`, false, true, false],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,

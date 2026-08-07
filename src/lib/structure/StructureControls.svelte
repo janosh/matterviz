@@ -839,7 +839,7 @@
         <ColorScaleSelect
           bind:value={atom_color_config.scale}
           bind:selected={color_scale_selected}
-          colorbar={{
+          color_bar={{
             tick_labels: 0,
             wrapper_style: `width: 100%;`,
           }}

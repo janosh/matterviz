@@ -265,6 +265,15 @@ describe(`PdfPlot`, () => {
     expect(target.textContent).toContain(`No structures to compute a PDF for`)
   })
 
+  test.each([true, false])(
+    `show_controls=%s applies to both control surfaces`,
+    async (show_controls) => {
+      const target = await mount_pdf_plot({ structures: nih, show_controls })
+      expect(Boolean(target.querySelector(`.pdf-controls`))).toBe(show_controls)
+      expect(Boolean(target.querySelector(`.plot-controls-toggle`))).toBe(show_controls)
+    },
+  )
+
   // The control panel was previously reachable only through props, so none of its buttons,
   // sliders or checkboxes were ever clicked.
   test(`quantity and radiation buttons redraw the plot`, async () => {

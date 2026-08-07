@@ -35,6 +35,8 @@
     x_axis = {},
     y_axis = $bindable({}),
     hovered_frequency = $bindable(null),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     spectrum: VibrationalSpectrum
@@ -161,7 +163,10 @@
     legend={null}
     hover_config={{ threshold_px: 30 }}
     on_point_hover={(event) => (hovered_frequency = event?.point?.x ?? null)}
-    {...{ range_padding: 0, ...rest }}
+    range_padding={0}
+    {...rest}
+    bind:show_controls
+    bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted })}
       Frequency: {x_formatted}

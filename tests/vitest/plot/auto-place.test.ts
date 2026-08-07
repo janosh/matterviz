@@ -1,4 +1,9 @@
-import { build_obstacles_norm, clip_bar, place_decorations } from '$lib/plot/core/auto-place'
+import {
+  build_obstacles_norm,
+  clip_bar,
+  clip_segment_to_unit_square,
+  place_decorations,
+} from '$lib/plot/core/auto-place'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -154,6 +159,15 @@ describe(`clip_bar`, () => {
   })
 })
 
+describe(`clip_segment_to_unit_square`, () => {
+  test.each([
+    [`x`, { x: -Number.MAX_VALUE, y: 0.5 }, { x: Number.MAX_VALUE, y: 0.5 }],
+    [`y`, { x: 0.5, y: -Number.MAX_VALUE }, { x: 0.5, y: Number.MAX_VALUE }],
+  ])(`rejects finite endpoints whose %s delta overflows`, (_axis, start, end) =>
+    expect(clip_segment_to_unit_square(start, end)).toBeNull(),
+  )
+})
+
 describe(`build_obstacles_norm`, () => {
   test(`samples a long line without overflowing (clip prevents runaway point counts)`, () => {
     // a near-vertical segment clipped to [0,1] should yield a bounded number of samples
@@ -179,5 +193,24 @@ describe(`build_obstacles_norm`, () => {
       200,
     )
     expect(pts).toEqual([{ x: 0.5, y: 0.5 }])
+  })
+
+  test(`samples the visible portion of extreme offscreen line segments`, () => {
+    const obstacles = build_obstacles_norm(
+      [
+        {
+          points: [
+            { x: -1000, y: 0.5 },
+            { x: 1000, y: 0.5 },
+          ],
+          draws_line: true,
+        },
+      ],
+      300,
+      200,
+    )
+    expect(obstacles.length).toBeGreaterThan(20)
+    const all_visible = obstacles.every(({ x, y }) => x >= 0 && x <= 1 && y >= 0 && y <= 1)
+    expect(all_visible).toBe(true)
   })
 })

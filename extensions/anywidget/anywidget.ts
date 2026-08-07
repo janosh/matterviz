@@ -140,8 +140,7 @@ const merge_object_prop = (
 }
 
 // Derived prop that folds a flat source trait into a target object trait under sub_key
-// (x_range -> x_axis.range, show_controls -> controls.show): the components read the
-// nested field, so driving the flat trait alone would be dropped as an unused prop.
+// (for example, x_range -> x_axis.range).
 const merged_prop = (target: string, sub_key: string, source: string): DrivenProp =>
   derived_prop(target, [target, source], (model) =>
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
@@ -154,8 +153,6 @@ const axis_props: readonly DrivenProp[] = [
   merged_prop(`y2_axis`, `range`, `y2_range`),
 ]
 
-const controls_prop: DrivenProp = merged_prop(`controls`, `show`, `show_controls`)
-
 const plot_common_prop_keys = [
   `series`,
   `display`,
@@ -166,12 +163,26 @@ const plot_common_prop_keys = [
 ] as const
 
 const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
+const plot_control_keys = [
+  `show_controls`,
+  `controls_open`,
+  `controls_toggle_props`,
+  `controls_pane_props`,
+] as const
+const plot_controls_drive = plot_control_keys.map((key) =>
+  key === `controls_open` ? writeback_prop(key, false) : drive_prop(key),
+)
+const with_plot_controls = (keys: readonly string[]): DrivenProp[] => [
+  ...plot_controls_drive,
+  ...drive_props(keys),
+]
 
 const scatter_plot_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
-  controls_prop,
-  ...drive_props([
+  ...with_plot_controls([
     `styles`,
+    `show_legend`,
+    `marker_renderer`,
     `color_scale`,
     `color_bar`,
     `size_scale`,
@@ -187,7 +198,7 @@ const scatter_plot_drive: readonly DrivenProp[] = [
 
 const bar_plot_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
-  ...drive_props([
+  ...with_plot_controls([
     `show_legend`,
     `orientation`,
     `mode`,
@@ -201,7 +212,7 @@ const bar_plot_drive: readonly DrivenProp[] = [
 
 const histogram_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
-  ...drive_props([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
+  ...with_plot_controls([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
 ]
 
 // Scene traits forwarded verbatim into scene_props via pick_props.
@@ -318,8 +329,7 @@ type WidgetSpec = {
 }
 
 // Base props every widget gets unless its spec sets base_drive. style is the notebook
-// wrapper; show_controls is driven top-level only for components that expose it as a prop
-// -- plot widgets read controls.show instead (see controls_prop), so they use style_base_drive.
+// wrapper; specs using style_base_drive drive show_controls explicitly.
 const top_level_base_drive: readonly DrivenProp[] = [
   drive_prop(`show_controls`),
   drive_prop(`style`),
@@ -417,27 +427,25 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   scatter_plot_3d: {
     component: ScatterPlot3D,
     base_drive: style_base_drive,
-    drive: [
-      controls_prop,
-      ...drive_props([
-        `series`,
-        `surfaces`,
-        `ref_lines`,
-        `ref_planes`,
-        `x_axis`,
-        `y_axis`,
-        `z_axis`,
-        `display`,
-        `styles`,
-        `color_scale`,
-        `size_scale`,
-        `legend`,
-        `camera_projection`,
-      ]),
-    ],
+    drive: with_plot_controls([
+      `series`,
+      `surfaces`,
+      `ref_lines`,
+      `ref_planes`,
+      `x_axis`,
+      `y_axis`,
+      `z_axis`,
+      `display`,
+      `styles`,
+      `show_legend`,
+      `color_scale`,
+      `size_scale`,
+      `legend`,
+      `camera_projection`,
+    ]),
   },
-  bar_plot: { component: BarPlot, drive: bar_plot_drive },
-  histogram: { component: Histogram, drive: histogram_drive },
+  bar_plot: { component: BarPlot, base_drive: style_base_drive, drive: bar_plot_drive },
+  histogram: { component: Histogram, base_drive: style_base_drive, drive: histogram_drive },
   composition: {
     component: Composition,
     base_drive: style_base_drive,
@@ -460,7 +468,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   band_structure: {
     component: Bands,
-    drive: drive_props([
+    base_drive: style_base_drive,
+    drive: with_plot_controls([
       `band_structs`,
       `band_type`,
       `show_legend`,
@@ -470,7 +479,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   dos: {
     component: Dos,
-    drive: drive_props([
+    base_drive: style_base_drive,
+    drive: with_plot_controls([
       `doses`,
       `stack`,
       `sigma`,
@@ -488,14 +498,14 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     base_drive: style_base_drive,
     drive: [
       ...drive_props([`band_structs`, `doses`]),
-      picked_prop(`bands_props`, [`band_type`, `show_legend`, `show_controls`]),
+      picked_prop(`bands_props`, [`band_type`, `show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,
         `sigma`,
         `normalize`,
         `show_legend`,
         `spin_mode`,
-        `show_controls`,
+        ...plot_control_keys,
       ]),
     ],
   },
@@ -533,7 +543,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   xrd: {
     component: XrdPlot,
     base_drive: style_base_drive,
-    drive: [drive_prop(`patterns`), controls_prop],
+    drive: with_plot_controls([`patterns`]),
   },
   periodic_table: {
     component: PeriodicTable,
@@ -553,19 +563,16 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   rdf_plot: {
     component: RdfPlot,
     base_drive: style_base_drive,
-    drive: [
-      controls_prop,
-      ...drive_props([
-        `patterns`,
-        `structures`,
-        `mode`,
-        `show_reference_line`,
-        `cutoff`,
-        `n_bins`,
-        `x_axis`,
-        `y_axis`,
-      ]),
-    ],
+    drive: with_plot_controls([
+      `patterns`,
+      `structures`,
+      `mode`,
+      `show_reference_line`,
+      `cutoff`,
+      `n_bins`,
+      `x_axis`,
+      `y_axis`,
+    ]),
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
@@ -602,13 +609,12 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: drive_props([`entries`, `config`, `temperature`]),
   },
   treemap: {
-    // Treemap exposes show_controls as a top-level prop, so the default
-    // top_level_base_drive applies. color_values/tooltip/cell_content are
-    // functions/snippets and cannot cross the JSON trait bridge. Continuous
-    // color props are omitted because they are inert without color_values.
+    // Function/snippet props cannot cross the JSON bridge; continuous color props
+    // requiring color_values stay local.
     component: Treemap,
+    base_drive: style_base_drive,
     drive: [
-      ...drive_props([
+      ...with_plot_controls([
         `data`,
         `value_mode`,
         `sort`,

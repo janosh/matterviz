@@ -46,7 +46,6 @@ export type {
   SankeyNode,
   SankeyNodeAlign,
   SankeyNodeHandlerProps,
-  SankeyOrientation,
 } from '$lib/plot/sankey/sankey-types'
 export type {
   SunburstLabelRotation,
@@ -121,6 +120,7 @@ export interface BarStyle {
   border_radius?: number // Shorthand: sets both rx and ry to this value (lower priority than explicit rx/ry)
   rx?: number // SVG rx attribute for horizontal corner radius (overrides border_radius)
   ry?: number // SVG ry attribute for vertical corner radius (overrides border_radius)
+  label_rotation?: number // Bar-label rotation in degrees
   [key: string]: unknown
 }
 
@@ -226,7 +226,7 @@ export interface ScatterHandlerProps<
   x_formatted: string
   y_formatted: string
   color_value?: number | null
-  colorbar?: {
+  color_bar?: {
     value?: number | null
     title?: string | null
     scale?: unknown
@@ -395,6 +395,8 @@ export interface LegendItem {
   visible: boolean
   series_idx: number
   legend_group?: string // Optional group name for grouped legend rendering
+  // False when `label` is the generated `Series N` fallback rather than user-supplied
+  has_explicit_label?: boolean
   // Type of item: 'series' for data series (default), 'fill' for fill regions
   item_type?: `series` | `fill`
   // For fill regions, the index in the computed_fills array (for unique keying)
@@ -633,14 +635,6 @@ export interface PlotConfig {
   y_axis?: AxisConfig
   y2_axis?: AxisConfig
   display?: DisplayConfig
-}
-
-// Controls configuration
-export interface ControlsConfig {
-  show?: boolean
-  open?: boolean
-  toggle_props?: PaneToggleProps
-  pane_props?: PaneProps
 }
 
 // Pan configuration for 2D plot components

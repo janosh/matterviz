@@ -52,9 +52,13 @@
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
+    get_relative_coords,
     invert_rect_range,
     resolve_axis_ranges,
   } from '$lib/plot/core/interactions'
@@ -113,7 +117,7 @@
     compute_stacked_offsets,
     normalize_categorical,
   } from './data'
-  import { compute_bar_rect, compute_line_points } from './geometry'
+  import { compute_bar_rect, compute_line_points, nearest_line_point } from './geometry'
   import type { LineSeriesPoint as BarLineSeriesPoint } from './geometry'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
@@ -353,9 +357,11 @@
     ),
   )
   let x2_series = $derived(visible_series.filter((srs) => srs.x_axis === `x2`))
-  // y2 is a vertical value axis; x2 is either a vertical category axis or horizontal value axis.
-  let show_x2 = $derived(x2_series.length > 0)
-  let show_y2 = $derived(y2_series.length > 0 && orientation === `vertical`)
+  const has_finite_point = ({ x, y }: BarSeries<Metadata>) =>
+    x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(y[idx]))
+  // Only show secondary axes for series with at least one drawable bar.
+  let show_x2 = $derived(x2_series.some(has_finite_point))
+  let show_y2 = $derived(orientation === `vertical` && y2_series.some(has_finite_point))
 
   let auto_ranges = $derived.by(() => {
     // The shared range helper models x as the category axis. In horizontal orientation,
@@ -535,7 +541,9 @@
     return measured_footprint(legend_element, { width: 120, height: 60 })
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
-  const should_show_legend = $derived(show_legend ?? series.length > 1)
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, series.length),
+  )
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
   // against the decoration-independent base plot so outside padding cannot feed back into
@@ -591,6 +599,7 @@
 
       srs.x.forEach((x_val, bar_idx) => {
         const value = srs.y[bar_idx]
+        if (!Number.isFinite(x_val) || !Number.isFinite(value)) return
         const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
         const bar_width_val = Array.isArray(srs.bar_width)
           ? (srs.bar_width[bar_idx] ?? 0.5)
@@ -944,28 +953,14 @@
     }
   }
 
-  // Find the point closest to the cursor on a polyline overlay (O(n) scan).
+  // Resolve a cursor event over a polyline overlay to its nearest vertex.
   function find_closest_point(
     evt: MouseEvent,
     points: LineSeriesPoint[],
   ): LineSeriesPoint | null {
-    const target = evt.target
-    if (!(target instanceof Element)) return null
-    const svg_el = target.closest(`svg`)
-    if (!svg_el) return null
-    const rect = svg_el.getBoundingClientRect()
-    const mx = evt.clientX - rect.left
-    const my = evt.clientY - rect.top
-    let best: LineSeriesPoint | null = null
-    let best_dist = Infinity
-    for (const pt of points) {
-      const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
-      if (dist < best_dist) {
-        best_dist = dist
-        best = pt
-      }
-    }
-    return best
+    const svg_el = evt.target instanceof Element ? evt.target.closest(`svg`) : null
+    const pointer = get_relative_coords(evt, svg_el)
+    return pointer && nearest_line_point(points, pointer)
   }
 
   const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>
@@ -1253,13 +1248,14 @@
 
       {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-      <!-- Bars and Lines -->
-      <g clip-path="url(#{clip_path_id})">
+      <!-- Lines and bar shapes stay clipped to the plot, while bar labels may use its padding. -->
+      <g>
         {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
           {#if srs?.visible ?? true}
             {@const is_line = srs.render_mode === `line`}
             <g
               class={is_line ? `line-series` : `bar-series`}
+              clip-path={is_line ? `url(#${clip_path_id})` : undefined}
               data-series-idx={series_idx}
               opacity={hovered_legend_series_idx !== null &&
               hovered_legend_series_idx !== series_idx
@@ -1448,7 +1444,7 @@
                       cat_scale,
                       val_scale,
                     })}
-                  {#if (is_vertical ? rect_h : rect_w) > 0}
+                  {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (is_vertical ? rect_h : rect_w) > 0}
                     <path
                       d={bar_path(
                         rect_x,
@@ -1464,6 +1460,7 @@
                       stroke={bar_state.stroke_color}
                       stroke-opacity={bar_state.stroke_opacity}
                       stroke-width={bar_state.stroke_width}
+                      clip-path="url(#{clip_path_id})"
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
@@ -1486,11 +1483,25 @@
                       }}
                     />
                     {#if srs.labels?.[bar_idx]}
+                      {@const label_x = is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
+                      {@const label_y = is_vertical
+                        ? Math.max(0, Math.min(v0, v1) - 6)
+                        : (c0 + c1) / 2}
+                      {@const label_rotation = bar_state.label_rotation ?? 0}
                       <text
-                        x={is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
-                        y={is_vertical ? Math.max(0, Math.min(v0, v1) - 6) : (c0 + c1) / 2}
-                        text-anchor={is_vertical ? `middle` : undefined}
+                        x={label_x}
+                        y={label_y}
+                        text-anchor={is_vertical
+                          ? label_rotation > 0
+                            ? `end`
+                            : label_rotation < 0
+                              ? `start`
+                              : `middle`
+                          : undefined}
                         dominant-baseline={is_vertical ? undefined : `central`}
+                        transform={label_rotation
+                          ? `rotate(${label_rotation}, ${label_x}, ${label_y})`
+                          : undefined}
                         class="bar-label"
                       >
                         {srs.labels[bar_idx]}

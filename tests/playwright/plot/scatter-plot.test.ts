@@ -237,6 +237,33 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
   })
 
+  test(`auto renderer paints dense markers to a real canvas`, async ({ page }) => {
+    const plot = page.locator(`#canvas-auto-renderer .scatter`)
+    const canvas = plot.locator(`canvas.marker-canvas`)
+    await ensure_plot_visible(plot)
+    await expect(canvas).toBeVisible()
+    await expect(plot.locator(`path.marker`)).toHaveCount(0)
+    await expect
+      .poll(() =>
+        canvas.evaluate((element) => {
+          const canvas_element = element as HTMLCanvasElement
+          const context = canvas_element.getContext(`2d`)
+          if (!context) return false
+          const { data } = context.getImageData(
+            0,
+            0,
+            canvas_element.width,
+            canvas_element.height,
+          )
+          for (let alpha_idx = 3; alpha_idx < data.length; alpha_idx += 4) {
+            if (data[alpha_idx] > 0) return true
+          }
+          return false
+        }),
+      )
+      .toBe(true)
+  })
+
   test(`marginals align with plot area, portal tooltips, recompute on zoom, and do not start zoom drags`, async ({
     page,
   }) => {
@@ -1608,7 +1635,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const tooltip = plot_locator.locator(`.plot-tooltip`)
 
     const marker_count = await markers.count()
-    if (marker_count < 2) return
+    test.skip(marker_count < 2, `Need at least two markers to test tooltip positioning`)
 
     // Get all marker positions to find edge markers
     const all_markers = await markers.all()
@@ -1621,13 +1648,38 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Filter to markers with valid bounding boxes
     const valid_markers = marker_data.filter((marker) => marker.bbox !== null)
-    if (valid_markers.length < 2) return
+    test.skip(
+      valid_markers.length < 2,
+      `Need at least two rendered markers to test tooltip positioning`,
+    )
 
     const plot_box = await plot_locator.boundingBox()
-    if (!plot_box) return
+    if (!plot_box) {
+      test.skip(true, `Need rendered plot bounds to test tooltip positioning`)
+      return
+    }
+
+    // Header controls sit on the top-right; skip markers under that overlay.
+    const header_box = await plot_locator.locator(`.header-controls`).boundingBox()
+    const hoverable = valid_markers.filter((marker) => {
+      const bbox = marker.bbox
+      if (!bbox || !header_box) return Boolean(bbox)
+      const cx = bbox.x + bbox.width / 2
+      const cy = bbox.y + bbox.height / 2
+      return !(
+        cx >= header_box.x &&
+        cx <= header_box.x + header_box.width &&
+        cy >= header_box.y &&
+        cy <= header_box.y + header_box.height
+      )
+    })
+    test.skip(
+      hoverable.length < 2,
+      `Need at least two markers outside the header overlay to test tooltip positioning`,
+    )
 
     // Find marker closest to right edge (most likely to cause overflow)
-    const rightmost = valid_markers.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
+    const rightmost = hoverable.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
 
     // Test tooltip on rightmost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, rightmost.marker)
@@ -1994,21 +2046,25 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await checkbox.check()
     await expect(checkbox).toBeChecked()
 
-    // Wait for simulation to settle: consecutive stable bbox snapshots
+    const expected_dense_label_count = 8
+    // Wait until every dense label has a distinct final placement.
     await page.waitForFunction(
-      () => {
-        const labels = Array.from(document.querySelectorAll(`.scatter g[data-series-id] text`))
-        const snap = labels.map((el) => el.getBoundingClientRect())
-        const win = window as Window & { label_snapshots?: DOMRect[] }
-        const prev = win.label_snapshots
-        win.label_snapshots = snap
-        if (!prev || prev.length !== snap.length) return false
-        const moved = snap.some((rect, idx) => {
-          const prev_rect = prev[idx]
-          return Math.hypot(rect.x - prev_rect.x, rect.y - prev_rect.y) > 0.5
+      (expected_count) => {
+        const labels = [
+          ...document.querySelectorAll(`#label-auto-placement-test g[data-series-id] text`),
+        ].filter((label) => label.textContent?.startsWith(`Dense-`))
+        const positions = labels.map((label) => {
+          const { x, y } = label.getBoundingClientRect()
+          return `${Math.round(x)},${Math.round(y)}`
         })
-        return !moved
+        return (
+          labels.length === expected_count &&
+          positions.every(
+            (position, position_idx) => positions.indexOf(position) === position_idx,
+          )
+        )
       },
+      expected_dense_label_count,
       { timeout: 2000 },
     )
 
@@ -2026,40 +2082,58 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const sparse_label_data = label_data.filter((datum) => datum.text?.startsWith(`Sparse-`))
     const dense_label_data = label_data.filter((datum) => datum.text?.startsWith(`Dense-`))
 
-    expect(sparse_label_data.length).toBeGreaterThan(0)
-    expect(dense_label_data.length).toBeGreaterThan(1)
+    expect(sparse_label_data).toHaveLength(4)
+    expect(dense_label_data).toHaveLength(expected_dense_label_count)
 
-    // For isolated markers (sparse labels), verify labels don't heavily overlap markers
-    // by checking that label bounding boxes don't significantly intersect marker bboxes
-    // Note: Labels will naturally be positioned near their associated marker,
-    // so we allow small overlaps but check there's no complete visual obstruction
-    for (const label_item of sparse_label_data) {
-      if (!label_item.bbox) continue
-
-      // Check that label has reasonable position (not at origin, has dimensions)
-      expect(label_item.bbox.width).toBeGreaterThan(0)
-      expect(label_item.bbox.height).toBeGreaterThan(0)
+    for (const { text, bbox } of [...sparse_label_data, ...dense_label_data]) {
+      expect(bbox).not.toBeNull()
+      if (bbox) {
+        expect(bbox.width).toBeGreaterThan(0)
+        expect(bbox.height).toBeGreaterThan(0)
+      } else {
+        throw new Error(`${text} has no measurable bounding box`)
+      }
     }
 
-    // For clustered labels (dense labels), verify they render with valid bounding boxes
-    // and are not all at exactly the same position (which would indicate broken layout)
-    const unique_positions = new Set<string>()
-    for (const label_item of dense_label_data) {
-      if (!label_item.bbox) continue
-
-      expect(label_item.bbox.width).toBeGreaterThan(0)
-      expect(label_item.bbox.height).toBeGreaterThan(0)
-
-      // Track unique positions to verify labels aren't all stacked at same position
-      const pos_key = `${Math.round(label_item.bbox.x)},${Math.round(label_item.bbox.y)}`
-      unique_positions.add(pos_key)
+    const assert_non_overlapping = (labels: typeof label_data): void => {
+      for (const [label_idx, label] of labels.entries()) {
+        const label_box = label.bbox
+        if (!label_box) throw new Error(`${label.text} has no measurable bounding box`)
+        for (const other_label of labels.slice(label_idx + 1)) {
+          const other_box = other_label.bbox
+          if (!other_box) {
+            throw new Error(`${other_label.text} has no measurable bounding box`)
+          }
+          const overlaps =
+            label_box.x < other_box.x + other_box.width &&
+            label_box.x + label_box.width > other_box.x &&
+            label_box.y < other_box.y + other_box.height &&
+            label_box.y + label_box.height > other_box.y
+          expect(overlaps, `${label.text} overlaps ${other_label.text}`).toBe(false)
+        }
+      }
     }
+    assert_non_overlapping(sparse_label_data)
+    assert_non_overlapping(dense_label_data)
 
-    // With auto-placement, clustered labels should have some variation in position
-    // (not all stacked at exact same location)
-    if (dense_label_data.length > 1) {
-      expect(unique_positions.size).toBeGreaterThan(1)
+    const sparse_box = (text: string) => {
+      const bbox = sparse_label_data.find((datum) => datum.text === text)?.bbox
+      if (!bbox) throw new Error(`${text} has no measurable bounding box`)
+      return bbox
     }
+    const [sparse_tl, sparse_tr, sparse_bl, sparse_br] = [
+      sparse_box(`Sparse-TL`),
+      sparse_box(`Sparse-TR`),
+      sparse_box(`Sparse-BL`),
+      sparse_box(`Sparse-BR`),
+    ]
+    // Sparse labels remain in the same left/right and low/high data ordering as their markers.
+    expect(
+      Math.max(sparse_tl.x + sparse_tl.width, sparse_bl.x + sparse_bl.width),
+    ).toBeLessThan(Math.min(sparse_tr.x, sparse_br.x))
+    expect(
+      Math.max(sparse_bl.y + sparse_bl.height, sparse_br.y + sparse_br.height),
+    ).toBeLessThan(Math.min(sparse_tl.y, sparse_tr.y))
   })
 
   // PAN FUNCTIONALITY TESTS

@@ -642,7 +642,7 @@
     aria-label="Binary convex hull visualization"
     series={scatter_series}
     bind:display
-    controls={{ show: false }}
+    show_controls={false}
     fullscreen_toggle={false}
     x_axis={{
       label: elements.length === 2 ? `x in ${elements[0]}₁₋ₓ ${elements[1]}ₓ` : `x`,

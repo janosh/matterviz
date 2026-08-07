@@ -12,6 +12,7 @@ import {
 import type { ElectronicDos, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, it } from 'vitest'
+import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -108,6 +109,45 @@ describe(`Dos component`, () => {
   ])(`renders %s`, (_desc, props) => {
     mount(Dos, { target: document.body, props })
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // Dos forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
+  // oxfmt-ignore
+  it.each([
+    [`auto hides one`, false, undefined, false],
+    [`auto shows two`, true, undefined, true],
+    [`true shows one`, false, true, true],
+    [`false hides two`, true, false, false],
+  ] as const)(`legend visibility: %s`, async (_desc, multi, show_legend, expected) => {
+    const plot = await mount_sized(
+      Dos,
+      {
+        doses: multi ? { A: phonon_dos, B: electronic_dos } : phonon_dos,
+        show_legend,
+        show_controls: false,
+      },
+      { selector: `.scatter` },
+    )
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
+  })
+
+  it(`forwards flat control props and controls_open binding`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    const target = document.createElement(`div`)
+    mount(Dos, {
+      target,
+      props: bind_props(
+        {
+          doses: phonon_dos,
+          controls_toggle_props: { 'data-testid': `dos-toggle` },
+          controls_pane_props: { 'data-testid': `dos-pane` },
+        },
+        controls_state,
+      ),
+    })
+    await tick()
+    await expect_plot_controls(target, controls_state, `dos`)
   })
 
   it(`clears smearing cache without error and re-renders`, async () => {

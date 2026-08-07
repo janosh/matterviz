@@ -20,6 +20,8 @@
     error_msg = $bindable(),
     x_axis = {},
     y_axis = {},
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: {
     // Precomputed curves. Bindable so a parent can read back what `positions` produced.
@@ -111,6 +113,8 @@
 {:else if result}
   <ScatterPlot
     {...rest}
+    bind:show_controls
+    bind:controls_open
     {series}
     x_axis={{ label: result.x_label, ...x_axis }}
     y_axis={{ label: `MSD (Å²)`, ...y_axis }}

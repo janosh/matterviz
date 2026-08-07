@@ -2,10 +2,53 @@ import type { DataSeries } from '$lib/plot'
 import {
   handle_legend_double_click,
   have_compatible_units,
+  LEGEND_VISIBILITY_MODES,
+  legend_mode_to_prop,
+  resolve_legend_visibility,
   toggle_group_visibility,
   toggle_series_visibility,
 } from '$lib/plot/core/utils/series-visibility'
 import { describe, expect, test } from 'vitest'
+
+describe(`resolve_legend_visibility`, () => {
+  // oxfmt-ignore
+  test.each([
+    [true, null, 5, undefined, false], // legend=null always wins
+    [true, undefined, 5, undefined, false],
+    [true, {}, 0, undefined, false], // nothing to label
+    [true, {}, 1, undefined, true],
+    [false, {}, 5, undefined, false],
+    [true, {}, 3, false, true], // explicit overrides opt-in families
+    [undefined, {}, 2, undefined, true], // cartesian auto
+    [undefined, {}, 1, undefined, false],
+    [undefined, {}, 9, false, false], // hierarchy/Sankey opt-in
+    [false, {}, 3, true, false], // explicit false beats an opted-in auto too
+    [true, {}, 0, false, false], // no entries beats everything
+  ] as [boolean | undefined, unknown, number, boolean | undefined, boolean][])(
+    `show=%s legend=%s entries=%s auto=%s → %s`,
+    (show_legend, legend, entry_count, auto_default, expected) => {
+      expect(resolve_legend_visibility(show_legend, legend, entry_count, auto_default)).toBe(
+        expected,
+      )
+    },
+  )
+})
+
+describe(`legend_mode_to_prop`, () => {
+  test(`only auto defers to the entry-count rule`, () => {
+    expect(LEGEND_VISIBILITY_MODES).toEqual([`auto`, `always`, `never`])
+    expect(LEGEND_VISIBILITY_MODES.map(legend_mode_to_prop)).toEqual([undefined, true, false])
+    const resolved = (entry_count: number) =>
+      LEGEND_VISIBILITY_MODES.map((mode) =>
+        resolve_legend_visibility(legend_mode_to_prop(mode), {}, entry_count),
+      )
+    expect(resolved(1)).toEqual([false, true, false])
+    expect(resolved(3)).toEqual([true, true, false])
+    expect(() => legend_mode_to_prop(`sometimes` as never)).toThrow(
+      `Invalid legend visibility mode: sometimes`,
+    )
+  })
+})
 
 describe(`have_compatible_units`, () => {
   test.each([

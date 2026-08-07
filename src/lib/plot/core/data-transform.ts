@@ -1,5 +1,6 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { DataSeries } from '$lib/plot'
+import type { LegendItem } from '$lib/plot/core/types'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 
@@ -23,27 +24,45 @@ export const extract_series_color = (series_data: DataSeries): string => {
   return DEFAULTS.scatter.point.color
 }
 
-// Prepare legend data from series array
-export const prepare_legend_data = (
-  series: DataSeries[],
-): {
-  series_idx: number
-  label: string
-  visible: boolean
-  display_style: { symbol_type: D3SymbolName; symbol_color: string }
-}[] =>
-  series.map((series_data, series_idx) => ({
-    series_idx,
-    label: series_data.label ?? `Series ${series_idx + 1}`,
-    visible: series_data.visible ?? true,
-    display_style: {
-      // Prefer the series’ symbol when present, falling back to settings
-      symbol_type: !Array.isArray(series_data.point_style)
-        ? (series_data.point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type)
-        : DEFAULTS.scatter.symbol_type,
-      symbol_color: extract_series_color(series_data),
-    },
-  }))
+// Minimal series shape every chart's legend entry is derived from.
+type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: string }
+
+// One legend-entry envelope for every chart: same label fallback, visibility source,
+// group and explicit-label flag. Charts supply only the swatch (display_style) and, where
+// the domain calls for it, a different generated label (e.g. BoxPlot's `Box N`).
+export function build_legend_items<Series extends LegendSeries>(
+  series: readonly Series[],
+  display_style: (series_data: Series, series_idx: number) => LegendItem[`display_style`],
+  opts: {
+    default_label?: (series_idx: number) => string
+    label?: (series_data: Series, series_idx: number) => string | null | undefined
+  } = {},
+): LegendItem[] {
+  const { default_label = (idx: number) => `Series ${idx + 1}`, label } = opts
+  return series.map((series_data, series_idx) => {
+    const explicit_label = label ? label(series_data, series_idx) : series_data?.label
+    return {
+      series_idx,
+      label: explicit_label ?? default_label(series_idx),
+      visible: series_data?.visible ?? true,
+      legend_group: series_data?.legend_group,
+      has_explicit_label: explicit_label != null,
+      display_style: display_style(series_data, series_idx),
+    }
+  })
+}
+
+// Swatch for charts whose legend shows a single symbol per series (Histogram, ...).
+export const series_symbol_swatch = (
+  series_data: DataSeries,
+): { symbol_type: D3SymbolName; symbol_color: string } => ({
+  // Prefer the series' symbol when present, falling back to settings. Per-point style
+  // arrays have no single symbol to show, so they always take the default.
+  symbol_type:
+    (Array.isArray(series_data.point_style) ? null : series_data.point_style?.symbol_type) ??
+    DEFAULTS.scatter.symbol_type,
+  symbol_color: extract_series_color(series_data),
+})
 
 // Process array or scalar properties for indexed access.
 // If prop is an array, returns the element at the given index.

@@ -23,13 +23,25 @@ describe(`filter_series_to_ranges`, () => {
 
   test(`drops series whose points are all filtered out (and hidden series)`, () => {
     const series: DataSeries[] = [
-      { x: [20, 30], y: [5, 5], label: `off-range` },
+      { x: [20, 30], y: [5, 5], label: `off-range`, markers: `points` },
       { x: [1, 2], y: [1, 2], label: `in-range` },
       { x: [3], y: [3], label: `hidden`, visible: false },
     ]
     const result = filter_series_to_ranges(series, ranges)
     // orig_series_idx 1 (not 0) keeps color cycling stable after dropping series
     expect(result).toMatchObject([{ label: `in-range`, orig_series_idx: 1 }])
+  })
+
+  test(`retains off-range line series with full arrays and no marker data`, () => {
+    const series: DataSeries[] = [{ x: [20, 30], y: [4, 6], label: `line`, markers: `line` }]
+    const [result] = filter_series_to_ranges(series, ranges)
+    expect(result).toMatchObject({
+      x: [20, 30],
+      y: [4, 6],
+      label: `line`,
+      filtered_data: [],
+      orig_series_idx: 0,
+    })
   })
 
   test(`y2-axis series filters against y2 range, x2 series against x2 range`, () => {
@@ -49,47 +61,84 @@ describe(`filter_series_to_ranges`, () => {
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
   })
 
-  // Non-finite coords must drop even with an infinite range bound — the case `!isNaN` misses
-  // but `Number.isFinite` catches (finite ranges would already reject them via the <= max check)
+  // Non-finite coords must drop even with an infinite range — `!isNaN` misses ±Infinity.
+  // Null must not coerce to 0. NaN range bounds reject everything.
   test.each([
     [`NaN`, NaN],
     [`+Infinity`, Infinity],
     [`-Infinity`, -Infinity],
-  ] as const)(`excludes %s coords even with an infinite range bound`, (_desc, bad_val) => {
-    const inf_ranges: AxisRanges = {
-      x: [-Infinity, Infinity],
-      x2: [0, 1],
-      y: [-Infinity, Infinity],
-      y2: [0, 1],
-    }
-    const series: DataSeries[] = [{ x: [1, bad_val, 3], y: [2, 2, bad_val] }]
-    const [result] = filter_series_to_ranges(series, inf_ranges)
-    // bad x dropped, and the x=3 point dropped because its y is non-finite
+    [`null`, null],
+  ] as const)(`excludes %s coords`, (_desc, bad_val) => {
+    const axis_ranges: AxisRanges =
+      bad_val === null
+        ? ranges
+        : {
+            x: [-Infinity, Infinity],
+            x2: [0, 1],
+            y: [-Infinity, Infinity],
+            y2: [0, 1],
+          }
+    const series = [{ x: [1, bad_val, 3], y: [2, 2, bad_val] }] as unknown as DataSeries[]
+    const [result] = filter_series_to_ranges(series, axis_ranges)
     expect(result.filtered_data.map((pt) => pt.x)).toEqual([1])
   })
 
-  test(`augments points with per-point styles, color and size values`, () => {
-    const series: DataSeries[] = [
-      {
-        x: [1, 2],
-        y: [3, 4],
-        color_values: [0.1, 0.9],
-        size_values: [7, 9],
-        point_style: [{ fill: `red` }, { fill: `blue` }],
-        metadata: [{ tag: `a` }, { tag: `b` }],
-      },
-    ]
-    const pt = filter_series_to_ranges(series, ranges)[0].filtered_data[1]
-    expect(pt).toMatchObject({ x: 2, y: 4, color_value: 0.9, size_value: 9, point_idx: 1 })
-    expect(pt).toMatchObject({ point_style: { fill: `blue` }, metadata: { tag: `b` } })
+  test(`rejects NaN range bounds; tolerates holes in series/y`, () => {
+    expect(
+      filter_series_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
+        ...ranges,
+        x: [0, NaN],
+      }),
+    ).toEqual([])
+    const result = filter_series_to_ranges(
+      [undefined, { y: [1] }, { x: [1] }, { x: [1, 2, 3], y: [4] }] as unknown as DataSeries[],
+      ranges,
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].filtered_data.map((pt) => [pt.x, pt.y])).toEqual([[1, 4]])
+    expect(result[0].orig_series_idx).toBe(3)
+  })
+
+  test(`augments points with array or scalar per-point props`, () => {
+    const arrayed = filter_series_to_ranges(
+      [
+        {
+          x: [1, 2],
+          y: [3, 4],
+          color_values: [0.1, 0.9],
+          size_values: [7, 9],
+          point_style: [{ fill: `red` }, { fill: `blue` }],
+          metadata: [{ tag: `a` }, { tag: `b` }],
+        },
+      ],
+      ranges,
+    )[0].filtered_data[1]
+    expect(arrayed).toMatchObject({
+      x: 2,
+      y: 4,
+      color_value: 0.9,
+      size_value: 9,
+      point_idx: 1,
+      point_style: { fill: `blue` },
+      metadata: { tag: `b` },
+    })
+    expect(
+      filter_series_to_ranges(
+        [{ x: [1, 2], y: [3, 4], point_style: { fill: `red` }, metadata: { tag: `shared` } }],
+        ranges,
+      )[0].filtered_data,
+    ).toMatchObject([
+      { point_style: { fill: `red` }, metadata: { tag: `shared` } },
+      { point_style: { fill: `red` }, metadata: { tag: `shared` } },
+    ])
   })
 })
 
 describe(`build_legend_data`, () => {
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
     const series: DataSeries[] = [
-      { x: [1], y: [1], label: `alpha` },
-      { x: [2], y: [2] }, // unlabeled -> default label
+      { x: [1], y: [1], label: `alpha`, point_style: { symbol_type: `Square` } },
+      { x: [2], y: [2], point_style: [{ symbol_type: `Triangle` }] }, // unlabeled
     ]
     const fills = [
       { idx: 0, source_type: `fill_region`, source_idx: 0, label: `band`, fill: `orange` },
@@ -101,7 +150,7 @@ describe(`build_legend_data`, () => {
         visible: true,
         has_explicit_label: true,
         display_style: {
-          symbol_type: get_series_symbol(0),
+          symbol_type: `Square`,
           symbol_color: get_series_color(0),
           line_color: get_series_color(0),
         },
@@ -110,7 +159,7 @@ describe(`build_legend_data`, () => {
         series_idx: 1,
         label: `Series 2`,
         has_explicit_label: false,
-        display_style: { symbol_color: get_series_color(1) },
+        display_style: { symbol_type: get_series_symbol(1) },
       },
       {
         series_idx: -1,

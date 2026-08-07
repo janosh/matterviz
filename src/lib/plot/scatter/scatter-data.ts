@@ -4,89 +4,98 @@ import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { DataSeries, FillRegion, InternalPoint, LegendItem, PointStyle } from '$lib/plot'
 import {
+  build_legend_items,
   get_series_color,
   get_series_symbol,
-  process_prop,
 } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
 export { type AxisRanges } from '$lib/plot/core/types'
 
-const in_range = (val: number | null | undefined, lo: number, hi: number) =>
-  val != null && Number.isFinite(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
+// Sort a possibly-inverted range (axes may be reversed, e.g. [3.5, 1.4]) into [lo, hi]
+// once per series so the per-point test is two bare comparisons.
+const sorted_bounds = ([a, b]: readonly [number, number]): [number, number] =>
+  a <= b ? [a, b] : [b, a]
+
+// Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
+// null/Array.isArray branch out of the point loop matters at 100k points, where these
+// five props would otherwise cost 10 redundant checks per point.
+const prop_getter = <T>(
+  prop: T[] | T | undefined | null,
+): ((idx: number) => T | undefined) => {
+  if (prop == null) return () => undefined
+  if (Array.isArray(prop)) return (idx) => prop[idx]
+  return () => prop
+}
 
 // Filter series data to only include points within bounds and augment with internal data.
 // Full x/y arrays are kept on each returned series (via spread) so connecting lines can
 // continue through off-range points; only filtered_data (rendered markers) is range-limited.
+//
+// Perf: this runs on every pan/zoom/resize tick, so it tests raw x/y against the bounds
+// *before* building an InternalPoint. Allocating first and filtering after made a zoomed-in
+// view cost the same as the full view even when it dropped 96% of the points.
 export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   ranges: AxisRanges,
 ): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
-  const [x_min, x_max] = ranges.x
-  const [x2_min, x2_max] = ranges.x2
-  const [y_min, y_max] = ranges.y
-  const [y2_min, y2_max] = ranges.y2
+  const x_bounds = sorted_bounds(ranges.x)
+  const x2_bounds = sorted_bounds(ranges.x2)
+  const y_bounds = sorted_bounds(ranges.y)
+  const y2_bounds = sorted_bounds(ranges.y2)
 
-  return (
-    series
-      .map((data_series: DataSeries<Metadata>, series_idx): DataSeries<Metadata> => {
-        if (!data_series) {
-          return {
-            x: [],
-            y: [],
-            visible: true,
-            filtered_data: [],
-            _id: series_idx,
-            orig_series_idx: series_idx,
-          }
-        }
-        if (!(data_series.visible ?? true)) {
-          return {
-            ...data_series,
-            visible: false,
-            filtered_data: [],
-            orig_series_idx: series_idx,
-          }
-        }
+  const out: (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] = []
 
-        const { x: xs, y: ys, color_values, size_values, ...series_rest } = data_series
-        const processed_points: InternalPoint<Metadata>[] = xs.map(
-          (x_val: number, point_idx: number) => ({
-            x: x_val,
-            y: ys[point_idx],
-            color_value: color_values?.[point_idx],
-            metadata: process_prop(series_rest.metadata, point_idx),
-            point_style: process_prop(series_rest.point_style, point_idx),
-            point_hover: process_prop(series_rest.point_hover, point_idx),
-            point_label: process_prop(series_rest.point_label, point_idx),
-            point_offset: process_prop(series_rest.point_offset, point_idx),
-            series_idx,
-            point_idx,
-            size_value: size_values?.[point_idx],
-          }),
-        )
+  for (let series_idx = 0; series_idx < series.length; series_idx++) {
+    const data_series = series[series_idx]
+    // Missing and hidden series yield no points, and empty series are dropped below
+    if (!data_series || !(data_series.visible ?? true)) continue
 
-        // Filter to plot bounds using the series' assigned axes (in_range handles
-        // inverted ranges like [3.5, 1.4])
-        const [series_x_min, series_x_max] =
-          (data_series.x_axis ?? `x1`) === `x2` ? [x2_min, x2_max] : [x_min, x_max]
-        const [series_y_min, series_y_max] =
-          (data_series.y_axis ?? `y1`) === `y2` ? [y2_min, y2_max] : [y_min, y_max]
-        const filtered_data = processed_points.filter(
-          ({ x, y }) =>
-            in_range(x, series_x_min, series_x_max) && in_range(y, series_y_min, series_y_max),
-        )
+    const { x: xs, y: ys, color_values, size_values } = data_series
+    if (!Array.isArray(xs) || !Array.isArray(ys)) continue
+    const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
+    const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
 
-        // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
-        return { ...data_series, visible: true, filtered_data, orig_series_idx: series_idx }
+    const get_metadata = prop_getter(data_series.metadata)
+    const get_point_style = prop_getter(data_series.point_style)
+    const get_point_hover = prop_getter(data_series.point_hover)
+    const get_point_label = prop_getter(data_series.point_label)
+    const get_point_offset = prop_getter(data_series.point_offset)
+
+    const filtered_data: InternalPoint<Metadata>[] = []
+    for (let point_idx = 0; point_idx < xs.length; point_idx++) {
+      // Number.isFinite also rejects null/undefined/NaN, matching the old in_range guard
+      const x = xs[point_idx]
+      if (!Number.isFinite(x) || !(x >= x_lo && x <= x_hi)) continue
+      const y = ys[point_idx]
+      if (!Number.isFinite(y) || !(y >= y_lo && y <= y_hi)) continue
+
+      filtered_data.push({
+        x,
+        y,
+        color_value: color_values?.[point_idx],
+        metadata: get_metadata(point_idx),
+        point_style: get_point_style(point_idx),
+        point_hover: get_point_hover(point_idx),
+        point_label: get_point_label(point_idx),
+        point_offset: get_point_offset(point_idx),
+        series_idx,
+        point_idx,
+        size_value: size_values?.[point_idx],
       })
-      // Drop series left completely empty after point filtering
-      .filter(
-        (srs): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
-          (srs.filtered_data?.length ?? 0) > 0,
-      )
-  )
+    }
+
+    // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
+    if (
+      filtered_data.length > 0 ||
+      (data_series.markers ?? DEFAULT_MARKERS).includes(`line`)
+    ) {
+      out.push({ ...data_series, visible: true, filtered_data, orig_series_idx: series_idx })
+    }
+  }
+
+  return out
 }
 
 // Display style attached to each legend item (matches PlotLegend expectations)
@@ -104,41 +113,45 @@ export type LegendFill = FillRegion & {
   source_idx: number
 }
 
-export type ScatterLegendItem = LegendItem & { has_explicit_label?: boolean }
-
 // Prepare legend items from series + computed fill regions, deduplicated by
 // legend_group::label (first occurrence wins across both series and fills)
 export function build_legend_data<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
-): ScatterLegendItem[] {
-  const items = series.map((data_series: DataSeries<Metadata>, series_idx: number) => {
-    // Prefer top-level label, fall back to metadata label, then a generated default
-    const explicit_label =
-      data_series?.label ??
-      (typeof data_series?.metadata === `object` &&
-      data_series.metadata !== null &&
-      `label` in data_series.metadata &&
-      typeof data_series.metadata.label === `string`
-        ? data_series.metadata.label
-        : null)
+): LegendItem[] {
+  // Scatter is the only chart that also accepts a label from series metadata.
+  const series_label = (data_series: DataSeries<Metadata>) =>
+    data_series?.label ??
+    (typeof data_series?.metadata === `object` &&
+    data_series.metadata !== null &&
+    `label` in data_series.metadata &&
+    typeof data_series.metadata.label === `string`
+      ? data_series.metadata.label
+      : null)
 
-    // Series-index defaults give auto-cycled colors/symbols
-    const series_default_color = get_series_color(series_idx)
-    const display_style: LegendDisplayStyle = {
-      symbol_type: get_series_symbol(series_idx),
-      symbol_color: series_default_color,
-      line_color: series_default_color,
-    }
-    const series_markers = data_series?.markers ?? DEFAULT_MARKERS
-    const first_point_style = Array.isArray(data_series?.point_style)
-      ? data_series.point_style[0]
-      : data_series?.point_style
+  const items = build_legend_items(
+    series,
+    (data_series, series_idx) => {
+      // Series-index defaults give auto-cycled colors/symbols
+      const series_default_color = get_series_color(series_idx)
+      const display_style: LegendDisplayStyle = {
+        symbol_type: get_series_symbol(series_idx),
+        symbol_color: series_default_color,
+        line_color: series_default_color,
+      }
+      const series_markers = data_series?.markers ?? DEFAULT_MARKERS
+      const first_point_style = Array.isArray(data_series?.point_style)
+        ? data_series.point_style[0]
+        : data_series?.point_style
 
-    if (series_markers.includes(`points`)) {
-      if (first_point_style) {
+      if (!series_markers.includes(`points`)) {
+        // No points marker: no symbol swatch in the legend
+        display_style.symbol_type = undefined
+        display_style.symbol_color = undefined
+      } else if (first_point_style) {
         if (
+          !Array.isArray(data_series?.point_style) &&
           typeof first_point_style.symbol_type === `string` &&
           symbol_names.includes(first_point_style.symbol_type)
         ) {
@@ -155,44 +168,34 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
           display_style.symbol_color = first_point_style.stroke
         }
       }
-    } else {
-      // No points marker: no symbol swatch in the legend
-      display_style.symbol_type = undefined
-      display_style.symbol_color = undefined
-    }
 
-    if (series_markers.includes(`line`)) {
-      // Explicit line stroke, then color scale, then point colors, then series default
-      let line_color = data_series?.line_style?.stroke
-      if (!line_color) {
-        const first_cv = Array.isArray(data_series?.color_values)
-          ? data_series?.color_values?.find((color_val: number | null) => color_val != null)
-          : undefined
-        /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
-        line_color =
-          (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-          first_point_style?.fill ||
-          first_point_style?.stroke ||
-          series_default_color
-        /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
+      if (series_markers.includes(`line`)) {
+        // Explicit line stroke, then color scale, then point colors, then series default
+        let line_color = data_series?.line_style?.stroke
+        if (!line_color) {
+          const first_cv = Array.isArray(data_series?.color_values)
+            ? data_series?.color_values?.find((color_val: number | null) => color_val != null)
+            : undefined
+          /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
+          line_color =
+            (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
+            first_point_style?.fill ||
+            first_point_style?.stroke ||
+            series_default_color
+          /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
+        }
+        display_style.line_color = line_color
+        display_style.line_dash = data_series?.line_style?.line_dash
+      } else {
+        // No line marker: no line swatch in the legend
+        display_style.line_dash = undefined
+        display_style.line_color = undefined
       }
-      display_style.line_color = line_color
-      display_style.line_dash = data_series?.line_style?.line_dash
-    } else {
-      // No line marker: no line swatch in the legend
-      display_style.line_dash = undefined
-      display_style.line_color = undefined
-    }
 
-    return {
-      series_idx,
-      label: explicit_label ?? `Series ${series_idx + 1}`,
-      visible: data_series?.visible ?? true,
-      display_style,
-      has_explicit_label: explicit_label != null,
-      legend_group: data_series?.legend_group,
-    }
-  })
+      return display_style
+    },
+    { label: series_label },
+  )
 
   // Deduplicate by legend_group::label (first occurrence wins, across series + fills)
   const seen_labels = new Set<string>()
@@ -262,15 +265,13 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
     if (is_opaque_color(stroke_color)) return stroke_color
   }
   if (series_markers.includes(`line`)) {
-    const line_style = series?.line_style ?? {}
     const first_point_style = Array.isArray(series?.point_style)
-      ? series?.point_style[0]
+      ? series.point_style[0]
       : series?.point_style
     const first_color_value = series?.color_values?.[0]
-    let line_color_candidate = line_style.stroke
-    if (is_transparent_or_none(line_color_candidate)) {
+    let line_color_candidate = series?.line_style?.stroke
+    if (is_transparent_or_none(line_color_candidate))
       line_color_candidate = first_point_style?.fill
-    }
     if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
       line_color_candidate = color_scale_fn(first_color_value)
     if (is_transparent_or_none(line_color_candidate) && series_markers.includes(`points`))

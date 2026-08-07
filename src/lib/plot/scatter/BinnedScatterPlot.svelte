@@ -83,6 +83,7 @@
   } from '$lib/plot/core/scales'
   import type {
     AxisConfig,
+    BasePlotProps,
     DataSeries,
     InternalPoint,
     ScatterHandlerProps,
@@ -127,7 +128,6 @@
   }
   type OverlayContext = { height: number; width: number; fullscreen: boolean }
   const default_density_auto_point_mode = { max_points: 25_000, max_points_per_px: 0.12 }
-  const default_density_color_bar: ComponentProps<typeof ColorBar> = { title: `Density` }
   const max_placement_bins = 500
 
   let {
@@ -135,9 +135,11 @@
     x_axis = {},
     y_axis = {},
     size_scale = DEFAULT_BINNED_SIZE_SCALE,
+    color_bar = {},
     density: density_config = {},
     overlays: overlays_config = {},
     padding: padding_config = {},
+    range_padding = 0.05,
     title,
     tooltip,
     point_data,
@@ -147,6 +149,7 @@
     on_density_zoom,
     render_mode = $bindable<RenderMode>(`density`),
     wrapper = $bindable(),
+    hovered = $bindable(false),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     children,
@@ -155,33 +158,38 @@
     marginals = false,
     facet_layout,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
-    series: DensePointSeries<Metadata>[]
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    size_scale?: BinnedSizeScaleConfig
-    density?: BinnedDensityConfig
-    overlays?: BinnedOverlaysConfig
-    padding?: Sides
-    title?: string | PlotTitleConfig
-    tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
-    point_data?: BinnedPointDataFn<Metadata, PointData>
-    point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
-    selected_point_id?: string | number | null
-    on_point_click?: (payload: ScatterHandlerProps<Metadata> & DensePointEvent) => void
-    on_density_zoom?: (payload: DensityZoomEvent) => void
-    render_mode?: RenderMode
-    wrapper?: HTMLDivElement
-    fullscreen?: boolean
-    fullscreen_toggle?: boolean
-    children?: Snippet<[OverlayContext]>
-    header_controls?: Snippet<[OverlayContext]>
-    // auto-placed badge (e.g. MAE/R² stats): rendered inside the plot area wherever it
-    // overlaps the least data, while also avoiding the auto-placed colorbar
-    annotation?: Snippet<[OverlayContext]>
-    marginals?: MarginalsProp
-    facet_layout?: FacetLayoutContext
-  } = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
+    // Share the BasePlotProps members that apply rather than redeclaring them. The ones left
+    // out are genuinely absent here: this component has no controls pane and reports hover via
+    // on_point_click / the tooltip snippet rather than a generic `change`. `range_padding`
+    // defaults to 0.05 (the historical density-bin framing pad) rather than ScatterPlot's 0.
+    Pick<
+      BasePlotProps,
+      `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
+    > & {
+      series: DensePointSeries<Metadata>[]
+      x_axis?: AxisConfig
+      y_axis?: AxisConfig
+      size_scale?: BinnedSizeScaleConfig
+      color_bar?: ComponentProps<typeof ColorBar> | null
+      density?: BinnedDensityConfig
+      overlays?: BinnedOverlaysConfig
+      tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
+      point_data?: BinnedPointDataFn<Metadata, PointData>
+      point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
+      selected_point_id?: string | number | null
+      on_point_click?: (payload: ScatterHandlerProps<Metadata> & DensePointEvent) => void
+      on_density_zoom?: (payload: DensityZoomEvent) => void
+      render_mode?: RenderMode
+      wrapper?: HTMLDivElement
+      children?: Snippet<[OverlayContext]>
+      header_controls?: Snippet<[OverlayContext]>
+      // auto-placed badge (e.g. MAE/R² stats): rendered inside the plot area wherever it
+      // overlaps the least data, while also avoiding the auto-placed colorbar
+      annotation?: Snippet<[OverlayContext]>
+      marginals?: MarginalsProp
+      facet_layout?: FacetLayoutContext
+    } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
   let width = $state(0)
@@ -227,10 +235,6 @@
   let density_settings = $derived({
     bin_px: density_config.bin_px ?? 2.8,
     color_scale: density_config.color_scale ?? SCALE_DEFAULTS.color,
-    color_bar:
-      density_config.color_bar === undefined
-        ? default_density_color_bar
-        : density_config.color_bar,
     auto_point_mode:
       density_config.auto_point_mode === undefined
         ? default_density_auto_point_mode
@@ -266,7 +270,7 @@
   let y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   let auto_ranges = $derived(
     needs_data_range(x_axis.range) || needs_data_range(y_axis.range)
-      ? series_extents(series, x_scale_type, y_scale_type)
+      ? series_extents(series, x_scale_type, y_scale_type, range_padding)
       : { x: [0, 1] as Vec2, y: [0, 1] as Vec2 },
   )
   let has_plot_size = $derived(width > 0 && height > 0)
@@ -415,7 +419,6 @@
       : density_settings.color_scale.type,
   )
   let color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
-    const color_bar = density_settings.color_bar
     if (!color_bar) return null
     return {
       ...color_bar,
@@ -735,6 +738,7 @@
   function clear_hover() {
     hovered_bin = null
     hovered_point = null
+    hovered = false
   }
 
   const handler_props = (
@@ -906,6 +910,7 @@
       clear_hover()
       return
     }
+    hovered = true
 
     if (render_mode === `density`) {
       hovered_point = null

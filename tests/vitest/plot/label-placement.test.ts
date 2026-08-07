@@ -369,7 +369,14 @@ const default_config: LabelPlacementConfig = {
   leader_line_threshold: 15,
 }
 
-function make_labeled_series(points: { x: number; y: number; text: string }[]): DataSeries[] {
+type LabeledPoint = {
+  x: number
+  y: number
+  text: string
+  point_offset?: { x: number; y: number }
+}
+
+function make_labeled_series(points: LabeledPoint[]): DataSeries[] {
   const series = {
     x: points.map((pt) => pt.x),
     y: points.map((pt) => pt.y),
@@ -381,6 +388,7 @@ function make_labeled_series(points: { x: number; y: number; text: string }[]): 
       point_idx: idx,
       point_style: { fill: `blue`, radius: 4 },
       point_label: { text: pt.text, auto_placement: true, font_size: `10px` },
+      point_offset: pt.point_offset,
     })),
   }
   return [series]
@@ -446,6 +454,24 @@ describe(`compute_label_positions`, () => {
       { x: 15, y: 15, text: `Corner` },
       { x: 385, y: 285, text: `FarCorner` },
     ])
+  })
+
+  test(`translates automatic label positions with point offsets`, () => {
+    const config = { ...default_config, sa_iterations: 0 }
+    const unshifted = compute_label_positions(
+      make_labeled_series([{ x: 100, y: 100, text: `A` }]),
+      config,
+      default_scales,
+      default_bounds,
+    )[`0-0`]
+    const shifted = compute_label_positions(
+      make_labeled_series([{ x: 100, y: 100, text: `A`, point_offset: { x: 30, y: 20 } }]),
+      config,
+      default_scales,
+      default_bounds,
+    )[`0-0`]
+    expect(shifted.x - unshifted.x).toBeCloseTo(30)
+    expect(shifted.y - unshifted.y).toBeCloseTo(20)
   })
 
   test(`is deterministic (seeded PRNG)`, () => {

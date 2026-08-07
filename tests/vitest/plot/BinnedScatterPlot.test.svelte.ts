@@ -9,22 +9,20 @@ import { doc_query, svg_query } from '../setup'
 // Shared deterministic point cloud; spreads y values without RNG overhead.
 const PSEUDO_RANDOM_MULTIPLIER = 48_271
 const density_thresholds = { max_points: 0, max_points_per_px: 0 }
-const hidden_density = { color_bar: null } satisfies BinnedDensityConfig
-const density_mode = (config: BinnedDensityConfig = {}): BinnedDensityConfig => ({
+type BinnedProps = Partial<ComponentProps<typeof BinnedScatterPlot>>
+// Most tests hide the colorbar so it can't perturb decoration placement.
+const hidden_colorbar = { color_bar: null } satisfies BinnedProps
+const density_mode = (config: BinnedDensityConfig = {}): BinnedProps => ({
   color_bar: null,
-  auto_point_mode: density_thresholds,
-  ...config,
+  density: { auto_point_mode: density_thresholds, ...config },
 })
-const density_mode_with_colorbar = (
-  config: BinnedDensityConfig = {},
-): BinnedDensityConfig => ({
-  auto_point_mode: density_thresholds,
-  ...config,
+// `color_bar` defaults to {} (shown), matching ScatterPlot, so this just omits the override
+const density_mode_with_colorbar = (config: BinnedDensityConfig = {}): BinnedProps => ({
+  density: { auto_point_mode: density_thresholds, ...config },
 })
-const point_mode = (config: BinnedDensityConfig = {}): BinnedDensityConfig => ({
+const point_mode = (config: BinnedDensityConfig = {}): BinnedProps => ({
   color_bar: null,
-  auto_point_mode: { max_points: Number.MAX_SAFE_INTEGER },
-  ...config,
+  density: { auto_point_mode: { max_points: Number.MAX_SAFE_INTEGER }, ...config },
 })
 
 afterEach(() => {
@@ -178,7 +176,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`supports ScatterPlot-style fullscreen controls and overlay snippets`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      density: hidden_density,
+      ...hidden_colorbar,
       header_controls: overlay_snippet(`custom-header-controls`),
       children: overlay_snippet(`custom-overlay`),
     })
@@ -205,7 +203,7 @@ describe(`BinnedScatterPlot`, () => {
     document.body.replaceChildren()
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      density: hidden_density,
+      ...hidden_colorbar,
       fullscreen_toggle: false,
     })
     await settle()
@@ -222,7 +220,7 @@ describe(`BinnedScatterPlot`, () => {
     try {
       mount_plot({
         series: [{ x: [0, 1], y: [0, 1] }],
-        density: hidden_density,
+        ...hidden_colorbar,
         x_axis: { range: [null, NaN] as [null, number] },
       })
       await settle()
@@ -244,7 +242,7 @@ describe(`BinnedScatterPlot`, () => {
     mount_plot({
       series: [{ x: [1, 100, 1e9], y: [1, 10, Number.NaN] }],
       x_axis: { scale_type: `log` },
-      density: point_mode(),
+      ...point_mode(),
     })
     await settle()
 
@@ -261,7 +259,7 @@ describe(`BinnedScatterPlot`, () => {
       mount_plot({
         series: [{ x: [1, 10], y: [1, 10] }],
         x_axis: { range, ticks: [range[0]] },
-        density: point_mode(),
+        ...point_mode(),
       })
       await settle()
       const labels = [...document.querySelectorAll(`.x-axis .tick text`)].map((node) =>
@@ -280,7 +278,7 @@ describe(`BinnedScatterPlot`, () => {
       mount_plot({
         series: [{ x: [0, 8e4], y: [0, 1] }],
         x_axis: format ? { format } : {},
-        density: point_mode(),
+        ...point_mode(),
       })
       await settle()
       const baseline = Number(document.querySelector(`.x-axis > line`)?.getAttribute(`y1`))
@@ -296,10 +294,24 @@ describe(`BinnedScatterPlot`, () => {
     expect(fallback).toEqual(explicit)
   })
 
+  // Density mode shows its colorbar by default (like ScatterPlot's `color_bar = {}`);
+  // `color_bar={null}` is the opt-out.
+  test(`shows the density colorbar by default, hidden by color_bar={null}`, async () => {
+    const density = { auto_point_mode: density_thresholds }
+    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density })
+    await settle()
+    expect(document.querySelector(`.colorbar`)).not.toBeNull()
+
+    document.body.replaceChildren()
+    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density, color_bar: null })
+    await settle()
+    expect(document.querySelector(`.colorbar`)).toBeNull()
+  })
+
   test(`puts visible point count in colorbar title without a mode pill`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      density: density_mode_with_colorbar(),
+      ...density_mode_with_colorbar(),
     })
     await settle()
 
@@ -326,10 +338,8 @@ describe(`BinnedScatterPlot`, () => {
     ) => {
       mount_plot({
         series: density_kind === `dense` ? uniform_density_series() : [{ x: [0.5], y: [0.5] }],
-        density: density_mode_with_colorbar({
-          bin_px: 20,
-          color_bar: { orientation },
-        }),
+        ...density_mode_with_colorbar({ bin_px: 20 }),
+        color_bar: { orientation },
         ...unit_axes,
         padding: { l: 80, r: 20, t: 30, b: 60 },
       })
@@ -351,14 +361,12 @@ describe(`BinnedScatterPlot`, () => {
   test(`preserves explicit colorbar wrapper and bar styles`, async () => {
     mount_plot({
       series: uniform_density_series(),
-      density: density_mode_with_colorbar({
-        bin_px: 20,
-        color_bar: {
-          orientation: `vertical`,
-          wrapper_style: `border: 3px solid rgb(1, 2, 3); padding: 7px;`,
-          bar_style: `width: 14px; height: 160px;`,
-        },
-      }),
+      ...density_mode_with_colorbar({ bin_px: 20 }),
+      color_bar: {
+        orientation: `vertical`,
+        wrapper_style: `border: 3px solid rgb(1, 2, 3); padding: 7px;`,
+        bar_style: `width: 14px; height: 160px;`,
+      },
       ...unit_axes,
     })
     await settle()
@@ -374,7 +382,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`auto-places annotation snippet without overlapping the colorbar`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      density: density_mode_with_colorbar(),
+      ...density_mode_with_colorbar(),
       annotation: overlay_snippet(`custom-annotation`),
     })
     await settle()
@@ -398,7 +406,7 @@ describe(`BinnedScatterPlot`, () => {
     vi.stubGlobal(`ResizeObserver`, TestResizeObserver)
     mount_plot({
       series: uniform_density_series(),
-      density: density_mode_with_colorbar({ bin_px: 20 }),
+      ...density_mode_with_colorbar({ bin_px: 20 }),
       ...unit_axes,
       padding: { l: 80, r: 20, t: 30, b: 60 },
     })
@@ -436,7 +444,7 @@ describe(`BinnedScatterPlot`, () => {
       .spyOn(Element.prototype, `getBoundingClientRect`)
       .mockReturnValue(DOMRect.fromRect({ width: 100, height: 60 }))
     const series = $state([{ x: [0, 1], y: [0, 1] }])
-    mount_plot({ series, density: density_mode_with_colorbar() })
+    mount_plot({ series, ...density_mode_with_colorbar() })
     await settle()
     const colorbar = doc_query(`.binned-scatter .color-bar`)
     const initial_position = { left: colorbar.style.left, top: colorbar.style.top }
@@ -451,7 +459,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`renders annotation in point mode (no colorbar) and skips wrapper when absent`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
-      density: point_mode(),
+      ...point_mode(),
       annotation: overlay_snippet(`custom-annotation`),
     })
     await settle()
@@ -462,7 +470,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(anno_wrapper.style.top).toMatch(/px$/)
 
     document.body.replaceChildren()
-    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density: point_mode() })
+    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], ...point_mode() })
     await settle()
     expect(document.querySelector(`.annotation`)).toBeNull()
   })
@@ -487,7 +495,7 @@ describe(`BinnedScatterPlot`, () => {
       series: [{ x: [0, 1], y: [0, 1] }],
       ...unit_axes,
       overlays: { ref_lines: [ref_line] },
-      density: hidden_density,
+      ...hidden_colorbar,
       padding: { l: 80, r: 20, t: 30, b: 60 },
     })
     await settle()
@@ -522,7 +530,7 @@ describe(`BinnedScatterPlot`, () => {
           { type: `horizontal`, y: 0.5, visible: false }, // explicitly hidden
         ],
       },
-      density: hidden_density,
+      ...hidden_colorbar,
     })
     await settle()
 
@@ -539,7 +547,7 @@ describe(`BinnedScatterPlot`, () => {
           { type: `horizontal`, y: 0.51, annotation: { text: `near B` } },
         ],
       },
-      density: hidden_density,
+      ...hidden_colorbar,
     })
     await settle()
 
@@ -559,7 +567,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`uses density color scale type for colorbar ticks`, async () => {
     mount_plot({
       series: [{ x: Array(100).fill(0), y: Array(100).fill(0) }],
-      density: density_mode_with_colorbar({
+      ...density_mode_with_colorbar({
         color_scale: { type: `log`, scheme: `interpolateMagma` },
       }),
     })
@@ -583,7 +591,7 @@ describe(`BinnedScatterPlot`, () => {
 
     mount_plot({
       series: [{ x: [0, NaN, 0.5, Infinity], y: [0, 0.5, NaN, 0.8] }],
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
     })
     await settle()
@@ -597,7 +605,7 @@ describe(`BinnedScatterPlot`, () => {
 
     mount_plot({
       series: [{ x: [0.2, 0.5, 0.8], y: [0.5, 0.5, 0.5], size_values: [1, 4, 16] }],
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
     })
     await settle()
@@ -616,7 +624,7 @@ describe(`BinnedScatterPlot`, () => {
 
     mount_plot({
       series: [{ x: [0.2, 0.8], y: [0.5, 0.5], size_values: [0, 32] }],
-      density: point_mode(),
+      ...point_mode(),
       size_scale,
       ...unit_axes,
     })
@@ -630,7 +638,7 @@ describe(`BinnedScatterPlot`, () => {
     const on_point_click = vi.fn()
     mount_plot({
       series: [{ x: [0.5], y: [0.5], size_values: [1] }],
-      density: point_mode(),
+      ...point_mode(),
       size_scale: { radius_range: [2, 18], pick_radius: `auto` },
       ...unit_axes,
       on_point_click,
@@ -648,7 +656,7 @@ describe(`BinnedScatterPlot`, () => {
 
     mount_plot({
       series: [{ x: [0.4, 0.6], y: [0.5, 0.5], point_ids: [`selected`, `other`] }],
-      density: point_mode(),
+      ...point_mode(),
       selected_point_id: `selected`,
       ...unit_axes,
     })
@@ -662,7 +670,7 @@ describe(`BinnedScatterPlot`, () => {
     const on_density_zoom = vi.fn()
     mount_plot({
       series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
-      density: density_mode({ bin_px: 100 }),
+      ...density_mode({ bin_px: 100 }),
       ...unit_axes,
       on_density_zoom,
     })
@@ -734,7 +742,7 @@ describe(`BinnedScatterPlot`, () => {
       const on_point_click = vi.fn()
       mount_plot({
         series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
-        density: density_mode({ bin_px: 100, bin_click }),
+        ...density_mode({ bin_px: 100, bin_click }),
         ...unit_axes,
         on_density_zoom,
         on_point_click,
@@ -751,7 +759,8 @@ describe(`BinnedScatterPlot`, () => {
   test(`can disable automatic point mode switching`, async () => {
     mount_plot({
       series: [{ x: [0.5], y: [0.5] }],
-      density: { ...hidden_density, auto_point_mode: false },
+      ...hidden_colorbar,
+      density: { auto_point_mode: false },
       render_mode: `density`,
       ...unit_axes,
     })
@@ -764,7 +773,7 @@ describe(`BinnedScatterPlot`, () => {
     const on_point_click = vi.fn()
     mount_plot({
       series: [{ x: [0.5], y: [0.5] }],
-      density: density_mode({
+      ...density_mode({
         color_scale: { scheme: `interpolateViridis`, value_range: [1, 2] },
         bin_px: 100,
       }),
@@ -803,7 +812,7 @@ describe(`BinnedScatterPlot`, () => {
         { x: [0.5], y: [0.5] }, // series 1
       ],
       marginals: { top: { type: `histogram`, per_series: true } },
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
     })
     await settle()
@@ -829,7 +838,7 @@ describe(`BinnedScatterPlot`, () => {
       marginals: {
         top: { placement: `outer`, size: 30, gap: 7, value_axis: false },
       },
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
     })
     await settle()
@@ -843,7 +852,7 @@ describe(`BinnedScatterPlot`, () => {
     mock_label_measurement(80, 20)
     mount_plot({
       series: [{ x: [0.5, 0.502], y: [0.5, 0.502], point_ids: [`wbm-1`, `wbm-2`] }],
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
       point_labels: {
         render: point_label_snippet(),
@@ -912,7 +921,7 @@ describe(`BinnedScatterPlot`, () => {
           y: Array<number>(n_points).fill(0.5),
         },
       ],
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
       point_labels: { render: point_label_snippet() },
     })
@@ -931,7 +940,7 @@ describe(`BinnedScatterPlot`, () => {
         { x: [0.2], y: [0.2] }, // series 0, away from the pointer
         { x: [0.5], y: [0.5], point_ids: [`wbm-1`] }, // series 1, under the pointer
       ],
-      density: point_mode(),
+      ...point_mode(),
       ...unit_axes,
       tooltip: point_tooltip_snippet(),
       point_data: ({ point }: { point: { point_id?: string | number } }) => ({
@@ -964,7 +973,7 @@ describe(`BinnedScatterPlot`, () => {
     document.body.replaceChildren()
     mount_plot({
       series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
-      density: point_mode(),
+      ...point_mode(),
       point_data: () => ({ label: `wbm-1`, measure_text: `wbm-1` }),
       ...unit_axes,
       point_labels: { render: point_label_snippet(), ...point_labels },
@@ -1005,7 +1014,7 @@ describe(`BinnedScatterPlot`, () => {
   test(`applies point label font size to rendered and measured labels`, async () => {
     mount_plot({
       series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
-      density: point_mode(),
+      ...point_mode(),
       point_labels: { render: point_label_snippet(), font_size: `20px` },
       ...unit_axes,
     })
@@ -1022,7 +1031,7 @@ describe(`BinnedScatterPlot`, () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
       y_axis: { label: `Energy` },
-      density: hidden_density,
+      ...hidden_colorbar,
     })
     await settle()
 
@@ -1034,7 +1043,7 @@ describe(`BinnedScatterPlot`, () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],
       y_axis: { label: `E<sub>form</sub>` },
-      density: hidden_density,
+      ...hidden_colorbar,
     })
     await settle()
 
@@ -1065,7 +1074,7 @@ describe(`BinnedScatterPlot`, () => {
           y: counted(Array.from({ length: n_points }, (_, idx) => idx / n_points)),
         },
       ],
-      density: density_mode(),
+      ...density_mode(),
       ...unit_axes,
     })
     await settle()
@@ -1087,7 +1096,7 @@ describe(`BinnedScatterPlot`, () => {
       y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
     }
 
-    mount_plot({ series: [{ x, y }], density: density_mode_with_colorbar() })
+    mount_plot({ series: [{ x, y }], ...density_mode_with_colorbar() })
     await settle()
 
     expect(render_mode()).toBe(`density`)

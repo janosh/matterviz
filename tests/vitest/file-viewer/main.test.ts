@@ -236,6 +236,47 @@ describe(`create_display trajectory display options`, () => {
     expect(on_step_change).toHaveBeenCalledWith(7, 20)
   })
 
+  test.each([
+    [`auto`, undefined],
+    [`always`, true],
+    [`never`, false],
+  ] as const)(`show_legend setting %s maps to %s`, (mode, expected) => {
+    const prev_data = globalThis.matterviz_data
+    globalThis.matterviz_data = {
+      ...prev_data,
+      defaults: { scatter: { show_legend: mode }, histogram: { show_legend: mode } },
+    } as typeof globalThis.matterviz_data
+    try {
+      create_display(make_container(), trajectory_result())
+      const { scatter_props, histogram_props } = last_mount_props() as {
+        scatter_props: Record<string, unknown>
+        histogram_props: Record<string, unknown>
+      }
+      expect(scatter_props.show_legend).toBe(expected)
+      expect(histogram_props.show_legend).toBe(expected)
+      // LegendConfig has no `show` field, so `legend` would leak onto the DOM via ...rest.
+      expect(scatter_props).not.toHaveProperty(`legend`)
+      expect(histogram_props).not.toHaveProperty(`legend`)
+    } finally {
+      globalThis.matterviz_data = prev_data
+    }
+  })
+
+  test(`rejects stale boolean legend settings`, () => {
+    const prev_data = globalThis.matterviz_data
+    globalThis.matterviz_data = {
+      ...prev_data,
+      defaults: { scatter: { show_legend: true }, histogram: { show_legend: true } },
+    } as unknown as typeof globalThis.matterviz_data
+    try {
+      expect(() => create_display(make_container(), trajectory_result())).toThrow(
+        `Invalid legend visibility mode: true`,
+      )
+    } finally {
+      globalThis.matterviz_data = prev_data
+    }
+  })
+
   test.each([[undefined], [{}]])(
     `display options %o leave Trajectory props untouched`,
     (display_options) => {

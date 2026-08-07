@@ -6,13 +6,13 @@
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
-  import { get_series_color } from '$lib/plot/core/data-transform'
+  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
   import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
+    BasePlotProps,
     CameraProjection3D,
     ColorScaleConfig,
-    ControlsConfig3D,
     DataSeries3D,
     DisplayConfig3D,
     InternalPoint3D,
@@ -33,6 +33,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import { calculate_domain, create_color_scale } from '$lib/plot/core/scales'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { create_renderer, type GizmoOptions, webgpu_available } from '$lib/scene'
   import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
@@ -60,6 +61,7 @@
     size_scale = SCALE_DEFAULTS.size_3d,
     // Legend
     legend = {},
+    show_legend,
     // Camera settings
     camera_position = $bindable([8, 8, 8]),
     camera_projection: camera_projection_init = `perspective` as CameraProjection3D,
@@ -79,7 +81,10 @@
     // Gizmo
     gizmo = true,
     // Controls
-    controls: controls_init = {},
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
+    controls_toggle_props,
+    controls_pane_props,
     // State
     hovered = $bindable(false),
     tooltip_point = $bindable(null),
@@ -115,6 +120,7 @@
     color_bar?: (ComponentProps<typeof ColorBar> & { margin?: number | Sides }) | null
     size_scale?: SizeScaleConfig
     legend?: LegendConfig | null
+    show_legend?: boolean
     camera_position?: Vec3
     camera_projection?: CameraProjection3D
     auto_rotate?: number
@@ -129,14 +135,10 @@
     directional_light?: number
     sphere_segments?: number
     gizmo?: boolean | GizmoOptions
-    controls?: ControlsConfig3D
-    hovered?: boolean
     tooltip_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
     on_series_visibility_change?: (series_idx: number, visible: boolean) => void
-    fullscreen?: boolean
-    fullscreen_toggle?: boolean
     wrapper?: HTMLDivElement
     scene?: Scene
     camera?: Camera
@@ -145,7 +147,10 @@
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     controls_extra?: Snippet
-  } = $props()
+  } & Omit<
+      BasePlotProps,
+      `range_padding` | `padding` | `title` | `change` | `children`
+    > = $props()
 
   let [width, height] = $state([0, 0])
 
@@ -200,9 +205,6 @@
   })
   let camera_projection = $derived(camera_projection_init)
   let auto_rotate = $derived(auto_rotate_init)
-  let controls = $derived({ show: true, open: false, ...controls_init })
-  let controls_open = $derived(controls.open)
-
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
     typeof color_scale === `string`
@@ -223,29 +225,20 @@
 
   // Legend data
   let legend_data = $derived(
-    series.map((srs, series_idx) => {
-      const is_visible = series_visibility[series_idx] ?? true
-      const label = srs?.label ?? `Series ${series_idx + 1}`
-      const series_color = get_series_color(series_idx)
-
-      return {
-        series_idx,
-        label,
-        visible: is_visible,
-        display_style: {
-          symbol_type: `Circle` as const,
-          symbol_color: srs?.point_style
-            ? ((Array.isArray(srs.point_style)
-                ? srs.point_style[0]?.fill
-                : srs.point_style?.fill) ?? series_color)
-            : series_color,
-        },
-        has_explicit_label: Boolean(srs?.label),
-        legend_group: srs?.legend_group,
-      }
-    }),
+    build_legend_items(
+      series.map((srs, series_idx) => ({
+        ...srs,
+        visible: series_visibility[series_idx] ?? true,
+      })),
+      (srs, series_idx) => ({
+        symbol_type: `Circle` as const,
+        symbol_color:
+          (Array.isArray(srs.point_style)
+            ? srs.point_style[0]?.fill
+            : srs.point_style?.fill) ?? get_series_color(series_idx),
+      }),
+    ),
   )
-
   // Compute gizmo props - move up when color bar is shown
   let has_color_bar = $derived(color_bar && all_color_values.length > 0)
   let computed_gizmo = $derived.by(() => {
@@ -339,20 +332,21 @@
     {/if}
 
     <!-- Control pane -->
-    {#if controls.show}
+    {#if show_controls}
       <ScatterPlot3DControls
-        bind:open={controls_open}
+        bind:show_controls
+        bind:controls_open
         toggle_props={{
-          ...controls.toggle_props,
+          ...controls_toggle_props,
           style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${
-            controls.toggle_props?.style ?? ``
+            controls_toggle_props?.style ?? ``
           }`,
         }}
         pane_props={{
-          ...controls.pane_props,
+          ...controls_pane_props,
           // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
           style: `--pane-z-index: var(--z-index-overlay-dialog, 100000002); ${
-            controls.pane_props?.style ?? ``
+            controls_pane_props?.style ?? ``
           }`,
         }}
         bind:x_axis
@@ -388,7 +382,7 @@
     {/if}
 
     <!-- Legend - positioned below controls to avoid overlap -->
-    {#if legend != null && legend_data.length > 1}
+    {#if resolve_legend_visibility(show_legend, legend, legend_data.length)}
       <PlotLegend
         series_data={legend_data}
         on_toggle={toggle_series_visibility}

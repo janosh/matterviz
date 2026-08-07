@@ -35,6 +35,7 @@ describe(`BoxPlot`, () => {
         mount_sized_box_plot({
           series: cats.map((cat) => ({ y: dist(40, 0, 1), label: cat, category: cat })),
           x_axis: { label: `state` },
+          show_legend: false, // isolate tick tilting from the auto legend's layout reservation
         }),
       )
     const baseline_of = (root: HTMLElement): number =>
@@ -217,6 +218,20 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
   })
 
+  test.each([
+    [`y2`, `vertical`, { y: [NaN, NaN], y_axis: `y2` }],
+    [`x2`, `horizontal`, { y: [NaN, NaN], x_axis: `x2` }],
+  ] satisfies [`x2` | `y2`, Orientation, BoxPlotSeries][])(
+    `does not render the %s axis for a secondary box without finite values in %s mode`,
+    async (axis, orientation, invalid_series) => {
+      const plot = await mount_sized_box_plot({
+        orientation,
+        series: [basic, invalid_series],
+      })
+      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+    },
+  )
+
   test(`explicit right padding is not overridden by y2 auto-padding`, async () => {
     const plot = await mount_sized_box_plot({
       series: [basic, { ...basic, label: `Y2`, y_axis: `y2` }],
@@ -352,25 +367,24 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  // show_legend defaults to false, so legend=null only proves anything once it's turned on
+  // Shared rule across all plots: legend=null always hides, an explicit show_legend wins,
+  // and otherwise Cartesian charts auto-show once there's more than one series to tell apart
+  const multi_series = [basic, { ...basic, label: `B`, color: `orangered` }]
   test.each([
-    [`renders when show_legend=true`, { show_legend: true }, true],
-    [`stays hidden by default`, {}, false],
+    [`auto-shows for multiple series`, { series: multi_series }, true],
+    [`renders when show_legend=true`, { series: multi_series, show_legend: true }, true],
+    [`hides when show_legend=false`, { series: multi_series, show_legend: false }, false],
     [
       `is suppressed by legend=null despite show_legend`,
-      {
-        show_legend: true,
-        legend: null,
-      },
+      { series: multi_series, show_legend: true, legend: null },
       false,
     ],
+    [`auto-hides for a single series`, { series: [basic] }, false],
+    [`can force a single-series legend`, { series: [basic], show_legend: true }, true],
   ] as [string, Partial<ComponentProps<typeof BoxPlot>>, boolean][])(
     `legend %s`,
     async (_label, props, visible) => {
-      const plot = await mount_sized_box_plot({
-        series: [basic, { ...basic, label: `B`, color: `orangered` }],
-        ...props,
-      })
+      const plot = await mount_sized_box_plot(props)
       expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
     },
   )

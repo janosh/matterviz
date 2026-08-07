@@ -2,7 +2,7 @@
 
 import { bin, max } from 'd3-array'
 import type { Vec2 } from '$lib/math'
-import { get_nice_data_range } from '$lib/plot/core/scales'
+import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
 import type { AxisConfig, DataSeries, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
 
@@ -80,35 +80,32 @@ export function compute_count_range(
   // no-data fallback: a positive floor on log (counts can't be <= 0), else 0
   const empty_range: Vec2 = [type_name === `log` ? 1 : 0, 1]
   if (series_list.length === 0) return empty_range
-  const counts = series_list.flatMap((srs) => {
+
+  // Track bounds directly: collecting and spreading every count could exceed argument limits.
+  let max_count = 0
+  let min_non_empty = Infinity
+  for (const srs of series_list) {
     const hist = bin()
       .domain(srs.x_axis === `x2` ? x2_domain : x_domain)
       .thresholds(bin_count)
-    return hist(srs.y)
-      .map((data) => data.length)
-      .filter((count) => count > 0)
-  })
-  const max_count = Math.max(0, ...counts)
+    for (const series_bin of hist(srs.y)) {
+      const count = series_bin.length
+      if (count > max_count) max_count = count
+      if (count > 0 && count < min_non_empty) min_non_empty = count
+    }
+  }
 
-  if (max_count <= 0) return empty_range
+  if (max_count === 0) return empty_range
 
-  const min_count = type_name === `log` ? Math.min(...counts) : 0
-  const [y0, y1] = get_nice_data_range(
-    [
-      { x: min_count, y: 0 },
-      { x: max_count, y: 0 },
-    ],
-    ({ x }) => x,
+  const min_count = type_name === `log` ? min_non_empty : 0
+  const [y0, y1] = nice_range_from_extent(
+    accumulate_extent(empty_extent(), [min_count, max_count]),
     y_limit,
     scale_type,
     range_padding,
-    false,
   )
-  // For log count axes, start just below the smallest non-empty bin so singleton tail bins
-  // don't collapse to zero height at the baseline. y_limit is pre-sanitized log-safe, so a null
-  // (incl. dropped non-positive) lower correctly falls back to the positive minimum.
+  // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
   if (type_name === `log`) return [y_limit[0] ?? min_count / 1.1, y1]
 
-  // For linear/arcsinh, start from 0
   return [Math.max(0, y0), y1]
 }

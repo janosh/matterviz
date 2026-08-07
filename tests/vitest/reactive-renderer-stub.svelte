@@ -15,6 +15,7 @@
     display_mode = $bindable(),
     slice_settings = $bindable(),
     zoom_root_id = $bindable(),
+    controls_open = $bindable(),
     ...rest
   }: Record<string, unknown> = $props()
 
@@ -26,6 +27,7 @@
     else if (key === `display_mode`) display_mode = value
     else if (key === `slice_settings`) slice_settings = value
     else if (key === `zoom_root_id`) zoom_root_id = value
+    else if (key === `controls_open`) controls_open = value
     else throw new Error(`reactive-renderer-stub has no $bindable for '${key}'`)
   }
   const read = (): Record<string, unknown> => ({
@@ -37,6 +39,7 @@
     display_mode,
     slice_settings,
     zoom_root_id,
+    controls_open,
   })
   register_stub({ read, write })
 </script>

@@ -40,6 +40,7 @@ import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
+import { bind_props, expect_plot_controls } from '../setup'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -842,6 +843,24 @@ describe(`IrRamanSpectrum component`, () => {
   it.each([`THz`, `eV`, `meV`, `cm-1`, `Ha`] as const)(`renders in unit=%s`, (units) => {
     render({ units })
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+  })
+
+  it(`forwards flat control props and controls_open binding`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    mount(IrRamanSpectrum, {
+      target: document.body,
+      props: bind_props(
+        {
+          spectrum: co2_spectrum,
+          controls_toggle_props: { 'data-testid': `ir-raman-toggle` },
+          controls_pane_props: { 'data-testid': `ir-raman-pane` },
+        },
+        controls_state,
+      ),
+    })
+    await tick()
+    await expect_plot_controls(document, controls_state, `ir-raman`)
   })
 
   it(`draws one stick per IR-active optical mode`, async () => {

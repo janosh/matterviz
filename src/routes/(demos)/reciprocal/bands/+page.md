@@ -95,7 +95,7 @@ Compare multiple band structures on the same plot with interactive controls:
   }
 </script>
 
-<Bands {band_structs} controls={{ show: true, open: true }} />
+<Bands {band_structs} show_controls controls_open />
 ```
 
 ### Path Alignment Modes (`strict`, `intersection`, `union`)
@@ -122,11 +122,7 @@ When comparing multiple structures, `path_mode="strict"` now fails fast if symme
   }
 </script>
 
-<Bands
-  band_structs={{ canonical, alt_path }}
-  path_mode="strict"
-  controls={{ show: true, open: true }}
-/>
+<Bands band_structs={{ canonical, alt_path }} path_mode="strict" show_controls controls_open />
 ```
 
 Switch to `path_mode="intersection"` to compare only shared segments, or `path_mode="union"` to show all segments.
@@ -147,7 +143,8 @@ Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions`
   highlight_regions={[
     { y_min: 40, y_max: 120, color: 'rgba(255, 193, 7, 0.35)', label: 'Target window' },
   ]}
-  controls={{ show: true, open: true }}
+  show_controls
+  controls_open
 />
 ```
 

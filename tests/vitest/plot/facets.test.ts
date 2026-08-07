@@ -168,7 +168,7 @@ describe(`facet layout reconciliation`, () => {
       shared_bands: {
         title_height: 30,
         legend_width: 80,
-        colorbar_width: 40,
+        color_bar_width: 40,
         gap: 10,
       },
     })
@@ -182,8 +182,8 @@ describe(`facet layout reconciliation`, () => {
       band: `legend`,
       rect: { x: 390, y: 40, width: 80, height: 270 },
     })
-    expect(geometry.colorbar).toEqual({
-      band: `colorbar`,
+    expect(geometry.color_bar).toEqual({
+      band: `color_bar`,
       rect: { x: 480, y: 40, width: 40, height: 270 },
     })
     expect(geometry.panels.map(({ rect }) => rect)).toEqual([
@@ -197,7 +197,7 @@ describe(`facet layout reconciliation`, () => {
 
   // oxfmt-ignore
   it.each([
-    [`shared bands that exceed the grid`, assign_facet_panels(panels(1), 1), { width: 100, height: 100, shared_bands: { title_height: 90, legend_width: 50, gap: 20 } }, `Shared facet bands exceed grid size: 100x100 with title 90, legend 50, colorbar 0, gap 20`],
+    [`shared bands that exceed the grid`, assign_facet_panels(panels(1), 1), { width: 100, height: 100, shared_bands: { title_height: 90, legend_width: 50, gap: 20 } }, `Shared facet bands exceed grid size: 100x100 with title 90, legend 50, color_bar 0, gap 20`],
     [`panel gaps that exceed the grid`, assign_facet_panels(panels(4), 2), { width: 100, height: 100, column_gap: 101, row_gap: 0 }, `Facet gaps exceed panel grid size: 100x100 with gaps 101x0`],
   ] as const)(`rejects %s`, (_name, invalid_layout, options, expected_error) => {
     expect(() => compute_facet_geometry(invalid_layout, options)).toThrow(expected_error)

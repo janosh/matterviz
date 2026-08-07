@@ -499,7 +499,7 @@
       bind:x_axis
       bind:y_axis
       legend={null}
-      controls={{ show: true }}
+      show_controls
       controls_extra={chempot_controls}
       user_content={domain_labels}
       on_point_hover={handle_hover}

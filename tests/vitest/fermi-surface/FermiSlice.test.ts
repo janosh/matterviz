@@ -5,7 +5,7 @@ import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, mount_sized } from '../setup'
 
 // Create mock Fermi surface data with configurable bands
 function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceData {
@@ -88,6 +88,23 @@ describe(`FermiSlice`, () => {
   ])(`mounts without error: $desc`, ({ props }) => {
     expect(() => mount(FermiSlice, { target: document.body, props })).not.toThrow()
     expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // Fermi slices keep their historical always-on legend default; explicit false still wins.
+  // oxfmt-ignore
+  test.each([
+    [`default shows one band`, [0], undefined, true],
+    [`default shows three bands`, [0, 1, 2], undefined, true],
+    [`true shows one band`, [0], true, true],
+    [`false hides three bands`, [0, 1, 2], false, false],
+  ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
+    const plot = await mount_sized(
+      FermiSlice,
+      { fermi_data: create_mock_fermi_data([...bands]), show_legend, distance: 0.05 },
+      { selector: `.fermi-slice` },
+    )
+    await tick()
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

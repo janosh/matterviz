@@ -1,15 +1,11 @@
-import {
-  resolve_tick_layout,
-  TICK_LABEL_HEIGHT,
-  type MeasuredAxis,
-} from '$lib/plot/core/tick-layout'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
+import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
-  type FontSpec,
-  type TextLineMetrics,
 } from '$lib/plot/core/text-metrics'
+import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
 
 export {
@@ -44,8 +40,7 @@ export const AXIS_LABEL_OUTER = 12
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
-// Default plot padding (px) reserved for axis ticks/labels, shared by
-// Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
+// Default plot padding (px) reserved for axis ticks/labels across Cartesian plots.
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
 
 export const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
@@ -407,12 +402,6 @@ export const calc_auto_padding = ({
       axis,
       available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH,
     )
-  const horizontal_tick_layout = (
-    axis: MeasuredAxis,
-    available_width: number,
-    side: `x` | `x2`,
-  ) =>
-    resolve_tick_layout(project_measured_axis(axis, 0, available_width), available_width, side)
   // Resolve vertical density against the current drawable height. Explicit top/bottom padding
   // is stable; otherwise the default bands provide a deterministic first pass.
   const initial_plot_height =
@@ -465,6 +454,21 @@ export const calc_auto_padding = ({
       side_pad(y2_axis, y2_title_layout, default_padding.r, `right`, available_height),
   ]
   let [pad_l, pad_r] = vertical_pads(initial_plot_height)
+  // Horizontal labels can use side padding; score endpoints against the full SVG width.
+  const horizontal_tick_layout = (
+    axis: MeasuredAxis,
+    available_width: number,
+    side: `x` | `x2`,
+  ) => {
+    const projected = project_measured_axis(axis, 0, available_width)
+    return resolve_tick_layout(
+      width == null
+        ? projected
+        : { ...projected, axis_extent: { start: -pad_l, end: available_width + pad_r } },
+      available_width,
+      side,
+    )
+  }
 
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
@@ -474,18 +478,19 @@ export const calc_auto_padding = ({
     const inside = x2_axis.tick?.label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
-    // Same reach the labels will actually have; assuming one upright line here is what
-    // clips a rotated top axis off the figure.
     const tick_band = has_outside_ticks
-      ? horizontal_tick_layout(x2_axis, available_width, `x2`).band +
-        8 +
-        Math.max(0, -tick_shift)
+      ? horizontal_tick_layout(x2_axis, available_width, `x2`).band
       : 0
-    const title_band =
-      title_layout.height + (has_title ? Math.max(0, x2_axis.label_shift?.y ?? 0) : 0)
-    const title_gap = has_title && has_outside_ticks ? label_gap : 0
+    const tick_reach = has_outside_ticks ? tick_band + 8 + Math.max(0, -tick_shift) : 0
+    // PlotAxis treats the x2 title shift as its distance from the baseline. Rotated or
+    // wrapped ticks push the title farther out by the excess tick band.
+    const title_reach = has_title
+      ? Math.max(0, x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET) +
+        Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
+        title_layout.height / 2
+      : 0
     const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
-    return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
+    return Math.max(default_padding.t, Math.max(tick_reach, title_reach) + outer_air)
   }
 
   // Bottom depends on the angle the x labels will render at, since a rotated label projects
@@ -497,16 +502,17 @@ export const calc_auto_padding = ({
     const has_outside_ticks = tick_values.length > 0 && !inside
     const title_height = title_layout_for(x_axis, available_width).height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
-    const tick_layout = has_outside_ticks
-      ? horizontal_tick_layout(x_axis, available_width, `x`)
-      : null
-    const band = tick_layout?.band ?? TICK_LABEL_HEIGHT
+    const band = has_outside_ticks
+      ? horizontal_tick_layout(x_axis, available_width, `x`).band
+      : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
     // The title sits one gap past the labels and is centered, so half of it reaches further
     // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
     const below_baseline =
       title_height > 0 ? band + LABEL_GAP_DEFAULT + title_height / 2 : band
-    return Math.max(default_padding.b, below_baseline + tick_shift + AXIS_LABEL_OUTER)
+    const title_shift = title_height > 0 ? Math.max(0, x_axis.label_shift?.y ?? 0) : 0
+    const content_reach = below_baseline + tick_shift + title_shift + AXIS_LABEL_OUTER
+    return Math.max(default_padding.b, content_reach)
   }
 
   let plot_width = width == null ? 0 : Math.max(0, width - pad_l - pad_r)
@@ -651,10 +657,23 @@ export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
     right_rect.y + right_rect.height <= left_rect.y
   )
 
+// Evenly thin items while preserving order and both endpoints so placement cost stays
+// bounded without dropping an abrupt series tail the decoration solver should avoid.
+export const stride_sample = <T>(items: readonly T[], limit: number): readonly T[] => {
+  if (items.length <= limit) return items
+  if (limit <= 1) return items.slice(0, Math.max(0, limit))
+  const last_idx = items.length - 1
+  return Array.from(
+    { length: limit },
+    (_, idx) => items[Math.round((idx * last_idx) / (limit - 1))],
+  )
+}
+
+// Keep long thinned segments from recreating more filler points than sampling removed.
+const MAX_SEGMENT_SAMPLES = 64
+
 // Include finite vertices and, for connected series, sample long segments so auto-placed
-// legends and colorbars avoid lines between sparse markers.
-// `obstacles` lets callers accumulate several series into one array. A private array per series
-// copied out afterwards doubles the passes and the allocation over the whole dataset.
+// decorations avoid sparse lines. Callers can accumulate series in one obstacle array.
 export function sample_series_obstacle_points(
   pixel_points: { x: number; y: number }[],
   draws_line: boolean,
@@ -669,8 +688,9 @@ export function sample_series_obstacle_points(
     }
     obstacles.push(point)
     if (draws_line && previous && step > 0) {
-      const n_samples = Math.floor(
-        Math.hypot(point.x - previous.x, point.y - previous.y) / step,
+      const n_samples = Math.min(
+        MAX_SEGMENT_SAMPLES,
+        Math.floor(Math.hypot(point.x - previous.x, point.y - previous.y) / step),
       )
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
@@ -723,13 +743,7 @@ export function compute_element_placement(
   const effective_y_min = Math.min(valid_y_min, valid_y_max)
   const effective_y_max = Math.max(valid_y_min, valid_y_max)
 
-  const sampled_points =
-    points.length > MAX_SAMPLE_POINTS
-      ? Array.from(
-          { length: MAX_SAMPLE_POINTS },
-          (_, idx) => points[Math.floor((idx * points.length) / MAX_SAMPLE_POINTS)],
-        )
-      : points
+  const sampled_points = stride_sample(points, MAX_SAMPLE_POINTS)
 
   let best_result: ElementPlacementResult = {
     x: effective_x_min,
@@ -760,9 +774,7 @@ export function compute_element_placement(
       // Check for overlap with exclusion rectangles first (early rejection)
       let exclusion_penalty = 0
       for (const excl_rect of exclude_rects) {
-        if (rects_overlap(cand_rect, excl_rect)) {
-          exclusion_penalty += EXCLUSION_PENALTY
-        }
+        if (rects_overlap(cand_rect, excl_rect)) exclusion_penalty += EXCLUSION_PENALTY
       }
 
       let overlap_count = 0

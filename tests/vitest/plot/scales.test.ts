@@ -1,14 +1,17 @@
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import {
+  accumulate_extent,
   calculate_domain,
   create_color_scale,
   create_scale,
   create_time_scale,
+  empty_extent,
   generate_arcsinh_ticks,
   generate_log_ticks,
   generate_ticks,
   get_nice_data_range,
+  nice_range_from_extent,
   scale_arcsinh,
 } from '$lib/plot/core/scales'
 import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/core/types'
@@ -251,6 +254,63 @@ describe(`scales`, () => {
       )
       expect(min).toBeLessThan(0)
       expect(max).toBeGreaterThan(0)
+    })
+  })
+
+  describe(`accumulate_extent / nice_range_from_extent`, () => {
+    test(`tracks finite extent; multi-pass; agrees with get_nice_data_range`, () => {
+      for (const values of [
+        [3, 1, 4, 1, 5],
+        [-2, 7, -9, 0, 3],
+        [1, NaN, 5],
+        [1, null, 5, undefined],
+        [1, Infinity, 5],
+        [1, -Infinity, 5],
+        [NaN, Infinity, -Infinity],
+        [42],
+        [0, 0, 0],
+      ] as unknown as number[][]) {
+        const acc = accumulate_extent(empty_extent(), values)
+        const finite_values = values.filter(Number.isFinite)
+        expect(acc).toEqual({
+          ...(finite_values.length > 0
+            ? { min: Math.min(...finite_values), max: Math.max(...finite_values) }
+            : {}),
+          n_finite: finite_values.length,
+        })
+      }
+      const acc = accumulate_extent(empty_extent(), [4, 8], 5)
+      accumulate_extent(acc, [-1, 2])
+      expect(acc).toEqual({ min: -1, max: 8, n_finite: 4 })
+
+      for (const scale_type of [`linear`, `log`, `arcsinh`] as const) {
+        for (const padding of scale_type === `log` ? [0, 0.1] : [0, 0.05]) {
+          for (const values of [
+            [],
+            [7],
+            [0, 4.7],
+            [-4.7, 0],
+            [1, 2, 3, 4, 5],
+            [0.001, 1000],
+            [3, NaN, 9],
+            [1, Infinity, 5],
+            [NaN, Infinity],
+          ]) {
+            for (const limits of [
+              [null, null],
+              [0, 10],
+              [-5, null],
+            ] as [number | null, number | null][]) {
+              const args = [limits, scale_type, padding] as const
+              const accumulated = accumulate_extent(empty_extent(), values)
+              const extent_range = nice_range_from_extent(accumulated, ...args)
+              const points = values.map((x) => ({ x, y: 0 }))
+              const data_range = get_nice_data_range(points, (point) => point.x, ...args)
+              expect(extent_range).toEqual(data_range)
+            }
+          }
+        }
+      }
     })
   })
 

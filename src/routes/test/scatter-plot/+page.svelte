@@ -16,6 +16,11 @@
       stroke_width: 1,
     },
   }
+  const canvas_auto_data = {
+    x: Array.from({ length: 10_001 }, (_, idx) => idx % 101),
+    y: Array.from({ length: 10_001 }, (_, idx) => Math.floor(idx / 101)),
+    point_style: { fill: `#1971c2`, stroke: `none` },
+  }
 
   const marginal_browser_series: DataSeries[] = [
     {
@@ -598,7 +603,16 @@
     series={[basic_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    controls={{ show: true }}
+    show_controls
+  />
+</section>
+
+<section id="canvas-auto-renderer">
+  <h2>Canvas Auto Renderer</h2>
+  <ScatterPlot
+    series={[canvas_auto_data]}
+    show_controls={false}
+    style="height: 320px; width: 480px"
   />
 </section>
 
@@ -851,10 +865,11 @@
     legend={null}
     id="legend-single-null"
   />
-  <h3>Single Series (Configured Legend) - Legend Expected</h3>
+  <h3>Single Series (show_legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ layout: `horizontal` }}
+    show_legend
     id="legend-single-config"
   />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
@@ -862,7 +877,7 @@
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ draggable: true, style: `padding: 8px;` }}
     id="legend-multi-default"
-    controls={{ show: true }}
+    show_controls
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
@@ -876,12 +891,14 @@
   <ScatterPlot
     series={legend_dedupe_same_group}
     legend={{ draggable: false }}
+    show_legend
     id="legend-dedupe-same-group"
   />
   <h3>Same Label, No Group - 1 Legend Item Expected (Deduplicated)</h3>
   <ScatterPlot
     series={legend_dedupe_no_group}
     legend={{ draggable: false }}
+    show_legend
     id="legend-dedupe-no-group"
   />
 </section>
@@ -1213,6 +1230,7 @@
     color_scale={{ scheme: `Viridis` }}
     color_bar={{ title: `Color Value` }}
     legend={{ draggable: true }}
+    show_legend
   />
 </section>
 
@@ -1233,7 +1251,7 @@
     series={control_precedence_series}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y`, range: [0, 8] }}
-    controls={{ show: true }}
+    show_controls
     legend={{ draggable: true }}
   />
 </section>

@@ -1,28 +1,27 @@
 import { format_value_or_num } from '$lib/labels'
 import { get_tick_label } from '$lib/plot/core/scales'
 import { suggest_tick_count, thin_tick_indices } from '$lib/plot/core/tick-density'
-import {
-  analyze_tick_label_geometry,
-  type TickAxisExtent,
-  type TickLabelAnchor,
-  type TickLabelGeometry,
+import { analyze_tick_label_geometry } from '$lib/plot/core/tick-geometry'
+import type {
+  TickAxisExtent,
+  TickLabelAnchor,
+  TickLabelGeometry,
 } from '$lib/plot/core/tick-geometry'
 import {
   clear_text_metrics_cache,
   DEFAULT_FONT_SPEC,
   measure_css_text_width,
   measure_text_line,
-  type FontSpec,
 } from '$lib/plot/core/text-metrics'
+import type { FontSpec } from '$lib/plot/core/text-metrics'
 import {
   create_tick_candidate,
   generate_stagger_candidate,
   generate_ellipsis_candidate,
   generate_thinned_candidate,
   TICK_STRATEGIES,
-  type TickStrategy,
-  type TickStrategyCandidate,
 } from '$lib/plot/core/tick-strategies'
+import type { TickStrategy, TickStrategyCandidate } from '$lib/plot/core/tick-strategies'
 import { select_tick_candidate } from '$lib/plot/core/tick-strategies/scoring'
 import type { MeasuredTickCandidate } from '$lib/plot/core/tick-strategies/types'
 import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'

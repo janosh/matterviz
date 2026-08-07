@@ -2,6 +2,7 @@
 // construction and per-bar rect computation. Extracted from BarPlot.svelte's
 // template so the coordinate math is unit-testable.
 
+import type { Point2D } from '$lib/math'
 import { process_prop } from '$lib/plot/core/data-transform'
 import type { BarMode, InternalPoint, Orientation } from '$lib/plot/core/types'
 import type { GroupInfo, NumericBarSeries } from './data'
@@ -52,6 +53,24 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
     .filter((pt) => isFinite(pt.x) && isFinite(pt.y))
 }
 
+// Nearest polyline vertex to the cursor. Deliberately unbounded (unlike the scatter
+// hover index, which cuts off at a pick radius): the caller's hit target is the line
+// itself, so a cursor mid-segment must still resolve to an endpoint.
+export function nearest_line_point<Metadata = Record<string, unknown>>(
+  points: readonly LineSeriesPoint<Metadata>[],
+  pointer: Point2D,
+): LineSeriesPoint<Metadata> | null {
+  let best: LineSeriesPoint<Metadata> | null = null
+  let best_dist_sq = Infinity
+  for (const point of points) {
+    const dist_sq = (point.x - pointer.x) ** 2 + (point.y - pointer.y) ** 2
+    if (dist_sq >= best_dist_sq) continue
+    best_dist_sq = dist_sq
+    best = point
+  }
+  return best
+}
+
 export interface BarRect {
   c0: number // category-axis screen coord of bar start
   c1: number // category-axis screen coord of bar end
@@ -63,9 +82,8 @@ export interface BarRect {
   rect_h: number
 }
 
-// Screen-space rect for one bar: category extent (c0/c1) from bar width +
-// grouped offset, value extent (v0/v1) from stacked base to base + value.
-// Rects get min 1px width so thin bars stay visible.
+// Screen-space bar rect. Category thickness has a 1px floor for interaction;
+// value extent stays zero for zero-value bars.
 export function compute_bar_rect(opts: {
   cat_val: number
   val: number
@@ -93,11 +111,13 @@ export function compute_bar_rect(opts: {
   const c1 = cat_scale(cat_val + group_offset + half)
   const v0 = val_scale(base)
   const v1 = val_scale(base + val)
+  const cat_extent = Math.max(1, Math.abs(c1 - c0))
+  const val_extent = val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0))
+  // Keep a floored value extent anchored at the baseline instead of crossing it.
+  const val_start = v1 < v0 ? v0 - val_extent : v0
   const [rect_x, rect_y] = is_vertical
-    ? [Math.min(c0, c1), Math.min(v0, v1)]
-    : [Math.min(v0, v1), Math.min(c0, c1)]
-  const [rect_w, rect_h] = is_vertical
-    ? [Math.max(1, Math.abs(c1 - c0)), Math.max(0, Math.abs(v1 - v0))]
-    : [val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]
+    ? [Math.min(c0, c1), val_start]
+    : [val_start, Math.min(c0, c1)]
+  const [rect_w, rect_h] = is_vertical ? [cat_extent, val_extent] : [val_extent, cat_extent]
   return { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h }
 }

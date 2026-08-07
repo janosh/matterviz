@@ -885,9 +885,14 @@
           ]
         },
         "matterviz.histogram.show_legend": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show legend in histogram plots"
+          "type": "string",
+          "default": "auto",
+          "description": "Legend visibility in histogram plots. 'auto' shows one only when the plot renders more than one legend entry",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ]
         },
         "matterviz.histogram.bin_count": {
           "type": "number",
@@ -1457,9 +1462,14 @@
           ]
         },
         "matterviz.scatter.show_legend": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show legend in scatter plots"
+          "type": "string",
+          "default": "auto",
+          "description": "Legend visibility in scatter plots. 'auto' shows one only when the plot renders more than one legend entry",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ]
         },
         "matterviz.scatter.show_points": {
           "type": "boolean",

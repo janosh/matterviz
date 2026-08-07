@@ -30,6 +30,8 @@
     children,
     drag_dropped = $bindable([]),
     dragging = $bindable(false),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
@@ -50,6 +52,10 @@
     // the Dash wrapper generator, which reads this literal and drops anything not in it
     x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
     y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
+    show_controls?: ComponentProps<typeof ScatterPlot>[`show_controls`]
+    controls_open?: ComponentProps<typeof ScatterPlot>[`controls_open`]
+    controls_toggle_props?: ComponentProps<typeof ScatterPlot>[`controls_toggle_props`]
+    controls_pane_props?: ComponentProps<typeof ScatterPlot>[`controls_pane_props`]
   } & ComponentProps<typeof ScatterPlot> = $props()
 
   const handle_drop = create_structure_drop_handler({
@@ -144,6 +150,8 @@
 {:else}
   <ScatterPlot
     {...rest}
+    bind:show_controls
+    bind:controls_open
     {series}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}

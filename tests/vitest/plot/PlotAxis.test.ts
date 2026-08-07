@@ -67,14 +67,14 @@ describe(`PlotAxis`, () => {
       `x`,
       {
         line: { y1: `0`, y2: `5` },
-        text: { x: `0`, y: `8`, 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
+        text: { x: `0`, y: `12`, 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
       },
     ],
     [
       `x2`,
       {
         line: { y1: `-5`, y2: `0` },
-        text: { x: `0`, y: `-8`, 'text-anchor': `middle`, 'dominant-baseline': `auto` },
+        text: { x: `0`, y: `-12`, 'text-anchor': `middle`, 'dominant-baseline': `auto` },
       },
     ],
     [
@@ -373,7 +373,7 @@ describe(`PlotAxis`, () => {
     const labels = [`PENDING`, `CANCELLED by 2054`]
     const svg = await mount_measured_axis({
       side,
-      ticks: [50, 100],
+      ticks: [50, 150],
       tick_label: (value: number) => labels[value === 50 ? 0 : 1],
       axis: { tick: { label: { auto_layout: { strategies: [`wrap`] } } } },
     })
@@ -453,8 +453,8 @@ describe(`PlotAxis`, () => {
     mock_text_measurement()
     const svg = await mount_axis({
       side: `x`,
-      ticks: [pad.l, width - pad.r],
-      tick_label: (value: number) => (value === pad.l ? `Leading` : `Trailing`),
+      ticks: [0, width],
+      tick_label: (value: number) => (value === 0 ? `Leading` : `Trailing`),
       axis: {
         tick: { label: { auto_layout: { strategies: [`upright`] } } },
       },

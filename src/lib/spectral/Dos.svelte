@@ -43,7 +43,7 @@
     units = $bindable(`THz`),
     normalize = $bindable(null),
     orientation = `vertical`,
-    show_legend = true,
+    show_legend,
     x_axis = {},
     y_axis = $bindable({}),
     hovered_frequency = $bindable(null),
@@ -53,7 +53,8 @@
     pdos_type = null,
     pdos_filter = undefined,
     // Controls configuration
-    show_controls = true,
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     show_sigma_control = true,
     show_normalize_control = false,
     show_units_control = false,
@@ -431,13 +432,14 @@
     x_axis={final_x_axis}
     bind:y_axis={internal_y_axis}
     bind:display
-    legend={show_legend ? {} : null}
+    {show_legend}
     hover_config={{ threshold_px: 50 }}
-    controls={{ show: show_controls }}
     on_point_hover={(event) => {
       hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
     }}
-    {...{ range_padding: 0, ...rest }}
+    {...rest}
+    bind:show_controls
+    bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}
       {@const tooltip_data = format_dos_tooltip(

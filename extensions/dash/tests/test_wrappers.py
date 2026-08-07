@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from inspect import signature
 from pathlib import Path
 
 import pytest
@@ -118,3 +119,19 @@ def test_convex_hull_category_props_forwarded(wrapper: type) -> None:
         "entry_category": None,
         "hidden_categories": [],
     }
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [mvc.XrdPlot, mvc.Bands, mvc.Dos, mvc.ScatterPlot, mvc.Histogram, mvc.RdfPlot],
+)
+def test_plot_wrappers_expose_only_flat_control_props(wrapper: type) -> None:
+    """Plot wrappers drop nested controls and forward the flat replacement props."""
+    expected = {
+        "show_controls": False,
+        "controls_open": True,
+        "controls_toggle_props": {"title": "Toggle"},
+        "controls_pane_props": {"class": "pane"},
+    }
+    assert "controls" not in signature(wrapper).parameters
+    assert wrapper(**expected).mv_props == expected

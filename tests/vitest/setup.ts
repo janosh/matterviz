@@ -135,6 +135,22 @@ export const bind_props = <P extends object, S extends Record<string, unknown>>(
     ),
   ) as P & S
 
+// Assert forwarded control element props and a controls_open binding round-trip.
+export async function expect_plot_controls(
+  target: ParentNode,
+  controls_state: { controls_open: boolean },
+  test_id_prefix: string,
+): Promise<void> {
+  const toggle = target.querySelector<HTMLButtonElement>(
+    `[data-testid="${test_id_prefix}-toggle"]`,
+  )
+  expect(toggle?.getAttribute(`aria-expanded`)).toBe(`true`)
+  expect(target.querySelector(`[data-testid="${test_id_prefix}-pane"]`)).not.toBeNull()
+  toggle?.click()
+  await tick()
+  expect(controls_state.controls_open).toBe(false)
+}
+
 // Dispatch a cancelable window-level keydown and flush Svelte effects
 // synchronously. Returns the event so callers can assert `defaultPrevented`.
 export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent => {
@@ -572,20 +588,44 @@ export const make_wyckoff_dataset = (
   } as unknown as MoyoDataset
 }
 
-// ResizeObserver mock - triggers callback with dimensions on observe
-globalThis.ResizeObserver = class ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  observe(el: Element) {
-    queueMicrotask(() =>
-      this.callback(
-        [{ target: el, contentRect: { width: 800, height: 600 } } as ResizeObserverEntry],
-        this,
-      ),
+// ResizeObserver mock: report a useful initial size and allow tests to trigger later
+// measurements after changing an observed element's dimensions.
+const resize_observers: TestResizeObserver[] = []
+export const get_resize_observer_count = (): number => resize_observers.length
+class TestResizeObserver implements ResizeObserver {
+  readonly observed_elements: Element[] = []
+  constructor(private readonly callback: ResizeObserverCallback) {
+    resize_observers.push(this)
+  }
+  notify(element: Element, width = element.clientWidth, height = element.clientHeight): void {
+    this.callback(
+      [{ target: element, contentRect: { width, height } } as ResizeObserverEntry],
+      this,
     )
   }
-  unobserve() {}
-  disconnect() {}
+  observe(element: Element): void {
+    if (!resize_observers.includes(this)) resize_observers.push(this)
+    if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
+    queueMicrotask(() => {
+      if (this.observed_elements.includes(element)) this.notify(element, 800, 600)
+    })
+  }
+  unobserve(element: Element): void {
+    const element_idx = this.observed_elements.indexOf(element)
+    if (element_idx !== -1) this.observed_elements.splice(element_idx, 1)
+  }
+  disconnect(): void {
+    this.observed_elements.length = 0
+    const observer_idx = resize_observers.indexOf(this)
+    if (observer_idx !== -1) resize_observers.splice(observer_idx, 1)
+  }
 }
+export const trigger_resize_observer = (element: Element): void => {
+  for (const observer of resize_observers) {
+    if (observer.observed_elements.includes(element)) observer.notify(element)
+  }
+}
+globalThis.ResizeObserver = TestResizeObserver
 
 // Mock Web Animations API for Svelte transitions (not available in jsdom)
 // The mock immediately triggers onfinish to complete transitions synchronously

@@ -3,7 +3,7 @@ import type { TreemapArc, TreemapNode, TreemapNodeHandlerProps } from '$lib/plot
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, resize_element } from '../setup'
+import { mount_sized, resize_element, trigger_resize_observer } from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: TreemapNode[] = [
@@ -369,12 +369,29 @@ describe(`Treemap`, () => {
       data: tree,
       color_values: (arc: { is_leaf: boolean; value: number }) =>
         arc.is_leaf ? arc.value : null,
-      colorbar: { title: `count`, orientation: `vertical` },
+      color_bar: { title: `count`, orientation: `vertical` },
     })
     const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
-    expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
+    if (!colorbar) throw new Error(`vertical color bar not found`)
+    expect(colorbar.style.getPropertyValue(`--cbar-height`)).toBe(
       `var(--treemap-colorbar-height, 150px)`,
     )
+    await resize_element(colorbar, 80, 150)
+    trigger_resize_observer(colorbar)
+    await tick()
+    const transform =
+      plot.querySelector(`.cells`)?.parentElement?.getAttribute(`transform`) ?? ``
+    const group_x = Number(/translate\((?<x>[-\d.]+)/.exec(transform)?.groups?.x)
+    const cell_rects = plot.querySelectorAll<SVGRectElement>(`.cells rect`)
+    expect(cell_rects.length).toBeGreaterThan(0)
+    const right_edges = [...cell_rects].map(
+      (rect) => Number(rect.getAttribute(`x`)) + Number(rect.getAttribute(`width`)),
+    )
+    const drawable_right = group_x + Math.max(...right_edges)
+    // A vertical bar reserves its measured width beside the cells, so the tiling must
+    // stop at least that far from the right edge. (Asserted on geometry rather than the
+    // inline style: jsdom drops `right: var(...)` declarations entirely.)
+    expect(500 - drawable_right).toBeGreaterThanOrEqual(80)
     // branches keep categorical colors, leaves get metric colors
     expect(cell_rect(plot, `A`).getAttribute(`fill`)).toBe(`#e15759`)
     expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(DEFAULT_SERIES_COLORS[0])

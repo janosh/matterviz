@@ -34,7 +34,7 @@
       y_axis: energy_axis,
       range_padding: 0.04,
       legend: null,
-      controls: { show: false },
+      show_controls: false,
       point_tween: { duration: 0 },
       line_tween: { duration: 0 },
     }),
@@ -52,7 +52,7 @@
     binned: plot_config(BinnedScatterPlot, {
       x_axis: strain_axis,
       y_axis: energy_axis,
-      density: { color_bar: null },
+      color_bar: null,
     }),
   }
 

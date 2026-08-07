@@ -23,12 +23,20 @@
   } from '$lib/plot/core/marginals'
   import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
+  import {
+    build_legend_items,
+    extract_series_color,
+    series_symbol_swatch,
+  } from '$lib/plot/core/data-transform'
   import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    legend_mode_to_prop,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import {
     invert_rect_range,
     resolve_axis_ranges,
@@ -64,10 +72,12 @@
     solve_reference_annotations,
   } from '$lib/plot/core/reference-line'
   import {
+    accumulate_extent,
     create_axis_scales,
+    empty_extent,
     generate_ticks,
-    get_nice_data_range,
     get_tick_label,
+    nice_range_from_extent,
   } from '$lib/plot/core/scales'
   import type {
     BasePlotProps,
@@ -102,11 +112,17 @@
     padding = {},
     title,
     bins = $bindable(100),
-    show_legend = $bindable(true),
+    // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
+    // would collapse it to plain boolean
+    show_legend = $bindable<boolean | undefined>(
+      legend_mode_to_prop(DEFAULTS.histogram.show_legend),
+    ),
     legend = {},
     bar: bar_init = {},
     selected_property = $bindable(``),
-    mode = $bindable(`single`),
+    // Defaults come from settings so the component and its controls pane agree; the pane
+    // read DEFAULTS.histogram.mode ('overlay') while the component hard-coded 'single'
+    mode = $bindable(DEFAULTS.histogram.mode),
     tooltip,
     hovered = $bindable(false),
     change = () => {},
@@ -254,22 +270,32 @@
   )
   let selected_series = $derived(selected_series_entries.map(({ series_data }) => series_data))
 
-  // Separate series by y-axis
-  let y1_series = $derived(
-    selected_series.filter((srs: DataSeries) => (srs.y_axis ?? `y1`) === `y1`),
-  )
-  let y2_series = $derived(selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`))
-  let x2_series = $derived(selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`))
+  // Partition count axes and accumulate value extents in one pass.
+  let axis_data = $derived.by(() => {
+    const y1_series: DataSeries[] = []
+    const y2_series: DataSeries[] = []
+    const x1_extent = empty_extent()
+    const x2_extent = empty_extent()
+    const y2_extent = empty_extent()
+    for (const srs of selected_series) {
+      accumulate_extent(srs.x_axis === `x2` ? x2_extent : x1_extent, srs.y)
+      if (srs.y_axis === `y2`) {
+        y2_series.push(srs)
+        accumulate_extent(y2_extent, srs.y)
+      } else y1_series.push(srs)
+    }
+    return { y1_series, y2_series, x1_extent, x2_extent, y2_extent }
+  })
 
   const count_ranges = (x_domain: Vec2, x2_domain: Vec2) => {
     const count_cfg = { x_domain, x2_domain, bin_count: bins, range_padding }
     return {
-      y: compute_count_range(y1_series, {
+      y: compute_count_range(axis_data.y1_series, {
         ...count_cfg,
         scale_type: final_y_axis.scale_type ?? `linear`,
         y_limit: log_safe_range(final_y_axis),
       }),
-      y2: compute_count_range(y2_series, {
+      y2: compute_count_range(axis_data.y2_series, {
         ...count_cfg,
         scale_type: final_y2_axis.scale_type ?? `linear`,
         y_limit: log_safe_range(final_y2_axis),
@@ -277,30 +303,25 @@
     }
   }
 
+  let has_x2_points = $derived(axis_data.x2_extent.n_finite > 0)
+  let has_y2_points = $derived(axis_data.y2_extent.n_finite > 0)
+
   let auto_ranges = $derived.by(() => {
-    // Only x1 series contribute to the x1 auto-range (x2 series get their own domain below)
-    const x1_values = selected_series.flatMap((srs) => (srs.x_axis === `x2` ? [] : srs.y))
-    const auto_x = get_nice_data_range(
-      x1_values.map((val) => ({ x: val, y: 0 })),
-      ({ x }) => x,
+    const auto_x = nice_range_from_extent(
+      axis_data.x1_extent,
       final_x_axis.range ?? [null, null],
       final_x_axis.scale_type ?? `linear`,
       range_padding,
-      false,
     )
 
-    const x2_values = x2_series.flatMap((srs: DataSeries) => srs.y)
-    const auto_x2 =
-      x2_values.length > 0
-        ? get_nice_data_range(
-            x2_values.map((val) => ({ x: val, y: 0 })),
-            ({ x }) => x,
-            final_x2_axis.range ?? [null, null],
-            final_x2_axis.scale_type ?? `linear`,
-            range_padding,
-            false,
-          )
-        : ([0, 1] as Vec2)
+    const auto_x2 = has_x2_points
+      ? nice_range_from_extent(
+          axis_data.x2_extent,
+          final_x2_axis.range ?? [null, null],
+          final_x2_axis.scale_type ?? `linear`,
+          range_padding,
+        )
+      : ([0, 1] as Vec2)
 
     return { x: auto_x, x2: auto_x2, ...count_ranges(auto_x, auto_x2) }
   })
@@ -355,9 +376,9 @@
         : []
     return {
       x: axis_ticks(final_x_axis, axis_ranges.x, axis_scales.x, 8),
-      x2: axis_ticks(final_x2_axis, axis_ranges.x2, axis_scales.x2, 8, x2_series.length > 0),
+      x2: axis_ticks(final_x2_axis, axis_ranges.x2, axis_scales.x2, 8, has_x2_points),
       y: axis_ticks(final_y_axis, axis_ranges.y, axis_scales.y, 6),
-      y2: axis_ticks(final_y2_axis, axis_ranges.y2, axis_scales.y2, 6, y2_series.length > 0),
+      y2: axis_ticks(final_y2_axis, axis_ranges.y2, axis_scales.y2, 6, has_y2_points),
     }
   }
 
@@ -403,8 +424,8 @@
       width,
       height,
     )
-    const padding_x2_axis = x2_series.length > 0 ? final_x2_axis : {}
-    const padding_y2_axis = y2_series.length > 0 ? final_y2_axis : {}
+    const padding_x2_axis = has_x2_points ? final_x2_axis : {}
+    const padding_y2_axis = has_y2_points ? final_y2_axis : {}
     const padding_ticks = get_plot_ticks(padding_scales, padding_ranges)
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
@@ -448,7 +469,10 @@
     return measured_footprint(legend_element, { width: 120, height: 60 })
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
-  const should_show_legend = $derived(show_legend && legend != null && series.length > 1)
+  // Controls read the resolved auto value and write back an explicit override.
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, series.length),
+  )
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
   // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
@@ -519,9 +543,7 @@
       y_axis: series_data.y_axis,
     })),
   )
-  const marginal_has_axis = $derived(
-    marginal_axis_presence(x2_series.length > 0, y2_series.length > 0),
-  )
+  const marginal_has_axis = $derived(marginal_axis_presence(has_x2_points, has_y2_points))
 
   // Scales and data (x/x2 share the horizontal pixel span, y/y2 the inverted vertical one)
   let scales = $derived(
@@ -554,7 +576,7 @@
     return compute_histogram_bins(selected_series_entries, {
       x_domain: ranges.current.x,
       x2_domain: ranges.current.x2,
-      has_x2: x2_series.length > 0,
+      has_x2: has_x2_points,
       bin_count: bins,
       series_color,
     })
@@ -588,7 +610,7 @@
     }
   })
 
-  let legend_data = $derived(prepare_legend_data(series))
+  let legend_data = $derived(build_legend_items(series, series_symbol_swatch))
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({
@@ -624,10 +646,9 @@
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
       if (!facet.update_range(`x`, next_x)) x_axis = { ...x_axis, range: next_x }
-      // gate x2/y2 on series presence: their scales are [0, 1] sentinels otherwise,
+      // Gate x2/y2 on valid data: their scales are [0, 1] sentinels otherwise,
       // so inverting would store a phantom range in the bindable prop
-      const next_x2 =
-        x2_series.length > 0 ? invert_rect_range(scales.x2, start.x, current.x) : null
+      const next_x2 = has_x2_points ? invert_rect_range(scales.x2, start.x, current.x) : null
       if (next_x2 && !facet.update_range(`x2`, next_x2)) {
         x2_axis = { ...x2_axis, range: next_x2 }
       }
@@ -635,8 +656,7 @@
       if (next_y && !facet.update_range(`y`, next_y)) {
         y_axis = { ...y_axis, range: next_y }
       }
-      const next_y2 =
-        y2_series.length > 0 ? invert_rect_range(scales.y2, start.y, current.y) : null
+      const next_y2 = has_y2_points ? invert_rect_range(scales.y2, start.y, current.y) : null
       if (next_y2 && !facet.update_range(`y2`, next_y2)) {
         y2_axis = { ...y2_axis, range: next_y2 }
       }
@@ -824,8 +844,8 @@
       x2_scale_type={final_x2_axis.scale_type}
       y_scale_type={final_y_axis.scale_type}
       y2_scale_type={final_y2_axis.scale_type}
-      has_x2={x2_series.length > 0}
-      has_y2={y2_series.length > 0}
+      has_x2={has_x2_points}
+      has_y2={has_y2_points}
       {width}
       {height}
       {pad}
@@ -859,7 +879,7 @@
     {/if}
 
     <!-- X2-axis (Top) -->
-    {#if x2_series.length > 0 && facet.axis_visible(`x2`)}
+    {#if has_x2_points && facet.axis_visible(`x2`)}
       <PlotAxis
         side="x2"
         ticks={ticks.x2}
@@ -899,7 +919,7 @@
     {/if}
 
     <!-- Y2-axis (Right) -->
-    {#if y2_series.length > 0 && facet.axis_visible(`y2`)}
+    {#if has_y2_points && facet.axis_visible(`y2`)}
       <PlotAxis
         side="y2"
         ticks={ticks.y2}
@@ -1038,6 +1058,7 @@
       bind:bins
       bind:mode
       bind:show_legend
+      resolved_show_legend={should_show_legend}
       bind:selected_property
       bind:display
       bind:bar
@@ -1050,8 +1071,8 @@
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}
       {series}
-      has_x2_points={x2_series.length > 0}
-      has_y2_points={y2_series.length > 0}
+      {has_x2_points}
+      {has_y2_points}
       children={controls_extra}
     />
   {/if}

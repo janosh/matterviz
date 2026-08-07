@@ -1,6 +1,7 @@
 import { ElementScatter } from '$lib'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { bind_props, expect_plot_controls } from '../setup'
 
 // Atomic radii for first 10 elements (H through Ne)
 const y_values = [53, 31, 167, 112, 87, 77, 75, 73, 71, 69]
@@ -37,5 +38,26 @@ describe(`ElementScatter`, () => {
       tooltip_point: { x: 1, y: 53, series_idx: 0, point_idx: 0 },
     })
     expect(without).toContain(`Value`)
+  })
+
+  test(`forwards flat control props and round-trips controls_open`, async () => {
+    expect.hasAssertions()
+    document.body.replaceChildren()
+    const controls_state = { controls_open: true }
+    mount(ElementScatter, {
+      target: document.body,
+      props: bind_props(
+        {
+          y: y_values,
+          show_controls: true,
+          controls_toggle_props: { 'data-testid': `element-toggle` },
+          controls_pane_props: { 'data-testid': `element-pane` },
+        },
+        controls_state,
+      ),
+    })
+    await tick()
+
+    await expect_plot_controls(document, controls_state, `element`)
   })
 })

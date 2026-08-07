@@ -224,9 +224,9 @@ Pass `color_values` to color cells by a numeric metric on a continuous d3 colorm
 </script>
 
 <div style="display: flex; gap: 1em; align-items: center; margin-block: 0 1em">
-  <button onclick={() => (zoom_root_id = null)} disabled={zoom_root_id === null}>
-    Reset zoom
-  </button>
+  {#if zoom_root_id !== null}
+    <button onclick={() => (zoom_root_id = null)}>Reset zoom</button>
+  {/if}
   <span>current root: <code>{zoom_root_id ?? `all`}</code></span>
 </div>
 
@@ -235,7 +235,7 @@ Pass `color_values` to color cells by a numeric metric on a continuous d3 colorm
   bind:zoom_root_id
   max_depth={2}
   color_values={(cell) => (cell.metadata?.e_above_hull as number | undefined) ?? null}
-  colorbar={{ title: `E<sub>hull</sub> (eV/atom)` }}
+  color_bar={{ title: `E<sub>hull</sub> (eV/atom)` }}
   style="height: 500px"
 >
   {#snippet tooltip(info)}

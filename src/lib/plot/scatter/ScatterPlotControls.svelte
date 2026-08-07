@@ -24,6 +24,10 @@
     display = $bindable({}),
     styles = $bindable({}),
     selected_series_idx = $bindable(0),
+    // Declared explicitly (rather than left to ...rest) so the host can bind them and
+    // observe the pane being shown/opened, matching BarPlotControls
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     on_touch,
     children,
     ...rest
@@ -72,7 +76,8 @@
   bind:y_axis
   bind:y2_axis
   bind:display
-  show_controls
+  bind:show_controls
+  bind:controls_open
   {...rest}
 >
   {@render children?.({

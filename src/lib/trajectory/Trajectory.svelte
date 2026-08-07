@@ -29,7 +29,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
-  import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
+  import type { DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -867,8 +867,13 @@
   )
   let show_structure = $derived(![`scatter`, `histogram`].includes(display_mode))
 
-  // Check if there are any Y2 series to determine padding
-  let has_y2_series = $derived(plot_series.some((srs) => srs.y_axis === `y2` && srs.visible))
+  // Reserve y2 padding only when the secondary axis has a value it can render.
+  let has_y2_series = $derived(
+    plot_series.some(
+      ({ y, y_axis: axis_name, visible }) =>
+        axis_name === `y2` && visible && y.some(Number.isFinite),
+    ),
+  )
   // Report the current step to consumers after explicit slider, input, or plot navigation.
   function notify_step_change(step_idx: number = current_step_idx) {
     if (!trajectory || !Number.isFinite(step_idx)) return
@@ -1353,7 +1358,7 @@
 
   // Separate state variables for each pane to match component prop types
   let structure_info_open = $state(false)
-  let scatter_controls = $state<ControlsConfig>({ open: false })
+  let scatter_controls_open = $derived(scatter_props.controls_open ?? false)
   let trajectory_export_open = $state(false)
 
   // Analyses offered by the Graph menu. Each pane is mounted separately below (they take
@@ -1408,7 +1413,7 @@
   class:active={is_playing ||
     structure_info_open ||
     controls_open ||
-    scatter_controls.open ||
+    scatter_controls_open ||
     trajectory_export_open ||
     info_pane_open ||
     any_analysis_open}
@@ -1793,7 +1798,7 @@
             {x_axis}
             {y_axis}
             {y2_axis}
-            controls={scatter_controls}
+            bind:controls_open={scatter_controls_open}
             current_x_value={x_map.to_x(current_step_idx)}
             change={plot_skimming ? handle_plot_change : undefined}
             padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
@@ -1808,7 +1813,6 @@
                 scatter_props.legend?.on_toggle?.(series_idx)
               },
             }}
-            class={scatter_props.class}
           >
             {#snippet tooltip({ x, y, metadata, label }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
@@ -1826,14 +1830,12 @@
             }}
             y_axis={{ label: histogram_props.y_axis?.label ?? `Count`, format: `.3~s` }}
             mode={histogram_props.mode ?? `overlay`}
-            show_legend={histogram_props.show_legend ?? plot_series.length > 1}
             legend={histogram_props.legend}
             on_series_toggle={(series_idx: number) => {
               handle_legend_toggle(series_idx)
               histogram_props.on_series_toggle?.(series_idx)
             }}
             style="height: 100%"
-            class={histogram_props.class}
             --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({

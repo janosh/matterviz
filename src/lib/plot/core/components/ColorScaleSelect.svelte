@@ -13,7 +13,7 @@
     selected = $bindable([]),
     minSelect = 1,
     placeholder = `Select a color scale`,
-    colorbar = {},
+    color_bar = {},
     ...rest
   }: Omit<ComponentProps<typeof Select>, `options`> & {
     options?: D3InterpolateName[]
@@ -21,7 +21,7 @@
     selected?: D3InterpolateName[]
     minSelect?: number
     placeholder?: string
-    colorbar?: ComponentProps<typeof ColorBar>
+    color_bar?: ComponentProps<typeof ColorBar>
   } = $props()
 </script>
 
@@ -49,7 +49,7 @@
       title_side="left"
       wrapper_style="width: 100%;"
       title_style="width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 0.9rem;"
-      {...colorbar}
+      {...color_bar}
     />
   {/snippet}
 </Select>

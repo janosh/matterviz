@@ -26,6 +26,7 @@
     is_hovered = false,
     is_selected = false,
     is_dimmed = false,
+    overlay_only = false,
     leader_line_threshold = 15,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
@@ -40,6 +41,8 @@
     is_hovered?: boolean
     is_selected?: boolean
     is_dimmed?: boolean
+    // Canvas mode already paints the base marker; SVG overlays only add hover/selection effects.
+    overlay_only?: boolean
     leader_line_threshold?: number
   } = $props()
 
@@ -92,11 +95,11 @@
   {/if}
   <path
     d={marker_path}
-    stroke={style.stroke ?? `transparent`}
+    stroke={overlay_only ? `none` : (style.stroke ?? `transparent`)}
     stroke-width={style.stroke_width ?? 1}
     fill-opacity={style.fill_opacity ?? 1}
     stroke-opacity={style.stroke_opacity ?? 1}
-    fill="var(--point-fill-color, {style.fill ?? `black`})"
+    fill={overlay_only ? `none` : `var(--point-fill-color, ${style.fill ?? `black`})`}
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
     class:is-dimmed={is_dimmed}

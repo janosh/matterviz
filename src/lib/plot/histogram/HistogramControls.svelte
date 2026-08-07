@@ -5,6 +5,7 @@
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
+  import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
 
@@ -13,14 +14,16 @@
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
-    show_legend = $bindable(DEFAULTS.histogram.show_legend),
+    // explicit type arg keeps `undefined` (auto) in the prop type
+    show_legend = $bindable<boolean | undefined>(),
+    resolved_show_legend = false,
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    show_controls = $bindable(false),
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
     auto_x2_range = undefined,
     auto_y2_range = undefined,
@@ -35,7 +38,9 @@
     bins?: number
     mode?: `single` | `overlay`
     bar?: BarStyle
-    show_legend?: boolean
+    // undefined = auto (same contract as Histogram / resolve_legend_visibility)
+    show_legend?: boolean | undefined
+    resolved_show_legend?: boolean
     selected_property?: string
     show_controls?: boolean
     controls_open?: boolean
@@ -70,7 +75,10 @@
     title="Histogram"
     current_values={{ bins, mode, show_legend }}
     on_reset={() => {
-      ;({ bin_count: bins, mode, show_legend } = DEFAULTS.histogram)
+      ;({ bin_count: bins, mode } = DEFAULTS.histogram)
+      // Resets to the configured mode, `auto` (undefined) by default, so a one-series
+      // plot does not suddenly grow a legend
+      show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
     }}
   >
     <div class="pane-row">
@@ -105,7 +113,11 @@
       {/if}
     {/if}
     <label>
-      <input type="checkbox" bind:checked={show_legend} />
+      <input
+        type="checkbox"
+        checked={show_legend ?? resolved_show_legend}
+        onchange={(event) => (show_legend = event.currentTarget.checked)}
+      />
       Show legend
     </label>
   </SettingsSection>
