@@ -154,9 +154,12 @@ describe(`ScatterPlot`, () => {
       }
 
       let arcs_since_clear = 0
+      const canvas_clip = vi.fn()
+      const clear_rect = vi.fn(() => (arcs_since_clear = 0))
       mock_canvas_context({
-        clearRect: vi.fn(() => (arcs_since_clear = 0)),
+        clearRect: clear_rect,
         arc: vi.fn(() => arcs_since_clear++),
+        clip: canvas_clip,
       })
       const point_idx = 3
       const overlaid = await mount_canvas({
@@ -171,6 +174,7 @@ describe(`ScatterPlot`, () => {
       })
       expect(overlaid.querySelectorAll(`path.marker`)).toHaveLength(1)
       expect(arcs_since_clear).toBe(dense.x.length - 1)
+      expect(canvas_clip).not.toHaveBeenCalled()
       expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
       expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
       const canvas = overlaid.querySelector(`canvas.marker-canvas`)
@@ -179,6 +183,24 @@ describe(`ScatterPlot`, () => {
       expect(canvas?.getAttribute(`width`)).toBe(String(400 * ratio))
       expect(canvas?.getAttribute(`height`)).toBe(String(300 * ratio))
       expect((canvas as HTMLCanvasElement).style.width).toBe(`400px`)
+
+      const state = $state<{
+        tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
+      }>({ tooltip_point: null })
+      const hover_plot = await mount_sized_scatter_plot(
+        bind_props({ series: [dense], marker_renderer: `canvas` as const }, state),
+      )
+      const draws_before_hover = clear_rect.mock.calls.length
+      state.tooltip_point = {
+        x: dense.x[4],
+        y: dense.y[4],
+        series_idx: 0,
+        point_idx: 4,
+      }
+      flushSync()
+      await tick()
+      expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
+      expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
 
       const tweened = await mount_canvas({
         selected_point: { series_idx: 0, point_idx: 5 },
@@ -202,6 +224,54 @@ describe(`ScatterPlot`, () => {
       const hidden = await mount_canvas({ styles: { show_points: false } })
       expect(hidden.querySelectorAll(`path.marker`)).toHaveLength(0)
       expect(arc).not.toHaveBeenCalled()
+    })
+
+    test(`keeps SVG markers when point handlers require DOM events`, async () => {
+      const on_point_click = vi.fn()
+      let plot = await mount_canvas({ on_point_click })
+      expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
+      plot
+        .querySelector(`path.marker`)
+        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      expect(on_point_click).toHaveBeenCalledOnce()
+
+      const on_context_menu = vi.fn()
+      plot = await mount_canvas({ point_events: { oncontextmenu: on_context_menu } })
+      expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
+      plot
+        .querySelector(`path.marker`)
+        ?.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+      expect(on_context_menu).toHaveBeenCalledOnce()
+    })
+
+    test.each([`var(--series-color)`, `light-dark(black, white)`, `currentColor`])(
+      `keeps SVG markers for context-dependent color %s`,
+      async (fill) => {
+        const plot = await mount_canvas({
+          series: [{ ...dense, point_style: { fill } }],
+        })
+        expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
+        expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
+      },
+    )
+
+    test(`reports point offsets in handler screen coordinates`, async () => {
+      const on_point_click = vi.fn()
+      const plot = await mount_canvas({
+        series: [{ x: [1], y: [2], point_offset: { x: 24, y: -12 } }],
+        on_point_click,
+        point_tween: { duration: 0 },
+      })
+      await tick()
+      const marker = plot.querySelector(`path.marker`)
+      const transform = marker?.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<cx>[-\d.]+) (?<cy>[-\d.]+)\)/.exec(transform)
+      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
+      marker?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      const handler_props = on_point_click.mock.calls[0]?.[0]
+      expect(handler_props?.cx).toBeCloseTo(Number(match.groups.cx))
+      expect(handler_props?.cy).toBeCloseTo(Number(match.groups.cy))
     })
   })
 

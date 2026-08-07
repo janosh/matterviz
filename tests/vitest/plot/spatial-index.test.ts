@@ -43,6 +43,15 @@ describe(`spatial index`, () => {
     expect(query_nearest(index, { x: 15, y: 10 })?.id).toBe(`nearer-to-15`)
     expect(query_nearest(index, { x: 9, y: 10 })?.id).toBe(`near`)
     expect(query_nearest(index, { x: 250, y: 250 })).toBeNull()
+    for (const pointer of [
+      { x: NaN, y: 0 },
+      { x: Infinity, y: 0 },
+      { x: 0, y: -Infinity },
+      { x: Number.MAX_VALUE, y: Number.MAX_VALUE },
+      { x: -Number.MAX_VALUE, y: -Number.MAX_VALUE },
+    ]) {
+      expect(query_nearest(index, pointer)).toBeNull()
+    }
 
     const edge = build_spatial_index([{ cx: 0, cy: 0, id: `edge` }], 10)
     expect(query_nearest(edge, { x: 10, y: 0 })?.id).toBe(`edge`)

@@ -57,16 +57,29 @@ export function query_nearest<T extends Positioned>(
   pointer: Point2D,
 ): T | null {
   const { cells, cell_size, radius_px } = index
+  if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null
   const center_col = Math.floor(pointer.x / cell_size)
   const center_row = Math.floor(pointer.y / cell_size)
   const cell_radius = Math.ceil(radius_px / cell_size)
+  if (
+    center_col + cell_radius < -COORD_OFFSET ||
+    center_col - cell_radius >= COORD_OFFSET ||
+    center_row + cell_radius < -COORD_OFFSET ||
+    center_row - cell_radius >= COORD_OFFSET
+  ) {
+    return null
+  }
+  const min_col = Math.max(-COORD_OFFSET, center_col - cell_radius)
+  const max_col = Math.min(COORD_OFFSET - 1, center_col + cell_radius)
+  const min_row = Math.max(-COORD_OFFSET, center_row - cell_radius)
+  const max_row = Math.min(COORD_OFFSET - 1, center_row + cell_radius)
   const max_dist_sq = radius_px * radius_px
   let best: T | null = null
   let best_dist_sq = Infinity
   let best_idx = Infinity
 
-  for (let col = center_col - cell_radius; col <= center_col + cell_radius; col++) {
-    for (let row = center_row - cell_radius; row <= center_row + cell_radius; row++) {
+  for (let col = min_col; col <= max_col; col++) {
+    for (let row = min_row; row <= max_row; row++) {
       const bucket = cells.get(pack_cell_key(col, row))
       if (!bucket) continue
       for (const { item, idx } of bucket) {

@@ -664,8 +664,10 @@
         // Thin before projecting because the placement solver also caps its obstacle field.
         return {
           points: stride_sample(srs.filtered_data, OBSTACLE_SAMPLE_LIMIT).map((point) => ({
-            x: time_x ? norm_x(new Date(point.x)) : norm_x(point.x),
-            y: 1 - norm_y(point.y),
+            x:
+              (time_x ? norm_x(new Date(point.x)) : norm_x(point.x)) +
+              (point.point_offset?.x ?? 0) / base_w,
+            y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),
           draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
         }
@@ -964,12 +966,6 @@
     return visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
   }
 
-  const use_canvas_markers = $derived(
-    marker_renderer === `canvas` ||
-      (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD),
-  )
-  const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
-
   // Apply controls to the selected series, comparing original indices so duplicate IDs work.
   const applies_style_controls = (series_data: { orig_series_idx?: number }): boolean =>
     show_controls &&
@@ -1010,33 +1006,61 @@
     }
   }
 
+  const canvas_safe_color = (color: string): boolean =>
+    !/\b(?:var|light-dark)\s*\(/i.test(color) && color.toLowerCase() !== `currentcolor`
+  const canvas_colors_supported = $derived.by(() => {
+    for (const series_data of filtered_series) {
+      if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+      for (const point of series_data.filtered_data) {
+        const { fill, stroke } = point_appearance(point, series_data)
+        if (!canvas_safe_color(fill) || !canvas_safe_color(stroke)) return false
+      }
+    }
+    return true
+  })
+  const needs_svg_point_events = $derived(
+    Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
+  )
+  const use_canvas_markers = $derived(
+    canvas_colors_supported &&
+      !needs_svg_point_events &&
+      (marker_renderer === `canvas` ||
+        (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)),
+  )
+  const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
+
   // Points needing labels or effects remain in an SVG overlay.
   const same_logical_point = (
     point: InternalPoint<Metadata>,
     other: { series_idx: number; point_idx: number } | null,
   ): boolean => other?.series_idx === point.series_idx && other.point_idx === point.point_idx
-  const needs_svg_overlay = (point: InternalPoint<Metadata>): boolean =>
+  const needs_static_svg_overlay = (point: InternalPoint<Metadata>): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected_point) ||
-    (tooltip_point?.point_label?.text == null && same_logical_point(point, tooltip_point)) ||
     Boolean(
       point.point_style?.is_highlighted &&
       /pulse|glow/.test(point.point_style.highlight_effect ?? ``),
     )
+  const static_svg_overlay_points_by_series = $derived.by(() => {
+    if (!use_canvas_markers) return []
+    return filtered_series.map((series_data) =>
+      series_data.filtered_data.filter((point) => needs_static_svg_overlay(point)),
+    )
+  })
   const svg_overlay_points_by_series = $derived.by(() => {
     if (!use_canvas_markers) return []
-    return filtered_series.map((series_data) => {
-      const points = series_data.filtered_data.filter((point) => needs_svg_overlay(point))
+    return static_svg_overlay_points_by_series.map((points, series_pos) => {
+      const series_data = filtered_series[series_pos]
       // tooltip_point may come from a previous filtered derivation, so dedupe by logical key.
       if (
-        tooltip_point != null &&
-        tooltip_point.series_idx === series_data.orig_series_idx &&
-        tooltip_point.point_label?.text == null &&
-        !points.some((point) => same_logical_point(point, tooltip_point))
+        tooltip_point == null ||
+        tooltip_point.point_label?.text != null ||
+        tooltip_point.series_idx !== series_data.orig_series_idx ||
+        points.some((point) => same_logical_point(point, tooltip_point))
       ) {
-        points.push(tooltip_point)
+        return points
       }
-      return points
+      return [...points, tooltip_point]
     })
   })
   // Shared by canvas markers and the hover index so offsets can't drift between them.
@@ -1068,7 +1092,7 @@
         hovered_legend_series_idx !== null &&
         hovered_legend_series_idx !== series_data.orig_series_idx
       for (const point of series_data.filtered_data) {
-        if (needs_svg_overlay(point)) continue
+        if (needs_static_svg_overlay(point)) continue
         markers.push({
           ...point_screen_xy(point, scales),
           opacity: dimmed ? 0.25 : 1,
@@ -1101,7 +1125,7 @@
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
     const ctx = canvas.getContext(`2d`)
-    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio, clip: clip_area })
+    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio })
   })
 
   const fill_hover_key = (
@@ -1570,10 +1594,7 @@
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
     const handler_use_x2 = hovered_series.x_axis === `x2`
-    const handler_x_scale = handler_use_x2 ? x2_scale_fn : x_scale_fn
-    const handler_is_time_x = handler_use_x2 ? is_time_x2 : is_time_x
-    const cx = handler_is_time_x ? handler_x_scale(new Date(x)) : handler_x_scale(x)
-    const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
+    const { cx, cy } = point_screen_xy(point, series_screen_scales(hovered_series))
     const active_x_config = handler_use_x2 ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
     const coords = {
@@ -2002,6 +2023,10 @@
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const point_label = point.point_label ?? {}}
+                {@const marker_screen = point_screen_xy(
+                  point,
+                  series_screen_scales(series_data),
+                )}
                 {@const label_style =
                   point_label.auto_placement &&
                   actual_label_config.max_neighbors &&
@@ -2012,14 +2037,8 @@
                   ? {
                       ...label_style,
                       offset: {
-                        x:
-                          calculated_label_pos.x -
-                          (is_time_x ? x_scale_fn(new Date(point.x)) : x_scale_fn(point.x)),
-                        y:
-                          calculated_label_pos.y -
-                          (series_data.y_axis === `y2`
-                            ? y2_scale_fn(point.y)
-                            : y_scale_fn(point.y)),
+                        x: calculated_label_pos.x - marker_screen.cx,
+                        y: calculated_label_pos.y - marker_screen.cy,
                       },
                     }
                   : label_style}

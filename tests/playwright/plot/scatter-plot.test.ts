@@ -237,6 +237,33 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
   })
 
+  test(`auto renderer paints dense markers to a real canvas`, async ({ page }) => {
+    const plot = page.locator(`#canvas-auto-renderer .scatter`)
+    const canvas = plot.locator(`canvas.marker-canvas`)
+    await ensure_plot_visible(plot)
+    await expect(canvas).toBeVisible()
+    await expect(plot.locator(`path.marker`)).toHaveCount(0)
+    await expect
+      .poll(() =>
+        canvas.evaluate((element) => {
+          const canvas_element = element as HTMLCanvasElement
+          const context = canvas_element.getContext(`2d`)
+          if (!context) return false
+          const { data } = context.getImageData(
+            0,
+            0,
+            canvas_element.width,
+            canvas_element.height,
+          )
+          for (let alpha_idx = 3; alpha_idx < data.length; alpha_idx += 4) {
+            if (data[alpha_idx] > 0) return true
+          }
+          return false
+        }),
+      )
+      .toBe(true)
+  })
+
   test(`marginals align with plot area, portal tooltips, recompute on zoom, and do not start zoom drags`, async ({
     page,
   }) => {

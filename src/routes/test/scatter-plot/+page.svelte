@@ -16,6 +16,11 @@
       stroke_width: 1,
     },
   }
+  const canvas_auto_data = {
+    x: Array.from({ length: 10_001 }, (_, idx) => idx % 101),
+    y: Array.from({ length: 10_001 }, (_, idx) => Math.floor(idx / 101)),
+    point_style: { fill: `#1971c2`, stroke: `none` },
+  }
 
   const marginal_browser_series: DataSeries[] = [
     {
@@ -599,6 +604,15 @@
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
     show_controls
+  />
+</section>
+
+<section id="canvas-auto-renderer">
+  <h2>Canvas Auto Renderer</h2>
+  <ScatterPlot
+    series={[canvas_auto_data]}
+    show_controls={false}
+    style="height: 320px; width: 480px"
   />
 </section>
 

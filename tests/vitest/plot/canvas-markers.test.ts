@@ -70,18 +70,20 @@ describe(`draw_markers`, () => {
     const squares = draw(batch(500, { symbol_type: `Square`, stroke_width: 0 }))
     expect(ops(squares, `arc`)).toHaveLength(0)
     expect((ops(squares, `fill`)[0].args[0] as StubPath2D).added).toHaveLength(500)
-    expect(ops(draw(batch(2, { fill_opacity: 0.5 })), `fill`)).toHaveLength(2)
-    expect(
-      ops(
-        draw([
-          marker({ fill: `red`, stroke_width: 0 }),
-          marker({ fill: `red`, stroke_width: 0 }),
-          marker({ fill: `blue`, stroke_width: 0 }),
-          marker({ fill: `red`, stroke_width: 0 }),
-        ]),
-        `set:fillStyle`,
-      ).map((call) => call.args[0]),
-    ).toEqual([`red`, `blue`, `red`])
+    const translucent = draw(batch(2, { fill_opacity: 0.5 }))
+    expect(ops(translucent, `fill`)).toHaveLength(2)
+    const color_markers = [
+      marker({ fill: `red`, stroke_width: 0 }),
+      marker({ fill: `red`, stroke_width: 0 }),
+      marker({ fill: `blue`, stroke_width: 0 }),
+      marker({ fill: `red`, stroke_width: 0 }),
+    ]
+    const color_ctx = draw(color_markers)
+    expect(ops(color_ctx, `set:fillStyle`).map((call) => call.args[0])).toEqual([
+      `red`,
+      `blue`,
+      `red`,
+    ])
 
     for (const bad of [
       { cx: NaN },
@@ -91,7 +93,9 @@ describe(`draw_markers`, () => {
       { radius: 0 },
       { radius: -2 },
     ]) {
-      expect(ops(draw([marker(bad)]), `arc`)).toHaveLength(0)
+      const bad_marker = marker(bad)
+      const bad_marker_ctx = draw([bad_marker])
+      expect(ops(bad_marker_ctx, `arc`)).toHaveLength(0)
     }
 
     const clip_ctx = fake_ctx()
@@ -141,7 +145,9 @@ describe(`draw_markers`, () => {
       filled_path(stamped).added[0].transform.e,
       filled_path(stamped).added[0].transform.f,
     ]).toEqual([30, 40])
-    expect(filled_path(draw([marker({ radius: 0, symbol_size: 100 })])).added).toHaveLength(1)
+    const sized_symbol = marker({ radius: 0, symbol_size: 100 })
+    const sized_symbol_ctx = draw([sized_symbol])
+    expect(filled_path(sized_symbol_ctx).added).toHaveLength(1)
     for (const radius of [2, 5, 9]) {
       const outline =
         filled_path(draw([marker({ radius, symbol_type: `Square` })])).added[0].path.d ?? ``

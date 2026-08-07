@@ -83,11 +83,13 @@ export function draw_markers(
   const paint = (path?: Path2D) => {
     if (fill_alpha > 0) {
       ctx.globalAlpha = fill_alpha
-      path ? ctx.fill(path) : ctx.fill()
+      if (path) ctx.fill(path)
+      else ctx.fill()
     }
     if (stroke_alpha > 0) {
       ctx.globalAlpha = stroke_alpha
-      path ? ctx.stroke(path) : ctx.stroke()
+      if (path) ctx.stroke(path)
+      else ctx.stroke()
     }
   }
   const flush = () => {

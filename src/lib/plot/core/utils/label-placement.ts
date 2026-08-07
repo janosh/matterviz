@@ -402,7 +402,9 @@ export function compute_label_positions(
       const ax = is_time_scale(x_axis.scale_type)
         ? x_scale_fn(new Date(pt.x))
         : x_scale_fn(pt.x)
-      const ay = (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y)
+      const anchor_x = ax + (pt.point_offset?.x ?? 0)
+      const anchor_y =
+        (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y) + (pt.point_offset?.y ?? 0)
       const label_size =
         pt.point_label.size ??
         estimate_label_size(pt.point_label.text, pt.point_label.font_size)
@@ -412,10 +414,17 @@ export function compute_label_positions(
 
       label_infos.push({
         id: `${pt.series_idx}-${pt.point_idx}`,
-        anchor: { x: ax, y: ay, radius },
+        anchor: { x: anchor_x, y: anchor_y, radius },
         width: label_w,
         height: label_h,
-        candidates: generate_candidates(ax, ay, radius, label_w, label_h, candidate_gap),
+        candidates: generate_candidates(
+          anchor_x,
+          anchor_y,
+          radius,
+          label_w,
+          label_h,
+          candidate_gap,
+        ),
       })
     }
   }
