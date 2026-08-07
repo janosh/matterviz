@@ -155,7 +155,12 @@ describe(`compute_bar_auto_ranges`, () => {
     ],
     [
       `explicit y_range`,
-      { y_range: [2, 6], series: [bar({ y: [4, 5] })], key: `y`, range: [2, 6] },
+      {
+        y_range: [2, 6] as [number, number],
+        series: [bar({ y: [4, 5] })],
+        key: `y`,
+        range: [2, 6],
+      },
     ],
     [
       `categorical x`,
@@ -332,21 +337,41 @@ describe(`bar geometry`, () => {
   })
 
   // oxfmt-ignore
-  const bar_rect_cases: [
-    Partial<Parameters<typeof compute_bar_rect>[0]>,
-    Partial<ReturnType<typeof compute_bar_rect>> & { grouped?: boolean },
-  ][] = [
+  type BarRectExpected =
+    | (Partial<ReturnType<typeof compute_bar_rect>> & { grouped?: false })
+    | (Pick<ReturnType<typeof compute_bar_rect>, `c0` | `c1`> & { grouped: true })
+  type BarRectCase = [Partial<Parameters<typeof compute_bar_rect>[0]>, BarRectExpected]
+  const bar_rect_cases: BarRectCase[] = [
     [{}, { c0: 40, c1: 60, v0: 0, v1: 40, rect_w: 20, rect_h: 40 }],
     [{ orientation: `horizontal` }, { rect_x: 0, rect_y: 40, rect_w: 40, rect_h: 20 }],
     [{ base: 3 }, { v0: 12, v1: 52, rect_h: 40 }],
     [{ val: -10 }, { v0: 0, v1: -40, rect_y: -40, rect_h: 40 }],
     [{ val: 0 }, { rect_w: 20, rect_h: 0 }],
-    [{ val: 0, orientation: `horizontal` }, { rect_w: 0, rect_h: 20 }],
+    [
+      { val: 0, orientation: `horizontal` },
+      { rect_w: 0, rect_h: 20 },
+    ],
+    [{ val: 0.001, orientation: `horizontal` }, { rect_w: 1 }],
     [{ bar_width_val: 0.001 }, { rect_w: 1 }],
     [{ bar_width_val: 0.001, orientation: `horizontal` }, { rect_h: 1 }],
-    ...([0, 1, 2] as const).map((series_idx) => [{ mode: `grouped`, series_idx, bar_width_val: 3, group_info: grouped_3 }, { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10, grouped: true }] as const),
-    [{ mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } }, { c0: 40, c1: 60, grouped: true }],
-    [{ mode: `grouped`, series_idx: 4, group_info: { bar_series_count: 2, bar_series_indices: [1, 4] } }, { c0: 50, c1: 60, grouped: true }],
+    ...([0, 1, 2] as const).map(
+      (series_idx): BarRectCase => [
+        { mode: `grouped`, series_idx, bar_width_val: 3, group_info: grouped_3 },
+        { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10, grouped: true },
+      ],
+    ),
+    [
+      { mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } },
+      { c0: 40, c1: 60, grouped: true },
+    ],
+    [
+      {
+        mode: `grouped`,
+        series_idx: 4,
+        group_info: { bar_series_count: 2, bar_series_indices: [1, 4] },
+      },
+      { c0: 50, c1: 60, grouped: true },
+    ],
   ]
   test.each(bar_rect_cases)(`bar_rect %#`, (overrides, expected) => {
     const rect = bar_rect(overrides)

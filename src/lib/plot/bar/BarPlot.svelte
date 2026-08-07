@@ -598,6 +598,7 @@
 
       srs.x.forEach((x_val, bar_idx) => {
         const value = srs.y[bar_idx]
+        if (!Number.isFinite(x_val) || !Number.isFinite(value)) return
         const base = mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
         const bar_width_val = Array.isArray(srs.bar_width)
           ? (srs.bar_width[bar_idx] ?? 0.5)
@@ -1455,7 +1456,7 @@
                       cat_scale,
                       val_scale,
                     })}
-                  {#if (is_vertical ? rect_h : rect_w) > 0}
+                  {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (is_vertical ? rect_h : rect_w) > 0}
                     <path
                       d={bar_path(
                         rect_x,

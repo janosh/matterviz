@@ -211,6 +211,9 @@ describe(`BarPlot`, () => {
         series: [{ ...basic, ...primary_axis }, invalid_series],
       })
       expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+      for (const path of plot.querySelectorAll(`path[role="button"]`)) {
+        expect(path.getAttribute(`d`)).not.toContain(`NaN`)
+      }
     },
   )
 
