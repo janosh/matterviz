@@ -24,6 +24,9 @@
     display = $bindable({}),
     styles = $bindable({}),
     selected_series_idx = $bindable(0),
+    // Declared explicitly (rather than left to ...rest) so the host can bind it and
+    // observe the pane being opened/closed, matching BarPlotControls
+    controls_open = $bindable(false),
     on_touch,
     children,
     ...rest
@@ -72,6 +75,7 @@
   bind:y_axis
   bind:y2_axis
   bind:display
+  bind:controls_open
   show_controls
   {...rest}
 >

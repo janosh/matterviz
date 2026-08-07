@@ -79,7 +79,7 @@ const standard_props = { show_controls: false, legend: null }
 const histogram_case = define_plot_case(`Histogram`, Histogram, `.histogram`, standard_props)
 const plot_cases: PlotCase[] = [
   define_plot_case(`ScatterPlot`, ScatterPlot, `.scatter`, {
-    controls: { show: false },
+    show_controls: false,
     legend: null,
     point_tween: { duration: 0 },
     line_tween: { duration: 0 },

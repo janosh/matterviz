@@ -135,6 +135,22 @@ export const bind_props = <P extends object, S extends Record<string, unknown>>(
     ),
   ) as P & S
 
+// Assert forwarded control element props and a controls_open binding round-trip.
+export async function expect_plot_controls(
+  target: ParentNode,
+  controls_state: { controls_open: boolean },
+  test_id_prefix: string,
+): Promise<void> {
+  const toggle = target.querySelector<HTMLButtonElement>(
+    `[data-testid="${test_id_prefix}-toggle"]`,
+  )
+  expect(toggle?.getAttribute(`aria-expanded`)).toBe(`true`)
+  expect(target.querySelector(`[data-testid="${test_id_prefix}-pane"]`)).not.toBeNull()
+  toggle?.click()
+  await tick()
+  expect(controls_state.controls_open).toBe(false)
+}
+
 // Dispatch a cancelable window-level keydown and flush Svelte effects
 // synchronously. Returns the event so callers can assert `defaultPrevented`.
 export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent => {

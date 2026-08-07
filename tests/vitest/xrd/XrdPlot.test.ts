@@ -2,7 +2,7 @@ import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { bind_props, expect_plot_controls, resize_element } from '../setup'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
 
 const pattern: XrdPattern = {
@@ -42,8 +42,8 @@ function create_sized_container(): HTMLDivElement {
 
 // Helper to mock clientWidth/clientHeight and wait for render.
 async function wait_for_plot_render(target: HTMLElement): Promise<void> {
-  const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
-  if (bar_plot) await resize_element(bar_plot, 800, 600)
+  const plot = target.querySelector<HTMLElement>(`.bar-plot, .scatter`)
+  if (plot) await resize_element(plot, 800, 600)
   else await tick()
 }
 
@@ -90,6 +90,27 @@ describe(`XrdPlot`, () => {
     const text = target.textContent ?? ``
     expect(text).not.toContain(`Infinity`)
     expect(text).not.toContain(`NaN`)
+  })
+
+  test.each([
+    [`stick`, false],
+    [`broadened`, true],
+  ] as const)(`%s view forwards flat control props`, async (_view, broadening_enabled) => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    const target = await mount_xrd(
+      bind_props(
+        {
+          patterns: pattern,
+          broadening_enabled,
+          show_controls: true,
+          controls_toggle_props: { 'data-testid': `direct-toggle` },
+          controls_pane_props: { 'data-testid': `direct-pane` },
+        },
+        controls_state,
+      ),
+    )
+    await expect_plot_controls(target, controls_state, `direct`)
   })
 
   test(`all-empty patterns produce valid axis ticks from [0, 90] fallback`, async () => {
@@ -303,7 +324,8 @@ describe(`XrdPlot`, () => {
     const target = await mount_xrd({
       patterns: pattern,
       broadening_enabled: true,
-      controls: { show: true, open: true },
+      show_controls: true,
+      controls_open: true,
     })
     const inputs = Array.from(target.querySelectorAll<HTMLInputElement>(`.param-input`))
     // U, V, W, then the pseudo-Voigt shape factor, each showing its DEFAULT_BROADENING value

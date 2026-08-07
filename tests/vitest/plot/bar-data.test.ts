@@ -5,6 +5,7 @@ import {
   compute_stacked_offsets,
   normalize_categorical,
 } from '$lib/plot/bar/data'
+import { compute_bar_rect, compute_line_points } from '$lib/plot/bar/geometry'
 import type { BarSeries } from '$lib/plot'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -36,10 +37,14 @@ const make_opts = (overrides: Partial<BarAutoRangeOpts> = {}): BarAutoRangeOpts 
   ...overrides,
 })
 
-const auto_ranges = (series: NumericBarSeries[], overrides: Partial<BarAutoRangeOpts> = {}) =>
+const auto_ranges = (
+  series: readonly NumericBarSeries[],
+  overrides: Partial<BarAutoRangeOpts> = {},
+) =>
   compute_bar_auto_ranges(
     make_opts({ visible_series: series, y1_series: series, ...overrides }),
   )
+const scale_by = (factor: number) => (value: number) => value * factor
 
 describe(`normalize_categorical`, () => {
   test(`passes numeric-only series through with same identity`, () => {
@@ -111,16 +116,16 @@ describe(`normalize_categorical`, () => {
     const { internal_series } = normalize_categorical(series)
     // categories: ['b', 'c', 'a'] (first-seen order across series)
     const [s1, s2] = internal_series
-    expect(s1.labels).toEqual([`B`, `C`, null])
-    expect(s1.bar_width).toEqual([0.2, 0.4, 0.5])
-    expect(s1.color_values).toEqual([7, 8, null])
-    expect(s1.size_values).toEqual([5, 6, null])
-    // per-point style arrays reorder with categories; missing slot -> undefined
-    expect(s1.point_style).toEqual([{ fill: `red` }, { fill: `blue` }, undefined])
-    expect(s1.point_offset).toEqual([{ x: 1, y: 1 }, { x: 2, y: 2 }, undefined])
-    // scalar metadata is replicated per category; a scalar point prop is left as a single
-    // object (process_prop broadcasts it at render) - not replicated, not reordered
-    expect(s1.metadata).toEqual([{ tag: `scalar` }, { tag: `scalar` }, undefined])
+    for (const [prop, expected] of [
+      [`labels`, [`B`, `C`, null]],
+      [`bar_width`, [0.2, 0.4, 0.5]],
+      [`color_values`, [7, 8, null]],
+      [`size_values`, [5, 6, null]],
+      [`point_style`, [{ fill: `red` }, { fill: `blue` }, undefined]],
+      [`point_offset`, [{ x: 1, y: 1 }, { x: 2, y: 2 }, undefined]],
+      [`metadata`, [{ tag: `scalar` }, { tag: `scalar` }, undefined]],
+    ] as const)
+      expect(s1[prop]).toEqual(expected)
     expect(s2.metadata).toEqual([{ id: 2 }, { id: 3 }, { id: 1 }])
     expect(s2.point_style).toEqual({ fill: `green` })
   })
@@ -138,24 +143,44 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges(series, { mode: `stacked` }).y).toEqual(expected)
   })
 
-  test(`stacked mode lets line series contribute absolute (unstacked) values`, () => {
-    const series = [bar({ y: [3, 4] }), bar({ y: [10, 10], render_mode: `line` })]
-    expect(auto_ranges(series, { mode: `stacked` }).y).toEqual([0, 10]) // line max not stacked
+  test.each([
+    [
+      `stacked line abs`,
+      {
+        mode: `stacked`,
+        series: [bar({ y: [3, 4] }), bar({ y: [10, 10], render_mode: `line` })],
+        key: `y`,
+        range: [0, 10],
+      },
+    ],
+    [
+      `explicit y_range`,
+      { y_range: [2, 6], series: [bar({ y: [4, 5] })], key: `y`, range: [2, 6] },
+    ],
+    [
+      `categorical x`,
+      {
+        category_count: 3,
+        series: [bar({ x: [0, 1, 2], y: [1, 2, 3] })],
+        key: `x`,
+        range: [-0.5, 2.5],
+      },
+    ],
+    [`empty sentinels`, { series: [], all: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] } }],
+  ] as const)(`$0`, (_desc, options) => {
+    if (`all` in options) {
+      expect(auto_ranges(options.series)).toEqual(options.all)
+      return
+    }
+    const { series, key, range, ...overrides } = options
+    expect(auto_ranges(series, overrides)[key]).toEqual(range)
   })
 
   test(`log scale skips zero-clamping`, () => {
-    const series = [bar({ y: [4, 5] })]
-    expect(auto_ranges(series).y[0]).toBe(0)
-    expect(auto_ranges(series, { y_scale_type: `log` }).y[0]).toBeGreaterThan(0)
-  })
-
-  test(`explicit y_range disables zero-clamping`, () => {
-    expect(auto_ranges([bar({ y: [4, 5] })], { y_range: [2, 6] }).y).toEqual([2, 6])
-  })
-
-  test(`categorical data fixes x range to [-0.5, count - 0.5]`, () => {
-    const series = [bar({ x: [0, 1, 2], y: [1, 2, 3] })]
-    expect(auto_ranges(series, { category_count: 3 }).x).toEqual([-0.5, 2.5])
+    const linear = auto_ranges([bar({ y: [4, 5] })])
+    const log = auto_ranges([bar({ y: [4, 5] })], { y_scale_type: `log` })
+    expect(linear.y[0]).toBe(0)
+    expect(log.y[0]).toBeGreaterThan(0)
   })
 
   test(`categorical range expands for bars wider than one slot`, () => {
@@ -182,10 +207,6 @@ describe(`compute_bar_auto_ranges`, () => {
       x: [0, 5],
       y: [-0.25, 10.25],
     })
-  })
-
-  test(`empty series fall back to [0, 1] sentinels`, () => {
-    expect(auto_ranges([])).toEqual({ x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] })
   })
 
   test(`x2 series get their own range; x stays sentinel without x1 series`, () => {
@@ -255,5 +276,83 @@ describe(`compute_group_info`, () => {
       bar_series_count: 2,
       bar_series_indices: [0, 3],
     })
+  })
+})
+
+describe(`bar geometry`, () => {
+  const series: NumericBarSeries = { x: [1, 2, 3], y: [4, 5, 6] }
+  const line_points = (overrides: Partial<Parameters<typeof compute_line_points>[0]> = {}) =>
+    compute_line_points({
+      series,
+      series_idx: 0,
+      orientation: `vertical`,
+      x_scale: scale_by(10),
+      y_scale: scale_by(2),
+      cat_y_scale: scale_by(3),
+      ...overrides,
+    })
+  const grouped_3 = { bar_series_count: 3, bar_series_indices: [0, 1, 2] }
+  const bar_rect = (overrides: Partial<Parameters<typeof compute_bar_rect>[0]> = {}) =>
+    compute_bar_rect({
+      cat_val: 5,
+      val: 10,
+      base: 0,
+      bar_width_val: 2,
+      series_idx: 0,
+      mode: `overlay`,
+      orientation: `vertical`,
+      group_info: { bar_series_count: 0, bar_series_indices: [] },
+      cat_scale: scale_by(10),
+      val_scale: scale_by(4),
+      ...overrides,
+    })
+
+  // oxfmt-ignore
+  test.each([
+    { name: `vertical`, overrides: { series_idx: 2 }, coords: [[10, 8], [20, 10], [30, 12]], first: { data_x: 1, data_y: 4, idx: 0, series_idx: 2, point_idx: 0 } },
+    { name: `horizontal`, overrides: { orientation: `horizontal` as const }, coords: [[40, 3], [50, 6], [60, 9]] },
+    { name: `non-finite`, overrides: { series: { x: [1, 2, 3], y: [4, NaN, 6] } }, kept_x: [1, 3], kept_idx: [0, 2] },
+    { name: `array metadata`, overrides: { series: { ...series, metadata: [{ tag: `a` }, { tag: `b` }, { tag: `c` }] } }, metadata: [{ tag: `a` }, { tag: `b` }, { tag: `c` }] },
+    { name: `scalar metadata`, overrides: { series: { ...series, metadata: { tag: `all` } } }, metadata: [{ tag: `all` }, { tag: `all` }, { tag: `all` }] },
+    { name: `defaults`, defaults: { color_value: null, size_value: null } },
+    { name: `styled`, overrides: { series: { ...series, color_values: [0.1, 0.2, 0.3], size_values: [5, 6, 7], point_style: [{ fill: `red` }, { fill: `green` }, { fill: `blue` }] } }, styled: { color_value: 0.2, size_value: 6, point_style: { fill: `green` } } },
+  ])(`line_points $name`, (case_) => {
+    const points = line_points(case_.overrides)
+    if (case_.coords) {
+      expect(points.map(({ x, y }) => [x, y])).toEqual(case_.coords)
+      if (case_.first) expect(points[0]).toMatchObject(case_.first)
+    }
+    if (case_.kept_x) {
+      expect(points.map(({ data_x }) => data_x)).toEqual(case_.kept_x)
+      expect(points.map(({ idx }) => idx)).toEqual(case_.kept_idx)
+    }
+    if (case_.metadata) expect(points.map((point) => point.metadata)).toEqual(case_.metadata)
+    if (case_.defaults) expect(points[0]).toMatchObject(case_.defaults)
+    if (case_.styled) expect(points[1]).toMatchObject(case_.styled)
+  })
+
+  // oxfmt-ignore
+  const bar_rect_cases: [
+    Partial<Parameters<typeof compute_bar_rect>[0]>,
+    Partial<ReturnType<typeof compute_bar_rect>> & { grouped?: boolean },
+  ][] = [
+    [{}, { c0: 40, c1: 60, v0: 0, v1: 40, rect_w: 20, rect_h: 40 }],
+    [{ orientation: `horizontal` }, { rect_x: 0, rect_y: 40, rect_w: 40, rect_h: 20 }],
+    [{ base: 3 }, { v0: 12, v1: 52, rect_h: 40 }],
+    [{ val: -10 }, { v0: 0, v1: -40, rect_y: -40, rect_h: 40 }],
+    [{ val: 0 }, { rect_w: 20, rect_h: 0 }],
+    [{ val: 0, orientation: `horizontal` }, { rect_w: 0, rect_h: 20 }],
+    [{ bar_width_val: 0.001 }, { rect_w: 1 }],
+    [{ bar_width_val: 0.001, orientation: `horizontal` }, { rect_h: 1 }],
+    ...([0, 1, 2] as const).map((series_idx) => [{ mode: `grouped`, series_idx, bar_width_val: 3, group_info: grouped_3 }, { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10, grouped: true }] as const),
+    [{ mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } }, { c0: 40, c1: 60, grouped: true }],
+    [{ mode: `grouped`, series_idx: 4, group_info: { bar_series_count: 2, bar_series_indices: [1, 4] } }, { c0: 50, c1: 60, grouped: true }],
+  ]
+  test.each(bar_rect_cases)(`bar_rect %#`, (overrides, expected) => {
+    const rect = bar_rect(overrides)
+    if (expected.grouped) {
+      expect(rect.c0).toBeCloseTo(expected.c0, 6)
+      expect(rect.c1).toBeCloseTo(expected.c1, 6)
+    } else expect(rect).toMatchObject(expected)
   })
 })

@@ -651,10 +651,23 @@ export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
     right_rect.y + right_rect.height <= left_rect.y
   )
 
+// Evenly thin items while preserving order and both endpoints so placement cost stays
+// bounded without dropping an abrupt series tail the decoration solver should avoid.
+export const stride_sample = <T>(items: readonly T[], limit: number): readonly T[] => {
+  if (items.length <= limit) return items
+  if (limit <= 1) return items.slice(0, Math.max(0, limit))
+  const last_idx = items.length - 1
+  return Array.from(
+    { length: limit },
+    (_, idx) => items[Math.round((idx * last_idx) / (limit - 1))],
+  )
+}
+
+// Keep long thinned segments from recreating more filler points than sampling removed.
+const MAX_SEGMENT_SAMPLES = 64
+
 // Include finite vertices and, for connected series, sample long segments so auto-placed
-// legends and colorbars avoid lines between sparse markers.
-// `obstacles` lets callers accumulate several series into one array. A private array per series
-// copied out afterwards doubles the passes and the allocation over the whole dataset.
+// decorations avoid sparse lines. Callers can accumulate series in one obstacle array.
 export function sample_series_obstacle_points(
   pixel_points: { x: number; y: number }[],
   draws_line: boolean,
@@ -669,8 +682,9 @@ export function sample_series_obstacle_points(
     }
     obstacles.push(point)
     if (draws_line && previous && step > 0) {
-      const n_samples = Math.floor(
-        Math.hypot(point.x - previous.x, point.y - previous.y) / step,
+      const n_samples = Math.min(
+        MAX_SEGMENT_SAMPLES,
+        Math.floor(Math.hypot(point.x - previous.x, point.y - previous.y) / step),
       )
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
@@ -723,13 +737,7 @@ export function compute_element_placement(
   const effective_y_min = Math.min(valid_y_min, valid_y_max)
   const effective_y_max = Math.max(valid_y_min, valid_y_max)
 
-  const sampled_points =
-    points.length > MAX_SAMPLE_POINTS
-      ? Array.from(
-          { length: MAX_SAMPLE_POINTS },
-          (_, idx) => points[Math.floor((idx * points.length) / MAX_SAMPLE_POINTS)],
-        )
-      : points
+  const sampled_points = stride_sample(points, MAX_SAMPLE_POINTS)
 
   let best_result: ElementPlacementResult = {
     x: effective_x_min,
@@ -760,9 +768,7 @@ export function compute_element_placement(
       // Check for overlap with exclusion rectangles first (early rejection)
       let exclusion_penalty = 0
       for (const excl_rect of exclude_rects) {
-        if (rects_overlap(cand_rect, excl_rect)) {
-          exclusion_penalty += EXCLUSION_PENALTY
-        }
+        if (rects_overlap(cand_rect, excl_rect)) exclusion_penalty += EXCLUSION_PENALTY
       }
 
       let overlap_count = 0

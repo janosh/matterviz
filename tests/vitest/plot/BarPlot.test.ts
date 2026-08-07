@@ -162,6 +162,58 @@ describe(`BarPlot`, () => {
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
+  const valid_values = [1, 2]
+  const invalid_values = [NaN, Infinity]
+  const invalid_x = { x: invalid_values, y: valid_values }
+  const invalid_y = { x: valid_values, y: invalid_values }
+  const unpaired_values = { x: [1, NaN], y: [NaN, 2] }
+  test.each([
+    {
+      name: `vertical x2 with invalid categories`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_x, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical x2 with invalid values`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_y, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical x2 with unpaired coordinates`,
+      axis: `x2`,
+      orientation: `vertical`,
+      invalid_series: { ...unpaired_values, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+    {
+      name: `vertical y2 with invalid values`,
+      axis: `y2`,
+      orientation: `vertical`,
+      invalid_series: { ...invalid_y, y_axis: `y2` },
+      primary_axis: { y_axis: `y1` },
+    },
+    {
+      name: `horizontal x2 with invalid values`,
+      axis: `x2`,
+      orientation: `horizontal`,
+      invalid_series: { ...invalid_y, x_axis: `x2` },
+      primary_axis: { x_axis: `x1` },
+    },
+  ] as const)(
+    `does not render an axis without a finite point ($name)`,
+    async ({ axis, orientation, invalid_series, primary_axis }) => {
+      const plot = await mount_sized_bar_plot({
+        orientation,
+        series: [{ ...basic, ...primary_axis }, invalid_series],
+      })
+      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+    },
+  )
+
   test(`y2 axis title shares the y axis title's vertical center`, async () => {
     const plot = await mount_sized_bar_plot({
       series: [basic, { x: [1, 2, 3], y: [100, 200, 300], label: `Sec`, y_axis: `y2` }],
@@ -544,11 +596,15 @@ describe(`BarPlot`, () => {
         path_data,
       )?.groups
       if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
+      const x = Number(match.x)
+      const y = Number(match.y)
+      const width = Number(match.width)
+      const height = Number(match.height)
       return {
-        x: Number(match.x),
-        y: Number(match.y),
-        width: Number(match.width),
-        height: Number(match.height),
+        x: Math.min(x, x + width),
+        y: Math.min(y, y + height),
+        width: Math.abs(width),
+        height: Math.abs(height),
       }
     })
 
@@ -643,13 +699,28 @@ describe(`BarPlot`, () => {
     const small = await mount_sized_bar_plot(make_props(), { width: 400, height: 300 })
     const wide = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
     const repeated = await mount_sized_bar_plot(make_props(), { width: 640, height: 340 })
-    expect(legend_position(small)).toEqual({ x: 130, y: 300 - 44 - 8 })
-    expect(legend_position(wide)).toEqual({ x: 250, y: 340 - 44 - 8 })
     const clip_geometry = (plot: HTMLElement) => {
       const clip_rect = plot.querySelector(`clipPath rect`)
       if (!clip_rect) throw new Error(`clip rectangle not found`)
-      return [`x`, `y`, `width`, `height`].map((attr) => clip_rect.getAttribute(attr))
+      return Object.fromEntries(
+        [`x`, `y`, `width`, `height`].map((attr) => [
+          attr,
+          Number(clip_rect.getAttribute(attr)),
+        ]),
+      ) as Record<`x` | `y` | `width` | `height`, number>
     }
+    const expected_legend_x = (plot: HTMLElement) => {
+      const clip = clip_geometry(plot)
+      return clip.x + (clip.width - 180) / 2
+    }
+    expect(legend_position(small)).toEqual({
+      x: expected_legend_x(small),
+      y: 300 - 44 - 8,
+    })
+    expect(legend_position(wide)).toEqual({
+      x: expected_legend_x(wide),
+      y: 340 - 44 - 8,
+    })
     expect(clip_geometry(repeated)).toEqual(clip_geometry(wide))
   })
 

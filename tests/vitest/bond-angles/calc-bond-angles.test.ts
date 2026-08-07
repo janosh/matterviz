@@ -17,7 +17,7 @@ import { calc_structure_coordination } from '$lib/structure/atom-properties'
 import { structure_map } from '$site/structures'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, mount_sized } from '../setup'
+import { bind_props, expect_plot_controls, make_crystal, mount_sized } from '../setup'
 
 // Exact tetrahedral angle: acos(-1/3) in degrees
 const TETRAHEDRAL_ANGLE = 109.47122063449069
@@ -472,6 +472,23 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     const root = await mount_plot({ structures: rocksalt, normalize: `density` })
     expect(root.textContent).toContain(`Density (1/°)`)
     expect(root.textContent).not.toContain(`Count`)
+  })
+
+  test(`forwards flat control props and binding through StructureBarPlot`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    const root = await mount_plot(
+      bind_props(
+        {
+          structures: water,
+          show_controls: true,
+          controls_toggle_props: { 'data-testid': `bond-angle-toggle` },
+          controls_pane_props: { 'data-testid': `bond-angle-pane` },
+        },
+        controls_state,
+      ),
+    )
+    await expect_plot_controls(root, controls_state, `bond-angle`)
   })
 
   test.each([

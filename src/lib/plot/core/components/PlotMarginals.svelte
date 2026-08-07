@@ -130,7 +130,6 @@
     }
   })
 
-  type RugMark = { x1: number; y1: number; x2: number; y2: number }
   type LinePt = { pos: number; value: number }
   type CurveRender = {
     kind: MarginalCurve[`kind`]
@@ -142,7 +141,7 @@
     bars: Rect[]
     area_path: string
     line_path: string
-    rug: RugMark[]
+    rug_path: string
   }
   type ValueAxisRender = {
     spine: { x1: number; y1: number; x2: number; y2: number }
@@ -223,7 +222,7 @@
       bars: [],
       area_path: ``,
       line_path: ``,
-      rug: [],
+      rug_path: ``,
     }
 
     if (data.kind === `bars`) {
@@ -233,7 +232,7 @@
         .map((item) => {
           // bar spans [pos0, pos1] on the positional axis and [baseline, value] on the value axis
           const pos_min = Math.min(pos_scale(item.pos0), pos_scale(item.pos1))
-          const pos_len = Math.max(0, Math.abs(pos_scale(item.pos1) - pos_scale(item.pos0)))
+          const pos_len = Math.abs(pos_scale(item.pos1) - pos_scale(item.pos0))
           const value_px = val_scale(item.value)
           const val_min = Math.min(value_px, baseline)
           const val_len = Math.abs(baseline - value_px)
@@ -276,18 +275,19 @@
       return base
     }
 
-    // rug: short ticks at each position, drawn from the plot-facing edge outward
+    // Build all rug ticks as one disjoint path instead of one DOM line per datum.
     const rug_len = Math.min(config.size, 10)
     const dir = side === `top` || side === `left` ? -1 : 1
-    base.rug = data.positions
-      .map((p) => pos_scale(p))
-      .filter((px) => isFinite(px))
-      .map((px) =>
-        is_x
-          ? { x1: px, y1: baseline, x2: px, y2: baseline + dir * rug_len }
-          : { x1: baseline, y1: px, x2: baseline + dir * rug_len, y2: px },
-      )
-    // rug ticks are unfilled lines, so `opacity` (already config.opacity in base) controls them
+    const tick_end = baseline + dir * rug_len
+    let rug_path = ``
+    for (const position of data.positions) {
+      const px = pos_scale(position)
+      if (!isFinite(px)) continue
+      rug_path += is_x
+        ? `M${px} ${baseline}L${px} ${tick_end}`
+        : `M${baseline} ${px}L${tick_end} ${px}`
+    }
+    base.rug_path = rug_path
     return base
   }
 
@@ -479,17 +479,15 @@
             />
           {/each}
         {:else if curve.kind === `rug`}
-          {#each curve.rug as mark, mark_idx (mark_idx)}
-            <line
-              x1={mark.x1}
-              y1={mark.y1}
-              x2={mark.x2}
-              y2={mark.y2}
+          {#if curve.rug_path}
+            <path
+              d={curve.rug_path}
+              fill="none"
               stroke={curve.stroke}
               stroke-width={curve.stroke_width}
               opacity={curve.opacity}
             />
-          {/each}
+          {/if}
         {:else}
           {#if curve.area_path}
             <path

@@ -3557,7 +3557,7 @@ The legend and colorbar are solved together against measured footprints and data
   color_scale={{ scheme: `interpolateViridis` }}
   color_bar={{ title: `Local score`, responsive: true }}
   legend={{ layout: `horizontal`, layout_tracks: `auto`, responsive: true, draggable: false }}
-  controls={{ show: false }}
+  show_controls={false}
   style="height: 460px"
 />
 ```
@@ -3603,7 +3603,7 @@ Series `unit` metadata groups compatible values onto one y-axis. `axis_group` ex
   {series}
   x_axis={{ label: `Self-consistent field iteration` }}
   legend={{ draggable: false }}
-  controls={{ show: false }}
+  show_controls={false}
   style="height: 420px"
 />
 ```

@@ -5,7 +5,6 @@
 import type { Point3D, Vec2, Vec3 } from '$lib/math'
 import type {
   AxisConfig,
-  ControlsConfig,
   DataSeries,
   DisplayConfig,
   HandlerProps,
@@ -134,10 +133,4 @@ export interface StyleOverrides3D extends StyleOverrides {
   point?: StyleOverrides[`point`] & {
     sphere_segments?: number // Level of detail for sphere geometry
   }
-}
-
-// Controls config for 3D
-export interface ControlsConfig3D extends ControlsConfig {
-  show_camera_controls?: boolean
-  show_surface_controls?: boolean
 }

@@ -7,8 +7,10 @@
   let {
     series = $bindable([]),
     kind = $bindable(`violin`),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: ComponentProps<typeof BoxPlot> = $props()
 </script>
 
-<BoxPlot bind:series bind:kind {...rest} />
+<BoxPlot bind:series bind:kind {...rest} {show_controls} bind:controls_open />

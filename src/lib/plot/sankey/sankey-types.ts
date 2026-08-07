@@ -2,8 +2,6 @@
 // Public input/event types for the Sankey component; layout-result types
 // (PositionedNode/PositionedLink) live in sankey.ts next to the layout math.
 
-// Flow direction: 'horizontal' = columns left->right, 'vertical' = columns top->bottom
-export type SankeyOrientation = `horizontal` | `vertical`
 // Maps to d3-sankey alignment functions (sankeyLeft/Right/Center/Justify)
 export type SankeyNodeAlign = `left` | `right` | `center` | `justify`
 // How each link ribbon derives its color when no explicit link.color is set

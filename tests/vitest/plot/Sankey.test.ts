@@ -123,6 +123,17 @@ describe(`Sankey`, () => {
     expect(dim_links()).toBe(0)
   })
 
+  test(`orphan-only nodes do not open an empty legend`, async () => {
+    const plot = await mount_sized_sankey({
+      data: {
+        nodes: [{ label: `orphan-a` }, { label: `orphan-b` }],
+        links: [],
+      },
+      show_legend: true,
+    })
+    expect(plot.querySelector(`.legend`)).toBeNull()
+  })
+
   test.each([
     { data: { nodes: [], links: [] } },
     { data: { nodes: [{ label: `solo` }], links: [] } },

@@ -37,6 +37,8 @@
     on_image_change,
     x_axis = {},
     y_axis = {},
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: {
     paths: ReactionPathInput
@@ -137,6 +139,8 @@
 
 <ScatterPlot
   {...rest}
+  {show_controls}
+  bind:controls_open
   {series}
   x_axis={{ label: x_label, ...x_axis }}
   y_axis={{ label: y_label, ...y_axis }}

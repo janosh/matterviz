@@ -10,7 +10,6 @@ import type {
   BandwidthOption,
   Orientation,
   SankeyNodeAlign,
-  SankeyOrientation,
   SunburstLabelRotation,
   SunburstLabelText,
   SunburstShape,
@@ -402,7 +401,7 @@ export interface SettingsConfig {
 
   sankey: {
     // Sankey diagram settings
-    orientation: SettingType<SankeyOrientation>
+    orientation: SettingType<Orientation>
     node_align: SettingType<SankeyNodeAlign>
     node_width: SettingType<number>
     node_padding: SettingType<number>

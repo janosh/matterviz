@@ -63,9 +63,8 @@ export interface BarRect {
   rect_h: number
 }
 
-// Screen-space rect for one bar: category extent (c0/c1) from bar width +
-// grouped offset, value extent (v0/v1) from stacked base to base + value.
-// Rects get min 1px width so thin bars stay visible.
+// Screen-space bar rect. Category thickness has a 1px floor for interaction;
+// value extent stays zero for zero-value bars.
 export function compute_bar_rect(opts: {
   cat_val: number
   val: number
@@ -96,8 +95,8 @@ export function compute_bar_rect(opts: {
   const [rect_x, rect_y] = is_vertical
     ? [Math.min(c0, c1), Math.min(v0, v1)]
     : [Math.min(v0, v1), Math.min(c0, c1)]
-  const [rect_w, rect_h] = is_vertical
-    ? [Math.max(1, Math.abs(c1 - c0)), Math.max(0, Math.abs(v1 - v0))]
-    : [val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0)), Math.max(0, Math.abs(c1 - c0))]
+  const cat_extent = Math.max(1, Math.abs(c1 - c0))
+  const val_extent = Math.abs(v1 - v0)
+  const [rect_w, rect_h] = is_vertical ? [cat_extent, val_extent] : [val_extent, cat_extent]
   return { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h }
 }

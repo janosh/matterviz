@@ -16,7 +16,7 @@ import type {
   SankeyLink,
   SankeyNode,
   SankeyNodeAlign,
-  SankeyOrientation,
+  Orientation,
 } from '$lib/plot/core/types'
 import { DEFAULTS } from '$lib/settings'
 
@@ -61,7 +61,7 @@ export interface SankeyLayoutOptions {
   node_width?: number // px, default 24
   node_padding?: number // px vertical gap between nodes in a column, default 12
   node_align?: SankeyNodeAlign // default 'justify'
-  orientation?: SankeyOrientation // default 'horizontal'
+  orientation?: Orientation // default 'horizontal'
   iterations?: number // d3-sankey relaxation passes, default 6
 }
 

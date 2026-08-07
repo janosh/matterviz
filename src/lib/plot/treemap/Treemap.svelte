@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -94,14 +95,14 @@
     color_values,
     color_scale = SCALE_DEFAULTS.scheme,
     color_range,
-    colorbar = {},
+    color_bar = {},
     export_buttons = true,
     export_filename = `treemap`,
     tween,
     value_format = `,`,
     padding = DEFAULT_PADDING,
     legend = {},
-    show_legend = false,
+    show_legend,
     tooltip,
     cell_content,
     hovered = $bindable(false),
@@ -150,7 +151,7 @@
       color_values?: (rect: PositionedArc<Metadata>) => number | null
       color_scale?: D3InterpolateName
       color_range?: Vec2 // defaults to the metric's [min, max]
-      colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
+      color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
       export_buttons?: boolean // SVG/PNG download buttons in the controls pane
       export_filename?: string
       // Zoom transition timing (resizes/data swaps snap instantly, plotly-style).
@@ -195,7 +196,7 @@
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // measured height of the bottom colorbar (via observe_size, which resets it
+  // measured height of the bottom color_bar (via observe_size, which resets it
   // to 0 on unmount), reserved from the chart so it never overlaps the cells;
   // capped at half the area so a bad measurement can't collapse the chart
   let colorbar_height = $state(0)
@@ -561,7 +562,10 @@
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
   let depth1_arcs = $derived(layout.arcs.filter((arc) => arc.depth === 1))
-  let legend_visible = $derived(show_legend && legend != null && depth1_arcs.length > 1)
+  // Cells are labelled in place, so a legend stays opt-in here
+  let legend_visible = $derived(
+    resolve_legend_visibility(show_legend, legend, depth1_arcs.length, false),
+  )
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_placement = $derived.by(() => {
     if (!legend_visible || !width || !height) return null
@@ -829,17 +833,17 @@
     />
   {/if}
 
-  {#if metric && colorbar != null}
+  {#if metric && color_bar != null}
     <!-- positioning + height measurement live on ColorBar's own root (via rest
     props + attachment) instead of an extra wrapper div -->
     <ColorBar
       {color_scale}
       range={metric.range}
-      {...colorbar}
-      wrapper_style="{colorbar?.orientation === `vertical`
+      {...color_bar}
+      wrapper_style="{color_bar?.orientation === `vertical`
         ? `--cbar-height: var(--treemap-colorbar-height, 150px);`
-        : ``} {colorbar?.wrapper_style ?? ``}"
-      style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {colorbar?.style ??
+        : ``} {color_bar?.wrapper_style ?? ``}"
+      style="position: absolute; bottom: var(--treemap-colorbar-bottom, 8px); left: 50%; transform: translateX(-50%); width: var(--treemap-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {color_bar?.style ??
         ``}"
       {@attach observe_size(({ height }) => (colorbar_height = height))}
     />

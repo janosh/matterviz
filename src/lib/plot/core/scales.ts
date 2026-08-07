@@ -396,15 +396,45 @@ export function calculate_domain(values: number[], scale_type: ScaleType = `line
   const [min_val, max_val] = extent(values)
   if (min_val === undefined || max_val === undefined) return [0, 1]
 
-  const type_name = get_scale_type_name(scale_type)
   // log clamps to positive (arcsinh/linear take any value); clamp BOTH ends so all-negative
   // data can't leave max <= the clamped min and invert/collapse the scale
-  if (type_name === `log`) {
+  if (get_scale_type_name(scale_type) === `log`) {
     const lo = Math.max(min_val, math.LOG_EPS)
     return [lo, Math.max(max_val, lo)]
   }
   return [min_val, max_val]
 }
+
+// Finite raw-array extent with a count for padding and renderability checks.
+export type RunningExtent = { min?: number; max?: number; n_finite: number }
+
+export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
+
+// Fold values into acc without concatenating series or allocating point objects. count may
+// exceed values.length so paired x/y axes retain the same point count.
+export function accumulate_extent(
+  acc: RunningExtent,
+  values: ArrayLike<number>,
+  count = values.length,
+): RunningExtent {
+  const n_values = Math.max(0, count)
+  for (let idx = 0; idx < n_values; idx++) {
+    const val = values[idx]
+    if (!Number.isFinite(val)) continue
+    acc.n_finite++
+    if (acc.min === undefined || val < acc.min) acc.min = val
+    if (acc.max === undefined || val > acc.max) acc.max = val
+  }
+  return acc
+}
+
+export const nice_range_from_extent = (
+  { min, max, n_finite }: RunningExtent,
+  limits: [number | null, number | null],
+  scale_type: ScaleType,
+  padding_factor: number,
+  is_time = false,
+): Vec2 => nice_range(min, max, n_finite > 0, limits, scale_type, padding_factor, is_time)
 
 // Advanced domain calculation with padding and nice boundaries (from ScatterPlot)
 export function get_nice_data_range(
@@ -415,8 +445,31 @@ export function get_nice_data_range(
   padding_factor: number,
   is_time = false,
 ): Vec2 {
+  const [min_ext, max_ext] = extent(points, (point) => {
+    const value = get_value(point)
+    return Number.isFinite(value) ? value : undefined
+  })
+  return nice_range(
+    min_ext,
+    max_ext,
+    min_ext !== undefined,
+    limits,
+    scale_type,
+    padding_factor,
+    is_time,
+  )
+}
+
+function nice_range(
+  min_ext: number | undefined,
+  max_ext: number | undefined,
+  has_points: boolean,
+  limits: [number | null, number | null],
+  scale_type: ScaleType,
+  padding_factor: number,
+  is_time: boolean,
+): Vec2 {
   const [min, max] = limits
-  const [min_ext, max_ext] = extent(points, get_value)
   let data_min = min ?? min_ext ?? 0
   let data_max = max ?? max_ext ?? 1
   const type_name = get_scale_type_name(scale_type)
@@ -430,7 +483,7 @@ export function get_nice_data_range(
   const snap_zero_max = can_snap_zero && max === null && max_ext === 0
 
   // Apply padding *only if* limits were NOT provided
-  if (min === null && max === null && points.length > 0) {
+  if (min === null && max === null && has_points) {
     if (data_min !== data_max) {
       // Apply percentage padding based on scale type if there's a range
       const span = data_max - data_min

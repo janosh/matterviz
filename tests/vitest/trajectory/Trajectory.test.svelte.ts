@@ -84,6 +84,48 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
   })
 
+  test(`forwards the initial scatter controls-open state`, async () => {
+    const target = mount_traj({
+      trajectory: energy_traj(-1, -2),
+      display_mode: `scatter`,
+      show_controls: false,
+      scatter_props: { controls_open: true },
+    })
+    await flush_render()
+    const plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`trajectory scatter plot not found`)
+    await resize_element(plot, 600, 400)
+    expect(plot.querySelector(`.pane-open`)).not.toBeNull()
+  })
+
+  test(`does not reserve y2 padding for a streamed series without finite values`, async () => {
+    const clip_width = async (include_invalid_y2: boolean): Promise<number> => {
+      const trajectory: TrajectoryType = {
+        ...make_traj([{}, {}, {}]),
+        plot_metadata: [0, 1, 2].map((frame_number) => ({
+          frame_number,
+          step: frame_number,
+          properties: {
+            energy: -frame_number,
+            ...(include_invalid_y2 ? { volume: NaN } : {}),
+          },
+        })),
+      }
+      const target = mount_traj({
+        trajectory,
+        display_mode: `scatter`,
+        show_controls: false,
+      })
+      await flush_render()
+      const plot = target.querySelector<HTMLElement>(`.scatter`)
+      if (!plot) throw new Error(`trajectory scatter plot not found`)
+      await resize_element(plot, 600, 400)
+      return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
+    }
+
+    expect(await clip_width(true)).toBe(await clip_width(false))
+  })
+
   // Regression: the series-regeneration effect must survive the visible_properties
   // write-back from the legend-sync effect. That write re-runs the regeneration
   // effect while the syncing flag is set; returning before reading any reactive dep

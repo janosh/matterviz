@@ -598,7 +598,7 @@
     series={[basic_data]}
     x_axis={{ label: `X Axis` }}
     y_axis={{ label: `Y Axis` }}
-    controls={{ show: true }}
+    show_controls
   />
 </section>
 
@@ -851,10 +851,11 @@
     legend={null}
     id="legend-single-null"
   />
-  <h3>Single Series (Configured Legend) - Legend Expected</h3>
+  <h3>Single Series (show_legend) - Legend Expected</h3>
   <ScatterPlot
     series={legend_single_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ layout: `horizontal` }}
+    show_legend
     id="legend-single-config"
   />
   <h3>Multi Series (Default Legend) - Legend Expected</h3>
@@ -862,7 +863,7 @@
     series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
     legend={{ draggable: true, style: `padding: 8px;` }}
     id="legend-multi-default"
-    controls={{ show: true }}
+    show_controls
   />
   <h3>Zero Series - No Legend Expected</h3>
   <ScatterPlot series={legend_zero_series} id="legend-zero" />
@@ -1213,6 +1214,7 @@
     color_scale={{ scheme: `Viridis` }}
     color_bar={{ title: `Color Value` }}
     legend={{ draggable: true }}
+    show_legend
   />
 </section>
 
@@ -1233,7 +1235,7 @@
     series={control_precedence_series}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y`, range: [0, 8] }}
-    controls={{ show: true }}
+    show_controls
     legend={{ draggable: true }}
   />
 </section>

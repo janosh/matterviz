@@ -52,7 +52,10 @@
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
     invert_rect_range,
@@ -353,9 +356,11 @@
     ),
   )
   let x2_series = $derived(visible_series.filter((srs) => srs.x_axis === `x2`))
-  // y2 is a vertical value axis; x2 is either a vertical category axis or horizontal value axis.
-  let show_x2 = $derived(x2_series.length > 0)
-  let show_y2 = $derived(y2_series.length > 0 && orientation === `vertical`)
+  const has_finite_point = ({ x, y }: BarSeries<Metadata>) =>
+    x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(y[idx]))
+  // Only show secondary axes for series with at least one drawable bar.
+  let show_x2 = $derived(x2_series.some(has_finite_point))
+  let show_y2 = $derived(orientation === `vertical` && y2_series.some(has_finite_point))
 
   let auto_ranges = $derived.by(() => {
     // The shared range helper models x as the category axis. In horizontal orientation,
@@ -535,7 +540,9 @@
     return measured_footprint(legend_element, { width: 120, height: 60 })
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
-  const should_show_legend = $derived(show_legend ?? series.length > 1)
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, series.length),
+  )
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
   // against the decoration-independent base plot so outside padding cannot feed back into

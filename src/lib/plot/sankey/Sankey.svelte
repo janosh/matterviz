@@ -14,7 +14,7 @@
     SankeyLinkHandlerProps,
     SankeyNodeAlign,
     SankeyNodeHandlerProps,
-    SankeyOrientation,
+    Orientation,
   } from '$lib/plot'
   import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
   import { closest_data_idx } from '$lib/plot/core/interactions'
@@ -24,6 +24,7 @@
     filter_padding,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { compute_sankey_layout } from '$lib/plot/sankey/sankey'
   import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
   import { unique_id } from '$lib/plot/core/utils'
@@ -48,7 +49,7 @@
     value_format = `,`,
     padding = DEFAULT_PADDING,
     legend = {},
-    show_legend = false,
+    show_legend,
     tooltip,
     node_content,
     link_content,
@@ -71,7 +72,7 @@
   }: HTMLAttributes<HTMLDivElement> &
     Omit<BasePlotProps, `change`> & {
       data?: SankeyData<Metadata>
-      orientation?: SankeyOrientation
+      orientation?: Orientation
       node_width?: number
       node_padding?: number
       node_align?: SankeyNodeAlign
@@ -104,7 +105,7 @@
         data: (SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-      controls_extra?: Snippet<[{ orientation: SankeyOrientation }]>
+      controls_extra?: Snippet<[{ orientation: Orientation }]>
     } = $props()
 
   let [width, height] = $state([0, 0])
@@ -344,10 +345,23 @@
   // Legend: one item per node, toggling mutes (dims) rather than removing.
   // Auto-place to avoid covering nodes (node box centers act as obstacle points).
   let legend_element = $state<HTMLDivElement | undefined>()
+  // Only nodes that survive the layout (orphans with no links are dropped, see
+  // compute_sankey_layout) - keeps the legend in sync with what's drawn.
+  let legend_data = $derived.by<LegendItem[]>(() =>
+    layout.nodes.map(({ node_idx: idx, id, label }) => ({
+      series_idx: idx,
+      label: label ?? `${id}`,
+      visible: !muted_nodes.has(id),
+      display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
+    })),
+  )
+  // Nodes are labelled in place, so a legend stays opt-in here. Count rendered
+  // legend entries (not raw input nodes) so orphan-only data can't open an empty legend.
+  let legend_visible = $derived(
+    resolve_legend_visibility(show_legend, legend, legend_data.length, false),
+  )
   let legend_placement = $derived.by(() => {
-    if (!show_legend || legend == null || data.nodes.length <= 1 || !width || !height) {
-      return null
-    }
+    if (!legend_visible || !width || !height) return null
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
       element: legend_element,
@@ -357,19 +371,6 @@
       points: layout.nodes.map(node_center),
     })
   })
-  // Only nodes that survive the layout (orphans with no links are dropped, see
-  // compute_sankey_layout) - keeps the legend in sync with what's drawn.
-  let legend_data = $derived.by<LegendItem[]>(() =>
-    data.nodes
-      .map((node, idx) => ({ node, idx }))
-      .filter(({ idx }) => node_by_idx.has(idx))
-      .map(({ node, idx }) => ({
-        series_idx: idx,
-        label: node.label ?? `${node.id ?? idx}`,
-        visible: !muted_nodes.has(node.id ?? idx),
-        display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
-      })),
-  )
 
   function toggle_node(series_idx: number) {
     const id = node_id_at(series_idx)
@@ -581,7 +582,7 @@
     </PlotTooltip>
   {/if}
 
-  {#if show_legend && legend != null && data.nodes.length > 1}
+  {#if legend_visible}
     {@const legend_left = legend_placement?.x ?? pad.l + 10}
     {@const legend_top = legend_placement?.y ?? pad.t + 10}
     <PlotLegend

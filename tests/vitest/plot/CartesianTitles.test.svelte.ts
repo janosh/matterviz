@@ -71,7 +71,8 @@ describe(`Cartesian plot titles`, () => {
       const clip_rect = root.querySelector(`clipPath rect`)
       const clip_x = Number(clip_rect?.getAttribute(`x`))
       expect(root.querySelector(`.x2-axis, .y2-axis`)).toBeNull()
-      expect(Number(clip_rect?.getAttribute(`y`))).toBe(component === ScatterPlot ? 5 : 20)
+      // every Cartesian plot now starts from the shared DEFAULT_PLOT_PADDING top of 20
+      expect(Number(clip_rect?.getAttribute(`y`))).toBe(20)
       expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(20)
     },
   )
@@ -114,7 +115,7 @@ describe(`Cartesian plot titles`, () => {
         series: xy_series(),
         x_axis: { label: `Long formation E<sub>hull</sub> relative energy scale` },
         y_axis: { label: `Long squared x<sup>2</sup> response property scale` },
-        controls: { show: false },
+        show_controls: false,
         fullscreen_toggle: false,
         legend: null,
         point_tween: { duration: 0 },

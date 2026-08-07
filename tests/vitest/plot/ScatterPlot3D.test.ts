@@ -103,7 +103,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
         auto_rotate: 2,
         color_scale: { scheme: `interpolateViridis` },
         size_scale: { radius_range: [0.05, 0.3] },
-        controls: { open: true },
+        controls_open: true,
       },
     ],
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
@@ -118,7 +118,28 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
     const pane = container.querySelector(`.draggable-pane`)
     if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
-    expect(pane.style.display).toBe(props.controls?.open ? `grid` : `none`)
+    expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
+  })
+
+  const multi_series = [basic_series, { ...basic_series, label: `Other` }]
+  test.each<[string, ComponentProps<typeof ScatterPlot3D>, boolean]>([
+    [`auto hides a single series`, { series: [basic_series] }, false],
+    [
+      `explicit true forces a one-series legend`,
+      { series: [basic_series], show_legend: true },
+      true,
+    ],
+    [`explicit false hides multiple`, { series: multi_series, show_legend: false }, false],
+    [
+      `legend=null overrides show_legend=true`,
+      { series: multi_series, show_legend: true, legend: null },
+      false,
+    ],
+    [`auto shows multiple series`, { series: multi_series }, true],
+  ])(`legend visibility: %s`, async (_desc, props, expect_legend) => {
+    mounted_component = mount(ScatterPlot3D, { target: container, props })
+    await tick()
+    expect(Boolean(container.querySelector(`.legend`))).toBe(expect_legend)
   })
 
   test.each([

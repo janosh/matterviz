@@ -140,8 +140,7 @@ const merge_object_prop = (
 }
 
 // Derived prop that folds a flat source trait into a target object trait under sub_key
-// (x_range -> x_axis.range, show_controls -> controls.show): the components read the
-// nested field, so driving the flat trait alone would be dropped as an unused prop.
+// (for example, x_range -> x_axis.range).
 const merged_prop = (target: string, sub_key: string, source: string): DrivenProp =>
   derived_prop(target, [target, source], (model) =>
     merge_object_prop(get_prop(model, target), sub_key, get_prop(model, source)),
@@ -153,8 +152,6 @@ const axis_props: readonly DrivenProp[] = [
   merged_prop(`y_axis`, `range`, `y_range`),
   merged_prop(`y2_axis`, `range`, `y2_range`),
 ]
-
-const controls_prop: DrivenProp = merged_prop(`controls`, `show`, `show_controls`)
 
 const plot_common_prop_keys = [
   `series`,
@@ -169,7 +166,7 @@ const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
 
 const scatter_plot_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
-  controls_prop,
+  drive_prop(`show_controls`),
   ...drive_props([
     `styles`,
     `color_scale`,
@@ -318,8 +315,7 @@ type WidgetSpec = {
 }
 
 // Base props every widget gets unless its spec sets base_drive. style is the notebook
-// wrapper; show_controls is driven top-level only for components that expose it as a prop
-// -- plot widgets read controls.show instead (see controls_prop), so they use style_base_drive.
+// wrapper; specs using style_base_drive drive show_controls explicitly.
 const top_level_base_drive: readonly DrivenProp[] = [
   drive_prop(`show_controls`),
   drive_prop(`style`),
@@ -418,7 +414,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: ScatterPlot3D,
     base_drive: style_base_drive,
     drive: [
-      controls_prop,
+      drive_prop(`show_controls`),
       ...drive_props([
         `series`,
         `surfaces`,
@@ -533,7 +529,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   xrd: {
     component: XrdPlot,
     base_drive: style_base_drive,
-    drive: [drive_prop(`patterns`), controls_prop],
+    drive: drive_props([`patterns`, `show_controls`]),
   },
   periodic_table: {
     component: PeriodicTable,
@@ -554,7 +550,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: RdfPlot,
     base_drive: style_base_drive,
     drive: [
-      controls_prop,
+      drive_prop(`show_controls`),
       ...drive_props([
         `patterns`,
         `structures`,

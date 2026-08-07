@@ -14,6 +14,8 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     y: number[] // array of length 118 (one value for each element)
@@ -54,6 +56,8 @@
   padding={{ l: 60, r: 10, t: 5, b: 45 }}
   range_padding={0}
   {...rest}
+  {show_controls}
+  bind:controls_open
 >
   {#snippet tooltip({ x, y })}
     {@const elem = element_data[x - 1]}

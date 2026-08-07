@@ -41,7 +41,8 @@
     highlight_regions = [],
     shade_imaginary_modes = true,
     show_gap_annotation = true,
-    show_controls = true,
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     show_path_mode_control = true,
     show_units_control = true,
     show_spin_control = true,
@@ -712,10 +713,12 @@
     }}
     bind:y_axis={internal_y_axis}
     bind:display
-    legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
+    {show_legend}
+    legend={Object.keys(band_structs_dict).length > 1 ? {} : null}
     hover_config={{ threshold_px: 50 }}
-    controls={{ show: show_controls }}
     {...rest}
+    {show_controls}
+    bind:controls_open
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const y_label_full = internal_y_axis.label ?? ``}

@@ -3,90 +3,94 @@
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { DataSeries, FillRegion, InternalPoint, LegendItem, PointStyle } from '$lib/plot'
-import {
-  get_series_color,
-  get_series_symbol,
-  process_prop,
-} from '$lib/plot/core/data-transform'
+import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
 export { type AxisRanges } from '$lib/plot/core/types'
 
-const in_range = (val: number | null | undefined, lo: number, hi: number) =>
-  val != null && Number.isFinite(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
+// Sort a possibly-inverted range (axes may be reversed, e.g. [3.5, 1.4]) into [lo, hi]
+// once per series so the per-point test is two bare comparisons.
+const sorted_bounds = ([a, b]: readonly [number, number]): [number, number] =>
+  a <= b ? [a, b] : [b, a]
+
+// Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
+// null/Array.isArray branch out of the point loop matters at 100k points, where these
+// five props would otherwise cost 10 redundant checks per point.
+const prop_getter = <T>(
+  prop: T[] | T | undefined | null,
+): ((idx: number) => T | undefined) => {
+  if (prop == null) return () => undefined
+  if (Array.isArray(prop)) return (idx) => prop[idx]
+  return () => prop
+}
 
 // Filter series data to only include points within bounds and augment with internal data.
 // Full x/y arrays are kept on each returned series (via spread) so connecting lines can
 // continue through off-range points; only filtered_data (rendered markers) is range-limited.
+//
+// Perf: this runs on every pan/zoom/resize tick, so it tests raw x/y against the bounds
+// *before* building an InternalPoint. Allocating first and filtering after made a zoomed-in
+// view cost the same as the full view even when it dropped 96% of the points.
 export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   ranges: AxisRanges,
 ): (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] {
-  const [x_min, x_max] = ranges.x
-  const [x2_min, x2_max] = ranges.x2
-  const [y_min, y_max] = ranges.y
-  const [y2_min, y2_max] = ranges.y2
+  const x_bounds = sorted_bounds(ranges.x)
+  const x2_bounds = sorted_bounds(ranges.x2)
+  const y_bounds = sorted_bounds(ranges.y)
+  const y2_bounds = sorted_bounds(ranges.y2)
 
-  return (
-    series
-      .map((data_series: DataSeries<Metadata>, series_idx): DataSeries<Metadata> => {
-        if (!data_series) {
-          return {
-            x: [],
-            y: [],
-            visible: true,
-            filtered_data: [],
-            _id: series_idx,
-            orig_series_idx: series_idx,
-          }
-        }
-        if (!(data_series.visible ?? true)) {
-          return {
-            ...data_series,
-            visible: false,
-            filtered_data: [],
-            orig_series_idx: series_idx,
-          }
-        }
+  const out: (DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] })[] = []
 
-        const { x: xs, y: ys, color_values, size_values, ...series_rest } = data_series
-        const processed_points: InternalPoint<Metadata>[] = xs.map(
-          (x_val: number, point_idx: number) => ({
-            x: x_val,
-            y: ys[point_idx],
-            color_value: color_values?.[point_idx],
-            metadata: process_prop(series_rest.metadata, point_idx),
-            point_style: process_prop(series_rest.point_style, point_idx),
-            point_hover: process_prop(series_rest.point_hover, point_idx),
-            point_label: process_prop(series_rest.point_label, point_idx),
-            point_offset: process_prop(series_rest.point_offset, point_idx),
-            series_idx,
-            point_idx,
-            size_value: size_values?.[point_idx],
-          }),
-        )
+  for (let series_idx = 0; series_idx < series.length; series_idx++) {
+    const data_series = series[series_idx]
+    // Missing and hidden series yield no points, and empty series are dropped below
+    if (!data_series || !(data_series.visible ?? true)) continue
 
-        // Filter to plot bounds using the series' assigned axes (in_range handles
-        // inverted ranges like [3.5, 1.4])
-        const [series_x_min, series_x_max] =
-          (data_series.x_axis ?? `x1`) === `x2` ? [x2_min, x2_max] : [x_min, x_max]
-        const [series_y_min, series_y_max] =
-          (data_series.y_axis ?? `y1`) === `y2` ? [y2_min, y2_max] : [y_min, y_max]
-        const filtered_data = processed_points.filter(
-          ({ x, y }) =>
-            in_range(x, series_x_min, series_x_max) && in_range(y, series_y_min, series_y_max),
-        )
+    const { x: xs, y: ys, color_values, size_values } = data_series
+    const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
+    const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
 
-        // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
-        return { ...data_series, visible: true, filtered_data, orig_series_idx: series_idx }
+    const get_metadata = prop_getter(data_series.metadata)
+    const get_point_style = prop_getter(data_series.point_style)
+    const get_point_hover = prop_getter(data_series.point_hover)
+    const get_point_label = prop_getter(data_series.point_label)
+    const get_point_offset = prop_getter(data_series.point_offset)
+
+    const filtered_data: InternalPoint<Metadata>[] = []
+    for (let point_idx = 0; point_idx < xs.length; point_idx++) {
+      // Number.isFinite also rejects null/undefined/NaN, matching the old in_range guard
+      const x = xs[point_idx]
+      if (!Number.isFinite(x) || !(x >= x_lo && x <= x_hi)) continue
+      const y = ys[point_idx]
+      if (!Number.isFinite(y) || !(y >= y_lo && y <= y_hi)) continue
+
+      filtered_data.push({
+        x,
+        y,
+        color_value: color_values?.[point_idx],
+        metadata: get_metadata(point_idx),
+        point_style: get_point_style(point_idx),
+        point_hover: get_point_hover(point_idx),
+        point_label: get_point_label(point_idx),
+        point_offset: get_point_offset(point_idx),
+        series_idx,
+        point_idx,
+        size_value: size_values?.[point_idx],
       })
-      // Drop series left completely empty after point filtering
-      .filter(
-        (srs): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
-          (srs.filtered_data?.length ?? 0) > 0,
-      )
-  )
+    }
+
+    // orig_series_idx keeps auto-cycled colors/symbols stable across filtering
+    if (
+      filtered_data.length > 0 ||
+      (data_series.markers ?? DEFAULT_MARKERS).includes(`line`)
+    ) {
+      out.push({ ...data_series, visible: true, filtered_data, orig_series_idx: series_idx })
+    }
+  }
+
+  return out
 }
 
 // Display style attached to each legend item (matches PlotLegend expectations)
@@ -262,15 +266,13 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
     if (is_opaque_color(stroke_color)) return stroke_color
   }
   if (series_markers.includes(`line`)) {
-    const line_style = series?.line_style ?? {}
     const first_point_style = Array.isArray(series?.point_style)
-      ? series?.point_style[0]
+      ? series.point_style[0]
       : series?.point_style
     const first_color_value = series?.color_values?.[0]
-    let line_color_candidate = line_style.stroke
-    if (is_transparent_or_none(line_color_candidate)) {
+    let line_color_candidate = series?.line_style?.stroke
+    if (is_transparent_or_none(line_color_candidate))
       line_color_candidate = first_point_style?.fill
-    }
     if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
       line_color_candidate = color_scale_fn(first_color_value)
     if (is_transparent_or_none(line_color_candidate) && series_markers.includes(`points`))

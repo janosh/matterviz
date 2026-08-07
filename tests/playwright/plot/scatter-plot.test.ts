@@ -1608,7 +1608,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const tooltip = plot_locator.locator(`.plot-tooltip`)
 
     const marker_count = await markers.count()
-    if (marker_count < 2) return
+    test.skip(marker_count < 2, `Need at least two markers to test tooltip positioning`)
 
     // Get all marker positions to find edge markers
     const all_markers = await markers.all()
@@ -1621,13 +1621,38 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Filter to markers with valid bounding boxes
     const valid_markers = marker_data.filter((marker) => marker.bbox !== null)
-    if (valid_markers.length < 2) return
+    test.skip(
+      valid_markers.length < 2,
+      `Need at least two rendered markers to test tooltip positioning`,
+    )
 
     const plot_box = await plot_locator.boundingBox()
-    if (!plot_box) return
+    if (!plot_box) {
+      test.skip(true, `Need rendered plot bounds to test tooltip positioning`)
+      return
+    }
+
+    // Header controls sit on the top-right; skip markers under that overlay.
+    const header_box = await plot_locator.locator(`.header-controls`).boundingBox()
+    const hoverable = valid_markers.filter((marker) => {
+      const bbox = marker.bbox
+      if (!bbox || !header_box) return Boolean(bbox)
+      const cx = bbox.x + bbox.width / 2
+      const cy = bbox.y + bbox.height / 2
+      return !(
+        cx >= header_box.x &&
+        cx <= header_box.x + header_box.width &&
+        cy >= header_box.y &&
+        cy <= header_box.y + header_box.height
+      )
+    })
+    test.skip(
+      hoverable.length < 2,
+      `Need at least two markers outside the header overlay to test tooltip positioning`,
+    )
 
     // Find marker closest to right edge (most likely to cause overflow)
-    const rightmost = valid_markers.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
+    const rightmost = hoverable.toSorted((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
 
     // Test tooltip on rightmost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, rightmost.marker)

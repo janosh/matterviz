@@ -108,20 +108,19 @@ describe(`drive wiring (all widgets)`, () => {
 })
 
 describe(`scatter_plot wiring`, () => {
-  test(`range traits and show_controls are mapped into consumed config props`, () => {
+  test(`range traits map into axis config while controls stay flat`, () => {
     const model = new MockModel({
       widget_type: `scatter_plot`,
       series: [],
       x_axis: { label: `Energy` },
       x_range: [0, 10],
-      controls: { open: true },
       show_controls: false,
     })
     const stub = run_widget(`scatter_plot`, model)
     expect(stub.read().x_axis).toEqual({ label: `Energy`, range: [0, 10] })
-    expect(stub.read().controls).toEqual({ open: true, show: false })
+    expect(stub.read().show_controls).toBe(false)
     expect(`x_range` in stub.read()).toBe(false)
-    expect(`show_controls` in stub.read()).toBe(false)
+    expect(`controls` in stub.read()).toBe(false)
   })
 
   test(`on_point_click writes active_point with a monotonic event_id`, () => {
@@ -253,7 +252,6 @@ describe(`widget config wiring`, () => {
         series: [],
         y_axis: { label: `Count` },
         y_range: [1, 5],
-        controls: { open: true },
         show_controls: false,
       })
       const stub = run_widget(widget_type, model)
@@ -265,16 +263,15 @@ describe(`widget config wiring`, () => {
   )
 
   test.each([`scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
-    `%s maps show_controls into controls.show`,
+    `%s forwards show_controls as a flat prop`,
     (widget_type) => {
       const model = new MockModel({
         widget_type,
-        controls: { open: true },
         show_controls: false,
       })
       const stub = run_widget(widget_type, model)
-      expect(stub.read().controls).toEqual({ open: true, show: false })
-      expect(`show_controls` in stub.read()).toBe(false)
+      expect(stub.read().show_controls).toBe(false)
+      expect(`controls` in stub.read()).toBe(false)
     },
   )
 

@@ -11,7 +11,6 @@
     AxisConfig,
     BarHandlerProps,
     BarSeries,
-    ControlsConfig,
     DataSeries,
     ScatterHandlerProps,
   } from '$lib/plot'
@@ -39,6 +38,8 @@
     orientation = `vertical`,
     wavelength = null,
     radiation = $bindable(`xray`),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     x_axis = {},
     y_axis = {},
     allow_file_drop = true,
@@ -47,7 +48,6 @@
     error_msg = $bindable(),
     broadening_enabled = $bindable(false),
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
-    controls = {},
     ...rest
   }: ComponentProps<typeof BarPlot> &
     ComponentProps<typeof ScatterPlot> & {
@@ -75,7 +75,6 @@
       error_msg?: string
       broadening_enabled?: boolean
       broadening_params?: BroadeningParams
-      controls?: ControlsConfig
     } = $props()
 
   let dragover = $state(false)
@@ -421,8 +420,9 @@
         {...drop_handlers}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
-        {controls}
         controls_extra={broadening_controls_snippet}
+        {show_controls}
+        bind:controls_open
       />
     {:else}
       <!-- Discrete Stick View -->
@@ -454,11 +454,9 @@
         {...drop_handlers}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
-        show_controls={controls.show}
-        controls_open={controls.open}
-        controls_toggle_props={controls.toggle_props}
-        controls_pane_props={controls.pane_props}
         controls_extra={broadening_controls_snippet}
+        {show_controls}
+        bind:controls_open
       />
     {/if}
   </div>

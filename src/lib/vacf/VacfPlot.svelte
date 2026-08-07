@@ -18,6 +18,8 @@
     max_visible_curves = 4,
     loading = $bindable(false),
     error_msg = $bindable(),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: {
     // Precomputed curves. Bindable so a parent can read back what `input` produced.
@@ -108,6 +110,8 @@
   {#snippet panel_plot(series: DataSeries[], x_label: string, y_label: string)}
     <ScatterPlot
       {...rest}
+      {show_controls}
+      bind:controls_open
       {series}
       x_axis={{ label: x_label }}
       y_axis={{ label: y_label }}

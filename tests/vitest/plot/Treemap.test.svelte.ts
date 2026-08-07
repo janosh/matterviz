@@ -369,7 +369,7 @@ describe(`Treemap`, () => {
       data: tree,
       color_values: (arc: { is_leaf: boolean; value: number }) =>
         arc.is_leaf ? arc.value : null,
-      colorbar: { title: `count`, orientation: `vertical` },
+      color_bar: { title: `count`, orientation: `vertical` },
     })
     const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
     expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(

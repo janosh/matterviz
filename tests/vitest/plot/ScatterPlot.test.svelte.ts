@@ -83,7 +83,7 @@ describe(`ScatterPlot`, () => {
       series: [basic],
       padding: { t: 7, b: 11, l: 13, r: 17 },
       facet_layout,
-      controls: { show: false },
+      show_controls: false,
       fullscreen_toggle: false,
       legend: null,
     })
@@ -98,6 +98,111 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.x-axis`)).toBeNull()
     expect(plot.querySelector(`.y-axis`)).not.toBeNull()
     expect(update_range).not.toHaveBeenCalled()
+  })
+
+  // ScatterPlot now shares the flat controls props used by the other plots.
+  describe(`controls props`, () => {
+    test.each([
+      [`closed by default`, {}, true, false],
+      [`hidden`, { show_controls: false }, false, false],
+      [`opened`, { controls_open: true }, true, true],
+    ] as const)(`renders controls %s`, async (_desc, controls_props, visible, open) => {
+      const plot = await mount_sized_scatter_plot({ series: [basic], ...controls_props })
+      expect(Boolean(plot.querySelector(`.plot-controls-toggle`))).toBe(visible)
+      expect(Boolean(plot.querySelector(`.pane-open`))).toBe(open)
+      for (const prop_name of Object.keys(controls_props)) {
+        expect(plot.hasAttribute(prop_name)).toBe(false)
+      }
+    })
+  })
+
+  describe(`marker_renderer`, () => {
+    const dense = {
+      x: Array.from({ length: 40 }, (_, idx) => idx),
+      y: Array.from({ length: 40 }, (_, idx) => idx % 7),
+    }
+    const labelled_series = (point_idx = 3) => ({
+      ...dense,
+      point_label: dense.x.map((_, idx) =>
+        idx === point_idx ? { text: `tagged` } : { text: undefined },
+      ),
+    })
+    const mount_canvas = (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>
+      mount_sized_scatter_plot({ series: [dense], marker_renderer: `canvas`, ...props })
+    const mock_canvas_context = (overrides: Record<string, unknown> = {}): void => {
+      const stubs =
+        `save restore setTransform clearRect scale beginPath rect clip moveTo arc fill stroke`.split(
+          ` `,
+        )
+      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
+        font: ``,
+        measureText: () => ({ width: 0 }),
+        ...Object.fromEntries(stubs.map((name) => [name, vi.fn()])),
+        ...overrides,
+      } as unknown as CanvasRenderingContext2D)
+    }
+
+    test(`selects svg or canvas layers and renders canvas overlays`, async () => {
+      for (const [marker_renderer, canvas, svg_count] of [
+        [`auto`, false, 40],
+        [`svg`, false, 40],
+        [`canvas`, true, 0],
+      ] as const) {
+        const plot = await mount_sized_scatter_plot({ series: [dense], marker_renderer })
+        expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
+        expect(plot.querySelectorAll(`path.marker`)).toHaveLength(svg_count)
+      }
+
+      let arcs_since_clear = 0
+      mock_canvas_context({
+        clearRect: vi.fn(() => (arcs_since_clear = 0)),
+        arc: vi.fn(() => arcs_since_clear++),
+      })
+      const point_idx = 3
+      const overlaid = await mount_canvas({
+        series: [labelled_series(point_idx)],
+        selected_point: { series_idx: 0, point_idx },
+        tooltip_point: {
+          x: dense.x[point_idx],
+          y: dense.y[point_idx],
+          series_idx: 0,
+          point_idx,
+        },
+      })
+      expect(overlaid.querySelectorAll(`path.marker`)).toHaveLength(1)
+      expect(arcs_since_clear).toBe(dense.x.length - 1)
+      expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
+      expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
+      const canvas = overlaid.querySelector(`canvas.marker-canvas`)
+      expect(canvas?.parentElement?.tagName.toLowerCase()).toBe(`foreignobject`)
+      const ratio = globalThis.devicePixelRatio ?? 1
+      expect(canvas?.getAttribute(`width`)).toBe(String(400 * ratio))
+      expect(canvas?.getAttribute(`height`)).toBe(String(300 * ratio))
+      expect((canvas as HTMLCanvasElement).style.width).toBe(`400px`)
+
+      const tweened = await mount_canvas({
+        selected_point: { series_idx: 0, point_idx: 5 },
+        point_tween: { duration: 60_000 },
+      })
+      const clip = scatter_clip_rect(tweened)
+      const transform =
+        tweened.querySelector(`path.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
+      expect(
+        Math.hypot(
+          Number(match.groups.x) - (clip.x + clip.width / 2),
+          Number(match.groups.y) - (clip.y + clip.height / 2),
+        ),
+      ).toBeGreaterThan(10)
+      expect(tweened.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
+
+      const arc = vi.fn()
+      mock_canvas_context({ arc })
+      const hidden = await mount_canvas({ styles: { show_points: false } })
+      expect(hidden.querySelectorAll(`path.marker`)).toHaveLength(0)
+      expect(arc).not.toHaveBeenCalled()
+    })
   })
 
   // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
@@ -227,6 +332,20 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
+
+  test.each([`x2`, `y2`] as const)(
+    `does not render the %s axis when its series has no valid axis values`,
+    async (axis) => {
+      const invalid_series: DataSeries =
+        axis === `x2`
+          ? { x: [NaN, Infinity], y: [3, 4], x_axis: `x2` }
+          : { x: [1, 2], y: [NaN, Infinity], y_axis: `y2` }
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: [1, 2], y: [3, 4], y_axis: `y1` }, invalid_series],
+      })
+      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+    },
+  )
 
   test(`reassigns visible unit groups and inferred axes after visibility changes`, async () => {
     const state = $state({
@@ -986,17 +1105,28 @@ describe(`ScatterPlot`, () => {
     )
     const svg = plot.querySelector(`svg[role="application"]`) // chart svg, not control icons
     if (!svg) throw new Error(`svg not found`)
+    // Drag a rect covering a known fraction of the plot area, read off the clip rect, so the
+    // expected zoom factor doesn't depend on the padding defaults
+    const clip = plot.querySelector(`clipPath rect`)
+    const plot_top = Number(clip?.getAttribute(`y`))
+    const plot_height = Number(clip?.getAttribute(`height`))
+    const [drag_top, drag_bottom] = [
+      plot_top + plot_height * 0.25,
+      plot_top + plot_height * 0.5,
+    ]
     svg.dispatchEvent(
-      new MouseEvent(`mousedown`, { clientX: 100, clientY: 50, bubbles: true }),
+      new MouseEvent(`mousedown`, { clientX: 100, clientY: drag_top, bubbles: true }),
     )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: 200 }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+    window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 300, clientY: drag_bottom }))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: drag_bottom }))
     await tick()
     const y2_range = state.y2_axis.range as Vec2 | undefined
     if (!y2_range) throw new Error(`y2_axis.range not set by rect-zoom`)
     expect(y2_range.every(Number.isFinite)).toBe(true)
     expect(y2_range[0]).toBeLessThan(y2_range[1])
-    expect(y2_range[1] - y2_range[0]).toBeLessThan(20) // narrower than full data span
+    // a quarter of the plot height can't span more than a quarter of the 10..30 data range
+    // (plus nicing slack), so this stays well under the full span
+    expect(y2_range[1] - y2_range[0]).toBeLessThan(12)
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the

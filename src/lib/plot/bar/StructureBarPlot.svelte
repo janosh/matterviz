@@ -32,6 +32,8 @@
     on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: Omit<ComponentProps<typeof BarPlot>, `series` | `tooltip`> & {
     // Not generic over the metadata type: BarPlot's snippet prop is invariant in it, so a
@@ -105,6 +107,8 @@
 {:else}
   <BarPlot
     {...rest}
+    {show_controls}
+    bind:controls_open
     {series}
     bind:orientation
     bind:mode

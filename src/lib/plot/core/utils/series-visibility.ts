@@ -1,3 +1,12 @@
+// Null/no entries hide the legend; explicit show_legend wins. Cartesian charts default to
+// multiple entries, while hierarchy and Sankey charts pass false to stay opt-in.
+export const resolve_legend_visibility = (
+  show_legend: boolean | undefined,
+  legend: unknown,
+  entry_count: number,
+  auto_default = entry_count > 1,
+): boolean => legend != null && entry_count > 0 && (show_legend ?? auto_default)
+
 // Minimal series shape the visibility helpers need - generic over the concrete series
 // type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type
 type VisSeries = {

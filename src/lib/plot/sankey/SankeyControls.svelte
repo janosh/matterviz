@@ -1,6 +1,6 @@
 <script lang="ts">
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { SankeyNodeAlign, SankeyOrientation } from '$lib/plot'
+  import type { SankeyNodeAlign, Orientation } from '$lib/plot'
   import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -21,7 +21,7 @@
   }: {
     show_controls?: boolean
     controls_open?: boolean
-    orientation?: SankeyOrientation
+    orientation?: Orientation
     node_width?: number
     node_padding?: number
     node_align?: SankeyNodeAlign

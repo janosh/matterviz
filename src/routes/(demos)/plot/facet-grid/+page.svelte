@@ -34,7 +34,7 @@
       y_axis: energy_axis,
       range_padding: 0.04,
       legend: null,
-      controls: { show: false },
+      show_controls: false,
       point_tween: { duration: 0 },
       line_tween: { duration: 0 },
     }),

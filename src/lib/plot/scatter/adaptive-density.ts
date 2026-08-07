@@ -1,4 +1,9 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import {
+  build_spatial_index,
+  query_nearest,
+  type SpatialIndex,
+} from '$lib/plot/core/spatial-index'
 import type { ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
 
@@ -53,11 +58,9 @@ export interface PickNearestOptions {
   radius_px?: number
 }
 
-export interface PickIndex<Metadata = Record<string, unknown>> {
-  cells: Map<string, DenseInternalPoint<Metadata>[]>
-  cell_size: number
-  radius_px: number
-}
+export type PickIndex<Metadata = Record<string, unknown>> = SpatialIndex<
+  DenseInternalPoint<Metadata>
+>
 
 export interface PlotRect {
   x: number
@@ -113,8 +116,6 @@ export const get_metadata_at = <Metadata>(
   point_idx: number,
 ): Metadata | undefined => (Array.isArray(metadata) ? metadata[point_idx] : metadata)
 
-const cell_key = (x_bin: number, y_bin: number): string => `${x_bin},${y_bin}`
-
 export const range_bounds = (range: Vec2): Vec2 =>
   range[0] <= range[1] ? range : [range[1], range[0]]
 
@@ -127,7 +128,12 @@ const value_bin = (value: number, min: number, span: number, bins: number): numb
 const series_length = (srs: Pick<DensePointSeries, `x` | `y`>): number =>
   Math.min(srs.x.length, srs.y.length)
 
-const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 => {
+const padded_extent = (
+  min: number,
+  max: number,
+  scale_type?: ScaleType,
+  range_padding = 0.05,
+): Vec2 => {
   const log_scale = get_scale_type_name(scale_type) === `log`
   if (!Number.isFinite(min) || !Number.isFinite(max)) return log_scale ? [1, 10] : [0, 1]
 
@@ -135,13 +141,14 @@ const padded_extent = (min: number, max: number, scale_type?: ScaleType): Vec2 =
   const t_min = forward(min)
   const t_max = forward(max)
   if (t_min === t_max) {
+    if (range_padding === 0) return [min, max]
     if (log_scale) {
       const center = Math.max(min, LOG_EPS)
       return [Math.max(LOG_EPS, center / Math.sqrt(10)), center * Math.sqrt(10)]
     }
     return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
   }
-  const padding = (t_max - t_min) * 0.05
+  const padding = (t_max - t_min) * range_padding
   const clamp = (val: number) => Math.min(Number.MAX_VALUE, Math.max(-Number.MAX_VALUE, val))
   return [clamp(inverse(t_min - padding)), clamp(inverse(t_max + padding))]
 }
@@ -150,6 +157,7 @@ export function series_extents(
   series: readonly DensePointSeries[],
   x_scale_type?: ScaleType,
   y_scale_type?: ScaleType,
+  range_padding = 0.05,
 ): { x: Vec2; y: Vec2 } {
   let x_min = Infinity
   let x_max = -Infinity
@@ -174,8 +182,8 @@ export function series_extents(
   }
 
   return {
-    x: padded_extent(x_min, x_max, x_scale_type),
-    y: padded_extent(y_min, y_max, y_scale_type),
+    x: padded_extent(x_min, x_max, x_scale_type, range_padding),
+    y: padded_extent(y_min, y_max, y_scale_type, range_padding),
   }
 }
 
@@ -313,54 +321,29 @@ export function build_pick_index<Metadata>(
   const { x_range, y_range, x_scale, y_scale, radius_px = 12 } = options
   const [x_min, x_max] = range_bounds(x_range)
   const [y_min, y_max] = range_bounds(y_range)
-  const cell_size = Math.max(1, radius_px)
-  const cells = new Map<string, DenseInternalPoint<Metadata>[]>()
 
-  for (let series_idx = 0; series_idx < series.length; series_idx++) {
-    const srs = series[series_idx]
-    const n_points = series_length(srs)
-    for (let point_idx = 0; point_idx < n_points; point_idx++) {
-      const x = srs.x[point_idx]
-      const y = srs.y[point_idx]
-      if (!in_bounds(x, x_min, x_max) || !in_bounds(y, y_min, y_max)) continue
-
-      const point = internal_point(srs, series_idx, point_idx, x_scale, y_scale)
-      const key = cell_key(Math.floor(point.cx / cell_size), Math.floor(point.cy / cell_size))
-      const points = cells.get(key)
-      if (points) points.push(point)
-      else cells.set(key, [point])
-    }
-  }
-
-  return { cells, cell_size, radius_px }
-}
-
-export function pick_from_index<Metadata>(
-  index: PickIndex<Metadata>,
-  pointer: Point2D,
-): DenseInternalPoint<Metadata> | null {
-  const radius_sq = index.radius_px ** 2
-  const center_x = Math.floor(pointer.x / index.cell_size)
-  const center_y = Math.floor(pointer.y / index.cell_size)
-  const cell_radius = Math.ceil(index.radius_px / index.cell_size)
-  let best: DenseInternalPoint<Metadata> | null = null
-  let best_dist_sq = radius_sq
-
-  for (let y_bin = center_y - cell_radius; y_bin <= center_y + cell_radius; y_bin++) {
-    for (let x_bin = center_x - cell_radius; x_bin <= center_x + cell_radius; x_bin++) {
-      for (const point of index.cells.get(cell_key(x_bin, y_bin)) ?? []) {
-        const dx = pointer.x - point.cx
-        const dy = pointer.y - point.cy
-        const dist_sq = dx * dx + dy * dy
-        if (dist_sq > best_dist_sq) continue
-        best_dist_sq = dist_sq
-        best = point
+  // Generator keeps the in-range points streaming straight into the grid, so no
+  // intermediate array of every visible point is materialized
+  function* in_range_points(): Generator<DenseInternalPoint<Metadata>> {
+    for (let series_idx = 0; series_idx < series.length; series_idx++) {
+      const srs = series[series_idx]
+      const n_points = series_length(srs)
+      for (let point_idx = 0; point_idx < n_points; point_idx++) {
+        const x = srs.x[point_idx]
+        const y = srs.y[point_idx]
+        if (!in_bounds(x, x_min, x_max) || !in_bounds(y, y_min, y_max)) continue
+        yield internal_point(srs, series_idx, point_idx, x_scale, y_scale)
       }
     }
   }
 
-  return best
+  return build_spatial_index(in_range_points(), radius_px)
 }
+
+export const pick_from_index = <Metadata>(
+  index: PickIndex<Metadata>,
+  pointer: Point2D,
+): DenseInternalPoint<Metadata> | null => query_nearest(index, pointer)
 
 export function first_point_in_bin<Metadata>(
   series: readonly DensePointSeries<Metadata>[],

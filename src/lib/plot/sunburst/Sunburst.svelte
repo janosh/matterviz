@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
+  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import { DEG_TO_RAD, type Vec2 } from '$lib/math'
@@ -92,15 +93,15 @@
     color_values,
     color_scale = SCALE_DEFAULTS.scheme,
     color_range,
-    colorbar = {},
-    colorbar_side = `right`,
+    color_bar = {},
+    color_bar_side = `right`,
     export_buttons = true,
     export_filename = `sunburst`,
     tween,
     value_format = `,`,
     padding = DEFAULT_PADDING,
     legend = {},
-    show_legend = false,
+    show_legend,
     tooltip,
     arc_content,
     center_content,
@@ -144,8 +145,8 @@
       color_values?: (arc: PositionedArc<Metadata>) => number | null
       color_scale?: D3InterpolateName
       color_range?: Vec2 // defaults to the metric's [min, max]
-      colorbar?: ComponentProps<typeof ColorBar> | null // null hides it
-      colorbar_side?: `left` | `right` // side reserved for vertical colorbars
+      color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
+      color_bar_side?: `left` | `right` // side reserved for vertical colorbars
       group_gap?: SunburstGroupGap<Metadata> | null
       export_buttons?: boolean // SVG/PNG download buttons in the controls pane
       export_filename?: string
@@ -197,15 +198,15 @@
   // Reserve measured height only for horizontal bottom colorbars. Vertical
   // colorbars sit beside the rings and must not shrink their radius.
   let colorbar_size = $state({ height: 0, width: 0 })
-  let colorbar_is_vertical = $derived(colorbar?.orientation === `vertical`)
+  let colorbar_is_vertical = $derived(color_bar?.orientation === `vertical`)
   let colorbar_tick_side = $derived(
-    colorbar?.tick_side ??
-      (colorbar_is_vertical && colorbar_side === `left` ? `secondary` : `primary`),
+    color_bar?.tick_side ??
+      (colorbar_is_vertical && color_bar_side === `left` ? `secondary` : `primary`),
   )
   let colorbar_has_ticks = $derived(
-    Array.isArray(colorbar?.tick_labels)
-      ? colorbar.tick_labels.length > 0
-      : (colorbar?.tick_labels ?? 4) > 0,
+    Array.isArray(color_bar?.tick_labels)
+      ? color_bar.tick_labels.length > 0
+      : (color_bar?.tick_labels ?? 4) > 0,
   )
   let colorbar_tick_padding = $derived(
     !colorbar_has_ticks || colorbar_tick_side === `inside`
@@ -224,9 +225,9 @@
   )
   let inner_width = $derived(avail_width - vertical_colorbar_reserve)
   let inner_height = $derived(avail_height - colorbar_reserve)
-  let plot_left = $derived(pad.l + (colorbar_side === `left` ? vertical_colorbar_reserve : 0))
+  let plot_left = $derived(pad.l + (color_bar_side === `left` ? vertical_colorbar_reserve : 0))
   let vertical_colorbar_offset = $derived(
-    (colorbar_side === `left` ? pad.l : pad.r) + COLORBAR_GAP,
+    (color_bar_side === `left` ? pad.l : pad.r) + COLORBAR_GAP,
   )
 
   // Layout depends only on data/value semantics - not on size or zoom.
@@ -536,7 +537,10 @@
 
   // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
   let depth1_arcs = $derived(layout.arcs.filter((arc) => arc.depth === 1))
-  let legend_visible = $derived(show_legend && legend != null && depth1_arcs.length > 1)
+  // Arcs are labelled in place, so a legend stays opt-in here
+  let legend_visible = $derived(
+    resolve_legend_visibility(show_legend, legend, depth1_arcs.length, false),
+  )
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_placement = $derived.by(() => {
     if (!legend_visible || !width || !height) return null
@@ -825,20 +829,20 @@
     />
   {/if}
 
-  {#if metric && colorbar != null}
+  {#if metric && color_bar != null}
     <!-- positioning + height measurement live on ColorBar's own root (via rest
     props + attachment) instead of an extra wrapper div -->
     <ColorBar
       {color_scale}
       range={metric.range}
-      {...colorbar}
+      {...color_bar}
       tick_side={colorbar_tick_side}
       wrapper_style="{colorbar_is_vertical
         ? `--cbar-height: var(--sunburst-colorbar-height, 150px); --cbar-padding: ${colorbar_tick_padding};`
-        : ``} {colorbar?.wrapper_style ?? ``}"
+        : ``} {color_bar?.wrapper_style ?? ``}"
       style="{colorbar_is_vertical
-        ? `position: absolute; top: var(--sunburst-colorbar-top, 50%); ${colorbar_side}: var(--sunburst-colorbar-${colorbar_side}, ${vertical_colorbar_offset}px); transform: var(--sunburst-colorbar-transform, translateY(-50%)); width: var(--sunburst-colorbar-width, auto); min-width: var(--sunburst-colorbar-min-width, 0); pointer-events: auto;`
-        : `position: absolute; bottom: var(--sunburst-colorbar-bottom, ${COLORBAR_GAP}px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;`} {colorbar?.style ??
+        ? `position: absolute; top: var(--sunburst-colorbar-top, 50%); ${color_bar_side}: var(--sunburst-colorbar-${color_bar_side}, ${vertical_colorbar_offset}px); transform: var(--sunburst-colorbar-transform, translateY(-50%)); width: var(--sunburst-colorbar-width, auto); min-width: var(--sunburst-colorbar-min-width, 0); pointer-events: auto;`
+        : `position: absolute; bottom: var(--sunburst-colorbar-bottom, ${COLORBAR_GAP}px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;`} {color_bar?.style ??
         ``}"
       {@attach observe_size((size) => (colorbar_size = size))}
     />

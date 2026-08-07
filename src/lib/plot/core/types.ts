@@ -46,7 +46,6 @@ export type {
   SankeyNode,
   SankeyNodeAlign,
   SankeyNodeHandlerProps,
-  SankeyOrientation,
 } from '$lib/plot/sankey/sankey-types'
 export type {
   SunburstLabelRotation,
@@ -633,14 +632,6 @@ export interface PlotConfig {
   y_axis?: AxisConfig
   y2_axis?: AxisConfig
   display?: DisplayConfig
-}
-
-// Controls configuration
-export interface ControlsConfig {
-  show?: boolean
-  open?: boolean
-  toggle_props?: PaneToggleProps
-  pane_props?: PaneProps
 }
 
 // Pan configuration for 2D plot components

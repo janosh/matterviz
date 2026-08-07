@@ -21,6 +21,7 @@ import {
   resolve_tick_layout,
   sample_series_obstacle_points,
   type Sides,
+  stride_sample,
   TICK_LABEL_HEIGHT,
   y_axis_label_x,
   y2_axis_label_x,
@@ -283,6 +284,29 @@ describe(`layout utility functions`, () => {
       expect(result).toEqual([
         { x: 0, y: 0 },
         { x: 100, y: 100 },
+      ])
+    })
+
+    // Callers thin dense series before projecting them, which lengthens each segment. Without
+    // a cap, the interpolation would emit more filler points than the thinning saved.
+    it(`caps interior samples on a very long segment`, () => {
+      const long_segment = [
+        { x: 0, y: 0 },
+        { x: 100_000, y: 0 },
+      ]
+      const result = sample_series_obstacle_points(long_segment, true, 1)
+      expect(result.length).toBeLessThanOrEqual(66) // 2 vertices + at most 64 interior
+    })
+  })
+
+  describe(`stride_sample`, () => {
+    it(`preserves short inputs, thins evenly, keeps endpoints`, () => {
+      const short = [0, 1, 2]
+      expect(stride_sample(short, 10)).toBe(short)
+      expect(stride_sample(Array.from({ length: 10 }, (_, idx) => idx), 10)).toHaveLength(10)
+      expect(stride_sample(Array.from({ length: 1000 }, (_, idx) => idx), 10)).toHaveLength(10)
+      expect(stride_sample(Array.from({ length: 100 }, (_, idx) => idx), 5)).toEqual([
+        0, 25, 50, 74, 99,
       ])
     })
   })

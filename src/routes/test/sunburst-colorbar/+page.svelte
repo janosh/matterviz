@@ -7,7 +7,7 @@
     { label: `B`, value: 20 },
     { label: `C`, value: 30 },
   ]
-  const colorbar_sides = [`left`, `right`] as const
+  const color_bar_sides = [`left`, `right`] as const
   const padding = { t: 10, b: 10, l: 40, r: 24 }
 </script>
 
@@ -17,14 +17,14 @@
 
 <h1>Sunburst Vertical Colorbar Tests</h1>
 
-{#each colorbar_sides as colorbar_side}
-  <section id="vertical-colorbar-{colorbar_side}">
-    <h2>{colorbar_side}</h2>
+{#each color_bar_sides as color_bar_side}
+  <section id="vertical-colorbar-{color_bar_side}">
+    <h2>{color_bar_side}</h2>
     <Sunburst
       {data}
       color_values={(arc: PositionedArc) => arc.value}
-      colorbar={{ orientation: `vertical`, tick_format: `.2e` }}
-      {colorbar_side}
+      color_bar={{ orientation: `vertical`, tick_format: `.2e` }}
+      {color_bar_side}
       {padding}
       style="width: 600px; height: 360px"
     />

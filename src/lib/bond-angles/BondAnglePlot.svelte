@@ -26,6 +26,8 @@
     mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
+    show_controls = $bindable(true),
+    controls_open = $bindable(false),
     ...rest
   }: StructurePlotProps & {
     split_mode?: SplitMode
@@ -82,6 +84,8 @@
 
 <StructureBarPlot
   {...rest}
+  {show_controls}
+  bind:controls_open
   series={bar_series}
   primary_axis={angle_axis}
   {value_axis}

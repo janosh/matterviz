@@ -1230,7 +1230,6 @@ class XrdPlot(MatterViz):
         annotate_peaks: float | None = None,
         broadening_enabled: bool | None = None,
         broadening_params: Any | None = None,
-        controls: Any | None = None,
         error_msg: str | None = None,
         hkl_format: Any | None = None,
         loading: bool | None = None,
@@ -1260,8 +1259,6 @@ class XrdPlot(MatterViz):
             mv_props["broadening_enabled"] = broadening_enabled
         if broadening_params is not None:
             mv_props["broadening_params"] = broadening_params
-        if controls is not None:
-            mv_props["controls"] = controls
         if error_msg is not None:
             mv_props["error_msg"] = error_msg
         if hkl_format is not None:
@@ -1313,7 +1310,6 @@ class Bands(MatterViz):
         band_structs: dict | None = None,
         band_type: Any | None = None,
         color_scale: Any | None = None,
-        controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         error_bands: list | None = None,
@@ -1326,6 +1322,7 @@ class Bands(MatterViz):
         line_kwargs: Any | None = None,
         line_tween: Any | None = None,
         marginals: Any | None = None,
+        marker_renderer: Any | None = None,
         pan: Any | None = None,
         path_mode: Any | None = None,
         point_tween: Any | None = None,
@@ -1368,8 +1365,6 @@ class Bands(MatterViz):
             mv_props["band_type"] = band_type
         if color_scale is not None:
             mv_props["color_scale"] = color_scale
-        if controls is not None:
-            mv_props["controls"] = controls
         if current_x_value is not None:
             mv_props["current_x_value"] = current_x_value
         if data_loader is not None:
@@ -1394,6 +1389,8 @@ class Bands(MatterViz):
             mv_props["line_tween"] = line_tween
         if marginals is not None:
             mv_props["marginals"] = marginals
+        if marker_renderer is not None:
+            mv_props["marker_renderer"] = marker_renderer
         if pan is not None:
             mv_props["pan"] = pan
         if path_mode is not None:
@@ -1468,7 +1465,6 @@ class Dos(MatterViz):
         self,
         id=None,
         color_scale: Any | None = None,
-        controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         doses: dict | None = None,
@@ -1481,6 +1477,7 @@ class Dos(MatterViz):
         legend: Any | None = None,
         line_tween: Any | None = None,
         marginals: Any | None = None,
+        marker_renderer: Any | None = None,
         normalize: Any | None = None,
         orientation: Any | None = None,
         pan: Any | None = None,
@@ -1519,8 +1516,6 @@ class Dos(MatterViz):
             mv_props = {}
         if color_scale is not None:
             mv_props["color_scale"] = color_scale
-        if controls is not None:
-            mv_props["controls"] = controls
         if current_x_value is not None:
             mv_props["current_x_value"] = current_x_value
         if data_loader is not None:
@@ -1545,6 +1540,8 @@ class Dos(MatterViz):
             mv_props["line_tween"] = line_tween
         if marginals is not None:
             mv_props["marginals"] = marginals
+        if marker_renderer is not None:
+            mv_props["marker_renderer"] = marker_renderer
         if normalize is not None:
             mv_props["normalize"] = normalize
         if orientation is not None:
@@ -1623,7 +1620,6 @@ class ScatterPlot(MatterViz):
         self,
         id=None,
         color_scale: Any | None = None,
-        controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         error_bands: list | None = None,
@@ -1633,11 +1629,13 @@ class ScatterPlot(MatterViz):
         legend: Any | None = None,
         line_tween: Any | None = None,
         marginals: Any | None = None,
+        marker_renderer: Any | None = None,
         pan: Any | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
+        show_legend: bool | None = None,
         size_scale: Any | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
@@ -1658,8 +1656,6 @@ class ScatterPlot(MatterViz):
             mv_props = {}
         if color_scale is not None:
             mv_props["color_scale"] = color_scale
-        if controls is not None:
-            mv_props["controls"] = controls
         if current_x_value is not None:
             mv_props["current_x_value"] = current_x_value
         if data_loader is not None:
@@ -1678,6 +1674,8 @@ class ScatterPlot(MatterViz):
             mv_props["line_tween"] = line_tween
         if marginals is not None:
             mv_props["marginals"] = marginals
+        if marker_renderer is not None:
+            mv_props["marker_renderer"] = marker_renderer
         if pan is not None:
             mv_props["pan"] = pan
         if point_tween is not None:
@@ -1688,6 +1686,8 @@ class ScatterPlot(MatterViz):
             mv_props["selected_series_idx"] = selected_series_idx
         if series is not None:
             mv_props["series"] = series
+        if show_legend is not None:
+            mv_props["show_legend"] = show_legend
         if size_scale is not None:
             mv_props["size_scale"] = size_scale
         if styles is not None:
@@ -1796,6 +1796,9 @@ class RdfPlot(MatterViz):
     def __init__(
         self,
         id=None,
+        controls_open: dict | None = None,
+        controls_pane_props: dict | None = None,
+        controls_toggle_props: dict | None = None,
         cutoff: float | None = None,
         drag_dropped: list | None = None,
         dragging: bool | None = None,
@@ -1807,6 +1810,7 @@ class RdfPlot(MatterViz):
         on_file_drop: Any | None = None,
         patterns: list | None = None,
         pbc: Any | None = None,
+        show_controls: dict | None = None,
         show_reference_line: bool | None = None,
         structures: dict | None = None,
         x_axis: dict | None = None,
@@ -1822,6 +1826,12 @@ class RdfPlot(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
         if cutoff is not None:
             mv_props["cutoff"] = cutoff
         if drag_dropped is not None:
@@ -1844,6 +1854,8 @@ class RdfPlot(MatterViz):
             mv_props["patterns"] = patterns
         if pbc is not None:
             mv_props["pbc"] = pbc
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
         if show_reference_line is not None:
             mv_props["show_reference_line"] = show_reference_line
         if structures is not None:

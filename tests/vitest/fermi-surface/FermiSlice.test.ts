@@ -5,7 +5,7 @@ import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, mount_sized } from '../setup'
 
 // Create mock Fermi surface data with configurable bands
 function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceData {
@@ -88,6 +88,20 @@ describe(`FermiSlice`, () => {
   ])(`mounts without error: $desc`, ({ props }) => {
     expect(() => mount(FermiSlice, { target: document.body, props })).not.toThrow()
     expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // One isoline still needs an explicit show_legend forward — ScatterPlot auto-hides
+  // single-entry legends when only legend={} is passed.
+  test.each([true, false])(`one-band slice show_legend=%s`, async (show_legend) => {
+    // distance=0 sits on a cube face and yields no isolines (empty legend_data hides
+    // the legend even when show_legend=true); 0.05 cuts through the mock box.
+    const plot = await mount_sized(
+      FermiSlice,
+      { fermi_data: create_mock_fermi_data([0]), show_legend, distance: 0.05 },
+      { selector: `.fermi-slice` },
+    )
+    await tick()
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(show_legend)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

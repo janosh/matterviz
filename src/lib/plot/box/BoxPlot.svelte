@@ -50,7 +50,10 @@
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-  import { create_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+  import {
+    create_legend_visibility,
+    resolve_legend_visibility,
+  } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
     invert_rect_range,
@@ -416,7 +419,9 @@
   let secondary_boxes = $derived(
     visible_boxes.filter((box_item) => is_secondary(box_item.series)),
   )
-  let has_secondary = $derived(secondary_boxes.length > 0)
+  let has_secondary = $derived(
+    secondary_boxes.some(({ stats }) => Number.isFinite(stats.median)),
+  )
   // The secondary value axis renders transposed by orientation: x2 (top) when horizontal, y2
   // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
   // marginal placement all stay provably in sync.
@@ -646,7 +651,9 @@
     return build_obstacles_norm(segs, base_w, base_h)
   })
 
-  const should_show_legend = $derived(show_legend ?? false)
+  const should_show_legend = $derived(
+    resolve_legend_visibility(show_legend, legend, series.length),
+  )
   // Marginals are opt-in and bind to the value axis.
   const marginal_vertical = $derived(orientation === `vertical`)
   const resolved_marginals = $derived(

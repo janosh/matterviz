@@ -55,17 +55,27 @@ describe(`PlotMarginals integration`, () => {
     expect(clip_rect_height(with_margin)).toBeLessThan(clip_rect_height(without))
   })
 
-  test.each([
-    [`kde`, `.marginal-top path`],
-    [`rug`, `.marginal-top line`],
-  ] as const)(`%s marginal renders %s elements`, async (type, selector) => {
+  test.each([`kde`, `rug`] as const)(`%s marginal renders path elements`, async (type) => {
     const root = await mount_scatter({
       series: [scatter_series],
       marginals: { top: type },
     })
-    expect(root.querySelectorAll(selector).length).toBeGreaterThan(0)
+    expect(root.querySelectorAll(`.marginal-top path`).length).toBeGreaterThan(0)
     // only the requested side is active
     expect(root.querySelector(`.marginal-right`)).toBeNull()
+  })
+
+  // All rug ticks share a stroke, so they collapse into one <path> of disjoint segments
+  // rather than one <line> per datum
+  test(`rug renders one path holding a segment per sample`, async () => {
+    const root = await mount_scatter({
+      series: [{ x: [1, 2, 3, 4], y: [1, 2, 3, 4] }],
+      marginals: { top: { type: `rug` } },
+    })
+    const paths = root.querySelectorAll(`.marginal-top path`)
+    expect(paths).toHaveLength(1)
+    expect(paths[0].getAttribute(`d`)?.match(/M/g)).toHaveLength(4)
+    expect(root.querySelectorAll(`.marginal-top line`)).toHaveLength(0)
   })
 
   test(`per-side styling props reach the rendered bars`, async () => {
@@ -84,7 +94,7 @@ describe(`PlotMarginals integration`, () => {
       series: [scatter_series],
       marginals: { top: { type: `rug`, opacity: 0.3, fill_opacity: 0.9 } },
     })
-    expect(root.querySelector(`.marginal-top line`)?.getAttribute(`opacity`)).toBe(`0.3`)
+    expect(root.querySelector(`.marginal-top path`)?.getAttribute(`opacity`)).toBe(`0.3`)
   })
 
   test(`per_series: false merges series into a single curve`, async () => {
@@ -152,7 +162,10 @@ describe(`PlotMarginals integration`, () => {
         },
       },
     })
-    expect(root.querySelectorAll(`.marginal-top line`)).toHaveLength(3)
+    // one rug path carrying a segment per position, not the histogram's bars
+    expect(
+      root.querySelector(`.marginal-top path`)?.getAttribute(`d`)?.match(/M/g),
+    ).toHaveLength(3)
     expect(root.querySelectorAll(`.marginal-top rect`)).toHaveLength(0)
     // value-axis is keyed on the actual curve kind, so a rug-returning reduce gets none
     expect(root.querySelector(`.marginal-axis-top`)).toBeNull()

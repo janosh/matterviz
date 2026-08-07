@@ -2,10 +2,33 @@ import type { DataSeries } from '$lib/plot'
 import {
   handle_legend_double_click,
   have_compatible_units,
+  resolve_legend_visibility,
   toggle_group_visibility,
   toggle_series_visibility,
 } from '$lib/plot/core/utils/series-visibility'
 import { describe, expect, test } from 'vitest'
+
+describe(`resolve_legend_visibility`, () => {
+  // oxfmt-ignore
+  test.each([
+    [true, null, 5, undefined, false], // legend=null always wins
+    [true, undefined, 5, undefined, false],
+    [true, {}, 0, undefined, false], // nothing to label
+    [true, {}, 1, undefined, true],
+    [false, {}, 5, undefined, false],
+    [true, {}, 3, false, true], // explicit overrides opt-in families
+    [undefined, {}, 2, undefined, true], // cartesian auto
+    [undefined, {}, 1, undefined, false],
+    [undefined, {}, 9, false, false], // hierarchy/Sankey opt-in
+  ] as [boolean | undefined, unknown, number, boolean | undefined, boolean][])(
+    `show=%s legend=%s entries=%s auto=%s → %s`,
+    (show_legend, legend, entry_count, auto_default, expected) => {
+      expect(resolve_legend_visibility(show_legend, legend, entry_count, auto_default)).toBe(
+        expected,
+      )
+    },
+  )
+})
 
 describe(`have_compatible_units`, () => {
   test.each([

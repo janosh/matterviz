@@ -2,7 +2,7 @@ import { Violin } from '$lib'
 import type { BoxPlotSeries } from '$lib/plot'
 import type { ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { mount_sized } from '../setup'
+import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const dist = (count: number, center = 0, spread = 1): number[] =>
   Array.from(
@@ -48,6 +48,23 @@ describe(`Violin`, () => {
     })
     expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
     expect(plot.querySelector(`.x-label`)?.textContent).toBe(`Value`)
+  })
+
+  test(`forwards flat control props and controls_open binding`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    const plot = await mount_violin(
+      bind_props(
+        {
+          series,
+          show_controls: true,
+          controls_toggle_props: { 'data-testid': `violin-toggle` },
+          controls_pane_props: { 'data-testid': `violin-pane` },
+        },
+        controls_state,
+      ),
+    )
+    await expect_plot_controls(plot, controls_state, `violin`)
   })
 
   test(`log value axis clamps KDE grid to positive support (finite path, no range pollution)`, async () => {

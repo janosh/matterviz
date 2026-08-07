@@ -3,6 +3,7 @@ import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, it } from 'vitest'
+import { bind_props, expect_plot_controls } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
   recip_lattice: {
@@ -139,6 +140,22 @@ describe(`Bands component`, () => {
   it(`updates phonon y-axis label when units change`, async () => {
     await mount_bands({ band_structs: base_band_structure, units: `cm-1` })
     expect(document.body.textContent).toContain(`Frequency (cm-1)`)
+  })
+
+  it(`forwards flat control props and controls_open binding`, async () => {
+    expect.hasAssertions()
+    const controls_state = { controls_open: true }
+    await mount_bands(
+      bind_props(
+        {
+          band_structs: base_band_structure,
+          controls_toggle_props: { 'data-testid': `bands-toggle` },
+          controls_pane_props: { 'data-testid': `bands-pane` },
+        },
+        controls_state,
+      ),
+    )
+    await expect_plot_controls(document, controls_state, `bands`)
   })
 
   it(`renders one highlight fill region from props`, async () => {

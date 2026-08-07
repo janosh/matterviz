@@ -13,7 +13,7 @@
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
-    show_legend = $bindable(DEFAULTS.histogram.show_legend),
+    show_legend = $bindable(),
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
@@ -35,7 +35,8 @@
     bins?: number
     mode?: `single` | `overlay`
     bar?: BarStyle
-    show_legend?: boolean
+    // undefined = auto (same contract as Histogram / resolve_legend_visibility)
+    show_legend?: boolean | undefined
     selected_property?: string
     show_controls?: boolean
     controls_open?: boolean
@@ -70,7 +71,9 @@
     title="Histogram"
     current_values={{ bins, mode, show_legend }}
     on_reset={() => {
-      ;({ bin_count: bins, mode, show_legend } = DEFAULTS.histogram)
+      ;({ bin_count: bins, mode } = DEFAULTS.histogram)
+      // Keep auto mode (`undefined`) so a one-series plot does not suddenly grow a legend
+      show_legend = undefined
     }}
   >
     <div class="pane-row">

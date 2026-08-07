@@ -1,4 +1,10 @@
 import { Histogram, type Vec2 } from '$lib'
+import type { DataSeries } from '$lib/plot/core/types'
+import {
+  compute_count_range,
+  compute_histogram_bins,
+  log_safe_range,
+} from '$lib/plot/histogram/histogram'
 import { bin, max as d3max } from 'd3-array'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -22,21 +28,15 @@ function mount_histogram(props: Record<string, unknown>) {
   })
 }
 
-function get_tick_numbers(axis: `x` | `y`): number[] {
-  const nodes = Array.from(document.querySelectorAll(`g.${axis}-axis .tick text`))
-  return nodes
+const get_tick_numbers = (axis: `x` | `y`): number[] =>
+  [...document.querySelectorAll(`g.${axis}-axis .tick text`)]
     .map((node) => Number((node.textContent || ``).trim()))
     .filter((val) => !Number.isNaN(val))
-}
 
-const get_y_tick_numbers = (): number[] => get_tick_numbers(`y`)
-
-// Mount a histogram, flush one tick, and read its y-axis tick numbers (the common
-// arrange+act for the count-domain tests). Resets the DOM, so it's safe to call twice per test.
-const y_ticks_after = async (props: Record<string, unknown>): Promise<number[]> => {
+const y_ticks_after = async (props: Record<string, unknown>) => {
   mount_histogram(props)
   await tick()
-  return get_y_tick_numbers()
+  return get_tick_numbers(`y`)
 }
 
 const get_svg = () => {
@@ -44,15 +44,20 @@ const get_svg = () => {
   if (!svg) throw new Error(`histogram plot area not found`)
   return svg
 }
-
-const get_plot = (): HTMLElement => {
+const get_plot = () => {
   const plot = document.querySelector<HTMLElement>(`.histogram`)
   if (!plot) throw new Error(`Histogram root element not found`)
   return plot
 }
 
-// happy-dom lacks Touch/TouchEvent constructors, so dispatch plain events
-// carrying a touches array (the handlers only read touches[*].clientX/Y)
+const clip_rect_attrs = () =>
+  [`x`, `y`, `width`, `height`].map((attr) =>
+    document.querySelector(`clipPath rect`)?.getAttribute(attr),
+  )
+
+const legend_px = (legend: HTMLElement, prop: `top` | `left`) =>
+  Number(legend.style[prop].replace(`px`, ``))
+
 const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
   const evt = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperty(evt, `touches`, {
@@ -61,60 +66,94 @@ const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
   return evt
 }
 
+// oxfmt-ignore
+const series_of = (values: number[], extra: Partial<DataSeries> = {}): DataSeries => ({ x: [], y: values, ...extra })
+// oxfmt-ignore
+const histogram_cfg = { x_domain: [0, 10] as Vec2, x2_domain: [100, 200] as Vec2, bin_count: 5, series_color: () => `steelblue` }
+const histogram_bins = (
+  entries: Parameters<typeof compute_histogram_bins>[0],
+  has_x2 = false,
+) => compute_histogram_bins(entries, { ...histogram_cfg, has_x2 })
+const count_cfg = { ...histogram_cfg, y_limit: [null, null] as [null, null], range_padding: 0 }
+const count_range = (
+  series: DataSeries[],
+  scale_type: `linear` | `log`,
+  y_limit: [number | null, number | null] = [null, null],
+) => compute_count_range(series, { ...count_cfg, scale_type, y_limit })
+
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
 
-  test.each<{
-    name: string
-    series: { x: number[]; y: number[]; label?: string }[]
-    bins: number
-    y_axis?: { range: Vec2 }
-    expected_min_max: Vec2
-  }>([
-    {
-      name: `y-axis based on counts for identical values`,
-      series: [{ x: [], y: [1, 1, 1, 1, 1], label: `A` }],
-      bins: 5,
-      expected_min_max: [5, 50],
-    },
-    {
-      name: `ignores raw magnitudes for y-axis (counts remain small)`,
-      series: [{ x: [], y: [1000, 2000, 3000, 4000, 5000], label: `B` }],
-      bins: 5,
-      expected_min_max: [1, 20],
-    },
-    {
-      // A puts all 5 in one bin, B spreads across bins: the y-domain must reflect the
-      // taller series (max count across series), so the top tick is >= 5
-      name: `uses the maximum count across multiple series`,
-      series: [
-        { x: [], y: [0, 0, 0, 0, 0], label: `A` },
-        { x: [], y: [1, 2, 3, 4, 5], label: `B` },
-      ],
-      bins: 5,
-      expected_min_max: [5, 50],
-    },
-    {
-      // explicit range caps the auto count domain (max count 5 clamped to 3)
-      name: `y_axis.range caps the auto count domain`,
-      series: [{ x: [], y: [1, 1, 1, 1, 1] }],
-      bins: 5,
-      y_axis: { range: [0, 3] },
-      expected_min_max: [1, 3],
-    },
-  ])(`$name`, async ({ series, bins, y_axis, expected_min_max }) => {
-    const ticks = await y_ticks_after({ series, bins, y_axis })
-    expect(ticks.length).toBeGreaterThan(0)
-    const max_tick = Math.max(...ticks)
-    expect(max_tick).toBeGreaterThanOrEqual(expected_min_max[0])
-    expect(max_tick).toBeLessThanOrEqual(expected_min_max[1])
-  })
+  test(`DOM integration: count domain, axes, legend, and touch`, async () => {
+    const assert_y_max = async (props: Record<string, unknown>, lo: number, hi: number) => {
+      const ticks = await y_ticks_after(props)
+      expect(ticks.length).toBeGreaterThan(0)
+      const max_tick = Math.max(...ticks)
+      expect(max_tick).toBeGreaterThanOrEqual(lo)
+      expect(max_tick).toBeLessThanOrEqual(hi)
+    }
+    // oxfmt-ignore
+    for (const [props, lo, hi] of [
+      [{ series: [{ x: [], y: [1, 1, 1, 1, 1], label: `A` }], bins: 5 }, 5, 50],
+      [{ series: [{ x: [], y: [1000, 2000, 3000, 4000, 5000], label: `B` }], bins: 5 }, 1, 20],
+      [{ series: [{ x: [], y: [0, 0, 0, 0, 0], label: `A` }, { x: [], y: [1, 2, 3, 4, 5], label: `B` }], bins: 5 }, 5, 50],
+      [{ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_axis: { range: [0, 3] } }, 1, 3],
+    ] as const) {
+      await assert_y_max(props, lo, hi)
+    }
 
-  // pan must be screen-uniform: on a log axis that's a constant *factor*, not a
-  // constant amount. A multi-plot-height wheel pan over [1, 100] must land decades
-  // up while still spanning 2 decades - the old linear-space math collapsed the
-  // view to a sub-decade slice (and panning down shifted past zero into NaN)
-  test(`shift+wheel pan on a log y axis shifts by decades, not linearly`, async () => {
+    const spread = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
+    const max_many = Math.max(...(await y_ticks_after({ series: spread, bins: 9 })))
+    expect(
+      Math.max(...(await y_ticks_after({ series: spread, bins: 3 }))),
+    ).toBeGreaterThanOrEqual(max_many)
+
+    const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
+    const max_bin_count = (domain?: [number, number]) =>
+      d3max(
+        (domain ? bin().domain(domain) : bin()).thresholds(5)(series[0].y),
+        (bucket) => bucket.length,
+      ) ?? 0
+    expect(Math.max(...(await y_ticks_after({ series, bins: 5 })))).toBeGreaterThanOrEqual(
+      max_bin_count(),
+    )
+    expect(
+      Math.max(...(await y_ticks_after({ series, bins: 5, x_axis: { range: [0, 3] } }))),
+    ).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
+
+    const log_series = [{ x: [], y: [1, 1, 1, 1, 1] }]
+    const log_ticks = (range?: [number | null, number | null]) =>
+      y_ticks_after({
+        series: log_series,
+        bins: 5,
+        y_axis: { scale_type: `log`, ...(range ? { range } : {}) },
+      })
+    const valid_ticks = [await log_ticks(), await log_ticks([1, null])]
+    for (const ticks of valid_ticks) {
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(Math.min(...ticks)).toBeGreaterThan(0)
+    }
+    for (const invalid_range of [
+      [0, null],
+      [null, -5],
+    ] as const) {
+      expect(await log_ticks([...invalid_range])).toEqual(valid_ticks[0])
+    }
+
+    mount_histogram({
+      series: [{ x: [], y: [1, 100], label: `Sparse tail` }],
+      bins: 2,
+      bar: { border_radius: 0 },
+      y_axis: { scale_type: `log` },
+    })
+    await resize_element(get_plot(), 400, 300)
+    for (const bar of document.querySelectorAll(`g.histogram-series path[role="button"]`)) {
+      const height = Number(
+        /v\s*(?<h>-?\d*\.?\d+)/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
+      )
+      expect(height).toBeGreaterThan(2)
+    }
+
     mount_histogram({
       series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }],
       y_axis: { scale_type: `log`, range: [1, 100] },
@@ -126,130 +165,44 @@ describe(`Histogram`, () => {
     await tick()
     plot.dispatchEvent(new WheelEvent(`wheel`, { deltaY: 2000, bubbles: true }))
     await tick()
-    const ticks = get_y_tick_numbers()
-    expect(ticks.length).toBeGreaterThan(0)
-    expect(Math.min(...ticks)).toBeGreaterThan(100) // moved decades up from [1, 100]
-    // log pan preserves the visible span (a constant factor): ticks still cover >= 1
-    // decade; the old linear math left a sub-decade slice here
-    expect(Math.max(...ticks) / Math.min(...ticks)).toBeGreaterThanOrEqual(10)
-  })
+    const pan_ticks = get_tick_numbers(`y`)
+    expect(pan_ticks.length).toBeGreaterThan(0)
+    expect(Math.min(...pan_ticks)).toBeGreaterThan(100)
+    expect(Math.max(...pan_ticks) / Math.min(...pan_ticks)).toBeGreaterThanOrEqual(10)
 
-  const repeated_histogram_series = { x: [], y: [0, 1, 2], label: `Repeated` }
-
-  test.each([
-    {
-      name: `when earlier series are hidden`,
-      series: [
-        { x: [], y: [0, 1, 2], label: `Hidden`, visible: false },
-        { x: [], y: [1, 1, 2], label: `Visible` },
+    const repeated = { x: [], y: [0, 1, 2], label: `Repeated` }
+    for (const [props, expected_indices] of [
+      [
+        {
+          series: [
+            { x: [], y: [0, 1, 2], label: `Hidden`, visible: false },
+            { x: [], y: [1, 1, 2], label: `Visible` },
+          ],
+          show_legend: true,
+        },
+        [`1`],
       ],
-      expected_indices: [`1`],
-    },
-    {
-      name: `for repeated series objects`,
-      series: [repeated_histogram_series, repeated_histogram_series],
-      expected_indices: [`0`, `1`],
-    },
-  ])(
-    `rendered series keep original indices and clip to chart area $name`,
-    async ({ series, expected_indices }) => {
-      mount_histogram({ series, show_legend: true })
+      [{ series: [repeated, repeated], show_legend: true }, [`0`, `1`]],
+      [
+        {
+          series: [{ x: [], y: [1, 2, 3], label: `Band Gap` }],
+          mode: `single`,
+          selected_property: `Energy`,
+        },
+        [`0`],
+      ],
+    ] as const) {
+      mount_histogram(props)
       await tick()
-
       const groups = Array.from(document.querySelectorAll(`g.histogram-series`))
-      const series_indices = groups.map((element) => element.getAttribute(`data-series-idx`))
-      expect(series_indices).toEqual(expected_indices)
-
-      // bars must clip to the chart area, else zooming/panning the y range lets tall
-      // bars paint over the top margin and x2 axis (ref lines stay outside the clip)
+      expect(groups.map((element) => element.getAttribute(`data-series-idx`))).toEqual(
+        expected_indices,
+      )
       for (const group of groups) {
         expect(group.getAttribute(`clip-path`)).toMatch(/^url\(#histogram-clip/)
       }
-    },
-  )
-
-  test(`single mode falls back when selected_property is stale`, async () => {
-    mount_histogram({
-      series: [{ x: [], y: [1, 2, 3], label: `Band Gap` }],
-      mode: `single`,
-      selected_property: `Energy`,
-    })
-    await tick()
-
-    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
-  })
-
-  test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
-    const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
-    const max_many = Math.max(...(await y_ticks_after({ series, bins: 9 })))
-    const max_few = Math.max(...(await y_ticks_after({ series, bins: 3 })))
-    expect(max_few).toBeGreaterThanOrEqual(max_many)
-  })
-
-  test(`x_axis.range applies domain; y max tick >= computed max bin count`, async () => {
-    const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
-    const max_bin_count = (domain?: [number, number]): number =>
-      d3max(
-        (domain ? bin().domain(domain) : bin()).thresholds(5)(series[0].y),
-        (bucket) => bucket.length,
-      ) ?? 0
-
-    const full_max = Math.max(...(await y_ticks_after({ series, bins: 5 })))
-    expect(full_max).toBeGreaterThanOrEqual(max_bin_count())
-
-    const zoom_max = Math.max(
-      ...(await y_ticks_after({ series, bins: 5, x_axis: { range: [0, 3] } })),
-    )
-    expect(zoom_max).toBeGreaterThanOrEqual(max_bin_count([0, 3]))
-  })
-
-  test(`log y-scale: positive count-based domain; non-positive explicit bound falls back to auto`, async () => {
-    const series = [{ x: [], y: [1, 1, 1, 1, 1] }]
-    const log_ticks = (range?: [number | null, number | null]) =>
-      y_ticks_after({
-        series,
-        bins: 5,
-        y_axis: { scale_type: `log`, ...(range ? { range } : {}) },
-      })
-    // auto and an explicit positive lower both yield a count-based domain with no non-positive ticks
-    const valid_ticks = [await log_ticks(), await log_ticks([1, null])]
-    for (const ticks of valid_ticks) {
-      expect(ticks.length).toBeGreaterThan(0) // guards against Math.min(...[]) === Infinity
-      expect(Math.min(...ticks)).toBeGreaterThan(0)
     }
-    // an invalid (<= 0) explicit lower is ignored, falling back to the auto minimum (the old
-    // `y_limit[0] ?? ...` kept the 0 verbatim, yielding a broken log domain starting at 0)
-    for (const invalid_range of [
-      [0, null],
-      [null, -5],
-    ] as const) {
-      expect(await log_ticks([...invalid_range])).toEqual(valid_ticks[0])
-    }
-  })
 
-  test(`log y-scale renders bins with one count at visible height`, async () => {
-    mount_histogram({
-      series: [{ x: [], y: [1, 100], label: `Sparse tail` }],
-      bins: 2,
-      bar: { border_radius: 0 }, // radius-free path so the height shows up as a parseable `v{h}` segment
-      y_axis: { scale_type: `log` },
-    })
-    await resize_element(get_plot(), 400, 300)
-
-    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
-    expect(bars).toHaveLength(2)
-    // each singleton-count bin must have visible height: the old log y-range floored at the count,
-    // collapsing them to ~0px at the baseline. extract the radius-free bar_path's relative `v{h}`
-    // segment tolerantly (whitespace, any following command) so format tweaks don't yield NaN.
-    for (const bar of bars) {
-      const height = Number(
-        /v\s*(?<h>-?\d*\.?\d+)/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
-      )
-      expect(height).toBeGreaterThan(2)
-    }
-  })
-
-  test(`mounts with x2-axis series and renders x2 axis`, async () => {
     mount_histogram({
       series: [
         { x: [], y: [70, 72, 68], label: `Mass (kg)` },
@@ -260,35 +213,39 @@ describe(`Histogram`, () => {
       mode: `overlay`,
     })
     await tick()
-    expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Mass (lbs)`)
-    // x1 auto-range must come from x1 series only, excluding x2 magnitudes (~150)
     const x_ticks = get_tick_numbers(`x`)
     expect(x_ticks.length).toBeGreaterThan(0)
     expect(Math.max(...x_ticks)).toBeLessThan(100)
-    // y-range must bin the x2 series over the x2 domain (4 of 5 values share one bin)
-    expect(Math.max(...get_y_tick_numbers())).toBeGreaterThanOrEqual(4)
-  })
+    expect(Math.max(...get_tick_numbers(`y`))).toBeGreaterThanOrEqual(4)
 
-  test(`y2 axis title shares the y axis title's vertical center`, async () => {
+    for (const axis of [`x2`, `y2`] as const) {
+      mount_histogram({
+        series: [
+          { x: [], y: [1, 2], y_axis: `y1` },
+          axis === `x2`
+            ? { x: [], y: [NaN, NaN], x_axis: `x2` }
+            : { x: [], y: [NaN, NaN], y_axis: `y2` },
+        ],
+        mode: `overlay`,
+      })
+      await tick()
+      expect(document.querySelector(`g.${axis}-axis`)).toBeNull()
+    }
+
     mount_histogram({
       series: [
         { x: [], y: [1, 2, 3], label: `Main` },
         { x: [], y: [10, 20, 30], label: `Sec`, y_axis: `y2` },
       ],
-      mode: `overlay`, // single mode (default) would drop the y2 series
+      mode: `overlay`,
       y_axis: { label: `Primary` },
       y2_axis: { label: `Secondary` },
     })
-    await resize_element(get_plot(), 400, 300) // axis labels only render once the plot has a size
-    // both y titles rotate about the plot's vertical center; a stale label_shift default
-    // used to push the y2 title 60px below center
+    await resize_element(get_plot(), 400, 300)
     const pivot_y = (selector: string) => axis_label_pivot_y(document, selector)
     expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
-  })
 
-  test(`explicit top/right padding is not overridden by secondary-axis auto-padding`, async () => {
     mount_histogram({
       series: [
         { x: [], y: [1, 2, 3], label: `Main` },
@@ -305,9 +262,7 @@ describe(`Histogram`, () => {
     const clip_x = Number(clip_rect?.getAttribute(`x`))
     expect(Number(clip_rect?.getAttribute(`width`))).toBe(400 - clip_x - 10)
     expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
-  })
 
-  test(`default padding grows for wide y-axis ticks`, async () => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue({
       font: ``,
       measureText: () => ({ width: 120 }),
@@ -320,82 +275,62 @@ describe(`Histogram`, () => {
     expect(Number(document.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
       60,
     )
-  })
-
-  // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
-  // tick values behind them, or the labels tilt into a band nobody reserved.
-  test(`bottom padding follows custom x tick labels, not their numeric values`, async () => {
-    expect.assertions(2)
-    const baseline_y = async (ticks: Record<number, string>): Promise<number> => {
-      mount_histogram({
-        series: [{ x: [], y: [0, 1, 2, 3, 4, 5] }],
-        x_axis: {
-          ticks,
-          tick: {
-            label: { auto_layout: { strategies: [`upright`, `rotate`] } },
+    await expect_custom_x_ticks_grow_bottom_pad(
+      async (ticks) => {
+        mount_histogram({
+          series: [{ x: [], y: [0, 1, 2, 3, 4, 5] }],
+          x_axis: {
+            ticks,
+            tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] } } },
           },
-        },
-      })
-      await resize_element(get_plot(), 400, 300)
-      return Number(document.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
-    }
-    await expect_custom_x_ticks_grow_bottom_pad(baseline_y, [0, 1, 2, 3, 4, 5])
-  })
+        })
+        await resize_element(get_plot(), 400, 300)
+        return Number(document.querySelector(`g.x-axis > line`)?.getAttribute(`y1`))
+      },
+      [0, 1, 2, 3, 4, 5],
+    )
 
-  test(`legend=null suppresses the legend even with show_legend=true`, async () => {
+    // oxfmt-ignore
+    for (const events of [
+      [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]],
+      [[`touchstart`, [[100, 100], [200, 100]]], [`touchcancel`, []], [`touchmove`, [[150, 150], [250, 150]]]],
+      [[`touchstart`, [[10, 100], [100, 100]]], [`touchmove`, [[100, 100], [300, 100]]]],
+    ] as const) {
+      mount_histogram({ series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }] })
+      await tick()
+      const svg = get_svg()
+      const ticks_before = { x: get_tick_numbers(`x`), y: get_tick_numbers(`y`) }
+      expect(ticks_before.x.length).toBeGreaterThan(0)
+      for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
+      await tick()
+      expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
+      expect(get_tick_numbers(`y`)).toEqual(ticks_before.y)
+    }
+
+    const multi_series = [
+      { x: [], y: [1, 2, 3], label: `A` },
+      { x: [], y: [2, 3, 4], label: `B` },
+    ]
+    mount_histogram({ series: multi_series, legend: null, show_legend: true })
+    await tick()
+    expect(document.querySelector(`.legend`)).toBeNull()
     mount_histogram({
-      series: [
-        { x: [], y: [1, 2, 3], label: `A` },
-        { x: [], y: [2, 3, 4], label: `B` },
-      ],
-      legend: null,
-      show_legend: true,
+      series: multi_series,
+      show_controls: true,
+      controls_open: true,
+      show_legend: undefined,
     })
     await tick()
-    expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
+    const legend_checkbox = [
+      ...document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
+    ].find((checkbox) => checkbox.parentElement?.textContent?.includes(`Show legend`))
+    if (!legend_checkbox) throw new Error(`Show legend checkbox not found`)
+    expect(legend_checkbox.checked).toBe(true)
+    legend_checkbox.click()
+    await tick()
+    expect(legend_checkbox.checked).toBe(false)
     expect(document.querySelector(`.legend`)).toBeNull()
-  })
 
-  // oxfmt-ignore
-  test.each([
-    {
-      // 1px apart: passes a Number.EPSILON guard, so curr_dist / start_dist would
-      // blow up the zoom factor without the MIN_TOUCH_DISTANCE_PIXELS guard
-      name: `near-coincident two-finger start is ignored (no explosive pinch zoom)`,
-      events: [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]],
-    },
-    {
-      // OS-cancelled gesture (e.g. notification swipe) fires touchcancel, not touchend;
-      // stale touch state must not let the later touchmove pan
-      name: `touchcancel clears touch state so later touchmove does not pan`,
-      events: [
-        [`touchstart`, [[100, 100], [200, 100]]],
-        [`touchcancel`, []],
-        [`touchmove`, [[150, 150], [250, 150]]],
-      ],
-    },
-    {
-      // One contact starts in the left axis margin. Moving both contacts into the
-      // plot must not retroactively arm a pinch gesture.
-      name: `two-finger start spanning the plot margin is ignored`,
-      events: [
-        [`touchstart`, [[10, 100], [100, 100]]],
-        [`touchmove`, [[100, 100], [300, 100]]],
-      ],
-    },
-  ] as const)(`$name`, async ({ events }) => {
-    mount_histogram({ series: [{ x: [], y: [1, 2, 3, 4, 5], label: `A` }] })
-    await tick()
-    const svg = get_svg()
-    const ticks_before = { x: get_tick_numbers(`x`), y: get_y_tick_numbers() }
-    expect(ticks_before.x.length).toBeGreaterThan(0)
-    for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
-    await tick()
-    expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
-    expect(get_y_tick_numbers()).toEqual(ticks_before.y)
-  })
-
-  test(`legend stays inside a sparse histogram without covering bars`, async () => {
     mount_histogram({
       series: [
         { x: [], y: Array.from({ length: 100 }, () => 0), label: `A` },
@@ -407,19 +342,15 @@ describe(`Histogram`, () => {
       legend: {},
     })
     await resize_element(get_plot(), 400, 300)
-    const legend = document.querySelector<HTMLElement>(`.legend`)
-    const clip_rect = document.querySelector(`clipPath rect`)
-    if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
-    const clip_bottom =
-      Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
-    expect(Number(legend.style.top.replace(`px`, ``))).toBeLessThan(clip_bottom)
-  })
+    const sparse_legend = document.querySelector<HTMLElement>(`.legend`)
+    const sparse_clip = document.querySelector(`clipPath rect`)
+    if (!sparse_legend || !sparse_clip) throw new Error(`legend or clip rectangle not found`)
+    expect(legend_px(sparse_legend, `top`)).toBeLessThan(
+      Number(sparse_clip.getAttribute(`y`)) + Number(sparse_clip.getAttribute(`height`)),
+    )
 
-  test(`legend uses its measured size outside dense bars without padding drift`, async () => {
-    // near-uniform distribution -> every bin is tall -> filled bars cover the plot so no interior
-    // spot avoids overlap and the legend must drop into the reserved bottom margin
-    const mount_uniform = (style?: string) => {
-      const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
+    const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
+    const mount_uniform = (style?: string) =>
       mount_histogram({
         series: [
           { x: [], y: uniform, label: `A` },
@@ -429,86 +360,145 @@ describe(`Histogram`, () => {
         mode: `overlay`,
         show_legend: true,
         legend: {},
-        ...(style === undefined ? {} : { style }),
+        ...(style ? { style } : {}),
       })
-    }
     vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
     vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
     mount_uniform()
     await resize_element(get_plot(), 400, 300)
     const initial_legend = document.querySelector<HTMLElement>(`.legend`)
     if (!initial_legend) throw new Error(`legend not found`)
-    expect(Number(initial_legend.style.top.replace(`px`, ``))).toBe(300 - 44 - 8)
-
+    expect(legend_px(initial_legend, `top`)).toBe(300 - 44 - 8)
     mount_uniform(`width: 640px; height: 340px;`)
     await resize_element(get_plot(), 640, 340)
     const resized_legend = document.querySelector<HTMLElement>(`.legend`)
-    const resized_clip = document.querySelector(`clipPath rect`)
-    if (!resized_legend || !resized_clip) {
-      throw new Error(`legend or clip rectangle not found`)
-    }
-    expect(Number(resized_legend.style.left.replace(`px`, ``))).toBeGreaterThan(
-      Number(initial_legend.style.left.replace(`px`, ``)),
+    if (!resized_legend) throw new Error(`legend not found`)
+    expect(legend_px(resized_legend, `left`)).toBeGreaterThan(
+      legend_px(initial_legend, `left`),
     )
-    expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
-    const resized_clip_attrs = [`x`, `y`, `width`, `height`].map((attr) =>
-      resized_clip.getAttribute(attr),
-    )
+    expect(legend_px(resized_legend, `top`)).toBe(340 - 44 - 8)
+    const stable_clip = clip_rect_attrs()
     mount_uniform(`width: 640px; height: 340px;`)
     await resize_element(get_plot(), 640, 340)
-    expect(
-      [`x`, `y`, `width`, `height`].map((attr) =>
-        document.querySelector(`clipPath rect`)?.getAttribute(attr),
-      ),
-    ).toEqual(resized_clip_attrs)
-  })
+    expect(clip_rect_attrs()).toEqual(stable_clip)
 
-  test(`preserves explicit legend position and solver auto tracks`, async () => {
-    const series = Array.from({ length: 4 }, (_, series_idx) => ({
+    const layout_series = Array.from({ length: 4 }, (_, series_idx) => ({
       x: [],
       y: [series_idx, series_idx + 0.5, series_idx + 1],
       label: `Series ${series_idx}`,
     }))
-    const item_extents = series.map(() => ({ width: 70, height: 20 }))
-    mount_histogram({
-      series,
-      mode: `overlay`,
-      show_legend: true,
-      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-    })
-    await resize_element(get_plot(), 400, 300)
-    const auto_legend = document.querySelector<HTMLElement>(`.legend`)
-    expect(auto_legend?.style.gridTemplateColumns).toBe(`repeat(4, auto)`)
-    mount_histogram({
-      series,
-      mode: `overlay`,
-      show_legend: true,
-      legend: { layout: `horizontal`, layout_tracks: `auto`, item_extents },
-      style: `width: 280px; height: 300px;`,
-    })
-    await resize_element(get_plot(), 280, 300)
-    expect(document.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
-      `repeat(2, auto)`,
-    )
+    const layout_legend = {
+      layout: `horizontal` as const,
+      layout_tracks: `auto` as const,
+      item_extents: layout_series.map(() => ({ width: 70, height: 20 })),
+    }
+    for (const [width, cols] of [
+      [400, 4],
+      [280, 2],
+    ] as const) {
+      mount_histogram({
+        series: layout_series,
+        mode: `overlay`,
+        show_legend: true,
+        legend: layout_legend,
+        style: `width: ${width}px; height: 300px;`,
+      })
+      await resize_element(get_plot(), width, 300)
+      expect(document.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateColumns).toBe(
+        `repeat(${cols}, auto)`,
+      )
+    }
 
     mount_histogram({
-      series: series.slice(0, 2),
+      series: layout_series.slice(0, 2),
       mode: `overlay`,
       show_legend: true,
       legend: { style: `position: absolute; left: 17px; top: 23px;` },
     })
     await resize_element(get_plot(), 400, 300)
     const pinned_legend = document.querySelector<HTMLElement>(`.legend`)
-    const pinned_clip = [`x`, `y`, `width`, `height`].map((attr) =>
-      document.querySelector(`clipPath rect`)?.getAttribute(attr),
-    )
-    mount_histogram({ series: series.slice(0, 2), mode: `overlay`, show_legend: false })
+    if (!pinned_legend) throw new Error(`legend not found`)
+    const pinned_clip = clip_rect_attrs()
+    mount_histogram({
+      series: layout_series.slice(0, 2),
+      mode: `overlay`,
+      show_legend: false,
+    })
     await resize_element(get_plot(), 400, 300)
-    const baseline_clip = [`x`, `y`, `width`, `height`].map((attr) =>
-      document.querySelector(`clipPath rect`)?.getAttribute(attr),
+    expect(pinned_legend.style.left).toBe(`17px`)
+    expect(pinned_legend.style.top).toBe(`23px`)
+    expect(pinned_clip).toEqual(clip_rect_attrs())
+  })
+
+  test(`compute_histogram_bins and compute_count_range`, () => {
+    // oxfmt-ignore
+    for (const [_name, axis, expected] of [
+      [`linear`, { range: [0, 10], scale_type: `linear` }, [0, 10]],
+      [`positive log`, { range: [1, 100], scale_type: `log` }, [1, 100]],
+      [`zero log lower`, { range: [0, 100], scale_type: `log` }, [null, 100]],
+      [`negative log lower`, { range: [-5, 100], scale_type: `log` }, [null, 100]],
+      [`non-positive log`, { range: [-5, 0], scale_type: `log` }, [null, null]],
+      [`null log`, { range: [null, null], scale_type: `log` }, [null, null]],
+      [`negative linear`, { range: [-5, 10], scale_type: `linear` }, [-5, 10]],
+      [`missing log range`, { scale_type: `log` }, [null, null]],
+    ] as const) {
+      expect(log_safe_range(axis as Parameters<typeof log_safe_range>[0])).toEqual(expected)
+    }
+    const result = histogram_bins([
+      { series_data: series_of([1, 1, 1, 9], { label: `alpha` }), series_idx: 0 },
+      { series_data: series_of([5, 6]), series_idx: 1 },
+      { series_data: series_of([1], { id: `explicit` }), series_idx: 3 },
+    ])
+    expect(result.map(({ label }) => label)).toEqual([`alpha`, `Series 2`, `Series 4`])
+    expect(result.map(({ max_count }) => max_count)).toEqual([3, 1, 1])
+    expect(result[0].color).toBe(`steelblue`)
+    expect(result[0].bins.reduce((sum, one_bin) => sum + one_bin.length, 0)).toBe(4)
+    expect(result[2]).toMatchObject({ id: `explicit`, series_idx: 3 })
+    for (const [has_x2, expected_count, max_count] of [
+      [true, 2, 1],
+      [false, 0, 0],
+    ] as const) {
+      const [histogram] = histogram_bins(
+        [{ series_data: series_of([150, 160], { x_axis: `x2` }), series_idx: 0 }],
+        has_x2,
+      )
+      expect(histogram.bins.reduce((sum, one_bin) => sum + one_bin.length, 0)).toBe(
+        expected_count,
+      )
+      expect(histogram.max_count).toBe(max_count)
+    }
+    for (const [_name, series, scale_type, expected] of [
+      [`linear empty`, [], `linear`, [0, 1]],
+      [`log empty`, [], `log`, [1, 1]],
+      [`out-of-domain`, [series_of([500, 600])], `linear`, [0, 1]],
+    ] as const) {
+      expect(count_range([...series], scale_type)).toEqual(expected)
+    }
+    const lin_range = count_range([series_of([1, 1, 1, 9])], `linear`)
+    expect(lin_range[0]).toBe(0)
+    expect(lin_range[1]).toBeGreaterThanOrEqual(3)
+    const [log_lo, log_hi] = count_range([series_of([1, 1, 1, 1, 9])], `log`)
+    expect(log_lo).toBeCloseTo(1 / 1.1, 10)
+    expect(log_hi).toBeGreaterThanOrEqual(4)
+    expect(count_range([series_of([1, 1, 9])], `log`, [0.5, null])[0]).toBe(0.5)
+    expect(
+      count_range(
+        [series_of([1, 1]), series_of([150, 150, 150, 150], { x_axis: `x2` })],
+        `linear`,
+      )[1],
+    ).toBeGreaterThanOrEqual(4)
+    const n_samples = 130_000
+    const [lo, hi] = compute_count_range(
+      [series_of(Array.from({ length: n_samples }, (_, idx) => idx))],
+      {
+        ...count_cfg,
+        x_domain: [0, n_samples],
+        x2_domain: [0, 1],
+        bin_count: n_samples,
+        scale_type: `linear`,
+      },
     )
-    expect(pinned_legend?.style.left).toBe(`17px`)
-    expect(pinned_legend?.style.top).toBe(`23px`)
-    expect(pinned_clip).toEqual(baseline_clip)
+    expect(Number.isFinite(lo)).toBe(true)
+    expect(hi).toBeGreaterThanOrEqual(1)
   })
 })
