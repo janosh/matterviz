@@ -180,11 +180,8 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges(series, overrides)[key]).toEqual(range)
   })
 
-  test(`falls back to unit sentinels on every axis without series`, () => {
+  test(`uses scale-valid fallbacks for axes without finite points`, () => {
     expect(auto_ranges([])).toEqual({ x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] })
-  })
-
-  test(`empty axes preserve explicit bounds and use scale-valid missing bounds`, () => {
     const no_finite_points = [bar({ x: [NaN], y: [Infinity] })]
     expect(
       auto_ranges(no_finite_points, {
