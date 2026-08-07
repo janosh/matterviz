@@ -61,18 +61,11 @@ export function query_nearest<T extends Positioned>(
   const center_col = Math.floor(pointer.x / cell_size)
   const center_row = Math.floor(pointer.y / cell_size)
   const cell_radius = Math.ceil(radius_px / cell_size)
-  if (
-    center_col + cell_radius < -COORD_OFFSET ||
-    center_col - cell_radius >= COORD_OFFSET ||
-    center_row + cell_radius < -COORD_OFFSET ||
-    center_row - cell_radius >= COORD_OFFSET
-  ) {
-    return null
-  }
   const min_col = Math.max(-COORD_OFFSET, center_col - cell_radius)
   const max_col = Math.min(COORD_OFFSET - 1, center_col + cell_radius)
   const min_row = Math.max(-COORD_OFFSET, center_row - cell_radius)
   const max_row = Math.min(COORD_OFFSET - 1, center_row + cell_radius)
+  if (min_col > max_col || min_row > max_row) return null
   const max_dist_sq = radius_px * radius_px
   let best: T | null = null
   let best_dist_sq = Infinity

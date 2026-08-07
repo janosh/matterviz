@@ -145,6 +145,23 @@ describe(`VacfPlot`, () => {
     expect(text).toContain(`hann window`)
   })
 
+  it(`keeps VACF and VDOS control panes independent`, async () => {
+    await mount_plot({
+      result: calc_vacf(orbit_input(80)),
+      vacf_controls_open: true,
+      vdos_controls_open: false,
+    })
+    const toggles = document.querySelectorAll<HTMLButtonElement>(`.pane-toggle`)
+    const expanded_states = () =>
+      [...toggles].map((toggle) => toggle.getAttribute(`aria-expanded`))
+    expect(expanded_states()).toEqual([`true`, `false`])
+    const first_toggle = toggles[0]
+    if (!first_toggle) throw new Error(`VACF controls toggle not found`)
+    first_toggle.click()
+    await tick()
+    expect(expanded_states()).toEqual([`false`, `false`])
+  })
+
   it.each([
     [`vacf` as const, 1],
     [`vdos` as const, 1],

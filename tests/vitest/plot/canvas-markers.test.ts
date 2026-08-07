@@ -3,9 +3,36 @@ import { describe, expect, test } from 'vitest'
 
 class StubPath2D {
   added: { path: StubPath2D; transform: DOMMatrix }[] = []
-  constructor(public d?: string) {}
+  d?: string
+  constructor(source?: string | StubPath2D) {
+    if (typeof source === `string`) this.d = source
+    else if (source) {
+      this.d = source.d
+      this.added = source.added.map(({ path, transform }) => ({
+        path,
+        transform: new DOMMatrix([
+          transform.a,
+          transform.b,
+          transform.c,
+          transform.d,
+          transform.e,
+          transform.f,
+        ]),
+      }))
+    }
+  }
   addPath(path: StubPath2D, transform: DOMMatrix) {
-    this.added.push({ path, transform })
+    this.added.push({
+      path,
+      transform: new DOMMatrix([
+        transform.a,
+        transform.b,
+        transform.c,
+        transform.d,
+        transform.e,
+        transform.f,
+      ]),
+    })
   }
 }
 globalThis.Path2D ??= StubPath2D as unknown as typeof Path2D
@@ -14,7 +41,7 @@ type Call = { op: string; args: unknown[] }
 const fake_ctx = () => {
   const calls: Call[] = []
   const ctx: Record<string, unknown> = { calls }
-  for (const op of `setTransform clearRect scale beginPath rect clip moveTo arc fill stroke save restore translate`.split(
+  for (const op of `setTransform clearRect scale beginPath rect clip moveTo arc fill stroke save restore`.split(
     ` `,
   )) {
     ctx[op] = (...args: unknown[]) => void calls.push({ op, args })
@@ -50,18 +77,17 @@ const draw = (
 }
 const batch = (n: number, overrides: Partial<CanvasMarker> = {}) =>
   Array.from({ length: n }, (_, idx) => marker({ cx: idx, cy: idx, ...overrides }))
+// Symbol markers accumulate into one Path2D; these are the stamped entries.
+const stamps = (overrides: Partial<CanvasMarker>) =>
+  filled_path(draw([marker(overrides)])).added
 
 describe(`draw_markers`, () => {
   test(`clears and scales the canvas while preserving context state`, () => {
     const hidpi = draw([marker()], { width: 400, height: 300, pixel_ratio: 2 })
     expect(ops(hidpi, `clearRect`)[0].args).toEqual([0, 0, 800, 600])
     expect(ops(hidpi, `scale`)[0].args).toEqual([2, 2])
-    expect(draw([]).calls.map(({ op }) => op)).toEqual([
-      `save`,
-      `setTransform`,
-      `clearRect`,
-      `restore`,
-    ])
+    const empty_ops = draw([]).calls.map(({ op }) => op)
+    expect(empty_ops).toEqual([`save`, `setTransform`, `clearRect`, `restore`])
   })
 
   test(`batches opaque markers and splits translucent or changed styles`, () => {
@@ -71,19 +97,23 @@ describe(`draw_markers`, () => {
     expect(ops(circles, `fill`)).toHaveLength(1)
     const squares = draw(batch(500, { symbol_type: `Square`, stroke_width: 0 }))
     expect(ops(squares, `arc`)).toHaveLength(0)
-    expect((ops(squares, `fill`)[0].args[0] as StubPath2D).added).toHaveLength(500)
+    expect(filled_path(squares).added).toHaveLength(500)
     const translucent = draw(batch(2, { fill_opacity: 0.5 }))
     expect(ops(translucent, `fill`)).toHaveLength(2)
+    const embedded_alpha = draw(batch(2, { fill: `rgba(255, 0, 0, 0.5)`, stroke_width: 0 }))
+    expect(ops(embedded_alpha, `fill`)).toHaveLength(2)
+    const fill_and_stroke = draw(batch(2))
+    expect(ops(fill_and_stroke, `fill`)).toHaveLength(2)
+    expect(ops(fill_and_stroke, `stroke`)).toHaveLength(2)
     const color_ctx = draw(
       [`red`, `red`, `blue`, `red`].map((fill) => marker({ fill, stroke_width: 0 })),
     )
-    expect(ops(color_ctx, `set:fillStyle`).map((call) => call.args[0])).toEqual([
-      `red`,
-      `blue`,
-      `red`,
-    ])
+    const fill_styles = ops(color_ctx, `set:fillStyle`).map((call) => call.args[0])
+    expect(fill_styles).toEqual([`red`, `blue`, `red`])
   })
 
+  // Asserts nothing is painted (not just no `arc`): an invalid symbol_size takes the
+  // stamped-symbol branch, which never calls `arc` even when it is valid.
   test.each([
     { cx: NaN },
     { cy: Infinity },
@@ -91,9 +121,14 @@ describe(`draw_markers`, () => {
     { radius: Infinity },
     { radius: 0 },
     { radius: -2 },
-  ])(`skips invalid marker geometry %#`, (overrides) => {
+    { symbol_size: NaN },
+    { symbol_size: 0 },
+    { symbol_size: -5 },
+  ])(`skips markers with invalid geometry %o`, (overrides) => {
     const invalid_ctx = draw([marker(overrides)])
-    expect(ops(invalid_ctx, `arc`)).toHaveLength(0)
+    for (const op of [`arc`, `fill`, `stroke`]) {
+      expect(ops(invalid_ctx, op)).toHaveLength(0)
+    }
   })
 
   test(`clips, moves before arcs, and restores between redraws`, () => {
@@ -139,13 +174,16 @@ describe(`draw_markers`, () => {
     expect(ops(ctx, `set:lineWidth`).map((call) => call.args[0])).toEqual([2, 0, 0])
   })
 
+  // `transparent` is skipped just like `none`; canvas would otherwise reject the CSS keyword.
   test.each([
     [{ stroke_width: 0 }, 1, 0],
     [{ fill: `none` }, 0, 1],
+    [{ fill: `transparent` }, 0, 1],
     [{ stroke: `none` }, 1, 0],
+    [{ stroke: `transparent` }, 1, 0],
     [{ fill: `none`, stroke: `none` }, 0, 0],
   ] as const)(
-    `handles absent fill and stroke styles %#`,
+    `handles absent fill and stroke styles %o`,
     (overrides, expected_fills, expected_strokes) => {
       const ctx = draw(batch(2, overrides))
       expect(ops(ctx, `fill`)).toHaveLength(expected_fills)
@@ -155,27 +193,35 @@ describe(`draw_markers`, () => {
 
   test(`stamps non-circle symbols with matching area and batches mixed shapes`, () => {
     const stamped = draw([marker({ cx: 30, cy: 40, radius: 4, symbol_type: `Square` })])
+    const { transform } = filled_path(stamped).added[0]
     expect(ops(stamped, `arc`)).toHaveLength(0)
-    expect([
-      filled_path(stamped).added[0].transform.e,
-      filled_path(stamped).added[0].transform.f,
-    ]).toEqual([30, 40])
-    const sized_symbol = marker({ radius: 0, symbol_size: 100 })
-    const sized_symbol_ctx = draw([sized_symbol])
-    expect(filled_path(sized_symbol_ctx).added).toHaveLength(1)
+    expect([transform.e, transform.f]).toEqual([30, 40])
+    // an explicit symbol_size stands in for radius, so radius 0 still draws
+    expect(stamps({ radius: 0, symbol_size: 100 })).toHaveLength(1)
     for (const radius of [2, 5, 9]) {
-      const outline_ctx = draw([marker({ radius, symbol_type: `Square` })])
-      const outline = filled_path(outline_ctx).added[0].path.d ?? ``
+      const outline = stamps({ radius, symbol_type: `Square` })[0].path.d ?? ``
       const side = Number(/^M(?<half_side>[-\d.]+)/.exec(outline)?.groups?.half_side)
       expect(Math.abs(side)).toBeCloseTo(Math.sqrt(Math.PI * radius ** 2) / 2, 3)
     }
 
-    const mixed = draw([
-      marker({ symbol_type: `Circle`, stroke_width: 0 }),
-      marker({ symbol_type: `Star`, stroke_width: 0 }),
-      marker({ symbol_type: `Circle`, stroke_width: 0 }),
-    ])
+    const mixed = draw(
+      ([`Circle`, `Star`, `Circle`] as const).map((symbol_type) =>
+        marker({ symbol_type, stroke_width: 0 }),
+      ),
+    )
     expect(ops(mixed, `arc`)).toHaveLength(2)
     expect(ops(mixed, `fill`)).toHaveLength(2)
+  })
+
+  test(`Path2D stub preserves accumulated geometry when cloned`, () => {
+    const source = new StubPath2D()
+    const transform = new DOMMatrix()
+    transform.e = 3
+    transform.f = 4
+    source.addPath(new StubPath2D(`M0,0`), transform)
+    const clone = new StubPath2D(source)
+    source.added.length = 0
+    expect(clone.added).toHaveLength(1)
+    expect([clone.added[0].transform.e, clone.added[0].transform.f]).toEqual([3, 4])
   })
 })

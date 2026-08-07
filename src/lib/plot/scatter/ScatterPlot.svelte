@@ -146,6 +146,7 @@
   import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
+  import { color as d3_color } from 'd3-color'
   import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
 
   // Marker-density thresholds and decoration sampling cap
@@ -431,6 +432,8 @@
     const y1 = empty_extent()
     const y2 = empty_extent()
     const x2 = empty_extent()
+    let has_x2_points = false
+    let has_y2_points = false
 
     for (const srs of series_with_ids) {
       if (!srs) continue
@@ -448,13 +451,19 @@
         const y_extent = series_y_axis === `y2` ? y2 : y1
         accumulate_extent(y_extent, ys, n_points)
         if (x_ax === `x2`) accumulate_extent(x2, xs, n_points)
+        const has_drawable_point: boolean =
+          ((x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)) &&
+          xs.some(
+            (x_value, point_idx) => Number.isFinite(x_value) && Number.isFinite(ys[point_idx]),
+          )
+        has_x2_points ||= x_ax === `x2` && has_drawable_point
+        has_y2_points ||= series_y_axis === `y2` && has_drawable_point
       }
     }
-    return { all_x, y1, y2, x2 }
+    return { all_x, y1, y2, x2, has_x2_points, has_y2_points }
   })
 
-  let has_x2_points = $derived(extents_by_axis.x2.n_finite > 0)
-  let has_y2_points = $derived(extents_by_axis.y2.n_finite > 0)
+  let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
   // Layout: tick-label padding (decoration reservations are added in `pad` below)
   let tick_font = $state<Readonly<FontSpec> | undefined>()
@@ -1007,8 +1016,9 @@
     }
   }
 
+  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint keyword.
   const canvas_safe_color = (color: string): boolean =>
-    !/\b(?:var|light-dark)\s*\(/i.test(color) && color.toLowerCase() !== `currentcolor`
+    color === `none` || d3_color(color) !== null
   const needs_svg_point_events = $derived(
     Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
   )
@@ -2012,7 +2022,7 @@
           {@const rendered_points = use_canvas_markers
             ? (svg_overlay_points_by_series[series_pos] ?? [])
             : series_data.filtered_data}
-          <g data-series-id={series_data._id}>
+          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
             {#if series_markers.includes(`points`)}
               {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
@@ -2055,6 +2065,7 @@
                   is_selected={selected_point?.series_idx === point.series_idx &&
                     selected_point?.point_idx === point.point_idx}
                   leader_line_threshold={actual_label_config.leader_line_threshold}
+                  overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
                   style={{
                     symbol_type: appearance.symbol_type,
                     ...point.point_style,

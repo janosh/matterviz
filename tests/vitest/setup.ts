@@ -588,20 +588,40 @@ export const make_wyckoff_dataset = (
   } as unknown as MoyoDataset
 }
 
-// ResizeObserver mock - triggers callback with dimensions on observe
-globalThis.ResizeObserver = class ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  observe(el: Element) {
-    queueMicrotask(() =>
-      this.callback(
-        [{ target: el, contentRect: { width: 800, height: 600 } } as ResizeObserverEntry],
-        this,
-      ),
+// ResizeObserver mock: report a useful initial size and allow tests to trigger later
+// measurements after changing an observed element's dimensions.
+const resize_observers: TestResizeObserver[] = []
+class TestResizeObserver implements ResizeObserver {
+  readonly observed_elements: Element[] = []
+  constructor(private readonly callback: ResizeObserverCallback) {
+    resize_observers.push(this)
+  }
+  notify(element: Element, width = element.clientWidth, height = element.clientHeight): void {
+    this.callback(
+      [{ target: element, contentRect: { width, height } } as ResizeObserverEntry],
+      this,
     )
   }
-  unobserve() {}
-  disconnect() {}
+  observe(element: Element): void {
+    if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
+    queueMicrotask(() => {
+      if (this.observed_elements.includes(element)) this.notify(element, 800, 600)
+    })
+  }
+  unobserve(element: Element): void {
+    const element_idx = this.observed_elements.indexOf(element)
+    if (element_idx !== -1) this.observed_elements.splice(element_idx, 1)
+  }
+  disconnect(): void {
+    this.observed_elements.length = 0
+  }
 }
+export const trigger_resize_observer = (element: Element): void => {
+  for (const observer of resize_observers) {
+    if (observer.observed_elements.includes(element)) observer.notify(element)
+  }
+}
+globalThis.ResizeObserver = TestResizeObserver
 
 // Mock Web Animations API for Svelte transitions (not available in jsdom)
 // The mock immediately triggers onfinish to complete transitions synchronously

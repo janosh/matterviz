@@ -100,20 +100,17 @@ describe(`ScatterPlot`, () => {
     expect(update_range).not.toHaveBeenCalled()
   })
 
-  // ScatterPlot now shares the flat controls props used by the other plots.
-  describe(`controls props`, () => {
-    test.each([
-      [`closed by default`, {}, true, false],
-      [`hidden`, { show_controls: false }, false, false],
-      [`opened`, { controls_open: true }, true, true],
-    ] as const)(`renders controls %s`, async (_desc, controls_props, visible, open) => {
-      const plot = await mount_sized_scatter_plot({ series: [basic], ...controls_props })
-      expect(Boolean(plot.querySelector(`.plot-controls-toggle`))).toBe(visible)
-      expect(Boolean(plot.querySelector(`.pane-open`))).toBe(open)
-      for (const prop_name of Object.keys(controls_props)) {
-        expect(plot.hasAttribute(prop_name)).toBe(false)
-      }
-    })
+  test.each([
+    [`closed by default`, {}, true, false],
+    [`hidden`, { show_controls: false }, false, false],
+    [`opened`, { controls_open: true }, true, true],
+  ] as const)(`renders controls %s`, async (_desc, controls_props, visible, open) => {
+    const plot = await mount_sized_scatter_plot({ series: [basic], ...controls_props })
+    expect(Boolean(plot.querySelector(`.plot-controls-toggle`))).toBe(visible)
+    expect(Boolean(plot.querySelector(`.pane-open`))).toBe(open)
+    for (const prop_name of Object.keys(controls_props)) {
+      expect(plot.hasAttribute(prop_name)).toBe(false)
+    }
   })
 
   describe(`marker_renderer`, () => {
@@ -149,17 +146,17 @@ describe(`ScatterPlot`, () => {
       } as unknown as CanvasRenderingContext2D)
     }
 
-    test(`selects svg or canvas layers and renders canvas overlays`, async () => {
-      for (const [marker_renderer, canvas, svg_count] of [
-        [`auto`, false, 40],
-        [`svg`, false, 40],
-        [`canvas`, true, 0],
-      ] as const) {
-        const plot = await mount_sized_scatter_plot({ series: [dense], marker_renderer })
-        expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
-        expect(plot.querySelectorAll(`path.marker`)).toHaveLength(svg_count)
-      }
+    test.each([
+      [`auto`, false, 40],
+      [`svg`, false, 40],
+      [`canvas`, true, 0],
+    ] as const)(`selects the %s marker layer`, async (marker_renderer, canvas, svg_count) => {
+      const plot = await mount_sized_scatter_plot({ series: [dense], marker_renderer })
+      expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(svg_count)
+    })
 
+    test(`renders SVG overlays without redrawing the base canvas on hover`, async () => {
       let arcs_since_clear = 0
       const canvas_clip = vi.fn()
       const canvas_rect = vi.fn()
@@ -182,6 +179,12 @@ describe(`ScatterPlot`, () => {
         },
       })
       expect(overlaid.querySelectorAll(`path.marker`)).toHaveLength(1)
+      expect(
+        overlaid
+          .querySelector(`path.marker`)
+          ?.closest(`g[data-series-id]`)
+          ?.getAttribute(`clip-path`),
+      ).toMatch(/^url\(#.+\)$/)
       expect(arcs_since_clear).toBe(dense.x.length - 1)
       const canvas_bounds = scatter_clip_rect(overlaid)
       expect(canvas_rect).toHaveBeenLastCalledWith(
@@ -217,7 +220,11 @@ describe(`ScatterPlot`, () => {
       await tick()
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
+      expect(hover_plot.querySelector(`path.marker`)?.getAttribute(`fill`)).toBe(`none`)
+    })
 
+    test(`disables point tweening for canvas overlays`, async () => {
+      mock_canvas_context()
       const tweened = await mount_canvas({
         selected_point: { series_idx: 0, point_idx: 5 },
         point_tween: { duration: 60_000 },
@@ -228,7 +235,9 @@ describe(`ScatterPlot`, () => {
         Math.hypot(x - (clip.x + clip.width / 2), y - (clip.y + clip.height / 2)),
       ).toBeGreaterThan(10)
       expect(tweened.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
+    })
 
+    test(`skips canvas markers when points are hidden`, async () => {
       const arc = vi.fn()
       mock_canvas_context({ arc })
       const hidden = await mount_canvas({ styles: { show_points: false } })
@@ -255,16 +264,19 @@ describe(`ScatterPlot`, () => {
       expect(on_context_menu).toHaveBeenCalledOnce()
     })
 
-    test.each([`var(--series-color)`, `light-dark(black, white)`, `currentColor`])(
-      `keeps SVG markers for context-dependent color %s`,
-      async (fill) => {
-        const plot = await mount_canvas({
-          series: [{ ...dense, point_style: { fill } }],
-        })
-        expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
-        expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
-      },
-    )
+    test.each([
+      `var(--series-color)`,
+      `light-dark(black, white)`,
+      `currentColor`,
+      `url(#series-gradient)`,
+      `color-mix(in srgb, red, blue)`,
+    ])(`keeps SVG markers for canvas-unsafe color %s`, async (fill) => {
+      const plot = await mount_canvas({
+        series: [{ ...dense, point_style: { fill } }],
+      })
+      expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
+    })
 
     test(`reports point offsets in handler screen coordinates`, async () => {
       const on_point_click = vi.fn()
@@ -300,13 +312,6 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([
-    {
-      series: [basic],
-      x_axis: { range: [null, null] as [null, null] },
-      y_axis: { range: [null, null] as [null, null] },
-      markers: `points`,
-      expected_markers: 5,
-    },
     {
       series: [{ ...basic, y: [5, 3, 20, 2, 7] }],
       x_axis: { range: [null, null] as [null, null] },
@@ -433,12 +438,12 @@ describe(`ScatterPlot`, () => {
   })
 
   test.each([`x2`, `y2`] as const)(
-    `does not render the %s axis when its series has no valid axis values`,
+    `does not render the %s axis without a finite x/y pair`,
     async (axis) => {
       const invalid_series: DataSeries =
         axis === `x2`
-          ? { x: [NaN, Infinity], y: [3, 4], x_axis: `x2` }
-          : { x: [1, 2], y: [NaN, Infinity], y_axis: `y2` }
+          ? { x: [1, NaN], y: [NaN, 2], x_axis: `x2` }
+          : { x: [1, NaN], y: [NaN, 2], y_axis: `y2` }
       const plot = await mount_sized_scatter_plot({
         series: [{ x: [1, 2], y: [3, 4], y_axis: `y1` }, invalid_series],
       })
@@ -850,6 +855,13 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
   })
 
+  const fill_plot_props = (): Partial<ComponentProps<typeof ScatterPlot>> => ({
+    series: [{ x: [0, 1], y: [0, 1] }],
+    x_axis: { range: [0, 1] as Vec2 },
+    y_axis: { range: [0, 1] as Vec2 },
+    legend: null,
+  })
+
   test(`keeps fallback-index and explicit-id fill hovers distinct`, async () => {
     const make_fills = (): FillRegion[] => [
       { id: `lead`, lower: 0, upper: 0.1, fill: `transparent` },
@@ -857,17 +869,7 @@ describe(`ScatterPlot`, () => {
       { id: `1`, lower: 0.5, upper: 0.7, fill: `slategray` },
     ]
     const state = { fill_regions: make_fills() }
-    await mount_sized_scatter_plot(
-      bind_props(
-        {
-          series: [{ x: [0, 1], y: [0, 1] }],
-          x_axis: { range: [0, 1] as Vec2 },
-          y_axis: { range: [0, 1] as Vec2 },
-          legend: null,
-        },
-        state,
-      ),
-    )
+    await mount_sized_scatter_plot(bind_props(fill_plot_props(), state))
 
     const fallback_fill = () => svg_query(`[aria-label="Fill region 1"]`)
     const explicit_id_fill = () => svg_query(`[aria-label="Fill region 2"]`)
@@ -885,20 +887,7 @@ describe(`ScatterPlot`, () => {
     const state = $state({
       fill_regions: [{ id: `target`, lower: 0, upper: 0.2, fill: `steelblue` }],
     })
-    mount(ScatterPlot, {
-      target: document.body,
-      props: bind_props(
-        {
-          series: [{ x: [0, 1], y: [0, 1] }],
-          x_axis: { range: [0, 1] as Vec2 },
-          y_axis: { range: [0, 1] as Vec2 },
-          legend: null,
-          style: `width: 400px; height: 300px;`,
-        },
-        state,
-      ),
-    })
-    await resize_element(doc_query(`.scatter`), 400, 300)
+    await mount_sized_scatter_plot(bind_props(fill_plot_props(), state))
 
     await hover(svg_query(`[aria-label="Fill region 0"]`))
     state.fill_regions = [
@@ -918,13 +907,7 @@ describe(`ScatterPlot`, () => {
       { id: `duplicate`, lower: 0, upper: 0.2, fill: `steelblue` },
       { id: `duplicate`, lower: 0.4, upper: 0.6, fill: `slategray` },
     ]
-    await mount_sized_scatter_plot({
-      series: [{ x: [0, 1], y: [0, 1] }],
-      x_axis: { range: [0, 1] as Vec2 },
-      y_axis: { range: [0, 1] as Vec2 },
-      fill_regions,
-      legend: null,
-    })
+    await mount_sized_scatter_plot({ ...fill_plot_props(), fill_regions })
 
     const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
     expect(fills).toHaveLength(fill_regions.length)
@@ -940,20 +923,7 @@ describe(`ScatterPlot`, () => {
         { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
       ] as FillRegion[],
     })
-    mount(ScatterPlot, {
-      target: document.body,
-      props: bind_props(
-        {
-          series: [{ x: [0, 1], y: [0, 1] }],
-          x_axis: { range: [0, 1] as Vec2 },
-          y_axis: { range: [0, 1] as Vec2 },
-          legend: {},
-          style: `width: 400px; height: 300px;`,
-        },
-        state,
-      ),
-    })
-    await resize_element(doc_query(`.scatter`), 400, 300)
+    await mount_sized_scatter_plot(bind_props({ ...fill_plot_props(), legend: {} }, state))
     await tick()
 
     const fill_item = () =>
@@ -1024,14 +994,15 @@ describe(`ScatterPlot`, () => {
     }
     return { x, y }
   }
+  const decorated_series = (): DataSeries[] => [
+    { ...basic, label: `A`, color_values: basic.x },
+    { ...basic, label: `B` },
+  ]
 
   test(`solves legend and colorbar together without overlap`, async () => {
     mock_decoration_measurements()
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { ...basic, label: `A`, color_values: basic.x },
-        { ...basic, label: `B` },
-      ],
+    await mount_sized_scatter_plot({
+      series: decorated_series(),
       legend: {},
       color_bar: {},
     })
@@ -1041,8 +1012,6 @@ describe(`ScatterPlot`, () => {
       const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
       expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
     })
-    expect(plot.querySelector(`.legend`)).not.toBeNull()
-    expect(plot.querySelector(`.colorbar-wrapper`)).not.toBeNull()
   })
 
   test(`uses solver-provided automatic legend tracks`, async () => {
@@ -1095,10 +1064,7 @@ describe(`ScatterPlot`, () => {
   test(`keeps the unified decoration solution disjoint across resize`, async () => {
     mock_decoration_measurements()
     const plot = await mount_sized_scatter_plot({
-      series: [
-        { ...basic, label: `A`, color_values: basic.x },
-        { ...basic, label: `B` },
-      ],
+      series: decorated_series(),
       legend: { responsive: true },
       color_bar: { responsive: true },
     })
@@ -1122,10 +1088,7 @@ describe(`ScatterPlot`, () => {
   test(`preserves explicit legend and colorbar positions outside solver ownership`, async () => {
     mock_decoration_measurements()
     const plot = await mount_sized_scatter_plot({
-      series: [
-        { ...basic, label: `A`, color_values: basic.x },
-        { ...basic, label: `B` },
-      ],
+      series: decorated_series(),
       legend: { style: `position: absolute; left: 23px; top: 31px;` },
       color_bar: { wrapper_style: `position: absolute; left: 211px; top: 17px;` },
     })

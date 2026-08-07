@@ -147,7 +147,9 @@ describe(`Histogram`, () => {
       y_axis: { scale_type: `log` },
     })
     await resize_element(get_plot(), 400, 300)
-    for (const bar of document.querySelectorAll(`g.histogram-series path[role="button"]`)) {
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    expect(bars.length).toBeGreaterThan(0)
+    for (const bar of bars) {
       const height = Number(
         /v\s*(?<h>-?\d*\.?\d+)/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
       )

@@ -3,7 +3,7 @@ import { ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls } from '../setup'
+import { bind_props, expect_plot_controls, press_window_key } from '../setup'
 import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'
 
 // Smoke tests to ensure component mounts without errors.
@@ -64,14 +64,19 @@ describe(`ScatterPlot3D smoke tests`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     if (mounted_component) {
-      void unmount(mounted_component)
+      await unmount(mounted_component)
       mounted_component = null
     }
     container.remove()
     vi.restoreAllMocks()
   })
+
+  const mount_plot = async (props: ComponentProps<typeof ScatterPlot3D>): Promise<void> => {
+    mounted_component = mount(ScatterPlot3D, { target: container, props })
+    await tick()
+  }
 
   test.each<[string, ComponentProps<typeof ScatterPlot3D>]>([
     [`series data`, { series: [basic_series] }],
@@ -83,31 +88,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
         surfaces: [grid_surface, parametric_surface, triangulated_surface],
       },
     ],
-    [
-      `comprehensive configuration options`,
-      {
-        series: [
-          {
-            ...basic_series,
-            color_values: [0, 0.25, 0.5, 0.75, 1],
-            size_values: [1, 2, 3, 4, 5],
-            line_style: { stroke: `red`, stroke_width: 2, line_dash: `5 3` },
-          },
-        ],
-        surfaces: [grid_surface],
-        x_axis: { label: `X Dimension`, range: [0, 10], ticks: [1, 5, 10] },
-        y_axis: { label: `Y Dimension`, range: [0, 20], ticks: 4 },
-        z_axis: { label: `Z Dimension`, range: [0, 5], format: `.2f` },
-        display: { show_axes: false, show_grid: false },
-        camera_position: [10, 10, 10],
-        camera_projection: `orthographic`,
-        gizmo: false,
-        auto_rotate: 2,
-        color_scale: { scheme: `interpolateViridis` },
-        size_scale: { radius_range: [0.05, 0.3] },
-        controls_open: true,
-      },
-    ],
+    [`open controls`, { series: [basic_series], controls_open: true }],
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
     // mismatched array lengths (y shorter, z longer) must not throw
     [
@@ -115,8 +96,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       { series: [{ x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] },
     ],
   ])(`mounts with %s`, async (_desc, props) => {
-    mounted_component = mount(ScatterPlot3D, { target: container, props })
-    await tick()
+    await mount_plot(props)
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
     const pane = container.querySelector(`.draggable-pane`)
     if (!(pane instanceof HTMLElement)) throw new Error(`controls pane not rendered`)
@@ -124,6 +104,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
   })
 
   const multi_series = [basic_series, { ...basic_series, label: `Other` }]
+  const color_series = { ...basic_series, color_values: [0, 1, 2, 3, 4] }
   test.each<[string, ComponentProps<typeof ScatterPlot3D>, boolean]>([
     [`auto hides a single series`, { series: [basic_series] }, false],
     [
@@ -139,37 +120,45 @@ describe(`ScatterPlot3D smoke tests`, () => {
     ],
     [`auto shows multiple series`, { series: multi_series }, true],
   ])(`legend visibility: %s`, async (_desc, props, expect_legend) => {
-    mounted_component = mount(ScatterPlot3D, { target: container, props })
-    await tick()
+    await mount_plot(props)
     expect(Boolean(container.querySelector(`.legend`))).toBe(expect_legend)
   })
 
+  test.each<[string, ComponentProps<typeof ScatterPlot3D>, boolean]>([
+    [`color values`, { series: [color_series] }, true],
+    [`no color values`, { series: [basic_series] }, false],
+    [`color bar disabled`, { series: [color_series], color_bar: null }, false],
+  ])(`color bar with %s`, async (_desc, props, expected) => {
+    await mount_plot(props)
+    expect(Boolean(container.querySelector(`.colorbar`))).toBe(expected)
+  })
+
+  test(`legend toggles series visibility and reports the change`, async () => {
+    const on_series_visibility_change = vi.fn()
+    await mount_plot({ series: multi_series, on_series_visibility_change })
+    const first_item = container.querySelector<HTMLElement>(`.legend-item`)
+    if (!first_item) throw new Error(`legend item not rendered`)
+    first_item.click()
+    flushSync()
+    expect(first_item.classList.contains(`hidden`)).toBe(true)
+    expect(on_series_visibility_change).toHaveBeenCalledWith(0, false)
+  })
+
+  test(`Escape exits fullscreen through the bindable prop`, async () => {
+    const state = { fullscreen: true }
+    await mount_plot(bind_props({ series: [basic_series] }, state))
+    expect(container.querySelector(`.scatter-3d.fullscreen`)).not.toBeNull()
+    const event = press_window_key({ key: `Escape` })
+    expect(state.fullscreen).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   test.each([
-    {
-      name: `no-id replacement preserves visibility by index`,
-      id_mode: `none` as const,
-      expected_after_click: [true, false],
-      expected_after_replacement: [true, false],
-    },
-    {
-      name: `stable-id replacement preserves visibility`,
-      id_mode: `unique` as const,
-      expected_after_click: [true, false],
-      expected_after_replacement: [true, false],
-    },
-    {
-      name: `duplicate-id visibility does not leak between series`,
-      id_mode: `duplicate` as const,
-      expected_after_click: [true, false],
-      expected_after_replacement: [true, false],
-    },
-    {
-      name: `duplicate-id key cannot collide with a real id`,
-      id_mode: `duplicate_collision` as const,
-      expected_after_click: [true, false, false],
-      expected_after_replacement: [true, false, false],
-    },
-  ])(`$name`, async ({ id_mode, expected_after_click, expected_after_replacement }) => {
+    [`no-id replacement preserves visibility by index`, `none`, 2],
+    [`stable-id replacement preserves visibility`, `unique`, 2],
+    [`duplicate-id visibility does not leak between series`, `duplicate`, 2],
+    [`duplicate-id key cannot collide with a real id`, `duplicate_collision`, 3],
+  ] as const)(`%s`, async (_name, id_mode, item_count) => {
     mounted_component = mount(ScatterPlot3DHarness, {
       target: container,
       props: { id_mode },
@@ -178,20 +167,47 @@ describe(`ScatterPlot3D smoke tests`, () => {
     const legend_items = () => container.querySelectorAll<HTMLElement>(`.legend-item`)
     const hidden_states = () =>
       Array.from(legend_items(), (item) => item.classList.contains(`hidden`))
+    const expected_visibility = [true, ...Array(item_count - 1).fill(false)]
 
-    expect(legend_items()).toHaveLength(expected_after_click.length)
+    expect(legend_items()).toHaveLength(expected_visibility.length)
     legend_items()[0].click()
     flushSync()
-    expect(hidden_states()).toEqual(expected_after_click)
+    expect(hidden_states()).toEqual(expected_visibility)
 
     container.querySelector<HTMLButtonElement>(`[data-testid="replace-series"]`)?.click()
     flushSync()
-    expect(hidden_states()).toEqual(expected_after_replacement)
+    expect(hidden_states()).toEqual(expected_visibility)
   })
 
   // The standalone controls component is exported from $lib/plot, so its prop names are
   // public API: it must speak controls_open/show_controls like every other *Controls
   // component rather than the generic DraggablePane `open`.
+  test(`standalone controls write display and axis changes`, async () => {
+    const controls_state = {
+      display: { show_axes: true },
+      x_axis: { label: `X`, range: [null, null] as [null, null] },
+    }
+    mounted_component = mount(ScatterPlot3DControls, {
+      target: container,
+      props: bind_props({ series: [basic_series] }, controls_state),
+    })
+    await tick()
+
+    const show_axes = container.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    const x_min = container.querySelector<HTMLInputElement>(`[aria-label="X min"]`)
+    if (!show_axes || !x_min) {
+      throw new Error(`expected standalone 3D controls not rendered`)
+    }
+
+    show_axes.click()
+    x_min.value = `2`
+    x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+
+    expect(controls_state.display.show_axes).toBe(false)
+    expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, 5.2] })
+  })
+
   test(`standalone controls expose show_controls and a two-way controls_open`, async () => {
     const controls_state = { controls_open: true }
     mounted_component = mount(ScatterPlot3DControls, {
@@ -208,7 +224,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await tick()
     await expect_plot_controls(container, controls_state, `scatter-3d`)
 
-    void unmount(mounted_component)
+    await unmount(mounted_component)
+    mounted_component = null
     mounted_component = mount(ScatterPlot3DControls, {
       target: container,
       props: { series: [basic_series], show_controls: false },

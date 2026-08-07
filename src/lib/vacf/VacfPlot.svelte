@@ -19,7 +19,8 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     show_controls = $bindable(true),
-    controls_open = $bindable(false),
+    vacf_controls_open = $bindable(false),
+    vdos_controls_open = $bindable(false),
     ...rest
   }: {
     // Precomputed curves. Bindable so a parent can read back what `input` produced.
@@ -33,7 +34,9 @@
     max_visible_curves?: number
     loading?: boolean
     error_msg?: string
-  } & ComponentProps<typeof ScatterPlot> = $props()
+    vacf_controls_open?: boolean
+    vdos_controls_open?: boolean
+  } & Omit<ComponentProps<typeof ScatterPlot>, `controls_open`> = $props()
 
   // Async compute can't be a $derived; a request id drops results of superseded inputs
   let request_id = 0
@@ -107,11 +110,17 @@
     style={error_msg ? `` : `border: none`}
   />
 {:else if result}
-  {#snippet panel_plot(series: DataSeries[], x_label: string, y_label: string)}
+  {#snippet panel_plot(
+    series: DataSeries[],
+    x_label: string,
+    y_label: string,
+    controls_open: boolean,
+    set_controls_open: (value: boolean) => void,
+  )}
     <ScatterPlot
       {...rest}
       bind:show_controls
-      bind:controls_open
+      bind:controls_open={() => controls_open, set_controls_open}
       {series}
       x_axis={{ label: x_label }}
       y_axis={{ label: y_label }}
@@ -119,9 +128,23 @@
       style={plot_style}
     />
   {/snippet}
-  {#if show_vacf}{@render panel_plot(vacf_series, result.x_label, `VACF / VACF(0)`)}{/if}
+  {#if show_vacf}
+    {@render panel_plot(
+      vacf_series,
+      result.x_label,
+      `VACF / VACF(0)`,
+      vacf_controls_open,
+      (value) => (vacf_controls_open = value),
+    )}
+  {/if}
   {#if show_vdos}
-    {@render panel_plot(vdos_series, result.frequency_label, `VDOS (arb. units)`)}
+    {@render panel_plot(
+      vdos_series,
+      result.frequency_label,
+      `VDOS (arb. units)`,
+      vdos_controls_open,
+      (value) => (vdos_controls_open = value),
+    )}
   {/if}
   {#if show_summary}
     <table class="vacf-summary">

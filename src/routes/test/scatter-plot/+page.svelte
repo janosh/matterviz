@@ -891,12 +891,14 @@
   <ScatterPlot
     series={legend_dedupe_same_group}
     legend={{ draggable: false }}
+    show_legend
     id="legend-dedupe-same-group"
   />
   <h3>Same Label, No Group - 1 Legend Item Expected (Deduplicated)</h3>
   <ScatterPlot
     series={legend_dedupe_no_group}
     legend={{ draggable: false }}
+    show_legend
     id="legend-dedupe-no-group"
   />
 </section>

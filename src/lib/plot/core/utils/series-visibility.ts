@@ -11,8 +11,12 @@ export const resolve_legend_visibility = (
 export const LEGEND_VISIBILITY_MODES = [`auto`, `always`, `never`] as const
 export type LegendVisibilityMode = (typeof LEGEND_VISIBILITY_MODES)[number]
 
-export const legend_mode_to_prop = (mode: LegendVisibilityMode): boolean | undefined =>
-  mode === `auto` ? undefined : mode === `always`
+export const legend_mode_to_prop = (mode: LegendVisibilityMode): boolean | undefined => {
+  if (mode === `auto`) return undefined
+  if (mode === `always`) return true
+  if (mode === `never`) return false
+  throw new Error(`Invalid legend visibility mode: ${String(mode)}`)
+}
 
 // Minimal series shape the visibility helpers need - generic over the concrete series
 // type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type

@@ -262,6 +262,21 @@ describe(`create_display trajectory display options`, () => {
     }
   })
 
+  test(`rejects stale boolean legend settings`, () => {
+    const prev_data = globalThis.matterviz_data
+    globalThis.matterviz_data = {
+      ...prev_data,
+      defaults: { scatter: { show_legend: true }, histogram: { show_legend: true } },
+    } as unknown as typeof globalThis.matterviz_data
+    try {
+      expect(() => create_display(make_container(), trajectory_result())).toThrow(
+        `Invalid legend visibility mode: true`,
+      )
+    } finally {
+      globalThis.matterviz_data = prev_data
+    }
+  })
+
   test.each([[undefined], [{}]])(
     `display options %o leave Trajectory props untouched`,
     (display_options) => {

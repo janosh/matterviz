@@ -2046,20 +2046,17 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await checkbox.check()
     await expect(checkbox).toBeChecked()
 
-    // Wait for simulation to settle: consecutive stable bbox snapshots
+    // Wait until the placement effect has moved the dense labels out of their initial stack.
     await page.waitForFunction(
       () => {
-        const labels = Array.from(document.querySelectorAll(`.scatter g[data-series-id] text`))
-        const snap = labels.map((el) => el.getBoundingClientRect())
-        const win = window as Window & { label_snapshots?: DOMRect[] }
-        const prev = win.label_snapshots
-        win.label_snapshots = snap
-        if (!prev || prev.length !== snap.length) return false
-        const moved = snap.some((rect, idx) => {
-          const prev_rect = prev[idx]
-          return Math.hypot(rect.x - prev_rect.x, rect.y - prev_rect.y) > 0.5
+        const labels = [
+          ...document.querySelectorAll(`#label-auto-placement-test g[data-series-id] text`),
+        ].filter((label) => label.textContent?.startsWith(`Dense-`))
+        const positions = labels.map((label) => {
+          const { x, y } = label.getBoundingClientRect()
+          return `${Math.round(x)},${Math.round(y)}`
         })
-        return !moved
+        return labels.length > 1 && new Set(positions).size > 1
       },
       { timeout: 2000 },
     )
@@ -2081,36 +2078,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(sparse_label_data.length).toBeGreaterThan(0)
     expect(dense_label_data.length).toBeGreaterThan(1)
 
-    // For isolated markers (sparse labels), verify labels don't heavily overlap markers
-    // by checking that label bounding boxes don't significantly intersect marker bboxes
-    // Note: Labels will naturally be positioned near their associated marker,
-    // so we allow small overlaps but check there's no complete visual obstruction
-    for (const label_item of sparse_label_data) {
-      if (!label_item.bbox) continue
-
-      // Check that label has reasonable position (not at origin, has dimensions)
-      expect(label_item.bbox.width).toBeGreaterThan(0)
-      expect(label_item.bbox.height).toBeGreaterThan(0)
-    }
-
-    // For clustered labels (dense labels), verify they render with valid bounding boxes
-    // and are not all at exactly the same position (which would indicate broken layout)
-    const unique_positions = new Set<string>()
-    for (const label_item of dense_label_data) {
-      if (!label_item.bbox) continue
-
-      expect(label_item.bbox.width).toBeGreaterThan(0)
-      expect(label_item.bbox.height).toBeGreaterThan(0)
-
-      // Track unique positions to verify labels aren't all stacked at same position
-      const pos_key = `${Math.round(label_item.bbox.x)},${Math.round(label_item.bbox.y)}`
-      unique_positions.add(pos_key)
-    }
-
-    // With auto-placement, clustered labels should have some variation in position
-    // (not all stacked at exact same location)
-    if (dense_label_data.length > 1) {
-      expect(unique_positions.size).toBeGreaterThan(1)
+    // The placement wait above verifies distinct dense positions; all labels still need
+    // measurable geometry.
+    for (const { bbox } of [...sparse_label_data, ...dense_label_data]) {
+      expect(bbox).not.toBeNull()
+      if (bbox) {
+        expect(bbox.width).toBeGreaterThan(0)
+        expect(bbox.height).toBeGreaterThan(0)
+      }
     }
   })
 

@@ -3,6 +3,7 @@
 
 import { type D3SymbolName, symbol_map } from '$lib/labels'
 import type { Rect } from '$lib/plot/core/layout'
+import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 
 export interface CanvasMarker {
@@ -28,7 +29,7 @@ const style_key = (marker: CanvasMarker): string =>
 const symbol_path_cache = new Map<string, Path2D>()
 const MAX_SYMBOL_CACHE = 512
 
-const paint_color = (color: string): boolean => color !== `none` && color !== `transparent`
+const color_opacity = (color: string): number => d3_color(color)?.opacity ?? 1
 const normalize_alpha = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 
@@ -39,14 +40,12 @@ const symbol_path = (
 ): Path2D => {
   const size = symbol_size ?? Math.PI * radius ** 2
   const key = `${symbol_type}|${size}`
-  let path = symbol_path_cache.get(key)
-  if (!path) {
-    if (symbol_path_cache.size > MAX_SYMBOL_CACHE) symbol_path_cache.clear()
-    const shape = (symbol_type && symbol_map[symbol_type]) ?? symbolCircle
-    const spec = d3_symbol().type(shape).size(size)() ?? ``
-    path = new Path2D(spec)
-    symbol_path_cache.set(key, path)
-  }
+  const cached_path = symbol_path_cache.get(key)
+  if (cached_path) return cached_path
+  if (symbol_path_cache.size > MAX_SYMBOL_CACHE) symbol_path_cache.clear()
+  const shape = (symbol_type && symbol_map[symbol_type]) ?? symbolCircle
+  const path = new Path2D(d3_symbol().type(shape).size(size)() ?? ``)
+  symbol_path_cache.set(key, path)
   return path
 }
 
@@ -101,16 +100,17 @@ export function draw_markers(
     open_symbols = null
   }
 
-  for (const [marker_idx, marker] of markers.entries()) {
+  for (const marker of markers) {
     const { cx, cy, radius, symbol_size } = marker
-    const valid_size =
-      symbol_size == null
-        ? Number.isFinite(radius) && radius > 0
-        : Number.isFinite(symbol_size) && symbol_size > 0
-    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !valid_size) continue
+    const marker_size = symbol_size ?? radius
+    const valid_position = Number.isFinite(cx) && Number.isFinite(cy)
+    const valid_size = Number.isFinite(marker_size) && marker_size > 0
+    if (!valid_position || !valid_size) continue
 
-    const has_fill = paint_color(marker.fill)
-    const has_stroke = paint_color(marker.stroke)
+    const fill_color_opacity = color_opacity(marker.fill)
+    const stroke_color_opacity = color_opacity(marker.stroke)
+    const has_fill = marker.fill !== `none` && fill_color_opacity > 0
+    const has_stroke = marker.stroke !== `none` && stroke_color_opacity > 0
     const stroke_width = Number.isFinite(marker.stroke_width)
       ? Math.max(0, marker.stroke_width)
       : 0
@@ -120,12 +120,16 @@ export function draw_markers(
     const next_stroke_alpha = normalize_alpha(
       stroke_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0,
     )
-    // Translucent markers isolate so overlapping alphas match SVG (shared path composites once).
+    // Isolate when overlap/order changes compositing: shared paths composite translucent
+    // overlaps once, while separate SVG markers paint each fill and stroke in DOM order.
     const isolate =
+      (next_fill_alpha > 0 && next_stroke_alpha > 0) ||
       (next_fill_alpha > 0 && next_fill_alpha < 1) ||
-      (next_stroke_alpha > 0 && next_stroke_alpha < 1)
-    const key = isolate ? `${style_key(marker)}|${marker_idx}` : style_key(marker)
-    if (key !== open_key) {
+      (next_stroke_alpha > 0 && next_stroke_alpha < 1) ||
+      (next_fill_alpha > 0 && fill_color_opacity < 1) ||
+      (next_stroke_alpha > 0 && stroke_color_opacity < 1)
+    const key = isolate ? null : style_key(marker)
+    if (key === null || key !== open_key) {
       flush()
       ctx.fillStyle = has_fill ? marker.fill : `#000` // canvas rejects CSS `none`
       ctx.strokeStyle = has_stroke ? marker.stroke : `#000`

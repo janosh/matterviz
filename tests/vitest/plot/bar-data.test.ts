@@ -175,14 +175,13 @@ describe(`compute_bar_auto_ranges`, () => {
         range: [-0.5, 2.5],
       },
     ],
-    [`empty sentinels`, { series: [], all: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] } }],
   ] as const)(`$0`, (_desc, options) => {
-    if (`all` in options) {
-      expect(auto_ranges(options.series)).toEqual(options.all)
-      return
-    }
     const { series, key, range, ...overrides } = options
     expect(auto_ranges(series, overrides)[key]).toEqual(range)
+  })
+
+  test(`falls back to unit sentinels on every axis without series`, () => {
+    expect(auto_ranges([])).toEqual({ x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] })
   })
 
   test(`log scale skips zero-clamping`, () => {
@@ -223,6 +222,16 @@ describe(`compute_bar_auto_ranges`, () => {
     const result = auto_ranges([x2_srs], { x2_series: [x2_srs] })
     expect(result.x2).toEqual([99.75, 200.25])
     expect(result.x).toEqual([0, 1])
+  })
+
+  test(`non-finite pairs do not affect category or stacked value ranges`, () => {
+    const series = [bar({ x: [0, 100], y: [2, NaN] }), bar({ x: [0, 100], y: [3, Infinity] })]
+    const result = auto_ranges(series, { mode: `stacked` })
+    const valid_only = auto_ranges([bar({ x: [0], y: [2] }), bar({ x: [0], y: [3] })], {
+      mode: `stacked`,
+    })
+    expect(result.x).toEqual(valid_only.x)
+    expect(result.y).toEqual(valid_only.y)
   })
 })
 
@@ -265,6 +274,11 @@ describe(`compute_stacked_offsets`, () => {
       desc: `stack misaligned x grids per x value`,
       series: [bar({ x: [0, 1], y: [1, 2] }), bar({ x: [1, 2], y: [3, 4] })],
       expected: [[0, 0], [2, 0]],
+    },
+    {
+      desc: `skip non-finite values instead of poisoning later offsets`,
+      series: [bar({ x: [0], y: [Infinity] }), bar({ x: [0], y: [2] })],
+      expected: [[0], [0]],
     },
   ])(`offsets $desc`, ({ series, expected }) => {
     expect(compute_stacked_offsets(series, `stacked`)).toEqual(expected)
@@ -318,72 +332,82 @@ describe(`bar geometry`, () => {
 
   // oxfmt-ignore
   test.each([
-    { name: `vertical`, overrides: { series_idx: 2 }, coords: [[10, 8], [20, 10], [30, 12]], first: { data_x: 1, data_y: 4, idx: 0, series_idx: 2, point_idx: 0 } },
-    { name: `horizontal`, overrides: { orientation: `horizontal` as const }, coords: [[40, 3], [50, 6], [60, 9]] },
-    { name: `non-finite`, overrides: { series: { x: [1, 2, 3], y: [4, NaN, 6] } }, kept_x: [1, 3], kept_idx: [0, 2] },
-    { name: `array metadata`, overrides: { series: { ...series, metadata: [{ tag: `a` }, { tag: `b` }, { tag: `c` }] } }, metadata: [{ tag: `a` }, { tag: `b` }, { tag: `c` }] },
-    { name: `scalar metadata`, overrides: { series: { ...series, metadata: { tag: `all` } } }, metadata: [{ tag: `all` }, { tag: `all` }, { tag: `all` }] },
-    { name: `defaults`, defaults: { color_value: null, size_value: null } },
-    { name: `styled`, overrides: { series: { ...series, color_values: [0.1, 0.2, 0.3], size_values: [5, 6, 7], point_style: [{ fill: `red` }, { fill: `green` }, { fill: `blue` }] } }, styled: { color_value: 0.2, size_value: 6, point_style: { fill: `green` } } },
-  ])(`line_points $name`, (case_) => {
-    const points = line_points(case_.overrides)
-    if (case_.coords) {
-      expect(points.map(({ x, y }) => [x, y])).toEqual(case_.coords)
-      if (case_.first) expect(points[0]).toMatchObject(case_.first)
-    }
-    if (case_.kept_x) {
-      expect(points.map(({ data_x }) => data_x)).toEqual(case_.kept_x)
-      expect(points.map(({ idx }) => idx)).toEqual(case_.kept_idx)
-    }
-    if (case_.metadata) expect(points.map((point) => point.metadata)).toEqual(case_.metadata)
-    if (case_.defaults) expect(points[0]).toMatchObject(case_.defaults)
-    if (case_.styled) expect(points[1]).toMatchObject(case_.styled)
+    [`vertical`, {}, [[10, 8], [20, 10], [30, 12]]],
+    [`horizontal`, { orientation: `horizontal` as const }, [[40, 3], [50, 6], [60, 9]]],
+  ] as const)(`line_points maps %s coordinates`, (_name, overrides, coords) => {
+    expect(line_points(overrides).map(({ x, y }) => [x, y])).toEqual(coords)
   })
 
+  test(`line_points keeps source indices and drops non-finite points`, () => {
+    expect(line_points({ series_idx: 2 })[0]).toMatchObject({
+      data_x: 1,
+      data_y: 4,
+      idx: 0,
+      series_idx: 2,
+      point_idx: 0,
+    })
+    // idx stays the position in the input, so a dropped point leaves a gap
+    const gapped = line_points({ series: { x: [1, 2, 3], y: [4, NaN, 6] } })
+    expect(gapped.map(({ data_x }) => data_x)).toEqual([1, 3])
+    expect(gapped.map(({ idx }) => idx)).toEqual([0, 2])
+  })
+
+  test(`line_points indexes per-point props and broadcasts scalar ones`, () => {
+    expect(line_points()[0]).toMatchObject({ color_value: null, size_value: null })
+    const indexed = line_points({
+      series: {
+        ...series,
+        color_values: [0.1, 0.2, 0.3],
+        size_values: [5, 6, 7],
+        point_style: [{ fill: `red` }, { fill: `green` }, { fill: `blue` }],
+        metadata: [{ tag: `a` }, { tag: `b` }, { tag: `c` }],
+      },
+    })
+    expect(indexed[1]).toMatchObject({
+      color_value: 0.2,
+      size_value: 6,
+      point_style: { fill: `green` },
+      metadata: { tag: `b` },
+    })
+    const scalar = line_points({
+      series: { ...series, metadata: { tag: `all` }, point_style: { fill: `red` } },
+    })
+    expect(scalar.map((pt) => [pt.metadata, pt.point_style])).toEqual(
+      Array.from({ length: 3 }, () => [{ tag: `all` }, { fill: `red` }]),
+    )
+  })
+
+  type BarRectCase = [
+    Partial<Parameters<typeof compute_bar_rect>[0]>,
+    Partial<ReturnType<typeof compute_bar_rect>>,
+  ]
   // oxfmt-ignore
-  type BarRectExpected =
-    | (Partial<ReturnType<typeof compute_bar_rect>> & { grouped?: false })
-    | (Pick<ReturnType<typeof compute_bar_rect>, `c0` | `c1`> & { grouped: true })
-  type BarRectCase = [Partial<Parameters<typeof compute_bar_rect>[0]>, BarRectExpected]
   const bar_rect_cases: BarRectCase[] = [
     [{}, { c0: 40, c1: 60, v0: 0, v1: 40, rect_w: 20, rect_h: 40 }],
     [{ orientation: `horizontal` }, { rect_x: 0, rect_y: 40, rect_w: 40, rect_h: 20 }],
     [{ base: 3 }, { v0: 12, v1: 52, rect_h: 40 }],
     [{ val: -10 }, { v0: 0, v1: -40, rect_y: -40, rect_h: 40 }],
+    // zero-value bars keep zero value extent; tiny ones get floored to 1px at the baseline
     [{ val: 0 }, { rect_w: 20, rect_h: 0 }],
-    [
-      { val: 0, orientation: `horizontal` },
-      { rect_w: 0, rect_h: 20 },
-    ],
-    [{ val: 0.001, orientation: `horizontal` }, { rect_w: 1 }],
+    [{ val: 0, orientation: `horizontal` }, { rect_w: 0, rect_h: 20 }],
     [{ val: 0.001 }, { rect_h: 1 }],
+    [{ val: 0.001, orientation: `horizontal` }, { rect_w: 1 }],
+    [{ val: -0.001 }, { rect_y: -1, rect_h: 1 }],
+    [{ val: -0.001, orientation: `horizontal` }, { rect_x: -1, rect_w: 1 }],
+    // category thickness has its own 1px floor
     [{ bar_width_val: 0.001 }, { rect_w: 1 }],
     [{ bar_width_val: 0.001, orientation: `horizontal` }, { rect_h: 1 }],
-    ...([0, 1, 2] as const).map(
-      (series_idx): BarRectCase => [
-        { mode: `grouped`, series_idx, bar_width_val: 3, group_info: grouped_3 },
-        { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10, grouped: true },
-      ],
-    ),
-    [
-      { mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } },
-      { c0: 40, c1: 60, grouped: true },
-    ],
-    [
-      {
-        mode: `grouped`,
-        series_idx: 4,
-        group_info: { bar_series_count: 2, bar_series_indices: [1, 4] },
-      },
-      { c0: 50, c1: 60, grouped: true },
-    ],
+    // grouped: each series takes an evenly divided slot centred on the category
+    ...([0, 1, 2] as const).map((series_idx): BarRectCase => [
+      { mode: `grouped`, series_idx, bar_width_val: 3, group_info: grouped_3 },
+      { c0: 35 + series_idx * 10, c1: 45 + series_idx * 10 },
+    ]),
+    // a lone bar series spans the full slot, and slots come from original series indices
+    [{ mode: `grouped`, group_info: { bar_series_count: 1, bar_series_indices: [0] } }, { c0: 40, c1: 60 }],
+    [{ mode: `grouped`, series_idx: 4, group_info: { bar_series_count: 2, bar_series_indices: [1, 4] } }, { c0: 50, c1: 60 }],
   ]
   test.each(bar_rect_cases)(`bar_rect %#`, (overrides, expected) => {
-    const rect = bar_rect(overrides)
-    if (expected.grouped) {
-      expect(rect.c0).toBeCloseTo(expected.c0, 6)
-      expect(rect.c1).toBeCloseTo(expected.c1, 6)
-    } else expect(rect).toMatchObject(expected)
+    expect(bar_rect(overrides)).toMatchObject(expected)
   })
 
   // Unbounded so a line's mid-segment cursor still resolves to the nearest vertex.

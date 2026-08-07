@@ -102,6 +102,13 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
   opts: BarAutoRangeOpts<Metadata>,
 ): { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 } {
   const { visible_series, mode, orientation, range_padding, category_count } = opts
+  const finite_points = (series: NumericBarSeries<Metadata>) =>
+    series.x.flatMap((x_value, point_idx) => {
+      const y_value = series.y[point_idx]
+      return Number.isFinite(x_value) && Number.isFinite(y_value)
+        ? [{ x: x_value, y: y_value }]
+        : []
+    })
 
   const get_bar_edge_range = (
     series_list: readonly NumericBarSeries<Metadata>[],
@@ -113,6 +120,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     for (const series of series_list) {
       if (series.render_mode === `line`) continue
       series.x.forEach((x_val, bar_idx) => {
+        if (!Number.isFinite(x_val) || !Number.isFinite(series.y[bar_idx])) return
         const bar_width = Array.isArray(series.bar_width)
           ? (series.bar_width[bar_idx] ?? 0.5)
           : (series.bar_width ?? 0.5)
@@ -137,9 +145,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     y_limit: [number | null, number | null],
     scale_type: ScaleType,
   ): Vec2 => {
-    let points = series_list.flatMap((srs) =>
-      srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] })),
-    )
+    let points = series_list.flatMap(finite_points)
 
     // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
     if (mode === `stacked`) {
@@ -150,7 +156,8 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
         .filter((srs) => srs.render_mode !== `line`)
         .forEach((srs) =>
           srs.x.forEach((x_val, idx) => {
-            const y_val = srs.y[idx] ?? 0
+            const y_val = srs.y[idx]
+            if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) return
             const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
             if (y_val >= 0) totals.pos += y_val
             else totals.neg += y_val
@@ -164,9 +171,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
           ...(pos > 0 ? [{ x: x_val, y: pos }] : []),
           ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
         ]),
-        ...series_list
-          .filter((srs) => srs.render_mode === `line`)
-          .flatMap((srs) => srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))),
+        ...series_list.filter((srs) => srs.render_mode === `line`).flatMap(finite_points),
       ]
     }
 
@@ -204,7 +209,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     scale_type: ScaleType,
     is_time: boolean,
   ): Vec2 => {
-    const points = series_list.flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
+    const points = series_list.flatMap(finite_points)
     if (points.length === 0) return [0, 1]
     const range = get_nice_data_range(
       points,
@@ -260,7 +265,8 @@ export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
   internal_series.forEach((srs, series_idx) => {
     if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
     srs.x.forEach((x_val, bar_idx) => {
-      const y_val = srs.y[bar_idx] ?? 0
+      const y_val = srs.y[bar_idx]
+      if (!Number.isFinite(x_val) || !Number.isFinite(y_val)) return
       const key = `${srs.y_axis === `y2` ? `y2` : `y1`}:${y_val >= 0 ? `+` : `-`}:${x_val}`
       offsets[series_idx][bar_idx] = acc.get(key) ?? 0
       acc.set(key, (acc.get(key) ?? 0) + y_val)

@@ -213,6 +213,7 @@ describe(`MatterViz Extension`, () => {
     // sync-config.ts only regenerates package.json on `prebuild`, so a schema edit stays
     // invisible to the editor until someone runs it.
     const synced_fields = [
+      `type`,
       `default`,
       `description`,
       `minimum`,
@@ -221,6 +222,7 @@ describe(`MatterViz Extension`, () => {
       `minItems`,
       `maxItems`,
       `enum`,
+      `items`,
     ] as const
     const pick = (obj: Record<string, unknown>): Record<string, unknown> =>
       Object.fromEntries(synced_fields.map((field) => [field, obj[field]]))
@@ -234,10 +236,27 @@ describe(`MatterViz Extension`, () => {
       }
       const schema = node as SettingType
       if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+      const type =
+        typeof schema.value === `boolean`
+          ? `boolean`
+          : typeof schema.value === `number`
+            ? `number`
+            : Array.isArray(schema.value)
+              ? `array`
+              : `string`
+      const first_item = Array.isArray(schema.value) ? schema.value[0] : undefined
+      const item_type =
+        typeof first_item === `boolean`
+          ? `boolean`
+          : typeof first_item === `number`
+            ? `number`
+            : `string`
       expected[key_path] = pick({
         ...schema,
+        type,
         default: schema.value,
         enum: schema.enum && Object.keys(schema.enum),
+        items: type === `array` ? { type: item_type } : undefined,
       })
     }
     collect(SETTINGS_CONFIG, `matterviz`)

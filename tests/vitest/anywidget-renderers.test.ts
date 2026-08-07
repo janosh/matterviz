@@ -244,6 +244,8 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       `scatter_plot_3d`,
       `bar_plot`,
       `histogram`,
+      `band_structure`,
+      `dos`,
       `rdf_plot`,
       `xrd`,
     ]) {
@@ -266,7 +268,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `zoom_root_id`,
       ]),
     )
-    for (const key of [`color_scale`, `color_range`, `colorbar`])
+    for (const key of [`color_scale`, `color_range`, `color_bar`])
       expect(WIDGET_MODEL_KEYS.treemap).not.toContain(key)
   })
 })
@@ -307,8 +309,8 @@ describe(`widget config wiring`, () => {
     },
   )
 
-  test.each([`scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
-    `%s forwards show_controls as a flat prop`,
+  test.each([`band_structure`, `dos`, `scatter_plot_3d`, `rdf_plot`, `xrd`] as const)(
+    `%s forwards flat controls`,
     (widget_type) => {
       const model = new MockModel({
         widget_type,
@@ -326,20 +328,31 @@ describe(`widget config wiring`, () => {
     },
   )
 
-  test(`bands_and_dos forwards show_controls into both child prop bags`, () => {
+  test(`bands_and_dos forwards controls into both child prop bags`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
       band_type: `line`,
       show_legend: false,
       show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
     })
     const stub = run_widget(`bands_and_dos`, model)
     expect(stub.read().bands_props).toEqual({
       band_type: `line`,
       show_legend: false,
       show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
     })
-    expect((stub.read().dos_props as Record<string, unknown>).show_controls).toBe(false)
+    expect(stub.read().dos_props).toMatchObject({
+      show_controls: false,
+      controls_open: true,
+      controls_toggle_props: { title: `Plot options` },
+      controls_pane_props: { style: `width: 20rem` },
+    })
     expect(`show_controls` in stub.read()).toBe(false)
   })
 })
@@ -356,6 +369,7 @@ describe(`writeback wiring`, () => {
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
+    [`scatter_plot`, `controls_open`, false, true, false],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,

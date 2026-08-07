@@ -3,7 +3,7 @@ import type { TreemapArc, TreemapNode, TreemapNodeHandlerProps } from '$lib/plot
 import { DEFAULT_SERIES_COLORS } from '$lib/plot'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, resize_element } from '../setup'
+import { mount_sized, resize_element, trigger_resize_observer } from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: TreemapNode[] = [
@@ -377,10 +377,14 @@ describe(`Treemap`, () => {
       `var(--treemap-colorbar-height, 150px)`,
     )
     await resize_element(colorbar, 80, 150)
+    trigger_resize_observer(colorbar)
+    await tick()
     const transform =
       plot.querySelector(`.cells`)?.parentElement?.getAttribute(`transform`) ?? ``
     const group_x = Number(/translate\((?<x>[-\d.]+)/.exec(transform)?.groups?.x)
-    const right_edges = [...plot.querySelectorAll<SVGRectElement>(`.cells rect`)].map(
+    const cell_rects = plot.querySelectorAll<SVGRectElement>(`.cells rect`)
+    expect(cell_rects.length).toBeGreaterThan(0)
+    const right_edges = [...cell_rects].map(
       (rect) => Number(rect.getAttribute(`x`)) + Number(rect.getAttribute(`width`)),
     )
     const drawable_right = group_x + Math.max(...right_edges)

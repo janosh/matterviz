@@ -44,6 +44,9 @@ describe(`legend_mode_to_prop`, () => {
       )
     expect(resolved(1)).toEqual([false, true, false])
     expect(resolved(3)).toEqual([true, true, false])
+    expect(() => legend_mode_to_prop(`sometimes` as never)).toThrow(
+      `Invalid legend visibility mode: sometimes`,
+    )
   })
 })
 

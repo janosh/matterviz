@@ -111,11 +111,13 @@ export function compute_bar_rect(opts: {
   const c1 = cat_scale(cat_val + group_offset + half)
   const v0 = val_scale(base)
   const v1 = val_scale(base + val)
-  const [rect_x, rect_y] = is_vertical
-    ? [Math.min(c0, c1), Math.min(v0, v1)]
-    : [Math.min(v0, v1), Math.min(c0, c1)]
   const cat_extent = Math.max(1, Math.abs(c1 - c0))
   const val_extent = val === 0 ? 0 : Math.max(1, Math.abs(v1 - v0))
+  // Keep a floored value extent anchored at the baseline instead of crossing it.
+  const val_start = v1 < v0 ? v0 - val_extent : v0
+  const [rect_x, rect_y] = is_vertical
+    ? [Math.min(c0, c1), val_start]
+    : [val_start, Math.min(c0, c1)]
   const [rect_w, rect_h] = is_vertical ? [cat_extent, val_extent] : [val_extent, cat_extent]
   return { c0, c1, v0, v1, rect_x, rect_y, rect_w, rect_h }
 }
