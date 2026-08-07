@@ -90,11 +90,11 @@ describe(`FermiSlice`, () => {
     expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
   })
 
-  // FermiSlice forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
+  // Fermi slices keep their historical always-on legend default; explicit false still wins.
   // oxfmt-ignore
   test.each([
-    [`auto hides one band`, [0], undefined, false],
-    [`auto shows three bands`, [0, 1, 2], undefined, true],
+    [`default shows one band`, [0], undefined, true],
+    [`default shows three bands`, [0, 1, 2], undefined, true],
     [`true shows one band`, [0], true, true],
     [`false hides three bands`, [0, 1, 2], false, false],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {

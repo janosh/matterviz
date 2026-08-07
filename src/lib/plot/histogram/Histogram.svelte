@@ -1057,7 +1057,8 @@
       bind:controls_open
       bind:bins
       bind:mode
-      bind:show_legend={() => should_show_legend, (value) => (show_legend = value)}
+      bind:show_legend
+      resolved_show_legend={should_show_legend}
       bind:selected_property
       bind:display
       bind:bar

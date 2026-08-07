@@ -180,4 +180,23 @@ describe(`build_obstacles_norm`, () => {
     )
     expect(pts).toEqual([{ x: 0.5, y: 0.5 }])
   })
+
+  test(`samples the visible portion of extreme offscreen line segments`, () => {
+    const obstacles = build_obstacles_norm(
+      [
+        {
+          points: [
+            { x: -1000, y: 0.5 },
+            { x: 1000, y: 0.5 },
+          ],
+          draws_line: true,
+        },
+      ],
+      300,
+      200,
+    )
+    expect(obstacles.length).toBeGreaterThan(20)
+    const all_visible = obstacles.every(({ x, y }) => x >= 0 && x <= 1 && y >= 0 && y <= 1)
+    expect(all_visible).toBe(true)
+  })
 })

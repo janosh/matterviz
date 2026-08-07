@@ -339,6 +339,17 @@ describe(`Histogram`, () => {
     await tick()
     expect(legend_checkbox.checked).toBe(false)
     expect(document.querySelector(`.legend`)).toBeNull()
+    legend_checkbox.click()
+    await tick()
+    expect(legend_checkbox.checked).toBe(true)
+    const reset_legend = document.querySelector<HTMLButtonElement>(
+      `button[title="Reset histogram to defaults"]`,
+    )
+    if (!reset_legend) throw new Error(`Histogram reset button not found`)
+    reset_legend.click()
+    await tick()
+    expect(document.querySelector(`button[title="Reset histogram to defaults"]`)).toBeNull()
+    expect(legend_checkbox.checked).toBe(true)
 
     mount_histogram({
       series: [

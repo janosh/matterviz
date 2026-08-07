@@ -14,11 +14,9 @@
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
-    // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
-    // would collapse it to plain boolean
-    show_legend = $bindable<boolean | undefined>(
-      legend_mode_to_prop(DEFAULTS.histogram.show_legend),
-    ),
+    // explicit type arg keeps `undefined` (auto) in the prop type
+    show_legend = $bindable<boolean | undefined>(),
+    resolved_show_legend = false,
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
@@ -42,6 +40,7 @@
     bar?: BarStyle
     // undefined = auto (same contract as Histogram / resolve_legend_visibility)
     show_legend?: boolean | undefined
+    resolved_show_legend?: boolean
     selected_property?: string
     show_controls?: boolean
     controls_open?: boolean
@@ -114,7 +113,12 @@
       {/if}
     {/if}
     <label>
-      <input type="checkbox" bind:checked={show_legend} />
+      <input
+        type="checkbox"
+        bind:checked={
+          () => show_legend ?? resolved_show_legend, (value) => (show_legend = value)
+        }
+      />
       Show legend
     </label>
   </SettingsSection>
