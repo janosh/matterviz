@@ -128,6 +128,14 @@ describe(`draw_markers`, () => {
         .slice(0, 2),
     ).toEqual([0.2, 0.125])
 
+    const normalized_state = draw([
+      marker({ fill_opacity: 2, stroke_opacity: 2, stroke_width: 2 }),
+      marker({ fill: `blue`, opacity: NaN, stroke_width: Infinity }),
+      marker({ fill: `none`, stroke_width: -1 }),
+    ])
+    expect(ops(normalized_state, `set:globalAlpha`).map((call) => call.args[0])).toEqual([1, 1])
+    expect(ops(normalized_state, `set:lineWidth`).map((call) => call.args[0])).toEqual([2, 0, 0])
+
     for (const [overrides, n_fill, n_stroke] of [
       [{ stroke_width: 0 }, 1, 0],
       [{ fill: `none` }, 0, 1],

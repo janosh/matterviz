@@ -120,7 +120,11 @@ describe(`Trajectory`, () => {
       const plot = target.querySelector<HTMLElement>(`.scatter`)
       if (!plot) throw new Error(`trajectory scatter plot not found`)
       await resize_element(plot, 600, 400)
-      return Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
+      const clip_rect = plot.querySelector(`clipPath rect`)
+      if (!clip_rect) throw new Error(`trajectory scatter clip rectangle not found`)
+      const width = Number(clip_rect.getAttribute(`width`))
+      if (!Number.isFinite(width)) throw new Error(`invalid scatter clip width: ${width}`)
+      return width
     }
 
     expect(await clip_width(true)).toBe(await clip_width(false))

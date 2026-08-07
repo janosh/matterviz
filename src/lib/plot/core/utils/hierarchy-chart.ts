@@ -248,6 +248,71 @@ export const pointer_pos = (
 export const is_activation_key = (evt: KeyboardEvent): boolean =>
   [`Enter`, ` `].includes(evt.key)
 
+// === Color bar layout ===
+
+export const COLOR_BAR_GAP = 8
+
+// Structural subset of ColorBar's props the layout needs, so this stays a pure module.
+type ColorBarLayoutProps = {
+  orientation?: `horizontal` | `vertical`
+  tick_side?: `primary` | `secondary` | `inside`
+  tick_labels?: number | unknown[]
+}
+
+export type ColorBarSide = `left` | `right`
+
+export type ColorBarLayout = {
+  side: ColorBarSide
+  is_vertical: boolean
+  tick_side: `primary` | `secondary` | `inside`
+  tick_padding: string
+  inner_width: number
+  inner_height: number
+  plot_left: number
+  offset_px: number // inset of a vertical bar from the side it reserves
+}
+
+// Cap either reserve at half its axis so a bad measurement can't collapse the chart.
+const reserve_space = (size: number, available: number): number =>
+  size > 0 ? Math.min(size + 2 * COLOR_BAR_GAP, available / 2) : 0
+
+// Vertical bars sit beside the chart and reserve width; horizontal bars sit below and
+// reserve height. Shared by Sunburst and Treemap so both place color bars identically.
+export function color_bar_layout(opts: {
+  color_bar: ColorBarLayoutProps | null | undefined
+  side: ColorBarSide
+  measured: { width: number; height: number }
+  avail_width: number
+  avail_height: number
+  pad: { l: number; r: number }
+  tick_space_var: string
+}): ColorBarLayout {
+  const { color_bar, side, measured, avail_width, avail_height, pad, tick_space_var } = opts
+  const is_vertical = color_bar?.orientation === `vertical`
+  const tick_side =
+    color_bar?.tick_side ?? (is_vertical && side === `left` ? `secondary` : `primary`)
+  const has_ticks = Array.isArray(color_bar?.tick_labels)
+    ? color_bar.tick_labels.length > 0
+    : (color_bar?.tick_labels ?? 4) > 0
+  const vertical_reserve = is_vertical ? reserve_space(measured.width, avail_width) : 0
+  const horizontal_reserve = is_vertical ? 0 : reserve_space(measured.height, avail_height)
+  return {
+    side,
+    is_vertical,
+    tick_side,
+    tick_padding:
+      !has_ticks || tick_side === `inside`
+        ? `0`
+        : tick_side === `primary`
+          ? `0 var(${tick_space_var}, 5em) 0 0`
+          : `0 0 0 var(${tick_space_var}, 5em)`,
+    inner_width: avail_width - vertical_reserve,
+    inner_height: avail_height - horizontal_reserve,
+    plot_left: pad.l + (side === `left` ? vertical_reserve : 0),
+    offset_px: (side === `left` ? pad.l : pad.r) + COLOR_BAR_GAP,
+  }
+}
+
 // Escape zooms out one level, then exits fullscreen once at the root — but only
 // when the user is interacting with this chart (pointer over it, focus inside
 // it, or fullscreen)

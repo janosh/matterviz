@@ -29,6 +29,8 @@ const symbol_path_cache = new Map<string, Path2D>()
 const MAX_SYMBOL_CACHE = 512
 
 const paint_color = (color: string): boolean => color !== `none` && color !== `transparent`
+const normalize_alpha = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
 
 const symbol_path = (
   symbol_type: D3SymbolName | undefined,
@@ -109,9 +111,16 @@ export function draw_markers(
 
     const has_fill = paint_color(marker.fill)
     const has_stroke = paint_color(marker.stroke)
-    const next_fill_alpha = has_fill ? marker.opacity * marker.fill_opacity : 0
+    const stroke_width = Number.isFinite(marker.stroke_width)
+      ? Math.max(0, marker.stroke_width)
+      : 0
+    const next_fill_alpha = has_fill
+      ? normalize_alpha(marker.opacity * marker.fill_opacity)
+      : 0
     const next_stroke_alpha =
-      marker.stroke_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0
+      stroke_width > 0 && has_stroke
+        ? normalize_alpha(marker.opacity * marker.stroke_opacity)
+        : 0
     // Translucent markers isolate so overlapping alphas match SVG (shared path composites once).
     const isolate =
       (next_fill_alpha > 0 && next_fill_alpha < 1) ||
@@ -121,7 +130,7 @@ export function draw_markers(
       flush()
       ctx.fillStyle = has_fill ? marker.fill : `#000` // canvas rejects CSS `none`
       ctx.strokeStyle = has_stroke ? marker.stroke : `#000`
-      ctx.lineWidth = marker.stroke_width
+      ctx.lineWidth = stroke_width
       fill_alpha = next_fill_alpha
       stroke_alpha = next_stroke_alpha
       open_key = key

@@ -424,6 +424,8 @@ describe(`Histogram`, () => {
     await resize_element(get_plot(), 400, 300)
     const pinned_legend = document.querySelector<HTMLElement>(`.legend`)
     if (!pinned_legend) throw new Error(`legend not found`)
+    expect(pinned_legend.style.left).toBe(`17px`)
+    expect(pinned_legend.style.top).toBe(`23px`)
     const pinned_clip = clip_rect_attrs()
     mount_histogram({
       series: layout_series.slice(0, 2),
@@ -431,8 +433,7 @@ describe(`Histogram`, () => {
       show_legend: false,
     })
     await resize_element(get_plot(), 400, 300)
-    expect(pinned_legend.style.left).toBe(`17px`)
-    expect(pinned_legend.style.top).toBe(`23px`)
+    expect(document.querySelector(`.legend`)).toBeNull()
     expect(pinned_clip).toEqual(clip_rect_attrs())
   })
 

@@ -20,13 +20,21 @@
     SunburstSort,
     SunburstValueMode,
   } from '$lib/plot'
-  import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
+  import {
+    ColorBar,
+    HierarchyColorBar,
+    PlotLegend,
+    PlotTooltip,
+    SunburstControls,
+  } from '$lib/plot'
   import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import {
     ancestor_chain,
+    color_bar_layout,
+    type ColorBarSide,
     compute_metric_colors,
     compute_node_dim,
     compute_node_infos,
@@ -34,7 +42,6 @@
     hierarchy_legend_items,
     is_activation_key,
     node_handler_props,
-    observe_size,
     pointer_pos,
     prune_muted_ids,
     safe_hierarchy_layout,
@@ -65,9 +72,6 @@
 
   // Preserve the established outer inset; pass `padding` to override chart-edge space.
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
-  const COLORBAR_GAP = 8
-  const reserve_colorbar_space = (size: number, available: number): number =>
-    size > 0 ? Math.min(size + 2 * COLORBAR_GAP, available / 2) : 0
 
   // An arc with its current screen-space geometry (angles in radians, radii in px)
   type ScreenArc = ScreenArcOf<Metadata>
@@ -121,7 +125,9 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
-    Omit<BasePlotProps, `change`> & {
+    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
+    // forward them to the wrapper div as invalid DOM attributes.
+    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
       data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
       shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
       value_mode?: SunburstValueMode
@@ -146,7 +152,7 @@
       color_scale?: D3InterpolateName
       color_range?: Vec2 // defaults to the metric's [min, max]
       color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
-      color_bar_side?: `left` | `right` // side reserved for vertical colorbars
+      color_bar_side?: ColorBarSide // side reserved for vertical color bars
       group_gap?: SunburstGroupGap<Metadata> | null
       export_buttons?: boolean // SVG/PNG download buttons in the controls pane
       export_filename?: string
@@ -195,40 +201,21 @@
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let avail_width = $derived(Math.max(0, width - pad.l - pad.r))
   let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // Reserve measured height only for horizontal bottom colorbars. Vertical
-  // colorbars sit beside the rings and must not shrink their radius.
+  // Vertical color bars sit beside the rings and reserve width; horizontal ones sit
+  // below and reserve height so they never shrink the radius from both directions.
   let colorbar_size = $state({ height: 0, width: 0 })
-  let colorbar_is_vertical = $derived(color_bar?.orientation === `vertical`)
-  let colorbar_tick_side = $derived(
-    color_bar?.tick_side ??
-      (colorbar_is_vertical && color_bar_side === `left` ? `secondary` : `primary`),
+  let cbar = $derived(
+    color_bar_layout({
+      color_bar,
+      side: color_bar_side,
+      measured: colorbar_size,
+      avail_width,
+      avail_height,
+      pad,
+      tick_space_var: `--sunburst-colorbar-tick-space`,
+    }),
   )
-  let colorbar_has_ticks = $derived(
-    Array.isArray(color_bar?.tick_labels)
-      ? color_bar.tick_labels.length > 0
-      : (color_bar?.tick_labels ?? 4) > 0,
-  )
-  let colorbar_tick_padding = $derived(
-    !colorbar_has_ticks || colorbar_tick_side === `inside`
-      ? `0`
-      : colorbar_tick_side === `primary`
-        ? `0 var(--sunburst-colorbar-tick-space, 5em) 0 0`
-        : `0 0 0 var(--sunburst-colorbar-tick-space, 5em)`,
-  )
-  let colorbar_reserve = $derived(
-    colorbar_is_vertical ? 0 : reserve_colorbar_space(colorbar_size.height, avail_height),
-  )
-  // Vertical colorbars reserve their full measured wrapper width plus a small
-  // gutter, capped at half the plot width so a bad measurement cannot collapse it.
-  let vertical_colorbar_reserve = $derived(
-    colorbar_is_vertical ? reserve_colorbar_space(colorbar_size.width, avail_width) : 0,
-  )
-  let inner_width = $derived(avail_width - vertical_colorbar_reserve)
-  let inner_height = $derived(avail_height - colorbar_reserve)
-  let plot_left = $derived(pad.l + (color_bar_side === `left` ? vertical_colorbar_reserve : 0))
-  let vertical_colorbar_offset = $derived(
-    (color_bar_side === `left` ? pad.l : pad.r) + COLORBAR_GAP,
-  )
+  let { inner_width, inner_height, plot_left } = $derived(cbar)
 
   // Layout depends only on data/value semantics - not on size or zoom.
   let layout = $derived(
@@ -830,21 +817,13 @@
   {/if}
 
   {#if metric && color_bar != null}
-    <!-- positioning + height measurement live on ColorBar's own root (via rest
-    props + attachment) instead of an extra wrapper div -->
-    <ColorBar
+    <HierarchyColorBar
+      {color_bar}
       {color_scale}
       range={metric.range}
-      {...color_bar}
-      tick_side={colorbar_tick_side}
-      wrapper_style="{colorbar_is_vertical
-        ? `--cbar-height: var(--sunburst-colorbar-height, 150px); --cbar-padding: ${colorbar_tick_padding};`
-        : ``} {color_bar?.wrapper_style ?? ``}"
-      style="{colorbar_is_vertical
-        ? `position: absolute; top: var(--sunburst-colorbar-top, 50%); ${color_bar_side}: var(--sunburst-colorbar-${color_bar_side}, ${vertical_colorbar_offset}px); transform: var(--sunburst-colorbar-transform, translateY(-50%)); width: var(--sunburst-colorbar-width, auto); min-width: var(--sunburst-colorbar-min-width, 0); pointer-events: auto;`
-        : `position: absolute; bottom: var(--sunburst-colorbar-bottom, ${COLORBAR_GAP}px); left: var(--sunburst-colorbar-left, 50%); transform: var(--sunburst-colorbar-transform, translateX(-50%)); width: var(--sunburst-colorbar-width, 40%); min-width: 120px; pointer-events: auto;`} {color_bar?.style ??
-        ``}"
-      {@attach observe_size((size) => (colorbar_size = size))}
+      layout={cbar}
+      css_prefix="sunburst"
+      on_measure={(size) => (colorbar_size = size)}
     />
   {/if}
 

@@ -1008,7 +1008,14 @@
 
   const canvas_safe_color = (color: string): boolean =>
     !/\b(?:var|light-dark)\s*\(/i.test(color) && color.toLowerCase() !== `currentcolor`
-  const canvas_colors_supported = $derived.by(() => {
+  const needs_svg_point_events = $derived(
+    Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
+  )
+  const use_canvas_markers = $derived.by(() => {
+    const canvas_requested =
+      marker_renderer === `canvas` ||
+      (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
+    if (!canvas_requested || needs_svg_point_events) return false
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
       for (const point of series_data.filtered_data) {
@@ -1018,15 +1025,6 @@
     }
     return true
   })
-  const needs_svg_point_events = $derived(
-    Boolean(on_point_click || (point_events && Object.values(point_events).some(Boolean))),
-  )
-  const use_canvas_markers = $derived(
-    canvas_colors_supported &&
-      !needs_svg_point_events &&
-      (marker_renderer === `canvas` ||
-        (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)),
-  )
   const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
 
   // Points needing labels or effects remain in an SVG overlay.

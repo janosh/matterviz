@@ -352,6 +352,7 @@ describe(`bar geometry`, () => {
       { rect_w: 0, rect_h: 20 },
     ],
     [{ val: 0.001, orientation: `horizontal` }, { rect_w: 1 }],
+    [{ val: 0.001 }, { rect_h: 1 }],
     [{ bar_width_val: 0.001 }, { rect_w: 1 }],
     [{ bar_width_val: 0.001, orientation: `horizontal` }, { rect_h: 1 }],
     ...([0, 1, 2] as const).map(

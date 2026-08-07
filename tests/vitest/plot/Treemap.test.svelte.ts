@@ -372,9 +372,22 @@ describe(`Treemap`, () => {
       color_bar: { title: `count`, orientation: `vertical` },
     })
     const colorbar = plot.querySelector<HTMLElement>(`.colorbar`)
-    expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
+    if (!colorbar) throw new Error(`vertical color bar not found`)
+    expect(colorbar.style.getPropertyValue(`--cbar-height`)).toBe(
       `var(--treemap-colorbar-height, 150px)`,
     )
+    await resize_element(colorbar, 80, 150)
+    const transform =
+      plot.querySelector(`.cells`)?.parentElement?.getAttribute(`transform`) ?? ``
+    const group_x = Number(/translate\((?<x>[-\d.]+)/.exec(transform)?.groups?.x)
+    const right_edges = [...plot.querySelectorAll<SVGRectElement>(`.cells rect`)].map(
+      (rect) => Number(rect.getAttribute(`x`)) + Number(rect.getAttribute(`width`)),
+    )
+    const drawable_right = group_x + Math.max(...right_edges)
+    // A vertical bar reserves its measured width beside the cells, so the tiling must
+    // stop at least that far from the right edge. (Asserted on geometry rather than the
+    // inline style: jsdom drops `right: var(...)` declarations entirely.)
+    expect(500 - drawable_right).toBeGreaterThanOrEqual(80)
     // branches keep categorical colors, leaves get metric colors
     expect(cell_rect(plot, `A`).getAttribute(`fill`)).toBe(`#e15759`)
     expect(cell_rect(plot, `B`).getAttribute(`fill`)).not.toBe(DEFAULT_SERIES_COLORS[0])

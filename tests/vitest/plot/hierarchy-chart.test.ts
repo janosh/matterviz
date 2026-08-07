@@ -1,5 +1,7 @@
 import {
   ancestor_chain,
+  COLOR_BAR_GAP,
+  color_bar_layout,
   compute_metric_colors,
   compute_node_dim,
   compute_node_infos,
@@ -140,5 +142,69 @@ describe(`hierarchy chart helpers`, () => {
     expect(is_activation_key(new KeyboardEvent(`keydown`, { key: `Enter` }))).toBe(true)
     expect(is_activation_key(new KeyboardEvent(`keydown`, { key: ` ` }))).toBe(true)
     expect(is_activation_key(new KeyboardEvent(`keydown`, { key: `Escape` }))).toBe(false)
+  })
+
+  // Sunburst and Treemap share this so a vertical bar reserves width on either side and a
+  // horizontal one reserves height, never both.
+  test(`color_bar_layout reserves the right axis per orientation and side`, () => {
+    const base = {
+      measured: { width: 60, height: 30 },
+      avail_width: 400,
+      avail_height: 300,
+      pad: { l: 10, r: 10 },
+      tick_space_var: `--x-tick-space`,
+    }
+    const layout = (
+      color_bar: Parameters<typeof color_bar_layout>[0][`color_bar`],
+      side: `left` | `right` = `right`,
+      measured = base.measured,
+    ) => color_bar_layout({ ...base, color_bar, side, measured })
+    const horizontal = layout({})
+    expect(horizontal).toMatchObject({
+      is_vertical: false,
+      inner_width: 400, // horizontal bars never shrink width
+      inner_height: 300 - (30 + 2 * COLOR_BAR_GAP),
+      plot_left: 10,
+      tick_side: `primary`,
+    })
+
+    const vertical = { orientation: `vertical` } as const
+    expect(layout(vertical)).toMatchObject({
+      is_vertical: true,
+      inner_width: 400 - (60 + 2 * COLOR_BAR_GAP),
+      inner_height: 300, // vertical bars never shrink height
+      plot_left: 10, // right-side bar leaves the plot origin alone
+      tick_side: `primary`,
+      offset_px: 10 + COLOR_BAR_GAP,
+    })
+    // A left-side bar shifts the plot origin right by exactly what it reserved, and flips
+    // its ticks so they point away from the chart.
+    expect(layout(vertical, `left`)).toMatchObject({
+      plot_left: 10 + (60 + 2 * COLOR_BAR_GAP),
+      tick_side: `secondary`,
+    })
+
+    // Reserves are capped at half the axis so a bad measurement can't collapse the chart.
+    expect(layout(vertical, `right`, { width: 9999, height: 0 }).inner_width).toBe(200)
+    // Unmeasured (0) reserves nothing, and an explicit tick_side always wins.
+    expect(
+      layout({ orientation: `vertical`, tick_side: `inside` }, `left`, {
+        width: 0,
+        height: 0,
+      }),
+    ).toMatchObject({
+      inner_width: 400,
+      plot_left: 10,
+      tick_side: `inside`,
+      tick_padding: `0`,
+    })
+
+    // Tick padding reserves label room on the side the ticks render, and nothing when
+    // ticks are switched off.
+    expect(layout(vertical).tick_padding).toBe(`0 var(--x-tick-space, 5em) 0 0`)
+    expect(layout(vertical, `left`).tick_padding).toBe(`0 0 0 var(--x-tick-space, 5em)`)
+    for (const tick_labels of [0, []]) {
+      expect(layout({ orientation: `vertical`, tick_labels }).tick_padding).toBe(`0`)
+    }
   })
 })
