@@ -1850,6 +1850,9 @@ class RdfPlot(MatterViz):
     def __init__(
         self,
         id=None,
+        controls_open: bool | None = None,
+        controls_pane_props: dict | None = None,
+        controls_toggle_props: dict | None = None,
         cutoff: float | None = None,
         drag_dropped: list | None = None,
         dragging: bool | None = None,
@@ -1861,6 +1864,7 @@ class RdfPlot(MatterViz):
         on_file_drop: Any | None = None,
         patterns: list | None = None,
         pbc: Any | None = None,
+        show_controls: bool | None = None,
         show_reference_line: bool | None = None,
         structures: dict | None = None,
         x_axis: dict | None = None,
@@ -1872,11 +1876,6 @@ class RdfPlot(MatterViz):
         last_event: dict | None = None,
         className: str | None = None,
         style: dict | None = None,
-        *,
-        controls_open: bool | None = None,
-        controls_pane_props: dict | None = None,
-        controls_toggle_props: dict | None = None,
-        show_controls: bool | None = None,
         **kwargs,
     ):
         if mv_props is None:
