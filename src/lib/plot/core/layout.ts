@@ -44,8 +44,7 @@ export const AXIS_LABEL_OUTER = 12
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
-// Default plot padding (px) reserved for axis ticks/labels, shared by
-// Histogram/BarPlot/BoxPlot/BinnedScatterPlot (ScatterPlot keeps its own bespoke default)
+// Default plot padding (px) reserved for axis ticks/labels across Cartesian plots.
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
 
 export const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
@@ -483,18 +482,19 @@ export const calc_auto_padding = ({
     const inside = x2_axis.tick?.label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick?.label?.shift?.y ?? 0
-    // Same reach the labels will actually have; assuming one upright line here is what
-    // clips a rotated top axis off the figure.
     const tick_band = has_outside_ticks
-      ? horizontal_tick_layout(x2_axis, available_width, `x2`).band +
-        8 +
-        Math.max(0, -tick_shift)
+      ? horizontal_tick_layout(x2_axis, available_width, `x2`).band
       : 0
-    const title_band =
-      title_layout.height + (has_title ? Math.max(0, x2_axis.label_shift?.y ?? 0) : 0)
-    const title_gap = has_title && has_outside_ticks ? label_gap : 0
+    const tick_reach = has_outside_ticks ? tick_band + 8 + Math.max(0, -tick_shift) : 0
+    // PlotAxis treats the x2 title shift as its distance from the baseline. Rotated or
+    // wrapped ticks push the title farther out by the excess tick band.
+    const title_reach = has_title
+      ? Math.max(0, x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET) +
+        Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
+        title_layout.height / 2
+      : 0
     const outer_air = has_title || has_outside_ticks ? AXIS_LABEL_OUTER : 0
-    return Math.max(default_padding.t, tick_band + title_gap + title_band + outer_air)
+    return Math.max(default_padding.t, Math.max(tick_reach, title_reach) + outer_air)
   }
 
   // Bottom depends on the angle the x labels will render at, since a rotated label projects
@@ -506,16 +506,17 @@ export const calc_auto_padding = ({
     const has_outside_ticks = tick_values.length > 0 && !inside
     const title_height = title_layout_for(x_axis, available_width).height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
-    const tick_layout = has_outside_ticks
-      ? horizontal_tick_layout(x_axis, available_width, `x`)
-      : null
-    const band = tick_layout?.band ?? TICK_LABEL_HEIGHT
+    const band = has_outside_ticks
+      ? horizontal_tick_layout(x_axis, available_width, `x`).band
+      : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick?.label?.shift?.y ?? 0)
     // The title sits one gap past the labels and is centered, so half of it reaches further
     // still. LABEL_GAP_DEFAULT, not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
     const below_baseline =
       title_height > 0 ? band + LABEL_GAP_DEFAULT + title_height / 2 : band
-    return Math.max(default_padding.b, below_baseline + tick_shift + AXIS_LABEL_OUTER)
+    const title_shift = title_height > 0 ? Math.max(0, x_axis.label_shift?.y ?? 0) : 0
+    const content_reach = below_baseline + tick_shift + title_shift + AXIS_LABEL_OUTER
+    return Math.max(default_padding.b, content_reach)
   }
 
   let plot_width = width == null ? 0 : Math.max(0, width - pad_l - pad_r)

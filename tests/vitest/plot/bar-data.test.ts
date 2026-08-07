@@ -166,15 +166,6 @@ describe(`compute_bar_auto_ranges`, () => {
         range: [2, 6],
       },
     ],
-    [
-      `categorical x`,
-      {
-        category_count: 3,
-        series: [bar({ x: [0, 1, 2], y: [1, 2, 3] })],
-        key: `x`,
-        range: [-0.5, 2.5],
-      },
-    ],
   ] as const)(`$0`, (_desc, options) => {
     const { series, key, range, ...overrides } = options
     expect(auto_ranges(series, overrides)[key]).toEqual(range)
@@ -195,13 +186,14 @@ describe(`compute_bar_auto_ranges`, () => {
   })
 
   test(`log scale skips zero-clamping`, () => {
-    const linear = auto_ranges([bar({ y: [4, 5] })])
     const log = auto_ranges([bar({ y: [4, 5] })], { y_scale_type: `log` })
-    expect(linear.y[0]).toBe(0)
     expect(log.y[0]).toBeGreaterThan(0)
   })
 
-  test(`categorical range expands for bars wider than one slot`, () => {
+  test(`categorical range reserves slots and expands for wider bars`, () => {
+    expect(
+      auto_ranges([bar({ x: [0, 1, 2], y: [1, 2, 3] })], { category_count: 3 }).x,
+    ).toEqual([-0.5, 2.5])
     const series = [bar({ x: [0, 1, 2], y: [1, 2, 3], bar_width: 2 })]
     expect(auto_ranges(series, { category_count: 3 }).x).toEqual([-1, 3])
     expect(auto_ranges(series, { category_count: 3, orientation: `horizontal` }).y).toEqual([
@@ -296,19 +288,18 @@ describe(`compute_stacked_offsets`, () => {
 })
 
 describe(`compute_group_info`, () => {
-  test.each([`overlay`, `stacked`] as const)(`returns empty info for %s mode`, (mode) => {
-    expect(compute_group_info([bar(), bar()], mode)).toEqual({
-      bar_series_count: 0,
-      bar_series_indices: [],
-    })
-  })
-
-  test(`indices are original series indices, skipping hidden and line series`, () => {
+  test(`returns slots only for visible bars in grouped mode`, () => {
     const series = [bar(), bar({ visible: false }), bar({ render_mode: `line` }), bar()]
     expect(compute_group_info(series, `grouped`)).toEqual({
       bar_series_count: 2,
       bar_series_indices: [0, 3],
     })
+    for (const mode of [`overlay`, `stacked`] as const) {
+      expect(compute_group_info(series, mode)).toEqual({
+        bar_series_count: 0,
+        bar_series_indices: [],
+      })
+    }
   })
 })
 
@@ -349,17 +340,13 @@ describe(`bar geometry`, () => {
   })
 
   test(`line_points keeps source indices and drops non-finite points`, () => {
-    expect(line_points({ series_idx: 2 })[0]).toMatchObject({
-      data_x: 1,
-      data_y: 4,
-      idx: 0,
-      series_idx: 2,
-      point_idx: 0,
-    })
     // idx stays the position in the input, so a dropped point leaves a gap
-    const gapped = line_points({ series: { x: [1, 2, 3], y: [4, NaN, 6] } })
-    expect(gapped.map(({ data_x }) => data_x)).toEqual([1, 3])
-    expect(gapped.map(({ idx }) => idx)).toEqual([0, 2])
+    expect(
+      line_points({ series_idx: 2, series: { x: [1, 2, 3], y: [4, NaN, 6] } }),
+    ).toMatchObject([
+      { data_x: 1, data_y: 4, idx: 0, series_idx: 2, point_idx: 0 },
+      { data_x: 3, data_y: 6, idx: 2, series_idx: 2, point_idx: 2 },
+    ])
   })
 
   test(`line_points indexes per-point props and broadcasts scalar ones`, () => {

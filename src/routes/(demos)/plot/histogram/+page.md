@@ -285,18 +285,21 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
   ])
 </script>
 
-X: {#each [`linear`, `log`] as scale (scale)}
-  <label>
-    <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em 1.5em">
+  <span style="display: flex; align-items: center; gap: 0.5em">
+    X: {#each [`linear`, `log`] as scale (scale)}
+      <label><input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}</label>
+    {/each}
+  </span>
+  <span style="display: flex; align-items: center; gap: 0.5em">
+    Y: {#each [`linear`, `log`] as scale (scale)}
+      <label><input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}</label>
+    {/each}
+  </span>
+  <label style="display: flex; align-items: center; gap: 0.5em">
+    Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" />
   </label>
-{/each}
-Y: {#each [`linear`, `log`] as scale (scale)}
-  <label>
-    <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
-  </label>
-{/each}
-
-<label>Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" /></label>
+</div>
 
 <Histogram
   {series}
@@ -364,31 +367,38 @@ The **arcsinh scale** (`scale_type='arcsinh'`) covers positive and negative valu
   })
 </script>
 
-<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
-  <fieldset>
-    <legend>X-axis Scale</legend>
+<div
+  style="display: flex; align-items: center; gap: 1em; margin-bottom: 1em; white-space: nowrap; font-size: 0.9em"
+>
+  <span style="display: flex; align-items: center; gap: 0.35em">
+    X-axis Scale:
     {#each scale_types as scale (scale)}
       <label>
         <input type="radio" bind:group={x_scale_type} value={scale} />
         {scale}
       </label>
     {/each}
-  </fieldset>
-
-  <fieldset>
-    <legend>Y-axis Scale</legend>
+  </span>
+  <span style="display: flex; align-items: center; gap: 0.35em">
+    Y-axis Scale:
     {#each scale_types as scale (scale)}
       <label>
         <input type="radio" bind:group={y_scale_type} value={scale} />
         {scale}
       </label>
     {/each}
-  </fieldset>
-
+  </span>
   {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh`}
-    <label>
+    <label style="display: flex; align-items: center; gap: 0.35em">
       Arcsinh Threshold: {arcsinh_threshold}
-      <input type="range" bind:value={arcsinh_threshold} min="0.1" max="100" step="0.1" />
+      <input
+        type="range"
+        bind:value={arcsinh_threshold}
+        min="0.1"
+        max="100"
+        step="0.1"
+        style="width: 100px"
+      />
     </label>
   {/if}
 </div>
@@ -1170,8 +1180,6 @@ Display multiple histograms in a responsive 2×2 grid:
     margin: 2em 0;
   }
   .cell {
-    border: 1px solid var(--border-color, #ddd);
-    border-radius: 8px;
     padding: 3pt;
   }
   .cell h4 {

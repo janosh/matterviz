@@ -2,6 +2,7 @@ import {
   type AutoPaddingConfig,
   AXIS_LABEL_HEIGHT,
   AXIS_LABEL_OUTER,
+  AXIS_TITLE_OFFSET,
   calc_auto_padding,
   centered_rect,
   clear_tick_metrics_cache,
@@ -988,6 +989,7 @@ describe(`layout utility functions`, () => {
 
   describe(`calc_auto_padding`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
+    const no_padding = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
     afterEach(() => vi.restoreAllMocks())
 
     it(`preserves explicit padding, fills missing from defaults`, () => {
@@ -1002,8 +1004,7 @@ describe(`layout utility functions`, () => {
     it(`keeps provided tick positions when plot width/height are omitted`, () => {
       mock_text_measurement(7)
       const config = {
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         x_axis: {
           tick_values: Array<string>(4).fill(`formation energy per atom`),
           tick_positions: [0, 33, 66, 100],
@@ -1020,8 +1021,7 @@ describe(`layout utility functions`, () => {
       [`r`, `y2_axis`],
     ] as const)(`%s padding reserves the outside tick offset for %s`, (side, axis_key) => {
       const result = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         [axis_key]: slot_axis([1]),
       })
       expect(result[side]).toBeCloseTo(15.2)
@@ -1052,39 +1052,39 @@ describe(`layout utility functions`, () => {
       expect(t).toBe(expected)
     })
 
-    it(`reserves x2 title, gap, and outward shifts`, () => {
-      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
-      const no_ticks = calc_auto_padding({
-        ...base,
-        x2_axis: slot_axis([], { label: `Energy` }),
-      })
-      const without = calc_auto_padding({
-        ...base,
-        x2_axis: slot_axis([1, 2]),
-      })
-      const with_label = calc_auto_padding({
-        ...base,
-        x2_axis: slot_axis([1, 2], { label: `Energy` }),
-      })
-      const top_with_shift = (title_shift: number) =>
+    it(`reserves x2 titles at their rendered offset without double counting`, () => {
+      const top_padding = (tick_values: number[], axis: Partial<MeasuredAxis> = {}) =>
         calc_auto_padding({
-          ...base,
-          x2_axis: slot_axis([1, 2], { label: `Energy`, label_shift: { y: title_shift } }),
+          ...no_padding,
+          x2_axis: slot_axis(tick_values, axis),
         }).t
-      expect(no_ticks.t).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
-      expect(with_label.t - without.t).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
-      expect([top_with_shift(14) - with_label.t, top_with_shift(-14) - with_label.t]).toEqual([
-        14, 0,
+      const title_axis = { label: `Energy` }
+      const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER
+      expect([top_padding([], title_axis), top_padding([1, 2], title_axis)]).toEqual([
+        default_title_pad,
+        default_title_pad,
       ])
+      expect([
+        top_padding([1, 2], { ...title_axis, label_shift: { y: 60 } }),
+        top_padding([1, 2], { ...title_axis, label_shift: { y: -14 } }),
+      ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2 + AXIS_LABEL_OUTER, top_padding([1, 2])])
     })
 
     it(`top padding accounts for an outward x2 tick shift`, () => {
       const result = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         x2_axis: slot_axis([1], { tick: { label: { shift: { y: -10 } } } }),
       })
       expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10 + AXIS_LABEL_OUTER)
+    })
+
+    it(`bottom padding accounts for an outward x title shift`, () => {
+      const bottom_with_shift = (title_shift = 0) =>
+        calc_auto_padding({
+          ...no_padding,
+          x_axis: slot_axis([1, 2], { label: `Energy`, label_shift: { y: title_shift } }),
+        }).b
+      expect(bottom_with_shift(14) - bottom_with_shift()).toBe(14)
     })
 
     // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
@@ -1093,10 +1093,9 @@ describe(`layout utility functions`, () => {
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
     ] as const)(`%s reserves title band + outer air for the %s title`, (side, axis_key) => {
-      const base = { padding: {}, default_padding: { t: 0, b: 0, l: 0, r: 0 } }
-      const without = calc_auto_padding({ ...base, [axis_key]: slot_axis([1, 2]) })
+      const without = calc_auto_padding({ ...no_padding, [axis_key]: slot_axis([1, 2]) })
       const with_label = calc_auto_padding({
-        ...base,
+        ...no_padding,
         [axis_key]: slot_axis([1, 2], { label: `Energy (eV)` }),
       })
       expect(with_label[side] - without[side]).toBe(
@@ -1106,8 +1105,7 @@ describe(`layout utility functions`, () => {
 
     it(`left pad grows when y label_shift pushes the title outward`, () => {
       const base = {
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         y_axis: slot_axis([1, 10], { label: `E` }),
       }
       const unshifted = calc_auto_padding(base)
@@ -1121,8 +1119,7 @@ describe(`layout utility functions`, () => {
     it(`reserves a title band for interactive options without a literal label`, () => {
       const axis = slot_axis([], { options: [{ key: `energy`, label: `Energy` }] })
       const result = calc_auto_padding({
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         y2_axis: axis,
       })
       expect(result.r).toBe(resolve_axis_title_layout(axis).height + AXIS_LABEL_OUTER)
@@ -1130,8 +1127,7 @@ describe(`layout utility functions`, () => {
 
     it(`right pad grows with an outward y2 tick-label shift`, () => {
       const base = {
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         y2_axis: slot_axis([1, 10], { label: `E` }),
       }
       const unshifted = calc_auto_padding(base)
@@ -1145,8 +1141,7 @@ describe(`layout utility functions`, () => {
     it(`measures multiline x and y title bands instead of using a fixed estimate`, () => {
       mock_text_measurement(7)
       const base = {
-        padding: {},
-        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        ...no_padding,
         width: 240,
       }
       const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
