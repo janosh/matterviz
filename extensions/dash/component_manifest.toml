@@ -122,6 +122,12 @@ controls_pane_props = "Record<string, unknown>"
 [components.RdfPlot]
 key = "rdf/RdfPlot"
 doc = "Radial distribution function (RDF) plot."
+keyword_only_props = [
+  "show_controls",
+  "controls_open",
+  "controls_toggle_props",
+  "controls_pane_props",
+]
 [components.RdfPlot.type_hints]
 show_controls = "bool"
 controls_open = "bool"

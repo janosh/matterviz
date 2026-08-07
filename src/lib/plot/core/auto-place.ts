@@ -1,8 +1,8 @@
 import {
   compute_element_placement,
   sample_series_obstacle_points,
-  type Sides,
 } from '$lib/plot/core/layout'
+import type { Sides } from '$lib/plot/core/layout'
 
 const DECOR_GAP = 8 // px gap between an outside decoration and the plot edge
 
@@ -29,9 +29,10 @@ const inside_unit_square = ({ x, y }: Pt): boolean =>
 
 // Liang-Barsky clipping keeps sampling proportional to the visible segment rather
 // than spending the fixed sample budget on far-offscreen portions.
-const clip_segment_to_unit_square = (start: Pt, end: Pt): [Pt, Pt] | null => {
+export const clip_segment_to_unit_square = (start: Pt, end: Pt): [Pt, Pt] | null => {
   const delta_x = end.x - start.x
   const delta_y = end.y - start.y
+  if (!Number.isFinite(delta_x) || !Number.isFinite(delta_y)) return null
   let lower = 0
   let upper = 1
   for (const [direction, distance] of [

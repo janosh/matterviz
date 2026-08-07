@@ -286,16 +286,18 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 </script>
 
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em 1.5em">
-  <span style="display: flex; align-items: center; gap: 0.5em">
-    X: {#each [`linear`, `log`] as scale (scale)}
+  <fieldset>
+    <legend>X</legend>
+    {#each [`linear`, `log`] as scale (scale)}
       <label><input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}</label>
     {/each}
-  </span>
-  <span style="display: flex; align-items: center; gap: 0.5em">
-    Y: {#each [`linear`, `log`] as scale (scale)}
+  </fieldset>
+  <fieldset>
+    <legend>Y</legend>
+    {#each [`linear`, `log`] as scale (scale)}
       <label><input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}</label>
     {/each}
-  </span>
+  </fieldset>
   <label style="display: flex; align-items: center; gap: 0.5em">
     Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" />
   </label>
@@ -370,24 +372,24 @@ The **arcsinh scale** (`scale_type='arcsinh'`) covers positive and negative valu
 <div
   style="display: flex; align-items: center; gap: 1em; margin-bottom: 1em; white-space: nowrap; font-size: 0.9em"
 >
-  <span style="display: flex; align-items: center; gap: 0.35em">
-    X-axis Scale:
+  <fieldset>
+    <legend>X-axis Scale</legend>
     {#each scale_types as scale (scale)}
       <label>
         <input type="radio" bind:group={x_scale_type} value={scale} />
         {scale}
       </label>
     {/each}
-  </span>
-  <span style="display: flex; align-items: center; gap: 0.35em">
-    Y-axis Scale:
+  </fieldset>
+  <fieldset>
+    <legend>Y-axis Scale</legend>
     {#each scale_types as scale (scale)}
       <label>
         <input type="radio" bind:group={y_scale_type} value={scale} />
         {scale}
       </label>
     {/each}
-  </span>
+  </fieldset>
   {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh`}
     <label style="display: flex; align-items: center; gap: 0.35em">
       Arcsinh Threshold: {arcsinh_threshold}

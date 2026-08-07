@@ -137,8 +137,8 @@ describe(`filter_series_to_ranges`, () => {
 describe(`build_legend_data`, () => {
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
     const series: DataSeries[] = [
-      { x: [1], y: [1], label: `alpha` },
-      { x: [2], y: [2] }, // unlabeled -> default label
+      { x: [1], y: [1], label: `alpha`, point_style: { symbol_type: `Square` } },
+      { x: [2], y: [2], point_style: [{ symbol_type: `Triangle` }] }, // unlabeled
     ]
     const fills = [
       { idx: 0, source_type: `fill_region`, source_idx: 0, label: `band`, fill: `orange` },
@@ -150,7 +150,7 @@ describe(`build_legend_data`, () => {
         visible: true,
         has_explicit_label: true,
         display_style: {
-          symbol_type: get_series_symbol(0),
+          symbol_type: `Square`,
           symbol_color: get_series_color(0),
           line_color: get_series_color(0),
         },
@@ -159,7 +159,7 @@ describe(`build_legend_data`, () => {
         series_idx: 1,
         label: `Series 2`,
         has_explicit_label: false,
-        display_style: { symbol_color: get_series_color(1) },
+        display_style: { symbol_type: get_series_symbol(1) },
       },
       {
         series_idx: -1,

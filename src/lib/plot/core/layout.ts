@@ -1,15 +1,11 @@
-import {
-  resolve_tick_layout,
-  TICK_LABEL_HEIGHT,
-  type MeasuredAxis,
-} from '$lib/plot/core/tick-layout'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
+import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
-  type FontSpec,
-  type TextLineMetrics,
 } from '$lib/plot/core/text-metrics'
+import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
 
 export {

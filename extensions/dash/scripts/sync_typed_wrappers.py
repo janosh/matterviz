@@ -590,6 +590,21 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             for prop in props
             if prop.kind == "value" and prop.js_name not in excluded_value_props
         ]
+        keyword_only_names = set(spec.get("keyword_only_props", []))
+        unknown_keyword_only = keyword_only_names - {
+            prop.js_name for prop in value_props
+        }
+        if unknown_keyword_only:
+            raise ValueError(
+                f"{key} has unknown keyword-only props: "
+                f"{', '.join(sorted(unknown_keyword_only))}"
+            )
+        positional_value_props = [
+            prop for prop in value_props if prop.js_name not in keyword_only_names
+        ]
+        keyword_only_value_props = [
+            prop for prop in value_props if prop.js_name in keyword_only_names
+        ]
 
         # Auto-detect conversion defaults
         auto_set = [
@@ -635,7 +650,7 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         lines.append("")
 
         # Build signature
-        sig = ["self", "id=None"]
+        prop_signatures: dict[str, str] = {}
         for prop in value_props:
             py_name = prop.py_name
             py_type = _py_type_hint(prop.ts_type, py_name, type_hints)
@@ -643,7 +658,9 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             if "None" not in py_type:
                 py_type += " | None"
             default = "_UNSET" if prop.js_name in forward_none_props else "None"
-            sig.append(f"{py_name}: {py_type} = {default}")
+            prop_signatures[prop.js_name] = f"{py_name}: {py_type} = {default}"
+        sig = ["self", "id=None"]
+        sig.extend(prop_signatures[prop.js_name] for prop in positional_value_props)
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
@@ -652,8 +669,13 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             "last_event: dict | None = None",
             "className: str | None = None",
             "style: dict | None = None",
-            "**kwargs",
         ]
+        if keyword_only_value_props:
+            sig.append("*")
+            sig.extend(
+                prop_signatures[prop.js_name] for prop in keyword_only_value_props
+            )
+        sig.append("**kwargs")
 
         params = ",\n        ".join(sig)
         lines.append(f"    def __init__(\n        {params},\n    ):")

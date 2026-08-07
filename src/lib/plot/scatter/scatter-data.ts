@@ -151,6 +151,7 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
         display_style.symbol_color = undefined
       } else if (first_point_style) {
         if (
+          !Array.isArray(data_series?.point_style) &&
           typeof first_point_style.symbol_type === `string` &&
           symbol_names.includes(first_point_style.symbol_type)
         ) {

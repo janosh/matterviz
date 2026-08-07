@@ -1,4 +1,9 @@
-import { build_obstacles_norm, clip_bar, place_decorations } from '$lib/plot/core/auto-place'
+import {
+  build_obstacles_norm,
+  clip_bar,
+  clip_segment_to_unit_square,
+  place_decorations,
+} from '$lib/plot/core/auto-place'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -152,6 +157,15 @@ describe(`clip_bar`, () => {
     const fixed_axis = vertical ? `x` : `y`
     expect(seg?.points.every((pt) => pt[fixed_axis] === cross)).toBe(true)
   })
+})
+
+describe(`clip_segment_to_unit_square`, () => {
+  test.each([
+    [`x`, { x: -Number.MAX_VALUE, y: 0.5 }, { x: Number.MAX_VALUE, y: 0.5 }],
+    [`y`, { x: 0.5, y: -Number.MAX_VALUE }, { x: 0.5, y: Number.MAX_VALUE }],
+  ])(`rejects finite endpoints whose %s delta overflows`, (_axis, start, end) =>
+    expect(clip_segment_to_unit_square(start, end)).toBeNull(),
+  )
 })
 
 describe(`build_obstacles_norm`, () => {

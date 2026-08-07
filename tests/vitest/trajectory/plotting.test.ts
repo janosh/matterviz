@@ -11,8 +11,8 @@ import {
   get_frame_step_samples,
   get_frame_time_step,
   should_hide_plot,
-  type PlotSeriesOptions,
 } from '$lib/trajectory/plotting'
+import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
 
