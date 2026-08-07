@@ -139,7 +139,7 @@
 
 <ScatterPlot
   {...rest}
-  {show_controls}
+  bind:show_controls
   bind:controls_open
   {series}
   x_axis={{ label: x_label, ...x_axis }}

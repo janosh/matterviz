@@ -12,6 +12,7 @@ import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import type { VolumetricData } from '$lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { PhaseDiagramData } from '$lib/phase-diagram/types'
+import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
 import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
 import type { DefaultSettings } from '$lib/settings'
 import type { DosInput } from '$lib/spectral'
@@ -412,12 +413,12 @@ const trajectory_props = (defaults: DefaultSettings) => {
       markers: scatter.symbol_type,
       line_width: scatter.line.width,
       point_size: scatter.point.size,
-      show_legend: scatter.show_legend,
+      show_legend: legend_mode_to_prop(scatter.show_legend),
       ...shared_plot_props,
     },
     histogram_props: {
       mode: histogram.mode,
-      show_legend: histogram.show_legend,
+      show_legend: legend_mode_to_prop(histogram.show_legend),
       bin_count: histogram.bin_count,
       ...shared_plot_props,
     },

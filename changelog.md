@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### 💥 Breaking Changes
+
+- **Controls props are flat.** `ScatterPlot` / `ScatterPlot3D` / `XrdPlot` replace nested `controls={{ show, open, ... }}` with `show_controls` / `controls_open` / `controls_toggle_props` / `controls_pane_props`; `ControlsConfig` and `ControlsConfig3D` are removed. The standalone `ScatterPlot3DControls` renames its `open` prop to `controls_open` to match every other `*Controls` component, and all of them now take a bindable `show_controls`. The `show_controls` default on `PlotControls` / `BarPlotControls` / `BoxPlotControls` / `HistogramControls` changed from `false` to `true`, so mounting a `*Controls` component standalone renders its pane instead of nothing — pass `show_controls={false}` where you relied on the old default.
+- **Color bar props are named `color_bar` everywhere.** `Treemap` / `Sunburst`: `colorbar` → `color_bar` and `colorbar_side` → `color_bar_side`; `Treemap` gains `color_bar_side` for parity and both now share one layout helper, so a vertical bar reserves width on either side while a horizontal one reserves height. `BinnedScatterPlot` moves `color_bar` out of the nested `density` config to a top-level prop (`density={{ color_bar }}` → `color_bar={...}`). `ScatterHandlerProps.colorbar` → `color_bar`. `ColorScaleSelect.colorbar` → `color_bar`. `FacetGrid`'s `colorbar` snippet and `shared_bands.colorbar_width` → `color_bar` / `shared_bands.color_bar_width`, with the shared band renamed throughout (`FacetSharedBand`, `ResolvedFacetGridGeometry.color_bar`, `compute_facet_geometry` errors) and rendered as `data-facet-slot="color_bar"` with class `.facet-grid-color-bar`. `ColorBar`'s own `.colorbar` class and the `--*-colorbar-*` CSS custom properties are unchanged.
+- **Legend visibility is one rule.** Every plot resolves through `resolve_legend_visibility`: `legend={null}` or zero rendered entries hides, an explicit `show_legend` wins, and otherwise Cartesian charts auto-show above one rendered entry while hierarchy charts and `Sankey` stay opt-in. Consequences: `Dos`, `Bands` and `FermiSlice` no longer force `show_legend` to `true`, so a single curve/band/isoline no longer grows a one-item legend; `ScatterPlot` counts deduplicated legend entries rather than raw `series.length`, so several series sharing one `legend_group::label` no longer open a single-entry legend (labelled fill regions still count, since they render their own entries); the `matterviz.scatter.show_legend` and `matterviz.histogram.show_legend` settings became tri-state `auto | always | never` (default `auto`) because a boolean cannot express the auto rule, and `ScatterPlot` / `Histogram` now actually read them; and `HeatmapMatrix`'s `show_legend` / `legend_position` became `$bindable()` so its controls pane writes back.
+- `Sankey` / `Sunburst` / `Treemap` no longer accept the Cartesian-only `range_padding` / `title` props, which previously leaked onto the wrapper element as invalid DOM attributes.
+- `Histogram.mode` defaults to `overlay`; `ScatterPlot` padding uses `DEFAULT_PLOT_PADDING`; `SankeyOrientation` → `Orientation`.
+
+### 🚀 New Features
+
+- Dense scatter canvas markers (`marker_renderer: 'auto'|'svg'|'canvas'`, auto above 10k). At 20k points: ~3582→85 ms mount, ~60k→184 DOM nodes. Labels / hover / selection stay SVG.
+
+### ⚡️ Performance
+
+- `filter_series_to_ranges` filters before allocating points (~5× full / ~32× zoomed at 100k).
+- Hover uses a shared grid spatial index (~306× at 100k); `BinnedScatterPlot` reuses it.
+- Axis extents accumulate over raw arrays (~4× at 100k). Marginal rugs are one `<path>`; decoration obstacles are stride-sampled before projection.
+
+### 💡 Refactoring
+
+- Every chart builds legend entries through one `build_legend_items` core helper, so `label` fallbacks, `visible`, `legend_group` and `has_explicit_label` behave identically across `ScatterPlot`, `ScatterPlot3D`, `Histogram`, `BarPlot` and `BoxPlot`. `prepare_legend_data` and the `ScatterLegendItem` type are gone.
+- `Sunburst` and `Treemap` share `color_bar_layout` plus a `HierarchyColorBar` component instead of each positioning their own bar.
+
+### 🐛 Bug Fixes
+
+- `compute_count_range` no longer `Math.max(...counts)`-blows the stack above ~125k bins.
+
 ## [v0.4.4](https://github.com/janosh/matterviz/compare/v0.4.3...v0.4.4)
 
 > 30 July 2026

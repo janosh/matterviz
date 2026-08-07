@@ -113,7 +113,7 @@
 {:else if result}
   <ScatterPlot
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
     {series}
     x_axis={{ label: result.x_label, ...x_axis }}

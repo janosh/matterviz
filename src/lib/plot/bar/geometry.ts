@@ -2,6 +2,7 @@
 // construction and per-bar rect computation. Extracted from BarPlot.svelte's
 // template so the coordinate math is unit-testable.
 
+import type { Point2D } from '$lib/math'
 import { process_prop } from '$lib/plot/core/data-transform'
 import type { BarMode, InternalPoint, Orientation } from '$lib/plot/core/types'
 import type { GroupInfo, NumericBarSeries } from './data'
@@ -50,6 +51,24 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
       }
     })
     .filter((pt) => isFinite(pt.x) && isFinite(pt.y))
+}
+
+// Nearest polyline vertex to the cursor. Deliberately unbounded (unlike the scatter
+// hover index, which cuts off at a pick radius): the caller's hit target is the line
+// itself, so a cursor mid-segment must still resolve to an endpoint.
+export function nearest_line_point<Metadata = Record<string, unknown>>(
+  points: readonly LineSeriesPoint<Metadata>[],
+  pointer: Point2D,
+): LineSeriesPoint<Metadata> | null {
+  let best: LineSeriesPoint<Metadata> | null = null
+  let best_dist_sq = Infinity
+  for (const point of points) {
+    const dist_sq = (point.x - pointer.x) ** 2 + (point.y - pointer.y) ** 2
+    if (dist_sq >= best_dist_sq) continue
+    best_dist_sq = dist_sq
+    best = point
+  }
+  return best
 }
 
 export interface BarRect {

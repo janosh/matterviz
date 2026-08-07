@@ -6,7 +6,7 @@
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
-  import { get_series_color } from '$lib/plot/core/data-transform'
+  import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
   import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -225,27 +225,19 @@
 
   // Legend data
   let legend_data = $derived(
-    series.map((srs, series_idx) => {
-      const is_visible = series_visibility[series_idx] ?? true
-      const label = srs?.label ?? `Series ${series_idx + 1}`
-      const series_color = get_series_color(series_idx)
-
-      return {
-        series_idx,
-        label,
-        visible: is_visible,
-        display_style: {
-          symbol_type: `Circle` as const,
-          symbol_color: srs?.point_style
-            ? ((Array.isArray(srs.point_style)
-                ? srs.point_style[0]?.fill
-                : srs.point_style?.fill) ?? series_color)
-            : series_color,
-        },
-        has_explicit_label: Boolean(srs?.label),
-        legend_group: srs?.legend_group,
-      }
-    }),
+    build_legend_items(
+      series.map((srs, series_idx) => ({
+        ...srs,
+        visible: series_visibility[series_idx] ?? true,
+      })),
+      (srs, series_idx) => ({
+        symbol_type: `Circle` as const,
+        symbol_color:
+          (Array.isArray(srs.point_style)
+            ? srs.point_style[0]?.fill
+            : srs.point_style?.fill) ?? get_series_color(series_idx),
+      }),
+    ),
   )
   // Compute gizmo props - move up when color bar is shown
   let has_color_bar = $derived(color_bar && all_color_values.length > 0)
@@ -342,7 +334,8 @@
     <!-- Control pane -->
     {#if show_controls}
       <ScatterPlot3DControls
-        bind:open={controls_open}
+        bind:show_controls
+        bind:controls_open
         toggle_props={{
           ...controls_toggle_props,
           style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${

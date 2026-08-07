@@ -18,7 +18,7 @@
     show_axes = true,
     axis_labels,
     band_colors = BAND_COLORS,
-    show_legend = true,
+    show_legend,
     on_error,
     children,
     ...rest

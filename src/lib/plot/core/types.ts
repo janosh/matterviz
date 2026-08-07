@@ -225,7 +225,7 @@ export interface ScatterHandlerProps<
   x_formatted: string
   y_formatted: string
   color_value?: number | null
-  colorbar?: {
+  color_bar?: {
     value?: number | null
     title?: string | null
     scale?: unknown
@@ -394,6 +394,8 @@ export interface LegendItem {
   visible: boolean
   series_idx: number
   legend_group?: string // Optional group name for grouped legend rendering
+  // False when `label` is the generated `Series N` fallback rather than user-supplied
+  has_explicit_label?: boolean
   // Type of item: 'series' for data series (default), 'fill' for fill regions
   item_type?: `series` | `fill`
   // For fill regions, the index in the computed_fills array (for unique keying)

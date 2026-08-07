@@ -5,7 +5,11 @@ import {
   compute_stacked_offsets,
   normalize_categorical,
 } from '$lib/plot/bar/data'
-import { compute_bar_rect, compute_line_points } from '$lib/plot/bar/geometry'
+import {
+  compute_bar_rect,
+  compute_line_points,
+  nearest_line_point,
+} from '$lib/plot/bar/geometry'
 import type { BarSeries } from '$lib/plot'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -380,5 +384,16 @@ describe(`bar geometry`, () => {
       expect(rect.c0).toBeCloseTo(expected.c0, 6)
       expect(rect.c1).toBeCloseTo(expected.c1, 6)
     } else expect(rect).toMatchObject(expected)
+  })
+
+  // Unbounded so a line's mid-segment cursor still resolves to the nearest vertex.
+  test(`nearest_line_point picks the closest vertex at any distance`, () => {
+    const points = line_points()
+    expect(nearest_line_point(points, { x: 11, y: 8 })?.idx).toBe(0)
+    expect(nearest_line_point(points, { x: 29, y: 13 })?.idx).toBe(2)
+    expect(nearest_line_point(points, { x: 5000, y: 5000 })?.idx).toBe(2)
+    // exact ties keep the earlier vertex
+    expect(nearest_line_point(points, { x: 15, y: 9 })?.idx).toBe(0)
+    expect(nearest_line_point([], { x: 0, y: 0 })).toBeNull()
   })
 })

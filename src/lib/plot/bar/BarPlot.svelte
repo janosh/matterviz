@@ -58,6 +58,7 @@
   } from '$lib/plot/core/utils/series-visibility'
   import {
     axis_ranges_equal,
+    get_relative_coords,
     invert_rect_range,
     resolve_axis_ranges,
   } from '$lib/plot/core/interactions'
@@ -116,7 +117,7 @@
     compute_stacked_offsets,
     normalize_categorical,
   } from './data'
-  import { compute_bar_rect, compute_line_points } from './geometry'
+  import { compute_bar_rect, compute_line_points, nearest_line_point } from './geometry'
   import type { LineSeriesPoint as BarLineSeriesPoint } from './geometry'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
@@ -952,28 +953,14 @@
     }
   }
 
-  // Find the point closest to the cursor on a polyline overlay (O(n) scan).
+  // Resolve a cursor event over a polyline overlay to its nearest vertex.
   function find_closest_point(
     evt: MouseEvent,
     points: LineSeriesPoint[],
   ): LineSeriesPoint | null {
-    const target = evt.target
-    if (!(target instanceof Element)) return null
-    const svg_el = target.closest(`svg`)
-    if (!svg_el) return null
-    const rect = svg_el.getBoundingClientRect()
-    const mx = evt.clientX - rect.left
-    const my = evt.clientY - rect.top
-    let best: LineSeriesPoint | null = null
-    let best_dist = Infinity
-    for (const pt of points) {
-      const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
-      if (dist < best_dist) {
-        best_dist = dist
-        best = pt
-      }
-    }
-    return best
+    const svg_el = evt.target instanceof Element ? evt.target.closest(`svg`) : null
+    const pointer = get_relative_coords(evt, svg_el)
+    return pointer && nearest_line_point(points, pointer)
   }
 
   const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>

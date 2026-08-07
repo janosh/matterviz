@@ -1830,7 +1830,6 @@
             }}
             y_axis={{ label: histogram_props.y_axis?.label ?? `Count`, format: `.3~s` }}
             mode={histogram_props.mode ?? `overlay`}
-            show_legend={histogram_props.show_legend ?? plot_series.length > 1}
             legend={histogram_props.legend}
             on_series_toggle={(series_idx: number) => {
               handle_legend_toggle(series_idx)

@@ -115,7 +115,7 @@
 
 <StructureBarPlot
   {...rest}
-  {show_controls}
+  bind:show_controls
   bind:controls_open
   series={bar_series}
   primary_axis={cn_axis}

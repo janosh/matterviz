@@ -146,7 +146,7 @@
 {:else}
   <BarPlot
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
     {series}
     x_axis={resolved_x_axis}

@@ -87,6 +87,7 @@
   import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
   import {
     create_legend_visibility,
+    legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
@@ -180,7 +181,7 @@
     label_placement_config = {},
     hover_config = {},
     legend = {},
-    show_legend,
+    show_legend = legend_mode_to_prop(DEFAULTS.scatter.show_legend),
     point_tween,
     line_tween,
     point_events,
@@ -1123,7 +1124,7 @@
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
     const ctx = canvas.getContext(`2d`)
-    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio })
+    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio, clip: clip_area })
   })
 
   const fill_hover_key = (
@@ -1245,14 +1246,10 @@
   let legend_data = $derived(
     build_legend_data(series_with_ids, computed_fills, color_scale_fn),
   )
-  // Consider both raw series and deduplicated entries when deciding to show the legend.
+  // legend_data already folds fill regions in and dedupes by legend_group::label, so its
+  // length is the rendered entry count the shared auto rule needs.
   const should_show_legend = $derived(
-    resolve_legend_visibility(
-      show_legend,
-      legend,
-      legend_data.length,
-      series.length > 1 || legend_data.length > 1,
-    ),
+    resolve_legend_visibility(show_legend, legend, legend_data.length),
   )
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
@@ -1614,7 +1611,7 @@
       x_formatted: format_value_or_num(x, active_x_config.format),
       y_formatted: format_value_or_num(y, active_y_config.format),
       color_value: color_value ?? null,
-      colorbar: {
+      color_bar: {
         value: color_value ?? null,
         title: color_bar?.title ?? null,
         scale: color_scale,
@@ -2144,10 +2141,10 @@
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
           {@html sanitize_html(hp.x_axis.label || `x`)}: {hp.x_formatted}<br />
           {@html sanitize_html(hp.y_axis.label || `y`)}: {hp.y_formatted}
-          {#if hp.colorbar?.value != null}
-            <br />{@html sanitize_html(hp.colorbar.title || `Color`)}: {format_value(
-              hp.colorbar.value,
-              hp.colorbar.tick_format || `.3~g`,
+          {#if hp.color_bar?.value != null}
+            <br />{@html sanitize_html(hp.color_bar.title || `Color`)}: {format_value(
+              hp.color_bar.value,
+              hp.color_bar.tick_format || `.3~g`,
             )}
           {/if}
         {/if}
@@ -2164,6 +2161,7 @@
           }`,
         }}
         pane_props={controls_pane_props}
+        bind:show_controls
         bind:controls_open
         bind:x_axis
         bind:x2_axis

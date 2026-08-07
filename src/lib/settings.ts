@@ -18,6 +18,7 @@ import type {
   ViolinSide,
   WhiskerMode,
 } from '$lib/plot'
+import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import type { PolyhedraColorMode } from '$lib/structure/polyhedra'
 import type {
@@ -46,6 +47,19 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 const SHOW_BONDS_ENUM = Object.fromEntries(
   SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
 ) as Readonly<Record<ShowBonds, string>>
+
+// Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
+// resolve_legend_visibility rule so single-entry plots don't grow a pointless legend.
+const LEGEND_VISIBILITY_ENUM: Readonly<Record<LegendVisibilityMode, string>> = {
+  auto: `Auto`,
+  always: `Always`,
+  never: `Never`,
+}
+const legend_visibility_setting = (plot: string): SettingType<LegendVisibilityMode> => ({
+  value: `auto`,
+  description: `Legend visibility in ${plot} plots. 'auto' shows one only when the plot renders more than one legend entry`,
+  enum: LEGEND_VISIBILITY_ENUM,
+})
 
 export type CameraProjection = `perspective` | `orthographic`
 
@@ -355,7 +369,7 @@ export interface SettingsConfig {
 
   scatter: {
     // Scatter plot settings
-    show_legend: SettingType<boolean>
+    show_legend: SettingType<LegendVisibilityMode>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
     symbol_type: SettingType<D3SymbolName>
@@ -367,7 +381,7 @@ export interface SettingsConfig {
   histogram: {
     // Histogram settings
     mode: SettingType<`overlay` | `single`>
-    show_legend: SettingType<boolean>
+    show_legend: SettingType<LegendVisibilityMode>
     bin_count: SettingType<number>
     bar: BarStyleType
     display: DisplayConfigType
@@ -1175,7 +1189,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
       enum: { overlay: `Overlay`, single: `Single` },
     },
-    show_legend: { value: true, description: `Show legend in histogram plots` },
+    show_legend: legend_visibility_setting(`histogram`),
     bin_count: {
       value: 100,
       description: `Number of bins for histogram plots`,
@@ -1485,7 +1499,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         Record<D3SymbolName, string>
       >,
     },
-    show_legend: { value: true, description: `Show legend in scatter plots` },
+    show_legend: legend_visibility_setting(`scatter`),
     show_points: { value: true, description: `Show points in scatter plots` },
     show_lines: { value: true, description: `Show connecting lines in scatter plots` },
     display: DISPLAY_CONFIG,

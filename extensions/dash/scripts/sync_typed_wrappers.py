@@ -508,7 +508,8 @@ def _py_type_hint(
         - Override via manifest [components.Name.type_hints]
     """
     if type_hints and prop_name in type_hints:
-        return type_hints[prop_name]
+        override = type_hints[prop_name]
+        return "dict" if "Record" in override else override
 
     type_str = ts_type.strip()
 

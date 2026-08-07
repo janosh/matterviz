@@ -110,7 +110,7 @@
   {#snippet panel_plot(series: DataSeries[], x_label: string, y_label: string)}
     <ScatterPlot
       {...rest}
-      {show_controls}
+      bind:show_controls
       bind:controls_open
       {series}
       x_axis={{ label: x_label }}

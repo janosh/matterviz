@@ -114,13 +114,12 @@ export function draw_markers(
     const stroke_width = Number.isFinite(marker.stroke_width)
       ? Math.max(0, marker.stroke_width)
       : 0
-    const next_fill_alpha = has_fill
-      ? normalize_alpha(marker.opacity * marker.fill_opacity)
-      : 0
-    const next_stroke_alpha =
-      stroke_width > 0 && has_stroke
-        ? normalize_alpha(marker.opacity * marker.stroke_opacity)
-        : 0
+    const next_fill_alpha = normalize_alpha(
+      has_fill ? marker.opacity * marker.fill_opacity : 0,
+    )
+    const next_stroke_alpha = normalize_alpha(
+      stroke_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0,
+    )
     // Translucent markers isolate so overlapping alphas match SVG (shared path composites once).
     const isolate =
       (next_fill_alpha > 0 && next_fill_alpha < 1) ||

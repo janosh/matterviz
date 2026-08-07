@@ -1,11 +1,18 @@
-// Null/no entries hide the legend; explicit show_legend wins. Cartesian charts default to
-// multiple entries, while hierarchy and Sankey charts pass false to stay opt-in.
+// Null/empty legends hide; explicit show_legend wins. Pass the rendered entry count,
+// with auto_default=false for hierarchy and Sankey charts that stay opt-in.
 export const resolve_legend_visibility = (
   show_legend: boolean | undefined,
   legend: unknown,
   entry_count: number,
   auto_default = entry_count > 1,
 ): boolean => legend != null && entry_count > 0 && (show_legend ?? auto_default)
+
+// Tri-state settings map `auto` onto the prop's undefined state.
+export const LEGEND_VISIBILITY_MODES = [`auto`, `always`, `never`] as const
+export type LegendVisibilityMode = (typeof LEGEND_VISIBILITY_MODES)[number]
+
+export const legend_mode_to_prop = (mode: LegendVisibilityMode): boolean | undefined =>
+  mode === `auto` ? undefined : mode === `always`
 
 // Minimal series shape the visibility helpers need - generic over the concrete series
 // type (DataSeries, BarSeries, BoxPlotSeries, ...) so toggled arrays keep their type

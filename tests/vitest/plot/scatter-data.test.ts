@@ -91,12 +91,12 @@ describe(`filter_series_to_ranges`, () => {
       }),
     ).toEqual([])
     const result = filter_series_to_ranges(
-      [undefined, { x: [1, 2, 3], y: [4] }] as unknown as DataSeries[],
+      [undefined, { y: [1] }, { x: [1] }, { x: [1, 2, 3], y: [4] }] as unknown as DataSeries[],
       ranges,
     )
     expect(result).toHaveLength(1)
     expect(result[0].filtered_data.map((pt) => [pt.x, pt.y])).toEqual([[1, 4]])
-    expect(result[0].orig_series_idx).toBe(1)
+    expect(result[0].orig_series_idx).toBe(3)
   })
 
   test(`augments points with array or scalar per-point props`, () => {

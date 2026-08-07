@@ -128,7 +128,6 @@
   }
   type OverlayContext = { height: number; width: number; fullscreen: boolean }
   const default_density_auto_point_mode = { max_points: 25_000, max_points_per_px: 0.12 }
-  const default_density_color_bar: ComponentProps<typeof ColorBar> = { title: `Density` }
   const max_placement_bins = 500
 
   let {
@@ -136,6 +135,7 @@
     x_axis = {},
     y_axis = {},
     size_scale = DEFAULT_BINNED_SIZE_SCALE,
+    color_bar = {},
     density: density_config = {},
     overlays: overlays_config = {},
     padding: padding_config = {},
@@ -171,6 +171,7 @@
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       size_scale?: BinnedSizeScaleConfig
+      color_bar?: ComponentProps<typeof ColorBar> | null
       density?: BinnedDensityConfig
       overlays?: BinnedOverlaysConfig
       tooltip?: Snippet<[BinnedPointTooltipPayload<Metadata, PointData>]>
@@ -234,10 +235,6 @@
   let density_settings = $derived({
     bin_px: density_config.bin_px ?? 2.8,
     color_scale: density_config.color_scale ?? SCALE_DEFAULTS.color,
-    color_bar:
-      density_config.color_bar === undefined
-        ? default_density_color_bar
-        : density_config.color_bar,
     auto_point_mode:
       density_config.auto_point_mode === undefined
         ? default_density_auto_point_mode
@@ -422,7 +419,6 @@
       : density_settings.color_scale.type,
   )
   let color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
-    const color_bar = density_settings.color_bar
     if (!color_bar) return null
     return {
       ...color_bar,

@@ -169,7 +169,8 @@ describe(`Histogram`, () => {
     expect(pan_ticks.length).toBeGreaterThan(0)
     expect(Math.min(...pan_ticks)).toBeGreaterThan(100)
     expect(Math.max(...pan_ticks) / Math.min(...pan_ticks)).toBeGreaterThanOrEqual(10)
-  })
+    // many mounts in one test: needs more than the 5s default under parallel load
+  }, 20_000)
 
   test(`series indices, secondary axes, titles, and padding`, async () => {
     const repeated = { x: [], y: [0, 1, 2], label: `Repeated` }

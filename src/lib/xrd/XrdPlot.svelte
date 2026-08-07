@@ -421,7 +421,7 @@
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        {show_controls}
+        bind:show_controls
         bind:controls_open
       />
     {:else}
@@ -455,7 +455,7 @@
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        {show_controls}
+        bind:show_controls
         bind:controls_open
       />
     {/if}

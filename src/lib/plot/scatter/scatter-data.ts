@@ -3,7 +3,11 @@
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { DataSeries, FillRegion, InternalPoint, LegendItem, PointStyle } from '$lib/plot'
-import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
+import {
+  build_legend_items,
+  get_series_color,
+  get_series_symbol,
+} from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { type AxisRanges, DEFAULT_MARKERS } from '$lib/plot/core/types'
 
@@ -49,6 +53,7 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
     if (!data_series || !(data_series.visible ?? true)) continue
 
     const { x: xs, y: ys, color_values, size_values } = data_series
+    if (!Array.isArray(xs) || !Array.isArray(ys)) continue
     const [x_lo, x_hi] = (data_series.x_axis ?? `x1`) === `x2` ? x2_bounds : x_bounds
     const [y_lo, y_hi] = (data_series.y_axis ?? `y1`) === `y2` ? y2_bounds : y_bounds
 
@@ -108,95 +113,90 @@ export type LegendFill = FillRegion & {
   source_idx: number
 }
 
-export type ScatterLegendItem = LegendItem & { has_explicit_label?: boolean }
-
 // Prepare legend items from series + computed fill regions, deduplicated by
 // legend_group::label (first occurrence wins across both series and fills)
 export function build_legend_data<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
-): ScatterLegendItem[] {
-  const items = series.map((data_series: DataSeries<Metadata>, series_idx: number) => {
-    // Prefer top-level label, fall back to metadata label, then a generated default
-    const explicit_label =
-      data_series?.label ??
-      (typeof data_series?.metadata === `object` &&
-      data_series.metadata !== null &&
-      `label` in data_series.metadata &&
-      typeof data_series.metadata.label === `string`
-        ? data_series.metadata.label
-        : null)
+): LegendItem[] {
+  // Scatter is the only chart that also accepts a label from series metadata.
+  const series_label = (data_series: DataSeries<Metadata>) =>
+    data_series?.label ??
+    (typeof data_series?.metadata === `object` &&
+    data_series.metadata !== null &&
+    `label` in data_series.metadata &&
+    typeof data_series.metadata.label === `string`
+      ? data_series.metadata.label
+      : null)
 
-    // Series-index defaults give auto-cycled colors/symbols
-    const series_default_color = get_series_color(series_idx)
-    const display_style: LegendDisplayStyle = {
-      symbol_type: get_series_symbol(series_idx),
-      symbol_color: series_default_color,
-      line_color: series_default_color,
-    }
-    const series_markers = data_series?.markers ?? DEFAULT_MARKERS
-    const first_point_style = Array.isArray(data_series?.point_style)
-      ? data_series.point_style[0]
-      : data_series?.point_style
-
-    if (series_markers.includes(`points`)) {
-      if (first_point_style) {
-        if (
-          typeof first_point_style.symbol_type === `string` &&
-          symbol_names.includes(first_point_style.symbol_type)
-        ) {
-          display_style.symbol_type = first_point_style.symbol_type
-        }
-        if (first_point_style.fill) display_style.symbol_color = first_point_style.fill
-        // Fall back to stroke when the fill is missing/none/transparent
-        if (
-          first_point_style.stroke &&
-          (!display_style.symbol_color ||
-            display_style.symbol_color === `none` ||
-            display_style.symbol_color.startsWith(`rgba(`, 0))
-        ) {
-          display_style.symbol_color = first_point_style.stroke
-        }
+  const items = build_legend_items(
+    series,
+    (data_series, series_idx) => {
+      // Series-index defaults give auto-cycled colors/symbols
+      const series_default_color = get_series_color(series_idx)
+      const display_style: LegendDisplayStyle = {
+        symbol_type: get_series_symbol(series_idx),
+        symbol_color: series_default_color,
+        line_color: series_default_color,
       }
-    } else {
-      // No points marker: no symbol swatch in the legend
-      display_style.symbol_type = undefined
-      display_style.symbol_color = undefined
-    }
+      const series_markers = data_series?.markers ?? DEFAULT_MARKERS
+      const first_point_style = Array.isArray(data_series?.point_style)
+        ? data_series.point_style[0]
+        : data_series?.point_style
 
-    if (series_markers.includes(`line`)) {
-      // Explicit line stroke, then color scale, then point colors, then series default
-      let line_color = data_series?.line_style?.stroke
-      if (!line_color) {
-        const first_cv = Array.isArray(data_series?.color_values)
-          ? data_series?.color_values?.find((color_val: number | null) => color_val != null)
-          : undefined
-        /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
-        line_color =
-          (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
-          first_point_style?.fill ||
-          first_point_style?.stroke ||
-          series_default_color
-        /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
+      if (series_markers.includes(`points`)) {
+        if (first_point_style) {
+          if (
+            typeof first_point_style.symbol_type === `string` &&
+            symbol_names.includes(first_point_style.symbol_type)
+          ) {
+            display_style.symbol_type = first_point_style.symbol_type
+          }
+          if (first_point_style.fill) display_style.symbol_color = first_point_style.fill
+          // Fall back to stroke when the fill is missing/none/transparent
+          if (
+            first_point_style.stroke &&
+            (!display_style.symbol_color ||
+              display_style.symbol_color === `none` ||
+              display_style.symbol_color.startsWith(`rgba(`, 0))
+          ) {
+            display_style.symbol_color = first_point_style.stroke
+          }
+        }
+      } else {
+        // No points marker: no symbol swatch in the legend
+        display_style.symbol_type = undefined
+        display_style.symbol_color = undefined
       }
-      display_style.line_color = line_color
-      display_style.line_dash = data_series?.line_style?.line_dash
-    } else {
-      // No line marker: no line swatch in the legend
-      display_style.line_dash = undefined
-      display_style.line_color = undefined
-    }
 
-    return {
-      series_idx,
-      label: explicit_label ?? `Series ${series_idx + 1}`,
-      visible: data_series?.visible ?? true,
-      display_style,
-      has_explicit_label: explicit_label != null,
-      legend_group: data_series?.legend_group,
-    }
-  })
+      if (series_markers.includes(`line`)) {
+        // Explicit line stroke, then color scale, then point colors, then series default
+        let line_color = data_series?.line_style?.stroke
+        if (!line_color) {
+          const first_cv = Array.isArray(data_series?.color_values)
+            ? data_series?.color_values?.find((color_val: number | null) => color_val != null)
+            : undefined
+          /* oxlint-disable @typescript-eslint/prefer-nullish-coalescing -- empty-string colors should fall through */
+          line_color =
+            (first_cv != null ? color_scale_fn(first_cv) : undefined) ||
+            first_point_style?.fill ||
+            first_point_style?.stroke ||
+            series_default_color
+          /* oxlint-enable @typescript-eslint/prefer-nullish-coalescing */
+        }
+        display_style.line_color = line_color
+        display_style.line_dash = data_series?.line_style?.line_dash
+      } else {
+        // No line marker: no line swatch in the legend
+        display_style.line_dash = undefined
+        display_style.line_color = undefined
+      }
+
+      return display_style
+    },
+    { label: series_label },
+  )
 
   // Deduplicate by legend_group::label (first occurrence wins, across series + fills)
   const seen_labels = new Set<string>()

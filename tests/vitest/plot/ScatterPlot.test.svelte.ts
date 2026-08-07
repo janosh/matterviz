@@ -129,6 +129,13 @@ describe(`ScatterPlot`, () => {
     })
     const mount_canvas = (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>
       mount_sized_scatter_plot({ series: [dense], marker_renderer: `canvas`, ...props })
+    const marker_coords = (plot: ParentNode): { x: number; y: number } => {
+      const transform =
+        plot.querySelector(`path.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
+      return { x: Number(match.groups.x), y: Number(match.groups.y) }
+    }
     const mock_canvas_context = (overrides: Record<string, unknown> = {}): void => {
       const stubs =
         `save restore setTransform clearRect scale beginPath rect clip moveTo arc fill stroke`.split(
@@ -155,11 +162,13 @@ describe(`ScatterPlot`, () => {
 
       let arcs_since_clear = 0
       const canvas_clip = vi.fn()
+      const canvas_rect = vi.fn()
       const clear_rect = vi.fn(() => (arcs_since_clear = 0))
       mock_canvas_context({
         clearRect: clear_rect,
         arc: vi.fn(() => arcs_since_clear++),
         clip: canvas_clip,
+        rect: canvas_rect,
       })
       const point_idx = 3
       const overlaid = await mount_canvas({
@@ -174,7 +183,14 @@ describe(`ScatterPlot`, () => {
       })
       expect(overlaid.querySelectorAll(`path.marker`)).toHaveLength(1)
       expect(arcs_since_clear).toBe(dense.x.length - 1)
-      expect(canvas_clip).not.toHaveBeenCalled()
+      const canvas_bounds = scatter_clip_rect(overlaid)
+      expect(canvas_rect).toHaveBeenLastCalledWith(
+        canvas_bounds.x,
+        canvas_bounds.y,
+        canvas_bounds.width,
+        canvas_bounds.height,
+      )
+      expect(canvas_clip).toHaveBeenCalled()
       expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
       expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
       const canvas = overlaid.querySelector(`canvas.marker-canvas`)
@@ -207,15 +223,9 @@ describe(`ScatterPlot`, () => {
         point_tween: { duration: 60_000 },
       })
       const clip = scatter_clip_rect(tweened)
-      const transform =
-        tweened.querySelector(`path.marker`)?.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
-      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
+      const { x, y } = marker_coords(tweened)
       expect(
-        Math.hypot(
-          Number(match.groups.x) - (clip.x + clip.width / 2),
-          Number(match.groups.y) - (clip.y + clip.height / 2),
-        ),
+        Math.hypot(x - (clip.x + clip.width / 2), y - (clip.y + clip.height / 2)),
       ).toBeGreaterThan(10)
       expect(tweened.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
 
@@ -265,13 +275,11 @@ describe(`ScatterPlot`, () => {
       })
       await tick()
       const marker = plot.querySelector(`path.marker`)
-      const transform = marker?.parentElement?.getAttribute(`transform`) ?? ``
-      const match = /translate\((?<cx>[-\d.]+) (?<cy>[-\d.]+)\)/.exec(transform)
-      if (!match?.groups) throw new Error(`Could not parse marker transform "${transform}"`)
+      const { x, y } = marker_coords(plot)
       marker?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       const handler_props = on_point_click.mock.calls[0]?.[0]
-      expect(handler_props?.cx).toBeCloseTo(Number(match.groups.cx))
-      expect(handler_props?.cy).toBeCloseTo(Number(match.groups.cy))
+      expect(handler_props?.cx).toBeCloseTo(x)
+      expect(handler_props?.cy).toBeCloseTo(y)
     })
   })
 
@@ -328,6 +336,27 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(expected_markers)
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
+
+  // Auto visibility uses rendered entries after label deduplication and fill-region folding.
+  const labeled_series = (...labels: string[]) => labels.map((label) => ({ ...basic, label }))
+  const fill_region: FillRegion = { lower: 0, upper: 4, fill: `steelblue` }
+  type LegendAutoCase = [string, Partial<ComponentProps<typeof ScatterPlot>>, number]
+  // oxfmt-ignore
+  const legend_auto_cases: LegendAutoCase[] = [
+    [`distinct labels auto-show`, { series: labeled_series(`A`, `B`) }, 2],
+    [`duplicate labels auto-hide`, { series: labeled_series(`Dup`, `Dup`) }, 0],
+    [`explicit true opens one deduped entry`, { series: labeled_series(`Dup`, `Dup`), show_legend: true }, 1],
+    [`labelled fill region counts`, { series: labeled_series(`A`), fill_regions: [{ ...fill_region, label: `Band` }] }, 2],
+    [`unlabelled fill region does not count`, { series: labeled_series(`A`), fill_regions: [fill_region] }, 0],
+  ]
+  test.each(legend_auto_cases)(
+    `legend auto rule: %s`,
+    async (_desc, props, expected_entries) => {
+      const plot = await mount_sized_scatter_plot(props)
+      expect(Boolean(plot.querySelector(`.legend`))).toBe(expected_entries > 0)
+      expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(expected_entries)
+    },
+  )
 
   test(`does not render a colorbar in a zero-sized plot`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)

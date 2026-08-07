@@ -28,7 +28,7 @@
     line_kwargs = {},
     path_mode = `strict`,
     band_type = undefined,
-    show_legend = true,
+    show_legend,
     x_axis = {},
     y_axis = $bindable({}),
     x_positions = $bindable(),
@@ -717,7 +717,7 @@
     legend={Object.keys(band_structs_dict).length > 1 ? {} : null}
     hover_config={{ threshold_px: 50 }}
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
   >
     {#snippet tooltip({ x, y, y_formatted, label, metadata })}

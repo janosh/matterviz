@@ -36,7 +36,7 @@
     children,
     title,
     legend,
-    colorbar,
+    color_bar,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
     panels: readonly FacetPanel<Datum>[]
@@ -51,7 +51,7 @@
     children?: Snippet<[FacetPanelContext<Datum>]>
     title?: Snippet<[FacetSharedBandContext]>
     legend?: Snippet<[FacetSharedBandContext]>
-    colorbar?: Snippet<[FacetSharedBandContext]>
+    color_bar?: Snippet<[FacetSharedBandContext]>
   } = $props()
 
   let [grid_width, grid_height] = $state([0, 0])
@@ -65,7 +65,7 @@
     const require_size = (
       slot: Snippet<[FacetSharedBandContext]> | undefined,
       value: number | undefined,
-      name: `title_height` | `legend_width` | `colorbar_width`,
+      name: `title_height` | `legend_width` | `color_bar_width`,
     ): number | undefined => {
       if (!slot) return undefined
       if (!Number.isFinite(value) || (value ?? 0) <= 0) {
@@ -78,7 +78,11 @@
     return {
       title_height: require_size(title, shared_bands.title_height, `title_height`),
       legend_width: require_size(legend, shared_bands.legend_width, `legend_width`),
-      colorbar_width: require_size(colorbar, shared_bands.colorbar_width, `colorbar_width`),
+      color_bar_width: require_size(
+        color_bar,
+        shared_bands.color_bar_width,
+        `color_bar_width`,
+      ),
       gap: shared_bands.gap,
     }
   })
@@ -123,7 +127,7 @@
         panels: layout.panels.map(({ key }) => ({ key, rect: zero_rect() })),
         ...(title && { title: { band: `title`, rect: zero_rect() } }),
         ...(legend && { legend: { band: `legend`, rect: zero_rect() } }),
-        ...(colorbar && { colorbar: { band: `colorbar`, rect: zero_rect() } }),
+        ...(color_bar && { color_bar: { band: `color_bar`, rect: zero_rect() } }),
       }
     }
     return compute_facet_geometry(layout, {
@@ -360,14 +364,14 @@
     [
       `minmax(0, 1fr)`,
       ...(legend ? [`${active_shared_bands.legend_width}px`] : []),
-      ...(colorbar ? [`${active_shared_bands.colorbar_width}px`] : []),
+      ...(color_bar ? [`${active_shared_bands.color_bar_width}px`] : []),
     ].join(` `),
   )
   const root_rows = $derived(
     title ? `${active_shared_bands.title_height}px minmax(0, 1fr)` : `minmax(0, 1fr)`,
   )
   const content_row = $derived(title ? 2 : 1)
-  const colorbar_column = $derived(legend ? 3 : 2)
+  const color_bar_column = $derived(legend ? 3 : 2)
   const observe_grid_size = (element: HTMLElement) => {
     const update_size = () => {
       grid_width = element.clientWidth
@@ -387,7 +391,7 @@
   style:grid-template-columns={root_columns}
   style:grid-template-rows={root_rows}
   style:row-gap={title ? `${active_shared_bands.gap ?? 0}px` : `0`}
-  style:column-gap={legend || colorbar ? `${active_shared_bands.gap ?? 0}px` : `0`}
+  style:column-gap={legend || color_bar ? `${active_shared_bands.gap ?? 0}px` : `0`}
 >
   {#if title && resolved_geometry.title}
     <div
@@ -433,14 +437,14 @@
       {@render legend(resolved_geometry.legend)}
     </div>
   {/if}
-  {#if colorbar && resolved_geometry.colorbar}
+  {#if color_bar && resolved_geometry.color_bar}
     <div
-      class="facet-grid-colorbar"
-      data-facet-slot="colorbar"
+      class="facet-grid-color-bar"
+      data-facet-slot="color_bar"
       style:grid-row={content_row}
-      style:grid-column={colorbar_column}
+      style:grid-column={color_bar_column}
     >
-      {@render colorbar(resolved_geometry.colorbar)}
+      {@render color_bar(resolved_geometry.color_bar)}
     </div>
   {/if}
 </div>
@@ -465,7 +469,7 @@
   }
   .facet-grid-title,
   .facet-grid-legend,
-  .facet-grid-colorbar {
+  .facet-grid-color-bar {
     min-width: 0;
     min-height: 0;
     overflow: hidden;

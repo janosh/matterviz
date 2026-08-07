@@ -2018,7 +2018,7 @@
     </DraggablePane>
 
     <ScatterPlot3DControls
-      bind:open={controls_open}
+      bind:controls_open
       bind:x_axis
       bind:y_axis
       bind:z_axis

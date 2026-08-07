@@ -1,12 +1,12 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
 import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
-import type { AxisItem } from '$lib/heatmap-matrix'
+import type { AxisItem, LegendPosition } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: readonly string[]): AxisItem[] =>
@@ -562,6 +562,32 @@ describe(`milestone feature props`, () => {
   test(`show_legend renders legend with label`, () => {
     mount_matrix({ show_legend: true, legend_label: `Custom` })
     expect(doc_query(`.legend .label`).textContent).toContain(`Custom`)
+  })
+
+  // HeatmapMatrix binds show_legend/legend_position into its controls pane, so both must
+  // be $bindable - a plain prop drops the checkbox/select writes (and fails to compile).
+  test(`controls pane writes show_legend and legend_position back to the parent`, async () => {
+    const state: { show_legend: boolean; legend_position: LegendPosition } = {
+      show_legend: true,
+      legend_position: `bottom`,
+    }
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: bind_props({ x_items, y_items, show_controls: true, controls_open: true }, state),
+    })
+    await tick()
+    const position_select = Array.from(
+      document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
+    ).find((sel) => sel.querySelector(`option[value="right"]`))
+    if (!position_select) throw new Error(`legend position select not rendered`)
+    position_select.value = `right`
+    position_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+    expect(state.legend_position).toBe(`right`)
+
+    doc_query<HTMLInputElement>(`.heatmap-controls input[type="checkbox"]`).click()
+    flushSync()
+    expect(state.show_legend).toBe(false)
   })
 
   test(`legend_format passes through to format_num`, () => {

@@ -43,7 +43,7 @@
     units = $bindable(`THz`),
     normalize = $bindable(null),
     orientation = `vertical`,
-    show_legend = true,
+    show_legend,
     x_axis = {},
     y_axis = $bindable({}),
     hovered_frequency = $bindable(null),
@@ -438,7 +438,7 @@
       hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
     }}
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted, label })}

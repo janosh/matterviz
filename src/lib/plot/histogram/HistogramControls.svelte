@@ -5,6 +5,7 @@
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
+  import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
 
@@ -13,14 +14,18 @@
     bins = $bindable(DEFAULTS.histogram.bin_count),
     mode = $bindable(DEFAULTS.histogram.mode),
     bar = $bindable({}),
-    show_legend = $bindable(),
+    // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
+    // would collapse it to plain boolean
+    show_legend = $bindable<boolean | undefined>(
+      legend_mode_to_prop(DEFAULTS.histogram.show_legend),
+    ),
     selected_property = $bindable(``),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    show_controls = $bindable(false),
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
     auto_x2_range = undefined,
     auto_y2_range = undefined,
@@ -72,8 +77,9 @@
     current_values={{ bins, mode, show_legend }}
     on_reset={() => {
       ;({ bin_count: bins, mode } = DEFAULTS.histogram)
-      // Keep auto mode (`undefined`) so a one-series plot does not suddenly grow a legend
-      show_legend = undefined
+      // Resets to the configured mode, `auto` (undefined) by default, so a one-series
+      // plot does not suddenly grow a legend
+      show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
     }}
   >
     <div class="pane-row">

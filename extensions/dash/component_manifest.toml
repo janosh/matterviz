@@ -125,3 +125,5 @@ doc = "Radial distribution function (RDF) plot."
 [components.RdfPlot.type_hints]
 show_controls = "bool"
 controls_open = "bool"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"

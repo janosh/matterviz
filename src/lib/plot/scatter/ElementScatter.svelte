@@ -56,7 +56,7 @@
   padding={{ l: 60, r: 10, t: 5, b: 45 }}
   range_padding={0}
   {...rest}
-  {show_controls}
+  bind:show_controls
   bind:controls_open
 >
   {#snippet tooltip({ x, y })}

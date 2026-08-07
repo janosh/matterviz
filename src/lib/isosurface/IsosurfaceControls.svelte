@@ -423,7 +423,7 @@
                   update_layer(layer_idx, {
                     colormap: option as D3InterpolateName,
                   })}
-                colorbar={{
+                color_bar={{
                   bar_style: `height: 8px`,
                   title_style: `width: 4em; font-size: 1em;`,
                 }}

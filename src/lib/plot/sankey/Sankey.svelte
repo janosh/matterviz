@@ -70,7 +70,9 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
-    Omit<BasePlotProps, `change`> & {
+    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
+    // forward them to the wrapper div as invalid DOM attributes.
+    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
       data?: SankeyData<Metadata>
       orientation?: Orientation
       node_width?: number

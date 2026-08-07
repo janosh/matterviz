@@ -150,7 +150,7 @@
 {:else}
   <ScatterPlot
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
     {series}
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}

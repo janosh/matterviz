@@ -90,18 +90,21 @@ describe(`FermiSlice`, () => {
     expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
   })
 
-  // One isoline still needs an explicit show_legend forward — ScatterPlot auto-hides
-  // single-entry legends when only legend={} is passed.
-  test.each([true, false])(`one-band slice show_legend=%s`, async (show_legend) => {
-    // distance=0 sits on a cube face and yields no isolines (empty legend_data hides
-    // the legend even when show_legend=true); 0.05 cuts through the mock box.
+  // FermiSlice forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
+  // oxfmt-ignore
+  test.each([
+    [`auto hides one band`, [0], undefined, false],
+    [`auto shows three bands`, [0, 1, 2], undefined, true],
+    [`true shows one band`, [0], true, true],
+    [`false hides three bands`, [0, 1, 2], false, false],
+  ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
     const plot = await mount_sized(
       FermiSlice,
-      { fermi_data: create_mock_fermi_data([0]), show_legend, distance: 0.05 },
+      { fermi_data: create_mock_fermi_data([...bands]), show_legend, distance: 0.05 },
       { selector: `.fermi-slice` },
     )
     await tick()
-    expect(Boolean(plot.querySelector(`.legend`))).toBe(show_legend)
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

@@ -96,7 +96,7 @@ const plot_cases: PlotCase[] = [
   }),
   histogram_case,
   define_plot_case(`BinnedScatterPlot`, BinnedScatterPlot, `.binned-scatter`, {
-    density: { color_bar: null },
+    color_bar: null,
     render_mode: `points`,
   }),
 ]

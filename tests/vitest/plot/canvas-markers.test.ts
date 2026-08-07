@@ -52,7 +52,7 @@ const batch = (n: number, overrides: Partial<CanvasMarker> = {}) =>
   Array.from({ length: n }, (_, idx) => marker({ cx: idx, cy: idx, ...overrides }))
 
 describe(`draw_markers`, () => {
-  test(`clear/scale/empty, batching, style splits, skips, clip, alpha, none, symbols`, () => {
+  test(`clears and scales the canvas while preserving context state`, () => {
     const hidpi = draw([marker()], { width: 400, height: 300, pixel_ratio: 2 })
     expect(ops(hidpi, `clearRect`)[0].args).toEqual([0, 0, 800, 600])
     expect(ops(hidpi, `scale`)[0].args).toEqual([2, 2])
@@ -62,7 +62,9 @@ describe(`draw_markers`, () => {
       `clearRect`,
       `restore`,
     ])
+  })
 
+  test(`batches opaque markers and splits translucent or changed styles`, () => {
     // Opaque identical styles batch; translucent markers isolate for SVG alpha parity.
     const circles = draw(batch(500, { stroke_width: 0 }))
     expect(ops(circles, `arc`)).toHaveLength(500)
@@ -72,81 +74,86 @@ describe(`draw_markers`, () => {
     expect((ops(squares, `fill`)[0].args[0] as StubPath2D).added).toHaveLength(500)
     const translucent = draw(batch(2, { fill_opacity: 0.5 }))
     expect(ops(translucent, `fill`)).toHaveLength(2)
-    const color_markers = [
-      marker({ fill: `red`, stroke_width: 0 }),
-      marker({ fill: `red`, stroke_width: 0 }),
-      marker({ fill: `blue`, stroke_width: 0 }),
-      marker({ fill: `red`, stroke_width: 0 }),
-    ]
-    const color_ctx = draw(color_markers)
+    const color_ctx = draw(
+      [`red`, `red`, `blue`, `red`].map((fill) => marker({ fill, stroke_width: 0 })),
+    )
     expect(ops(color_ctx, `set:fillStyle`).map((call) => call.args[0])).toEqual([
       `red`,
       `blue`,
       `red`,
     ])
+  })
 
-    for (const bad of [
-      { cx: NaN },
-      { cy: Infinity },
-      { radius: NaN },
-      { radius: Infinity },
-      { radius: 0 },
-      { radius: -2 },
-    ]) {
-      const bad_marker = marker(bad)
-      const bad_marker_ctx = draw([bad_marker])
-      expect(ops(bad_marker_ctx, `arc`)).toHaveLength(0)
-    }
+  test.each([
+    { cx: NaN },
+    { cy: Infinity },
+    { radius: NaN },
+    { radius: Infinity },
+    { radius: 0 },
+    { radius: -2 },
+  ])(`skips invalid marker geometry %#`, (overrides) => {
+    const invalid_ctx = draw([marker(overrides)])
+    expect(ops(invalid_ctx, `arc`)).toHaveLength(0)
+  })
 
+  test(`clips, moves before arcs, and restores between redraws`, () => {
     const clip_ctx = fake_ctx()
+    const markers = [marker({ cx: 5, cy: 6, radius: 2 })]
     for (const clip of [
       { x: 10, y: 20, width: 100, height: 80 },
       { x: 50, y: 60, width: 200, height: 180 },
     ]) {
-      draw_markers(clip_ctx, [marker({ cx: 5, cy: 6, radius: 2 })], {
-        width: 400,
-        height: 300,
-        clip,
-      })
+      draw_markers(clip_ctx, markers, { width: 400, height: 300, clip })
+      expect(clip_ctx.calls.at(-1)?.op).toBe(`restore`)
     }
     expect(ops(clip_ctx, `moveTo`)[0].args).toEqual([7, 6])
     expect(ops(clip_ctx, `rect`).map((call) => call.args)).toEqual([
       [10, 20, 100, 80],
       [50, 60, 200, 180],
     ])
-    expect(clip_ctx.calls.at(-1)?.op).toBe(`restore`)
+  })
 
-    expect(
-      draw([marker({ fill_opacity: 0.5, stroke_opacity: 0.25 })])
-        .calls.filter((call) => [`set:globalAlpha`, `fill`, `stroke`].includes(call.op))
-        .map((call) => (call.op === `set:globalAlpha` ? call.args[0] : call.op)),
-    ).toEqual([0.5, `fill`, 0.25, `stroke`])
-    expect(
-      draw([marker({ opacity: 0.25, fill_opacity: 0.8, stroke_opacity: 0.5 })])
-        .calls.filter((call) => call.op === `set:globalAlpha`)
-        .map((call) => call.args[0])
-        .slice(0, 2),
-    ).toEqual([0.2, 0.125])
+  test(`combines marker and fill or stroke opacity`, () => {
+    const separate_alpha = draw([marker({ fill_opacity: 0.5, stroke_opacity: 0.25 })])
+    const paint_calls = separate_alpha.calls
+      .filter((call) => [`set:globalAlpha`, `fill`, `stroke`].includes(call.op))
+      .map((call) => (call.op === `set:globalAlpha` ? call.args[0] : call.op))
+    expect(paint_calls).toEqual([0.5, `fill`, 0.25, `stroke`])
 
-    const normalized_state = draw([
+    const combined_alpha = draw([
+      marker({ opacity: 0.25, fill_opacity: 0.8, stroke_opacity: 0.5 }),
+    ])
+    const alpha_values = ops(combined_alpha, `set:globalAlpha`)
+      .map((call) => call.args[0])
+      .slice(0, 2)
+    expect(alpha_values).toEqual([0.2, 0.125])
+  })
+
+  test(`normalizes alpha and stroke width before assigning canvas state`, () => {
+    const ctx = draw([
       marker({ fill_opacity: 2, stroke_opacity: 2, stroke_width: 2 }),
       marker({ fill: `blue`, opacity: NaN, stroke_width: Infinity }),
       marker({ fill: `none`, stroke_width: -1 }),
     ])
-    expect(ops(normalized_state, `set:globalAlpha`).map((call) => call.args[0])).toEqual([1, 1])
-    expect(ops(normalized_state, `set:lineWidth`).map((call) => call.args[0])).toEqual([2, 0, 0])
+    expect(ops(ctx, `set:globalAlpha`).map((call) => call.args[0])).toEqual([1, 1])
+    expect(ops(ctx, `set:lineWidth`).map((call) => call.args[0])).toEqual([2, 0, 0])
+  })
 
-    for (const [overrides, n_fill, n_stroke] of [
-      [{ stroke_width: 0 }, 1, 0],
-      [{ fill: `none` }, 0, 1],
-      [{ stroke: `none` }, 1, 0],
-      [{ fill: `none`, stroke: `none` }, 0, 0],
-    ] as const) {
+  test.each([
+    [{ stroke_width: 0 }, 1, 0],
+    [{ fill: `none` }, 0, 1],
+    [{ stroke: `none` }, 1, 0],
+    [{ fill: `none`, stroke: `none` }, 0, 0],
+  ] as const)(
+    `handles absent fill and stroke styles %#`,
+    (overrides, expected_fills, expected_strokes) => {
       const ctx = draw(batch(2, overrides))
-      expect(ops(ctx, `fill`)).toHaveLength(n_fill)
-      expect(ops(ctx, `stroke`)).toHaveLength(n_stroke)
-    }
+      expect(ops(ctx, `fill`)).toHaveLength(expected_fills)
+      expect(ops(ctx, `stroke`)).toHaveLength(expected_strokes)
+    },
+  )
 
+  test(`stamps non-circle symbols with matching area and batches mixed shapes`, () => {
     const stamped = draw([marker({ cx: 30, cy: 40, radius: 4, symbol_type: `Square` })])
     expect(ops(stamped, `arc`)).toHaveLength(0)
     expect([
@@ -157,8 +164,8 @@ describe(`draw_markers`, () => {
     const sized_symbol_ctx = draw([sized_symbol])
     expect(filled_path(sized_symbol_ctx).added).toHaveLength(1)
     for (const radius of [2, 5, 9]) {
-      const outline =
-        filled_path(draw([marker({ radius, symbol_type: `Square` })])).added[0].path.d ?? ``
+      const outline_ctx = draw([marker({ radius, symbol_type: `Square` })])
+      const outline = filled_path(outline_ctx).added[0].path.d ?? ``
       const side = Number(/^M(?<half_side>[-\d.]+)/.exec(outline)?.groups?.half_side)
       expect(Math.abs(side)).toBeCloseTo(Math.sqrt(Math.PI * radius ** 2) / 2, 3)
     }

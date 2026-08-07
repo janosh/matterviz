@@ -111,15 +111,24 @@ describe(`Dos component`, () => {
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
-  // Dos defaults show_legend=true; with one series ScatterPlot's auto rule would hide the
-  // legend unless the wrapper forwards the boolean (legend={} alone is not enough).
-  it.each([true, false])(`one-series DOS show_legend=%s`, async (show_legend) => {
+  // Dos forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
+  // oxfmt-ignore
+  it.each([
+    [`auto hides one`, false, undefined, false],
+    [`auto shows two`, true, undefined, true],
+    [`true shows one`, false, true, true],
+    [`false hides two`, true, false, false],
+  ] as const)(`legend visibility: %s`, async (_desc, multi, show_legend, expected) => {
     const plot = await mount_sized(
       Dos,
-      { doses: phonon_dos, show_legend, show_controls: false },
+      {
+        doses: multi ? { A: phonon_dos, B: electronic_dos } : phonon_dos,
+        show_legend,
+        show_controls: false,
+      },
       { selector: `.scatter` },
     )
-    expect(Boolean(plot.querySelector(`.legend`))).toBe(show_legend)
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
   it(`forwards flat control props and controls_open binding`, async () => {

@@ -142,6 +142,21 @@ describe(`adaptive density utilities`, () => {
     expect(extents.y[1]).toBeCloseTo(y[1], 12)
   })
 
+  it(`expands constant extents when range_padding is zero`, () => {
+    const constant_series = [{ x: [7, 7], y: [3, 3] }]
+    const linear = series_extents(constant_series, `linear`, `linear`, 0)
+    expect(linear).toEqual({ x: [6.5, 7.5], y: [2.5, 3.5] })
+    const density = bin_points(constant_series, linear.x, linear.y, 4, 4)
+    expect(density.visible_count).toBe(2)
+    expect(density.max_count).toBe(2)
+
+    const half_decade = Math.sqrt(10)
+    expect(series_extents(constant_series, `log`, `linear`, 0).x).toEqual([
+      7 / half_decade,
+      7 * half_decade,
+    ])
+  })
+
   it(`computes both extents from the same finite point pairs`, () => {
     expect(series_extents([{ x: [1, 1e9], y: [1, Number.NaN] }])).toEqual({
       x: [0.5, 1.5],

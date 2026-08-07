@@ -161,7 +161,7 @@ the whole story and claiming there was nothing to plot would contradict it -->
 {:else if series.length > 0}
   <ScatterPlot
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
     {series}
     x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}

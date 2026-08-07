@@ -13,4 +13,4 @@
   }: ComponentProps<typeof BoxPlot> = $props()
 </script>
 
-<BoxPlot bind:series bind:kind {...rest} {show_controls} bind:controls_open />
+<BoxPlot bind:series bind:kind {...rest} bind:show_controls bind:controls_open />

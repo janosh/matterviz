@@ -52,7 +52,7 @@
     binned: plot_config(BinnedScatterPlot, {
       x_axis: strain_axis,
       y_axis: energy_axis,
-      density: { color_bar: null },
+      color_bar: null,
     }),
   }
 

@@ -11,7 +11,6 @@
     BoxHandlerProps,
     BoxPlotSeries,
     LegendConfig,
-    LegendItem,
     Orientation,
     PanConfig,
     PlotConfig,
@@ -44,6 +43,7 @@
     solve_decorations,
   } from '$lib/plot/core/decorations'
   import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
+  import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_stats } from '$lib/plot/box/box-plot'
   import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
   import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
@@ -832,14 +832,12 @@
   onDestroy(() => pan_zoom.destroy())
 
   // === Legend ===
-  let legend_data = $derived<LegendItem[]>(
-    series.map((srs, idx) => ({
-      series_idx: idx,
-      label: srs.label ?? `Box ${idx + 1}`,
-      visible: srs.visible ?? true,
-      legend_group: srs.legend_group,
-      display_style: { symbol_type: `Square` as const, symbol_color: box_color(idx) },
-    })),
+  let legend_data = $derived(
+    build_legend_items(
+      series,
+      (_srs, idx) => ({ symbol_type: `Square` as const, symbol_color: box_color(idx) }),
+      { default_label: (idx) => `Box ${idx + 1}` },
+    ),
   )
 
   const legend_vis = create_legend_visibility(

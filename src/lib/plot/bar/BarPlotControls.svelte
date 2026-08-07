@@ -17,7 +17,7 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    show_controls = $bindable(false),
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
     children,
     ...rest

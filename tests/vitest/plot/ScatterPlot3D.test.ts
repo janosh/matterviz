@@ -1,7 +1,9 @@
 import { ScatterPlot3D } from '$lib'
+import { ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { bind_props, expect_plot_controls } from '../setup'
 import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'
 
 // Smoke tests to ensure component mounts without errors.
@@ -185,5 +187,33 @@ describe(`ScatterPlot3D smoke tests`, () => {
     container.querySelector<HTMLButtonElement>(`[data-testid="replace-series"]`)?.click()
     flushSync()
     expect(hidden_states()).toEqual(expected_after_replacement)
+  })
+
+  // The standalone controls component is exported from $lib/plot, so its prop names are
+  // public API: it must speak controls_open/show_controls like every other *Controls
+  // component rather than the generic DraggablePane `open`.
+  test(`standalone controls expose show_controls and a two-way controls_open`, async () => {
+    const controls_state = { controls_open: true }
+    mounted_component = mount(ScatterPlot3DControls, {
+      target: container,
+      props: bind_props(
+        {
+          series: [basic_series],
+          toggle_props: { 'data-testid': `scatter-3d-toggle` },
+          pane_props: { 'data-testid': `scatter-3d-pane` },
+        },
+        controls_state,
+      ),
+    })
+    await tick()
+    await expect_plot_controls(container, controls_state, `scatter-3d`)
+
+    void unmount(mounted_component)
+    mounted_component = mount(ScatterPlot3DControls, {
+      target: container,
+      props: { series: [basic_series], show_controls: false },
+    })
+    await tick()
+    expect(container.querySelector(`.draggable-pane`)).toBeNull()
   })
 })

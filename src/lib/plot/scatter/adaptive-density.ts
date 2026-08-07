@@ -141,7 +141,6 @@ const padded_extent = (
   const t_min = forward(min)
   const t_max = forward(max)
   if (t_min === t_max) {
-    if (range_padding === 0) return [min, max]
     if (log_scale) {
       const center = Math.max(min, LOG_EPS)
       return [Math.max(LOG_EPS, center / Math.sqrt(10)), center * Math.sqrt(10)]

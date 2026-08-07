@@ -3,7 +3,7 @@ import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bind_props, expect_plot_controls } from '../setup'
+import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
   recip_lattice: {
@@ -135,6 +135,32 @@ describe(`Bands component`, () => {
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)
+  })
+
+  // A single structure has legend=null; multiple structures use ScatterPlot's auto rule.
+  // oxfmt-ignore
+  it.each([
+    [`auto hides one`, false, undefined, false],
+    [`auto shows two`, true, undefined, true],
+    [`true cannot beat legend=null`, false, true, false],
+    [`false hides two`, true, false, false],
+  ] as const)(`legend visibility: %s`, async (_desc, multi, show_legend, expected) => {
+    const shifted = {
+      ...base_band_structure,
+      bands: base_band_structure.bands.map((band) => band.map((val) => val + 0.5)),
+    }
+    const plot = await mount_sized(
+      Bands,
+      {
+        band_structs: multi
+          ? { first: base_band_structure, second: shifted }
+          : base_band_structure,
+        show_legend,
+        show_controls: false,
+      },
+      { selector: `.scatter` },
+    )
+    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
   it(`updates phonon y-axis label when units change`, async () => {

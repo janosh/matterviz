@@ -17,7 +17,7 @@ export type FacetAxisVisibilityModes = Partial<Record<FacetAxis, FacetAxisVisibi
 export type FacetAxisVisibility = Record<FacetAxis, boolean>
 export type FacetRangeUpdate = Vec2 | null
 export type FacetRangeUpdateCallback = (axis: FacetAxis, range: FacetRangeUpdate) => void
-export type FacetSharedBand = `title` | `legend` | `colorbar`
+export type FacetSharedBand = `title` | `legend` | `color_bar`
 
 export const DEFAULT_FACET_AXIS_MODES: FacetAxisModes = {
   x: `shared`,
@@ -67,11 +67,11 @@ export interface KeyedFacetAxisRanges {
 }
 
 // Shared chrome occupies deterministic outer tracks around the panel grid. Title is
-// a top band spanning the full grid; legend and colorbar are right-side bands.
+// a top band spanning the full grid; legend and color bar are right-side bands.
 export interface FacetSharedBandSizes {
   title_height?: number
   legend_width?: number
-  colorbar_width?: number
+  color_bar_width?: number
   gap?: number
 }
 
@@ -93,7 +93,7 @@ export interface ResolvedFacetGridGeometry {
   panels: { key: FacetKey; rect: Rect }[]
   title?: FacetSharedBandContext
   legend?: FacetSharedBandContext
-  colorbar?: FacetSharedBandContext
+  color_bar?: FacetSharedBandContext
 }
 
 // Focused child-plot contract. FacetPanelContext extends this shape so a grid snippet can pass
@@ -420,7 +420,7 @@ export function compute_facet_geometry<Datum>(
     shared_bands: {
       title_height = 0,
       legend_width = 0,
-      colorbar_width = 0,
+      color_bar_width = 0,
       gap: shared_band_gap = 0,
     } = {},
   } = geometry
@@ -430,23 +430,23 @@ export function compute_facet_geometry<Datum>(
   assert_finite_non_negative(column_gap, `column_gap`)
   assert_finite_non_negative(title_height, `shared_bands.title_height`)
   assert_finite_non_negative(legend_width, `shared_bands.legend_width`)
-  assert_finite_non_negative(colorbar_width, `shared_bands.colorbar_width`)
+  assert_finite_non_negative(color_bar_width, `shared_bands.color_bar_width`)
   assert_finite_non_negative(shared_band_gap, `shared_bands.gap`)
 
   const has_title = title_height > 0
   const has_legend = legend_width > 0
-  const has_colorbar = colorbar_width > 0
-  const side_band_count = Number(has_legend) + Number(has_colorbar)
+  const has_color_bar = color_bar_width > 0
+  const side_band_count = Number(has_legend) + Number(has_color_bar)
   const title_gap = has_title ? shared_band_gap : 0
   const panel_grid: Rect = {
     x: 0,
     y: title_height + title_gap,
-    width: width - legend_width - colorbar_width - side_band_count * shared_band_gap,
+    width: width - legend_width - color_bar_width - side_band_count * shared_band_gap,
     height: height - title_height - title_gap,
   }
   if (panel_grid.width < 0 || panel_grid.height < 0) {
     throw new RangeError(
-      `Shared facet bands exceed grid size: ${width}x${height} with title ${title_height}, legend ${legend_width}, colorbar ${colorbar_width}, gap ${shared_band_gap}`,
+      `Shared facet bands exceed grid size: ${width}x${height} with title ${title_height}, legend ${legend_width}, color_bar ${color_bar_width}, gap ${shared_band_gap}`,
     )
   }
 
@@ -470,16 +470,16 @@ export function compute_facet_geometry<Datum>(
         },
       },
     }),
-    ...(has_colorbar && {
-      colorbar: {
-        band: `colorbar`,
+    ...(has_color_bar && {
+      color_bar: {
+        band: `color_bar`,
         rect: {
           x:
             panel_grid.width +
             shared_band_gap +
             (has_legend ? legend_width + shared_band_gap : 0),
           y: panel_grid.y,
-          width: colorbar_width,
+          width: color_bar_width,
           height: panel_grid.height,
         },
       },

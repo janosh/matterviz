@@ -107,7 +107,7 @@
 {:else}
   <BarPlot
     {...rest}
-    {show_controls}
+    bind:show_controls
     bind:controls_open
     {series}
     bind:orientation

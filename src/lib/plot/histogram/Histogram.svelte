@@ -23,13 +23,18 @@
   } from '$lib/plot/core/marginals'
   import { AXIS_DEFAULTS, create_axis_loader } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
-  import { extract_series_color, prepare_legend_data } from '$lib/plot/core/data-transform'
+  import {
+    build_legend_items,
+    extract_series_color,
+    series_symbol_swatch,
+  } from '$lib/plot/core/data-transform'
   import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
   import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
   import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
   import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
   import {
     create_legend_visibility,
+    legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
   import {
@@ -107,7 +112,11 @@
     padding = {},
     title,
     bins = $bindable(100),
-    show_legend = $bindable(),
+    // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
+    // would collapse it to plain boolean
+    show_legend = $bindable<boolean | undefined>(
+      legend_mode_to_prop(DEFAULTS.histogram.show_legend),
+    ),
     legend = {},
     bar: bar_init = {},
     selected_property = $bindable(``),
@@ -601,7 +610,7 @@
     }
   })
 
-  let legend_data = $derived(prepare_legend_data(series))
+  let legend_data = $derived(build_legend_items(series, series_symbol_swatch))
 
   // Tweened legend coordinates with shared placement stability gating
   const legend_tween = create_placed_tween({

@@ -18,7 +18,7 @@
   } from '$lib/plot/core/types'
 
   let {
-    show_controls = $bindable(false),
+    show_controls = $bindable(true),
     controls_open = $bindable(false),
     children,
     post_children,
