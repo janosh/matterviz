@@ -163,12 +163,20 @@ const plot_common_prop_keys = [
 ] as const
 
 const plot_common_drive = [...drive_props(plot_common_prop_keys), ...axis_props]
+const plot_controls_drive = drive_props([
+  `show_controls`,
+  `controls_open`,
+  `controls_toggle_props`,
+  `controls_pane_props`,
+])
 
 const scatter_plot_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
-  drive_prop(`show_controls`),
+  ...plot_controls_drive,
   ...drive_props([
     `styles`,
+    `show_legend`,
+    `marker_renderer`,
     `color_scale`,
     `color_bar`,
     `size_scale`,
@@ -184,6 +192,7 @@ const scatter_plot_drive: readonly DrivenProp[] = [
 
 const bar_plot_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
+  ...plot_controls_drive,
   ...drive_props([
     `show_legend`,
     `orientation`,
@@ -198,6 +207,7 @@ const bar_plot_drive: readonly DrivenProp[] = [
 
 const histogram_drive: readonly DrivenProp[] = [
   ...plot_common_drive,
+  ...plot_controls_drive,
   ...drive_props([`show_legend`, `bins`, `mode`, `selected_property`, `bar`]),
 ]
 
@@ -414,7 +424,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: ScatterPlot3D,
     base_drive: style_base_drive,
     drive: [
-      drive_prop(`show_controls`),
+      ...plot_controls_drive,
       ...drive_props([
         `series`,
         `surfaces`,
@@ -425,6 +435,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `z_axis`,
         `display`,
         `styles`,
+        `show_legend`,
         `color_scale`,
         `size_scale`,
         `legend`,
@@ -432,8 +443,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       ]),
     ],
   },
-  bar_plot: { component: BarPlot, drive: bar_plot_drive },
-  histogram: { component: Histogram, drive: histogram_drive },
+  bar_plot: { component: BarPlot, base_drive: style_base_drive, drive: bar_plot_drive },
+  histogram: { component: Histogram, base_drive: style_base_drive, drive: histogram_drive },
   composition: {
     component: Composition,
     base_drive: style_base_drive,
@@ -529,7 +540,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   xrd: {
     component: XrdPlot,
     base_drive: style_base_drive,
-    drive: drive_props([`patterns`, `show_controls`]),
+    drive: [...drive_props([`patterns`]), ...plot_controls_drive],
   },
   periodic_table: {
     component: PeriodicTable,
@@ -550,7 +561,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: RdfPlot,
     base_drive: style_base_drive,
     drive: [
-      drive_prop(`show_controls`),
+      ...plot_controls_drive,
       ...drive_props([
         `patterns`,
         `structures`,

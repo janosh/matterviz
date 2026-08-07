@@ -1,28 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### 💥 Breaking Changes
-
-- `ScatterPlot` / `ScatterPlot3D` / `XrdPlot`: nested `controls={{ show, open, ... }}` → flat `show_controls` / `controls_open` / `controls_*_props`. `ControlsConfig` / `ControlsConfig3D` removed.
-- `Treemap` / `Sunburst`: `colorbar` → `color_bar`, `colorbar_side` → `color_bar_side` (CSS vars unchanged).
-- `show_legend` is unified: `legend={null}` hides; explicit `show_legend` wins; else Cartesian charts auto-show for >1 entry, hierarchy/Sankey stay opt-in. `BoxPlot` now auto-shows multi-series legends; `ScatterPlot` / `ScatterPlot3D` gained `show_legend`.
-- `Histogram.mode` defaults to `overlay`; `ScatterPlot` padding uses `DEFAULT_PLOT_PADDING`; `SankeyOrientation` → `Orientation`.
-
-### 🚀 New Features
-
-- Dense scatter canvas markers (`marker_renderer: 'auto'|'svg'|'canvas'`, auto above 10k). At 20k points: ~3582→85 ms mount, ~60k→184 DOM nodes. Labels / hover / selection stay SVG.
-
-### ⚡️ Performance
-
-- `filter_series_to_ranges` filters before allocating points (~5× full / ~32× zoomed at 100k).
-- Hover uses a shared grid spatial index (~306× at 100k); `BinnedScatterPlot` reuses it.
-- Axis extents accumulate over raw arrays (~4× at 100k). Marginal rugs are one `<path>`; decoration obstacles are stride-sampled before projection.
-
-### 🐛 Bug Fixes
-
-- `compute_count_range` prevents stack overflow when processing more than approximately 125,000 bins.
-
 ## [v0.4.4](https://github.com/janosh/matterviz/compare/v0.4.3...v0.4.4)
 
 > 30 July 2026

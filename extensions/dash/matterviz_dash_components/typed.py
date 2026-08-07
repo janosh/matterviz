@@ -1240,6 +1240,10 @@ class XrdPlot(MatterViz):
         x_axis: Any | None = None,
         y_axis: Any | None = None,
         patterns: list[dict] | None = None,
+        show_controls: bool | None = None,
+        controls_open: bool | None = None,
+        controls_toggle_props: dict | None = None,
+        controls_pane_props: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1279,6 +1283,14 @@ class XrdPlot(MatterViz):
             mv_props["y_axis"] = y_axis
         if patterns is not None:
             mv_props["patterns"] = patterns
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
 
         super().__init__(
             id=id,
@@ -1346,6 +1358,9 @@ class Bands(MatterViz):
         x_axis: Any | None = None,
         x_positions: dict | None = None,
         y_axis: Any | None = None,
+        controls_open: bool | None = None,
+        controls_toggle_props: dict | None = None,
+        controls_pane_props: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1437,6 +1452,12 @@ class Bands(MatterViz):
             mv_props["x_positions"] = x_positions
         if y_axis is not None:
             mv_props["y_axis"] = y_axis
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
 
         super().__init__(
             id=id,
@@ -1503,6 +1524,9 @@ class Dos(MatterViz):
         units: Any | None = None,
         x_axis: Any | None = None,
         y_axis: Any | None = None,
+        controls_open: bool | None = None,
+        controls_toggle_props: dict | None = None,
+        controls_pane_props: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1592,6 +1616,12 @@ class Dos(MatterViz):
             mv_props["x_axis"] = x_axis
         if y_axis is not None:
             mv_props["y_axis"] = y_axis
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
 
         super().__init__(
             id=id,
@@ -1643,6 +1673,10 @@ class ScatterPlot(MatterViz):
         y_axis: Any | None = None,
         height: Any | None = None,
         width: Any | None = None,
+        show_controls: bool | None = None,
+        controls_open: bool | None = None,
+        controls_toggle_props: dict | None = None,
+        controls_pane_props: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1702,6 +1736,14 @@ class ScatterPlot(MatterViz):
             mv_props["height"] = height
         if width is not None:
             mv_props["width"] = width
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
 
         super().__init__(
             id=id,
@@ -1740,6 +1782,10 @@ class Histogram(MatterViz):
         selected_property: str | None = None,
         series: list | None = None,
         show_legend: bool | None = None,
+        show_controls: bool | None = None,
+        controls_open: bool | None = None,
+        controls_toggle_props: dict | None = None,
+        controls_pane_props: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -1773,6 +1819,14 @@ class Histogram(MatterViz):
             mv_props["series"] = series
         if show_legend is not None:
             mv_props["show_legend"] = show_legend
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
+        if controls_open is not None:
+            mv_props["controls_open"] = controls_open
+        if controls_toggle_props is not None:
+            mv_props["controls_toggle_props"] = controls_toggle_props
+        if controls_pane_props is not None:
+            mv_props["controls_pane_props"] = controls_pane_props
 
         super().__init__(
             id=id,
@@ -1796,7 +1850,7 @@ class RdfPlot(MatterViz):
     def __init__(
         self,
         id=None,
-        controls_open: dict | None = None,
+        controls_open: bool | None = None,
         controls_pane_props: dict | None = None,
         controls_toggle_props: dict | None = None,
         cutoff: float | None = None,
@@ -1810,7 +1864,7 @@ class RdfPlot(MatterViz):
         on_file_drop: Any | None = None,
         patterns: list | None = None,
         pbc: Any | None = None,
-        show_controls: dict | None = None,
+        show_controls: bool | None = None,
         show_reference_line: bool | None = None,
         structures: dict | None = None,
         x_axis: dict | None = None,

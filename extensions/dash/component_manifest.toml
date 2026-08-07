@@ -72,10 +72,18 @@ doc = "X-ray diffraction pattern plot."
 # The patterns prop is required but has a complex union type that confuses the parser
 [components.XrdPlot.extra_props]
 patterns = "XrdPattern | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }> | PatternEntry[]"
+show_controls = "boolean"
+controls_open = "boolean"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"
 
 [components.Bands]
 key = "spectral/Bands"
 doc = "Band structure dispersion plot (phonon or electronic)."
+[components.Bands.extra_props]
+controls_open = "boolean"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"
 
 [components.Dos]
 key = "spectral/Dos"
@@ -83,6 +91,10 @@ doc = "Density of states plot (electronic or phonon)."
 # sigma_range is a fixed [min, max] pair (Vec2 in TS)
 [components.Dos.type_hints]
 sigma_range = "tuple[float, float]"
+[components.Dos.extra_props]
+controls_open = "boolean"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"
 
 [components.ScatterPlot]
 key = "plot/scatter/ScatterPlot"
@@ -93,11 +105,23 @@ x_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?:
 y_axis = "{ label?: string; range?: [number | null, number | null]; scale_type?: 'linear' | 'log'; format?: string; ticks?: number | string }?"
 height = "number?"
 width = "number?"
+show_controls = "boolean"
+controls_open = "boolean"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"
 
 [components.Histogram]
 key = "plot/histogram/Histogram"
 doc = "Histogram plot for data distributions."
+[components.Histogram.extra_props]
+show_controls = "boolean"
+controls_open = "boolean"
+controls_toggle_props = "Record<string, unknown>"
+controls_pane_props = "Record<string, unknown>"
 
 [components.RdfPlot]
 key = "rdf/RdfPlot"
 doc = "Radial distribution function (RDF) plot."
+[components.RdfPlot.type_hints]
+show_controls = "bool"
+controls_open = "bool"
