@@ -85,6 +85,23 @@ describe(`BarPlot`, () => {
     },
   )
 
+  test(`rotates vertical bar labels outward`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1], y: [5], labels: [`Material 1`] }],
+      bar: { label_rotation: 90 },
+    })
+    const label = plot.querySelector(`.bar-label`)
+    expect(label).not.toBeNull()
+    expect(label?.getAttribute(`text-anchor`)).toBe(`end`)
+    expect(label?.getAttribute(`transform`)).toBe(
+      `rotate(90, ${label?.getAttribute(`x`)}, ${label?.getAttribute(`y`)})`,
+    )
+    expect(inside_clip_path(label)).toBe(false)
+    expect(plot.querySelector(`path[role="button"]`)?.getAttribute(`clip-path`)).toMatch(
+      /^url\(#chart-clip-/,
+    )
+  })
+
   test.each([
     [`value-axis zero line by default`, [1.1, 1.4, 3.4], undefined, `y`, `vertical`],
     [
@@ -450,10 +467,10 @@ describe(`BarPlot`, () => {
       for (const label of labels) {
         expect(label.getAttribute(`transform`)).toMatch(/^rotate\(-[\d.]+,/)
       }
-      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual([
-        `start`,
-        ...Array(labels.length - 1).fill(`end`),
-      ])
+      // Side padding lets every label trail outward instead of flipping the first into the bars.
+      expect(labels.map((label) => label.getAttribute(`text-anchor`))).toEqual(
+        Array(labels.length).fill(`end`),
+      )
     })
 
     // Horizontal orientation moves the categories onto y, so the left padding has to be
@@ -783,14 +800,17 @@ describe(`BarPlot`, () => {
         orientation,
       })
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
-      plot
-        .querySelector(`.legend-item`)
-        ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      const first_legend_item = plot.querySelector(`.legend-item`)
+      first_legend_item?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      await tick()
+      expect(plot.querySelectorAll(`.bar-series`)[1]?.getAttribute(`opacity`)).toBe(`0.25`)
+      first_legend_item?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
       expect(plot.querySelector(`.legend-item`)?.classList.contains(`hidden`)).toBe(true)
       expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
+      expect(plot.querySelector(`.bar-series`)?.getAttribute(`opacity`)).toBe(`1`)
       plot
         .querySelector(`.legend-item`)
         ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))

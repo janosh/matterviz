@@ -624,14 +624,20 @@ describe(`layout utility functions`, () => {
       }
       const angle = rotation_for(rotate_only, `x2`)
       expect(angle).toBe(-rotation_for(rotate_only, `x`))
+      const x2_axis = slot_axis(crowded, {}, plot_width)
+      const { t, l, r } = pad_for({ x_axis: slot_axis([]), x2_axis })
+      const available_width = 400 - l - r
+      const projected_axis = slot_axis(crowded, {}, available_width)
       const band = resolve_tick_layout(
-        slot_axis(crowded, {}, plot_width),
-        plot_width,
+        {
+          ...projected_axis,
+          tick_positions: projected_axis.tick_positions.map((position) => position + l),
+          axis_extent: { start: 0, end: 400 },
+        },
+        available_width,
         `x2`,
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
-      const x2_axis = slot_axis(crowded, {}, plot_width)
-      const { t } = pad_for({ x_axis: slot_axis([]), x2_axis })
       expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
       expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
     })

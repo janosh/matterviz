@@ -94,6 +94,24 @@ export interface BarAutoRangeOpts<Metadata = Record<string, unknown>> {
   y2_scale_type: ScaleType
 }
 
+const empty_axis_range = (
+  [lower, upper]: [number | null, number | null],
+  scale_type: ScaleType,
+  is_time = false,
+): Vec2 => {
+  if (get_scale_type_name(scale_type) === `log`) {
+    if (lower !== null && lower > 0)
+      return [lower, upper !== null && upper > 0 ? upper : lower * 10]
+    if (upper !== null && upper > 0) return [upper / 10, upper]
+    return [1, 10]
+  }
+  if (lower !== null && upper !== null) return [lower, upper]
+  const span = is_time ? 86_400_000 : 1
+  if (lower !== null) return [lower, lower + span]
+  if (upper !== null) return [upper - span, upper]
+  return [0, 1]
+}
+
 // Compute data-driven axis ranges for all four axes. In stacked mode the value
 // range covers per-x stacked totals (positive and negative stacks separately);
 // for linear/arcsinh scales the value axis is clamped to include 0 when all
@@ -175,7 +193,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       ]
     }
 
-    if (points.length === 0) return [0, 1]
+    if (points.length === 0) return empty_axis_range(y_limit, scale_type)
 
     let computed_y_range = get_nice_data_range(
       points,
@@ -210,7 +228,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     is_time: boolean,
   ): Vec2 => {
     const points = series_list.flatMap(finite_points)
-    if (points.length === 0) return [0, 1]
+    if (points.length === 0) return empty_axis_range(limit, scale_type, is_time)
     const range = get_nice_data_range(
       points,
       (point) => point.x,

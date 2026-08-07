@@ -407,12 +407,6 @@ export const calc_auto_padding = ({
       axis,
       available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH,
     )
-  const horizontal_tick_layout = (
-    axis: MeasuredAxis,
-    available_width: number,
-    side: `x` | `x2`,
-  ) =>
-    resolve_tick_layout(project_measured_axis(axis, 0, available_width), available_width, side)
   // Resolve vertical density against the current drawable height. Explicit top/bottom padding
   // is stable; otherwise the default bands provide a deterministic first pass.
   const initial_plot_height =
@@ -465,6 +459,21 @@ export const calc_auto_padding = ({
       side_pad(y2_axis, y2_title_layout, default_padding.r, `right`, available_height),
   ]
   let [pad_l, pad_r] = vertical_pads(initial_plot_height)
+  // Horizontal labels can use side padding; score endpoints against the full SVG width.
+  const horizontal_tick_layout = (
+    axis: MeasuredAxis,
+    available_width: number,
+    side: `x` | `x2`,
+  ) => {
+    const projected = project_measured_axis(axis, 0, available_width)
+    return resolve_tick_layout(
+      width == null
+        ? projected
+        : { ...projected, axis_extent: { start: -pad_l, end: available_width + pad_r } },
+      available_width,
+      side,
+    )
+  }
 
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []

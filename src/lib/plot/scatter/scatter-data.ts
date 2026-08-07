@@ -145,29 +145,27 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
         ? data_series.point_style[0]
         : data_series?.point_style
 
-      if (series_markers.includes(`points`)) {
-        if (first_point_style) {
-          if (
-            typeof first_point_style.symbol_type === `string` &&
-            symbol_names.includes(first_point_style.symbol_type)
-          ) {
-            display_style.symbol_type = first_point_style.symbol_type
-          }
-          if (first_point_style.fill) display_style.symbol_color = first_point_style.fill
-          // Fall back to stroke when the fill is missing/none/transparent
-          if (
-            first_point_style.stroke &&
-            (!display_style.symbol_color ||
-              display_style.symbol_color === `none` ||
-              display_style.symbol_color.startsWith(`rgba(`, 0))
-          ) {
-            display_style.symbol_color = first_point_style.stroke
-          }
-        }
-      } else {
+      if (!series_markers.includes(`points`)) {
         // No points marker: no symbol swatch in the legend
         display_style.symbol_type = undefined
         display_style.symbol_color = undefined
+      } else if (first_point_style) {
+        if (
+          typeof first_point_style.symbol_type === `string` &&
+          symbol_names.includes(first_point_style.symbol_type)
+        ) {
+          display_style.symbol_type = first_point_style.symbol_type
+        }
+        if (first_point_style.fill) display_style.symbol_color = first_point_style.fill
+        // Fall back to stroke when the fill is missing/none/transparent
+        if (
+          first_point_style.stroke &&
+          (!display_style.symbol_color ||
+            display_style.symbol_color === `none` ||
+            display_style.symbol_color.startsWith(`rgba(`, 0))
+        ) {
+          display_style.symbol_color = first_point_style.stroke
+        }
       }
 
       if (series_markers.includes(`line`)) {

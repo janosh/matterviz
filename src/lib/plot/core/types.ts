@@ -120,6 +120,7 @@ export interface BarStyle {
   border_radius?: number // Shorthand: sets both rx and ry to this value (lower priority than explicit rx/ry)
   rx?: number // SVG rx attribute for horizontal corner radius (overrides border_radius)
   ry?: number // SVG ry attribute for vertical corner radius (overrides border_radius)
+  label_rotation?: number // Bar-label rotation in degrees
   [key: string]: unknown
 }
 

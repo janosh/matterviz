@@ -1248,13 +1248,14 @@
 
       {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-      <!-- Bars and Lines -->
-      <g clip-path="url(#{clip_path_id})">
+      <!-- Lines and bar shapes stay clipped to the plot, while bar labels may use its padding. -->
+      <g>
         {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
           {#if srs?.visible ?? true}
             {@const is_line = srs.render_mode === `line`}
             <g
               class={is_line ? `line-series` : `bar-series`}
+              clip-path={is_line ? `url(#${clip_path_id})` : undefined}
               data-series-idx={series_idx}
               opacity={hovered_legend_series_idx !== null &&
               hovered_legend_series_idx !== series_idx
@@ -1459,6 +1460,7 @@
                       stroke={bar_state.stroke_color}
                       stroke-opacity={bar_state.stroke_opacity}
                       stroke-width={bar_state.stroke_width}
+                      clip-path="url(#{clip_path_id})"
                       role="button"
                       tabindex="0"
                       aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}`}
@@ -1481,11 +1483,25 @@
                       }}
                     />
                     {#if srs.labels?.[bar_idx]}
+                      {@const label_x = is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
+                      {@const label_y = is_vertical
+                        ? Math.max(0, Math.min(v0, v1) - 6)
+                        : (c0 + c1) / 2}
+                      {@const label_rotation = bar_state.label_rotation ?? 0}
                       <text
-                        x={is_vertical ? (c0 + c1) / 2 : Math.max(v0, v1) + 4}
-                        y={is_vertical ? Math.max(0, Math.min(v0, v1) - 6) : (c0 + c1) / 2}
-                        text-anchor={is_vertical ? `middle` : undefined}
+                        x={label_x}
+                        y={label_y}
+                        text-anchor={is_vertical
+                          ? label_rotation > 0
+                            ? `end`
+                            : label_rotation < 0
+                              ? `start`
+                              : `middle`
+                          : undefined}
                         dominant-baseline={is_vertical ? undefined : `central`}
+                        transform={label_rotation
+                          ? `rotate(${label_rotation}, ${label_x}, ${label_y})`
+                          : undefined}
                         class="bar-label"
                       >
                         {srs.labels[bar_idx]}

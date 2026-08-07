@@ -119,10 +119,8 @@
         ...axis,
         tick_values: tick_texts,
         tick_positions,
-        axis_extent: {
-          start: is_x ? pad.l : height - pad.b,
-          end: is_x ? width - pad.r : pad.t,
-        },
+        // Tick labels may use outer padding; constrain their ends to the SVG, not plot area.
+        axis_extent: is_x ? { start: 0, end: width } : { start: height, end: 0 },
         tick_font,
       },
       is_x ? plot_w : plot_h,

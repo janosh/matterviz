@@ -184,6 +184,19 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges([])).toEqual({ x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] })
   })
 
+  test(`empty axes preserve explicit bounds and use scale-valid missing bounds`, () => {
+    const no_finite_points = [bar({ x: [NaN], y: [Infinity] })]
+    expect(
+      auto_ranges(no_finite_points, {
+        x_range: [2, null],
+        x2_range: [null, 20],
+        x2_scale_type: `log`,
+        y_range: [3, 7],
+        y2_scale_type: `log`,
+      }),
+    ).toEqual({ x: [2, 3], x2: [2, 20], y: [3, 7], y2: [1, 10] })
+  })
+
   test(`log scale skips zero-clamping`, () => {
     const linear = auto_ranges([bar({ y: [4, 5] })])
     const log = auto_ranges([bar({ y: [4, 5] })], { y_scale_type: `log` })

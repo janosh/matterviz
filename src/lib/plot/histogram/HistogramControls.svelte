@@ -115,9 +115,8 @@
     <label>
       <input
         type="checkbox"
-        bind:checked={
-          () => show_legend ?? resolved_show_legend, (value) => (show_legend = value)
-        }
+        checked={show_legend ?? resolved_show_legend}
+        onchange={(event) => (show_legend = event.currentTarget.checked)}
       />
       Show legend
     </label>

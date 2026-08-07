@@ -2046,9 +2046,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await checkbox.check()
     await expect(checkbox).toBeChecked()
 
-    // Wait until the placement effect has moved the dense labels out of their initial stack.
+    const expected_dense_label_count = 8
+    // Wait until every dense label has a distinct final placement.
     await page.waitForFunction(
-      () => {
+      (expected_count) => {
         const labels = [
           ...document.querySelectorAll(`#label-auto-placement-test g[data-series-id] text`),
         ].filter((label) => label.textContent?.startsWith(`Dense-`))
@@ -2056,8 +2057,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
           const { x, y } = label.getBoundingClientRect()
           return `${Math.round(x)},${Math.round(y)}`
         })
-        return labels.length > 1 && new Set(positions).size > 1
+        return (
+          labels.length === expected_count &&
+          positions.every(
+            (position, position_idx) => positions.indexOf(position) === position_idx,
+          )
+        )
       },
+      expected_dense_label_count,
       { timeout: 2000 },
     )
 
@@ -2075,18 +2082,58 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const sparse_label_data = label_data.filter((datum) => datum.text?.startsWith(`Sparse-`))
     const dense_label_data = label_data.filter((datum) => datum.text?.startsWith(`Dense-`))
 
-    expect(sparse_label_data.length).toBeGreaterThan(0)
-    expect(dense_label_data.length).toBeGreaterThan(1)
+    expect(sparse_label_data).toHaveLength(4)
+    expect(dense_label_data).toHaveLength(expected_dense_label_count)
 
-    // The placement wait above verifies distinct dense positions; all labels still need
-    // measurable geometry.
-    for (const { bbox } of [...sparse_label_data, ...dense_label_data]) {
+    for (const { text, bbox } of [...sparse_label_data, ...dense_label_data]) {
       expect(bbox).not.toBeNull()
       if (bbox) {
         expect(bbox.width).toBeGreaterThan(0)
         expect(bbox.height).toBeGreaterThan(0)
+      } else {
+        throw new Error(`${text} has no measurable bounding box`)
       }
     }
+
+    const assert_non_overlapping = (labels: typeof label_data): void => {
+      for (const [label_idx, label] of labels.entries()) {
+        const label_box = label.bbox
+        if (!label_box) throw new Error(`${label.text} has no measurable bounding box`)
+        for (const other_label of labels.slice(label_idx + 1)) {
+          const other_box = other_label.bbox
+          if (!other_box) {
+            throw new Error(`${other_label.text} has no measurable bounding box`)
+          }
+          const overlaps =
+            label_box.x < other_box.x + other_box.width &&
+            label_box.x + label_box.width > other_box.x &&
+            label_box.y < other_box.y + other_box.height &&
+            label_box.y + label_box.height > other_box.y
+          expect(overlaps, `${label.text} overlaps ${other_label.text}`).toBe(false)
+        }
+      }
+    }
+    assert_non_overlapping(sparse_label_data)
+    assert_non_overlapping(dense_label_data)
+
+    const sparse_box = (text: string) => {
+      const bbox = sparse_label_data.find((datum) => datum.text === text)?.bbox
+      if (!bbox) throw new Error(`${text} has no measurable bounding box`)
+      return bbox
+    }
+    const [sparse_tl, sparse_tr, sparse_bl, sparse_br] = [
+      sparse_box(`Sparse-TL`),
+      sparse_box(`Sparse-TR`),
+      sparse_box(`Sparse-BL`),
+      sparse_box(`Sparse-BR`),
+    ]
+    // Sparse labels remain in the same left/right and low/high data ordering as their markers.
+    expect(
+      Math.max(sparse_tl.x + sparse_tl.width, sparse_bl.x + sparse_bl.width),
+    ).toBeLessThan(Math.min(sparse_tr.x, sparse_br.x))
+    expect(
+      Math.max(sparse_bl.y + sparse_bl.height, sparse_br.y + sparse_br.height),
+    ).toBeLessThan(Math.min(sparse_tl.y, sparse_tr.y))
   })
 
   // PAN FUNCTIONALITY TESTS

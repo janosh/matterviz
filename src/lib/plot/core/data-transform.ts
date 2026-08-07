@@ -56,10 +56,11 @@ export function build_legend_items<Series extends LegendSeries>(
 export const series_symbol_swatch = (
   series_data: DataSeries,
 ): { symbol_type: D3SymbolName; symbol_color: string } => ({
-  // Prefer the series' symbol when present, falling back to settings
-  symbol_type: !Array.isArray(series_data.point_style)
-    ? (series_data.point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type)
-    : DEFAULTS.scatter.symbol_type,
+  // Prefer the series' symbol when present, falling back to settings. Per-point style
+  // arrays have no single symbol to show, so they always take the default.
+  symbol_type:
+    (Array.isArray(series_data.point_style) ? null : series_data.point_style?.symbol_type) ??
+    DEFAULTS.scatter.symbol_type,
   symbol_color: extract_series_color(series_data),
 })
 

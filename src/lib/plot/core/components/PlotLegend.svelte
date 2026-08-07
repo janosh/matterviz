@@ -222,6 +222,7 @@
     fill_action: typeof on_fill_toggle,
     series_action: (series_idx: number) => void,
   ): void => {
+    on_item_hover?.(null)
     if (
       item.item_type === `fill` &&
       fill_action &&

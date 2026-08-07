@@ -591,6 +591,7 @@ export const make_wyckoff_dataset = (
 // ResizeObserver mock: report a useful initial size and allow tests to trigger later
 // measurements after changing an observed element's dimensions.
 const resize_observers: TestResizeObserver[] = []
+export const get_resize_observer_count = (): number => resize_observers.length
 class TestResizeObserver implements ResizeObserver {
   readonly observed_elements: Element[] = []
   constructor(private readonly callback: ResizeObserverCallback) {
@@ -603,6 +604,7 @@ class TestResizeObserver implements ResizeObserver {
     )
   }
   observe(element: Element): void {
+    if (!resize_observers.includes(this)) resize_observers.push(this)
     if (!this.observed_elements.includes(element)) this.observed_elements.push(element)
     queueMicrotask(() => {
       if (this.observed_elements.includes(element)) this.notify(element, 800, 600)
@@ -614,6 +616,8 @@ class TestResizeObserver implements ResizeObserver {
   }
   disconnect(): void {
     this.observed_elements.length = 0
+    const observer_idx = resize_observers.indexOf(this)
+    if (observer_idx !== -1) resize_observers.splice(observer_idx, 1)
   }
 }
 export const trigger_resize_observer = (element: Element): void => {
