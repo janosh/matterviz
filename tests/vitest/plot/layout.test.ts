@@ -303,11 +303,24 @@ describe(`layout utility functions`, () => {
     it(`preserves short inputs, thins evenly, keeps endpoints`, () => {
       const short = [0, 1, 2]
       expect(stride_sample(short, 10)).toBe(short)
-      expect(stride_sample(Array.from({ length: 10 }, (_, idx) => idx), 10)).toHaveLength(10)
-      expect(stride_sample(Array.from({ length: 1000 }, (_, idx) => idx), 10)).toHaveLength(10)
-      expect(stride_sample(Array.from({ length: 100 }, (_, idx) => idx), 5)).toEqual([
-        0, 25, 50, 74, 99,
-      ])
+      expect(
+        stride_sample(
+          Array.from({ length: 10 }, (_, idx) => idx),
+          10,
+        ),
+      ).toHaveLength(10)
+      expect(
+        stride_sample(
+          Array.from({ length: 1000 }, (_, idx) => idx),
+          10,
+        ),
+      ).toHaveLength(10)
+      expect(
+        stride_sample(
+          Array.from({ length: 100 }, (_, idx) => idx),
+          5,
+        ),
+      ).toEqual([0, 25, 50, 74, 99])
     })
   })
 

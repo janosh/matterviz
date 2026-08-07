@@ -870,7 +870,8 @@
   // Reserve y2 padding only when the secondary axis has a value it can render.
   let has_y2_series = $derived(
     plot_series.some(
-      ({ y, y_axis, visible }) => y_axis === `y2` && visible && y.some(Number.isFinite),
+      ({ y, y_axis: axis_name, visible }) =>
+        axis_name === `y2` && visible && y.some(Number.isFinite),
     ),
   )
   // Report the current step to consumers after explicit slider, input, or plot navigation.

@@ -302,15 +302,11 @@ describe(`scales`, () => {
               [-5, null],
             ] as [number | null, number | null][]) {
               const args = [limits, scale_type, padding] as const
-              expect(
-                nice_range_from_extent(accumulate_extent(empty_extent(), values), ...args),
-              ).toEqual(
-                get_nice_data_range(
-                  values.map((x) => ({ x, y: 0 })),
-                  (point) => point.x,
-                  ...args,
-                ),
-              )
+              const accumulated = accumulate_extent(empty_extent(), values)
+              const extent_range = nice_range_from_extent(accumulated, ...args)
+              const points = values.map((x) => ({ x, y: 0 }))
+              const data_range = get_nice_data_range(points, (point) => point.x, ...args)
+              expect(extent_range).toEqual(data_range)
             }
           }
         }

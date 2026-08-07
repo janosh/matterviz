@@ -85,10 +85,10 @@ describe(`filter_series_to_ranges`, () => {
 
   test(`rejects NaN range bounds; tolerates holes in series/y`, () => {
     expect(
-      filter_series_to_ranges(
-        [{ x: [-1, 1], y: [2, 2], markers: `points` }],
-        { ...ranges, x: [0, NaN] },
-      ),
+      filter_series_to_ranges([{ x: [-1, 1], y: [2, 2], markers: `points` }], {
+        ...ranges,
+        x: [0, NaN],
+      }),
     ).toEqual([])
     const result = filter_series_to_ranges(
       [undefined, { x: [1, 2, 3], y: [4] }] as unknown as DataSeries[],

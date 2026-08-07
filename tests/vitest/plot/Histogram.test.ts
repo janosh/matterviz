@@ -84,7 +84,7 @@ const count_range = (
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
 
-  test(`DOM integration: count domain, axes, legend, and touch`, async () => {
+  test(`count domains and log interactions`, async () => {
     const assert_y_max = async (props: Record<string, unknown>, lo: number, hi: number) => {
       const ticks = await y_ticks_after(props)
       expect(ticks.length).toBeGreaterThan(0)
@@ -169,7 +169,9 @@ describe(`Histogram`, () => {
     expect(pan_ticks.length).toBeGreaterThan(0)
     expect(Math.min(...pan_ticks)).toBeGreaterThan(100)
     expect(Math.max(...pan_ticks) / Math.min(...pan_ticks)).toBeGreaterThanOrEqual(10)
+  })
 
+  test(`series indices, secondary axes, titles, and padding`, async () => {
     const repeated = { x: [], y: [0, 1, 2], label: `Repeated` }
     for (const [props, expected_indices] of [
       [
@@ -289,7 +291,9 @@ describe(`Histogram`, () => {
       },
       [0, 1, 2, 3, 4, 5],
     )
+  })
 
+  test(`touch gestures keep finite axis ranges`, async () => {
     // oxfmt-ignore
     for (const events of [
       [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]],
@@ -306,7 +310,9 @@ describe(`Histogram`, () => {
       expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
       expect(get_tick_numbers(`y`)).toEqual(ticks_before.y)
     }
+  })
 
+  test(`legend visibility, placement, and layout`, async () => {
     const multi_series = [
       { x: [], y: [1, 2, 3], label: `A` },
       { x: [], y: [2, 3, 4], label: `B` },
