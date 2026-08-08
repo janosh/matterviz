@@ -28,6 +28,13 @@ const mount_controls = async (
   await tick()
   return target
 }
+const mount_bound_controls = (
+  state: Record<string, unknown>,
+  props: ComponentProps<typeof StructureControls> = {},
+): Promise<HTMLElement> =>
+  mount_controls(
+    bind_props({ structure: simple_structure, controls_open: true, ...props }, state),
+  )
 const set_input = (input: HTMLInputElement, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -106,32 +113,24 @@ describe(`StructureControls layout`, () => {
     ).toBe(false)
   })
 
-  test(`uses labelled settings grids throughout the pane`, async () => {
-    const target = await mount_controls({
-      structure: simple_structure,
-      controls_open: true,
-      scene_props: {
-        show_bonds: `always`,
-        show_polyhedra: `always`,
-        show_site_labels: true,
-      },
-      displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
-    })
-
-    expect_labelled_settings_grid(target)
-    expect(
-      target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
-    ).toBeGreaterThan(20)
-  })
-
-  test(`derives structure slider metadata from the settings schema`, async () => {
+  test(`uses labelled grids and schema-backed sliders`, async () => {
     const stream = trail_stream()
     const target = await mount_controls({
       structure: simple_structure,
       controls_open: true,
       show_trajectory_lines: true,
-      scene_props: { trajectory_position_stream: stream },
+      scene_props: {
+        show_bonds: `always`,
+        show_polyhedra: `always`,
+        show_site_labels: true,
+        trajectory_position_stream: stream,
+      },
+      displacement_summary: { rmsd: 0.1, max_displacement: 0.2, error: null },
     })
+    expect_labelled_settings_grid(target)
+    expect(
+      target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
+    ).toBeGreaterThan(20)
 
     const expect_slider = (
       label_text: string,
@@ -161,22 +160,7 @@ describe(`StructureControls layout`, () => {
   })
 })
 
-type PersistedControlsState = {
-  scene_props: NonNullable<ComponentProps<typeof StructureControls>['scene_props']>
-  lattice_props: NonNullable<ComponentProps<typeof StructureControls>['lattice_props']>
-  color_scheme: string
-  background_color: string | undefined
-  background_opacity: number
-  show_image_atoms: boolean
-  show_trajectory_lines: boolean
-  supercell_scaling: string
-  multi_view: boolean
-}
-
-const mount_persisted_controls = async (): Promise<{
-  target: HTMLElement
-  state: PersistedControlsState
-}> => {
+const mount_persisted_controls = async () => {
   save_structure_view_state(
     create_structure_view_state({
       scene_props: {
@@ -193,7 +177,7 @@ const mount_persisted_controls = async (): Promise<{
       multi_view: true,
     }),
   )
-  const state = $state<PersistedControlsState>({
+  const state = $state({
     scene_props: { ...DEFAULTS.structure },
     lattice_props: {
       cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
@@ -211,12 +195,7 @@ const mount_persisted_controls = async (): Promise<{
     supercell_scaling: `1x1x1`,
     multi_view: false,
   })
-  const target = await mount_controls(
-    bind_props(
-      { structure: simple_structure, controls_open: true, persist_settings: true },
-      state,
-    ),
-  )
+  const target = await mount_bound_controls(state, { persist_settings: true })
   return { target, state }
 }
 
@@ -257,6 +236,17 @@ describe(`StructureControls reactive props`, () => {
         viewer: { controls_pane_size: { width: 520, height: 610 } },
       }),
     )
+  })
+
+  // Nothing else may change alongside it: comparing against the mount baseline rather than the
+  // last save would leave 1.6 on disk, and a second moving part would mask that by making the
+  // serialized state differ from the baseline anyway.
+  test(`re-saves a setting driven away from and back to its restored value`, async () => {
+    const { state } = await mount_persisted_controls()
+    state.scene_props.atom_radius = 1.6
+    await vi.waitFor(() =>
+      expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.6),
+    )
 
     state.scene_props.atom_radius = 1.35
     await vi.waitFor(() =>
@@ -288,12 +278,7 @@ describe(`StructureControls reactive props`, () => {
       create_structure_view_state({ scene_props: { atom_radius: 1.5 } }),
     )
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
-    await mount_controls(
-      bind_props(
-        { structure: simple_structure, controls_open: true, persist_settings: false },
-        state,
-      ),
-    )
+    await mount_bound_controls(state, { persist_settings: false })
 
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     state.scene_props.atom_radius = 2
@@ -303,12 +288,7 @@ describe(`StructureControls reactive props`, () => {
 
   test(`copies and imports viewer settings through the visible actions`, async () => {
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
-    const target = await mount_controls(
-      bind_props(
-        { structure: simple_structure, controls_open: true, persist_settings: false },
-        state,
-      ),
-    )
+    const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
     target
       .querySelector<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`)
@@ -340,12 +320,7 @@ describe(`StructureControls reactive props`, () => {
     ],
   ])(`import rejects %s and leaves settings untouched`, async (_label, payload, status) => {
     const state = $state({ scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 } })
-    const target = await mount_controls(
-      bind_props(
-        { structure: simple_structure, controls_open: true, persist_settings: false },
-        state,
-      ),
-    )
+    const target = await mount_bound_controls(state, { persist_settings: false })
     await import_settings_file(target, payload, status)
     expect(target.querySelector(`small.settings-import-status[role="alert"]`)).not.toBeNull()
     expect(state.scene_props.atom_radius).toBe(1.4)
@@ -356,9 +331,7 @@ describe(`StructureControls reactive props`, () => {
       atom_color_config: { mode: `coordination`, scale_type: `continuous` },
     })
 
-    const target = await mount_controls(
-      bind_props({ structure: simple_structure, controls_open: true }, state),
-    )
+    const target = await mount_bound_controls(state)
 
     expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
     expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
@@ -376,9 +349,7 @@ describe(`StructureControls reactive props`, () => {
         scale_type: DEFAULTS.structure.atom_color_scale_type,
       },
     })
-    const target = await mount_controls(
-      bind_props({ structure: simple_structure, controls_open: true }, state),
-    )
+    const target = await mount_bound_controls(state)
 
     state.atom_color_config.mode = `wyckoff`
     await tick()
@@ -413,9 +384,7 @@ describe(`StructureControls reactive props`, () => {
       },
     })
 
-    const target = await mount_controls(
-      bind_props({ structure: simple_structure, controls_open: true }, state),
-    )
+    const target = await mount_bound_controls(state)
     // mounting the pane reads those strings, it does not rewrite them
     expect(state.scene_props.site_label_color).toBe(`#111111`)
     expect(state.scene_props.site_label_bg_color).toBe(bg_color)
@@ -468,7 +437,7 @@ describe(`StructureControls reactive props`, () => {
         scale_type: `continuous` as const,
       },
     })
-    await mount_controls(bind_props({ structure, controls_open: true }, state))
+    await mount_bound_controls(state, { structure })
 
     // The native property dropdown performs this same nested mutation through bind:value.
     state.atom_color_config.property_key = CNA_TYPE_PROPERTY
@@ -489,13 +458,8 @@ describe(`StructureControls reactive props`, () => {
       },
     })
 
-    const target = await mount_controls(
-      bind_props(
-        // nothing rendered yet (e.g. O blocked by CN cap), but O is force-included
-        { structure: simple_structure, controls_open: true, polyhedra_rendered_elements: [] },
-        state,
-      ),
-    )
+    // nothing rendered yet (e.g. O blocked by CN cap), but O is force-included
+    const target = await mount_bound_controls(state, { polyhedra_rendered_elements: [] })
 
     const center_checkbox = (symbol: string) =>
       [...target.querySelectorAll(`label`)]
@@ -523,9 +487,7 @@ describe(`StructureControls reactive props`, () => {
     ])
     const state = $state({ scene_props: { show_polyhedra: `crystals` as const } })
 
-    const target = await mount_controls(
-      bind_props({ structure: fe_oxide, controls_open: true }, state),
-    )
+    const target = await mount_bound_controls(state, { structure: fe_oxide })
 
     const center_label = (symbol: string) =>
       [...target.querySelectorAll(`label`)].find(
@@ -553,18 +515,14 @@ describe(`StructureControls reactive props`, () => {
     }
     // every key defined at its default, so the mount-time snapshot the reset offer compares
     // against isn't perturbed by `bind:` writing back into an undefined prop
-    const state = $state({ scene_props: { ...DEFAULTS.structure } })
+    const state = $state({
+      scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 },
+    })
 
-    const target = await mount_controls(
-      bind_props(
-        {
-          structure: vector_structure,
-          controls_open: true,
-          displacement_summary: { rmsd: 0.12, max_displacement: 0.34, error: null },
-        },
-        state,
-      ),
-    )
+    const target = await mount_bound_controls(state, {
+      structure: vector_structure,
+      displacement_summary: { rmsd: 0.12, max_displacement: 0.34, error: null },
+    })
     const vector_defaults = default_vector_configs([`force`, `magmom`])
     state.scene_props.vector_configs = vector_defaults
     await tick()
@@ -574,6 +532,7 @@ describe(`StructureControls reactive props`, () => {
         `button[aria-label="Reset ${section} to defaults"]`,
       )
     // nothing differs from the mount-time snapshot yet, so no section offers a reset
+    expect(reset_button(`atoms`)).toBeNull()
     expect(reset_button(`displacement overlay`)).toBeNull()
     expect(reset_button(`polyhedra`)).toBeNull()
     expect(reset_button(`site vectors`)).toBeNull()
@@ -586,6 +545,7 @@ describe(`StructureControls reactive props`, () => {
     set_input(force_scale, `2.5`)
 
     state.scene_props.displacement_arrow_color = `#123456`
+    state.scene_props.atom_radius = 2.2
     state.scene_props.polyhedra_excluded_elements = [`O`]
     await tick()
     const force_config = state.scene_props.vector_configs?.force
@@ -603,14 +563,15 @@ describe(`StructureControls reactive props`, () => {
       scale: 2.5,
     })
 
-    reset_button(`displacement overlay`)?.click()
-    reset_button(`polyhedra`)?.click()
-    reset_button(`site vectors`)?.click()
+    for (const section of [`displacement overlay`, `atoms`, `polyhedra`, `site vectors`]) {
+      reset_button(section)?.click()
+    }
     await tick()
 
     expect(state.scene_props.displacement_arrow_color).toBe(
       DEFAULTS.structure.displacement_arrow_color,
     )
+    expect(state.scene_props.atom_radius).toBe(1.4)
     expect(state.scene_props.polyhedra_excluded_elements).toEqual([])
     expect(state.scene_props.vector_configs?.force?.scale).toBeNull()
   })
@@ -627,36 +588,13 @@ describe(`StructureControls reactive props`, () => {
       structure: structure_with_vector(`force`),
       scene_props: { ...DEFAULTS.structure },
     })
-    const target = await mount_controls(
-      bind_props({ controls_open: true, persist_settings: false }, state),
-    )
+    const target = await mount_bound_controls(state, { persist_settings: false })
 
     state.structure = structure_with_vector(`magmom`)
     await tick()
     expect(
       target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
     ).toBeNull()
-  })
-
-  test(`section reset restores mount-time values, not shipped defaults`, async () => {
-    const state = $state({ scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 } })
-    const target = await mount_controls(
-      bind_props(
-        { structure: simple_structure, controls_open: true, persist_settings: false },
-        state,
-      ),
-    )
-    const reset_button = (section: string) =>
-      target.querySelector<HTMLButtonElement>(
-        `button[aria-label="Reset ${section} to defaults"]`,
-      )
-
-    expect(reset_button(`atoms`)).toBeNull()
-    state.scene_props.atom_radius = 2.2
-    await tick()
-    reset_button(`atoms`)?.click()
-    await tick()
-    expect(state.scene_props.atom_radius).toBe(1.4)
   })
 
   test.each<[string, TrajectoryPositionStream | null | undefined, boolean, boolean, boolean]>([
@@ -671,9 +609,7 @@ describe(`StructureControls reactive props`, () => {
         show_trajectory_lines: show_trails,
         scene_props: { trajectory_position_stream: stream },
       })
-      const target = await mount_controls(
-        bind_props({ structure: simple_structure, controls_open: true }, state),
-      )
+      const target = await mount_bound_controls(state)
 
       const has_toggle = [...target.querySelectorAll(`label`)].some((label) =>
         label.textContent?.includes(`Show trajectory trails`),

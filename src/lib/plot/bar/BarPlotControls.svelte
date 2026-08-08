@@ -42,10 +42,7 @@
   <SettingsSection
     title="Layout"
     current_values={{ orientation, mode }}
-    on_reset={() => {
-      orientation = initial_layout.orientation
-      mode = initial_layout.mode
-    }}
+    on_reset={() => ({ orientation, mode } = initial_layout)}
     layout="grid"
   >
     <label>

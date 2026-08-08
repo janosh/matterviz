@@ -20,8 +20,7 @@
   const input_id = `settings-search-input-${search_id}`
   const status_id = `settings-search-status-${search_id}`
   let match_count = $state(0)
-  let filtering = $derived(query.trim().length > 0)
-  let no_matches = $derived(filtering && match_count === 0)
+  let no_matches = $derived(query.trim().length > 0 && match_count === 0)
 
   // Rows opt into per-row reset with `data-key`, but a setting must not be unreachable by search
   // just because nothing resets it individually, so plain section rows count too.

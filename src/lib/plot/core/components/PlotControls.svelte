@@ -60,14 +60,11 @@
     (axis === `y` && DEFAULTS.plot.show_y_zero_line)
   const grid_default = (axis: AxisKey): boolean =>
     axis !== `x2` && DEFAULTS.scatter.display[`${axis}_grid`]
-  const zero_line_value = (axis: AxisKey): boolean =>
-    display[`${axis}_zero_line`] ?? zero_line_default(axis)
-  const grid_value = (axis: AxisKey): boolean => display[`${axis}_grid`] ?? grid_default(axis)
   const display_values = (): Record<string, boolean> =>
     Object.fromEntries(
       all_axes.flatMap((axis) => [
-        [`${axis}_zero_line`, zero_line_value(axis)],
-        [`${axis}_grid`, grid_value(axis)],
+        [`${axis}_zero_line`, display[`${axis}_zero_line`] ?? zero_line_default(axis)],
+        [`${axis}_grid`, display[`${axis}_grid`] ?? grid_default(axis)],
       ]),
     )
   const display_reset_values = untrack(display_values)
@@ -197,6 +194,32 @@
   })
 </script>
 
+{#snippet axis_checks(
+  label: string,
+  key: `zero_line` | `grid`,
+  fallback: (axis: AxisKey) => boolean,
+  visible: (axis: AxisKey) => boolean = () => true,
+)}
+  {@const axes = visible_axes.filter(([axis]) => visible(axis))}
+  {#if axes.length}
+    <div class="setting control-group" data-label={label.toLowerCase()}>
+      <span>{label}</span>
+      <span class="control-options">
+        {#each axes as [axis, axis_label] (axis)}
+          <label>
+            <input
+              type="checkbox"
+              checked={display[`${axis}_${key}`] ?? fallback(axis)}
+              onchange={(event) => (display[`${axis}_${key}`] = event.currentTarget.checked)}
+            />
+            {axis_label}
+          </label>
+        {/each}
+      </span>
+    </div>
+  {/if}
+{/snippet}
+
 {#if show_controls}
   <ControlPane
     bind:controls_open
@@ -214,41 +237,13 @@
       on_reset={() => (display = { ...display, ...display_reset_values })}
       layout="grid"
     >
-      {#if all_axes.some((axis) => includes_zero[axis])}
-        <div class="setting control-group" data-label="zero line">
-          <span>Zero line</span>
-          <span class="control-options">
-            {#each visible_axes as [axis, label] (axis)}
-              {#if includes_zero[axis]}
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={zero_line_value(axis)}
-                    onchange={(event) =>
-                      (display[`${axis}_zero_line`] = event.currentTarget.checked)}
-                  />
-                  {label}
-                </label>
-              {/if}
-            {/each}
-          </span>
-        </div>
-      {/if}
-      <div class="setting control-group" data-label="grid">
-        <span>Grid</span>
-        <span class="control-options">
-          {#each visible_axes as [axis, label] (axis)}
-            <label>
-              <input
-                type="checkbox"
-                checked={grid_value(axis)}
-                onchange={(event) => (display[`${axis}_grid`] = event.currentTarget.checked)}
-              />
-              {label}
-            </label>
-          {/each}
-        </span>
-      </div>
+      {@render axis_checks(
+        `Zero line`,
+        `zero_line`,
+        zero_line_default,
+        (axis) => includes_zero[axis],
+      )}
+      {@render axis_checks(`Grid`, `grid`, grid_default)}
     </SettingsSection>
 
     <SettingsGroup title="Axes" open>

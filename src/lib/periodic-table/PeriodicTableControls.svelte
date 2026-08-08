@@ -69,29 +69,7 @@
     tooltip_line_height = $bindable(defaults.tooltip_line_height),
     tooltip_text_align = $bindable(defaults.tooltip_text_align),
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    // Appearance control values
-    tile_gap?: string
-    symbol_font_size?: number
-    number_font_size?: number
-    name_font_size?: number
-    value_font_size?: number
-    tooltip_font_size?: number
-    tooltip_bg_color?: string
-    tile_border_radius?: number
-    inner_transition_offset?: number
-    tile_font_color?: string
-    // Additional Element Tile controls
-    tile_transition_duration?: number
-    hover_border_width?: number
-    symbol_font_weight?: number
-    number_font_weight?: number
-    // Additional Tooltip controls
-    tooltip_border_radius?: number
-    tooltip_padding?: string
-    tooltip_line_height?: number
-    tooltip_text_align?: string
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> & Partial<typeof defaults> = $props()
 
   // Apply CSS custom properties to document root
   $effect(() => {
@@ -144,7 +122,12 @@
     tooltip_line_height: (value) => (tooltip_line_height = value),
     tooltip_text_align: (value) => (tooltip_text_align = value),
   } satisfies { [Key in ControlKey]: (value: (typeof defaults)[Key]) => void }
-  const reset_control = (key: string, reference_value: unknown): void => {
+  const reset_control = (
+    key: string,
+    reference_value: unknown,
+    reference_present: boolean,
+  ): void => {
+    if (!reference_present) throw new Error(`Missing reset value for fixed control ${key}`)
     control_setters[key as ControlKey]?.(reference_value as never)
   }
   const reset_category_color = (

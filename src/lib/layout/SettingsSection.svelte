@@ -112,16 +112,11 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
   // Key presence is independent of value: additions/removals count even when the
   // value is undefined. Only compare values when both sides own the key.
   let changed_keys = $derived(
-    [
-      ...new SvelteSet([...Object.keys(reference_values), ...Object.keys(current_values)]),
-    ].filter((key) => {
-      const in_reference = Object.hasOwn(reference_values, key)
-      const in_current = Object.hasOwn(current_values, key)
-      return (
-        in_reference !== in_current ||
-        !setting_equal(reference_values[key], current_values[key])
-      )
-    }),
+    Object.keys({ ...reference_values, ...current_values }).filter(
+      (key) =>
+        Object.hasOwn(reference_values, key) !== Object.hasOwn(current_values, key) ||
+        !setting_equal(reference_values[key], current_values[key]),
+    ),
   )
   let has_changes = $derived(changed_keys.length > 0)
   let has_descriptions = $state(false)

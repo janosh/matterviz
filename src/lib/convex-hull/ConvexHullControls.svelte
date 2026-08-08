@@ -175,6 +175,26 @@
           [`rotation_y`, `θ`, `Horizontal rotation (left/right)`, 0.1, 2],
         ],
   )
+  let point_toggles = $derived([
+    {
+      active: show_stable,
+      marker: `stable`,
+      label: `Stable${merged_controls.show_counts ? ` (${stable_entries.length})` : ``}`,
+      tip: `Toggle visibility of stable points`,
+      toggle: () => (show_stable = !show_stable),
+    },
+    {
+      active: show_unstable,
+      marker: `unstable`,
+      label: `Above hull${
+        merged_controls.show_counts
+          ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
+          : ``
+      }`,
+      tip: `Toggle visibility of above-hull points`,
+      toggle: () => (show_unstable = !show_unstable),
+    },
+  ])
 
   // One mutually exclusive toggle button per option
   type ToggleOption = readonly [text: string, tip: string, active: boolean, select: () => void]
@@ -280,36 +300,20 @@
       <div class="setting">
         <span class="control-label">Points</span>
         <div class="legend-items-container">
-          <div
-            class="legend-item {show_stable ? `active` : `inactive`}"
-            onclick={() => (show_stable = !show_stable)}
-            onkeydown={legend_keydown(() => (show_stable = !show_stable))}
-            role="button"
-            tabindex="0"
-            aria-pressed={show_stable}
-            {@attach tooltip({ content: `Toggle visibility of stable points` })}
-          >
-            <div class="marker stable"></div>
-            <span
-              >Stable{merged_controls.show_counts ? ` (${stable_entries.length})` : ``}</span
+          {#each point_toggles as { active, marker, label, tip, toggle } (marker)}
+            <div
+              class="legend-item {active ? `active` : `inactive`}"
+              onclick={toggle}
+              onkeydown={legend_keydown(toggle)}
+              role="button"
+              tabindex="0"
+              aria-pressed={active}
+              {@attach tooltip({ content: tip })}
             >
-          </div>
-          <div
-            class="legend-item {show_unstable ? `active` : `inactive`}"
-            onclick={() => (show_unstable = !show_unstable)}
-            onkeydown={legend_keydown(() => (show_unstable = !show_unstable))}
-            role="button"
-            tabindex="0"
-            aria-pressed={show_unstable}
-            {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
-          >
-            <div class="marker unstable"></div>
-            <span
-              >Above hull{merged_controls.show_counts
-                ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
-                : ``}</span
-            >
-          </div>
+              <div class="marker {marker}"></div>
+              <span>{label}</span>
+            </div>
+          {/each}
         </div>
       </div>
     {:else}
@@ -378,19 +382,11 @@
         <span class="control-label">Labels</span>
         <div style="display: flex; gap: 12px; flex: 1">
           <label {@attach tooltip({ content: `Show labels for stable points` })}>
-            <input
-              type="checkbox"
-              checked={show_stable_labels}
-              oninput={(evt) => (show_stable_labels = evt.currentTarget.checked)}
-            />
+            <input type="checkbox" bind:checked={show_stable_labels} />
             <span>Stable</span>
           </label>
           <label {@attach tooltip({ content: `Show labels for unstable points` })}>
-            <input
-              type="checkbox"
-              checked={show_unstable_labels}
-              oninput={(evt) => (show_unstable_labels = evt.currentTarget.checked)}
-            />
+            <input type="checkbox" bind:checked={show_unstable_labels} />
             <span>Unstable</span>
           </label>
         </div>

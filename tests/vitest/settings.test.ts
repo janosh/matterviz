@@ -258,15 +258,10 @@ describe(`Structure viewer state serialization`, () => {
 
     expect(save_structure_view_state(create_structure_view_state())).toBe(true)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
-  })
 
-  // backs "Reset all" in the controls pane: the next load must not resurrect the old settings
-  test(`clearing drops persisted state`, () => {
-    save_structure_view_state(
-      create_structure_view_state({ scene_props: { atom_radius: 1.5 } }),
-    )
+    // backs "Reset all" in the controls pane: the next load must not resurrect old settings
+    save_structure_view_state(customized)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).not.toBeNull()
-
     expect(clear_structure_view_state()).toBe(true)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
     expect(load_structure_view_state()).toBeNull()

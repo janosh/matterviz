@@ -16,15 +16,33 @@ const click = async (selector: string, root: ParentNode = document): Promise<voi
   button.click()
   await tick()
 }
-const restore_key = (
-  values: SettingValues,
-  key: string,
-  value: unknown,
-  present: boolean,
-): SettingValues =>
-  present
-    ? { ...values, [key]: value }
-    : Object.fromEntries(Object.entries(values).filter(([entry_key]) => entry_key !== key))
+const atoms = snippet(`
+  <div>
+    <label data-key="radius"><span>Radius</span><input></label>
+    <label data-key="palette"><span>Palette</span><select></select></label>
+    <label data-key="temporary"><span>Temporary</span><input></label>
+  </div>
+`)
+const mount_atoms = (
+  initial: SettingValues,
+  reset_calls: [string, unknown, boolean][] = [],
+): SettingValues => {
+  const current_values = $state<SettingValues>({ ...initial })
+  mount(SettingsSection, {
+    target: document.body,
+    props: {
+      title: `Atoms`,
+      current_values,
+      children: atoms,
+      on_reset_key: (key: string, value: unknown, present: boolean) => {
+        reset_calls.push([key, value, present])
+        if (present) current_values[key] = value
+        else Reflect.deleteProperty(current_values, key)
+      },
+    },
+  })
+  return current_values
+}
 
 describe(`SettingsSection`, () => {
   test(`renders content with unique aria-labelledby targets`, () => {
@@ -150,32 +168,11 @@ describe(`SettingsSection`, () => {
     },
   ])(`resets $name to its mounted state`, async (test_case) => {
     const { initial, change, key, reference_value, reference_present } = test_case
-    let current_values = $state<SettingValues>({ ...initial })
-    const read_current_values = (): SettingValues => current_values
     const reset_calls: [string, unknown, boolean][] = []
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Atoms`,
-        get current_values() {
-          return current_values
-        },
-        children: snippet(`
-          <div>
-            <label data-key="radius"><span>Radius</span><input></label>
-            <label data-key="palette"><span>Palette</span><select></select></label>
-            <label data-key="temporary"><span>Temporary</span><input></label>
-          </div>
-        `),
-        on_reset_key: (reset_key: string, value: unknown, present: boolean) => {
-          reset_calls.push([reset_key, value, present])
-          current_values = restore_key(current_values, reset_key, value, present)
-        },
-      },
-    })
+    const current_values = mount_atoms(initial, reset_calls)
 
     flushSync(() => {
-      current_values = { ...current_values, ...change }
+      Object.assign(current_values, change)
     })
     await tick()
     const reset_buttons = document.querySelectorAll(`.setting-reset-button`)
@@ -187,35 +184,17 @@ describe(`SettingsSection`, () => {
     await click(`[data-key="${key}"] .setting-reset-button`)
 
     expect(reset_calls).toEqual([[key, reference_value, reference_present]])
-    expect(Object.hasOwn(read_current_values(), key)).toBe(reference_present)
-    if (reference_present) expect(read_current_values()[key]).toEqual(reference_value)
+    expect(Object.hasOwn(current_values, key)).toBe(reference_present)
+    if (reference_present) expect(current_values[key]).toEqual(reference_value)
     expect(document.querySelector(`.setting-reset-button`)).toBeNull()
     expect(document.querySelector(`.reset-button`)).toBeNull()
   })
 
   test(`section reset without on_reset replays on_reset_key until nothing is changed`, async () => {
-    let current_values = $state<SettingValues>({ radius: 1, palette: `warm` })
-    const read_current_values = (): SettingValues => current_values
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Atoms`,
-        get current_values() {
-          return current_values
-        },
-        children: snippet(`
-          <div>
-            <label data-key="radius"><span>Radius</span><input></label>
-            <label data-key="palette"><span>Palette</span><select></select></label>
-          </div>
-        `),
-        on_reset_key: (key: string, value: unknown, present: boolean) =>
-          (current_values = restore_key(current_values, key, value, present)),
-      },
-    })
+    const current_values = mount_atoms({ radius: 1, palette: `warm` })
 
     flushSync(() => {
-      current_values = { radius: 5, palette: `cool`, extra: true }
+      Object.assign(current_values, { radius: 5, palette: `cool`, extra: true })
     })
     await tick()
     // `extra` has no row of its own, so only the two rendered rows get a per-row button
@@ -225,7 +204,7 @@ describe(`SettingsSection`, () => {
     // has_changes drives both indicators, so the section button clearing itself is the invariant
     expect(document.querySelector(`.reset-button`)).toBeNull()
     expect(document.querySelector(`.setting-reset-button`)).toBeNull()
-    expect(read_current_values()).toEqual({ radius: 1, palette: `warm` })
+    expect(current_values).toEqual({ radius: 1, palette: `warm` })
   })
 
   test(`names unlabelled row controls and leaves author-named ones alone`, async () => {
@@ -261,20 +240,22 @@ describe(`SettingsSection`, () => {
     ])
   })
 
-  test(`reveals mapped row descriptions with an accessible section toggle`, async () => {
+  test(`reveals row descriptions and ignores metadata without a row`, async () => {
     mount(SettingsSection, {
       target: document.body,
       props: {
         title: `Pointer sensitivity`,
-        current_values: { rotate_speed: 1, rotation_damping: 0.1 },
+        current_values: { rotate_speed: 1, rotation_damping: 0.1, radius: 1 },
         setting_metadata: {
           rotate_speed: { description: `Pointer rotation speed` },
           rotation_damping: { description: `Motion inertia after releasing the pointer` },
+          unrelated: `Not rendered here`,
         },
         children: snippet(`
           <div>
             <label data-key="rotate_speed"><span>Rotate speed</span><input></label>
             <label data-key="rotation_damping"><span>Damping</span><input></label>
+            <label data-key="radius" data-description="Radius of rendered atoms"><span>Radius</span><input></label>
           </div>
         `),
       },
@@ -296,42 +277,29 @@ describe(`SettingsSection`, () => {
       [...document.querySelectorAll(`.settings-row-description`)].map(
         (description) => description.textContent,
       ),
-    ).toEqual([`Pointer rotation speed`, `Motion inertia after releasing the pointer`])
+    ).toEqual([
+      `Pointer rotation speed`,
+      `Motion inertia after releasing the pointer`,
+      `Radius of rendered atoms`,
+    ])
 
     await click(`.description-toggle`)
     expect(document.querySelectorAll(`.settings-row-description`)).toHaveLength(0)
-  })
-
-  test(`reveals caller-supplied row descriptions`, async () => {
+    const unrelated_target = document.createElement(`div`)
+    document.body.append(unrelated_target)
     mount(SettingsSection, {
-      target: document.body,
+      target: unrelated_target,
       props: {
-        title: `Atoms`,
-        setting_metadata: {},
-        children: snippet(
-          `<label data-key="radius" data-description="Radius of rendered atoms"><span>Radius</span><input></label>`,
-        ),
-      },
-    })
-    await tick()
-
-    expect(document.querySelector(`.description-toggle`)).not.toBeNull()
-  })
-
-  test(`only offers descriptions mapped to rows in this section`, async () => {
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Atoms`,
-        current_values: { radius: 1 },
+        title: `Unrelated metadata`,
+        current_values: { diameter: 1 },
         setting_metadata: { unrelated: `Not rendered here` },
-        children: snippet(`<label data-key="radius"><span>Radius</span><input></label>`),
+        children: snippet(`<label data-key="diameter"><span>Diameter</span><input></label>`),
       },
     })
     await tick()
     // Prove the connected row was enhanced before checking that unrelated metadata is ignored.
-    expect(element(`input`).getAttribute(`data-auto-label`)).toBe(`Radius`)
-    expect(document.querySelector(`.description-toggle`)).toBeNull()
+    expect(element(`input`, unrelated_target).getAttribute(`data-auto-label`)).toBe(`Diameter`)
+    expect(unrelated_target.querySelector(`.description-toggle`)).toBeNull()
   })
 
   const rerender_row = (): HTMLElement => element(`[data-generation]`)

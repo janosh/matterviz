@@ -40,16 +40,6 @@ describe(`PeriodicTable`, () => {
     expect(Array.from(element_tile.classList)).not.toContain(`active`)
   })
 
-  test(`category color input focus updates the selected category`, () => {
-    mount(PeriodicTableControls, { target: document.body })
-    const input = doc_query<HTMLInputElement>(`.category-colors input[type="color"]`)
-    input.focus()
-    expect(selected.category).toBe(input.closest(`label`)?.dataset.key)
-
-    input.blur()
-    expect(selected.category).toBeNull()
-  })
-
   test(`row and section resets restore shipped periodic-table defaults`, async () => {
     const category = `noble gas`
     const mounted_category_color = `#123456`
@@ -71,6 +61,10 @@ describe(`PeriodicTable`, () => {
     const category_input = doc_query<HTMLInputElement>(
       `[data-key="${category}"] input[type="color"]`,
     )
+    category_input.focus()
+    expect(selected.category).toBe(category)
+    category_input.blur()
+    expect(selected.category).toBeNull()
     set_input(number_input(`tile_border_radius`), 5)
     set_input(number_input(`hover_border_width`), 3)
     set_input(category_input, `#654321`)

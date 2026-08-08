@@ -24,7 +24,7 @@ export type StructureViewState = {
   }
 }
 
-export type StructureViewStateSource = {
+type StructureViewStateSource = {
   scene_props?: object
   lattice_props?: object
   color_scheme?: unknown
@@ -38,7 +38,7 @@ export type StructureViewStateSource = {
   controls_pane_size?: unknown
 }
 
-export type StructureViewStateParseResult =
+type StructureViewStateParseResult =
   | { state: StructureViewState; error?: never }
   | { state?: never; error: string }
 
@@ -88,10 +88,7 @@ const valid_array = (value: unknown, setting: SettingType<readonly unknown[]>): 
   )
 }
 
-export const validate_setting_value = <Value>(
-  value: unknown,
-  setting: SettingType<Value>,
-): Value => {
+const validate_setting_value = <Value>(value: unknown, setting: SettingType<Value>): Value => {
   const fallback = clone_value(setting.value)
   if (setting.enum) {
     return typeof value === `string` && Object.hasOwn(setting.enum, value)
@@ -202,7 +199,7 @@ export const create_structure_view_state = (
 ): StructureViewState =>
   build_view_state(source, source, (key) => structure_setting_source(key, source))
 
-export const validate_structure_view_state = (value: unknown): StructureViewState | null => {
+const validate_structure_view_state = (value: unknown): StructureViewState | null => {
   if (!is_record(value) || value.version !== STRUCTURE_VIEW_STATE_VERSION) return null
   const settings = is_record(value.settings) ? value.settings : {}
   const structure = is_record(settings.structure) ? settings.structure : {}

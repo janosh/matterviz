@@ -134,17 +134,11 @@
   untrack(sync_bindable_defaults)
   $effect(() => sync_bindable_defaults(available_bands_changed(available_bands_key)))
 
-  function toggle_band(band_idx: number) {
-    if (!selected_bands) {
-      selected_bands = [band_idx]
-      return
-    }
-    const idx = selected_bands.indexOf(band_idx)
-    if (idx !== -1) {
-      selected_bands = selected_bands.filter((band) => band !== band_idx)
-    } else {
-      selected_bands = [...selected_bands, band_idx].toSorted((a, b) => a - b)
-    }
+  function toggle_band(band_idx: number): void {
+    const bands = selected_bands ?? []
+    selected_bands = bands.includes(band_idx)
+      ? bands.filter((band) => band !== band_idx)
+      : [...bands, band_idx].toSorted((left, right) => left - right)
   }
 
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {

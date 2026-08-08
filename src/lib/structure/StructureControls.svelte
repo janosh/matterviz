@@ -60,7 +60,7 @@
   import type { CellType } from '$lib/symmetry'
   import { to_error } from '$lib/utils'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import type { ComponentProps } from 'svelte'
+  import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { SvelteSet } from 'svelte/reactivity'
   import { Icon, MultiSelect as Select } from 'svelte-widgets'
@@ -198,9 +198,9 @@
     }
   }
 
-  const restore_view_state = (): StructureViewState | null =>
-    persist_settings ? load_structure_view_state() : null
-  const restored_view_state = restore_view_state()
+  const restored_view_state = untrack(() =>
+    persist_settings ? load_structure_view_state() : null,
+  )
   if (restored_view_state) apply_view_state(restored_view_state)
 
   let current_view_state = $derived(

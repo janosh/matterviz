@@ -65,17 +65,9 @@
     return [min_val - padding, max_val + padding]
   }
 
-  // flatMap already creates new array, no need to spread
-  let all_x_values = $derived(series.flatMap((srs) => srs.x))
-  let all_y_values = $derived(series.flatMap((srs) => srs.y))
-  let all_z_values = $derived(series.flatMap((srs) => srs.z))
-
-  let auto_x_range = $derived(calc_auto_range(all_x_values))
-  let auto_y_range = $derived(calc_auto_range(all_y_values))
-  let auto_z_range = $derived(calc_auto_range(all_z_values))
-
-  type InputControlEvent = Event & { currentTarget: HTMLInputElement }
-  const get_input_value = (event: InputControlEvent) => event.currentTarget.value
+  let auto_x_range = $derived(calc_auto_range(series.flatMap((srs) => srs.x)))
+  let auto_y_range = $derived(calc_auto_range(series.flatMap((srs) => srs.y)))
+  let auto_z_range = $derived(calc_auto_range(series.flatMap((srs) => srs.z)))
 
   const set_display = (key: `projection_opacity` | `projection_scale`) => (val?: number) => {
     // Guard against cleared/invalid input - preserve existing value
@@ -94,18 +86,21 @@
   // Round to 4 decimal places for display
   const round4 = (val: number) => Math.round(val * 1e4) / 1e4
 
-  // Helper for axis label updates
-  const update_axis_label =
-    <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
-    (event: InputControlEvent) => {
-      setter({ ...axis, label: get_input_value(event) })
-    }
-
   type AxisEntry = {
     name: string
     axis: AxisConfig3D
     auto_range: Vec2
     set: (val: AxisConfig3D) => void
+  }
+  const set_axis_range = (
+    { axis, auto_range, set }: AxisEntry,
+    bound: 0 | 1,
+    value: number,
+  ): void => {
+    if (!Number.isFinite(value)) return
+    const range: Vec2 = [axis.range?.[0] ?? auto_range[0], axis.range?.[1] ?? auto_range[1]]
+    range[bound] = value
+    set({ ...axis, range })
   }
   const axes = $derived<AxisEntry[]>([
     { name: `X`, axis: x_axis, auto_range: auto_x_range, set: (val) => (x_axis = val) },
@@ -242,14 +237,15 @@
       }}
       layout="grid"
     >
-      {#each axes as { name, axis, auto_range, set } (name)}
+      {#each axes as entry (entry.name)}
+        {@const { name, axis, auto_range, set } = entry}
         <div class="setting">
           <span>{name}</span>
           <div class="axis-inputs">
             <input
               type="text"
               value={axis.label}
-              oninput={update_axis_label(axis, set)}
+              oninput={(event) => set({ ...axis, label: event.currentTarget.value })}
               placeholder="{name} label"
               aria-label="{name} label"
               class="axis-label-input"
@@ -258,11 +254,7 @@
               type="number"
               step="any"
               value={round4(axis.range?.[0] ?? auto_range[0])}
-              oninput={(event) => {
-                const val = parseFloat(event.currentTarget.value)
-                if (Number.isNaN(val)) return
-                set({ ...axis, range: [val, axis.range?.[1] ?? auto_range[1]] })
-              }}
+              oninput={(event) => set_axis_range(entry, 0, event.currentTarget.valueAsNumber)}
               aria-label="{name} min"
               class="axis-range-input"
             />
@@ -271,11 +263,7 @@
               type="number"
               step="any"
               value={round4(axis.range?.[1] ?? auto_range[1])}
-              oninput={(event) => {
-                const val = parseFloat(event.currentTarget.value)
-                if (Number.isNaN(val)) return
-                set({ ...axis, range: [axis.range?.[0] ?? auto_range[0], val] })
-              }}
+              oninput={(event) => set_axis_range(entry, 1, event.currentTarget.valueAsNumber)}
               aria-label="{name} max"
               class="axis-range-input"
             />
