@@ -92,30 +92,16 @@ export const expect_labelled_settings_grid = (
 ): void => {
   const sections = [...root.querySelectorAll(section_selector)]
   expect(sections.length).toBeGreaterThan(0)
-  let row_count = 0
-  for (const section of sections) {
-    const section_title =
-      section.previousElementSibling?.textContent?.replaceAll(/\s+/g, ` `).trim() ??
-      section.getAttribute(`aria-label`) ??
-      `untitled`
-    expect(
-      section.classList.contains(`grid`),
-      `Settings section "${section_title}" should use grid layout`,
-    ).toBe(true)
-    const rows = [...section.querySelectorAll(row_selector)]
-    row_count += rows.length
-    for (const row of rows) {
-      const row_text =
-        row.textContent?.replaceAll(/\s+/g, ` `).trim() ??
-        row.getAttribute(`data-key`) ??
-        `untitled`
-      expect(
-        row.firstElementChild?.tagName,
-        `Settings row "${row_text}" in section "${section_title}" should start with a span`,
-      ).toBe(`SPAN`)
-    }
-  }
-  expect(row_count).toBeGreaterThan(0)
+  expect(
+    sections.every((section) => section.classList.contains(`grid`)),
+    `All settings sections should use grid layout`,
+  ).toBe(true)
+  const rows = sections.flatMap((section) => [...section.querySelectorAll(row_selector)])
+  expect(rows.length).toBeGreaterThan(0)
+  expect(
+    rows.every((row) => row.firstElementChild?.tagName === `SPAN`),
+    `Every settings row should start with a span`,
+  ).toBe(true)
 }
 
 // Extract the rotation pivot-y from an axis label's nearest rotated SVG ancestor.

@@ -97,23 +97,16 @@ describe(`PhaseDiagramControls`, () => {
     expect(visibility_grid?.innerHTML.includes(`Special pts`)).toBe(expected)
   })
 
-  test.each([
-    [`Boundaries`, true],
-    [`Labels`, true],
-    [`Grid`, true],
-    [`Comp. labels`, true],
-  ])(`checkbox "%s" defaults to %s`, (label_text, expected_value) => {
+  test(`visibility checkboxes default to enabled`, () => {
     const target = mount_controls()
-    const checkboxes = target.querySelectorAll(`input[type="checkbox"]`)
-    expect(checkboxes.length).toBeGreaterThan(0)
-
-    const checkbox = Array.from(checkboxes).find((cb) => {
-      const label = cb.closest(`label`)
-      return label?.textContent?.includes(label_text)
-    }) as HTMLInputElement | undefined
-
-    expect(checkbox, `checkbox "${label_text}" not found`).toBeDefined()
-    expect(checkbox?.checked).toBe(expected_value)
+    const checkboxes = [...target.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)]
+    for (const label_text of [`Boundaries`, `Labels`, `Grid`, `Comp. labels`]) {
+      const checkbox = checkboxes.find((input) =>
+        input.closest(`label`)?.textContent?.includes(label_text),
+      )
+      expect(checkbox, `checkbox "${label_text}" not found`).toBeDefined()
+      expect(checkbox?.checked).toBe(true)
+    }
   })
 
   test(`renders with custom config values`, () => {
@@ -124,7 +117,6 @@ describe(`PhaseDiagramControls`, () => {
       },
     })
 
-    // The font size input should have the custom value
     const font_size_input = target.querySelector<HTMLInputElement>(
       `input[type="number"][min="8"][max="20"]`,
     )
@@ -142,14 +134,9 @@ describe(`PhaseDiagramControls`, () => {
     expect(readout.style.opacity).toBe(`0.8`)
   })
 
-  test(`uses component names from data in title`, () => {
-    const target = mount_controls({ data: sample_data })
-    expect(target.innerHTML).toContain(`Cu-Ni`)
-  })
-
-  test(`shows generic title when no data provided`, () => {
-    const target = mount_controls()
-    expect(target.innerHTML).toContain(`Phase diagram controls`)
+  test(`renders component-specific and generic titles`, () => {
+    expect(mount_controls({ data: sample_data }).innerHTML).toContain(`Cu-Ni`)
+    expect(mount_controls().innerHTML).toContain(`Phase diagram controls`)
   })
 
   test(`hides pane content when controls_open is false`, () => {

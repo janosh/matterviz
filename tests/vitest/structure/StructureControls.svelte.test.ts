@@ -40,8 +40,7 @@ const set_input = (input: HTMLInputElement, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
-// Most rows carry no stable selector, so they are addressed by their visible label text.
-const find_label = (root: ParentNode, text: string, { exact = false } = {}) =>
+const find_label = (root: ParentNode, text: string, exact = false) =>
   [...root.querySelectorAll(`label`)].find((label) =>
     exact ? label.textContent?.trim() === text : label.textContent?.includes(text),
   )
@@ -57,16 +56,13 @@ const import_settings_file = async (
   const input = doc_query<HTMLInputElement>(`input[aria-label="Import viewer settings JSON"]`)
   const file = new File([], name)
   Object.defineProperty(file, `text`, { value: () => Promise.resolve(contents) })
-  Object.defineProperty(input, `files`, {
-    configurable: true,
-    value: [file],
-  })
+  Object.defineProperty(input, `files`, { configurable: true, value: [file] })
   input.dispatchEvent(new Event(`change`, { bubbles: true }))
-  await vi.waitFor(() =>
-    expect(target.querySelector(`small.settings-import-status`)?.textContent ?? ``).toMatch(
+  await vi.waitFor(() => {
+    expect(target.querySelector(`small.settings-import-status`)?.textContent).toMatch(
       expect_status,
-    ),
-  )
+    )
+  })
 }
 type AtomColorConfigProps = NonNullable<
   ComponentProps<typeof StructureControls>['atom_color_config']
@@ -136,11 +132,13 @@ describe(`StructureControls layout`, () => {
       target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
     ).toBeGreaterThan(20)
 
-    const expect_slider = (
-      label_text: string,
-      setting: keyof typeof SETTINGS_CONFIG.structure,
-      overrides: { max?: number; step?: number } = {},
-    ) => {
+    const sliders = [
+      [`Radius`, `atom_radius`, undefined, 0.05],
+      [`Auto-rotate speed`, `auto_rotate`, undefined, 0.01],
+      [`Trail length`, `trajectory_line_trail_frames`, stream.n_frames, undefined],
+      [`Frame stride`, `trajectory_line_frame_stride`, undefined, undefined],
+    ] as const
+    for (const [label_text, setting, max, step] of sliders) {
       const config = SETTINGS_CONFIG.structure[setting]
       const label = find_label(target, label_text)
       if (!label) throw new Error(`${label_text} slider is missing`)
@@ -148,17 +146,12 @@ describe(`StructureControls layout`, () => {
       expect(inputs).toHaveLength(2)
       for (const input of inputs) {
         expect(input.min).toBe(`${config.minimum}`)
-        expect(input.max).toBe(`${overrides.max ?? config.maximum}`)
-        const expected_step = overrides.step ?? config.multipleOf
+        expect(input.max).toBe(`${max ?? config.maximum}`)
+        const expected_step = step ?? config.multipleOf
         if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
       }
       expect(label.dataset.originalTitle).toBe(config.description)
     }
-
-    expect_slider(`Radius`, `atom_radius`, { step: 0.05 })
-    expect_slider(`Auto-rotate speed`, `auto_rotate`, { step: 0.01 })
-    expect_slider(`Trail length`, `trajectory_line_trail_frames`, { max: stream.n_frames })
-    expect_slider(`Frame stride`, `trajectory_line_frame_stride`)
   })
 })
 
@@ -293,9 +286,7 @@ describe(`StructureControls reactive props`, () => {
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
     const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
-    target
-      .querySelector<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`)
-      ?.click()
+    doc_query<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`).click()
     const copied = vi.mocked(navigator.clipboard.writeText).mock.lastCall?.[0]
     expect(JSON.parse(copied ?? `{}`)).toMatchObject({
       version: 1,
@@ -358,11 +349,7 @@ describe(`StructureControls reactive props`, () => {
     await tick()
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
 
-    const reset = target.querySelector<HTMLButtonElement>(
-      `[data-key="atom_color_mode"] .setting-reset-button`,
-    )
-    expect(reset).not.toBeNull()
-    reset?.click()
+    doc_query<HTMLButtonElement>(`[data-key="atom_color_mode"] .setting-reset-button`).click()
     await tick()
 
     expect(state.atom_color_config).toMatchObject({
@@ -464,7 +451,7 @@ describe(`StructureControls reactive props`, () => {
     const target = await mount_bound_controls(state, { polyhedra_rendered_elements: [] })
 
     const center_checkbox = (symbol: string) =>
-      find_label(target, symbol, { exact: true })?.querySelector<HTMLInputElement>(
+      find_label(target, symbol, true)?.querySelector<HTMLInputElement>(
         `input[type="checkbox"]`,
       )
 
@@ -491,7 +478,7 @@ describe(`StructureControls reactive props`, () => {
 
     const target = await mount_bound_controls(state, { structure: fe_oxide })
 
-    const center_label = (symbol: string) => find_label(target, symbol, { exact: true })
+    const center_label = (symbol: string) => find_label(target, symbol, true)
 
     expect(center_label(`Fe`)).toBeDefined()
     // no split-character artifacts from string iteration

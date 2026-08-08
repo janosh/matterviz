@@ -41,7 +41,6 @@
     const set_hidden = (element: HTMLElement, hide: boolean): void => {
       element.toggleAttribute(search_hidden_attr, hide)
     }
-    const caller_visible = (row: HTMLElement): boolean => !row.closest(`[hidden]`)
 
     const restore_visibility = (): void => {
       for (const element of root.querySelectorAll(`[${search_hidden_attr}]`)) {
@@ -74,9 +73,7 @@
         container_titles.set(container, copy.textContent ?? ``)
       }
       for (const section of sections) record_title(section, section.previousElementSibling)
-      for (const group of groups) {
-        record_title(group, group.querySelector(`:scope > summary`))
-      }
+      for (const group of groups) record_title(group, group.querySelector(`:scope > summary`))
       const row_contexts = [...root.querySelectorAll<HTMLElement>(row_selector)]
         .filter(
           (row) =>
@@ -88,7 +85,7 @@
           section: row.closest<HTMLElement>(`section.settings-section`),
           group: row.closest<HTMLDetailsElement>(`details.settings-group`),
         }))
-      const directly_matched_rows = new SvelteSet<HTMLElement>()
+      const directly_matched_rows: HTMLElement[] = []
       for (const { row, section, group } of row_contexts) {
         const searchable_text = [
           row.getAttribute(`data-label`),
@@ -100,28 +97,17 @@
           .filter((value): value is string => Boolean(value))
           .join(` `)
           .toLocaleLowerCase()
-        if (searchable_text.includes(normalized_query)) directly_matched_rows.add(row)
-      }
-      const matched_rows = new SvelteSet(directly_matched_rows)
-      const row_set = new SvelteSet(row_contexts.map(({ row }) => row))
-      // Preserve descendants of matched containers and ancestors of nested matches.
-      for (const { row } of row_contexts) {
-        let ancestor = row.parentElement
-        while (ancestor && ancestor !== root) {
-          if (directly_matched_rows.has(ancestor)) matched_rows.add(row)
-          if (directly_matched_rows.has(row) && row_set.has(ancestor)) {
-            matched_rows.add(ancestor)
-          }
-          ancestor = ancestor.parentElement
-        }
+        if (searchable_text.includes(normalized_query)) directly_matched_rows.push(row)
       }
       const matched_containers = new SvelteSet<HTMLElement>()
       let matched_row_count = 0
       for (const { row, section, group } of row_contexts) {
-        const is_match = matched_rows.has(row)
+        const is_match = directly_matched_rows.some(
+          (matched_row) => row.contains(matched_row) || matched_row.contains(row),
+        )
         set_hidden(row, !is_match)
         // Caller-hidden rows and descendants stay absent from the count and containers.
-        if (is_match && caller_visible(row)) {
+        if (is_match && !row.closest(`[hidden]`)) {
           matched_row_count += 1
           if (section) matched_containers.add(section)
           if (group) matched_containers.add(group)
@@ -221,9 +207,7 @@
           type="button"
           class="clear-search"
           aria-label="Clear settings search"
-          onclick={() => {
-            query = ``
-          }}>×</button
+          onclick={() => (query = ``)}>×</button
         >
       {/if}
     {:else}

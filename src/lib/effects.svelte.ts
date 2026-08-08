@@ -7,6 +7,9 @@ type PulseAnimationOptions = {
 
 type PulseAnimation = { readonly time: number; readonly unit: number }
 
+export const pulsing_highlight_opacity = (pulse_unit: number): number =>
+  0.2 + 0.15 * pulse_unit
+
 export function create_pulse_animation(
   active: () => boolean,
   options: PulseAnimationOptions = {},

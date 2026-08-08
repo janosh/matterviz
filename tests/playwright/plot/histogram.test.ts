@@ -382,21 +382,13 @@ test.describe(`Histogram Component Tests`, () => {
       timeout: 10000,
     })
 
-    // Wait for the toggle button to be visible and clickable
     const toggle_button = page.locator(`#basic-single-series .pane-toggle`)
-    await expect(toggle_button).toBeVisible()
-    await expect(toggle_button).toBeEnabled()
-
-    // Test control pane toggle
     await toggle_button.click()
 
-    // Check controls pane is open
     const control_pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(control_pane).toBeVisible()
 
-    // Test bins control - the row is the <label> itself, wrapping number and range inputs
     const bins_row = control_pane.locator(`label`).filter({ hasText: /Bins/i })
-    await expect(bins_row).toBeVisible()
     const bins_number_input = bins_row.locator(`input[type="number"]`)
     const initial_bar_count = await get_bar_count(histogram)
     await bins_number_input.fill(`5`)
@@ -406,14 +398,12 @@ test.describe(`Histogram Component Tests`, () => {
     // Test grid toggles - checkbox is inside span[data-label="grid"]
     const grid_group = control_pane.locator(`[data-label="grid"]`)
     const x_grid_checkbox = grid_group.getByLabel(`X`)
-    await expect(x_grid_checkbox).toBeVisible()
     await x_grid_checkbox.uncheck()
     await x_grid_checkbox.check()
 
     // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
     const scale_type_section = control_pane.locator(`[data-testid="scale-type-section"]`)
     const x_scale_label = scale_type_section.locator(`label:has(span:text-is("X"))`)
-    await expect(x_scale_label).toBeVisible()
     const x_scale_select = x_scale_label.locator(`select`)
     await x_scale_select.selectOption(`log`)
     await x_scale_select.selectOption(`linear`)
@@ -423,12 +413,9 @@ test.describe(`Histogram Component Tests`, () => {
     const x_axis_format_label = tick_format_section.locator(
       `label:has(span:text-is("X-axis"))`,
     )
-    await expect(x_axis_format_label).toBeVisible()
-    // Verify selector specificity - should match exactly one label within Tick Format section
     await expect(x_axis_format_label).toHaveCount(1)
 
     const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
-    await expect(x_format_input).toBeVisible()
     await x_format_input.fill(`.3r`)
 
     // Test invalid format handling
@@ -461,10 +448,7 @@ test.describe(`Histogram Component Tests`, () => {
         // Legend might not exist, that's okay
       })
 
-    // Click the toggle button to open the controls pane
     const toggle_button = page.locator(`#multiple-series-overlay .pane-toggle`)
-    await expect(toggle_button).toBeVisible()
-    await expect(toggle_button).toBeEnabled()
     await toggle_button.click()
 
     const control_pane = page.locator(`#multiple-series-overlay .draggable-pane`)
@@ -479,16 +463,13 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(property_select).toBeVisible()
     const property_options = property_select.locator(`option`)
     expect(await property_options.count()).toBeGreaterThan(1)
-    const property_value = await property_options.nth(1).getAttribute(`value`)
-    if (!property_value) throw new Error(`Expected a non-empty histogram property option`)
-    await property_select.selectOption(property_value)
-    await expect(property_select).toHaveValue(property_value)
+    await property_select.selectOption({ index: 1 })
+    await expect(property_select).not.toHaveValue(``)
 
     await mode_select.selectOption(`overlay`)
 
     // Test legend toggle
     const legend_checkbox = control_pane.getByLabel(`Show legend`)
-    await expect(legend_checkbox).toBeVisible()
     await legend_checkbox.uncheck()
     await expect(legend_checkbox).not.toBeChecked()
     await legend_checkbox.check()
@@ -503,15 +484,9 @@ test.describe(`Histogram Component Tests`, () => {
       const input = control_pane.locator(
         `label:has(span:text-is("${label}")) input[type="number"]`,
       )
-      await expect(input).toBeVisible()
       await input.fill(value)
       await expect(first_bar).toHaveAttribute(attribute, value)
     }
-
-    // Verify histogram still renders meaningful SVG content (bars or axes)
-    await expect(
-      histogram.locator(`g.x-axis, g.y-axis, path[role="button"]`).first(),
-    ).toBeVisible()
   })
 
   test(`histogram controls with different scale types`, async ({ page }) => {

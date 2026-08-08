@@ -254,11 +254,10 @@ const read_explicit_overrides = (
       inspected?.globalValue,
     ].find((candidate) => candidate !== undefined)
     const configured_value = value
-    if (typeof value === `number` && typeof setting.minimum === `number`) {
-      value = Math.max(setting.minimum, value)
-    }
-    if (typeof value === `number` && typeof setting.maximum === `number`) {
-      value = Math.min(setting.maximum, value)
+    if (typeof value === `number`) {
+      const minimum = typeof setting.minimum === `number` ? setting.minimum : -Infinity
+      const maximum = typeof setting.maximum === `number` ? setting.maximum : Infinity
+      value = Math.min(maximum, Math.max(minimum, value))
     }
     if (!Object.is(value, configured_value)) {
       console.warn(

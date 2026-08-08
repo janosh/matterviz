@@ -53,6 +53,19 @@ describe(`SettingsSearch`, () => {
     expect(document.activeElement).toBe(element(`.open-search`))
   })
 
+  test(`preserves focus when mounted with a prefilled query`, async () => {
+    const focus_target = document.createElement(`button`)
+    document.body.append(focus_target)
+    focus_target.focus()
+    mount(SettingsSearchHarness, { target: document.body, props: { query: `radius` } })
+    await tick()
+
+    expect(document.querySelector<HTMLInputElement>(`input[type="search"]`)?.value).toBe(
+      `radius`,
+    )
+    expect(document.activeElement).toBe(focus_target)
+  })
+
   test.each([
     [
       `labels`,

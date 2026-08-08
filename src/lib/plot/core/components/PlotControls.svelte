@@ -55,6 +55,13 @@
     Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
+  const axis_record = <Value>(get_value: (axis: AxisKey) => Value): Record<AxisKey, Value> =>
+    Object.fromEntries(all_axes.map((axis) => [axis, get_value(axis)])) as Record<
+      AxisKey,
+      Value
+    >
+  const axis_values = <Value>(suffix: string, get_value: (axis: AxisKey) => Value) =>
+    Object.fromEntries(all_axes.map((axis) => [`${axis}_${suffix}`, get_value(axis)]))
   const zero_line_default = (axis: AxisKey): boolean =>
     (axis === `x` && DEFAULTS.plot.show_x_zero_line) ||
     (axis === `y` && DEFAULTS.plot.show_y_zero_line)
@@ -72,22 +79,10 @@
     { axis: `x`, label: `X-axis`, fallback: DEFAULTS.plot.x_ticks },
     { axis: `y`, label: `Y-axis`, fallback: DEFAULTS.plot.y_ticks },
   ] as const
-  // readonly: the conditional entries are `as const` tuples, which a mutable array rejects
-  let visible_axes: readonly (readonly [AxisKey, string])[] = $derived([
-    [`x`, `X`],
-    ...(has_x2_points ? [[`x2`, `X2`] as const] : []),
-    [`y`, `Y`],
-    ...(has_y2_points ? [[`y2`, `Y2`] as const] : []),
-  ])
+  const axis_labels = { x: `X`, x2: `X2`, y: `Y`, y2: `Y2` } as const
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
-  const initial_ranges = untrack(
-    () =>
-      Object.fromEntries(all_axes.map((axis) => [axis, axis_config(axis).range])) as Record<
-        AxisKey,
-        AxisConfig[`range`]
-      >,
-  )
+  const initial_ranges = untrack(() => axis_record((axis) => axis_config(axis).range))
   const initial_ticks = untrack(() => ({
     x: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
     y: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
@@ -106,20 +101,22 @@
   } satisfies Record<AxisKey, Vec2 | undefined>)
   // secondary axes only exist once their series do; primary axes always have an auto range
   let axis_present = $derived({ x: true, x2: has_x2_points, y: true, y2: has_y2_points })
+  let visible_axes = $derived(
+    all_axes
+      .filter((axis) => axis_present[axis])
+      .map((axis) => [axis, axis_labels[axis]] as const),
+  )
   // whether each axis range spans zero, gating the zero-line toggles
   let includes_zero = $derived(
-    Object.fromEntries(
-      all_axes.map((axis) => {
-        const auto = auto_ranges[axis]
-        const { range } = axis_config(axis)
-        return [
-          axis,
-          axis_present[axis] &&
-            auto != null &&
-            range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1]),
-        ]
-      }),
-    ) as Record<AxisKey, boolean>,
+    axis_record((axis) => {
+      const auto = auto_ranges[axis]
+      const { range } = axis_config(axis)
+      return (
+        axis_present[axis] &&
+        auto != null &&
+        range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
+      )
+    }),
   )
   const axis_format = {
     x: { fallback: DEFAULTS.plot.x_format, placeholder: `.2~s / .0% / %Y-%m-%d` },
@@ -250,12 +247,7 @@
       <!-- Base Axis Range controls -->
       <SettingsSection
         title="Axis range"
-        current_values={{
-          x_range: x_axis.range,
-          x2_range: x2_axis.range,
-          y_range: y_axis.range,
-          y2_range: y2_axis.range,
-        }}
+        current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
         on_reset={() => {
           for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
           Object.values(range_els).forEach((element) => element?.classList.remove(`invalid`))
@@ -332,12 +324,9 @@
       <!-- Scale Type controls -->
       <SettingsSection
         title="Scale type"
-        current_values={{
-          x_scale: get_scale_type_name(x_axis.scale_type),
-          x2_scale: get_scale_type_name(x2_axis.scale_type),
-          y_scale: get_scale_type_name(y_axis.scale_type),
-          y2_scale: get_scale_type_name(y2_axis.scale_type),
-        }}
+        current_values={axis_values(`scale`, (axis) =>
+          get_scale_type_name(axis_config(axis).scale_type),
+        )}
         on_reset={() => {
           for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
         }}
@@ -436,12 +425,7 @@
         title="Tick format"
         data-testid="tick-format-section"
         class="tick-format-section"
-        current_values={{
-          x_format: x_axis.format,
-          x2_format: x2_axis.format,
-          y_format: y_axis.format,
-          y2_format: y2_axis.format,
-        }}
+        current_values={axis_values(`format`, (axis) => axis_config(axis).format)}
         on_reset={() => {
           for (const axis of all_axes) {
             update_axis(axis, { format: axis_format[axis].fallback })

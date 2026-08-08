@@ -74,10 +74,10 @@ export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
 export const default_camera_position = (size: number): Vec3 =>
   [10, 3, 8].map((coord) => coord * Math.max(1, size)) as Vec3
 
-// Occupy at most 85% of the shorter viewport edge, matching structure_fit_frame's
+// Occupy at most 92% of the shorter viewport edge, matching structure_fit_frame's
 // DEFAULT_FIT_PADDING (asserted equal in brillouin-compute.test.ts rather than imported, which
 // would pull the element data tables into every consumer of this module).
-const FIT_PADDING = 1 / 0.85
+const FIT_PADDING = 1 / 0.92
 
 // Padded diameter of the sphere enclosing the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³,
 // whose half-extent along Cartesian axis j is 0.5·Σᵢ|k_lattice[i][j]|. Marching cubes leaves
@@ -98,7 +98,7 @@ export const k_cell_fit_extent = (
 
 // Padded diameter of the sphere enclosing the zone, in the same "fit to the shorter viewport
 // edge" currency as structure_fit_frame, so ortho_zoom_for_extent can frame it. Falls back to
-// the cell the zone is inscribed in, which for a cubic lattice is the same 85% framing the
+// the cell the zone is inscribed in, which for a cubic lattice is the same 92% framing the
 // vertices give — so the zoom does not jump the moment the computed vertices arrive.
 export const bz_fit_extent = (
   vertices: Vec3[] | undefined,

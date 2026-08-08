@@ -105,13 +105,11 @@ describe(`PlotControls`, () => {
   })
 
   describe(`display controls`, () => {
-    // Helper to find checkboxes within a control group by data-label attribute.
-    const get_checkboxes_in_group = (label: string) => {
-      const group = document.querySelector(`.control-group[data-label="${label}"]`)
-      return group
-        ? Array.from(group.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`))
-        : []
-    }
+    const get_checkboxes_in_group = (label: string): HTMLInputElement[] => [
+      ...(document
+        .querySelector(`.control-group[data-label="${label}"]`)
+        ?.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`) ?? []),
+    ]
 
     test(`renders correct number of grid controls and resets them`, async () => {
       const state = $state({ display: { x_grid: true, y_grid: true, y2_grid: true } })

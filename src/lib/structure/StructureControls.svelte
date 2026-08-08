@@ -233,21 +233,15 @@
 
   $effect(() => {
     const pane = controls_pane
-    const size = controls_pane_size
-    if (!pane || !size) return
-    pane.style.width = `${size.width}px`
-    pane.style.height = `${size.height}px`
-  })
-
-  $effect(() => {
-    const pane = controls_pane
     if (!pane) return
+    if (controls_pane_size) {
+      pane.style.width = `${controls_pane_size.width}px`
+      pane.style.height = `${controls_pane_size.height}px`
+    }
     const observer = new ResizeObserver(() => {
-      const width_style = pane.style.width
-      const height_style = pane.style.height
-      if (!width_style || !height_style) return
-      const width = Number(width_style.replace(/px$/, ``))
-      const height = Number(height_style.replace(/px$/, ``))
+      if (!pane.style.width || !pane.style.height) return
+      const width = Number(pane.style.width.replace(/px$/, ``))
+      const height = Number(pane.style.height.replace(/px$/, ``))
       if (!Number.isFinite(width) || !Number.isFinite(height)) return
       if (controls_pane_size?.width === width && controls_pane_size.height === height) {
         return
@@ -358,6 +352,7 @@
   type NumericSettingKey = SettingKeysOfType<number>
   // Rows rendered by the shared snippets must both name a setting and bind to the matching
   // scene prop, so intersect the schema's keys with the ones scene_props actually holds.
+  type NumericSceneSettingKey = NumericSettingKey & keyof typeof scene_props
   type BooleanSettingKey = SettingKeysOfType<boolean> & keyof typeof scene_props
   type EnumSettingKey = SettingKeysOfType<string> & keyof typeof scene_props
   const setting_range = (key: NumericSettingKey, step?: number) => {
@@ -395,24 +390,18 @@
     keys: DefaultedKey<T>[],
     accessors: Record<string, Accessor> = {},
   ) => ({
-    current_values: {
-      ...Object.fromEntries(
-        keys.map((key) => [
-          key,
-          target[key] === undefined ? DEFAULTS.structure[key] : target[key],
-        ]),
-      ),
-      ...Object.fromEntries(
-        Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
-      ),
-    },
+    current_values: Object.fromEntries([
+      ...keys.map((key) => [
+        key,
+        target[key] === undefined ? DEFAULTS.structure[key] : target[key],
+      ]),
+      ...Object.entries(accessors).map(([key, accessor]) => [key, accessor.get()]),
+    ]),
     on_reset_key: (key: string, reference_value: unknown, reference_present: boolean) => {
       const accessor = accessors[key]
-      if (accessor) accessor.set(reference_value, reference_present)
-      else if ((keys as string[]).includes(key)) {
-        if (reference_present) Object.assign(target, { [key]: reference_value })
-        else Reflect.deleteProperty(target, key)
-      }
+      if (accessor) return accessor.set(reference_value, reference_present)
+      if (reference_present) Object.assign(target, { [key]: reference_value })
+      else Reflect.deleteProperty(target, key)
     },
     setting_metadata: structure_setting_metadata,
   })
@@ -675,6 +664,21 @@ a disabled state, a non-scene_props target) stay written out in full. -->
   <label {...setting_row(key)}>
     <span>{label}</span>
     <select bind:value={scene_props[key]}>{@render enum_options(key)}</select>
+  </label>
+{/snippet}
+
+{#snippet numeric_row(key: NumericSceneSettingKey, label: string, step?: number)}
+  <NumberRangeInput
+    {...setting_range(key, step)}
+    bind:value={() => scene_props[key], (value) => (scene_props[key] = value)}
+    >{label}</NumberRangeInput
+  >
+{/snippet}
+
+{#snippet color_row(key: EnumSettingKey, label: string, aria_label?: string)}
+  <label {...setting_row(key)}>
+    <span>{label}</span>
+    <input class="swatch" type="color" aria-label={aria_label} bind:value={scene_props[key]} />
   </label>
 {/snippet}
 
@@ -961,14 +965,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           {#if scene_props.auto_bond_order}
             {@render enum_row(`aromatic_display`, `Aromatic`)}
           {/if}
-          <label {...setting_row(`bond_color`)}>
-            <span>Color</span>
-            <input class="swatch" type="color" bind:value={scene_props.bond_color} />
-          </label>
-          <NumberRangeInput
-            {...setting_range(`bond_thickness`, 0.01)}
-            bind:value={scene_props.bond_thickness}>Thickness</NumberRangeInput
-          >
+          {@render color_row(`bond_color`, `Color`)}
+          {@render numeric_row(`bond_thickness`, `Thickness`, 0.01)}
         </SettingsSection>
       {/if}
 
@@ -993,10 +991,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             },
           )}
         >
-          <NumberRangeInput
-            {...setting_range(`polyhedra_opacity`, 0.05)}
-            bind:value={scene_props.polyhedra_opacity}>Opacity</NumberRangeInput
-          >
+          {@render numeric_row(`polyhedra_opacity`, `Opacity`, 0.05)}
           <label {...setting_row(`polyhedra_color`)}>
             <span>Color</span>
             <span class="ctrl-pair">
@@ -1022,14 +1017,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             </span>
           </label>
           {@render toggle(`polyhedra_hide_center_atoms`, `Hide centers`)}
-          <NumberRangeInput
-            {...setting_range(`polyhedra_min_neighbors`, 1)}
-            bind:value={scene_props.polyhedra_min_neighbors}>Min neighbors</NumberRangeInput
-          >
-          <NumberRangeInput
-            {...setting_range(`polyhedra_max_neighbors`, 1)}
-            bind:value={scene_props.polyhedra_max_neighbors}>Max neighbors</NumberRangeInput
-          >
+          {@render numeric_row(`polyhedra_min_neighbors`, `Min neighbors`, 1)}
+          {@render numeric_row(`polyhedra_max_neighbors`, `Max neighbors`, 1)}
           {#if structure_elements.length > 0}
             <div
               class="setting"
@@ -1085,10 +1074,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               }
             />
           </label>
-          <NumberRangeInput
-            {...setting_range(`site_label_size`, 0.1)}
-            bind:value={scene_props.site_label_size}>Size</NumberRangeInput
-          >
+          {@render numeric_row(`site_label_size`, `Size`, 0.1)}
           <label {...setting_row(`site_label_bg_hex`)}>
             <span>Background</span>
             <input
@@ -1106,10 +1092,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             title={description_for(`site_label_bg_opacity`)}
             bind:value={get_label_bg_opacity, set_label_bg_opacity}>Opacity</NumberRangeInput
           >
-          <NumberRangeInput
-            {...setting_range(`site_label_padding`, 1)}
-            bind:value={scene_props.site_label_padding}>Padding</NumberRangeInput
-          >
+          {@render numeric_row(`site_label_padding`, `Padding`, 1)}
           <div class="setting" {...setting_row(`site_label_offset`)}>
             <span>Offset</span>
             <div class="axis-inputs">
@@ -1167,10 +1150,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               ),
             )}
           >
-            <NumberRangeInput
-              {...setting_range(`vector_scale`, 0.001)}
-              bind:value={scene_props.vector_scale}>Global scale</NumberRangeInput
-            >
+            {@render numeric_row(`vector_scale`, `Global scale`, 0.001)}
             {@render toggle(`vector_normalize`, `Normalize`)}
             {@render toggle(`vector_uniform_thickness`, `Uniform width`)}
             <label {...setting_row(`vector_color_mode`)}>
@@ -1187,16 +1167,10 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                 <ColorScaleSelect bind:value={scene_props.vector_color_scale} />
               </label>
             {:else if scene_props.vector_color_mode === `uniform`}
-              <label {...setting_row(`vector_color`)}>
-                <span>Color</span>
-                <input class="swatch" type="color" bind:value={scene_props.vector_color} />
-              </label>
+              {@render color_row(`vector_color`, `Color`)}
             {/if}
             {#if available_vector_keys.length > 1}
-              <NumberRangeInput
-                {...setting_range(`vector_origin_gap`, 0.02)}
-                bind:value={scene_props.vector_origin_gap}>Origin gap</NumberRangeInput
-              >
+              {@render numeric_row(`vector_origin_gap`, `Origin gap`, 0.02)}
               {#each available_vector_keys as key (key)}
                 {#if is_key_visible(key)}
                   {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
@@ -1317,10 +1291,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         })}
       >
         {@render enum_row(`camera_projection`, `Projection`)}
-        <NumberRangeInput
-          {...setting_range(`auto_rotate`, 0.01)}
-          bind:value={scene_props.auto_rotate}>Auto-rotate speed</NumberRangeInput
-        >
+        {@render numeric_row(`auto_rotate`, `Auto-rotate speed`, 0.01)}
         {@render toggle(`zoom_to_cursor`, `Zoom to cursor`)}
         {#if multi_view_control_visible && display_mode === `structure`}
           <label {...setting_row(`multi_view`)} class:disabled={multi_view_blocked}>
@@ -1403,11 +1374,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         {...scene_section([`rotate_speed`, `zoom_speed`, `pan_speed`, `rotation_damping`])}
       >
         {#each pointer_settings as [setting, label, step] (setting)}
-          <NumberRangeInput
-            {...setting_range(setting, step)}
-            bind:value={() => scene_props[setting], (value) => (scene_props[setting] = value)}
-            >{label}</NumberRangeInput
-          >
+          {@render numeric_row(setting, label, step)}
         {/each}
       </SettingsSection>
     </SettingsGroup>
@@ -1453,14 +1420,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         layout="grid"
         {...scene_section([`directional_light`, `ambient_light`])}
       >
-        <NumberRangeInput
-          {...setting_range(`directional_light`, 0.01)}
-          bind:value={scene_props.directional_light}>Directional light</NumberRangeInput
-        >
-        <NumberRangeInput
-          {...setting_range(`ambient_light`, 0.05)}
-          bind:value={scene_props.ambient_light}>Ambient light</NumberRangeInput
-        >
+        {@render numeric_row(`directional_light`, `Directional light`, 0.01)}
+        {@render numeric_row(`ambient_light`, `Ambient light`, 0.05)}
       </SettingsSection>
     </SettingsGroup>
 
@@ -1486,26 +1447,19 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                   >RMSD <strong>{format_num(displacement_summary.rmsd, `.4~f`)} Å</strong
                   ></span
                 >
-                <span>
-                  Max <strong
+                <span
+                  >Max <strong
                     >{format_num(displacement_summary.max_displacement, `.4~f`)} Å</strong
-                  >
-                </span>
+                  ></span
+                >
               </div>
               {@render toggle(`show_displacement_arrows`, `Show arrows`)}
-              <NumberRangeInput
-                {...setting_range(`displacement_arrow_scale`, 0.1)}
-                bind:value={scene_props.displacement_arrow_scale}>Arrow scale</NumberRangeInput
-              >
-              <label {...setting_row(`displacement_arrow_color`)}>
-                <span>Arrow color</span>
-                <input
-                  class="swatch"
-                  type="color"
-                  aria-label="Displacement arrow color"
-                  bind:value={scene_props.displacement_arrow_color}
-                />
-              </label>
+              {@render numeric_row(`displacement_arrow_scale`, `Arrow scale`, 0.1)}
+              {@render color_row(
+                `displacement_arrow_color`,
+                `Arrow color`,
+                `Displacement arrow color`,
+              )}
             {/if}
           </SettingsSection>
         {/if}
@@ -1563,11 +1517,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                 bind:value={scene_props.trajectory_line_trail_frames}
                 >Trail length <small>(0 = all)</small></NumberRangeInput
               >
-              <NumberRangeInput
-                {...setting_range(`trajectory_line_frame_stride`)}
-                bind:value={scene_props.trajectory_line_frame_stride}
-                >Frame stride</NumberRangeInput
-              >
+              {@render numeric_row(`trajectory_line_frame_stride`, `Frame stride`)}
               {@render enum_row(`trajectory_line_color_mode`, `Color by`)}
               {@render enum_row(`trajectory_line_wrap_mode`, `Boundaries`)}
               {#if trajectory_lines_result}
@@ -1686,10 +1636,23 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       background: color-mix(in srgb, currentColor 14%, transparent);
     }
   }
-  .settings-actions {
+  :is(
+    .settings-actions,
+    .import-settings,
+    .toggle-grid label,
+    .chip-row,
+    .chip-row label,
+    .ctrl-pair,
+    .axis-inputs,
+    .axis-inputs label,
+    .readout,
+    .scheme-option
+  ) {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
+  }
+  .settings-actions {
+    flex-wrap: wrap;
     gap: 4pt;
     button,
     .import-settings {
@@ -1697,8 +1660,6 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     }
   }
   .import-settings {
-    display: inline-flex;
-    align-items: center;
     gap: 4pt;
     input {
       max-width: 13em;
@@ -1714,27 +1675,19 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     gap: 2pt 8pt;
     margin-bottom: 2pt;
     label {
-      display: flex;
-      align-items: center;
       gap: 5pt;
       min-height: 1.7em;
     }
   }
   .chip-row {
-    display: flex;
     flex-wrap: wrap;
     gap: 2pt 8pt;
-    align-items: center;
     label {
-      display: flex;
-      align-items: center;
       gap: 4pt;
     }
   }
   /* Two controls sharing one row's control area (select + swatch, checkbox + swatch) */
   .ctrl-pair {
-    display: flex;
-    align-items: center;
     gap: 6pt;
     min-width: 0;
     select {
@@ -1743,11 +1696,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     }
   }
   .axis-inputs {
-    display: flex;
     gap: 6pt;
     label {
-      display: flex;
-      align-items: center;
       gap: 3pt;
       min-width: 0;
     }
@@ -1777,7 +1727,6 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     cursor: pointer;
   }
   .readout {
-    display: flex;
     flex-wrap: wrap;
     gap: 2pt 10pt;
     opacity: 0.85;
@@ -1798,8 +1747,6 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     cursor: pointer;
   }
   .scheme-option {
-    display: flex;
-    align-items: center;
     gap: 6pt;
     justify-content: space-between;
   }

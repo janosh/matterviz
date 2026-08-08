@@ -1352,12 +1352,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Capture initial tick text for Y-axis comparison
     const initial_y_tick = await y_tick_text.textContent()
 
-    // Find the "Tick Format" section by its heading, then locate inputs within it
-    // The section has an h4 with title followed by section element with inputs
     const tick_format_heading = control_pane.locator(`h4:has-text("Tick Format")`)
-    await expect(tick_format_heading).toBeVisible()
-
-    // Get the section that follows the heading (sibling relationship)
     const tick_format_section = tick_format_heading.locator(`+ section`)
     const x_format_input = tick_format_section.locator(
       `label:has(span:text-is("X-axis")) input[type="text"]`,
@@ -1366,7 +1361,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       `label:has(span:text-is("Y-axis")) input[type="text"]`,
     )
 
-    await expect(x_format_input).toBeVisible()
     await x_format_input.fill(`.0%`)
     await expect(x_tick_text).toContainText(`%`, { timeout: 5000 })
 
@@ -1376,7 +1370,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await x_format_input.fill(`.2~s`)
     await expect(x_format_input).not.toHaveClass(/invalid/)
 
-    await expect(y_format_input).toBeVisible()
     await y_format_input.fill(`.1e`)
     await expect(async () => {
       const new_y_tick = await y_tick_text.textContent()
@@ -1409,14 +1402,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Open control pane
     const { toggle, pane } = await open_control_pane(plot)
-
-    // Find the Scale Type section
-    const scale_type_heading = pane.locator(`h4:has-text("Scale Type")`)
-    await expect(scale_type_heading).toBeVisible()
+    const scale_type_section = pane.locator(`[data-testid="scale-type-section"]`)
 
     // Find and change the Y-axis scale type dropdown from Linear to Log
-    const y_scale_select = pane.locator(`label:has(span:text-is("Y")) select`)
-    await expect(y_scale_select).toBeVisible()
+    const y_scale_select = scale_type_section.locator(`label:has(span:text-is("Y")) select`)
     await expect(y_scale_select).toHaveValue(`linear`)
 
     // Change to log scale - this is the critical test for the $bindable reactivity fix
@@ -1446,8 +1435,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // Also test X-axis scale type change
-    const x_scale_select = pane.locator(`label:has(span:text-is("X")) select`)
-    await expect(x_scale_select).toBeVisible()
+    const x_scale_select = scale_type_section.locator(`label:has(span:text-is("X")) select`)
     await expect(x_scale_select).toHaveValue(`linear`)
 
     // Capture initial X ticks
@@ -1464,14 +1452,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // Test reset button restores all scales to linear
-    const reset_button = scale_type_heading.locator(`+ section button.reset-button`)
-    if (await reset_button.isVisible()) {
-      await reset_button.click()
-
-      // Both scales should return to linear (dropdown values)
-      await expect(x_scale_select).toHaveValue(`linear`)
-      await expect(y_scale_select).toHaveValue(`linear`)
-    }
+    await pane.locator(`h4:has-text("Scale type") button.reset-button`).click()
+    await expect(x_scale_select).toHaveValue(`linear`)
+    await expect(y_scale_select).toHaveValue(`linear`)
 
     // Close control pane
     await plot.hover()

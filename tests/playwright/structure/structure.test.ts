@@ -1409,6 +1409,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
   test(`settings search is browser-wired and pointer-accessible`, async ({ page }) => {
     const { pane_div } = await open_structure_control_pane(page)
+    await pane_div.getByRole(`button`, { name: `Search settings` }).click()
     const search = pane_div.getByRole(`searchbox`, { name: `Search settings` })
     await search.fill(`damp`)
     await expect(pane_div.locator(`details.settings-group`).nth(1)).toHaveAttribute(`open`, ``)

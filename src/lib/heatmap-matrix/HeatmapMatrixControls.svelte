@@ -57,10 +57,8 @@
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 
-  function merge_styles(base_style: string, override_style: unknown): string {
-    const override_style_str = typeof override_style === `string` ? override_style : ``
-    return override_style_str ? `${base_style}; ${override_style_str}` : base_style
-  }
+  const merge_styles = (base_style: string, override_style: unknown): string =>
+    `${base_style}${typeof override_style === `string` && override_style ? `; ${override_style}` : ``}`
 
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format = $state<string | null>(null)

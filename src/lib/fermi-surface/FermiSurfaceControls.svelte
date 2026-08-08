@@ -120,7 +120,6 @@
         )
       : [],
   )
-  let available_bands_key = $derived(available_bands.join(`,`))
   const available_bands_changed = make_change_detector()
 
   const sync_bindable_defaults = (bands_changed = false): void => {
@@ -132,7 +131,7 @@
   }
 
   untrack(sync_bindable_defaults)
-  $effect(() => sync_bindable_defaults(available_bands_changed(available_bands_key)))
+  $effect(() => sync_bindable_defaults(available_bands_changed(available_bands.join(`,`))))
 
   function toggle_band(band_idx: number): void {
     const bands = selected_bands ?? []

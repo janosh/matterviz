@@ -106,37 +106,35 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
   // camera rows are data-driven per dimensionality: ternary tilts in degrees, quaternary in radians
   test.each([
     [
-      `ternary`,
       { elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
       `Elev°|30|5|false;Azim°|-16|15|false`,
       `elevation`,
     ],
     [
-      `quaternary`,
       { rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
       `φ|0.46|0.1|true;θ|-0.12|0.1|false`,
       `rotation_x`,
     ],
-  ] as const)(`%s camera rows render and write back`, (_desc, camera, expected, key) => {
+  ] as const)(`camera rows render and write back`, (camera, expected, key) => {
     const state = { ...camera }
     mount_controls({ camera: state })
-    const rows = [...document.querySelectorAll<HTMLLabelElement>(`.setting label`)].filter(
-      (row) => expected.includes(row.querySelector(`span`)?.textContent ?? ``),
+    const camera_row = [...document.querySelectorAll<HTMLElement>(`.setting`)].find(
+      (row) => row.querySelector(`.control-label`)?.textContent === `Camera`,
     )
+    const inputs = [...(camera_row?.querySelectorAll<HTMLInputElement>(`input`) ?? [])]
     expect(
-      rows
-        .map((row) => {
-          const input = row.querySelector<HTMLInputElement>(`input[type="number"]`)
-          return [
-            row.textContent?.replaceAll(/\s/g, ``),
-            input?.value,
-            input?.step,
-            input?.hasAttribute(`min`),
-          ].join(`|`)
-        })
+      inputs
+        .map((input) =>
+          [
+            input.closest(`label`)?.textContent?.replaceAll(/\s/g, ``),
+            input.value,
+            input.step,
+            input.hasAttribute(`min`),
+          ].join(`|`),
+        )
         .join(`;`),
     ).toBe(expected)
-    const first_input = rows[0]?.querySelector<HTMLInputElement>(`input[type="number"]`)
+    const [first_input] = inputs
     if (!first_input) throw new Error(`missing ${expected.split(`|`)[0]} camera input`)
     first_input.value = `12`
     first_input.dispatchEvent(new Event(`input`, { bubbles: true }))

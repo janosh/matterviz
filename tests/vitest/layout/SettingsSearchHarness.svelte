@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SettingsGroup, SettingsSearch, SettingsSection } from '$lib'
 
+  let { query = $bindable(``) }: { query?: string } = $props()
   let appearance_open = $state(true)
   let camera_open = $state(false)
   let zoom_speed_hidden = $state(false)
@@ -10,7 +11,7 @@
   Hide zoom speed
 </button>
 
-<SettingsSearch>
+<SettingsSearch bind:query>
   <SettingsGroup title="Appearance" class="appearance-group" bind:open={appearance_open}>
     <SettingsSection
       title="Atoms"

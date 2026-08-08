@@ -1,4 +1,5 @@
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
+import { pulsing_highlight_opacity } from '$lib/effects.svelte'
 import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -35,6 +36,14 @@ afterEach(() => {
 })
 
 describe(`create_pulse_animation`, () => {
+  test.each([
+    [0, 0.2],
+    [0.5, 0.275],
+    [1, 0.35],
+  ])(`keeps highlight opacity subtle at unit=%s`, (pulse_unit, expected) => {
+    expect(pulsing_highlight_opacity(pulse_unit)).toBeCloseTo(expected)
+  })
+
   test(`resets time and stops after on_tick deactivates synchronously`, () => {
     install_animation_frame_mock()
     const state = $state({ active: true })

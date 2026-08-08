@@ -22,7 +22,7 @@
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
-  import { create_pulse_animation } from '$lib/effects.svelte'
+  import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
@@ -408,7 +408,7 @@
     () => selected_sites.length > 0 || active_sites.length > 0,
     { step: 0.015, frequency: 5 },
   )
-  let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
+  let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera

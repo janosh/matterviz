@@ -1,7 +1,6 @@
 <!-- SettingsGroup now exists upstream. Delete this local copy and import it from
 svelte-widgets once a version above 1.4.0 is published; its API is unchanged. -->
 <script lang="ts">
-  // Collapsible grouping one level above SettingsSection.
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Icon } from 'svelte-widgets'
@@ -54,7 +53,6 @@ svelte-widgets once a version above 1.4.0 is published; its API is unchanged. --
     &:hover {
       background: color-mix(in srgb, currentColor 7%, transparent);
     }
-    /* the chevron is the only rotating part, so transition it rather than the whole row */
     :global(svg) {
       flex: none;
       opacity: 0.6;

@@ -98,8 +98,7 @@ body.fullscreen .draggable-pane {
   margin: var(--pane-hr-margin, 4pt 0);
   height: 1px;
 }
-/* right align long line-breaking trajectory file names. Excludes grid sections, whose rows
-   are div-wrapped on purpose and must read left-aligned like every other label. */
+/* Right-align long trajectory filenames without affecting div-wrapped grid rows. */
 .draggable-pane section:not(.grid) > div {
   text-align: right;
 }

@@ -83,26 +83,28 @@ test.describe(`ThemeControl`, () => {
 
   test(`changes color theme from the command menu`, async ({ page }) => {
     const theme_control = await get_theme_control(page)
-    const html_element = page.locator(`html`)
+    await select_theme(page, theme_control, `white`)
     const menu_label = `Search the MatterViz site`
     const dialog = page.getByRole(`dialog`, { name: menu_label })
-    const search_input = dialog.getByRole(`combobox`, { name: menu_label })
-    for (const mode of [`dark`, `white`] as const) {
-      await expect(async () => {
-        await page.keyboard.press(`Control+K`)
-        await expect(dialog).toBeVisible({ timeout: 1500 })
-      }).toPass({ timeout: 15_000 })
+    await page.getByRole(`button`, { name: `Open search` }).click()
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole(`combobox`, { name: menu_label }).fill(`dark colour appearance`)
+    await dialog.getByRole(`option`, { name: /dark color theme/i }).click()
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`)
+    await expect(theme_control).toHaveValue(`dark`)
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)))
+      .toBe(`dark`)
 
-      await search_input.fill(`${mode} colour appearance`)
-      await dialog
-        .getByRole(`option`, { name: new RegExp(`${mode} color theme`, `i`) })
-        .click()
-      await expect(html_element).toHaveAttribute(`data-theme`, mode)
-      await expect(theme_control).toHaveValue(mode)
-      await expect
-        .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)))
-        .toBe(mode)
-    }
+    await page.keyboard.press(`Control+K`)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole(`combobox`, { name: menu_label }).fill(`white colour appearance`)
+    await dialog.getByRole(`option`, { name: /white color theme/i }).click()
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `white`)
+    await expect(theme_control).toHaveValue(`white`)
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)))
+      .toBe(`white`)
   })
 
   test(`syntax highlighting colors follow app theme not OS preference`, async ({ page }) => {

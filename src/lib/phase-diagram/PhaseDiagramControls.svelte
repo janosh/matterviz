@@ -87,11 +87,9 @@
   }
 
   // Derive component info from data
-  const component_a = $derived(data?.components?.[0])
-  const component_b = $derived(data?.components?.[1])
   const title = $derived(
-    component_a && component_b
-      ? `${component_a}-${component_b} phase diagram`
+    data?.components?.[0] && data.components[1]
+      ? `${data.components[0]}-${data.components[1]} phase diagram`
       : `Phase diagram controls`,
   )
   const temp_unit = $derived(data?.temperature_unit ?? `K`)
@@ -223,9 +221,7 @@
     <SettingsSection
       title="Colors"
       current_values={{ ...merged_config.colors }}
-      on_reset={() => {
-        config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } }
-      }}
+      on_reset={() => (config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } })}
       layout="grid"
     >
       {#each color_options as [key, fallback, label, tip] (key)}
@@ -312,7 +308,7 @@
               if (!Number.isFinite(parsed_ticks)) return
               const new_ticks = Math.max(2, Math.min(15, Math.round(parsed_ticks)))
               if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }
-              else if (axis_name === `y`) y_axis = { ...y_axis, ticks: new_ticks }
+              else y_axis = { ...y_axis, ticks: new_ticks }
             }}
           />
         </label>
@@ -324,9 +320,7 @@
     <SettingsSection
       title="Export"
       current_values={{ png_dpi }}
-      on_reset={() => {
-        png_dpi = PHASE_DIAGRAM_DEFAULTS.png_dpi
-      }}
+      on_reset={() => (png_dpi = PHASE_DIAGRAM_DEFAULTS.png_dpi)}
       layout="grid"
     >
       <label

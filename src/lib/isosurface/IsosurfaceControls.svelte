@@ -237,9 +237,7 @@
     layers: n_layers,
     display_range: settings.display_range?.flat().join(`,`) ?? ``,
   }}
-  on_reset={() => {
-    settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
-  }}
+  on_reset={() => (settings = { ...DEFAULT_ISOSURFACE_SETTINGS })}
   layout="grid"
   class="isosurface-settings"
 >

@@ -163,6 +163,10 @@ const build_view_state = (
   structure_setting: (key: StructureSettingKey) => unknown,
 ): StructureViewState => {
   const controls_pane_size = normalize_pane_size(viewer.controls_pane_size)
+  const background_color =
+    settings.background_color === undefined
+      ? undefined
+      : validate_setting_value(settings.background_color, SETTINGS_CONFIG.background_color)
   return {
     version: STRUCTURE_VIEW_STATE_VERSION,
     settings: {
@@ -170,13 +174,7 @@ const build_view_state = (
         settings.color_scheme,
         SETTINGS_CONFIG.color_scheme,
       ),
-      background_color:
-        settings.background_color === undefined
-          ? undefined
-          : validate_setting_value(
-              settings.background_color,
-              SETTINGS_CONFIG.background_color,
-            ),
+      background_color,
       background_opacity: validate_setting_value(
         settings.background_opacity,
         SETTINGS_CONFIG.background_opacity,
@@ -186,7 +184,7 @@ const build_view_state = (
     viewer: {
       supercell_scaling: normalize_supercell_scaling(viewer.supercell_scaling),
       cell_type: normalize_cell_type(viewer.cell_type),
-      multi_view: typeof viewer.multi_view === `boolean` ? viewer.multi_view : false,
+      multi_view: viewer.multi_view === true,
       ...(controls_pane_size && { controls_pane_size }),
     },
   }
@@ -288,7 +286,6 @@ export const clear_structure_view_state = (): boolean => {
 }
 
 export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state({
-  scene_props: DEFAULTS.structure,
   lattice_props: DEFAULTS.structure,
   color_scheme: DEFAULTS.color_scheme,
   background_opacity: DEFAULTS.background_opacity,

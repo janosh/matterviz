@@ -145,16 +145,14 @@
       <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth}
         >Max depth (0 = all)</NumberRangeInput
       >
-      {#if chart === `sunburst`}
-        {#if shape === `sunburst`}
-          <NumberRangeInput min={0} max={0.8} step={0.05} bind:value={inner_radius}
-            >Inner radius</NumberRangeInput
-          >
-          <NumberRangeInput min={0} max={4} step={0.1} bind:value={pad_angle}
-            >Pad angle (°)</NumberRangeInput
-          >
-        {/if}
-      {:else}
+      {#if chart === `sunburst` && shape === `sunburst`}
+        <NumberRangeInput min={0} max={0.8} step={0.05} bind:value={inner_radius}
+          >Inner radius</NumberRangeInput
+        >
+        <NumberRangeInput min={0} max={4} step={0.1} bind:value={pad_angle}
+          >Pad angle (°)</NumberRangeInput
+        >
+      {:else if chart === `treemap`}
         <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_inner}
           >Cell gap (px)</NumberRangeInput
         >

@@ -3,7 +3,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap } from 'svelte/reactivity'
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
 
@@ -81,18 +81,15 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     if (left === right || Object.is(left, right)) return true
     if (left == null || right == null) return false
     if (typeof left !== `object` || typeof right !== `object`) return false
-    if (left instanceof Date || right instanceof Date) {
+    if (left instanceof Date || right instanceof Date)
       return (
         left instanceof Date && right instanceof Date && left.getTime() === right.getTime()
       )
-    }
-    if (left instanceof RegExp || right instanceof RegExp) {
+    if (left instanceof RegExp || right instanceof RegExp)
       return left instanceof RegExp && right instanceof RegExp && `${left}` === `${right}`
-    }
     if (Array.isArray(left) || Array.isArray(right)) {
-      if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length)
         return false
-      }
       return left.every((item, idx) => setting_equal(item, right[idx]))
     }
     const left_obj = left as Record<string, unknown>
@@ -138,7 +135,6 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
   }
 
   type EnhancedRow = {
-    row: HTMLElement
     original_description: string | null
     description_element: HTMLElement | null
     reset_button: HTMLButtonElement | null
@@ -164,22 +160,22 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     let refresh_queued = false
     let disposed = false
 
-    const remove_reset_button = (enhancement: EnhancedRow): void => {
+    const remove_reset_button = (row: HTMLElement, enhancement: EnhancedRow): void => {
       enhancement.reset_button?.remove()
       enhancement.reset_button = null
-      enhancement.row.classList.remove(`has-setting-reset`)
+      row.classList.remove(`has-setting-reset`)
     }
 
-    const cleanup_enhancement = (enhancement: EnhancedRow): void => {
+    const cleanup_enhancement = (row: HTMLElement, enhancement: EnhancedRow): void => {
       enhancement.description_element?.remove()
-      remove_reset_button(enhancement)
-      for (const control of enhancement.row.querySelectorAll(`[${auto_label_attr}]`)) {
+      remove_reset_button(row, enhancement)
+      for (const control of row.querySelectorAll(`[${auto_label_attr}]`)) {
         release_auto_label(control)
       }
       if (enhancement.original_description === null) {
-        enhancement.row.removeAttribute(`data-description`)
+        row.removeAttribute(`data-description`)
       } else {
-        enhancement.row.setAttribute(`data-description`, enhancement.original_description)
+        row.setAttribute(`data-description`, enhancement.original_description)
       }
     }
 
@@ -216,13 +212,12 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       }
     }
 
-    const enhance_row = (row: HTMLElement, changed_key_set: SvelteSet<string>): boolean => {
+    const enhance_row = (row: HTMLElement): boolean => {
       const key = row.dataset.key
       if (!key) return false
       let enhancement = enhanced_rows.get(row)
       if (!enhancement) {
         enhancement = {
-          row,
           original_description: row.getAttribute(`data-description`),
           description_element: null,
           reset_button: null,
@@ -257,8 +252,8 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         enhancement.description_element = null
       }
 
-      const needs_reset = Boolean(on_reset_key) && changed_key_set.has(key)
-      if (!needs_reset) remove_reset_button(enhancement)
+      const needs_reset = Boolean(on_reset_key) && changed_keys.includes(key)
+      if (!needs_reset) remove_reset_button(row, enhancement)
       else {
         if (!enhancement.reset_button) {
           const reset_button = document.createElement(`button`)
@@ -284,14 +279,13 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     const refresh = (): void => {
       if (disposed) return
       let found_description = false
-      const changed_key_set = new SvelteSet(changed_keys)
       for (const row of section.querySelectorAll<HTMLElement>(`[data-key]`)) {
-        found_description = enhance_row(row, changed_key_set) || found_description
+        found_description = enhance_row(row) || found_description
       }
       has_descriptions = found_description
       for (const [row, enhancement] of enhanced_rows) {
         if (!row.isConnected || !section.contains(row) || !row.dataset.key) {
-          cleanup_enhancement(enhancement)
+          cleanup_enhancement(row, enhancement)
           enhanced_rows.delete(row)
         }
       }
@@ -320,7 +314,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       disposed = true
       observer.disconnect()
       if (refresh_rows === schedule_refresh) refresh_rows = undefined
-      for (const enhancement of enhanced_rows.values()) cleanup_enhancement(enhancement)
+      for (const [row, enhancement] of enhanced_rows) cleanup_enhancement(row, enhancement)
       has_descriptions = false
     }
   }

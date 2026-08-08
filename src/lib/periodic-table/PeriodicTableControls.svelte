@@ -74,31 +74,28 @@
 
   // Apply CSS custom properties to document root
   $effect(() => {
-    if (typeof document !== `undefined`) {
-      const css_vars = {
-        '--ptable-gap': tile_gap,
-        '--elem-symbol-font-size': `${symbol_font_size}cqw`,
-        '--elem-number-font-size': `${number_font_size}cqw`,
-        '--elem-name-font-size': `${name_font_size}cqw`,
-        '--elem-value-font-size': `${value_font_size}cqw`,
-        '--tooltip-font-size': `${tooltip_font_size}px`,
-        '--tooltip-bg': tooltip_bg_color,
-        '--elem-tile-border-radius': `${tile_border_radius}pt`,
-        '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
-        '--elem-tile-font-color': tile_font_color,
-        '--elem-tile-transition-duration': `${tile_transition_duration}s`,
-        '--elem-tile-hover-border-width': `${hover_border_width}px`,
-        '--elem-symbol-font-weight': `${symbol_font_weight}`,
-        '--elem-number-font-weight': `${number_font_weight}`,
-        '--tooltip-border-radius': `${tooltip_border_radius}px`,
-        '--tooltip-padding': tooltip_padding,
-        '--tooltip-line-height': `${tooltip_line_height}`,
-        '--tooltip-text-align': tooltip_text_align,
-      }
-
-      for (const [prop, val] of Object.entries(css_vars)) {
-        document.documentElement.style.setProperty(prop, val)
-      }
+    const css_vars = {
+      '--ptable-gap': tile_gap,
+      '--elem-symbol-font-size': `${symbol_font_size}cqw`,
+      '--elem-number-font-size': `${number_font_size}cqw`,
+      '--elem-name-font-size': `${name_font_size}cqw`,
+      '--elem-value-font-size': `${value_font_size}cqw`,
+      '--tooltip-font-size': `${tooltip_font_size}px`,
+      '--tooltip-bg': tooltip_bg_color,
+      '--elem-tile-border-radius': `${tile_border_radius}pt`,
+      '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
+      '--elem-tile-font-color': tile_font_color,
+      '--elem-tile-transition-duration': `${tile_transition_duration}s`,
+      '--elem-tile-hover-border-width': `${hover_border_width}px`,
+      '--elem-symbol-font-weight': `${symbol_font_weight}`,
+      '--elem-number-font-weight': `${number_font_weight}`,
+      '--tooltip-border-radius': `${tooltip_border_radius}px`,
+      '--tooltip-padding': tooltip_padding,
+      '--tooltip-line-height': `${tooltip_line_height}`,
+      '--tooltip-text-align': tooltip_text_align,
+    }
+    for (const [prop, val] of Object.entries(css_vars)) {
+      document.documentElement.style.setProperty(prop, val)
     }
   })
 
@@ -122,16 +119,15 @@
     tooltip_line_height: (value) => (tooltip_line_height = value),
     tooltip_text_align: (value) => (tooltip_text_align = value),
   } satisfies { [Key in ControlKey]: (value: (typeof defaults)[Key]) => void }
-  const is_control_key = (key: string): key is ControlKey =>
-    Object.hasOwn(control_setters, key)
   const reset_control = (
     key: string,
     reference_value: unknown,
     reference_present: boolean,
   ): void => {
-    if (!is_control_key(key)) throw new Error(`Unknown fixed control key ${key}`)
+    const setter = control_setters[key as ControlKey]
+    if (!setter) throw new Error(`Unknown fixed control key ${key}`)
     if (!reference_present) throw new Error(`Missing reset value for fixed control ${key}`)
-    control_setters[key](reference_value as never)
+    setter(reference_value as never)
   }
   const reset_category_color = (
     category: string,
