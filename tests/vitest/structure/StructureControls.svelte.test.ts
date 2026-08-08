@@ -13,6 +13,7 @@ import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  doc_query,
   expect_labelled_settings_grid,
   make_crystal,
   simple_structure,
@@ -39,6 +40,11 @@ const set_input = (input: HTMLInputElement, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
+// Most rows carry no stable selector, so they are addressed by their visible label text.
+const find_label = (root: ParentNode, text: string, { exact = false } = {}) =>
+  [...root.querySelectorAll(`label`)].find((label) =>
+    exact ? label.textContent?.trim() === text : label.textContent?.includes(text),
+  )
 // jsdom has no file picker, so hand the input a FileList stand-in and fire the change it would.
 // The handler reads the file asynchronously, so settle on the status line it writes at the end
 // rather than on anything it does before awaiting.
@@ -48,10 +54,7 @@ const import_settings_file = async (
   expect_status: RegExp,
   name = `shared-view.json`,
 ): Promise<void> => {
-  const input = target.querySelector<HTMLInputElement>(
-    `input[aria-label="Import viewer settings JSON"]`,
-  )
-  if (!input) throw new Error(`Import viewer settings input is missing`)
+  const input = doc_query<HTMLInputElement>(`input[aria-label="Import viewer settings JSON"]`)
   const file = new File([], name)
   Object.defineProperty(file, `text`, { value: () => Promise.resolve(contents) })
   Object.defineProperty(input, `files`, {
@@ -98,8 +101,7 @@ describe(`StructureControls layout`, () => {
       [`Preferences`, false],
     ])
 
-    const search = target.querySelector<HTMLInputElement>(`input[type="search"]`)
-    if (!search) throw new Error(`Settings search input is missing`)
+    const search = doc_query<HTMLInputElement>(`input[type="search"]`)
     set_input(search, `damp`)
     await tick()
     expect(groups[0]?.hasAttribute(`data-search-hidden`)).toBe(true)
@@ -138,9 +140,7 @@ describe(`StructureControls layout`, () => {
       overrides: { max?: number; step?: number } = {},
     ) => {
       const config = SETTINGS_CONFIG.structure[setting]
-      const label = [...target.querySelectorAll<HTMLLabelElement>(`label`)].find((element) =>
-        element.textContent?.includes(label_text),
-      )
+      const label = find_label(target, label_text)
       if (!label) throw new Error(`${label_text} slider is missing`)
       const inputs = [...label.querySelectorAll<HTMLInputElement>(`input`)]
       expect(inputs).toHaveLength(2)
@@ -200,8 +200,8 @@ const mount_persisted_controls = async () => {
 }
 
 describe(`StructureControls reactive props`, () => {
-  test(`restores persisted settings`, async () => {
-    const { state } = await mount_persisted_controls()
+  test(`restores persisted settings and treats them as the reset snapshot`, async () => {
+    const { state, target } = await mount_persisted_controls()
     expect(state).toMatchObject({
       scene_props: { atom_radius: 1.35, ambient_light: 2.5 },
       lattice_props: { cell_edge_opacity: 0.75 },
@@ -213,20 +213,15 @@ describe(`StructureControls reactive props`, () => {
       supercell_scaling: `2x2x1`,
       multi_view: true,
     })
-  })
-
-  test(`uses restored settings as section reset snapshots`, async () => {
-    const { target } = await mount_persisted_controls()
     // Persisted values define this session's reset snapshot, so they do not immediately
     // masquerade as unsaved changes.
     expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
   })
 
   test(`persists changed settings and pane size after debounce`, async () => {
-    const { state, target } = await mount_persisted_controls()
+    const { state } = await mount_persisted_controls()
     state.scene_props.atom_radius = 1.6
-    const pane = target.querySelector<HTMLElement>(`.controls-pane`)
-    if (!pane) throw new Error(`Structure controls pane is missing`)
+    const pane = doc_query(`.controls-pane`)
     pane.style.width = `520px`
     pane.style.height = `610px`
     trigger_resize_observer(pane)
@@ -255,13 +250,11 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`reset-all restores defaults and clears persisted state`, async () => {
-    const { state, target } = await mount_persisted_controls()
+    const { state } = await mount_persisted_controls()
     state.scene_props.vector_configs = {
       force: { visible: false, color: `#ff0000`, scale: 4 },
     }
-    const reset_button = target.querySelector<HTMLButtonElement>(`button.reset-all-settings`)
-    if (!reset_button) throw new Error(`Reset-all settings button is missing`)
-    reset_button.click()
+    doc_query<HTMLButtonElement>(`button.reset-all-settings`).click()
     await tick()
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
@@ -281,8 +274,16 @@ describe(`StructureControls reactive props`, () => {
     await mount_bound_controls(state, { persist_settings: false })
 
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
-    state.scene_props.atom_radius = 2
-    await tick()
+    // Saves are debounced, so asserting after a single tick would hold even with persistence
+    // switched on. Drive the clock past the timer to prove nothing was ever queued.
+    vi.useFakeTimers()
+    try {
+      state.scene_props.atom_radius = 2
+      await tick()
+      await vi.advanceTimersByTimeAsync(1000)
+    } finally {
+      vi.useRealTimers()
+    }
     expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.5)
   })
 
@@ -396,10 +397,9 @@ describe(`StructureControls reactive props`, () => {
     }
     await tick()
 
-    const opacity_input = target.querySelector<HTMLInputElement>(
+    const opacity_input = doc_query<HTMLInputElement>(
       `[data-key="site_label_bg_opacity"] input[type="number"]`,
     )
-    if (!opacity_input) throw new Error(`site label background opacity input is missing`)
     expect(
       target.querySelector<HTMLInputElement>(`input[aria-label="Site label color"]`)?.value,
     ).toBe(`#00ff00`)
@@ -462,9 +462,9 @@ describe(`StructureControls reactive props`, () => {
     const target = await mount_bound_controls(state, { polyhedra_rendered_elements: [] })
 
     const center_checkbox = (symbol: string) =>
-      [...target.querySelectorAll(`label`)]
-        .find((label) => label.textContent?.trim() === symbol)
-        ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+      find_label(target, symbol, { exact: true })?.querySelector<HTMLInputElement>(
+        `input[type="checkbox"]`,
+      )
 
     // force-included element shows checked even when not (yet) rendered
     expect(center_checkbox(`O`)?.checked).toBe(true)
@@ -489,10 +489,7 @@ describe(`StructureControls reactive props`, () => {
 
     const target = await mount_bound_controls(state, { structure: fe_oxide })
 
-    const center_label = (symbol: string) =>
-      [...target.querySelectorAll(`label`)].find(
-        (label) => label.textContent?.trim() === symbol,
-      )
+    const center_label = (symbol: string) => find_label(target, symbol, { exact: true })
 
     expect(center_label(`Fe`)).toBeDefined()
     // no split-character artifacts from string iteration
@@ -538,10 +535,9 @@ describe(`StructureControls reactive props`, () => {
     expect(reset_button(`site vectors`)).toBeNull()
     expect(reset_button(`visibility`)).toBeNull()
 
-    const force_scale = target.querySelector<HTMLInputElement>(
+    const force_scale = doc_query<HTMLInputElement>(
       `[data-key="vector_scale:force"] input[type="number"]`,
     )
-    if (!force_scale) throw new Error(`per-key vector scale input is missing`)
     set_input(force_scale, `2.5`)
 
     state.scene_props.displacement_arrow_color = `#123456`
@@ -611,10 +607,7 @@ describe(`StructureControls reactive props`, () => {
       })
       const target = await mount_bound_controls(state)
 
-      const has_toggle = [...target.querySelectorAll(`label`)].some((label) =>
-        label.textContent?.includes(`Show trajectory trails`),
-      )
-      expect(has_toggle).toBe(expect_toggle)
+      expect(Boolean(find_label(target, `Show trajectory trails`))).toBe(expect_toggle)
       expect(target.textContent?.includes(`Trail length`) ?? false).toBe(expect_length)
     },
   )
@@ -630,9 +623,8 @@ describe(`StructureControls reactive props`, () => {
 
     const target = await mount_controls(bind_props({ controls_open: true }, state))
 
-    const multi_view_input = [...target.querySelectorAll<HTMLInputElement>(`input`)].find(
-      (input) => input.closest(`label`)?.textContent?.includes(`Multi-view grid`),
-    )
+    const multi_view_row = find_label(target, `Multi-view grid`)
+    const multi_view_input = multi_view_row?.querySelector<HTMLInputElement>(`input`)
     expect(multi_view_input?.disabled).toBe(true)
     const hint_id = multi_view_input?.getAttribute(`aria-describedby`) ?? ``
     expect(document.querySelector(`#${hint_id}`)?.textContent).toContain(

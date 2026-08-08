@@ -81,6 +81,26 @@ describe(`PeriodicTable`, () => {
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
   })
 
+  test(`rejects an unknown runtime reset key`, async () => {
+    mount(PeriodicTableControls, { target: document.body })
+    const row = doc_query(`[data-key="tile_border_radius"]`)
+    const input = doc_query<HTMLInputElement>(
+      `[data-key="tile_border_radius"] input[type="number"]`,
+    )
+    input.value = `5`
+    input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    const reset_button = doc_query<HTMLButtonElement>(
+      `[data-key="tile_border_radius"] .setting-reset-button`,
+    )
+    row.dataset.key = `unknown-control`
+    reset_button.click()
+    await tick()
+    expect(row.querySelector(`.setting-reset-button`)).toBeNull()
+    expect(input.valueAsNumber).toBe(5)
+  })
+
   test(`shows element photo when hovering element tile`, async () => {
     mount(PeriodicTable, { target: document.body, props: { show_photo: true } })
 

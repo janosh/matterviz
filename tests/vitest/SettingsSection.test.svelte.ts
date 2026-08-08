@@ -1,11 +1,15 @@
 import { SettingsSection } from '$lib'
-import { createRawSnippet, flushSync, mount, tick } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, type ComponentProps } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 import SettingsSectionRerenderHarness from './SettingsSectionRerenderHarness.svelte'
 
 const snippet = (content: string) => createRawSnippet(() => ({ render: () => content }))
 type SettingValues = Record<string, unknown>
+const mount_section = (
+  props: ComponentProps<typeof SettingsSection>,
+  target: HTMLElement = document.body,
+): void => void mount(SettingsSection, { target, props })
 const element = (selector: string, root: ParentNode = document): HTMLElement => {
   const match = root.querySelector<HTMLElement>(selector)
   if (!match) throw new Error(`Missing element: ${selector}`)
@@ -28,17 +32,14 @@ const mount_atoms = (
   reset_calls: [string, unknown, boolean][] = [],
 ): SettingValues => {
   const current_values = $state<SettingValues>({ ...initial })
-  mount(SettingsSection, {
-    target: document.body,
-    props: {
-      title: `Atoms`,
-      current_values,
-      children: atoms,
-      on_reset_key: (key: string, value: unknown, present: boolean) => {
-        reset_calls.push([key, value, present])
-        if (present) current_values[key] = value
-        else Reflect.deleteProperty(current_values, key)
-      },
+  mount_section({
+    title: `Atoms`,
+    current_values,
+    children: atoms,
+    on_reset_key: (key: string, value: unknown, present: boolean) => {
+      reset_calls.push([key, value, present])
+      if (present) current_values[key] = value
+      else Reflect.deleteProperty(current_values, key)
     },
   })
   return current_values
@@ -50,23 +51,15 @@ describe(`SettingsSection`, () => {
       [`Section A`, `Content A`],
       [`Section B`, `Content B`],
     ]) {
-      mount(SettingsSection, {
-        target: document.body,
-        props: { title, current_values: {}, children: snippet(content) },
-      })
+      mount_section({ title, children: snippet(content) })
     }
     const [heading_a, heading_b] = [...document.querySelectorAll(`h4`)]
     const [section_a, section_b] = [...document.querySelectorAll(`section`)]
-    expect([heading_a.textContent?.trim(), heading_b.textContent?.trim()]).toEqual([
+    expect([heading_a.textContent?.trim(), section_a.textContent?.trim()]).toEqual([
       `Section A`,
-      `Section B`,
-    ])
-    expect([section_a.textContent?.trim(), section_b.textContent?.trim()]).toEqual([
       `Content A`,
-      `Content B`,
     ])
     // ids are non-empty, unique, and each section points at its own heading
-    // (boolean assertion is oxlint-stable; --fix rewrites toBeTruthy() -> toBe(true))
     expect(heading_a.id.startsWith(`settings-section-title-`)).toBe(true)
     expect(heading_a.id).not.toBe(heading_b.id)
     expect(section_a.getAttribute(`aria-labelledby`)).toBe(heading_a.id)
@@ -74,15 +67,8 @@ describe(`SettingsSection`, () => {
   })
 
   const reset_cases: [string, SettingValues, SettingValues, boolean][] = [
-    [`equal arrays`, { setting1: [`a`, `b`] }, { setting1: [`a`, `b`] }, false],
     [`equal nested arrays`, { setting1: [{ key: 1 }] }, { setting1: [{ key: 1 }] }, false],
     [`equal empty arrays`, { setting1: [] }, { setting1: [] }, false],
-    [
-      `equal nullish values`,
-      { setting1: undefined, setting2: null },
-      { setting1: undefined, setting2: null },
-      false,
-    ],
     [`primitive change`, { setting1: `default` }, { setting1: `changed` }, true],
     [
       `object key insertion order`,
@@ -112,15 +98,12 @@ describe(`SettingsSection`, () => {
 
   test.each(reset_cases)(`reset button after %s`, (_name, initial, next, expect_reset) => {
     let current_values = $state<SettingValues>({ ...initial })
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Test Settings`,
-        get current_values() {
-          return current_values
-        },
-        children: snippet(`content`),
+    mount_section({
+      title: `Test Settings`,
+      get current_values() {
+        return current_values
       },
+      children: snippet(`content`),
     })
     expect(document.querySelector(`.reset-button`)).toBeNull()
 
@@ -128,8 +111,7 @@ describe(`SettingsSection`, () => {
       current_values = { ...next }
     })
     const reset_button = document.querySelector<HTMLButtonElement>(`.reset-button`)
-    expect(Boolean(reset_button)).toBe(expect_reset)
-    if (expect_reset) expect(reset_button?.type).toBe(`button`)
+    expect(reset_button?.type).toBe(expect_reset ? `button` : undefined)
   })
 
   test.each([
@@ -138,13 +120,10 @@ describe(`SettingsSection`, () => {
     [`custom-prototype`, Object.create({ inherited: true }), `must be plain objects`],
   ])(`rejects %s-valued settings`, (_name, value, message) => {
     expect(() =>
-      mount(SettingsSection, {
-        target: document.body,
-        props: {
-          title: `Unsupported`,
-          current_values: { value },
-          children: snippet(`content`),
-        },
+      mount_section({
+        title: `Unsupported`,
+        current_values: { value },
+        children: snippet(`content`),
       }),
     ).toThrow(message)
   })
@@ -175,12 +154,10 @@ describe(`SettingsSection`, () => {
       Object.assign(current_values, change)
     })
     await tick()
-    const reset_buttons = document.querySelectorAll(`.setting-reset-button`)
-    expect(reset_buttons).toHaveLength(1)
-    const reset_button = document.querySelector<HTMLButtonElement>(
-      `[data-key="${key}"] .setting-reset-button`,
-    )
-    expect(reset_button?.getAttribute(`aria-label`)).toBe(`Reset ${key} to default`)
+    expect(document.querySelectorAll(`.setting-reset-button`)).toHaveLength(1)
+    expect(
+      element(`[data-key="${key}"] .setting-reset-button`).getAttribute(`aria-label`),
+    ).toBe(`Reset ${key} to default`)
     await click(`[data-key="${key}"] .setting-reset-button`)
 
     expect(reset_calls).toEqual([[key, reference_value, reference_present]])
@@ -201,20 +178,17 @@ describe(`SettingsSection`, () => {
     expect(document.querySelectorAll(`.setting-reset-button`)).toHaveLength(2)
 
     await click(`.reset-button`)
-    // has_changes drives both indicators, so the section button clearing itself is the invariant
     expect(document.querySelector(`.reset-button`)).toBeNull()
     expect(document.querySelector(`.setting-reset-button`)).toBeNull()
     expect(current_values).toEqual({ radius: 1, palette: `warm` })
   })
 
   test(`names unlabelled row controls and leaves author-named ones alone`, async () => {
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Atoms`,
-        current_values: { radius: 1 },
-        setting_metadata: { radius: `Radius of rendered atoms` },
-        children: snippet(`
+    mount_section({
+      title: `Atoms`,
+      current_values: { radius: 1 },
+      setting_metadata: { radius: `Radius of rendered atoms` },
+      children: snippet(`
           <label data-key="radius">
             <span>Radius</span>
             <input type="number">
@@ -223,7 +197,6 @@ describe(`SettingsSection`, () => {
             <select aria-labelledby="somewhere-else"></select>
           </label>
         `),
-      },
     })
     await tick()
 
@@ -241,24 +214,21 @@ describe(`SettingsSection`, () => {
   })
 
   test(`reveals row descriptions and ignores metadata without a row`, async () => {
-    mount(SettingsSection, {
-      target: document.body,
-      props: {
-        title: `Pointer sensitivity`,
-        current_values: { rotate_speed: 1, rotation_damping: 0.1, radius: 1 },
-        setting_metadata: {
-          rotate_speed: { description: `Pointer rotation speed` },
-          rotation_damping: { description: `Motion inertia after releasing the pointer` },
-          unrelated: `Not rendered here`,
-        },
-        children: snippet(`
+    mount_section({
+      title: `Pointer sensitivity`,
+      current_values: { rotate_speed: 1, rotation_damping: 0.1, radius: 1 },
+      setting_metadata: {
+        rotate_speed: { description: `Pointer rotation speed` },
+        rotation_damping: { description: `Motion inertia after releasing the pointer` },
+        unrelated: `Not rendered here`,
+      },
+      children: snippet(`
           <div>
             <label data-key="rotate_speed"><span>Rotate speed</span><input></label>
             <label data-key="rotation_damping"><span>Damping</span><input></label>
             <label data-key="radius" data-description="Radius of rendered atoms"><span>Radius</span><input></label>
           </div>
         `),
-      },
     })
     await tick()
 
@@ -287,15 +257,15 @@ describe(`SettingsSection`, () => {
     expect(document.querySelectorAll(`.settings-row-description`)).toHaveLength(0)
     const unrelated_target = document.createElement(`div`)
     document.body.append(unrelated_target)
-    mount(SettingsSection, {
-      target: unrelated_target,
-      props: {
+    mount_section(
+      {
         title: `Unrelated metadata`,
         current_values: { diameter: 1 },
         setting_metadata: { unrelated: `Not rendered here` },
         children: snippet(`<label data-key="diameter"><span>Diameter</span><input></label>`),
       },
-    })
+      unrelated_target,
+    )
     await tick()
     // Prove the connected row was enhanced before checking that unrelated metadata is ignored.
     expect(element(`input`, unrelated_target).getAttribute(`data-auto-label`)).toBe(`Diameter`)

@@ -151,9 +151,7 @@ const normalize_structure_settings = (
     const key = raw_key as StructureSettingKey
     const setting = raw_setting as SettingType<StructureSettings[StructureSettingKey]>
     if (!is_web_setting(setting) || is_non_portable_structure_key(key)) continue
-    Object.assign(settings, {
-      [key]: validate_setting_value(setting_value(key), setting),
-    })
+    Reflect.set(settings, key, validate_setting_value(setting_value(key), setting))
   }
   return settings
 }
@@ -199,8 +197,9 @@ export const create_structure_view_state = (
 ): StructureViewState =>
   build_view_state(source, source, (key) => structure_setting_source(key, source))
 
-const validate_structure_view_state = (value: unknown): StructureViewState | null => {
-  if (!is_record(value) || value.version !== STRUCTURE_VIEW_STATE_VERSION) return null
+const normalize_structure_view_state = (
+  value: StructureViewState | Record<string, unknown>,
+): StructureViewState => {
   const settings = is_record(value.settings) ? value.settings : {}
   const structure = is_record(settings.structure) ? settings.structure : {}
   return build_view_state(
@@ -225,17 +224,14 @@ export const deserialize_structure_view_state = (
       error: `Unsupported view-state version ${String(parsed.version)}; expected ${STRUCTURE_VIEW_STATE_VERSION}`,
     }
   }
-  const state = validate_structure_view_state(parsed)
-  if (!state) return { error: `Invalid view state` }
-  return { state }
+  return { state: normalize_structure_view_state(parsed) }
 }
 
 export const serialize_structure_view_state = (state: StructureViewState): string => {
-  const validated = validate_structure_view_state(state)
-  if (!validated) {
+  if (state.version !== STRUCTURE_VIEW_STATE_VERSION) {
     throw new Error(`Cannot serialize structure view state version ${String(state.version)}`)
   }
-  return JSON.stringify(validated, null, 2)
+  return JSON.stringify(normalize_structure_view_state(state), null, 2)
 }
 
 const get_storage = (): Storage | null => {

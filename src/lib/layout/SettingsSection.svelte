@@ -1,8 +1,7 @@
 <!-- SettingsSection now exists upstream. Delete this local copy and import it from
 svelte-widgets once a version above 1.4.0 is published; its API is otherwise unchanged. -->
 <script lang="ts">
-  import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Icon } from 'svelte-widgets'
@@ -88,11 +87,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       )
     }
     if (left instanceof RegExp || right instanceof RegExp) {
-      return (
-        left instanceof RegExp &&
-        right instanceof RegExp &&
-        left.toString() === right.toString()
-      )
+      return left instanceof RegExp && right instanceof RegExp && `${left}` === `${right}`
     }
     if (Array.isArray(left) || Array.isArray(right)) {
       if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
@@ -118,14 +113,8 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         !setting_equal(reference_values[key], current_values[key]),
     ),
   )
-  let has_changes = $derived(changed_keys.length > 0)
   let has_descriptions = $state(false)
   let refresh_rows = $state<(() => void) | undefined>()
-
-  const description_for = (key: string): string | undefined => {
-    const metadata = setting_metadata?.[key]
-    return typeof metadata === `string` ? metadata : metadata?.description
-  }
 
   const reset_key = (key: string): void => {
     if (!on_reset_key || !changed_keys.includes(key)) return
@@ -242,7 +231,9 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       }
       sync_labelled_controls(row)
 
-      const mapped_description = description_for(key)
+      const metadata = setting_metadata?.[key]
+      const mapped_description =
+        typeof metadata === `string` ? metadata : metadata?.description
       if (mapped_description) row.setAttribute(`data-description`, mapped_description)
       else if (enhancement.original_description === null)
         row.removeAttribute(`data-description`)
@@ -336,9 +327,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
 
   $effect(() => {
     // Track reactive inputs here so refreshing rows does not recreate the observer or its nodes.
-    void changed_keys
-    void descriptions_open
-    void setting_metadata
+    void [changed_keys, descriptions_open, setting_metadata]
     refresh_rows?.()
   })
 </script>
@@ -346,7 +335,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
 <h4 id={title_id}>
   {title}
 
-  {#if has_descriptions || has_changes}
+  {#if has_descriptions || changed_keys.length}
     <span class="heading-actions">
       {#if has_descriptions}
         <button
@@ -361,7 +350,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
           Explain
         </button>
       {/if}
-      {#if has_changes}
+      {#if changed_keys.length}
         <button
           type="button"
           class="reset-button"

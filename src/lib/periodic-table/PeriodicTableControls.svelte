@@ -25,7 +25,8 @@
     tooltip_line_height: 1.2,
     tooltip_text_align: `center`,
   }
-  const range = (data_key: string, min: number, max: number, step: number) => ({
+  type ControlKey = keyof typeof defaults
+  const range = (data_key: ControlKey, min: number, max: number, step: number) => ({
     'data-key': data_key,
     min,
     max,
@@ -101,7 +102,6 @@
     }
   })
 
-  type ControlKey = keyof typeof defaults
   const control_setters = {
     tile_gap: (value) => (tile_gap = value),
     symbol_font_size: (value) => (symbol_font_size = value),
@@ -122,13 +122,16 @@
     tooltip_line_height: (value) => (tooltip_line_height = value),
     tooltip_text_align: (value) => (tooltip_text_align = value),
   } satisfies { [Key in ControlKey]: (value: (typeof defaults)[Key]) => void }
+  const is_control_key = (key: string): key is ControlKey =>
+    Object.hasOwn(control_setters, key)
   const reset_control = (
     key: string,
     reference_value: unknown,
     reference_present: boolean,
   ): void => {
+    if (!is_control_key(key)) throw new Error(`Unknown fixed control key ${key}`)
     if (!reference_present) throw new Error(`Missing reset value for fixed control ${key}`)
-    control_setters[key as ControlKey]?.(reference_value as never)
+    control_setters[key](reference_value as never)
   }
   const reset_category_color = (
     category: string,

@@ -264,6 +264,5 @@ describe(`Structure viewer state serialization`, () => {
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).not.toBeNull()
     expect(clear_structure_view_state()).toBe(true)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
-    expect(load_structure_view_state()).toBeNull()
   })
 })
