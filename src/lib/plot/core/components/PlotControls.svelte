@@ -11,6 +11,7 @@
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig, AxisKey, PlotControlsProps } from '$lib/plot/core/types'
   import { normalize_y2_sync } from '$lib/plot/core/interactions'
+  import { untrack } from 'svelte'
   import {
     get_scale_type_name,
     is_scale_type_name,
@@ -54,6 +55,22 @@
     Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
+  const zero_line_default = (axis: AxisKey): boolean =>
+    (axis === `x` && DEFAULTS.plot.show_x_zero_line) ||
+    (axis === `y` && DEFAULTS.plot.show_y_zero_line)
+  const grid_default = (axis: AxisKey): boolean =>
+    axis !== `x2` && DEFAULTS.scatter.display[`${axis}_grid`]
+  const zero_line_value = (axis: AxisKey): boolean =>
+    display[`${axis}_zero_line`] ?? zero_line_default(axis)
+  const grid_value = (axis: AxisKey): boolean => display[`${axis}_grid`] ?? grid_default(axis)
+  const display_values = (): Record<string, boolean> =>
+    Object.fromEntries(
+      all_axes.flatMap((axis) => [
+        [`${axis}_zero_line`, zero_line_value(axis)],
+        [`${axis}_grid`, grid_value(axis)],
+      ]),
+    )
+  const display_reset_values = untrack(display_values)
   const tick_axes = [
     { axis: `x`, label: `X-axis`, fallback: DEFAULTS.plot.x_ticks },
     { axis: `y`, label: `Y-axis`, fallback: DEFAULTS.plot.y_ticks },
@@ -67,6 +84,17 @@
   ])
   const axis_config = (axis: AxisKey): AxisConfig =>
     axis === `x` ? x_axis : axis === `x2` ? x2_axis : axis === `y` ? y_axis : y2_axis
+  const initial_ranges = untrack(
+    () =>
+      Object.fromEntries(all_axes.map((axis) => [axis, axis_config(axis).range])) as Record<
+        AxisKey,
+        AxisConfig[`range`]
+      >,
+  )
+  const initial_ticks = untrack(() => ({
+    x: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
+    y: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
+  }))
   const update_axis = (axis: AxisKey, updates: Partial<AxisConfig>): void => {
     if (axis === `x`) x_axis = { ...x_axis, ...updates }
     else if (axis === `x2`) x2_axis = { ...x2_axis, ...updates }
@@ -182,18 +210,8 @@
     <!-- Base Display controls -->
     <SettingsSection
       title="Display"
-      current_values={Object.fromEntries(
-        all_axes.flatMap((axis) => [
-          [`${axis}_zero_line`, display[`${axis}_zero_line`]],
-          [`${axis}_grid`, display[`${axis}_grid`]],
-        ]),
-      )}
-      on_reset={() => {
-        for (const axis of all_axes) {
-          display[`${axis}_zero_line`] = false
-          display[`${axis}_grid`] = DEFAULTS.plot[`show_${axis}_grid`]
-        }
-      }}
+      current_values={display_values()}
+      on_reset={() => (display = { ...display, ...display_reset_values })}
       layout="grid"
     >
       {#if all_axes.some((axis) => includes_zero[axis])}
@@ -203,7 +221,12 @@
             {#each visible_axes as [axis, label] (axis)}
               {#if includes_zero[axis]}
                 <label>
-                  <input type="checkbox" bind:checked={display[`${axis}_zero_line`]} />
+                  <input
+                    type="checkbox"
+                    checked={zero_line_value(axis)}
+                    onchange={(event) =>
+                      (display[`${axis}_zero_line`] = event.currentTarget.checked)}
+                  />
                   {label}
                 </label>
               {/if}
@@ -216,7 +239,11 @@
         <span class="control-options">
           {#each visible_axes as [axis, label] (axis)}
             <label>
-              <input type="checkbox" bind:checked={display[`${axis}_grid`]} />
+              <input
+                type="checkbox"
+                checked={grid_value(axis)}
+                onchange={(event) => (display[`${axis}_grid`] = event.currentTarget.checked)}
+              />
               {label}
             </label>
           {/each}
@@ -235,8 +262,8 @@
           y2_range: y2_axis.range,
         }}
         on_reset={() => {
-          for (const axis of all_axes) update_axis(axis, { range: [null, null] })
-          Object.values(range_els).forEach((el) => el.classList.remove(`invalid`))
+          for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
+          Object.values(range_els).forEach((element) => element?.classList.remove(`invalid`))
         }}
         layout="grid"
       >
@@ -273,10 +300,13 @@
         {@const [min_ticks, max_ticks] = [2, 20]}
         <SettingsSection
           title="Ticks"
-          current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
+          current_values={{
+            x_ticks: x_axis.ticks ?? DEFAULTS.plot.x_ticks,
+            y_ticks: y_axis.ticks ?? DEFAULTS.plot.y_ticks,
+          }}
           on_reset={() => {
-            for (const { axis, fallback } of tick_axes) {
-              update_axis(axis, { ticks: fallback })
+            for (const { axis } of tick_axes) {
+              update_axis(axis, { ticks: initial_ticks[axis] })
             }
           }}
           layout="grid"

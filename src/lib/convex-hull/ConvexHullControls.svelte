@@ -488,7 +488,8 @@
               {min}
               {max}
               oninput={(event) => {
-                if (camera) camera[key] = parseFloat(event.currentTarget.value)
+                const camera_value = event.currentTarget.valueAsNumber
+                if (camera && Number.isFinite(camera_value)) camera[key] = camera_value
               }}
               style="width: 3em"
             />

@@ -26,7 +26,7 @@
       <label data-testid="sphere-segments">
         <span>Sphere segments</span><input type="number" />
       </label>
-      <div>
+      <div data-key="sphere-container" data-description="Nested control collection">
         <label data-testid="nested-sphere-segments">
           <span>Nested sphere segments</span><input type="number" />
         </label>

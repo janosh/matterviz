@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
     query = $bindable(``),
@@ -27,6 +27,7 @@
   // just because nothing resets it individually, so plain section rows count too.
   const row_selector = `[data-key], section.settings-section :is(label, .setting)`
   const search_hidden_attr = `data-search-hidden`
+  let refresh_rows = $state<(() => void) | undefined>()
 
   const filter_settings = (root: HTMLElement): (() => void) => {
     // Keep search visibility separate from caller-owned `hidden` state.
@@ -56,30 +57,71 @@
         return
       }
 
-      const matching_rows = new SvelteSet<HTMLElement>()
-      const rows = [...root.querySelectorAll<HTMLElement>(row_selector)].filter(
-        (row) =>
-          row.hasAttribute(`data-key`) ||
-          row.parentElement?.closest(`label, .setting`) === null,
-      )
-      for (const row of rows) {
+      const sections = [...root.querySelectorAll<HTMLElement>(`section.settings-section`)]
+      const groups = [...root.querySelectorAll<HTMLDetailsElement>(`details.settings-group`)]
+      // A row is reachable by its section/group title, but those headings also carry action
+      // buttons ("Explain", "Reset"). Their labels are chrome, not settings text, and would
+      // otherwise make a search for "reset" match every row in the section.
+      const container_titles = new SvelteMap<HTMLElement, string>()
+      const record_title = (container: HTMLElement, heading: Element | null): void => {
+        if (!(heading instanceof HTMLElement)) return
+        const copy = heading.cloneNode(true) as HTMLElement
+        for (const chrome of copy.querySelectorAll(`button`)) chrome.remove()
+        container_titles.set(container, copy.textContent ?? ``)
+      }
+      for (const section of sections) record_title(section, section.previousElementSibling)
+      for (const group of groups) {
+        record_title(group, group.querySelector(`:scope > summary`))
+      }
+      const row_contexts = [...root.querySelectorAll<HTMLElement>(row_selector)]
+        .filter(
+          (row) =>
+            row.hasAttribute(`data-key`) ||
+            row.parentElement?.closest(`label, .setting`) === null,
+        )
+        .map((row) => ({
+          row,
+          section: row.closest<HTMLElement>(`section.settings-section`),
+          group: row.closest<HTMLDetailsElement>(`details.settings-group`),
+        }))
+      const directly_matched_rows = new SvelteSet<HTMLElement>()
+      for (const { row, section, group } of row_contexts) {
         const searchable_text = [
           row.getAttribute(`data-label`),
           row.textContent,
           row.getAttribute(`data-description`),
+          section && container_titles.get(section),
+          group && container_titles.get(group),
         ]
           .filter((value): value is string => Boolean(value))
           .join(` `)
           .toLocaleLowerCase()
-        const matches = searchable_text.includes(normalized_query)
-        set_hidden(row, !matches)
-        // A row the caller hid stays hidden, so it must not count as a match either
-        if (matches && !row.hidden) matching_rows.add(row)
+        if (searchable_text.includes(normalized_query)) directly_matched_rows.add(row)
       }
-      const matches = [...matching_rows]
+      const matched_containers = new SvelteSet<HTMLElement>()
+      let matched_row_count = 0
+      for (const { row, section, group } of row_contexts) {
+        let ancestor = row.parentElement
+        let ancestor_matches = false
+        while (ancestor && ancestor !== root) {
+          if (directly_matched_rows.has(ancestor)) {
+            ancestor_matches = true
+            break
+          }
+          ancestor = ancestor.parentElement
+        }
+        const is_match = directly_matched_rows.has(row) || ancestor_matches
+        set_hidden(row, !is_match)
+        // A row the caller hid stays hidden, so it must not count as a match either
+        if (is_match && !row.hidden) {
+          matched_row_count += 1
+          if (section) matched_containers.add(section)
+          if (group) matched_containers.add(group)
+        }
+      }
 
-      for (const section of root.querySelectorAll<HTMLElement>(`section.settings-section`)) {
-        const section_matches = matches.some((row) => section.contains(row))
+      for (const section of sections) {
+        const section_matches = matched_containers.has(section)
         set_hidden(section, !section_matches)
         const heading = section.previousElementSibling
         if (heading instanceof HTMLElement && heading.matches(`h4`)) {
@@ -87,10 +129,8 @@
         }
       }
 
-      for (const group of root.querySelectorAll<HTMLDetailsElement>(
-        `details.settings-group`,
-      )) {
-        const group_matches = matches.some((row) => group.contains(row))
+      for (const group of groups) {
+        const group_matches = matched_containers.has(group)
         set_hidden(group, !group_matches)
         if (group_matches && !group.open) {
           group.open = true
@@ -98,7 +138,7 @@
         }
       }
 
-      match_count = matching_rows.size
+      match_count = matched_row_count
     }
 
     const schedule_refresh = (): void => {
@@ -117,15 +157,23 @@
       attributes: true,
       attributeFilter: [`data-description`, `data-label`, `data-key`],
     })
-    refresh()
+    refresh_rows = schedule_refresh
+    untrack(refresh)
 
     return () => {
       disposed = true
       observer.disconnect()
+      if (refresh_rows === schedule_refresh) refresh_rows = undefined
       restore_visibility()
       match_count = 0
     }
   }
+
+  $effect(() => {
+    // Track the query here so filtering does not recreate the observer on every keystroke.
+    void query
+    refresh_rows?.()
+  })
 
   const handle_keydown = (event: KeyboardEvent): void => {
     if (event.key !== `Escape` || !query) return

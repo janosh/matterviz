@@ -98,7 +98,7 @@
           <span>Property</span>
           <select bind:value={selected_property}>
             <option value="">All</option>
-            {#each series_options as option (option)}
+            {#each series_options as option, option_idx (option_idx)}
               <option value={option}>{option}</option>
             {/each}
           </select>

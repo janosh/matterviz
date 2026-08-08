@@ -55,6 +55,9 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     if (obj instanceof Date) return new Date(obj)
     if (obj instanceof RegExp) return new RegExp(obj)
     if (Array.isArray(obj)) return obj.map(deep_copy)
+    const prototype = Object.getPrototypeOf(obj)
+    if (prototype && prototype !== Object.prototype)
+      throw new TypeError(`SettingsSection values must be plain objects`)
     return Object.fromEntries(
       Object.entries(obj).map(([key, value]) => [key, deep_copy(value)]),
     )
@@ -76,7 +79,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
 
   // Order-independent deep equality for setting values
   const setting_equal = (left: unknown, right: unknown): boolean => {
-    if (Object.is(left, right)) return true
+    if (left === right || Object.is(left, right)) return true
     if (left == null || right == null) return false
     if (typeof left !== `object` || typeof right !== `object`) return false
     if (left instanceof Date || right instanceof Date) {
@@ -229,7 +232,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       }
     }
 
-    const enhance_row = (row: HTMLElement): boolean => {
+    const enhance_row = (row: HTMLElement, changed_key_set: SvelteSet<string>): boolean => {
       const key = row.dataset.key
       if (!key) return false
       let enhancement = enhanced_rows.get(row)
@@ -268,7 +271,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         enhancement.description_element = null
       }
 
-      const needs_reset = Boolean(on_reset_key) && changed_keys.includes(key)
+      const needs_reset = Boolean(on_reset_key) && changed_key_set.has(key)
       if (!needs_reset) remove_reset_button(enhancement)
       else {
         if (!enhancement.reset_button) {
@@ -289,14 +292,15 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         enhancement.reset_button.setAttribute(`aria-label`, `Reset ${key} to default`)
         enhancement.reset_button.title = `Reset ${key} to default`
       }
-      return Boolean(mapped_description)
+      return Boolean(description)
     }
 
     const refresh = (): void => {
       if (disposed) return
       let found_description = false
+      const changed_key_set = new SvelteSet(changed_keys)
       for (const row of section.querySelectorAll<HTMLElement>(`[data-key]`)) {
-        found_description = enhance_row(row) || found_description
+        found_description = enhance_row(row, changed_key_set) || found_description
       }
       has_descriptions = found_description
       for (const [row, enhancement] of enhanced_rows) {

@@ -140,7 +140,9 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     if (!first_input) throw new Error(`missing ${expected.split(`|`)[0]} camera input`)
     first_input.value = `12`
     first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    flushSync()
+    expect(state).toMatchObject({ [key]: 12 })
+    first_input.value = ``
+    first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     expect(state).toMatchObject({ [key]: 12 })
   })
 

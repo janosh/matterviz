@@ -308,7 +308,9 @@
             max={15}
             value={axis_cfg.ticks ?? PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`]}
             oninput={(ev) => {
-              const new_ticks = Number(ev.currentTarget.value)
+              const parsed_ticks = ev.currentTarget.valueAsNumber
+              if (!Number.isFinite(parsed_ticks)) return
+              const new_ticks = Math.max(2, Math.min(15, Math.round(parsed_ticks)))
               if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }
               else if (axis_name === `y`) y_axis = { ...y_axis, ticks: new_ticks }
             }}

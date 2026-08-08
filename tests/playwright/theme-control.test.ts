@@ -87,17 +87,22 @@ test.describe(`ThemeControl`, () => {
     const menu_label = `Search the MatterViz site`
     const dialog = page.getByRole(`dialog`, { name: menu_label })
     const search_input = dialog.getByRole(`combobox`, { name: menu_label })
-    const mode = `dark`
+    for (const mode of [`dark`, `white`] as const) {
+      await expect(async () => {
+        await page.keyboard.press(`Control+K`)
+        await expect(dialog).toBeVisible({ timeout: 1500 })
+      }).toPass({ timeout: 15_000 })
 
-    await expect(async () => {
-      await page.keyboard.press(`Control+K`)
-      await expect(dialog).toBeVisible({ timeout: 1500 })
-    }).toPass({ timeout: 15_000 })
-
-    await search_input.fill(`${mode} color mode`)
-    await dialog.getByRole(`option`, { name: new RegExp(`${mode} color theme`, `i`) }).click()
-    await expect(html_element).toHaveAttribute(`data-theme`, mode)
-    await expect(theme_control).toHaveValue(mode)
+      await search_input.fill(`${mode} colour appearance`)
+      await dialog
+        .getByRole(`option`, { name: new RegExp(`${mode} color theme`, `i`) })
+        .click()
+      await expect(html_element).toHaveAttribute(`data-theme`, mode)
+      await expect(theme_control).toHaveValue(mode)
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)))
+        .toBe(mode)
+    }
   })
 
   test(`syntax highlighting colors follow app theme not OS preference`, async ({ page }) => {

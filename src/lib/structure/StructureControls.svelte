@@ -149,7 +149,8 @@
     toggle_props?: PaneToggleProps
   } = $props()
 
-  // ColorScaleSelect requires a concrete bound value during initial render.
+  // ColorScaleSelect requires a concrete bound value during initial render; the synchronization
+  // effect below repeats this after callers replace atom_color_config with another partial object.
   atom_color_config.scale ??= DEFAULTS.structure.atom_color_scale
 
   const lattice_setting_keys = [
@@ -191,6 +192,10 @@
     controls_pane_size = state.viewer.controls_pane_size
       ? { ...state.viewer.controls_pane_size }
       : undefined
+    if (!controls_pane_size && controls_pane) {
+      controls_pane.style.width = ``
+      controls_pane.style.height = ``
+    }
   }
 
   const restore_view_state = (): StructureViewState | null =>
@@ -213,18 +218,16 @@
       controls_pane_size,
     }),
   )
-  let current_view_state_json = $derived(serialize_structure_view_state(current_view_state))
-  let initial_view_state_json: string | undefined
+  let last_saved_view_state_json: string | undefined
 
   $effect(() => {
     const state = current_view_state
-    const serialized = current_view_state_json
-    if (initial_view_state_json === undefined) {
-      initial_view_state_json = serialized
-      return
-    }
-    if (!persist_settings || serialized === initial_view_state_json) return
-    const save_timeout = setTimeout(() => save_structure_view_state(state), 150)
+    const serialized = serialize_structure_view_state(state)
+    last_saved_view_state_json ??= serialized
+    if (!persist_settings || serialized === last_saved_view_state_json) return
+    const save_timeout = setTimeout(() => {
+      if (save_structure_view_state(state)) last_saved_view_state_json = serialized
+    }, 150)
     return () => clearTimeout(save_timeout)
   })
 
@@ -255,52 +258,49 @@
     return () => observer.disconnect()
   })
 
+  const set_status = (message: string, error = false): void => {
+    settings_import_status = { message, error }
+  }
+
   const { copied: copied_view_state, copy: copy_view_state_text } = create_clipboard_feedback(
     1200,
     (error) => {
       console.error(`Failed to copy viewer settings to clipboard`, error)
-      settings_import_status = { message: `Clipboard access failed`, error: true }
+      set_status(`Clipboard access failed`, true)
     },
   )
 
-  const copy_view_state = (): void => {
-    void copy_view_state_text(current_view_state_json, `viewer-settings`)
-  }
-
-  const download_view_state = (): void => {
-    download(current_view_state_json, `matterviz-view-settings.json`, `application/json`)
-  }
+  const serialize_current_view_state = (): string =>
+    serialize_structure_view_state(current_view_state)
+  const copy_view_state = (): void =>
+    void copy_view_state_text(serialize_current_view_state(), `viewer-settings`)
+  const download_view_state = (): void =>
+    download(
+      serialize_current_view_state(),
+      `matterviz-view-settings.json`,
+      `application/json`,
+    )
 
   const import_view_state = async (event: Event): Promise<void> => {
     const input = event.currentTarget
     if (!(input instanceof HTMLInputElement)) return
     const file = input.files?.[0]
+    // Clear before reading so re-picking the same file still fires a change event
     input.value = ``
     if (!file) return
-    let text: string
-    try {
-      text = await file.text()
-    } catch {
-      settings_import_status = { message: `Could not read ${file.name}`, error: true }
-      return
-    }
-    const result = deserialize_structure_view_state(text)
-    if (!result.state) {
-      settings_import_status = { message: result.error, error: true }
-      return
-    }
-    apply_view_state(result.state)
-    settings_import_status = { message: `Imported ${file.name}`, error: false }
+    const text = await file.text().catch(() => null)
+    if (text === null) return set_status(`Could not read ${file.name}`, true)
+    const { state, error } = deserialize_structure_view_state(text)
+    if (!state) return set_status(error, true)
+    apply_view_state(state)
+    set_status(`Imported ${file.name}`)
   }
 
   const reset_all_view_settings = (): void => {
     apply_view_state(DEFAULT_STRUCTURE_VIEW_STATE)
-    if (controls_pane) {
-      controls_pane.style.width = ``
-      controls_pane.style.height = ``
-    }
+    scene_props.vector_configs = {}
     if (persist_settings) clear_structure_view_state()
-    settings_import_status = { message: `Restored all viewer defaults`, error: false }
+    set_status(`Restored all viewer defaults`)
   }
 
   type StructureSettingKey = keyof typeof SETTINGS_CONFIG.structure
@@ -350,11 +350,16 @@
   })
   // Bounds for a NumberRangeInput row, read off the schema here so the input itself stays a
   // generic control. `step` is the one bound the schema usually leaves to the call site.
-  type NumericSettingKey = {
-    [Key in StructureSettingKey]: (typeof SETTINGS_CONFIG.structure)[Key] extends SettingType<number>
+  type SettingKeysOfType<Value> = {
+    [Key in StructureSettingKey]: (typeof SETTINGS_CONFIG.structure)[Key] extends SettingType<Value>
       ? Key
       : never
   }[StructureSettingKey]
+  type NumericSettingKey = SettingKeysOfType<number>
+  // Rows rendered by the shared snippets must both name a setting and bind to the matching
+  // scene prop, so intersect the schema's keys with the ones scene_props actually holds.
+  type BooleanSettingKey = SettingKeysOfType<boolean> & keyof typeof scene_props
+  type EnumSettingKey = SettingKeysOfType<string> & keyof typeof scene_props
   const setting_range = (key: NumericSettingKey, step?: number) => {
     const { minimum, maximum, multipleOf, description } = SETTINGS_CONFIG.structure[key]
     return {
@@ -576,6 +581,14 @@
         ? `transparent`
         : `color-mix(in srgb, ${hex_color} ${format_num(opacity, `.1~%`)}, transparent)`
   }
+  // The swatch, the opacity slider and the two reset accessors all pair the same getter with the
+  // same setter. Naming each pair once stops a change to one from desynchronising the others.
+  const get_label_bg_hex = (): string => site_label_bg.hex_color
+  const set_label_bg_hex = (hex_color: string): void =>
+    set_site_label_bg(hex_color, site_label_bg.opacity)
+  const get_label_bg_opacity = (): number => site_label_bg.opacity
+  const set_label_bg_opacity = (opacity: number | undefined): void =>
+    set_site_label_bg(site_label_bg.hex_color, opacity ?? 0)
 
   // Collect available vector property keys from the structure
   let available_vector_keys = $derived(structure ? get_structure_vector_keys(structure) : [])
@@ -646,6 +659,23 @@
   {#each Object.entries(SETTINGS_CONFIG.structure[key].enum ?? {}) as [value, label] (value)}
     <option {value}>{label}</option>
   {/each}
+{/snippet}
+
+<!-- The two rows that carry no per-setting detail: a bare toggle and a bare enum picker, both
+reading the row's key straight off scene_props. Rows needing anything else (a conditional swatch,
+a disabled state, a non-scene_props target) stay written out in full. -->
+{#snippet toggle(key: BooleanSettingKey, label: string)}
+  <label {...setting_row(key)}>
+    <span>{label}</span>
+    <input type="checkbox" bind:checked={scene_props[key]} />
+  </label>
+{/snippet}
+
+{#snippet enum_row(key: EnumSettingKey, label: string)}
+  <label {...setting_row(key)}>
+    <span>{label}</span>
+    <select bind:value={scene_props[key]}>{@render enum_options(key)}</select>
+  </label>
 {/snippet}
 
 <DraggablePane
@@ -805,18 +835,8 @@
               </label>
             {/each}
           </div>
-          <label {...setting_row(`show_bonds`)}>
-            <span>Bonds</span>
-            <select bind:value={scene_props.show_bonds}>
-              {@render enum_options(`show_bonds`)}
-            </select>
-          </label>
-          <label {...setting_row(`show_polyhedra`)}>
-            <span>Polyhedra</span>
-            <select bind:value={scene_props.show_polyhedra}>
-              {@render enum_options(`show_polyhedra`)}
-            </select>
-          </label>
+          {@render enum_row(`show_bonds`, `Bonds`)}
+          {@render enum_row(`show_polyhedra`, `Polyhedra`)}
         </SettingsSection>
       {/key}
 
@@ -853,10 +873,7 @@
           {...setting_range(`atom_radius`, 0.05)}
           bind:value={scene_props.atom_radius}>Radius <small>(Å)</small></NumberRangeInput
         >
-        <label {...setting_row(`same_size_atoms`)}>
-          <span>Same size</span>
-          <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
-        </label>
+        {@render toggle(`same_size_atoms`, `Same size`)}
         <label {...setting_row(`color_scheme`)}>
           <span>Color scheme</span>
           <Select
@@ -939,23 +956,10 @@
             `bond_thickness`,
           ])}
         >
-          <label {...setting_row(`bonding_strategy`)}>
-            <span>Strategy</span>
-            <select bind:value={scene_props.bonding_strategy}>
-              {@render enum_options(`bonding_strategy`)}
-            </select>
-          </label>
-          <label {...setting_row(`auto_bond_order`)}>
-            <span>Auto bond order</span>
-            <input type="checkbox" bind:checked={scene_props.auto_bond_order} />
-          </label>
+          {@render enum_row(`bonding_strategy`, `Strategy`)}
+          {@render toggle(`auto_bond_order`, `Auto bond order`)}
           {#if scene_props.auto_bond_order}
-            <label {...setting_row(`aromatic_display`)}>
-              <span>Aromatic</span>
-              <select bind:value={scene_props.aromatic_display}>
-                {@render enum_options(`aromatic_display`)}
-              </select>
-            </label>
+            {@render enum_row(`aromatic_display`, `Aromatic`)}
           {/if}
           <label {...setting_row(`bond_color`)}>
             <span>Color</span>
@@ -1017,10 +1021,7 @@
               {/if}
             </span>
           </label>
-          <label {...setting_row(`polyhedra_hide_center_atoms`)}>
-            <span>Hide centers</span>
-            <input type="checkbox" bind:checked={scene_props.polyhedra_hide_center_atoms} />
-          </label>
+          {@render toggle(`polyhedra_hide_center_atoms`, `Hide centers`)}
           <NumberRangeInput
             {...setting_range(`polyhedra_min_neighbors`, 1)}
             bind:value={scene_props.polyhedra_min_neighbors}>Min neighbors</NumberRangeInput
@@ -1067,14 +1068,8 @@
               // One CSS string drives two controls, so each half gets its own key: keying both
               // rows off site_label_bg_color would offer a reset on the swatch for an edit the
               // user made with the opacity slider.
-              site_label_bg_hex: local(
-                () => site_label_bg.hex_color,
-                (hex_color) => set_site_label_bg(hex_color, site_label_bg.opacity),
-              ),
-              site_label_bg_opacity: local(
-                () => site_label_bg.opacity,
-                (opacity) => set_site_label_bg(site_label_bg.hex_color, opacity),
-              ),
+              site_label_bg_hex: local(get_label_bg_hex, set_label_bg_hex),
+              site_label_bg_opacity: local(get_label_bg_opacity, set_label_bg_opacity),
             },
           )}
         >
@@ -1100,10 +1095,7 @@
               class="swatch"
               type="color"
               aria-label="Site label background color"
-              bind:value={
-                () => site_label_bg.hex_color,
-                (hex_color) => set_site_label_bg(hex_color, site_label_bg.opacity)
-              }
+              bind:value={get_label_bg_hex, set_label_bg_hex}
             />
           </label>
           <NumberRangeInput
@@ -1112,10 +1104,7 @@
             max={1}
             step={0.01}
             title={description_for(`site_label_bg_opacity`)}
-            bind:value={
-              () => site_label_bg.opacity,
-              (opacity) => set_site_label_bg(site_label_bg.hex_color, opacity ?? 0)
-            }>Opacity</NumberRangeInput
+            bind:value={get_label_bg_opacity, set_label_bg_opacity}>Opacity</NumberRangeInput
           >
           <NumberRangeInput
             {...setting_range(`site_label_padding`, 1)}
@@ -1151,89 +1140,85 @@
       {/if}
 
       {#if available_vector_keys.length > 0 && any_vectors_visible}
-        <SettingsSection
-          title="Site vectors"
-          layout="grid"
-          {...scene_section(
-            [
-              `vector_scale`,
-              `vector_color`,
-              `vector_normalize`,
-              `vector_uniform_thickness`,
-              `vector_color_mode`,
-              `vector_color_scale`,
-              `vector_origin_gap`,
-            ],
-            // per-key scales live in vector_configs rather than on a scene_props key of their
-            // own, so without an accessor here a scale-only edit would never reveal a reset
-            Object.fromEntries(
-              available_vector_keys.map((key) => [
-                `vector_scale:${key}`,
-                local(
-                  () => scene_props.vector_configs?.[key]?.scale ?? null,
-                  (scale) => update_vector_config(key, { scale }),
-                ),
-              ]),
-            ),
-          )}
-        >
-          <NumberRangeInput
-            {...setting_range(`vector_scale`, 0.001)}
-            bind:value={scene_props.vector_scale}>Global scale</NumberRangeInput
+        {#key available_vector_keys.join(`\0`)}
+          <SettingsSection
+            title="Site vectors"
+            layout="grid"
+            {...scene_section(
+              [
+                `vector_scale`,
+                `vector_color`,
+                `vector_normalize`,
+                `vector_uniform_thickness`,
+                `vector_color_mode`,
+                `vector_color_scale`,
+                `vector_origin_gap`,
+              ],
+              // per-key scales live in vector_configs rather than on a scene_props key of their
+              // own, so without an accessor here a scale-only edit would never reveal a reset
+              Object.fromEntries(
+                available_vector_keys.map((key) => [
+                  `vector_scale:${key}`,
+                  local(
+                    () => scene_props.vector_configs?.[key]?.scale ?? null,
+                    (scale) => update_vector_config(key, { scale }),
+                  ),
+                ]),
+              ),
+            )}
           >
-          <label {...setting_row(`vector_normalize`)}>
-            <span>Normalize</span>
-            <input type="checkbox" bind:checked={scene_props.vector_normalize} />
-          </label>
-          <label {...setting_row(`vector_uniform_thickness`)}>
-            <span>Uniform width</span>
-            <input type="checkbox" bind:checked={scene_props.vector_uniform_thickness} />
-          </label>
-          <label {...setting_row(`vector_color_mode`)}>
-            <span>Color by</span>
-            <select bind:value={scene_props.vector_color_mode}>
-              {#each VECTOR_COLOR_MODES as mode (mode)}
-                <option value={mode}>{mode.replaceAll(`_`, ` `)}</option>
-              {/each}
-            </select>
-          </label>
-          {#if scene_props.vector_color_mode === `magnitude`}
-            <label {...setting_row(`vector_color_scale`)}>
-              <span>Color scale</span>
-              <ColorScaleSelect bind:value={scene_props.vector_color_scale} />
-            </label>
-          {:else if scene_props.vector_color_mode === `uniform`}
-            <label {...setting_row(`vector_color`)}>
-              <span>Color</span>
-              <input class="swatch" type="color" bind:value={scene_props.vector_color} />
-            </label>
-          {/if}
-          {#if available_vector_keys.length > 1}
             <NumberRangeInput
-              {...setting_range(`vector_origin_gap`, 0.02)}
-              bind:value={scene_props.vector_origin_gap}>Origin gap</NumberRangeInput
+              {...setting_range(`vector_scale`, 0.001)}
+              bind:value={scene_props.vector_scale}>Global scale</NumberRangeInput
             >
-            {#each available_vector_keys as key (key)}
-              {#if is_key_visible(key)}
-                {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
-                <NumberRangeInput
-                  data-key={`vector_scale:${key}`}
-                  data-description={description}
-                  min={0.1}
-                  max={5}
-                  step={0.1}
-                  title={description}
-                  bind:value={
-                    () => scene_props.vector_configs?.[key]?.scale ?? 1.0,
-                    (scale) => update_vector_config(key, { scale: scale ?? 1.0 })
-                  }
-                >
-                  <span>{key} scale</span>
-                </NumberRangeInput>
-              {/if}
-            {/each}
-          {/if}
-        </SettingsSection>
+            {@render toggle(`vector_normalize`, `Normalize`)}
+            {@render toggle(`vector_uniform_thickness`, `Uniform width`)}
+            <label {...setting_row(`vector_color_mode`)}>
+              <span>Color by</span>
+              <select bind:value={scene_props.vector_color_mode}>
+                {#each VECTOR_COLOR_MODES as mode (mode)}
+                  <option value={mode}>{mode.replaceAll(`_`, ` `)}</option>
+                {/each}
+              </select>
+            </label>
+            {#if scene_props.vector_color_mode === `magnitude`}
+              <label {...setting_row(`vector_color_scale`)}>
+                <span>Color scale</span>
+                <ColorScaleSelect bind:value={scene_props.vector_color_scale} />
+              </label>
+            {:else if scene_props.vector_color_mode === `uniform`}
+              <label {...setting_row(`vector_color`)}>
+                <span>Color</span>
+                <input class="swatch" type="color" bind:value={scene_props.vector_color} />
+              </label>
+            {/if}
+            {#if available_vector_keys.length > 1}
+              <NumberRangeInput
+                {...setting_range(`vector_origin_gap`, 0.02)}
+                bind:value={scene_props.vector_origin_gap}>Origin gap</NumberRangeInput
+              >
+              {#each available_vector_keys as key (key)}
+                {#if is_key_visible(key)}
+                  {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
+                  <NumberRangeInput
+                    data-key={`vector_scale:${key}`}
+                    data-description={description}
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    title={description}
+                    bind:value={
+                      () => scene_props.vector_configs?.[key]?.scale ?? 1.0,
+                      (scale) => update_vector_config(key, { scale: scale ?? 1.0 })
+                    }
+                  >
+                    <span>{key} scale</span>
+                  </NumberRangeInput>
+                {/if}
+              {/each}
+            {/if}
+          </SettingsSection>
+        {/key}
       {/if}
 
       {#if has_lattice}
@@ -1331,20 +1316,12 @@
           ),
         })}
       >
-        <label {...setting_row(`camera_projection`)}>
-          <span>Projection</span>
-          <select bind:value={scene_props.camera_projection}>
-            {@render enum_options(`camera_projection`)}
-          </select>
-        </label>
+        {@render enum_row(`camera_projection`, `Projection`)}
         <NumberRangeInput
           {...setting_range(`auto_rotate`, 0.01)}
           bind:value={scene_props.auto_rotate}>Auto-rotate speed</NumberRangeInput
         >
-        <label {...setting_row(`zoom_to_cursor`)}>
-          <span>Zoom to cursor</span>
-          <input type="checkbox" bind:checked={scene_props.zoom_to_cursor} />
-        </label>
+        {@render toggle(`zoom_to_cursor`, `Zoom to cursor`)}
         {#if multi_view_control_visible && display_mode === `structure`}
           <label {...setting_row(`multi_view`)} class:disabled={multi_view_blocked}>
             <span>Multi-view grid</span>
@@ -1515,10 +1492,7 @@
                   >
                 </span>
               </div>
-              <label {...setting_row(`show_displacement_arrows`)}>
-                <span>Show arrows</span>
-                <input type="checkbox" bind:checked={scene_props.show_displacement_arrows} />
-              </label>
+              {@render toggle(`show_displacement_arrows`, `Show arrows`)}
               <NumberRangeInput
                 {...setting_range(`displacement_arrow_scale`, 0.1)}
                 bind:value={scene_props.displacement_arrow_scale}>Arrow scale</NumberRangeInput
@@ -1594,18 +1568,8 @@
                 bind:value={scene_props.trajectory_line_frame_stride}
                 >Frame stride</NumberRangeInput
               >
-              <label {...setting_row(`trajectory_line_color_mode`)}>
-                <span>Color by</span>
-                <select bind:value={scene_props.trajectory_line_color_mode}>
-                  {@render enum_options(`trajectory_line_color_mode`)}
-                </select>
-              </label>
-              <label {...setting_row(`trajectory_line_wrap_mode`)}>
-                <span>Boundaries</span>
-                <select bind:value={scene_props.trajectory_line_wrap_mode}>
-                  {@render enum_options(`trajectory_line_wrap_mode`)}
-                </select>
-              </label>
+              {@render enum_row(`trajectory_line_color_mode`, `Color by`)}
+              {@render enum_row(`trajectory_line_wrap_mode`, `Boundaries`)}
               {#if trajectory_lines_result}
                 {@const { point_count, segment_count, atom_count, max_segment_length } =
                   trajectory_lines_result}
@@ -1665,6 +1629,7 @@
     </div>
     {#if settings_import_status}
       <small
+        class="settings-import-status"
         class:error={settings_import_status.error}
         role={settings_import_status.error ? `alert` : `status`}
       >

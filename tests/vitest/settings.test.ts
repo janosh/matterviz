@@ -13,6 +13,7 @@ import {
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
   STRUCTURE_VIEW_STATE_VERSION,
+  type StructureViewState,
 } from '$lib/settings/viewer-state'
 import { describe, expect, test } from 'vitest'
 
@@ -101,6 +102,12 @@ test(`settings builder groups structure props`, () => {
 })
 
 describe(`Structure viewer state serialization`, () => {
+  const parse_or_throw = (json: string): StructureViewState => {
+    const { state, error } = deserialize_structure_view_state(json)
+    if (!state) throw new Error(error)
+    return state
+  }
+
   test(`keeps themed backgrounds unset and skips non-portable structure state`, () => {
     const scene_props = {
       get camera_position(): never {
@@ -135,10 +142,8 @@ describe(`Structure viewer state serialization`, () => {
       controls_pane_size: { width: 520, height: 640 },
     })
 
-    const result = deserialize_structure_view_state(serialize_structure_view_state(state))
-    if (!result.state) throw new Error(result.error)
-
-    expect(result.state).toMatchObject({
+    const round_tripped = parse_or_throw(serialize_structure_view_state(state))
+    expect(round_tripped).toMatchObject({
       version: STRUCTURE_VIEW_STATE_VERSION,
       settings: {
         color_scheme: `Jmol`,
@@ -160,11 +165,11 @@ describe(`Structure viewer state serialization`, () => {
         controls_pane_size: { width: 520, height: 640 },
       },
     })
-    expect(result.state.settings.structure).not.toHaveProperty(`vector_configs`)
+    expect(round_tripped.settings.structure).not.toHaveProperty(`vector_configs`)
   })
 
   test(`replaces unknown, wrong-type, and out-of-range values with schema defaults`, () => {
-    const result = deserialize_structure_view_state(
+    const { settings, viewer } = parse_or_throw(
       JSON.stringify({
         version: STRUCTURE_VIEW_STATE_VERSION,
         unknown_top_level: true,
@@ -191,8 +196,6 @@ describe(`Structure viewer state serialization`, () => {
         },
       }),
     )
-    if (!result.state) throw new Error(result.error)
-    const { settings, viewer } = result.state
 
     expect(settings).toMatchObject({
       color_scheme: DEFAULTS.color_scheme,

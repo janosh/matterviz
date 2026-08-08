@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Cross, Settings } from 'svelte-widgets/icons'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
+  import { format_num } from '$lib/labels'
   import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
 
@@ -106,7 +107,7 @@
       </label>
       <label>
         <span>Width</span>
-        <span>{edge_width.toFixed(2)}</span>
+        <span>{format_num(edge_width, `.3f`)}</span>
         <input type="range" min="0.002" max="0.02" step="0.001" bind:value={edge_width} />
       </label>
     </SettingsSection>

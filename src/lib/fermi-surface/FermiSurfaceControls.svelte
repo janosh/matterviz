@@ -4,7 +4,8 @@
   import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
-  import type { Snippet } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
   import type {
     BandGridData,
     ColorProperty,
@@ -114,7 +115,7 @@
   // Get unique band indices from Fermi surface data
   let available_bands = $derived(
     fermi_data
-      ? [...new Set(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
+      ? [...new SvelteSet(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
           (a, b) => a - b,
         )
       : [],
@@ -122,15 +123,16 @@
   let available_bands_key = $derived(available_bands.join(`,`))
   const available_bands_changed = make_change_detector()
 
-  $effect(() => {
-    if (color_property === `custom` && !has_custom_color) {
+  const sync_bindable_defaults = (bands_changed = false): void => {
+    if (color_property === `custom` && !has_custom_color)
       color_property = defaults.color_property
-    }
-    const bands_changed = available_bands_changed(available_bands_key)
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       selected_bands = [...available_bands]
     }
-  })
+  }
+
+  untrack(sync_bindable_defaults)
+  $effect(() => sync_bindable_defaults(available_bands_changed(available_bands_key)))
 
   function toggle_band(band_idx: number) {
     if (!selected_bands) {
@@ -231,8 +233,9 @@
 
     <SettingsSection
       title="Appearance"
-      current_values={{ color_property, representation, surface_opacity }}
-      on_reset={() => ({ color_property, representation, surface_opacity } = defaults)}
+      current_values={{ color_property, color_scale, representation, surface_opacity }}
+      on_reset={() =>
+        ({ color_property, color_scale, representation, surface_opacity } = defaults)}
       layout="grid"
     >
       <label>

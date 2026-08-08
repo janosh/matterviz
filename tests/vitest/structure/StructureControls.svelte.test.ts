@@ -32,6 +32,32 @@ const set_input = (input: HTMLInputElement, value: string): void => {
   input.value = value
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
+// jsdom has no file picker, so hand the input a FileList stand-in and fire the change it would.
+// The handler reads the file asynchronously, so settle on the status line it writes at the end
+// rather than on anything it does before awaiting.
+const import_settings_file = async (
+  target: HTMLElement,
+  contents: string,
+  expect_status: RegExp,
+  name = `shared-view.json`,
+): Promise<void> => {
+  const input = target.querySelector<HTMLInputElement>(
+    `input[aria-label="Import viewer settings JSON"]`,
+  )
+  if (!input) throw new Error(`Import viewer settings input is missing`)
+  const file = new File([], name)
+  Object.defineProperty(file, `text`, { value: () => Promise.resolve(contents) })
+  Object.defineProperty(input, `files`, {
+    configurable: true,
+    value: [file],
+  })
+  input.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await vi.waitFor(() =>
+    expect(target.querySelector(`small.settings-import-status`)?.textContent ?? ``).toMatch(
+      expect_status,
+    ),
+  )
+}
 type AtomColorConfigProps = NonNullable<
   ComponentProps<typeof StructureControls>['atom_color_config']
 >
@@ -135,49 +161,68 @@ describe(`StructureControls layout`, () => {
   })
 })
 
-describe(`StructureControls reactive props`, () => {
-  test(`restores persisted settings before section reset snapshots and clears all`, async () => {
-    save_structure_view_state(
-      create_structure_view_state({
-        scene_props: {
-          atom_radius: 1.35,
-          ambient_light: 2.5,
-          show_trajectory_lines: true,
-        },
-        lattice_props: { cell_edge_opacity: 0.75 },
-        color_scheme: `Jmol`,
-        background_color: `#123456`,
-        background_opacity: 0.4,
-        show_image_atoms: false,
-        supercell_scaling: `2x2x1`,
-        multi_view: true,
-      }),
-    )
-    const state = $state({
-      scene_props: { ...DEFAULTS.structure },
-      lattice_props: {
-        cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
-        cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
-        cell_edge_color: DEFAULTS.structure.cell_edge_color,
-        cell_surface_color: DEFAULTS.structure.cell_surface_color,
-        cell_edge_width: DEFAULTS.structure.cell_edge_width,
-        show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
-      },
-      color_scheme: DEFAULTS.color_scheme,
-      background_color: undefined as string | undefined,
-      background_opacity: DEFAULTS.background_opacity,
-      show_image_atoms: DEFAULTS.structure.show_image_atoms,
-      show_trajectory_lines: false,
-      supercell_scaling: `1x1x1`,
-      multi_view: false,
-    })
-    const target = await mount_controls(
-      bind_props(
-        { structure: simple_structure, controls_open: true, persist_settings: true },
-        state,
-      ),
-    )
+type PersistedControlsState = {
+  scene_props: NonNullable<ComponentProps<typeof StructureControls>['scene_props']>
+  lattice_props: NonNullable<ComponentProps<typeof StructureControls>['lattice_props']>
+  color_scheme: string
+  background_color: string | undefined
+  background_opacity: number
+  show_image_atoms: boolean
+  show_trajectory_lines: boolean
+  supercell_scaling: string
+  multi_view: boolean
+}
 
+const mount_persisted_controls = async (): Promise<{
+  target: HTMLElement
+  state: PersistedControlsState
+}> => {
+  save_structure_view_state(
+    create_structure_view_state({
+      scene_props: {
+        atom_radius: 1.35,
+        ambient_light: 2.5,
+        show_trajectory_lines: true,
+      },
+      lattice_props: { cell_edge_opacity: 0.75 },
+      color_scheme: `Jmol`,
+      background_color: `#123456`,
+      background_opacity: 0.4,
+      show_image_atoms: false,
+      supercell_scaling: `2x2x1`,
+      multi_view: true,
+    }),
+  )
+  const state = $state<PersistedControlsState>({
+    scene_props: { ...DEFAULTS.structure },
+    lattice_props: {
+      cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
+      cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
+      cell_edge_color: DEFAULTS.structure.cell_edge_color,
+      cell_surface_color: DEFAULTS.structure.cell_surface_color,
+      cell_edge_width: DEFAULTS.structure.cell_edge_width,
+      show_cell_vectors: DEFAULTS.structure.show_cell_vectors,
+    },
+    color_scheme: DEFAULTS.color_scheme,
+    background_color: undefined,
+    background_opacity: DEFAULTS.background_opacity,
+    show_image_atoms: DEFAULTS.structure.show_image_atoms,
+    show_trajectory_lines: false,
+    supercell_scaling: `1x1x1`,
+    multi_view: false,
+  })
+  const target = await mount_controls(
+    bind_props(
+      { structure: simple_structure, controls_open: true, persist_settings: true },
+      state,
+    ),
+  )
+  return { target, state }
+}
+
+describe(`StructureControls reactive props`, () => {
+  test(`restores persisted settings`, async () => {
+    const { state } = await mount_persisted_controls()
     expect(state).toMatchObject({
       scene_props: { atom_radius: 1.35, ambient_light: 2.5 },
       lattice_props: { cell_edge_opacity: 0.75 },
@@ -189,10 +234,17 @@ describe(`StructureControls reactive props`, () => {
       supercell_scaling: `2x2x1`,
       multi_view: true,
     })
+  })
+
+  test(`uses restored settings as section reset snapshots`, async () => {
+    const { target } = await mount_persisted_controls()
     // Persisted values define this session's reset snapshot, so they do not immediately
     // masquerade as unsaved changes.
     expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
+  })
 
+  test(`persists changed settings and pane size after debounce`, async () => {
+    const { state, target } = await mount_persisted_controls()
     state.scene_props.atom_radius = 1.6
     const pane = target.querySelector<HTMLElement>(`.controls-pane`)
     if (!pane) throw new Error(`Structure controls pane is missing`)
@@ -206,10 +258,24 @@ describe(`StructureControls reactive props`, () => {
       }),
     )
 
-    target.querySelector<HTMLButtonElement>(`button.reset-all-settings`)?.click()
+    state.scene_props.atom_radius = 1.35
+    await vi.waitFor(() =>
+      expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.35),
+    )
+  })
+
+  test(`reset-all restores defaults and clears persisted state`, async () => {
+    const { state, target } = await mount_persisted_controls()
+    state.scene_props.vector_configs = {
+      force: { visible: false, color: `#ff0000`, scale: 4 },
+    }
+    const reset_button = target.querySelector<HTMLButtonElement>(`button.reset-all-settings`)
+    if (!reset_button) throw new Error(`Reset-all settings button is missing`)
+    reset_button.click()
     await tick()
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
+    expect(state.scene_props.vector_configs).toEqual({})
     expect(state.color_scheme).toBe(DEFAULTS.color_scheme)
     expect(state.background_color).toBeUndefined()
     expect(state.show_trajectory_lines).toBe(DEFAULTS.structure.show_trajectory_lines)
@@ -247,44 +313,42 @@ describe(`StructureControls reactive props`, () => {
     target
       .querySelector<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`)
       ?.click()
-    expect(navigator.clipboard.writeText).toHaveBeenCalledOnce()
-    const copied_json = vi.mocked(navigator.clipboard.writeText).mock.calls[0]?.[0]
-    expect(JSON.parse(copied_json ?? `{}`)).toMatchObject({
+    const copied = vi.mocked(navigator.clipboard.writeText).mock.lastCall?.[0]
+    expect(JSON.parse(copied ?? `{}`)).toMatchObject({
       version: 1,
       settings: { structure: { atom_radius: DEFAULTS.structure.atom_radius } },
     })
 
-    const imported = create_structure_view_state({
+    const shared = create_structure_view_state({
       scene_props: { atom_radius: 1.8, camera_projection: `perspective` },
-      color_scheme: `Muted`,
     })
-    const file_input = target.querySelector<HTMLInputElement>(
-      `input[aria-label="Import viewer settings JSON"]`,
+    await import_settings_file(
+      target,
+      serialize_structure_view_state(shared),
+      /Imported shared-view\.json/,
     )
-    if (!file_input) throw new Error(`Import viewer settings input is missing`)
-    Object.defineProperty(file_input, `files`, {
-      configurable: true,
-      value: [
-        new File([serialize_structure_view_state(imported)], `shared-view.json`, {
-          type: `application/json`,
-        }),
-      ],
-    })
-    file_input.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await vi.waitFor(() => expect(state.scene_props.atom_radius).toBe(1.8))
+    expect(state.scene_props.atom_radius).toBe(1.8)
     expect(state.scene_props.camera_projection).toBe(`perspective`)
-    expect(target.textContent).toContain(`Imported shared-view.json`)
+  })
 
-    // "Reset all" has to undo an import wholesale, not just the rows the user touched by hand
-    target
-      .querySelector<HTMLButtonElement>(
-        `button[aria-label="Reset all viewer settings to defaults"]`,
-      )
-      ?.click()
-    await vi.waitFor(() =>
-      expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius),
+  test.each([
+    [`malformed JSON`, `{"nope":`, /Invalid JSON/],
+    [
+      `unsupported version`,
+      JSON.stringify({ version: 999 }),
+      /Unsupported view-state version 999; expected 1/,
+    ],
+  ])(`import rejects %s and leaves settings untouched`, async (_label, payload, status) => {
+    const state = $state({ scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 } })
+    const target = await mount_controls(
+      bind_props(
+        { structure: simple_structure, controls_open: true, persist_settings: false },
+        state,
+      ),
     )
-    expect(state.scene_props.camera_projection).toBe(DEFAULTS.structure.camera_projection)
+    await import_settings_file(target, payload, status)
+    expect(target.querySelector(`small.settings-import-status[role="alert"]`)).not.toBeNull()
+    expect(state.scene_props.atom_radius).toBe(1.4)
   })
 
   test(`fills a missing atom color scale at mount and after prop replacement`, async () => {
@@ -549,6 +613,29 @@ describe(`StructureControls reactive props`, () => {
     )
     expect(state.scene_props.polyhedra_excluded_elements).toEqual([])
     expect(state.scene_props.vector_configs?.force?.scale).toBeNull()
+  })
+
+  test(`refreshes site-vector reset snapshots when vector keys change`, async () => {
+    const structure_with_vector = (key: string) => ({
+      ...simple_structure,
+      sites: simple_structure.sites.map((site) => ({
+        ...site,
+        properties: { ...site.properties, [key]: [0.1, 0.2, 0.3] },
+      })),
+    })
+    const state = $state({
+      structure: structure_with_vector(`force`),
+      scene_props: { ...DEFAULTS.structure },
+    })
+    const target = await mount_controls(
+      bind_props({ controls_open: true, persist_settings: false }, state),
+    )
+
+    state.structure = structure_with_vector(`magmom`)
+    await tick()
+    expect(
+      target.querySelector(`button[aria-label="Reset site vectors to defaults"]`),
+    ).toBeNull()
   })
 
   test(`section reset restores mount-time values, not shipped defaults`, async () => {

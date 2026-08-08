@@ -29,12 +29,23 @@ svelte-widgets once a version above 1.4.0 is published. The upstream one additio
     title?: string
     children?: Snippet
   } = $props()
+
+  const update_value = (next_value: number | null | undefined): void => {
+    if (typeof next_value === `number` && Number.isFinite(next_value)) value = next_value
+  }
 </script>
 
 <label {@attach tooltip()} {title} {...rest}>
   <span class="label-text">{@render children?.()}</span>
-  <input type="number" {min} {max} {step} bind:value />
-  <input type="range" {min} {max} {step} bind:value aria-label={title} />
+  <input type="number" {min} {max} {step} bind:value={() => value, update_value} />
+  <input
+    type="range"
+    {min}
+    {max}
+    {step}
+    bind:value={() => value, update_value}
+    aria-label={title}
+  />
 </label>
 
 <style>

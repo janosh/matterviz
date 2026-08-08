@@ -2,6 +2,7 @@ import type { PhaseDiagramData } from '$lib/phase-diagram'
 import { PhaseDiagramControls } from '$lib/phase-diagram'
 import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { bind_props } from '../setup'
 
 // Sample phase diagram data for testing
 const sample_data: PhaseDiagramData = {
@@ -63,6 +64,27 @@ describe(`PhaseDiagramControls`, () => {
     const target = mount_controls({ enable_export: false })
     const export_regex = /<h4[^>]*>Export<\/h4>/i
     expect(target.innerHTML).not.toMatch(export_regex)
+  })
+
+  test(`ignores empty axis tick inputs and clamps finite values`, () => {
+    const target = document.createElement(`div`)
+    const state = { x_axis: { ticks: 5 } }
+    mount(PhaseDiagramControls, {
+      target,
+      props: bind_props({ controls_open: true }, state),
+    })
+    const tick_input = [
+      ...target.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
+    ].find((input) => input.closest(`label`)?.textContent?.includes(`X-axis ticks`))
+    if (!tick_input) throw new Error(`X-axis tick input not found`)
+
+    tick_input.value = ``
+    tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    expect(state.x_axis.ticks).toBe(5)
+
+    tick_input.value = `99`
+    tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    expect(state.x_axis.ticks).toBe(15)
   })
 
   test.each([

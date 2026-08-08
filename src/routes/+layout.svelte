@@ -75,7 +75,7 @@
   const theme_actions = THEME_OPTIONS.map(({ icon, label, value }) => ({
     id: `theme:${value}`,
     label: `${icon} ${label} color theme`,
-    keywords: [`mode`],
+    keywords: [`mode`, `colour`, `appearance`],
     action: () => (theme_mode = value),
   }))
   const actions = [...theme_actions, ...route_actions]

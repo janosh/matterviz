@@ -39,6 +39,12 @@ describe(`NumberRangeInput`, () => {
     expect(state.value).toBe(0.3)
     expect(number.valueAsNumber).toBe(0.3)
 
+    number.value = ``
+    number.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(state.value).toBe(0.3)
+    expect(range.valueAsNumber).toBe(0.3)
+
     // without a title the range slider gets no aria-label (no "undefined"/empty attr)
     const untitled = document.createElement(`div`)
     mount(NumberRangeInput, {

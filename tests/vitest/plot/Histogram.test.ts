@@ -305,6 +305,26 @@ describe(`Histogram`, () => {
     )
   })
 
+  test(`property options allow duplicate and empty series labels`, async () => {
+    mount_histogram({
+      series: [`Repeated`, `Repeated`, ``, undefined].map((label) =>
+        series_of([1], { label }),
+      ),
+      mode: `single`,
+      show_controls: true,
+      controls_open: true,
+    })
+    await tick()
+
+    const property_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
+      (select) => select.closest(`label`)?.textContent?.includes(`Property`),
+    )
+    const option_labels = [...(property_select?.options ?? [])].map(
+      (option) => option.textContent,
+    )
+    expect(option_labels).toEqual([`All`, `Repeated`, `Repeated`, `Series`, `Series`])
+  })
+
   test(`touch gestures keep finite axis ranges`, async () => {
     // oxfmt-ignore
     for (const events of [

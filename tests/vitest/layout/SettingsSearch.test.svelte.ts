@@ -1,5 +1,5 @@
 import { mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import SettingsSearchHarness from './SettingsSearchHarness.svelte'
 
 const element = (selector: string): HTMLElement => {
@@ -61,6 +61,27 @@ describe(`SettingsSearch`, () => {
       `[data-key="atom_radius"]`,
       `appearance`,
     ],
+    [
+      `matched containers`,
+      `nested control collection`,
+      `[data-testid="nested-sphere-segments"]`,
+      `[data-key="atom_radius"]`,
+      `appearance`,
+    ],
+    [
+      `section titles`,
+      `pointer sensitivity`,
+      `[data-key="rotation_damping"]`,
+      `[data-key="atom_radius"]`,
+      `camera`,
+    ],
+    [
+      `group titles`,
+      `camera`,
+      `[data-key="rotation_damping"]`,
+      `[data-key="atom_radius"]`,
+      `camera`,
+    ],
   ] as const)(`matches $0`, async (_name, query, matched, hidden_selector, group) => {
     const { input, appearance, camera } = await mounted_search()
     const matching_group = group === `appearance` ? appearance : camera
@@ -72,6 +93,18 @@ describe(`SettingsSearch`, () => {
     if (_name.includes(`unkeyed`))
       expect(element(matched).hasAttribute(`data-key`)).toBe(false)
   })
+
+  // Section headings carry Explain/Reset buttons. Folding a heading into its rows' search text
+  // must not drag those labels along, or either word would match every row in the section.
+  test.each([[`explain`], [`reset`]])(
+    `treats the %s heading button as chrome, not searchable text`,
+    async (query) => {
+      const { input, appearance, camera } = await mounted_search()
+      await set_query(input, query)
+      expect([hidden(appearance), hidden(camera)]).toEqual([true, true])
+      expect(document.body.textContent).toContain(`No settings match`)
+    },
+  )
 
   test.each([
     [`default states via Escape`, true, false, `damping`, `damp`, true],
@@ -133,5 +166,18 @@ describe(`SettingsSearch`, () => {
     expect(zoom_speed.hidden).toBe(true)
     await set_query(input, ``)
     expect(zoom_speed.hidden).toBe(true)
+  })
+
+  test(`keeps its mutation observer while the query changes`, async () => {
+    const { input } = await mounted_search()
+    const disconnect = vi.spyOn(MutationObserver.prototype, `disconnect`)
+    try {
+      await set_query(input, `radius`)
+      await set_query(input, `damping`)
+      await set_query(input, ``)
+      expect(disconnect).not.toHaveBeenCalled()
+    } finally {
+      disconnect.mockRestore()
+    }
   })
 })

@@ -87,6 +87,7 @@ describe(`SettingsSection`, () => {
     ],
     [`equal regexps`, { setting1: /test/gi }, { setting1: /test/gi }, false],
     [`regexp change`, { setting1: /test/gi }, { setting1: /test/g }, true],
+    [`negative zero`, { setting1: 0 }, { setting1: -0 }, false],
     [`key addition`, { setting1: `a` }, { setting1: `a`, setting2: undefined }, true],
     [`key removal`, { setting1: `a`, setting2: undefined }, { setting1: `a` }, true],
   ]
@@ -114,9 +115,10 @@ describe(`SettingsSection`, () => {
   })
 
   test.each([
-    [`Set`, new SvelteSet([`a`])],
-    [`Map`, new SvelteMap([[`key`, `value`]])],
-  ])(`rejects %s-valued settings`, (_name, value) => {
+    [`Set`, new SvelteSet([`a`]), `must not contain Set or Map`],
+    [`Map`, new SvelteMap([[`key`, `value`]]), `must not contain Set or Map`],
+    [`custom-prototype`, Object.create({ inherited: true }), `must be plain objects`],
+  ])(`rejects %s-valued settings`, (_name, value, message) => {
     expect(() =>
       mount(SettingsSection, {
         target: document.body,
@@ -126,7 +128,7 @@ describe(`SettingsSection`, () => {
           children: snippet(`content`),
         },
       }),
-    ).toThrow(`must not contain Set or Map`)
+    ).toThrow(message)
   })
 
   test.each([
@@ -298,6 +300,22 @@ describe(`SettingsSection`, () => {
 
     await click(`.description-toggle`)
     expect(document.querySelectorAll(`.settings-row-description`)).toHaveLength(0)
+  })
+
+  test(`reveals caller-supplied row descriptions`, async () => {
+    mount(SettingsSection, {
+      target: document.body,
+      props: {
+        title: `Atoms`,
+        setting_metadata: {},
+        children: snippet(
+          `<label data-key="radius" data-description="Radius of rendered atoms"><span>Radius</span><input></label>`,
+        ),
+      },
+    })
+    await tick()
+
+    expect(document.querySelector(`.description-toggle`)).not.toBeNull()
   })
 
   test(`only offers descriptions mapped to rows in this section`, async () => {

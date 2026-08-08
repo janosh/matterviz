@@ -1,5 +1,4 @@
 import { DEFAULTS, SETTINGS_CONFIG, type DefaultSettings, type SettingType } from '../settings'
-import { SvelteSet } from 'svelte/reactivity'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`
@@ -45,10 +44,8 @@ export type StructureViewStateParseResult =
 
 // Absolute camera coordinates and vector property keys belong to one particular structure.
 // Restoring either globally can mis-frame or suppress vector discovery on the next structure.
-const NON_PORTABLE_STRUCTURE_KEYS = new SvelteSet<StructureSettingKey>([
-  `camera_position`,
-  `vector_configs`,
-])
+const is_non_portable_structure_key = (key: StructureSettingKey): boolean =>
+  key === `camera_position` || key === `vector_configs`
 
 const is_record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === `object` && !Array.isArray(value)
@@ -118,21 +115,13 @@ export const validate_setting_value = <Value>(
 const is_web_setting = (setting: SettingType): boolean =>
   setting.context === undefined || setting.context === `all` || setting.context === `web`
 
+const in_range = (value: unknown, min: number, max: number): value is number =>
+  typeof value === `number` && Number.isFinite(value) && value >= min && value <= max
+
 const normalize_pane_size = (value: unknown): StructurePaneSize | undefined => {
   if (!is_record(value)) return undefined
   const { width, height } = value
-  if (
-    typeof width !== `number` ||
-    !Number.isFinite(width) ||
-    width < 200 ||
-    width > 10000 ||
-    typeof height !== `number` ||
-    !Number.isFinite(height) ||
-    height < 100 ||
-    height > 10000
-  ) {
-    return undefined
-  }
+  if (!in_range(width, 200, 10000) || !in_range(height, 100, 10000)) return undefined
   return { width, height }
 }
 
@@ -158,86 +147,70 @@ const structure_setting_source = (
 }
 
 const normalize_structure_settings = (
-  raw_settings: Record<string, unknown>,
+  setting_value: (key: StructureSettingKey) => unknown,
 ): Partial<StructureSettings> => {
   const settings: Partial<StructureSettings> = {}
   for (const [raw_key, raw_setting] of Object.entries(SETTINGS_CONFIG.structure)) {
     const key = raw_key as StructureSettingKey
     const setting = raw_setting as SettingType<StructureSettings[StructureSettingKey]>
-    if (!is_web_setting(setting) || NON_PORTABLE_STRUCTURE_KEYS.has(key)) continue
+    if (!is_web_setting(setting) || is_non_portable_structure_key(key)) continue
     Object.assign(settings, {
-      [key]: validate_setting_value(raw_settings[key], setting),
+      [key]: validate_setting_value(setting_value(key), setting),
     })
   }
   return settings
 }
 
-export const create_structure_view_state = (
-  source: StructureViewStateSource = {},
+// Normalize flat live props and nested stored records into the same persisted shape.
+const build_view_state = (
+  settings: Record<string, unknown>,
+  viewer: Record<string, unknown>,
+  structure_setting: (key: StructureSettingKey) => unknown,
 ): StructureViewState => {
-  const raw_structure = Object.fromEntries(
-    Object.keys(SETTINGS_CONFIG.structure)
-      .map((raw_key) => raw_key as StructureSettingKey)
-      .filter((key) => !NON_PORTABLE_STRUCTURE_KEYS.has(key))
-      .map((key) => [key, structure_setting_source(key, source)]),
-  )
-  const controls_pane_size = normalize_pane_size(source.controls_pane_size)
+  const controls_pane_size = normalize_pane_size(viewer.controls_pane_size)
   return {
     version: STRUCTURE_VIEW_STATE_VERSION,
     settings: {
-      color_scheme: validate_setting_value(source.color_scheme, SETTINGS_CONFIG.color_scheme),
+      color_scheme: validate_setting_value(
+        settings.color_scheme,
+        SETTINGS_CONFIG.color_scheme,
+      ),
       background_color:
-        source.background_color === undefined
+        settings.background_color === undefined
           ? undefined
-          : validate_setting_value(source.background_color, SETTINGS_CONFIG.background_color),
+          : validate_setting_value(
+              settings.background_color,
+              SETTINGS_CONFIG.background_color,
+            ),
       background_opacity: validate_setting_value(
-        source.background_opacity,
+        settings.background_opacity,
         SETTINGS_CONFIG.background_opacity,
       ),
-      structure: normalize_structure_settings(raw_structure),
+      structure: normalize_structure_settings(structure_setting),
     },
     viewer: {
-      supercell_scaling: normalize_supercell_scaling(source.supercell_scaling),
-      cell_type: normalize_cell_type(source.cell_type),
-      multi_view: typeof source.multi_view === `boolean` ? source.multi_view : false,
+      supercell_scaling: normalize_supercell_scaling(viewer.supercell_scaling),
+      cell_type: normalize_cell_type(viewer.cell_type),
+      multi_view: typeof viewer.multi_view === `boolean` ? viewer.multi_view : false,
       ...(controls_pane_size && { controls_pane_size }),
     },
   }
 }
 
+export const create_structure_view_state = (
+  source: StructureViewStateSource = {},
+): StructureViewState =>
+  build_view_state(source, source, (key) => structure_setting_source(key, source))
+
 export const validate_structure_view_state = (value: unknown): StructureViewState | null => {
   if (!is_record(value) || value.version !== STRUCTURE_VIEW_STATE_VERSION) return null
-  const raw_settings = is_record(value.settings) ? value.settings : {}
-  const raw_structure = is_record(raw_settings.structure) ? raw_settings.structure : {}
-  const raw_viewer = is_record(value.viewer) ? value.viewer : {}
-  const controls_pane_size = normalize_pane_size(raw_viewer.controls_pane_size)
-  return {
-    version: STRUCTURE_VIEW_STATE_VERSION,
-    settings: {
-      color_scheme: validate_setting_value(
-        raw_settings.color_scheme,
-        SETTINGS_CONFIG.color_scheme,
-      ),
-      background_color:
-        raw_settings.background_color === undefined
-          ? undefined
-          : validate_setting_value(
-              raw_settings.background_color,
-              SETTINGS_CONFIG.background_color,
-            ),
-      background_opacity: validate_setting_value(
-        raw_settings.background_opacity,
-        SETTINGS_CONFIG.background_opacity,
-      ),
-      structure: normalize_structure_settings(raw_structure),
-    },
-    viewer: {
-      supercell_scaling: normalize_supercell_scaling(raw_viewer.supercell_scaling),
-      cell_type: normalize_cell_type(raw_viewer.cell_type),
-      multi_view: typeof raw_viewer.multi_view === `boolean` ? raw_viewer.multi_view : false,
-      ...(controls_pane_size && { controls_pane_size }),
-    },
-  }
+  const settings = is_record(value.settings) ? value.settings : {}
+  const structure = is_record(settings.structure) ? settings.structure : {}
+  return build_view_state(
+    settings,
+    is_record(value.viewer) ? value.viewer : {},
+    (key) => structure[key],
+  )
 }
 
 export const deserialize_structure_view_state = (
@@ -277,35 +250,39 @@ const get_storage = (): Storage | null => {
   }
 }
 
+// Storage is untrusted browser input; failure to remove it must not break the viewer.
+const discard_stored_state = (storage: Storage): boolean => {
+  try {
+    storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export const load_structure_view_state = (): StructureViewState | null => {
   const storage = get_storage()
   if (!storage) return null
   try {
     const stored = storage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
     if (stored === null) return null
-    const result = deserialize_structure_view_state(stored)
-    if (result.state) return result.state
-    storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
-    return null
+    const { state } = deserialize_structure_view_state(stored)
+    if (state) return state
   } catch {
-    try {
-      storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
-    } catch {
-      // Storage is untrusted browser input; failure to remove it must not break the viewer.
-    }
-    return null
+    // fall through and purge whatever we could not read back
   }
+  discard_stored_state(storage)
+  return null
 }
 
 export const save_structure_view_state = (state: StructureViewState): boolean => {
   const storage = get_storage()
   if (!storage) return false
   const serialized = serialize_structure_view_state(state)
-  const default_serialized = serialize_structure_view_state(DEFAULT_STRUCTURE_VIEW_STATE)
+  // Storing a state identical to the defaults would pin today's defaults for good, so drop it.
+  if (serialized === DEFAULT_VIEW_STATE_JSON) return discard_stored_state(storage)
   try {
-    if (serialized === default_serialized) {
-      storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
-    } else storage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized)
+    storage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized)
     return true
   } catch {
     return false
@@ -314,13 +291,7 @@ export const save_structure_view_state = (state: StructureViewState): boolean =>
 
 export const clear_structure_view_state = (): boolean => {
   const storage = get_storage()
-  if (!storage) return false
-  try {
-    storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
-    return true
-  } catch {
-    return false
-  }
+  return storage ? discard_stored_state(storage) : false
 }
 
 export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state({
@@ -330,3 +301,6 @@ export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state({
   background_opacity: DEFAULTS.background_opacity,
   show_image_atoms: DEFAULTS.structure.show_image_atoms,
 })
+
+// every save compares against this, so serialize the defaults once rather than per keystroke
+const DEFAULT_VIEW_STATE_JSON = serialize_structure_view_state(DEFAULT_STRUCTURE_VIEW_STATE)
