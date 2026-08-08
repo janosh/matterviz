@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte'
+  import { tick, untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import { Icon } from 'svelte-widgets'
+  import { Search } from 'svelte-widgets/icons'
 
   let {
     query = $bindable(``),
@@ -17,8 +19,9 @@
   } = $props()
 
   const search_id = $props.id()
-  const input_id = `settings-search-input-${search_id}`
   const status_id = `settings-search-status-${search_id}`
+  let search_open = $derived(Boolean(query))
+  let search_input: HTMLInputElement | undefined = $state()
   let match_count = $state(0)
   let no_matches = $derived(query.trim().length > 0 && match_count === 0)
 
@@ -174,34 +177,56 @@
     refresh_rows?.()
   })
 
+  const open_search = async (): Promise<void> => {
+    search_open = true
+    await tick()
+    search_input?.focus()
+  }
+
   const handle_keydown = (event: KeyboardEvent): void => {
-    if (event.key !== `Escape` || !query) return
+    if (event.key !== `Escape`) return
     event.preventDefault()
     event.stopPropagation()
     query = ``
+    search_open = false
   }
 </script>
 
 <div {...rest} class={[`settings-search`, rest.class]} {@attach filter_settings}>
-  <div class="search-field">
-    <label for={input_id}>{label}</label>
-    <input
-      id={input_id}
-      type="search"
-      bind:value={query}
-      {placeholder}
-      onkeydown={handle_keydown}
-      aria-describedby={no_matches ? status_id : undefined}
-    />
-    {#if query}
+  <div class:open={search_open} class="search-field">
+    {#if search_open}
+      <input
+        bind:this={search_input}
+        type="search"
+        bind:value={query}
+        {placeholder}
+        aria-label={label}
+        onkeydown={handle_keydown}
+        onblur={() => {
+          if (!query) search_open = false
+        }}
+        aria-describedby={no_matches ? status_id : undefined}
+      />
+      {#if query}
+        <button
+          type="button"
+          class="clear-search"
+          aria-label="Clear settings search"
+          onclick={() => {
+            query = ``
+          }}>×</button
+        >
+      {/if}
+    {:else}
       <button
         type="button"
-        class="clear-search"
-        aria-label="Clear settings search"
-        onclick={() => {
-          query = ``
-        }}>×</button
+        class="open-search"
+        aria-label={label}
+        title={label}
+        onclick={open_search}
       >
+        <Icon icon={Search} />
+      </button>
     {/if}
   </div>
   {@render children()}
@@ -212,25 +237,31 @@
 
 <style>
   .settings-search {
-    display: contents;
+    position: relative;
+    display: grid;
+    gap: var(--pane-gap, 4pt);
   }
   .settings-search :global(:is([hidden], [data-search-hidden])) {
     display: none !important;
   }
   .search-field {
-    position: relative;
-    display: grid;
-    gap: 2pt;
-    margin-block-end: 4pt;
-    label {
-      font-size: 0.78em;
-      font-weight: 600;
-      color: var(--text-color-muted, #6b7280);
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    justify-content: flex-end;
+    z-index: 1;
+    &.open {
+      position: relative;
+      inset: auto;
+      width: 100%;
+      margin-block-end: 4pt;
     }
     input {
       width: 100%;
+      height: 1.8em;
       box-sizing: border-box;
-      padding: 4pt 20pt 4pt 6pt;
+      padding: 1pt 20pt 1pt 6pt;
       border: 1px solid var(--border-color, #d1d5db);
       border-radius: var(--border-radius, 3pt);
       background: var(--input-bg, transparent);
@@ -241,14 +272,34 @@
       }
     }
   }
+  .open-search {
+    display: grid;
+    place-items: center;
+    width: 1.8em;
+    height: 1.8em;
+    padding: 2pt;
+    border: 0;
+    border-radius: var(--border-radius, 3pt);
+    background: transparent;
+    color: var(--text-color-muted, #6b7280);
+    cursor: pointer;
+    &:hover {
+      background: color-mix(in srgb, currentColor 8%, transparent);
+      color: inherit;
+    }
+    :global(svg) {
+      width: 1em;
+      height: 1em;
+    }
+  }
   .clear-search {
     position: absolute;
     right: 3pt;
-    bottom: 3pt;
+    bottom: 0;
     display: grid;
     place-items: center;
     width: 18pt;
-    height: 18pt;
+    height: 1.8em;
     padding: 0;
     border: 0;
     background: transparent;

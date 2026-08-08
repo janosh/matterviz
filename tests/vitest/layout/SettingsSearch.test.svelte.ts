@@ -22,6 +22,8 @@ const mounted_search = async (): Promise<{
 }> => {
   mount(SettingsSearchHarness, { target: document.body })
   await tick()
+  element(`.open-search`).click()
+  await tick()
   const input = document.querySelector<HTMLInputElement>(`input[type="search"]`)
   const [appearance, camera] = [
     ...document.querySelectorAll<HTMLDetailsElement>(`details.settings-group`),
@@ -32,6 +34,24 @@ const mounted_search = async (): Promise<{
 }
 
 describe(`SettingsSearch`, () => {
+  test(`expands from an icon, focuses the field, and collapses on Escape`, async () => {
+    mount(SettingsSearchHarness, { target: document.body })
+    await tick()
+    expect(document.querySelector(`input[type="search"]`)).toBeNull()
+
+    element(`.open-search`).click()
+    await tick()
+    const input = document.querySelector<HTMLInputElement>(`input[type="search"]`)
+    expect(document.activeElement).toBe(input)
+
+    input?.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true, cancelable: true }),
+    )
+    await tick()
+    expect(document.querySelector(`input[type="search"]`)).toBeNull()
+    expect(document.querySelector(`.open-search`)).not.toBeNull()
+  })
+
   test.each([
     [
       `labels`,
@@ -127,7 +147,7 @@ describe(`SettingsSearch`, () => {
         await tick()
       } else await set_query(input, ``)
 
-      expect(input.value).toBe(``)
+      expect(document.querySelector(`.open-search`)).not.toBeNull()
       expect([appearance.open, camera.open]).toEqual([appearance_open, camera_open])
       expect([hidden(appearance), hidden(camera)]).toEqual([false, false])
     },
@@ -150,7 +170,7 @@ describe(`SettingsSearch`, () => {
 
     element(`.clear-search`).click()
     await tick()
-    expect(input.value).toBe(``)
+    expect(document.querySelector(`input[type="search"]`)).toBeNull()
     expect(document.querySelector(`[role="status"]`)).toBeNull()
     expect(zoom_speed.hidden).toBe(true)
   })

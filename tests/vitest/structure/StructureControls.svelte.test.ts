@@ -101,6 +101,8 @@ describe(`StructureControls layout`, () => {
       [`Preferences`, false],
     ])
 
+    doc_query<HTMLButtonElement>(`.open-search`).click()
+    await tick()
     const search = doc_query<HTMLInputElement>(`input[type="search"]`)
     set_input(search, `damp`)
     await tick()

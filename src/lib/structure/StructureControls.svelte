@@ -685,7 +685,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
   pane_props={{
     ...pane_props,
     class: `controls-pane ${pane_props?.class ?? ``}`,
-    style: `--pane-max-height: 70vh; ${pane_props?.style ?? ``}`,
+    style: `--pane-max-height: 70vh; --pane-padding: 1ex 1ex 0; ${pane_props?.style ?? ``}`,
   }}
   toggle_props={{
     title: controls_open ? `` : `Structure controls`,
