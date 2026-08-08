@@ -27,7 +27,10 @@
         <span>Sphere segments</span><input type="number" />
       </label>
       <div data-key="sphere-container" data-description="Nested control collection">
-        <label data-testid="nested-sphere-segments">
+        <label
+          data-testid="nested-sphere-segments"
+          data-description="Fine tessellation setting"
+        >
           <span>Nested sphere segments</span><input type="number" />
         </label>
       </div>

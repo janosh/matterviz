@@ -35,6 +35,7 @@
   } from '$lib/structure'
   import {
     atomic_radii,
+    camera_needs_fit,
     camera_position_for_target,
     Cylinder,
     get_all_site_vectors,
@@ -1121,6 +1122,9 @@
   let computed_zoom = $state(untrack(() => initial_zoom))
   // Untracked fit_extent avoids trajectory jumps; effect.pre reframes camera resets.
   let current_fit_zoom = $state(0)
+  // Non-reactive: this only compares successive effect runs and must not schedule another run.
+  const camera_fit_cache: { previous_view?: string } = {}
+  let camera_view = $derived(`${camera_projection}:${camera_direction?.join(`,`) ?? ``}`)
   let zoom_bounds = $derived(
     get_orthographic_zoom_bounds(current_fit_zoom, min_zoom, max_zoom),
   )
@@ -1143,13 +1147,12 @@
   })
 
   $effect.pre(() => {
+    const previous_view = camera_fit_cache.previous_view
+    const view_changed = previous_view !== undefined && previous_view !== camera_view
+    const should_fit = camera_needs_fit(camera_position, previous_view, camera_view)
+    camera_fit_cache.previous_view = camera_view
     // Auto-place at content center; missing/zero camera_direction → default angled view.
-    if (
-      camera_position.every((coordinate) => coordinate === 0) &&
-      structure &&
-      width > 0 &&
-      height > 0
-    ) {
+    if (should_fit && structure && width > 0 && height > 0) {
       computed_zoom = zoom_for(fit_extent)
       current_fit_zoom = computed_zoom
       initial_computed_zoom = computed_zoom
@@ -1163,8 +1166,8 @@
               effective_fov,
             )
           : Math.max(1, fit_extent) * 2
-      const target = camera_target ?? fit_frame.center
-      if (camera_target === undefined) camera_target = target
+      const target = view_changed ? fit_frame.center : (camera_target ?? fit_frame.center)
+      if (view_changed || camera_target === undefined) camera_target = target
       rotation_target_ref = target
       camera_position = camera_position_for_target(target, distance, camera_direction)
     }

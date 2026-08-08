@@ -108,7 +108,7 @@
     on_reset_camera,
     reset_text = `Reset view (r, or double-click)`,
     fly_to_request = $bindable(undefined),
-    persist_settings = true,
+    persist_settings = false,
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -144,7 +144,7 @@
     on_reset_camera?: () => void // undefined while camera at home (hides button)
     reset_text?: string
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
-    persist_settings?: boolean
+    persist_settings?: boolean // Opt-in browser persistence for safely scoped single-view usage
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()

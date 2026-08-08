@@ -178,7 +178,7 @@
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls,
-    persist_settings = true,
+    persist_settings = false,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),

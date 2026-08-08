@@ -8,12 +8,13 @@ const element = (selector: string): HTMLElement => {
   return match
 }
 const hidden = (node: HTMLElement): boolean =>
-  Boolean(node.hidden) || node.hasAttribute(`data-search-hidden`)
+  Boolean(node.closest(`[hidden], [data-search-hidden]`))
 const set_query = async (input: HTMLInputElement, query: string): Promise<void> => {
   input.value = query
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
   await tick()
 }
+const settle_observer = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 const mounted_search = async (): Promise<{
   input: HTMLInputElement
@@ -49,7 +50,7 @@ describe(`SettingsSearch`, () => {
     )
     await tick()
     expect(document.querySelector(`input[type="search"]`)).toBeNull()
-    expect(document.querySelector(`.open-search`)).not.toBeNull()
+    expect(document.activeElement).toBe(element(`.open-search`))
   })
 
   test.each([
@@ -77,6 +78,13 @@ describe(`SettingsSearch`, () => {
     [
       `nested unkeyed rows`,
       `nested sphere`,
+      `[data-testid="nested-sphere-segments"]`,
+      `[data-key="atom_radius"]`,
+      `appearance`,
+    ],
+    [
+      `nested descriptions`,
+      `fine tessellation`,
       `[data-testid="nested-sphere-segments"]`,
       `[data-key="atom_radius"]`,
       `appearance`,
@@ -161,7 +169,7 @@ describe(`SettingsSearch`, () => {
 
     // Trigger the observer while idle: search must not replay a stale visibility baseline.
     element(`[data-key="rotation_damping"]`).append(document.createComment(``))
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await settle_observer()
     expect(zoom_speed.hidden).toBe(true)
 
     await set_query(input, `zoom speed`)
@@ -173,6 +181,28 @@ describe(`SettingsSearch`, () => {
     expect(document.querySelector(`input[type="search"]`)).toBeNull()
     expect(document.querySelector(`[role="status"]`)).toBeNull()
     expect(zoom_speed.hidden).toBe(true)
+  })
+
+  test(`refreshes matches when caller visibility or text changes`, async () => {
+    const { input, appearance } = await mounted_search()
+    const parent_row = element(`[data-key="sphere-container"]`)
+    await set_query(input, `fine tessellation`)
+
+    parent_row.hidden = true
+    await settle_observer()
+    expect(hidden(appearance)).toBe(true)
+    expect(document.querySelector(`[role="status"]`)).not.toBeNull()
+
+    parent_row.hidden = false
+    await settle_observer()
+    expect(hidden(appearance)).toBe(false)
+
+    await set_query(input, `renamed radius`)
+    const radius_text = element(`[data-key="atom_radius"] span`).firstChild
+    if (!radius_text) throw new Error(`Atom radius text node is missing`)
+    radius_text.textContent = `Renamed radius`
+    await settle_observer()
+    expect(hidden(appearance)).toBe(false)
   })
 
   test(`preserves a caller-hidden row changed during search`, async () => {

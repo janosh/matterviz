@@ -90,5 +90,5 @@ if (download_promises.length > 0) {
     if (url) img_urls[num_name] = url
   }
 
-  fs.writeFileSync(img_src_out, JSON.stringify(img_urls, null, 2) + `\n`)
+  fs.writeFileSync(img_src_out, `${JSON.stringify(img_urls, null, 2)}\n`)
 }

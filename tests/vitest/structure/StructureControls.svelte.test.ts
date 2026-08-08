@@ -268,12 +268,12 @@ describe(`StructureControls reactive props`, () => {
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
   })
 
-  test(`persist_settings=false neither restores nor overwrites saved preferences`, async () => {
+  test(`persistence is opt-in and disabled by default`, async () => {
     save_structure_view_state(
       create_structure_view_state({ scene_props: { atom_radius: 1.5 } }),
     )
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
-    await mount_bound_controls(state, { persist_settings: false })
+    await mount_bound_controls(state)
 
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     // Saves are debounced, so asserting after a single tick would hold even with persistence

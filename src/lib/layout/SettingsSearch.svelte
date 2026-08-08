@@ -22,6 +22,7 @@
   const status_id = `settings-search-status-${search_id}`
   let search_open = $derived(Boolean(query))
   let search_input: HTMLInputElement | undefined = $state()
+  let search_trigger: HTMLButtonElement | undefined = $state()
   let match_count = $state(0)
   let no_matches = $derived(query.trim().length > 0 && match_count === 0)
 
@@ -40,6 +41,7 @@
     const set_hidden = (element: HTMLElement, hide: boolean): void => {
       element.toggleAttribute(search_hidden_attr, hide)
     }
+    const caller_visible = (row: HTMLElement): boolean => !row.closest(`[hidden]`)
 
     const restore_visibility = (): void => {
       for (const element of root.querySelectorAll(`[${search_hidden_attr}]`)) {
@@ -100,22 +102,26 @@
           .toLocaleLowerCase()
         if (searchable_text.includes(normalized_query)) directly_matched_rows.add(row)
       }
-      const matched_containers = new SvelteSet<HTMLElement>()
-      let matched_row_count = 0
-      for (const { row, section, group } of row_contexts) {
+      const matched_rows = new SvelteSet(directly_matched_rows)
+      const row_set = new SvelteSet(row_contexts.map(({ row }) => row))
+      // Preserve descendants of matched containers and ancestors of nested matches.
+      for (const { row } of row_contexts) {
         let ancestor = row.parentElement
-        let ancestor_matches = false
         while (ancestor && ancestor !== root) {
-          if (directly_matched_rows.has(ancestor)) {
-            ancestor_matches = true
-            break
+          if (directly_matched_rows.has(ancestor)) matched_rows.add(row)
+          if (directly_matched_rows.has(row) && row_set.has(ancestor)) {
+            matched_rows.add(ancestor)
           }
           ancestor = ancestor.parentElement
         }
-        const is_match = directly_matched_rows.has(row) || ancestor_matches
+      }
+      const matched_containers = new SvelteSet<HTMLElement>()
+      let matched_row_count = 0
+      for (const { row, section, group } of row_contexts) {
+        const is_match = matched_rows.has(row)
         set_hidden(row, !is_match)
-        // A row the caller hid stays hidden, so it must not count as a match either
-        if (is_match && !row.hidden) {
+        // Caller-hidden rows and descendants stay absent from the count and containers.
+        if (is_match && caller_visible(row)) {
           matched_row_count += 1
           if (section) matched_containers.add(section)
           if (group) matched_containers.add(group)
@@ -157,7 +163,8 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: [`data-description`, `data-label`, `data-key`],
+      attributeFilter: [`data-description`, `data-label`, `data-key`, `hidden`],
+      characterData: true,
     })
     refresh_rows = schedule_refresh
     untrack(refresh)
@@ -183,12 +190,14 @@
     search_input?.focus()
   }
 
-  const handle_keydown = (event: KeyboardEvent): void => {
+  const handle_keydown = async (event: KeyboardEvent): Promise<void> => {
     if (event.key !== `Escape`) return
     event.preventDefault()
     event.stopPropagation()
     query = ``
     search_open = false
+    await tick()
+    search_trigger?.focus()
   }
 </script>
 
@@ -219,6 +228,7 @@
       {/if}
     {:else}
       <button
+        bind:this={search_trigger}
         type="button"
         class="open-search"
         aria-label={label}
