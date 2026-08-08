@@ -10,7 +10,11 @@
       key.startsWith(`interpolate`),
     ) as D3InterpolateName[],
     value = $bindable(options[0]),
-    selected = $bindable([]),
+    // Seeded from `value`, the way MultiSelect seeds its own `selected` default. Hardcoding
+    // `[]` overrides that default, and MultiSelect's selected -> value sync then writes the
+    // empty selection back, nulling the caller's value on mount unless they also bind
+    // `selected` purely to work around it.
+    selected = $bindable(value == null ? [] : [value]),
     minSelect = 1,
     placeholder = `Select a color scale`,
     color_bar = {},

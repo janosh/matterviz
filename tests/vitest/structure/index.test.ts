@@ -2,6 +2,7 @@ import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import type { StructureFitOpts } from '$lib/structure'
 import {
+  camera_needs_fit,
   camera_position_for_target,
   DEFAULT_FIT_PADDING,
   DEFAULT_STRUCTURE_VIEWS,
@@ -199,11 +200,11 @@ describe(`structure_fit_frame`, () => {
   })
 
   test(`molecule / cell framing`, () => {
-    expect(DEFAULT_FIT_PADDING).toBeGreaterThan(1)
+    expect(DEFAULT_FIT_PADDING).toBeCloseTo(1 / 0.92, 10)
     const diatomic = { sites: [site(`H`, [-1, 0, 0]), site(`H`, [1, 0, 0])] }
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
-    expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 / 0.85, 10)
+    expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 * DEFAULT_FIT_PADDING, 10)
     expect(fit).toBeCloseTo(2 * (1 + 0.25 * 0.7) * DEFAULT_FIT_PADDING, 10)
     expect(
       structure_fit_frame(
@@ -270,6 +271,18 @@ describe(`structure_fit_frame`, () => {
 })
 
 describe(`camera helpers`, () => {
+  test(`fits zero poses and re-fits changed camera views`, () => {
+    expect(camera_needs_fit([0, 0, 0], undefined, `orthographic:`)).toBe(true)
+    expect(camera_needs_fit([10, 3, 8], undefined, `orthographic:`)).toBe(false)
+    expect(camera_needs_fit([10, 3, 8], `orthographic:`, `perspective:1,0.3,0.8`)).toBe(true)
+    expect(
+      camera_needs_fit([10, 3, 8], `perspective:1,0.3,0.8`, `perspective:1,0.3,0.8`),
+    ).toBe(false)
+    expect(camera_needs_fit([10, 3, 8], `perspective:1,0.3,0.8`, `perspective:0,0,1`)).toBe(
+      true,
+    )
+  })
+
   test.each([
     [`default`, undefined, [10, 3, 8]],
     [`zero → default`, [0, 0, 0] as Vec3, [10, 3, 8]],

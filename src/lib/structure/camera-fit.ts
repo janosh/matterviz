@@ -7,8 +7,8 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Site } from '$lib/structure'
 
-// Occupy at most 85% of the shorter viewport edge.
-export const DEFAULT_FIT_PADDING = 1 / 0.85
+// Occupy at most 92% of the shorter viewport edge.
+export const DEFAULT_FIT_PADDING = 1 / 0.92
 // Paired with DEFAULTS.structure.initial_zoom (50): default zoom = min(w,h) / fit_extent.
 export const FIT_ZOOM_REF_PX = 50
 // Unnormalized — keeps legacy offset [d, 0.3d, 0.8d] (do not unit-normalize).
@@ -26,6 +26,14 @@ export type StructureFitOpts = {
 export type StructureFitFrame = { center: Vec3; extent: number }
 
 const empty_frame = (): StructureFitFrame => ({ center: [0, 0, 0], extent: 10 })
+
+export const camera_needs_fit = (
+  position: Vec3,
+  previous_view: string | undefined,
+  camera_view: string,
+): boolean =>
+  position.every((coordinate) => coordinate === 0) ||
+  (previous_view !== undefined && previous_view !== camera_view)
 
 const element_radius = (
   element: ElementSymbol,

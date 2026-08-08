@@ -83,7 +83,9 @@ test.describe(`ScatterPlot3D`, () => {
 
   test(`scroll wheel zoom changes view`, async ({ page }) => {
     const controls_pane = await open_controls_pane(page)
-    await controls_pane.getByLabel(`Projection:`).selectOption(`orthographic`)
+    await controls_pane
+      .getByRole(`combobox`, { name: /Projection/ })
+      .selectOption(`orthographic`)
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
     const initial = await canvas.screenshot()
@@ -134,9 +136,9 @@ test.describe(`ScatterPlot3D Projections`, () => {
   const get_projection_checkbox = (pane: Locator, plane: string) =>
     pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
 
-  // Helper to get slider row by label text
+  // Each setting is a <label> grid row wrapping both number and range inputs.
   const get_slider_row = (pane: Locator, label: string) =>
-    pane.locator(`.pane-row`).filter({ hasText: label })
+    pane.locator(`label`).filter({ hasText: label })
 
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)

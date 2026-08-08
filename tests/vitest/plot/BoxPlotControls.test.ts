@@ -11,7 +11,7 @@ describe(`BoxPlotControls`, () => {
       box.parentElement?.textContent?.includes(label),
     )
 
-  test(`Box / Violin reset reverts changed settings to defaults`, async () => {
+  test(`Box / violin reset reverts changed settings to defaults`, async () => {
     const container = document.createElement(`div`)
     document.body.append(container)
     mount(BoxPlotControls, {
@@ -31,7 +31,7 @@ describe(`BoxPlotControls`, () => {
     expect([mean.checked, outliers.checked]).toEqual([true, false])
 
     const heading = [...container.querySelectorAll(`h4`)].find((el) =>
-      el.textContent?.includes(`Box / Violin`),
+      el.textContent?.includes(`Box / violin`),
     )
     const reset_btn = heading?.querySelector<HTMLButtonElement>(`button.reset-button`)
     // a missing/no-op reset (the original bug) would leave the flipped values in place

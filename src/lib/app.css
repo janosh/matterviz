@@ -98,8 +98,9 @@ body.fullscreen .draggable-pane {
   margin: var(--pane-hr-margin, 4pt 0);
   height: 1px;
 }
-.draggable-pane section > div {
-  text-align: right; /* right align long line-breaking trajectory file names */
+/* Right-align long trajectory filenames without affecting div-wrapped grid rows. */
+.draggable-pane section:not(.grid) > div {
+  text-align: right;
 }
 .draggable-pane :where(label) {
   display: inline-flex;
@@ -271,13 +272,6 @@ body.fullscreen .draggable-pane {
     width: min(1400px, calc(100vw - 2 * var(--margin))) !important;
     margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
     max-width: none !important;
-  }
-  .copy-btn {
-    position: absolute;
-    top: 9pt;
-    right: 9pt;
-    background: var(--btn-bg);
-    color: var(--btn-color);
   }
 }
 

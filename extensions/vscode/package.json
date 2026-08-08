@@ -219,7 +219,7 @@
           "default": 0.07,
           "description": "Thickness of bonds relative to atom radius",
           "minimum": 0.01,
-          "maximum": 1
+          "maximum": 0.5
         },
         "matterviz.structure.auto_bond_order": {
           "type": "boolean",
@@ -408,14 +408,14 @@
         },
         "matterviz.structure.rotation_damping": {
           "type": "number",
-          "default": 0.1,
-          "description": "Camera rotation damping factor (0 = no damping, 1 = heavy damping)",
+          "default": 0.2,
+          "description": "Camera rotation damping factor (0 disables damping; higher values stop rotation sooner)",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 0.3
         },
         "matterviz.structure.rotate_speed": {
           "type": "number",
-          "default": 1,
+          "default": 0.6,
           "description": "Mouse rotation sensitivity (set to 0 to disable rotation)",
           "minimum": 0,
           "maximum": 2
@@ -425,13 +425,13 @@
           "default": 0.5,
           "description": "Mouse wheel zoom sensitivity",
           "minimum": 0.1,
-          "maximum": 2
+          "maximum": 0.8
         },
         "matterviz.structure.pan_speed": {
           "type": "number",
           "default": 0.5,
-          "description": "Mouse pan sensitivity",
-          "minimum": 0.1,
+          "description": "Mouse pan sensitivity (set to 0 to disable panning)",
+          "minimum": 0,
           "maximum": 2
         },
         "matterviz.structure.zoom_to_cursor": {
@@ -454,7 +454,7 @@
           "default": 0,
           "description": "Automatic rotation speed (0 = disabled, positive = clockwise)",
           "minimum": 0,
-          "maximum": 10
+          "maximum": 2
         },
         "matterviz.structure.rotation": {
           "type": "array",
@@ -485,7 +485,7 @@
           "default": 1,
           "description": "Font size for atom labels",
           "minimum": 0.5,
-          "maximum": 5
+          "maximum": 2
         },
         "matterviz.structure.site_label_color": {
           "type": "string",
@@ -502,7 +502,7 @@
           "default": 2,
           "description": "Padding around atom labels in pixels",
           "minimum": 0,
-          "maximum": 20
+          "maximum": 10
         },
         "matterviz.structure.site_label_offset": {
           "type": "array",
@@ -541,7 +541,7 @@
           "type": "number",
           "default": 0.75,
           "description": "Scale factor for site vector arrows",
-          "minimum": 0.1,
+          "minimum": 0.001,
           "maximum": 10
         },
         "matterviz.structure.vector_color": {

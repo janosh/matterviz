@@ -153,7 +153,7 @@ bond's context menu to update an existing bond order interactively.
 ## Selective Dynamics
 
 POSCAR files with a `Selective dynamics` block record a per-axis `T`/`F` flag triple
-for every atom. Pick **Selective Dynamics** under _Atoms → Atom coloring_ to color
+for every atom. Pick **Selective Dynamics** under _Appearance → Atoms → Color by_ to color
 atoms by how constrained they are. The flags are per-axis, so there are three real
 categories, not two: `free` (`T T T`), `partially fixed` (e.g. `T T F`, an atom pinned
 out of plane but free to slide within it) and `fixed` (`F F F`). Sites that never declare
@@ -166,9 +166,9 @@ those atoms. Handy for isolating the relaxing adlayer of a slab.
 
 ## Color Coding by Site Property
 
-Pick **Site Property** under _Atoms → Atom coloring_ to map any per-atom scalar onto the color scale (OVITO's Color Coding). The **Property** dropdown next to it lists the keys actually present on the current structure's sites: extXYZ writes every column its `Properties=` string declares (`charge`, `c_pe`, `velocities`, ...) and LAMMPS dumps write every column past the coordinates (`vx vy vz` as `velocity`, `fx fy fz` as `force`, `q` as `charge`, computes and variables under their dump names). Vec3 properties are colored by their magnitude, so `velocity` gives a speed map. Sites that don't declare the selected key stay gray and are left out of the min/max the color bar shows, and the mode is disabled entirely for structures with no numeric site properties.
+Pick **Site Property** under _Appearance → Atoms → Color by_ to map any per-atom scalar onto the color scale (OVITO's Color Coding). The **Property** dropdown next to it lists the keys actually present on the current structure's sites: extXYZ writes every column its `Properties=` string declares (`charge`, `c_pe`, `velocities`, ...) and LAMMPS dumps write every column past the coordinates (`vx vy vz` as `velocity`, `fx fy fz` as `force`, `q` as `charge`, computes and variables under their dump names). Vec3 properties are colored by their magnitude, so `velocity` gives a speed map. Sites that don't declare the selected key stay gray and are left out of the min/max the color bar shows, and the mode is disabled entirely for structures with no numeric site properties.
 
-`velocity`/`velocities` also count as site-vector keys, so a dump carrying `vx vy vz` gets a velocity arrow layer under _Vectors_ with no extra configuration, next to the usual force and magmom layers.
+`velocity`/`velocities` also count as site-vector keys, so a dump carrying `vx vy vz` gets a velocity arrow layer under _Appearance → Site vectors_ with no extra configuration, next to the usual force and magmom layers.
 
 ## Dihedral (Torsion) Measurement
 
@@ -186,7 +186,7 @@ report 0 rather than NaN.
 
 ## Zone-Axis Camera
 
-_Camera → Crystallographic View_ points the camera along a crystallographic direction
+_Camera → View → Look down_ points the camera along a crystallographic direction
 while keeping the current viewing distance. Two index conventions are offered because
 they only coincide for cubic cells:
 

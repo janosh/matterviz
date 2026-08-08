@@ -178,6 +178,7 @@
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls,
+    persist_settings = false,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),
@@ -1847,7 +1848,7 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-right: calc(1ex - 5px); --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
+      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
         <div
@@ -2155,6 +2156,7 @@
           on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
           {reset_text}
           bind:fly_to_request
+          {persist_settings}
         />
       {/if}
 

@@ -1,9 +1,8 @@
 import type { ElementAxisOrderingKey } from '$lib/heatmap-matrix'
 import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
-import type { ComponentProps } from 'svelte'
-import { mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { mount, tick, type ComponentProps } from 'svelte'
+import { describe, expect, test, vi } from 'vitest'
+import { doc_query, expect_labelled_settings_grid } from '../setup'
 
 const mount_controls = (
   props: Partial<ComponentProps<typeof HeatmapMatrixControls>> = {},
@@ -22,25 +21,19 @@ const get_toggle = () =>
 
 // Find the legend position select by its option values (right/bottom)
 const find_position_select = () =>
-  Array.from(document.querySelectorAll(`.heatmap-controls select`)).find((sel) =>
-    (sel as HTMLSelectElement).querySelector(`option[value="right"]`),
-  ) as HTMLSelectElement | undefined
+  [...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`)].find(
+    (select) => select.querySelector(`option[value="right"]`),
+  )
 
 describe(`HeatmapMatrixControls`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`renders toggle, ordering options, and pane with correct classes`, () => {
     mount_controls()
-    // Toggle button present and initially hidden
     const toggle = get_toggle()
     expect(toggle).not.toBeNull()
     expect(toggle.style.cssText).toContain(`opacity: 0`)
     expect(toggle.style.cssText).toContain(`pointer-events: none`)
-    // Pane div has heatmap-controls class
     expect(doc_query(`.draggable-pane.heatmap-controls`)).toBeInstanceOf(HTMLElement)
-    // Ordering select has all ordering options
+    expect_labelled_settings_grid()
     const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
     const option_values = Array.from(ordering_select.options).map((opt) => opt.value)
     expect(option_values).toHaveLength(Object.keys(ORDERING_LABELS).length)
@@ -100,14 +93,12 @@ describe(`HeatmapMatrixControls`, () => {
 
   test(`normalize and domain selects present with correct options`, () => {
     mount_controls({ normalize: `log`, domain_mode: `robust` })
-    const selects = document.querySelectorAll(`.heatmap-controls select`)
-    const all_options = Array.from(selects).flatMap((sel) =>
-      Array.from((sel as HTMLSelectElement).options).map((opt) => opt.value),
+    const selects = document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`)
+    const all_options = [...selects].flatMap((select) =>
+      [...select.options].map((option) => option.value),
     )
-    // Normalize options
     expect(all_options).toContain(`linear`)
     expect(all_options).toContain(`log`)
-    // Domain options
     expect(all_options).toContain(`auto`)
     expect(all_options).toContain(`robust`)
     expect(all_options).toContain(`fixed`)
@@ -118,7 +109,6 @@ describe(`HeatmapMatrixControls`, () => {
     await tick()
     expect(find_position_select()).toBeUndefined()
 
-    // Enable show_legend by clicking the checkbox
     const legend_checkbox = doc_query<HTMLInputElement>(
       `.heatmap-controls input[type="checkbox"]`,
     )
@@ -136,7 +126,6 @@ describe(`HeatmapMatrixControls`, () => {
     expect(buttons).toHaveLength(2)
     expect(buttons[0].textContent?.trim()).toBe(`Export CSV`)
     expect(buttons[1].textContent?.trim()).toBe(`Export JSON`)
-    // Click each and verify correct format passed
     buttons[0].click()
     expect(export_handler).toHaveBeenLastCalledWith(`csv`)
     buttons[1].click()

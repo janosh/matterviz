@@ -687,7 +687,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: 0.07,
       description: `Thickness of bonds relative to atom radius`,
       minimum: 0.01,
-      maximum: 1.0,
+      maximum: 0.5,
     },
     auto_bond_order: {
       value: false,
@@ -814,13 +814,19 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 150,
     },
     rotation_damping: {
-      value: 0.1,
-      description: `Camera rotation damping factor (0 = no damping, 1 = heavy damping)`,
+      // Larger factors settle sooner, not slower: the queued rotation decays by (1 - factor)
+      // per frame, so 0.1 keeps drifting for ~0.7 s after release (a fast flick lands another
+      // 30°+ past where the pointer stopped) while 0.2 is done in ~0.35 s.
+      value: 0.2,
+      description: `Camera rotation damping factor (0 disables damping; higher values stop rotation sooner)`,
       minimum: 0,
-      maximum: 1,
+      maximum: 0.3,
     },
     rotate_speed: {
-      value: 1.0,
+      // Rotation is 360° * drag_px * rotate_speed / canvas_height_px, so 1.0 spins a full turn
+      // per canvas height (0.72 °/px at the default 500 px) — small enough that trackpad jitter
+      // swings the view. 0.6 makes a 15° nudge a deliberate ~35 px drag.
+      value: 0.6,
       description: `Mouse rotation sensitivity (set to 0 to disable rotation)`,
       minimum: 0,
       maximum: 2.0,
@@ -829,12 +835,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: 0.5,
       description: `Mouse wheel zoom sensitivity`,
       minimum: 0.1,
-      maximum: 2.0,
+      maximum: 0.8,
     },
     pan_speed: {
       value: 0.5,
-      description: `Mouse pan sensitivity`,
-      minimum: 0.1,
+      description: `Mouse pan sensitivity (set to 0 to disable panning)`,
+      minimum: 0,
       maximum: 2.0,
     },
     zoom_to_cursor: {
@@ -858,7 +864,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: 0,
       description: `Automatic rotation speed (0 = disabled, positive = clockwise)`,
       minimum: 0,
-      maximum: 10,
+      maximum: 2,
     },
     rotation: {
       value: [0, 0, 0] as const,
@@ -874,7 +880,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: 1,
       description: `Font size for atom labels`,
       minimum: 0.5,
-      maximum: 5,
+      maximum: 2,
     },
     site_label_color: { value: `#111111`, description: `Text color for atom labels` },
     site_label_bg_color: {
@@ -885,7 +891,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: 2,
       description: `Padding around atom labels in pixels`,
       minimum: 0,
-      maximum: 20,
+      maximum: 10,
     },
     site_label_offset: {
       value: [0, 0.5, 0] as const,
@@ -914,7 +920,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     vector_scale: {
       value: 0.75,
       description: `Scale factor for site vector arrows`,
-      minimum: 0.1,
+      minimum: 0.001,
       maximum: 10.0,
     },
     vector_color: {

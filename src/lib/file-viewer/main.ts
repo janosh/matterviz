@@ -261,6 +261,11 @@ export const create_display = (
     enable_tips: false,
     fullscreen_toggle: false,
   }
+  const embedded_structure_props = {
+    ...structure_props(defaults),
+    ...common_props,
+    persist_settings: false,
+  }
 
   let app: MatterVizApp
   let log_message: string
@@ -349,8 +354,7 @@ export const create_display = (
       props: {
         structure: vol_file.structure,
         volumetric_data: vol_file.volumes,
-        ...structure_props(defaults),
-        ...common_props,
+        ...embedded_structure_props,
       },
     })
     log_message = `Volumetric data rendered: ${filename}`
@@ -375,7 +379,7 @@ export const create_display = (
     const structure = result.data as AnyStructure
     app = mount(Structure, {
       target: container,
-      props: { structure, ...structure_props(defaults), ...common_props },
+      props: { structure, ...embedded_structure_props },
     })
     log_message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
   }
@@ -398,7 +402,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
   }
   return {
     ...trajectory,
-    structure_props: structure_props(defaults),
+    structure_props: { ...structure_props(defaults), persist_settings: false },
     loading_options: {
       bin_file_threshold: trajectory.bin_file_threshold,
       text_file_threshold: trajectory.text_file_threshold,

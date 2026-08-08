@@ -734,7 +734,7 @@ describe(`ScatterPlot`, () => {
     })
     await tick()
 
-    expect(document.querySelector(`.label-text`)?.textContent).toBe(`Fallback`)
+    expect(document.querySelector(`text.label-text`)?.textContent).toBe(`Fallback`)
   })
 
   test(`hides auto labels culled by max_neighbors`, async () => {
@@ -755,7 +755,7 @@ describe(`ScatterPlot`, () => {
     })
 
     expect(
-      [...plot.querySelectorAll(`.label-text`)].map((label) => label.textContent),
+      [...plot.querySelectorAll(`text.label-text`)].map((label) => label.textContent),
     ).toEqual([`Lonely`])
   })
 

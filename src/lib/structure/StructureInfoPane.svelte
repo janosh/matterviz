@@ -44,11 +44,11 @@
     },
     {
       label: `Navigation`,
-      value: `Hold Shift/Cmd/Ctrl + drag to pan the scene`,
+      value: `Drag to rotate, scroll to zoom, hold Shift/Cmd/Ctrl + drag to pan. Rotate, zoom and pan sensitivity are adjustable under Camera in the settings pane`,
     },
     {
       label: `Camera Reset`,
-      value: `Press r, double-click the canvas, or use Reset view in the Camera settings`,
+      value: `Press r, double-click the canvas, or use Reset view at the top of the settings pane`,
     },
     {
       label: `Colors`,

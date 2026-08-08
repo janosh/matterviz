@@ -268,6 +268,8 @@
   bind:height={canvas.height}
   {background_color}
   {show_controls}
+  persist_settings={typeof window !== `undefined` &&
+    new URLSearchParams(window.location.search).get(`persist_settings`) === `true`}
   bind:scene_props
   bind:lattice_props
   {performance_mode}

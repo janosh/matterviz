@@ -143,7 +143,7 @@ describe(`StructureControls`, () => {
         `input[aria-label="Site label background color"]`,
       )
       const opacity_input = doc_query<HTMLInputElement>(
-        `input[aria-label="Site label background opacity"]`,
+        `[data-key="site_label_bg_opacity"] input[type="number"]`,
       )
       expect(bg_color_input.value).toBe(expected_hex_color)
       expect(opacity_input.valueAsNumber).toBe(expected_opacity)
@@ -157,8 +157,10 @@ describe(`StructureControls`, () => {
       doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
       await tick()
 
-      expect(bg_color_input.value).toBe(`#000000`)
-      expect(opacity_input.valueAsNumber).toBe(0)
+      // reset restores what the pane mounted with, so the two halves of the one bg string come
+      // back together even though a separate row drives each
+      expect(bg_color_input.value).toBe(expected_hex_color)
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
     },
   )
 })

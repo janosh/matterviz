@@ -1,14 +1,18 @@
 import { PlotControls } from '$lib/plot'
-import { mount } from 'svelte'
+import { DEFAULTS } from '$lib/settings'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 describe(`PlotControls`, () => {
-  const mount_controls = (props = {}) =>
-    mount(PlotControls, {
+  const mount_controls = (props: ComponentProps<typeof PlotControls> = {}) => {
+    props.show_controls ??= true
+    props.controls_open ??= true
+    return mount(PlotControls, {
       target: document.body,
-      props: { show_controls: true, controls_open: true, ...props },
+      props,
     })
+  }
 
   describe(`range input handling`, () => {
     test.each([
@@ -46,6 +50,28 @@ describe(`PlotControls`, () => {
         expect(document.querySelectorAll(`input.range-input`)).toHaveLength(expected)
       },
     )
+
+    test(`resets after a secondary axis disappears`, async () => {
+      let has_x2_points = $state(true)
+      mount_controls({
+        get has_x2_points() {
+          return has_x2_points
+        },
+        auto_x_range: [0, 100],
+        auto_x2_range: [0, 100],
+      })
+      const range_input = doc_query<HTMLInputElement>(`input.range-input`)
+      range_input.value = `10`
+      range_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      flushSync(() => (has_x2_points = false))
+
+      expect(() =>
+        doc_query<HTMLButtonElement>(
+          `button[aria-label="Reset axis range to defaults"]`,
+        ).click(),
+      ).not.toThrow()
+    })
   })
 
   describe(`format input validation`, () => {
@@ -67,37 +93,82 @@ describe(`PlotControls`, () => {
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(input.classList.contains(`invalid`)).toBe(!valid)
     })
+
+    test(`format inputs fill their grid column`, () => {
+      mount_controls({ has_x2_points: true, has_y2_points: true })
+      const inputs = document.querySelectorAll<HTMLInputElement>(
+        `[data-testid="tick-format-section"] input`,
+      )
+      expect(inputs).toHaveLength(4)
+      for (const input of inputs) expect(getComputedStyle(input).width).toBe(`100%`)
+    })
   })
 
   describe(`display controls`, () => {
-    // Helper to find checkboxes within a control group by data-label attribute.
-    const get_checkboxes_in_group = (label: string) => {
-      const group = document.querySelector(`.control-group[data-label="${label}"]`)
-      return group
-        ? Array.from(group.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`))
-        : []
-    }
+    const get_checkboxes_in_group = (label: string): HTMLInputElement[] => [
+      ...(document
+        .querySelector(`.control-group[data-label="${label}"]`)
+        ?.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`) ?? []),
+    ]
 
-    test(`renders correct number of grid controls`, () => {
-      mount_controls({ has_y2_points: true })
+    test(`renders correct number of grid controls and resets them`, async () => {
+      const state = $state({ display: { x_grid: true, y_grid: true, y2_grid: true } })
+      const initial_display = state.display
+      mount_controls(bind_props({ has_y2_points: true }, state))
       const grids = get_checkboxes_in_group(`grid`)
       expect(grids).toHaveLength(3)
+      expect(
+        document.querySelector(`button[aria-label="Reset display to defaults"]`),
+      ).toBeNull()
+
+      grids[0].click()
+      await tick()
+      expect(state.display.x_grid).toBe(false)
+
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset display to defaults"]`).click()
+      await tick()
+      expect(state.display).not.toBe(initial_display)
+      expect(state.display).toMatchObject({
+        x_grid: DEFAULTS.plot.show_x_grid,
+        x_zero_line: DEFAULTS.plot.show_x_zero_line,
+        x2_zero_line: false,
+        y_zero_line: DEFAULTS.plot.show_y_zero_line,
+        y2_zero_line: false,
+        y2_grid: true,
+      })
+      expect(
+        document.querySelector(`button[aria-label="Reset display to defaults"]`),
+      ).toBeNull()
     })
 
-    test.each([
+    test(`does not fill missing display keys on mount`, () => {
+      const display = $state({ x_grid: false })
+      mount_controls({
+        get display() {
+          return display
+        },
+      })
+      expect(display).toEqual({ x_grid: false })
+    })
+
+    test.each<{
+      x_range: [number, number]
+      y_range: [number, number]
+      expected: number
+    }>([
       { x_range: [-10, 10], y_range: [-5, 5], expected: 2 },
       { x_range: [0, 10], y_range: [-5, 5], expected: 2 },
       { x_range: [1, 10], y_range: [-5, 5], expected: 1 },
       { x_range: [-10, 10], y_range: [1, 5], expected: 1 },
       { x_range: [1, 10], y_range: [1, 5], expected: 0 },
     ])(`shows $expected zero line controls for ranges`, ({ x_range, y_range, expected }) => {
-      mount_controls({ x_range, y_range, auto_x_range: x_range, auto_y_range: y_range })
+      mount_controls({ auto_x_range: x_range, auto_y_range: y_range })
       const zero_lines = get_checkboxes_in_group(`zero line`)
       expect(zero_lines).toHaveLength(expected)
     })
   })
 
-  test(`tick controls section only renders when show_ticks`, () => {
+  test(`tick controls only render when enabled and use configured defaults`, () => {
     // section titles render in <h4> headers (not inside the <section> itself)
     const has_ticks_section = () =>
       Array.from(document.querySelectorAll(`h4`)).some((header) =>
@@ -107,8 +178,17 @@ describe(`PlotControls`, () => {
     expect(has_ticks_section()).toBe(false)
 
     document.body.innerHTML = ``
-    mount_controls({ show_ticks: true })
+    mount_controls({
+      show_ticks: true,
+      x_axis: { ticks: undefined },
+      y_axis: { ticks: undefined },
+    })
     expect(has_ticks_section()).toBe(true)
+    const tick_inputs = document.querySelectorAll<HTMLInputElement>(`input[min="2"][max="20"]`)
+    expect([...tick_inputs].map((input) => input.value)).toEqual(
+      [DEFAULTS.plot.x_ticks, DEFAULTS.plot.y_ticks].map(String),
+    )
+    expect(document.querySelector(`button[aria-label="Reset ticks to defaults"]`)).toBeNull()
   })
 
   test(`controls visibility toggles`, () => {

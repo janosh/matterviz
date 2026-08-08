@@ -4,6 +4,17 @@ import {
   merge,
   SETTINGS_CONFIG,
 } from '$lib/settings'
+import {
+  clear_structure_view_state,
+  create_structure_view_state,
+  deserialize_structure_view_state,
+  load_structure_view_state,
+  save_structure_view_state,
+  serialize_structure_view_state,
+  STRUCTURE_VIEW_STATE_STORAGE_KEY,
+  STRUCTURE_VIEW_STATE_VERSION,
+  type StructureViewState,
+} from '$lib/settings/viewer-state'
 import { describe, expect, test } from 'vitest'
 
 describe(`Settings`, () => {
@@ -88,4 +99,170 @@ test(`settings builder groups structure props`, () => {
   expect(props.scene_props).toMatchObject(DEFAULTS.structure)
   expect(props.scene_props.gizmo).toBe(DEFAULTS.structure.show_gizmo)
   expect(props.lattice_props.cell_edge_width).toBe(DEFAULTS.structure.cell_edge_width)
+})
+
+describe(`Structure viewer state serialization`, () => {
+  const parse_or_throw = (json: string): StructureViewState => {
+    const { state, error } = deserialize_structure_view_state(json)
+    if (!state) throw new Error(error)
+    return state
+  }
+
+  test(`keeps themed backgrounds unset and skips non-portable structure state`, () => {
+    const scene_props = {
+      get camera_position(): never {
+        throw new Error(`camera_position must not be read`)
+      },
+    }
+    const state = create_structure_view_state({ scene_props })
+    expect(state.settings.background_color).toBeUndefined()
+    expect(state.settings.structure).not.toHaveProperty(`camera_position`)
+  })
+
+  test(`round-trips validated settings through the shared JSON format`, () => {
+    const state = create_structure_view_state({
+      scene_props: {
+        atom_radius: 1.25,
+        camera_projection: `perspective`,
+        vector_configs: { force: { visible: false } },
+      },
+      lattice_props: { cell_edge_opacity: 0.8 },
+      color_scheme: `Jmol`,
+      background_color: `#123456`,
+      background_opacity: 0.4,
+      show_image_atoms: false,
+      atom_color_config: {
+        mode: `coordination`,
+        scale: `interpolatePlasma`,
+        scale_type: `continuous`,
+      },
+      supercell_scaling: `2x3x1`,
+      cell_type: `conventional`,
+      multi_view: true,
+      controls_pane_size: { width: 520, height: 640 },
+    })
+
+    const round_tripped = parse_or_throw(serialize_structure_view_state(state))
+    expect(round_tripped).toMatchObject({
+      version: STRUCTURE_VIEW_STATE_VERSION,
+      settings: {
+        color_scheme: `Jmol`,
+        background_color: `#123456`,
+        background_opacity: 0.4,
+        structure: {
+          atom_radius: 1.25,
+          camera_projection: `perspective`,
+          cell_edge_opacity: 0.8,
+          show_image_atoms: false,
+          atom_color_mode: `coordination`,
+          atom_color_scale: `interpolatePlasma`,
+        },
+      },
+      viewer: {
+        supercell_scaling: `2x3x1`,
+        cell_type: `conventional`,
+        multi_view: true,
+        controls_pane_size: { width: 520, height: 640 },
+      },
+    })
+    expect(round_tripped.settings.structure).not.toHaveProperty(`vector_configs`)
+  })
+
+  test(`replaces unknown, wrong-type, and out-of-range values with schema defaults`, () => {
+    const { settings, viewer } = parse_or_throw(
+      JSON.stringify({
+        version: STRUCTURE_VIEW_STATE_VERSION,
+        unknown_top_level: true,
+        settings: {
+          color_scheme: 42,
+          background_color: null,
+          background_opacity: 2,
+          unknown_group: { enabled: true },
+          structure: {
+            atom_radius: 99,
+            show_atoms: `yes`,
+            camera_projection: `fisheye`,
+            rotation: [0, `bad`, 0],
+            polyhedra_excluded_elements: [8],
+            unknown_setting: `ignored`,
+          },
+        },
+        viewer: {
+          supercell_scaling: `0x2x2`,
+          cell_type: `derived`,
+          multi_view: `yes`,
+          controls_pane_size: { width: -1, height: `large` },
+          unknown_viewer_setting: true,
+        },
+      }),
+    )
+
+    expect(settings).toMatchObject({
+      color_scheme: DEFAULTS.color_scheme,
+      background_color: DEFAULTS.background_color,
+      background_opacity: DEFAULTS.background_opacity,
+      structure: {
+        atom_radius: DEFAULTS.structure.atom_radius,
+        show_atoms: DEFAULTS.structure.show_atoms,
+        camera_projection: DEFAULTS.structure.camera_projection,
+        rotation: DEFAULTS.structure.rotation,
+        polyhedra_excluded_elements: DEFAULTS.structure.polyhedra_excluded_elements,
+      },
+    })
+    expect(settings.structure).not.toHaveProperty(`unknown_setting`)
+    expect(settings).not.toHaveProperty(`unknown_group`)
+    expect(viewer).toEqual({
+      supercell_scaling: `1x1x1`,
+      cell_type: `original`,
+      multi_view: false,
+    })
+  })
+
+  test.each([
+    [`corrupt JSON`, `{`, `Invalid JSON`],
+    [`non-object JSON`, `[]`, `must be a JSON object`],
+    [
+      `unsupported version`,
+      JSON.stringify({ version: 999 }),
+      `Unsupported view-state version`,
+    ],
+  ])(`rejects %s`, (_description, json, expected_error) => {
+    expect(deserialize_structure_view_state(json)).toEqual({
+      error: expect.stringContaining(expected_error),
+    })
+  })
+
+  test(`handles missing and corrupt localStorage without throwing`, () => {
+    expect(load_structure_view_state()).toBeNull()
+
+    localStorage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, `{bad json`)
+    expect(load_structure_view_state()).toBeNull()
+    expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
+  })
+
+  test(`throws on invalid program-created state`, () => {
+    const invalid_state = create_structure_view_state()
+    Reflect.set(invalid_state, `version`, 999)
+
+    expect(() => save_structure_view_state(invalid_state)).toThrow(
+      `Cannot serialize structure view state version 999`,
+    )
+  })
+
+  test(`persists non-default state and removes a restored default state`, () => {
+    const customized = create_structure_view_state({
+      scene_props: { atom_radius: 1.5 },
+    })
+    expect(save_structure_view_state(customized)).toBe(true)
+    expect(load_structure_view_state()?.settings.structure.atom_radius).toBe(1.5)
+
+    expect(save_structure_view_state(create_structure_view_state())).toBe(true)
+    expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
+
+    // backs "Reset all" in the controls pane: the next load must not resurrect old settings
+    save_structure_view_state(customized)
+    expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).not.toBeNull()
+    expect(clear_structure_view_state()).toBe(true)
+    expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
+  })
 })

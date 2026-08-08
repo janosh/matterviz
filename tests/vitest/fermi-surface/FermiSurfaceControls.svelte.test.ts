@@ -2,7 +2,7 @@ import FermiSurfaceControls from '$lib/fermi-surface/FermiSurfaceControls.svelte
 import type { ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 const make_fermi_data = (band_indices = [0, 1]): FermiSurfaceData => ({
   isosurfaces: band_indices.map((band_index) => ({
@@ -73,9 +73,36 @@ describe(`FermiSurfaceControls`, () => {
         await tick()
         expect(state.selected_bands).toEqual(expected_selected_bands)
         expect(state.color_property).toBe(expected_color_property)
+        if (initial_selected_bands === undefined && expected_selected_bands?.length) {
+          expect(
+            document.querySelector(`button[aria-label="Reset bands to defaults"]`),
+          ).toBeNull()
+        }
       } finally {
         await unmount(component)
       }
     },
   )
+
+  test(`tracks and resets the appearance color scale`, async () => {
+    const state = $state<{ color_property: ColorProperty; color_scale: string }>({
+      color_property: `velocity`,
+      color_scale: `interpolateViridis`,
+    })
+    const component = mount(FermiSurfaceControls, {
+      target: document.body,
+      props: bind_props({ controls_open: true, fermi_data: make_fermi_data() }, state),
+    })
+
+    try {
+      await tick()
+      state.color_scale = `interpolatePlasma`
+      await tick()
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset appearance to defaults"]`).click()
+      await tick()
+      expect([state.color_property, state.color_scale]).toEqual([`band`, `interpolateViridis`])
+    } finally {
+      await unmount(component)
+    }
+  })
 })

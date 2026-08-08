@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Cross, Settings } from 'svelte-widgets/icons'
+  import { SettingsSection } from '$lib/layout'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type {
     ElementAxisOrderingKey,
@@ -56,10 +57,8 @@
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 
-  function merge_styles(base_style: string, override_style: unknown): string {
-    const override_style_str = typeof override_style === `string` ? override_style : ``
-    return override_style_str ? `${base_style}; ${override_style_str}` : base_style
-  }
+  const merge_styles = (base_style: string, override_style: unknown): string =>
+    `${base_style}${typeof override_style === `string` && override_style ? `; ${override_style}` : ``}`
 
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format = $state<string | null>(null)
@@ -79,6 +78,8 @@
   const default_pane_style = [
     `z-index: var(--heatmap-matrix-controls-pane-z-index, 25)`,
     `min-width: var(--heatmap-matrix-controls-pane-min-width, 220px)`,
+    `--ctrl-label-w: 6.5em`,
+    `--ctrl-value-w: 4em`,
   ].join(`; `)
 </script>
 
@@ -100,101 +101,98 @@
     open_icon={Cross}
     closed_icon={Settings}
   >
-    <label>
-      Ordering
-      <select bind:value={ordering}>
-        {#each orderings as ord (ord)}
-          <option value={ord}>{ORDERING_LABELS[ord]}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      Search
-      <input bind:value={search_query} placeholder="Filter labels/keys" />
-    </label>
-    <div class="pane-row">
+    <SettingsSection title="Heatmap" layout="grid">
       <label>
-        Normalize
+        <span>Ordering</span>
+        <select bind:value={ordering}>
+          {#each orderings as ord (ord)}
+            <option value={ord}>{ORDERING_LABELS[ord]}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span>Search</span>
+        <input bind:value={search_query} placeholder="Filter labels/keys" />
+      </label>
+      <label>
+        <span>Normalize</span>
         <select bind:value={normalize}>
-          <option value="linear">linear</option>
-          <option value="log">log</option>
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
         </select>
       </label>
       <label>
-        Domain
+        <span>Domain</span>
         <select bind:value={domain_mode}>
-          <option value="auto">auto</option>
-          <option value="robust">robust</option>
-          <option value="fixed">fixed</option>
+          <option value="auto">Auto</option>
+          <option value="robust">Robust</option>
+          <option value="fixed">Fixed</option>
         </select>
       </label>
-    </div>
-    <div class="pane-row">
       <label>
+        <span>Legend</span>
         <input type="checkbox" bind:checked={show_legend} />
-        Legend
       </label>
       {#if show_legend}
         <label>
-          Position
+          <span>Position</span>
           <select bind:value={legend_position}>
-            <option value="right">right</option>
-            <option value="bottom">bottom</option>
+            <option value="right">Right</option>
+            <option value="bottom">Bottom</option>
           </select>
         </label>
       {/if}
-    </div>
-    <div class="pane-row">
       <label>
-        Symmetric
+        <span>Symmetric</span>
         <select bind:value={symmetric}>
-          <option value={false}>off</option>
-          <option value="lower">lower</option>
-          <option value="upper">upper</option>
+          <option value={false}>Off</option>
+          <option value="lower">Lower</option>
+          <option value="upper">Upper</option>
         </select>
       </label>
       <label>
-        Theme
+        <span>Theme</span>
         <select bind:value={theme}>
-          <option value="default">default</option>
-          <option value="light">light</option>
-          <option value="dark">dark</option>
-          <option value="publication">publication</option>
+          <option value="default">Default</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="publication">Publication</option>
         </select>
       </label>
-    </div>
-    <div class="pane-row">
       <label>
+        <span>Values</span>
         <input
           type="checkbox"
           checked={!!show_values}
           onchange={(evt) => {
             if (evt.currentTarget.checked) {
               show_values = stashed_format || true
-            } else {
-              stashed_format = typeof show_values === `string` ? show_values : null
-              show_values = false
+              return
             }
+            stashed_format = typeof show_values === `string` ? show_values : null
+            show_values = false
           }}
         />
-        Values
       </label>
       <label>
+        <span>Row sums</span>
         <input type="checkbox" bind:checked={show_row_summaries} />
-        Row sums
       </label>
       <label>
+        <span>Col sums</span>
         <input type="checkbox" bind:checked={show_col_summaries} />
-        Col sums
       </label>
-    </div>
-    <div class="pane-row">
-      {#each export_formats as export_format (export_format)}
-        <button type="button" onclick={() => onexport?.(export_format)}>
-          Export {export_format.toUpperCase()}
-        </button>
-      {/each}
-    </div>
+      <div class="setting">
+        <span>Export</span>
+        <div class="pane-row">
+          {#each export_formats as export_format (export_format)}
+            <button type="button" onclick={() => onexport?.(export_format)}>
+              Export {export_format.toUpperCase()}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </SettingsSection>
     {@render children?.({ controls_open })}
   </DraggablePane>
 {/if}
@@ -208,11 +206,6 @@
     display: flex;
     gap: 10pt;
     flex-wrap: wrap;
-  }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 6pt;
   }
   select,
   input:not([type]) {

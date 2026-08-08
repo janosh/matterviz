@@ -3,7 +3,7 @@
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type {
     AxisConfig3D,
@@ -13,12 +13,19 @@
     Surface3DConfig,
   } from '$lib/plot/core/types'
   import { calculate_domain } from '$lib/plot/core/scales'
-  import { unique_id } from '$lib/plot/core/utils'
-  import { parse_num_token } from '$lib/utils'
   import type { Snippet } from 'svelte'
 
-  // Unique ID prefix to avoid conflicts when multiple instances on same page
-  const uid = unique_id(`scatter3d-ctrl`)
+  const defaults = {
+    camera_projection: `perspective` as CameraProjection3D,
+    auto_rotate: 0,
+    show_axes: true,
+    show_grid: true,
+    show_axis_labels: true,
+    show_bounding_box: false,
+    projections: { xy: false, xz: false, yz: false },
+    projection_opacity: 0.3,
+    projection_scale: 0.5,
+  }
 
   let {
     show_controls = $bindable(true),
@@ -27,8 +34,8 @@
     y_axis = $bindable({}),
     z_axis = $bindable({}),
     display = $bindable({}),
-    camera_projection = $bindable(`perspective`),
-    auto_rotate = $bindable(0),
+    camera_projection = $bindable(defaults.camera_projection),
+    auto_rotate = $bindable(defaults.auto_rotate),
     series = [],
     surfaces = [],
     toggle_props,
@@ -58,23 +65,13 @@
     return [min_val - padding, max_val + padding]
   }
 
-  // flatMap already creates new array, no need to spread
-  let all_x_values = $derived(series.flatMap((srs) => srs.x))
-  let all_y_values = $derived(series.flatMap((srs) => srs.y))
-  let all_z_values = $derived(series.flatMap((srs) => srs.z))
+  let auto_x_range = $derived(calc_auto_range(series.flatMap((srs) => srs.x)))
+  let auto_y_range = $derived(calc_auto_range(series.flatMap((srs) => srs.y)))
+  let auto_z_range = $derived(calc_auto_range(series.flatMap((srs) => srs.z)))
 
-  let auto_x_range = $derived(calc_auto_range(all_x_values))
-  let auto_y_range = $derived(calc_auto_range(all_y_values))
-  let auto_z_range = $derived(calc_auto_range(all_z_values))
-
-  type InputControlEvent = Event & { currentTarget: HTMLInputElement }
-  const get_input_value = (event: InputControlEvent) => event.currentTarget.value
-
-  // Helpers to update display properties - avoids verbose inline handlers
-  const update_display = (key: keyof DisplayConfig3D) => (event: InputControlEvent) => {
-    const parsed = parse_num_token(get_input_value(event))
+  const set_display = (key: `projection_opacity` | `projection_scale`) => (val?: number) => {
     // Guard against cleared/invalid input - preserve existing value
-    if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
+    if (val != null && Number.isFinite(val)) display = { ...display, [key]: val }
   }
   const toggle_display = (key: keyof DisplayConfig3D) => () => {
     display = { ...display, [key]: !display[key] }
@@ -89,39 +86,35 @@
   // Round to 4 decimal places for display
   const round4 = (val: number) => Math.round(val * 1e4) / 1e4
 
-  // Helper for axis label updates
-  const update_axis_label =
-    <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
-    (event: InputControlEvent) => {
-      setter({ ...axis, label: get_input_value(event) })
-    }
-
   type AxisEntry = {
     name: string
     axis: AxisConfig3D
     auto_range: Vec2
     set: (val: AxisConfig3D) => void
   }
+  const set_axis_range = (
+    { axis, auto_range, set }: AxisEntry,
+    bound: 0 | 1,
+    value: number,
+  ): void => {
+    if (!Number.isFinite(value)) return
+    const range: Vec2 = [axis.range?.[0] ?? auto_range[0], axis.range?.[1] ?? auto_range[1]]
+    range[bound] = value
+    set({ ...axis, range })
+  }
   const axes = $derived<AxisEntry[]>([
-    {
-      name: `X`,
-      axis: x_axis,
-      auto_range: auto_x_range,
-      set: (val) => (x_axis = val),
-    },
-    {
-      name: `Y`,
-      axis: y_axis,
-      auto_range: auto_y_range,
-      set: (val) => (y_axis = val),
-    },
-    {
-      name: `Z`,
-      axis: z_axis,
-      auto_range: auto_z_range,
-      set: (val) => (z_axis = val),
-    },
+    { name: `X`, axis: x_axis, auto_range: auto_x_range, set: (val) => (x_axis = val) },
+    { name: `Y`, axis: y_axis, auto_range: auto_y_range, set: (val) => (y_axis = val) },
+    { name: `Z`, axis: z_axis, auto_range: auto_z_range, set: (val) => (z_axis = val) },
   ])
+
+  const display_toggles = [
+    [`show_axes`, `Axes`],
+    [`show_grid`, `Grid`],
+    [`show_axis_labels`, `Labels`],
+    [`show_bounding_box`, `Bounds`],
+  ] as const
+  const projection_planes = [`xy`, `xz`, `yz`] as const
 </script>
 
 {#if show_controls}
@@ -129,7 +122,7 @@
     bind:open={controls_open}
     {toggle_props}
     pane_props={{
-      title: `3D Plot Settings`,
+      title: `3D plot settings`,
       ...pane_props,
       style: `--pane-max-height: 80cqh; ${pane_props?.style ?? ``}`,
     }}
@@ -140,80 +133,37 @@
     <SettingsSection
       title="Camera"
       current_values={{ projection: camera_projection, auto_rotate }}
-      on_reset={() => {
-        camera_projection = `perspective`
-        auto_rotate = 0
-      }}
+      on_reset={() => ({ camera_projection, auto_rotate } = defaults)}
+      layout="grid"
     >
-      <div class="pane-row">
-        <label for="{uid}-camera-projection">Projection:</label>
-        <select id="{uid}-camera-projection" bind:value={camera_projection}>
+      <label>
+        <span>Projection</span>
+        <select bind:value={camera_projection}>
           <option value="perspective">Perspective</option>
           <option value="orthographic">Orthographic</option>
         </select>
-      </div>
-      <div class="pane-row">
-        <label for="{uid}-auto-rotate">Auto Rotate:</label>
-        <input
-          id="{uid}-auto-rotate"
-          type="range"
-          min="0"
-          max="5"
-          step="0.1"
-          bind:value={auto_rotate}
-        />
-        <input type="number" min="0" max="5" step="0.1" bind:value={auto_rotate} />
-      </div>
+      </label>
+      <NumberRangeInput min={0} max={5} step={0.1} bind:value={auto_rotate}
+        >Auto-rotate</NumberRangeInput
+      >
     </SettingsSection>
 
     <!-- Display Controls -->
     <SettingsSection
       title="Display"
-      current_values={{
-        show_axes: display.show_axes,
-        show_grid: display.show_grid,
-        show_axis_labels: display.show_axis_labels,
-        show_bounding_box: display.show_bounding_box,
-      }}
+      current_values={Object.fromEntries(display_toggles.map(([key]) => [key, display[key]]))}
       on_reset={() => {
-        display = {
-          ...display,
-          show_axes: true,
-          show_grid: true,
-          show_axis_labels: true,
-          show_bounding_box: false,
-        }
+        const { show_axes, show_grid, show_axis_labels, show_bounding_box } = defaults
+        display = { ...display, show_axes, show_grid, show_axis_labels, show_bounding_box }
       }}
-      style="display: flex; flex-wrap: wrap; gap: 1ex"
+      layout="grid"
     >
-      <label>
-        <input
-          type="checkbox"
-          checked={display.show_axes}
-          onchange={toggle_display(`show_axes`)}
-        /> Axes
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={display.show_grid}
-          onchange={toggle_display(`show_grid`)}
-        /> Grid
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={display.show_axis_labels}
-          onchange={toggle_display(`show_axis_labels`)}
-        /> Labels
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={display.show_bounding_box}
-          onchange={toggle_display(`show_bounding_box`)}
-        /> Bounds
-      </label>
+      {#each display_toggles as [key, label] (key)}
+        <label>
+          <span>{label}</span>
+          <input type="checkbox" checked={display[key]} onchange={toggle_display(key)} />
+        </label>
+      {/each}
     </SettingsSection>
 
     <!-- Projections: only when there's data to project -->
@@ -221,86 +171,56 @@
       <SettingsSection
         title="Projections"
         current_values={{
-          xy: display.projections?.xy,
-          xz: display.projections?.xz,
-          yz: display.projections?.yz,
+          ...Object.fromEntries(
+            projection_planes.map((plane) => [plane, display.projections?.[plane]]),
+          ),
           opacity: display.projection_opacity,
           scale: display.projection_scale,
         }}
         on_reset={() => {
+          const { projections, projection_opacity, projection_scale } = defaults
           display = {
             ...display,
-            projections: { xy: false, xz: false, yz: false },
-            projection_opacity: 0.3,
-            projection_scale: 0.5,
+            projections: { ...projections },
+            projection_opacity,
+            projection_scale,
           }
         }}
+        layout="grid"
       >
-        <div style="display: flex; flex-wrap: wrap; gap: 1ex">
-          <label>
-            <input
-              type="checkbox"
-              checked={display.projections?.xy}
-              onchange={toggle_projection(`xy`)}
-            /> XY
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={display.projections?.xz}
-              onchange={toggle_projection(`xz`)}
-            /> XZ
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={display.projections?.yz}
-              onchange={toggle_projection(`yz`)}
-            /> YZ
-          </label>
+        <div class="setting">
+          <span>Planes</span>
+          <div class="check-options">
+            {#each projection_planes as plane (plane)}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={display.projections?.[plane]}
+                  onchange={toggle_projection(plane)}
+                />
+                {plane.toUpperCase()}
+              </label>
+            {/each}
+          </div>
         </div>
-        <div class="pane-row">
-          <label for="{uid}-proj-opacity">Opacity:</label>
-          <input
-            id="{uid}-proj-opacity"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={display.projection_opacity ?? 0.3}
-            oninput={update_display(`projection_opacity`)}
-          />
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            value={display.projection_opacity ?? 0.3}
-            oninput={update_display(`projection_opacity`)}
-            style="width: 3.5em"
-          />
-        </div>
-        <div class="pane-row">
-          <label for="{uid}-proj-scale">Size:</label>
-          <input
-            id="{uid}-proj-scale"
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={display.projection_scale ?? 0.5}
-            oninput={update_display(`projection_scale`)}
-          />
-          <input
-            type="number"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={display.projection_scale ?? 0.5}
-            oninput={update_display(`projection_scale`)}
-            style="width: 3.5em"
-          />
-        </div>
+        <NumberRangeInput
+          min={0}
+          max={1}
+          step={0.05}
+          bind:value={
+            () => display.projection_opacity ?? defaults.projection_opacity,
+            set_display(`projection_opacity`)
+          }>Opacity</NumberRangeInput
+        >
+        <NumberRangeInput
+          min={0.1}
+          max={1}
+          step={0.05}
+          bind:value={
+            () => display.projection_scale ?? defaults.projection_scale,
+            set_display(`projection_scale`)
+          }>Size</NumberRangeInput
+        >
       </SettingsSection>
     {/if}
 
@@ -313,47 +233,41 @@
         z_range: z_axis.range,
       }}
       on_reset={() => {
-        x_axis = { ...x_axis, range: [null, null] }
-        y_axis = { ...y_axis, range: [null, null] }
-        z_axis = { ...z_axis, range: [null, null] }
+        for (const { axis, set } of axes) set({ ...axis, range: [null, null] })
       }}
+      layout="grid"
     >
-      {#each axes as { name, axis, auto_range, set } (name)}
-        <div class="axis-row">
-          <span class="axis-name">{name}</span>
-          <input
-            type="text"
-            value={axis.label}
-            oninput={update_axis_label(axis, set)}
-            placeholder="{name} label"
-            aria-label="{name} label"
-            class="axis-label-input"
-          />
-          <input
-            type="number"
-            step="any"
-            value={round4(axis.range?.[0] ?? auto_range[0])}
-            oninput={(event) => {
-              const val = parseFloat(event.currentTarget.value)
-              if (Number.isNaN(val)) return
-              set({ ...axis, range: [val, axis.range?.[1] ?? auto_range[1]] })
-            }}
-            aria-label="{name} min"
-            class="axis-range-input"
-          />
-          <span style="flex-shrink: 0; opacity: 0.5">–</span>
-          <input
-            type="number"
-            step="any"
-            value={round4(axis.range?.[1] ?? auto_range[1])}
-            oninput={(event) => {
-              const val = parseFloat(event.currentTarget.value)
-              if (Number.isNaN(val)) return
-              set({ ...axis, range: [axis.range?.[0] ?? auto_range[0], val] })
-            }}
-            aria-label="{name} max"
-            class="axis-range-input"
-          />
+      {#each axes as entry (entry.name)}
+        {@const { name, axis, auto_range, set } = entry}
+        <div class="setting">
+          <span>{name}</span>
+          <div class="axis-inputs">
+            <input
+              type="text"
+              value={axis.label}
+              oninput={(event) => set({ ...axis, label: event.currentTarget.value })}
+              placeholder="{name} label"
+              aria-label="{name} label"
+              class="axis-label-input"
+            />
+            <input
+              type="number"
+              step="any"
+              value={round4(axis.range?.[0] ?? auto_range[0])}
+              oninput={(event) => set_axis_range(entry, 0, event.currentTarget.valueAsNumber)}
+              aria-label="{name} min"
+              class="axis-range-input"
+            />
+            <span style="flex-shrink: 0; opacity: 0.5">–</span>
+            <input
+              type="number"
+              step="any"
+              value={round4(axis.range?.[1] ?? auto_range[1])}
+              oninput={(event) => set_axis_range(entry, 1, event.currentTarget.valueAsNumber)}
+              aria-label="{name} max"
+              class="axis-range-input"
+            />
+          </div>
         </div>
       {/each}
     </SettingsSection>
@@ -380,46 +294,30 @@
 {/if}
 
 <style>
-  .pane-row {
+  :is(.check-options, .axis-inputs) {
     display: flex;
     align-items: center;
-    gap: 0.5em;
-    margin: 0.3em 0;
-    font-size: 0.9em;
-  }
-  .pane-row label {
-    min-width: 4em;
-    flex-shrink: 0;
-  }
-  .pane-row input[type='number'] {
-    width: 5em;
-  }
-  .pane-row input[type='range'] {
-    flex: 1;
-    min-width: 4em;
-  }
-  .pane-row select {
-    flex: 1;
+    flex-wrap: wrap;
+    gap: 4px;
     min-width: 0;
   }
-  .axis-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin: 2px 0;
+  .check-options {
+    gap: 1ex;
+    label {
+      display: flex;
+      align-items: center;
+      gap: 3pt;
+    }
+  }
+  .axis-inputs {
     font-size: 0.9em;
-  }
-  .axis-row input {
-    box-sizing: border-box;
-    height: 1.4em;
-    padding: 0 3px;
-    font-size: inherit;
-    line-height: 1;
-  }
-  .axis-name {
-    font-weight: 600;
-    width: 1.2em;
-    flex-shrink: 0;
+    input {
+      box-sizing: border-box;
+      height: 1.4em;
+      padding: 0 3px;
+      font-size: inherit;
+      line-height: 1;
+    }
   }
   .axis-label-input {
     width: 6em;

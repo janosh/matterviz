@@ -548,11 +548,11 @@
     left: 5px;
     z-index: var(--z-index-viewer-label, 1);
     pointer-events: none;
-    font-size: var(--struct-viewport-label-font-size, 0.8em);
-    font-weight: 500;
+    font-size: var(--struct-viewport-label-font-size, 0.75em);
+    font-weight: 400;
     padding: 1px 5px;
     border-radius: var(--border-radius, 3pt);
-    color: var(--struct-viewport-label-color, var(--text-color, currentColor));
+    color: var(--struct-viewport-label-color, var(--text-color-muted, currentColor));
     background: var(
       --struct-viewport-label-bg,
       color-mix(in srgb, var(--page-bg, Canvas) 65%, transparent)

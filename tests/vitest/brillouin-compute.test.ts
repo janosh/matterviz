@@ -662,21 +662,21 @@ describe(`scene sizing helpers`, () => {
       [`scales with padding`, cube, 2, 4 * Math.sqrt(3)],
       // the default padding must exceed the bare diameter or the zone touches the frame edge
       [
-        `pads to 85% of the shorter edge by default`,
+        `pads to 92% of the shorter edge by default`,
         cube,
         undefined,
-        (2 * Math.sqrt(3)) / 0.85,
+        (2 * Math.sqrt(3)) / 0.92,
       ],
       // Without vertices the zone is framed by the cell it is inscribed in: a cubic lattice of
       // side 4 gives a cell diagonal of 4*sqrt(3). Using 2*k_space_size = 8 instead would frame
-      // the zone at 74% of the edge and then jump 15% the moment the vertices arrive.
+      // the zone too loosely and then jump when the vertices arrive.
       [
         `falls back to the cell without vertices`,
         undefined,
         undefined,
-        (4 * Math.sqrt(3)) / 0.85,
+        (4 * Math.sqrt(3)) / 0.92,
       ],
-      [`falls back on empty vertices too`, [], undefined, (4 * Math.sqrt(3)) / 0.85],
+      [`falls back on empty vertices too`, [], undefined, (4 * Math.sqrt(3)) / 0.92],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
@@ -716,6 +716,6 @@ describe(`scene sizing helpers`, () => {
 
     // k_space_size has its own placeholder |b| when there is no reciprocal lattice either
     test(`falls back twice without a lattice`, () =>
-      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo((Math.sqrt(3) * 10) / 0.85, 10))
+      expect(bz_fit_extent(undefined, undefined)).toBeCloseTo((Math.sqrt(3) * 10) / 0.92, 10))
   })
 })

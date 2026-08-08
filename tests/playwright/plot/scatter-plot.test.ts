@@ -1352,66 +1352,34 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Capture initial tick text for Y-axis comparison
     const initial_y_tick = await y_tick_text.textContent()
 
-    // Find the "Tick Format" section by its heading, then locate inputs within it
-    // The section has an h4 with title followed by section element with inputs
     const tick_format_heading = control_pane.locator(`h4:has-text("Tick Format")`)
-    await expect(tick_format_heading).toBeVisible()
-
-    // Get the section that follows the heading (sibling relationship)
     const tick_format_section = tick_format_heading.locator(`+ section`)
     const x_format_input = tick_format_section.locator(
-      `label:has-text("X-axis:") input[type="text"]`,
+      `label:has(span:text-is("X-axis")) input[type="text"]`,
     )
     const y_format_input = tick_format_section.locator(
-      `label:has-text("Y-axis:") input[type="text"]`,
+      `label:has(span:text-is("Y-axis")) input[type="text"]`,
     )
 
-    // Test X-axis format input with a percentage format
-    if (await x_format_input.isVisible()) {
-      // Apply a percentage format to see label change
-      await x_format_input.fill(`.0%`)
+    await x_format_input.fill(`.0%`)
+    await expect(x_tick_text).toContainText(`%`, { timeout: 5000 })
 
-      // Poll until tick text shows percentage format
-      await expect(x_tick_text).toContainText(`%`, { timeout: 5000 })
+    // d3-format throws for invalid specifiers not starting with %, which denotes time format
+    await x_format_input.fill(`invalid`)
+    await expect(x_format_input).toHaveClass(/invalid/)
+    await x_format_input.fill(`.2~s`)
+    await expect(x_format_input).not.toHaveClass(/invalid/)
 
-      // Test invalid format handling - d3-format throws for completely invalid specifiers
-      // Use a format that doesn't start with % to avoid being treated as time format
-      await x_format_input.fill(`invalid`)
-      const has_invalid_class = await x_format_input.evaluate((el) =>
-        el.classList.contains(`invalid`),
-      )
-      expect(has_invalid_class).toBe(true)
+    await y_format_input.fill(`.1e`)
+    await expect(async () => {
+      const new_y_tick = await y_tick_text.textContent()
+      expect(new_y_tick).toMatch(/e[+-]?\d/)
+      expect(new_y_tick).not.toBe(initial_y_tick)
+    }).toPass()
 
-      // Restore a valid format and verify invalid class is removed
-      await x_format_input.fill(`.2~s`)
-      const invalid_class_removed = await x_format_input.evaluate(
-        (el) => !el.classList.contains(`invalid`),
-      )
-      expect(invalid_class_removed).toBe(true)
-    }
-
-    // Test Y-axis format input
-    if (await y_format_input.isVisible()) {
-      // Apply scientific notation format
-      await y_format_input.fill(`.1e`)
-
-      // Poll until tick text shows scientific notation format
-      await expect(async () => {
-        const new_y_tick = await y_tick_text.textContent()
-        expect(new_y_tick).toMatch(/e[+-]?\d/)
-        expect(new_y_tick).not.toBe(initial_y_tick)
-      }).toPass()
-
-      // Test invalid format adds "invalid" class (use format not starting with %)
-      await y_format_input.fill(`xyz_bad`)
-      const y_has_invalid = await y_format_input.evaluate((el) =>
-        el.classList.contains(`invalid`),
-      )
-      expect(y_has_invalid).toBe(true)
-
-      // Restore valid format
-      await y_format_input.fill(`~s`)
-    }
+    await y_format_input.fill(`xyz_bad`)
+    await expect(y_format_input).toHaveClass(/invalid/)
+    await y_format_input.fill(`~s`)
 
     // Close control pane - use toggle from open_control_pane
     await scatter_plot.hover()
@@ -1434,14 +1402,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Open control pane
     const { toggle, pane } = await open_control_pane(plot)
-
-    // Find the Scale Type section
-    const scale_type_heading = pane.locator(`h4:has-text("Scale Type")`)
-    await expect(scale_type_heading).toBeVisible()
+    const scale_type_section = pane.locator(`[data-testid="scale-type-section"]`)
 
     // Find and change the Y-axis scale type dropdown from Linear to Log
-    const y_scale_select = pane.locator(`label:has-text("Y:") select`)
-    await expect(y_scale_select).toBeVisible()
+    const y_scale_select = scale_type_section.locator(`label:has(span:text-is("Y")) select`)
     await expect(y_scale_select).toHaveValue(`linear`)
 
     // Change to log scale - this is the critical test for the $bindable reactivity fix
@@ -1471,8 +1435,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // Also test X-axis scale type change
-    const x_scale_select = pane.locator(`label:has-text("X:") select`)
-    await expect(x_scale_select).toBeVisible()
+    const x_scale_select = scale_type_section.locator(`label:has(span:text-is("X")) select`)
     await expect(x_scale_select).toHaveValue(`linear`)
 
     // Capture initial X ticks
@@ -1489,14 +1452,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // Test reset button restores all scales to linear
-    const reset_button = scale_type_heading.locator(`+ section button.reset-button`)
-    if (await reset_button.isVisible()) {
-      await reset_button.click()
-
-      // Both scales should return to linear (dropdown values)
-      await expect(x_scale_select).toHaveValue(`linear`)
-      await expect(y_scale_select).toHaveValue(`linear`)
-    }
+    await pane.locator(`h4:has-text("Scale type") button.reset-button`).click()
+    await expect(x_scale_select).toHaveValue(`linear`)
+    await expect(y_scale_select).toHaveValue(`linear`)
 
     // Close control pane
     await plot.hover()
@@ -1580,30 +1538,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Reset zoom for next test
     await svg.dblclick()
-  })
-
-  test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
-    // The id prop is applied directly to the .scatter div
-    const multi_series_plot = page.locator(`#legend-multi-default.scatter`)
-    const { toggle: controls_toggle, pane: control_pane } =
-      await open_control_pane(multi_series_plot)
-
-    // Test series selector functionality
-    const series_selector = control_pane.getByLabel(`Series`)
-    if (await series_selector.isVisible()) {
-      // Test switching between series
-      await series_selector.selectOption(`0`)
-      await expect(series_selector).toHaveValue(`0`)
-
-      // Switch to different series
-      await series_selector.selectOption(`1`)
-      await expect(series_selector).toHaveValue(`1`)
-    }
-
-    // Close control pane - use toggle from open_control_pane
-    await multi_series_plot.hover()
-    await controls_toggle.click()
-    await expect(control_pane).toBeHidden()
   })
 
   test(`color bar positioning with edge cases`, async ({ page }) => {
@@ -1877,8 +1811,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const { pane: control_pane } = await open_control_pane(plot)
 
     // Select second series (Green)
-    const series_select = control_pane.getByLabel(`Series`)
+    const series_select = control_pane.getByRole(`combobox`, { name: /Series/ })
+    await expect(series_select).toHaveValue(`0`)
     await series_select.selectOption(`1`)
+    await expect(series_select).toHaveValue(`1`)
 
     // Modify ONLY line width
     const line_width_row = control_pane.locator(`[data-key="line.width"]`)

@@ -1,4 +1,3 @@
-import { DEFAULTS } from '$lib/settings'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { Buffer } from 'node:buffer'
 import { gzipSync } from 'node:zlib'
@@ -23,8 +22,6 @@ const is_mac = process.platform === `darwin`
 // each h4 section title in the controls pane is followed by the element holding its controls
 const section_body = (heading: Locator): Locator =>
   heading.locator(`xpath=following-sibling::*[1]`)
-const controls_pane_of = (page: Page): Locator =>
-  page.locator(`#test-structure .controls-pane`)
 const fill_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
   for (const [axis_idx, value] of values.entries()) await inputs.nth(axis_idx).fill(value)
 }
@@ -402,7 +399,7 @@ test.describe(`Structure Component Tests`, () => {
     const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
     await expect(labels_heading).toBeVisible()
     const labels_container = section_body(labels_heading)
-    const offset_row = labels_container.locator(`.pane-row`).filter({ hasText: `Offset` })
+    const offset_row = labels_container.locator(`.setting`).filter({ hasText: `Offset` })
 
     // Color pickers echo filled values
     const color_cases = [
@@ -646,15 +643,17 @@ test.describe(`Structure Component Tests`, () => {
       act: (input: Locator) => Promise<unknown>
     }[] = [
       {
-        // exact match to avoid matching "Image Atoms" or "Same size atoms"
+        // exact match to avoid matching "Image atoms"
         name: `show atoms checkbox`,
         input: control_pane.getByRole(`checkbox`, { name: `Atoms`, exact: true }),
         act: (input) => input.click(),
       },
       {
-        // Bonds uses a native select element with label "Bonds:"
+        // Bonds visibility is a native select in the Visibility section. Matched on the
+        // label's own span: a label's text also carries every <option>, so "has text Bonds"
+        // alone would not distinguish it.
         name: `bonds select`,
-        input: control_pane.locator(`label`).filter({ hasText: `Bonds:` }).locator(`select`),
+        input: control_pane.locator(`label:has(span:text-is("Bonds")) select`),
         act: (input) => input.selectOption(`always`),
       },
       {
@@ -1235,8 +1234,10 @@ test.describe(`Structure Event Handler Tests`, () => {
       )
       const resized_box = (await canvas_box(page)).box
       await clear_events(page)
+      // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
+      // viewer's right side and covers the middle, where the scroll would go to the pane.
       await page.mouse.move(
-        resized_box.x + resized_box.width / 2,
+        resized_box.x + resized_box.width * 0.15,
         resized_box.y + resized_box.height / 2,
       )
       await page.mouse.wheel(0, -120)
@@ -1406,224 +1407,13 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect_axis_values(rotation_numbers, [`120`, `240`, `300`])
   })
 
-  test.describe(`Structure Controls Reset Functionality`, () => {
-    // each section title in the controls pane also carries that section's reset button
-    const pane_heading = (page: Page, section: string): Locator =>
-      controls_pane_of(page).locator(`h4:has-text("${section}")`)
-    const projection_select_of = (page: Page): Locator =>
-      controls_pane_of(page).locator(`label:has-text("Projection") select`)
-    const show_atoms_checkbox_of = (page: Page): Locator =>
-      section_body(pane_heading(page, `Visibility`)).getByLabel(`Atoms`, { exact: true })
-
-    test.beforeEach(async ({ page }: { page: Page }) => {
-      // Open structure controls pane
-      await open_structure_control_pane(page)
-    })
-
-    test(`visibility section reset button appears and works`, async ({ page }) => {
-      const visibility_heading = pane_heading(page, `Visibility`)
-      const show_atoms_checkbox = show_atoms_checkbox_of(page)
-      await show_atoms_checkbox.uncheck()
-
-      // Reset button should appear in Visibility section (within the heading)
-      const visibility_reset = visibility_heading.locator(`button.reset-button`)
-      await expect(visibility_reset).toBeVisible()
-      await expect(visibility_reset).toHaveAttribute(`title`, `Reset visibility to defaults`)
-      await expect(visibility_reset).toHaveAttribute(
-        `aria-label`,
-        `Reset visibility to defaults`,
-      )
-
-      await visibility_reset.click()
-
-      await expect(show_atoms_checkbox).toBeChecked()
-      // Reset clicks must not propagate to the pane's outside-click handler
-      await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`true`)
-    })
-
-    test(`camera section reset button appears and works`, async ({ page }) => {
-      // Camera has no reset button yet, nothing in the section differs from its default
-      const camera_heading = pane_heading(page, `Camera`)
-      await camera_heading.scrollIntoViewIfNeeded()
-      const camera_reset = camera_heading.locator(`button.reset-button`)
-
-      const projection_select = projection_select_of(page)
-      await projection_select.scrollIntoViewIfNeeded()
-      const initial_value = await projection_select.inputValue()
-      const new_value = initial_value === `perspective` ? `orthographic` : `perspective`
-      await projection_select.selectOption(new_value)
-      await expect(projection_select).toHaveValue(new_value)
-
-      const rotation_numbers = controls_pane_of(page).locator(
-        `.rotation-axes input[type="number"]`,
-      )
-      await fill_axis_values(rotation_numbers, [`45`, `90`, `135`])
-
-      // Reset button should now appear in Camera section (DOM update, not canvas rendering)
-      await expect(camera_reset).toBeVisible({ timeout: 3000 })
-      await camera_reset.click()
-
-      // Projection and rotation axes restore to mount defaults
-      await expect(projection_select).toHaveValue(initial_value)
-      await expect_axis_values(rotation_numbers, [`0`, `0`, `0`])
-    })
-
-    // Every section's reset button follows one lifecycle: absent until something in that
-    // section differs from its default, then it restores the default and disappears again.
-    // Table-driven so a new section costs one row, and so the whole cycle is checked for each
-    // — previously most sections only asserted that the button showed up.
-    const reset_sections: {
-      section: string
-      control: string
-      change: string
-      default_value: string
-      reveal?: string // checkbox that must be on before the section renders at all
-      // Cell and Background keep their reset button after resetting: the control is back at
-      // its default but the section still reads as modified. Pinning the observed behavior
-      // per section (rather than skipping the check) keeps the inconsistency visible — if
-      // either is fixed, this fails and the flag comes off.
-      reset_stays_visible?: boolean
-    }[] = [
-      {
-        section: `Atoms`,
-        control: `label:has-text("Radius") input[type="number"]`,
-        change: `1.5`,
-        default_value: `${DEFAULTS.structure.atom_radius}`,
-      },
-      {
-        section: `Cell`,
-        control: `label:has-text("Edge color") + label input[type="number"]`,
-        change: `0.8`,
-        default_value: `0.3`,
-        reset_stays_visible: true,
-      },
-      {
-        section: `Background`,
-        control: `label:has-text("Opacity") input[type="number"]`,
-        change: `0.5`,
-        default_value: `0`,
-        reset_stays_visible: true,
-      },
-      {
-        section: `Lighting`,
-        control: `label:has-text("Directional light") input[type="number"]`,
-        change: `2.5`,
-        default_value: `2.2`,
-      },
-      {
-        section: `Labels`,
-        control: `label:has-text("Size") input[type="range"]`,
-        change: `1.5`,
-        default_value: `1`,
-        reveal: `label:has-text("Site Labels") input[type="checkbox"]`,
-      },
-    ]
-
-    for (const row of reset_sections) {
-      const { section, control, change, default_value, reveal, reset_stays_visible } = row
-      test(`${section} reset restores the section default`, async ({ page }) => {
-        if (reveal) await page.locator(reveal).check()
-
-        const heading = pane_heading(page, section)
-        await expect(heading).toBeVisible()
-        const reset = heading.locator(`button.reset-button`)
-        await expect(reset).toBeHidden() // nothing in this section differs from default yet
-
-        const input = section_body(heading).locator(control)
-        await input.scrollIntoViewIfNeeded()
-        await input.fill(change)
-
-        // DOM update, not canvas rendering — a short timeout is plenty
-        await expect(reset).toBeVisible({ timeout: 3000 })
-        await reset.click()
-
-        await expect(input).toHaveValue(default_value)
-        if (reset_stays_visible) await expect(reset).toBeVisible()
-        else await expect(reset).toBeHidden()
-      })
-    }
-
-    test(`bonds section reset button appears when bonds are shown`, async ({ page }) => {
-      const controls_pane = controls_pane_of(page)
-
-      // Enable bonds via the "Bonds:" select in Visibility section
-      const show_bonds_select = controls_pane.locator(`label:has-text("Bonds:") select`)
-      await show_bonds_select.scrollIntoViewIfNeeded()
-      await show_bonds_select.selectOption(`always`)
-
-      // Bonds section and its controls appear once bonds are shown
-      const bonds_heading = pane_heading(page, `Bonds`)
-      await expect(bonds_heading).toBeVisible({ timeout: 3000 })
-      await expect(
-        controls_pane.locator(`label:has(select):has-text("Strategy")`),
-      ).toBeVisible()
-      await expect(
-        controls_pane.locator(`label:has(input[type="color"]):has-text("Color")`).last(),
-      ).toBeVisible()
-      await expect(controls_pane.locator(`label:has-text("Thickness")`)).toBeVisible()
-
-      const strategy_select = controls_pane.locator(`label:has-text("Strategy") select`)
-      await strategy_select.scrollIntoViewIfNeeded()
-      const initial_value = await strategy_select.inputValue()
-      const new_value =
-        initial_value === `explicit_only` ? `electroneg_ratio` : `explicit_only`
-      await strategy_select.selectOption(new_value)
-      await expect(strategy_select).toHaveValue(new_value)
-
-      const bonds_reset = bonds_heading.locator(`button.reset-button`)
-      await expect(bonds_reset).toBeVisible({ timeout: 3000 })
-      await bonds_reset.click()
-
-      await expect(strategy_select).toHaveValue(initial_value)
-    })
-
-    test(`multiple sections can have reset buttons simultaneously`, async ({ page }) => {
-      // Change setting in Visibility section
-      const visibility_heading = pane_heading(page, `Visibility`)
-      const show_atoms_checkbox = show_atoms_checkbox_of(page)
-      await show_atoms_checkbox.uncheck()
-
-      // Change setting in Camera section - toggle to opposite of current value
-      const camera_heading = pane_heading(page, `Camera`)
-      const projection_select = projection_select_of(page)
-      await projection_select.scrollIntoViewIfNeeded()
-      const initial_projection = await projection_select.inputValue()
-      const new_projection =
-        initial_projection === `perspective` ? `orthographic` : `perspective`
-      await projection_select.selectOption(new_projection)
-
-      // Change setting in Background section - use the specific Opacity label with exact match
-      const bg_heading = pane_heading(page, `Background`)
-      const bg_opacity_input = section_body(bg_heading).locator(`input[type="number"]`)
-      await bg_opacity_input.scrollIntoViewIfNeeded()
-      const initial_opacity = await bg_opacity_input.inputValue()
-      const new_opacity = initial_opacity === `0.5` ? `0.8` : `0.5`
-      await bg_opacity_input.fill(new_opacity)
-
-      // All three reset buttons should be visible (in their respective headings)
-      const visibility_reset = visibility_heading.locator(`button.reset-button`)
-      const camera_reset = camera_heading.locator(`button.reset-button`)
-      const bg_reset = bg_heading.locator(`button.reset-button`)
-
-      // DOM updates, not canvas rendering - use shorter timeout
-      await expect(visibility_reset).toBeVisible({ timeout: 3000 })
-      await expect(camera_reset).toBeVisible({ timeout: 3000 })
-      await expect(bg_reset).toBeVisible({ timeout: 3000 })
-
-      // Reset one section
-      await camera_reset.scrollIntoViewIfNeeded()
-      await camera_reset.click()
-
-      // Only camera reset should disappear
-      await expect(visibility_reset).toBeVisible()
-      await expect(camera_reset).toBeHidden()
-      await expect(bg_reset).toBeVisible()
-
-      // Projection should be reset to initial, other changes remain
-      await expect(projection_select).toHaveValue(initial_projection)
-      await expect(show_atoms_checkbox).not.toBeChecked()
-      await expect(bg_opacity_input).toHaveValue(new_opacity)
-    })
+  test(`settings search is browser-wired and pointer-accessible`, async ({ page }) => {
+    const { pane_div } = await open_structure_control_pane(page)
+    await pane_div.getByRole(`button`, { name: `Search settings` }).click()
+    const search = pane_div.getByRole(`searchbox`, { name: `Search settings` })
+    await search.fill(`damp`)
+    await expect(pane_div.locator(`details.settings-group`).nth(1)).toHaveAttribute(`open`, ``)
+    await expect(pane_div.locator(`[data-key="rotation_damping"]`)).toBeVisible()
   })
 })
 

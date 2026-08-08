@@ -193,7 +193,7 @@
   tip: string,
 )}
   <label {@attach tooltip({ content: tip })}>
-    <span>Color by:</span>
+    <span>Color by</span>
     <select
       value={selected}
       onchange={(event) => {
@@ -237,73 +237,70 @@
     layers: n_layers,
     display_range: settings.display_range?.flat().join(`,`) ?? ``,
   }}
-  on_reset={() => {
-    settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
-  }}
+  on_reset={() => (settings = { ...DEFAULT_ISOSURFACE_SETTINGS })}
+  layout="grid"
+  class="isosurface-settings"
 >
-  <!-- Top row: volume selector (single-layer multi-volume) + layer count + toggles -->
-  <div class="pane-row compact-row">
-    {#if !is_multi_layer && volumes.length > 1}
-      <label
-        {@attach tooltip({
-          content: `Select which volume to display (e.g. charge vs magnetization)`,
-        })}
-      >
-        <span>Volume:</span>
-        <select bind:value={active_volume_idx}>
-          {#each volumes as _vol, idx (idx)}
-            <option value={idx}>{vol_label(idx)}</option>
-          {/each}
-        </select>
-      </label>
-    {/if}
-    {#if !is_multi_layer}
-      <label
-        {@attach tooltip({
-          content: `Number of isosurface shells at different density thresholds`,
-        })}
-      >
-        <span>Layers:</span>
-        <select
-          value={n_layers}
-          onchange={(event) => set_layer_count(Number(event.currentTarget.value))}
-        >
-          {#each [1, 2, 3, 4, 5] as count (count)}
-            <option value={count}>{count}</option>
-          {/each}
-        </select>
-      </label>
-    {/if}
-    <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
-    so the toggle works consistently regardless of which mode is active -->
+  {#if !is_multi_layer && volumes.length > 1}
     <label
       {@attach tooltip({
-        content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
+        content: `Select which volume to display (e.g. charge vs magnetization)`,
       })}
     >
-      <span>Neg. lobe</span>
-      <input
-        type="checkbox"
-        checked={is_multi_layer
-          ? (settings.layers?.some((layer) => layer.show_negative) ?? false)
-          : settings.show_negative}
-        onchange={(event) => {
-          const checked = event.currentTarget.checked
-          settings.show_negative = checked
-          if (settings.layers) {
-            settings.layers = settings.layers.map((layer) => ({
-              ...layer,
-              show_negative: checked,
-            }))
-          }
-        }}
-      />
+      <span>Volume</span>
+      <select bind:value={active_volume_idx}>
+        {#each volumes as _vol, idx (idx)}
+          <option value={idx}>{vol_label(idx)}</option>
+        {/each}
+      </select>
     </label>
-    <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
-      <span>Wireframe</span>
-      <input type="checkbox" bind:checked={settings.wireframe} />
+  {/if}
+  {#if !is_multi_layer}
+    <label
+      {@attach tooltip({
+        content: `Number of isosurface shells at different density thresholds`,
+      })}
+    >
+      <span>Layers</span>
+      <select
+        value={n_layers}
+        onchange={(event) => set_layer_count(Number(event.currentTarget.value))}
+      >
+        {#each [1, 2, 3, 4, 5] as count (count)}
+          <option value={count}>{count}</option>
+        {/each}
+      </select>
     </label>
-  </div>
+  {/if}
+  <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
+    so the toggle works consistently regardless of which mode is active -->
+  <label
+    {@attach tooltip({
+      content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
+    })}
+  >
+    <span>Neg. lobe</span>
+    <input
+      type="checkbox"
+      checked={is_multi_layer
+        ? (settings.layers?.some((layer) => layer.show_negative) ?? false)
+        : settings.show_negative}
+      onchange={(event) => {
+        const checked = event.currentTarget.checked
+        settings.show_negative = checked
+        if (settings.layers) {
+          settings.layers = settings.layers.map((layer) => ({
+            ...layer,
+            show_negative: checked,
+          }))
+        }
+      }}
+    />
+  </label>
+  <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
+    <span>Wireframe</span>
+    <input type="checkbox" bind:checked={settings.wireframe} />
+  </label>
 
   {#if is_multi_layer && settings.layers}
     <!-- Multi-layer mode: surfaces grouped under their geometry-source volume -->
@@ -432,7 +429,7 @@
                 {@attach tooltip({ content: `Colormap for sampled values` })}
               />
               <div class="color-range" aria-label="Colormap value range">
-                <span>Range:</span>
+                <span>Range</span>
                 {@render range_bound_input(layer_idx, 0, explicit_range)}
                 <span aria-hidden="true">&ndash;</span>
                 {@render range_bound_input(layer_idx, 1, explicit_range)}
@@ -469,47 +466,37 @@
         content: `Density threshold — surface is drawn where grid values equal this`,
       })}
     >
-      <span>Isovalue:</span>
-      <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
+      <span>Isovalue</span>
       <span>{format_num(settings.isovalue, `.3~g`)}</span>
+      <input type="range" min={step} max={slider_max} {step} bind:value={settings.isovalue} />
     </label>
 
-    <!-- Opacity + colors on one row -->
-    <div class="pane-row compact-row">
-      <label
-        {@attach tooltip({
-          content: `Surface transparency — lower values reveal inner structure`,
-        })}
-      >
-        <span>Opacity:</span>
-        <input
-          type="range"
-          min={0.1}
-          max={1}
-          step={0.05}
-          bind:value={settings.opacity}
-          style="width: 60px"
-        />
-        <span>{format_num(settings.opacity, `.2f`)}</span>
+    <label
+      {@attach tooltip({
+        content: `Surface transparency — lower values reveal inner structure`,
+      })}
+    >
+      <span>Opacity</span>
+      <span>{format_num(settings.opacity, `.2f`)}</span>
+      <input type="range" min={0.1} max={1} step={0.05} bind:value={settings.opacity} />
+    </label>
+    <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
+      <span>+ color</span>
+      <input type="color" bind:value={settings.positive_color} />
+    </label>
+    {#if settings.show_negative}
+      <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
+        <span>&minus; color</span>
+        <input type="color" bind:value={settings.negative_color} />
       </label>
-      <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
-        <span>+ Color</span>
-        <input type="color" bind:value={settings.positive_color} />
-      </label>
-      {#if settings.show_negative}
-        <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
-          <span>&minus; Color</span>
-          <input type="color" bind:value={settings.negative_color} />
-        </label>
-      {/if}
-      {#if volumes.length > 1}
-        {@render color_source_select(
-          -1,
-          set_single_color_source,
-          `Color this surface by another volume's values (e.g. density by ESP)`,
-        )}
-      {/if}
-    </div>
+    {/if}
+    {#if volumes.length > 1}
+      {@render color_source_select(
+        -1,
+        set_single_color_source,
+        `Color this surface by another volume's values (e.g. density by ESP)`,
+      )}
+    {/if}
   {/if}
 
   {#if any_periodic}
@@ -518,45 +505,48 @@
         content: `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)`,
       })}
     >
-      Halo: {format_num(settings.halo, `.2f`)}
+      <span>Halo</span>
+      <span>{format_num(settings.halo, `.2f`)}</span>
       <input type="range" min={0} max={0.5} step={0.01} bind:value={settings.halo} />
     </label>
-    <div class="pane-row compact-row display-range">
+    <div class="setting display-range">
       <span
         {@attach tooltip({
           content: `Fractional display range per lattice vector (VESTA-style): repeats periodic surfaces and clips them exactly at these bounds, e.g. -0.15 to 2.15. Empty = follow the structure supercell.`,
-        })}>Range:</span
+        })}>Range</span
       >
-      {#each [`a`, `b`, `c`] as axis_label, axis (axis)}
-        <label class="range-axis">
-          {axis_label}
-          <input
-            type="number"
-            step="0.05"
-            placeholder="0"
-            value={settings.display_range ? settings.display_range[axis][0] : ``}
-            onchange={(event) => update_display_range(axis, 0, event.currentTarget.value)}
-          />
-          <input
-            type="number"
-            step="0.05"
-            placeholder="1"
-            value={settings.display_range ? settings.display_range[axis][1] : ``}
-            onchange={(event) => update_display_range(axis, 1, event.currentTarget.value)}
-          />
-        </label>
-      {/each}
-      {#if settings.display_range}
-        <button
-          type="button"
-          class="icon-btn"
-          onclick={() => (settings.display_range = undefined)}
-          aria-label="Reset display range"
-          {@attach tooltip({ content: `Follow the structure supercell again` })}
-        >
-          <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
-        </button>
-      {/if}
+      <div class="range-axes">
+        {#each [`a`, `b`, `c`] as axis_label, axis (axis)}
+          <label class="range-axis">
+            <span>{axis_label}</span>
+            <input
+              type="number"
+              step="0.05"
+              placeholder="0"
+              value={settings.display_range?.[axis][0] ?? ``}
+              onchange={(event) => update_display_range(axis, 0, event.currentTarget.value)}
+            />
+            <input
+              type="number"
+              step="0.05"
+              placeholder="1"
+              value={settings.display_range?.[axis][1] ?? ``}
+              onchange={(event) => update_display_range(axis, 1, event.currentTarget.value)}
+            />
+          </label>
+        {/each}
+        {#if settings.display_range}
+          <button
+            type="button"
+            class="icon-btn"
+            onclick={() => (settings.display_range = undefined)}
+            aria-label="Reset display range"
+            {@attach tooltip({ content: `Follow the structure supercell again` })}
+          >
+            <Icon icon={Reset} aria-hidden="true" style="--icon-size: 12px" />
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 
@@ -572,7 +562,7 @@
 
 <style>
   /* Shared chrome for native selects/number/color + ColorScaleSelect (--sms-*) */
-  :is(.compact-row, .volume-group, .display-range) {
+  :global(.isosurface-settings) {
     --iso-ctrl-h: 22px;
     --iso-ctrl-radius: 3px;
     --iso-ctrl-border: 1px solid var(--border-color, light-dark(#b8bec8, #555));
@@ -582,42 +572,36 @@
     --sms-border-radius: var(--iso-ctrl-radius);
     --sms-bg: var(--iso-ctrl-bg);
     font-size: 0.95em;
-
-    :is(select, input[type='number'], input[type='color']) {
-      box-sizing: border-box;
-      margin: 0; /* beat DraggablePane margins */
-      border: var(--iso-ctrl-border);
-      border-radius: var(--iso-ctrl-radius);
-    }
-    :is(select, input[type='number']) {
-      height: var(--iso-ctrl-h);
-      padding: 0 4px;
-      background: var(--iso-ctrl-bg);
-      color: inherit;
-      font: inherit;
-      line-height: 1.2;
-    }
-    input[type='color'] {
-      width: var(--iso-ctrl-h);
-      height: var(--iso-ctrl-h);
-      padding: 0;
-      cursor: pointer;
-      background: transparent;
-    }
   }
-  .compact-row {
-    flex-wrap: wrap;
-    gap: 4pt 14pt;
+  :global(.isosurface-settings) :is(select, input[type='number'], input[type='color']) {
+    box-sizing: border-box;
+    margin: 0; /* beat DraggablePane margins */
+    border: var(--iso-ctrl-border);
+    border-radius: var(--iso-ctrl-radius);
   }
-  label {
-    gap: 6pt;
+  :global(.isosurface-settings) :is(select, input[type='number']) {
+    height: var(--iso-ctrl-h);
+    padding: 0 4px;
+    background: var(--iso-ctrl-bg);
+    color: inherit;
+    font: inherit;
+    line-height: 1.2;
+  }
+  :global(.isosurface-settings) input[type='color'] {
+    width: var(--iso-ctrl-h);
+    height: var(--iso-ctrl-h);
+    padding: 0;
+    cursor: pointer;
+    background: transparent;
   }
   .grid-info {
+    grid-column: 1 / -1;
     font-size: 0.75em;
     opacity: 0.7;
     padding: 2px 0;
   }
   .volume-group {
+    grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -732,7 +716,13 @@
     gap: 3px;
   }
   .display-range {
-    gap: 4pt 8pt;
+    .range-axes {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4pt 8pt;
+      min-width: 0;
+    }
     .range-axis {
       display: flex;
       align-items: center;
