@@ -134,7 +134,7 @@
     </div>
     <label>
       <span>Position</span>
-      <span>d = {resolved_settings.position.toFixed(2)}</span>
+      <span>d = {format_num(resolved_settings.position, `.2f`)}</span>
       <input
         type="range"
         min={0}

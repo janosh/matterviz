@@ -122,10 +122,10 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
   function handle_reset(event: MouseEvent) {
     event.stopPropagation()
     event.preventDefault()
-    if (on_reset) on_reset()
+    if (on_reset) return on_reset()
     // Iterating reads changed_keys once, which is what we want: the derived shrinks under us as
     // each reset_key hands the reference value back to the caller.
-    else for (const key of changed_keys) reset_key(key)
+    for (const key of changed_keys) reset_key(key)
   }
 
   function handle_descriptions_toggle(event: MouseEvent) {
@@ -252,8 +252,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         enhancement.description_element = null
       }
 
-      const needs_reset = Boolean(on_reset_key) && changed_keys.includes(key)
-      if (!needs_reset) remove_reset_button(row, enhancement)
+      if (!on_reset_key || !changed_keys.includes(key)) remove_reset_button(row, enhancement)
       else {
         if (!enhancement.reset_button) {
           const reset_button = document.createElement(`button`)

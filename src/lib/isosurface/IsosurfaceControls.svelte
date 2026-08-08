@@ -523,14 +523,14 @@
               type="number"
               step="0.05"
               placeholder="0"
-              value={settings.display_range ? settings.display_range[axis][0] : ``}
+              value={settings.display_range?.[axis][0] ?? ``}
               onchange={(event) => update_display_range(axis, 0, event.currentTarget.value)}
             />
             <input
               type="number"
               step="0.05"
               placeholder="1"
-              value={settings.display_range ? settings.display_range[axis][1] : ``}
+              value={settings.display_range?.[axis][1] ?? ``}
               onchange={(event) => update_display_range(axis, 1, event.currentTarget.value)}
             />
           </label>

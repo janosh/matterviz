@@ -140,14 +140,20 @@
       : [...bands, band_idx].toSorted((left, right) => left - right)
   }
 
+  const set_mu = (next_mu: number): void => {
+    mu = next_mu
+    on_mu_change?.(next_mu)
+  }
+  const set_interpolation_factor = (factor: number): void => {
+    interpolation_factor = factor
+    on_interpolation_change?.(factor)
+  }
+
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
     const parsed = parse_num_token(event.currentTarget.value)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
-    if (Number.isFinite(parsed)) {
-      mu = parsed
-      on_mu_change?.(parsed)
-    }
+    if (Number.isFinite(parsed)) set_mu(parsed)
   }
 </script>
 
@@ -165,10 +171,7 @@
     <SettingsSection
       title="Chemical potential"
       current_values={{ mu }}
-      on_reset={() => {
-        mu = defaults.mu
-        on_mu_change?.(defaults.mu)
-      }}
+      on_reset={() => set_mu(defaults.mu)}
       layout="grid"
     >
       <label>
@@ -198,9 +201,7 @@
       <SettingsSection
         title="Bands"
         current_values={{ selected_bands }}
-        on_reset={() => {
-          selected_bands = [...available_bands]
-        }}
+        on_reset={() => (selected_bands = [...available_bands])}
         layout="grid"
       >
         <div class="band-checkboxes">
@@ -331,10 +332,7 @@
       <SettingsSection
         title="Interpolation"
         current_values={{ interpolation_factor }}
-        on_reset={() => {
-          interpolation_factor = defaults.interpolation_factor
-          on_interpolation_change?.(defaults.interpolation_factor)
-        }}
+        on_reset={() => set_interpolation_factor(defaults.interpolation_factor)}
         layout="grid"
       >
         <label>
@@ -344,8 +342,7 @@
             onchange={(event) => {
               const val = parseFloat(event.currentTarget.value)
               if (!Number.isFinite(val)) return
-              interpolation_factor = val
-              on_interpolation_change?.(val)
+              set_interpolation_factor(val)
             }}
           >
             <option value={1}>1× (original)</option>

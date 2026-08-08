@@ -34,9 +34,12 @@ svelte-widgets once a version above 1.4.0 is published; its API is unchanged. --
   .settings-group {
     border-top: 1px solid
       var(--settings-group-border, color-mix(in srgb, currentColor 12%, transparent));
-  }
-  .settings-group:first-of-type {
-    border-top: none;
+    &:first-of-type {
+      border-top: none;
+    }
+    &[open] > summary :global(svg) {
+      transform: rotate(90deg);
+    }
   }
   summary {
     display: flex;
@@ -58,9 +61,6 @@ svelte-widgets once a version above 1.4.0 is published; its API is unchanged. --
       opacity: 0.6;
       transition: transform 0.15s ease;
     }
-  }
-  .settings-group[open] > summary :global(svg) {
-    transform: rotate(90deg);
   }
   .group-title {
     font-weight: 600;

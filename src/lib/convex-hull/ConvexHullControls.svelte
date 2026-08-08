@@ -220,7 +220,7 @@
   pane_props={{
     ...pane_props,
     class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
-    style: `${pane_props?.style ?? ``}`,
+    style: pane_props?.style ?? ``,
   }}
   toggle_props={{
     title: controls_open ? `` : `Convex hull controls`,

@@ -167,10 +167,10 @@
           onchange={(evt) => {
             if (evt.currentTarget.checked) {
               show_values = stashed_format || true
-            } else {
-              stashed_format = typeof show_values === `string` ? show_values : null
-              show_values = false
+              return
             }
+            stashed_format = typeof show_values === `string` ? show_values : null
+            show_values = false
           }}
         />
       </label>

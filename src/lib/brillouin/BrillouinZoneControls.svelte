@@ -90,7 +90,7 @@
       </label>
       <label>
         <span>Opacity</span>
-        <span>{surface_opacity.toFixed(2)}</span>
+        <span>{format_num(surface_opacity, `.2f`)}</span>
         <input type="range" min="0" max="1" step="0.01" bind:value={surface_opacity} />
       </label>
     </SettingsSection>
@@ -129,7 +129,7 @@
         </label>
         <label>
           <span>Opacity</span>
-          <span>{ibz_opacity.toFixed(2)}</span>
+          <span>{format_num(ibz_opacity, `.2f`)}</span>
           <input type="range" min="0" max="1" step="0.01" bind:value={ibz_opacity} />
         </label>
       {/if}
