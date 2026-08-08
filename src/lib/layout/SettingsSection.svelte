@@ -147,9 +147,8 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
   const auto_label_attr = `data-auto-label`
 
   const release_auto_label = (control: Element): void => {
-    if (control.getAttribute(`aria-label`) === control.getAttribute(auto_label_attr)) {
+    if (control.getAttribute(`aria-label`) === control.getAttribute(auto_label_attr))
       control.removeAttribute(`aria-label`)
-    }
     control.removeAttribute(auto_label_attr)
   }
 
@@ -158,34 +157,29 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
   const enhance_rows = (section: HTMLElement): (() => void) => {
     const enhanced_rows = new SvelteMap<HTMLElement, EnhancedRow>()
     let refresh_queued = false
-    let disposed = false
 
     const remove_reset_button = (row: HTMLElement, enhancement: EnhancedRow): void => {
       enhancement.reset_button?.remove()
       enhancement.reset_button = null
       row.classList.remove(`has-setting-reset`)
     }
+    const set_row_description = (row: HTMLElement, description: string | null): void => {
+      if (description === null) row.removeAttribute(`data-description`)
+      else row.setAttribute(`data-description`, description)
+    }
 
     const cleanup_enhancement = (row: HTMLElement, enhancement: EnhancedRow): void => {
       enhancement.description_element?.remove()
       remove_reset_button(row, enhancement)
-      for (const control of row.querySelectorAll(`[${auto_label_attr}]`)) {
-        release_auto_label(control)
-      }
-      if (enhancement.original_description === null) {
-        row.removeAttribute(`data-description`)
-      } else {
-        row.setAttribute(`data-description`, enhancement.original_description)
-      }
+      row.querySelectorAll(`[${auto_label_attr}]`).forEach(release_auto_label)
+      set_row_description(row, enhancement.original_description)
     }
 
     const label_text = (row: HTMLLabelElement): string => {
       const label_copy = row.cloneNode(true) as HTMLElement
-      for (const control of label_copy.querySelectorAll(
-        `input, select, textarea, button, .settings-row-description`,
-      )) {
-        control.remove()
-      }
+      label_copy
+        .querySelectorAll(`input, select, textarea, button, .settings-row-description`)
+        .forEach((control) => control.remove())
       return (row.dataset.label ?? label_copy.textContent ?? ``)
         .replaceAll(/\s+/gu, ` `)
         .trim()
@@ -197,12 +191,8 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
         const marker = control.getAttribute(auto_label_attr)
         const own_label = control.getAttribute(`aria-label`)
         // An author-set name always wins, whether it was there first or replaced ours
-        if (
-          marker === null &&
-          (own_label !== null || control.hasAttribute(`aria-labelledby`))
-        ) {
-          continue
-        }
+        const author_named = own_label !== null || control.hasAttribute(`aria-labelledby`)
+        if (marker === null && author_named) continue
         if (marker !== null && own_label !== marker) control.removeAttribute(auto_label_attr)
         else if (!label) release_auto_label(control)
         else if (marker !== label) {
@@ -229,18 +219,14 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       const metadata = setting_metadata?.[key]
       const mapped_description =
         typeof metadata === `string` ? metadata : metadata?.description
-      if (mapped_description) row.setAttribute(`data-description`, mapped_description)
-      else if (enhancement.original_description === null)
-        row.removeAttribute(`data-description`)
-      else row.setAttribute(`data-description`, enhancement.original_description)
+      set_row_description(row, mapped_description || enhancement.original_description)
 
       const description = mapped_description ?? enhancement.original_description ?? undefined
       if (descriptions_open && description) {
         if (!enhancement.description_element) {
-          const description_element = document.createElement(`small`)
-          description_element.className = `settings-row-description`
-          enhancement.description_element = description_element
-          row.append(description_element)
+          enhancement.description_element = document.createElement(`small`)
+          enhancement.description_element.className = `settings-row-description`
+          row.append(enhancement.description_element)
         }
         // Avoid notifying our own subtree observer forever: assigning textContent replaces
         // the text node even when the string is unchanged.
@@ -276,7 +262,6 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     }
 
     const refresh = (): void => {
-      if (disposed) return
       let found_description = false
       for (const row of section.querySelectorAll<HTMLElement>(`[data-key]`)) {
         found_description = enhance_row(row) || found_description
@@ -295,7 +280,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
       refresh_queued = true
       queueMicrotask(() => {
         refresh_queued = false
-        refresh()
+        if (refresh_rows === schedule_refresh) refresh()
       })
     }
 
@@ -310,7 +295,6 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     untrack(refresh)
 
     return () => {
-      disposed = true
       observer.disconnect()
       if (refresh_rows === schedule_refresh) refresh_rows = undefined
       for (const [row, enhancement] of enhanced_rows) cleanup_enhancement(row, enhancement)
@@ -326,7 +310,7 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
 </script>
 
 <h4 id={title_id}>
-  {title}
+  <span class="section-title">{title}</span>
 
   {#if has_descriptions || changed_keys.length}
     <span class="heading-actions">
@@ -382,15 +366,11 @@ svelte-widgets once a version above 1.4.0 is published; its API is otherwise unc
     cursor: pointer;
     box-shadow: none;
     opacity: 0.7;
-  }
-  :is(
-    .reset-button:hover,
-    .description-toggle:hover,
-    .description-toggle[aria-expanded='true']
-  ) {
-    background: var(--btn-bg-hover, rgba(0, 0, 0, 0.2));
-    color: var(--text-color, #374151);
-    opacity: 1;
+    &:is(:hover, [aria-expanded='true']) {
+      background: var(--btn-bg-hover, rgba(0, 0, 0, 0.2));
+      color: var(--text-color, #374151);
+      opacity: 1;
+    }
   }
   .reset-button {
     display: flex;

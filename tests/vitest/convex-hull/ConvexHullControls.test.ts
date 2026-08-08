@@ -1,10 +1,8 @@
-// Tests for ConvexHullControls category filter toggles (magnetic orderings by default)
 import ConvexHullControls from '$lib/convex-hull/ConvexHullControls.svelte'
 import { default_controls } from '$lib/convex-hull/index'
 import type { ConvexHullEntry } from '$lib/convex-hull/types'
-import type { ComponentProps } from 'svelte'
-import { flushSync, mount } from 'svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { flushSync, mount, type ComponentProps } from 'svelte'
+import { describe, expect, test } from 'vitest'
 
 const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   composition: { Fe: 1, O: 1 },
@@ -39,10 +37,6 @@ const press = (toggle: HTMLElement, key: string): KeyboardEvent => {
 }
 
 describe(`ConvexHullControls category filters (magnetic default)`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   test(`hides category row when no entry has magnetic ordering data`, () => {
     mount_controls({ stable_entries: [mag()], unstable_entries: [mag()] })
     expect(document.querySelector(`.category-filters`)).toBeNull()

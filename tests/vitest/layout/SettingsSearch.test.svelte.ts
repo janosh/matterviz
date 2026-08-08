@@ -15,6 +15,12 @@ const set_query = async (input: HTMLInputElement, query: string): Promise<void> 
   await tick()
 }
 const settle_observer = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+const atom_radius = `[data-key="atom_radius"]`
+const color_scheme = `[data-key="color_scheme"]`
+const rotation_damping = `[data-key="rotation_damping"]`
+const zoom_speed = `[data-key="zoom_speed"]`
+const sphere_segments = `[data-testid="sphere-segments"]`
+const nested_sphere_segments = `[data-testid="nested-sphere-segments"]`
 
 const mounted_search = async (): Promise<{
   input: HTMLInputElement
@@ -67,62 +73,32 @@ describe(`SettingsSearch`, () => {
   })
 
   test.each([
-    [
-      `labels`,
-      `radius`,
-      `[data-key="atom_radius"]`,
-      `[data-key="color_scheme"]`,
-      `appearance`,
-    ],
-    [
-      `descriptions`,
-      `motion inertia`,
-      `[data-key="rotation_damping"]`,
-      `[data-key="zoom_speed"]`,
-      `camera`,
-    ],
-    [
-      `unkeyed rows`,
-      `sphere`,
-      `[data-testid="sphere-segments"]`,
-      `[data-key="atom_radius"]`,
-      `appearance`,
-    ],
+    [`labels`, `radius`, atom_radius, color_scheme, `appearance`],
+    [`descriptions`, `motion inertia`, rotation_damping, zoom_speed, `camera`],
+    [`unkeyed rows`, `sphere`, sphere_segments, atom_radius, `appearance`],
     [
       `nested unkeyed rows`,
       `nested sphere`,
-      `[data-testid="nested-sphere-segments"]`,
-      `[data-key="atom_radius"]`,
+      nested_sphere_segments,
+      atom_radius,
       `appearance`,
     ],
     [
       `nested descriptions`,
       `fine tessellation`,
-      `[data-testid="nested-sphere-segments"]`,
-      `[data-key="atom_radius"]`,
+      nested_sphere_segments,
+      atom_radius,
       `appearance`,
     ],
     [
       `matched containers`,
       `nested control collection`,
-      `[data-testid="nested-sphere-segments"]`,
-      `[data-key="atom_radius"]`,
+      nested_sphere_segments,
+      atom_radius,
       `appearance`,
     ],
-    [
-      `section titles`,
-      `pointer sensitivity`,
-      `[data-key="rotation_damping"]`,
-      `[data-key="atom_radius"]`,
-      `camera`,
-    ],
-    [
-      `group titles`,
-      `camera`,
-      `[data-key="rotation_damping"]`,
-      `[data-key="atom_radius"]`,
-      `camera`,
-    ],
+    [`section titles`, `pointer sensitivity`, rotation_damping, atom_radius, `camera`],
+    [`group titles`, `camera`, rotation_damping, atom_radius, `camera`],
   ] as const)(`matches $0`, async (_name, query, matched, hidden_selector, group) => {
     const { input, appearance, camera } = await mounted_search()
     const matching_group = group === `appearance` ? appearance : camera
@@ -176,14 +152,14 @@ describe(`SettingsSearch`, () => {
 
   test(`preserves caller-hidden rows through idle refresh, search, and clear`, async () => {
     const { input, appearance, camera } = await mounted_search()
-    const zoom_speed = element(`[data-key="zoom_speed"]`)
+    const zoom_speed_row = element(zoom_speed)
     element(`[data-testid="hide-zoom-speed"]`).click()
     await tick()
 
     // Trigger the observer while idle: search must not replay a stale visibility baseline.
-    element(`[data-key="rotation_damping"]`).append(document.createComment(``))
+    element(rotation_damping).append(document.createComment(``))
     await settle_observer()
-    expect(zoom_speed.hidden).toBe(true)
+    expect(zoom_speed_row.hidden).toBe(true)
 
     await set_query(input, `zoom speed`)
     expect([hidden(appearance), hidden(camera)]).toEqual([true, true])
@@ -193,7 +169,7 @@ describe(`SettingsSearch`, () => {
     await tick()
     expect(document.querySelector(`input[type="search"]`)).toBeNull()
     expect(document.querySelector(`[role="status"]`)).toBeNull()
-    expect(zoom_speed.hidden).toBe(true)
+    expect(zoom_speed_row.hidden).toBe(true)
   })
 
   test(`refreshes matches when caller visibility or text changes`, async () => {
@@ -211,7 +187,7 @@ describe(`SettingsSearch`, () => {
     expect(hidden(appearance)).toBe(false)
 
     await set_query(input, `renamed radius`)
-    const radius_text = element(`[data-key="atom_radius"] span`).firstChild
+    const radius_text = element(`${atom_radius} span`).firstChild
     if (!radius_text) throw new Error(`Atom radius text node is missing`)
     radius_text.textContent = `Renamed radius`
     await settle_observer()
@@ -220,15 +196,15 @@ describe(`SettingsSearch`, () => {
 
   test(`preserves a caller-hidden row changed during search`, async () => {
     const { input } = await mounted_search()
-    const zoom_speed = element(`[data-key="zoom_speed"]`)
+    const zoom_speed_row = element(zoom_speed)
     await set_query(input, `damping`)
     element(`[data-testid="hide-zoom-speed"]`).click()
     await tick()
 
     await set_query(input, `zoom speed`)
-    expect(zoom_speed.hidden).toBe(true)
+    expect(zoom_speed_row.hidden).toBe(true)
     await set_query(input, ``)
-    expect(zoom_speed.hidden).toBe(true)
+    expect(zoom_speed_row.hidden).toBe(true)
   })
 
   test(`keeps its mutation observer while the query changes`, async () => {

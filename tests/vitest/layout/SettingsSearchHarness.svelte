@@ -15,10 +15,9 @@
   <SettingsGroup title="Appearance" class="appearance-group" bind:open={appearance_open}>
     <SettingsSection
       title="Atoms"
-      current_values={{ atom_radius: 1, color_scheme: `Vesta` }}
       setting_metadata={{
-        atom_radius: { description: `Radius multiplier for rendered atoms` },
-        color_scheme: { description: `Element color palette` },
+        atom_radius: `Radius multiplier for rendered atoms`,
+        color_scheme: `Element color palette`,
       }}
     >
       <label data-key="atom_radius"><span>Atom radius</span><input type="range" /></label>
@@ -40,10 +39,9 @@
   <SettingsGroup title="Camera" bind:open={camera_open}>
     <SettingsSection
       title="Pointer sensitivity"
-      current_values={{ rotation_damping: 0.1, zoom_speed: 1 }}
       setting_metadata={{
-        rotation_damping: { description: `Motion inertia after releasing the pointer` },
-        zoom_speed: { description: `Pointer wheel zoom sensitivity` },
+        rotation_damping: `Motion inertia after releasing the pointer`,
+        zoom_speed: `Pointer wheel zoom sensitivity`,
       }}
     >
       <label data-key="rotation_damping"><span>Damping</span><input type="range" /></label>

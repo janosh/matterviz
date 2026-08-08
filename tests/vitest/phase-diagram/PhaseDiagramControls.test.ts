@@ -4,44 +4,14 @@ import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props } from '../setup'
 
-// Sample phase diagram data for testing
 const sample_data: PhaseDiagramData = {
   components: [`Cu`, `Ni`],
   temperature_range: [300, 1800],
   temperature_unit: `K`,
   composition_unit: `at%`,
-  regions: [
-    {
-      id: `liquid`,
-      name: `Liquid`,
-      vertices: [
-        [0, 1800],
-        [1, 1800],
-        [1, 1400],
-        [0, 1350],
-      ],
-      color: `#6baed6`,
-    },
-  ],
-  boundaries: [
-    {
-      id: `liquidus`,
-      type: `liquidus`,
-      points: [
-        [0, 1350],
-        [0.5, 1400],
-        [1, 1400],
-      ],
-    },
-  ],
-  special_points: [
-    {
-      id: `test-point`,
-      type: `eutectic`,
-      position: [0.5, 1350],
-      label: `E`,
-    },
-  ],
+  regions: [],
+  boundaries: [],
+  special_points: [{ id: `test-point`, type: `eutectic`, position: [0.5, 1350], label: `E` }],
 }
 
 const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {}) => {
@@ -62,8 +32,7 @@ describe(`PhaseDiagramControls`, () => {
 
   test(`hides export section when enable_export is false`, () => {
     const target = mount_controls({ enable_export: false })
-    const export_regex = /<h4[^>]*>Export<\/h4>/i
-    expect(target.innerHTML).not.toMatch(export_regex)
+    expect(target.textContent).not.toContain(`Export`)
   })
 
   test(`ignores empty axis tick inputs and clamps finite values`, () => {
@@ -104,8 +73,7 @@ describe(`PhaseDiagramControls`, () => {
       const checkbox = checkboxes.find((input) =>
         input.closest(`label`)?.textContent?.includes(label_text),
       )
-      expect(checkbox, `checkbox "${label_text}" not found`).toBeDefined()
-      expect(checkbox?.checked).toBe(true)
+      expect(checkbox?.checked, `checkbox "${label_text}" not found`).toBe(true)
     }
   })
 

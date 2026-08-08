@@ -319,7 +319,7 @@
     padding: 2px 4px;
     border-radius: 3px;
   }
-  .settings-card :global(.settings-section > label input[type='text']) {
+  .settings-card :global(.settings-section > label :is(input[type='text'], select)) {
     box-sizing: border-box;
     width: 100%;
     padding: 4px 6px;
@@ -332,10 +332,6 @@
     border: 1px solid var(--border-color);
   }
   .settings-card :global(.settings-section > label select) {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 4px 6px;
-    border-radius: 3px;
     cursor: pointer;
   }
   .category-colors :global(.settings-section) {

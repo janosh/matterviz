@@ -36,7 +36,6 @@
     // Keep search visibility separate from caller-owned `hidden` state.
     const opened_by_search = new SvelteSet<HTMLDetailsElement>()
     let refresh_queued = false
-    let disposed = false
 
     const set_hidden = (element: HTMLElement, hide: boolean): void => {
       element.toggleAttribute(search_hidden_attr, hide)
@@ -52,7 +51,6 @@
     }
 
     const refresh = (): void => {
-      if (disposed) return
       const normalized_query = query.trim().toLocaleLowerCase()
       if (!normalized_query) {
         restore_visibility()
@@ -62,18 +60,20 @@
 
       const sections = [...root.querySelectorAll<HTMLElement>(`section.settings-section`)]
       const groups = [...root.querySelectorAll<HTMLDetailsElement>(`details.settings-group`)]
-      // A row is reachable by its section/group title, but those headings also carry action
-      // buttons ("Explain", "Reset"). Their labels are chrome, not settings text, and would
-      // otherwise make a search for "reset" match every row in the section.
       const container_titles = new SvelteMap<HTMLElement, string>()
-      const record_title = (container: HTMLElement, heading: Element | null): void => {
-        if (!(heading instanceof HTMLElement)) return
-        const copy = heading.cloneNode(true) as HTMLElement
-        for (const chrome of copy.querySelectorAll(`button`)) chrome.remove()
-        container_titles.set(container, copy.textContent ?? ``)
+      for (const section of sections) {
+        const heading = section.previousElementSibling
+        container_titles.set(
+          section,
+          heading?.querySelector(`.section-title`)?.textContent ?? ``,
+        )
       }
-      for (const section of sections) record_title(section, section.previousElementSibling)
-      for (const group of groups) record_title(group, group.querySelector(`:scope > summary`))
+      for (const group of groups) {
+        container_titles.set(
+          group,
+          group.querySelector(`:scope > summary .group-title`)?.textContent ?? ``,
+        )
+      }
       const row_contexts = [...root.querySelectorAll<HTMLElement>(row_selector)]
         .filter(
           (row) =>
@@ -94,7 +94,6 @@
           section && container_titles.get(section),
           group && container_titles.get(group),
         ]
-          .filter((value): value is string => Boolean(value))
           .join(` `)
           .toLocaleLowerCase()
         if (searchable_text.includes(normalized_query)) directly_matched_rows.push(row)
@@ -140,7 +139,7 @@
       refresh_queued = true
       queueMicrotask(() => {
         refresh_queued = false
-        refresh()
+        if (refresh_rows === schedule_refresh) refresh()
       })
     }
 
@@ -156,7 +155,6 @@
     untrack(refresh)
 
     return () => {
-      disposed = true
       observer.disconnect()
       if (refresh_rows === schedule_refresh) refresh_rows = undefined
       restore_visibility()
@@ -266,17 +264,19 @@
       }
     }
   }
-  .open-search {
+  :is(.open-search, .clear-search) {
     display: grid;
     place-items: center;
-    width: 1.8em;
-    height: 1.8em;
-    padding: 2pt;
     border: 0;
-    border-radius: var(--border-radius, 3pt);
     background: transparent;
     color: var(--text-color-muted, #6b7280);
     cursor: pointer;
+  }
+  .open-search {
+    inline-size: 1.8em;
+    block-size: 1.8em;
+    padding: 2pt;
+    border-radius: var(--border-radius, 3pt);
     &:hover {
       background: color-mix(in srgb, currentColor 8%, transparent);
       color: inherit;
@@ -290,16 +290,10 @@
     position: absolute;
     right: 3pt;
     bottom: 0;
-    display: grid;
-    place-items: center;
-    width: 18pt;
-    height: 1.8em;
+    inline-size: 18pt;
+    block-size: 1.8em;
     padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--text-color-muted, #6b7280);
     font: inherit;
-    cursor: pointer;
   }
   .no-matches {
     margin: 6pt 0;

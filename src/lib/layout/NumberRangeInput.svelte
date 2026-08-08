@@ -7,12 +7,7 @@ svelte-widgets once a version above 1.4.0 is published. The upstream one additio
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
 
-  // Paired number + range input bound to the same value, wrapped in a flex <label>.
-  // The label text/markup is passed as children (supports inline units like <small>Å</small>).
-  // Pass a `title` to show a tooltip; the wrapping <label> only names the number input,
-  // so the range slider reuses that `title` as its accessible name.
-  // Children go in their own <span> so the label is exactly three elements (text, number,
-  // range), which lets a settings pane put every row on one shared column grid.
+  // Keep rows at exactly text/number/range; `title` also names the otherwise unlabelled slider.
   let {
     value = $bindable(),
     min,

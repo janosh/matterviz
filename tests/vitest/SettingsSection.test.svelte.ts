@@ -66,32 +66,24 @@ describe(`SettingsSection`, () => {
     expect(section_b.getAttribute(`aria-labelledby`)).toBe(heading_b.id)
   })
 
-  const reset_cases: [string, SettingValues, SettingValues, boolean][] = [
-    [`equal nested arrays`, { setting1: [{ key: 1 }] }, { setting1: [{ key: 1 }] }, false],
-    [`equal empty arrays`, { setting1: [] }, { setting1: [] }, false],
-    [`primitive change`, { setting1: `default` }, { setting1: `changed` }, true],
-    [
-      `object key insertion order`,
-      { setting1: { a: 1, b: 2 } },
-      { setting1: { b: 2, a: 1 } },
-      false,
-    ],
-    [`nested change`, { setting1: { a: 1 } }, { setting1: { a: 2 } }, true],
-    [
-      `equal dates`,
-      { setting1: new Date(`2026-01-01`) },
-      { setting1: new Date(`2026-01-01`) },
-      false,
-    ],
-    [
-      `date change`,
-      { setting1: new Date(`2026-01-01`) },
-      { setting1: new Date(`2026-01-02`) },
-      true,
-    ],
-    [`equal regexps`, { setting1: /test/gi }, { setting1: /test/gi }, false],
-    [`regexp change`, { setting1: /test/gi }, { setting1: /test/g }, true],
-    [`negative zero`, { setting1: 0 }, { setting1: -0 }, false],
+  type ResetCase = [string, SettingValues, SettingValues, boolean]
+  const value_case = (
+    name: string,
+    initial: unknown,
+    next: unknown,
+    expect_reset: boolean,
+  ): ResetCase => [name, { setting1: initial }, { setting1: next }, expect_reset]
+  const reset_cases: ResetCase[] = [
+    value_case(`equal nested arrays`, [{ key: 1 }], [{ key: 1 }], false),
+    value_case(`equal empty arrays`, [], [], false),
+    value_case(`primitive change`, `default`, `changed`, true),
+    value_case(`object key insertion order`, { a: 1, b: 2 }, { b: 2, a: 1 }, false),
+    value_case(`nested change`, { a: 1 }, { a: 2 }, true),
+    value_case(`equal dates`, new Date(`2026-01-01`), new Date(`2026-01-01`), false),
+    value_case(`date change`, new Date(`2026-01-01`), new Date(`2026-01-02`), true),
+    value_case(`equal regexps`, /test/gi, /test/gi, false),
+    value_case(`regexp change`, /test/gi, /test/g, true),
+    value_case(`negative zero`, 0, -0, false),
     [`key addition`, { setting1: `a` }, { setting1: `a`, setting2: undefined }, true],
     [`key removal`, { setting1: `a`, setting2: undefined }, { setting1: `a` }, true],
   ]

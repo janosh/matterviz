@@ -1,4 +1,4 @@
-import { DEFAULTS, SETTINGS_CONFIG, type DefaultSettings, type SettingType } from '../settings'
+import { SETTINGS_CONFIG, type DefaultSettings, type SettingType } from '../settings'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`
@@ -241,15 +241,17 @@ const get_storage = (): Storage | null => {
   }
 }
 
-// Storage is untrusted browser input; failure to remove it must not break the viewer.
-const discard_stored_state = (storage: Storage): boolean => {
+// Storage is untrusted browser input; failures must not break the viewer.
+const try_storage_action = (action: () => void): boolean => {
   try {
-    storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)
+    action()
     return true
   } catch {
     return false
   }
 }
+const discard_stored_state = (storage: Storage): boolean =>
+  try_storage_action(() => storage.removeItem(STRUCTURE_VIEW_STATE_STORAGE_KEY))
 
 export const load_structure_view_state = (): StructureViewState | null => {
   const storage = get_storage()
@@ -272,12 +274,9 @@ export const save_structure_view_state = (state: StructureViewState): boolean =>
   const serialized = serialize_structure_view_state(state)
   // Storing a state identical to the defaults would pin today's defaults for good, so drop it.
   if (serialized === DEFAULT_VIEW_STATE_JSON) return discard_stored_state(storage)
-  try {
-    storage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized)
-    return true
-  } catch {
-    return false
-  }
+  return try_storage_action(() =>
+    storage.setItem(STRUCTURE_VIEW_STATE_STORAGE_KEY, serialized),
+  )
 }
 
 export const clear_structure_view_state = (): boolean => {
@@ -285,12 +284,7 @@ export const clear_structure_view_state = (): boolean => {
   return storage ? discard_stored_state(storage) : false
 }
 
-export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state({
-  lattice_props: DEFAULTS.structure,
-  color_scheme: DEFAULTS.color_scheme,
-  background_opacity: DEFAULTS.background_opacity,
-  show_image_atoms: DEFAULTS.structure.show_image_atoms,
-})
+export const DEFAULT_STRUCTURE_VIEW_STATE = create_structure_view_state()
 
 // every save compares against this, so serialize the defaults once rather than per keystroke
 const DEFAULT_VIEW_STATE_JSON = serialize_structure_view_state(DEFAULT_STRUCTURE_VIEW_STATE)

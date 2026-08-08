@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Cross, Settings } from 'svelte-widgets/icons'
+  import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
@@ -193,7 +194,7 @@
         />
       </label>
       {#if fermi_data}
-        <small>E_F = {fermi_data.fermi_energy.toFixed(3)} eV</small>
+        <small>E_F = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
       {/if}
     </SettingsSection>
 
@@ -263,7 +264,7 @@
       </label>
       <label>
         <span>Opacity</span>
-        <span class="value">{surface_opacity.toFixed(2)}</span>
+        <span class="value">{format_num(surface_opacity, `.2f`)}</span>
         <input type="range" min="0.1" max="1" step="0.05" bind:value={surface_opacity} />
       </label>
     </SettingsSection>
@@ -281,7 +282,7 @@
       {#if show_bz}
         <label>
           <span>BZ opacity</span>
-          <span class="value">{bz_opacity.toFixed(2)}</span>
+          <span class="value">{format_num(bz_opacity, `.2f`)}</span>
           <input type="range" min="0" max="0.5" step="0.01" bind:value={bz_opacity} />
         </label>
       {/if}
@@ -318,7 +319,7 @@
         </label>
         <label>
           <span>Position</span>
-          <span class="value">{clip_position.toFixed(2)}</span>
+          <span class="value">{format_num(clip_position, `.2f`)}</span>
           <input type="range" min="-1" max="1" step="0.01" bind:value={clip_position} />
         </label>
         <label>
@@ -405,9 +406,11 @@
     gap: 0.3em;
     font-size: 0.9em;
   }
-  .band-actions {
+  :is(.band-actions, .export-buttons) {
     display: flex;
     gap: 0.5em;
+  }
+  .band-actions {
     margin-top: 0.5em;
   }
   .band-actions button {
@@ -422,10 +425,6 @@
     min-width: 3em;
     font-family: monospace;
     font-size: 0.9em;
-  }
-  .export-buttons {
-    display: flex;
-    gap: 0.5em;
   }
   .export-buttons button {
     padding: 0.3em 0.8em;
