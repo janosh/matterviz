@@ -669,10 +669,14 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     `orthographic`,
   ])
 
-  const auto_rotate_input = document.querySelector(
-    `.controls-pane input[type="number"][max="2"]`,
-  ) as HTMLInputElement
-  expect(Number(auto_rotate_input.value)).toBeCloseTo(0.5, 1)
+  // by label, not by `[max="2"]`: several sliders share that bound, so a positional match
+  // silently follows whichever section the pane happens to render first
+  const auto_rotate_label = [...document.querySelectorAll(`.controls-pane label`)].find(
+    (label) => label.textContent?.includes(`Auto-rotate speed`),
+  )
+  const auto_rotate_input =
+    auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
+  expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
 })
 
 test(`viewer-local setting changes do not mutate defaults or another viewer`, async () => {

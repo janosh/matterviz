@@ -109,101 +109,76 @@
       title={chart === `sunburst` ? `Sunburst` : `Treemap`}
       {current_values}
       on_reset={reset_to_defaults}
-      style="display: flex; flex-wrap: wrap; gap: 2ex"
+      layout="grid"
     >
       <!-- select options come from the settings schema so labels/values have a
       single source of truth -->
       {#if chart === `sunburst`}
-        <label style="flex: 1">
-          Shape:
+        <label>
+          <span>Shape</span>
           <select bind:value={shape}>
             {@render options(SETTINGS_CONFIG.sunburst.shape.enum ?? {})}
           </select>
         </label>
       {/if}
-      <label style="flex: 1">
-        Value mode:
+      <label>
+        <span>Value mode</span>
         <select bind:value={value_mode}>
           {@render options(SETTINGS_CONFIG[chart].value_mode.enum ?? {})}
         </select>
       </label>
       {#if chart === `sunburst` && shape === `sunburst`}
         <!-- icicle labels are always horizontal; inner radius/pad angle are polar-only -->
-        <label style="flex: 1">
-          Labels:
+        <label>
+          <span>Labels</span>
           <select bind:value={label_rotation}>
             {@render options(SETTINGS_CONFIG.sunburst.label_rotation.enum ?? {})}
           </select>
         </label>
       {/if}
-      <label style="flex: 1">
-        Label text:
+      <label>
+        <span>Label text</span>
         <select bind:value={label_text}>
           {@render options(SETTINGS_CONFIG[chart].label_text.enum ?? {})}
         </select>
       </label>
-      <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth} style="flex: 1 1 100%"
-        >Max depth (0 = all):</NumberRangeInput
+      <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth}
+        >Max depth (0 = all)</NumberRangeInput
       >
       {#if chart === `sunburst`}
         {#if shape === `sunburst`}
-          <NumberRangeInput
-            min={0}
-            max={0.8}
-            step={0.05}
-            bind:value={inner_radius}
-            style="flex: 1 1 100%">Inner radius:</NumberRangeInput
+          <NumberRangeInput min={0} max={0.8} step={0.05} bind:value={inner_radius}
+            >Inner radius</NumberRangeInput
           >
-          <NumberRangeInput
-            min={0}
-            max={4}
-            step={0.1}
-            bind:value={pad_angle}
-            style="flex: 1 1 100%">Pad angle (°):</NumberRangeInput
+          <NumberRangeInput min={0} max={4} step={0.1} bind:value={pad_angle}
+            >Pad angle (°)</NumberRangeInput
           >
         {/if}
       {:else}
-        <NumberRangeInput
-          min={0}
-          max={10}
-          step={0.5}
-          bind:value={padding_inner}
-          style="flex: 1 1 100%">Cell gap (px):</NumberRangeInput
+        <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_inner}
+          >Cell gap (px)</NumberRangeInput
         >
-        <NumberRangeInput
-          min={0}
-          max={40}
-          step={1}
-          bind:value={padding_top}
-          style="flex: 1 1 100%">Header height (px, 0 = none):</NumberRangeInput
+        <NumberRangeInput min={0} max={40} step={1} bind:value={padding_top}
+          >Header height (px, 0 = none)</NumberRangeInput
         >
-        <NumberRangeInput
-          min={0}
-          max={10}
-          step={0.5}
-          bind:value={padding_outer}
-          style="flex: 1 1 100%">Child inset (px):</NumberRangeInput
+        <NumberRangeInput min={0} max={10} step={0.5} bind:value={padding_outer}
+          >Child inset (px)</NumberRangeInput
         >
       {/if}
-      <NumberRangeInput
-        min={0}
-        max={0.2}
-        step={0.005}
-        bind:value={min_fraction}
-        style="flex: 1 1 100%"
-        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction of total):</NumberRangeInput
+      <NumberRangeInput min={0} max={0.2} step={0.005} bind:value={min_fraction}
+        >Group {chart === `sunburst` ? `slices` : `cells`} below (fraction of total)</NumberRangeInput
       >
-      <label style="flex: 1 1 100%">
+      <label>
+        <span>Show {chart === `sunburst` ? `arc` : `cell`} labels</span>
         <input type="checkbox" bind:checked={show_labels} />
-        Show {chart === `sunburst` ? `arc` : `cell`} labels
       </label>
-      <label style="flex: 1 1 100%">
+      <label>
+        <span>Zoom on click</span>
         <input type="checkbox" bind:checked={zoom_on_click} />
-        Zoom on click
       </label>
-      <label style="flex: 1 1 100%">
+      <label>
+        <span>Show breadcrumbs when zoomed</span>
         <input type="checkbox" bind:checked={show_breadcrumbs} />
-        Show breadcrumbs when zoomed
       </label>
     </SettingsSection>
     {#if export_buttons && on_export}
@@ -213,7 +188,7 @@
         class="export-row"
         style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
       >
-        Export:
+        Export
         {#each [`svg`, `png`] as const as fmt (fmt)}
           <button
             type="button"

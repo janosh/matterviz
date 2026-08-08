@@ -1478,6 +1478,17 @@ describe(`MatterViz Extension`, () => {
     })
 
     test.each([
+      [`bond_thickness`, 0.2, 0.2],
+      [`site_label_padding`, -1, 0],
+      [`rotation_damping`, 1, 0.3],
+    ] as const)(`bounds structure.%s override %s to %s`, (key, value, expected) => {
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      apply_overrides({ [`structure.${key}`]: value })
+      expect(get_defaults().structure[key]).toBe(expected)
+      expect(warn).toHaveBeenCalledTimes(value === expected ? 0 : 1)
+    })
+
+    test.each([
       [`missing inspect`, () => ({ get: vi.fn(), inspect: vi.fn(() => undefined) })],
       [
         `invalid structure values`,

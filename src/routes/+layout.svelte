@@ -10,7 +10,7 @@
   import '@wooorm/starry-night/style/both'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
-  import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'
+  import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES, THEME_OPTIONS } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
@@ -25,6 +25,7 @@
 
   let { children }: { children?: Snippet<[]> } = $props()
   let cmd_palette_open = $state(false)
+  let theme_mode = $derived(theme_state.mode)
 
   $effect(() => {
     // Apply theme changes when mode changes (after SSR)
@@ -57,7 +58,7 @@
     }
   })
 
-  const actions: SiteSearchAction[] = routes
+  const route_actions: SiteSearchAction[] = routes
     .filter(
       ({ filename, route }) =>
         !filename.includes(`/test/`) && route !== `/404` && route !== `/[slug]`,
@@ -71,8 +72,15 @@
       url,
       action: (_label) => void goto(url),
     }))
+  const theme_actions = THEME_OPTIONS.map(({ icon, label, value }) => ({
+    id: `theme:${value}`,
+    label: `${icon} ${label} color theme`,
+    keywords: [`mode`],
+    action: () => (theme_mode = value),
+  }))
+  const actions = [...theme_actions, ...route_actions]
   const load_search_options = create_site_search_loader({
-    route_actions: actions,
+    route_actions,
     navigate: goto,
   })
 
@@ -95,9 +103,9 @@
   bind:open={cmd_palette_open}
   {actions}
   aria_label="Search the MatterViz site"
-  placeholder="Search every page..."
+  placeholder="Search pages and commands..."
   loadOptions={{ fetch: load_search_options, debounceMs: 120, batchSize: 12 }}
-  noMatchingOptionsMsg="No matching pages"
+  noMatchingOptionsMsg="No matches"
   maxOptions={12}
   dialog_props={{
     class: `site-search-dialog`,
@@ -105,9 +113,12 @@
   }}
 />
 <GitHubCorner href={pkg.repository} --github-corner-bg-hover="var(--github-corner-bg-hover)" />
-<CopyButton global class="copy-btn" />
+<CopyButton
+  global
+  style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: var(--btn-color)"
+/>
 
-<ThemeControl />
+<ThemeControl bind:theme_mode />
 
 <Nav
   routes={[[`/`, `Home`], ...nav_routes]}

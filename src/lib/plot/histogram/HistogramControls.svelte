@@ -1,6 +1,6 @@
 <script lang="ts">
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
-  import { SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
@@ -68,6 +68,8 @@
   bind:y2_axis
   {auto_x2_range}
   {auto_y2_range}
+  {has_x2_points}
+  {has_y2_points}
   {...rest}
 >
   {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
@@ -80,147 +82,78 @@
       // plot does not suddenly grow a legend
       show_legend = legend_mode_to_prop(DEFAULTS.histogram.show_legend)
     }}
+    layout="grid"
   >
-    <div class="pane-row">
-      <label
-        >Bins:
-        <input type="range" min="5" max="100" step="5" bind:value={bins} />
-      </label>
-      <input type="number" min="5" max="100" step="5" bind:value={bins} />
-    </div>
+    <NumberRangeInput min={5} max={100} step={5} bind:value={bins}>Bins</NumberRangeInput>
     {#if has_multiple_series}
-      <div class="pane-row">
-        <label
-          >Mode:
-          <select bind:value={mode}>
-            <option value="single">Single</option>
-            <option value="overlay">Overlay</option>
+      <label>
+        <span>Mode</span>
+        <select bind:value={mode}>
+          <option value="single">Single</option>
+          <option value="overlay">Overlay</option>
+        </select>
+      </label>
+      {#if mode === `single`}
+        <label>
+          <span>Property</span>
+          <select bind:value={selected_property}>
+            <option value="">All</option>
+            {#each series_options as option (option)}
+              <option value={option}>{option}</option>
+            {/each}
           </select>
         </label>
-      </div>
-      {#if mode === `single`}
-        <div class="pane-row">
-          <label
-            >Property:
-            <select bind:value={selected_property}>
-              <option value="">All</option>
-              {#each series_options as option (option)}
-                <option value={option}>{option}</option>
-              {/each}
-            </select>
-          </label>
-        </div>
       {/if}
     {/if}
     <label>
+      <span>Show legend</span>
       <input
         type="checkbox"
         checked={show_legend ?? resolved_show_legend}
         onchange={(event) => (show_legend = event.currentTarget.checked)}
       />
-      Show legend
     </label>
   </SettingsSection>
 
   <SettingsSection
-    title="Bar Style"
+    title="Bar style"
     current_values={bar}
     on_reset={() => {
       bar = { ...DEFAULTS.histogram.bar }
     }}
-    class="pane-grid"
+    layout="grid"
   >
-    {#if bar}
-      {#if visible_series.length === 1}
-        <label>Fill: <input type="color" bind:value={bar.color} /></label>
-      {/if}
-      <label
-        >Opacity:
-        <input type="range" min="0" max="1" step="0.05" bind:value={bar.opacity} />
-        <input type="number" min="0" max="1" step="0.05" bind:value={bar.opacity} />
-      </label>
-      <label
-        >Stroke Width:
-        <input type="range" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
-        <input type="number" min="0" max="5" step="0.1" bind:value={bar.stroke_width} />
-      </label>
-      <label
-        >Stroke Color:
+    {#if visible_series.length === 1}
+      <label><span>Fill</span><input type="color" bind:value={bar.color} /></label>
+    {/if}
+    <NumberRangeInput min={0} max={1} step={0.05} bind:value={bar.opacity}
+      >Opacity</NumberRangeInput
+    >
+    <NumberRangeInput min={0} max={5} step={0.1} bind:value={bar.stroke_width}
+      >Stroke width</NumberRangeInput
+    >
+    <label>
+      <span>Stroke color</span>
+      <span class="stroke-value">
         <input type="color" bind:value={bar.stroke_color} />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          bind:value={bar.stroke_opacity}
-          title="Opacity"
-        />
         <input type="number" min="0" max="1" step="0.05" bind:value={bar.stroke_opacity} />
-      </label>
-    {/if}
-  </SettingsSection>
-
-  <SettingsSection
-    title="Scale Type"
-    data-testid="scale-type-section"
-    current_values={{
-      x_scale_type: x_axis.scale_type,
-      ...(has_x2_points ? { x2_scale_type: x2_axis.scale_type } : {}),
-      y_scale_type: y_axis.scale_type,
-      ...(has_y2_points ? { y2_scale_type: y2_axis.scale_type } : {}),
-    }}
-    on_reset={() => {
-      x_axis = {
-        ...x_axis,
-        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
-      }
-      y_axis = {
-        ...y_axis,
-        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
-      }
-      if (has_x2_points) {
-        x2_axis = {
-          ...x2_axis,
-          scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
-        }
-      }
-      if (has_y2_points) {
-        y2_axis = {
-          ...y2_axis,
-          scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
-        }
-      }
-    }}
-    class="pane-grid"
-    style="grid-template-columns: 1fr 1fr"
-  >
-    <label
-      >X: <select bind:value={x_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label
-    >
-    {#if has_x2_points}
-      <label
-        >X2: <select bind:value={x2_axis.scale_type}>
-          <option value="linear">Linear</option>
-          <option value="log">Log</option>
-        </select></label
-      >
-    {/if}
-    <label
-      >Y: <select bind:value={y_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label
-    >
-    {#if has_y2_points}
-      <label
-        >Y2: <select bind:value={y2_axis.scale_type}>
-          <option value="linear">Linear</option>
-          <option value="log">Log</option>
-        </select></label
-      >
-    {/if}
+      </span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        bind:value={bar.stroke_opacity}
+        title="Opacity"
+      />
+    </label>
   </SettingsSection>
 </PlotControls>
+
+<style>
+  .stroke-value {
+    display: flex;
+    align-items: center;
+    gap: 4pt;
+  }
+</style>

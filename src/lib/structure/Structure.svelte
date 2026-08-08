@@ -178,6 +178,7 @@
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls,
+    persist_settings = true,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     width = $bindable(0),
@@ -2155,6 +2156,7 @@
           on_reset_camera={reset_camera_available ? reset_all_cameras : undefined}
           {reset_text}
           bind:fly_to_request
+          {persist_settings}
         />
       {/if}
 

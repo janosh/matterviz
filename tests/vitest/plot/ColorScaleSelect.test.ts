@@ -1,8 +1,8 @@
 import { ColorScaleSelect } from '$lib'
 import type { D3InterpolateName } from '$lib/colors'
-import { mount } from 'svelte'
+import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
   test(`binds value and selected correctly (initial state)`, () => {
@@ -22,6 +22,20 @@ describe(`ColorScaleSelect`, () => {
     // Check initial state rendered by svelte-widgets
     const initial_selection = doc_query(`.selected`)
     expect(initial_selection?.textContent?.trim()).toBe(`Viridis`)
+  })
+
+  // Binding `selected` alongside `value` is optional, so mounting must not treat an unbound
+  // `selected` as "nothing is selected" and write that emptiness back over the caller's value.
+  test(`keeps a bound value when only value is bound`, () => {
+    const controls_state = { value: `interpolateViridis` as D3InterpolateName }
+    mount(ColorScaleSelect, {
+      target: document.body,
+      props: bind_props({}, controls_state),
+    })
+    flushSync()
+
+    expect(controls_state.value).toBe(`interpolateViridis`)
+    expect(doc_query(`.selected`)?.textContent?.trim()).toBe(`Viridis`)
   })
 
   test(`passes color_bar props to ColorBar snippet`, async () => {

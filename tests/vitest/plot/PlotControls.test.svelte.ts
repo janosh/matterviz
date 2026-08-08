@@ -1,5 +1,6 @@
 import { PlotControls } from '$lib/plot'
-import { mount } from 'svelte'
+import { DEFAULTS } from '$lib/settings'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -67,6 +68,15 @@ describe(`PlotControls`, () => {
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(input.classList.contains(`invalid`)).toBe(!valid)
     })
+
+    test(`format inputs fill their grid column`, () => {
+      mount_controls({ has_x2_points: true, has_y2_points: true })
+      const inputs = document.querySelectorAll<HTMLInputElement>(
+        `[data-testid="tick-format-section"] input`,
+      )
+      expect(inputs).toHaveLength(4)
+      for (const input of inputs) expect(getComputedStyle(input).width).toBe(`100%`)
+    })
   })
 
   describe(`display controls`, () => {
@@ -78,10 +88,24 @@ describe(`PlotControls`, () => {
         : []
     }
 
-    test(`renders correct number of grid controls`, () => {
-      mount_controls({ has_y2_points: true })
+    test(`renders correct number of grid controls and resets them`, async () => {
+      const display = $state({ x_grid: true, y_grid: true, y2_grid: true })
+      mount_controls({
+        has_y2_points: true,
+        get display() {
+          return display
+        },
+      })
       const grids = get_checkboxes_in_group(`grid`)
       expect(grids).toHaveLength(3)
+
+      grids[0].click()
+      await tick()
+      expect(display.x_grid).toBe(false)
+
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset display to defaults"]`).click()
+      await tick()
+      expect(display.x_grid).toBe(DEFAULTS.plot.show_x_grid)
     })
 
     test.each([
@@ -97,7 +121,7 @@ describe(`PlotControls`, () => {
     })
   })
 
-  test(`tick controls section only renders when show_ticks`, () => {
+  test(`tick controls only render when enabled and use configured defaults`, () => {
     // section titles render in <h4> headers (not inside the <section> itself)
     const has_ticks_section = () =>
       Array.from(document.querySelectorAll(`h4`)).some((header) =>
@@ -107,8 +131,16 @@ describe(`PlotControls`, () => {
     expect(has_ticks_section()).toBe(false)
 
     document.body.innerHTML = ``
-    mount_controls({ show_ticks: true })
+    mount_controls({
+      show_ticks: true,
+      x_axis: { ticks: undefined },
+      y_axis: { ticks: undefined },
+    })
     expect(has_ticks_section()).toBe(true)
+    const tick_inputs = document.querySelectorAll<HTMLInputElement>(`input[min="2"][max="20"]`)
+    expect([...tick_inputs].map((input) => input.value)).toEqual(
+      [DEFAULTS.plot.x_ticks, DEFAULTS.plot.y_ticks].map(String),
+    )
   })
 
   test(`controls visibility toggles`, () => {

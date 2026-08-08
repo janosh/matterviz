@@ -394,31 +394,14 @@ test.describe(`Histogram Component Tests`, () => {
     const control_pane = page.locator(`#basic-single-series .draggable-pane`)
     await expect(control_pane).toBeVisible()
 
-    // Test bins control - the number input is a sibling of the label in a pane-row
-    const bins_row = control_pane.locator(`.pane-row:has(label:text-matches("Bins", "i"))`)
+    // Test bins control - the row is the <label> itself, wrapping number and range inputs
+    const bins_row = control_pane.locator(`label`).filter({ hasText: /Bins/i })
     await expect(bins_row).toBeVisible()
     const bins_number_input = bins_row.locator(`input[type="number"]`)
-    await bins_number_input.fill(`15`)
+    const initial_bar_count = await get_bar_count(histogram)
+    await bins_number_input.fill(`5`)
 
-    // Verify histogram updated
-    const bar_count = await get_bar_count(histogram)
-    expect(bar_count).toBeGreaterThan(0)
-
-    // Test bar opacity control - opacity is available in overlay mode histograms
-    // For single-series mode, this control may not be visible, so conditional check is appropriate
-    const opacity_label = control_pane.locator(`label:has-text("Opacity:")`)
-    if (await opacity_label.isVisible()) {
-      const opacity_number = opacity_label.locator(`input[type="number"]`)
-      await opacity_number.fill(`0.3`)
-    }
-
-    // Test bar stroke width control - stroke width is available in overlay mode
-    // For single-series mode, this control may not be visible
-    const stroke_label = control_pane.locator(`label:has-text("Stroke Width:")`)
-    if (await stroke_label.isVisible()) {
-      const stroke_number = stroke_label.locator(`input[type="number"]`)
-      await stroke_number.fill(`2`)
-    }
+    await expect.poll(() => get_bar_count(histogram)).not.toBe(initial_bar_count)
 
     // Test grid toggles - checkbox is inside span[data-label="grid"]
     const grid_group = control_pane.locator(`[data-label="grid"]`)
@@ -429,7 +412,7 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test scale type selects - scope to Scale Type section to avoid matching other X: labels
     const scale_type_section = control_pane.locator(`[data-testid="scale-type-section"]`)
-    const x_scale_label = scale_type_section.locator(`label:has-text("X:")`)
+    const x_scale_label = scale_type_section.locator(`label:has(span:text-is("X"))`)
     await expect(x_scale_label).toBeVisible()
     const x_scale_select = x_scale_label.locator(`select`)
     await x_scale_select.selectOption(`log`)
@@ -437,7 +420,9 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test format inputs - scope to Tick Format section to avoid matching other X-axis labels
     const tick_format_section = control_pane.locator(`[data-testid="tick-format-section"]`)
-    const x_axis_format_label = tick_format_section.locator(`label:has-text("X-axis:")`)
+    const x_axis_format_label = tick_format_section.locator(
+      `label:has(span:text-is("X-axis"))`,
+    )
     await expect(x_axis_format_label).toBeVisible()
     // Verify selector specificity - should match exactly one label within Tick Format section
     await expect(x_axis_format_label).toHaveCount(1)
@@ -486,44 +471,41 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(control_pane).toBeVisible()
 
     // Test mode selection
-    const mode_select = control_pane.locator(`select[id="mode-select"]`)
-    if (await mode_select.isVisible()) {
-      await mode_select.selectOption(`single`)
+    const mode_select = control_pane.getByRole(`combobox`, { name: `Mode` })
+    await expect(mode_select).toBeVisible()
+    await mode_select.selectOption(`single`)
 
-      // Test property selection in single mode
-      const property_select = control_pane.locator(`select[id="property-select"]`)
-      if (await property_select.isVisible()) {
-        const options = await property_select.locator(`option`).all()
-        if (options.length > 1) {
-          const option_value = await options[1].getAttribute(`value`)
-          if (option_value) {
-            await property_select.selectOption(option_value)
-          }
-        }
-      }
+    const property_select = control_pane.getByRole(`combobox`, { name: `Property` })
+    await expect(property_select).toBeVisible()
+    const property_options = property_select.locator(`option`)
+    expect(await property_options.count()).toBeGreaterThan(1)
+    const property_value = await property_options.nth(1).getAttribute(`value`)
+    if (!property_value) throw new Error(`Expected a non-empty histogram property option`)
+    await property_select.selectOption(property_value)
+    await expect(property_select).toHaveValue(property_value)
 
-      // Switch back to overlay mode
-      await mode_select.selectOption(`overlay`)
-    }
+    await mode_select.selectOption(`overlay`)
 
     // Test legend toggle
     const legend_checkbox = control_pane.getByLabel(`Show legend`)
-    if (await legend_checkbox.isVisible()) {
-      await legend_checkbox.uncheck()
-      await legend_checkbox.check()
-    }
+    await expect(legend_checkbox).toBeVisible()
+    await legend_checkbox.uncheck()
+    await expect(legend_checkbox).not.toBeChecked()
+    await legend_checkbox.check()
+    await expect(legend_checkbox).toBeChecked()
 
     // Test opacity and stroke controls for multiple series - use label-based selectors
-    const opacity_label = control_pane.locator(`label:has-text("Opacity:")`)
-    if (await opacity_label.isVisible()) {
-      const opacity_number = opacity_label.locator(`input[type="number"]`)
-      await opacity_number.fill(`0.8`)
-    }
-
-    const stroke_label = control_pane.locator(`label:has-text("Stroke Width:")`)
-    if (await stroke_label.isVisible()) {
-      const stroke_number = stroke_label.locator(`input[type="number"]`)
-      await stroke_number.fill(`1.5`)
+    const first_bar = histogram.locator(`path[role="button"]`).first()
+    for (const [label, value, attribute] of [
+      [`Opacity`, `0.8`, `opacity`],
+      [`Stroke width`, `1.5`, `stroke-width`],
+    ] as const) {
+      const input = control_pane.locator(
+        `label:has(span:text-is("${label}")) input[type="number"]`,
+      )
+      await expect(input).toBeVisible()
+      await input.fill(value)
+      await expect(first_bar).toHaveAttribute(attribute, value)
     }
 
     // Verify histogram still renders meaningful SVG content (bars or axes)
@@ -941,7 +923,7 @@ test.describe(`Histogram Component Tests`, () => {
     const toggle = page.locator(`#basic-single-series .pane-toggle`)
     await toggle.click()
     const pane = page.locator(`#basic-single-series .draggable-pane`)
-    await expect(pane.getByText(`Axis Range`)).toBeVisible()
+    await expect(pane.getByText(`Axis range`)).toBeVisible()
 
     const [x_axis_el, y_axis_el] = [
       histogram.locator(`g.x-axis`),

@@ -1,7 +1,9 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
-import { element_data, PeriodicTable, PropertySelect } from '$lib'
+import { element_data, PeriodicTable, PeriodicTableControls, PropertySelect } from '$lib'
+import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { CATEGORY_COUNTS, ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
+import { colors, selected } from '$lib/state.svelte'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -13,6 +15,8 @@ describe(`PeriodicTable`, () => {
   afterEach(() => {
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
+    selected.category = null
+    Object.assign(colors.category, DEFAULT_CATEGORY_COLORS)
   })
   test.each([
     [true, 120],
@@ -34,6 +38,53 @@ describe(`PeriodicTable`, () => {
     element_tile?.dispatchEvent(mouseleave)
     await tick()
     expect(Array.from(element_tile.classList)).not.toContain(`active`)
+  })
+
+  test(`category color input focus updates the selected category`, () => {
+    mount(PeriodicTableControls, { target: document.body })
+    const input = doc_query<HTMLInputElement>(`.category-colors input[type="color"]`)
+    input.focus()
+    expect(selected.category).toBe(input.closest(`label`)?.dataset.key)
+
+    input.blur()
+    expect(selected.category).toBeNull()
+  })
+
+  test(`row and section resets restore shipped periodic-table defaults`, async () => {
+    const category = `noble gas`
+    const mounted_category_color = `#123456`
+    colors.category[category] = mounted_category_color
+    mount(PeriodicTableControls, {
+      target: document.body,
+      props: { tile_border_radius: 2, hover_border_width: 2 },
+    })
+    const number_input = (key: string) =>
+      doc_query<HTMLInputElement>(`[data-key="${key}"] input[type="number"]`)
+    const set_input = (input: HTMLInputElement, value: string | number): void => {
+      input.value = `${value}`
+      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    }
+    const click_reset = async (selector: string): Promise<void> => {
+      doc_query<HTMLButtonElement>(selector).click()
+      await tick()
+    }
+    const category_input = doc_query<HTMLInputElement>(
+      `[data-key="${category}"] input[type="color"]`,
+    )
+    set_input(number_input(`tile_border_radius`), 5)
+    set_input(number_input(`hover_border_width`), 3)
+    set_input(category_input, `#654321`)
+    await tick()
+
+    await click_reset(`[data-key="tile_border_radius"] .setting-reset-button`)
+    expect(number_input(`tile_border_radius`).valueAsNumber).toBe(1)
+    expect(number_input(`hover_border_width`).valueAsNumber).toBe(3)
+
+    await click_reset(`button[aria-label="Reset element tiles to defaults"]`)
+    expect(number_input(`hover_border_width`).valueAsNumber).toBe(1)
+
+    await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
+    expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
   })
 
   test(`shows element photo when hovering element tile`, async () => {

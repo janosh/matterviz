@@ -5,6 +5,7 @@ import {
   GIZMO_DEFAULT_STYLES,
   page_visibility,
 } from '$lib/scene'
+import { DEFAULTS } from '$lib/settings'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 describe(`build_gizmo_props`, () => {
@@ -58,6 +59,21 @@ describe(`build_orbit_props`, () => {
       props.onstart()
       props.onend()
     }).not.toThrow()
+  })
+
+  // Rotation feel is easy to regress by nudging one default, and neither number reads as
+  // wrong on its own. OrbitControls turns the camera by 360° * drag_px * rotateSpeed /
+  // canvas_height_px, then pays a released gesture out at dampingFactor per frame — so assert
+  // the drag distance and settle time those defaults produce, not the defaults themselves.
+  test(`default rotation stays controllable on a default-height canvas`, () => {
+    const { rotate_speed, rotation_damping } = DEFAULTS.structure
+    const props = build_orbit_props({ ...opts, rotate_speed, rotation_damping })
+    const deg_per_drag_px = (360 * props.rotateSpeed) / 500 // --struct-height default
+    // a 15° nudge to peek behind an atom must be a deliberate drag, not a trackpad twitch
+    expect(15 / deg_per_drag_px).toBeGreaterThan(30)
+    // the queued tail decays by (1 - dampingFactor) per frame; spend it inside half a second
+    // at 60 fps or the view keeps drifting past wherever the pointer was released
+    expect(Math.log(0.01) / Math.log(1 - props.dampingFactor) / 60).toBeLessThan(0.5)
   })
 
   test(`onstart/onend toggle camera_is_moving and run onstart_extra once`, () => {

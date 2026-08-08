@@ -10,11 +10,18 @@
   import type { VolumeSlicePlaneMode, VolumeSliceSettings } from './slice-settings'
   import type { VolumeSliceMode } from './slice-rendering'
 
+  type CartesianVectorKey = `cartesian_point` | `cartesian_normal` | `cartesian_up`
+
   const CARTESIAN_PLANE_PRESETS = [
     { label: `XY`, cartesian_normal: [0, 0, 1], cartesian_up: [1, 0, 0] },
     { label: `XZ`, cartesian_normal: [0, 1, 0], cartesian_up: [1, 0, 0] },
     { label: `YZ`, cartesian_normal: [1, 0, 0], cartesian_up: [0, 1, 0] },
   ] satisfies { label: string; cartesian_normal: Vec3; cartesian_up: Vec3 }[]
+  const CARTESIAN_VECTOR_CONTROLS = [
+    { label: `Point (Å)`, name: `point`, key: `cartesian_point` },
+    { label: `Normal`, name: `normal`, key: `cartesian_normal` },
+    { label: `Up`, name: `up`, key: `cartesian_up` },
+  ] satisfies { label: string; name: string; key: CartesianVectorKey }[]
 
   let {
     settings = $bindable(create_volume_slice_settings()),
@@ -45,11 +52,7 @@
     on_settings_change?.(next_settings)
   }
 
-  function update_vector(
-    key: `cartesian_point` | `cartesian_normal` | `cartesian_up`,
-    axis_idx: number,
-    value: number,
-  ): void {
+  function update_vector(key: CartesianVectorKey, axis_idx: number, value: number): void {
     if (!Number.isFinite(value)) return
     const source = key === `cartesian_point` ? cartesian_point : resolved_settings[key]
     const vector = [...source] as Vec3
@@ -90,154 +93,159 @@
     update_settings(create_volume_slice_settings())
   }}
   class="slice-settings"
+  layout="grid"
 >
-  <div class="control-row">
-    {#if volumes.length > 1}
-      <label>
-        <span>Volume</span>
-        <select bind:value={active_volume_idx} aria-label="Slice volume">
-          {#each volumes as volume, volume_idx (volume_idx)}
-            <option value={volume_idx}>
-              {volume.label ?? `Volume ${volume_idx + 1}`}
-            </option>
-          {/each}
-        </select>
-      </label>
-    {/if}
-
+  {#if volumes.length > 1}
     <label>
-      <span>Plane</span>
-      <select
-        aria-label="Slice plane mode"
-        bind:value={
-          () => resolved_settings.plane_mode,
-          (plane_mode) => update_settings({ plane_mode: plane_mode as VolumeSlicePlaneMode })
-        }
-      >
-        <option value="hkl">HKL</option>
-        <option value="cartesian">Cartesian</option>
+      <span>Volume</span>
+      <select bind:value={active_volume_idx} aria-label="Slice volume">
+        {#each volumes as volume, volume_idx (volume_idx)}
+          <option value={volume_idx}>
+            {volume.label ?? `Volume ${volume_idx + 1}`}
+          </option>
+        {/each}
       </select>
     </label>
+  {/if}
 
-    {#if resolved_settings.plane_mode === `hkl`}
+  <label>
+    <span>Plane</span>
+    <select
+      aria-label="Slice plane mode"
+      bind:value={
+        () => resolved_settings.plane_mode,
+        (plane_mode) => update_settings({ plane_mode: plane_mode as VolumeSlicePlaneMode })
+      }
+    >
+      <option value="hkl">HKL</option>
+      <option value="cartesian">Cartesian</option>
+    </select>
+  </label>
+
+  {#if resolved_settings.plane_mode === `hkl`}
+    <div class="setting">
+      <span>Indices</span>
       <MillerIndexInput
         bind:value={
           () => resolved_settings.miller_indices,
           (miller_indices) => update_settings({ miller_indices })
         }
       />
-      <label class="wide-control">
-        <span>d = {resolved_settings.position.toFixed(2)}</span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          aria-label="Slice position"
-          bind:value={
-            () => resolved_settings.position, (position) => update_settings({ position })
-          }
-        />
-      </label>
-    {/if}
-  </div>
+    </div>
+    <label>
+      <span>Position</span>
+      <span>d = {resolved_settings.position.toFixed(2)}</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        aria-label="Slice position"
+        bind:value={
+          () => resolved_settings.position, (position) => update_settings({ position })
+        }
+      />
+    </label>
+  {/if}
 
   {#if resolved_settings.plane_mode === `cartesian`}
-    {#each [{ label: `Point (Å)`, name: `point`, key: `cartesian_point`, vector: cartesian_point }, { label: `Normal`, name: `normal`, key: `cartesian_normal`, vector: resolved_settings.cartesian_normal }, { label: `Up`, name: `up`, key: `cartesian_up`, vector: resolved_settings.cartesian_up }] as { label, name, key, vector } (name)}
+    {#each CARTESIAN_VECTOR_CONTROLS as { label, name, key } (name)}
+      {@const vector = key === `cartesian_point` ? cartesian_point : resolved_settings[key]}
       <label class="vector-control">
         <span>{label}</span>
-        {#each [`x`, `y`, `z`] as axis, axis_idx (axis)}
-          <input
-            aria-label="Cartesian {name} {axis}"
-            type="number"
-            step={0.1}
-            value={vector[axis_idx]}
-            oninput={(event) =>
-              update_vector(
-                key as `cartesian_point` | `cartesian_normal` | `cartesian_up`,
-                axis_idx,
-                event.currentTarget.valueAsNumber,
-              )}
-          />
-        {/each}
+        <span class="vector-inputs">
+          {#each [`x`, `y`, `z`] as axis, axis_idx (axis)}
+            <input
+              aria-label="Cartesian {name} {axis}"
+              type="number"
+              step={0.1}
+              value={vector[axis_idx]}
+              oninput={(event) =>
+                update_vector(key, axis_idx, event.currentTarget.valueAsNumber)}
+            />
+          {/each}
+        </span>
       </label>
     {/each}
-    <div class="plane-presets" aria-label="Cartesian plane presets">
-      {#each CARTESIAN_PLANE_PRESETS as { label, ...plane } (label)}
-        <button type="button" onclick={() => update_settings({ cartesian_point, ...plane })}>
-          {label}
+    <div class="setting">
+      <span>Plane presets</span>
+      <div class="plane-presets" aria-label="Cartesian plane presets">
+        {#each CARTESIAN_PLANE_PRESETS as { label, ...plane } (label)}
+          <button type="button" onclick={() => update_settings({ cartesian_point, ...plane })}>
+            {label}
+          </button>
+        {/each}
+        <button type="button" onclick={() => update_settings({ cartesian_point: undefined })}>
+          Center
         </button>
-      {/each}
-      <button type="button" onclick={() => update_settings({ cartesian_point: undefined })}>
-        Center
-      </button>
+      </div>
     </div>
   {/if}
 
-  <div class="control-row">
-    <label>
-      <span>Resolution (0 = native)</span>
-      <input
-        aria-label="Slice resolution"
-        type="number"
-        min={0}
-        step={1}
-        bind:value={
-          () => resolved_settings.resolution, (resolution) => update_settings({ resolution })
-        }
-      />
-    </label>
-    <label>
-      <span>View</span>
-      <select
-        aria-label="Slice rendering mode"
-        bind:value={
-          () => resolved_settings.render_mode,
-          (render_mode) => update_settings({ render_mode: render_mode as VolumeSliceMode })
-        }
-      >
-        <option value="both">Filled + contours</option>
-        <option value="filled">Filled</option>
-        <option value="contours">Contours</option>
-      </select>
-    </label>
-    <label>
-      <span>Colormap</span>
-      <select
-        aria-label="Slice colormap"
-        bind:value={
-          () => resolved_settings.colormap, (colormap) => update_settings({ colormap })
-        }
-      >
-        {#each ISO_COLORMAPS as colormap (colormap)}
-          <option value={colormap}>{colormap.replace(`interpolate`, ``)}</option>
-        {/each}
-      </select>
-    </label>
-    <label>
-      <span>Contours</span>
-      <input
-        aria-label="Slice contour levels"
-        type="number"
-        min={0}
-        max={50}
-        step={1}
-        bind:value={
-          () => resolved_settings.contour_levels,
-          (contour_levels) => update_settings({ contour_levels })
-        }
-      />
-    </label>
-  </div>
+  <label>
+    <span>Resolution (0 = native)</span>
+    <input
+      aria-label="Slice resolution"
+      type="number"
+      min={0}
+      step={1}
+      bind:value={
+        () => resolved_settings.resolution, (resolution) => update_settings({ resolution })
+      }
+    />
+  </label>
+  <label>
+    <span>View</span>
+    <select
+      aria-label="Slice rendering mode"
+      bind:value={
+        () => resolved_settings.render_mode,
+        (render_mode) => update_settings({ render_mode: render_mode as VolumeSliceMode })
+      }
+    >
+      <option value="both">Filled + contours</option>
+      <option value="filled">Filled</option>
+      <option value="contours">Contours</option>
+    </select>
+  </label>
+  <label>
+    <span>Colormap</span>
+    <select
+      aria-label="Slice colormap"
+      bind:value={
+        () => resolved_settings.colormap, (colormap) => update_settings({ colormap })
+      }
+    >
+      {#each ISO_COLORMAPS as colormap (colormap)}
+        <option value={colormap}>{colormap.replace(`interpolate`, ``)}</option>
+      {/each}
+    </select>
+  </label>
+  <label>
+    <span>Contours</span>
+    <input
+      aria-label="Slice contour levels"
+      type="number"
+      min={0}
+      max={50}
+      step={1}
+      bind:value={
+        () => resolved_settings.contour_levels,
+        (contour_levels) => update_settings({ contour_levels })
+      }
+    />
+  </label>
 
-  <label class="control-row range-control">
+  <label class="range-control">
     <span>Range</span>
-    {@render color_bound_input(0)}
-    <span>to</span>
-    {@render color_bound_input(1)}
-    <button type="button" onclick={() => update_settings({ color_range: undefined })}>
-      Auto
-    </button>
+    <span class="range-inputs">
+      {@render color_bound_input(0)}
+      <span>to</span>
+      {@render color_bound_input(1)}
+      <button type="button" onclick={() => update_settings({ color_range: undefined })}>
+        Auto
+      </button>
+    </span>
   </label>
 
   {#if active_volume}
@@ -251,34 +259,19 @@
 </SettingsSection>
 
 <style>
-  :global(.slice-settings) {
-    display: grid;
-    gap: 0.55em;
-  }
-  :is(.control-row, .plane-presets, .vector-control, label) {
+  :is(.plane-presets, .vector-inputs, .range-inputs) {
     display: flex;
     align-items: center;
     gap: 0.35em;
     flex-wrap: wrap;
   }
-  .control-row {
-    gap: 0.7em;
+  .vector-inputs {
+    input {
+      width: 5.5em;
+      min-width: 0;
+    }
   }
-  label > span:first-child {
-    font-size: 0.85em;
-    font-weight: 600;
-  }
-  .wide-control {
-    flex: 1;
-    min-width: 11em;
-  }
-  .wide-control input {
-    flex: 1;
-  }
-  :is(.vector-control > span, .vector-control input) {
-    width: 5.5em;
-  }
-  .range-control input {
+  .range-inputs input {
     width: 6.5em;
   }
   .plane-presets {
@@ -288,6 +281,7 @@
     padding: 0.15em 0.45em;
   }
   .grid-info {
+    grid-column: 1 / -1;
     opacity: 0.7;
     font-size: 0.8em;
   }

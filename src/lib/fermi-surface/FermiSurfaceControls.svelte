@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Cross, Settings } from 'svelte-widgets/icons'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { DraggablePane } from '$lib/overlays'
   import type { CameraProjection } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
@@ -12,30 +12,48 @@
     RepresentationMode,
   } from './types'
 
+  const defaults = {
+    mu: 0,
+    color_property: `band` as ColorProperty,
+    color_scale: `interpolateViridis`,
+    representation: `solid` as RepresentationMode,
+    surface_opacity: 0.8,
+    show_bz: true,
+    bz_opacity: 0.1,
+    show_vectors: true,
+    tile_bz: false,
+    clip_enabled: false,
+    clip_axis: `z` as const,
+    clip_position: 0,
+    clip_flip: false,
+    interpolation_factor: 1,
+    camera_projection: `perspective` as CameraProjection,
+  }
+
   let {
     controls_open = $bindable(false),
     fermi_data,
     band_data,
-    mu = $bindable(0),
-    color_property = $bindable(`band`),
-    color_scale = $bindable(`interpolateViridis`),
+    mu = $bindable(defaults.mu),
+    color_property = $bindable(defaults.color_property),
+    color_scale = $bindable(defaults.color_scale),
     custom_property_label,
-    representation = $bindable(`solid`),
-    surface_opacity = $bindable(0.8),
+    representation = $bindable(defaults.representation),
+    surface_opacity = $bindable(defaults.surface_opacity),
     selected_bands = $bindable(),
-    show_bz = $bindable(true),
-    bz_opacity = $bindable(0.1),
-    show_vectors = $bindable(true),
-    tile_bz = $bindable(false),
+    show_bz = $bindable(defaults.show_bz),
+    bz_opacity = $bindable(defaults.bz_opacity),
+    show_vectors = $bindable(defaults.show_vectors),
+    tile_bz = $bindable(defaults.tile_bz),
     // Clipping plane
-    clip_enabled = $bindable(false),
-    clip_axis = $bindable(`z`),
-    clip_position = $bindable(0),
-    clip_flip = $bindable(false),
+    clip_enabled = $bindable(defaults.clip_enabled),
+    clip_axis = $bindable(defaults.clip_axis),
+    clip_position = $bindable(defaults.clip_position),
+    clip_flip = $bindable(defaults.clip_flip),
     // Interpolation
-    interpolation_factor = $bindable(1),
+    interpolation_factor = $bindable(defaults.interpolation_factor),
     // Camera
-    camera_projection = $bindable(`perspective`),
+    camera_projection = $bindable(defaults.camera_projection),
     on_mu_change,
     on_interpolation_change,
     on_export,
@@ -68,19 +86,25 @@
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
 
+  const export_formats = [
+    [`stl`, `3D printing`],
+    [`obj`, `Wavefront`],
+    [`gltf`, `web/AR`],
+  ] as const
+
   // Color scale options
   const color_scales = [
-    { value: `interpolateViridis`, label: `Viridis` },
-    { value: `interpolatePlasma`, label: `Plasma` },
-    { value: `interpolateInferno`, label: `Inferno` },
-    { value: `interpolateMagma`, label: `Magma` },
-    { value: `interpolateCool`, label: `Cool` },
-    { value: `interpolateWarm`, label: `Warm` },
-    { value: `interpolateRainbow`, label: `Rainbow` },
-    { value: `interpolateTurbo`, label: `Turbo` },
-    { value: `interpolateRdYlBu`, label: `RdYlBu` },
-    { value: `interpolateSpectral`, label: `Spectral` },
-  ]
+    `Viridis`,
+    `Plasma`,
+    `Inferno`,
+    `Magma`,
+    `Cool`,
+    `Warm`,
+    `Rainbow`,
+    `Turbo`,
+    `RdYlBu`,
+    `Spectral`,
+  ].map((label) => ({ value: `interpolate${label}`, label }))
 
   let has_custom_color = $derived(
     Boolean(custom_property_label) ||
@@ -99,7 +123,9 @@
   const available_bands_changed = make_change_detector()
 
   $effect(() => {
-    if (color_property === `custom` && !has_custom_color) color_property = `band`
+    if (color_property === `custom` && !has_custom_color) {
+      color_property = defaults.color_property
+    }
     const bands_changed = available_bands_changed(available_bands_key)
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       selected_bands = [...available_bands]
@@ -132,231 +158,223 @@
 
 <DraggablePane
   bind:open={controls_open}
-  pane_props={{ class: `fermi-controls` }}
+  pane_props={{
+    class: `fermi-controls`,
+    style: `--ctrl-label-w: 8.5em; --ctrl-value-w: 4em;`,
+  }}
   toggle_props={{ class: `controls-toggle`, title: `Fermi surface controls` }}
   open_icon={Cross}
   closed_icon={Settings}
 >
-  <SettingsSection
-    title="Chemical Potential"
-    current_values={{ mu }}
-    on_reset={() => {
-      mu = 0
-      on_mu_change?.(0)
-    }}
-  >
-    <label>
-      <span>μ offset (eV):</span>
-      <input type="range" min="-1" max="1" step="0.01" value={mu} oninput={handle_mu_change} />
-      <input
-        type="number"
-        step="0.01"
-        value={mu}
-        oninput={handle_mu_change}
-        style="width: 4em"
-      />
-    </label>
-    {#if fermi_data}
-      <small>E_F = {fermi_data.fermi_energy.toFixed(3)} eV</small>
-    {/if}
-  </SettingsSection>
-
-  {#if available_bands.length > 0}
+  <SettingsGroup title="Surface" open>
     <SettingsSection
-      title="Bands"
-      current_values={{ selected_bands }}
+      title="Chemical potential"
+      current_values={{ mu }}
       on_reset={() => {
-        selected_bands = [...available_bands]
+        mu = defaults.mu
+        on_mu_change?.(defaults.mu)
       }}
+      layout="grid"
     >
-      <div class="band-checkboxes">
-        {#each available_bands as band_idx (band_idx)}
-          <label class="band-checkbox">
-            <input
-              type="checkbox"
-              checked={selected_bands?.includes(band_idx)}
-              onchange={() => toggle_band(band_idx)}
-            />
-            <span>Band {band_idx}</span>
-          </label>
-        {/each}
-      </div>
-      <div class="band-actions">
-        <button type="button" onclick={() => (selected_bands = [...available_bands])}>
-          All
-        </button>
-        <button type="button" onclick={() => (selected_bands = [])}>None</button>
-      </div>
-    </SettingsSection>
-  {/if}
-
-  <SettingsSection
-    title="Appearance"
-    current_values={{ color_property, representation, surface_opacity }}
-    on_reset={() => {
-      color_property = `band`
-      representation = `solid`
-      surface_opacity = 0.8
-    }}
-  >
-    <label>
-      <span>Color by:</span>
-      <select bind:value={color_property}>
-        <option value="band">Band</option>
-        <option value="velocity">Velocity</option>
-        <option value="spin">Spin</option>
-        {#if has_custom_color}
-          <option value="custom">{custom_property_label ?? `Custom`}</option>
-        {/if}
-      </select>
-    </label>
-    {#if color_property === `velocity` || color_property === `custom`}
       <label>
-        <span>Color scale:</span>
-        <select bind:value={color_scale}>
-          {#each color_scales as scale (scale.value)}
-            <option value={scale.value}>{scale.label}</option>
+        <span>μ offset (eV)</span>
+        <input
+          type="number"
+          step="0.01"
+          value={mu}
+          oninput={handle_mu_change}
+          style="width: 4em"
+        />
+        <input
+          type="range"
+          min="-1"
+          max="1"
+          step="0.01"
+          value={mu}
+          oninput={handle_mu_change}
+        />
+      </label>
+      {#if fermi_data}
+        <small>E_F = {fermi_data.fermi_energy.toFixed(3)} eV</small>
+      {/if}
+    </SettingsSection>
+
+    {#if available_bands.length > 0}
+      <SettingsSection
+        title="Bands"
+        current_values={{ selected_bands }}
+        on_reset={() => {
+          selected_bands = [...available_bands]
+        }}
+        layout="grid"
+      >
+        <div class="band-checkboxes">
+          {#each available_bands as band_idx (band_idx)}
+            <label class="band-checkbox">
+              <input
+                type="checkbox"
+                checked={selected_bands?.includes(band_idx)}
+                onchange={() => toggle_band(band_idx)}
+              />
+              <span>Band {band_idx}</span>
+            </label>
           {/each}
-        </select>
-      </label>
+        </div>
+        <div class="band-actions">
+          <button type="button" onclick={() => (selected_bands = [...available_bands])}>
+            All
+          </button>
+          <button type="button" onclick={() => (selected_bands = [])}>None</button>
+        </div>
+      </SettingsSection>
     {/if}
-    <label>
-      <span>Style:</span>
-      <select bind:value={representation}>
-        <option value="solid">Solid</option>
-        <option value="wireframe">Wireframe</option>
-        <option value="transparent">Transparent</option>
-      </select>
-    </label>
-    <label>
-      <span>Opacity:</span>
-      <input type="range" min="0.1" max="1" step="0.05" bind:value={surface_opacity} />
-      <span class="value">{surface_opacity.toFixed(2)}</span>
-    </label>
-  </SettingsSection>
 
-  <SettingsSection
-    title="Brillouin Zone"
-    current_values={{ show_bz, bz_opacity, show_vectors, tile_bz }}
-    on_reset={() => {
-      show_bz = true
-      bz_opacity = 0.1
-      show_vectors = true
-      tile_bz = false
-    }}
-  >
-    <label>
-      <span>Show BZ:</span>
-      <input type="checkbox" bind:checked={show_bz} />
-    </label>
-    {#if show_bz}
-      <label>
-        <span>BZ Opacity:</span>
-        <input type="range" min="0" max="0.5" step="0.01" bind:value={bz_opacity} />
-        <span class="value">{bz_opacity.toFixed(2)}</span>
-      </label>
-    {/if}
-    <label>
-      <span>Show Vectors:</span>
-      <input type="checkbox" bind:checked={show_vectors} />
-    </label>
-    <label
-      title="Tile Fermi surface from irreducible part to fill full Brillouin zone using symmetry"
-    >
-      <span>Tile to full BZ:</span>
-      <input type="checkbox" bind:checked={tile_bz} />
-    </label>
-  </SettingsSection>
-
-  <SettingsSection
-    title="Clipping Plane"
-    current_values={{ clip_enabled, clip_axis, clip_position, clip_flip }}
-    on_reset={() => {
-      clip_enabled = false
-      clip_axis = `z`
-      clip_position = 0
-      clip_flip = false
-    }}
-  >
-    <label>
-      <span>Enable:</span>
-      <input type="checkbox" bind:checked={clip_enabled} />
-    </label>
-    {#if clip_enabled}
-      <label>
-        <span>Axis:</span>
-        <select bind:value={clip_axis}>
-          <option value="x">X</option>
-          <option value="y">Y</option>
-          <option value="z">Z</option>
-        </select>
-      </label>
-      <label>
-        <span>Position:</span>
-        <input type="range" min="-1" max="1" step="0.01" bind:value={clip_position} />
-        <span class="value">{clip_position.toFixed(2)}</span>
-      </label>
-      <label>
-        <span>Flip:</span>
-        <input type="checkbox" bind:checked={clip_flip} />
-      </label>
-    {/if}
-  </SettingsSection>
-
-  {#if band_data}
     <SettingsSection
-      title="Interpolation"
-      current_values={{ interpolation_factor }}
-      on_reset={() => {
-        interpolation_factor = 1
-        on_interpolation_change?.(1)
-      }}
+      title="Appearance"
+      current_values={{ color_property, representation, surface_opacity }}
+      on_reset={() => ({ color_property, representation, surface_opacity } = defaults)}
+      layout="grid"
     >
       <label>
-        <span>Grid density:</span>
-        <select
-          value={interpolation_factor}
-          onchange={(event) => {
-            const val = parseFloat(event.currentTarget.value)
-            if (!Number.isFinite(val)) return
-            interpolation_factor = val
-            on_interpolation_change?.(val)
-          }}
-        >
-          <option value={1}>1× (original)</option>
-          <option value={1.5}>1.5×</option>
-          <option value={2}>2×</option>
-          <option value={3}>3×</option>
-          <option value={4}>4×</option>
+        <span>Color by</span>
+        <select bind:value={color_property}>
+          <option value="band">Band</option>
+          <option value="velocity">Velocity</option>
+          <option value="spin">Spin</option>
+          {#if has_custom_color}
+            <option value="custom">{custom_property_label ?? `Custom`}</option>
+          {/if}
         </select>
       </label>
-      <small>Higher = smoother surface, slower</small>
+      {#if color_property === `velocity` || color_property === `custom`}
+        <label>
+          <span>Color scale</span>
+          <select bind:value={color_scale}>
+            {#each color_scales as scale (scale.value)}
+              <option value={scale.value}>{scale.label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <label>
+        <span>Style</span>
+        <select bind:value={representation}>
+          <option value="solid">Solid</option>
+          <option value="wireframe">Wireframe</option>
+          <option value="transparent">Transparent</option>
+        </select>
+      </label>
+      <label>
+        <span>Opacity</span>
+        <span class="value">{surface_opacity.toFixed(2)}</span>
+        <input type="range" min="0.1" max="1" step="0.05" bind:value={surface_opacity} />
+      </label>
     </SettingsSection>
-  {/if}
 
-  <SettingsSection title="Export" current_values={{}}>
+    <SettingsSection
+      title="Brillouin zone"
+      current_values={{ show_bz, bz_opacity, show_vectors, tile_bz }}
+      on_reset={() => ({ show_bz, bz_opacity, show_vectors, tile_bz } = defaults)}
+      layout="grid"
+    >
+      <label>
+        <span>Show BZ</span>
+        <input type="checkbox" bind:checked={show_bz} />
+      </label>
+      {#if show_bz}
+        <label>
+          <span>BZ opacity</span>
+          <span class="value">{bz_opacity.toFixed(2)}</span>
+          <input type="range" min="0" max="0.5" step="0.01" bind:value={bz_opacity} />
+        </label>
+      {/if}
+      <label>
+        <span>Show vectors</span>
+        <input type="checkbox" bind:checked={show_vectors} />
+      </label>
+      <label
+        title="Tile Fermi surface from irreducible part to fill full Brillouin zone using symmetry"
+      >
+        <span>Tile to full BZ</span>
+        <input type="checkbox" bind:checked={tile_bz} />
+      </label>
+    </SettingsSection>
+
+    <SettingsSection
+      title="Clipping plane"
+      current_values={{ clip_enabled, clip_axis, clip_position, clip_flip }}
+      on_reset={() => ({ clip_enabled, clip_axis, clip_position, clip_flip } = defaults)}
+      layout="grid"
+    >
+      <label>
+        <span>Enable</span>
+        <input type="checkbox" bind:checked={clip_enabled} />
+      </label>
+      {#if clip_enabled}
+        <label>
+          <span>Axis</span>
+          <select bind:value={clip_axis}>
+            <option value="x">X</option>
+            <option value="y">Y</option>
+            <option value="z">Z</option>
+          </select>
+        </label>
+        <label>
+          <span>Position</span>
+          <span class="value">{clip_position.toFixed(2)}</span>
+          <input type="range" min="-1" max="1" step="0.01" bind:value={clip_position} />
+        </label>
+        <label>
+          <span>Flip</span>
+          <input type="checkbox" bind:checked={clip_flip} />
+        </label>
+      {/if}
+    </SettingsSection>
+
+    {#if band_data}
+      <SettingsSection
+        title="Interpolation"
+        current_values={{ interpolation_factor }}
+        on_reset={() => {
+          interpolation_factor = defaults.interpolation_factor
+          on_interpolation_change?.(defaults.interpolation_factor)
+        }}
+        layout="grid"
+      >
+        <label>
+          <span>Grid density</span>
+          <select
+            value={interpolation_factor}
+            onchange={(event) => {
+              const val = parseFloat(event.currentTarget.value)
+              if (!Number.isFinite(val)) return
+              interpolation_factor = val
+              on_interpolation_change?.(val)
+            }}
+          >
+            <option value={1}>1× (original)</option>
+            <option value={1.5}>1.5×</option>
+            <option value={2}>2×</option>
+            <option value={3}>3×</option>
+            <option value={4}>4×</option>
+          </select>
+        </label>
+        <small>Higher = smoother surface, slower</small>
+      </SettingsSection>
+    {/if}
+  </SettingsGroup>
+
+  <SettingsSection title="Export" layout="grid">
     <div class="export-buttons">
-      <button
-        type="button"
-        onclick={() => on_export?.(`stl`)}
-        title="Export as STL (3D printing)"
-      >
-        STL
-      </button>
-      <button
-        type="button"
-        onclick={() => on_export?.(`obj`)}
-        title="Export as OBJ (Wavefront)"
-      >
-        OBJ
-      </button>
-      <button
-        type="button"
-        onclick={() => on_export?.(`gltf`)}
-        title="Export as GLTF (web/AR)"
-      >
-        GLTF
-      </button>
+      {#each export_formats as [format, blurb] (format)}
+        <button
+          type="button"
+          onclick={() => on_export?.(format)}
+          title="Export as {format.toUpperCase()} ({blurb})"
+        >
+          {format.toUpperCase()}
+        </button>
+      {/each}
     </div>
     <small>Export visible Fermi surfaces</small>
   </SettingsSection>
@@ -364,12 +382,11 @@
   <SettingsSection
     title="Camera"
     current_values={{ camera_projection }}
-    on_reset={() => {
-      camera_projection = `perspective`
-    }}
+    on_reset={() => ({ camera_projection } = defaults)}
+    layout="grid"
   >
     <label>
-      <span>Projection:</span>
+      <span>Projection</span>
       <select bind:value={camera_projection}>
         <option value="perspective">Perspective</option>
         <option value="orthographic">Orthographic</option>
@@ -381,6 +398,9 @@
 </DraggablePane>
 
 <style>
+  :is(.band-checkboxes, .band-actions, .export-buttons, small) {
+    grid-column: 1 / -1;
+  }
   .band-checkboxes {
     display: flex;
     flex-wrap: wrap;
@@ -404,12 +424,6 @@
   small {
     color: var(--text-color-muted, #888);
     font-size: 0.85em;
-  }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    flex-wrap: wrap;
   }
   .value {
     min-width: 3em;

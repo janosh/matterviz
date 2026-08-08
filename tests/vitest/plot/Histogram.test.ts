@@ -216,9 +216,18 @@ describe(`Histogram`, () => {
       bins: 5,
       x2_axis: { label: `Mass (lbs)` },
       mode: `overlay`,
+      show_controls: true,
+      controls_open: true,
     })
     await tick()
     expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
+    const scale_type_sections = document.querySelectorAll(`[data-testid="scale-type-section"]`)
+    expect(scale_type_sections).toHaveLength(1)
+    expect(
+      [...scale_type_sections[0].querySelectorAll(`label > span:first-child`)].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual([`X`, `X2`, `Y`])
     const x_ticks = get_tick_numbers(`x`)
     expect(x_ticks.length).toBeGreaterThan(0)
     expect(Math.max(...x_ticks)).toBeLessThan(100)

@@ -56,17 +56,17 @@
           show_node_labels,
         } = DEFAULTS.sankey)
       }}
-      style="display: flex; flex-wrap: wrap; gap: 2ex"
+      layout="grid"
     >
-      <label style="flex: 1">
-        Orientation:
+      <label>
+        <span>Orientation</span>
         <select bind:value={orientation}>
           <option value="horizontal">Horizontal</option>
           <option value="vertical">Vertical</option>
         </select>
       </label>
-      <label style="flex: 1">
-        Node align:
+      <label>
+        <span>Node align</span>
         <select bind:value={node_align}>
           <option value="justify">Justify</option>
           <option value="left">Left</option>
@@ -74,30 +74,18 @@
           <option value="center">Center</option>
         </select>
       </label>
-      <NumberRangeInput
-        min={4}
-        max={60}
-        step={1}
-        bind:value={node_width}
-        style="flex: 1 1 100%">Node width:</NumberRangeInput
+      <NumberRangeInput min={4} max={60} step={1} bind:value={node_width}
+        >Node width</NumberRangeInput
       >
-      <NumberRangeInput
-        min={0}
-        max={40}
-        step={1}
-        bind:value={node_padding}
-        style="flex: 1 1 100%">Node padding:</NumberRangeInput
+      <NumberRangeInput min={0} max={40} step={1} bind:value={node_padding}
+        >Node padding</NumberRangeInput
       >
-      <NumberRangeInput
-        min={0.05}
-        max={1}
-        step={0.05}
-        bind:value={link_opacity}
-        style="flex: 1 1 100%">Link opacity:</NumberRangeInput
+      <NumberRangeInput min={0.05} max={1} step={0.05} bind:value={link_opacity}
+        >Link opacity</NumberRangeInput
       >
-      <label style="flex: 1 1 100%">
+      <label>
+        <span>Show node labels</span>
         <input type="checkbox" bind:checked={show_node_labels} />
-        Show node labels
       </label>
     </SettingsSection>
   </ControlPane>

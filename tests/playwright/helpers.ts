@@ -174,12 +174,20 @@ async function open_draggable_pane(
   return { container, pane_div }
 }
 
-export const open_structure_control_pane = (page: Page) =>
-  open_draggable_pane(page, {
+// The pane ships with only the Appearance group expanded. Tests reach across every group, so
+// unfold them all here rather than teaching each test which group its control lives in — the
+// collapsed defaults themselves are covered by a dedicated test.
+export const open_structure_control_pane = async (page: Page) => {
+  const opened = await open_draggable_pane(page, {
     pane_selector: `.controls-pane`,
     parent_selector: `#test-structure`,
     checkbox_text: `Controls Open`,
   })
+  await opened.pane_div.locator(`details.settings-group:not([open])`).evaluateAll((groups) => {
+    for (const group of groups) (group as HTMLDetailsElement).open = true
+  })
+  return opened
+}
 
 export const open_structure_export_pane = (page: Page) =>
   open_draggable_pane(page, {
@@ -188,9 +196,10 @@ export const open_structure_export_pane = (page: Page) =>
     toggle_selector: `.structure-export-toggle`,
   })
 
-// Get range inputs for axis controls
+// Get range inputs for axis controls. Matched on the label's own span, exactly: the text is
+// no longer suffixed with a colon, and substring matching would make `X` also select `X2`.
 export function get_axis_range_inputs(pane: Locator, axis_label: string) {
-  const inputs = pane.locator(`label:has-text("${axis_label}:") input.range-input`)
+  const inputs = pane.locator(`label:has(> span:text-is("${axis_label}")) input.range-input`)
   return { min: inputs.first(), max: inputs.last() }
 }
 

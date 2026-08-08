@@ -1,6 +1,6 @@
 import type { PhaseDiagramData } from '$lib/phase-diagram'
 import { PhaseDiagramControls } from '$lib/phase-diagram'
-import { mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 // Sample phase diagram data for testing
@@ -43,35 +43,24 @@ const sample_data: PhaseDiagramData = {
   ],
 }
 
-describe(`PhaseDiagramControls`, () => {
-  test.each([
-    { section: `Visibility`, labels: [`Boundaries`, `Labels`, `Grid`, `Comp. Labels`] },
-    { section: `Appearance`, labels: [`Font size`] },
-    { section: `Colors`, labels: [`Background`, `Boundaries`] },
-    {
-      section: `Tie-line Display`,
-      labels: [`Line width`, `Endpoint radius`, `Cursor radius`],
-    },
-    { section: `Axes`, labels: [`X-axis ticks`, `Y-axis ticks`] },
-    { section: `Export`, labels: [`PNG DPI`] },
-  ])(`renders $section section with its controls when open`, ({ section, labels }) => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true, enable_export: true },
-    })
+const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {}) => {
+  const target = document.createElement(`div`)
+  mount(PhaseDiagramControls, { target, props: { controls_open: true, ...props } })
+  return target
+}
 
-    for (const text of [section, ...labels]) expect(target.innerHTML).toContain(text)
+describe(`PhaseDiagramControls`, () => {
+  test(`renders sections and controls when open`, () => {
+    const target = mount_controls({ enable_export: true })
+    const expected_text =
+      `Visibility|Labels|Grid|Comp. labels|Appearance|Font size|Colors|Background|` +
+      `Boundaries|Tie-line display|Line width|Endpoint radius|Cursor radius|Axes|` +
+      `X-axis ticks|Y-axis ticks|Export|PNG DPI`
+    for (const text of expected_text.split(`|`)) expect(target.textContent).toContain(text)
   })
 
   test(`hides export section when enable_export is false`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true, enable_export: false },
-    })
-
-    // Export section header should not be present
+    const target = mount_controls({ enable_export: false })
     const export_regex = /<h4[^>]*>Export<\/h4>/i
     expect(target.innerHTML).not.toMatch(export_regex)
   })
@@ -79,31 +68,20 @@ describe(`PhaseDiagramControls`, () => {
   test.each([
     { data: sample_data, expected: true, desc: `with special_points` },
     { data: { ...sample_data, special_points: [] }, expected: false, desc: `without` },
-  ])(`Special Pts toggle shown=$expected $desc`, ({ data, expected }) => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true, data },
-    })
-
+  ])(`Special pts toggle shown=$expected $desc`, ({ data, expected }) => {
+    const target = mount_controls({ data })
     const visibility_grid = target.querySelector(`.visibility-grid`)
     expect(visibility_grid).toBeInstanceOf(HTMLElement)
-    expect(visibility_grid?.innerHTML.includes(`Special Pts`)).toBe(expected)
+    expect(visibility_grid?.innerHTML.includes(`Special pts`)).toBe(expected)
   })
 
   test.each([
     [`Boundaries`, true],
     [`Labels`, true],
     [`Grid`, true],
-    [`Comp. Labels`, true],
+    [`Comp. labels`, true],
   ])(`checkbox "%s" defaults to %s`, (label_text, expected_value) => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    // Find the checkbox by its label text
+    const target = mount_controls()
     const checkboxes = target.querySelectorAll(`input[type="checkbox"]`)
     expect(checkboxes.length).toBeGreaterThan(0)
 
@@ -117,15 +95,10 @@ describe(`PhaseDiagramControls`, () => {
   })
 
   test(`renders with custom config values`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: {
-        controls_open: true,
-        config: {
-          font_size: 16,
-          special_point_radius: 8,
-        },
+    const target = mount_controls({
+      config: {
+        font_size: 16,
+        special_point_radius: 8,
       },
     })
 
@@ -136,37 +109,29 @@ describe(`PhaseDiagramControls`, () => {
     expect(font_size_input?.value).toBe(`16`)
   })
 
-  test(`uses component names from data in title`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: {
-        controls_open: true,
-        data: sample_data,
-      },
-    })
+  test(`keeps the DPI input and readout inline while de-emphasizing only the readout`, () => {
+    const target = mount_controls({ enable_export: true })
+    const dpi_value = target.querySelector<HTMLElement>(`.dpi-value`)
+    const input = dpi_value?.querySelector(`input`)
+    const readout = dpi_value?.querySelector(`span`)
+    if (!dpi_value || !input || !readout) throw new Error(`DPI controls are missing`)
+    expect(dpi_value.style.display).toBe(`inline-flex`)
+    expect(input.style.opacity).not.toBe(`0.8`)
+    expect(readout.style.opacity).toBe(`0.8`)
+  })
 
+  test(`uses component names from data in title`, () => {
+    const target = mount_controls({ data: sample_data })
     expect(target.innerHTML).toContain(`Cu-Ni`)
   })
 
   test(`shows generic title when no data provided`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: true },
-    })
-
-    expect(target.innerHTML).toContain(`Phase Diagram Controls`)
+    const target = mount_controls()
+    expect(target.innerHTML).toContain(`Phase diagram controls`)
   })
 
   test(`hides pane content when controls_open is false`, () => {
-    const target = document.createElement(`div`)
-    mount(PhaseDiagramControls, {
-      target,
-      props: { controls_open: false },
-    })
-
-    // The pane should be hidden (display: none)
+    const target = mount_controls({ controls_open: false })
     const pane = target.querySelector(`.draggable-pane`) as HTMLElement
     expect(pane).toBeInstanceOf(HTMLElement)
     expect(pane?.style.display).toBe(`none`)

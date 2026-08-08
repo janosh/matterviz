@@ -4,8 +4,7 @@
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
-  import NumberRangeInput from '$lib/layout/NumberRangeInput.svelte'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import { NumberRangeInput, SettingsGroup, SettingsSection } from '$lib/layout'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -92,12 +91,26 @@
   const component_b = $derived(data?.components?.[1])
   const title = $derived(
     component_a && component_b
-      ? `${component_a}-${component_b} Phase Diagram`
-      : `Phase Diagram Controls`,
+      ? `${component_a}-${component_b} phase diagram`
+      : `Phase diagram controls`,
   )
   const temp_unit = $derived(data?.temperature_unit ?? `K`)
   const comp_unit = $derived(data?.composition_unit ?? `at%`)
   const has_special_points = $derived((data?.special_points?.length ?? 0) > 0)
+
+  // [tie_line config key, row label, tooltip, min, max, step]
+  const tie_line_rows = [
+    [`stroke_width`, `Line width`, `Thickness of the tie-line`, 0.5, 5, 0.5],
+    [
+      `endpoint_radius`,
+      `Endpoint radius`,
+      `Radius of phase boundary endpoint markers`,
+      2,
+      10,
+      1,
+    ],
+    [`cursor_radius`, `Cursor radius`, `Radius of the cursor position marker`, 2, 10, 1],
+  ] as const
 </script>
 
 <DraggablePane
@@ -120,104 +133,104 @@
 
   {@render children?.({ controls_open })}
 
-  <!-- Visibility Section -->
-  <SettingsSection
-    title="Visibility"
-    current_values={{
-      show_boundaries,
-      show_labels,
-      show_special_points,
-      show_grid,
-      show_component_labels,
-    }}
-    on_reset={() => {
-      show_boundaries = PHASE_DIAGRAM_DEFAULTS.show_boundaries
-      show_labels = PHASE_DIAGRAM_DEFAULTS.show_labels
-      show_special_points = PHASE_DIAGRAM_DEFAULTS.show_special_points
-      show_grid = PHASE_DIAGRAM_DEFAULTS.show_grid
-      show_component_labels = PHASE_DIAGRAM_DEFAULTS.show_component_labels
-    }}
-  >
-    <div class="visibility-grid">
+  <SettingsGroup title="Diagram" open>
+    <SettingsSection
+      title="Visibility"
+      current_values={{
+        show_boundaries,
+        show_labels,
+        show_special_points,
+        show_grid,
+        show_component_labels,
+      }}
+      on_reset={() =>
+        ({
+          show_boundaries,
+          show_labels,
+          show_special_points,
+          show_grid,
+          show_component_labels,
+        } = PHASE_DIAGRAM_DEFAULTS)}
+      layout="grid"
+      class="visibility-grid"
+    >
       <label {@attach tooltip({ content: `Show phase boundary lines` })}>
+        <span>Boundaries</span>
         <input type="checkbox" bind:checked={show_boundaries} />
-        Boundaries
       </label>
       <label {@attach tooltip({ content: `Show phase region labels` })}>
+        <span>Labels</span>
         <input type="checkbox" bind:checked={show_labels} />
-        Labels
       </label>
       <label {@attach tooltip({ content: `Show background grid lines` })}>
+        <span>Grid</span>
         <input type="checkbox" bind:checked={show_grid} />
-        Grid
       </label>
       {#if has_special_points}
         <label {@attach tooltip({ content: `Show eutectic/peritectic points` })}>
+          <span>Special pts</span>
           <input type="checkbox" bind:checked={show_special_points} />
-          Special Pts
         </label>
       {/if}
       <label {@attach tooltip({ content: `Show component labels at axes` })}>
+        <span>Comp. labels</span>
         <input type="checkbox" bind:checked={show_component_labels} />
-        Comp. Labels
       </label>
-    </div>
-  </SettingsSection>
+    </SettingsSection>
 
-  <!-- Appearance Section -->
-  <SettingsSection
-    title="Appearance"
-    current_values={{
-      font_size: merged_config.font_size,
-      special_point_radius: merged_config.special_point_radius,
-    }}
-    on_reset={() => {
-      update_config(`font_size`, PHASE_DIAGRAM_DEFAULTS.font_size)
-      update_config(`special_point_radius`, PHASE_DIAGRAM_DEFAULTS.special_point_radius)
-    }}
-  >
-    <NumberRangeInput
-      min={8}
-      max={20}
-      step={1}
-      title="Font size for axis labels and tick marks"
-      bind:value={() => merged_config.font_size, (val) => update_config(`font_size`, val)}
-      >Font size</NumberRangeInput
+    <SettingsSection
+      title="Appearance"
+      current_values={{
+        font_size: merged_config.font_size,
+        special_point_radius: merged_config.special_point_radius,
+      }}
+      on_reset={() => {
+        update_config(`font_size`, PHASE_DIAGRAM_DEFAULTS.font_size)
+        update_config(`special_point_radius`, PHASE_DIAGRAM_DEFAULTS.special_point_radius)
+      }}
+      layout="grid"
     >
-    {#if has_special_points}
       <NumberRangeInput
-        min={2}
-        max={12}
+        min={8}
+        max={20}
         step={1}
-        title="Radius of special point markers (eutectic, peritectic, etc.)"
-        bind:value={
-          () => merged_config.special_point_radius,
-          (val) => update_config(`special_point_radius`, val)
-        }>Special pt radius</NumberRangeInput
+        title="Font size for axis labels and tick marks"
+        bind:value={() => merged_config.font_size, (val) => update_config(`font_size`, val)}
+        >Font size</NumberRangeInput
       >
-    {/if}
-  </SettingsSection>
+      {#if has_special_points}
+        <NumberRangeInput
+          min={2}
+          max={12}
+          step={1}
+          title="Radius of special point markers (eutectic, peritectic, etc.)"
+          bind:value={
+            () => merged_config.special_point_radius,
+            (val) => update_config(`special_point_radius`, val)
+          }>Special pt radius</NumberRangeInput
+        >
+      {/if}
+    </SettingsSection>
 
-  <!-- Colors Section -->
-  {@const color_options = [
-    [`background`, `#ffffff`, `Background`, `Background color of the plot area`],
-    [`grid`, `#888888`, `Grid`, `Color of grid lines`],
-    [`boundary`, `#333333`, `Boundaries`, `Color of phase boundary lines`],
-    [`special_point`, `#d32f2f`, `Special Pts`, `Color of special point markers`],
-    [`axis`, `#333333`, `Axis`, `Color of axis lines`],
-    [`text`, `#333333`, `Text`, `Color of text labels`],
-  ] as const}
-  <SettingsSection
-    title="Colors"
-    current_values={{ ...merged_config.colors }}
-    on_reset={() => {
-      config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } }
-    }}
-  >
-    <div class="color-grid">
+    {@const color_options = [
+      [`background`, `#ffffff`, `Background`, `Background color of the plot area`],
+      [`grid`, `#888888`, `Grid`, `Color of grid lines`],
+      [`boundary`, `#333333`, `Boundaries`, `Color of phase boundary lines`],
+      [`special_point`, `#d32f2f`, `Special pts`, `Color of special point markers`],
+      [`axis`, `#333333`, `Axis`, `Color of axis lines`],
+      [`text`, `#333333`, `Text`, `Color of text labels`],
+    ] as const}
+    <SettingsSection
+      title="Colors"
+      current_values={{ ...merged_config.colors }}
+      on_reset={() => {
+        config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } }
+      }}
+      layout="grid"
+    >
       {#each color_options as [key, fallback, label, tip] (key)}
         <label {@attach tooltip({ content: tip })}>
-          {label}
+          <span>{label}</span>
           <input
             type="color"
             value={css_color_to_hex(merged_config.colors[key], fallback)}
@@ -225,86 +238,70 @@
           />
         </label>
       {/each}
-    </div>
-  </SettingsSection>
+    </SettingsSection>
+  </SettingsGroup>
 
-  <!-- Tie-line Section -->
-  <SettingsSection
-    title="Tie-line Display"
-    current_values={{
-      ...merged_config.tie_line,
-      lever_rule_mode,
-    }}
-    on_reset={() => {
-      config = {
-        ...config,
-        tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line },
-      }
-      lever_rule_mode = `horizontal`
-    }}
-  >
-    <span {@attach tooltip({ content: `Direction of the lever rule tie-line` })}>
-      Direction
-      <div class="pane-row">
-        <label>
-          <input type="radio" bind:group={lever_rule_mode} value="horizontal" />
-          Horizontal
-        </label>
-        <label>
-          <input type="radio" bind:group={lever_rule_mode} value="vertical" />
-          Vertical
-        </label>
+  <SettingsGroup title="Interaction" open>
+    <SettingsSection
+      title="Tie-line display"
+      current_values={{
+        ...merged_config.tie_line,
+        lever_rule_mode,
+      }}
+      on_reset={() => {
+        config = {
+          ...config,
+          tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line },
+        }
+        lever_rule_mode = `horizontal`
+      }}
+      layout="grid"
+    >
+      <div
+        class="setting"
+        {@attach tooltip({ content: `Direction of the lever rule tie-line` })}
+      >
+        <span>Direction</span>
+        <div class="pane-row">
+          <label>
+            <input type="radio" bind:group={lever_rule_mode} value="horizontal" />
+            Horizontal
+          </label>
+          <label>
+            <input type="radio" bind:group={lever_rule_mode} value="vertical" />
+            Vertical
+          </label>
+        </div>
       </div>
-    </span>
-    <NumberRangeInput
-      min={0.5}
-      max={5}
-      step={0.5}
-      title="Thickness of the tie-line"
-      bind:value={
-        () => merged_config.tie_line.stroke_width,
-        (val) => update_nested(`tie_line`, `stroke_width`, val)
-      }>Line width</NumberRangeInput
-    >
-    <NumberRangeInput
-      min={2}
-      max={10}
-      step={1}
-      title="Radius of phase boundary endpoint markers"
-      bind:value={
-        () => merged_config.tie_line.endpoint_radius,
-        (val) => update_nested(`tie_line`, `endpoint_radius`, val)
-      }>Endpoint radius</NumberRangeInput
-    >
-    <NumberRangeInput
-      min={2}
-      max={10}
-      step={1}
-      title="Radius of the cursor position marker"
-      bind:value={
-        () => merged_config.tie_line.cursor_radius,
-        (val) => update_nested(`tie_line`, `cursor_radius`, val)
-      }>Cursor radius</NumberRangeInput
-    >
-  </SettingsSection>
+      {#each tie_line_rows as [key, label, title, min, max, step] (key)}
+        <NumberRangeInput
+          {min}
+          {max}
+          {step}
+          {title}
+          bind:value={
+            () => merged_config.tie_line[key], (val) => update_nested(`tie_line`, key, val)
+          }>{label}</NumberRangeInput
+        >
+      {/each}
+    </SettingsSection>
 
-  <!-- Axis Configuration Section -->
-  {@const axis_configs = [
-    [x_axis, `x`, comp_unit, `composition`],
-    [y_axis, `y`, temp_unit, `temperature`],
-  ] as const}
-  <SettingsSection
-    title="Axes"
-    current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
-    on_reset={() => {
-      x_axis = { ...x_axis, ticks: PHASE_DIAGRAM_DEFAULTS.x_ticks }
-      y_axis = { ...y_axis, ticks: PHASE_DIAGRAM_DEFAULTS.y_ticks }
-    }}
-  >
-    <div class="pane-row">
+    {@const axis_configs = [
+      [x_axis, `x`, comp_unit, `composition`],
+      [y_axis, `y`, temp_unit, `temperature`],
+    ] as const}
+    <SettingsSection
+      title="Axes"
+      current_values={{ x_ticks: x_axis.ticks, y_ticks: y_axis.ticks }}
+      on_reset={() => {
+        x_axis = { ...x_axis, ticks: PHASE_DIAGRAM_DEFAULTS.x_ticks }
+        y_axis = { ...y_axis, ticks: PHASE_DIAGRAM_DEFAULTS.y_ticks }
+      }}
+      layout="grid"
+    >
       {#each axis_configs as [axis_cfg, axis_name, unit, desc] (axis_name)}
         <label {@attach tooltip({ content: `Ticks on ${desc} axis (${unit})` })}>
-          {axis_name.toUpperCase()}-axis ticks
+          <span>{axis_name.toUpperCase()}-axis ticks</span>
           <input
             type="number"
             min={2}
@@ -318,10 +315,9 @@
           />
         </label>
       {/each}
-    </div>
-  </SettingsSection>
+    </SettingsSection>
+  </SettingsGroup>
 
-  <!-- Export Section (if enabled) -->
   {#if enable_export}
     <SettingsSection
       title="Export"
@@ -329,26 +325,19 @@
       on_reset={() => {
         png_dpi = PHASE_DIAGRAM_DEFAULTS.png_dpi
       }}
+      layout="grid"
     >
       <label
         {@attach tooltip({
           content: `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.`,
         })}
       >
-        PNG DPI
-        <input
-          type="number"
-          min={72}
-          max={600}
-          step={50}
-          style="width: 3.5em"
-          bind:value={png_dpi}
-        />
+        <span>PNG DPI</span>
+        <span class="dpi-value" style="display: inline-flex; align-items: baseline; gap: 1pt">
+          <input type="number" min={72} max={600} step={50} bind:value={png_dpi} />
+          <span style="font-size: 0.85em; opacity: 0.8">{format_num(png_dpi, `d`)} dpi</span>
+        </span>
         <input type="range" min={72} max={600} step={50} bind:value={png_dpi} />
-        <span style="font-size: 0.85em; opacity: 0.7"
-          >{format_num(png_dpi, `d`)}
-          dpi</span
-        >
       </label>
     </SettingsSection>
   {/if}
@@ -362,11 +351,8 @@
     max-width: 320px;
     --pane-padding: 10px;
     --pane-gap: 4px;
-  }
-  :global(.phase-diagram-controls-pane section) {
-    display: flex;
-    flex-direction: column;
-    gap: 4pt;
+    --ctrl-label-w: 8.5em;
+    --ctrl-value-w: 5.5em;
   }
   :global(.phase-diagram-controls-pane h4) {
     margin: 6pt 0 2pt !important;
@@ -377,26 +363,11 @@
   .pane-row {
     display: flex;
     gap: 12pt;
-  }
-  .visibility-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4pt 10pt;
-  }
-  .color-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6pt;
-  }
-  .color-grid label {
-    flex-direction: column;
-    align-items: center;
-    font-size: 0.9em;
-  }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 6pt;
+    label {
+      display: flex;
+      align-items: center;
+      gap: 4pt;
+    }
   }
   input {
     font-size: inherit;
@@ -406,7 +377,6 @@
     width: 3.5em;
   }
   input[type='range'] {
-    flex: 1;
     min-width: 40px;
   }
   input[type='color'] {

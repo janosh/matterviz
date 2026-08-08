@@ -3,11 +3,7 @@
   import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { Orientation, PlotControlsProps } from '$lib/plot/core/types'
-  import { unique_id } from '$lib/plot/core/utils'
-  import type { Snippet } from 'svelte'
-
-  // Unique ID prefix to avoid conflicts when multiple instances on same page
-  const uid = unique_id(`bar-ctrl`)
+  import { type Snippet, untrack } from 'svelte'
 
   let {
     orientation = $bindable(`vertical`),
@@ -28,6 +24,8 @@
     controls_open?: boolean
     children?: Snippet<[{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]>
   } = $props()
+
+  const initial_layout = untrack(() => ({ orientation, mode }))
 </script>
 
 <PlotControls
@@ -44,21 +42,25 @@
   <SettingsSection
     title="Layout"
     current_values={{ orientation, mode }}
-    style="display: flex; gap: 2ex"
+    on_reset={() => {
+      orientation = initial_layout.orientation
+      mode = initial_layout.mode
+    }}
+    layout="grid"
   >
-    <label style="flex: 1">
-      Orientation:
-      <select bind:value={orientation} id="{uid}-orientation">
+    <label>
+      <span>Orientation</span>
+      <select bind:value={orientation}>
         <option value="vertical">Vertical</option>
         <option value="horizontal">Horizontal</option>
       </select>
     </label>
-    <label style="flex: 1">
-      Mode:
-      <select bind:value={mode} id="{uid}-mode">
+    <label>
+      <span>Mode</span>
+      <select bind:value={mode}>
         <option value="overlay">Overlay</option>
         <option value="stacked">Stacked</option>
-        <option value="grouped">Grouped (Side-by-Side)</option>
+        <option value="grouped">Grouped (side-by-side)</option>
       </select>
     </label>
   </SettingsSection>

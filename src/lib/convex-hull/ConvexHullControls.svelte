@@ -3,9 +3,9 @@
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import { SettingsSection } from '$lib/layout'
   import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
-  import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { get_entry_category, marker_path_data } from './helpers'
@@ -147,7 +147,53 @@
     evt.preventDefault()
     action()
   }
+
+  // Camera rows by diagram dimensionality: ternary tilts by elevation/azimuth in degrees,
+  // quaternary by two rotation angles in radians
+  type CameraField = readonly [
+    key: keyof CameraState,
+    label: string,
+    tip: string,
+    step: number,
+    // digits, not a d3 format: format_num emits a unicode minus that <input type=number> rejects
+    digits: number,
+    suffix?: string,
+    min?: number,
+    max?: number,
+  ]
+  const ELEV_TIP = `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`
+  const TILT_TIP = `Vertical tilt (up/down rotation)`
+  const MAX_TILT = Math.PI / 3
+  let camera_fields = $derived<readonly CameraField[]>(
+    camera?.elevation !== undefined && camera.azimuth !== undefined
+      ? [
+          [`elevation`, `Elev`, ELEV_TIP, 5, 0, `°`],
+          [`azimuth`, `Azim`, `Azimuth rotation around z-axis`, 15, 0, `°`],
+        ]
+      : [
+          [`rotation_x`, `φ`, TILT_TIP, 0.1, 2, undefined, -MAX_TILT, MAX_TILT],
+          [`rotation_y`, `θ`, `Horizontal rotation (left/right)`, 0.1, 2],
+        ],
+  )
+
+  // One mutually exclusive toggle button per option
+  type ToggleOption = readonly [text: string, tip: string, active: boolean, select: () => void]
 </script>
+
+{#snippet toggle_row(label: string, options: readonly ToggleOption[])}
+  <div class="setting">
+    <span class="control-label">{label}</span>
+    {#each options as [text, tip, active, select] (text)}
+      <button
+        class="toggle-btn {active ? `active` : ``}"
+        onclick={select}
+        {@attach tooltip({ allow_html: true, content: tip })}
+      >
+        {text}
+      </button>
+    {/each}
+  </div>
+{/snippet}
 
 <DraggablePane
   bind:open={controls_open}
@@ -169,341 +215,289 @@
     {@html sanitize_html(merged_controls.title || `Convex Hull Controls`)}
   </h4>
 
-  <!-- Energy source selection (only if both options are available) -->
-  {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form && can_compute_hull}
-    <div class="control-row">
-      <span class="control-label">Energy source</span>
-      <button
-        class="toggle-btn {energy_source_mode === `precomputed` ? `active` : ``}"
-        onclick={() => (energy_source_mode = `precomputed`)}
-        {@attach tooltip({
-          allow_html: true,
-          content: `Use precomputed formation energies (E<sub>form</sub>)`,
-        })}
-      >
-        Precomputed
-      </button>
-      <button
-        class="toggle-btn {energy_source_mode === `on-the-fly` ? `active` : ``}"
-        onclick={() => (energy_source_mode = `on-the-fly`)}
-        {@attach tooltip({
-          allow_html: true,
-          content: `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
-        })}
-      >
-        On the fly
-      </button>
-    </div>
-  {/if}
-
-  <!-- Color mode toggle -->
-  <div class="control-row">
-    <span class="control-label">Color mode</span>
-    <button
-      class="toggle-btn {color_mode === `stability` ? `active` : ``}"
-      onclick={() => (color_mode = `stability`)}
-      {@attach tooltip({ content: `Color points by stable/unstable` })}
-    >
-      Stability
-    </button>
-    <button
-      class="toggle-btn {color_mode === `energy` ? `active` : ``}"
-      onclick={() => (color_mode = `energy`)}
-      {@attach tooltip({ content: `Color points by energy above hull` })}
-    >
-      Energy
-    </button>
-  </div>
-
-  <!-- Energy threshold slider - shown in both color modes -->
-  <div
-    class="control-row"
-    {@attach tooltip({ content: `Max eV/atom above hull to display unstable points` })}
-  >
-    <span class="control-label">Points threshold</span>
-    <label style="display: flex; align-items: center; gap: 4px; flex: 1">
-      <input
-        type="number"
-        min="0"
-        max={max_hull_dist_in_data}
-        step="0.01"
-        bind:value={max_hull_dist_show_phases}
-        aria-label="Points threshold (eV/atom)"
-        style="border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))"
-      />
-      <span style="white-space: nowrap">eV/atom</span>
-      <input
-        type="range"
-        min="0"
-        max={max_hull_dist_in_data}
-        step="0.01"
-        bind:value={max_hull_dist_show_phases}
-      />
-    </label>
-  </div>
-
-  {#if color_mode === `stability`}
-    <div class="control-row">
-      <span class="control-label">Points</span>
-      <div class="legend-items-container">
-        <div
-          class="legend-item {show_stable ? `active` : `inactive`}"
-          onclick={() => (show_stable = !show_stable)}
-          onkeydown={legend_keydown(() => (show_stable = !show_stable))}
-          role="button"
-          tabindex="0"
-          aria-pressed={show_stable}
-          {@attach tooltip({ content: `Toggle visibility of stable points` })}
-        >
-          <div class="marker stable"></div>
-          <span>Stable{merged_controls.show_counts ? ` (${stable_entries.length})` : ``}</span>
-        </div>
-        <div
-          class="legend-item {show_unstable ? `active` : `inactive`}"
-          onclick={() => (show_unstable = !show_unstable)}
-          onkeydown={legend_keydown(() => (show_unstable = !show_unstable))}
-          role="button"
-          tabindex="0"
-          aria-pressed={show_unstable}
-          {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
-        >
-          <div class="marker unstable"></div>
-          <span
-            >Above hull{merged_controls.show_counts
-              ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
-              : ``}</span
-          >
-        </div>
-      </div>
-    </div>
-  {:else}
-    <!-- Color scale selector -->
-    <div class="color-scale-row">
-      <span
-        {@attach tooltip({ content: `Choose energy colormap` })}
-        onclick={focus_multiselect}
-        onkeydown={(evt) => {
-          if (evt.key === `Enter` || evt.key === ` `) focus_multiselect(evt)
-        }}
-        role="button"
-        tabindex="0"
-        style="cursor: pointer">Color scale</span
-      >
-      <ColorScaleSelect
-        bind:value={color_scale}
-        selected={[color_scale]}
-        placeholder="Select color scale"
-        {@attach tooltip({ content: `Set interpolator for energy colors` })}
-      />
-    </div>
-  {/if}
-
-  <!-- Category filters (only when entries carry recognized category data,
-    e.g. magnetic orderings with the default MAGNETIC_ORDERING_CATEGORY) -->
-  {#if entry_category && category_values_in_data.length > 0}
-    <div class="control-row">
-      <span class="control-label">{entry_category.label}</span>
-      <div class="legend-items-container category-filters">
-        {#each category_values_in_data as value (value)}
-          {@const hidden = hidden_categories.includes(value)}
-          {@const count = category_counts[value] ?? 0}
-          {@const long_name = entry_category.labels?.[value]}
-          <div
-            class="legend-item {hidden ? `inactive` : `active`}"
-            onclick={() => toggle_category(value)}
-            onkeydown={legend_keydown(() => toggle_category(value))}
-            role="button"
-            tabindex="0"
-            aria-pressed={!hidden}
-            {@attach tooltip({
-              content: `Toggle visibility of ${
-                long_name ? `${long_name.toLowerCase()} (${value})` : value
-              } entries`,
-            })}
-          >
-            <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
-              <path d={marker_path_data(SWATCH_RADIUS, entry_category.markers[value]) ?? ``} />
-            </svg>
-            <span
-              >{value}{merged_controls.show_counts
-                ? ` (${hidden ? `0/${count}` : count})`
-                : ``}</span
-            >
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if merged_controls.show_label_controls}
-    <div class="control-row">
-      <span class="control-label">Labels</span>
-      <div style="display: flex; gap: 12px; flex: 1">
-        <label {@attach tooltip({ content: `Show labels for stable points` })}>
-          <input
-            type="checkbox"
-            checked={show_stable_labels}
-            oninput={(evt) => (show_stable_labels = evt.currentTarget.checked)}
-          />
-          <span>Stable</span>
-        </label>
-        <label {@attach tooltip({ content: `Show labels for unstable points` })}>
-          <input
-            type="checkbox"
-            checked={show_unstable_labels}
-            oninput={(evt) => (show_unstable_labels = evt.currentTarget.checked)}
-          />
-          <span>Unstable</span>
-        </label>
-      </div>
-    </div>
-
-    {#if show_unstable_labels}
-      <div
-        class="control-row"
-        {@attach tooltip({ content: `Max eV/atom for labeling unstable points` })}
-      >
-        <span class="control-label">Label threshold</span>
-        <label style="display: flex; align-items: center; gap: 4px; flex: 1">
-          <span style="white-space: nowrap"
-            >{max_hull_dist_show_labels.toFixed(2)}
-            eV/atom</span
-          >
-          <input
-            type="range"
-            min="0"
-            max={max_hull_dist_in_data}
-            step="0.01"
-            bind:value={max_hull_dist_show_labels}
-          />
-        </label>
-      </div>
+  <SettingsSection title="Display" layout="grid">
+    <!-- Energy source selection (only if both options are available) -->
+    {#if has_precomputed_e_form && has_precomputed_hull && can_compute_e_form && can_compute_hull}
+      {@render toggle_row(`Energy source`, [
+        [
+          `Precomputed`,
+          `Use precomputed formation energies (E<sub>form</sub>)`,
+          energy_source_mode === `precomputed`,
+          () => (energy_source_mode = `precomputed`),
+        ],
+        [
+          `On the fly`,
+          `Compute formation energies and hull distances on the fly. Note: Missing pure-element reference entries default to E<sub>form</sub> = 0 eV/atom if not provided explicitly.`,
+          energy_source_mode === `on-the-fly`,
+          () => (energy_source_mode = `on-the-fly`),
+        ],
+      ])}
     {/if}
-  {/if}
 
-  <!-- Hull faces toggle (for 3D ternary and 4D quaternary diagrams) -->
-  {#if show_hull_faces !== undefined}
-    <div class="control-row">
-      <span class="control-label">Hull Faces</span>
-      <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
+    {@render toggle_row(`Color mode`, [
+      [
+        `Stability`,
+        `Color points by stable/unstable`,
+        color_mode === `stability`,
+        () => (color_mode = `stability`),
+      ],
+      [
+        `Energy`,
+        `Color points by energy above hull`,
+        color_mode === `energy`,
+        () => (color_mode = `energy`),
+      ],
+    ])}
+
+    <!-- Energy threshold slider - shown in both color modes -->
+    <div
+      class="setting"
+      {@attach tooltip({ content: `Max eV/atom above hull to display unstable points` })}
+    >
+      <span class="control-label">Points threshold</span>
+      <label style="display: flex; align-items: center; gap: 4px; flex: 1">
         <input
-          type="checkbox"
-          checked={show_hull_faces}
-          oninput={(event) => on_hull_faces_change?.(event.currentTarget.checked)}
+          type="number"
+          min="0"
+          max={max_hull_dist_in_data}
+          step="0.01"
+          bind:value={max_hull_dist_show_phases}
+          aria-label="Points threshold (eV/atom)"
+          style="border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2))"
         />
-        <span>Show</span>
-      </label>
-      <div style="display: flex; gap: 6px; align-items: center; flex: 1">
-        {#if hull_face_color_mode === `uniform`}
-          <input
-            type="color"
-            value={hull_face_color}
-            oninput={(event) => on_hull_face_color_change?.(event.currentTarget.value)}
-            {@attach tooltip({ content: `Set hull face color` })}
-            style="width: 40px; height: 20px"
-          />
-        {/if}
+        <span style="white-space: nowrap">eV/atom</span>
         <input
           type="range"
           min="0"
-          max="1"
+          max={max_hull_dist_in_data}
           step="0.01"
-          aria-label="Hull face opacity"
-          bind:value={hull_face_opacity}
-          oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
-          {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
-          style="flex: 1; min-width: 80px"
+          bind:value={max_hull_dist_show_phases}
         />
-        <span style="font-size: 0.9em; min-width: 2em; text-align: right"
-          >{format_num(hull_face_opacity, `.1%`)}</span
-        >
-      </div>
+      </label>
     </div>
 
-    <!-- Face color mode selector -->
-    <div class="control-row">
-      <span class="control-label">Face color</span>
-      <div class="face-color-mode-buttons">
-        {#each HULL_FACE_COLOR_MODES as mode (mode)}
-          <button
-            class="toggle-btn {hull_face_color_mode === mode ? `active` : ``}"
-            style="min-width: auto; flex: 0 1 auto"
-            onclick={() => on_hull_face_color_mode_change?.(mode)}
-            {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
+    {#if color_mode === `stability`}
+      <div class="setting">
+        <span class="control-label">Points</span>
+        <div class="legend-items-container">
+          <div
+            class="legend-item {show_stable ? `active` : `inactive`}"
+            onclick={() => (show_stable = !show_stable)}
+            onkeydown={legend_keydown(() => (show_stable = !show_stable))}
+            role="button"
+            tabindex="0"
+            aria-pressed={show_stable}
+            {@attach tooltip({ content: `Toggle visibility of stable points` })}
           >
-            {FACE_COLOR_MODES[mode].label}
-          </button>
+            <div class="marker stable"></div>
+            <span
+              >Stable{merged_controls.show_counts ? ` (${stable_entries.length})` : ``}</span
+            >
+          </div>
+          <div
+            class="legend-item {show_unstable ? `active` : `inactive`}"
+            onclick={() => (show_unstable = !show_unstable)}
+            onkeydown={legend_keydown(() => (show_unstable = !show_unstable))}
+            role="button"
+            tabindex="0"
+            aria-pressed={show_unstable}
+            {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
+          >
+            <div class="marker unstable"></div>
+            <span
+              >Above hull{merged_controls.show_counts
+                ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
+                : ``}</span
+            >
+          </div>
+        </div>
+      </div>
+    {:else}
+      <!-- Color scale selector -->
+      <div class="setting color-scale-row">
+        <span
+          {@attach tooltip({ content: `Choose energy colormap` })}
+          onclick={focus_multiselect}
+          onkeydown={(evt) => {
+            if (evt.key === `Enter` || evt.key === ` `) focus_multiselect(evt)
+          }}
+          role="button"
+          tabindex="0"
+          style="cursor: pointer">Color scale</span
+        >
+        <ColorScaleSelect
+          bind:value={color_scale}
+          selected={[color_scale]}
+          placeholder="Select color scale"
+          {@attach tooltip({ content: `Set interpolator for energy colors` })}
+        />
+      </div>
+    {/if}
+
+    <!-- Category filters (only when entries carry recognized category data,
+    e.g. magnetic orderings with the default MAGNETIC_ORDERING_CATEGORY) -->
+    {#if entry_category && category_values_in_data.length > 0}
+      <div class="setting">
+        <span class="control-label">{entry_category.label}</span>
+        <div class="legend-items-container category-filters">
+          {#each category_values_in_data as value (value)}
+            {@const hidden = hidden_categories.includes(value)}
+            {@const count = category_counts[value] ?? 0}
+            {@const long_name = entry_category.labels?.[value]}
+            <div
+              class="legend-item {hidden ? `inactive` : `active`}"
+              onclick={() => toggle_category(value)}
+              onkeydown={legend_keydown(() => toggle_category(value))}
+              role="button"
+              tabindex="0"
+              aria-pressed={!hidden}
+              {@attach tooltip({
+                content: `Toggle visibility of ${
+                  long_name ? `${long_name.toLowerCase()} (${value})` : value
+                } entries`,
+              })}
+            >
+              <svg viewBox="-6 -6 12 12" width="12" height="12" aria-hidden="true">
+                <path
+                  d={marker_path_data(SWATCH_RADIUS, entry_category.markers[value]) ?? ``}
+                />
+              </svg>
+              <span
+                >{value}{merged_controls.show_counts
+                  ? ` (${hidden ? `0/${count}` : count})`
+                  : ``}</span
+              >
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if merged_controls.show_label_controls}
+      <div class="setting">
+        <span class="control-label">Labels</span>
+        <div style="display: flex; gap: 12px; flex: 1">
+          <label {@attach tooltip({ content: `Show labels for stable points` })}>
+            <input
+              type="checkbox"
+              checked={show_stable_labels}
+              oninput={(evt) => (show_stable_labels = evt.currentTarget.checked)}
+            />
+            <span>Stable</span>
+          </label>
+          <label {@attach tooltip({ content: `Show labels for unstable points` })}>
+            <input
+              type="checkbox"
+              checked={show_unstable_labels}
+              oninput={(evt) => (show_unstable_labels = evt.currentTarget.checked)}
+            />
+            <span>Unstable</span>
+          </label>
+        </div>
+      </div>
+
+      {#if show_unstable_labels}
+        <div
+          class="setting"
+          {@attach tooltip({ content: `Max eV/atom for labeling unstable points` })}
+        >
+          <span class="control-label">Label threshold</span>
+          <label style="display: flex; align-items: center; gap: 4px; flex: 1">
+            <span style="white-space: nowrap"
+              >{format_num(max_hull_dist_show_labels, `.2f`)} eV/atom</span
+            >
+            <input
+              type="range"
+              min="0"
+              max={max_hull_dist_in_data}
+              step="0.01"
+              bind:value={max_hull_dist_show_labels}
+            />
+          </label>
+        </div>
+      {/if}
+    {/if}
+
+    <!-- Hull faces toggle (for 3D ternary and 4D quaternary diagrams) -->
+    {#if show_hull_faces !== undefined}
+      <div class="setting">
+        <span class="control-label">Hull faces</span>
+        <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
+          <input
+            type="checkbox"
+            checked={show_hull_faces}
+            oninput={(event) => on_hull_faces_change?.(event.currentTarget.checked)}
+          />
+          <span>Show</span>
+        </label>
+        <div style="display: flex; gap: 6px; align-items: center; flex: 1">
+          {#if hull_face_color_mode === `uniform`}
+            <input
+              type="color"
+              value={hull_face_color}
+              oninput={(event) => on_hull_face_color_change?.(event.currentTarget.value)}
+              {@attach tooltip({ content: `Set hull face color` })}
+              style="width: 40px; height: 20px"
+            />
+          {/if}
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            aria-label="Hull face opacity"
+            bind:value={hull_face_opacity}
+            oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
+            {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
+            style="flex: 1; min-width: 80px"
+          />
+          <span style="font-size: 0.9em; min-width: 2em; text-align: right"
+            >{format_num(hull_face_opacity, `.1%`)}</span
+          >
+        </div>
+      </div>
+
+      <!-- Face color mode selector -->
+      <div class="setting">
+        <span class="control-label">Face color</span>
+        <div class="face-color-mode-buttons">
+          {#each HULL_FACE_COLOR_MODES as mode (mode)}
+            <button
+              class="toggle-btn {hull_face_color_mode === mode ? `active` : ``}"
+              style="min-width: auto; flex: 0 1 auto"
+              onclick={() => on_hull_face_color_mode_change?.(mode)}
+              {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
+            >
+              {FACE_COLOR_MODES[mode].label}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if camera}
+      <div class="setting">
+        <span class="control-label">Camera</span>
+        {#each camera_fields as [key, label, tip, step, digits, suffix, min, max] (key)}
+          <label {@attach tooltip({ content: tip })}>
+            <span>{label}</span>
+            <input
+              type="number"
+              value={(camera[key] ?? 0).toFixed(digits)}
+              {step}
+              {min}
+              {max}
+              oninput={(event) => {
+                if (camera) camera[key] = parseFloat(event.currentTarget.value)
+              }}
+              style="width: 3em"
+            />
+            {#if suffix}<span>{suffix}</span>{/if}
+          </label>
         {/each}
       </div>
-    </div>
-  {/if}
-
-  {#if camera}
-    <div class="camera-controls">
-      <span class="control-label">Camera</span>
-      {#if camera.elevation !== undefined && camera.azimuth !== undefined}
-        <!-- Ternary camera controls (elevation/azimuth) -->
-        <label
-          {@attach tooltip({
-            content: `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
-          })}
-        >
-          <span>Elev</span>
-          <input
-            type="number"
-            value={camera.elevation.toFixed(0)}
-            step="5"
-            oninput={(event) => {
-              camera.elevation = parseFloat(event.currentTarget.value)
-            }}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-        <label {@attach tooltip({ content: `Azimuth rotation around z-axis` })}>
-          <span>Azim</span>
-          <input
-            type="number"
-            value={camera.azimuth.toFixed(0)}
-            step="15"
-            oninput={(event) => {
-              camera.azimuth = parseFloat(event.currentTarget.value)
-            }}
-            style="width: 3em"
-          />
-          <span>°</span>
-        </label>
-      {:else}
-        <!-- Quaternary camera controls (rotation_x/rotation_y) -->
-        <label {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}>
-          <span>φ</span>
-          <input
-            type="number"
-            value={(camera.rotation_x ?? 0).toFixed(2)}
-            step="0.1"
-            min={-Math.PI / 3}
-            max={Math.PI / 3}
-            oninput={(event) => {
-              camera.rotation_x = parseFloat(event.currentTarget.value)
-            }}
-            style="width: 3em"
-          />
-        </label>
-        <label {@attach tooltip({ content: `Horizontal rotation (left/right)` })}>
-          <span>θ</span>
-          <input
-            type="number"
-            value={(camera.rotation_y ?? 0).toFixed(2)}
-            step="0.1"
-            oninput={(event) => {
-              camera.rotation_y = parseFloat(event.currentTarget.value)
-            }}
-            style="width: 3em"
-          />
-        </label>
-      {/if}
-    </div>
-  {/if}
+    {/if}
+  </SettingsSection>
 </DraggablePane>
 
 <style>
@@ -511,18 +505,14 @@
     --pane-max-height: max(350px, calc(100cqh - 40px));
     --pane-padding: 1ex;
     --pane-gap: 0;
+    --ctrl-label-w: 8em;
+    --ctrl-value-w: 4em;
+    --settings-row-gap: 8pt;
     font-size: 0.85em;
     pointer-events: auto;
   }
-  .control-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
-  }
   .control-label {
     font-weight: 500;
-    min-width: 80px;
   }
   button {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
@@ -571,12 +561,6 @@
   .marker.unstable {
     background: var(--unstable-color, #e69f00);
   }
-  .camera-controls {
-    display: flex;
-    gap: 12px;
-    flex: 1;
-    margin-top: 12px;
-  }
   .face-color-mode-buttons {
     display: flex;
     gap: 4px;
@@ -584,13 +568,8 @@
     flex-wrap: wrap;
   }
   .color-scale-row {
-    display: grid;
-    gap: 8px;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    margin-top: 12px;
-  }
-  .color-scale-row :global(.multiselect) {
-    --sms-min-height: 24px;
+    :global(.multiselect) {
+      --sms-min-height: 24px;
+    }
   }
 </style>

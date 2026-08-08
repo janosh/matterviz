@@ -3,7 +3,7 @@ import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, expect_labelled_settings_grid } from '../setup'
 
 const mount_controls = (
   props: Partial<ComponentProps<typeof HeatmapMatrixControls>> = {},
@@ -40,6 +40,7 @@ describe(`HeatmapMatrixControls`, () => {
     expect(toggle.style.cssText).toContain(`pointer-events: none`)
     // Pane div has heatmap-controls class
     expect(doc_query(`.draggable-pane.heatmap-controls`)).toBeInstanceOf(HTMLElement)
+    expect_labelled_settings_grid()
     // Ordering select has all ordering options
     const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
     const option_values = Array.from(ordering_select.options).map((opt) => opt.value)

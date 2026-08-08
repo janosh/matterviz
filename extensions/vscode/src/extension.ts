@@ -14,7 +14,7 @@ import type {
 } from '$lib/file-viewer/host-protocol'
 import { is_plain_object, to_error } from '$lib/utils'
 import { format_bytes } from '$lib/labels'
-import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
+import { DEFAULTS, type DefaultSettings, merge, SETTINGS_CONFIG } from '$lib/settings'
 import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, type ThemeName } from '$lib/theme'
 import type { FrameLoader } from '$lib/trajectory'
 import { LARGE_FILE_THRESHOLD, parse_trajectory_async } from '$lib/trajectory/parse'
@@ -233,24 +233,38 @@ const get_system_theme = (): ThemeName => {
 // Collect user/workspace overrides via config.inspect() (ignores package defaults)
 const read_explicit_overrides = (
   config: vscode.WorkspaceConfiguration,
-  defaults: Record<string, unknown>,
+  schema: unknown,
   prefix = ``,
 ): Record<string, unknown> => {
+  if (!is_plain_object(schema)) return {}
   const overrides: Record<string, unknown> = {}
-  for (const [key, default_value] of Object.entries(defaults)) {
+  for (const [key, setting] of Object.entries(schema)) {
+    if (!is_plain_object(setting)) continue
     const full_key = prefix ? `${prefix}.${key}` : key
-    if (is_plain_object(default_value) && Object.keys(default_value).length > 0) {
-      const nested = read_explicit_overrides(config, default_value, full_key)
+    if (!(`value` in setting)) {
+      const nested = read_explicit_overrides(config, setting, full_key)
       if (Object.keys(nested).length > 0) overrides[key] = nested
       continue
     }
     const inspected = config.inspect(full_key)
     // Prefer more specific scope: folder > workspace > global
-    const value = [
+    let value = [
       inspected?.workspaceFolderValue,
       inspected?.workspaceValue,
       inspected?.globalValue,
     ].find((candidate) => candidate !== undefined)
+    const configured_value = value
+    if (typeof value === `number` && typeof setting.minimum === `number`) {
+      value = Math.max(setting.minimum, value)
+    }
+    if (typeof value === `number` && typeof setting.maximum === `number`) {
+      value = Math.min(setting.maximum, value)
+    }
+    if (!Object.is(value, configured_value)) {
+      console.warn(
+        `Clamped matterviz.${full_key} from ${String(configured_value)} to ${value}`,
+      )
+    }
     if (value !== undefined) overrides[key] = value
   }
   return overrides
@@ -260,7 +274,7 @@ const read_explicit_overrides = (
 export const get_defaults = (): DefaultSettings => {
   try {
     const config = vscode.workspace.getConfiguration(`matterviz`)
-    return merge(read_explicit_overrides(config, DEFAULTS))
+    return merge(read_explicit_overrides(config, SETTINGS_CONFIG))
   } catch (error) {
     console.error(`Failed to get defaults:`, error)
     return DEFAULTS

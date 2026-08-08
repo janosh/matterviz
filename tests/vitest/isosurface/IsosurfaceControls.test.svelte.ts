@@ -8,7 +8,12 @@ import type {
 } from '$lib/isosurface/types'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, make_grid, make_volume as make_volume_fixture } from '../setup'
+import {
+  doc_query,
+  expect_labelled_settings_grid,
+  make_grid,
+  make_volume as make_volume_fixture,
+} from '../setup'
 
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
 const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData =>
@@ -90,6 +95,9 @@ describe(`IsosurfaceControls`, () => {
       expect(document.querySelectorAll(`input[type="range"]`).length).toBeGreaterThanOrEqual(2)
       expect(doc_query(`.grid-info`).textContent).toContain(`2 × 2 × 2`)
       expect(find_label(`Layers`)?.querySelector(`select`)?.value).toBe(`1`)
+      if (!volumes) {
+        expect_labelled_settings_grid(document, { section_selector: `.isosurface-settings` })
+      }
 
       const vol_select = find_label(`Volume`)?.querySelector<HTMLSelectElement>(`select`)
       const color_by = find_label(`Color by`)?.querySelector<HTMLSelectElement>(`select`)
@@ -226,7 +234,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
       `Color range minimum`,
       `Color range maximum`,
     ])
-    expect(document.querySelector(`.color-range`)?.textContent).toContain(`Range:`)
+    expect(document.querySelector(`.color-range`)?.textContent).toContain(`Range`)
     expect(Number(range_inputs[0].value)).toBe(-1)
     expect(Number(range_inputs[1].value)).toBe(1)
 

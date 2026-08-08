@@ -1,30 +1,73 @@
 <script lang="ts">
   import type { ElementCategory } from '$lib/element'
   import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  const defaults = {
+    tile_gap: `0.3cqw`,
+    symbol_font_size: 40,
+    number_font_size: 22,
+    name_font_size: 12,
+    value_font_size: 18,
+    tooltip_font_size: 14,
+    tooltip_bg_color: `#000000`,
+    tile_border_radius: 1,
+    inner_transition_offset: 0.5,
+    tile_font_color: `#ffffff`,
+    tile_transition_duration: 0.4,
+    hover_border_width: 1,
+    symbol_font_weight: 400,
+    number_font_weight: 300,
+    tooltip_border_radius: 6,
+    tooltip_padding: `4px 6px`,
+    tooltip_line_height: 1.2,
+    tooltip_text_align: `center`,
+  }
+  const range = (data_key: string, min: number, max: number, step: number) => ({
+    'data-key': data_key,
+    min,
+    max,
+    step,
+  })
+  const range_props = {
+    tile_border_radius: range(`tile_border_radius`, 0, 10, 0.5),
+    inner_transition_offset: range(`inner_transition_offset`, 0.1, 2, 0.1),
+    tile_transition_duration: range(`tile_transition_duration`, 0.1, 2, 0.1),
+    hover_border_width: range(`hover_border_width`, 0, 5, 1),
+    symbol_font_size: range(`symbol_font_size`, 20, 80, 2),
+    number_font_size: range(`number_font_size`, 10, 40, 1),
+    name_font_size: range(`name_font_size`, 6, 24, 1),
+    value_font_size: range(`value_font_size`, 10, 30, 1),
+    symbol_font_weight: range(`symbol_font_weight`, 100, 900, 100),
+    number_font_weight: range(`number_font_weight`, 100, 900, 100),
+    tooltip_font_size: range(`tooltip_font_size`, 8, 24, 1),
+    tooltip_border_radius: range(`tooltip_border_radius`, 0, 20, 1),
+    tooltip_line_height: range(`tooltip_line_height`, 0.8, 2, 0.1),
+  }
+
   let {
-    tile_gap = $bindable(`0.3cqw`),
-    symbol_font_size = $bindable(40),
-    number_font_size = $bindable(22),
-    name_font_size = $bindable(12),
-    value_font_size = $bindable(18),
-    tooltip_font_size = $bindable(14),
-    tooltip_bg_color = $bindable(`#000000`),
-    tile_border_radius = $bindable(1),
-    inner_transition_offset = $bindable(0.5),
-    tile_font_color = $bindable(`#ffffff`),
+    tile_gap = $bindable(defaults.tile_gap),
+    symbol_font_size = $bindable(defaults.symbol_font_size),
+    number_font_size = $bindable(defaults.number_font_size),
+    name_font_size = $bindable(defaults.name_font_size),
+    value_font_size = $bindable(defaults.value_font_size),
+    tooltip_font_size = $bindable(defaults.tooltip_font_size),
+    tooltip_bg_color = $bindable(defaults.tooltip_bg_color),
+    tile_border_radius = $bindable(defaults.tile_border_radius),
+    inner_transition_offset = $bindable(defaults.inner_transition_offset),
+    tile_font_color = $bindable(defaults.tile_font_color),
     // Additional Element Tile controls
-    tile_transition_duration = $bindable(0.4),
-    hover_border_width = $bindable(1),
-    symbol_font_weight = $bindable(400),
-    number_font_weight = $bindable(300),
+    tile_transition_duration = $bindable(defaults.tile_transition_duration),
+    hover_border_width = $bindable(defaults.hover_border_width),
+    symbol_font_weight = $bindable(defaults.symbol_font_weight),
+    number_font_weight = $bindable(defaults.number_font_weight),
     // Additional Tooltip controls
-    tooltip_border_radius = $bindable(6),
-    tooltip_padding = $bindable(`4px 6px`),
-    tooltip_line_height = $bindable(1.2),
-    tooltip_text_align = $bindable(`center`),
+    tooltip_border_radius = $bindable(defaults.tooltip_border_radius),
+    tooltip_padding = $bindable(defaults.tooltip_padding),
+    tooltip_line_height = $bindable(defaults.tooltip_line_height),
+    tooltip_text_align = $bindable(defaults.tooltip_text_align),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     // Appearance control values
@@ -49,28 +92,6 @@
     tooltip_line_height?: number
     tooltip_text_align?: string
   } = $props()
-
-  // Default values for easy reset
-  const defaults = {
-    tile_gap: `0.3cqw`,
-    symbol_font_size: 40,
-    number_font_size: 22,
-    name_font_size: 12,
-    value_font_size: 18,
-    tooltip_font_size: 14,
-    tooltip_bg_color: `#000000`,
-    tile_border_radius: 1,
-    inner_transition_offset: 0.5,
-    tile_font_color: `#ffffff`,
-    tile_transition_duration: 0.4,
-    hover_border_width: 1,
-    symbol_font_weight: 400,
-    number_font_weight: 300,
-    tooltip_border_radius: 6,
-    tooltip_padding: `4px 6px`,
-    tooltip_line_height: 1.2,
-    tooltip_text_align: `center`,
-  }
 
   // Apply CSS custom properties to document root
   $effect(() => {
@@ -102,271 +123,183 @@
     }
   })
 
-  // Check if settings in each section have been modified from defaults
-  let category_colors_modified = $derived(
-    Object.keys(colors.category).some(
-      (key) => colors.category[key] !== DEFAULT_CATEGORY_COLORS[key],
-    ),
-  )
-
-  let tiles_modified = $derived(
-    tile_gap !== defaults.tile_gap ||
-      tile_border_radius !== defaults.tile_border_radius ||
-      inner_transition_offset !== defaults.inner_transition_offset ||
-      tile_transition_duration !== defaults.tile_transition_duration ||
-      hover_border_width !== defaults.hover_border_width ||
-      tile_font_color !== defaults.tile_font_color,
-  )
-
-  let fonts_modified = $derived(
-    symbol_font_size !== defaults.symbol_font_size ||
-      number_font_size !== defaults.number_font_size ||
-      name_font_size !== defaults.name_font_size ||
-      value_font_size !== defaults.value_font_size ||
-      symbol_font_weight !== defaults.symbol_font_weight ||
-      number_font_weight !== defaults.number_font_weight,
-  )
-
-  let tooltip_modified = $derived(
-    tooltip_font_size !== defaults.tooltip_font_size ||
-      tooltip_bg_color !== defaults.tooltip_bg_color ||
-      tooltip_border_radius !== defaults.tooltip_border_radius ||
-      tooltip_padding !== defaults.tooltip_padding ||
-      tooltip_line_height !== defaults.tooltip_line_height ||
-      tooltip_text_align !== defaults.tooltip_text_align,
-  )
-
-  // Reset functions for each section
-  function reset_category_colors(): void {
-    for (const key of Object.keys(colors.category)) {
-      colors.category[key] = DEFAULT_CATEGORY_COLORS[key]
-    }
+  type ControlKey = keyof typeof defaults
+  const control_setters = {
+    tile_gap: (value) => (tile_gap = value),
+    symbol_font_size: (value) => (symbol_font_size = value),
+    number_font_size: (value) => (number_font_size = value),
+    name_font_size: (value) => (name_font_size = value),
+    value_font_size: (value) => (value_font_size = value),
+    tooltip_font_size: (value) => (tooltip_font_size = value),
+    tooltip_bg_color: (value) => (tooltip_bg_color = value),
+    tile_border_radius: (value) => (tile_border_radius = value),
+    inner_transition_offset: (value) => (inner_transition_offset = value),
+    tile_font_color: (value) => (tile_font_color = value),
+    tile_transition_duration: (value) => (tile_transition_duration = value),
+    hover_border_width: (value) => (hover_border_width = value),
+    symbol_font_weight: (value) => (symbol_font_weight = value),
+    number_font_weight: (value) => (number_font_weight = value),
+    tooltip_border_radius: (value) => (tooltip_border_radius = value),
+    tooltip_padding: (value) => (tooltip_padding = value),
+    tooltip_line_height: (value) => (tooltip_line_height = value),
+    tooltip_text_align: (value) => (tooltip_text_align = value),
+  } satisfies { [Key in ControlKey]: (value: (typeof defaults)[Key]) => void }
+  const reset_control = (key: string, reference_value: unknown): void => {
+    control_setters[key as ControlKey]?.(reference_value as never)
   }
-
-  function reset_tiles(): void {
-    tile_gap = defaults.tile_gap
-    tile_border_radius = defaults.tile_border_radius
-    inner_transition_offset = defaults.inner_transition_offset
-    tile_transition_duration = defaults.tile_transition_duration
-    hover_border_width = defaults.hover_border_width
-    tile_font_color = defaults.tile_font_color
-  }
-
-  function reset_fonts(): void {
-    symbol_font_size = defaults.symbol_font_size
-    number_font_size = defaults.number_font_size
-    name_font_size = defaults.name_font_size
-    value_font_size = defaults.value_font_size
-    symbol_font_weight = defaults.symbol_font_weight
-    number_font_weight = defaults.number_font_weight
-  }
-
-  function reset_tooltip(): void {
-    tooltip_font_size = defaults.tooltip_font_size
-    tooltip_bg_color = defaults.tooltip_bg_color
-    tooltip_border_radius = defaults.tooltip_border_radius
-    tooltip_padding = defaults.tooltip_padding
-    tooltip_line_height = defaults.tooltip_line_height
-    tooltip_text_align = defaults.tooltip_text_align
+  const reset_category_color = (
+    category: string,
+    reference_value: unknown,
+    reference_present: boolean,
+  ): void => {
+    if (reference_present) colors.category[category] = reference_value as string
+    else Reflect.deleteProperty(colors.category, category)
   }
 </script>
 
 <div {...rest} class={[`controls-grid`, rest.class]}>
-  <section class="category-colors">
-    <h3 style="grid-column: span 2">
-      Element Category Colors
-      {#if category_colors_modified}
-        <button class="section-reset" onclick={reset_category_colors}>reset</button>
-      {/if}
-    </h3>
-    {#each Object.keys(colors.category) as category (category)}
-      <label
-        onmouseenter={() => (selected.category = category as ElementCategory)}
-        onfocus={() => (selected.category = category as ElementCategory)}
-        onmouseleave={() => (selected.category = null)}
-        onblur={() => (selected.category = null)}
-      >
-        <input type="color" bind:value={colors.category[category]} />
-        <span>{category}</span>
-        {#if colors.category[category] !== DEFAULT_CATEGORY_COLORS[category]}
-          <button
-            onclick={(event) => {
-              event.preventDefault()
-              colors.category[category] = DEFAULT_CATEGORY_COLORS[category]
-            }}
-          >
-            reset
-          </button>
-        {/if}
+  <div class="settings-card category-colors">
+    <SettingsSection
+      title="Element category colors"
+      current_values={{ ...colors.category }}
+      reset_values={DEFAULT_CATEGORY_COLORS}
+      on_reset_key={reset_category_color}
+      layout="grid"
+    >
+      {#each Object.keys(colors.category) as category (category)}
+        <label
+          data-key={category}
+          onmouseenter={() => (selected.category = category as ElementCategory)}
+          onfocusin={() => (selected.category = category as ElementCategory)}
+          onmouseleave={() => (selected.category = null)}
+          onfocusout={() => (selected.category = null)}
+        >
+          <span>{category}</span>
+          <input type="color" bind:value={colors.category[category]} />
+        </label>
+      {/each}
+    </SettingsSection>
+  </div>
+
+  <div class="settings-card">
+    <SettingsSection
+      title="Element tiles"
+      current_values={{
+        tile_gap,
+        tile_border_radius,
+        inner_transition_offset,
+        tile_transition_duration,
+        hover_border_width,
+        tile_font_color,
+      }}
+      reset_values={defaults}
+      on_reset_key={reset_control}
+      layout="grid"
+    >
+      <label data-key="tile_gap">
+        <span>Gap between tiles</span>
+        <input type="text" bind:value={tile_gap} placeholder="0.3cqw" />
       </label>
-    {/each}
-  </section>
-
-  <section>
-    <h3>
-      Element Tiles
-      {#if tiles_modified}
-        <button class="section-reset" onclick={reset_tiles}>reset</button>
-      {/if}
-    </h3>
-
-    <label>
-      <span>Gap between tiles</span>
-      <input type="text" bind:value={tile_gap} placeholder="0.3cqw" />
-      <button onclick={() => (tile_gap = defaults.tile_gap)}>reset</button>
-    </label>
-
-    <label>
-      <span>Border radius (pt)</span>
-      <input type="range" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
-      <input type="number" min="0" max="10" step="0.5" bind:value={tile_border_radius} />
-      <button onclick={() => (tile_border_radius = defaults.tile_border_radius)}>reset</button>
-    </label>
-
-    <label>
-      <span>Inner transition offset</span>
-      <input type="range" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
-      <input type="number" min="0.1" max="2" step="0.1" bind:value={inner_transition_offset} />
-      <button onclick={() => (inner_transition_offset = defaults.inner_transition_offset)}
-        >reset</button
+      <NumberRangeInput {...range_props.tile_border_radius} bind:value={tile_border_radius}
+        >Border radius (pt)</NumberRangeInput
       >
-    </label>
-
-    <label>
-      <span>Transition duration (s)</span>
-      <input type="range" min="0.1" max="2" step="0.1" bind:value={tile_transition_duration} />
-      <input
-        type="number"
-        min="0.1"
-        max="2"
-        step="0.1"
-        bind:value={tile_transition_duration}
-      />
-      <button onclick={() => (tile_transition_duration = defaults.tile_transition_duration)}
-        >reset</button
+      <NumberRangeInput
+        {...range_props.inner_transition_offset}
+        bind:value={inner_transition_offset}>Inner transition offset</NumberRangeInput
       >
-    </label>
-
-    <label>
-      <span>Hover border width (px)</span>
-      <input type="range" min="0" max="5" step="1" bind:value={hover_border_width} />
-      <input type="number" min="0" max="5" step="1" bind:value={hover_border_width} />
-      <button onclick={() => (hover_border_width = defaults.hover_border_width)}>reset</button>
-    </label>
-
-    <label>
-      <span>Font color</span>
-      <input type="color" bind:value={tile_font_color} />
-      <button onclick={() => (tile_font_color = defaults.tile_font_color)}>reset</button>
-    </label>
-  </section>
-
-  <section>
-    <h3>
-      Font Sizes
-      {#if fonts_modified}
-        <button class="section-reset" onclick={reset_fonts}>reset</button>
-      {/if}
-    </h3>
-
-    <label>
-      <span>Symbol size</span>
-      <input type="range" min="20" max="80" step="2" bind:value={symbol_font_size} />
-      <input type="number" min="20" max="80" step="2" bind:value={symbol_font_size} />
-      <button onclick={() => (symbol_font_size = defaults.symbol_font_size)}>reset</button>
-    </label>
-
-    <label>
-      <span>Number size</span>
-      <input type="range" min="10" max="40" step="1" bind:value={number_font_size} />
-      <input type="number" min="10" max="40" step="1" bind:value={number_font_size} />
-      <button onclick={() => (number_font_size = defaults.number_font_size)}>reset</button>
-    </label>
-
-    <label>
-      <span>Name size</span>
-      <input type="range" min="6" max="24" step="1" bind:value={name_font_size} />
-      <input type="number" min="6" max="24" step="1" bind:value={name_font_size} />
-      <button onclick={() => (name_font_size = defaults.name_font_size)}>reset</button>
-    </label>
-
-    <label>
-      <span>Value size</span>
-      <input type="range" min="10" max="30" step="1" bind:value={value_font_size} />
-      <input type="number" min="10" max="30" step="1" bind:value={value_font_size} />
-      <button onclick={() => (value_font_size = defaults.value_font_size)}>reset</button>
-    </label>
-
-    <label>
-      <span>Symbol weight</span>
-      <input type="range" min="100" max="900" step="100" bind:value={symbol_font_weight} />
-      <input type="number" min="100" max="900" step="100" bind:value={symbol_font_weight} />
-      <button onclick={() => (symbol_font_weight = defaults.symbol_font_weight)}>reset</button>
-    </label>
-
-    <label>
-      <span>Number weight</span>
-      <input type="range" min="100" max="900" step="100" bind:value={number_font_weight} />
-      <input type="number" min="100" max="900" step="100" bind:value={number_font_weight} />
-      <button onclick={() => (number_font_weight = defaults.number_font_weight)}>reset</button>
-    </label>
-  </section>
-
-  <section>
-    <h3>
-      Tooltip
-      {#if tooltip_modified}
-        <button class="section-reset" onclick={reset_tooltip}>reset</button>
-      {/if}
-    </h3>
-
-    <label>
-      <span>Font size (px)</span>
-      <input type="range" min="8" max="24" step="1" bind:value={tooltip_font_size} />
-      <input type="number" min="8" max="24" step="1" bind:value={tooltip_font_size} />
-      <button onclick={() => (tooltip_font_size = defaults.tooltip_font_size)}>reset</button>
-    </label>
-
-    <label>
-      <span>Background color</span>
-      <input type="color" bind:value={tooltip_bg_color} />
-      <button onclick={() => (tooltip_bg_color = defaults.tooltip_bg_color)}>reset</button>
-    </label>
-
-    <label>
-      <span>Border radius (px)</span>
-      <input type="range" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
-      <input type="number" min="0" max="20" step="1" bind:value={tooltip_border_radius} />
-      <button onclick={() => (tooltip_border_radius = defaults.tooltip_border_radius)}
-        >reset</button
+      <NumberRangeInput
+        {...range_props.tile_transition_duration}
+        bind:value={tile_transition_duration}>Transition duration (s)</NumberRangeInput
       >
-    </label>
-
-    <label>
-      <span>Padding</span>
-      <input type="text" bind:value={tooltip_padding} placeholder="4px 6px" />
-      <button onclick={() => (tooltip_padding = defaults.tooltip_padding)}>reset</button>
-    </label>
-
-    <label>
-      <span>Line height</span>
-      <input type="range" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
-      <input type="number" min="0.8" max="2" step="0.1" bind:value={tooltip_line_height} />
-      <button onclick={() => (tooltip_line_height = defaults.tooltip_line_height)}
-        >reset</button
+      <NumberRangeInput {...range_props.hover_border_width} bind:value={hover_border_width}
+        >Hover border width (px)</NumberRangeInput
       >
-    </label>
+      <label data-key="tile_font_color">
+        <span>Font color</span>
+        <input type="color" bind:value={tile_font_color} />
+      </label>
+    </SettingsSection>
+  </div>
 
-    <label>
-      <span>Text align</span>
-      <select bind:value={tooltip_text_align}>
-        <option value="left">Left</option>
-        <option value="center">Center</option>
-        <option value="right">Right</option>
-      </select>
-      <button onclick={() => (tooltip_text_align = defaults.tooltip_text_align)}>reset</button>
-    </label>
-  </section>
+  <div class="settings-card">
+    <SettingsSection
+      title="Font sizes"
+      current_values={{
+        symbol_font_size,
+        number_font_size,
+        name_font_size,
+        value_font_size,
+        symbol_font_weight,
+        number_font_weight,
+      }}
+      reset_values={defaults}
+      on_reset_key={reset_control}
+      layout="grid"
+    >
+      <NumberRangeInput {...range_props.symbol_font_size} bind:value={symbol_font_size}
+        >Symbol size</NumberRangeInput
+      >
+      <NumberRangeInput {...range_props.number_font_size} bind:value={number_font_size}
+        >Number size</NumberRangeInput
+      >
+      <NumberRangeInput {...range_props.name_font_size} bind:value={name_font_size}
+        >Name size</NumberRangeInput
+      >
+      <NumberRangeInput {...range_props.value_font_size} bind:value={value_font_size}
+        >Value size</NumberRangeInput
+      >
+      <NumberRangeInput {...range_props.symbol_font_weight} bind:value={symbol_font_weight}
+        >Symbol weight</NumberRangeInput
+      >
+      <NumberRangeInput {...range_props.number_font_weight} bind:value={number_font_weight}
+        >Number weight</NumberRangeInput
+      >
+    </SettingsSection>
+  </div>
+
+  <div class="settings-card">
+    <SettingsSection
+      title="Tooltip"
+      current_values={{
+        tooltip_font_size,
+        tooltip_bg_color,
+        tooltip_border_radius,
+        tooltip_padding,
+        tooltip_line_height,
+        tooltip_text_align,
+      }}
+      reset_values={defaults}
+      on_reset_key={reset_control}
+      layout="grid"
+    >
+      <NumberRangeInput {...range_props.tooltip_font_size} bind:value={tooltip_font_size}
+        >Font size (px)</NumberRangeInput
+      >
+      <label data-key="tooltip_bg_color">
+        <span>Background color</span>
+        <input type="color" bind:value={tooltip_bg_color} />
+      </label>
+      <NumberRangeInput
+        {...range_props.tooltip_border_radius}
+        bind:value={tooltip_border_radius}>Border radius (px)</NumberRangeInput
+      >
+      <label data-key="tooltip_padding">
+        <span>Padding</span>
+        <input type="text" bind:value={tooltip_padding} placeholder="4px 6px" />
+      </label>
+      <NumberRangeInput {...range_props.tooltip_line_height} bind:value={tooltip_line_height}
+        >Line height</NumberRangeInput
+      >
+      <label data-key="tooltip_text_align">
+        <span>Text align</span>
+        <select bind:value={tooltip_text_align}>
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+    </SettingsSection>
+  </div>
 </div>
 
 <style>
@@ -378,96 +311,61 @@
     padding: 0 1em;
     max-width: 1200px;
   }
-  section {
+  .settings-card {
     background: var(--surface-bg);
     border-radius: 6px;
     padding: 6pt 2ex;
+    --ctrl-label-w: 10em;
+    --ctrl-value-w: 4.2em;
+    --settings-row-gap: 0.6em;
   }
-  section h3 {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .settings-card :global(h4) {
     margin: 0 0 0.8em 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding-bottom: 0.3em;
     max-height: max-content;
   }
-  button.section-reset {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  section > label {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin: 0.6em 0;
+  .settings-card :global(.settings-section > label) {
     font-size: 0.9em;
-    flex-wrap: wrap;
   }
-  section > label > span {
-    min-width: 100px;
+  .settings-card :global(.settings-section > label > span:first-child) {
     font-weight: 500;
     font-size: 0.85em;
   }
-  section > label input[type='range'] {
-    flex: 1;
-    margin: 0 0.3em;
-  }
-  section > label input[type='number'] {
+  .settings-card :global(.settings-section > label input[type='number']) {
     width: 60px;
     padding: 2px 4px;
     border-radius: 3px;
   }
-  section > label input[type='text'] {
-    flex: 1;
+  .settings-card :global(.settings-section > label input[type='text']) {
+    box-sizing: border-box;
+    width: 100%;
     padding: 4px 6px;
     border-radius: 3px;
   }
-  section > label input[type='color'] {
+  .settings-card :global(.settings-section > label input[type='color']) {
     width: 50px;
     height: 20px;
     border-radius: 3px;
     border: 1px solid var(--border-color);
   }
-  section > label select {
-    flex: 1;
+  .settings-card :global(.settings-section > label select) {
+    box-sizing: border-box;
+    width: 100%;
     padding: 4px 6px;
     border-radius: 3px;
     cursor: pointer;
   }
-  section > label button {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-    padding: 3px 6px;
-    font-size: 0.8em;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-  }
-  section > label button:hover {
-    opacity: 1;
-  }
-  .category-colors {
-    display: grid;
+  .category-colors :global(.settings-section) {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    column-gap: 1em;
+    --ctrl-cols: minmax(0, 1fr) auto 0;
   }
-  .category-colors label {
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 6pt;
-    flex-wrap: nowrap;
+  .category-colors :global(.settings-section > label) {
     text-transform: capitalize;
     transition: background-color 0.2s;
   }
-  .category-colors label span {
-    flex: 1;
-    min-width: 0; /* Allow text to truncate */
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-  .category-colors input[type='color'] {
+  .category-colors :global(.settings-section > label input[type='color']) {
     width: 25px;
     height: 25px;
     min-width: 25px;

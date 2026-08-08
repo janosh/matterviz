@@ -81,6 +81,25 @@ test.describe(`ThemeControl`, () => {
     }
   })
 
+  test(`changes color theme from the command menu`, async ({ page }) => {
+    const theme_control = await get_theme_control(page)
+    const html_element = page.locator(`html`)
+    const menu_label = `Search the MatterViz site`
+    const dialog = page.getByRole(`dialog`, { name: menu_label })
+    const search_input = dialog.getByRole(`combobox`, { name: menu_label })
+    const mode = `dark`
+
+    await expect(async () => {
+      await page.keyboard.press(`Control+K`)
+      await expect(dialog).toBeVisible({ timeout: 1500 })
+    }).toPass({ timeout: 15_000 })
+
+    await search_input.fill(`${mode} color mode`)
+    await dialog.getByRole(`option`, { name: new RegExp(`${mode} color theme`, `i`) }).click()
+    await expect(html_element).toHaveAttribute(`data-theme`, mode)
+    await expect(theme_control).toHaveValue(mode)
+  })
+
   test(`syntax highlighting colors follow app theme not OS preference`, async ({ page }) => {
     // Regression: starry-night gates its dark palette behind a prefers-color-scheme
     // media query; starry_night_theme_plugin (vite.config.ts) re-targets it to

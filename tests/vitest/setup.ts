@@ -83,6 +83,23 @@ export function doc_query<T extends Element = HTMLElement>(
 
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
 
+export const expect_labelled_settings_grid = (
+  root: ParentNode = document,
+  {
+    section_selector = `section.settings-section`,
+    row_selector = `:scope > label, :scope > .setting`,
+  }: { section_selector?: string; row_selector?: string } = {},
+): void => {
+  const sections = [...root.querySelectorAll(section_selector)]
+  expect(sections.length).toBeGreaterThan(0)
+  const rows = sections.flatMap((section) => [...section.querySelectorAll(row_selector)])
+  expect(rows.length).toBeGreaterThan(0)
+  for (const section of sections) {
+    expect(section.classList.contains(`grid`)).toBe(true)
+  }
+  for (const row of rows) expect(row.firstElementChild?.tagName).toBe(`SPAN`)
+}
+
 // Extract the rotation pivot-y from an axis label's nearest rotated SVG ancestor.
 // Used to assert y/y2 axis titles share a pivot.
 export const axis_label_pivot_y = (root: ParentNode, selector: string): number => {

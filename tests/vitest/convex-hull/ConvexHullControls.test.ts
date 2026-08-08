@@ -103,6 +103,47 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     expect(fm_toggle.classList.contains(`inactive`)).toBe(expect_toggled)
   })
 
+  // camera rows are data-driven per dimensionality: ternary tilts in degrees, quaternary in radians
+  test.each([
+    [
+      `ternary`,
+      { elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
+      `Elev°|30|5|false;Azim°|-16|15|false`,
+      `elevation`,
+    ],
+    [
+      `quaternary`,
+      { rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
+      `φ|0.46|0.1|true;θ|-0.12|0.1|false`,
+      `rotation_x`,
+    ],
+  ] as const)(`%s camera rows render and write back`, (_desc, camera, expected, key) => {
+    const state = { ...camera }
+    mount_controls({ camera: state })
+    const rows = [...document.querySelectorAll<HTMLLabelElement>(`.setting label`)].filter(
+      (row) => expected.includes(row.querySelector(`span`)?.textContent ?? ``),
+    )
+    expect(
+      rows
+        .map((row) => {
+          const input = row.querySelector<HTMLInputElement>(`input[type="number"]`)
+          return [
+            row.textContent?.replaceAll(/\s/g, ``),
+            input?.value,
+            input?.step,
+            input?.hasAttribute(`min`),
+          ].join(`|`)
+        })
+        .join(`;`),
+    ).toBe(expected)
+    const first_input = rows[0]?.querySelector<HTMLInputElement>(`input[type="number"]`)
+    if (!first_input) throw new Error(`missing ${expected.split(`|`)[0]} camera input`)
+    first_input.value = `12`
+    first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    expect(state).toMatchObject({ [key]: 12 })
+  })
+
   test(`Space key also activates the stable/unstable legend toggles`, () => {
     mount_controls({ stable_entries: [mag()] })
     // Points row (stability mode) renders stable + unstable toggles outside .category-filters
