@@ -3,6 +3,9 @@ import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { VacfInput } from '$lib/vacf'
+import { flatten_xyz_frames, make_rng } from '../numeric-helpers'
+
+export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 
 export interface BuildVacfInputOptions {
   elements?: ElementSymbol[]
@@ -15,22 +18,6 @@ export interface BuildVacfInputOptions {
   velocity_unit?: string
 }
 
-const flatten = (frames: number[][][]): Float64Array => {
-  const n_frames = frames.length
-  const n_atoms = frames[0]?.length ?? 0
-  const flat = new Float64Array(n_frames * n_atoms * 3)
-  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const off = (frame_idx * n_atoms + atom_idx) * 3
-      const [x_val, y_val, z_val] = frames[frame_idx][atom_idx]
-      flat[off] = x_val
-      flat[off + 1] = y_val
-      flat[off + 2] = z_val
-    }
-  }
-  return flat
-}
-
 // frames[frame_idx][atom_idx] = [x, y, z]
 export function build_vacf_input(
   frames: number[][][],
@@ -40,8 +27,8 @@ export function build_vacf_input(
   const n_atoms = frames[0]?.length ?? 0
   const { lattice = null, velocity_frames } = options
   return {
-    positions: flatten(frames),
-    velocities: velocity_frames ? flatten(velocity_frames) : null,
+    positions: flatten_xyz_frames(frames),
+    velocities: velocity_frames ? flatten_xyz_frames(velocity_frames) : null,
     velocity_unit: options.velocity_unit ?? null,
     n_frames,
     n_atoms,
@@ -83,17 +70,6 @@ export function circular_motion(
   return { positions, velocities }
 }
 
-// Park-Miller minimal standard LCG. Pure float arithmetic (16807 * 2^31 stays under 2^53,
-// so every product is exact), seeded so statistical assertions are reproducible.
-export function make_rng(seed: number): () => number {
-  let state = seed % 2147483647
-  if (state <= 0) state += 2147483646
-  return () => {
-    state = (state * 16807) % 2147483647
-    return (state - 1) / 2147483646
-  }
-}
-
 // Ideal gas: every atom draws an independent velocity each frame, so the VACF is a delta
 // at lag 0. Positions are the running sum, i.e. an unbounded random walk.
 export function ideal_gas(
@@ -118,21 +94,3 @@ export function ideal_gas(
   }
   return { positions, velocities }
 }
-
-// Largest |a - b| over two equal-length series
-export const max_abs_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => Math.max(worst, Math.abs(value - expected[idx])), 0)
-
-// Largest |a - b| / |b| over two equal-length series, skipping zero references
-export const max_rel_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => {
-    const reference = expected[idx]
-    if (reference === 0) return worst
-    return Math.max(worst, Math.abs(value - reference) / Math.abs(reference))
-  }, 0)

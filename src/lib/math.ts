@@ -1433,6 +1433,27 @@ export function convex_hull_2d(points: Vec2[], tolerance = 0): Vec2[] {
 
   return [...lower, ...upper]
 }
+
+// Loop-based min/max — Math.min/max(...arr) throws RangeError past ~125k arguments, which
+// is reachable for per-frame trajectory metadata and phase-diagram entry lists. Empty input
+// yields the identity element (±Infinity), so callers needing a real value must length-check.
+export const array_min = (values: readonly number[]): number =>
+  values.reduce((min, val) => (val < min ? val : min), Infinity)
+
+export const array_max = (values: readonly number[]): number =>
+  values.reduce((max, val) => (val > max ? val : max), -Infinity)
+
+// Single pass for callers that need both ends. NaN never wins either comparison, so it is
+// skipped rather than poisoning the result the way a values[0] seed would.
+export function array_extent(values: readonly number[]): Vec2 {
+  let [min, max] = [Infinity, -Infinity]
+  for (const value of values) {
+    if (value < min) min = value
+    if (value > max) max = value
+  }
+  return [min, max]
+}
+
 // Shared quantile + selection helpers used by box-plot.ts and kde.ts.
 // quickselect partially sorts in place; quantile_unordered mutates its input
 // (quantile_sorted assumes an already-ascending array and never mutates).

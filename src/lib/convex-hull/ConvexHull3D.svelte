@@ -9,7 +9,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { Spinner } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { to_radians, type Vec2, type Vec3 } from '$lib/math'
+  import { array_min, to_radians, type Vec2, type Vec3 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { create_renderer, Gizmo, webgpu_available } from '$lib/scene'
   import {
@@ -602,7 +602,7 @@
     let min_face_e_form = 0
     if (hull_face_color_mode === `formation_energy`) {
       const all_e_form = hull_faces.flatMap((tri) => tri.vertices.map((vertex) => vertex.z))
-      min_face_e_form = helpers.array_min(all_e_form)
+      min_face_e_form = array_min(all_e_form)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,

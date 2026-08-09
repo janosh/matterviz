@@ -1870,6 +1870,42 @@ function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {
   return true
 }
 
+describe(`array_min, array_max and array_extent`, () => {
+  test.each([
+    [[3, 1, 2], 1, 3],
+    [[-5, -2, -9], -9, -2],
+    [[42], 42, 42],
+    [[0.1, 0.5, 0.3], 0.1, 0.5],
+  ] as [number[], number, number][])(
+    `%j → min %d, max %d`,
+    (values, expected_min, expected_max) => {
+      expect(math.array_min(values)).toBe(expected_min)
+      expect(math.array_max(values)).toBe(expected_max)
+      expect(math.array_extent(values)).toEqual([expected_min, expected_max])
+    },
+  )
+
+  test(`empty array yields ±Infinity (callers guard length first)`, () => {
+    expect(math.array_min([])).toBe(Infinity)
+    expect(math.array_max([])).toBe(-Infinity)
+    expect(math.array_extent([])).toEqual([Infinity, -Infinity])
+  })
+
+  // A values[0] seed would return [NaN, NaN] for a leading NaN; the ±Infinity seed skips it.
+  test(`array_extent skips NaN wherever it appears`, () => {
+    expect(math.array_extent([NaN, 2, 5])).toEqual([2, 5])
+    expect(math.array_extent([2, NaN, 5])).toEqual([2, 5])
+  })
+
+  // Math.min/max(...arr) blows the stack on large arrays; these helpers don't.
+  test(`handles large arrays without stack overflow`, () => {
+    const big = Array.from({ length: 500_000 }, (_, idx) => idx)
+    expect(math.array_min(big)).toBe(0)
+    expect(math.array_max(big)).toBe(499_999)
+    expect(math.array_extent(big)).toEqual([0, 499_999])
+  })
+})
+
 describe(`quantile_sorted and quantile_unordered`, () => {
   const sorted = Array.from({ length: 11 }, (_, idx) => idx * 3)
 

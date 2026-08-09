@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
   bind_props,
+  create_drop_event,
   doc_query,
   make_grid,
   make_volume,
@@ -102,14 +103,6 @@ const mount_volumetric = (
   })
   mount_structure(props)
   return props
-}
-
-const create_drop_event = (files: File[]): DragEvent => {
-  const drag_event = new DragEvent(`drop`)
-  Object.defineProperty(drag_event, `dataTransfer`, {
-    value: { files, items: [], getData: () => `` }, // items: entry API, empty = flat list
-  })
-  return drag_event
 }
 
 const mock_fetch_response = (content: string, headers?: HeadersInit): void => {

@@ -4,6 +4,7 @@ import type { EnergyModeInfo } from '$lib/convex-hull'
 import type { ElementSymbol } from '$lib/element'
 import type { AnyStructure } from '$lib/structure'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
+import { array_max, array_min } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
 import { symbol } from 'd3-shape'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
@@ -52,12 +53,6 @@ export const extract_structure_from_entry = (
   const orig_entry = entries.find((ent) => ent.entry_id === entry.entry_id)
   return (orig_entry?.structure as AnyStructure) || null
 }
-
-// Loop-based min/max — Math.min/max(...arr) blows the stack on large (>~100k) arrays
-export const array_min = (values: readonly number[]): number =>
-  values.reduce((min, val) => (val < min ? val : min), Infinity)
-export const array_max = (values: readonly number[]): number =>
-  values.reduce((max, val) => (val > max ? val : max), -Infinity)
 
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
 // Filter to finite values: NaN/undefined distances would otherwise produce a broken range.

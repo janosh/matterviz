@@ -1347,7 +1347,7 @@
       structure: loaded_structure,
       filename,
       ...metadata,
-      file_size: typeof content === `string` ? new Blob([content]).size : content.byteLength,
+      file_size: io.content_byte_size(content),
       total_atoms: loaded_structure.sites?.length || 0,
     })
 
@@ -1451,8 +1451,7 @@
     filename: string,
     metadata?: io.FileLoadMeta,
   ): void {
-    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-    const parsed = parse_file_content(text, filename, metadata?.source_filename)
+    const parsed = parse_file_content(io.as_text(content), filename, metadata?.source_filename)
     emit_file_load_event(parsed, filename, content, metadata)
   }
 

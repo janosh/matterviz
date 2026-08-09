@@ -1,14 +1,7 @@
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
 import { mount, unmount, type ComponentProps } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-
-const create_drop_event = (file: File): DragEvent => {
-  const drag_event = new DragEvent(`drop`, { bubbles: true })
-  Object.defineProperty(drag_event, `dataTransfer`, {
-    value: { files: [file], items: [], getData: () => `` }, // items: entry API, empty = flat list
-  })
-  return drag_event
-}
+import { create_drop_event } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
 const drop_file = (file: File, props: ComponentProps<typeof FermiSurface> = {}): void => {

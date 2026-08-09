@@ -2,7 +2,13 @@ import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls, resize_element } from '../setup'
+import {
+  bind_props,
+  create_drop_event,
+  expect_plot_controls,
+  gzip_bytes,
+  resize_element,
+} from '../setup'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
 
 const pattern: XrdPattern = {
@@ -16,19 +22,6 @@ const pattern: XrdPattern = {
     [{ hkl: [2, 1, 0] }],
   ],
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
-}
-
-const gzip = async (content: string): Promise<ArrayBuffer> => {
-  const stream = new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`))
-  return new Response(stream).arrayBuffer()
-}
-
-const create_drop_event = (file: File): DragEvent => {
-  const drag_event = new DragEvent(`drop`, { bubbles: true })
-  Object.defineProperty(drag_event, `dataTransfer`, {
-    value: { files: [file], getData: () => `` },
-  })
-  return drag_event
 }
 
 // Helper to create a sized container for proper plot rendering.
@@ -388,7 +381,7 @@ describe(`XrdPlot`, () => {
       })
 
       const payload = source_filename.toLowerCase().endsWith(`.gz`)
-        ? await gzip(content)
+        ? await gzip_bytes(content)
         : content
       const file = new File([payload], source_filename)
       const drop_zone = target.querySelector<HTMLElement>(`.xrd-empty-state`)

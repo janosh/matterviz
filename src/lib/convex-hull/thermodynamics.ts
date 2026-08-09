@@ -14,14 +14,7 @@ import type {
   PhaseStats,
   ProcessedPhaseData,
 } from './types'
-import {
-  array_max,
-  array_min,
-  get_arity,
-  HULL_STABILITY_TOL,
-  is_on_hull,
-  is_unary_entry,
-} from './helpers'
+import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -372,8 +365,8 @@ export function get_convex_hull_stats(
   const energy_range =
     energies.length > 0
       ? {
-          min: array_min(energies),
-          max: array_max(energies),
+          min: math.array_min(energies),
+          max: math.array_max(energies),
           avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
         }
       : { min: 0, max: 0, avg: 0 }
@@ -384,7 +377,7 @@ export function get_convex_hull_stats(
   const hull_distance =
     hull_distances.length > 0
       ? {
-          max: array_max(hull_distances),
+          max: math.array_max(hull_distances),
           avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
         }
       : { max: 0, avg: 0 }
@@ -1085,10 +1078,10 @@ const build_simplex_models_nd = (simplices: number[][][]): SimplexModelND[] =>
     // Compute bounding box in spatial dimensions
     const spatial_dim = dim - 1
     const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
-      array_min(vertices_spatial.map((pt) => pt[idx])),
+      math.array_min(vertices_spatial.map((pt) => pt[idx])),
     )
     const bbox_max = Array.from({ length: spatial_dim }, (_, idx) =>
-      array_max(vertices_spatial.map((pt) => pt[idx])),
+      math.array_max(vertices_spatial.map((pt) => pt[idx])),
     )
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }

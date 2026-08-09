@@ -4,25 +4,7 @@
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount, type ComponentProps } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-
-const MULTI_FRAME_XYZ = `2\nStep 1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74
-2\nStep 2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.78`
-
-const gzip = async (content: string): Promise<ArrayBuffer> => {
-  const stream = new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`))
-  return new Response(stream).arrayBuffer()
-}
-
-const create_drop_event = (files: File[], text_plain = ``): DragEvent => {
-  const drag_event = new DragEvent(`drop`, { bubbles: true })
-  Object.defineProperty(drag_event, `dataTransfer`, {
-    value: {
-      files,
-      getData: (type: string) => (type === `text/plain` ? text_plain : ``),
-    },
-  })
-  return drag_event
-}
+import { create_drop_event, gzip_bytes, MULTI_FRAME_XYZ } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
 const drop_file = (
@@ -38,7 +20,7 @@ const drop_file = (
   )
   const viewer = document.querySelector<HTMLElement>(`.trajectory`)
   if (!viewer) throw new Error(`Trajectory root not found`)
-  viewer.dispatchEvent(create_drop_event([file], text_plain))
+  viewer.dispatchEvent(create_drop_event(file, { text_plain }))
 }
 
 afterEach(async () => {
@@ -51,7 +33,7 @@ test.each([`test.xyz`, `test.xyz.gz`])(
     const on_file_load = vi.fn()
     const on_error = vi.fn()
     const content = source_filename.endsWith(`.gz`)
-      ? await gzip(MULTI_FRAME_XYZ)
+      ? await gzip_bytes(MULTI_FRAME_XYZ)
       : MULTI_FRAME_XYZ
     const file = new File([content], source_filename)
     // IDE/file-manager drags also set text/plain to the source path

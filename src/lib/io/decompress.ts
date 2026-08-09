@@ -70,6 +70,17 @@ export async function decompress_data_binary(
 const to_content = (filename: string, buffer: ArrayBuffer): string | ArrayBuffer =>
   is_binary_payload(filename, buffer) ? buffer : new TextDecoder().decode(buffer)
 
+// === consumers of the string | ArrayBuffer content union produced above ===
+
+// Decode loaded content for parsers that only accept text.
+export const as_text = (content: string | ArrayBuffer): string =>
+  content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+
+// Byte size of loaded content, for the file-size readout in info panes. Strings are measured
+// as UTF-8 (what they were decoded from), not as UTF-16 code units.
+export const content_byte_size = (content: string | ArrayBuffer): number =>
+  content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+
 // Read a dropped file, decompressing supported formats. Binary payloads (by extension or
 // magic bytes) return as ArrayBuffer so parsers get raw bytes; text decodes to string.
 export async function decompress_file(

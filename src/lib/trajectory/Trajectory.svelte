@@ -1063,8 +1063,7 @@
       const handled = await io
         .handle_url_drop(event, (content, filename, metadata) => {
           current_filename = filename
-          file_size =
-            content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+          file_size = io.content_byte_size(content)
           return load_trajectory_data(content, filename, metadata)
         })
         .catch(() => false)
@@ -1090,7 +1089,7 @@
       // Check for plain text data (fallback)
       const text_data = event.dataTransfer?.getData(`text/plain`)
       if (text_data) {
-        file_size = new Blob([text_data]).size // Calculate byte size of text data
+        file_size = io.content_byte_size(text_data)
         await load_trajectory_data(text_data, `trajectory.json`)
       }
     } catch (error) {
@@ -1126,8 +1125,7 @@
     io.load_from_url(requested_url, (content, filename, metadata) => {
       if (!is_current()) return
       current_filename = filename
-      file_size =
-        content instanceof ArrayBuffer ? content.byteLength : new Blob([content]).size
+      file_size = io.content_byte_size(content)
       return load_trajectory_data(content, filename, {
         ...metadata,
         on_trajectory_loaded: (loaded_trajectory) => {
@@ -1178,8 +1176,7 @@
 
     // Reset previous loading state
     orig_data = null
-    const file_size_bytes =
-      data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
+    const file_size_bytes = io.content_byte_size(data)
 
     try {
       const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
