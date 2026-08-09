@@ -44,8 +44,7 @@
     else params.delete(`heatmap`)
     if (color_scale === DEFAULT_COLOR_SCALE) params.delete(`color_scale`)
     else params.set(`color_scale`, color_scale)
-    const query = params.toString()
-    const search = query ? `?${query}` : ``
+    const search = params.size ? `?${params}` : ``
     if (search !== page.url.search) void replace_url(`${page.url.pathname}${search}`)
   })
 
@@ -62,15 +61,14 @@
   let tile_font_color: string | null = $state(null)
   let controls_open = $state(false)
 
-  let heatmap_values = $derived(
-    heatmap_key
-      ? element_data.map((el) => {
-          if (!heatmap_key || !(heatmap_key in el)) return 0
-          const value = el[heatmap_key]
-          return typeof value === `number` ? value : 0
-        })
-      : [],
-  )
+  let heatmap_values = $derived.by(() => {
+    const key = heatmap_key
+    if (!key) return []
+    return element_data.map((element) => {
+      const value = element[key]
+      return typeof value === `number` ? value : 0
+    })
+  })
 
   let [y_label = ``, y_unit = ``] = $derived(
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],

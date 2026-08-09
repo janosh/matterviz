@@ -9,7 +9,7 @@ import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-const { replace_url } = vi.hoisted(() => ({ replace_url: vi.fn(async () => {}) }))
+const replace_url = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock(`$site/state.svelte`, () => ({ replace_url }))
 
 const mouseenter = new MouseEvent(`mouseenter`)
