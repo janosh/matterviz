@@ -130,7 +130,7 @@
     aria-expanded={controls_open}
     onclick={() => (controls_open = !controls_open)}
   >
-    {controls_open ? `▾` : `▸`} Controls
+    {controls_open ? `▾` : `▸`} Periodic Table Controls
   </button>
   {#if controls_open}
     <div transition:slide>

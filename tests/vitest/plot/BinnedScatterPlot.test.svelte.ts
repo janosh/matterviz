@@ -4,7 +4,7 @@ import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, svg_query } from '../setup'
+import { doc_query, svg_query, trigger_intersection } from '../setup'
 
 // Shared deterministic point cloud; spreads y values without RNG overhead.
 const PSEUDO_RANDOM_MULTIPLIER = 48_271
@@ -650,7 +650,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  test(`pulses the selected point`, async () => {
+  test(`pulses the selected point and pauses while scrolled out of view`, async () => {
     const stroke = vi.fn()
     const radii = capture_radii({ stroke })
 
@@ -664,6 +664,75 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(stroke).toHaveBeenCalled()
     expect(Math.max(...radii)).toBeGreaterThan(4)
+
+    // Assert the pulse actually advances rather than just rendering one highlighted frame:
+    // the visibility gate silently froze it everywhere before, and a frozen pulse still
+    // draws that first frame. Redraws show up as further arc() calls.
+    const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
+    const after_mount = radii.length
+    await let_frames_run()
+    expect(radii.length).toBeGreaterThan(after_mount)
+
+    trigger_intersection(binned_plot(), false)
+    await settle()
+    const after_pause = radii.length
+    await let_frames_run()
+    expect(radii).toHaveLength(after_pause)
+  })
+
+  // The pulsing marker sits on its own canvas, so a tick repaints one circle rather than
+  // every point in the plot. Counted per canvas because both share the mocked getContext.
+  test(`pulse ticks repaint only the marked-points overlay`, async () => {
+    const clears = { base: 0, overlay: 0 }
+    const width_setter = vi.spyOn(HTMLCanvasElement.prototype, `width`, `set`)
+    const css_width_setter = vi.spyOn(CSSStyleDeclaration.prototype, `width`, `set`)
+    const resize_count = () =>
+      width_setter.mock.calls.length + css_width_setter.mock.calls.length
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
+      function (this: HTMLCanvasElement) {
+        const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`
+        return {
+          font: ``,
+          measureText: () => ({ width: 0 }),
+          clearRect: () => clears[layer]++,
+          ...Object.fromEntries(
+            `setTransform save beginPath rect clip restore fillRect arc fill stroke`
+              .split(` `)
+              .map((name) => [name, vi.fn()]),
+          ),
+        } as unknown as CanvasRenderingContext2D
+      },
+    )
+
+    mount_plot({
+      series: [{ x: [0.4, 0.6], y: [0.5, 0.5], point_ids: [`selected`, `other`] }],
+      ...point_mode(),
+      selected_point_id: `selected`,
+      ...unit_axes,
+    })
+    await settle()
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    const settled = { ...clears, resizes: resize_count() }
+    expect(settled.overlay).toBeGreaterThan(0)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(clears.overlay).toBeGreaterThan(settled.overlay)
+    expect(clears.base).toBe(settled.base) // points layer untouched between view changes
+    expect(resize_count()).toBe(settled.resizes)
+  })
+
+  test(`missing selected point ID does not schedule pulse frames`, async () => {
+    const request_frame = vi.spyOn(globalThis, `requestAnimationFrame`)
+    mock_canvas_context()
+    mount_plot({
+      series: [{ x: [0.4], y: [0.5], point_ids: [`selected`] }],
+      ...point_mode(),
+      selected_point_id: `missing`,
+      ...unit_axes,
+    })
+    await settle()
+
+    expect(request_frame).not.toHaveBeenCalled()
   })
 
   test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {
@@ -828,6 +897,32 @@ describe(`BinnedScatterPlot`, () => {
     )
     expect(marginal_fills.has(get_series_color(0))).toBe(true)
     expect(marginal_fills.has(get_series_color(1))).toBe(true)
+  })
+
+  test(`does not paint canvas markers whose color is none`, async () => {
+    let fill_style = ``
+    const painted_colors: string[] = []
+    const ctx = mock_canvas_context({
+      fill: vi.fn(() => painted_colors.push(fill_style)),
+    })
+    Object.defineProperty(ctx, `fillStyle`, {
+      get: () => fill_style,
+      // Canvas retains the previous style when assigned the SVG-only `none` keyword.
+      set: (value: string) => {
+        if (value !== `none`) fill_style = value
+      },
+    })
+    mount_plot({
+      series: [
+        { x: [0.2], y: [0.2], color: `red` },
+        { x: [0.5], y: [0.5], color: `none` },
+      ],
+      ...point_mode(),
+      ...unit_axes,
+    })
+    await settle()
+
+    expect(painted_colors).toEqual([`red`])
   })
 
   test(`places the title below an outer top marginal`, async () => {

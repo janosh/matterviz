@@ -2,14 +2,14 @@
   import type { Vec2 } from '$lib/math'
   import { line_curve_factory } from '$lib/plot/core/fill-utils'
   import type { LineCurve } from '$lib/plot/core/types'
+  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
   import { line } from 'd3-shape'
-  import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
 
   let {
     points,
@@ -70,25 +70,20 @@
     easing: linear,
     interpolate: interpolatePath,
   }
-  // Path morphing via interpolatePath is costly (parse + resample + re-serialize
-  // every frame, per line). When the tween is disabled (duration <= 0) bind the
-  // path directly and skip the Tween entirely for zero per-frame cost.
+  // Morphing via interpolatePath costs a parse + resample + re-serialize every frame, per
+  // line, so `duration <= 0` renders line_path/area_path directly below instead.
   let tween_disabled = $derived.by(() => {
     const duration = line_tween.duration ?? default_tween.duration
     return typeof duration === `number` && duration <= 0
   })
 
-  // Tween objects are stateful - create once, update target via effect
-  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
-  const tween_opts = untrack(() => ({ ...default_tween, ...line_tween }))
-  const tweened_line = new Tween(``, tween_opts)
-  const tweened_area = new Tween(``, tween_opts)
-
-  $effect.pre(() => {
-    if (tween_disabled) return // paths bind line_path/area_path directly below
-    tweened_line.target = line_path
-    if (show_area) tweened_area.target = area_path
-  })
+  // Zero duration rather than skipping the retarget while disabled: `current` would otherwise
+  // freeze at whatever it last animated to, and re-enabling would jump back there and morph
+  // forward again. The area tween is fed unconditionally for the same reason — `area_path` is
+  // already `` while hidden, so it stays in step instead of holding a stale path.
+  const live = () => (tween_disabled ? { duration: 0 } : line_tween)
+  const tweened_line = create_settling_tween(() => line_path, default_tween, { live })
+  const tweened_area = create_settling_tween(() => area_path, default_tween, { live })
 
   let line_d = $derived(tween_disabled ? line_path : tweened_line.current)
   let area_d = $derived(show_area ? (tween_disabled ? area_path : tweened_area.current) : ``)

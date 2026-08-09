@@ -1,5 +1,4 @@
-<!-- SettingsSection now exists upstream. Delete this local copy and import it from
-svelte-widgets once a version above 1.4.0 is published; its API is otherwise unchanged. -->
+<!-- Keep local until upstream accepts reset_values for restoring library defaults. -->
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

@@ -5,7 +5,7 @@ import type { AxisItem, LegendPosition } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
@@ -364,6 +364,39 @@ describe(`click and dblclick handlers`, () => {
       expect(click_handler).toHaveBeenCalledOnce()
     },
   )
+
+  test(`arrow keys follow sorted display order`, async () => {
+    mount_matrix({
+      x_items: [
+        { label: `B`, sort_value: 2 },
+        { label: `A`, sort_value: 1 },
+      ],
+      y_items: [
+        { label: `Y`, sort_value: 2 },
+        { label: `X`, sort_value: 1 },
+      ],
+      x_order: `sort_value`,
+      y_order: `sort_value`,
+      onclick: () => {},
+    })
+    await tick()
+    const start = doc_query(`.cell[data-x="1"][data-y="1"]`)
+    start.focus()
+    const arrow_right = new KeyboardEvent(`keydown`, {
+      key: `ArrowRight`,
+      bubbles: true,
+      cancelable: true,
+    })
+    start.dispatchEvent(arrow_right)
+    expect(arrow_right.defaultPrevented).toBe(true)
+    await tick()
+    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="1"]`))
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+    )
+    await tick()
+    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="0"]`))
+  })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
     const handler = vi.fn()
@@ -746,5 +779,77 @@ describe(`axis titles`, () => {
     expect(title.textContent).toBe(`Rows`)
     const shell = doc_query(`.heatmap`)
     expect(shell.style.paddingLeft).toBe(`1.8em`)
+  })
+})
+
+describe(`virtualized keyboard navigation`, () => {
+  const STRIDE = 100 // tile_size, with the default 0 gap
+  const labels = Array.from({ length: 30 }, (_unused, idx) => `I${idx}`)
+
+  // happy-dom has no layout, so offsetLeft/offsetTop read 0 for every cell and the grid-offset
+  // probe would see the grid sliding out from under the scroll. Lay the cells out on the same
+  // uniform stride the virtualizer already assumes. Spies rather than a prototype patch, so
+  // restoreAllMocks puts the real getters back for the rest of the file.
+  afterEach(() => vi.restoreAllMocks())
+  const stub_cell_layout = () => {
+    for (const [prop, axis] of [
+      [`offsetLeft`, `x`],
+      [`offsetTop`, `y`],
+    ] as const) {
+      vi.spyOn(HTMLElement.prototype, prop, `get`).mockImplementation(
+        function (this: HTMLElement) {
+          return this.dataset?.[axis] === undefined ? 0 : Number(this.dataset[axis]) * STRIDE
+        },
+      )
+    }
+  }
+
+  const rendered_idxs = (axis: `x` | `y`): number[] =>
+    [
+      ...new Set(query_all(`.cell[data-x]`).map((cell) => Number(cell.dataset[axis]))),
+    ].toSorted((left, right) => left - right)
+  const cell_at = (x_idx: number, y_idx: number) =>
+    document.querySelector<HTMLElement>(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
+
+  // Stepping off the edge of the window lands on a cell that has no DOM node yet, so the
+  // component has to scroll it in and wait for the re-render. Focusing without that simply
+  // found nothing, and the arrow key did nothing at all four edges.
+  test.each([
+    [`ArrowRight`, `x`, 1],
+    [`ArrowLeft`, `x`, -1],
+    [`ArrowDown`, `y`, 1],
+    [`ArrowUp`, `y`, -1],
+  ] as const)(`%s moves focus across the virtual window edge`, async (key, axis, step) => {
+    stub_cell_layout()
+    mount_matrix({
+      x: labels,
+      y: labels,
+      values: labels.map((_u, row) => labels.map((_v, col) => row + col)),
+      virtualize: true,
+      tile_size: `${STRIDE}px`,
+      onclick: () => {},
+    })
+    await tick()
+    // Scroll into the middle so the window has an edge to cross in either direction
+    const grid = doc_query(`.grid`)
+    grid.scrollLeft = 1000
+    grid.scrollTop = 1000
+    grid.dispatchEvent(new Event(`scroll`))
+    await tick()
+
+    const moving = rendered_idxs(axis)
+    const from = step > 0 ? Math.max(...moving) : Math.min(...moving)
+    const fixed_axis = axis === `x` ? `y` : `x`
+    const fixed = rendered_idxs(fixed_axis)[1] // safely inside the other axis's window
+    const start = axis === `x` ? cell_at(from, fixed) : cell_at(fixed, from)
+    if (!start) throw new Error(`edge cell ${from} was not rendered`)
+    start.focus()
+    start.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    await tick()
+    await tick()
+
+    const focused = document.activeElement as HTMLElement | null
+    expect(Number(focused?.dataset?.[axis])).toBe(from + step)
+    expect(Number(focused?.dataset?.[fixed_axis])).toBe(fixed)
   })
 })

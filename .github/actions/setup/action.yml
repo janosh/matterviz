@@ -21,4 +21,10 @@ runs:
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
         # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).
-        for ext in $EXTENSIONS; do pnpm -C "extensions/$ext" install --ignore-workspace; done
+        # block-exotic-subdeps: these link matterviz from source, so its git-hosted
+        # svelte-widgets arrives as a subdependency, which pnpm blocks by default. Has to be
+        # a flag rather than pnpm-workspace.yaml, which --ignore-workspace also skips.
+        for ext in $EXTENSIONS; do
+          pnpm -C "extensions/$ext" install --ignore-workspace \
+            --config.block-exotic-subdeps=false
+        done

@@ -515,6 +515,35 @@ describe(`ScatterPlot`, () => {
     expect(spacing[0] / spacing[1]).toBeCloseTo(1, 1)
   })
 
+  // A plot appearing on screen must not animate itself into place: markers used to fly in
+  // from the plot centre and lines to morph out of an empty path. Zero and long tween
+  // durations must therefore mount to identical geometry.
+  test.each([
+    [
+      `point_tween`,
+      `.marker`,
+      (marker: Element) => marker.parentElement?.getAttribute(`transform`),
+    ],
+    [`line_tween`, `path[stroke-width]`, (path: Element) => path.getAttribute(`d`)],
+  ] as const)(
+    `mounts at final geometry regardless of %s duration`,
+    async (tween_prop, selector, read) => {
+      const series: DataSeries[] = [{ x: [1, 2, 3], y: [4, 6, 5], markers: `line+points` }]
+      const geometry = async (duration: number) => {
+        const plot = await mount_sized_scatter_plot({
+          series,
+          [tween_prop]: { duration },
+          legend: null,
+        })
+        return [...plot.querySelectorAll(selector)].map(read)
+      }
+
+      const [instant, tweened] = [await geometry(0), await geometry(60_000)]
+      expect(tweened.filter(Boolean).length).toBeGreaterThan(0)
+      expect(tweened).toEqual(instant)
+    },
+  )
+
   test(`reports all visible group keys when more than two axes are required`, async () => {
     const target = document.createElement(`div`)
     document.body.append(target)
@@ -650,6 +679,28 @@ describe(`ScatterPlot`, () => {
     expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
     document.body.replaceChildren()
 
+    // Null entries must survive the auto-label scan. A throw there only kills the placement
+    // effect, so assert placement actually ran: unplaced labels keep the default 10/0 offset.
+    const labelled = await mount_sized_scatter_plot({
+      series: [
+        null,
+        {
+          x: [1, 5],
+          y: [1, 5],
+          point_label: [
+            { text: `A`, auto_placement: true },
+            { text: `B`, auto_placement: true },
+          ],
+        },
+      ] as DataSeries[],
+    })
+    const label_xs = [...labelled.querySelectorAll(`text.label-text`)].map((label) =>
+      label.getAttribute(`x`),
+    )
+    expect(label_xs).toHaveLength(2)
+    expect(label_xs).not.toContain(`10`) // 10 is the un-placed fallback offset
+    document.body.replaceChildren()
+
     const out_of_range_plot = await mount_sized_scatter_plot({
       series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
       x_axis: { range: [100, 200] },
@@ -735,6 +786,36 @@ describe(`ScatterPlot`, () => {
     await tick()
 
     expect(document.querySelector(`text.label-text`)?.textContent).toBe(`Fallback`)
+  })
+
+  test(`cold-solves labels after placement config changes`, async () => {
+    const props = $state({
+      series: [
+        {
+          x: [0.5],
+          y: [0.5],
+          point_label: { text: `A`, auto_placement: true, font_size: `10px` },
+        },
+      ],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      label_placement_config: { sa_iterations: 0, candidate_gap: 0 },
+      point_tween: { duration: 0 },
+      show_controls: false,
+      legend: null,
+    })
+    const plot = await mount_sized_scatter_plot(props)
+    const label_offset = () => {
+      const label = plot.querySelector(`text.label-text`)
+      if (!label) throw new Error(`auto-placed label not rendered`)
+      return { x: Number(label.getAttribute(`x`)), y: Number(label.getAttribute(`y`)) }
+    }
+    const initial_offset = label_offset()
+
+    props.label_placement_config = { sa_iterations: 0, candidate_gap: 100 }
+    await tick()
+
+    expect(label_offset()).not.toEqual(initial_offset)
   })
 
   test(`hides auto labels culled by max_neighbors`, async () => {

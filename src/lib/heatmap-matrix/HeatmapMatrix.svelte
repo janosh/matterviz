@@ -7,7 +7,7 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { quickselect } from '$lib/math'
   import { clamp01 } from '$lib/utils'
-  import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
+  import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
@@ -23,7 +23,7 @@
     SymmetricMode,
   } from './index'
   import { matrix_to_rows, rows_to_csv } from './index'
-  import { make_color_override_key } from './shared'
+  import { make_color_override_key, window_axis_tracks } from './shared'
 
   type CellValue = number | string | null
   type ColorBarOrientation = `vertical` | `horizontal`
@@ -164,6 +164,9 @@
     search_query?: string
     sticky_x_labels?: boolean
     sticky_y_labels?: boolean
+    // Render only the cells inside the scroll viewport. The window comes from the container's
+    // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
+    // fits on screen mounts every cell either way, at a few hundred ms per 10k.
     virtualize?: boolean
     overscan?: number
     export_formats?: HeatmapExportFormat[]
@@ -541,34 +544,50 @@
     ),
   )
 
-  function parse_px_size(size: string): number {
-    const parsed = Number(size.replace(`px`, ``))
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 12
+  // Zero is a legitimate size (a gap of `0px` is common), so only blank, negative or non-px
+  // input falls back. Treating 0 as invalid inflated the stride to 12px and made the virtual
+  // window cover a fraction of the cells actually on screen.
+  const parse_px_size = (size: string): number => {
+    const parsed = Number(/^(?<num>[\d.]+)(?:px)?$/.exec(size.trim())?.groups?.num)
+    return Number.isFinite(parsed) ? parsed : 12
   }
 
   let tile_size_px = $derived(parse_px_size(tile_size))
   let gap_px = $derived(parse_px_size(gap))
-  let tile_stride_px = $derived(tile_size_px + gap_px)
-  let render_vis_x = $derived.by(() => {
-    if (!virtualize) return vis_x
-    const raw_start_pos =
-      Math.floor((scroll_left - grid_offset_left) / tile_stride_px) - overscan
-    const start_pos = Math.max(0, raw_start_pos)
-    const raw_end_pos =
-      Math.ceil((scroll_left - grid_offset_left + viewport_width) / tile_stride_px) + overscan
-    const end_pos = Math.min(vis_x.length, raw_end_pos)
-    return vis_x.slice(start_pos, end_pos)
-  })
-  let render_vis_y = $derived.by(() => {
-    if (!virtualize) return vis_y
-    const raw_start_pos =
-      Math.floor((scroll_top - grid_offset_top) / tile_stride_px) - overscan
-    const start_pos = Math.max(0, raw_start_pos)
-    const raw_end_pos =
-      Math.ceil((scroll_top - grid_offset_top + viewport_height) / tile_stride_px) + overscan
-    const end_pos = Math.min(vis_y.length, raw_end_pos)
-    return vis_y.slice(start_pos, end_pos)
-  })
+  // never 0: the window maths divides by it
+  let tile_stride_px = $derived(Math.max(1, tile_size_px + gap_px))
+  type AxisWindow = {
+    track_count: number
+    scroll: number
+    grid_offset: number
+    viewport_extent: number
+  }
+  // The stride, overscan and gaps mode are the same for both axes; only the scroll geometry differs
+  const window_axis = (visible: number[], axis: AxisWindow): number[] =>
+    virtualize
+      ? window_axis_tracks(visible, {
+          ...axis,
+          stride: tile_stride_px,
+          overscan,
+          keeps_empty_tracks: gaps_mode,
+        })
+      : visible
+  let render_vis_x = $derived(
+    window_axis(vis_x, {
+      track_count: visible_col_count,
+      scroll: scroll_left,
+      grid_offset: grid_offset_left,
+      viewport_extent: viewport_width,
+    }),
+  )
+  let render_vis_y = $derived(
+    window_axis(vis_y, {
+      track_count: visible_row_count,
+      scroll: scroll_top,
+      grid_offset: grid_offset_top,
+      viewport_extent: viewport_height,
+    }),
+  )
 
   const is_selected_cell = (x_idx: number, y_idx: number): boolean =>
     selected_cell_key_set.has(cell_pos_key(x_idx, y_idx))
@@ -896,12 +915,37 @@
     brush_end = null
   }
 
-  function focus_cell(x_idx: number, y_idx: number): boolean {
-    const target = matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    if (!(target instanceof HTMLElement)) return false
+  // A cell only has a DOM node while its track is inside the virtual window, so a step across
+  // the edge has to scroll the track in and wait for the re-render before anything can take
+  // focus. Track space is the item index under `gaps` (every item keeps a track) and the
+  // position within the visible list otherwise, matching window_axis_tracks.
+  async function focus_cell(
+    x_idx: number,
+    y_idx: number,
+    x_step = 0,
+    y_step = 0,
+  ): Promise<void> {
+    const cell_node = () => matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
+    if (virtualize && matrix_el && !cell_node()) {
+      // Align to the edge the step is travelling towards, so the newly focused cell lands
+      // just inside the viewport rather than jumping it half a screen.
+      const edge = (item_idx: number, step: number, horizontal: boolean) => {
+        const positions = horizontal ? vis_x_pos_map : vis_y_pos_map
+        const grid_offset = horizontal ? grid_offset_left : grid_offset_top
+        const extent = horizontal ? viewport_width : viewport_height
+        const track = (gaps_mode ? item_idx : positions.get(item_idx)) ?? item_idx
+        const near = grid_offset + track * tile_stride_px
+        return Math.max(0, step > 0 ? near + tile_stride_px - extent : near)
+      }
+      if (x_step) matrix_el.scrollLeft = edge(x_idx, x_step, true)
+      if (y_step) matrix_el.scrollTop = edge(y_idx, y_step, false)
+      update_viewport_state()
+      await tick()
+    }
+    const target = cell_node()
+    if (!(target instanceof HTMLElement)) return
     target.focus()
     active_cell = { x_idx, y_idx }
-    return true
   }
 
   function handle_keydown(event: KeyboardEvent): void {
@@ -922,16 +966,30 @@
       return
     } else return
     event.preventDefault()
-    let [next_x, next_y] = [x_idx, y_idx]
-    const max_steps = Math.max(x_items.length, y_items.length) + 1
+    // Compact tracks follow their sorted/filtered visible order. Gap tracks retain their
+    // original grid positions, so their visual order is the ascending item index.
+    const navigation_x = gaps_mode ? vis_x.toSorted((left, right) => left - right) : vis_x
+    const navigation_y = gaps_mode ? vis_y.toSorted((top, bottom) => top - bottom) : vis_y
+    let x_position = navigation_x.indexOf(x_idx)
+    let y_position = navigation_y.indexOf(y_idx)
+    if (x_position < 0 || y_position < 0) return
+    const max_steps = Math.max(navigation_x.length, navigation_y.length)
     for (let step_idx = 0; step_idx < max_steps; step_idx++) {
-      next_x += x_step
-      next_y += y_step
-      if (next_x < 0 || next_y < 0 || next_x >= x_items.length || next_y >= y_items.length) {
+      x_position += x_step
+      y_position += y_step
+      if (
+        x_position < 0 ||
+        y_position < 0 ||
+        x_position >= navigation_x.length ||
+        y_position >= navigation_y.length
+      ) {
         return
       }
+      const next_x = navigation_x[x_position]
+      const next_y = navigation_y[y_position]
       if (is_hidden_cell(next_x, next_y)) continue
-      if (focus_cell(next_x, next_y)) return
+      void focus_cell(next_x, next_y, x_step, y_step)
+      return
     }
   }
 

@@ -192,6 +192,7 @@
     } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
+  let overlay_canvas = $state<HTMLCanvasElement>()
   let width = $state(0)
   let height = $state(0)
   let ranges = $state({ x: [0, 1] as Vec2, y: [0, 1] as Vec2 })
@@ -257,11 +258,6 @@
   $effect(() => {
     set_fullscreen_bg(wrapper, fullscreen, `--binned-scatter-fullscreen-bg`)
   })
-
-  const selected_pulse = create_pulse_animation(
-    () => selected_point_id != null && render_mode === `points`,
-    { step: 0.035 },
-  )
 
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>
     range?.[0] == null || range?.[1] == null
@@ -629,13 +625,48 @@
       ? min_point_radius
       : size_scale_fn(size_value)
 
-  function resize_canvas() {
-    if (!canvas) return
-    const dpr = globalThis.devicePixelRatio || 1
-    canvas.width = Math.max(1, Math.round(width * dpr))
-    canvas.height = Math.max(1, Math.round(height * dpr))
-    canvas.style.width = `${width}px`
-    canvas.style.height = `${height}px`
+  // Located when the selection changes rather than per pulse frame, and by index so this
+  // stays independent of the scales (which move on every pan frame).
+  const selected_point = $derived.by(() => {
+    if (selected_point_id == null) return null
+    for (const [series_idx, srs] of series.entries()) {
+      // scanned rather than indexOf: point_ids is ArrayLike, so it may be a typed array
+      const ids = srs.point_ids ?? []
+      for (let point_idx = 0; point_idx < ids.length; point_idx++) {
+        if (ids[point_idx] === selected_point_id) return { series_idx, point_idx }
+      }
+    }
+    return null
+  })
+  const selected_pulse = create_pulse_animation(
+    () => selected_point !== null && render_mode === `points`,
+    { step: 0.035, element: () => wrapper },
+  )
+
+  // Shared by both layers so a marker looks the same whichever one draws it. `pulse` is the
+  // animation phase for the selected marker, or null for a plain one.
+  function draw_marker(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    radius: number,
+    color: string,
+    alpha: number,
+    pulse: number | null,
+  ) {
+    if (color === `none`) return
+    ctx.fillStyle = color
+    ctx.globalAlpha = alpha
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius * (pulse == null ? 1 : 1.08 + 0.08 * pulse), 0, 2 * Math.PI)
+    ctx.fill()
+    if (pulse == null) return
+    ctx.globalAlpha = 0.35 + 0.25 * pulse
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5 + pulse
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius * (1.45 + 0.25 * pulse), 0, 2 * Math.PI)
+    ctx.stroke()
   }
 
   function draw_density(ctx: CanvasRenderingContext2D) {
@@ -670,58 +701,81 @@
     ctx.globalAlpha = 1
   }
 
+  // Every point except the selected one, which pulses and so lives on the overlay. Reads
+  // neither the pulse nor the hover, so this layer only repaints when the data or view move.
   function draw_points(ctx: CanvasRenderingContext2D) {
     const [x_min, x_max] = range_bounds(ranges.x)
     const [y_min, y_max] = range_bounds(ranges.y)
-    const pulse = selected_pulse.unit
     for (const [series_idx, srs] of series.entries()) {
-      ctx.fillStyle = srs.color ?? get_series_color(series_idx)
+      const color = srs.color ?? get_series_color(series_idx)
       const n_points = Math.min(srs.x.length, srs.y.length)
       for (let point_idx = 0; point_idx < n_points; point_idx++) {
         const x = srs.x[point_idx]
         const y = srs.y[point_idx]
         if (!Number.isFinite(x) || !Number.isFinite(y)) continue
         if (x < x_min || x > x_max || y < y_min || y > y_max) continue
-        const cx = x_scale_fn(x)
-        const cy = y_scale_fn(y)
-        const point_id = srs.point_ids?.[point_idx]
-        const is_selected = selected_point_id != null && point_id === selected_point_id
-        const radius = point_radius_for_value(srs.size_values?.[point_idx])
-        const is_hovered =
-          hovered_point?.series_idx === series_idx && hovered_point?.point_idx === point_idx
-        ctx.globalAlpha = is_selected || is_hovered ? 1 : 0.65
-        ctx.beginPath()
-        ctx.arc(cx, cy, radius * (is_selected ? 1.08 + 0.08 * pulse : 1), 0, 2 * Math.PI)
-        ctx.fill()
-        if (is_selected) {
-          ctx.globalAlpha = 0.35 + 0.25 * pulse
-          ctx.strokeStyle = srs.color ?? get_series_color(series_idx)
-          ctx.lineWidth = 1.5 + pulse
-          ctx.beginPath()
-          ctx.arc(cx, cy, radius * (1.45 + 0.25 * pulse), 0, 2 * Math.PI)
-          ctx.stroke()
+        if (
+          selected_point?.series_idx === series_idx &&
+          selected_point.point_idx === point_idx
+        ) {
+          continue
         }
+        const radius = point_radius_for_value(srs.size_values?.[point_idx])
+        draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 0.65, null)
       }
     }
     ctx.globalAlpha = 1
   }
 
-  $effect(() => {
-    if (!canvas || width <= 0 || height <= 0) return
-    resize_canvas()
-    const ctx = canvas.getContext(`2d`)
-    if (!ctx) return
+  // The two markers that change at interaction rate. Repainting these on their own canvas is
+  // what keeps a pulse tick or a pointer move off the O(all points) path above.
+  function draw_marked_points(ctx: CanvasRenderingContext2D) {
+    if (render_mode !== `points`) return // density mode has no per-point markers
+    for (const [mark, pulse] of [
+      [hovered_point, null],
+      // selected last, so its ring sits over the hover. Don't subscribe this paint effect to
+      // pulse ticks when the selected ID does not resolve to a point.
+      [selected_point, selected_point ? selected_pulse.unit : null],
+    ] as const) {
+      if (!mark) continue
+      const { series_idx, point_idx } = mark
+      const srs = series[series_idx]
+      const [x, y] = [srs?.x[point_idx], srs?.y[point_idx]]
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      const radius = point_radius_for_value(srs.size_values?.[point_idx])
+      const color = srs.color ?? get_series_color(series_idx)
+      draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
+    }
+    ctx.globalAlpha = 1
+  }
+
+  // Both layers clip to the plot area and work in CSS pixels via the DPR transform
+  const paint = (
+    node: HTMLCanvasElement | undefined,
+    draw: (ctx: CanvasRenderingContext2D) => void,
+  ) => {
+    if (!node || width <= 0 || height <= 0) return
     const dpr = globalThis.devicePixelRatio || 1
+    const backing_width = Math.max(1, Math.round(width * dpr))
+    const backing_height = Math.max(1, Math.round(height * dpr))
+    if (node.width !== backing_width) node.width = backing_width
+    if (node.height !== backing_height) node.height = backing_height
+    if (node.style.width !== `${width}px`) node.style.width = `${width}px`
+    if (node.style.height !== `${height}px`) node.style.height = `${height}px`
+    const ctx = node.getContext(`2d`)
+    if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.save()
     ctx.beginPath()
     ctx.rect(pad.l, pad.t, plot_width, plot_height)
     ctx.clip()
-    if (render_mode === `points`) draw_points(ctx)
-    else draw_density(ctx)
+    draw(ctx)
     ctx.restore()
-  })
+  }
+
+  $effect(() => paint(canvas, render_mode === `points` ? draw_points : draw_density))
+  $effect(() => paint(overlay_canvas, draw_marked_points))
 
   function pointer_coords(event: PointerEvent | MouseEvent): Point2D | null {
     if (!canvas) return null
@@ -828,8 +882,18 @@
     return payloads
   })
 
-  let point_label_positions = $derived.by(() => {
-    if (point_label_payloads.length === 0) return {}
+  // See ScatterPlot: carried between solves so a pan/zoom frame polishes the previous layout
+  const label_offsets = new Map<string, Point2D>()
+
+  // An effect, not $derived: the solve mutates `label_offsets`, and a lazy derived is skipped
+  // while the template renders no labels, leaving stale offsets to warm-start the next solve.
+  let point_label_positions = $state<Record<string, Point2D>>({})
+  $effect(() => {
+    if (point_label_payloads.length === 0) {
+      label_offsets.clear()
+      point_label_positions = {}
+      return
+    }
 
     const filtered_data: InternalPoint<Metadata>[] = point_label_payloads.map((payload) => ({
       ...payload.point,
@@ -846,11 +910,12 @@
     }))
     const label_series: DataSeries<Metadata>[] = [{ x: [], y: [], filtered_data }]
 
-    return compute_label_positions(
+    point_label_positions = compute_label_positions(
       label_series,
       actual_label_placement_config,
       { x_scale_fn, y_scale_fn, y2_scale_fn: y_scale_fn, x_axis },
       { width, height, pad },
+      label_offsets,
     )
   })
 
@@ -1077,6 +1142,7 @@
   {/if}
 
   <canvas bind:this={canvas}></canvas>
+  <canvas bind:this={overlay_canvas} class="marked-points" aria-hidden="true"></canvas>
 
   <svg {width} {height} aria-hidden="true">
     <defs>
@@ -1356,6 +1422,9 @@
   .binned-scatter:hover .header-controls,
   .binned-scatter .header-controls:focus-within {
     opacity: 1;
+  }
+  canvas.marked-points {
+    pointer-events: none;
   }
   canvas,
   svg {

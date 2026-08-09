@@ -154,6 +154,11 @@ export function sanitize_html(html: unknown): string {
   const str = stringify_html_input(html)
   const cached = sanitize_cache.get(str)
   if (cached !== undefined) return cached
+  // DOMPurify makes the same `indexOf('<') === -1` check and returns `dirty` untouched, so
+  // this is byte-identical by construction. Don't delete it on those grounds though: it bails
+  // only after setConfig() rebuilds the allow-lists below, and that dominates — 0.036 us here
+  // vs 319 us for the two sanitize() calls on the same five axis labels.
+  if (!str.includes(`<`)) return cache_sanitize(str, str)
   const dp = get_purify()
   if (!dp) return cache_sanitize(str, sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET))
   // oxfmt-ignore

@@ -320,7 +320,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.2.2",
-    "svelte-widgets": "^1.4.0",
+    "svelte-widgets": "github:janosh/svelte-widgets#main",
     "three": "^0.185.1"
   },
   "devDependencies": {

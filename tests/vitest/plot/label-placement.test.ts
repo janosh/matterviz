@@ -1,9 +1,11 @@
 import type { DataSeries } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig } from '$lib/plot/core/types'
+import type { AnchorInfo, LabelState } from '$lib/plot/core/utils/label-placement'
 import {
   compute_delta_energy,
   compute_label_positions,
+  create_neighbor_index,
   estimate_label_size,
   generate_candidates,
   label_leader_segment,
@@ -260,6 +262,12 @@ describe(`generate_candidates`, () => {
   })
 })
 
+test(`neighbor index handles collinear anchors spanning a huge extent`, () => {
+  const anchors = [0, Number.MAX_VALUE].map((anchor_x) => ({ x: anchor_x, y: 0, radius: 1 }))
+  const neighbors = create_neighbor_index(anchors)
+  expect(neighbors.collect(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+})
+
 // === compute_delta_energy ===
 
 describe(`compute_delta_energy`, () => {
@@ -272,21 +280,38 @@ describe(`compute_delta_energy`, () => {
     distance: 0,
     bounds: 0,
   }
+  // every term active, so the randomized comparison below exercises all of them at once
+  const all_weights = {
+    overlap: 30,
+    marker: 100,
+    leader_cross: 10,
+    leader_text: 8,
+    distance: 0.5,
+    bounds: 100,
+  }
+
+  // The solver always supplies a neighbour index, widened to cover every label's reach from
+  // its anchor plus the move being scored. Queries would drop real neighbours otherwise.
+  const delta_energy = (
+    labels: LabelState[],
+    anchors: AnchorInfo[],
+    changed_idx: number,
+    old_state: LabelState,
+    new_state: LabelState,
+    weights: typeof all_weights,
+  ): number => {
+    const neighbors = create_neighbor_index(anchors)
+    neighbors.reset([...labels, new_state])
+    const args = [labels, anchors, changed_idx, old_state, new_state] as const
+    return compute_delta_energy(...args, weights, bounds, neighbors)
+  }
 
   test(`moving label closer to its anchor yields negative distance delta`, () => {
     const anchors = [{ x: 100, y: 100, radius: 4 }]
     const far = { x: 150, y: 150, w: 30, h: 12, anchor_idx: 0 }
     const near = { ...far, x: 105, y: 95 }
-    const delta = compute_delta_energy(
-      [far],
-      anchors,
-      0,
-      far,
-      near,
-      { ...zero_weights, distance: 1 },
-      bounds,
-    )
-    expect(delta).toBeLessThan(0)
+    const weights = { ...zero_weights, distance: 1 }
+    expect(delta_energy([far], anchors, 0, far, near, weights)).toBeLessThan(0)
   })
 
   test(`moving label into overlap with another label yields positive overlap delta`, () => {
@@ -297,15 +322,8 @@ describe(`compute_delta_energy`, () => {
     const label_a = { x: 100, y: 90, w: 30, h: 12, anchor_idx: 0 }
     const label_b = { x: 200, y: 90, w: 30, h: 12, anchor_idx: 1 }
     const moved = { ...label_a, x: 200 }
-    const delta = compute_delta_energy(
-      [label_a, label_b],
-      anchors,
-      0,
-      label_a,
-      moved,
-      { ...zero_weights, overlap: 30 },
-      bounds,
-    )
+    const weights = { ...zero_weights, overlap: 30 }
+    const delta = delta_energy([label_a, label_b], anchors, 0, label_a, moved, weights)
     expect(delta).toBeGreaterThan(0)
   })
 
@@ -313,32 +331,116 @@ describe(`compute_delta_energy`, () => {
     const anchors = [{ x: 10, y: 10, radius: 4 }]
     const inside = { x: 10, y: 10, w: 30, h: 12, anchor_idx: 0 }
     const outside = { ...inside, x: -20 }
-    const delta = compute_delta_energy(
-      [inside],
-      anchors,
-      0,
-      inside,
-      outside,
-      { ...zero_weights, bounds: 100 },
-      bounds,
-    )
-    expect(delta).toBeGreaterThan(0)
+    const weights = { ...zero_weights, bounds: 100 }
+    expect(delta_energy([inside], anchors, 0, inside, outside, weights)).toBeGreaterThan(0)
   })
 
   test(`moving label onto a marker yields positive marker delta`, () => {
     const anchors = [{ x: 100, y: 100, radius: 8 }]
     const clear = { x: 120, y: 90, w: 30, h: 12, anchor_idx: 0 }
     const on_marker = { ...clear, x: 90, y: 94 }
-    const delta = compute_delta_energy(
-      [clear],
-      anchors,
-      0,
-      clear,
-      on_marker,
-      { ...zero_weights, marker: 100 },
-      bounds,
-    )
-    expect(delta).toBeGreaterThan(0)
+    const weights = { ...zero_weights, marker: 100 }
+    expect(delta_energy([clear], anchors, 0, clear, on_marker, weights)).toBeGreaterThan(0)
+  })
+
+  // Same energy as compute_delta_energy but scoring every marker and label, i.e. without its
+  // bounding-box rejection. `all_weights` throughout so every term is exercised.
+  const mid = (rect: LabelState) => [rect.x + rect.w / 2, rect.y + rect.h / 2] as const
+  // a boolean term the move can switch on or off
+  const toggle = (was: boolean, now: boolean, weight: number) =>
+    was === now ? 0 : now ? weight : -weight
+  const full_delta = (
+    labels: LabelState[],
+    anchors: AnchorInfo[],
+    changed_idx: number,
+    old_state: LabelState,
+    new_state: LabelState,
+  ): number => {
+    const {
+      overlap,
+      marker,
+      leader_cross,
+      leader_text,
+      distance,
+      bounds: bounds_weight,
+    } = all_weights
+    const { x: ax, y: ay } = anchors[new_state.anchor_idx]
+    const [old_cx, old_cy] = mid(old_state)
+    const [new_cx, new_cy] = mid(new_state)
+    let delta =
+      distance *
+        (Math.hypot(new_cx - ax, new_cy - ay) - Math.hypot(old_cx - ax, old_cy - ay)) +
+      bounds_weight *
+        (rect_out_of_bounds_area(new_state, bounds) -
+          rect_out_of_bounds_area(old_state, bounds))
+    for (const { x, y, radius } of anchors) {
+      delta +=
+        marker *
+        (rect_circle_overlap(new_state, x, y, radius) -
+          rect_circle_overlap(old_state, x, y, radius))
+    }
+    for (const [jdx, other] of labels.entries()) {
+      if (jdx === changed_idx) continue
+      const { x: jx, y: jy } = anchors[other.anchor_idx]
+      const [ox, oy] = mid(other)
+      delta +=
+        overlap * (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
+      delta += toggle(
+        segments_intersect(ax, ay, old_cx, old_cy, jx, jy, ox, oy),
+        segments_intersect(ax, ay, new_cx, new_cy, jx, jy, ox, oy),
+        leader_cross,
+      )
+      delta += toggle(
+        segment_rect_intersects(ax, ay, old_cx, old_cy, other),
+        segment_rect_intersects(ax, ay, new_cx, new_cy, other),
+        leader_text,
+      )
+      delta += toggle(
+        segment_rect_intersects(jx, jy, ox, oy, old_state),
+        segment_rect_intersects(jx, jy, ox, oy, new_state),
+        leader_text,
+      )
+    }
+    return delta
+  }
+
+  // The rejection is only sound if it never changes the number, hence exact equality rather
+  // than a tolerance: skipped terms are provably zero. Small spreads pack labels together so
+  // the rejection rarely fires, large ones space them out so it almost always does.
+  test.each(
+    [2, 8, 25].flatMap((count) => [40, 300].map((spread) => [count, spread] as const)),
+  )(`matches a full pairwise evaluation (%i labels, spread %i)`, (label_count, spread) => {
+    let seed = 12_345
+    const random = () => {
+      seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+
+    for (let trial = 0; trial < 60; trial++) {
+      const anchors = Array.from({ length: label_count }, () => ({
+        x: 200 + (random() - 0.5) * spread,
+        y: 150 + (random() - 0.5) * spread,
+        radius: 2 + random() * 6,
+      }))
+      const labels = anchors.map((anchor, idx) => ({
+        x: anchor.x + (random() - 0.5) * 60,
+        y: anchor.y + (random() - 0.5) * 60,
+        w: 20 + random() * 90,
+        h: 10 + random() * 24,
+        anchor_idx: idx,
+      }))
+      const changed_idx = Math.floor(random() * label_count)
+      const old_state = { ...labels[changed_idx] }
+      const new_state = {
+        ...old_state,
+        x: old_state.x + (random() - 0.5) * 300,
+        y: old_state.y + (random() - 0.5) * 300,
+      }
+      // The index skips whole buckets and the box test then rejects single labels, so both
+      // have to clear the same bar: either could silently drop a term.
+      const args = [labels, anchors, changed_idx, old_state, new_state] as const
+      expect(delta_energy(...args, all_weights)).toBe(full_delta(...args))
+    }
   })
 })
 
@@ -394,20 +496,22 @@ function make_labeled_series(points: LabeledPoint[]): DataSeries[] {
   return [series]
 }
 
-function placeAndExpectFinite(
-  points: { x: number; y: number; text: string }[],
+// Default scales and bounds for every case below, so tests read as points plus the one config
+// knob they exercise. Pass a prebuilt series to place_series when a case tweaks point fields.
+const place_series = (series: DataSeries[], config = default_config) =>
+  compute_label_positions(series, config, default_scales, default_bounds)
+
+const place = (points: LabeledPoint[], config = default_config) =>
+  place_series(make_labeled_series(points), config)
+
+function place_and_expect_finite(
+  points: LabeledPoint[],
   config = default_config,
 ): Record<string, { x: number; y: number }> {
-  const result = compute_label_positions(
-    make_labeled_series(points),
-    config,
-    default_scales,
-    default_bounds,
-  )
+  const result = place(points, config)
   expect(Object.keys(result)).toHaveLength(points.length)
   for (const pos of Object.values(result)) {
-    expect(pos.x).not.toBeNaN()
-    expect(pos.y).not.toBeNaN()
+    expect(Number.isFinite(pos.x) && Number.isFinite(pos.y)).toBe(true)
   }
   return result
 }
@@ -417,9 +521,7 @@ const estimate_label_width = (text: string, font_size = 10): number =>
 
 describe(`compute_label_positions`, () => {
   test(`returns empty for empty series or disabled auto_placement`, () => {
-    expect(
-      compute_label_positions([], default_config, default_scales, default_bounds),
-    ).toEqual({})
+    expect(place_series([])).toEqual({})
 
     const disabled: DataSeries[] = [
       {
@@ -443,32 +545,25 @@ describe(`compute_label_positions`, () => {
         ],
       },
     ]
-    expect(
-      compute_label_positions(disabled, default_config, default_scales, default_bounds),
-    ).toEqual({})
+    expect(place_series(disabled)).toEqual({})
   })
 
   test(`places labels at finite positions for single and boundary points`, () => {
-    placeAndExpectFinite([{ x: 50, y: 50, text: `Only` }])
-    placeAndExpectFinite([
+    const single = place_and_expect_finite([{ x: 50, y: 50, text: `Only` }])
+    const corners = place_and_expect_finite([
       { x: 15, y: 15, text: `Corner` },
       { x: 385, y: 285, text: `FarCorner` },
     ])
+    expect(Object.keys(single)).toHaveLength(1)
+    expect(Object.keys(corners)).toHaveLength(2)
   })
 
   test(`translates automatic label positions with point offsets`, () => {
     const config = { ...default_config, sa_iterations: 0 }
-    const unshifted = compute_label_positions(
-      make_labeled_series([{ x: 100, y: 100, text: `A` }]),
+    const unshifted = place([{ x: 100, y: 100, text: `A` }], config)[`0-0`]
+    const shifted = place(
+      [{ x: 100, y: 100, text: `A`, point_offset: { x: 30, y: 20 } }],
       config,
-      default_scales,
-      default_bounds,
-    )[`0-0`]
-    const shifted = compute_label_positions(
-      make_labeled_series([{ x: 100, y: 100, text: `A`, point_offset: { x: 30, y: 20 } }]),
-      config,
-      default_scales,
-      default_bounds,
     )[`0-0`]
     expect(shifted.x - unshifted.x).toBeCloseTo(30)
     expect(shifted.y - unshifted.y).toBeCloseTo(20)
@@ -480,19 +575,179 @@ describe(`compute_label_positions`, () => {
       { x: 55, y: 52, text: `B` },
       { x: 48, y: 53, text: `C` },
     ])
-    const result1 = compute_label_positions(
-      series,
-      default_config,
-      default_scales,
-      default_bounds,
-    )
-    const result2 = compute_label_positions(
-      series,
-      default_config,
-      default_scales,
-      default_bounds,
-    )
-    expect(result1).toEqual(result2)
+    expect(place_series(series)).toEqual(place_series(series))
+  })
+
+  // Every pan/zoom frame re-runs the solver, and a cold solve is O(sa_iterations x labels)
+  // simulated annealing: 60 ms/frame at 50 labels, seconds at 300. Passing the previous
+  // layout back in turns that into a short polish.
+  describe(`warm start`, () => {
+    // Well separated, so the first solve settles into a local optimum. A crowded cloud never
+    // does, and the polish would keep improving it — real, but it masks the translation.
+    const pan_points = [
+      { x: 40, y: 40 },
+      { x: 160, y: 60 },
+      { x: 280, y: 40 },
+      { x: 60, y: 170 },
+      { x: 190, y: 200 },
+      { x: 300, y: 140 },
+    ].map((point, idx) => ({ ...point, text: `Label ${idx}` }))
+    // Shifting the scale slides every anchor by the same amount, which is what a pan does
+    const shifted_scales = (shift: number) => {
+      const scale = ((val: number | Date) =>
+        (typeof val === `number` ? val : val.getTime()) + shift) as PlotScaleFn
+      scale.invert = (val: number) => val - shift
+      scale.domain = (() => [0, 100]) as PlotScaleFn[`domain`]
+      scale.range = (() => [0, 400]) as PlotScaleFn[`range`]
+      return { ...default_scales, x_scale_fn: scale, y_scale_fn: scale, y2_scale_fn: scale }
+    }
+
+    // Each frame's layout should grow out of the last one. Re-solving from scratch is free to
+    // land in a different local optimum every frame, which reads as labels flickering between
+    // arrangements while the user drags.
+    test(`labels settle instead of churning across an interaction`, () => {
+      const crowded = Array.from({ length: 14 }, (_unused, idx) => ({
+        x: 30 + (idx % 5) * 22,
+        y: 40 + Math.floor(idx / 5) * 26,
+        text: `Label ${idx}`,
+      }))
+      const series = make_labeled_series(crowded)
+      // Offsets, not positions: a pan moves every anchor, so only the offset says whether the
+      // label kept its place relative to its own point.
+      const offsets_of = (
+        positions: Record<string, { x: number; y: number }>,
+        shift: number,
+      ) =>
+        Object.fromEntries(
+          Object.entries(positions).map(([id, pos]) => {
+            const point = crowded[Number(id.split(`-`)[1])]
+            return [id, { x: pos.x - point.x - shift, y: pos.y - point.y - shift }]
+          }),
+        )
+      const total_churn = (carry: Map<string, { x: number; y: number }> | undefined) => {
+        let previous: Record<string, { x: number; y: number }> | null = null
+        let churn = 0
+        for (let frame = 0; frame < 8; frame++) {
+          const shift = frame * 4
+          const solved = compute_label_positions(
+            series,
+            default_config,
+            shifted_scales(shift),
+            default_bounds,
+            carry,
+          )
+          const offsets = offsets_of(solved, shift)
+          if (previous) {
+            for (const [id, offset] of Object.entries(offsets)) {
+              churn += Math.hypot(offset.x - previous[id].x, offset.y - previous[id].y)
+            }
+          }
+          previous = offsets
+        }
+        return churn
+      }
+
+      const cold_churn = total_churn(undefined)
+      const warm_churn = total_churn(new Map())
+      expect(warm_churn).toBeLessThan(cold_churn / 2)
+    })
+
+    test(`omitting the offsets leaves the cold solve untouched`, () => {
+      const series = make_labeled_series(pan_points)
+      const cold = compute_label_positions(
+        series,
+        default_config,
+        default_scales,
+        default_bounds,
+      )
+      // Same call with an empty map: nothing to warm-start from, so it must solve identically
+      const seeded = compute_label_positions(
+        series,
+        default_config,
+        default_scales,
+        default_bounds,
+        new Map(),
+      )
+      expect(seeded).toEqual(cold)
+    })
+
+    test(`explicit zero iterations disables warm annealing`, () => {
+      const result = compute_label_positions(
+        make_labeled_series(pan_points),
+        { ...default_config, sa_iterations: 0, warm_sa_iterations: 100 },
+        default_scales,
+        default_bounds,
+        new Map(pan_points.map((_point, idx) => [`0-${idx}`, { x: 0, y: 0 }])),
+      )
+      expect(result).toEqual(
+        Object.fromEntries(pan_points.map(({ x, y }, idx) => [`0-${idx}`, { x, y }])),
+      )
+    })
+
+    test(`labels that leave the data are dropped from the carried offsets`, () => {
+      const offsets = new Map<string, { x: number; y: number }>()
+      compute_label_positions(
+        make_labeled_series(pan_points),
+        default_config,
+        default_scales,
+        default_bounds,
+        offsets,
+      )
+      compute_label_positions(
+        make_labeled_series(pan_points.slice(0, 3)),
+        default_config,
+        default_scales,
+        default_bounds,
+        offsets,
+      )
+      expect(offsets.size).toBe(3) // else a long pan grows the map without bound
+    })
+
+    // 30 solves of a dense 50-label cloud, so well past the 5 s default when the suite is
+    // running them alongside everything else.
+    test(`costs a fraction of a cold solve`, { timeout: 60_000 }, () => {
+      const series = make_labeled_series(
+        Array.from({ length: 50 }, (_unused, idx) => ({
+          x: (idx % 10) * 9 + 5,
+          y: Math.floor(idx / 10) * 18 + 5,
+          text: `Label ${idx}`,
+        })),
+      )
+      const config = { ...default_config, sa_iterations: 2000 }
+      const elapsed = (run: () => void) => {
+        const started = performance.now()
+        run()
+        return performance.now() - started
+      }
+      const offsets = new Map<string, { x: number; y: number }>()
+      compute_label_positions(series, config, shifted_scales(0), default_bounds, offsets)
+
+      // One cold solve is ~700 ms here, so repeating it only risks the test timeout, and a
+      // pause during it would inflate the ratio rather than shrink it. The warm solve is ~1 ms
+      // and is where a single GC pause drags the ratio under the bar (observed at 1.08x), so
+      // that is the side worth taking the best of.
+      const cold = elapsed(() =>
+        compute_label_positions(series, config, shifted_scales(1), default_bounds),
+      )
+      let warm = Infinity
+      for (let rep = 0; rep < 3; rep++) {
+        warm = Math.min(
+          warm,
+          elapsed(() =>
+            compute_label_positions(
+              series,
+              config,
+              shifted_scales(rep),
+              default_bounds,
+              offsets,
+            ),
+          ),
+        )
+      }
+      // Measured ~500x on this dense 50-label cloud; asserting 5x leaves room for slow CI while
+      // still failing outright if a change puts the full anneal back on the interactive path.
+      expect(cold / warm).toBeGreaterThan(5)
+    })
   })
 
   test(`well-separated labels stay near their anchors`, () => {
@@ -500,7 +755,7 @@ describe(`compute_label_positions`, () => {
       { x: 50, y: 50, text: `A` },
       { x: 200, y: 200, text: `B` },
     ]
-    const result = placeAndExpectFinite(anchors)
+    const result = place_and_expect_finite(anchors)
     for (const [idx, key] of Object.keys(result).entries()) {
       const dist = Math.hypot(result[key].x - anchors[idx].x, result[key].y - anchors[idx].y)
       expect(dist).toBeLessThan(40)
@@ -514,7 +769,7 @@ describe(`compute_label_positions`, () => {
       y: idx * 30,
       text: `P${idx}`,
     }))
-    const result = placeAndExpectFinite(points, { ...default_config, max_labels: 5 })
+    const result = place_and_expect_finite(points, { ...default_config, max_labels: 5 })
     // All fallback positions must stay within plot bounds (pad=10 each side)
     for (const pos of Object.values(result)) {
       expect(pos.x).toBeGreaterThanOrEqual(10)
@@ -537,7 +792,7 @@ describe(`compute_label_positions`, () => {
       { x: 50, y: 50, text: `OK` },
       { x: 380, y: 150, text: `RR` },
     ]
-    const result = placeAndExpectFinite(points, { ...default_config, max_labels: 1 })
+    const result = place_and_expect_finite(points, { ...default_config, max_labels: 1 })
     const edge_key = Object.keys(result)[1]
     const label_w = estimate_label_width(`RR`)
     expect(result[edge_key].x).toBe(390 - label_w)
@@ -545,18 +800,9 @@ describe(`compute_label_positions`, () => {
 
   test(`candidate_gap controls candidate distance from marker radius`, () => {
     const series = make_labeled_series([{ x: 100, y: 100, text: `A` }])
-    const no_gap = compute_label_positions(
-      series,
-      { ...default_config, sa_iterations: 0, candidate_gap: 0 },
-      default_scales,
-      default_bounds,
-    )[`0-0`]
-    const large_gap = compute_label_positions(
-      series,
-      { ...default_config, sa_iterations: 0, candidate_gap: 20 },
-      default_scales,
-      default_bounds,
-    )[`0-0`]
+    const gap_at = (candidate_gap: number) =>
+      place_series(series, { ...default_config, sa_iterations: 0, candidate_gap })[`0-0`]
+    const [no_gap, large_gap] = [gap_at(0), gap_at(20)]
 
     expect(Math.hypot(no_gap.x - 100, no_gap.y - 100)).toBeLessThan(
       Math.hypot(large_gap.x - 100, large_gap.y - 100),
@@ -572,7 +818,7 @@ describe(`compute_label_positions`, () => {
       { x: 103, y: 102, text: `Epsilon` },
       { x: 98, y: 100, text: `Zeta` },
     ]
-    const result = placeAndExpectFinite(points, { ...default_config, sa_iterations: 2000 })
+    const result = place_and_expect_finite(points, { ...default_config, sa_iterations: 2000 })
     const entries = Object.entries(result)
 
     const font_size = 10
@@ -622,13 +868,38 @@ describe(`compute_label_positions`, () => {
       kept: all_label_ids,
     },
   ])(`max_neighbors $label`, ({ max_neighbors, kept }) => {
-    const result = compute_label_positions(
-      make_labeled_series(cull_points),
-      { ...default_config, max_neighbors },
-      default_scales,
-      default_bounds,
-    )
+    const result = place(cull_points, { ...default_config, max_neighbors })
     expect(Object.keys(result).toSorted()).toEqual([...kept].toSorted())
+  })
+
+  // A kept non-finite anchor poisons every delta, so no move ever beats `delta < 0` and the
+  // whole scene freezes at its greedy positions -- not just the offending label.
+  test.each([
+    [`NaN`, NaN],
+    [`Infinity`, Infinity],
+  ])(`drops %s anchors without disturbing the rest`, (_name, bad) => {
+    const good: LabeledPoint[] = [
+      { x: 20, y: 20, text: `A` },
+      { x: 26, y: 24, text: `B` },
+    ]
+    const poisoned = place([good[0], { x: bad, y: 30, text: `X` }, good[1]])
+    expect(Object.keys(poisoned)).toEqual([`0-0`, `0-2`])
+    expect(Object.values(poisoned)).toEqual(Object.values(place(good)))
+  })
+
+  test(`negative label size and marker radius clamp to zero`, () => {
+    const place_sized = (width: number, height: number, radius: number) => {
+      const series = make_labeled_series([
+        { x: 20, y: 20, text: `A` },
+        { x: 30, y: 25, text: `B` },
+      ])
+      for (const pt of series[0].filtered_data ?? []) {
+        pt.point_label = { ...pt.point_label, size: { width, height } }
+        pt.point_style = { ...pt.point_style, radius }
+      }
+      return place_series(series)
+    }
+    expect(place_sized(-40, -12, -5)).toEqual(place_sized(0, 0, 0))
   })
 
   test(`high distance weight keeps labels closer to anchors than high overlap weight`, () => {
@@ -636,19 +907,8 @@ describe(`compute_label_positions`, () => {
       { x: 50, y: 50, text: `A` },
       { x: 52, y: 51, text: `B` },
     ]
-    const series = make_labeled_series(anchors)
-    const result_dist = compute_label_positions(
-      series,
-      { ...default_config, weights: { distance: 100, overlap: 0 } },
-      default_scales,
-      default_bounds,
-    )
-    const result_overlap = compute_label_positions(
-      series,
-      { ...default_config, weights: { distance: 0, overlap: 100 } },
-      default_scales,
-      default_bounds,
-    )
+    const weighted = (weights: LabelPlacementConfig[`weights`]) =>
+      place(anchors, { ...default_config, weights })
 
     const avg_dist = (res: Record<string, { x: number; y: number }>) => {
       const positions = Object.values(res)
@@ -659,6 +919,8 @@ describe(`compute_label_positions`, () => {
       return dist_sum / positions.length
     }
 
-    expect(avg_dist(result_dist)).toBeLessThan(avg_dist(result_overlap))
+    expect(avg_dist(weighted({ distance: 100, overlap: 0 }))).toBeLessThan(
+      avg_dist(weighted({ distance: 0, overlap: 100 })),
+    )
   })
 })
