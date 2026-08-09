@@ -20,6 +20,7 @@
     HoverConfig,
     InternalPoint,
     LabelPlacementConfig,
+    LabelStyle,
     LegendConfig,
     PanConfig,
     PlotConfig,
@@ -954,7 +955,6 @@
     }
     return { series: n_series, points: n_points }
   })
-  let effective_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
 
   let visible_marker_count = $derived.by(() => {
     if (!styles.show_points) return 0
@@ -1032,7 +1032,6 @@
     }
     return true
   })
-  const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
 
   // Points needing labels or effects remain in an SVG overlay.
   const same_logical_point = (
@@ -1434,6 +1433,18 @@
       else tooltip_point = null
     },
   })
+
+  // Panning retargets every marker and line on each pointer frame. Animating that leaves
+  // them trailing the axes while hover hit-testing already uses the live scales, so snap
+  // for the duration of the drag. Declared here because both read pan_zoom.
+  const effective_point_tween = $derived(
+    use_canvas_markers || pan_zoom.is_pan_dragging ? { duration: 0 } : point_tween,
+  )
+  const effective_line_tween = $derived(
+    pan_zoom.is_pan_dragging
+      ? { duration: 0 }
+      : resolve_line_tween(line_tween, line_tween_load),
+  )
   onDestroy(() => pan_zoom.destroy())
 
   // Lazily index screen-space markers so pointer moves probe nearby cells only.
@@ -1518,13 +1529,13 @@
   // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
   // put this scan back on every frame. Counting labels outside the visible range only means
   // the solver runs and filters them out itself.
+  // series and label entries can both be null: assigned_series passes non-objects through
+  const is_auto_placed = (label: LabelStyle | null | undefined) =>
+    Boolean(label?.auto_placement && label.text)
   let has_auto_placed_labels = $derived(
-    // entries can be null: assigned_series passes non-objects through untouched
     series_with_ids.some((series_data) => {
       const label = series_data?.point_label
-      return Array.isArray(label)
-        ? label.some((entry) => entry?.auto_placement && entry.text)
-        : Boolean(label?.auto_placement && label.text)
+      return Array.isArray(label) ? label.some(is_auto_placed) : is_auto_placed(label)
     }),
   )
 

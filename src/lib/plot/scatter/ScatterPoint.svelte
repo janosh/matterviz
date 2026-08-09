@@ -69,7 +69,9 @@
     (left, right) => left.x === right.x && left.y === right.y,
   )
 
-  $effect.pre(() => tweened_coords.set_target(coords))
+  // point_tween passed per call, not just at construction, so a plot can switch it to
+  // duration 0 mid-interaction (panning) and back again
+  $effect.pre(() => tweened_coords.set_target(coords, point_tween))
 </script>
 
 <g
