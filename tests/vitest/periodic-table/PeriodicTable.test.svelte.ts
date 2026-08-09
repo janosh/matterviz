@@ -9,6 +9,9 @@ import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
+const { replace_url } = vi.hoisted(() => ({ replace_url: vi.fn(async () => {}) }))
+vi.mock(`$site/state.svelte`, () => ({ replace_url }))
+
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)
 
@@ -16,6 +19,7 @@ describe(`PeriodicTable`, () => {
   afterEach(() => {
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
+    replace_url.mockClear()
     selected.category = null
     Object.assign(colors.category, DEFAULT_CATEGORY_COLORS)
   })
@@ -295,6 +299,7 @@ describe(`PeriodicTable`, () => {
     expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
       new Set([`white`, `black`]),
     )
+    expect(replace_url).toHaveBeenCalledWith(expect.stringContaining(`?heatmap=`))
   })
 
   test.each([

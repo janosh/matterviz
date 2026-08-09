@@ -172,10 +172,6 @@ export default defineConfig({
       `tests/vitest/**/*.test.ts`,
       `tests/vitest/**/*.test.svelte.ts`,
       `extensions/vscode/tests/**/*.test.ts`,
-      // jupyterlab defines its own `test` script but no workflow ran it, so these only
-      // executed locally. They import @jupyterlab packages as types only, so they run
-      // here without that extension's install (which pnpm can't do unattended).
-      `extensions/jupyterlab/tests/**/*.test.ts`,
     ],
   },
 

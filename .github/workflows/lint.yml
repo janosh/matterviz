@@ -43,6 +43,9 @@ jobs:
       - name: Type-check JupyterLab extension
         run: pnpm --config.verify-deps-before-run=false -C extensions/jupyterlab run typecheck
 
+      - name: Test JupyterLab extension
+        run: pnpm --config.verify-deps-before-run=false -C extensions/jupyterlab test
+
   knip:
     name: Check unused code
     runs-on: ubuntu-latest
