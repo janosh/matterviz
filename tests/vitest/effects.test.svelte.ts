@@ -1,4 +1,5 @@
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
+import { trigger_intersection } from './setup'
 import { pulsing_highlight_opacity } from '$lib/effects.svelte'
 import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
 import { flushSync, mount, unmount } from 'svelte'
@@ -69,40 +70,33 @@ describe(`create_pulse_animation`, () => {
   })
 
   // Ticks repaint a whole canvas or invalidate a 3D scene, so a pulse on an off-screen chart
-  // is wasted work. Opting in also means staying paused until the observer first reports.
-  test(`pauses while its element is off screen and resumes when scrolled back`, () => {
+  // is wasted work. It must still animate before any verdict arrives: gated components bind
+  // their wrapper after mount, and an observer that never reports (happy-dom, or a real
+  // browser in the moment before its first callback) must not stall the pulse.
+  test(`animates until an observer reports off screen, then follows it`, async () => {
     install_animation_frame_mock()
-    let notify: IntersectionObserverCallback | undefined
-    vi.stubGlobal(
-      `IntersectionObserver`,
-      class {
-        constructor(callback: IntersectionObserverCallback) {
-          notify = callback
-        }
-        observe(): void {}
-        disconnect(): void {}
-      },
-    )
-    const target = document.createElement(`div`)
+    const state = $state<{ node: HTMLElement | null }>({ node: null })
     const component = mount(PulseAnimationHarness, {
       target: document.body,
-      props: { active: () => true, element: () => target },
+      props: { active: () => true, element: () => state.node },
     })
     flushSync()
-    expect(requested_frames.size).toBe(0) // nothing scheduled before the observer reports
+    expect(requested_frames.size).toBe(1) // no element yet, so nothing to gate on
 
-    const observer = {} as IntersectionObserver // the callback under test ignores it
-    const set_visible = (is_visible: boolean) =>
-      flushSync(() =>
-        notify?.([{ isIntersecting: is_visible }] as IntersectionObserverEntry[], observer),
-      )
+    const target = document.createElement(`div`)
+    flushSync(() => (state.node = target))
+    await Promise.resolve() // let the observer deliver its initial (visible) callback
+    flushSync()
+    expect(requested_frames.size).toBe(1)
 
-    set_visible(true)
-    expect(requested_frames.size).toBe(1)
-    set_visible(false)
-    expect(requested_frames.size).toBe(0)
-    set_visible(true)
-    expect(requested_frames.size).toBe(1)
+    for (const [visible, expected_frames] of [
+      [false, 0],
+      [true, 1],
+    ] as const) {
+      trigger_intersection(target, visible)
+      flushSync()
+      expect(requested_frames.size).toBe(expected_frames)
+    }
     void unmount(component)
   })
 })

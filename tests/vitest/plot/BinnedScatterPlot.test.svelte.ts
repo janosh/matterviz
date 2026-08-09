@@ -4,7 +4,7 @@ import { get_series_color } from '$lib/plot/core/data-transform'
 import { interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, svg_query } from '../setup'
+import { doc_query, svg_query, trigger_intersection } from '../setup'
 
 // Shared deterministic point cloud; spreads y values without RNG overhead.
 const PSEUDO_RANDOM_MULTIPLIER = 48_271
@@ -650,7 +650,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  test(`pulses the selected point`, async () => {
+  test(`pulses the selected point and pauses while scrolled out of view`, async () => {
     const stroke = vi.fn()
     const radii = capture_radii({ stroke })
 
@@ -664,6 +664,20 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(stroke).toHaveBeenCalled()
     expect(Math.max(...radii)).toBeGreaterThan(4)
+
+    // Assert the pulse actually advances rather than just rendering one highlighted frame:
+    // the visibility gate silently froze it everywhere before, and a frozen pulse still
+    // draws that first frame. Redraws show up as further arc() calls.
+    const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
+    const after_mount = radii.length
+    await let_frames_run()
+    expect(radii.length).toBeGreaterThan(after_mount)
+
+    trigger_intersection(binned_plot(), false)
+    await settle()
+    const after_pause = radii.length
+    await let_frames_run()
+    expect(radii).toHaveLength(after_pause)
   })
 
   test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {

@@ -404,15 +404,18 @@
     trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
-  const pulse = create_pulse_animation(
-    () => selected_sites.length > 0 || active_sites.length > 0,
-    { step: 0.015, frequency: 5 },
-  )
-  let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
   })
+  // Each tick animates a highlight material's opacity, which invalidates the whole scene, so
+  // gate on the renderer canvas: a selection left standing would otherwise re-render an
+  // off-screen viewport every frame — once per pane in the 2x2 multi-side view.
+  const pulse = create_pulse_animation(
+    () => selected_sites.length > 0 || active_sites.length > 0,
+    { step: 0.015, frequency: 5, element: () => threlte.renderer?.domElement },
+  )
+  let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
 
   // Camera fly-to, shared with the orientation gizmo. Driven by `fly_to_request` because the
   // zone-axis control lives in the controls pane, outside the Threlte canvas, and so has no

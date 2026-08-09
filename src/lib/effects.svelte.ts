@@ -30,20 +30,22 @@ export function create_pulse_animation(
     if (reset_when_inactive) time = 0
   }
 
-  // Without `element` (or IntersectionObserver) the pulse runs unconditionally. Opting in
-  // starts paused: a decorative pulse is not worth running before the observer has reported.
-  const gated = Boolean(element) && typeof IntersectionObserver !== `undefined`
-  let on_screen = $state(!gated)
+  // Optimistic until an observer says otherwise, so a pulse with no `element` (or no
+  // IntersectionObserver) runs unconditionally and a gated one costs at most a frame of
+  // animation while off screen. Waiting for the first callback instead would delay every
+  // pulse by a frame, and stalls forever under test DOMs that stub IntersectionObserver
+  // without ever invoking it (happy-dom does exactly that).
+  let on_screen = $state(true)
   $effect(() => {
     const node = element?.()
-    if (!gated || !node) return undefined
+    if (!node || typeof IntersectionObserver === `undefined`) return undefined
     const observer = new IntersectionObserver((entries) => {
       on_screen = entries.some((entry) => entry.isIntersecting)
     })
     observer.observe(node)
     return () => {
       observer.disconnect()
-      on_screen = false // a replacement node stays paused until its own observer reports
+      on_screen = true // nothing gates the pulse until a new observer reports
     }
   })
 
