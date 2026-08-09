@@ -149,8 +149,10 @@ describe(`sanitize_html`, () => {
   })
 
   // Strings with no `<` bypass DOMPurify entirely. These pin that shortcut to what the
-  // sanitizer it skips would have returned — byte for byte, including the characters that
-  // look like they might be escaped on serialization but are not.
+  // sanitizer it skips would have returned, including the characters an HTML serializer
+  // would escape (`>`, `&`, nbsp) if the input ever reached the parser. It never does:
+  // DOMPurify returns `dirty` itself on the same indexOf('<') check, so equality here holds
+  // in any host, not just happy-dom.
   const inert_inputs = [
     `Density (g/cm³)`,
     `He said "hi" — it's fine`,
