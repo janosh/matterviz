@@ -51,11 +51,7 @@ jobs:
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: |
-          corepack enable
-          # strict-dep-builds: svelte-widgets is git-hosted, so pnpm builds it on install
-          pnpm install --config.strict-dep-builds=false
-          pnpm run package:dist
+        run: corepack enable && pnpm install && pnpm run package:dist
         working-directory: .
 
       # --ignore-workspace: the root install above can auto-create a pnpm-workspace.yaml
