@@ -8,7 +8,9 @@ import math
 from collections.abc import Callable
 from typing import NamedTuple
 
-BOHR_TO_ANG = 0.529177249
+# CODATA 2022, kept in sync with BOHR_TO_ANGSTROM in src/lib/constants.ts so generated
+# fixtures round-trip through the .cube reader on the same constant
+BOHR_TO_ANG = 0.529177210544
 ANG_TO_BOHR = 1.0 / BOHR_TO_ANG
 
 Atom = tuple[int, float, float, float]  # (Z, x, y, z) in Angstrom

@@ -1,5 +1,5 @@
 // Shared file-viewer types and filename patterns.
-import { ext_regex } from '$lib/constants'
+import { ext_regex, FERMI_FILE_EXTENSIONS } from '$lib/constants'
 
 export type ViewType =
   | `trajectory`
@@ -13,7 +13,7 @@ export type ViewType =
   | `vaspout_electronic`
 
 // Filename patterns for specialized file types (shared between extension host and webview)
-export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
+export { FERMI_FILE_EXTENSIONS } from '$lib/constants'
 export const FERMI_FILE_RE = ext_regex(FERMI_FILE_EXTENSIONS)
 export const VOLUMETRIC_EXT_RE = /\.cube$/i
 export { VASP_VOLUMETRIC_REGEX as VOLUMETRIC_VASP_RE } from '$lib/constants'

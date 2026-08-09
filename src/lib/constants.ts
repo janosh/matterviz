@@ -1,4 +1,14 @@
-// Shared keyword constants for file type detection across the codebase
+// Shared constants: physical unit conversions, then file type detection keywords.
+
+// === physical constants ===
+
+// Bohr radius in Angstroms (CODATA 2022). Single source of truth so the Gaussian .cube
+// reader (isosurface/parse.ts) and the FRMSF reciprocal-lattice reader (fermi-surface/
+// parse.ts) can't drift apart again — they previously carried 0.529177249 (CODATA 1986)
+// and 0.529177, which disagreed by 4.7e-7 relative.
+export const BOHR_TO_ANGSTROM = 0.529177210544
+
+// === file type detection ===
 
 // compression formats and their file extensions
 export const COMPRESSION_FORMATS = {
@@ -92,6 +102,45 @@ export const CONFIG_DIRS_REGEX =
 export const MD_SIM_EXCLUDE_REGEX = /md_simulation\.(?:out|txt|yml|py|csv|html|css|md|js|ts)$/i
 export const XYZ_EXTENSIONS = Object.freeze([`.xyz`, `.extxyz`])
 export const XYZ_EXTXYZ_REGEX = ext_regex(XYZ_EXTENSIONS)
+// Lives here rather than in file-viewer/types (which re-exports it) so this module stays a
+// dependency-free leaf that build scripts can import — see the host vocabularies below.
+export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
+
+// === host opener vocabularies ===
+// VS Code matches globs declared in its package.json and JupyterLab registers file types up
+// front, so both need literal extension lists rather than the predicates in
+// file-viewer/eligibility. Deriving them from here is what stops the two extensions drifting
+// from $lib and from each other — they already had: VS Code alone claimed .dcd/.trr,
+// JupyterLab alone left .xtc unclaimed. Listed without a leading dot, the form hosts want.
+
+// The one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary containers.
+const TEXT_TRAJ_EXTENSIONS = [`.lammpstrj`]
+
+// Formats a UTF-8 decode can hand straight to a parser.
+export const TEXT_VIEWER_EXTENSIONS: readonly string[] = Object.freeze([
+  ...new Set(
+    [
+      ...STRUCTURE_EXTENSIONS,
+      ...XYZ_EXTENSIONS,
+      ...TEXT_TRAJ_EXTENSIONS,
+      ...FERMI_FILE_EXTENSIONS,
+    ].map((ext) => ext.slice(1)),
+  ),
+])
+
+// Binary containers MatterViz can actually decode, i.e. the payloads a host must hand over
+// as bytes rather than text. .xtc/.dcd/.trr are absent on purpose: there is no reader for
+// them, so claiming them as an opener only replaces a working handler with an error.
+export const BINARY_VIEWER_EXTENSIONS: readonly string[] = Object.freeze([
+  `traj`,
+  `h5`,
+  `hdf5`,
+])
+
+// VASP's canonical filenames carry no extension, so hosts have to match them as name stems.
+export const VASP_VIEWER_STEMS: readonly string[] = Object.freeze([
+  ...new Set([...VASP_STRUCTURE_FILES, `xdatcar`, ...VASP_VOLUMETRIC_FILES]),
+])
 
 // Compression extensions regex (shared across files)
 export const COMPRESSION_EXTENSIONS_REGEX = ext_regex(COMPRESSION_EXTENSIONS)

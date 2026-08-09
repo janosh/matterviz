@@ -4,19 +4,21 @@
 // wrong is user-visible in a way a typecheck won't catch.
 
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
+import {
+  BINARY_VIEWER_EXTENSIONS,
+  TEXT_VIEWER_EXTENSIONS,
+  VASP_VIEWER_STEMS,
+} from '$lib/constants'
 
-// Everything the browser can decode from a UTF-8 string.
-// oxfmt-ignore
-const TEXT_EXTENSIONS = [
-  `cif`, `mcif`, `mmcif`, `xyz`, `extxyz`, `poscar`, `vasp`, `cube`, `pdb`, `mol`,
-  `mol2`, `sdf`, `lmp`, `dump`, `lammpstrj`, `bxsf`, `frmsf`,
-]
+// Everything the browser can decode from a UTF-8 string. `.data` is dropped from the shared
+// list: these types are `defaultFor`, and an extension that generic would make MatterViz the
+// default opener for unrelated files.
+const TEXT_EXTENSIONS = TEXT_VIEWER_EXTENSIONS.filter((ext) => ext !== `data`)
 
-// Binary containers that must reach the parser as bytes. Only ASE .traj and HDF5
-// are listed because those are the only two the binary parser accepts; registering
-// .xtc/.trr/.dcd would take over files it can only greet with "Unsupported binary
-// format", displacing whatever handler the user actually wants.
-const BINARY_EXTENSIONS = [`traj`, `h5`, `hdf5`]
+// Binary containers that must reach the parser as bytes. The shared list is already limited
+// to formats with a decoder (no .xtc/.trr/.dcd), which matters more here than in VS Code:
+// claiming one would take over files it can only greet with "Unsupported binary format".
+const BINARY_EXTENSIONS = BINARY_VIEWER_EXTENSIONS
 
 // Gzipped variants are registered explicitly rather than claiming bare `.gz`, which
 // would hijack every compressed file in the browser. Compressed payloads always
@@ -27,18 +29,9 @@ const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => 
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
-// AECCAR carries its charge index as a regex class, which toLowerCase leaves alone.
-const VASP_STEMS = [
-  `POSCAR`,
-  `CONTCAR`,
-  `XDATCAR`,
-  `CHGCAR`,
-  `LOCPOT`,
-  `ELFCAR`,
-  `PARCHG`,
-  `AECCAR[012]`,
-]
-const VASP_TOKEN = [...VASP_STEMS, ...VASP_STEMS.map((stem) => stem.toLowerCase())].join(`|`)
+// Longest first so AECCAR0 is tried before AECCAR rather than relying on backtracking.
+const VASP_STEMS = [...VASP_VIEWER_STEMS].sort((a, b) => b.length - a.length)
+const VASP_TOKEN = [...VASP_STEMS.map((stem) => stem.toUpperCase()), ...VASP_STEMS].join(`|`)
 const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN})(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here

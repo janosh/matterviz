@@ -65,49 +65,34 @@
         "displayName": "MatterViz Viewer",
         "selector": [
           {
-            "filenamePattern": "*.{traj,h5,hdf5,dcd,xtc,trr,lammpstrj}"
+            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,sdf,traj,trr,vasp,xtc,xyz}"
           },
           {
-            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,cube,pdb,mol,mol2,sdf,lmp,data,dump}"
-          },
-          {
-            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,cube,pdb,mol,mol2,sdf,lmp,data,dump}.gz"
+            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,sdf,traj,trr,vasp,xtc,xyz}.gz"
           },
           {
             "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"
           },
           {
-            "filenamePattern": "*{poscar,xdatcar,contcar}"
-          },
-          {
             "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*"
           },
           {
-            "filenamePattern": "*.{bxsf,frmsf}"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}"
           },
           {
-            "filenamePattern": "*.{bxsf,frmsf}.gz"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}.gz"
           },
           {
-            "filenamePattern": "*.cube.gz"
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}"
-          },
-          {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}.gz"
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}.gz"
           },
           {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
           },
           {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*.gz"
-          },
-          {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}"
-          },
-          {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}.gz"
           },
           {
             "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"

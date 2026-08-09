@@ -1,6 +1,8 @@
 import {
+  BINARY_VIEWER_EXTENSIONS,
   COMPRESSION_EXTENSIONS_REGEX,
   CONFIG_DIRS_REGEX,
+  ext_regex,
   STRUCTURE_EXTENSIONS,
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS_REGEX,
@@ -32,8 +34,10 @@ export const normalize_browser_supported_filename = (filename: string): string |
   return detect_compression_format(normalized) ? null : normalized
 }
 
+const BINARY_VIEWER_EXT_RE = ext_regex(BINARY_VIEWER_EXTENSIONS.map((ext) => `.${ext}`))
+
 export const should_encode_filename_as_base64 = (filename: string): boolean =>
-  detect_compression_format(filename) !== null || /\.(?:traj|h5|hdf5)$/i.test(filename)
+  detect_compression_format(filename) !== null || BINARY_VIEWER_EXT_RE.test(filename)
 
 const normalize_eligible_filename = (filename: unknown): string | null => {
   if (typeof filename !== `string` || !filename || CONFIG_DIRS_REGEX.test(filename))
