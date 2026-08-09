@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { vite_plugin_json_gz } from '../vite-plugin-json-gz'
+import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins'
 
-const fixture_path = `${import.meta.dirname}/../../../tests/vitest/fixtures/file-viewer/all-viz-types.json.gz`
+const fixture_path = `${import.meta.dirname}/fixtures/file-viewer/all-viz-types.json.gz`
 const expected_data = JSON.parse(gunzipSync(readFileSync(fixture_path)).toString(`utf-8`))
 
 function make_plugin(command: `build` | `serve` = `serve`) {
@@ -56,6 +56,25 @@ describe(`vite_plugin_json_gz`, () => {
     const errors: string[] = []
     load.call({ error: (msg: string) => errors.push(msg) }, path)
     expect(errors).toHaveLength(1)
-    expect(errors[0]).toContain(`Failed to load`)
+    expect(errors[0]).toContain(`Failed to decompress`)
+  })
+})
+
+describe(`three_compat_alias`, () => {
+  // A string alias would prefix-match and rewrite three/webgpu, three/tsl and
+  // three/examples/* onto the compat shim, which only re-exports the WebGL-only names.
+  test.each([
+    [`three`, true],
+    [`three/webgpu`, false],
+    [`three/tsl`, false],
+    [`three/examples/jsm/controls/OrbitControls.js`, false],
+    [`threejs`, false],
+  ])(`%s matches: %s`, (specifier, expected) => {
+    expect(three_compat_alias.find.test(specifier)).toBe(expected)
+  })
+
+  test(`resolves to an existing shim regardless of importing config depth`, () => {
+    expect(three_compat_alias.replacement).toMatch(/src\/lib\/scene\/three-compat\.ts$/)
+    expect(readFileSync(three_compat_alias.replacement, `utf-8`)).toContain(`three`)
   })
 })

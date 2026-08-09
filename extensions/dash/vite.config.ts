@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import process from 'node:process'
 import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
+import { three_compat_alias } from '../../vite-plugins.ts'
 
 // Plugin to strip Node.js imports from the UMD bundle
 const strip_node_imports_plugin = (): Plugin => ({
@@ -137,11 +138,6 @@ export default defineConfig({
     // One copy of three in the bundle: matterviz imports three/webgpu, its addons and @threlte
     // plain three. Exact-match regex, else three/webgpu, three/tsl and three/examples/* would
     // be rewritten too.
-    alias: [
-      {
-        find: /^three$/,
-        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
-      },
-    ],
+    alias: [three_compat_alias],
   },
 })

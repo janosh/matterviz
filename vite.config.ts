@@ -8,6 +8,8 @@ import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
+// @ts-expect-error Node ESM config load needs the .ts extension here
+import { three_compat_alias } from './vite-plugins.ts'
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
@@ -44,7 +46,9 @@ const starry_night_theme_plugin: Plugin = {
 }
 
 // Handle .json.gz files by decompressing them on-the-fly during SSR/build.
-// Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset).
+// Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset). Extensions have no
+// raw_text_plugin to coexist with, so they use the query-agnostic vite_plugin_json_gz from
+// vite-plugins.ts; only the load() bodies below are common to both.
 const json_gz_plugin = (): Plugin => {
   let is_build = false
   return {
@@ -168,6 +172,10 @@ export default defineConfig({
       `tests/vitest/**/*.test.ts`,
       `tests/vitest/**/*.test.svelte.ts`,
       `extensions/vscode/tests/**/*.test.ts`,
+      // jupyterlab defines its own `test` script but no workflow ran it, so these only
+      // executed locally. They import @jupyterlab packages as types only, so they run
+      // here without that extension's install (which pnpm can't do unattended).
+      `extensions/jupyterlab/tests/**/*.test.ts`,
     ],
   },
 
@@ -186,7 +194,7 @@ export default defineConfig({
     // don't — onto the WebGPU build via a shim supplying the WebGL-only exports it lacks, so
     // the bundle carries one copy of three. Exact-match regex: three/webgpu, three/tsl and
     // three/examples/* must resolve normally.
-    alias: [{ find: /^three$/, replacement: resolve(`src/lib/scene/three-compat.ts`) }],
+    alias: [three_compat_alias],
   },
 
   // Binary/compressed files imported via ?url that rolldown would otherwise
