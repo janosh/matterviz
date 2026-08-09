@@ -2,7 +2,10 @@ import type { ElementSymbol } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
-import type { AtomColorConfig } from '$lib/structure/atom-properties'
+import {
+  DEFAULT_ATOM_COLOR_CONFIG,
+  type AtomColorConfig,
+} from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -16,14 +19,13 @@ type AtomLegendTestProps = Omit<ComponentProps<typeof AtomLegend>, `atom_color_c
 }
 
 const mount_legend = (props: AtomLegendTestProps): ReturnType<typeof mount> => {
-  const component_props: ComponentProps<typeof AtomLegend> = props.atom_color_config
-    ? Object.assign(props, {
-        atom_color_config: {
-          scale: `interpolateViridis` as const,
-          ...props.atom_color_config,
-        },
-      })
-    : props
+  const component_props = props as ComponentProps<typeof AtomLegend>
+  if (props.atom_color_config) {
+    component_props.atom_color_config = {
+      scale: DEFAULT_ATOM_COLOR_CONFIG.scale,
+      ...props.atom_color_config,
+    }
+  }
   const mounted = mount(AtomLegend, { target: document.body, props: component_props })
   mounted_components.push(mounted)
   return mounted

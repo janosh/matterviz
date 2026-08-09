@@ -8,7 +8,7 @@ import {
 } from '$lib'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
   mount(HeatmapTable, { target: document.body, props })
@@ -507,6 +507,18 @@ describe(`HeatmapTable`, () => {
     expect(cell_at(0, 0).style.color).toBe(text_color)
   })
 
+  it(`falls back to the page surface for a translucent backdrop override`, async () => {
+    mount_table({
+      data: [{ Value: 0 }],
+      columns: [heatmap_col],
+      heatmap_opacity: 0.5,
+      backdrop: `rgba(255, 255, 255, 0.5)`,
+      style: `--page-bg: black`,
+    })
+    await tick()
+    expect(cell_at(0, 0).style.color).toBe(`white`)
+  })
+
   it(`handles accessibility features`, () => {
     mount_table({
       data: sample_data,
@@ -905,6 +917,19 @@ describe(`HeatmapTable`, () => {
       const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
       expect(badge?.textContent).toBe(`3`)
       expect(badge?.style.color).toBe(`black`)
+    })
+
+    it(`contrasts selection badges against modern CSS highlight colors`, async () => {
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        show_row_select: true,
+        style: `--highlight: rgb(0 0 0)`,
+      })
+      document.querySelector<HTMLInputElement>(`td.select-col input[type="checkbox"]`)?.click()
+      await tick()
+      const badge = doc_query(`.selection-badge .badge`)
+      expect(badge.style.color).toBe(`white`)
     })
 
     it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {

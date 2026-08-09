@@ -33,7 +33,7 @@ export const D3_INTERPOLATE_NAMES = Object.keys(
   d3_interpolators,
 ) as readonly D3InterpolateName[]
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
-  D3_INTERPOLATE_NAMES.includes(name as D3InterpolateName)
+  Object.hasOwn(d3_interpolators, name)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
   const interpolator = d3_interpolators[name]
   if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
@@ -107,11 +107,27 @@ export const is_color = (val: unknown): val is string => {
     to_rendered_rgb(trimmed) !== undefined
   )
 }
+const parse_modern_rgb = (color: string): RGBColor | undefined => {
+  const match = /^rgba?\(\s*(?<channels>[^,/]+?)(?:\s*\/\s*(?<alpha>[^,\s]+))?\s*\)$/i.exec(
+    color,
+  )
+  const channels = match?.groups?.channels.trim().split(/\s+/)
+  if (channels?.length !== 3) return undefined
+  const [red, green, blue] = channels
+  const parse_component = (value: string, percent_scale: number): number =>
+    value.endsWith(`%`) ? (Number(value.slice(0, -1)) * percent_scale) / 100 : Number(value)
+  return rgb(
+    parse_component(red, 255),
+    parse_component(green, 255),
+    parse_component(blue, 255),
+    parse_component(match?.groups?.alpha ?? `1`, 1),
+  )
+}
 const to_rgb = (color: string): RGBColor | undefined => {
-  const parsed = d3_color(color)?.rgb()
+  const parsed = d3_color(color)?.rgb() ?? parse_modern_rgb(color)
   if (!parsed) return undefined
   // `transparent` parses to NaN channels, which the finiteness check below would reject as
-  // unparseable and send to the canvas fallback. It is fully specified, so answer it here.
+  // unparsable and send to the canvas fallback. It is fully specified, so answer it here.
   if (parsed.opacity === 0) return rgb(0, 0, 0, 0)
   if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite)) return undefined
   const clamp_channel = (channel: number) => Math.max(0, Math.min(255, channel))
@@ -137,9 +153,13 @@ function to_rendered_rgb(color: string): RGBColor | undefined {
     .createElement(`canvas`)
     .getContext(`2d`, { willReadFrequently: true }))
   if (!context) return undefined
-  context.clearRect(0, 0, 1, 1)
-  context.fillStyle = `rgba(0, 0, 0, 0)`
+  context.fillStyle = `black`
   context.fillStyle = color
+  const parsed_style = context.fillStyle
+  context.fillStyle = `white`
+  context.fillStyle = color
+  if (context.fillStyle !== parsed_style) return undefined
+  context.clearRect(0, 0, 1, 1)
   context.fillRect(0, 0, 1, 1)
   const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
   return rgb(red, green, blue, alpha / 255)
@@ -168,8 +188,6 @@ const parse_rgb = (color: string): RGBColor => {
   if (!parsed) throw new Error(`Invalid color: ${color}`)
   return parsed
 }
-
-const is_visible_bg = (color: string): boolean => (to_rendered_rgb(color)?.opacity ?? 0) > 0
 
 // Calculate human-perceived brightness from gamma-encoded RGB channels.
 export function perceived_brightness(color: string): number {
@@ -251,12 +269,9 @@ export function pick_contrast_color(paint: Paint): string {
     : choices[1]
 }
 
-// Like pick_contrast_color but yields to an explicit override and gives up on
-// backgrounds JS cannot resolve (CSS vars, currentcolor), where inheriting the
-// surrounding text color is the only honest answer.
-export const contrast_text_color = (paint: Paint & { override?: string }): string => {
-  const { override, background, ...rest } = paint
-  if (override) return override
+// Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
+// currentcolor), where inheriting the surrounding text color is the only honest answer.
+export const contrast_text_color = ({ background, ...rest }: Paint): string => {
   if (!is_concrete_color(background)) return `currentColor`
   return pick_contrast_color({ background, ...rest })
 }
@@ -274,8 +289,8 @@ export function get_page_background(
 
   // Check if background is not transparent/unset
   // Prefer body background as it's more likely to be styled by the theme
-  if (is_visible_bg(body_bg)) return body_bg
-  if (is_visible_bg(html_bg)) return html_bg
+  if (is_concrete_color(body_bg)) return body_bg
+  if (is_concrete_color(html_bg)) return html_bg
 
   // Fall back to prefers-color-scheme
   const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
@@ -324,41 +339,14 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
 
 // Convert a CSS color string to hex format for use with <input type="color">.
 // Returns fallback for CSS variables, transparent, invalid colors, or undefined.
-// Uses d3-color for robust parsing of named colors, rgb(), hsl(), etc.
 export function css_color_to_hex(color: string | undefined, fallback: string): string {
   if (!color || color.startsWith(`var(`)) return fallback
   if (color === `transparent`) return `#ffffff`
-  const parsed = rgb(color)
-  return Number.isNaN(parsed.r) ? fallback : parsed.formatHex()
+  return to_rendered_rgb(color)?.formatHex() ?? fallback
 }
 
-// Add or modify the alpha channel of a color.
-// Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa), rgb(), and rgba() formats.
-// Returns the color in rgba() format, or the original color if format is unsupported.
+// Return a concrete CSS color with a replaced alpha channel.
 export function add_alpha(color: string, alpha: number): string {
-  // Clamp alpha to valid CSS range [0, 1]
-  const clamped_alpha = clamp01(alpha)
-
-  // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
-  if (color.startsWith(`#`)) {
-    const hex = color.slice(1)
-    // Guard against malformed hex (only 3, 4, 6, or 8 chars are valid)
-    if (![3, 4, 6, 8].includes(hex.length)) return color
-
-    // Extract RGB, ignoring any existing alpha channel
-    const is_short = hex.length === 3 || hex.length === 4
-    const red = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
-    const green = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
-    const blue = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
-    return `rgba(${red}, ${green}, ${blue}, ${clamped_alpha})`
-  }
-  // Handle rgb() colors
-  if (color.startsWith(`rgb(`)) {
-    return color.replace(`rgb(`, `rgba(`).replace(`)`, `, ${clamped_alpha})`)
-  }
-  // Handle rgba() - replace existing alpha (supports scientific notation like 1e-5)
-  if (color.startsWith(`rgba(`)) {
-    return color.replace(/,\s*[\d.eE\-+]+\)$/, `, ${clamped_alpha})`)
-  }
-  return color
+  const parsed = to_rendered_rgb(color)
+  return parsed ? rgb(parsed.r, parsed.g, parsed.b, clamp01(alpha)).formatRgb() : color
 }

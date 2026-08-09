@@ -340,8 +340,7 @@
   } = $props()
 
   let container_el = $state<HTMLDivElement>()
-  const page_backdrop = resolve_backdrop(() => container_el)
-  const effective_backdrop = $derived(backdrop ?? page_backdrop.current)
+  const page_backdrop = resolve_backdrop(() => container_el, { override: () => backdrop })
   const highlight_color = resolve_css_color(() => container_el, {
     css_var: `--highlight`,
     fallback: `#4a9eff`,
@@ -349,7 +348,7 @@
   const selection_badge_color = $derived(
     contrast_text_color({
       background: highlight_color.current,
-      backdrop: effective_backdrop,
+      backdrop: page_backdrop.current,
     }),
   )
 
@@ -1255,7 +1254,7 @@
     if (color.bg && heatmap_opacity < 1) {
       const text = pick_contrast_color({
         background: add_alpha(color.bg, heatmap_opacity),
-        backdrop: effective_backdrop,
+        backdrop: page_backdrop.current,
       })
       return { bg: color.bg, text }
     }

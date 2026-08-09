@@ -23,8 +23,7 @@
   let tooltip_bg_color: string = $state(`rgba(0, 0, 0, 0.8)`)
   let tile_border_radius: number = $state(1)
   let inner_transition_offset: number = $state(0.5)
-  let auto_tile_font_color: boolean = $state(true)
-  let tile_font_color: string = $state(`#ffffff`)
+  let tile_font_color: string | null = $state(null)
   let controls_open = $state(false)
 
   let heatmap_values = $derived(
@@ -88,7 +87,7 @@
 <PeriodicTable
   tile_props={{
     show_name: window_width > 1000,
-    text_color: auto_tile_font_color ? undefined : tile_font_color,
+    text_color: tile_font_color ?? undefined,
   }}
   {heatmap_values}
   bind:color_scale
@@ -141,7 +140,6 @@
         bind:tooltip_bg_color
         bind:tile_border_radius
         bind:inner_transition_offset
-        bind:auto_tile_font_color
         bind:tile_font_color
         style="--ptable-ctrl-margin: 1em auto 0"
       />

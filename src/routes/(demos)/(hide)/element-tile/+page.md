@@ -58,7 +58,7 @@ Give a segment a `value` to label it instead of showing the element name.
 
 ## Multi-value Split Layouts
 
-Two to four segments split the tile. `split_layout` picks between the layouts that exist for that segment count: `diagonal` for two, `horizontal` or `vertical` for three, `quadrant` or `triangular` for four. Asking for a layout that has no rendering at that count throws rather than falling back.
+Two to four segments split the tile. `split_layout` picks between the layouts that exist for that segment count: `diagonal` for two, `horizontal` or `vertical` for three, `quadrant` or `triangular` for four. Invalid layouts fall back to the default for that segment count.
 
 ```svelte example code_above
 <script lang="ts">
@@ -66,7 +66,7 @@ Two to four segments split the tile. `split_layout` picks between the layouts th
 
   const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24']
   const values = [1.2, 2.5, 0.8, 3.1]
-  const segments = (count) =>
+  const segments = (count: number) =>
     colors.slice(0, count).map((color, idx) => ({ color, value: values[idx] }))
   const tile_style = 'width: 5em; height: 5em;'
 </script>

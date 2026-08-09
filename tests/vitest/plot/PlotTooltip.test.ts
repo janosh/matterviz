@@ -41,8 +41,8 @@ describe(`PlotTooltip`, () => {
 
   // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
   test.each([
-    { bg: `#000000`, text: `#ffffff` },
-    { bg: `#4fc3f7`, text: `#000000` },
+    { bg: `#000000`, text: `white` },
+    { bg: `#4fc3f7`, text: `black` },
     { bg: null, text: `` },
   ])(`sets background $bg and contrasting text $text`, ({ bg, text }) => {
     const tooltip = mount_tooltip({ bg_color: bg })
@@ -55,10 +55,10 @@ describe(`PlotTooltip`, () => {
       bg_color: `var(--series-color)`,
       style: `--series-color: white`,
     })
-    await vi.waitFor(() => expect(tooltip.style.color).toBe(`#000000`))
+    await vi.waitFor(() => expect(tooltip.style.color).toBe(`black`))
 
     tooltip.style.setProperty(`--series-color`, `black`)
-    await vi.waitFor(() => expect(tooltip.style.color).toBe(`#ffffff`))
+    await vi.waitFor(() => expect(tooltip.style.color).toBe(`white`))
   })
 
   test(`passes through class and style`, () => {

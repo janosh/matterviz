@@ -1,5 +1,5 @@
 import { ColorBar, type Vec2 } from '$lib'
-import type { AxisOption, ColorScaleOption } from '$lib/plot/core/types'
+import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -47,16 +47,12 @@ describe(`ColorBar Horizontal (Default)`, () => {
   })
 
   test(`rejects invalid scale input`, () => {
-    const scale = `test invalid`
-    expect(() =>
-      mount(ColorBar, {
-        target: document.body,
-        props: {
-          // @ts-expect-error exercise runtime validation for JavaScript callers
-          scale,
-        },
-      }),
-    ).toThrow(`Unknown D3 color interpolator: ${scale}`)
+    // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
+    // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
+    const scale = `Viridis` as ColorBarScale
+    expect(() => mount(ColorBar, { target: document.body, props: { scale } })).toThrow(
+      `Unknown D3 color interpolator: Viridis`,
+    )
   })
 })
 
@@ -190,6 +186,21 @@ describe(`ColorBar tick_side='inside'`, () => {
     const last_visible_tick = tick_label_spans[6] as HTMLElement
     expect(last_visible_tick.textContent).toBe(`80`) // 80 is 7/8ths from bottom (100%)
     expect(last_visible_tick.style.top).toBe(`12.5%`)
+  })
+
+  test(`resolves translucent interpolator colors against an opaque backdrop`, async () => {
+    mount(ColorBar, {
+      target: document.body,
+      props: {
+        tick_side: `inside`,
+        tick_labels: [0, 0.5, 1],
+        range: [0, 1],
+        scale: { fn: () => `rgba(255, 255, 255, 0.1)`, domain: [0, 1] },
+        style: `--page-bg: black`,
+      },
+    })
+    await tick()
+    expect(doc_query(`.tick-label`).style.color).toBe(`white`)
   })
 })
 

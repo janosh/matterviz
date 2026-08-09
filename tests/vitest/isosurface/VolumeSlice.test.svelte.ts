@@ -31,6 +31,12 @@ const make_slice = (): SliceResult => {
   }
 }
 
+const style_with_color = (color: string): CSSStyleDeclaration => {
+  const style = document.createElement(`div`).style
+  style.color = color
+  return style
+}
+
 const mock_context = () => ({
   beginPath: vi.fn(),
   clearRect: vi.fn(),
@@ -202,15 +208,11 @@ describe(`VolumeSlice`, () => {
         dark: `rgb(255, 255, 255)`,
         black: `rgb(230, 230, 230)`,
       }
-      vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(
-        () =>
-          ({
-            color:
-              theme_colors[
-                document.documentElement.dataset.theme as keyof typeof theme_colors
-              ],
-          }) as CSSStyleDeclaration,
-      )
+      vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(() => {
+        const color =
+          theme_colors[document.documentElement.dataset.theme as keyof typeof theme_colors]
+        return style_with_color(color)
+      })
       document.documentElement.dataset.theme = initial_theme
       const { context } = await mount_volume_slice({
         mode: `contours`,
@@ -225,17 +227,15 @@ describe(`VolumeSlice`, () => {
   )
 
   test(`resamples currentColor contours after an inherited style change`, async () => {
-    vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(
-      (element) =>
-        ({
-          color:
-            element
-              .closest(`.volume-slice`)
-              ?.getAttribute(`style`)
-              ?.match(/--volume-slice-contour-color:\s*(?<color>[^;]+)/)?.groups?.color ??
-            `rgb(0, 0, 0)`,
-        }) as CSSStyleDeclaration,
-    )
+    vi.spyOn(globalThis, `getComputedStyle`).mockImplementation((element) => {
+      const color =
+        element
+          .closest(`.volume-slice`)
+          ?.getAttribute(`style`)
+          ?.match(/--volume-slice-contour-color:\s*(?<color>[^;]+)/)?.groups?.color ??
+        `rgb(0, 0, 0)`
+      return style_with_color(color)
+    })
     const { canvas, context } = await mount_volume_slice({
       mode: `contours`,
       contour_levels: [4],

@@ -907,7 +907,6 @@
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 3px;
-    opacity: 0.7;
     pointer-events: none;
     white-space: nowrap;
     max-width: calc(100% - 16px);

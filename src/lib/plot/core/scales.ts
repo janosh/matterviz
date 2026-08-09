@@ -625,16 +625,17 @@ export function create_color_scale(
   color_scale_config: ColorScaleConfig | D3InterpolateName,
   auto_color_range: Vec2,
 ) {
-  const scheme =
-    (typeof color_scale_config === `string`
-      ? color_scale_config
-      : color_scale_config.scheme) ?? SCALE_DEFAULTS.scheme
+  const config =
+    typeof color_scale_config === `string`
+      ? { scheme: color_scale_config }
+      : color_scale_config
+  const {
+    scheme = SCALE_DEFAULTS.scheme,
+    value_range = auto_color_range,
+    type: scale_type,
+  } = config
   const interpolator = get_d3_interpolator(scheme)
-  const [min_val, max_val] =
-    (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
-    auto_color_range
-  const scale_type =
-    typeof color_scale_config === `string` ? undefined : color_scale_config.type
+  const [min_val, max_val] = value_range
 
   const type_name = get_scale_type_name(scale_type)
 

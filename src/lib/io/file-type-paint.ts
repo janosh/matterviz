@@ -1,5 +1,4 @@
-import { add_alpha } from '$lib/colors'
-import { color as d3_color } from 'd3-color'
+import { add_alpha, is_concrete_color } from '$lib/colors'
 
 // Separate fills for the two surfaces a file type colors: the small uppercase badge
 // (saturated) and the file row behind it (a wash). Keeping them apart means neither is
@@ -14,10 +13,9 @@ const ITEM_ALPHA = 0.08
 
 // Builds a paint pair from any concrete CSS badge color.
 export const file_type_paint = (badge: string, item_alpha = ITEM_ALPHA): FileTypePaint => {
-  const normalized = d3_color(badge)?.formatRgb()
-  if (!normalized)
+  if (!is_concrete_color(badge))
     throw new Error(`Cannot derive file row paint from unsupported color: ${badge}`)
-  return { badge, item: add_alpha(normalized, item_alpha) }
+  return { badge, item: add_alpha(badge, item_alpha) }
 }
 
 export const DEFAULT_FILE_TYPE_PAINTS: Record<string, FileTypePaint> = Object.fromEntries(

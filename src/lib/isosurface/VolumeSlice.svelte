@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { type D3InterpolateName, get_d3_interpolator, watch_dark_mode } from '$lib/colors'
+  import {
+    type D3InterpolateName,
+    get_d3_interpolator,
+    resolve_computed_color,
+  } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import type { Orientation } from '$lib/plot/core/types'
@@ -69,24 +73,12 @@
   })
   // getComputedStyle forces a style flush and the contour pass repaints on every slider
   // frame, so resolve the CSS colour per theme/style change instead.
-  let color_revision = $state(0)
-  $effect(() => watch_dark_mode(() => (color_revision += 1)))
-  $effect(() => {
-    if (!canvas) return
-    const observer = new MutationObserver(() => (color_revision += 1))
-    let ancestor: HTMLElement | null = canvas
-    while (ancestor) {
-      observer.observe(ancestor, { attributes: true, attributeFilter: [`class`, `style`] })
-      ancestor = ancestor.parentElement
-    }
-    return () => observer.disconnect()
+  const canvas_color = resolve_computed_color(() => canvas, `color`, {
+    fallback: `currentColor`,
   })
-  let resolved_contour_color = $derived.by(() => {
-    void color_revision
-    return contour_color === `currentColor` && canvas
-      ? getComputedStyle(canvas).color
-      : contour_color
-  })
+  let resolved_contour_color = $derived(
+    contour_color === `currentColor` ? canvas_color.current : contour_color,
+  )
 
   let image_data: ImageData | undefined
   let contour_values = new Float64Array()

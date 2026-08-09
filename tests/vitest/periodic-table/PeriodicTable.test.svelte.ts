@@ -28,6 +28,16 @@ describe(`PeriodicTable`, () => {
     expect(document.querySelectorAll(`.element-tile`)).toHaveLength(expected_tiles)
   })
 
+  test(`applies tile_props text color to lanthanide and actinide inset tiles`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { tile_props: { text_color: `red`, style: `cursor: pointer` } },
+    })
+    const inset_tiles = [...document.querySelectorAll<HTMLElement>(`.element-tile`)].slice(-2)
+    expect(inset_tiles.map((tile) => tile.style.color)).toEqual([`red`, `red`])
+    expect(inset_tiles.map((tile) => tile.style.cursor)).toEqual([`pointer`, `pointer`])
+  })
+
   test(`hovering element tile toggles CSS class 'active'`, async () => {
     mount(PeriodicTable, { target: document.body })
 
@@ -63,11 +73,9 @@ describe(`PeriodicTable`, () => {
       `[data-key="${category}"] input[type="color"]`,
     )
     const auto_font_input = doc_query<HTMLInputElement>(
-      `[data-key="auto_tile_font_color"] input[type="checkbox"]`,
+      `[data-key="tile_font_color"] input[type="checkbox"]`,
     )
-    const font_color_input = doc_query<HTMLInputElement>(
-      `[data-key="tile_font_color"] input[type="color"]`,
-    )
+    const font_color_input = doc_query<HTMLInputElement>(`input[aria-label="Tile font color"]`)
     category_input.focus()
     expect(selected.category).toBe(category)
     category_input.blur()

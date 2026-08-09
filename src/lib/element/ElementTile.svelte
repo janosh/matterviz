@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { is_concrete_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import type { ChemicalElement, SplitLayout, TileSegment } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { colors, selected } from '$lib/state.svelte'
@@ -14,7 +14,7 @@
     symbol_style = ``,
     active = false,
     href = undefined,
-    text_color = $bindable(),
+    text_color = undefined,
     backdrop: backdrop_color = undefined,
     float_fmt = undefined,
     node = $bindable(null),
@@ -39,100 +39,105 @@
     float_fmt?: string
     node?: HTMLElement | null
     label?: string
-    // Which split to use. Only layouts valid for the segment count are accepted.
+    // Which split to use. Invalid layouts fall back to the default for the segment count.
     split_layout?: SplitLayout
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
   } = $props()
 
-  // Which splits exist for a given segment count. Asking for `triangular` with three
-  // segments has no rendering, so it is rejected rather than silently ignored.
-  // First entry of each list is the default for that count.
-  const SPLIT_LAYOUTS_BY_COUNT: Record<number, SplitLayout[]> = {
-    2: [`diagonal`],
-    3: [`horizontal`, `vertical`],
-    4: [`quadrant`, `triangular`],
+  // Segment and value-label CSS classes for every split, grouped by segment count. Sole
+  // source of truth for which (count, layout) pairs exist: the first layout of a count is
+  // its default, and anything absent has no rendering so it is rejected rather than
+  // silently ignored. Keeping the pairs in one table means a layout cannot be listed as
+  // valid while its classes are missing.
+  const SPLIT_LAYOUTS: Record<
+    number,
+    Partial<Record<SplitLayout, { segments: string[]; positions: string[] }>>
+  > = {
+    2: {
+      diagonal: {
+        segments: [`diagonal-top`, `diagonal-bottom`],
+        positions: [`top-left`, `bottom-right`],
+      },
+    },
+    3: {
+      horizontal: {
+        segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
+        positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
+      },
+      vertical: {
+        segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
+        positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
+      },
+    },
+    4: {
+      quadrant: {
+        segments: [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`),
+        positions: [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`),
+      },
+      triangular: {
+        segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
+        positions: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}-pos`),
+      },
+    },
   }
-  const MAX_SEGMENTS = 4
+  const MAX_SEGMENTS = Math.max(...Object.keys(SPLIT_LAYOUTS).map(Number))
 
   const category_color = $derived(colors.category[element.category] ?? `#cccccc`)
-  const has_multiple_segments = $derived(segments.length > 1)
+  const rendered_segments = $derived.by(() => {
+    if (segments.length <= MAX_SEGMENTS) return segments
+    console.warn(
+      `ElementTile supports at most ${MAX_SEGMENTS} segments; rendering the first ${MAX_SEGMENTS} for ${element.symbol}`,
+    )
+    return segments.slice(0, MAX_SEGMENTS)
+  })
+  const segment_colors = $derived(
+    rendered_segments.map((segment) => segment.color ?? category_color),
+  )
+  // Uniformly colored segments need no split painting; one flat fill renders the same.
   const has_split_background = $derived(
-    has_multiple_segments &&
-      segments.some(
-        (segment) =>
-          (segment.color ?? category_color) !== (segments[0]?.color ?? category_color),
-      ),
+    rendered_segments.length > 1 &&
+      segment_colors.some((color) => color !== segment_colors[0]),
   )
   // A visually split tile is painted by its segment divs, so the tile stays transparent.
   let fallback_bg_color = $derived(
-    has_split_background ? `transparent` : (segments[0]?.color ?? category_color),
+    has_split_background ? `transparent` : (segment_colors[0] ?? category_color),
   )
 
-  const resolved_backdrop = resolve_backdrop(() =>
-    backdrop_color === undefined ? node : undefined,
-  )
-  let backdrop = $derived(backdrop_color ?? resolved_backdrop.current)
-  const auto_text_color = (background: unknown): string | undefined =>
-    is_concrete_color(background) ? pick_contrast_color({ background, backdrop }) : undefined
+  const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
+  const auto_text_color = (background: string): string =>
+    contrast_text_color({ background, backdrop: backdrop.current })
   // Symbol and number sit across all segments, so on a split tile they contrast against
   // the backdrop rather than against any one segment.
   let computed_text_color = $derived(
-    text_color ?? auto_text_color(has_split_background ? backdrop : fallback_bg_color),
+    text_color ?? auto_text_color(has_split_background ? backdrop.current : fallback_bg_color),
   )
 
-  // Hide the atomic number on split tiles to prevent overlap with value labels.
-  let should_show_number = $derived(show_number ?? !has_multiple_segments)
+  const has_values = $derived(rendered_segments.some((segment) => segment.value !== undefined))
+  // Hide the atomic number only when multiple value labels would overlap it.
+  let should_show_number = $derived(
+    show_number ?? !(rendered_segments.length > 1 && has_values),
+  )
 
   const format_value = (val: number | string | undefined): string => {
     if (typeof val === `number`) return format_num(val, float_fmt)
     if (typeof val !== `string`) return ``
     const parsed_num = Number(val)
-    return isFinite(parsed_num) && val.trim() !== `` ? format_num(parsed_num, float_fmt) : val
+    return val.trim() && Number.isFinite(parsed_num) ? format_num(parsed_num, float_fmt) : val
   }
 
-  const has_values = $derived(segments.some((segment) => segment.value !== undefined))
-
-  // CSS classes for segments and value positions, keyed by `layout-count`
-  const layout_classes: Record<string, { segments: string[]; positions: string[] }> = {
-    'diagonal-2': {
-      segments: [`diagonal-top`, `diagonal-bottom`],
-      positions: [`top-left`, `bottom-right`],
-    },
-    'horizontal-3': {
-      segments: [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
-      positions: [`bar-top-left`, `bar-middle-right`, `bar-bottom-left`],
-    },
-    'vertical-3': {
-      segments: [`vertical-left`, `vertical-middle`, `vertical-right`],
-      positions: [`bar-left-top`, `bar-middle-bottom`, `bar-right-top`],
-    },
-    'triangular-4': {
-      segments: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}`),
-      positions: [`top`, `right`, `bottom`, `left`].map((pos) => `triangle-${pos}-pos`),
-    },
-    'quadrant-4': {
-      segments: [`tl`, `tr`, `bl`, `br`].map((pos) => `quadrant-${pos}`),
-      positions: [`tl`, `tr`, `bl`, `br`].map((pos) => `value-quadrant-${pos}`),
-    },
-  }
-
-  // Resolve the split layout, rejecting counts and layouts that have no rendering.
+  // Resolve the split layout, warning and falling back when input is unsupported.
   const layout_config = $derived.by(() => {
-    const count = segments.length
-    if (count > MAX_SEGMENTS) {
-      throw new Error(
-        `ElementTile supports at most ${MAX_SEGMENTS} segments, got ${count} for ${element.symbol}`,
-      )
-    }
+    const count = rendered_segments.length
     if (count < 2) return null
-    const allowed = SPLIT_LAYOUTS_BY_COUNT[count]
-    if (split_layout && !allowed.includes(split_layout)) {
-      throw new Error(
-        `split_layout "${split_layout}" is not valid for ${count} segments (${element.symbol}); use one of ${allowed.join(`, `)}`,
-      )
-    }
-    const layout = split_layout ?? allowed[0]
-    return layout_classes[`${layout}-${count}`]
+    const layouts = SPLIT_LAYOUTS[count]
+    if (!layouts) return null
+    const [default_layout] = Object.keys(layouts) as SplitLayout[]
+    const config = layouts[split_layout ?? default_layout]
+    if (config) return config
+    console.warn(
+      `split_layout "${split_layout}" is not valid for ${count} segments (${element.symbol}); using "${default_layout}"`,
+    )
+    return layouts[default_layout] ?? null
   })
 </script>
 
@@ -164,18 +169,18 @@
   {#if has_values}
     {#if layout_config}
       <!-- One label per segment, positioned by the layout -->
-      {#each segments as segment, idx (idx)}
+      {#each rendered_segments as segment, idx (idx)}
         {#if segment.value !== undefined}
           <span
             class="value multi-value {layout_config.positions[idx]}"
-            style:color={text_color ?? auto_text_color(segment.color ?? category_color)}
+            style:color={text_color ?? auto_text_color(segment_colors[idx])}
           >
             {format_value(segment.value)}
           </span>
         {/if}
       {/each}
     {:else}
-      <span class="value">{format_value(segments[0]?.value)}</span>
+      <span class="value">{format_value(rendered_segments[0]?.value)}</span>
     {/if}
   {:else if show_name}
     <span class="name">
@@ -185,11 +190,8 @@
 
   <!-- Split backgrounds, one div per segment -->
   {#if layout_config && has_split_background}
-    {#each segments as segment, idx (idx)}
-      <div
-        class="segment {layout_config.segments[idx]}"
-        style:background-color={segment.color ?? category_color}
-      ></div>
+    {#each segment_colors as color, idx (idx)}
+      <div class="segment {layout_config.segments[idx]}" style:background-color={color}></div>
     {/each}
   {/if}
 </svelte:element>
@@ -339,19 +341,22 @@
     z-index: 1;
   }
 
-  /* Diagonal split (2 values) */
-  .diagonal-top {
-    top: 0;
-    left: 0;
+  .diagonal-top,
+  .diagonal-bottom,
+  .triangle-top,
+  .triangle-right,
+  .triangle-bottom,
+  .triangle-left {
+    inset: 0;
     width: 100%;
     height: 100%;
+  }
+
+  /* Diagonal split (2 values) */
+  .diagonal-top {
     clip-path: polygon(0 0, 100% 0, 0 100%);
   }
   .diagonal-bottom {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     clip-path: polygon(100% 0, 100% 100%, 0 100%);
   }
 
@@ -397,31 +402,15 @@
 
   /* Triangular segments (4 values) - tips meet in center */
   .triangle-top {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     clip-path: polygon(0 0, 100% 0, 50% 50%);
   }
   .triangle-right {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     clip-path: polygon(100% 0, 100% 100%, 50% 50%);
   }
   .triangle-bottom {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     clip-path: polygon(100% 100%, 0 100%, 50% 50%);
   }
   .triangle-left {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
     clip-path: polygon(0 100%, 0 0, 50% 50%);
   }
 

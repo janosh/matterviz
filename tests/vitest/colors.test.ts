@@ -202,6 +202,8 @@ describe(`is_color function`, () => {
 
   test.each([
     [`#4fc3f7`, true],
+    [`rgb(79 195 247)`, true],
+    [`rgb(79 195 247 / 50%)`, true],
     [`var(--accent)`, false],
     [`currentcolor`, false],
     [`transparent`, false],
@@ -210,6 +212,8 @@ describe(`is_color function`, () => {
   })
   test.each([
     [`#4fc3f7`, true],
+    [`rgb(79 195 247)`, true],
+    [`rgb(79 195 247 / 50%)`, false],
     [`rgba(79, 195, 247, 0.5)`, false],
     [`transparent`, false],
     [`var(--accent)`, false],
@@ -229,6 +233,7 @@ describe(`css_color_to_hex`, () => {
     [`#00ff00`, `#00ff00`],
     // CSS color functions are parsed
     [`rgb(255, 0, 0)`, `#ff0000`],
+    [`rgb(0 128 255)`, `#0080ff`],
     [`rgb(0, 128, 255)`, `#0080ff`],
     [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
     [`hsl(0, 100%, 50%)`, `#ff0000`],
@@ -306,8 +311,7 @@ describe(`pick_contrast_color`, () => {
     expect(() => pick_contrast_color(paint)).toThrow(error)
   })
 
-  it.each<[Paint & { override?: string }, string]>([
-    [{ background: `#000000`, override: `rebeccapurple` }, `rebeccapurple`],
+  it.each<[Paint, string]>([
     // CSS vars cannot be resolved in JS, so inherit rather than guess
     [{ background: `var(--some-bg)` }, `currentColor`],
     [{ background: `#000000` }, `white`],

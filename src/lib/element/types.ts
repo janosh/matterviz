@@ -77,7 +77,7 @@ export interface TileSegment {
 
 // Paint for one kind of nucleon in a Nucleus diagram.
 export interface NucleonPaint {
-  fill: string
+  fill?: string
   // Sector label text color. Defaults to whichever of black/white contrasts with `fill`.
   text?: string
   // Suffix after the count, e.g. ` P`.
@@ -89,7 +89,7 @@ export interface SymbolPaint {
   // Defaults to whichever of black/white contrasts with the neutron fill.
   text?: string
   // Halo keeping the symbol legible where it crosses the proton/neutron boundary.
-  // Defaults to a contrasting outline; set to `none` to draw the symbol unoutlined.
-  outline?: string | `none`
+  // Defaults to a contrasting outline; pass `none` to draw the symbol unoutlined.
+  outline?: string
   outline_width?: string
 }

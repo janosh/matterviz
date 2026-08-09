@@ -48,7 +48,6 @@
   } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
   import {
-    atom_color_configs_equal,
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     next_atom_color_config,
@@ -85,11 +84,7 @@
     background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
-    atom_color_config = $bindable<AtomColorConfig>({
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      scale: DEFAULTS.structure.atom_color_scale,
-      scale_type: DEFAULTS.structure.atom_color_scale_type,
-    }),
+    atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     structure = undefined,
     supercell_loading = $bindable(false),
     sym_data = null,
@@ -151,10 +146,6 @@
     toggle_props?: PaneToggleProps
   } = $props()
 
-  // ColorScaleSelect requires a concrete bound value during initial render; the synchronization
-  // effect below repeats this after callers replace atom_color_config with another partial object.
-  atom_color_config.scale ??= DEFAULTS.structure.atom_color_scale
-
   const lattice_setting_keys = [
     `cell_edge_color`,
     `cell_edge_opacity`,
@@ -167,6 +158,21 @@
   let controls_pane_size = $state<StructurePaneSize>()
   let settings_import_status = $state<{ message: string; error: boolean }>()
 
+  // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
+  // structures whose parser produced no extra columns, in which case the mode is disabled.
+  let colorable_property_keys = $derived(get_colorable_property_keys(structure))
+  // Single funnel for every mode/property switch. next_atom_color_config derives the
+  // dependent fields and returns the current object untouched when nothing would change,
+  // so assigning unconditionally is safe even from an effect.
+  const set_atom_color_mode = (mode: AtomColorMode, preferred_key?: string): void => {
+    atom_color_config = next_atom_color_config(
+      atom_color_config,
+      mode,
+      colorable_property_keys,
+      preferred_key,
+    )
+  }
+
   const apply_view_state = (state: StructureViewState): void => {
     const structure_settings = structuredClone(state.settings.structure)
     Object.assign(scene_props, structure_settings)
@@ -178,22 +184,17 @@
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     show_trajectory_lines =
       structure_settings.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines
+    atom_color_config = {
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
+      scale_type:
+        structure_settings.atom_color_scale_type ?? DEFAULTS.structure.atom_color_scale_type,
+    }
     // `custom` needs a runtime color_fn that no saved blob can carry, so a stored value
     // that claims it is treated as unset rather than restored into an invalid config.
     const stored_mode =
       structure_settings.atom_color_mode ?? DEFAULTS.structure.atom_color_mode
-    atom_color_config = next_atom_color_config(
-      {
-        mode: `element`,
-        scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
-        scale_type:
-          structure_settings.atom_color_scale_type ?? DEFAULTS.structure.atom_color_scale_type,
-      },
-      stored_mode === `custom` ? `element` : stored_mode,
-      // computed here rather than read off the $derived below, which is still in its
-      // temporal dead zone when a restore runs during component init
-      get_colorable_property_keys(structure),
-    )
+    set_atom_color_mode(stored_mode === `custom` ? `element` : stored_mode)
     color_scheme = state.settings.color_scheme
     background_color = state.settings.background_color
     background_opacity = state.settings.background_opacity
@@ -424,20 +425,12 @@
   // "Selective dynamics" block); without it every atom would land in one `unknown` bucket.
   let has_selective_dynamics = $derived(structure_has_selective_dynamics(structure))
 
-  // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
-  // structures whose parser produced no extra columns, in which case the mode is disabled.
-  let colorable_property_keys = $derived(get_colorable_property_keys(structure))
   // A newly loaded structure may not carry the property being colored by, in which case
   // the mode drops back to element colors.
   $effect(() => {
-    if (atom_color_config.mode !== `property`) return
-    const next = next_atom_color_config(
-      atom_color_config,
-      `property`,
-      colorable_property_keys,
-      atom_color_config.property_key,
-    )
-    if (!atom_color_configs_equal(next, atom_color_config)) atom_color_config = next
+    if (atom_color_config.mode === `property`) {
+      set_atom_color_mode(`property`, atom_color_config.property_key)
+    }
   })
 
   // Zone-axis camera: [uvw] is a direct-lattice direction, (hkl) a reciprocal one, so both
@@ -866,13 +859,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               mode: atom_color_config.mode,
               scale_type: atom_color_config.scale_type,
             }),
-            (reference) => {
-              atom_color_config = next_atom_color_config(
-                atom_color_config,
-                reference.mode,
-                colorable_property_keys,
-              )
-            },
+            (reference) => set_atom_color_mode(reference.mode),
           ),
           atom_color_scale: local(
             () => atom_color_config.scale,
@@ -881,14 +868,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
           atom_color_property_key: local(
             () =>
               `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
-            (value, present) => {
-              atom_color_config = next_atom_color_config(
-                atom_color_config,
-                present && value ? `property` : `element`,
-                colorable_property_keys,
-                value,
-              )
-            },
+            (value, present) =>
+              set_atom_color_mode(present && value ? `property` : `element`, value),
           ),
         })}
       >
@@ -927,7 +908,11 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         </label>
         <label {...setting_row(`atom_color_mode`)}>
           <span>Color by</span>
-          <select bind:value={atom_color_config.mode}>
+          <select
+            value={atom_color_config.mode}
+            onchange={(event) =>
+              set_atom_color_mode(event.currentTarget.value as AtomColorMode)}
+          >
             {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as [value, label] (value)}
               {@const disabled =
                 (value === `wyckoff` && !sym_data) ||
@@ -948,14 +933,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             <span>Property</span>
             <select
               value={atom_color_config.property_key}
-              onchange={(event) => {
-                atom_color_config = next_atom_color_config(
-                  atom_color_config,
-                  `property`,
-                  colorable_property_keys,
-                  event.currentTarget.value,
-                )
-              }}
+              onchange={(event) => set_atom_color_mode(`property`, event.currentTarget.value)}
             >
               {#each colorable_property_keys as key (key)}
                 <option value={key}>{key}</option>
@@ -968,8 +946,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
             <span>Color scale</span>
             <ColorScaleSelect
               bind:value={
-                () => atom_color_config.scale ?? DEFAULTS.structure.atom_color_scale,
-                (scale) => (atom_color_config.scale = scale)
+                () => atom_color_config.scale, (scale) => (atom_color_config.scale = scale)
               }
               color_bar={{ tick_labels: 0, wrapper_style: `width: 100%;` }}
               style="min-width: 0; border: none"

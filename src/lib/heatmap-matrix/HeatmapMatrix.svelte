@@ -480,13 +480,12 @@
   // Cell fills may be translucent (color overrides, missing-cell fills), so contrast
   // needs to know what is painted behind them. Callers can name that surface with the
   // `backdrop` prop; otherwise it comes from the page token.
-  const page_backdrop = resolve_backdrop(() => matrix_el)
-  const effective_backdrop = $derived(backdrop ?? page_backdrop.current)
+  const page_backdrop = resolve_backdrop(() => matrix_el, { override: () => backdrop })
   // Keep selected outlines visible against each cell's background.
   let selected_outline_flat = $derived(
     bg_flat.map((bg_color) =>
       is_concrete_color(bg_color)
-        ? pick_contrast_color({ background: bg_color, backdrop: effective_backdrop })
+        ? pick_contrast_color({ background: bg_color, backdrop: page_backdrop.current })
         : null,
     ),
   )

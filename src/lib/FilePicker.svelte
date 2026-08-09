@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop, watch_css_color } from '$lib/colors'
   import type { FileInfo, FileTypePaint } from '$lib/io'
   import { DEFAULT_FILE_TYPE_PAINTS, FALLBACK_FILE_TYPE_PAINT } from '$lib/io'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -40,6 +40,17 @@
 
   let root: HTMLDivElement | undefined = $state()
   const backdrop = resolve_backdrop(() => root)
+  const badge_contrast = (node: HTMLElement) => {
+    const update = () => {
+      const color = contrast_text_color({
+        background: getComputedStyle(node).backgroundColor,
+        backdrop: backdrop.current,
+      })
+      if (node.style.color !== color) node.style.color = color
+    }
+    update()
+    return watch_css_color(node, update)
+  }
   let active_category_filter = $state<string | null>(null)
   let active_type_filter = $state<string | null>(null)
   type FilterKind = `category` | `type`
@@ -207,10 +218,7 @@
         <span
           class="file-type-badge"
           style:background-color={paint.badge}
-          style:color={contrast_text_color({
-            background: paint.badge,
-            backdrop: backdrop.current,
-          })}>{base_type.toUpperCase()}</span
+          {@attach badge_contrast}>{base_type.toUpperCase()}</span
         >
       {/if}
       <div class="file-name">

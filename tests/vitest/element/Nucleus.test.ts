@@ -30,6 +30,34 @@ test.each([
   expect(labels.map((label) => label.getAttribute(`fill`))).toEqual(expected_fills)
 })
 
+test(`merges partial nucleon paints over per-field defaults`, () => {
+  const labels = mount_nucleus({
+    proton: { fill: `white` },
+    neutron: { text: `red` },
+  })
+  expect(labels.map((label) => label.textContent?.replaceAll(/\s+/g, ` `).trim())).toEqual([
+    `1 P`,
+    `1 N`,
+    `H`,
+  ])
+  expect(labels[1].getAttribute(`fill`)).toBe(`red`)
+})
+
+test(`resolves translucent nucleon fills against an opaque backdrop`, () => {
+  const translucent_white = `rgba(255, 255, 255, 0.1)`
+  const labels = mount_nucleus({
+    proton: { fill: translucent_white },
+    neutron: { fill: translucent_white },
+    backdrop: `black`,
+  })
+  expect(labels.map((label) => label.getAttribute(`fill`))).toEqual([
+    `white`,
+    `white`,
+    `white`,
+  ])
+  expect(document.querySelector(`.symbol`)?.getAttribute(`stroke`)).toBe(`black`)
+})
+
 // Default neutron fill is orange -> symbol text picks black -> halo picks white
 test.each([
   [`defaults to a contrasting halo`, {}, `white`, `0.08em`],

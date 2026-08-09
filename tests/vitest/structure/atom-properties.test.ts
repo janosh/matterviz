@@ -34,8 +34,6 @@ const make_cubic_structure = (
   )
 
 describe(`Color Scales`, () => {
-  test(`d3 scales`, () => expect(ap.get_d3_color_scales()).toContain(`interpolateViridis`))
-
   test.each([
     [[1, 2, 3, 4, 5], `continuous`, true],
     [[1, 2, 3, 1, 2], `categorical`, false],
@@ -401,6 +399,66 @@ describe(`Custom`, () => {
 
   test(`site index yields distinct colors`, () => {
     expect(new Set(ap.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size).toBe(3)
+  })
+})
+
+describe(`normalize_atom_color_config`, () => {
+  // Models a payload that arrived as JSON (Dash props, saved settings), not a deep clone:
+  // structuredClone throws on a color_fn where serialization silently drops it, and coping
+  // with that loss is exactly what these cases check.
+  // oxlint-disable-next-line unicorn/prefer-structured-clone
+  const as_serialized = <T>(value: T): T => JSON.parse(JSON.stringify(value))
+
+  test(`preserves valid JSON-safe configurations and serialized payloads`, () => {
+    const config: ap.DashAtomColorConfig = {
+      mode: `property`,
+      property_key: `charge`,
+      scale: `interpolatePlasma`,
+      scale_type: `categorical`,
+    }
+    expect(ap.normalize_atom_color_config(config)).toBe(config)
+    expect(ap.normalize_atom_color_config(as_serialized(config))).toEqual(config)
+  })
+
+  test(`serialized custom mode cannot reach get_custom_colors without a function`, () => {
+    const config = as_serialized({ mode: `custom` }) as ap.AtomColorConfig
+    expect(ap.get_atom_colors(make_struct([{ xyz: [0, 0, 0] }]), config)).toEqual({
+      colors: [],
+      values: [],
+    })
+  })
+
+  test.each([
+    [
+      { mode: `coordination` },
+      {
+        mode: `coordination`,
+        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale_type: `continuous`,
+      },
+    ],
+    [
+      { mode: `wyckoff` },
+      {
+        mode: `wyckoff`,
+        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale_type: `categorical`,
+      },
+    ],
+    [
+      { mode: `property`, property_key: `charge` },
+      {
+        mode: `property`,
+        property_key: `charge`,
+        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale_type: `continuous`,
+      },
+    ],
+    [{ mode: `property` }, ap.DEFAULT_ATOM_COLOR_CONFIG],
+    [as_serialized({ mode: `custom` }), ap.DEFAULT_ATOM_COLOR_CONFIG],
+    [{}, ap.DEFAULT_ATOM_COLOR_CONFIG],
+  ])(`normalizes partial or unsupported payload %#`, (input, expected) => {
+    expect(ap.normalize_atom_color_config(input)).toEqual(expected)
   })
 })
 

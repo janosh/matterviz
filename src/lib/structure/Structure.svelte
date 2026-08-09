@@ -78,6 +78,7 @@
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_property_colors,
+    normalize_atom_color_config,
     type AtomColorConfig,
   } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
@@ -188,11 +189,7 @@
     height = $bindable(0),
     reset_text = `Reset view (r, or double-click)`,
     color_scheme = $bindable(`Vesta`),
-    atom_color_config = $bindable<AtomColorConfig>({
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      scale: DEFAULTS.structure.atom_color_scale,
-      scale_type: DEFAULTS.structure.atom_color_scale_type,
-    }),
+    atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
@@ -381,6 +378,14 @@
     `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
   > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+
+  // Dash and other JavaScript callers can bypass the TypeScript union with partial JSON.
+  // Normalize once before the first render and again before later prop updates are applied.
+  atom_color_config = normalize_atom_color_config(atom_color_config)
+  $effect.pre(() => {
+    const normalized = normalize_atom_color_config(atom_color_config)
+    if (normalized !== atom_color_config) atom_color_config = normalized
+  })
 
   // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
   // them straight to the MeasureMode/BondEditMode props.

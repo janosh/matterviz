@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, pick_contrast_color } from '$lib/colors'
+  import { get_d3_interpolator, pick_contrast_color, resolve_backdrop } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -52,6 +52,7 @@
     color_scale_options = undefined,
     selected_color_scale_key = $bindable(),
     on_color_scale_change = undefined,
+    backdrop: backdrop_color = undefined,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
@@ -89,7 +90,14 @@
     color_scale_options?: ColorScaleOption[]
     selected_color_scale_key?: string
     on_color_scale_change?: (key: string) => void
+    // Opaque surface behind the bar, used to resolve translucent scale colors.
+    backdrop?: string
   } = $props()
+
+  let colorbar_node = $state<HTMLDivElement>()
+  const backdrop = resolve_backdrop(() => colorbar_node, {
+    override: () => backdrop_color,
+  })
 
   // Loading state for property data fetching
   let loading = $state(false)
@@ -275,10 +283,8 @@
   let actual_color_scale_fn = $derived.by(() => {
     // A prebuilt function already maps data values to colors; nothing left to build.
     if (typeof scale === `object` && `fn` in scale) return scale.fn
-
-    let interpolator: (t: number) => string
-    if (typeof scale === `object`) interpolator = scale.interpolator
-    else interpolator = get_d3_interpolator(scale)
+    const interpolator =
+      typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
 
     // Need a domain for this fallback scale! Use 'range' prop.
     let [min_val, max_val] = range
@@ -518,6 +524,7 @@
 </script>
 
 <div
+  bind:this={colorbar_node}
   style:flex-direction={wrapper_flex_dir}
   {...rest}
   style={div_style + (rest.style ?? ``)}
@@ -563,7 +570,10 @@
         style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
         style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
         style:color={tick_side === `inside`
-          ? pick_contrast_color({ background: actual_color_scale_fn(tick_label) })
+          ? pick_contrast_color({
+              background: actual_color_scale_fn(tick_label),
+              backdrop: backdrop.current,
+            })
           : `inherit`}
       >
         {#if tick_format}

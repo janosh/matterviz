@@ -1,7 +1,7 @@
 import { ConvexHull2D } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { flushSync, mount, tick } from 'svelte'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { flushSync, mount, tick, unmount } from 'svelte'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
@@ -56,8 +56,17 @@ const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
 const button = (test_id: string): HTMLButtonElement => doc_query(`[data-testid="${test_id}"]`)
 const selected_text = (): string =>
   doc_query(`[data-testid="selected-entry"]`).textContent ?? ``
+const mounted_components: ReturnType<typeof mount>[] = []
+const track_component = (component: ReturnType<typeof mount>): void => {
+  mounted_components.push(component)
+}
 
 beforeEach(() => document.body.replaceChildren())
+afterEach(async () => {
+  for (const component of mounted_components.splice(0)) await unmount(component)
+  vi.restoreAllMocks()
+  document.body.replaceChildren()
+})
 
 describe(`convex hull replacement state`, () => {
   beforeEach(() => {
@@ -76,7 +85,7 @@ describe(`convex hull replacement state`, () => {
   ] as const)(
     `keeps refreshed selected entries and handles replacements`,
     async (props, replaced) => {
-      mount(ConvexHullSelectionHarness, { target: document.body, props })
+      track_component(mount(ConvexHullSelectionHarness, { target: document.body, props }))
       await tick()
 
       button(`select-entry`).click()
@@ -104,7 +113,9 @@ describe(`convex hull replacement state`, () => {
   test.each([`3d`, `4d`] as const)(
     `hovering a point does not trigger an infinite effect loop (%s)`,
     async (dim) => {
-      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+      track_component(
+        mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
+      )
       await tick()
 
       const canvas = doc_query<HTMLCanvasElement>(`canvas`)
@@ -127,7 +138,9 @@ describe(`convex hull replacement state`, () => {
     `pulse ticks repaint only the overlay canvas (%s)`,
     async (dim) => {
       const clears = count_canvas_clears()
-      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+      track_component(
+        mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
+      )
       await tick()
       button(`select-entry`).click()
       await let_frames_run()
@@ -146,7 +159,9 @@ describe(`convex hull replacement state`, () => {
   // out left the hull showing labels the config had already turned off.
   test.each([`3d`, `4d`] as const)(`a config change repaints the hull (%s)`, async (dim) => {
     const clears = count_canvas_clears()
-    mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+    track_component(
+      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
+    )
     await tick()
     await let_frames_run()
     const before = clears.base
@@ -196,7 +211,7 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
       const plot = await mount_sized(
         ConvexHull2D,
         { entries: magnetic_entries, hidden_categories: hidden },
-        { selector: `.scatter` },
+        { selector: `.scatter`, on_mount: track_component },
       )
       const marker_paths = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
       expect(marker_paths).toHaveLength(expected_markers)

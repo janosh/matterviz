@@ -86,7 +86,6 @@
       : contrast_text_color({
           background: rendered_bg.current,
           backdrop: backdrop.current,
-          choices: [`#000000`, `#ffffff`],
         }),
   )
   const style = $derived(

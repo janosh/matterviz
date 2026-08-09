@@ -11,6 +11,7 @@
     ChemicalElement,
     ElementCategory,
     ElementSymbol,
+    SplitLayout,
     TileSegment,
   } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
@@ -98,7 +99,7 @@
     labels?: Partial<Record<ElementSymbol, string>>
     missing?: MissingCellStyle // styling for tiles with no heatmap value
     // control the layout of multi-value splits for all tiles
-    split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+    split_layout?: SplitLayout
     // automatically show a color bar when heatmap_values is provided (default: true)
     show_color_bar?: boolean
     // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
@@ -324,19 +325,16 @@
     override: string | undefined,
     tile_missing: boolean,
   ): TileSegment[] => {
-    if (tile_missing) return [{ color: override ?? bg_color(value, element) ?? undefined }]
-    if (Array.isArray(value)) {
-      return value.map((val) => ({
-        color: override ?? bg_color(val, element) ?? undefined,
-        value: val == null || is_color(val) ? undefined : val,
-      }))
-    }
-    return [
-      {
-        color: override ?? bg_color(value, element) ?? undefined,
-        value: value == null || value === false || is_color(value) ? undefined : value,
-      },
-    ]
+    // A cell whose value already is a color paints with it but carries no label, and a
+    // missing cell paints its placeholder without one either.
+    const values = !tile_missing && Array.isArray(value) ? value : [value]
+    return values.map((val) => ({
+      color: override ?? bg_color(val, element) ?? undefined,
+      value:
+        tile_missing || val == null || val === false || Array.isArray(val) || is_color(val)
+          ? undefined
+          : val,
+    }))
   }
 
   // Determine whether to automatically show the color bar
@@ -453,9 +451,13 @@
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
   {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
-    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style};`}
+    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style}; ${
+      tile_props?.style ?? ``
+    }`}
     <ElementTile
+      {...tile_props}
       element={lanth_act_element as unknown as ChemicalElement}
+      backdrop={page_backdrop.current}
       {style}
       onmouseenter={() => (active_category = lanth_act_element.category)}
       onmouseleave={() => (active_category = null)}

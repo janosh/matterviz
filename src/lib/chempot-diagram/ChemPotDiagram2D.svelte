@@ -12,7 +12,7 @@
   import type { DataSeries, UserContentProps } from '$lib/plot/core/types'
   import { sanitize_html } from '$lib/sanitize'
   import { compute_chempot_async } from './async-compute.svelte'
-  import { ARITY_COLORS, get_chempot_color_bar_config, get_domain_color_data } from './color'
+  import { ARITY_COLORS, get_chempot_interpolator, get_domain_color_data } from './color'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     CHEMPOT_COLOR_SCALE_OPTIONS,
@@ -507,17 +507,10 @@
       style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
     />
     {#if color_range}
-      {@const color_bar_config = get_chempot_color_bar_config(
-        color_scale,
-        reverse_color_scale,
-      )}
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        scale={{
-          fn: color_bar_config.color_scale_fn,
-          domain: color_bar_config.color_scale_domain,
-        }}
+        scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
         wrapper_style="position: absolute; bottom: 70px; left: 50px; width: 180px; z-index: 10;"
         bar_style="height: 10px;"
         title_style="margin-bottom: 3px;"

@@ -232,11 +232,7 @@
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
-    atom_color_config = {
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
-      scale_type: DEFAULTS.structure.atom_color_scale_type,
-    },
+    atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG },
     sym_data = null,
     // Edit-atoms mode callbacks
     on_sites_moved,

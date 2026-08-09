@@ -70,7 +70,7 @@ describe(`FilePicker`, () => {
         { name: `structure.cif`, url: `/files/cif`, type: `cif`, label: `Crystal` },
         { name: `molecule.xyz`, url: `/files/xyz`, type: `xyz` },
       ]
-      mount(FilePicker, {
+      const component = mount(FilePicker, {
         target: document.body,
         props: {
           files: labeled,
@@ -89,6 +89,7 @@ describe(`FilePicker`, () => {
       // row wash is a faded badge color. The old alpha-by-string-replace left non-rgba
       // spellings at full strength, painting the row the same color as its badge.
       expect(doc_query(`.file-item`).style.backgroundColor).toBe(`rgba(79, 195, 247, 0.08)`)
+      void unmount(component)
     })
 
     it.each([
@@ -97,24 +98,34 @@ describe(`FilePicker`, () => {
       [`rgba(79, 195, 247, 0.8)`, `rgba(79, 195, 247, 0.08)`],
       [`red`, `rgba(255, 0, 0, 0.08)`],
       [`hsl(120, 100%, 50%)`, `rgba(0, 255, 0, 0.08)`],
+      [`rgb(79 195 247)`, `rgba(79, 195, 247, 0.08)`],
     ])(`file_type_paint(%s) fades the row to %s`, (badge, expected_item) => {
       expect(file_type_paint(badge)).toEqual({ badge, item: expected_item })
     })
-    it(`file_type_paint rejects colors it cannot resolve`, () => {
+    it(`file_type_paint rejects unresolved colors`, () => {
       expect(() => file_type_paint(`var(--file-badge)`)).toThrow(
         `Cannot derive file row paint from unsupported color`,
       )
     })
 
-    it(`recomputes translucent badge contrast after its backdrop token changes`, async () => {
+    it.each([
+      [
+        `translucent badge after backdrop change`,
+        file_type_paint(`rgba(255, 255, 255, 0.1)`),
+        `--page-bg`,
+      ],
+      [
+        `CSS-variable badge after token change`,
+        { badge: `var(--file-badge)`, item: `rgba(0, 0, 0, 0.08)` },
+        `--file-badge`,
+      ],
+    ])(`recomputes contrast for %s`, async (_desc, paint, token) => {
       const component = mount(FilePicker, {
         target: document.body,
         props: {
           files: [{ name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` }],
-          file_type_paints: {
-            chgcar: file_type_paint(`rgba(255, 255, 255, 0.1)`),
-          },
-          style: `--page-bg: black`,
+          file_type_paints: { chgcar: paint },
+          style: `${token}: black`,
         },
       })
       flushSync()
@@ -122,7 +133,7 @@ describe(`FilePicker`, () => {
       const badge = doc_query(`.file-type-badge`)
       expect(badge.style.color).toBe(`white`)
 
-      picker.style.setProperty(`--page-bg`, `white`)
+      picker.style.setProperty(token, `white`)
       await vi.waitFor(() => expect(badge.style.color).toBe(`black`))
 
       void unmount(component)

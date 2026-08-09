@@ -333,11 +333,18 @@ describe(`StructureControls reactive props`, () => {
         [],
       ),
     })
-    const target = await mount_bound_controls(state)
+    const structure = structuredClone(simple_structure)
+    const first_site = structure.sites[0]
+    if (!first_site) throw new Error(`Expected the structure fixture to contain a site`)
+    first_site.properties = {
+      ...first_site.properties,
+      selective_dynamics: [true, true, true],
+    }
+    const target = await mount_bound_controls(state, { structure })
 
-    // Mode switches go through next_atom_color_config, which derives the scale type; a
-    // bare `config.mode = ...` can no longer half-apply a mode change.
-    state.atom_color_config = next_atom_color_config(state.atom_color_config, `wyckoff`, [])
+    const mode_select = doc_query<HTMLSelectElement>(`[data-key="atom_color_mode"] select`)
+    mode_select.value = `selective_dynamics`
+    mode_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
 
