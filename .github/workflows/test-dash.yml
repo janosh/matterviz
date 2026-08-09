@@ -51,15 +51,21 @@ jobs:
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: corepack enable && pnpm install && pnpm run package:dist
+        run: |
+          corepack enable
+          # strict-dep-builds: svelte-widgets is git-hosted, so pnpm builds it on install
+          pnpm install --config.strict-dep-builds=false
+          pnpm run package:dist
         working-directory: .
 
       # --ignore-workspace: the root install above can auto-create a pnpm-workspace.yaml
       # (pnpm cooldown for freshly released deps) that makes this standalone install a
       # no-op, leaving node_modules missing (matterviz/app.css then fails to resolve).
+      # block-exotic-subdeps: matterviz is linked from source, so its git-hosted
+      # svelte-widgets arrives here as a subdependency, which pnpm blocks by default.
       - name: Install Dash extension dependencies
         run: |
-          pnpm install --ignore-workspace
+          pnpm install --ignore-workspace --config.block-exotic-subdeps=false
           pip install -e ".[dev]"
 
       # Sync typed wrappers using local matterviz dist (not npm version)

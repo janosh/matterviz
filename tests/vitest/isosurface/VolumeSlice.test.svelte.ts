@@ -232,7 +232,8 @@ describe(`VolumeSlice`, () => {
             element
               .closest(`.volume-slice`)
               ?.getAttribute(`style`)
-              ?.match(/--volume-slice-contour-color:\s*([^;]+)/)?.[1] ?? `rgb(0, 0, 0)`,
+              ?.match(/--volume-slice-contour-color:\s*(?<color>[^;]+)/)?.groups?.color ??
+            `rgb(0, 0, 0)`,
         }) as CSSStyleDeclaration,
     )
     const { canvas, context } = await mount_volume_slice({

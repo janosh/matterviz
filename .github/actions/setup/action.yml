@@ -17,8 +17,17 @@ runs:
         EXTENSIONS: ${{ inputs.extensions }}
       run: |
         corepack enable
-        pnpm install
+        # strict-dep-builds: svelte-widgets comes from git, so pnpm builds it on install and
+        # refuses to run a dependency's build scripts unless allow-listed. The allow-list
+        # lives in pnpm-workspace.yaml, which this repo does not track.
+        pnpm install --config.strict-dep-builds=false
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
         # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).
-        for ext in $EXTENSIONS; do pnpm -C "extensions/$ext" install --ignore-workspace; done
+        # block-exotic-subdeps: these link matterviz from source, so its git-hosted
+        # svelte-widgets arrives as a subdependency, which pnpm blocks by default. Has to be
+        # a flag rather than pnpm-workspace.yaml, which --ignore-workspace also skips.
+        for ext in $EXTENSIONS; do
+          pnpm -C "extensions/$ext" install --ignore-workspace \
+            --config.block-exotic-subdeps=false
+        done

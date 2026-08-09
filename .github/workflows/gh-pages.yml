@@ -24,8 +24,9 @@ jobs:
         with:
           node-version: 24
 
+      # strict-dep-builds: svelte-widgets is git-hosted, so pnpm builds it on install
       - name: Install dependencies
-        run: corepack enable && pnpm install
+        run: corepack enable && pnpm install --config.strict-dep-builds=false
 
       # adapter-static won't follow symlinks out of static/, so replace each
       # static/<dir> -> ../src/site/<dir> symlink with a real copy (auto-discovered)
