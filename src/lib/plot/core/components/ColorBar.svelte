@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { get_d3_interpolator, is_d3_interpolate_name, luminance } from '$lib/colors'
+  import {
+    get_d3_interpolator,
+    is_d3_interpolate_name,
+    pick_contrast_color,
+  } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -449,20 +453,6 @@
     return `${size_constraint} ${label_overlap_margin_style} ${title_style ?? ``}`.trim()
   })
 
-  function get_tick_text_color(tick_value: number): string | null {
-    // Only apply dynamic color if ticks are inside bar
-    if (tick_side !== `inside`) return null
-
-    const bg_color = actual_color_scale_fn(tick_value)
-    // Default to black if luminance calculation fails or color is invalid
-    try {
-      return luminance(bg_color) > 0.5 ? `black` : `white`
-    } catch (error) {
-      console.error(`Error calculating luminance for tick ${tick_value}:`, error)
-      return `black`
-    }
-  }
-
   let has_property_select = $derived(property_options && property_options.length > 0)
   let has_color_scale_select = $derived(color_scale_options && color_scale_options.length > 0)
   let has_any_select = $derived(has_property_select || has_color_scale_select)
@@ -583,12 +573,14 @@
       {@const position_percent =
         // Use derived scale's mapping function to get position percent
         scale_for_ticks(tick_label)}
-      {@const tick_inline_style = `
-        position: absolute;
-        ${orientation === `horizontal` ? `left` : `top`}: ${position_percent}%;
-        color: ${get_tick_text_color(tick_label) ?? `inherit`};
-      `}
-      <span style={tick_inline_style} class="tick-label {orientation} tick-{tick_side}">
+      <span
+        class="tick-label {orientation} tick-{tick_side}"
+        style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
+        style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
+        style:color={tick_side === `inside`
+          ? pick_contrast_color({ bg_color: actual_color_scale_fn(tick_label) })
+          : `inherit`}
+      >
         {#if tick_format}
           {#if tick_format.startsWith(`%`)}
             {timeFormat(tick_format)(new Date(tick_label))}

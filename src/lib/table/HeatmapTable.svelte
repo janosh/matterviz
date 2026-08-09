@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { luminance, watch_dark_mode } from '$lib/colors'
+  import {
+    add_alpha,
+    composite_colors,
+    contrast_color,
+    pick_contrast_color,
+    watch_dark_mode,
+  } from '$lib/colors'
   import { Spinner } from '$lib/feedback'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
@@ -332,13 +338,13 @@
 
   // Read --page-bg from computed style for text contrast calculation.
   // Recalculates on mount and when the theme changes (dark/light mode toggle).
-  let page_bg_lum = $state(luminance(`white`))
+  let page_bg_color = $state(`white`)
   $effect(() => {
     if (!container_el) return
     const read_page_bg = () => {
       if (!container_el) return
       const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`).trim()
-      page_bg_lum = luminance(page_bg || `white`)
+      page_bg_color = page_bg || `white`
     }
     read_page_bg()
     return watch_dark_mode(read_page_bg)
@@ -1243,11 +1249,12 @@
     const color = color_fn(parse_numeric_val(val))
 
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
-    // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
-      const blended_lum =
-        luminance(color.bg) * heatmap_opacity + page_bg_lum * (1 - heatmap_opacity)
-      return { bg: color.bg, text: blended_lum > 0.7 ? `black` : `white` }
+      const effective_bg = composite_colors(
+        add_alpha(color.bg, heatmap_opacity),
+        page_bg_color,
+      )
+      return { bg: color.bg, text: pick_contrast_color({ bg_color: effective_bg }) }
     }
     return color
   }
@@ -2192,7 +2199,7 @@
         onclick={() => (selected_rows = [])}
         title="Clear {selected_rows.length} selected rows"
       >
-        <span class="badge">{selected_rows.length}</span>
+        <span class="badge" {@attach contrast_color()}>{selected_rows.length}</span>
         <Icon icon={Cross} />
       </button>
     {/if}
@@ -3126,7 +3133,6 @@
     padding: 0 4px;
     .badge {
       background: var(--highlight, #4a9eff);
-      color: white;
       font-size: 0.7em;
       padding: 1px 4px;
       border-radius: 8px;

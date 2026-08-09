@@ -148,7 +148,6 @@ Example demonstrating `title_side` and `tick_side` interaction:
           tick_labels={num_ticks}
           range={current_range}
           --cbar-tick-overlap-offset="10px"
-          --cbar-tick-label-color={tick_side === `inside` ? `white` : `currentColor`}
         />
       </div>
     {/each}

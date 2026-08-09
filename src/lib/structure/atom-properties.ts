@@ -37,7 +37,7 @@ export interface AtomPropertyColors {
 }
 
 const GRAY = `#808080`
-const DEFAULT_COLOR_SCALE = `interpolateViridis`
+const DEFAULT_COLOR_SCALE: D3InterpolateName = `interpolateViridis`
 // Cap on periodic image shells per axis when expanding for coordination. Guards
 // against image explosion in very thin / highly oblique cells (coordination is ~O(n²)).
 const MAX_IMAGE_SHELLS = 3
@@ -73,10 +73,10 @@ const build_image_site = (
 
 const make_categorical = <T>(
   vals: T[],
-  scale: string,
+  scale: D3InterpolateName,
   sort_fn?: (a: T, b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
-  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
+  const interp_fn = get_d3_interpolator(scale)
   const uniq = sort_fn
     ? [...new Set(vals)].toSorted(sort_fn)
     : [...new Set(vals)].toSorted((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
@@ -104,7 +104,7 @@ const build_prop_colors = (
 
 export function apply_color_scale(
   vals: number[],
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): { colors: string[]; unique_values?: number[] } {
   if (vals.length === 0) return { colors: [] }
@@ -113,7 +113,7 @@ export function apply_color_scale(
     return { colors: result.colors, unique_values: result.unique_values }
   }
 
-  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
+  const interp_fn = get_d3_interpolator(scale)
   // Compute min/max in single pass to avoid spreading large arrays
   let [min, max] = [vals[0], vals[0]]
   for (const val of vals) {
@@ -129,7 +129,7 @@ export function apply_color_scale(
 
 export const apply_categorical_color_scale = (
   vals: string[],
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): { colors: string[]; unique_values: string[] } =>
   vals.length > 0 ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
@@ -253,7 +253,7 @@ export function calc_structure_coordination(
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   // sites is already limited to the original atoms (calc_coordination_nums center_count)
@@ -268,7 +268,7 @@ export function get_coordination_colors(
 export function get_wyckoff_colors(
   structure: AnyStructure,
   sym_data: SymmetryDataWithOrigMap | null,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   const n_sites = structure.sites.length
   if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
@@ -361,7 +361,7 @@ export const structure_has_selective_dynamics = (
 
 export function get_selective_dynamics_colors(
   structure: AnyStructure,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   if (structure.sites.length === 0) return { colors: [], values: [] }
   const categories = structure.sites.map((site) =>
@@ -453,7 +453,7 @@ const cna_type_palette = (codes: number[]): string[] =>
 export function get_site_property_colors(
   structure: AnyStructure,
   property_key: string,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const scalars = structure.sites.map((site) => site_property_scalar(site, property_key))
@@ -482,7 +482,7 @@ export function get_site_property_colors(
 export function get_custom_colors(
   structure: AnyStructure,
   fn: (site: Site, idx: number) => number | string,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const vals = structure.sites.map((site, idx) => fn(site, idx))

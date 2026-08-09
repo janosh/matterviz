@@ -64,15 +64,26 @@ describe(`FilePicker`, () => {
       },
     )
 
-    it(`shows file type badge only when label is set`, () => {
+    it(`shows and contrasts file type badges only when labels are set`, () => {
       const labeled: FileInfo[] = [
         { name: `Si-CHGCAR.gz`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` },
-        { name: `structure.cif`, url: `/files/cif`, type: `cif` },
+        { name: `structure.cif`, url: `/files/cif`, type: `cif`, label: `Crystal` },
+        { name: `molecule.xyz`, url: `/files/xyz`, type: `xyz` },
       ]
-      mount(FilePicker, { target: document.body, props: { files: labeled } })
-      const badges = document.querySelectorAll(`.file-type-badge`)
-      expect(badges).toHaveLength(1)
-      expect(badges[0].textContent).toBe(`CHGCAR`)
+      mount(FilePicker, {
+        target: document.body,
+        props: {
+          files: labeled,
+          file_type_colors: { chgcar: `#4fc3f7`, cif: `#111111` },
+        },
+      })
+      flushSync()
+      const badges = document.querySelectorAll<HTMLElement>(`.file-type-badge`)
+      expect([...badges].map((badge) => [badge.textContent, badge.style.color])).toEqual([
+        [`CHGCAR`, `black`],
+        [`CIF`, `white`],
+      ])
+      expect(doc_query(`.file-item`).style.backgroundColor).toBe(`#4fc3f7`)
     })
   })
 
@@ -376,17 +387,6 @@ describe(`FilePicker`, () => {
       // Should use xyz color (green)
       const file_item = doc_query(`.file-item`)
       expect(file_item.style.backgroundColor).toContain(`50, 205, 50`) // green for xyz
-    })
-
-    it(`uses custom file_type_colors for file background`, () => {
-      const files = [create_mock_file(`foo.xyz`, `/files/foo.xyz`)]
-      const file_type_colors = { xyz: `rgba(1, 2, 3, 0.8)` }
-      mount(FilePicker, {
-        target: document.body,
-        props: { files, file_type_colors },
-      })
-      const file_item = doc_query(`.file-item`)
-      expect(file_item.style.backgroundColor).toContain(`1, 2, 3`)
     })
   })
 })

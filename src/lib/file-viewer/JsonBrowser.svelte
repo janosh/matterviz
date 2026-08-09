@@ -5,6 +5,7 @@
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
   import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
+  import { contrast_color, pick_contrast_color } from '$lib/colors'
   import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
@@ -240,6 +241,7 @@
       badge.dataset.renderable_path = data_path
       badge.dataset.renderable_type = info.type
       badge.style.background = TYPE_COLORS[info.type]
+      badge.style.color = pick_contrast_color({ bg_color: TYPE_COLORS[info.type] })
       badge.draggable = true
       insert_after.after(badge)
     }
@@ -812,7 +814,11 @@
           <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
             <div class="panel-mount" id={panel.id}></div>
             <!-- Panel label -->
-            <div class="panel-label" style="background: {TYPE_COLORS[panel.detected_type]}cc;">
+            <div
+              class="panel-label"
+              style:background="{TYPE_COLORS[panel.detected_type]}cc"
+              {@attach contrast_color()}
+            >
               {TYPE_LABELS[panel.detected_type]}: {strip_type_suffix(panel.data_path)}
             </div>
           </div>
@@ -894,7 +900,6 @@
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 3px;
-    color: white;
     opacity: 0.7;
     pointer-events: none;
     white-space: nowrap;
@@ -1032,7 +1037,6 @@
     padding: 1px 4px;
     margin-left: 4px;
     border-radius: 3px;
-    color: white;
     font-weight: 500;
     white-space: nowrap;
     cursor: grab;

@@ -1,6 +1,6 @@
 // Theme Detection for Embedded MatterViz Views
 
-import { luminance } from '$lib/colors'
+import { perceived_brightness } from '$lib/colors'
 import { COLOR_THEMES, type ThemeType } from '$lib/theme'
 // oxlint-disable-next-line import/no-unassigned-import -- registers built-in themes
 import '$lib/theme/themes.mjs'
@@ -143,7 +143,7 @@ function is_dark_color(color: string): boolean | null {
   if (!color || [`transparent`, `rgba(0, 0, 0, 0)`, `initial`, `inherit`].includes(color)) {
     return null
   }
-  return luminance(color) < 0.5
+  return perceived_brightness(color) < 0.5
 }
 
 function notify_theme_change(): void {

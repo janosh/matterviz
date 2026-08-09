@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES, luminance } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_by_symbol } from '$lib/element'
   import ElementTile from '$lib/element/ElementTile.svelte'
@@ -119,7 +119,7 @@
 <svelte:element this={as} {...rest} class={[`formula`, rest.class]} oncopy={handle_copy}>
   {#each sorted_elements as { element, amount, oxidation_state } (element)}
     {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
-    {@const lum = luminance(color)}
+    {@const brightness = perceived_brightness(color)}
     {@const has_oxidation = oxidation_state !== undefined && oxidation_state !== 0}
     <span
       class="element-group"
@@ -137,8 +137,8 @@
     >
       <span
         class="element-symbol"
-        class:dark-border={lum > 0.7}
-        class:light-border={lum < 0.15}
+        class:dark-border={brightness > 0.7}
+        class:light-border={brightness < 0.15}
         style:color
       >
         {element}</span

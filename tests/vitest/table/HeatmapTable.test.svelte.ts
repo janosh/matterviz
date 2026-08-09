@@ -474,36 +474,37 @@ describe(`HeatmapTable`, () => {
     expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
   })
 
-  it(`applies different scale types for color mapping`, () => {
-    const c1: Label = {
-      label: `Linear`,
-      better: `higher`,
-      color_scale: `interpolateViridis`,
-      scale_type: `linear`,
-      description: ``,
-    }
-    const c2: Label = {
-      label: `Log`,
-      better: `higher`,
-      color_scale: `interpolateViridis`,
-      scale_type: `log`,
-      description: ``,
-    }
+  it.each([
+    [`white`, `black`],
+    [`black`, `white`],
+  ])(`maps scale types and contrasts opacity over a %s page`, async (page_bg, text_color) => {
+    const columns: Label[] = [
+      { ...heatmap_col, label: `Linear`, better: `higher`, scale_type: `linear` },
+      { ...heatmap_col, label: `Log`, better: `higher`, scale_type: `log` },
+    ]
     const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
 
-    mount_table({ data, columns: [c1, c2] })
+    mount_table({
+      data,
+      columns,
+      heatmap_opacity: 0.5,
+      style: `--page-bg: ${page_bg}`,
+    })
+    await tick()
 
-    const styles_of = (col: string) =>
-      Array.from(document.querySelectorAll(`td[data-col="${col}"]`)).map(
+    const [linear_styles, log_styles] = columns.map(({ label }) =>
+      Array.from(
+        document.querySelectorAll(`td[data-col="${label}"]`),
         (cell) => cell.getAttribute(`style`) ?? ``,
-      )
-    const linear_styles = styles_of(`Linear`)
-    const log_styles = styles_of(`Log`)
+      ),
+    )
 
     // Both scale types color every cell, including zero, but map positive values differently
-    expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
-    expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
+    expect(
+      [...linear_styles, ...log_styles].every((style) => style.includes(`--cell-bg:`)),
+    ).toBe(true)
     expect(linear_styles).not.toEqual(log_styles)
+    expect(cell_at(0, 0).style.color).toBe(text_color)
   })
 
   it(`handles accessibility features`, () => {
@@ -901,7 +902,9 @@ describe(`HeatmapTable`, () => {
         `Model B`,
         `Model C`,
       ])
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`3`)
+      const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
+      expect(badge?.textContent).toBe(`3`)
+      expect(badge?.style.color).toBe(`black`)
     })
 
     it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {

@@ -1,6 +1,13 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, is_color, pick_contrast_color } from '$lib/colors'
+  import {
+    contrast_color,
+    get_bg_color,
+    get_d3_interpolator,
+    is_color,
+    is_concrete_color,
+    pick_contrast_color,
+  } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
@@ -466,17 +473,16 @@
     return colors
   })
 
-  const to_contrast_colors = (bg_values: (string | null)[]): (string | null)[] =>
-    bg_values.map((bg_color) => (bg_color ? pick_contrast_color({ bg_color }) : null))
-
-  // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
-  let text_flat = $derived.by(() => {
-    if (!cell && !show_values) return null
-    return to_contrast_colors(bg_flat)
-  })
-
+  let matrix_el: HTMLDivElement | undefined = $state()
+  let backdrop_color = $derived(matrix_el ? (get_bg_color(matrix_el) ?? `white`) : `white`)
   // Keep selected outlines visible against each cell's background.
-  let selected_outline_flat = $derived(to_contrast_colors(bg_flat))
+  let selected_outline_flat = $derived(
+    bg_flat.map((bg_color) =>
+      is_concrete_color(bg_color) ? pick_contrast_color({ bg_color, backdrop_color }) : null,
+    ),
+  )
+  // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
+  let text_flat = $derived(cell || show_values ? selected_outline_flat : null)
 
   const get_flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
 
@@ -500,7 +506,6 @@
   const dblclick_delay_ms = 250
   let last_hover_x = -1
   let last_hover_y = -1
-  let matrix_el: HTMLDivElement | undefined = $state()
   let scroll_left = $state(0)
   let scroll_top = $state(0)
   let viewport_width = $state(0)
@@ -1254,6 +1259,7 @@
             style:background-color={bg}
             style:color={text_flat?.[flat_idx]}
             style:--heatmap-selected-outline-color={selected_outline_flat[flat_idx]}
+            {@attach bg && !is_concrete_color(bg) ? contrast_color() : null}
             style:grid-column={cell_grid_col(x_idx)}
             style:grid-row={cell_grid_row(y_idx)}
           >

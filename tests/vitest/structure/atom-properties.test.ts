@@ -55,11 +55,6 @@ describe(`Color Scales`, () => {
     expect(new Set(colors).size).toBe(3)
   })
 
-  test(`invalid scale fallback`, () => {
-    const { colors } = ap.apply_color_scale([1, 2], `bad`)
-    expect(colors[0]).toMatch(/^#[0-9a-f]{6}$/i)
-  })
-
   test(`large continuous range yields many distinct colors`, () => {
     const values = Array.from({ length: 100 }, (_, idx) => idx * 1000)
     expect(new Set(ap.apply_color_scale(values).colors).size).toBeGreaterThan(50)

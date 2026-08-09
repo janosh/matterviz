@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { luminance } from '$lib/colors'
+  import { contrast_color } from '$lib/colors'
   import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
@@ -31,10 +31,6 @@
     children: Snippet
   } = $props()
 
-  // Auto-compute contrasting text color based on background luminance only if bg_color is defined
-  const text_color = $derived(
-    bg_color != null ? (luminance(bg_color) > 0.5 ? `#000000` : `#ffffff`) : null,
-  )
   const measured_or_fallback = (measured?: number, fallback?: number): number =>
     measured && measured > 0 ? measured : (fallback ?? 0)
 
@@ -88,10 +84,10 @@
   {...rest}
   class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
   style:background-color={bg_color}
-  style:color={text_color}
   style:max-width={max_width != null ? `${max_width}px` : undefined}
   {style}
   bind:this={wrapper}
+  {@attach bg_color == null ? null : contrast_color({ choices: [`#000000`, `#ffffff`] })}
 >
   {@render children()}
 </div>

@@ -1,4 +1,4 @@
-import { color as d3_color, rgb } from 'd3-color'
+import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import {
   COLOR_THEMES,
@@ -33,8 +33,9 @@ export const D3_INTERPOLATE_NAMES = new Set(
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
   D3_INTERPOLATE_NAMES.has(name as D3InterpolateName)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
-  const candidate = d3_interpolators[name]
-  return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
+  const interpolator = d3_interpolators[name]
+  if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
+  return interpolator
 }
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
@@ -101,6 +102,21 @@ export const is_color = (val: unknown): val is string => {
   const trimmed = val.trim()
   return /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) || d3_color(trimmed) !== null
 }
+const to_rgb = (color: string): RGBColor | undefined => {
+  const parsed = d3_color(color)?.rgb()
+  if (!parsed) return undefined
+  if (parsed.opacity === 0) return rgb(0, 0, 0, 0)
+  if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite)) return undefined
+  return rgb(
+    Math.max(0, Math.min(255, parsed.r)),
+    Math.max(0, Math.min(255, parsed.g)),
+    Math.max(0, Math.min(255, parsed.b)),
+    clamp01(parsed.opacity),
+  )
+}
+export const is_concrete_color = (val: unknown): val is string => {
+  return typeof val === `string` && (to_rgb(val.trim())?.opacity ?? 0) > 0
+}
 
 export const PLOT_COLORS = [
   // Color series for e.g. line plots
@@ -116,49 +132,142 @@ export const PLOT_COLORS = [
   `#c6f6d5`,
 ] as const
 
-// calculate human-perceived brightness from RGB color
-export function luminance(clr: string) {
-  const { r: red, g: green, b: blue } = rgb(clr)
+const parse_rgb = (color: string): RGBColor => {
+  const parsed = to_rgb(color)
+  if (!parsed || parsed.opacity === 0) throw new Error(`Invalid color: ${color}`)
+  return parsed
+}
+
+let color_canvas_context: CanvasRenderingContext2D | null | undefined
+const parse_rendered_rgb = (color: string): RGBColor => {
+  const parsed = to_rgb(color)
+  if (parsed) return parsed
+  if (typeof document === `undefined`) throw new Error(`Invalid color: ${color}`)
+  const context = (color_canvas_context ??= document
+    .createElement(`canvas`)
+    .getContext(`2d`, { willReadFrequently: true }))
+  if (!context) throw new Error(`Browser cannot resolve CSS color: ${color}`)
+  context.clearRect(0, 0, 1, 1)
+  context.fillStyle = `rgba(0, 0, 0, 0)`
+  context.fillStyle = color
+  context.fillRect(0, 0, 1, 1)
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
+  return rgb(red, green, blue, alpha / 255)
+}
+const is_visible_bg = (color: string): boolean =>
+  color !== `` && color !== `transparent` && parse_rendered_rgb(color).opacity > 0
+
+// Calculate human-perceived brightness from gamma-encoded RGB channels.
+export function perceived_brightness(color: string): number {
+  const { r: red, g: green, b: blue } = parse_rgb(color)
 
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
-// CSS color string for a fully transparent background
-const NO_BG = `rgba(0, 0, 0, 0)`
+const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
+  const linearize = (channel: number): number => {
+    const fraction = channel / 255
+    return fraction <= 0.04045 ? fraction / 12.92 : ((fraction + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
+}
 
-// get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
-export function get_bg_color(
-  elem: HTMLElement | null,
-  bg_color: string | null = null,
-): string {
-  if (bg_color) return bg_color
-  // recurse up the DOM tree to find the first non-transparent background color
-  if (!elem) return NO_BG // if no DOM node, return transparent
+// Calculate WCAG relative luminance from linearized sRGB channels.
+export const relative_luminance = (color: string): number => rgb_luminance(parse_rgb(color))
+const contrast_ratio = (first_luminance: number, second_luminance: number): number =>
+  (Math.max(first_luminance, second_luminance) + 0.05) /
+  (Math.min(first_luminance, second_luminance) + 0.05)
 
-  const bg = getComputedStyle(elem).backgroundColor // get node background color
-  if (bg !== NO_BG) return bg // if not transparent, return it
-  return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
+const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
+  const foreground_alpha = clamp01(foreground.opacity)
+  const backdrop_alpha = clamp01(backdrop.opacity)
+  const opacity = foreground_alpha + backdrop_alpha * (1 - foreground_alpha)
+  if (opacity === 0) return rgb(0, 0, 0, 0)
+  const channel = (foreground_value: number, backdrop_value: number): number =>
+    (foreground_value * foreground_alpha +
+      backdrop_value * backdrop_alpha * (1 - foreground_alpha)) /
+    opacity
+  return rgb(
+    channel(foreground.r, backdrop.r),
+    channel(foreground.g, backdrop.g),
+    channel(foreground.b, backdrop.b),
+    opacity,
+  )
+}
+
+export const composite_colors = (foreground: string, backdrop: string): string =>
+  composite_rgb(parse_rgb(foreground), parse_rgb(backdrop)).formatRgb()
+
+// Get the nearest visible background of a DOM node.
+export function get_bg_color(elem: HTMLElement | null): string | undefined {
+  let effective_bg: RGBColor | undefined
+  for (let node = elem; node; node = node.parentElement) {
+    const background = getComputedStyle(node).backgroundColor
+    if (!background || background === `transparent`) continue
+    const parsed = parse_rendered_rgb(background)
+    if (parsed.opacity === 0) continue
+    effective_bg = effective_bg ? composite_rgb(effective_bg, parsed) : parsed
+    if (effective_bg.opacity === 1) return effective_bg.formatRgb()
+  }
+  return effective_bg ? composite_rgb(effective_bg, parse_rgb(`white`)).formatRgb() : undefined
 }
 
 export interface ContrastOptions {
-  bg_color?: string
-  luminance_threshold?: number
-  choices?: [string, string]
+  bg_color: string
+  backdrop_color?: string
+  choices?: readonly [string, string]
 }
 
-export function pick_contrast_color(options: ContrastOptions = {}) {
-  const { bg_color, luminance_threshold = 0.7, choices = [`black`, `white`] } = options
-  const light_bg = luminance(bg_color ?? `white`) > luminance_threshold
-  return light_bg ? choices[0] : choices[1] // dark text for light backgrounds, light for dark
+const DEFAULT_CONTRAST_CHOICES = [`black`, `white`] as const
+const DEFAULT_CHOICE_LUMINANCES = [0, 1] as const
+
+export function pick_contrast_color(options: ContrastOptions): string {
+  const { bg_color, backdrop_color, choices = DEFAULT_CONTRAST_CHOICES } = options
+  const parsed_bg = parse_rgb(bg_color)
+  let effective_bg = parsed_bg
+  if (parsed_bg.opacity < 1) {
+    if (!backdrop_color) {
+      throw new Error(`Translucent background requires backdrop_color: ${bg_color}`)
+    }
+    const backdrop = parse_rgb(backdrop_color)
+    if (backdrop.opacity < 1) {
+      throw new Error(`backdrop_color must be opaque: ${backdrop_color}`)
+    }
+    effective_bg = composite_rgb(parsed_bg, backdrop)
+  }
+  const bg_luminance = rgb_luminance(effective_bg)
+  const choice_luminances =
+    choices === DEFAULT_CONTRAST_CHOICES
+      ? DEFAULT_CHOICE_LUMINANCES
+      : choices.map((choice) => {
+          const parsed_choice = parse_rgb(choice)
+          return rgb_luminance(
+            parsed_choice.opacity < 1
+              ? composite_rgb(parsed_choice, effective_bg)
+              : parsed_choice,
+          )
+        })
+  return contrast_ratio(bg_luminance, choice_luminances[0]) >=
+    contrast_ratio(bg_luminance, choice_luminances[1])
+    ? choices[0]
+    : choices[1]
 }
 
-// Attachment that picks dark or light text to maximize contrast with the node's
-// background. Ours only differs in reading `getComputedStyle` output, which is always
-// `rgb()`, so the library's regex parser covers it — `pick_contrast_color` below keeps
-// d3's full parser because color-scale output reaches it as hex/named/hsl too.
-export { contrast_color } from 'svelte-widgets/attachments'
-
-const is_valid_bg = (bg: string): boolean => bg !== `` && bg !== NO_BG && bg !== `transparent`
+// Attachment that picks the text color with the highest WCAG contrast against the
+// node's nearest visible background.
+export const contrast_color =
+  (options: Omit<ContrastOptions, `bg_color`> & { bg_color?: string } = {}) =>
+  (node: HTMLElement): (() => void) => {
+    const previous_color = node.style.color
+    node.style.color = pick_contrast_color({
+      ...options,
+      bg_color: options.bg_color ?? get_bg_color(node) ?? `white`,
+      backdrop_color: options.backdrop_color ?? get_bg_color(node.parentElement) ?? `white`,
+    })
+    return () => {
+      node.style.color = previous_color
+    }
+  }
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
@@ -173,8 +282,8 @@ export function get_page_background(
 
   // Check if background is not transparent/unset
   // Prefer body background as it's more likely to be styled by the theme
-  if (is_valid_bg(body_bg)) return body_bg
-  if (is_valid_bg(html_bg)) return html_bg
+  if (is_visible_bg(body_bg)) return body_bg
+  if (is_visible_bg(html_bg)) return html_bg
 
   // Fall back to prefers-color-scheme
   const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches

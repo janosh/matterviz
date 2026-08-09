@@ -1,6 +1,8 @@
 import type { ContrastOptions } from '$lib/colors'
 import {
   add_alpha,
+  composite_colors,
+  contrast_color,
   css_color_to_hex,
   D3_INTERPOLATE_NAMES,
   DEFAULT_CATEGORY_COLORS,
@@ -9,11 +11,13 @@ import {
   get_d3_interpolator,
   get_page_background,
   is_color,
+  is_concrete_color,
   is_dark_mode,
   is_d3_interpolate_name,
-  luminance,
+  perceived_brightness,
   pick_contrast_color,
   PLOT_COLORS,
+  relative_luminance,
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
@@ -33,6 +37,10 @@ test(`registered D3 interpolation names resolve to functions`, () => {
   for (const name of D3_INTERPOLATE_NAMES) {
     expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
   }
+  // @ts-expect-error exercise the runtime guard for JavaScript callers
+  expect(() => get_d3_interpolator(`invalid`)).toThrow(
+    `Unknown D3 color interpolator: invalid`,
+  )
 })
 
 describe(`Element Color Schemes`, () => {
@@ -191,6 +199,15 @@ describe(`is_color function`, () => {
     expect(is_color(ELEMENT_COLOR_SCHEMES.Jmol.H)).toBe(true)
     expect(is_color(ELEMENT_COLOR_SCHEMES.Vesta.He)).toBe(true)
   })
+
+  test.each([
+    [`#4fc3f7`, true],
+    [`var(--accent)`, false],
+    [`currentcolor`, false],
+    [`transparent`, false],
+  ])(`is_concrete_color(%s) is %s`, (color, expected) => {
+    expect(is_concrete_color(color)).toBe(expected)
+  })
 })
 
 describe(`css_color_to_hex`, () => {
@@ -243,18 +260,19 @@ describe(`css_color_to_hex`, () => {
 })
 
 test.each([
-  [`#000000`, 0, `black`],
-  [`#ffffff`, 1, `white`],
-  [`#ff0000`, 0.299, `red`],
-  [`#00ff00`, 0.587, `green`],
-  [`#0000ff`, 0.114, `blue`],
-  [`#808080`, 0.502, `gray`],
-  [`#ff8000`, 0.594, `orange`],
-  [`red`, 0.299, `named color`],
-  [`rgb(255, 0, 0)`, 0.299, `rgb format`],
-  [`hsl(0, 100%, 50%)`, 0.299, `hsl format`],
-])(`luminance(%s) = %s (%s)`, (color, expected) => {
-  expect(luminance(color)).toBeCloseTo(expected, 3)
+  [`#000000`, 0, 0],
+  [`#ffffff`, 1, 1],
+  [`#ff0000`, 0.299, 0.2126],
+  [`#00ff00`, 0.587, 0.7152],
+  [`#0000ff`, 0.114, 0.0722],
+  [`#808080`, 0.502, 0.2159],
+  [`#ff8000`, 0.594, 0.367],
+  [`red`, 0.299, 0.2126],
+  [`rgb(255, 0, 0)`, 0.299, 0.2126],
+  [`hsl(0, 100%, 50%)`, 0.299, 0.2126],
+])(`color metrics for %s`, (color, expected_brightness, expected_luminance) => {
+  expect(perceived_brightness(color)).toBeCloseTo(expected_brightness, 3)
+  expect(relative_luminance(color)).toBeCloseTo(expected_luminance, 3)
 })
 
 describe(`get_bg_color`, () => {
@@ -264,8 +282,7 @@ describe(`get_bg_color`, () => {
   afterEach(() => vi.restoreAllMocks())
 
   it(`handles various scenarios`, () => {
-    expect(get_bg_color(null, `#ff0000`)).toBe(`#ff0000`) // provided bg_color
-    expect(get_bg_color(null)).toBe(`rgba(0, 0, 0, 0)`) // no element, no bg_color
+    expect(get_bg_color(null)).toBeUndefined()
 
     // Mock element with background color
     const mock_element = { style: {}, parentElement: null } as HTMLElement
@@ -273,34 +290,63 @@ describe(`get_bg_color`, () => {
       .spyOn(globalThis, `getComputedStyle`)
       .mockReturnValue(computed_style(`#ff0000`))
 
-    expect(get_bg_color(mock_element)).toBe(`#ff0000`)
+    expect(get_bg_color(mock_element)).toBe(`rgb(255, 0, 0)`)
     expect(mock_get_computed_style).toHaveBeenCalledWith(mock_element)
   })
 
-  it(`recurses up DOM tree for transparent backgrounds`, () => {
-    const mock_parent = { style: {}, parentElement: null } as HTMLElement
-    const mock_element = { style: {}, parentElement: mock_parent } as HTMLElement
+  it.each([
+    [`rgba(0, 0, 0, 0)`, `#00ff00`, `rgb(0, 255, 0)`],
+    [`rgba(255, 255, 255, 0.1)`, `rgb(0, 0, 0)`, `rgb(26, 26, 26)`],
+  ])(`resolves %s over %s`, (foreground, backdrop, expected) => {
+    const parent = { style: {}, parentElement: null } as HTMLElement
+    const child = { style: {}, parentElement: parent } as HTMLElement
     const mock_get_computed_style = vi
       .spyOn(globalThis, `getComputedStyle`)
-      .mockReturnValueOnce(computed_style(`rgba(0, 0, 0, 0)`))
-      .mockReturnValueOnce(computed_style(`#00ff00`))
+      .mockReturnValueOnce(computed_style(foreground))
+      .mockReturnValueOnce(computed_style(backdrop))
 
-    expect(get_bg_color(mock_element)).toBe(`#00ff00`)
+    expect(get_bg_color(child)).toBe(expected)
     expect(mock_get_computed_style).toHaveBeenCalledTimes(2)
   })
 })
 
 describe(`pick_contrast_color`, () => {
-  it.each<[ContrastOptions | undefined, string]>([
-    [{ bg_color: `#ffffff`, luminance_threshold: 0.7, choices: [`black`, `white`] }, `black`],
-    [{ bg_color: `#000000`, luminance_threshold: 0.7, choices: [`black`, `white`] }, `white`],
-    [{ bg_color: `#404040`, luminance_threshold: 0.5, choices: [`black`, `white`] }, `white`],
-    [{ bg_color: `#ffffff`, luminance_threshold: 0.7, choices: [`red`, `blue`] }, `red`],
-    [{ bg_color: `#ffffff` }, `black`], // defaults (threshold 0.7, black/white)
-    [undefined, `black`], // no options -> bg defaults to 'white' -> black text
+  it.each<[ContrastOptions, string]>([
+    [{ bg_color: `#000000` }, `white`],
+    [{ bg_color: `#4fc3f7` }, `black`], // black has 10.48:1 contrast vs white's 2.00:1
+    [{ bg_color: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
+    [{ bg_color: `rgba(255, 255, 255, 0.1)`, backdrop_color: `black` }, `white`],
+    [{ bg_color: `rgba(0, 0, 0, 0.1)`, backdrop_color: `white` }, `black`],
   ])(`pick_contrast_color(%o) = %s`, (options, expected) => {
     expect(pick_contrast_color(options)).toBe(expected)
   })
+
+  it.each<[ContrastOptions, string]>([
+    [{ bg_color: `transparent` }, `Invalid color: transparent`],
+    [
+      { bg_color: `rgba(255, 255, 255, 0.1)` },
+      `Translucent background requires backdrop_color`,
+    ],
+  ])(`rejects invalid options %o`, (options, error) => {
+    expect(() => pick_contrast_color(options)).toThrow(error)
+  })
+
+  it(`contrast_color applies and cleans up the maximum-contrast foreground`, () => {
+    const parent = document.createElement(`div`)
+    parent.style.background = `black`
+    const node = document.createElement(`div`)
+    parent.append(node)
+    document.body.append(parent)
+    node.style.color = `red`
+    const cleanup = contrast_color()(node)
+    expect(node.style.color).toBe(`white`)
+    cleanup()
+    expect(node.style.color).toBe(`red`)
+  })
+})
+
+test(`composite_colors applies source-over alpha blending`, () => {
+  expect(composite_colors(`rgba(255, 255, 255, 0.1)`, `black`)).toBe(`rgb(26, 26, 26)`)
 })
 
 describe(`add_alpha`, () => {

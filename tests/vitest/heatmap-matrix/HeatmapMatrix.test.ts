@@ -169,12 +169,13 @@ describe(`values and colors`, () => {
       x: [`A`, `B`],
       y: [`X`],
       values: [[null, 1]],
-      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
+      missing: { label: `N/A`, style: `opacity: 0.4` },
     })
     const cells = get_data_cells()
     // A=null is missing -> label + dimmed
     expect(cells[0].textContent?.trim()).toBe(`N/A`)
     expect(cells[0].style.opacity).toBe(`0.4`)
+    expect(cells[0].style.color).toBe(``)
     // B=1 is present -> no label, not dimmed
     expect(cells[1].textContent).not.toContain(`N/A`)
     expect(cells[1].style.opacity).toBe(``)
@@ -719,6 +720,11 @@ describe(`milestone feature props`, () => {
 })
 
 describe(`show_values`, () => {
+  const mount_single_value = (
+    value: number,
+    props: Partial<ComponentProps<typeof HeatmapMatrix>>,
+  ): void => mount_matrix({ x: [`A`], y: [`X`], values: [[value]], ...props })
+
   test(`true renders formatted numbers inside cells`, () => {
     mount_matrix({
       x: [`A`, `B`],
@@ -732,21 +738,25 @@ describe(`show_values`, () => {
     expect(spans[1].textContent).toBe(format_num(0.001, `.3~g`))
   })
 
-  test(`custom format string is used`, () => {
-    mount_matrix({
-      x: [`A`],
-      y: [`X`],
-      values: [[Math.PI]],
-      show_values: `.1f`,
+  test(`contrasts translucent cell colors against the matrix background`, async () => {
+    mount_single_value(1, {
+      show_values: true,
+      color_overrides: {
+        [make_color_override_key(`A`, `X`)]: `rgba(255, 255, 255, 0.1)`,
+      },
+      style: `background: black`,
     })
+    await tick()
+    expect(doc_query(`.cell`).style.color).toBe(`white`)
+  })
+
+  test(`custom format string is used`, () => {
+    mount_single_value(Math.PI, { show_values: `.1f` })
     expect(doc_query(`.cell-value`).textContent).toBe(format_num(Math.PI, `.1f`))
   })
 
   test(`ignored when custom cell snippet is provided`, () => {
-    mount_matrix({
-      x: [`A`],
-      y: [`X`],
-      values: [[42]],
+    mount_single_value(42, {
       show_values: true,
       // not a real snippet - only presence matters for suppressing .cell-value
       // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it

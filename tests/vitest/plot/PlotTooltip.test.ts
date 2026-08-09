@@ -17,6 +17,7 @@ const mount_tooltip = (
     target: document.body,
     props: { x: 0, y: 0, children: make_children(), ...props },
   })
+  flushSync()
   return doc_query(`.plot-tooltip`)
 }
 
@@ -38,18 +39,15 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.top).toBe(`65px`)
   })
 
-  // luminance() itself is covered in colors.test.ts; here only the wiring + null skip.
+  // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
   test.each([
     { bg: `#000000`, text: `#ffffff` },
-    { bg: `#ffff00`, text: `#000000` },
+    { bg: `#4fc3f7`, text: `#000000` },
+    { bg: null, text: `` },
   ])(`sets background $bg and contrasting text $text`, ({ bg, text }) => {
     const tooltip = mount_tooltip({ bg_color: bg })
-    expect(tooltip.style.backgroundColor).toBe(bg)
+    expect(tooltip.style.backgroundColor).toBe(bg ?? ``)
     expect(tooltip.style.color).toBe(text)
-  })
-
-  test(`does not set text color without bg_color`, () => {
-    expect(mount_tooltip({ bg_color: null }).style.color).toBe(``)
   })
 
   test(`passes through class and style`, () => {

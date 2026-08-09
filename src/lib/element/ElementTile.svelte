@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { contrast_color, is_color, pick_contrast_color } from '$lib/colors'
+  import {
+    contrast_color,
+    is_color,
+    is_concrete_color,
+    get_bg_color,
+    pick_contrast_color,
+  } from '$lib/colors'
   import type { ChemicalElement } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { colors, selected } from '$lib/state.svelte'
@@ -16,7 +22,6 @@
     symbol_style = ``,
     active = false,
     href = undefined,
-    luminance_threshold = 0.7,
     text_color = $bindable(),
     float_fmt = undefined,
     node = $bindable(null),
@@ -36,8 +41,6 @@
     symbol_style?: string
     active?: boolean
     href?: string
-    // at what background color lightness text color switches from black to white
-    luminance_threshold?: number
     text_color?: string
     float_fmt?: string
     node?: HTMLElement | null
@@ -52,13 +55,13 @@
 
   // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
   let fallback_bg_color = $derived(bg_color ?? colors.category[element.category] ?? `#cccccc`)
-
-  // Compute contrast text color from background when in heatmap mode (single bg_color)
+  let backdrop_color = $derived(node ? (get_bg_color(node.parentElement) ?? `white`) : `white`)
+  const auto_text_color = (background: unknown): string | undefined =>
+    is_concrete_color(background)
+      ? pick_contrast_color({ bg_color: background, backdrop_color })
+      : undefined
   let computed_text_color = $derived(
-    text_color ??
-      (bg_color && !Array.isArray(value)
-        ? pick_contrast_color({ bg_color, luminance_threshold })
-        : undefined),
+    text_color ?? (Array.isArray(value) ? undefined : auto_text_color(bg_color)),
   )
 
   // Determine if we should show the atomic number
@@ -165,12 +168,7 @@
         {#if val && format_value(val)}
           <span
             class="value multi-value {layout_config.positions[idx]}"
-            style:color={bg_colors?.[idx]
-              ? pick_contrast_color({
-                  bg_color: bg_colors[idx] ?? fallback_bg_color,
-                  luminance_threshold,
-                })
-              : null}
+            style:color={auto_text_color(bg_colors?.[idx])}
           >
             {format_value(val)}
           </span>

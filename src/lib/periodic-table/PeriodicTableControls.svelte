@@ -15,6 +15,7 @@
     tooltip_bg_color: `#000000`,
     tile_border_radius: 1,
     inner_transition_offset: 0.5,
+    auto_tile_font_color: true,
     tile_font_color: `#ffffff`,
     tile_transition_duration: 0.4,
     hover_border_width: 1,
@@ -58,6 +59,7 @@
     tooltip_bg_color = $bindable(defaults.tooltip_bg_color),
     tile_border_radius = $bindable(defaults.tile_border_radius),
     inner_transition_offset = $bindable(defaults.inner_transition_offset),
+    auto_tile_font_color = $bindable(defaults.auto_tile_font_color),
     tile_font_color = $bindable(defaults.tile_font_color),
     // Additional Element Tile controls
     tile_transition_duration = $bindable(defaults.tile_transition_duration),
@@ -84,7 +86,6 @@
       '--tooltip-bg': tooltip_bg_color,
       '--elem-tile-border-radius': `${tile_border_radius}pt`,
       '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
-      '--elem-tile-font-color': tile_font_color,
       '--elem-tile-transition-duration': `${tile_transition_duration}s`,
       '--elem-tile-hover-border-width': `${hover_border_width}px`,
       '--elem-symbol-font-weight': `${symbol_font_weight}`,
@@ -109,6 +110,7 @@
     tooltip_bg_color: (value) => (tooltip_bg_color = value),
     tile_border_radius: (value) => (tile_border_radius = value),
     inner_transition_offset: (value) => (inner_transition_offset = value),
+    auto_tile_font_color: (value) => (auto_tile_font_color = value),
     tile_font_color: (value) => (tile_font_color = value),
     tile_transition_duration: (value) => (tile_transition_duration = value),
     hover_border_width: (value) => (hover_border_width = value),
@@ -172,6 +174,7 @@
         inner_transition_offset,
         tile_transition_duration,
         hover_border_width,
+        auto_tile_font_color,
         tile_font_color,
       }}
       reset_values={defaults}
@@ -196,9 +199,13 @@
       <NumberRangeInput {...range_props.hover_border_width} bind:value={hover_border_width}
         >Hover border width (px)</NumberRangeInput
       >
+      <label data-key="auto_tile_font_color">
+        <span>Automatic font contrast</span>
+        <input type="checkbox" bind:checked={auto_tile_font_color} />
+      </label>
       <label data-key="tile_font_color">
         <span>Font color</span>
-        <input type="color" bind:value={tile_font_color} />
+        <input type="color" bind:value={tile_font_color} disabled={auto_tile_font_color} />
       </label>
     </SettingsSection>
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { contrast_color } from '$lib/colors'
   import type { FileInfo } from '$lib/io'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -215,7 +216,7 @@
         <span
           class="file-type-badge"
           style:background-color={file_type_colors[base_type] ?? `rgba(128,128,128,0.8)`}
-          >{base_type.toUpperCase()}</span
+          {@attach contrast_color()}>{base_type.toUpperCase()}</span
         >
       {/if}
       <div class="file-name">
@@ -336,7 +337,6 @@
     letter-spacing: 0.03em;
     padding: 1px 5px;
     border-radius: 10px;
-    color: white;
     white-space: nowrap;
     line-height: 1.4;
   }

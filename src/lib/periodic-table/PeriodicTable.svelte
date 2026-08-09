@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { get_d3_interpolator, is_color } from '$lib/colors'
+  import {
+    get_bg_color,
+    get_d3_interpolator,
+    is_color,
+    pick_contrast_color,
+  } from '$lib/colors'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
@@ -314,6 +319,12 @@
     const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
     return [min, max]
   })
+  const tooltip_contrast = (node: HTMLElement): void => {
+    node.style.setProperty(
+      `--tooltip-auto-color`,
+      pick_contrast_color({ bg_color: get_bg_color(node) ?? `white` }),
+    )
+  }
 </script>
 
 <div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
@@ -422,23 +433,23 @@
     {@const el = tooltip_element as ChemicalElement}
     {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
     {@const tooltip_value = heat_values[el.number - 1]}
-    {#if typeof tooltip == `function`}
-      <div class="tooltip" {style}>
-        {@render tooltip({
-          element: el,
-          value: tooltip_value ?? null,
-          active: active_category === el.category || active_element?.name === el.name,
-          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-          scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
-        })}
-      </div>
-    {:else if tooltip !== false}
-      <div class="tooltip" {style}>
-        {el.name}<br />
-        <small>{el.symbol} • {el.number}</small>
-        {#if Array.isArray(tooltip_value)}
-          <br />
-          <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
+    {#if tooltip !== false}
+      <div class="tooltip" {style} {@attach tooltip_contrast}>
+        {#if typeof tooltip == `function`}
+          {@render tooltip({
+            element: el,
+            value: tooltip_value ?? null,
+            active: active_category === el.category || active_element?.name === el.name,
+            bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+            scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
+          })}
+        {:else}
+          {el.name}<br />
+          <small>{el.symbol} • {el.number}</small>
+          {#if Array.isArray(tooltip_value)}
+            <br />
+            <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
+          {/if}
         {/if}
       </div>
     {/if}
@@ -473,7 +484,7 @@
     position: absolute;
     transform: translate(-50%, -10%);
     background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    color: var(--tooltip-color, light-dark(#222, #eee));
+    color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
     font-size: var(--tooltip-font-size, 14px);
