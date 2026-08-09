@@ -37,9 +37,8 @@
     pane_props?: PaneProps
   } = $props()
 
-  // Helper functions
   const is_valid_number = (val: unknown): val is number =>
-    typeof val === `number` && isFinite(val)
+    typeof val === `number` && Number.isFinite(val)
 
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
@@ -49,10 +48,6 @@
     if (values.length === 1) {
       return `${format_num(values[0], decimals)} ${unit}`.trim()
     }
-    // array_extent rather than Math.min(...spread), which throws RangeError past ~125k
-    // arguments. Reachable since these aggregates started reading plot_metadata, which the
-    // indexed parser fills at sample_rate 1 — one entry per frame of a run that can be six
-    // digits. calc_force_stats avoids the same trap for the same reason.
     const [min, max] = array_extent(values)
     return `${format_num(min, decimals)} - ${format_num(max, decimals)} ${unit}`.trim()
   }

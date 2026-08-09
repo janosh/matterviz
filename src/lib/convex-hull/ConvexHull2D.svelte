@@ -10,7 +10,7 @@
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
   import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
-  import { array_max, array_min, type Point2D, type Vec2 } from '$lib/math'
+  import { array_extent, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
     PointStyle,
@@ -252,8 +252,7 @@
   const y_domain = $derived.by((): Vec2 => {
     const ys = plot_entries.map((entry) => entry.y)
     if (ys.length === 0) return [-1, 0]
-    const min_y_data = array_min(ys)
-    const max_y_data = array_max(ys)
+    const [min_y_data, max_y_data] = array_extent(ys)
     const span = Math.max(1e-9, max_y_data - min_y_data)
     const pad = 0.05 * span
     return [min_y_data - pad, max_y_data + pad]

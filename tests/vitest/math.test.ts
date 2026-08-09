@@ -1899,10 +1899,10 @@ describe(`array_min, array_max and array_extent`, () => {
 
   // Math.min/max(...arr) blows the stack on large arrays; these helpers don't.
   test(`handles large arrays without stack overflow`, () => {
-    const big = Array.from({ length: 500_000 }, (_, idx) => idx)
-    expect(math.array_min(big)).toBe(0)
-    expect(math.array_max(big)).toBe(499_999)
-    expect(math.array_extent(big)).toEqual([0, 499_999])
+    const large_values = Array.from({ length: 500_000 }, (_, idx) => idx)
+    expect(math.array_min(large_values)).toBe(0)
+    expect(math.array_max(large_values)).toBe(499_999)
+    expect(math.array_extent(large_values)).toEqual([0, 499_999])
   })
 })
 

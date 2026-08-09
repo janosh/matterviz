@@ -360,13 +360,12 @@ export function get_convex_hull_stats(
     )
     .filter(Number.isFinite)
 
-  // array_min/array_max reduce instead of Math.min/max(...arr) to avoid stack
-  // overflow on large datasets
+  const [min_energy, max_energy] = math.array_extent(energies)
   const energy_range =
     energies.length > 0
       ? {
-          min: math.array_min(energies),
-          max: math.array_max(energies),
+          min: min_energy,
+          max: max_energy,
           avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
         }
       : { min: 0, max: 0, avg: 0 }
