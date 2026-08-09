@@ -4,41 +4,34 @@
 // wrong is user-visible in a way a typecheck won't catch.
 
 import type { DocumentRegistry } from '@jupyterlab/docregistry'
+import {
+  BINARY_VIEWER_EXTENSIONS,
+  TEXT_VIEWER_EXTENSIONS,
+  VASP_VIEWER_STEMS,
+} from '$lib/constants'
 
-// Everything the browser can decode from a UTF-8 string.
-// oxfmt-ignore
-const TEXT_EXTENSIONS = [
-  `cif`, `mcif`, `mmcif`, `xyz`, `extxyz`, `poscar`, `vasp`, `cube`, `pdb`, `mol`,
-  `mol2`, `sdf`, `lmp`, `dump`, `lammpstrj`, `bxsf`, `frmsf`,
-]
-
-// Binary containers that must reach the parser as bytes. Only ASE .traj and HDF5
-// are listed because those are the only two the binary parser accepts; registering
-// .xtc/.trr/.dcd would take over files it can only greet with "Unsupported binary
-// format", displacing whatever handler the user actually wants.
-const BINARY_EXTENSIONS = [`traj`, `h5`, `hdf5`]
+// Everything the browser can decode from a UTF-8 string. `.data` is dropped from the shared
+// list: these types are `defaultFor`, and an extension that generic would make MatterViz the
+// default opener for unrelated files.
+const TEXT_EXTENSIONS = TEXT_VIEWER_EXTENSIONS.filter((ext) => ext !== `data`)
 
 // Gzipped variants are registered explicitly rather than claiming bare `.gz`, which
 // would hijack every compressed file in the browser. Compressed payloads always
 // travel as base64 — the parser peels one layer before dispatching on the inner name.
-const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => `${ext}.gz`)
+const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_VIEWER_EXTENSIONS].map(
+  (ext) => `${ext}.gz`,
+)
 
 // VASP's canonical filenames carry no extension, so they need a pattern. The
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
-// AECCAR carries its charge index as a regex class, which toLowerCase leaves alone.
-const VASP_STEMS = [
-  `POSCAR`,
-  `CONTCAR`,
-  `XDATCAR`,
-  `CHGCAR`,
-  `LOCPOT`,
-  `ELFCAR`,
-  `PARCHG`,
-  `AECCAR[012]`,
-]
-const VASP_TOKEN = [...VASP_STEMS, ...VASP_STEMS.map((stem) => stem.toLowerCase())].join(`|`)
+//
+// The charge-index-less `aeccar` is dropped for the same reason: VASP only ever writes
+// AECCAR0/1/2, so claiming the bare stem would hand MatterViz the default opener for
+// anything merely named AECCAR. VS Code keeps it — there a claim only adds a menu entry.
+const VASP_STEMS = VASP_VIEWER_STEMS.filter((stem) => stem !== `aeccar`)
+const VASP_TOKEN = VASP_STEMS.flatMap((stem) => [stem.toUpperCase(), stem]).join(`|`)
 const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN})(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here
@@ -70,9 +63,12 @@ export const TEXT_FILE_TYPES: FileTypeSpec[] = [
   by_vasp_name(``, `text`),
 ]
 
+// Containers that must reach the parser as bytes. The shared binary list is already limited
+// to formats with a decoder (no .xtc/.trr/.dcd), which matters more here than in VS Code:
+// claiming one would take over files it can only greet with "Unsupported binary format".
 // The gzip pattern is separate because pattern-before-extension order otherwise let
 // a bare POSCAR.gz match the text type and reach the parser as mangled UTF-8.
 export const BASE64_FILE_TYPES: FileTypeSpec[] = [
-  ...by_extension([...BINARY_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`),
+  ...by_extension([...BINARY_VIEWER_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`),
   by_vasp_name(`\\.gz`, `base64`),
 ]

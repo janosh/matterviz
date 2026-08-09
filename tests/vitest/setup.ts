@@ -376,6 +376,36 @@ export function read_maybe_gz(file_path: string): string {
 export const load_json = <T = unknown>(file_path: string): T =>
   JSON.parse(read_maybe_gz(file_path)) as T
 
+// Gzip a string to the ArrayBuffer a File/fetch response would carry.
+export const gzip_bytes = (content: string): Promise<ArrayBuffer> =>
+  new Response(
+    new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`)),
+  ).arrayBuffer()
+
+// Drop event carrying files, for the file-drop handlers of Structure, Trajectory,
+// FermiSurface, XrdPlot and the phase diagrams. `dataTransfer` must go on via
+// defineProperty: it is a getter on the DragEvent prototype, so assignment silently no-ops.
+// Empty `items` means "no entry API", i.e. treat the drop as a flat file list. `text_plain`
+// simulates the path payload an OS/IDE drag carries alongside the file itself.
+export const create_drop_event = (
+  files: File | File[],
+  { text_plain = `` }: { text_plain?: string } = {},
+): DragEvent => {
+  const drag_event = new DragEvent(`drop`, { bubbles: true })
+  Object.defineProperty(drag_event, `dataTransfer`, {
+    value: {
+      files: Array.isArray(files) ? files : [files],
+      items: [],
+      getData: (type: string) => (type === `text/plain` ? text_plain : ``),
+    },
+  })
+  return drag_event
+}
+
+// Two-frame XYZ, the smallest input that exercises multi-frame parsing
+export const MULTI_FRAME_XYZ = `2\nStep 1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74
+2\nStep 2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.78`
+
 // Factory for a trajectory frame with `site_count` hydrogen atoms along x.
 // Pass `lattice_params` to attach a diagonal lattice (defaults: lengths 1, angles 90, volume 1).
 export const make_trajectory_frame = (

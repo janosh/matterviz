@@ -1,6 +1,6 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
-import { VASP_VOLUMETRIC_REGEX } from '$lib/constants'
+import { BOHR_TO_ANGSTROM, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { coerce_elem_symbol, FALLBACK_ELEMENTS } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
@@ -12,9 +12,6 @@ import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
 import { parse_leading_num } from '$lib/utils'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
-
-// Bohr radius in Angstroms (for Gaussian .cube unit conversion)
-const BOHR_TO_ANGSTROM = 0.529177249
 
 // === Parse error contract ===
 // parse_chgcar/parse_cube return null and record reasons here (mirrored to console.error).

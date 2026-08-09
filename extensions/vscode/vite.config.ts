@@ -1,8 +1,8 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { defineConfig, type PluginOption } from 'vite'
+import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
 import { mock_vscode } from './tests/vscode-mock.ts'
-import { vite_plugin_json_gz } from './vite-plugin-json-gz.ts'
 
 export default defineConfig(({ mode }) => ({
   // vite@8's Plugin type and the svelte plugin's bundled copy are two instances
@@ -34,11 +34,7 @@ export default defineConfig(({ mode }) => ({
     // rewrite three/webgpu, three/tsl and three/examples/* too.
     alias: [
       { find: `$lib`, replacement: resolve(import.meta.dirname, `../../src/lib`) },
-      // one copy of three: matterviz imports three/webgpu, its addons and @threlte plain three
-      {
-        find: /^three$/,
-        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
-      },
+      three_compat_alias,
     ],
   },
 }))

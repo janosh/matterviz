@@ -1,4 +1,5 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
+import { BOHR_TO_ANGSTROM } from '$lib/constants'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
@@ -198,7 +199,7 @@ function parse_frmsf(content: string): BandGridData {
   }
 
   // Lines 4-6: reciprocal lattice vectors (in Bohr^-1, convert to Å^-1)
-  const inv_bohr = 1 / constants.BOHR_TO_ANGSTROM
+  const inv_bohr = 1 / BOHR_TO_ANGSTROM
   const parse_k_vector = (): Vec3 =>
     parse_floats(lines[line_idx++])
       .slice(0, 3)

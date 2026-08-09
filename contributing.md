@@ -7,7 +7,7 @@ Bug fix pull requests always welcome! For new features, please open an issue fir
 ```sh
 git clone https://github.com/janosh/matterviz
 cd matterviz
-npm install
+pnpm install
 ```
 
 ## Development
@@ -15,9 +15,7 @@ npm install
 Start the dev server:
 
 ```sh
-npx vite
-# or
-npm run dev
+npx vite dev
 ```
 
 ## Testing
@@ -54,7 +52,7 @@ git checkout -b bug-fix-for-something
 
 ## Making a Release
 
-1. Update the version in `package.json`, `extensions/anywidget/package.json`, and `extensions/vscode/package.json` (follows [semver](https://semver.org)).
+1. Update the version in `package.json` plus every `extensions/*/package.json` and `extensions/*/pyproject.toml` (follows [semver](https://semver.org)). The `prepare` job in `publish.yml` fails the release if any of them disagree.
 1. Generate changelog:
 
    ```sh
@@ -64,7 +62,7 @@ git checkout -b bug-fix-for-something
 1. Commit and push the release commit:
 
    ```sh
-   git add package.json extensions/anywidget/package.json extensions/vscode/package.json changelog.md readme.md
+   git add package.json extensions/*/package.json extensions/*/pyproject.toml changelog.md readme.md
    git commit -m "v1.2.3"
    git push
    ```

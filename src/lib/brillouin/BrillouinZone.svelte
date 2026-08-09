@@ -176,13 +176,12 @@
     metadata?: io.FileLoadMeta,
   ) {
     try {
-      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-      const parsed = parse_any_structure(text, filename)
+      const parsed = parse_any_structure(io.as_text(content), filename)
       if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
 
       structure = parsed as Crystal
       current_filename = filename
-      const file_size = new Blob([content]).size
+      const file_size = io.content_byte_size(content)
       on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`

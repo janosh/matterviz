@@ -2,7 +2,7 @@
 // $lib/coordination): normalising the three accepted `structures` prop shapes and turning a
 // dropped file into a new entry.
 
-import { create_file_drop_handler } from '$lib/io'
+import { as_text, create_file_drop_handler } from '$lib/io'
 import type { FileLoadCallback } from '$lib/io'
 import type { AnyStructure } from '$lib/structure'
 import { parse_any_structure } from '$lib/structure/parse'
@@ -51,9 +51,7 @@ export const create_structure_drop_handler = (opts: {
       const custom_handler = opts.on_file_drop?.()
       if (custom_handler) return custom_handler(content, filename, metadata)
       try {
-        const text_content =
-          content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-        const structure = parse_any_structure(text_content, filename)
+        const structure = parse_any_structure(as_text(content), filename)
         if (!structure?.sites?.length) {
           opts.on_error(`${filename} has no sites, nothing to plot`)
           return

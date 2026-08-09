@@ -49,13 +49,18 @@ repos:
         types_or: [ts, svelte]
         pass_filenames: false
 
-  - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.37.4
+  - repo: local
     hooks:
-      - id: check-jsonschema
+      - id: check-element-data
         name: Validate element data JSON
-        files: ^src/lib/element/data\.json$
-        args: [--schemafile, src/lib/element/data.schema.json]
+        # Element data ships gzipped and check-jsonschema can't read .gz, so decompress
+        # onto stdin (`-`). The previous `files: data.json` pattern matched nothing, which
+        # silently disabled this check.
+        entry: bash -c 'gunzip -c src/lib/element/data.json.gz | check-jsonschema --schemafile src/lib/element/data.schema.json -'
+        language: python
+        additional_dependencies: [check-jsonschema==0.37.4]
+        files: ^src/lib/element/data\.(json\.gz|schema\.json)$
+        pass_filenames: false
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.3

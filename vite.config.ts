@@ -1,13 +1,14 @@
 import { make_config } from 'svelte-widgets/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-widgets/live-examples'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
+// @ts-expect-error Node ESM config load needs the .ts extension here
+import * as shared from './vite-plugins.ts'
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
@@ -17,14 +18,6 @@ import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 // fixture that uses it, else rolldown parses the fixture as JavaScript and the build dies.
 const TEXT_EXT_RE =
   /\.(?:xyz|extxyz|cif|mmcif|mcif|poscar|pdb|mol2|mol|sdf|lmp|data|dump|lammpstrj|yaml\.gz)$/
-const strip_query = (path: string) => path.replace(/\?.*$/, ``)
-const split_query = (path: string): [clean: string, query: string] => {
-  const clean = strip_query(path)
-  return [clean, path.slice(clean.length)]
-}
-const resolve_from_importer = (clean: string, importer?: string) =>
-  importer ? resolve(dirname(strip_query(importer)), clean) : clean
-
 // starry-night's `both.css` switches to its dark palette via
 // `@media (prefers-color-scheme: dark)`, i.e. it follows the OS instead of the
 // app's theme toggle. Re-target that one block to the app's `data-theme`
@@ -43,40 +36,9 @@ const starry_night_theme_plugin: Plugin = {
   },
 }
 
-// Handle .json.gz files by decompressing them on-the-fly during SSR/build.
-// Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset).
-const json_gz_plugin = (): Plugin => {
-  let is_build = false
-  return {
-    name: `vite-plugin-json-gz`,
-    enforce: `pre`,
-    configResolved(resolved_config) {
-      is_build = resolved_config.command === `build`
-    },
-    resolveId(source, importer) {
-      const [clean, query] = split_query(source)
-      if (query.includes(`raw`) || query.includes(`url`)) return null
-      if (!clean.endsWith(`.json.gz`)) return null
-      return resolve_from_importer(clean, importer)
-    },
-    load(id) {
-      const [clean_id, query] = split_query(id)
-      if (query.includes(`raw`) || query.includes(`url`)) return null
-      if (!clean_id.endsWith(`.json.gz`)) return null
-      try {
-        const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
-        JSON.parse(json_str) // validate before passing to bundler
-        // Rolldown (production) needs moduleType:'json' for import.meta.glob
-        // with import:'default' to properly unwrap the default export.
-        // Dev/test server doesn't support moduleType, needs JS module format.
-        if (is_build) return { code: json_str, moduleType: `json` }
-        return `export default ${json_str}`
-      } catch (error) {
-        return this.error(`Failed to decompress ${id}: ${error}`)
-      }
-    },
-  }
-}
+// Decompresses .json.gz on the fly. resolve_queries because ?raw belongs to raw_text_plugin
+// below and ?url to Vite's asset handling; the extension configs have neither and omit it.
+const json_gz_plugin = () => shared.vite_plugin_json_gz({ resolve_queries: true })
 
 // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
 // Claims the file before rolldown's parser sees it, returns raw text as a string export.
@@ -84,15 +46,15 @@ const raw_text_plugin: Plugin = {
   name: `vite-plugin-raw-text`,
   enforce: `pre`,
   resolveId(source, importer) {
-    const [clean, query] = split_query(source)
+    const [clean, query] = shared.split_query(source)
     if (query.includes(`url`)) return null
     const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
-    const abs = resolve_from_importer(clean, importer)
+    const abs = shared.resolve_from_importer(clean, importer)
     return abs + query
   },
   load(id) {
-    const [clean_id, query] = split_query(id)
+    const [clean_id, query] = shared.split_query(id)
     if (query.includes(`url`)) return null
     const is_raw_gz = clean_id.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null
@@ -182,11 +144,7 @@ export default defineConfig({
 
   resolve: {
     conditions: process.env.VITEST ? [`browser`] : undefined,
-    // Redirect bare `three` — which three/examples/jsm addons and @threlte import, but we
-    // don't — onto the WebGPU build via a shim supplying the WebGL-only exports it lacks, so
-    // the bundle carries one copy of three. Exact-match regex: three/webgpu, three/tsl and
-    // three/examples/* must resolve normally.
-    alias: [{ find: /^three$/, replacement: resolve(`src/lib/scene/three-compat.ts`) }],
+    alias: [shared.three_compat_alias],
   },
 
   // Binary/compressed files imported via ?url that rolldown would otherwise

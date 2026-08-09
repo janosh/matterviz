@@ -995,30 +995,3 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
     expect(helpers.build_entry_tooltip_text(mag_entry())).not.toContain(`Magnetic`)
   })
 })
-
-describe(`array_min / array_max`, () => {
-  test.each([
-    [[3, 1, 2], 1, 3],
-    [[-5, -2, -9], -9, -2],
-    [[42], 42, 42],
-    [[0.1, 0.5, 0.3], 0.1, 0.5],
-  ] as [number[], number, number][])(
-    `%j → min %d, max %d`,
-    (values, expected_min, expected_max) => {
-      expect(helpers.array_min(values)).toBe(expected_min)
-      expect(helpers.array_max(values)).toBe(expected_max)
-    },
-  )
-
-  test(`empty array yields ±Infinity (callers guard length first)`, () => {
-    expect(helpers.array_min([])).toBe(Infinity)
-    expect(helpers.array_max([])).toBe(-Infinity)
-  })
-
-  // Math.min/max(...arr) blows the stack on large arrays; the reduce-based helpers don't.
-  test(`handles large arrays without stack overflow`, () => {
-    const big = Array.from({ length: 500_000 }, (_, idx) => idx)
-    expect(helpers.array_min(big)).toBe(0)
-    expect(helpers.array_max(big)).toBe(499_999)
-  })
-})

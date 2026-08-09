@@ -1,20 +1,9 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "target": "esnext",
-    "module": "ESNext",
-    "noEmit": true,
     "rootDir": "../..",
-    "strict": true,
-    "esModuleInterop": true,
-    "moduleResolution": "bundler",
     "types": ["node"],
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "allowJs": true,
-    "paths": {
-      "$lib": ["../../src/lib"],
-      "$lib/*": ["../../src/lib/*"]
-    }
+    "allowJs": true
   },
   "include": ["src/**/*", "tests/**/*", "scripts/**/*"]
 }

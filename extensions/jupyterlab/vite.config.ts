@@ -2,8 +2,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
-// Shared with the VS Code webview build.
-import { vite_plugin_json_gz } from '../vscode/vite-plugin-json-gz.ts'
+import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 
@@ -78,10 +77,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 6000, // three.js + MatterViz graph
   },
   resolve: {
-    alias: [
-      { find: `$lib`, replacement: `${repo_root}/src/lib` },
-      // one three: matterviz uses three/webgpu; addons/@threlte use plain three
-      { find: /^three$/, replacement: `${repo_root}/src/lib/scene/three-compat.ts` },
-    ],
+    alias: [{ find: `$lib`, replacement: `${repo_root}/src/lib` }, three_compat_alias],
   },
 })
