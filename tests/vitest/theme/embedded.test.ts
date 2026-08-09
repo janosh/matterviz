@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Isolate watcher behavior from palette data and theme registration side effects.
 vi.mock(`$lib/colors`, () => ({
-  luminance: (color: string) => (color.replaceAll(` `, ``) === `rgba(0,0,0,0)` ? 0 : 1),
+  perceived_brightness: (color: string) =>
+    color.replaceAll(` `, ``) === `rgba(0,0,0,0)` ? 0 : 1,
 }))
 vi.mock(`$lib/theme`, () => ({ COLOR_THEMES: { light: `light`, dark: `dark` } }))
 vi.mock(`$lib/theme/themes.mjs`, () => ({}))

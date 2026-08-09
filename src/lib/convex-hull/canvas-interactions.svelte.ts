@@ -10,8 +10,7 @@ export interface CanvasInteractionInputs {
   fullscreen_bg_var: string // e.g. `--hull-3d-bg-fullscreen`
   // Reactive getters / element refs
   canvas: () => HTMLCanvasElement | undefined
-  // Transparent canvas stacked over `canvas`, holding only the pulsing highlight rings so
-  // the animation loop never repaints the hull itself. Sized and cleared here.
+  // Transparent layer over `canvas` holding only the pulsing rings, so ticks skip the hull
   overlay_canvas: () => HTMLCanvasElement | undefined
   wrapper: () => HTMLDivElement | undefined
   // Canvas 2D context + dims live in the component (read by its draw functions)
@@ -36,9 +35,11 @@ export interface CanvasInteractionInputs {
   project_point: (x: number, y: number, z: number) => { x: number; y: number; depth: number }
   extract_structure: (entry: ConvexHullEntry) => AnyStructure | null
   render_frame: () => void
-  // Everything the overlay needs to paint the pulsing markers. Drawing them lives here rather
-  // than in the components because the overlay canvas, its context, its sizing and its frame
-  // scheduling already do, and 3D/4D differ only by the shadow_factor inside these opts.
+  // Everything `render_frame` reads. It draws inside a rAF, where reads don't register as
+  // dependencies, so anything missing leaves the canvas silently stale. List the derived
+  // values the draw code reads, not their inputs — the derivation keeps the list honest.
+  repaint_deps: () => unknown
+  // Overlay drawing lives here, where its canvas, ctx, sizing and scheduling already do
   hull_point_opts: () => helpers.HullPointOpts<ConvexHullEntry>
   pulse: () => { time: number; opacity: number }
   on_drag: (dx: number, dy: number, panning: boolean) => void
@@ -246,9 +247,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     )
   }
 
-  // One frame for both layers. The overlay always repaints (it is a handful of markers and
-  // shares the hull's projections); the hull only when someone asked for it, so a pulse tick
-  // landing on a frame already scheduled for a full redraw is absorbed, not double-scheduled.
+  // One frame for both layers: the overlay always (a few markers, same projections), the hull
+  // only when asked, so a pulse tick landing on a pending full redraw is absorbed not requeued
   function schedule_frame(redraw_hull: boolean) {
     hull_is_stale ||= redraw_hull
     if (frame_id) return
@@ -261,6 +261,11 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   }
   const render_once = () => schedule_frame(true)
   const render_overlay_once = () => schedule_frame(false) // pulse ticks: rings only
+
+  $effect(() => {
+    inputs.repaint_deps()
+    render_once()
+  })
 
   function update_canvas_size() {
     const canvas = inputs.canvas()

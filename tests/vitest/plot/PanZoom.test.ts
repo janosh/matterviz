@@ -50,7 +50,7 @@ async function drag(
   await tick()
   const active = svg.querySelector(`.zoom-rect`) instanceof SVGRectElement
   mid_drag?.()
-  window.dispatchEvent(new MouseEvent(`mouseup`, event_init(end)))
+  window.dispatchEvent(new MouseEvent(`mouseup`, { ...event_init(end), buttons: 0 }))
   await tick()
   return active
 }

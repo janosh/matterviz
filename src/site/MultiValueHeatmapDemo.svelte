@@ -48,7 +48,7 @@ The periodic table supports multiple values per element with different visual la
       {#each [[`Atomic Mass (u)`, atomic_mass_range], [`Density (g/cm³)`, density_range]] as const as [title, range] (title)}
         <ColorBar
           {title}
-          color_scale="interpolateRdYlBu"
+          scale="interpolateRdYlBu"
           {range}
           orientation="horizontal"
           bar_style="width: 180px; height: 12px"

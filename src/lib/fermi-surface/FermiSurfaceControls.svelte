@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import { Cross, Settings } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
@@ -17,7 +18,7 @@
   const defaults = {
     mu: 0,
     color_property: `band` as ColorProperty,
-    color_scale: `interpolateViridis`,
+    color_scale: `interpolateViridis` as D3InterpolateName,
     representation: `solid` as RepresentationMode,
     surface_opacity: 0.8,
     show_bz: true,
@@ -66,7 +67,7 @@
     band_data?: BandGridData
     mu?: number | undefined
     color_property?: ColorProperty
-    color_scale?: string
+    color_scale?: D3InterpolateName
     // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
     custom_property_label?: string
     representation?: RepresentationMode

@@ -29,7 +29,7 @@
 <ColorBar
   id="horizontal-primary"
   title="Temperature (°C)"
-  color_scale="Plasma"
+  scale="interpolatePlasma"
   tick_labels={horizontal_primary_ticks}
   range={[0, 100]}
   tick_side="primary"
@@ -41,7 +41,7 @@
   id="vertical-secondary"
   orientation="vertical"
   title="Pressure (Pa)"
-  color_scale="Blues"
+  scale="interpolateBlues"
   range={vertical_secondary_range}
   tick_labels={5}
   tick_side="secondary"
@@ -53,7 +53,7 @@
 <ColorBar
   id="horizontal-inside"
   title="Intensity"
-  color_scale="Turbo"
+  scale="interpolateTurbo"
   range={horizontal_inside_range}
   tick_labels={5}
   snap_ticks={false}
@@ -66,7 +66,7 @@
   id="vertical-log"
   orientation="vertical"
   title="Frequency (Hz)"
-  color_scale="Viridis"
+  scale="interpolateViridis"
   range={vertical_log_range}
   tick_labels={4}
   tick_side="inside"
@@ -78,7 +78,7 @@
 <ColorBar
   id="horizontal-date"
   title="Timestamp"
-  color_scale="Cividis"
+  scale="interpolateCividis"
   range={horizontal_date_range}
   tick_labels={4}
   tick_format="%b %d, %Y"
@@ -91,7 +91,7 @@
   id="vertical-no-snap"
   orientation="vertical"
   title="Ratio"
-  color_scale="Magma"
+  scale="interpolateMagma"
   range={vertical_no_snap_range}
   tick_labels={5}
   snap_ticks={false}
@@ -104,7 +104,7 @@
 <ColorBar
   id="horizontal-custom-styles"
   title="Custom Styled"
-  color_scale="Warm"
+  scale="interpolateWarm"
   range={[0, 5]}
   tick_labels={6}
   bar_style="border: 2px solid red; border-radius: 0"
@@ -117,8 +117,7 @@
   id="vertical-custom-fn"
   orientation="vertical"
   title="Custom Log Scale"
-  color_scale_fn={custom_color_scale}
-  color_scale_domain={[0.1, 10]}
+  scale={{ fn: custom_color_scale, domain: [0.1, 10] }}
   range={[-5, 15]}
   tick_labels={5}
   scale_type="linear"

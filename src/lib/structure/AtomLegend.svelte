@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_color, default_element_colors } from '$lib/colors'
+  import { contrast_text_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
@@ -10,10 +10,12 @@
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { atomic_radii } from '$lib/structure'
+  import type { AtomColorMode } from '$lib/settings'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import {
+    DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
-    sync_atom_color_mode,
+    next_atom_color_config,
   } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
@@ -22,11 +24,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
-    atom_color_config = $bindable({
-      mode: `element`,
-      scale: undefined,
-      scale_type: `continuous`,
-    }),
+    atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     property_colors = null,
     elements,
     elem_color_picker_title = `Double click to reset color`,
@@ -48,7 +46,7 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
-    atom_color_config?: Partial<AtomColorConfig>
+    atom_color_config?: AtomColorConfig
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
     elem_color_picker_title?: string
@@ -129,7 +127,7 @@
   // Map each property value to its first color in a single O(n) pass (reused in
   // categorical and discrete legends). Skips undefined colors if arrays ever drift.
   let color_map = $derived.by(() => {
-    const map = new Map<number | string, string>()
+    const map = new SvelteMap<number | string, string>()
     const { values = [], colors: value_colors = [] } = property_colors ?? {}
     for (const [idx, val] of values.entries()) {
       const color = value_colors[idx]
@@ -137,6 +135,12 @@
     }
     return map
   })
+  const get_property_color = (value: number | string): string => {
+    const color = color_map.get(value)
+    if (color === undefined)
+      throw new Error(`Missing legend color for property value ${value}`)
+    return color
+  }
 
   // Continuous integer properties (e.g. coordination numbers) render as a discrete
   // segmented bar with one labeled block per integer value instead of a smooth gradient.
@@ -276,8 +280,11 @@
               ? `No per-atom properties on this structure`
               : undefined}
             onclick={() => {
-              atom_color_config.mode = value as AtomColorConfig[`mode`]
-              sync_atom_color_mode(atom_color_config, colorable_property_keys)
+              atom_color_config = next_atom_color_config(
+                atom_color_config,
+                value as AtomColorMode,
+                colorable_property_keys,
+              )
               mode_menu_open = false
             }}
           >
@@ -342,6 +349,7 @@
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
+          style:color={contrast_text_color({ background: colors.element[displayed_elem] })}
           class:hidden={is_hidden}
           class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
@@ -353,7 +361,6 @@
             remap_menu_open = remap_menu_open === elem ? null : (elem as ElementSymbol)
             remap_search = ``
           }}
-          {@attach contrast_color()}
         >
           {#if get_element_label}
             {get_element_label(displayed_elem, amt)}
@@ -379,6 +386,7 @@
               event,
             ))}
           title={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
+          aria-label={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
           {@attach tooltip({ placement: `top` })}
           type="button"
         >
@@ -462,7 +470,9 @@
                   class:selected={displayed_elem === target_elem}
                   onclick={() => remap_element(elem as ElementSymbol, target_elem)}
                   style:background-color={colors.element[target_elem]}
-                  {@attach contrast_color()}
+                  style:color={contrast_text_color({
+                    background: colors.element[target_elem],
+                  })}
                 >
                   <small style="opacity: 0.6">{elem_info?.number}</small>
                   <b>{target_elem}</b>
@@ -491,7 +501,7 @@
     {#if atom_color_config.scale_type === `continuous` && property_colors && is_discrete_numeric}
       <div class="discrete-colorbar">
         {#each property_colors.unique_values ?? [] as value (value)}
-          {@const color = color_map.get(value)}
+          {@const color = get_property_color(value)}
           {@const is_hidden = hidden_prop_vals.has(value)}
           <button
             type="button"
@@ -502,8 +512,11 @@
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            aria-label={is_hidden
+              ? `Show ${format_value(value)}`
+              : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
-            {@attach contrast_color()}
+            style:color={contrast_text_color({ background: color })}
           >
             {format_value(value)}
           </button>
@@ -512,7 +525,7 @@
     {:else if atom_color_config.scale_type === `continuous` && property_colors}
       <div title={legend_title} {@attach tooltip({ placement: `top` })}>
         <ColorBar
-          color_scale={atom_color_config.scale}
+          scale={atom_color_config.scale}
           range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
           tick_labels={Array.from(
             new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
@@ -526,14 +539,14 @@
       </div>
     {:else if atom_color_config.scale_type === `categorical` && property_colors}
       {#each property_colors.unique_values || [] as value (`${atom_color_config.mode}-${value}`)}
-        {@const color = color_map.get(value)}
+        {@const color = get_property_color(value)}
         {@const is_hidden = hidden_prop_vals.has(value)}
         <div class="legend-item">
           <span
             class="category-label color-swatch"
             class:hidden={is_hidden}
             style:background-color={color}
-            {@attach contrast_color()}
+            style:color={contrast_text_color({ background: color })}
           >
             {format_value(value)}
           </span>
@@ -543,6 +556,9 @@
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            aria-label={is_hidden
+              ? `Show ${format_value(value)}`
+              : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
             type="button"
           >

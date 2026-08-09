@@ -1,4 +1,5 @@
 import FermiSurfaceControls from '$lib/fermi-surface/FermiSurfaceControls.svelte'
+import type { D3InterpolateName } from '$lib/colors'
 import type { ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -85,7 +86,10 @@ describe(`FermiSurfaceControls`, () => {
   )
 
   test(`tracks and resets the appearance color scale`, async () => {
-    const state = $state<{ color_property: ColorProperty; color_scale: string }>({
+    const state = $state<{
+      color_property: ColorProperty
+      color_scale: D3InterpolateName
+    }>({
       color_property: `velocity`,
       color_scale: `interpolateViridis`,
     })

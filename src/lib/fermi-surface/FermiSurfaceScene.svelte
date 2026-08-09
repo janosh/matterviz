@@ -102,7 +102,7 @@
     width?: number // viewport size, needed to turn the relative initial_zoom into a fit
     height?: number
     color_property?: ColorProperty
-    color_scale?: string
+    color_scale?: D3InterpolateName
     representation?: RepresentationMode
     surface_opacity?: number
     selected_bands?: number[]
@@ -220,7 +220,7 @@
       const prop = surface.properties[vertex_idx]
       const [min_val, max_val] = property_range
       const normalized = max_val > min_val ? (prop - min_val) / (max_val - min_val) : 0.5
-      return get_d3_interpolator(color_scale as D3InterpolateName)(normalized)
+      return get_d3_interpolator(color_scale)(normalized)
     }
     // Spin coloring
     if (color_property === `spin` && surface.spin) {

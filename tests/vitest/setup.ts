@@ -278,19 +278,25 @@ export const expect_custom_x_ticks_grow_bottom_pad = async (
 export async function mount_sized<Comp extends Component<any>>(
   component: Comp,
   props: Partial<ComponentProps<Comp>>,
-  options: { selector: string; width?: number; height?: number },
+  options: {
+    selector: string
+    width?: number
+    height?: number
+    on_mount?: (mounted: ReturnType<typeof mount>) => void
+  },
 ): Promise<HTMLElement> {
   const { selector, width = 400, height = 300 } = options
   const target = document.createElement(`div`)
   document.body.append(target)
   const style = (props as { style?: string }).style ?? ``
   // Object.assign (not spread) keeps bind_props accessors intact
-  mount(component, {
+  const mounted = mount(component, {
     target,
     props: Object.assign(props, {
       style: `width: ${width}px; height: ${height}px; ${style}`,
     }),
   })
+  options.on_mount?.(mounted)
   const root = target.querySelector<HTMLElement>(selector)
   if (!root) throw new Error(`No element found for selector: ${selector}`)
   await resize_element(root, width, height)

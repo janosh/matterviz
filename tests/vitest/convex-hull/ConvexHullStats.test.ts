@@ -315,29 +315,37 @@ describe(`ConvexHullStats`, () => {
       }),
     ]
 
-    test(`view toggle switches between stats and table, round-trips correctly`, () => {
+    test(`view toggle keeps both panels mounted while switching visibility`, () => {
       mount_stats({ stable_entries: stable, unstable_entries: unstable })
-      // Stats is default
       expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.table-container`)).toBeNull()
+      expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
       const [stats_btn, table_btn] = Array.from(
         document.querySelectorAll<HTMLButtonElement>(`.view-toggle button`),
       )
-      expect(stats_btn.classList.contains(`active`)).toBe(true)
+      const panels = Array.from(document.querySelectorAll<HTMLElement>(`.view-panel`))
+      expect(getComputedStyle(doc_query(`.view-panels`)).display).toBe(`grid`)
+      for (const panel of panels) expect(getComputedStyle(panel).gridArea).toBe(`1 / 1`)
+      const panel_states = () =>
+        panels.map((panel) => [
+          panel.getAttribute(`aria-hidden`),
+          panel.hasAttribute(`inert`),
+          getComputedStyle(panel).visibility,
+        ])
+      const expect_visible_panel = (active_idx: number) =>
+        expect(panel_states()).toEqual(
+          panels.map((_, panel_idx) =>
+            panel_idx === active_idx ? [`false`, false, `visible`] : [`true`, true, `hidden`],
+          ),
+        )
+      expect_visible_panel(0)
 
-      // Switch to table
       table_btn.click()
       flushSync()
-      expect(document.querySelector(`.stat-item`)).toBeNull()
-      expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
-      expect(table_btn.classList.contains(`active`)).toBe(true)
-      expect(stats_btn.classList.contains(`active`)).toBe(false)
+      expect_visible_panel(1)
 
-      // Switch back to stats
       stats_btn.click()
       flushSync()
-      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.table-container`)).toBeNull()
+      expect_visible_panel(0)
     })
 
     test(`table shows all visible entries with correct columns`, () => {

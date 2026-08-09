@@ -1565,7 +1565,7 @@ The color bar picks the corner with the least data density (top-left, top-right,
   series={plot_series.map((srs) => ({ ...srs, markers: 'points+text' }))}
   x_axis={{ label: 'X Position', range: [0, 100], format: '~s' }}
   y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
-  color_scale={{ scheme: `turbo` }}
+  color_scale={{ scheme: `interpolateTurbo` }}
   color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
   label_placement_config={{ max_neighbors: { count: 2, radius: 35 } }}
   style="height: 450px; margin-block: 1em"

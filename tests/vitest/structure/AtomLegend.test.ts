@@ -2,6 +2,10 @@ import type { ElementSymbol } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
+import {
+  DEFAULT_ATOM_COLOR_CONFIG,
+  type AtomColorConfig,
+} from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -9,8 +13,20 @@ import { doc_query } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
-const mount_legend = (props: ComponentProps<typeof AtomLegend>): ReturnType<typeof mount> => {
-  const mounted = mount(AtomLegend, { target: document.body, props })
+type WithoutScale<Config> = Config extends AtomColorConfig ? Omit<Config, `scale`> : never
+type AtomLegendTestProps = Omit<ComponentProps<typeof AtomLegend>, `atom_color_config`> & {
+  atom_color_config?: WithoutScale<AtomColorConfig>
+}
+
+const mount_legend = (props: AtomLegendTestProps): ReturnType<typeof mount> => {
+  const component_props = props as ComponentProps<typeof AtomLegend>
+  if (props.atom_color_config) {
+    component_props.atom_color_config = {
+      scale: DEFAULT_ATOM_COLOR_CONFIG.scale,
+      ...props.atom_color_config,
+    }
+  }
+  const mounted = mount(AtomLegend, { target: document.body, props: component_props })
   mounted_components.push(mounted)
   return mounted
 }
@@ -166,22 +182,18 @@ describe(`AtomLegend Component`, () => {
   )
 
   test(`updates label text color when background changes`, async () => {
-    const orig_fe_color = colors.element.Fe // Capture original value to restore after test
+    const orig_fe_color = colors.element.Fe
     try {
-      // 1. Initialize with a known color
       colors.element.Fe = `#000000`
       mount_legend({ elements: { Fe: 1 } })
       const label = doc_query(`label`)
       const initial_color = getComputedStyle(label).color
 
-      // 2. Change the background color in the store
       colors.element.Fe = `#ffffff`
-      await tick() // Wait for Svelte to process the change
+      await tick()
 
-      // 3. Expect contrast_color to update the text color
       expect(getComputedStyle(label).color).not.toBe(initial_color)
     } finally {
-      // Restore original value to avoid state leakage
       colors.element.Fe = orig_fe_color
     }
   })
@@ -277,9 +289,13 @@ describe(`AtomLegend Component`, () => {
       expect(coord_option).toBeDefined()
       coord_option.click()
       await tick()
-
-      expect(atom_color_config.mode).toBe(`coordination`)
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+
+      // Mode changes replace the config object rather than mutating it, so read the new
+      // mode back off the UI instead of the caller's now-stale object.
+      doc_query<HTMLButtonElement>(`button.mode-toggle`).click()
+      await tick()
+      expect(doc_query(`.mode-option.selected`).textContent?.trim()).toBe(`Coordination`)
     })
 
     test(`wyckoff mode disabled without sym_data`, async () => {
@@ -330,7 +346,11 @@ describe(`AtomLegend Component`, () => {
 
     test(`renders continuous gradient for non-integer numeric values`, () => {
       mount_legend({
-        atom_color_config: { mode: `custom`, scale_type: `continuous` },
+        atom_color_config: {
+          mode: `custom`,
+          scale_type: `continuous`,
+          color_fn: () => `#000000`,
+        },
         property_colors: {
           colors: [`#440154`, `#fde724`],
           values: [0.5, 2.5],
@@ -648,7 +668,7 @@ describe(`AtomLegend Component`, () => {
     test(`shows element legend when mode is element`, () => {
       mount_legend({
         elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `element` },
+        atom_color_config: { mode: `element`, scale_type: `continuous` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
@@ -675,7 +695,7 @@ describe(`AtomLegend Component`, () => {
     test(`hides all legends when elements is empty and no property colors`, () => {
       mount_legend({
         elements: {},
-        atom_color_config: { mode: `element` },
+        atom_color_config: { mode: `element`, scale_type: `continuous` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeNull()

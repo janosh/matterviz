@@ -763,7 +763,7 @@ describe(`PlotLegend`, () => {
       // Fill region: has swatch with correct styling
       expect(items[1].classList.contains(`fill-item`)).toBe(true)
       const rect = items[1].querySelector(`.fill-swatch rect`)
-      expect(rect?.getAttribute(`fill`)).toBe(`steelblue`)
+      expect(rect?.getAttribute(`fill`)).toBe(`rgb(70, 130, 180)`)
       expect(rect?.getAttribute(`stroke`)).toBe(`darkblue`)
 
       // Hidden state
@@ -835,9 +835,9 @@ describe(`PlotLegend`, () => {
     // color opaque so different fill colors stay distinguishable (fill-opacity alone can't override
     // the color's own alpha channel)
     test.each([
-      [`rgba(52, 152, 219, 0.15)`, `rgba(52, 152, 219, 1)`],
-      [`rgba(231, 76, 60, 0.25)`, `rgba(231, 76, 60, 1)`],
-      [`#2ecc71`, `rgba(46, 204, 113, 1)`],
+      [`rgba(52, 152, 219, 0.15)`, `rgb(52, 152, 219)`],
+      [`rgba(231, 76, 60, 0.25)`, `rgb(231, 76, 60)`],
+      [`#2ecc71`, `rgb(46, 204, 113)`],
     ])(`fill swatch renders %s opaque so colors stay distinct`, (fill_color, expected) => {
       const data: LegendItem[] = [
         {

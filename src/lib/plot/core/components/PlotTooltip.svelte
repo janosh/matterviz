@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { luminance } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop, resolve_computed_color } from '$lib/colors'
   import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
@@ -31,10 +31,6 @@
     children: Snippet
   } = $props()
 
-  // Auto-compute contrasting text color based on background luminance only if bg_color is defined
-  const text_color = $derived(
-    bg_color != null ? (luminance(bg_color) > 0.5 ? `#000000` : `#ffffff`) : null,
-  )
   const measured_or_fallback = (measured?: number, fallback?: number): number =>
     measured && measured > 0 ? measured : (fallback ?? 0)
 
@@ -78,6 +74,20 @@
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the
   // label path is long — cap width to the constrained box and let the text wrap.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
+  const backdrop = resolve_backdrop(() => wrapper)
+  const rendered_bg = resolve_computed_color(
+    () => (bg_color == null ? undefined : wrapper),
+    `background-color`,
+    { fallback: () => bg_color ?? backdrop.current },
+  )
+  const text_color = $derived(
+    bg_color == null
+      ? undefined
+      : contrast_text_color({
+          background: rendered_bg.current,
+          backdrop: backdrop.current,
+        }),
+  )
   const style = $derived(
     `position: ${fixed ? `fixed` : `absolute`}; pointer-events: none;
     left: ${pos.x}px; top: ${pos.y}px; ${rest.style ?? ``}`,

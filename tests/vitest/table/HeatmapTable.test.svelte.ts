@@ -6,11 +6,11 @@ import {
   type RowData,
   type SummaryStat,
 } from '$lib'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
-const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
+const mount_table = (props: ComponentProps<typeof HeatmapTable>): ReturnType<typeof mount> =>
   mount(HeatmapTable, { target: document.body, props })
 
 // Trimmed text of every cell in the given column.
@@ -77,7 +77,7 @@ describe(`HeatmapTable`, () => {
     expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
   })
 
-  it(`re-wires cell tooltips after cells re-render`, async () => {
+  it(`delegates cell tooltips after cells re-render`, async () => {
     const cell = (text: string, tip: string) => `<span title="${tip}">${text}</span>`
     const rows: RowData[] = $state([
       { Model: cell(`alpha`, `tip alpha v1`), Score: 1 },
@@ -87,23 +87,28 @@ describe(`HeatmapTable`, () => {
       { label: `Model`, description: `` },
       { label: `Score`, description: `` },
     ]
-    mount_table({ data: rows, columns })
+    const component = mount_table({ data: rows, columns })
     await tick()
 
-    const alpha_orig = () =>
-      [...document.querySelectorAll(`td[data-col="Model"] span`)]
-        .find((el) => el.textContent === `alpha`)
-        ?.getAttribute(`data-original-title`)
+    const alpha = (): HTMLElement => {
+      const node = [...document.querySelectorAll(`td[data-col="Model"] span`)].find(
+        (element) => element.textContent === `alpha`,
+      )
+      if (!(node instanceof HTMLElement)) throw new Error(`alpha cell not found`)
+      return node
+    }
+    const activate_tooltip = (expected_title: string) => {
+      expect(alpha().getAttribute(`title`)).toBe(expected_title)
+      alpha().dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      expect(alpha().getAttribute(`title`)).toBeNull()
+    }
 
-    // tooltip() wires a cell by moving its title -> data-original-title
-    expect(alpha_orig()).toBe(`tip alpha v1`)
+    activate_tooltip(`tip alpha v1`)
 
-    // mutating the cell value re-renders it, replacing the <span>. A one-time tooltip
-    // scan would miss the new node; table_tooltips must re-wire it on DOM mutation.
     rows[0].Model = cell(`alpha`, `tip alpha v2`)
     await tick()
-    // re-wiring happens in a MutationObserver microtask, so poll until it lands
-    await vi.waitFor(() => expect(alpha_orig()).toBe(`tip alpha v2`))
+    activate_tooltip(`tip alpha v2`)
+    await unmount(component)
   })
 
   it(`filters rows whose values are all undefined`, () => {
@@ -474,36 +479,49 @@ describe(`HeatmapTable`, () => {
     expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
   })
 
-  it(`applies different scale types for color mapping`, () => {
-    const c1: Label = {
-      label: `Linear`,
-      better: `higher`,
-      color_scale: `interpolateViridis`,
-      scale_type: `linear`,
-      description: ``,
-    }
-    const c2: Label = {
-      label: `Log`,
-      better: `higher`,
-      color_scale: `interpolateViridis`,
-      scale_type: `log`,
-      description: ``,
-    }
+  it.each([
+    [`white`, `black`],
+    [`black`, `white`],
+  ])(`maps scale types and contrasts opacity over a %s page`, async (page_bg, text_color) => {
+    const columns: Label[] = [
+      { ...heatmap_col, label: `Linear`, better: `higher`, scale_type: `linear` },
+      { ...heatmap_col, label: `Log`, better: `higher`, scale_type: `log` },
+    ]
     const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
 
-    mount_table({ data, columns: [c1, c2] })
+    mount_table({
+      data,
+      columns,
+      heatmap_opacity: 0.5,
+      style: `--page-bg: ${page_bg}`,
+    })
+    await tick()
 
-    const styles_of = (col: string) =>
-      Array.from(document.querySelectorAll(`td[data-col="${col}"]`)).map(
+    const [linear_styles, log_styles] = columns.map(({ label }) =>
+      Array.from(
+        document.querySelectorAll(`td[data-col="${label}"]`),
         (cell) => cell.getAttribute(`style`) ?? ``,
-      )
-    const linear_styles = styles_of(`Linear`)
-    const log_styles = styles_of(`Log`)
+      ),
+    )
 
     // Both scale types color every cell, including zero, but map positive values differently
-    expect(linear_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
-    expect(log_styles.every((style) => style.includes(`--cell-bg:`))).toBe(true)
+    expect(
+      [...linear_styles, ...log_styles].every((style) => style.includes(`--cell-bg:`)),
+    ).toBe(true)
     expect(linear_styles).not.toEqual(log_styles)
+    expect(cell_at(0, 0).style.color).toBe(text_color)
+  })
+
+  it(`falls back to the page surface for a translucent backdrop override`, async () => {
+    mount_table({
+      data: [{ Value: 0 }],
+      columns: [heatmap_col],
+      heatmap_opacity: 0.5,
+      backdrop: `rgba(255, 255, 255, 0.5)`,
+      style: `--page-bg: black`,
+    })
+    await tick()
+    expect(cell_at(0, 0).style.color).toBe(`white`)
   })
 
   it(`handles accessibility features`, () => {
@@ -901,7 +919,22 @@ describe(`HeatmapTable`, () => {
         `Model B`,
         `Model C`,
       ])
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`3`)
+      const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
+      expect(badge?.textContent).toBe(`3`)
+      expect(badge?.style.color).toBe(`black`)
+    })
+
+    it(`contrasts selection badges against modern CSS highlight colors`, async () => {
+      mount_table({
+        data: sample_data,
+        columns: sample_columns,
+        show_row_select: true,
+        style: `--highlight: rgb(0 0 0)`,
+      })
+      document.querySelector<HTMLInputElement>(`td.select-col input[type="checkbox"]`)?.click()
+      await tick()
+      const badge = doc_query(`.selection-badge .badge`)
+      expect(badge.style.color).toBe(`white`)
     })
 
     it(`partial selection leaves header checkbox unchecked; clear button resets`, async () => {

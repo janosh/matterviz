@@ -60,3 +60,36 @@ export type ChemicalElement = {
   ionic_radii?: Record<string, number> // oxidation_state (as string) -> radius in Angstrom
   shannon_radii?: ShannonRadii
 }
+
+// How a multi-segment ElementTile is carved up. Which layouts exist depends on the
+// segment count, so SPLIT_LAYOUTS_BY_COUNT in ElementTile.svelte is the source of truth
+// for valid pairings and rejects the rest.
+export type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+
+// One slice of an ElementTile's fill. Color and value live in the same object so they
+// cannot get out of step, which the old parallel `bg_colors` / `value` arrays allowed.
+export interface TileSegment {
+  // Fill for this slice. Falls back to the element's category color.
+  color?: string
+  // Label drawn inside this slice. Omit it to paint the slice without a number.
+  value?: number | string
+}
+
+// Paint for one kind of nucleon in a Nucleus diagram.
+export interface NucleonPaint {
+  fill?: string
+  // Sector label text color. Defaults to whichever of black/white contrasts with `fill`.
+  text?: string
+  // Suffix after the count, e.g. ` P`.
+  label?: string
+}
+
+// Paint for the element symbol drawn across the middle of a Nucleus.
+export interface SymbolPaint {
+  // Defaults to whichever of black/white contrasts with the neutron fill.
+  text?: string
+  // Halo keeping the symbol legible where it crosses the proton/neutron boundary.
+  // Defaults to a contrasting outline; pass `none` to draw the symbol unoutlined.
+  outline?: string
+  outline_width?: string
+}

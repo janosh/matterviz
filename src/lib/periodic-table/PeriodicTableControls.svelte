@@ -15,7 +15,7 @@
     tooltip_bg_color: `#000000`,
     tile_border_radius: 1,
     inner_transition_offset: 0.5,
-    tile_font_color: `#ffffff`,
+    tile_font_color: null as string | null,
     tile_transition_duration: 0.4,
     hover_border_width: 1,
     symbol_font_weight: 400,
@@ -84,7 +84,6 @@
       '--tooltip-bg': tooltip_bg_color,
       '--elem-tile-border-radius': `${tile_border_radius}pt`,
       '--ptable-spacer-ratio': `${1 / inner_transition_offset}`,
-      '--elem-tile-font-color': tile_font_color,
       '--elem-tile-transition-duration': `${tile_transition_duration}s`,
       '--elem-tile-hover-border-width': `${hover_border_width}px`,
       '--elem-symbol-font-weight': `${symbol_font_weight}`,
@@ -197,8 +196,24 @@
         >Hover border width (px)</NumberRangeInput
       >
       <label data-key="tile_font_color">
+        <span>Automatic font contrast</span>
+        <input
+          type="checkbox"
+          checked={tile_font_color === null}
+          onchange={(event) => {
+            tile_font_color = event.currentTarget.checked ? null : `#ffffff`
+          }}
+        />
+      </label>
+      <label>
         <span>Font color</span>
-        <input type="color" bind:value={tile_font_color} />
+        <input
+          aria-label="Tile font color"
+          type="color"
+          value={tile_font_color ?? `#ffffff`}
+          disabled={tile_font_color === null}
+          oninput={(event) => (tile_font_color = event.currentTarget.value)}
+        />
       </label>
     </SettingsSection>
   </div>

@@ -1,23 +1,27 @@
-import type { ContrastOptions } from '$lib/colors'
+import type { Paint } from '$lib/colors'
 import {
   add_alpha,
+  composite_colors,
+  contrast_text_color,
   css_color_to_hex,
   D3_INTERPOLATE_NAMES,
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
-  get_bg_color,
   get_d3_interpolator,
   get_page_background,
   is_color,
+  is_concrete_color,
   is_dark_mode,
   is_d3_interpolate_name,
-  luminance,
+  is_opaque_color,
+  perceived_brightness,
   pick_contrast_color,
   PLOT_COLORS,
+  relative_luminance,
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
@@ -33,6 +37,10 @@ test(`registered D3 interpolation names resolve to functions`, () => {
   for (const name of D3_INTERPOLATE_NAMES) {
     expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
   }
+  // @ts-expect-error exercise the runtime guard for JavaScript callers
+  expect(() => get_d3_interpolator(`invalid`)).toThrow(
+    `Unknown D3 color interpolator: invalid`,
+  )
 })
 
 describe(`Element Color Schemes`, () => {
@@ -167,6 +175,7 @@ describe(`is_color function`, () => {
 
     // Invalid patterns - malformed
     [`rgb(255, 0)`, false], // incomplete rgb values are rejected
+    [`rgb(255, 0, 0, 0.5)`, false],
     [`#gg0000`, false],
     [`#12`, false],
     [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
@@ -191,6 +200,27 @@ describe(`is_color function`, () => {
     expect(is_color(ELEMENT_COLOR_SCHEMES.Jmol.H)).toBe(true)
     expect(is_color(ELEMENT_COLOR_SCHEMES.Vesta.He)).toBe(true)
   })
+
+  test.each([
+    [`#4fc3f7`, true],
+    [`rgb(79 195 247)`, true],
+    [`rgb(79 195 247 / 50%)`, true],
+    [`var(--accent)`, false],
+    [`currentcolor`, false],
+    [`transparent`, false],
+  ])(`is_concrete_color(%s) is %s`, (color, expected) => {
+    expect(is_concrete_color(color)).toBe(expected)
+  })
+  test.each([
+    [`#4fc3f7`, true],
+    [`rgb(79 195 247)`, true],
+    [`rgb(79 195 247 / 50%)`, false],
+    [`rgba(79, 195, 247, 0.5)`, false],
+    [`transparent`, false],
+    [`var(--accent)`, false],
+  ])(`is_opaque_color(%s) is %s`, (color, expected) => {
+    expect(is_opaque_color(color)).toBe(expected)
+  })
 })
 
 describe(`css_color_to_hex`, () => {
@@ -204,8 +234,10 @@ describe(`css_color_to_hex`, () => {
     [`#00ff00`, `#00ff00`],
     // CSS color functions are parsed
     [`rgb(255, 0, 0)`, `#ff0000`],
+    [`rgb(0 128 255)`, `#0080ff`],
     [`rgb(0, 128, 255)`, `#0080ff`],
     [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
+    [`rgba(255, 0, 0, 0)`, `#ff0000`],
     [`hsl(0, 100%, 50%)`, `#ff0000`],
     [`hsl(120, 100%, 50%)`, `#00ff00`],
     [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
@@ -234,6 +266,8 @@ describe(`css_color_to_hex`, () => {
     [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
     // Special cases
     [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
+    [`TRANSPARENT`, fallback, `#ffffff`, `handles uppercase transparent`],
+    [` Transparent `, fallback, `#ffffff`, `handles padded mixed-case transparent`],
     [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
     // Element color scheme values
     [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
@@ -243,64 +277,59 @@ describe(`css_color_to_hex`, () => {
 })
 
 test.each([
-  [`#000000`, 0, `black`],
-  [`#ffffff`, 1, `white`],
-  [`#ff0000`, 0.299, `red`],
-  [`#00ff00`, 0.587, `green`],
-  [`#0000ff`, 0.114, `blue`],
-  [`#808080`, 0.502, `gray`],
-  [`#ff8000`, 0.594, `orange`],
-  [`red`, 0.299, `named color`],
-  [`rgb(255, 0, 0)`, 0.299, `rgb format`],
-  [`hsl(0, 100%, 50%)`, 0.299, `hsl format`],
-])(`luminance(%s) = %s (%s)`, (color, expected) => {
-  expect(luminance(color)).toBeCloseTo(expected, 3)
-})
-
-describe(`get_bg_color`, () => {
-  const computed_style = (bg_color: string) =>
-    ({ backgroundColor: bg_color }) as CSSStyleDeclaration
-
-  afterEach(() => vi.restoreAllMocks())
-
-  it(`handles various scenarios`, () => {
-    expect(get_bg_color(null, `#ff0000`)).toBe(`#ff0000`) // provided bg_color
-    expect(get_bg_color(null)).toBe(`rgba(0, 0, 0, 0)`) // no element, no bg_color
-
-    // Mock element with background color
-    const mock_element = { style: {}, parentElement: null } as HTMLElement
-    const mock_get_computed_style = vi
-      .spyOn(globalThis, `getComputedStyle`)
-      .mockReturnValue(computed_style(`#ff0000`))
-
-    expect(get_bg_color(mock_element)).toBe(`#ff0000`)
-    expect(mock_get_computed_style).toHaveBeenCalledWith(mock_element)
-  })
-
-  it(`recurses up DOM tree for transparent backgrounds`, () => {
-    const mock_parent = { style: {}, parentElement: null } as HTMLElement
-    const mock_element = { style: {}, parentElement: mock_parent } as HTMLElement
-    const mock_get_computed_style = vi
-      .spyOn(globalThis, `getComputedStyle`)
-      .mockReturnValueOnce(computed_style(`rgba(0, 0, 0, 0)`))
-      .mockReturnValueOnce(computed_style(`#00ff00`))
-
-    expect(get_bg_color(mock_element)).toBe(`#00ff00`)
-    expect(mock_get_computed_style).toHaveBeenCalledTimes(2)
-  })
+  [`#000000`, 0, 0],
+  [`#ffffff`, 1, 1],
+  [`#ff0000`, 0.299, 0.2126],
+  [`#00ff00`, 0.587, 0.7152],
+  [`#0000ff`, 0.114, 0.0722],
+  [`#808080`, 0.502, 0.2159],
+  [`#ff8000`, 0.594, 0.367],
+  [`red`, 0.299, 0.2126],
+  [`rgb(255, 0, 0)`, 0.299, 0.2126],
+  [`hsl(0, 100%, 50%)`, 0.299, 0.2126],
+])(`color metrics for %s`, (color, expected_brightness, expected_luminance) => {
+  expect(perceived_brightness(color)).toBeCloseTo(expected_brightness, 3)
+  expect(relative_luminance(color)).toBeCloseTo(expected_luminance, 3)
 })
 
 describe(`pick_contrast_color`, () => {
-  it.each<[ContrastOptions | undefined, string]>([
-    [{ bg_color: `#ffffff`, luminance_threshold: 0.7, choices: [`black`, `white`] }, `black`],
-    [{ bg_color: `#000000`, luminance_threshold: 0.7, choices: [`black`, `white`] }, `white`],
-    [{ bg_color: `#404040`, luminance_threshold: 0.5, choices: [`black`, `white`] }, `white`],
-    [{ bg_color: `#ffffff`, luminance_threshold: 0.7, choices: [`red`, `blue`] }, `red`],
-    [{ bg_color: `#ffffff` }, `black`], // defaults (threshold 0.7, black/white)
-    [undefined, `black`], // no options -> bg defaults to 'white' -> black text
-  ])(`pick_contrast_color(%o) = %s`, (options, expected) => {
-    expect(pick_contrast_color(options)).toBe(expected)
+  it.each<[Paint, string]>([
+    [{ background: `#000000` }, `white`],
+    [{ background: `#4fc3f7` }, `black`], // black has 10.48:1 contrast vs white's 2.00:1
+    [{ background: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
+    [{ background: `rgba(255, 255, 255, 0.1)`, backdrop: `black` }, `white`],
+    [{ background: `rgba(0, 0, 0, 0.1)`, backdrop: `white` }, `black`],
+    [{ background: `transparent`, backdrop: `black` }, `white`],
+  ])(`pick_contrast_color(%o) = %s`, (paint, expected) => {
+    expect(pick_contrast_color(paint)).toBe(expected)
   })
+
+  it.each<[Paint, string]>([
+    [{ background: `not-a-color` }, `Invalid color: not-a-color`],
+    [{ background: `rgba(255, 255, 255, 0.1)` }, `Translucent background requires a backdrop`],
+    [
+      { background: `rgba(255, 255, 255, 0.1)`, backdrop: `rgba(0, 0, 0, 0.5)` },
+      `backdrop must be opaque`,
+    ],
+  ])(`rejects invalid paint %o`, (paint, error) => {
+    expect(() => pick_contrast_color(paint)).toThrow(error)
+  })
+
+  it.each<[Paint, string]>([
+    // CSS vars cannot be resolved in JS, so inherit rather than guess
+    [{ background: `var(--some-bg)` }, `currentColor`],
+    [{ background: `#000000` }, `white`],
+  ])(`contrast_text_color(%o) = %s`, (paint, expected) => {
+    expect(contrast_text_color(paint)).toBe(expected)
+  })
+})
+
+test.each([
+  [`rgba(255, 255, 255, 0.1)`, `black`, `rgb(26, 26, 26)`],
+  [`transparent`, `red`, `rgb(255, 0, 0)`],
+  [`red`, `transparent`, `rgb(255, 0, 0)`],
+])(`composites %s over %s`, (foreground, backdrop, expected) => {
+  expect(composite_colors(foreground, backdrop)).toBe(expected)
 })
 
 describe(`add_alpha`, () => {
@@ -309,6 +338,7 @@ describe(`add_alpha`, () => {
     [`#abc`, 0.3, `rgba(170, 187, 204, 0.3)`],
     [`rgb(100, 150, 200)`, 0.8, `rgba(100, 150, 200, 0.8)`],
     [`rgba(100, 150, 200, 0.2)`, 0.9, `rgba(100, 150, 200, 0.9)`],
+    [`rgba(255, 0, 0, 0)`, 0.5, `rgba(255, 0, 0, 0.5)`],
     [`rgba(100, 100, 100, 1e-5)`, 0.6, `rgba(100, 100, 100, 0.6)`], // scientific notation
     [`rgba(50, 50, 50, 1.5E+2)`, 0.1, `rgba(50, 50, 50, 0.1)`], // uppercase E with +
     [`unknown-format`, 0.5, `unknown-format`], // passthrough unknown
@@ -329,14 +359,15 @@ describe(`get_page_background`, () => {
   test.each([
     [`#f5f5f5`, `rgba(0, 0, 0, 0)`, false, `#f5f5f5`, `html background`],
     [`transparent`, `#e0e0e0`, false, `#e0e0e0`, `body background`],
+    [`blue`, `rgba(255, 0, 0, 0.5)`, false, `rgb(128, 0, 128)`, `composited body`],
     [`transparent`, `transparent`, true, `#1a1a1a`, `dark mode fallback`],
     [`transparent`, `transparent`, false, `#ffffff`, `light mode fallback`],
   ])(`$4`, (html_bg, body_bg, prefers_dark, expected) => {
-    let call_idx = 0
-    vi.stubGlobal(`getComputedStyle`, (_elem: Element) => {
-      const bg = call_idx++ === 0 ? html_bg : body_bg
-      return { backgroundColor: bg } as CSSStyleDeclaration
-    })
+    const get_computed_style = (element: Element): CSSStyleDeclaration =>
+      ({
+        backgroundColor: element === document.body ? body_bg : html_bg,
+      }) as CSSStyleDeclaration
+    vi.stubGlobal(`getComputedStyle`, get_computed_style)
     vi.stubGlobal(`matchMedia`, (query: string) => ({
       matches: prefers_dark,
       media: query,

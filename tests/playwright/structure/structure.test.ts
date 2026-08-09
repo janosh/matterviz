@@ -747,11 +747,7 @@ test.describe(`Structure Component Tests`, () => {
       await expect(pane_div, name).toBeHidden()
     }
 
-    // tooltip attachment moves title to data-original-title
-    await expect(controls_toggle_button).toHaveAttribute(
-      `data-original-title`,
-      `Structure controls`,
-    )
+    await expect(controls_toggle_button).toHaveAttribute(`aria-label`, `Structure controls`)
   })
 
   test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
@@ -1538,8 +1534,7 @@ test.describe(`Element Visibility Toggle`, () => {
     // Capture initial state
     const initial_screenshot = await canvas.screenshot()
     const initial_opacity = await opacity_of(label)
-    // Initial check - tooltip stores in data-original-title
-    await expect(toggle_button).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
+    await expect(toggle_button).toHaveAttribute(`aria-label`, /Hide .+ atoms/)
 
     // Hide element
     await first_item.hover()

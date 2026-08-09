@@ -1,6 +1,6 @@
 # ElementTile
 
-`ElementTile.svelte` automatically changes text color to ensure high contrast with its background. If its background is transparent, it traverses up the DOM tree to find the first element with non-transparent background color. This can, of course, go wrong e.g. if the tile is absolutely positioned outside its parent element. In that case, pass an explicit `text_color` prop and `luminance_threshold={null}` to `ElementTile` to override the automatic color selection.
+`ElementTile.svelte` takes a `segments` array describing what to paint. Each segment carries its own `color` and optional `value` label, so the two can never disagree in length. One segment paints a solid tile; two to four split it. Text color is chosen for maximum WCAG contrast against the segment's color, composited over the surface behind the tile. Pass an explicit `text_color` whenever the rendered background is not a solid CSS color.
 
 ```svelte example code_above
 <script lang="ts">
@@ -13,8 +13,8 @@
 <ol>
   {#each Array(27)
     .fill(0)
-    .map( (_, idx) => ({ bg_color: rand_color(), element: element_data[idx] }) ) as { bg_color, element } (element.symbol)}
-    <ElementTile {bg_color} {element} style="width: 4em; margin: 0" />
+    .map( (_, idx) => ({ color: rand_color(), element: element_data[idx] }) ) as { color, element } (element.symbol)}
+    <ElementTile segments={[{ color }]} {element} style="width: 4em; margin: 0" />
   {/each}
 </ol>
 
@@ -27,21 +27,20 @@
 </style>
 ```
 
-Displaying values instead of element names by passing the `value` prop.
+Give a segment a `value` to label it instead of showing the element name.
 
 ```svelte example code_above
 <script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
-  const bg_colors = `red green blue yellow cyan magenta black white`.split(` `)
+  const colors = `red green blue yellow cyan magenta black white`.split(` `)
 </script>
 
 <ol>
-  {#each bg_colors as bg_color, idx (bg_color)}
+  {#each colors as color, idx (color)}
     <ElementTile
-      {bg_color}
       element={element_data[idx]}
-      value={Math.random()}
+      segments={[{ color, value: Math.random() }]}
       style="width: 4em; margin: 0"
       active
     />
@@ -59,77 +58,55 @@ Displaying values instead of element names by passing the `value` prop.
 
 ## Multi-value Split Layouts
 
-ElementTile supports displaying multiple values per tile with different split layout options. Control the layout using the `split_layout` prop.
+Two to four segments split the tile. `split_layout` picks between the layouts that exist for that segment count: `diagonal` for two, `horizontal` or `vertical` for three, `quadrant` or `triangular` for four. Invalid layouts fall back to the default for that segment count.
 
 ```svelte example code_above
 <script lang="ts">
   import { element_data, ElementTile } from 'matterviz'
 
-  const values = {
-    two: [1.2, 2.5],
-    three: [1.2, 2.5, 0.8],
-    four: [1.2, 2.5, 0.8, 3.1],
-  }
   const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24']
+  const values = [1.2, 2.5, 0.8, 3.1]
+  const segments = (count: number) =>
+    colors.slice(0, count).map((color, idx) => ({ color, value: values[idx] }))
   const tile_style = 'width: 5em; height: 5em;'
 </script>
 
 <h4>Auto-determined Layouts</h4>
 <p>
-  When <code>split_layout</code> is not specified, the layout is automatically chosen based on the
-  number of values.
+  Without <code>split_layout</code>, the layout follows the segment count.
 </p>
 <div class="examples">
-  <ElementTile
-    element={element_data[0]}
-    value={values.two}
-    bg_colors={colors.slice(0, 2)}
-    style={tile_style}
-  />
-  <ElementTile
-    element={element_data[1]}
-    value={values.three}
-    bg_colors={colors.slice(0, 3)}
-    style={tile_style}
-  />
-  <ElementTile
-    element={element_data[2]}
-    value={values.four}
-    bg_colors={colors}
-    style={tile_style}
-  />
+  <ElementTile element={element_data[0]} segments={segments(2)} style={tile_style} />
+  <ElementTile element={element_data[1]} segments={segments(3)} style={tile_style} />
+  <ElementTile element={element_data[2]} segments={segments(4)} style={tile_style} />
 </div>
 
 <h4>Explicit Layout Control</h4>
 <div class="examples">
-  <!-- 3 values: horizontal vs vertical -->
+  <!-- 3 segments: horizontal vs vertical -->
   <ElementTile
     element={element_data[3]}
-    value={values.three}
-    bg_colors={colors.slice(0, 3)}
+    segments={segments(3)}
     split_layout="horizontal"
     style={tile_style}
   />
   <ElementTile
     element={element_data[4]}
-    value={values.three}
-    bg_colors={colors.slice(0, 3)}
+    segments={segments(3)}
     split_layout="vertical"
     style={tile_style}
   />
 
-  <!-- 4 values: triangular vs quadrant -->
+  <!-- 4 segments: triangular vs quadrant -->
   <ElementTile
     element={element_data[5]}
-    value={values.four}
-    bg_colors={colors}
+    segments={segments(4)}
     split_layout="triangular"
     style={tile_style}
   />
   <ElementTile
     element={element_data[6]}
-    value={values.four}
-    bg_colors={colors}
+    segments={segments(4)}
     split_layout="quadrant"
     style={tile_style}
   />
@@ -146,4 +123,4 @@ ElementTile supports displaying multiple values per tile with different split la
 </style>
 ```
 
-**Note:** The atomic number is automatically hidden for multi-value splits to prevent overlap with value labels. You can override this behavior with the `show_number` prop.
+**Note:** The atomic number is automatically hidden on split tiles to prevent overlap with value labels. Override that with the `show_number` prop.

@@ -1,6 +1,20 @@
 <script lang="ts">
-  import { get_d3_interpolator, is_color } from '$lib/colors'
-  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
+  import {
+    type D3InterpolateName,
+    get_d3_interpolator,
+    is_color,
+    is_dark_mode,
+    pick_contrast_color,
+    resolve_backdrop,
+    resolve_css_color,
+  } from '$lib/colors'
+  import type {
+    ChemicalElement,
+    ElementCategory,
+    ElementSymbol,
+    SplitLayout,
+    TileSegment,
+  } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -8,13 +22,12 @@
   import { colors } from '$lib/state.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { D3InterpolateName } from '$lib/colors'
   import type { MissingCellStyle } from '$lib/heatmap-matrix'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
 
   // a tile's heat value: scalar or 1-4-segment array of numbers/colors
-  type HeatValue = number | number[] | string | string[]
+  type HeatValue = number | string | (number | string)[]
 
   const default_f_block_inset_tiles = [
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
@@ -52,7 +65,10 @@
     onkeydown: on_table_keydown,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    tile_props?: Partial<ComponentProps<typeof ElementTile>>
+    tile_props?: Omit<
+      Partial<ComponentProps<typeof ElementTile>>,
+      `active` | `backdrop` | `element` | `href` | `label` | `segments` | `split_layout`
+    >
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
     // array (positional by atomic number, can be partial) or object keyed by element symbol.
@@ -83,7 +99,7 @@
     labels?: Partial<Record<ElementSymbol, string>>
     missing?: MissingCellStyle // styling for tiles with no heatmap value
     // control the layout of multi-value splits for all tiles
-    split_layout?: `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+    split_layout?: SplitLayout
     // automatically show a color bar when heatmap_values is provided (default: true)
     show_color_bar?: boolean
     // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
@@ -117,7 +133,8 @@
         return []
       }
       return heatmap_values
-    } else if (typeof heatmap_values === `object`) {
+    }
+    if (typeof heatmap_values === `object`) {
       const bad_keys = Object.keys(heatmap_values).filter(
         (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
       )
@@ -164,11 +181,11 @@
     }
   })
 
-  let tooltip_element: ChemicalElement | null = $state(null)
-  let tooltip_pos: Point2D = $state({ x: 0, y: 0 })
-  let tooltip_visible: boolean = $state(false)
+  let tooltip_element = $state<ChemicalElement | null>(null)
+  let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
+  let tooltip_visible = $state(false)
 
-  function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
+  function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
     on_table_keydown?.(event)
     if (disabled || event.defaultPrevented) return
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
@@ -213,7 +230,7 @@
       ?.focus()
   }
 
-  function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
+  function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
     if (tooltip === false || disabled) return
     tooltip_element = element
     const target = event.currentTarget
@@ -276,13 +293,13 @@
 
   const bg_color = (
     value: HeatValue | false | null,
-    element?: ChemicalElement,
+    element: ChemicalElement,
   ): string | null => {
     if (Array.isArray(value)) return bg_color(value[0], element) // arrays: use first value
     if (is_color(value)) return value // already a color string
 
-    if (!heat_values.length || !color_scale_fn || value_is_missing(value)) {
-      const category_color = (element && colors.category[element.category]) || `#cccccc`
+    if (!heat_values.length || value_is_missing(value)) {
+      const category_color = colors.category[element.category] || `#cccccc`
       if (missing.color === `element-category`) return category_color
       // default: category colors for a plain table, gray for missing heatmap data
       return missing.color || (heat_values.length ? `#666` : category_color)
@@ -300,27 +317,60 @@
     return color_scale_fn((num - cs_min) / span)
   }
 
-  // per-segment colors for multi-value tiles (bg_color already handles color strings)
-  const bg_colors = (value: HeatValue | false, element?: ChemicalElement) =>
-    Array.isArray(value) ? value.map((val) => bg_color(val, element)) : []
+  // Keep each segment's fill and optional label together.
+  const tile_segments = (
+    value: HeatValue | false | null,
+    element: ChemicalElement,
+    override: string | undefined,
+    tile_missing: boolean,
+  ): TileSegment[] => {
+    const values = !tile_missing && Array.isArray(value) ? value : [value]
+    return values.map((val) => ({
+      color: override ?? bg_color(val, element) ?? undefined,
+      value:
+        tile_missing || val == null || val === false || Array.isArray(val) || is_color(val)
+          ? undefined
+          : val,
+    }))
+  }
 
-  // Determine whether to automatically show the color bar
   let should_show_color_bar = $derived(show_color_bar && !inset && usable_heat_nums.length > 0)
 
-  // Calculate heat range for color bar
   let heat_range = $derived.by((): Vec2 => {
     if (!should_show_color_bar) return [0, 1]
     const min = color_scale_range[0] ?? Math.min(...usable_heat_nums)
     const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
     return [min, max]
   })
+  // Resolve the shared surface once rather than installing a theme observer per tile.
+  let table_node = $state<HTMLDivElement>()
+  const page_backdrop = resolve_backdrop(() => table_node)
+  // The tooltip fill is a translucent theme token, so it needs the page behind it.
+  let tooltip_node = $state<HTMLElement | null>(null)
+  const tooltip_fill = resolve_css_color(() => tooltip_node, {
+    css_var: `--tooltip-bg`,
+    // mirrors the light-dark() default in the .tooltip rule below
+    fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
+  })
+  const tooltip_text_color = $derived(
+    pick_contrast_color({
+      background: tooltip_fill.current,
+      backdrop: page_backdrop.current,
+    }),
+  )
 </script>
 
-<div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
+<div
+  bind:this={table_node}
+  {...rest}
+  class={[`periodic-table`, rest.class]}
+  style:gap
+  onkeydown={handle_key}
+>
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
-        {color_scale}
+        scale={typeof color_scale === `string` ? color_scale : { interpolator: color_scale }}
         range={heat_range}
         tick_labels={color_bar_props.tick_labels ?? 3}
         tick_side="primary"
@@ -340,10 +390,8 @@
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
-    {@const is_active_elem = active_elements?.some((active_elem) =>
-      typeof active_elem === `string`
-        ? active_elem === symbol
-        : active_elem?.symbol === symbol,
+    {@const is_active_elem = active_elements.some((active_elem) =>
+      typeof active_elem === `string` ? active_elem === symbol : active_elem.symbol === symbol,
     )}
     {@const active =
       active_category === category || active_element?.name === name || is_active_elem}
@@ -351,15 +399,14 @@
       tile_props?.style ? ` ${tile_props.style}` : ``
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
     <ElementTile
+      {...tile_props}
       {element}
       {href}
+      backdrop={page_backdrop.current}
       data-element-symbol={symbol}
-      value={tile_missing ? undefined : (value ?? undefined)}
-      bg_color={override ?? bg_color(value, element) ?? undefined}
-      bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
+      segments={tile_segments(value, element, override, tile_missing)}
       {active}
       label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
-      {...tile_props}
       {style}
       onmouseenter={(event: MouseEvent) => {
         set_active_element(element)
@@ -396,10 +443,14 @@
     />
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
-  {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
-    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style};`}
+  {#each lanth_act_tiles as lanth_act_element, idx (lanth_act_element.symbol)}
+    {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style}; ${
+      tile_props?.style ?? ``
+    }`}
     <ElementTile
+      {...tile_props}
       element={lanth_act_element as unknown as ChemicalElement}
+      backdrop={page_backdrop.current}
       {style}
       onmouseenter={() => (active_category = lanth_act_element.category)}
       onmouseleave={() => (active_category = null)}
@@ -419,26 +470,31 @@
 
   <!-- Tooltip -->
   {#if tooltip_visible && tooltip_element}
-    {@const el = tooltip_element as ChemicalElement}
+    {@const el = tooltip_element}
     {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
     {@const tooltip_value = heat_values[el.number - 1]}
-    {#if typeof tooltip == `function`}
-      <div class="tooltip" {style}>
-        {@render tooltip({
-          element: el,
-          value: tooltip_value ?? null,
-          active: active_category === el.category || active_element?.name === el.name,
-          bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
-          scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
-        })}
-      </div>
-    {:else if tooltip !== false}
-      <div class="tooltip" {style}>
-        {el.name}<br />
-        <small>{el.symbol} • {el.number}</small>
-        {#if Array.isArray(tooltip_value)}
-          <br />
-          <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
+    {#if tooltip !== false}
+      <div
+        class="tooltip"
+        {style}
+        bind:this={tooltip_node}
+        style:--tooltip-auto-color={tooltip_text_color}
+      >
+        {#if typeof tooltip === `function`}
+          {@render tooltip({
+            element: el,
+            value: tooltip_value ?? null,
+            active: active_category === el.category || active_element?.name === el.name,
+            bg_color: color_overrides[el.symbol] ?? bg_color(tooltip_value, el),
+            scale_context: { min: log ? cs_min_pos : cs_min, max: cs_max, color_scale },
+          })}
+        {:else}
+          {el.name}<br />
+          <small>{el.symbol} • {el.number}</small>
+          {#if Array.isArray(tooltip_value)}
+            <br />
+            <small>Values: {tooltip_value.join(`, `)}</small>
+          {/if}
         {/if}
       </div>
     {/if}
@@ -473,7 +529,7 @@
     position: absolute;
     transform: translate(-50%, -10%);
     background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    color: var(--tooltip-color, light-dark(#222, #eee));
+    color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
     font-size: var(--tooltip-font-size, 14px);

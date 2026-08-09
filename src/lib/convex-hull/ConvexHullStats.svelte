@@ -12,6 +12,7 @@
   import Histogram from '$lib/plot/histogram/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
+  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import { create_clipboard_feedback } from '$lib/overlays'
@@ -573,6 +574,12 @@
   />
 {/snippet}
 
+{#snippet view_panel(mode: `stats` | `table`, content: Snippet)}
+  <div class="view-panel" aria-hidden={view_mode !== mode} inert={view_mode !== mode}>
+    {@render content()}
+  </div>
+{/snippet}
+
 {#if layout === `side-by-side`}
   <div {...rest} class={[`convex-hull-stats side-by-side`, rest.class]}>
     <div class="stats-pane">
@@ -592,11 +599,10 @@
         Table
       </button>
     </div>
-    {#if view_mode === `stats`}
-      {@render stats_panel()}
-    {:else}
-      {@render table_panel()}
-    {/if}
+    <div class="view-panels">
+      {@render view_panel(`stats`, stats_panel)}
+      {@render view_panel(`table`, table_panel)}
+    </div>
   </div>
 {/if}
 
@@ -711,6 +717,20 @@
       light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15))
     );
     font-weight: 500;
+  }
+  .view-panels {
+    display: grid;
+    min-width: 0;
+  }
+  .view-panel {
+    grid-area: 1 / 1;
+    min-width: 0;
+    pointer-events: auto;
+    visibility: visible;
+  }
+  .view-panel[aria-hidden='true'] {
+    pointer-events: none;
+    visibility: hidden;
   }
   .table-filters {
     display: flex;

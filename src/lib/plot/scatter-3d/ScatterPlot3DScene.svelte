@@ -141,10 +141,10 @@
 
   const { invalidate } = useThrelte()
 
-  // Update backside positions when camera crosses axis planes. autoInvalidate defaults to
-  // true, which would park this task in the scheduler's `autoInvalidations` for its whole
-  // lifetime and so re-render the on-demand scene every frame, idle or not. Opting out still
-  // runs the task each frame (the main stage is ungated), so crossings are still caught.
+  // Update backside positions when the camera crosses axis planes. autoInvalidate defaults to
+  // true, which parks the task in the scheduler's `autoInvalidations` for its whole lifetime
+  // and re-renders the on-demand scene every frame, idle or not. Opting out still runs the
+  // task each frame — the main stage is ungated — so crossings are still caught.
   useTask(
     () => {
       if (!camera) return
