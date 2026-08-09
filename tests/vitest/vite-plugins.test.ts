@@ -16,6 +16,15 @@ function make_plugin(command: `build` | `serve` = `serve`) {
 }
 
 describe(`vite_plugin_json_gz`, () => {
+  test(`query-aware mode resolves bare imports and leaves raw and URL imports unclaimed`, () => {
+    const plugin = vite_plugin_json_gz({ resolve_queries: true })
+    const resolve_id = plugin.resolveId as (source: string, importer?: string) => string | null
+    const importer = join(tmpdir(), `vite.config.ts`)
+    expect(resolve_id(`./data.json.gz`, importer)).toBe(join(tmpdir(), `data.json.gz`))
+    expect(resolve_id(`./data.json.gz?raw`, importer)).toBeNull()
+    expect(resolve_id(`./data.json.gz?url`, importer)).toBeNull()
+  })
+
   test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(
     `returns null for non-matching id: %s`,
     (id) => {

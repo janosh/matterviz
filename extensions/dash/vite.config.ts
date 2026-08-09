@@ -135,9 +135,6 @@ export default defineConfig({
   },
 
   resolve: {
-    // One copy of three in the bundle: matterviz imports three/webgpu, its addons and @threlte
-    // plain three. Exact-match regex, else three/webgpu, three/tsl and three/examples/* would
-    // be rewritten too.
     alias: [three_compat_alias],
   },
 })

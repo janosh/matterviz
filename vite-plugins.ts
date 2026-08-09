@@ -3,25 +3,51 @@
 // published dist, and these are build tooling, not library code.
 
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Plugin } from 'vite'
 
+export const split_query = (path: string): [clean: string, query: string] => {
+  const clean = path.replace(/\?.*$/, ``)
+  return [clean, path.slice(clean.length)]
+}
+
+export const resolve_from_importer = (clean: string, importer?: string) =>
+  importer ? resolve(dirname(split_query(importer)[0]), clean) : clean
+
 // Transparently import .json.gz files as ES modules.
-// The root config wraps this with extra ?raw/?url query handling, which it needs to
-// coexist with its raw_text_plugin; extensions use it as-is.
-export function vite_plugin_json_gz(): Plugin {
+// `resolve_queries` is for the root config, which pairs this with a raw_text_plugin that
+// claims `?raw` and a Vite built-in that claims `?url`: there, queried ids must be left to
+// them and bare ones resolved against their importer. Extension configs have no such
+// neighbour, so they take ids as given.
+export function vite_plugin_json_gz({
+  resolve_queries = false,
+}: { resolve_queries?: boolean } = {}): Plugin {
   let is_build = false
+  // the path to read, or null when the id belongs to another plugin
+  const claim = (path: string): string | null => {
+    if (!resolve_queries) return path.endsWith(`.json.gz`) ? path : null
+    const [clean, query] = split_query(path)
+    if (query.includes(`raw`) || query.includes(`url`)) return null
+    return clean.endsWith(`.json.gz`) ? clean : null
+  }
   return {
     name: `vite-plugin-json-gz`,
     enforce: `pre`,
     configResolved(config) {
       is_build = config.command === `build`
     },
+    resolveId: resolve_queries
+      ? (source, importer) => {
+          const clean = claim(source)
+          return clean ? resolve_from_importer(clean, importer) : null
+        }
+      : undefined,
     load(id) {
-      if (!id.endsWith(`.json.gz`)) return null
+      const clean = claim(id)
+      if (!clean) return null
       try {
-        const json_str = gunzipSync(readFileSync(id)).toString(`utf-8`)
+        const json_str = gunzipSync(readFileSync(clean)).toString(`utf-8`)
         JSON.parse(json_str) // validate before passing to bundler
         // Rolldown (production) needs moduleType:'json' for import.meta.glob
         // with import:'default' to properly unwrap the default export.
