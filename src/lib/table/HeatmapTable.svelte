@@ -1707,11 +1707,10 @@
 
   const is_row_selected = (row: RowData): boolean => selected_id_set.has(get_row_id(row))
 
-  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one
-  function handle_row_keydown(
-    event: KeyboardEvent & { currentTarget: HTMLElement },
-    row: RowData,
-  ) {
+  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one. Stepping by
+  // absolute index rather than DOM sibling because under virtualization the row next to the
+  // last rendered one is a spacer, which would strand the keyboard user at the window edge.
+  async function handle_row_keydown(event: KeyboardEvent, row: RowData, abs_idx: number) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
       onrowclick?.(event, row)
@@ -1719,11 +1718,21 @@
     }
     if (event.key !== `ArrowDown` && event.key !== `ArrowUp`) return
     event.preventDefault()
-    const sibling =
-      event.key === `ArrowDown`
-        ? event.currentTarget.nextElementSibling
-        : event.currentTarget.previousElementSibling
-    if (sibling instanceof HTMLElement) sibling.focus()
+    const step = event.key === `ArrowDown` ? 1 : -1
+    const target_idx = abs_idx + step
+    if (target_idx < 0 || target_idx >= sorted_data.length) return
+
+    if (scroll_el && (target_idx < display_range.start || target_idx >= display_range.end)) {
+      // Scroll the row into the window so it exists to receive focus. Aligning to the
+      // leading edge keeps the newly focused row visible in the direction of travel.
+      const leading_edge = step > 0 ? viewport_height - avg_row_height : 0
+      scroll_el.scrollTop = Math.max(0, target_idx * avg_row_height - leading_edge)
+      sync_viewport()
+      await tick()
+    }
+    // rows carry no index of their own; every data cell does
+    const target_cell = scroll_el?.querySelector(`td[data-row-idx="${target_idx}"]`)
+    target_cell?.closest(`tr`)?.focus()
   }
 
   // Select-all scope: the current page under pagination, every sorted+filtered
@@ -2505,7 +2514,9 @@
               : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
-            onkeydown={onrowclick ? (event) => handle_row_keydown(event, row) : undefined}
+            onkeydown={onrowclick
+              ? (event) => void handle_row_keydown(event, row, abs_idx)
+              : undefined}
           >
             {#if show_row_select}
               <td class="select-col">

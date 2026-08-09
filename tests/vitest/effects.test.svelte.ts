@@ -67,6 +67,44 @@ describe(`create_pulse_animation`, () => {
     expect(requested_frames.size).toBe(0)
     void unmount(component)
   })
+
+  // Ticks repaint a whole canvas or invalidate a 3D scene, so a pulse on an off-screen chart
+  // is wasted work. Opting in also means staying paused until the observer first reports.
+  test(`pauses while its element is off screen and resumes when scrolled back`, () => {
+    install_animation_frame_mock()
+    let notify: IntersectionObserverCallback | undefined
+    vi.stubGlobal(
+      `IntersectionObserver`,
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    )
+    const target = document.createElement(`div`)
+    const component = mount(PulseAnimationHarness, {
+      target: document.body,
+      props: { active: () => true, element: () => target },
+    })
+    flushSync()
+    expect(requested_frames.size).toBe(0) // nothing scheduled before the observer reports
+
+    const observer = {} as IntersectionObserver // the callback under test ignores it
+    const set_visible = (is_visible: boolean) =>
+      flushSync(() =>
+        notify?.([{ isIntersecting: is_visible }] as IntersectionObserverEntry[], observer),
+      )
+
+    set_visible(true)
+    expect(requested_frames.size).toBe(1)
+    set_visible(false)
+    expect(requested_frames.size).toBe(0)
+    set_visible(true)
+    expect(requested_frames.size).toBe(1)
+    void unmount(component)
+  })
 })
 
 test.each([

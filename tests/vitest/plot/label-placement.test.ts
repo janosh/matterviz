@@ -1,6 +1,7 @@
 import type { DataSeries } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig } from '$lib/plot/core/types'
+import type { AnchorInfo, LabelState } from '$lib/plot/core/utils/label-placement'
 import {
   compute_delta_energy,
   compute_label_positions,
@@ -272,6 +273,15 @@ describe(`compute_delta_energy`, () => {
     distance: 0,
     bounds: 0,
   }
+  // every term active, so the randomized comparison below exercises all of them at once
+  const all_weights = {
+    overlap: 30,
+    marker: 100,
+    leader_cross: 10,
+    leader_text: 8,
+    distance: 0.5,
+    bounds: 100,
+  }
 
   test(`moving label closer to its anchor yields negative distance delta`, () => {
     const anchors = [{ x: 100, y: 100, radius: 4 }]
@@ -339,6 +349,104 @@ describe(`compute_delta_energy`, () => {
       bounds,
     )
     expect(delta).toBeGreaterThan(0)
+  })
+
+  // Same energy as compute_delta_energy but scoring every marker and label, i.e. without its
+  // bounding-box rejection. `all_weights` throughout so every term is exercised.
+  const mid = (rect: LabelState) => [rect.x + rect.w / 2, rect.y + rect.h / 2] as const
+  // a boolean term the move can switch on or off
+  const toggle = (was: boolean, now: boolean, weight: number) =>
+    was === now ? 0 : now ? weight : -weight
+  const full_delta = (
+    labels: LabelState[],
+    anchors: AnchorInfo[],
+    changed_idx: number,
+    old_state: LabelState,
+    new_state: LabelState,
+  ): number => {
+    const {
+      overlap,
+      marker,
+      leader_cross,
+      leader_text,
+      distance,
+      bounds: bounds_weight,
+    } = all_weights
+    const { x: ax, y: ay } = anchors[new_state.anchor_idx]
+    const [old_cx, old_cy] = mid(old_state)
+    const [new_cx, new_cy] = mid(new_state)
+    let delta =
+      distance *
+        (Math.hypot(new_cx - ax, new_cy - ay) - Math.hypot(old_cx - ax, old_cy - ay)) +
+      bounds_weight *
+        (rect_out_of_bounds_area(new_state, bounds) -
+          rect_out_of_bounds_area(old_state, bounds))
+    for (const { x, y, radius } of anchors) {
+      delta +=
+        marker *
+        (rect_circle_overlap(new_state, x, y, radius) -
+          rect_circle_overlap(old_state, x, y, radius))
+    }
+    for (const [jdx, other] of labels.entries()) {
+      if (jdx === changed_idx) continue
+      const { x: jx, y: jy } = anchors[other.anchor_idx]
+      const [ox, oy] = mid(other)
+      delta +=
+        overlap * (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
+      delta += toggle(
+        segments_intersect(ax, ay, old_cx, old_cy, jx, jy, ox, oy),
+        segments_intersect(ax, ay, new_cx, new_cy, jx, jy, ox, oy),
+        leader_cross,
+      )
+      delta += toggle(
+        segment_rect_intersects(ax, ay, old_cx, old_cy, other),
+        segment_rect_intersects(ax, ay, new_cx, new_cy, other),
+        leader_text,
+      )
+      delta += toggle(
+        segment_rect_intersects(jx, jy, ox, oy, old_state),
+        segment_rect_intersects(jx, jy, ox, oy, new_state),
+        leader_text,
+      )
+    }
+    return delta
+  }
+
+  // The rejection is only sound if it never changes the number, hence exact equality rather
+  // than a tolerance: skipped terms are provably zero. Small spreads pack labels together so
+  // the rejection rarely fires, large ones space them out so it almost always does.
+  test.each(
+    [2, 8, 25].flatMap((count) => [40, 300].map((spread) => [count, spread] as const)),
+  )(`matches a full pairwise evaluation (%i labels, spread %i)`, (label_count, spread) => {
+    let seed = 12_345
+    const random = () => {
+      seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+
+    for (let trial = 0; trial < 60; trial++) {
+      const anchors = Array.from({ length: label_count }, () => ({
+        x: 200 + (random() - 0.5) * spread,
+        y: 150 + (random() - 0.5) * spread,
+        radius: 2 + random() * 6,
+      }))
+      const labels = anchors.map((anchor, idx) => ({
+        x: anchor.x + (random() - 0.5) * 60,
+        y: anchor.y + (random() - 0.5) * 60,
+        w: 20 + random() * 90,
+        h: 10 + random() * 24,
+        anchor_idx: idx,
+      }))
+      const changed_idx = Math.floor(random() * label_count)
+      const old_state = { ...labels[changed_idx] }
+      const new_state = {
+        ...old_state,
+        x: old_state.x + (random() - 0.5) * 300,
+        y: old_state.y + (random() - 0.5) * 300,
+      }
+      const args = [labels, anchors, changed_idx, old_state, new_state] as const
+      expect(compute_delta_energy(...args, all_weights, bounds)).toBe(full_delta(...args))
+    }
   })
 })
 

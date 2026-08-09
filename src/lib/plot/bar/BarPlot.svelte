@@ -712,10 +712,6 @@
   const solved_legend = $derived(get_decoration_placement(decoration_solution, `legend`))
   const decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
-  // Compute plot center for point tweening origin
-  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
-  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
-
   // Compute color values from line series for color scaling (filter to numbers only)
   let all_color_values = $derived(
     visible_series
@@ -1408,7 +1404,6 @@
                         hover={pt.point_hover ?? {}}
                         label={pt.point_label ?? {}}
                         offset={pt.point_offset ?? { x: 0, y: 0 }}
-                        origin={{ x: plot_center_x, y: plot_center_y }}
                         --point-fill-color={fl}
                         data-bar-idx={pt.idx}
                         tabindex={clickable ? (hov ? 0 : -1) : undefined}

@@ -541,14 +541,18 @@
     ),
   )
 
+  // Zero is a legitimate size (a gap of `0px` is common), so only non-numeric or negative
+  // input falls back. Treating 0 as invalid inflated the stride to 12px and made the
+  // virtual window cover a fraction of the cells actually on screen.
   function parse_px_size(size: string): number {
     const parsed = Number(size.replace(`px`, ``))
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 12
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 12
   }
 
   let tile_size_px = $derived(parse_px_size(tile_size))
   let gap_px = $derived(parse_px_size(gap))
-  let tile_stride_px = $derived(tile_size_px + gap_px)
+  // never 0: the window maths divides by it
+  let tile_stride_px = $derived(Math.max(1, tile_size_px + gap_px))
   let render_vis_x = $derived.by(() => {
     if (!virtualize) return vis_x
     const raw_start_pos =

@@ -241,38 +241,24 @@ describe(`ScatterPoint`, () => {
     })
   })
 
-  describe(`Tween Behavior`, () => {
-    test.each([
-      {
-        name: `starts at default origin`,
-        props: { x: 100, y: 150, offset: { x: 10, y: -10 } },
-        expected_origin: { x: 0, y: 0 },
-      },
-      {
-        name: `starts at explicit origin`,
-        props: { x: 100, y: 150, origin: { x: 50, y: 75 }, offset: { x: 10, y: -10 } },
-        expected_origin: { x: 50, y: 75 },
-      },
-      {
-        name: `starts at explicit negative origin`,
-        props: { x: -100, y: -150, origin: { x: -50, y: -75 }, offset: { x: -10, y: 10 } },
-        expected_origin: { x: -50, y: -75 },
-      },
-    ] as const)(`$name`, ({ props, expected_origin }) => {
-      const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props })
-      expect(doc_query(`g`).getAttribute(`transform`)).toBe(
-        `translate(${expected_origin.x} ${expected_origin.y})`,
-      )
-    })
-
-    test(`accepts custom tween options without affecting initial origin`, () => {
-      const target = doc_query(`div`)
-      mount(ScatterPoint, {
-        target,
-        props: { x: 100, y: 150, origin: { x: 12, y: 34 }, point_tween: { duration: 800 } },
-      })
-      expect(doc_query(`g`).getAttribute(`transform`)).toBe(`translate(12 34)`)
-    })
+  test.each([
+    [
+      `coordinates plus offset`,
+      { x: 100, y: 150, offset: { x: 10, y: -10 } },
+      `translate(110 140)`,
+    ],
+    [
+      `negative coordinates plus offset`,
+      { x: -100, y: -150, offset: { x: -10, y: 10 } },
+      `translate(-110 -140)`,
+    ],
+    [
+      `custom tween duration`,
+      { x: 100, y: 150, point_tween: { duration: 800 } },
+      `translate(100 150)`,
+    ],
+  ] as const)(`renders at $name without animating on mount`, (_name, props, expected) => {
+    mount(ScatterPoint, { target: doc_query(`div`), props })
+    expect(doc_query(`g`).getAttribute(`transform`)).toBe(expected)
   })
 })

@@ -3,9 +3,9 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import { untrack } from 'svelte'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
   import type { FillGradient, FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
-  import { unique_id } from '$lib/plot/core/utils'
+  import { create_settling_tween, unique_id } from '$lib/plot/core/utils'
 
   let {
     region,
@@ -60,7 +60,7 @@
 
   // Path animation using Tween - create once, update target via effect
   // untrack() explicitly captures initial values (intentional - config set once at mount)
-  const tweened_path = new Tween(
+  const tweened_path = create_settling_tween(
     untrack(() => path),
     untrack(() => ({
       duration: 300,
@@ -69,9 +69,7 @@
     })),
   )
 
-  $effect.pre(() => {
-    tweened_path.target = path
-  })
+  $effect.pre(() => tweened_path.set_target(path))
 
   // Emit helpers - call both region-level and prop-level handlers when distinct
   const emit_hover = (evt: FillHandlerEvent | null) => {

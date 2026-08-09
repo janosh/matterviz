@@ -819,10 +819,6 @@
     height: isFinite(height - pad.t - pad.b) ? Math.max(1, height - pad.t - pad.b) : 1,
   })
 
-  // Calculate plot area center coordinates
-  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
-  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
-
   // Extract color and size values in single pass (used for scale computations)
   let series_value_arrays = $derived.by(() => {
     const color_values: number[] = []
@@ -1517,8 +1513,23 @@
     ...label_placement_config,
   })
 
+  // The solver below scans every point and reruns per pan/zoom frame (it reads the scales),
+  // so skip it entirely on plots with no auto-placed labels. Scans `series_with_ids` rather
+  // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
+  // put this scan back on every frame. Counting labels outside the visible range only means
+  // the solver runs and filters them out itself.
+  let has_auto_placed_labels = $derived(
+    // entries can be null: assigned_series passes non-objects through untouched
+    series_with_ids.some((series_data) => {
+      const label = series_data?.point_label
+      return Array.isArray(label)
+        ? label.some((entry) => entry?.auto_placement && entry.text)
+        : Boolean(label?.auto_placement && label.text)
+    }),
+  )
+
   $effect(() => {
-    if (!width || !height) {
+    if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
       return
     }
@@ -2080,7 +2091,6 @@
                   label={final_label}
                   offset={point.point_offset ?? { x: 0, y: 0 }}
                   point_tween={effective_point_tween}
-                  origin={{ x: plot_center_x, y: plot_center_y }}
                   --point-fill-color={appearance.fill}
                   {...point_events &&
                     Object.fromEntries(

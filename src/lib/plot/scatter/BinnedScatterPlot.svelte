@@ -260,7 +260,7 @@
 
   const selected_pulse = create_pulse_animation(
     () => selected_point_id != null && render_mode === `points`,
-    { step: 0.035 },
+    { step: 0.035, element: () => wrapper },
   )
 
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>

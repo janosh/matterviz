@@ -124,6 +124,7 @@
       {legend_position}
       hide_empty={hide_mode}
       {search_query}
+      virtualize
       selection_mode="multi"
       bind:selected_cells
       bind:pinned_cell

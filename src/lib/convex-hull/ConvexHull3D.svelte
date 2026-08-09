@@ -353,10 +353,10 @@
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
 
-  // Pulsating highlight for selected point
+  // Pulsating highlight for selected point. Each tick repaints the whole hull, so gate on `wrapper`
   const pulse = create_pulse_animation(
     () => selected_entry !== null || highlighted_entries.length > 0,
-    { on_tick: render_once },
+    { on_tick: render_once, element: () => wrapper },
   )
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
@@ -370,7 +370,7 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color] // track reactively
+    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color, hull_edge_color] // track reactively
 
     render_once()
   })
@@ -481,8 +481,7 @@
     ctx.stroke()
 
     // Reset stroke style and line dash for subsequent drawing operations
-    ctx.strokeStyle =
-      getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`) || `#212121`
+    ctx.strokeStyle = hull_edge_color
     ctx.setLineDash([])
   }
 
@@ -916,9 +915,9 @@
   function render_frame(): void {
     if (!ctx || !canvas) return
 
-    // Use CSS dimensions for rendering
-    const display_width = canvas.clientWidth || 600
-    const display_height = canvas.clientHeight || 600
+    // CSS dimensions via the resize observer; clientWidth would reflow on every frame
+    const display_width = canvas_dims.width || 600
+    const display_height = canvas_dims.height || 600
 
     // Clear canvas
     ctx.clearRect(0, 0, display_width, display_height)
@@ -954,6 +953,16 @@
   let dark_mode = $state(is_dark_mode())
   $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
   const text_color = $derived(helpers.get_canvas_text_color(dark_mode))
+  // Resolved once per theme change rather than per draw: the pulse animation redraws every
+  // frame and getComputedStyle on that path forces a style flush each time (as does 4D)
+  let hull_edge_color = $state(`#212121`)
+  $effect(() => {
+    void dark_mode
+    const resolved = canvas
+      ? getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`).trim()
+      : ``
+    hull_edge_color = resolved || `#212121`
+  })
 
   // Performance: Cache canvas dimensions and formation energy range
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })

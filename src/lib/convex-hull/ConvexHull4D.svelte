@@ -279,10 +279,10 @@
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
 
-  // Pulsating highlight for selected point and highlighted entries
+  // Pulsating highlight for selection/highlights. Each tick repaints the whole hull, so gate on `wrapper`
   const pulse = create_pulse_animation(
     () => selected_entry !== null || highlighted_entries.length > 0,
-    { on_tick: render_once },
+    { on_tick: render_once, element: () => wrapper },
   )
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
@@ -655,9 +655,9 @@
   function render_frame(): void {
     if (!ctx || !canvas) return
 
-    // Use CSS dimensions for rendering (already scaled by DPR in context)
-    const display_width = canvas.clientWidth || 600
-    const display_height = canvas.clientHeight || 600
+    // CSS dimensions via the resize observer; clientWidth would reflow on every frame
+    const display_width = canvas_dims.width || 600
+    const display_height = canvas_dims.height || 600
 
     ctx.clearRect(0, 0, display_width, display_height) // Clear canvas
 

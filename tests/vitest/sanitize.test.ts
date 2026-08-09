@@ -7,6 +7,7 @@ import {
   sanitize_svg,
 } from '$lib'
 import type * as Sanitize from '$lib/sanitize'
+import DOMPurify from 'dompurify'
 import { describe, expect, test, vi } from 'vitest'
 
 // XSS payloads that must never survive any sanitizer
@@ -145,6 +146,43 @@ describe(`sanitize_html`, () => {
     expect(result).not.toContain(`<script`)
     expect(result).toContain(`<b>`)
     expect(result).toContain(`<i>`)
+  })
+
+  // Strings with no `<` bypass DOMPurify entirely. These pin that shortcut to what the
+  // sanitizer it skips would have returned — byte for byte, including the characters that
+  // look like they might be escaped on serialization but are not.
+  const inert_inputs = [
+    `Density (g/cm³)`,
+    `He said "hi" — it's fine`,
+    `a > b`,
+    `AT&T`,
+    `&lt;script&gt;alert(1)&lt;/script&gt;`, // entities decode to text, never re-parse as tags
+    `nbsp\u00A0separated`,
+    `   `,
+  ]
+  test.each(inert_inputs)(`matches DOMPurify output for %s`, (input) => {
+    expect(sanitize_html(input)).toBe(DOMPurify().sanitize(input))
+  })
+
+  // Equality alone would still pass if the shortcut were deleted, so assert the bypass:
+  // markup-free input must never reach the sanitizer, markup must always reach it.
+  test(`skips DOMPurify for markup-free input and uses it otherwise`, async () => {
+    vi.resetModules()
+    const sanitize_spy = vi.fn((html: string) => html)
+    vi.doMock(`dompurify`, () => ({
+      default: () => ({ sanitize: sanitize_spy, addHook: () => {} }),
+    }))
+    try {
+      const { sanitize_html: fresh_sanitize } = await import(`$lib/sanitize`)
+      for (const input of inert_inputs) fresh_sanitize(input)
+      expect(sanitize_spy).not.toHaveBeenCalled()
+
+      fresh_sanitize(`<b>bold</b>`)
+      expect(sanitize_spy).toHaveBeenCalled()
+    } finally {
+      vi.doUnmock(`dompurify`)
+      vi.resetModules()
+    }
   })
 })
 

@@ -2594,6 +2594,39 @@ describe(`HeatmapTable`, () => {
       )
     })
 
+    // Clickable rows step by absolute index, not DOM sibling: the element after the last
+    // rendered row is a spacer, so sibling-walking stranded keyboard users at the window edge.
+    it(`arrow keys walk clickable rows across the virtual window boundary`, async () => {
+      mount_table({
+        data: many_rows,
+        columns: two_cols,
+        sort_data: false,
+        virtual: true,
+        onrowclick: () => {},
+      })
+      await tick() // let bind:this resolve the scroll container
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      const row_at = (abs_idx: number) =>
+        document.querySelector(`td[data-row-idx="${abs_idx}"]`)?.closest(`tr`)
+
+      const last_rendered = row_at(min_window - 1)
+      assert(last_rendered)
+      last_rendered.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      await tick()
+
+      expect(scroller.scrollTop).toBeGreaterThan(0) // pulled the next row into the window
+      expect(document.activeElement).toBe(row_at(min_window))
+
+      row_at(min_window)?.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowUp`, bubbles: true }),
+      )
+      await tick()
+      expect(document.activeElement).toBe(row_at(min_window - 1))
+    })
+
     it(`reports the rendered range via on_visible_range`, async () => {
       const on_visible_range = vi.fn()
       mount_table({ data: many_rows, columns: two_cols, on_visible_range, virtual: true })

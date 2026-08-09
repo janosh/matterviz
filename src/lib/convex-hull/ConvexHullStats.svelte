@@ -564,6 +564,7 @@
     data={table_data}
     columns={table_columns}
     initial_sort={{ column: `E<sub>hull</sub>`, direction: `asc` }}
+    virtual
     scroll_style={table_scroll_style}
     style="width: 100%"
     root_style={table_root_style}

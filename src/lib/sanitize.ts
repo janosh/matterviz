@@ -154,6 +154,10 @@ export function sanitize_html(html: unknown): string {
   const str = stringify_html_input(html)
   const cached = sanitize_cache.get(str)
   if (cached !== undefined) return cached
+  // Without a `<` there is no tag for the parser to find, so DOMPurify hands the string back
+  // byte for byte. Axis, legend and colorbar labels are almost all like this, so the shortcut
+  // keeps dompurify off the render path entirely.
+  if (!str.includes(`<`)) return cache_sanitize(str, str)
   const dp = get_purify()
   if (!dp) return cache_sanitize(str, sanitize_allowlist_ssr(str, SAFE_TAG_SET, SAFE_ATTR_SET))
   // oxfmt-ignore

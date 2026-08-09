@@ -30,6 +30,7 @@ test.describe(`Periodic Table`, () => {
     // Get the first periodic table on the page (homepage has multiple periodic tables)
     const periodic_table = page.locator(`.periodic-table`).first()
     await expect(periodic_table).toBeVisible({ timeout: 20000 })
+    await expect(page.getByRole(`button`, { name: /Periodic Table Controls/ })).toBeVisible()
 
     // Wait for periodic table to load by waiting for at least one element tile
     const tiles = periodic_table.locator(`.element-tile`)

@@ -2,6 +2,7 @@
   import type { Vec2 } from '$lib/math'
   import { line_curve_factory } from '$lib/plot/core/fill-utils'
   import type { LineCurve } from '$lib/plot/core/types'
+  import { create_settling_tween } from '$lib/plot/core/utils'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
@@ -9,7 +10,7 @@
   import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
 
   let {
     points,
@@ -81,13 +82,21 @@
   // Tween objects are stateful - create once, update target via effect
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tween_opts = untrack(() => ({ ...default_tween, ...line_tween }))
-  const tweened_line = new Tween(``, tween_opts)
-  const tweened_area = new Tween(``, tween_opts)
+  // Seeded with the path the line already has, so a plot appearing on screen draws it at once
+  // instead of morphing in from empty (interpolatePath re-parses every frame, per line)
+  const tweened_line = create_settling_tween(
+    untrack(() => line_path),
+    tween_opts,
+  )
+  const tweened_area = create_settling_tween(
+    untrack(() => area_path),
+    tween_opts,
+  )
 
   $effect.pre(() => {
     if (tween_disabled) return // paths bind line_path/area_path directly below
-    tweened_line.target = line_path
-    if (show_area) tweened_area.target = area_path
+    tweened_line.set_target(line_path)
+    if (show_area) tweened_area.set_target(area_path)
   })
 
   let line_d = $derived(tween_disabled ? line_path : tweened_line.current)

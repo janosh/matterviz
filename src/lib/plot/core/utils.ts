@@ -1,5 +1,5 @@
 import type { Vec2 } from '$lib/math'
-import type { TweenOptions } from 'svelte/motion'
+import { Tween, type TweenOptions } from 'svelte/motion'
 
 // Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
 // fresh id on every call; callers should store it in a const (e.g. `const id = unique_id('foo')`)
@@ -21,6 +21,33 @@ export const resolve_line_tween = (
   (load.series > LINE_TWEEN.max_series || load.points > LINE_TWEEN.max_points
     ? { duration: 0 }
     : undefined)
+
+// A Tween that snaps to its first target and animates only genuine changes afterwards.
+// Svelte's Tween restarts on every `target` assignment even when the value is unchanged, and
+// the first assignment after mount is the plot settling on its measured size, not the data
+// moving. Both would animate markers and lines in from somewhere they never were.
+export function create_settling_tween<T>(
+  initial: T,
+  options: TweenOptions<T>,
+  is_same: (left: T, right: T) => boolean = Object.is,
+): { readonly current: T; set_target: (value: T) => void } {
+  const tween = new Tween(initial, options)
+  // Tracked here rather than read off tween.target, which is reactive state: reading it in
+  // the caller's effect only to write it back makes the effect depend on itself.
+  let target = initial
+  let settled = false
+  return {
+    get current() {
+      return tween.current
+    },
+    set_target(value: T) {
+      if (is_same(target, value)) return
+      target = value
+      void tween.set(value, settled ? undefined : { duration: 0 })
+      settled = true
+    },
+  }
+}
 
 export function calc_auto_range(values: number[]): Vec2 {
   const finite_values = values.filter(Number.isFinite)

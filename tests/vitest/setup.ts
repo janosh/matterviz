@@ -648,6 +648,33 @@ export const trigger_resize_observer = (element: Element): void => {
 }
 globalThis.ResizeObserver = TestResizeObserver
 
+// IntersectionObserver mock: happy-dom ships a constructor whose callback never fires, so
+// visibility-gated code (create_pulse_animation) can't be exercised. Report visible on observe
+// as a real browser does, and let tests dispatch later verdicts. One callback per element is
+// enough — production attaches a single observer per wrapper.
+const intersection_callbacks = new Map<Element, IntersectionObserverCallback>()
+export const trigger_intersection = (target: Element, isIntersecting: boolean): void =>
+  intersection_callbacks.get(target)?.(
+    [{ target, isIntersecting } as IntersectionObserverEntry],
+    null as never, // the observer argument, which no caller under test reads
+  )
+globalThis.IntersectionObserver = class {
+  readonly #observed: Element[] = []
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe(target: Element): void {
+    this.#observed.push(target)
+    intersection_callbacks.set(target, this.callback)
+    queueMicrotask(() => trigger_intersection(target, true))
+  }
+  unobserve(target: Element): void {
+    intersection_callbacks.delete(target)
+  }
+  disconnect(): void {
+    for (const target of this.#observed) intersection_callbacks.delete(target)
+    this.#observed.length = 0
+  }
+} as unknown as typeof IntersectionObserver
+
 // Mock Web Animations API for Svelte transitions (not available in jsdom)
 // The mock immediately triggers onfinish to complete transitions synchronously
 Element.prototype.animate = vi.fn().mockImplementation(() => {
