@@ -58,18 +58,18 @@
     region.hover_style?.cursor ?? (is_clickable ? `pointer` : `default`),
   )
 
-  // Path animation using Tween - create once, update target via effect
-  // untrack() explicitly captures initial values (intentional - config set once at mount)
+  // untrack: the seed is the path the region already has, so one appearing on screen draws it
+  // at once rather than morphing in from empty. Only the static defaults go in at construction
+  // — Tween.set merges the per-call options over them, so a `tween_options` of `{ duration: 0 }`
+  // captured here would outlive the condition that set it.
+  const default_tween = { duration: 300, interpolate: interpolatePath }
   const tweened_path = create_settling_tween(
     untrack(() => path),
-    untrack(() => ({
-      duration: 300,
-      interpolate: interpolatePath,
-      ...tween_options,
-    })),
+    default_tween,
   )
 
-  $effect.pre(() => tweened_path.set_target(path))
+  // per call, so a plot can drop the morph for the duration of a drag the way its lines do
+  $effect.pre(() => tweened_path.set_target(path, tween_options))
 
   // Emit helpers - call both region-level and prop-level handlers when distinct
   const emit_hover = (evt: FillHandlerEvent | null) => {

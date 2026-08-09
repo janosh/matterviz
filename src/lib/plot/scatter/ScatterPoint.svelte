@@ -63,10 +63,15 @@
   const coords = $derived({ x: x + offset.x, y: y + offset.y })
   // Seeded at the marker's own position so a plot appearing on screen draws it where the
   // data is instead of animating every point in from elsewhere.
+  // Only the static defaults are construction options: Tween.set merges the per-call ones over
+  // them, so a `point_tween` of `{ duration: 0 }` captured here (canvas marker mode) would
+  // survive the switch back to SVG markers and strand those points unanimated.
+  // Object.is, not ===, so a NaN coordinate compares equal to itself instead of retargeting
+  // every render (BarPlot passes coordinates through unclamped).
   const tweened_coords = create_settling_tween(
     untrack(() => coords),
-    { ...default_tween_props, ...point_tween },
-    (left, right) => left.x === right.x && left.y === right.y,
+    default_tween_props,
+    (left, right) => Object.is(left.x, right.x) && Object.is(left.y, right.y),
   )
 
   // point_tween passed per call, not just at construction, so a plot can switch it to

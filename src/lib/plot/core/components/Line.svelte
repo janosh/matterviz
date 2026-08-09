@@ -71,36 +71,36 @@
     easing: linear,
     interpolate: interpolatePath,
   }
-  // Path morphing via interpolatePath is costly (parse + resample + re-serialize
-  // every frame, per line). When the tween is disabled (duration <= 0) bind the
-  // path directly and skip the Tween entirely for zero per-frame cost.
+  // Morphing via interpolatePath costs a parse + resample + re-serialize every frame, per
+  // line, so `duration <= 0` renders line_path/area_path directly below instead.
   let tween_disabled = $derived.by(() => {
     const duration = line_tween.duration ?? default_tween.duration
     return typeof duration === `number` && duration <= 0
   })
 
-  // Tween objects are stateful - create once, update target via effect
-  // untrack() explicitly captures initial tween config (intentional - config set once at mount)
-  const tween_opts = untrack(() => ({ ...default_tween, ...line_tween }))
-  // Seeded with the path the line already has, so a plot appearing on screen draws it at once
-  // instead of morphing in from empty (interpolatePath re-parses every frame, per line)
+  // untrack: the seed is the path the line already has, so a plot appearing on screen draws it
+  // at once rather than morphing in from empty. Only the static defaults are handed over as
+  // construction options — Tween.set merges the per-call options over them, so a `line_tween`
+  // of `{ duration: 0 }` captured here would outlive the condition that set it and leave the
+  // line permanently unmorphed once the plot lightens up again.
   const tweened_line = create_settling_tween(
     untrack(() => line_path),
-    tween_opts,
+    default_tween,
   )
   const tweened_area = create_settling_tween(
     untrack(() => area_path),
-    tween_opts,
+    default_tween,
   )
 
   $effect.pre(() => {
-    // Tracked even while disabled: the template binds the raw paths then, but `current` would
-    // stay frozen at whatever it last animated to, so re-enabling would jump back there and
-    // morph forward again. Zero duration keeps it in step without animating. Options are per
-    // call so a plot can drop the morph while the view is being dragged.
+    // Kept in step even while disabled: `current` would otherwise freeze at whatever it last
+    // animated to, and re-enabling would jump back there and morph forward again. Options go
+    // per call so a plot can also drop the morph for the duration of a drag.
     const live = tween_disabled ? { duration: 0 } : line_tween
     tweened_line.set_target(line_path, live)
-    if (show_area) tweened_area.set_target(area_path, live)
+    // unguarded by show_area for the same reason: area_path is already `` while hidden, and
+    // skipping the retarget would freeze the tween at a stale path to morph back from
+    tweened_area.set_target(area_path, live)
   })
 
   let line_d = $derived(tween_disabled ? line_path : tweened_line.current)

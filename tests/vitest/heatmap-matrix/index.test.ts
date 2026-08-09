@@ -10,6 +10,7 @@ import {
   ORDERING_LABELS,
   rows_to_csv,
 } from '$lib/heatmap-matrix'
+import { window_axis_tracks } from '$lib/heatmap-matrix/shared'
 import { describe, expect, test } from 'vitest'
 
 describe(`elements_to_axis`, () => {
@@ -154,6 +155,51 @@ describe(`ORDERING_LABELS`, () => {
 describe(`make_color_override_key`, () => {
   test(`builds stable unambiguous key format`, () => {
     expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe${COLOR_OVERRIDE_KEY_SEPARATOR}O`)
+  })
+})
+
+describe(`window_axis_tracks`, () => {
+  // 20 tracks of 10px, of which items 0-9 are empty, so the 10 visible items live on tracks
+  // 10-19. A 100px viewport scrolled to 100px shows exactly those tracks.
+  const visible = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+  const opts = {
+    track_count: 20,
+    stride: 10,
+    scroll: 100,
+    grid_offset: 0,
+    viewport_extent: 100,
+    overscan: 0,
+  }
+
+  // Under `gaps` the grid keeps a track for every item, so position in `visible` and track
+  // number differ by the number of hidden items before it. Slicing by position renders items
+  // 10-19 as if they sat on tracks 0-9, i.e. off the left of the viewport.
+  test(`selects by track index when empty tracks are kept`, () => {
+    expect(window_axis_tracks(visible, { ...opts, keeps_empty_tracks: true })).toEqual(visible)
+  })
+
+  test(`selects by position when empty tracks are dropped`, () => {
+    // compact mode renumbers the tracks, so the visible items are the ones at positions 10-19
+    // of a longer list — here there are none, which is exactly what the viewport shows
+    expect(window_axis_tracks(visible, { ...opts, keeps_empty_tracks: false })).toEqual([])
+  })
+
+  test.each([
+    // tracks [0, 15) once overscan is clamped at the near edge, so items 10-14
+    [`clamps the start at zero`, { scroll: 0, overscan: 5 }, [10, 11, 12, 13, 14]],
+    // tracks [14, 20) once overscan is clamped at the far edge, so items 14-19
+    [
+      `clamps the end at the track count`,
+      { scroll: 190, overscan: 5 },
+      [14, 15, 16, 17, 18, 19],
+    ],
+  ])(`%s`, (_name, overrides, expected) => {
+    const windowed = window_axis_tracks(visible, {
+      ...opts,
+      ...overrides,
+      keeps_empty_tracks: true,
+    })
+    expect(windowed).toEqual(expected)
   })
 })
 

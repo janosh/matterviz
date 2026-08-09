@@ -4,6 +4,12 @@ import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig, LabelPlacementWeights } from '$lib/plot/core/types'
 import { is_time_scale } from '$lib/plot/core/types'
 
+// Anneal budget and starting temperature for a re-solve that inherits the previous layout.
+// Both are far below the cold defaults (2000 iterations, temperature 1): the layout is
+// already good, so the pass only has to nudge labels the frame's change actually disturbed.
+export const WARM_SA_ITERATIONS = 12
+export const WARM_START_TEMP = 0.05
+
 export interface Rect {
   x: number
   y: number
@@ -237,119 +243,87 @@ export function generate_candidates(
 // bitset rather than a list purely to keep candidates in ascending index order: the sums in
 // compute_delta_energy must stay float-identical to the unpruned scan. Requires
 // labels[idx].anchor_idx === idx, which the SA loop below guarantees.
-// Internal to this module; the two builders are exported only so the equivalence test can
-// score a move the same way the solver does.
-export interface NeighborIndex {
-  size: number
-  cols: number
-  rows: number
-  origin_x: number
-  origin_y: number
-  buckets: Int32Array[]
-  reach: number
-  bits: Uint32Array
-  candidates: Int32Array
-}
+// Exported only so the equivalence test can score a move the same way the solver does.
+export type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
-export function build_neighbor_index(anchors: AnchorInfo[]): NeighborIndex {
+export function create_neighbor_index(anchors: AnchorInfo[]) {
+  // `far_*` rather than max_x/max_y so `collect`'s query box below doesn't shadow them
   let origin_x = Infinity,
     origin_y = Infinity,
-    max_x = -Infinity,
-    max_y = -Infinity
+    far_x = -Infinity,
+    far_y = -Infinity
   for (const { x, y } of anchors) {
     origin_x = Math.min(origin_x, x)
     origin_y = Math.min(origin_y, y)
-    max_x = Math.max(max_x, x)
-    max_y = Math.max(max_y, y)
+    far_x = Math.max(far_x, x)
+    far_y = Math.max(far_y, y)
   }
   // ~1 anchor per cell, measured fastest at every size against 2.25, 4 and 9 per cell: a
   // query spans many cells, so finer cells buy a tighter box for more than they cost to walk
   const size = Math.max(
     1,
-    Math.sqrt(((max_x - origin_x) * (max_y - origin_y)) / anchors.length),
+    Math.sqrt(((far_x - origin_x) * (far_y - origin_y)) / anchors.length),
   )
-  const cols = Math.floor((max_x - origin_x) / size) + 1
-  const rows = Math.floor((max_y - origin_y) / size) + 1
+  const cols = Math.floor((far_x - origin_x) / size) + 1
+  const rows = Math.floor((far_y - origin_y) / size) + 1
   const lists: number[][] = Array.from({ length: cols * rows }, () => [])
   anchors.forEach(({ x, y }, idx) =>
     lists[Math.floor((y - origin_y) / size) * cols + Math.floor((x - origin_x) / size)].push(
       idx,
     ),
   )
+  const buckets = lists.map((bucket) => Int32Array.from(bucket))
+  const bits = new Uint32Array((anchors.length + 31) >>> 5)
+  const candidates = new Int32Array(anchors.length)
+  let reach = 0
+
+  // Grows `reach` to cover `label`, which every moved label needs before the next query
+  const widen = (label: LabelState) => {
+    const { x, y } = anchors[label.anchor_idx]
+    reach = Math.max(
+      reach,
+      Math.abs(label.x - x),
+      Math.abs(label.x + label.w - x),
+      Math.abs(label.y - y),
+      Math.abs(label.y + label.h - y),
+    )
+  }
+
   return {
-    size,
-    cols,
-    rows,
-    origin_x,
-    origin_y,
-    buckets: lists.map((bucket) => Int32Array.from(bucket)),
-    reach: 0,
-    bits: new Uint32Array((anchors.length + 31) >>> 5),
-    candidates: new Int32Array(anchors.length),
-  }
-}
-
-// Grows `reach` to cover `label`, which every moved label needs before the next query
-function widen_reach(index: NeighborIndex, label: LabelState, anchor: AnchorInfo): void {
-  index.reach = Math.max(
-    index.reach,
-    Math.abs(label.x - anchor.x),
-    Math.abs(label.x + label.w - anchor.x),
-    Math.abs(label.y - anchor.y),
-    Math.abs(label.y + label.h - anchor.y),
-  )
-}
-
-// Re-derives `reach` from scratch, which callers must do once before their first query.
-// Widening alone never shrinks, so one label that wandered and came back would inflate every
-// later query; call this periodically to undo that. In between, an over-estimate only costs
-// extra candidates, it can never drop a neighbour.
-export function reset_reach(
-  index: NeighborIndex,
-  labels: LabelState[],
-  anchors: AnchorInfo[],
-): void {
-  // Marker circles reach `radius` past their anchor, so that is the floor
-  index.reach = anchors.reduce((widest, { radius }) => Math.max(widest, radius), 0)
-  for (const label of labels) widen_reach(index, label, anchors[label.anchor_idx])
-}
-
-// Fills `index.candidates` with the anchors whose bucket the query box can reach, ascending
-function collect_candidates(
-  index: NeighborIndex,
-  min_x: number,
-  max_x: number,
-  min_y: number,
-  max_y: number,
-): number {
-  const { size, cols, rows, origin_x, origin_y, reach } = index
-  const { buckets, bits, candidates } = index
-  const col_lo = Math.max(0, Math.floor((min_x - reach - origin_x) / size))
-  const col_hi = Math.min(cols - 1, Math.floor((max_x + reach - origin_x) / size))
-  const row_lo = Math.max(0, Math.floor((min_y - reach - origin_y) / size))
-  const row_hi = Math.min(rows - 1, Math.floor((max_y + reach - origin_y) / size))
-  let word_lo = bits.length
-  let word_hi = -1
-  for (let row = row_lo; row <= row_hi; row++) {
-    for (let col = col_lo; col <= col_hi; col++) {
-      for (const idx of buckets[row * cols + col]) {
-        const word = idx >>> 5
-        bits[word] |= 1 << (idx & 31)
-        word_lo = Math.min(word_lo, word)
-        word_hi = Math.max(word_hi, word)
+    candidates,
+    widen,
+    // Re-derives `reach` from scratch, which callers must do once before their first query.
+    // Widening alone never shrinks, so one label that wandered and came back would inflate
+    // every later query; call this periodically to undo that. In between an over-estimate
+    // only costs extra candidates, it can never drop a neighbour.
+    reset(labels: LabelState[]) {
+      // Marker circles reach `radius` past their anchor, so that is the floor
+      reach = anchors.reduce((widest, { radius }) => Math.max(widest, radius), 0)
+      for (const label of labels) widen(label)
+    },
+    // Fills `candidates` with the anchors whose bucket the box can reach, ascending
+    collect(min_x: number, max_x: number, min_y: number, max_y: number): number {
+      const col_lo = Math.max(0, Math.floor((min_x - reach - origin_x) / size))
+      const col_hi = Math.min(cols - 1, Math.floor((max_x + reach - origin_x) / size))
+      const row_lo = Math.max(0, Math.floor((min_y - reach - origin_y) / size))
+      const row_hi = Math.min(rows - 1, Math.floor((max_y + reach - origin_y) / size))
+      for (let row = row_lo; row <= row_hi; row++) {
+        for (let col = col_lo; col <= col_hi; col++) {
+          for (const idx of buckets[row * cols + col]) bits[idx >>> 5] |= 1 << (idx & 31)
+        }
       }
-    }
+      let count = 0
+      for (let word = 0; word < bits.length; word++) {
+        let mask = bits[word]
+        bits[word] = 0
+        while (mask !== 0) {
+          candidates[count++] = (word << 5) | (31 - Math.clz32(mask & -mask))
+          mask &= mask - 1
+        }
+      }
+      return count
+    },
   }
-  let count = 0
-  for (let word = word_lo; word <= word_hi; word++) {
-    let mask = bits[word]
-    bits[word] = 0
-    while (mask !== 0) {
-      candidates[count++] = (word << 5) | (31 - Math.clz32(mask & -mask))
-      mask &= mask - 1
-    }
-  }
-  return count
 }
 
 // Compute energy delta when only label at `changed_idx` moves
@@ -396,7 +370,7 @@ export function compute_delta_energy(
   // Everything outside the box contributes zero, so the index skips most of it up front and
   // the box test only has to reject what survives its buckets.
   const { candidates } = neighbors
-  const count = collect_candidates(neighbors, box_min_x, box_max_x, box_min_y, box_max_y)
+  const count = neighbors.collect(box_min_x, box_max_x, box_min_y, box_max_y)
 
   // Marker overlap change
   for (let pos = 0; pos < count; pos++) {
@@ -531,6 +505,10 @@ export function compute_label_positions(
     height: number
     pad: { t: number; b: number; l: number; r: number }
   },
+  // In/out: each label's offset from its anchor, as solved last time. Supplying it turns a
+  // re-solve into a polish of the previous layout instead of a fresh search — see the greedy
+  // init below. Overwritten with this solve's offsets, so one Map per plot, reused per frame.
+  warm_start?: Map<string, Point2D>,
 ): Record<string, Point2D> {
   const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis } = scales
   const { width, height, pad } = bounds
@@ -594,10 +572,14 @@ export function compute_label_positions(
   }
 
   const num_labels = label_infos.length
-  if (num_labels === 0) return {}
+  if (num_labels === 0) {
+    warm_start?.clear()
+    return {}
+  }
 
   // Fallback: too many labels, just offset to the right with bounds clamping
   if (config.max_labels && num_labels > config.max_labels) {
+    warm_start?.clear() // positions below are a pure function of the anchors, nothing to carry
     return Object.fromEntries(
       label_infos.map((info) => [
         info.id,
@@ -618,9 +600,33 @@ export function compute_label_positions(
   const weights: Required<LabelPlacementWeights> = { ...DEFAULT_WEIGHTS, ...config.weights }
   const anchors = label_infos.map((info) => info.anchor)
 
-  // Greedy initialization: pick best candidate per label
-  const labels: LabelState[] = []
+  // Labels carried over from the previous solve keep their offset from the anchor. A pan
+  // translates every anchor by the same vector, so replaying the offsets reproduces the
+  // previous layout exactly and the anneal below only has to fix what genuinely changed
+  // (zoom crowding, the plot edges, labels that just scrolled into view).
+  const labels: LabelState[] = Array.from({ length: num_labels })
+  const placed: LabelState[] = []
+  const cold_labels: number[] = []
   for (let idx = 0; idx < num_labels; idx++) {
+    const { id, width: lw, height: lh, anchor } = label_infos[idx]
+    const offset = warm_start?.get(id)
+    if (!offset) {
+      cold_labels.push(idx)
+      continue
+    }
+    labels[idx] = {
+      x: anchor.x + offset.x - lw / 2,
+      y: anchor.y + offset.y - lh / 2,
+      w: lw,
+      h: lh,
+      anchor_idx: idx,
+    }
+    placed.push(labels[idx])
+  }
+
+  // Greedy initialization for the rest: pick best candidate per label. With nothing carried
+  // over this runs over every label in order, scoring against those already placed.
+  for (const idx of cold_labels) {
     const { candidates, width: lw, height: lh, anchor } = label_infos[idx]
     let best_candidate = candidates[0]
     let best_score = Infinity
@@ -629,8 +635,8 @@ export function compute_label_positions(
       const test_rect: Rect = { x: candidate.x, y: candidate.y, w: lw, h: lh }
       let score = weights.bounds * rect_out_of_bounds_area(test_rect, plot_bounds)
 
-      for (const placed of labels) {
-        score += weights.overlap * rect_overlap_area(test_rect, placed)
+      for (const other of placed) {
+        score += weights.overlap * rect_overlap_area(test_rect, other)
       }
       for (const marker of anchors) {
         score +=
@@ -646,11 +652,20 @@ export function compute_label_positions(
       }
     }
 
-    labels.push({ x: best_candidate.x, y: best_candidate.y, w: lw, h: lh, anchor_idx: idx })
+    labels[idx] = { x: best_candidate.x, y: best_candidate.y, w: lw, h: lh, anchor_idx: idx }
+    placed.push(labels[idx])
   }
 
-  // Simulated annealing
-  const sa_iterations = config.sa_iterations ?? 2000
+  // Simulated annealing. A warm re-solve is a polish, not a search: it gets a fraction of the
+  // step budget, and starts cool because full heat would shake apart a good layout before
+  // cooling could settle it again.
+  // Nearly all carried over, not merely one: a single restored label would otherwise put every
+  // new one on a polish budget, so the frame after a large data change would lay out badly.
+  const is_warm = cold_labels.length * 4 <= num_labels
+  const sa_iterations =
+    (is_warm ? (config.warm_sa_iterations ?? WARM_SA_ITERATIONS) : config.sa_iterations) ??
+    2000
+  const start_temp = is_warm ? WARM_START_TEMP : 1
   const total_steps = sa_iterations * num_labels
   const cooling_rate = 1 / total_steps
 
@@ -665,12 +680,12 @@ export function compute_label_positions(
   const old_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
   const new_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
 
-  const neighbors = build_neighbor_index(anchors)
+  const neighbors = create_neighbor_index(anchors)
 
   for (let step = 0; step < total_steps; step++) {
     // once per sweep, which also seeds the reach on step 0
-    if (step % num_labels === 0) reset_reach(neighbors, labels, anchors)
-    const temperature = Math.max(0.001, 1.0 - step * cooling_rate)
+    if (step % num_labels === 0) neighbors.reset(labels)
+    const temperature = Math.max(0.001, start_temp * (1.0 - step * cooling_rate))
     const label_idx = Math.floor(next_random() * num_labels)
     const current = labels[label_idx]
     copy_state(old_scratch, current)
@@ -704,15 +719,21 @@ export function compute_label_positions(
     if (delta < 0 || next_random() < Math.exp(-delta / (temperature * 10 + 0.1))) {
       current.x = new_scratch.x
       current.y = new_scratch.y
-      widen_reach(neighbors, current, anchors[label_idx])
+      neighbors.widen(current)
     }
   }
 
   // Return label center positions (matching existing API)
-  return Object.fromEntries(
-    labels.map((label, idx) => [
-      label_infos[idx].id,
-      { x: label.x + label.w / 2, y: label.y + label.h / 2 },
-    ]),
-  )
+  const centers = labels.map((label) => ({
+    x: label.x + label.w / 2,
+    y: label.y + label.h / 2,
+  }))
+  if (warm_start) {
+    // Rebuilt, not merged: labels that scrolled out of view or got culled must not linger
+    warm_start.clear()
+    for (const [idx, { id, anchor }] of label_infos.entries()) {
+      warm_start.set(id, { x: centers[idx].x - anchor.x, y: centers[idx].y - anchor.y })
+    }
+  }
+  return Object.fromEntries(label_infos.map(({ id }, idx) => [id, centers[idx]]))
 }

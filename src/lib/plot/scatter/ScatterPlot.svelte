@@ -1438,10 +1438,10 @@
   // them trailing the axes while hover hit-testing already uses the live scales, so snap
   // for the duration of the drag. Declared here because both read pan_zoom.
   const effective_point_tween = $derived(
-    use_canvas_markers || pan_zoom.is_pan_dragging ? { duration: 0 } : point_tween,
+    use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
   )
   const effective_line_tween = $derived(
-    pan_zoom.is_pan_dragging
+    pan_zoom.is_panning
       ? { duration: 0 }
       : resolve_line_tween(line_tween, line_tween_load),
   )
@@ -1539,9 +1539,15 @@
     }),
   )
 
+  // Last solve's label offsets, handed back so each pan/zoom frame polishes the previous
+  // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
+  // both reads and writes it, and tracking that would re-trigger the effect forever.
+  const label_offsets = new Map<string, Point2D>()
+
   $effect(() => {
     if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
+      label_offsets.clear()
       return
     }
 
@@ -1550,6 +1556,7 @@
       actual_label_config,
       { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis: final_x_axis },
       { width, height, pad },
+      label_offsets,
     )
   })
 
@@ -1701,6 +1708,7 @@
         {clip_path_id}
         {x_scale_fn}
         {y_scale_fn}
+        tween_options={effective_line_tween}
         is_hovered={hovered_fill_key === fill.hover_key}
         on_click={(event: FillHandlerEvent) => {
           fill.on_click?.(event)
@@ -1738,6 +1746,7 @@
     pan_zoom.on_window_key_down(evt)
   }}
   onkeyup={pan_zoom.on_window_key_up}
+  onblur={pan_zoom.on_window_blur}
 />
 
 <div
@@ -1771,7 +1780,7 @@
       onmousedown={pan_zoom.on_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
+        if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
         end_queued_mouse_move(false)

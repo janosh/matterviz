@@ -1,12 +1,16 @@
 import { ElementScatter } from '$lib'
+import { element_data } from '$lib/element'
+import type { InternalPoint } from '$lib/plot'
+import { selected } from '$lib/state.svelte'
 import { mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test } from 'vitest'
 import { bind_props, expect_plot_controls } from '../setup'
 
 // Atomic radii for first 10 elements (H through Ne)
 const y_values = [53, 31, 167, 112, 87, 77, 75, 73, 71, 69]
 
 describe(`ElementScatter`, () => {
+  afterEach(() => (selected.element = null)) // module-global, so don't leak between tests
   const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
     document.body.replaceChildren()
     mount(ElementScatter, {
@@ -59,5 +63,24 @@ describe(`ElementScatter`, () => {
     await tick()
 
     await expect_plot_controls(document, controls_state, `element`)
+  })
+
+  // The plot styles a marker as hovered off `tooltip_point` alone, so leaving it set once the
+  // pointer has left the periodic table strands that marker enlarged and brightened.
+  test(`mirrors the hovered element tile onto tooltip_point and clears it again`, async () => {
+    document.body.replaceChildren()
+    const state: { tooltip_point: InternalPoint | null } = { tooltip_point: null }
+    mount(ElementScatter, {
+      target: document.body,
+      props: bind_props({ y: y_values }, state),
+    })
+
+    selected.element = element_data.find((elem) => elem.number === 6) ?? null
+    await tick()
+    expect(state.tooltip_point).toMatchObject({ x: 6, y: 77, point_idx: 5 })
+
+    selected.element = null // pointer left the table
+    await tick()
+    expect(state.tooltip_point).toBeNull()
   })
 })

@@ -18,6 +18,9 @@ import type { AxisRanges, InitialRanges, PanConfig, ScaleType } from '$lib/plot/
 type Axis = `x` | `x2` | `y` | `y2`
 type RectDragState = { start: Point2D; current: Point2D; bounds: DOMRect }
 const AXES = [`x`, `x2`, `y`, `y2`] as const
+// How long after the last wheel notch a wheel pan still counts as in progress. Long enough to
+// bridge the gap between notches of one gesture, short enough that animation resumes promptly.
+const WHEEL_PAN_IDLE_MS = 150
 
 export interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
@@ -38,7 +41,7 @@ export interface PanZoomOptions {
 export function create_pan_zoom(opts: PanZoomOptions): {
   readonly drag_start: Point2D | null
   readonly drag_current: Point2D | null
-  readonly is_pan_dragging: boolean
+  readonly is_panning: boolean
   readonly cursor: string
   set_focused: (focused: boolean) => void
   on_mouse_down: (evt: MouseEvent) => void
@@ -49,6 +52,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   on_key_down: (evt: KeyboardEvent) => void
   on_window_key_down: (evt: KeyboardEvent) => void
   on_window_key_up: (evt: KeyboardEvent) => void
+  on_window_blur: () => void
   reset_view: () => void
   destroy: () => void
 } {
@@ -121,8 +125,24 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }
   }
 
+  // Wheel panning has no gesture end to listen for, so it reports itself as active for a
+  // short window after the last notch. Consumers use this to drop animation for the duration
+  // of an interaction, and a tween restarted per notch would otherwise trail the axes.
+  let wheel_pan_until = $state(0)
+  let wheel_pan_timer: ReturnType<typeof setTimeout> | undefined
+  const mark_wheel_panning = () => {
+    wheel_pan_until = Date.now() + WHEEL_PAN_IDLE_MS
+    clearTimeout(wheel_pan_timer)
+    // a timer, not just the timestamp: nothing else would invalidate the derived read
+    wheel_pan_timer = setTimeout(() => (wheel_pan_until = 0), WHEEL_PAN_IDLE_MS)
+  }
+
   // Pan drag handler (drag direction inverted on x for natural pan feel)
   const on_pan_move = (evt: MouseEvent) => {
+    // A mouseup delivered outside the window (or swallowed by a native dialog) never reaches
+    // on_pan_end, which would leave the plot panning on bare mouse moves and, because
+    // consumers gate animation and hover on is_panning, permanently frozen and untooltipped.
+    if (!(evt.buttons & 1)) return on_pan_end()
     if (!pan_drag_state) return
     const sensitivity = opts.pan()?.drag_sensitivity ?? 1
     pan_all_axes(
@@ -178,6 +198,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (pan_cfg?.enabled === false || !is_focused || !shift_held) return
 
     evt.preventDefault()
+    mark_wheel_panning()
     const dims = opts.plot_bounds()
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
     const ranges = opts.ranges()
@@ -280,8 +301,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     get drag_current() {
       return drag_state?.current ?? null
     },
-    get is_pan_dragging() {
-      return pan_drag_state !== null
+    // All three pan gestures, not just the shift-drag: a wheel or two-finger pan retargets
+    // every marker per frame too, and animating that leaves them trailing the axes while
+    // hit-testing already uses the live scales.
+    get is_panning() {
+      return pan_drag_state !== null || touch_state !== null || wheel_pan_until > Date.now()
     },
     get cursor() {
       if (pan_drag_state) return `grabbing`
@@ -302,6 +326,12 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     on_window_key_up: (evt: KeyboardEvent) => {
       if (evt.key === `Shift`) shift_held = false
     },
+    // Tabbing away eats the keyup, latching shift_held on: the wheel would then silently pan
+    // the data and swallow page scroll, and the cursor would promise a pan that mousedown
+    // (which reads the live evt.shiftKey) does not deliver.
+    on_window_blur: () => {
+      shift_held = false
+    },
     reset_view: () => opts.on_reset(),
     // Tear down any window listeners + cursor override if the component unmounts
     // mid-drag (mouseup/panend would otherwise never fire, leaking listeners and a
@@ -311,6 +341,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
         [on_window_mouse_move, on_pan_move],
         [on_window_mouse_up, on_pan_end],
       )
+      clearTimeout(wheel_pan_timer)
       drag_state = null
       pan_drag_state = null
       touch_state = null

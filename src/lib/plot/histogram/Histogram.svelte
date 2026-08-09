@@ -761,6 +761,7 @@
     pan_zoom.on_window_key_down(evt)
   }}
   onkeyup={pan_zoom.on_window_key_up}
+  onblur={pan_zoom.on_window_blur}
 />
 
 <div

@@ -23,7 +23,7 @@
     SymmetricMode,
   } from './index'
   import { matrix_to_rows, rows_to_csv } from './index'
-  import { make_color_override_key } from './shared'
+  import { make_color_override_key, window_axis_tracks } from './shared'
 
   type CellValue = number | string | null
   type ColorBarOrientation = `vertical` | `horizontal`
@@ -546,40 +546,45 @@
     ),
   )
 
-  // Zero is a legitimate size (a gap of `0px` is common), so only non-numeric or negative
-  // input falls back. Treating 0 as invalid inflated the stride to 12px and made the
-  // virtual window cover a fraction of the cells actually on screen.
-  function parse_px_size(size: string): number {
-    const trimmed = size.replace(`px`, ``).trim()
-    const parsed = Number(trimmed)
-    // `trimmed &&` because Number('') is 0, which would read as a valid zero size
-    return trimmed && Number.isFinite(parsed) && parsed >= 0 ? parsed : 12
+  // Zero is a legitimate size (a gap of `0px` is common), so only blank, negative or non-px
+  // input falls back. Treating 0 as invalid inflated the stride to 12px and made the virtual
+  // window cover a fraction of the cells actually on screen.
+  const parse_px_size = (size: string): number => {
+    const parsed = Number(/^(?<num>[\d.]+)(?:px)?$/.exec(size.trim())?.groups?.num)
+    return Number.isFinite(parsed) ? parsed : 12
   }
 
   let tile_size_px = $derived(parse_px_size(tile_size))
   let gap_px = $derived(parse_px_size(gap))
   // never 0: the window maths divides by it
   let tile_stride_px = $derived(Math.max(1, tile_size_px + gap_px))
-  let render_vis_x = $derived.by(() => {
-    if (!virtualize) return vis_x
-    const raw_start_pos =
-      Math.floor((scroll_left - grid_offset_left) / tile_stride_px) - overscan
-    const start_pos = Math.max(0, raw_start_pos)
-    const raw_end_pos =
-      Math.ceil((scroll_left - grid_offset_left + viewport_width) / tile_stride_px) + overscan
-    const end_pos = Math.min(vis_x.length, raw_end_pos)
-    return vis_x.slice(start_pos, end_pos)
+  const window_opts = $derived({
+    stride: tile_stride_px,
+    overscan,
+    keeps_empty_tracks: gaps_mode,
   })
-  let render_vis_y = $derived.by(() => {
-    if (!virtualize) return vis_y
-    const raw_start_pos =
-      Math.floor((scroll_top - grid_offset_top) / tile_stride_px) - overscan
-    const start_pos = Math.max(0, raw_start_pos)
-    const raw_end_pos =
-      Math.ceil((scroll_top - grid_offset_top + viewport_height) / tile_stride_px) + overscan
-    const end_pos = Math.min(vis_y.length, raw_end_pos)
-    return vis_y.slice(start_pos, end_pos)
-  })
+  let render_vis_x = $derived(
+    virtualize
+      ? window_axis_tracks(vis_x, {
+          ...window_opts,
+          track_count: visible_col_count,
+          scroll: scroll_left,
+          grid_offset: grid_offset_left,
+          viewport_extent: viewport_width,
+        })
+      : vis_x,
+  )
+  let render_vis_y = $derived(
+    virtualize
+      ? window_axis_tracks(vis_y, {
+          ...window_opts,
+          track_count: visible_row_count,
+          scroll: scroll_top,
+          grid_offset: grid_offset_top,
+          viewport_extent: viewport_height,
+        })
+      : vis_y,
+  )
 
   const is_selected_cell = (x_idx: number, y_idx: number): boolean =>
     selected_cell_key_set.has(cell_pos_key(x_idx, y_idx))

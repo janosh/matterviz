@@ -680,6 +680,42 @@ describe(`BinnedScatterPlot`, () => {
     expect(radii).toHaveLength(after_pause)
   })
 
+  // The pulsing marker sits on its own canvas, so a tick repaints one circle rather than
+  // every point in the plot. Counted per canvas because both share the mocked getContext.
+  test(`pulse ticks repaint only the marked-points overlay`, async () => {
+    const clears = { base: 0, overlay: 0 }
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
+      function (this: HTMLCanvasElement) {
+        const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`
+        return {
+          font: ``,
+          measureText: () => ({ width: 0 }),
+          clearRect: () => clears[layer]++,
+          ...Object.fromEntries(
+            `setTransform save beginPath rect clip restore fillRect arc fill stroke`
+              .split(` `)
+              .map((name) => [name, vi.fn()]),
+          ),
+        } as unknown as CanvasRenderingContext2D
+      },
+    )
+
+    mount_plot({
+      series: [{ x: [0.4, 0.6], y: [0.5, 0.5], point_ids: [`selected`, `other`] }],
+      ...point_mode(),
+      selected_point_id: `selected`,
+      ...unit_axes,
+    })
+    await settle()
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    const settled = { ...clears }
+    expect(settled.overlay).toBeGreaterThan(0) // the pulse is running
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(clears.overlay).toBeGreaterThan(settled.overlay)
+    expect(clears.base).toBe(settled.base) // points layer untouched between view changes
+  })
+
   test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {
     const on_density_zoom = vi.fn()
     mount_plot({

@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
+  import {
+    type D3InterpolateName,
+    get_d3_interpolator,
+    is_dark_mode,
+    watch_dark_mode,
+  } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import type { Orientation } from '$lib/plot/core/types'
@@ -67,6 +72,17 @@
       return interpolator(normalized)
     }
   })
+  // getComputedStyle forces a style flush, and the contour pass below runs on every repaint
+  // while a slice slider is being dragged. Resolve the CSS colour per theme change instead.
+  let dark_mode = $state(is_dark_mode())
+  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
+  let resolved_contour_color = $derived.by(() => {
+    void dark_mode
+    return contour_color === `currentColor` && canvas
+      ? getComputedStyle(canvas).color
+      : contour_color
+  })
+
   let image_data: ImageData | undefined
   let contour_values = new Float64Array()
   let aspect_ratio = $derived.by(() => {
@@ -121,10 +137,7 @@
 
     context.save()
     clip_to_slice_polygon(context, current_slice)
-    context.strokeStyle =
-      contour_color === `currentColor` && canvas
-        ? getComputedStyle(canvas).color
-        : contour_color
+    context.strokeStyle = resolved_contour_color
     context.lineWidth = Math.max(0.1, contour_width)
     context.lineJoin = `round`
     for (const shape of shapes) {
@@ -152,8 +165,10 @@
       image_data = undefined
       return
     }
-    canvas.width = slice.width
-    canvas.height = slice.height
+    // Assigning either dimension reallocates the backing store and resets all context state,
+    // even when the value is unchanged — and slice size is constant while scrubbing.
+    if (canvas.width !== slice.width) canvas.width = slice.width
+    if (canvas.height !== slice.height) canvas.height = slice.height
     const context = canvas.getContext(`2d`)
     if (!context) return
     context.clearRect(0, 0, slice.width, slice.height)

@@ -40,6 +40,7 @@ async function drag(
   const bounds = svg.getBoundingClientRect()
   const event_init = ({ x, y, button = 0 }: LocalPoint): MouseEventInit => ({
     button,
+    buttons: 1, // a real drag holds the primary button down; the pan gives up when it isn't
     clientX: bounds.left + x,
     clientY: bounds.top + y,
     shiftKey: shift,
@@ -70,6 +71,42 @@ describe(`shared plot drag zoom bounds`, () => {
       expect(await drag(svg, { x: 100, y: 100 }, { x: 300, y: 290 })).toBe(true)
     },
   )
+
+  // A mouseup delivered outside the window never reaches the pan's own handler. That used to
+  // leave the plot panning on bare mouse moves; now that consumers gate animation and hover
+  // on `is_panning`, a wedged pan would also freeze both for the rest of the plot's life.
+  test(`a move without the button held ends a pan that lost its mouseup`, async () => {
+    const root = await mount_sized(ScatterPlot, { series: xy_series() }, { selector: `.scatter` })
+    const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    if (!svg) throw new Error(`plot SVG not found`)
+    const bounds = svg.getBoundingClientRect()
+    const at = (x: number, buttons: number): MouseEventInit => ({
+      button: 0,
+      buttons,
+      clientX: bounds.left + x,
+      clientY: bounds.top + 120,
+      shiftKey: true,
+    })
+
+    svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(200, 1) }))
+    window.dispatchEvent(new MouseEvent(`mousemove`, at(150, 1)))
+    await tick()
+    const during = svg.getAttribute(`style`) ?? ``
+
+    window.dispatchEvent(new MouseEvent(`mousemove`, at(100, 0))) // button released off-window
+    await tick()
+    // the pan is over, so a later bare move must not keep panning the plot
+    const after_release = svg.querySelectorAll(`path.marker`)[0]?.parentElement?.getAttribute(
+      `transform`,
+    )
+    window.dispatchEvent(new MouseEvent(`mousemove`, at(20, 0)))
+    await tick()
+    expect(
+      svg.querySelectorAll(`path.marker`)[0]?.parentElement?.getAttribute(`transform`),
+    ).toBe(after_release)
+    expect(document.body.style.cursor).toBe(``) // and the grabbing cursor is released
+    expect(during).toBeDefined()
+  })
 
   // A pan retargets every marker on each pointer frame. Animating that leaves the markers
   // trailing the axes while hover hit-testing already uses the live scales, so the point you

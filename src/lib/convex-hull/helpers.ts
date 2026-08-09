@@ -857,13 +857,24 @@ export function marker_path_data(radius: number, marker: MarkerSymbol): string |
     : null
 }
 
+// Outlines are position-independent (callers translate the context), so they are shared by
+// shape and size. Rotating a hull asks for two per point per frame — a shadow and a marker —
+// off a handful of distinct sizes, so building them fresh each time was pure allocation.
+const marker_path_cache = new Map<string, Path2D>()
+const MAX_MARKER_PATH_CACHE = 512
+
 // Create a Path2D for a marker symbol (canvas rendering in ConvexHull3D/4D)
 export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
   const safe_size = Number.isFinite(size) ? size : 0
   const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
+  const key = `${marker}|${rounded_size}`
+  const cached = marker_path_cache.get(key)
+  if (cached) return cached
   const path_data = marker_path_data(rounded_size, marker)
   const path = new Path2D(path_data ?? undefined)
   if (!path_data) path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
+  if (marker_path_cache.size > MAX_MARKER_PATH_CACHE) marker_path_cache.clear()
+  marker_path_cache.set(key, path)
   return path
 }
 

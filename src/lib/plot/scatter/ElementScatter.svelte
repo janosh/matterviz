@@ -26,16 +26,15 @@
     hovered?: boolean
   } = $props()
 
-  // update tooltip on hover element tile
+  // Mirror the hovered element tile onto the matching point. Cleared when the tile hover ends,
+  // because the plot styles a marker as hovered off `tooltip_point` alone — leaving it set
+  // strands that marker enlarged and brightened after the pointer leaves the table.
   $effect.pre(() => {
-    if (selected.element?.number && !hovered) {
-      tooltip_point = {
-        x: selected.element.number,
-        y: y[selected.element.number - 1],
-        series_idx: 0,
-        point_idx: selected.element.number - 1,
-      }
-    }
+    if (hovered) return // the pointer is on the plot, which owns tooltip_point itself
+    const atomic_num = selected.element?.number
+    tooltip_point = atomic_num
+      ? { x: atomic_num, y: y[atomic_num - 1], series_idx: 0, point_idx: atomic_num - 1 }
+      : null
   })
 </script>
 

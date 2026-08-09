@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { add_alpha, PLOT_COLORS, vesta_hex } from '$lib/colors'
-  import { create_canvas_colors } from './canvas-colors.svelte'
+  import { create_canvas_text_color } from './canvas-colors.svelte'
   import { normalize_show_controls } from '$lib/controls'
   import { sanitize_html } from '$lib/sanitize'
   import { Spinner } from '$lib/feedback'
@@ -93,10 +93,8 @@
     colors: { ...default_hull_config.colors, ...config.colors },
   })
 
-  // Resolved per theme change rather than per draw (see create_canvas_colors)
-  const canvas_colors = create_canvas_colors(() => canvas)
-  const text_color = $derived(canvas_colors.text)
-  const hull_edge_color = $derived(canvas_colors.edge)
+  const canvas_text = create_canvas_text_color()
+  const text_color = $derived(canvas_text.current)
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
   // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
@@ -288,7 +286,7 @@
     // oxfmt-ignore
     // selected_entry/highlighted_entries included: pulsing points move to the overlay
     // canvas, so the hull has to repaint (once) whenever which points those are changes
-    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, text_color, hull_edge_color, elements] // track reactively
+    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, text_color, elements] // track reactively
 
     render_once()
   })
@@ -417,9 +415,8 @@
     }
     ctx.stroke()
 
-    // Reset dash and stroke for subsequent drawings
+    // Reset dash for subsequent drawings; every later stroke sets its own strokeStyle
     ctx.setLineDash([])
-    ctx.strokeStyle = hull_edge_color || text_color
 
     // Corner element labels: place just outside each vertex, along the centroid→vertex line
     if (elements.length === 4) {
