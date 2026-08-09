@@ -55,5 +55,5 @@ CORS and a JavaScript MIME type via jsDelivr/unpkg, e.g.:
 https://cdn.jsdelivr.net/npm/matterviz-anywidget@<version>/build/matterviz.js
 ```
 
-`build/` is gitignored; the bundle never enters version control. See
-`.github/workflows/publish-anywidget.yml`.
+`build/` is gitignored; the bundle never enters version control. See the
+`package_anywidget` job in `.github/workflows/publish.yml`.
