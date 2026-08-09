@@ -1,0 +1,21 @@
+{
+  // Shared by the VS Code and JupyterLab extensions. Both type-check files from src/lib, so
+  // the $lib mapping and strictness settings have to agree; the per-package configs add only
+  // what genuinely differs (host type packages, DOM libs, include globs).
+  // Relative paths in `paths` resolve against the config file they are written in, so these
+  // are relative to extensions/, not to the package that extends this.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "$lib": ["../src/lib"],
+      "$lib/*": ["../src/lib/*"]
+    }
+  }
+}
