@@ -26,7 +26,7 @@ class Structure(MatterViz):
         id=None,
         active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
-        atom_color_config: dict | None = None,
+        atom_color_config: Any | None = None,
         bond_edit_mode: Any | None = None,
         bond_edit_order: Any | None = None,
         bonds: list | None = None,
