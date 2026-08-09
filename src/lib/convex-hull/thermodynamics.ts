@@ -1074,14 +1074,12 @@ const build_simplex_models_nd = (simplices: number[][][]): SimplexModelND[] =>
     // Spatial coords are all except last (energy)
     const vertices_spatial = vertices.map((pt) => pt.slice(0, dim - 1))
 
-    // Compute bounding box in spatial dimensions
-    const spatial_dim = dim - 1
-    const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
-      math.array_min(vertices_spatial.map((pt) => pt[idx])),
+    // Bounding box in spatial dimensions, one pass per axis
+    const extents = Array.from({ length: dim - 1 }, (_, idx) =>
+      math.array_extent(vertices_spatial.map((pt) => pt[idx])),
     )
-    const bbox_max = Array.from({ length: spatial_dim }, (_, idx) =>
-      math.array_max(vertices_spatial.map((pt) => pt[idx])),
-    )
+    const bbox_min = extents.map(([min]) => min)
+    const bbox_max = extents.map(([, max]) => max)
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }
   })

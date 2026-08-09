@@ -60,8 +60,9 @@ export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
   const dists = entries
     .map((entry) => entry.e_above_hull)
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+  if (dists.length === 0) return [0, 0.1]
   const [min_dist, max_dist] = array_extent(dists)
-  return dists.length > 0 ? [min_dist, Math.max(max_dist, 0.1)] : [0, 0.1]
+  return [min_dist, Math.max(max_dist, 0.1)]
 }
 
 export const entry_is_stable = (
