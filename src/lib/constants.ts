@@ -62,7 +62,7 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 
 // Build a case-insensitive `\.(ext1|ext2|...)$` regex from extensions (leading dots stripped)
 export const ext_regex = (exts: readonly string[]): RegExp =>
-  new RegExp(`\\.(${exts.map((ext) => ext.slice(1)).join(`|`)})$`, `i`)
+  new RegExp(`\\.(${exts.map((ext) => ext.replace(/^\./, ``)).join(`|`)})$`, `i`)
 
 const filename_token_regex = (filenames: readonly string[]): RegExp =>
   new RegExp(`(?:^|[\\\\/_.-])(?:${filenames.join(`|`)})(?:[\\\\/_.-]|$)`, `i`)
@@ -113,16 +113,13 @@ export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
 // from $lib and from each other — they already had: VS Code alone claimed .dcd/.trr,
 // JupyterLab alone left .xtc unclaimed. Listed without a leading dot, the form hosts want.
 
-// The one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary containers.
-const TEXT_TRAJ_EXTENSIONS = [`.lammpstrj`]
-
 // Formats a UTF-8 decode can hand straight to a parser.
-export const TEXT_VIEWER_EXTENSIONS: readonly string[] = Object.freeze([
+export const TEXT_VIEWER_EXTENSIONS = Object.freeze([
   ...new Set(
     [
       ...STRUCTURE_EXTENSIONS,
       ...XYZ_EXTENSIONS,
-      ...TEXT_TRAJ_EXTENSIONS,
+      `.lammpstrj`, // the one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary
       ...FERMI_FILE_EXTENSIONS,
     ].map((ext) => ext.slice(1)),
   ),
@@ -131,14 +128,10 @@ export const TEXT_VIEWER_EXTENSIONS: readonly string[] = Object.freeze([
 // Binary containers MatterViz can actually decode, i.e. the payloads a host must hand over
 // as bytes rather than text. .xtc/.dcd/.trr are absent on purpose: there is no reader for
 // them, so claiming them as an opener only replaces a working handler with an error.
-export const BINARY_VIEWER_EXTENSIONS: readonly string[] = Object.freeze([
-  `traj`,
-  `h5`,
-  `hdf5`,
-])
+export const BINARY_VIEWER_EXTENSIONS = Object.freeze([`traj`, `h5`, `hdf5`])
 
 // VASP's canonical filenames carry no extension, so hosts have to match them as name stems.
-export const VASP_VIEWER_STEMS: readonly string[] = Object.freeze([
+export const VASP_VIEWER_STEMS = Object.freeze([
   ...new Set([...VASP_STRUCTURE_FILES, `xdatcar`, ...VASP_VOLUMETRIC_FILES]),
 ])
 

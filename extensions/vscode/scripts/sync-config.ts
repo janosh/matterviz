@@ -25,14 +25,14 @@ const KEYWORD_SELECTORS = [
   `*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*`,
 ]
 
-const brace = (stems: string[]) => `{${[...new Set(stems)].sort().join(`,`)}}`
-const both_cases = (stems: readonly string[]) => [
-  ...stems.map((stem) => stem.toUpperCase()),
-  ...stems,
-]
+const brace = (names: string[]) => `{${[...new Set(names)].sort().join(`,`)}}`
+const vscode_scalar_type = (value: unknown) =>
+  typeof value === `boolean` || typeof value === `number` ? typeof value : `string`
+const vscode_setting_type = (value: unknown) =>
+  Array.isArray(value) ? `array` : vscode_scalar_type(value)
 
 // VASP's canonical filenames carry no extension, so they are matched as name stems.
-const stem_glob = brace(both_cases(VASP_VIEWER_STEMS))
+const stem_glob = brace(VASP_VIEWER_STEMS.flatMap((stem) => [stem.toUpperCase(), stem]))
 
 // A trailing `[._-]*` also swallows a file extension, so these forms would claim
 // write_poscar.py and contcar_reader.rs. Restricted to upper-case volumetric stems, which
@@ -44,14 +44,11 @@ const decorated_stem_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpp
 // Every extension MatterViz offers to open, plus the same set compressed. Both are derived
 // so adding a format to $lib/constants reaches the editor registration automatically.
 const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
-  const extensions = [
-    ...new Set([
-      ...TEXT_VIEWER_EXTENSIONS,
-      ...BINARY_VIEWER_EXTENSIONS,
-      ...HINT_ONLY_EXTENSIONS,
-    ]),
-  ].sort()
-  const ext_glob = `*.{${extensions.join(`,`)}}`
+  const ext_glob = `*.${brace([
+    ...TEXT_VIEWER_EXTENSIONS,
+    ...BINARY_VIEWER_EXTENSIONS,
+    ...HINT_ONLY_EXTENSIONS,
+  ])}`
   return [
     ext_glob,
     `${ext_glob}.gz`,
@@ -83,14 +80,7 @@ function sync_package_config() {
       if (schema.context && ![`editor`, `all`].includes(schema.context)) return
 
       const config: Record<string, unknown> = {
-        type:
-          typeof schema.value === `boolean`
-            ? `boolean`
-            : typeof schema.value === `number`
-              ? `number`
-              : Array.isArray(schema.value)
-                ? `array`
-                : `string`,
+        type: vscode_setting_type(schema.value),
         default: schema.value,
         description: schema.description,
       }
@@ -107,14 +97,7 @@ function sync_package_config() {
       // element lists) can't be introspected, so default those to string.
       if (Array.isArray(schema.value)) {
         const first_item = schema.value[0]
-        config.items = {
-          type:
-            typeof first_item === `boolean`
-              ? `boolean`
-              : typeof first_item === `number`
-                ? `number`
-                : `string`,
-        }
+        config.items = { type: vscode_scalar_type(first_item) }
       }
 
       vscode_config[key_path] = config
@@ -139,11 +122,8 @@ function sync_package_config() {
 
   for (const [key, value] of Object.entries(existing_props)) {
     // Preserve settings that aren't auto-generated from SETTINGS_CONFIG
-    // Exclude both old .defaults.* settings and new schema-generated settings
-    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some(
-      (config_key) =>
-        key.startsWith(`matterviz.${config_key}`) ||
-        key.startsWith(`matterviz.defaults.${config_key}`),
+    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some((config_key) =>
+      key.startsWith(`matterviz.${config_key}`),
     )
     if (!is_schema_setting) preserved_props[key] = value
   }

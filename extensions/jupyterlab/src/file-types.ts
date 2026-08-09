@@ -15,23 +15,22 @@ import {
 // default opener for unrelated files.
 const TEXT_EXTENSIONS = TEXT_VIEWER_EXTENSIONS.filter((ext) => ext !== `data`)
 
-// Binary containers that must reach the parser as bytes. The shared list is already limited
-// to formats with a decoder (no .xtc/.trr/.dcd), which matters more here than in VS Code:
-// claiming one would take over files it can only greet with "Unsupported binary format".
-const BINARY_EXTENSIONS = BINARY_VIEWER_EXTENSIONS
-
 // Gzipped variants are registered explicitly rather than claiming bare `.gz`, which
 // would hijack every compressed file in the browser. Compressed payloads always
 // travel as base64 — the parser peels one layer before dispatching on the inner name.
-const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_EXTENSIONS].map((ext) => `${ext}.gz`)
+const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_VIEWER_EXTENSIONS].map(
+  (ext) => `${ext}.gz`,
+)
 
 // VASP's canonical filenames carry no extension, so they need a pattern. The
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
 // Longest first so AECCAR0 is tried before AECCAR rather than relying on backtracking.
-const VASP_STEMS = [...VASP_VIEWER_STEMS].sort((a, b) => b.length - a.length)
-const VASP_TOKEN = [...VASP_STEMS.map((stem) => stem.toUpperCase()), ...VASP_STEMS].join(`|`)
+const VASP_TOKEN = [...VASP_VIEWER_STEMS]
+  .sort((stem_a, stem_b) => stem_b.length - stem_a.length)
+  .flatMap((stem) => [stem.toUpperCase(), stem])
+  .join(`|`)
 const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN})(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here
@@ -63,9 +62,12 @@ export const TEXT_FILE_TYPES: FileTypeSpec[] = [
   by_vasp_name(``, `text`),
 ]
 
+// Containers that must reach the parser as bytes. The shared binary list is already limited
+// to formats with a decoder (no .xtc/.trr/.dcd), which matters more here than in VS Code:
+// claiming one would take over files it can only greet with "Unsupported binary format".
 // The gzip pattern is separate because pattern-before-extension order otherwise let
 // a bare POSCAR.gz match the text type and reach the parser as mangled UTF-8.
 export const BASE64_FILE_TYPES: FileTypeSpec[] = [
-  ...by_extension([...BINARY_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`),
+  ...by_extension([...BINARY_VIEWER_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`),
   by_vasp_name(`\\.gz`, `base64`),
 ]
