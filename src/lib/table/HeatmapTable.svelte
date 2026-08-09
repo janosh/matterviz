@@ -53,7 +53,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { sanitize_html } from '$lib/sanitize'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
-  import { type Snippet, tick } from 'svelte'
+  import { type Snippet, tick, untrack } from 'svelte'
   import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -1036,6 +1036,21 @@
     sync_viewport()
   })
 
+  // Narrowing the rows produces a new result set, which starts at its top. Without this a
+  // scroll_top left over from the unfiltered rows lands the user past the end of the
+  // matches — virtual_range clamps the window it renders, but they still arrive at the tail
+  // instead of the first match. (Pagination has the same rule; see the reset to page 1.)
+  // seeded, not left empty, so the first effect run isn't mistaken for a filter change
+  let prev_narrowing: unknown[] = untrack(() => [search_query, active_filters])
+  $effect(() => {
+    const narrowing = [search_query, active_filters]
+    const narrowed = narrowing.some((part, idx) => part !== prev_narrowing[idx])
+    prev_narrowing = narrowing
+    if (!narrowed || !virtual_config || !scroll_el) return
+    scroll_el.scrollTop = 0
+    sync_viewport()
+  })
+
   // Track scroll-container resizes (e.g. dashboard card resizing)
   $effect(() => {
     const windowing = virtual_config || virtual_cols_config
@@ -1707,11 +1722,10 @@
 
   const is_row_selected = (row: RowData): boolean => selected_id_set.has(get_row_id(row))
 
-  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one
-  function handle_row_keydown(
-    event: KeyboardEvent & { currentTarget: HTMLElement },
-    row: RowData,
-  ) {
+  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one. Stepping by
+  // absolute index rather than DOM sibling because under virtualization the row next to the
+  // last rendered one is a spacer, which would strand the keyboard user at the window edge.
+  async function handle_row_keydown(event: KeyboardEvent, row: RowData, abs_idx: number) {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
       onrowclick?.(event, row)
@@ -1719,11 +1733,30 @@
     }
     if (event.key !== `ArrowDown` && event.key !== `ArrowUp`) return
     event.preventDefault()
-    const sibling =
-      event.key === `ArrowDown`
-        ? event.currentTarget.nextElementSibling
-        : event.currentTarget.previousElementSibling
-    if (sibling instanceof HTMLElement) sibling.focus()
+    const step = event.key === `ArrowDown` ? 1 : -1
+    const target_idx = abs_idx + step
+    if (target_idx < 0 || target_idx >= sorted_data.length) return
+
+    // only under virtualization: with pagination the window is a page, and row offsets say
+    // nothing about scroll position (matching the cell-navigation path above)
+    if (
+      virtual_config &&
+      scroll_el &&
+      (target_idx < display_range.start || target_idx >= display_range.end)
+    ) {
+      // Scroll the row into the window so it exists to receive focus, aligned to the leading
+      // edge to keep it visible in the direction of travel. virtual_range windows on
+      // scroll_top by this same avg_row_height, so the row is guaranteed rendered however
+      // much real heights vary — as long as the offset stays positive, which it would not
+      // be before the container has a measured height.
+      const leading_edge = Math.max(0, step > 0 ? viewport_height - avg_row_height : 0)
+      scroll_el.scrollTop = Math.max(0, target_idx * avg_row_height - leading_edge)
+      sync_viewport()
+      await tick()
+    }
+    // rows carry no index of their own; every data cell does
+    const target_cell = scroll_el?.querySelector(`td[data-row-idx="${target_idx}"]`)
+    target_cell?.closest(`tr`)?.focus()
   }
 
   // Select-all scope: the current page under pagination, every sorted+filtered
@@ -2505,7 +2538,9 @@
               : undefined}
             onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
-            onkeydown={onrowclick ? (event) => handle_row_keydown(event, row) : undefined}
+            onkeydown={onrowclick
+              ? (event) => void handle_row_keydown(event, row, abs_idx)
+              : undefined}
           >
             {#if show_row_select}
               <td class="select-col">

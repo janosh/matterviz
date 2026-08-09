@@ -322,14 +322,25 @@ export function clear_text_metrics_cache(): number {
 
 export const get_text_metrics_revision = (): number => metrics_revision
 
+// Every axis and plot title asks for invalidation independently, so without memoizing per
+// `ready` promise a page of N plots clears the cache N times, each clear re-running every
+// dependent layout.
+const invalidation_by_readiness = new WeakMap<object, Promise<number>>()
+
 // One-shot font readiness hook for browser hosts. Await the returned revision and assign it to
 // reactive state; no FontFaceSet event listener or other long-lived observer is retained here.
-export async function invalidate_text_metrics_after_fonts_ready(
+export function invalidate_text_metrics_after_fonts_ready(
   font_readiness: FontReadiness | undefined = typeof document === `undefined`
     ? undefined
     : document.fonts,
 ): Promise<number> {
-  if (!font_readiness) return metrics_revision
-  await font_readiness.ready
-  return clear_text_metrics_cache()
+  const ready = font_readiness?.ready
+  if (!ready) return Promise.resolve(metrics_revision)
+  const shared = invalidation_by_readiness.get(ready)
+  if (shared) return shared
+  const pending = Promise.resolve(ready).then(() => clear_text_metrics_cache())
+  invalidation_by_readiness.set(ready, pending)
+  // A cached rejection would be replayed to every later caller, so evict and let them retry
+  pending.catch(() => invalidation_by_readiness.delete(ready))
+  return pending
 }

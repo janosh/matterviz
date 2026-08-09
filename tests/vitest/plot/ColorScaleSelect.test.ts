@@ -31,6 +31,27 @@ describe(`ColorScaleSelect`, () => {
     expect(doc_query(`.selected`)?.textContent?.trim()).toBe(`Viridis`)
   })
 
+  // MultiSelect keeps its option list mounted while closed, so a gradient per scheme would
+  // otherwise be built on every mount — including in control panels never opened.
+  test(`builds option gradients only once the dropdown opens`, async () => {
+    const options: D3InterpolateName[] = [
+      `interpolateViridis`,
+      `interpolatePlasma`,
+      `interpolateInferno`,
+    ]
+    mount(ColorScaleSelect, {
+      target: document.body,
+      props: { options, value: options[0], selected: [options[0]] },
+    })
+    flushSync()
+    const gradient_count = () => document.body.querySelectorAll(`.colorbar`).length
+
+    expect(gradient_count()).toBe(1) // just the selected chip
+    doc_query(`.multiselect`).dispatchEvent(new MouseEvent(`mouseup`, { bubbles: true }))
+    // the chip plus one per unselected option (MultiSelect drops the selected one from the list)
+    await vi.waitFor(() => expect(gradient_count()).toBe(options.length))
+  })
+
   test(`passes color_bar props to ColorBar snippet`, async () => {
     // Verifies that props passed via the color_bar prop are applied to the ColorBar component.
     const custom_color_bar_props = {

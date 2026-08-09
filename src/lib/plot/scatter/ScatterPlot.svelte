@@ -20,6 +20,7 @@
     HoverConfig,
     InternalPoint,
     LabelPlacementConfig,
+    LabelStyle,
     LegendConfig,
     PanConfig,
     PlotConfig,
@@ -819,10 +820,6 @@
     height: isFinite(height - pad.t - pad.b) ? Math.max(1, height - pad.t - pad.b) : 1,
   })
 
-  // Calculate plot area center coordinates
-  let plot_center_x = $derived(pad.l + (width - pad.r - pad.l) / 2)
-  let plot_center_y = $derived(pad.t + (height - pad.b - pad.t) / 2)
-
   // Extract color and size values in single pass (used for scale computations)
   let series_value_arrays = $derived.by(() => {
     const color_values: number[] = []
@@ -958,7 +955,6 @@
     }
     return { series: n_series, points: n_points }
   })
-  let effective_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
 
   let visible_marker_count = $derived.by(() => {
     if (!styles.show_points) return 0
@@ -1036,7 +1032,6 @@
     }
     return true
   })
-  const effective_point_tween = $derived(use_canvas_markers ? { duration: 0 } : point_tween)
 
   // Points needing labels or effects remain in an SVG overlay.
   const same_logical_point = (
@@ -1438,6 +1433,16 @@
       else tooltip_point = null
     },
   })
+
+  // Panning retargets every marker and line on each pointer frame. Animating that leaves
+  // them trailing the axes while hover hit-testing already uses the live scales, so snap
+  // for the duration of the drag. Declared here because both read pan_zoom.
+  const effective_point_tween = $derived(
+    use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
+  )
+  const effective_line_tween = $derived(
+    pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
+  )
   onDestroy(() => pan_zoom.destroy())
 
   // Lazily index screen-space markers so pointer moves probe nearby cells only.
@@ -1517,17 +1522,48 @@
     ...label_placement_config,
   })
 
+  // The solver below scans every point and reruns per pan/zoom frame (it reads the scales),
+  // so skip it entirely on plots with no auto-placed labels. Scans `series_with_ids` rather
+  // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
+  // put this scan back on every frame. Counting labels outside the visible range only means
+  // the solver runs and filters them out itself.
+  // series and label entries can both be null: assigned_series passes non-objects through
+  const is_auto_placed = (label: LabelStyle | null | undefined) =>
+    Boolean(label?.auto_placement && label.text)
+  let has_auto_placed_labels = $derived(
+    series_with_ids.some((series_data) => {
+      const label = series_data?.point_label
+      return Array.isArray(label) ? label.some(is_auto_placed) : is_auto_placed(label)
+    }),
+  )
+
+  // Last solve's label offsets, handed back so each pan/zoom frame polishes the previous
+  // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
+  // both reads and writes it, and tracking that would re-trigger the effect forever.
+  const label_offsets = new Map<string, Point2D>()
+  let previous_label_series: typeof series_with_ids | undefined
+  let previous_label_config: typeof actual_label_config | undefined
+
   $effect(() => {
-    if (!width || !height) {
+    const label_series = series_with_ids
+    const label_config = actual_label_config
+    if (label_series !== previous_label_series || label_config !== previous_label_config) {
+      label_offsets.clear()
+      previous_label_series = label_series
+      previous_label_config = label_config
+    }
+    if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
+      label_offsets.clear()
       return
     }
 
     label_positions = compute_label_positions(
       filtered_series,
-      actual_label_config,
+      label_config,
       { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis: final_x_axis },
       { width, height, pad },
+      label_offsets,
     )
   })
 
@@ -1679,6 +1715,7 @@
         {clip_path_id}
         {x_scale_fn}
         {y_scale_fn}
+        tween_options={effective_line_tween}
         is_hovered={hovered_fill_key === fill.hover_key}
         on_click={(event: FillHandlerEvent) => {
           fill.on_click?.(event)
@@ -1716,6 +1753,7 @@
     pan_zoom.on_window_key_down(evt)
   }}
   onkeyup={pan_zoom.on_window_key_up}
+  onblur={pan_zoom.on_window_blur}
 />
 
 <div
@@ -1749,7 +1787,7 @@
       onmousedown={pan_zoom.on_mouse_down}
       onmousemove={(evt: MouseEvent) => {
         // Only find closest point if not actively dragging
-        if (!pan_zoom.drag_start && !pan_zoom.is_pan_dragging) queue_mouse_move(evt)
+        if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
       }}
       onmouseleave={() => {
         end_queued_mouse_move(false)
@@ -2080,7 +2118,6 @@
                   label={final_label}
                   offset={point.point_offset ?? { x: 0, y: 0 }}
                   point_tween={effective_point_tween}
-                  origin={{ x: plot_center_x, y: plot_center_y }}
                   --point-fill-color={appearance.fill}
                   {...point_events &&
                     Object.fromEntries(
@@ -2404,6 +2441,10 @@
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     font-size: var(--scatter-font-size);
+  }
+  div.scatter.fullscreen svg,
+  div.scatter.fullscreen :global(.axis-label) {
+    font-size: var(--scatter-fullscreen-font-size, var(--scatter-font-size, inherit));
   }
   .scatter :global(.axis-label) {
     text-align: center;

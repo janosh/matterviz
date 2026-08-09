@@ -181,6 +181,53 @@ describe(`text metrics`, () => {
     expect(measure_text).toHaveBeenCalledTimes(2)
   })
 
+  // Every axis and plot title asks for this independently. One clear per readiness cycle
+  // keeps a page of many plots from re-running all their layouts once per component.
+  it(`clears once per readiness cycle no matter how many callers ask`, async () => {
+    mock_canvas()
+    const ready = Promise.resolve()
+    const revision_before = get_text_metrics_revision()
+
+    const revisions = await Promise.all(
+      Array.from({ length: 5 }, () => invalidate_text_metrics_after_fonts_ready({ ready })),
+    )
+    expect(revisions).toEqual(Array.from({ length: 5 }, () => revision_before + 1))
+    expect(get_text_metrics_revision()).toBe(revision_before + 1)
+
+    // a plot mounting after resolution reuses the memo rather than clearing again
+    await expect(invalidate_text_metrics_after_fonts_ready({ ready })).resolves.toBe(
+      revision_before + 1,
+    )
+    expect(get_text_metrics_revision()).toBe(revision_before + 1)
+
+    // a later font load hands out a new `ready`, which must invalidate again
+    await expect(
+      invalidate_text_metrics_after_fonts_ready({ ready: Promise.resolve() }),
+    ).resolves.toBe(revision_before + 2)
+  })
+
+  // A memoized rejection would be replayed forever, wedging invalidation for that FontFaceSet
+  it(`evicts a rejected readiness instead of caching it`, async () => {
+    mock_canvas()
+    let reject_ready: (() => void) | undefined
+    const ready = new Promise<void>((_resolve, reject) => {
+      reject_ready = () => reject(new Error(`font load failed`))
+    })
+    const revision_before = get_text_metrics_revision()
+
+    const failed = invalidate_text_metrics_after_fonts_ready({ ready })
+    reject_ready?.()
+    await expect(failed).rejects.toThrow(`font load failed`)
+
+    // a fresh promise rather than the memoized one proves the entry was dropped
+    const retried = invalidate_text_metrics_after_fonts_ready({ ready })
+    expect(retried).not.toBe(failed)
+    await expect(retried).rejects.toThrow(`font load failed`)
+    await expect(
+      invalidate_text_metrics_after_fonts_ready({ ready: Promise.resolve() }),
+    ).resolves.toBe(revision_before + 1)
+  })
+
   it(`returns deterministic SSR metrics without touching browser globals`, async () => {
     const font = { ...DEFAULT_FONT_SPEC, font_size: 10, line_height: 15 }
     vi.stubGlobal(`document`, undefined)

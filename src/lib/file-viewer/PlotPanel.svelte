@@ -230,6 +230,7 @@
             style="height: 100%"
           />
         {:else if plot_type === `table`}
+          <!-- virtual: parsed data files routinely run to thousands of rows -->
           <HeatmapTable
             data={table_data}
             columns={table_columns}
@@ -237,6 +238,7 @@
             export_data
             allow_better_toggle
             show_controls
+            virtual
             scroll_style="max-height: 100%"
             style="height: 100%; text-align: left"
           />

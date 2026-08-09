@@ -342,8 +342,6 @@
     'data-key': key,
     [setting_attachment_key]: tooltip({ content: tip ?? description_for(key) }),
   })
-  // Bounds for a NumberRangeInput row, read off the schema here so the input itself stays a
-  // generic control. `step` is the one bound the schema usually leaves to the call site.
   type SettingKeysOfType<Value> = {
     [Key in StructureSettingKey]: (typeof SETTINGS_CONFIG.structure)[Key] extends SettingType<Value>
       ? Key
@@ -355,16 +353,6 @@
   type NumericSceneSettingKey = NumericSettingKey & keyof typeof scene_props
   type BooleanSettingKey = SettingKeysOfType<boolean> & keyof typeof scene_props
   type EnumSettingKey = SettingKeysOfType<string> & keyof typeof scene_props
-  const setting_range = (key: NumericSettingKey, step?: number) => {
-    const { minimum, maximum, multipleOf, description } = SETTINGS_CONFIG.structure[key]
-    return {
-      'data-key': key,
-      min: minimum,
-      max: maximum,
-      step: step ?? multipleOf,
-      title: description,
-    }
-  }
 
   // One key list drives both a section's "changed" indicator and its reset, so a new setting
   // can't be registered in one and forgotten in the other. Keys not held directly on `target`
@@ -669,7 +657,9 @@ a disabled state, a non-scene_props target) stay written out in full. -->
 
 {#snippet numeric_row(key: NumericSceneSettingKey, label: string, step?: number)}
   <NumberRangeInput
-    {...setting_range(key, step)}
+    setting={key}
+    schema={SETTINGS_CONFIG.structure}
+    {step}
     bind:value={() => scene_props[key], (value) => (scene_props[key] = value)}
     >{label}</NumberRangeInput
   >
@@ -710,7 +700,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     </button>
   {/if}
 
-  <SettingsSearch>
+  <SettingsSearch trigger="icon">
     {#if volumetric_data?.length}
       <SettingsGroup
         title="Volumetric data"
@@ -874,7 +864,9 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         })}
       >
         <NumberRangeInput
-          {...setting_range(`atom_radius`, 0.05)}
+          setting="atom_radius"
+          schema={SETTINGS_CONFIG.structure}
+          step={0.05}
           bind:value={scene_props.atom_radius}>Radius <small>(Å)</small></NumberRangeInput
         >
         {@render toggle(`same_size_atoms`, `Same size`)}
@@ -1271,7 +1263,9 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               <input class="swatch" type="color" bind:value={lattice_props[color_setting]} />
             </label>
             <NumberRangeInput
-              {...setting_range(opacity_setting, step)}
+              setting={opacity_setting}
+              schema={SETTINGS_CONFIG.structure}
+              {step}
               bind:value={lattice_props[opacity_setting]}>{label} opacity</NumberRangeInput
             >
           {/each}
@@ -1512,7 +1506,8 @@ a disabled state, a non-scene_props target) stay written out in full. -->
                 </div>
               {/if}
               <NumberRangeInput
-                {...setting_range(`trajectory_line_trail_frames`)}
+                setting="trajectory_line_trail_frames"
+                schema={SETTINGS_CONFIG.structure}
                 max={Math.max(1, scene_props.trajectory_position_stream.n_frames)}
                 bind:value={scene_props.trajectory_line_trail_frames}
                 >Trail length <small>(0 = all)</small></NumberRangeInput

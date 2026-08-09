@@ -60,7 +60,7 @@
       style="display: inline-flex; gap: 4pt; line-height: 1.3"
     >
       <a href="https://www.npmjs.com/package/matterviz">
-        <Icon icon={NPM} style="transform: scale(2.4); padding-inline: 12pt" />
+        <Icon icon={NPM} />
       </a>
       install matterviz
       <CopyButton content="npm install matterviz" style="background: transparent" />

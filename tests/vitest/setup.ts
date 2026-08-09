@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import { beforeEach, expect, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
@@ -647,6 +648,53 @@ export const trigger_resize_observer = (element: Element): void => {
   }
 }
 globalThis.ResizeObserver = TestResizeObserver
+
+// IntersectionObserver mock: happy-dom ships a constructor whose callback never fires, so
+// visibility-gated code (create_pulse_animation) can't be exercised. Report visible on observe
+// as a real browser does, and let tests dispatch later verdicts. One callback per element is
+// enough — production attaches a single observer per wrapper.
+const intersection_callbacks = new SvelteMap<Element, IntersectionObserverCallback>()
+// The verdict each element last received, so re-observing replays it rather than declaring the
+// element visible again. Without this the initial report lands a microtask after observe() and
+// overwrites any verdict the test delivered in the meantime, quietly un-hiding the element.
+const last_verdict = new WeakMap<Element, boolean>()
+export const trigger_intersection = (target: Element, isIntersecting: boolean): void => {
+  const callback = intersection_callbacks.get(target)
+  // loud rather than a silent no-op: an unobserved target means the test is asserting nothing
+  if (!callback) throw new Error(`no IntersectionObserver is observing the given element`)
+  last_verdict.set(target, isIntersecting)
+  callback(
+    [{ target, isIntersecting } as IntersectionObserverEntry],
+    null as never, // the observer argument, which no caller under test reads
+  )
+}
+globalThis.IntersectionObserver = class {
+  readonly #observed = new SvelteSet<Element>()
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe(target: Element): void {
+    this.#observed.add(target)
+    intersection_callbacks.set(target, this.callback)
+    queueMicrotask(() => {
+      // a later observer may have taken this target over before the microtask ran
+      if (intersection_callbacks.get(target) !== this.callback) return
+      trigger_intersection(target, last_verdict.get(target) ?? true)
+    })
+  }
+  unobserve(target: Element): void {
+    this.#release(target)
+    this.#observed.delete(target)
+  }
+  disconnect(): void {
+    for (const target of this.#observed) this.#release(target)
+    this.#observed.clear()
+  }
+  // Only drop the registration while it is still ours. The map holds one callback per element,
+  // so deleting blindly lets one observer unregister another's and silence its notifications.
+  #release(target: Element): void {
+    if (intersection_callbacks.get(target) === this.callback)
+      intersection_callbacks.delete(target)
+  }
+} as unknown as typeof IntersectionObserver
 
 // Mock Web Animations API for Svelte transitions (not available in jsdom)
 // The mock immediately triggers onfinish to complete transitions synchronously

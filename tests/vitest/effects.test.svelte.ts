@@ -1,4 +1,5 @@
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
+import { trigger_intersection } from './setup'
 import { pulsing_highlight_opacity } from '$lib/effects.svelte'
 import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
 import { flushSync, mount, unmount } from 'svelte'
@@ -64,6 +65,70 @@ describe(`create_pulse_animation`, () => {
 
     const pulse = document.querySelector<HTMLElement>(`[data-testid="pulse"]`)
     expect(pulse?.dataset.time).toBe(`0`)
+    expect(requested_frames.size).toBe(0)
+    void unmount(component)
+  })
+
+  // Ticks repaint a whole canvas or invalidate a 3D scene, so a pulse on an off-screen chart
+  // is wasted work. It must still animate before any verdict arrives: gated components bind
+  // their wrapper after mount, and an observer that never reports (happy-dom, or a real
+  // browser in the moment before its first callback) must not stall the pulse.
+  test(`animates until an observer reports off screen, then follows it`, async () => {
+    install_animation_frame_mock()
+    const state = $state<{ node: HTMLElement | null }>({ node: null })
+    const component = mount(PulseAnimationHarness, {
+      target: document.body,
+      props: { active: () => true, element: () => state.node },
+    })
+    flushSync()
+    expect(requested_frames.size).toBe(1) // no element yet, so nothing to gate on
+
+    const target = document.createElement(`div`)
+    flushSync(() => (state.node = target))
+    await Promise.resolve() // let the observer deliver its initial (visible) callback
+    flushSync()
+    expect(requested_frames.size).toBe(1)
+
+    // Advance the phase so the pause below has something to preserve
+    const pulse_time = () =>
+      Number(document.querySelector<HTMLElement>(`[data-testid="pulse"]`)?.dataset.time)
+    run_frame([...requested_frames.keys()][0])
+    flushSync()
+    const paused_at = pulse_time()
+    expect(paused_at).toBeGreaterThan(0)
+
+    for (const [visible, expected_frames] of [
+      [false, 0],
+      [true, 1],
+    ] as const) {
+      trigger_intersection(target, visible)
+      flushSync()
+      expect(requested_frames.size).toBe(expected_frames)
+      // Scrolling away pauses rather than resets: only going inactive rewinds the phase
+      // (covered above), so the ring resumes where it left off instead of jumping.
+      expect(pulse_time()).toBe(paused_at)
+    }
+    void unmount(component)
+  })
+
+  // The production case the gate exists for: a chart mounted below the fold, which is reported
+  // off screen straight away. The observer's own initial report arrives a microtask after
+  // observe(), so it must not overwrite a verdict that has already landed.
+  test(`stays paused when the first verdict is off screen`, async () => {
+    install_animation_frame_mock()
+    const target = document.createElement(`div`)
+    const component = mount(PulseAnimationHarness, {
+      target: document.body,
+      props: { active: () => true, element: () => target },
+    })
+    flushSync()
+
+    trigger_intersection(target, false)
+    flushSync()
+    expect(requested_frames.size).toBe(0)
+
+    await Promise.resolve() // the observer's own initial report would land about here
+    flushSync()
     expect(requested_frames.size).toBe(0)
     void unmount(component)
   })

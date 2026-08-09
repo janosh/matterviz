@@ -1,7 +1,9 @@
 import { Line, type Vec2 } from '$lib'
+import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { resolve_line_tween } from '$lib/plot/core/utils'
-import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { flushSync, mount } from 'svelte'
+import { describe, expect, test, vi } from 'vitest'
+import { bind_props } from '../setup'
 
 describe(`resolve_line_tween (path-morph budget)`, () => {
   test.each([
@@ -204,6 +206,41 @@ describe(`Line`, () => {
     expect(paths).toHaveLength(2)
     expect(paths[0].getAttribute(`d`)).toBe(``)
     expect(paths[1].getAttribute(`d`)).toBe(``)
+  })
+
+  // While morphing is off the template binds the raw path, but the tween keeps its own value.
+  // Left frozen at whatever it last animated to, re-enabling would snap the line back there
+  // and morph forward again, so the tween has to track the live path throughout.
+  test(`re-enabling the morph does not rewind to where the tween was disabled`, () => {
+    vi.useFakeTimers({ toFake: [`performance`] })
+    try {
+      const state = $state({
+        points: [
+          [0, 100],
+          [100, 0],
+        ] as Vec2[],
+        line_tween: { duration: 0 },
+      })
+      mount(Line, {
+        target: document.body,
+        props: bind_props({ origin: [0, 100] as Vec2 }, state),
+      })
+      vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps anyway
+
+      state.points = [
+        [0, 0],
+        [100, 100],
+      ] // move the line while morphing is disabled
+      flushSync()
+      const while_disabled = document.querySelector(`path`)?.getAttribute(`d`)
+      expect(while_disabled).toMatch(/^M0,0/)
+
+      state.line_tween = { duration: 60_000 }
+      flushSync()
+      expect(document.querySelector(`path`)?.getAttribute(`d`)).toBe(while_disabled)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test(`handles single point array`, () => {

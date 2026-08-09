@@ -23,17 +23,23 @@ class MockPath2D {
   arc(): void {}
 }
 
-const canvas_context = new Proxy(
-  {},
-  {
-    get: (_target, prop) => {
-      if (prop === `canvas`) return document.createElement(`canvas`)
-      if (prop === `measureText`) return () => ({ width: 20 })
-      if (prop === `getLineDash`) return () => []
-      return vi.fn()
+const make_canvas_context = (
+  canvas: HTMLCanvasElement,
+  on_clear = () => {},
+): CanvasRenderingContext2D =>
+  new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        if (prop === `canvas`) return canvas
+        if (prop === `measureText`) return () => ({ width: 20 })
+        if (prop === `getLineDash`) return () => []
+        if (prop === `clearRect`) return on_clear
+        return vi.fn()
+      },
     },
-  },
-) as unknown as CanvasRenderingContext2D
+  ) as unknown as CanvasRenderingContext2D
+const canvas_context = make_canvas_context(document.createElement(`canvas`))
 const button = (test_id: string): HTMLButtonElement | null =>
   document.querySelector(`[data-testid="${test_id}"]`)
 const selected_text = (): string | null =>
@@ -104,6 +110,35 @@ describe(`convex hull replacement state`, () => {
       await tick()
 
       expect(document.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
+    },
+  )
+
+  // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
+  // to animate one ring. The rings now live on a transparent canvas stacked over the hull.
+  test.each([`3d`, `4d`] as const)(
+    `pulse ticks repaint only the overlay canvas (%s)`,
+    async (dim) => {
+      const clears = { base: 0, overlay: 0 }
+      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
+        function (this: HTMLCanvasElement) {
+          // function body, so `this` stays the canvas getContext was called on
+          const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
+          return make_canvas_context(this, () => clears[layer]++)
+        },
+      )
+      const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
+
+      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+      await tick()
+      button(`select-entry`)?.click()
+      flushSync()
+      await let_frames_run()
+      expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
+
+      const settled = { ...clears }
+      await let_frames_run()
+      expect(clears.overlay).toBeGreaterThan(settled.overlay)
+      expect(clears.base).toBe(settled.base)
     },
   )
 })

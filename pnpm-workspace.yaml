@@ -1,0 +1,6 @@
+# svelte-widgets is pulled from git while it and matterviz evolve together, and pnpm builds a
+# git dependency on install (svelte-package). pnpm 11 refuses to run a dependency's build
+# scripts unless it is listed here, which failed every CI job at the install step. No CLI or
+# env equivalent exists -- --config.strict-dep-builds=false does not cover this error.
+allowBuilds:
+  svelte-widgets: true

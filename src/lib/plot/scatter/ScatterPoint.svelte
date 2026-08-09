@@ -3,6 +3,7 @@
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import type { Point2D } from '$lib/math'
   import type { PointStyle } from '$lib/plot/core/types'
+  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
   import {
     estimate_label_size,
     label_leader_segment,
@@ -12,7 +13,7 @@
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween, type TweenOptions } from 'svelte/motion'
+  import type { TweenOptions } from 'svelte/motion'
 
   let {
     x,
@@ -22,14 +23,13 @@
     label = {},
     offset = { x: 0, y: 0 },
     point_tween = $bindable({}),
-    origin = $bindable({ x: 0, y: 0 }),
     is_hovered = false,
     is_selected = false,
     is_dimmed = false,
     overlay_only = false,
     leader_line_threshold = 15,
     ...rest
-  }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
+  }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `transform`> & {
     x: number
     y: number
     style?: PointStyle
@@ -37,7 +37,6 @@
     label?: LabelStyle
     offset?: Point[`offset`]
     point_tween?: TweenOptions<Point2D>
-    origin?: Point2D
     is_hovered?: boolean
     is_selected?: boolean
     is_dimmed?: boolean
@@ -60,11 +59,14 @@
     duration: 600,
     easing: cubicOut,
   }
-  // Single tween for {x, y} coordinates
-  const tweened_coords = new Tween(origin, { ...default_tween_props, ...point_tween })
-
-  $effect.pre(() => {
-    tweened_coords.target = { x: x + offset.x, y: y + offset.y }
+  const coords = $derived({ x: x + offset.x, y: y + offset.y })
+  // Seeded at the marker's own position so a plot appearing on screen draws it where the
+  // data is instead of animating every point in from elsewhere.
+  // Object.is, not ===, so a NaN coordinate compares equal to itself instead of retargeting
+  // every render (BarPlot passes coordinates through unclamped).
+  const tweened_coords = create_settling_tween(() => coords, default_tween_props, {
+    live: () => point_tween,
+    is_same: (left, right) => Object.is(left.x, right.x) && Object.is(left.y, right.y),
   })
 </script>
 

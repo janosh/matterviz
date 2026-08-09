@@ -25,9 +25,13 @@
   let font_metrics_revision = $state(0)
   onMount(() => {
     let mounted = true
-    void invalidate_text_metrics_after_fonts_ready().then((revision) => {
-      if (mounted) font_metrics_revision = revision
-    })
+    // Fonts that never resolve keep the fallback measurements, which is fine
+    void invalidate_text_metrics_after_fonts_ready().then(
+      (revision) => {
+        if (mounted) font_metrics_revision = revision
+      },
+      () => {},
+    )
     return () => {
       mounted = false
     }

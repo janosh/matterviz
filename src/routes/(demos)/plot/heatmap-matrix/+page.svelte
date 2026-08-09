@@ -101,7 +101,8 @@
 <p>
   Full 118-element matrix colored by |&Delta;EN|. Elements without electronegativity data
   (noble gases, some superheavy) are auto-hidden with <code>hide_empty="compact"</code>. Hover
-  for tooltips, click cells for details.
+  for tooltips, click cells for details. <code>virtualize</code> is on, but at the default 6px tile
+  the whole ~103&times;103 grid fits on screen at most window sizes, so all ~10k cells are mounted.
 </p>
 
 <div
@@ -124,6 +125,7 @@
       {legend_position}
       hide_empty={hide_mode}
       {search_query}
+      virtualize
       selection_mode="multi"
       bind:selected_cells
       bind:pinned_cell

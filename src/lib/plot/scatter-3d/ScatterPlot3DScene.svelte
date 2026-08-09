@@ -20,7 +20,7 @@
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import type { GizmoOptions } from '$lib/scene'
   import { bind_renderer, create_orthographic_zoom, Gizmo } from '$lib/scene'
-  import { T, useTask } from '@threlte/core'
+  import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
   import { type ComponentProps, onDestroy, type Snippet, untrack } from 'svelte'
@@ -139,18 +139,28 @@
   // pos.x/y/z are the Three.js positions where axes attach (backside of cube)
   let pos = $state({ x: -half_x, y: -half_z, z: -half_y })
 
-  // Update backside positions when camera crosses axis planes
-  useTask(() => {
-    if (!camera) return
-    const cam = camera.position
-    // Only update when sign changes to avoid triggering geometry recreation every frame
-    const new_x = cam.x > 0 ? -half_x : half_x
-    const new_y = cam.y > 0 ? -half_z : half_z
-    const new_z = cam.z > 0 ? -half_y : half_y
-    if (pos.x !== new_x) pos.x = new_x
-    if (pos.y !== new_y) pos.y = new_y
-    if (pos.z !== new_z) pos.z = new_z
-  })
+  const { invalidate } = useThrelte()
+
+  // Update backside positions when camera crosses axis planes. autoInvalidate defaults to
+  // true, which would park this task in the scheduler's `autoInvalidations` for its whole
+  // lifetime and so re-render the on-demand scene every frame, idle or not. Opting out still
+  // runs the task each frame (the main stage is ungated), so crossings are still caught.
+  useTask(
+    () => {
+      if (!camera) return
+      const cam = camera.position
+      // Only update when sign changes to avoid triggering geometry recreation every frame
+      const new_x = cam.x > 0 ? -half_x : half_x
+      const new_y = cam.y > 0 ? -half_z : half_z
+      const new_z = cam.z > 0 ? -half_y : half_y
+      if (pos.x === new_x && pos.y === new_y && pos.z === new_z) return
+      pos.x = new_x
+      pos.y = new_y
+      pos.z = new_z
+      invalidate() // axes/grids move with `pos`, and nothing else requests that frame
+    },
+    { autoInvalidate: false },
+  )
 
   // Sign helpers for tick/label offsets (point outward from cube center)
   const sign_x = $derived(pos.x < 0 ? -1 : 1)

@@ -332,7 +332,8 @@ test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => 
     waitUntil: `networkidle`,
   })
   const diagram = page.locator(`.convex-hull-4d`).first()
-  const canvas = diagram.locator(`canvas`)
+  // the hull stacks a second, non-interactive canvas on top for the pulse rings
+  const canvas = diagram.locator(`canvas:not(.pulse-overlay)`)
   await expect(canvas).toBeVisible({ timeout: 15000 })
 
   const rot_before = Number(await diagram.getAttribute(`data-rotation-y`))
@@ -358,7 +359,7 @@ test(`drag-down decreases rotation_x (natural direction)`, async ({ page }) => {
     waitUntil: `networkidle`,
   })
   const diagram = page.locator(`.convex-hull-4d`).first()
-  const canvas = diagram.locator(`canvas`)
+  const canvas = diagram.locator(`canvas:not(.pulse-overlay)`)
   await expect(canvas).toBeVisible({ timeout: 15000 })
 
   const rot_before = Number(await diagram.getAttribute(`data-rotation-x`))

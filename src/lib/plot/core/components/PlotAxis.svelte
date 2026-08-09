@@ -10,9 +10,10 @@
     const fonts_ready = document.fonts?.ready
     if (fonts_ready !== observed_fonts_ready) {
       observed_fonts_ready = fonts_ready
+      // Fonts that never resolve leave the fallback measurements in place, which is fine
       fonts_ready_metrics = invalidate_text_metrics_after_fonts_ready({
         ready: fonts_ready,
-      }).then(clear_tick_metrics_cache)
+      }).then(clear_tick_metrics_cache, () => {})
     }
     return fonts_ready_metrics
   }
