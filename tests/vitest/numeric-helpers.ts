@@ -34,16 +34,15 @@ export const max_rel_error = (
 // Pack frames[frame_idx][atom_idx] = [x, y, z] into the flat Float64Array layout that the
 // MSD and VACF kernels consume.
 export const flatten_xyz_frames = (frames: number[][][]): Float64Array => {
-  const n_frames = frames.length
   const n_atoms = frames[0]?.length ?? 0
-  const flat = new Float64Array(n_frames * n_atoms * 3)
-  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+  const flat = new Float64Array(frames.length * n_atoms * 3)
+  for (let frame_idx = 0; frame_idx < frames.length; frame_idx++) {
     for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const off = (frame_idx * n_atoms + atom_idx) * 3
+      const offset = (frame_idx * n_atoms + atom_idx) * 3
       const [x_val, y_val, z_val] = frames[frame_idx][atom_idx]
-      flat[off] = x_val
-      flat[off + 1] = y_val
-      flat[off + 2] = z_val
+      flat[offset] = x_val
+      flat[offset + 1] = y_val
+      flat[offset + 2] = z_val
     }
   }
   return flat

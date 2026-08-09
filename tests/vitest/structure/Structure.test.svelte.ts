@@ -574,7 +574,7 @@ describe(`Structure`, () => {
     })
 
     doc_query(`.structure`).dispatchEvent(
-      create_drop_event([new File([SAMPLE_POSCAR_CONTENT], filename)]),
+      create_drop_event(new File([SAMPLE_POSCAR_CONTENT], filename)),
     )
     await vi.waitFor(() =>
       expect(on_file_drop).toHaveBeenCalledWith(
@@ -596,7 +596,7 @@ describe(`Structure`, () => {
     })
 
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    doc_query(`.structure`).dispatchEvent(create_drop_event([file]))
+    doc_query(`.structure`).dispatchEvent(create_drop_event(file))
 
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     const loaded = on_file_load.mock.calls[0][0]

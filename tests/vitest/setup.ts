@@ -377,10 +377,10 @@ export const load_json = <T = unknown>(file_path: string): T =>
   JSON.parse(read_maybe_gz(file_path)) as T
 
 // Gzip a string to the ArrayBuffer a File/fetch response would carry.
-export const gzip_bytes = async (content: string): Promise<ArrayBuffer> => {
-  const stream = new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`))
-  return new Response(stream).arrayBuffer()
-}
+export const gzip_bytes = (content: string): Promise<ArrayBuffer> =>
+  new Response(
+    new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`)),
+  ).arrayBuffer()
 
 // Drop event carrying files, for the file-drop handlers of Structure, Trajectory,
 // FermiSurface, XrdPlot and the phase diagrams. `dataTransfer` must go on via
