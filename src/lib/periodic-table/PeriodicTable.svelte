@@ -27,7 +27,7 @@
   import { TableInset } from './index'
 
   // a tile's heat value: scalar or 1-4-segment array of numbers/colors
-  type HeatValue = number | number[] | string | string[]
+  type HeatValue = number | string | (number | string)[]
 
   const default_f_block_inset_tiles = [
     { name: `Lanthanides`, symbol: `La-Lu`, number: `57-71`, category: `lanthanide` },
@@ -328,16 +328,14 @@
     return values.map((val) => ({
       color: override ?? bg_color(val, element) ?? undefined,
       value:
-        tile_missing || val == null || val === false || is_color(val)
+        tile_missing || val == null || val === false || Array.isArray(val) || is_color(val)
           ? undefined
           : val,
     }))
   }
 
-  // Determine whether to automatically show the color bar
   let should_show_color_bar = $derived(show_color_bar && !inset && usable_heat_nums.length > 0)
 
-  // Calculate heat range for color bar
   let heat_range = $derived.by((): Vec2 => {
     if (!should_show_color_bar) return [0, 1]
     const min = color_scale_range[0] ?? Math.min(...usable_heat_nums)
@@ -392,10 +390,8 @@
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
-    {@const is_active_elem = active_elements?.some((active_elem) =>
-      typeof active_elem === `string`
-        ? active_elem === symbol
-        : active_elem?.symbol === symbol,
+    {@const is_active_elem = active_elements.some((active_elem) =>
+      typeof active_elem === `string` ? active_elem === symbol : active_elem.symbol === symbol,
     )}
     {@const active =
       active_category === category || active_element?.name === name || is_active_elem}
@@ -447,7 +443,7 @@
     />
   {/each}
   <!-- show tile for lanthanides and actinides with text La-Lu and Ac-Lr respectively -->
-  {#each lanth_act_tiles || [] as lanth_act_element, idx (lanth_act_element.symbol)}
+  {#each lanth_act_tiles as lanth_act_element, idx (lanth_act_element.symbol)}
     {@const style = `opacity: 0.8; grid-column: 3; grid-row: ${6 + idx}; ${lanth_act_style}; ${
       tile_props?.style ?? ``
     }`}
@@ -474,7 +470,7 @@
 
   <!-- Tooltip -->
   {#if tooltip_visible && tooltip_element}
-    {@const el = tooltip_element as ChemicalElement}
+    {@const el = tooltip_element}
     {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
     {@const tooltip_value = heat_values[el.number - 1]}
     {#if tooltip !== false}
@@ -484,7 +480,7 @@
         bind:this={tooltip_node}
         style:--tooltip-auto-color={tooltip_text_color}
       >
-        {#if typeof tooltip == `function`}
+        {#if typeof tooltip === `function`}
           {@render tooltip({
             element: el,
             value: tooltip_value ?? null,
@@ -497,7 +493,7 @@
           <small>{el.symbol} • {el.number}</small>
           {#if Array.isArray(tooltip_value)}
             <br />
-            <small>Values: {(tooltip_value as number[]).join(`, `)}</small>
+            <small>Values: {tooltip_value.join(`, `)}</small>
           {/if}
         {/if}
       </div>

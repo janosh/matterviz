@@ -33,36 +33,20 @@ describe(`FilePicker`, () => {
 
   describe(`rendering and basic functionality`, () => {
     it.each([
-      [`empty carousel`, [], 1], // Only legend
-      [`all files`, mock_files, mock_files.length + 1], // Files + legend
-      [`active files with selection`, [`structure1.cif`, `molecule.xyz`], 2, `active`],
-      [`no active files`, [], 0, `active`],
-    ])(
-      `renders %s correctly`,
-      (
-        _description: string,
-        files_or_active: FileInfo[] | string[],
-        expected_count: number,
-        test_type?: string,
-      ) => {
-        const is_active_test = test_type === `active`
-        const props = is_active_test
-          ? { files: mock_files, active_files: files_or_active as string[] }
-          : { files: files_or_active as FileInfo[] }
+      [`only the legend when there are no files`, [], 1],
+      [`one row per file plus the legend`, mock_files, mock_files.length + 1],
+    ])(`renders %s`, (_desc, files: FileInfo[], expected_children: number) => {
+      mount(FilePicker, { target: document.body, props: { files } })
+      expect(doc_query(`.file-picker`).children).toHaveLength(expected_children)
+    })
 
-        mount(FilePicker, { target: document.body, props })
-
-        const carousel = doc_query(`.file-picker`)
-        expect(carousel).toBeInstanceOf(HTMLElement)
-
-        if (is_active_test) {
-          const active_elements = document.querySelectorAll(`.file-item.active`)
-          expect(active_elements).toHaveLength(expected_count)
-        } else {
-          expect(carousel.children).toHaveLength(expected_count)
-        }
-      },
-    )
+    it.each([
+      [`the named files`, [`structure1.cif`, `molecule.xyz`], 2],
+      [`nothing for an empty list`, [], 0],
+    ])(`marks active %s`, (_desc, active_files: string[], expected_active: number) => {
+      mount(FilePicker, { target: document.body, props: { files: mock_files, active_files } })
+      expect(document.querySelectorAll(`.file-item.active`)).toHaveLength(expected_active)
+    })
 
     it(`shows and contrasts file type badges only when labels are set`, () => {
       const labeled: FileInfo[] = [
@@ -140,80 +124,36 @@ describe(`FilePicker`, () => {
     })
   })
 
-  describe(`file type detection and inline styles`, () => {
-    it.each([
-      [`structure.cif`],
-      [`molecule.xyz`],
-      [`data.json`],
-      [`compressed.cif.gz`],
-      [`trajectory.traj`],
-      [`poscar`],
-    ])(`correctly identifies %s as a file type`, (filename: string) => {
-      const test_file = create_mock_file(filename, `content`)
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: [test_file] },
-      })
-
-      // Check that the file item has the correct background color style
-      const file_item = doc_query(`.file-item`)
-      const background_color = file_item.style.backgroundColor
-      expect(background_color).not.toBe(``)
-      expect(background_color).toContain(`rgba`)
-    })
-  })
-
   describe(`filtering functionality`, () => {
-    it.each([
-      [true, [`crystal`, `molecule`, `unknown`], `show_category_filters`],
-      [false, [], `show_category_filters`],
-      [true, [`CIF`, `XYZ`, `JSON`, `TRAJ`], `format_filters`],
-    ])(
-      `shows filters correctly when enabled=%s`,
-      (show_filters: boolean, expected_filters: string[], test_key: string) => {
-        const props =
-          test_key === `show_category_filters`
-            ? { files: mock_files, show_category_filters: show_filters }
-            : { files: mock_files }
+    const legend_text = () => doc_query(`.legend`).textContent ?? ``
 
-        mount(FilePicker, { target: document.body, props })
-
-        const legend_text = doc_query(`.legend`).textContent || ``
-        expected_filters.forEach((filter) => {
-          if (show_filters) {
-            expect(legend_text).toContain(filter)
-          } else if (test_key === `show_category_filters`) {
-            expect(legend_text).not.toContain(filter)
-          }
-        })
-
-        if (show_filters) {
-          const filter_items = document.querySelectorAll(`.legend-item`)
-          expect(filter_items.length).toBeGreaterThan(0)
-          filter_items.forEach((item) => {
-            expect(item.classList.contains(`active`)).toBe(false)
-          })
-        }
-      },
-    )
-
-    it(`normalizes trajectory file types to TRAJ`, () => {
-      const traj_files = [
-        create_mock_file(`file.traj`, `content`),
-        create_mock_file(`file_traj.xyz`, `content`),
-        create_mock_file(`XDATCAR`, `content`),
-      ]
-
+    it(`lists category filters when enabled, none of them active yet`, () => {
       mount(FilePicker, {
         target: document.body,
-        props: { files: traj_files },
+        props: { files: mock_files, show_category_filters: true },
       })
+      for (const category of [`crystal`, `molecule`, `unknown`]) {
+        expect(legend_text()).toContain(category)
+      }
+      const items = [...document.querySelectorAll(`.legend-item`)]
+      expect(items.length).toBeGreaterThan(0)
+      expect(items.some((item) => item.classList.contains(`active`))).toBe(false)
+    })
 
-      const traj_filter = Array.from(document.querySelectorAll(`.legend-item`)).find((el) =>
-        el.textContent?.includes(`TRAJ`),
-      )
-      expect(traj_filter).toBeDefined()
-      expect(document.querySelectorAll(`.file-item`)).toHaveLength(3)
+    it(`omits category filters by default`, () => {
+      mount(FilePicker, { target: document.body, props: { files: mock_files } })
+      for (const category of [`crystal`, `molecule`, `unknown`]) {
+        expect(legend_text()).not.toContain(category)
+      }
+    })
+
+    it(`always lists format filters, with swatches and no clear button until one is on`, () => {
+      mount(FilePicker, { target: document.body, props: { files: mock_files } })
+      for (const format of [`CIF`, `XYZ`, `JSON`, `TRAJ`]) {
+        expect(legend_text()).toContain(format)
+      }
+      expect(document.querySelectorAll(`.format-circle`).length).toBeGreaterThan(0)
+      expect(document.querySelectorAll(`.clear-filter`)).toHaveLength(0)
     })
 
     it(`toggles category/type filters on and off and keeps them mutually exclusive`, () => {
@@ -253,27 +193,6 @@ describe(`FilePicker`, () => {
 
   describe(`UI components and accessibility`, () => {
     it.each([
-      [`.clear-filter`, false, `clear filter button`],
-      [`.legend-item`, true, `filter items`],
-      [`.format-circle`, true, `format color circles`],
-    ])(
-      `renders %s (%s) correctly`,
-      (selector: string, should_exist: boolean, _description: string) => {
-        mount(FilePicker, {
-          target: document.body,
-          props: { files: mock_files },
-        })
-
-        const elements = document.querySelectorAll(selector)
-        if (should_exist) {
-          expect(elements.length).toBeGreaterThan(0)
-        } else {
-          expect(elements).toHaveLength(0)
-        }
-      },
-    )
-
-    it.each([
       [`tabindex`, `0`, `.legend-item[role="button"]`],
       [`role`, `button`, `.legend-item[role="button"]`],
       [`draggable`, `true`, `.file-item`],
@@ -290,89 +209,31 @@ describe(`FilePicker`, () => {
       },
     )
 
-    it.each([
-      [true, `crystal`, `crystal`],
-      [true, `molecule`, `molecule`],
-      [false, `crystal`, `crystal`],
-    ])(
-      `shows category names %s correctly`,
-      (show_categories: boolean, category: string, expected_text: string) => {
-        const test_files = [
-          create_mock_file(
-            `test.cif`,
-            `content`,
-            category as `crystal` | `molecule` | `unknown`,
-          ),
-        ]
-        mount(FilePicker, {
-          target: document.body,
-          props: {
-            files: test_files,
-            show_category_filters: show_categories,
-          },
-        })
-
-        if (show_categories) {
-          expect(document.body.textContent).toContain(expected_text)
-        } else {
-          // When show_category_filters is false, categories should not appear in the legend
-          const legend = doc_query(`.legend`)
-          expect(legend.textContent).not.toContain(expected_text)
-        }
-      },
-    )
   })
 
   describe(`edge cases and configuration`, () => {
+    // Every shape of name the type resolver has to cope with: extensionless, double
+    // extension, dots in the stem, spaces, and `` (the only case with no usable `type`,
+    // so the only one that reaches the name-parsing fallback and FALLBACK_FILE_TYPE_PAINT).
     it.each([
-      [`README`],
-      [`file.name.with.dots.cif`],
-      [``],
-      [`very_long_filename_that_should_wrap_properly.cif`],
-      [`edge case`],
-      [`no_extension`],
-    ])(`handles %s gracefully`, (filename: string) => {
-      const test_file = create_mock_file(filename, `content`)
+      `structure.cif`,
+      `compressed.cif.gz`,
+      `trajectory.traj`,
+      `poscar`,
+      `README`,
+      `file.name.with.dots.cif`,
+      ``,
+      `very_long_filename_that_should_wrap_properly.cif`,
+      `edge case`,
+      `no_extension`,
+    ])(`renders %s with a resolved row paint`, (filename: string) => {
       mount(FilePicker, {
         target: document.body,
-        props: { files: [test_file] },
+        props: { files: [create_mock_file(filename, `content`)] },
       })
-
       const file_item = doc_query(`.file-item`)
-      expect(file_item).toBeInstanceOf(HTMLElement)
       expect(file_item.textContent).toContain(filename)
-    })
-
-    it(`handles minimal props correctly`, () => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: [] },
-      })
-
-      const carousel = doc_query(`.file-picker`)
-      expect(carousel).toBeInstanceOf(HTMLElement)
-      expect(carousel.children).toHaveLength(1) // Only legend
-    })
-
-    it(`handles with empty active_files correctly`, () => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: mock_files, active_files: [] },
-      })
-
-      const active_elements = document.querySelectorAll(`.file-item.active`)
-      expect(active_elements).toHaveLength(0)
-    })
-
-    it(`handles with show_category_filters disabled correctly`, () => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: mock_files, show_category_filters: false },
-      })
-
-      const legend = doc_query(`.legend`)
-      expect(legend.textContent).not.toContain(`crystal`)
-      expect(legend.textContent).not.toContain(`molecule`)
+      expect(file_item.style.backgroundColor).toMatch(/^rgba\(/)
     })
   })
 
