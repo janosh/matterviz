@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { luminance, watch_dark_mode } from '$lib/colors'
+  import {
+    add_alpha,
+    contrast_text_color,
+    pick_contrast_color,
+    resolve_backdrop,
+    resolve_css_color,
+  } from '$lib/colors'
   import { Spinner } from '$lib/feedback'
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
@@ -62,56 +68,9 @@
   const is_invalid = (val: unknown) =>
     val == null || (typeof val === `number` && Number.isNaN(val))
 
-  // tooltip() wires [title]/[aria-label]/[data-title] elements once when it runs.
-  // Table cells are replaced when the table re-renders (sort, filter, data or
-  // pagination changes), which would silently drop their tooltips. Observe the
-  // container and incrementally wire newly added elements / unwire removed ones,
-  // instead of tearing down and rebuilding every tooltip on each unrelated DOM
-  // mutation (dropdowns, panes, pagination, context menu).
   const tooltip_selector = `[title], [aria-label], [data-title]`
-  function table_tooltips(node: HTMLElement) {
-    const options = { allow_html: true } as const
-    // Per-element cleanups so individual nodes can be unwired as they leave the DOM.
-    const wired = new SvelteMap<Element, () => void>()
-
-    const wire = (root: Element) => {
-      const targets = root.matches(tooltip_selector)
-        ? [root, ...root.querySelectorAll(tooltip_selector)]
-        : [...root.querySelectorAll(tooltip_selector)]
-      for (const el of targets) {
-        if (!(el instanceof HTMLElement) || wired.has(el)) continue
-        // tooltip() only mutates attributes (title -> data-original-title), never
-        // childList, so wiring here can't re-trigger the childList observer below.
-        const cleanup = tooltip(options)(el)
-        if (cleanup) wired.set(el, cleanup)
-      }
-    }
-
-    wire(node)
-    const observer = new MutationObserver((mutations) => {
-      // Unwire elements that left the DOM. isConnected stays true for moved nodes
-      // (e.g. row reordering on sort), so those keep their tooltips without churn.
-      // Deleting the current entry mid-iteration is safe for Map.
-      for (const [el, cleanup] of wired) {
-        if (!el.isConnected) {
-          cleanup()
-          wired.delete(el)
-        }
-      }
-      // Wire only the freshly added subtrees, not the whole container.
-      for (const { addedNodes } of mutations) {
-        for (const added of addedNodes) {
-          if (added instanceof Element) wire(added)
-        }
-      }
-    })
-    observer.observe(node, { childList: true, subtree: true })
-    return () => {
-      observer.disconnect()
-      for (const cleanup of wired.values()) cleanup()
-      wired.clear()
-    }
-  }
+  // Delegation keeps tooltips working as sorting, filtering and pagination replace cells.
+  const table_tooltips = tooltip({ allow_html: true, delegate: tooltip_selector })
 
   // Close a header popover when the pointer goes down anywhere outside it
   const close_header_popovers_on_outside_pointerdown = (event: PointerEvent) => {
@@ -221,6 +180,7 @@
     loading = $bindable(false),
     sort_data = true,
     heatmap_opacity = $bindable(1),
+    backdrop = undefined,
     empty_message = `No data`,
     show_row_numbers = false,
     allow_better_toggle = false,
@@ -312,6 +272,10 @@
     // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
     // color-mix() and the JS text contrast correction. Default 1 (fully opaque).
     heatmap_opacity?: number
+    // Opaque color painted behind the table. Required to get readable text on faded
+    // cells when heatmap_opacity < 1 and the host paints its own surface behind the
+    // table. Defaults to the --page-bg token read off the container.
+    backdrop?: string
     // Message shown when the table has no data rows. Set to empty string to hide.
     empty_message?: string
     // Show a row number column as the first column
@@ -329,20 +293,17 @@
   } = $props()
 
   let container_el = $state<HTMLDivElement>()
-
-  // Read --page-bg from computed style for text contrast calculation.
-  // Recalculates on mount and when the theme changes (dark/light mode toggle).
-  let page_bg_lum = $state(luminance(`white`))
-  $effect(() => {
-    if (!container_el) return
-    const read_page_bg = () => {
-      if (!container_el) return
-      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`).trim()
-      page_bg_lum = luminance(page_bg || `white`)
-    }
-    read_page_bg()
-    return watch_dark_mode(read_page_bg)
+  const page_backdrop = resolve_backdrop(() => container_el, { override: () => backdrop })
+  const highlight_color = resolve_css_color(() => container_el, {
+    css_var: `--highlight`,
+    fallback: `#4a9eff`,
   })
+  const selection_badge_color = $derived(
+    contrast_text_color({
+      background: highlight_color.current,
+      backdrop: page_backdrop.current,
+    }),
+  )
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
   // suffices since false positives just skip setting the attr (sorting still works by inner data-sort-value).
@@ -1243,11 +1204,12 @@
     const color = color_fn(parse_numeric_val(val))
 
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
-    // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
-      const blended_lum =
-        luminance(color.bg) * heatmap_opacity + page_bg_lum * (1 - heatmap_opacity)
-      return { bg: color.bg, text: blended_lum > 0.7 ? `black` : `white` }
+      const text = pick_contrast_color({
+        background: add_alpha(color.bg, heatmap_opacity),
+        backdrop: page_backdrop.current,
+      })
+      return { bg: color.bg, text }
     }
     return color
   }
@@ -2192,7 +2154,7 @@
         onclick={() => (selected_rows = [])}
         title="Clear {selected_rows.length} selected rows"
       >
-        <span class="badge">{selected_rows.length}</span>
+        <span class="badge" style:color={selection_badge_color}>{selected_rows.length}</span>
         <Icon icon={Cross} />
       </button>
     {/if}
@@ -3126,7 +3088,6 @@
     padding: 0 4px;
     .badge {
       background: var(--highlight, #4a9eff);
-      color: white;
       font-size: 0.7em;
       padding: 1px 4px;
       border-radius: 8px;

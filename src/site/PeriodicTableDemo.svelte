@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
   import type { ChemicalElement } from '$lib'
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
@@ -24,7 +23,7 @@
   let tooltip_bg_color: string = $state(`rgba(0, 0, 0, 0.8)`)
   let tile_border_radius: number = $state(1)
   let inner_transition_offset: number = $state(0.5)
-  let tile_font_color: string = $state(`#ffffff`)
+  let tile_font_color: string | null = $state(null)
   let controls_open = $state(false)
 
   let heatmap_values = $derived(
@@ -40,11 +39,6 @@
   let [y_label = ``, y_unit = ``] = $derived(
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],
   )
-
-  const onactivate = (element: ChemicalElement) => {
-    if (!element?.name) return
-    goto(`/${element.name.toLowerCase()}`)
-  }
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -91,7 +85,10 @@
 </form>
 
 <PeriodicTable
-  tile_props={{ show_name: window_width > 1000, text_color: tile_font_color }}
+  tile_props={{
+    show_name: window_width > 1000,
+    text_color: tile_font_color ?? undefined,
+  }}
   {heatmap_values}
   bind:color_scale
   bind:active_element={selected.element}
@@ -101,7 +98,6 @@
   gap={tile_gap}
   inner_transition_metal_offset={inner_transition_offset}
   show_photo
-  {onactivate}
 >
   {#snippet inset()}
     <TableInset>

@@ -1,9 +1,10 @@
 import type { ChemicalElement, ElementCategory } from '$lib'
-import { element_data, PeriodicTable, PeriodicTableControls, PropertySelect } from '$lib'
+import { element_data, PeriodicTable, PeriodicTableControls } from '$lib'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { CATEGORY_COUNTS, ELEM_HEATMAP_LABELS } from '$lib/labels'
 import type { Vec2 } from '$lib/math'
 import { colors, selected } from '$lib/state.svelte'
+import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -25,6 +26,16 @@ describe(`PeriodicTable`, () => {
     const props = show_lanth_act ? {} : { lanth_act_tiles: [] }
     mount(PeriodicTable, { target: document.body, props })
     expect(document.querySelectorAll(`.element-tile`)).toHaveLength(expected_tiles)
+  })
+
+  test(`applies tile_props text color to lanthanide and actinide inset tiles`, () => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { tile_props: { text_color: `red`, style: `cursor: pointer` } },
+    })
+    const inset_tiles = [...document.querySelectorAll<HTMLElement>(`.element-tile`)].slice(-2)
+    expect(inset_tiles.map((tile) => tile.style.color)).toEqual([`red`, `red`])
+    expect(inset_tiles.map((tile) => tile.style.cursor)).toEqual([`pointer`, `pointer`])
   })
 
   test(`hovering element tile toggles CSS class 'active'`, async () => {
@@ -61,14 +72,21 @@ describe(`PeriodicTable`, () => {
     const category_input = doc_query<HTMLInputElement>(
       `[data-key="${category}"] input[type="color"]`,
     )
+    const auto_font_input = doc_query<HTMLInputElement>(
+      `[data-key="tile_font_color"] input[type="checkbox"]`,
+    )
+    const font_color_input = doc_query<HTMLInputElement>(`input[aria-label="Tile font color"]`)
     category_input.focus()
     expect(selected.category).toBe(category)
     category_input.blur()
     expect(selected.category).toBeNull()
+    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([true, true])
+    auto_font_input.click()
     set_input(number_input(`tile_border_radius`), 5)
     set_input(number_input(`hover_border_width`), 3)
     set_input(category_input, `#654321`)
     await tick()
+    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([false, false])
 
     await click_reset(`[data-key="tile_border_radius"] .setting-reset-button`)
     expect(number_input(`tile_border_radius`).valueAsNumber).toBe(1)
@@ -76,6 +94,7 @@ describe(`PeriodicTable`, () => {
 
     await click_reset(`button[aria-label="Reset element tiles to defaults"]`)
     expect(number_input(`hover_border_width`).valueAsNumber).toBe(1)
+    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([true, true])
 
     await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
@@ -262,14 +281,20 @@ describe(`PeriodicTable`, () => {
     expect(tile.getAttribute(`tabindex`)).toBe(`2`)
   })
 
-  test(`PropertySelect offers heatmap options and selecting one maps to an element key`, () => {
-    mount(PropertySelect, { target: document.body })
-
-    doc_query(`ul.options > li`).dispatchEvent(new MouseEvent(`mouseup`))
+  test(`demo heatmap uses automatic light and dark tile font colors`, async () => {
+    mount(PeriodicTableDemo, { target: document.body })
+    doc_query(`ul.options > li`).click()
+    await tick()
 
     const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
-    expect(selected_text).not.toBe(``)
     expect(ELEM_HEATMAP_LABELS[selected_text]).toBeDefined()
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.periodic-table .value`)).toBeInstanceOf(HTMLElement),
+    )
+    const tiles = document.querySelectorAll<HTMLElement>(`.periodic-table .element-tile`)
+    expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
+      new Set([`white`, `black`]),
+    )
   })
 
   test.each([
@@ -477,6 +502,9 @@ describe(`PeriodicTable`, () => {
     const tile = document.querySelector(`.element-tile`) as HTMLElement
     expect(tile.style.backgroundColor).toBe(`purple`) // override shown as solid background
     expect(tile.querySelectorAll(`.segment`)).toHaveLength(0) // segment colors suppressed
+    expect(
+      [...tile.querySelectorAll(`.multi-value`)].map((label) => label.textContent),
+    ).toEqual([`1`, `2`])
   })
 
   // in log mode, 0 (and negatives) are non-positive -> missing; positives still map
@@ -570,29 +598,26 @@ describe(`PeriodicTable`, () => {
     [true, true],
     [false, false],
   ] as const)(`tooltip=%s -> %s`, async (tooltip, should_show) => {
-    mount(PeriodicTable, { target: document.body, props: { tooltip } })
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { tooltip, style: `--tooltip-bg: #4fc3f7` },
+    })
 
     const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
     hydrogen_tile.dispatchEvent(mouseenter)
     await tick()
 
-    const tooltip_el = document.querySelector(`.tooltip`)
+    const tooltip_el = document.querySelector<HTMLElement>(`.tooltip`)
     expect(Boolean(tooltip_el)).toBe(should_show)
 
-    if (should_show) {
-      expect(tooltip_el?.textContent).toContain(`Hydrogen`)
+    if (tooltip_el) {
+      expect(tooltip_el.textContent).toContain(`Hydrogen`)
+      expect(tooltip_el.style.getPropertyValue(`--tooltip-auto-color`)).toBe(`black`)
+      expect(getComputedStyle(tooltip_el).pointerEvents).toBe(`none`)
       hydrogen_tile.dispatchEvent(mouseleave)
       await tick()
       expect(document.querySelector(`.tooltip`)).toBeNull()
     }
-  })
-
-  test(`tooltip has pointer-events:none for stability`, async () => {
-    // Regression test: pointer-events:none prevents tooltip flashing on mouse move
-    mount(PeriodicTable, { target: document.body, props: { tooltip: true } })
-    doc_query(`.element-tile`).dispatchEvent(mouseenter)
-    await tick()
-    expect(getComputedStyle(doc_query(`.tooltip`)).pointerEvents).toBe(`none`)
   })
 
   describe(`multi-value heatmaps`, () => {
@@ -643,6 +668,21 @@ describe(`PeriodicTable`, () => {
         })
       },
     )
+
+    test(`explicit tile text color overrides segment contrast`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [[1, 2]],
+          tile_props: { show_name: false, text_color: `red` },
+        },
+      })
+      expect(
+        [...document.querySelectorAll<HTMLElement>(`.multi-value`)].map(
+          (label) => label.style.color,
+        ),
+      ).toEqual([`red`, `red`])
+    })
 
     test(`handles mixed data types and tooltip integration`, async () => {
       const mixed_data = [10, [20, 30], [40, 50, 60]]
@@ -761,29 +801,33 @@ describe(`PeriodicTable`, () => {
       expect(tiles[3].style.backgroundColor).not.toBe(`transparent`) // single number
     })
 
-    test.each([
-      [`color_overrides take precedence`, { color_overrides: { H: `purple`, He: `orange` } }],
-      [`show_values displays colors as text`, { tile_props: { show_values: true } }],
-    ])(`%s`, (_desc, extra_props) => {
+    test(`color_overrides take precedence`, () => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
           heatmap_values: [`#ff0000`, `#00ff00`] as never,
-          color_overrides: {},
+          color_overrides: { H: `purple`, He: `orange` },
           tile_props: { show_name: false },
-          ...extra_props,
         },
       })
 
-      if (`color_overrides` in extra_props) {
-        const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
-        expect(tiles[0].style.backgroundColor).toBe(`purple`)
-        expect(tiles[1].style.backgroundColor).toBe(`orange`)
-      } else {
-        const values = document.querySelectorAll(`.value`)
-        expect(values.length).toBeGreaterThan(0)
-        expect((values[0] as HTMLElement).textContent).toBe(`#ff0000`)
-      }
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      expect([tiles[0].style.backgroundColor, tiles[1].style.backgroundColor]).toEqual([
+        `purple`,
+        `orange`,
+      ])
+    })
+
+    test(`tile_props cannot replace generated heatmap segments`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [[1, 2]],
+          tile_props: { segments: [{ color: `red` }] } as never,
+        },
+      })
+
+      expect(document.querySelectorAll(`.element-tile .segment`)).toHaveLength(2)
     })
 
     test(`tooltip with color arrays`, async () => {

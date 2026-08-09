@@ -107,7 +107,7 @@
             label_y: center,
             is_outside_slice: false,
             font_scale: get_chart_font_scale(2.6, label_text, radius * 2),
-            text_color: pick_contrast_color({ bg_color: color }),
+            text_color: pick_contrast_color({ background: color }),
           }
         }
 
@@ -196,7 +196,7 @@
           font_scale,
           text_color: is_outside_slice
             ? `var(--text-color, #333)`
-            : pick_contrast_color({ bg_color: color }),
+            : pick_contrast_color({ background: color }),
         }
       })
   })

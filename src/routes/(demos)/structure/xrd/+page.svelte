@@ -3,6 +3,7 @@
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { PLOT_COLORS } from '$lib/colors'
+  import { file_type_paint } from '$lib/io'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import { Structure } from '$lib/structure'
@@ -28,8 +29,6 @@
 
   // Extension -> how FilePicker groups, labels and tints that format; one table so category
   // and swatch color cannot drift apart. Unlisted extensions fall back to plain ASCII.
-  // Colors must keep the `rgba(..., 0.8)` spelling: FilePicker string-replaces that alpha
-  // with 0.08 to tint the file row behind the swatch.
   type XrdFormat = { category: string; icon: string; color: string }
   const ascii = { category: `Powder XRD`, icon: `📊` }
   const gsas = { category: `GSAS/Rietveld`, icon: `🔬`, color: `rgba(255, 215, 0, 0.8)` }
@@ -50,8 +49,8 @@
     ras: { category: `Rigaku`, icon: `🇯🇵`, color: `rgba(138, 43, 226, 0.8)` },
     uxd: { category: `Siemens`, icon: `🇩🇪`, color: `rgba(220, 20, 60, 0.8)` },
   }
-  const xrd_file_colors = Object.fromEntries(
-    Object.entries(xrd_formats).map(([ext, { color }]) => [ext, color]),
+  const xrd_file_paints = Object.fromEntries(
+    Object.entries(xrd_formats).map(([ext, { color }]) => [ext, file_type_paint(color)]),
   )
 
   // Convert glob results to FileInfo array
@@ -314,7 +313,7 @@
   <section>
     <FilePicker
       files={xrd_data_files}
-      file_type_colors={xrd_file_colors}
+      file_type_paints={xrd_file_paints}
       show_category_filters
     />
     <XrdPlot

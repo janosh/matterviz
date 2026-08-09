@@ -1,6 +1,5 @@
 import { ColorBar, type Vec2 } from '$lib'
-import { luminance } from '$lib/colors'
-import type { AxisOption, ColorScaleOption } from '$lib/plot/core/types'
+import type { AxisOption, ColorBarScale, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -12,7 +11,7 @@ describe(`ColorBar Horizontal (Default)`, () => {
       target: document.body,
       props: {
         title: `Test Horizontal`,
-        color_scale: `Viridis`,
+        scale: `interpolateViridis`,
         tick_labels: 5, // D3 nice().ticks(5) for [0, 100] -> [0, 20, 40, 60, 80, 100]
         range: [0, 100],
         title_side: `left`,
@@ -47,16 +46,13 @@ describe(`ColorBar Horizontal (Default)`, () => {
     expect(wrapper.style.flexDirection).toBe(`row`) // title_side: left
   })
 
-  test(`handles invalid color_scale input`, () => {
-    const spy = vi.spyOn(console, `error`)
-
-    const color_scale = `test invalid`
-    mount(ColorBar, { target: document.body, props: { color_scale } })
-
-    expect(spy).toHaveBeenCalledWith(
-      `Color scale '${color_scale}' not found. Falling back on 'Viridis'.`,
+  test(`rejects invalid scale input`, () => {
+    // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
+    // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
+    const scale = `Viridis` as ColorBarScale
+    expect(() => mount(ColorBar, { target: document.body, props: { scale } })).toThrow(
+      `Unknown D3 color interpolator: Viridis`,
     )
-    spy.mockRestore()
   })
 })
 
@@ -144,22 +140,26 @@ describe(`ColorBar tick_side='inside'`, () => {
         tick_side: `inside`,
         range: [0, 100],
         tick_labels: 6, // Request 6 -> gen 6 -> d3 gives 6 ([0, 20,.., 100]) -> slice -> 4 visible
+        scale: `interpolateViridis`,
         style: `height: 30px;`,
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(4)
-
-    const first_visible_tick = tick_label_spans[0] as HTMLElement
-    expect(first_visible_tick.textContent).toBe(`20`)
-    expect(first_visible_tick.style.left).toBe(`20%`)
-    expect(first_visible_tick.classList).toContain(`horizontal`)
-    expect(first_visible_tick.classList).toContain(`tick-inside`)
-
-    const last_visible_tick = tick_label_spans[3] as HTMLElement
-    expect(last_visible_tick.textContent).toBe(`80`)
-    expect(last_visible_tick.style.left).toBe(`80%`)
+    const ticks = document.querySelectorAll<HTMLElement>(`.colorbar .bar > .tick-label`)
+    expect(
+      [...ticks].map((tick_label) => [
+        tick_label.textContent,
+        tick_label.style.left,
+        tick_label.style.color,
+      ]),
+    ).toEqual([
+      [`20`, `20%`, `white`],
+      [`40`, `40%`, `white`],
+      [`60`, `60%`, `black`],
+      [`80`, `80%`, `black`],
+    ])
+    expect(ticks[0].classList).toContain(`horizontal`)
+    expect(ticks[0].classList).toContain(`tick-inside`)
   })
 
   test(`Vertical: hides first/last ticks, centers others`, () => {
@@ -188,46 +188,19 @@ describe(`ColorBar tick_side='inside'`, () => {
     expect(last_visible_tick.style.top).toBe(`12.5%`)
   })
 
-  test(`Inside ticks have contrasting text color (black/white)`, () => {
-    // Turbo scale goes dark -> light -> dark
-    // Ticks: 0 (dark blue), 0.25 (green), 0.5 (yellow), 0.75 (red), 1 (dark red)
+  test(`resolves translucent interpolator colors against an opaque backdrop`, async () => {
     mount(ColorBar, {
       target: document.body,
       props: {
-        orientation: `horizontal`,
         tick_side: `inside`,
+        tick_labels: [0, 0.5, 1],
         range: [0, 1],
-        color_scale: `Turbo`,
-        tick_labels: 5, // Generate 5 ticks: 0, 0.25, 0.5, 0.75, 1
-        snap_ticks: false, // Use exact ticks
+        scale: { fn: () => `rgba(255, 255, 255, 0.1)`, domain: [0, 1] },
+        style: `--page-bg: black`,
       },
     })
-
-    // Helper to get expected color based on luminance
-    const get_expected_color = (value: number): string => {
-      const bg_color = d3_sc.interpolateTurbo(value)
-      return luminance(bg_color) > 0.5 ? `black` : `white`
-    }
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-
-    // Inside ticks hide first/last, so we check ticks at 0.25, 0.5, 0.75
-    expect(tick_label_spans).toHaveLength(3)
-
-    // Tick at 0.25 (Greenish - should be moderately light -> black text)
-    const tick1 = tick_label_spans[0] as HTMLElement
-    expect(tick1.textContent).toBe(`0.25`)
-    expect(tick1.style.color).toBe(get_expected_color(0.25))
-
-    // Tick at 0.5 (Yellow - should be very light -> black text)
-    const tick2 = tick_label_spans[1] as HTMLElement
-    expect(tick2.textContent).toBe(`0.5`)
-    expect(tick2.style.color).toBe(get_expected_color(0.5))
-
-    // Tick at 0.75 (Reddish - should be moderately dark -> white text)
-    const tick3 = tick_label_spans[2] as HTMLElement
-    expect(tick3.textContent).toBe(`0.75`)
-    expect(tick3.style.color).toBe(get_expected_color(0.75))
+    await tick()
+    expect(doc_query(`.tick-label`).style.color).toBe(`white`)
   })
 })
 
@@ -425,11 +398,11 @@ describe(`ColorBar Other Features`, () => {
     expect(title_row.classList.contains(`top`)).toBe(true)
   })
 
-  test(`accepts a function for color_scale`, () => {
+  test(`accepts a custom interpolator`, () => {
     const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`) // Mock scale
     mount(ColorBar, {
       target: document.body,
-      props: { color_scale: custom_scale, range: [0, 1] }, // Use default steps=50
+      props: { scale: { interpolator: custom_scale }, range: [0, 1] }, // Use default steps=50
     })
 
     // Verify the mock function was called (steps times)
@@ -579,6 +552,21 @@ describe(`ColorBar Interactive Selects`, () => {
     void unmount(component)
   })
 
+  test(`accepts custom interpolators in color scale options`, async () => {
+    const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
+        range: [0, 10],
+      },
+    })
+    await tick()
+    expect(interpolator).toHaveBeenCalled()
+    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(1, 2, 3)`)
+    void unmount(component)
+  })
+
   test(`resets stale selected keys to valid options`, async () => {
     const state = {
       selected_property_key: `energy`,
@@ -589,7 +577,9 @@ describe(`ColorBar Interactive Selects`, () => {
       props: bind_props(
         {
           property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
-          color_scale_options: [{ key: `magma`, label: `Magma`, scale: `interpolateMagma` }],
+          color_scale_options: [
+            { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
+          ] satisfies ColorScaleOption[],
         },
         state,
       ),

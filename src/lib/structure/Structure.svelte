@@ -75,8 +75,12 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
-  import type { AtomColorConfig } from './atom-properties'
-  import { get_property_colors } from './atom-properties'
+  import {
+    DEFAULT_ATOM_COLOR_CONFIG,
+    get_property_colors,
+    normalize_atom_color_config,
+    type AtomColorConfig,
+  } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
   import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
@@ -185,11 +189,7 @@
     height = $bindable(0),
     reset_text = `Reset view (r, or double-click)`,
     color_scheme = $bindable(`Vesta`),
-    atom_color_config = $bindable({
-      mode: DEFAULTS.structure.atom_color_mode,
-      scale: DEFAULTS.structure.atom_color_scale,
-      scale_type: DEFAULTS.structure.atom_color_scale_type,
-    }),
+    atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
@@ -362,7 +362,7 @@
     // structure content as string (alternative to providing structure directly or via data_url)
     structure_string?: string
     // Atom coloring configuration
-    atom_color_config?: Partial<AtomColorConfig>
+    atom_color_config?: AtomColorConfig
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     on_file_load?: EventHandler
     on_error?: EventHandler
@@ -378,6 +378,14 @@
     `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
   > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+
+  // Dash and other JavaScript callers can bypass the TypeScript union with partial JSON.
+  // Normalize once before the first render and again before later prop updates are applied.
+  atom_color_config = normalize_atom_color_config(atom_color_config)
+  $effect.pre(() => {
+    const normalized = normalize_atom_color_config(atom_color_config)
+    if (normalized !== atom_color_config) atom_color_config = normalized
+  })
 
   // Static toolbar tables. `as const` keeps the modes literal, since the click handlers assign
   // them straight to the MeasureMode/BondEditMode props.

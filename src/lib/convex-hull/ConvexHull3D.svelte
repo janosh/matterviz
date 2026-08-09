@@ -324,6 +324,10 @@
     project_point: project_3d_point,
     extract_structure: extract_structure_from_entry,
     render_frame,
+    // oxfmt-ignore
+    // selected_entry included: pulsing points move to the overlay canvas, so the hull has
+    // to repaint (once) whenever which points those are changes
+    repaint_deps: () => [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, text_color, elements, merged_config, merged_highlight_style],
     hull_point_opts,
     pulse: () => ({ time: pulse.time, opacity: pulse_opacity }),
     on_drag: (dx, dy, panning) => {
@@ -356,7 +360,7 @@
       l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
-  const { render_once, render_overlay_once } = interactions
+  const { render_overlay_once } = interactions
   const sorted_points_cache = $derived(interactions.sorted_points_cache)
 
   // Hull face color (customizable via controls)
@@ -378,14 +382,6 @@
     helpers.is_entry_highlighted(entry, highlighted_entries)
 
   // Re-render when important state changes
-  $effect(() => {
-    // oxfmt-ignore
-    // selected_entry included: pulsing points move to the overlay canvas, so the hull has
-    // to repaint (once) whenever which points those are changes
-    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, text_color] // track reactively
-
-    render_once()
-  })
 
   // function (not const) so the create_canvas_interactions options above can reference it
   function extract_structure_from_entry(entry: ConvexHullEntry): AnyStructure | null {
@@ -1023,7 +1019,7 @@
     <ColorBar
       title="Energy above hull (eV/atom)"
       range={helpers.hull_distance_range(plot_entries)}
-      {color_scale}
+      scale={color_scale}
       wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px;"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"
@@ -1035,8 +1031,7 @@
   {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
     <ColorBar
       title="Formation energy (eV/atom)"
-      color_scale_fn={e_form_color_scale_fn}
-      color_scale_domain={e_form_range}
+      scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
       range={e_form_range}
       wrapper_style="position: absolute; bottom: 16px; right: 1em; width: 200px;"
       bar_style="height: 12px;"

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_color } from '$lib/colors'
+  import { contrast_text_color } from '$lib/colors'
   import { format_fractional } from '$lib/labels'
   import { colors } from '$lib/state.svelte'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
@@ -101,8 +101,8 @@
           <td>
             <span
               style:background-color={colors.element[elem]}
+              style:color={contrast_text_color({ background: colors.element[elem] })}
               style="display: inline-block; padding: 0 4pt; border-radius: 3pt; line-height: 1.25"
-              {@attach contrast_color()}
             >
               {elem}
             </span>

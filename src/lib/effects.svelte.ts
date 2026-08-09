@@ -30,11 +30,10 @@ export function create_pulse_animation(
     if (reset_when_inactive) time = 0
   }
 
-  // Optimistic until an observer says otherwise, so a pulse with no `element` (or no
-  // IntersectionObserver) runs unconditionally and a gated one costs at most a frame of
-  // animation while off screen. Waiting for the first callback instead would delay every
-  // pulse by a frame, and stalls forever under test DOMs that stub IntersectionObserver
-  // without ever invoking it (happy-dom does exactly that).
+  // Optimistic until an observer says otherwise: a pulse with no `element` (or no
+  // IntersectionObserver) runs unconditionally, a gated one wastes at most a frame off screen.
+  // Waiting for the first callback would delay every pulse, and stall forever under test DOMs
+  // that stub IntersectionObserver without ever invoking it (happy-dom does exactly that).
   let on_screen = $state(true)
   $effect(() => {
     const node = element?.()
@@ -51,9 +50,8 @@ export function create_pulse_animation(
 
   $effect(() => {
     if (!active()) return stop()
-    // Going off screen only pauses, so `time` survives and the pulse resumes mid-phase.
-    // stop() would reset it, which also republishes `unit` to every consumer of a chart
-    // nobody is looking at — the repaints this gate exists to avoid.
+    // Pause, don't stop: `time` survives so the pulse resumes mid-phase, and resetting it
+    // would republish `unit` to every consumer — the repaints this gate exists to avoid.
     if (!on_screen) return cancel_frame()
 
     const animate = () => {

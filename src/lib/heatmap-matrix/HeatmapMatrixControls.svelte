@@ -95,6 +95,7 @@
     toggle_props={{
       ...toggle_props,
       title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
+      'aria-label': toggle_props[`aria-label`] ?? `Heatmap controls`,
       class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
       style: merge_styles(default_toggle_style, toggle_props?.style),
     }}

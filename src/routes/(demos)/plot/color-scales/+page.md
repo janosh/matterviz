@@ -55,7 +55,7 @@
 
 <ColorBar
   range={[1, Math.max(...heatmap_values)]}
-  {color_scale}
+  scale={color_scale}
   bind:nice_range
   scale_type={log_scale ? `log` : `linear`}
   bar_style="width: 100%; margin: 4em 1em"

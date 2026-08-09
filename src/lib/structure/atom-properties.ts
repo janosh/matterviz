@@ -1,32 +1,41 @@
 // Utility functions for computing atom properties and applying color scales
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
-import { get_d3_interpolator } from '$lib/colors'
+import { COLOR_SCALE_TYPES, get_d3_interpolator, is_d3_interpolate_name } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import type { CoordinationData } from '$lib/coordination/calc-coordination'
 import { element_by_symbol } from '$lib/element/data'
 import * as math from '$lib/math'
-import type { AtomColorMode } from '$lib/settings'
+import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
-import { get_majority_element } from '$lib/structure/bonding'
-import type { Pbc } from '$lib/structure/pbc'
-import { wrap_frac_coord } from '$lib/structure/pbc'
+import { get_majority_element, type BondingStrategy } from '$lib/structure/bonding'
+import { wrap_frac_coord, type Pbc } from '$lib/structure/pbc'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
-import * as d3_sc from 'd3-scale-chromatic'
 
-export interface AtomColorConfig {
-  mode: AtomColorMode
-  scale?: D3InterpolateName
+type SimpleAtomColorMode = Exclude<AtomColorMode, `property` | `custom`>
+type AtomColorFn = (site: Site, idx: number) => number | string
+
+interface AtomColorBase {
+  scale: D3InterpolateName
   scale_type: ColorScaleType
-  color_fn?: (site: Site, idx: number) => number | string
-  // Site property to color by in `property` mode (OVITO's Color Coding). Vec3 values
-  // (force, velocity, ...) are reduced to their magnitude.
-  property_key?: string
 }
+
+// Keyed on `mode` so the fields a mode depends on cannot go missing. `property_key` and
+// `color_fn` used to be optional on a flat interface, so `{ mode: 'property' }` type-checked
+// and then quietly painted every atom the same color.
+export type AtomColorConfig =
+  | (AtomColorBase & { mode: SimpleAtomColorMode })
+  // Site property to color by (OVITO's Color Coding). Vec3 values (force, velocity, ...)
+  // are reduced to their magnitude.
+  | (AtomColorBase & { mode: `property`; property_key: string })
+  | (AtomColorBase & { mode: `custom`; color_fn: AtomColorFn })
+
+// JSON-safe subset accepted from Dash. Runtime Svelte callers can still use custom
+// functions through AtomColorConfig, but serialized payloads cannot represent them.
+export type DashAtomColorConfig = Exclude<AtomColorConfig, { mode: `custom` }>
 
 export interface AtomPropertyColors {
   colors: string[] // Color for each site index
@@ -37,7 +46,7 @@ export interface AtomPropertyColors {
 }
 
 const GRAY = `#808080`
-const DEFAULT_COLOR_SCALE = `interpolateViridis`
+const DEFAULT_COLOR_SCALE = DEFAULTS.structure.atom_color_scale
 // Cap on periodic image shells per axis when expanding for coordination. Guards
 // against image explosion in very thin / highly oblique cells (coordination is ~O(n²)).
 const MAX_IMAGE_SHELLS = 3
@@ -46,9 +55,6 @@ const MAX_IMAGE_SHELLS = 3
 // never misses a bonded neighbor.
 const ELECTRONEG_MAX_RATIO = 2
 type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_input_idx?: number[][] }
-
-export const get_d3_color_scales = (): string[] =>
-  Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
 
 const to_hex = (interp_fn: (t: number) => string, frac: number) =>
   rgb(interp_fn(frac)).formatHex()
@@ -73,10 +79,10 @@ const build_image_site = (
 
 const make_categorical = <T>(
   vals: T[],
-  scale: string,
+  scale: D3InterpolateName,
   sort_fn?: (a: T, b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
-  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
+  const interp_fn = get_d3_interpolator(scale)
   const uniq = sort_fn
     ? [...new Set(vals)].toSorted(sort_fn)
     : [...new Set(vals)].toSorted((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
@@ -96,15 +102,14 @@ const build_prop_colors = (
   unique_values?: number[],
 ): AtomPropertyColors => {
   const uniq = unique_values ?? [...new Set(vals)].toSorted((val_a, val_b) => val_a - val_b)
-  // Use sorted uniq array to avoid spreading large arrays into Math.min/max
-  const min_value = uniq.length > 0 ? uniq[0] : undefined
+  const min_value = uniq[0]
   const max_value = uniq.at(-1)
   return { colors, values: vals, min_value, max_value, unique_values: uniq }
 }
 
 export function apply_color_scale(
   vals: number[],
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): { colors: string[]; unique_values?: number[] } {
   if (vals.length === 0) return { colors: [] }
@@ -113,7 +118,7 @@ export function apply_color_scale(
     return { colors: result.colors, unique_values: result.unique_values }
   }
 
-  const interp_fn = get_d3_interpolator(scale as D3InterpolateName)
+  const interp_fn = get_d3_interpolator(scale)
   // Compute min/max in single pass to avoid spreading large arrays
   let [min, max] = [vals[0], vals[0]]
   for (const val of vals) {
@@ -129,7 +134,7 @@ export function apply_color_scale(
 
 export const apply_categorical_color_scale = (
   vals: string[],
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): { colors: string[]; unique_values: string[] } =>
   vals.length > 0 ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
@@ -253,7 +258,7 @@ export function calc_structure_coordination(
 export function get_coordination_colors(
   structure: AnyStructure,
   strategy: BondingStrategy = `electroneg_ratio`,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   // sites is already limited to the original atoms (calc_coordination_nums center_count)
@@ -268,7 +273,7 @@ export function get_coordination_colors(
 export function get_wyckoff_colors(
   structure: AnyStructure,
   sym_data: SymmetryDataWithOrigMap | null,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   const n_sites = structure.sites.length
   if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
@@ -361,7 +366,7 @@ export const structure_has_selective_dynamics = (
 
 export function get_selective_dynamics_colors(
   structure: AnyStructure,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   if (structure.sites.length === 0) return { colors: [], values: [] }
   const categories = structure.sites.map((site) =>
@@ -408,38 +413,91 @@ export function get_colorable_property_keys(
       if (site_property_scalar(site, key) !== null) keys.add(key)
     }
   }
-  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  return [...keys].sort((key_a, key_b) => key_a.localeCompare(key_b))
+  return [...keys].toSorted((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
-// A mode change implies a scale type (categorical for bucketed properties, a ramp for the
-// rest) and, in `property` mode, a key to color by — without one every atom would land on
-// the same flat color. Both the controls panel and the legend's mode menu switch modes, so
-// they share this fixup instead of each re-deriving what a mode implies.
-export function sync_atom_color_mode(
-  config: Partial<AtomColorConfig>,
+const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean =>
+  first.mode === second.mode &&
+  first.scale === second.scale &&
+  first.scale_type === second.scale_type &&
+  (first.mode !== `property` ||
+    (second.mode === `property` && first.property_key === second.property_key)) &&
+  (first.mode !== `custom` || (second.mode === `custom` && first.color_fn === second.color_fn))
+
+export const DEFAULT_ATOM_COLOR_CONFIG: AtomColorConfig = {
+  mode: `element`,
+  scale: DEFAULT_COLOR_SCALE,
+  scale_type: DEFAULTS.structure.atom_color_scale_type,
+}
+
+const is_atom_color_mode = (value: unknown): value is AtomColorMode =>
+  typeof value === `string` && ATOM_COLOR_MODE_OPTIONS.some((mode) => mode === value)
+const is_color_scale_type = (value: unknown): value is ColorScaleType =>
+  typeof value === `string` && COLOR_SCALE_TYPES.some((scale_type) => scale_type === value)
+const is_atom_color_fn = (value: unknown): value is AtomColorFn => typeof value === `function`
+const default_scale_type = (mode: AtomColorMode, property_key?: unknown): ColorScaleType =>
+  mode === `wyckoff` ||
+  mode === `selective_dynamics` ||
+  (mode === `property` && property_key === CNA_TYPE_PROPERTY)
+    ? `categorical`
+    : `continuous`
+
+// Normalize untyped/serialized props before rendering.
+export function normalize_atom_color_config(config: unknown): AtomColorConfig {
+  if (!config || typeof config !== `object` || Array.isArray(config)) {
+    return { ...DEFAULT_ATOM_COLOR_CONFIG }
+  }
+  const candidate = config as Record<string, unknown>
+  const mode = is_atom_color_mode(candidate.mode) ? candidate.mode : `element`
+  const scale =
+    typeof candidate.scale === `string` && is_d3_interpolate_name(candidate.scale)
+      ? candidate.scale
+      : DEFAULT_ATOM_COLOR_CONFIG.scale
+  const scale_type = is_color_scale_type(candidate.scale_type)
+    ? candidate.scale_type
+    : default_scale_type(mode, candidate.property_key)
+  const candidate_config = candidate as unknown as AtomColorConfig
+  const finalize = (normalized: AtomColorConfig): AtomColorConfig =>
+    configs_equal(candidate_config, normalized) ? candidate_config : normalized
+
+  const property_key = typeof candidate.property_key === `string` ? candidate.property_key : ``
+  if (mode === `property` && property_key)
+    return finalize({ mode, scale, scale_type, property_key })
+  if (mode === `custom` && is_atom_color_fn(candidate.color_fn))
+    return finalize({ mode, scale, scale_type, color_fn: candidate.color_fn })
+  if (mode === `property` || mode === `custom`)
+    return finalize({ mode: `element`, scale, scale_type: default_scale_type(`element`) })
+  return finalize({ mode, scale, scale_type })
+}
+
+// Preserve object identity when unchanged so reactive callers can assign unconditionally.
+export const next_atom_color_config = (
+  config: AtomColorConfig,
+  mode: AtomColorMode,
   property_keys: string[],
-): void {
-  const { mode } = config
-  let { property_key } = config
+  preferred_key?: string,
+): AtomColorConfig => {
+  const { scale } = config
+  const finalize = (next: AtomColorConfig): AtomColorConfig =>
+    configs_equal(next, config) ? config : next
   if (mode === `property`) {
-    if (property_keys.length === 0) {
-      config.mode = `element`
-      return
-    }
-    if (!property_key || !property_keys.includes(property_key)) {
-      property_key = property_keys[0]
-      config.property_key = property_key
-    }
+    if (property_keys.length === 0)
+      return finalize({ mode: `element`, scale, scale_type: default_scale_type(`element`) })
+    const previous_key =
+      preferred_key ?? (`property_key` in config ? config.property_key : undefined)
+    const property_key =
+      previous_key && property_keys.includes(previous_key) ? previous_key : property_keys[0]
+    return finalize({
+      mode,
+      scale,
+      scale_type: default_scale_type(mode, property_key),
+      property_key,
+    })
   }
-  if (mode && mode !== `element`) {
-    config.scale_type =
-      mode === `wyckoff` ||
-      mode === `selective_dynamics` ||
-      (mode === `property` && property_key === CNA_TYPE_PROPERTY)
-        ? `categorical`
-        : `continuous`
-  }
+  if (mode === `custom` && `color_fn` in config) return config
+  if (mode === `custom`)
+    throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
+  return finalize({ mode, scale, scale_type: default_scale_type(mode) })
 }
 
 // Keep discrete CNA phases on OVITO's stable palette as phases appear or vanish.
@@ -453,20 +511,17 @@ const cna_type_palette = (codes: number[]): string[] =>
 export function get_site_property_colors(
   structure: AnyStructure,
   property_key: string,
-  scale = DEFAULT_COLOR_SCALE,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const scalars = structure.sites.map((site) => site_property_scalar(site, property_key))
   const present = scalars.filter((val) => val !== null)
   if (present.length === 0) return { colors: [], values: [] }
 
-  let colors: string[]
-  let unique_values: number[] | undefined
-  if (property_key === CNA_TYPE_PROPERTY && type === `categorical`) {
-    colors = cna_type_palette(present)
-  } else {
-    ;({ colors, unique_values } = apply_color_scale(present, scale, type))
-  }
+  const { colors, unique_values } =
+    property_key === CNA_TYPE_PROPERTY && type === `categorical`
+      ? { colors: cna_type_palette(present), unique_values: undefined }
+      : apply_color_scale(present, scale, type)
   const stats = build_prop_colors(present, colors, unique_values)
   if (present.length === scalars.length) return stats
 
@@ -481,8 +536,8 @@ export function get_site_property_colors(
 
 export function get_custom_colors(
   structure: AnyStructure,
-  fn: (site: Site, idx: number) => number | string,
-  scale = DEFAULT_COLOR_SCALE,
+  fn: AtomColorFn,
+  scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
   const vals = structure.sites.map((site, idx) => fn(site, idx))
@@ -501,24 +556,27 @@ export function get_custom_colors(
 
 export function get_atom_colors(
   structure: AnyStructure,
-  config: Partial<AtomColorConfig>,
+  config: AtomColorConfig,
   bonding_strategy: BondingStrategy = `electroneg_ratio`,
   sym_data: MoyoDataset | null = null,
 ): AtomPropertyColors {
-  const { mode = `element`, scale = DEFAULT_COLOR_SCALE, scale_type = `continuous` } = config
+  const normalized_config = normalize_atom_color_config(config)
+  const { mode, scale, scale_type } = normalized_config
 
-  if (mode === `coordination`) {
+  if (mode === `coordination`)
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
-  }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
   if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
-  if (mode === `property` && config.property_key) {
-    return get_site_property_colors(structure, config.property_key, scale, scale_type)
-  }
-  if (mode === `custom` && config.color_fn) {
-    return get_custom_colors(structure, config.color_fn, scale, scale_type)
-  }
-  // Element mode or custom without function, no property colors needed
+  if (mode === `property`)
+    return get_site_property_colors(
+      structure,
+      normalized_config.property_key,
+      scale,
+      scale_type,
+    )
+  if (mode === `custom`)
+    return get_custom_colors(structure, normalized_config.color_fn, scale, scale_type)
+  // Element mode needs no property colors
   return { colors: [], values: [] }
 }
 
@@ -526,11 +584,11 @@ export function get_atom_colors(
 // Returns null if structure is missing, mode is element, or no colors computed
 export function get_property_colors(
   structure: AnyStructure | undefined,
-  config: Partial<AtomColorConfig>,
+  config: AtomColorConfig,
   bonding_strategy: BondingStrategy,
   sym_data: MoyoDataset | null,
 ): AtomPropertyColors | null {
-  if (!structure || config.mode === `element`) return null
+  if (!structure) return null
   const result = get_atom_colors(structure, config, bonding_strategy, sym_data)
   return result.colors.length > 0 ? result : null
 }

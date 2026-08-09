@@ -7,11 +7,11 @@ ColorBar with tick labels; compare `tick_side`:
   import { ColorBar } from 'matterviz'
 </script>
 
-{#each [// [color_scale, tick_side, tick_labels, range, label_text]
-  [`Viridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]], [`Magma`, `secondary`, 10, [100, 1631]], [`Cividis`, `primary`, 4, [-99.9812, -10]]] as [color_scale, tick_side, tick_labels, range]}
+{#each [// [scale, tick_side, tick_labels, range, label_text]
+  [`interpolateViridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]], [`interpolateMagma`, `secondary`, 10, [100, 1631]], [`interpolateCividis`, `primary`, 4, [-99.9812, -10]]] as [scale, tick_side, tick_labels, range]}
   <ColorBar
-    title="color_scale={color_scale} &emsp; tick_side={tick_side} &emsp; range={range}"
-    {color_scale}
+    title="scale={scale} &emsp; tick_side={tick_side} &emsp; range={range}"
+    {scale}
     {tick_side}
     {tick_labels}
     {range}
@@ -104,7 +104,7 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
   {#snippet inset()}
     <TableInset style="place-items: center; padding: 2em">
       <ColorBar
-        color_scale="interpolateInferno"
+        scale="interpolateInferno"
         title="Atomic Mass (u)"
         range={heat_range}
         tick_labels={5}
@@ -148,7 +148,6 @@ Example demonstrating `title_side` and `tick_side` interaction:
           tick_labels={num_ticks}
           range={current_range}
           --cbar-tick-overlap-offset="10px"
-          --cbar-tick-label-color={tick_side === `inside` ? `white` : `currentColor`}
         />
       </div>
     {/each}
@@ -459,7 +458,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
     title="Symmetric Range (-1000 to 1000)"
     range={[-1000, 1000]}
     scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    color_scale="interpolateRdBu"
+    scale="interpolateRdBu"
     tick_labels={7}
     bar_style="width: 350px"
   />
@@ -468,7 +467,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
     title="Asymmetric Range (-100 to 1000)"
     range={[-100, 1000]}
     scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    color_scale="interpolatePuOr"
+    scale="interpolatePuOr"
     tick_labels={6}
     bar_style="width: 350px"
   />
@@ -478,7 +477,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
     range={[-500, 500]}
     scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
     orientation="vertical"
-    color_scale="interpolateBrBG"
+    scale="interpolateBrBG"
     bar_style="height: 200px"
   />
 
@@ -486,7 +485,7 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
     title="Near-Zero Focus (-10 to 10)"
     range={[-10, 10]}
     scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    color_scale="interpolatePiYG"
+    scale="interpolatePiYG"
     tick_labels={5}
     bar_style="width: 350px"
   />

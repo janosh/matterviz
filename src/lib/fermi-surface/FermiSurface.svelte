@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone, reciprocal_lattice } from '$lib/brillouin'
+  import type { D3InterpolateName } from '$lib/colors'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
@@ -96,7 +97,7 @@
     mu?: number
     controls_open?: boolean
     color_property?: ColorProperty
-    color_scale?: string
+    color_scale?: D3InterpolateName
     // Label for custom property coloring (e.g. "λ(k)", "DOS", etc.)
     custom_property_label?: string
     representation?: RepresentationMode

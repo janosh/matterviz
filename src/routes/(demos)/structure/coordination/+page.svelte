@@ -25,7 +25,7 @@
   // Color the structure viewers by coordination number so the discrete color bar shows
   // live next to the histogram; each section's scene_props links its bonding strategy so
   // changing a dropdown updates that section's structure(s) and histogram together.
-  const coord_coloring: Partial<AtomColorConfig> = {
+  const coord_coloring: AtomColorConfig = {
     mode: `coordination`,
     scale: `interpolateViridis`,
     scale_type: `continuous`,

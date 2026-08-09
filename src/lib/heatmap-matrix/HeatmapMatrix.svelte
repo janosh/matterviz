@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, is_color, pick_contrast_color } from '$lib/colors'
+  import {
+    get_d3_interpolator,
+    is_color,
+    is_concrete_color,
+    pick_contrast_color,
+    resolve_backdrop,
+  } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
@@ -41,6 +47,7 @@
     color_scale_range = [null, null],
     color_overrides = {},
     missing = {},
+    backdrop = undefined,
     log = false,
     value_transform,
     normalize = `linear`,
@@ -120,6 +127,9 @@
     color_scale_range?: [number | null, number | null]
     color_overrides?: Record<string, string>
     missing?: MissingCellStyle
+    // Opaque color painted behind the matrix, used to composite translucent cell fills
+    // before picking label contrast. Defaults to the --page-bg token on the matrix.
+    backdrop?: string
     log?: boolean
     value_transform?: (
       value: number,
@@ -466,17 +476,21 @@
     return colors
   })
 
-  const to_contrast_colors = (bg_values: (string | null)[]): (string | null)[] =>
-    bg_values.map((bg_color) => (bg_color ? pick_contrast_color({ bg_color }) : null))
-
-  // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
-  let text_flat = $derived.by(() => {
-    if (!cell && !show_values) return null
-    return to_contrast_colors(bg_flat)
-  })
-
+  let matrix_el: HTMLDivElement | undefined = $state()
+  // Cell fills may be translucent (color overrides, missing-cell fills), so contrast
+  // needs to know what is painted behind them. Callers can name that surface with the
+  // `backdrop` prop; otherwise it comes from the page token.
+  const page_backdrop = resolve_backdrop(() => matrix_el, { override: () => backdrop })
   // Keep selected outlines visible against each cell's background.
-  let selected_outline_flat = $derived(to_contrast_colors(bg_flat))
+  let selected_outline_flat = $derived(
+    bg_flat.map((bg_color) =>
+      is_concrete_color(bg_color)
+        ? pick_contrast_color({ background: bg_color, backdrop: page_backdrop.current })
+        : null,
+    ),
+  )
+  // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
+  let text_flat = $derived(cell || show_values ? selected_outline_flat : null)
 
   const get_flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
 
@@ -500,7 +514,6 @@
   const dblclick_delay_ms = 250
   let last_hover_x = -1
   let last_hover_y = -1
-  let matrix_el: HTMLDivElement | undefined = $state()
   let scroll_left = $state(0)
   let scroll_top = $state(0)
   let viewport_width = $state(0)
@@ -1325,7 +1338,7 @@
       tick_format={legend_format}
       range={[cs_min, cs_max]}
       scale_type={use_log_norm ? `log` : `linear`}
-      {color_scale}
+      scale={typeof color_scale === `string` ? color_scale : { interpolator: color_scale }}
       wrapper_style={legend_wrapper_style}
     />
   {/if}

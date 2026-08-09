@@ -5,6 +5,7 @@
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
   import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
+  import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
   import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
@@ -147,6 +148,9 @@
   let drop_zone = $state<`top` | `bottom` | `left` | `right` | `center` | null>(null)
   let drop_target_panel_idx = $state<number>(-1)
   let canvas_element: HTMLElement | undefined = $state()
+  const backdrop = resolve_backdrop(() => canvas_element, {
+    css_var: [`--vscode-editor-background`, `--page-bg`, `--surface-bg`],
+  })
 
   let sidebar_element: HTMLElement | undefined = $state()
 
@@ -240,6 +244,7 @@
       badge.dataset.renderable_path = data_path
       badge.dataset.renderable_type = info.type
       badge.style.background = TYPE_COLORS[info.type]
+      badge.style.color = pick_contrast_color({ background: TYPE_COLORS[info.type] })
       badge.draggable = true
       insert_after.after(badge)
     }
@@ -799,6 +804,7 @@
         class:horizontal={layout_direction === `horizontal`}
       >
         {#each panels as panel, idx (panel.id)}
+          {@const panel_background = `${TYPE_COLORS[panel.detected_type]}cc`}
           {#if idx > 0 && split_directions[idx - 1]}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
@@ -812,7 +818,14 @@
           <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
             <div class="panel-mount" id={panel.id}></div>
             <!-- Panel label -->
-            <div class="panel-label" style="background: {TYPE_COLORS[panel.detected_type]}cc;">
+            <div
+              class="panel-label"
+              style:background={panel_background}
+              style:color={contrast_text_color({
+                background: panel_background,
+                backdrop: backdrop.current,
+              })}
+            >
               {TYPE_LABELS[panel.detected_type]}: {strip_type_suffix(panel.data_path)}
             </div>
           </div>
@@ -894,8 +907,6 @@
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 3px;
-    color: white;
-    opacity: 0.7;
     pointer-events: none;
     white-space: nowrap;
     max-width: calc(100% - 16px);
@@ -1032,7 +1043,6 @@
     padding: 1px 4px;
     margin-left: 4px;
     border-radius: 3px;
-    color: white;
     font-weight: 500;
     white-space: nowrap;
     cursor: grab;

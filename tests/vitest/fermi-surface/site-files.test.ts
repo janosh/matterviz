@@ -1,4 +1,4 @@
-import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
+import { fermi_file_paints, fermi_surface_files } from '$site/fermi-surfaces'
 import { describe, expect, it } from 'vitest'
 
 // Regression test for production bug where fermi_surface_files derived their `url`
@@ -39,6 +39,6 @@ describe(`fermi_surface_files`, () => {
   })
 
   it(`exposes file type colors`, () => {
-    expect(Object.keys(fermi_file_colors).toSorted()).toEqual([`bxsf`, `frmsf`, `json`])
+    expect(Object.keys(fermi_file_paints).toSorted()).toEqual([`bxsf`, `frmsf`, `json`])
   })
 })

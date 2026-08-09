@@ -114,7 +114,7 @@
         else below_labels++
       }
 
-      const text_color = pick_contrast_color({ bg_color: color })
+      const text_color = pick_contrast_color({ background: color })
       const label_props = {
         font_scale,
         text_color,

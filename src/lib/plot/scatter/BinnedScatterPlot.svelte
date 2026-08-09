@@ -625,8 +625,8 @@
       ? min_point_radius
       : size_scale_fn(size_value)
 
-  // Located when the selection changes rather than per pulse frame, and by index so this
-  // stays independent of the scales (which move on every pan frame).
+  // Located per selection change, not per pulse frame, and by index so it stays independent
+  // of the scales (which move every pan frame).
   const selected_point = $derived.by(() => {
     if (selected_point_id == null) return null
     for (const [series_idx, srs] of series.entries()) {
@@ -1289,8 +1289,7 @@
     >
       <ColorBar
         {...color_bar_props}
-        {color_scale_fn}
-        color_scale_domain={auto_color_range}
+        scale={{ fn: color_scale_fn, domain: auto_color_range }}
         range={auto_color_range}
       />
     </div>

@@ -1,4 +1,4 @@
-import { color as d3_color, rgb } from 'd3-color'
+import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import {
   COLOR_THEMES,
@@ -17,24 +17,27 @@ import muted_colors from './muted-colors.json' with { type: 'json' }
 import pastel_colors from './pastel-colors.json' with { type: 'json' }
 import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
+export * from './backdrop.svelte'
+
 // Extract color scheme interpolate function names from d3-scale-chromatic
+// Color scale names are always the prefixed d3 export name (`interpolateViridis`), which
+// is what get_d3_interpolator, the settings defaults and every dropdown value use. Bare
+// names are a display concern only -- strip the prefix at render time.
 export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
-export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
-  ? Name
-  : never
 const d3_interpolators = Object.fromEntries(
   Object.entries(d3_sc).filter(
     ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
   ),
 ) as Record<D3InterpolateName, (t: number) => string>
-export const D3_INTERPOLATE_NAMES = new Set(
-  Object.keys(d3_interpolators),
-) as ReadonlySet<D3InterpolateName>
+export const D3_INTERPOLATE_NAMES = Object.keys(
+  d3_interpolators,
+) as readonly D3InterpolateName[]
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
-  D3_INTERPOLATE_NAMES.has(name as D3InterpolateName)
+  Object.hasOwn(d3_interpolators, name)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
-  const candidate = d3_interpolators[name]
-  return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
+  const interpolator = d3_interpolators[name]
+  if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
+  return interpolator
 }
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
@@ -99,8 +102,73 @@ export const default_element_colors = { ...vesta_hex }
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   const trimmed = val.trim()
-  return /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) || d3_color(trimmed) !== null
+  return (
+    /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) ||
+    to_rendered_rgb(trimmed) !== undefined
+  )
 }
+const parse_rgb_function = (color: string): RGBColor | undefined => {
+  const match = /^rgba?\(\s*(?<channels>[^/]+?)(?:\s*\/\s*(?<alpha>[^,\s]+))?\s*\)$/i.exec(
+    color,
+  )
+  if (!match?.groups) return undefined
+  const { channels: channel_text, alpha: slash_alpha } = match.groups
+  const comma_syntax = channel_text.includes(`,`)
+  const channels = channel_text.trim().split(comma_syntax ? /\s*,\s*/ : /\s+/)
+  let alpha: string | undefined = slash_alpha
+  if (comma_syntax && alpha) return undefined
+  if (comma_syntax && channels.length === 4 && color.toLowerCase().startsWith(`rgba`))
+    alpha = channels.pop()
+  if (channels.length !== 3) return undefined
+  const parse_component = (value: string, percent_scale: number): number =>
+    value.endsWith(`%`) ? (Number(value.slice(0, -1)) * percent_scale) / 100 : Number(value)
+  const [red, green, blue] = channels.map((value) => parse_component(value, 255))
+  return rgb(red, green, blue, parse_component(alpha ?? `1`, 1))
+}
+const to_rgb = (color: string): RGBColor | undefined => {
+  const parsed = parse_rgb_function(color) ?? d3_color(color)?.rgb()
+  if (!parsed) return undefined
+  // The `transparent` keyword has NaN channels; normalize only that case without
+  // discarding channels from explicit rgba(..., 0).
+  if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite))
+    return parsed.opacity === 0 ? rgb(0, 0, 0, 0) : undefined
+  const clamp_channel = (channel: number) => Math.max(0, Math.min(255, channel))
+  return rgb(
+    clamp_channel(parsed.r),
+    clamp_channel(parsed.g),
+    clamp_channel(parsed.b),
+    clamp01(parsed.opacity),
+  )
+}
+let color_canvas_context: CanvasRenderingContext2D | null | undefined
+function to_rendered_rgb(color: string): RGBColor | undefined {
+  const parsed = to_rgb(color)
+  if (parsed) return parsed
+  if (
+    typeof document === `undefined` ||
+    typeof CanvasRenderingContext2D === `undefined` ||
+    /^(?:var\(|currentcolor$)/i.test(color)
+  )
+    return undefined
+  const context = (color_canvas_context ??= document
+    .createElement(`canvas`)
+    .getContext(`2d`, { willReadFrequently: true }))
+  if (!context) return undefined
+  context.fillStyle = `black`
+  context.fillStyle = color
+  const parsed_style = context.fillStyle
+  context.fillStyle = `white`
+  context.fillStyle = color
+  if (context.fillStyle !== parsed_style) return undefined
+  context.clearRect(0, 0, 1, 1)
+  context.fillRect(0, 0, 1, 1)
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
+  return rgb(red, green, blue, alpha / 255)
+}
+export const is_concrete_color = (val: unknown): val is string =>
+  typeof val === `string` && (to_rendered_rgb(val.trim())?.opacity ?? 0) > 0
+export const is_opaque_color = (val: unknown): val is string =>
+  typeof val === `string` && to_rendered_rgb(val.trim())?.opacity === 1
 
 export const PLOT_COLORS = [
   // Color series for e.g. line plots
@@ -116,49 +184,96 @@ export const PLOT_COLORS = [
   `#c6f6d5`,
 ] as const
 
-// calculate human-perceived brightness from RGB color
-export function luminance(clr: string) {
-  const { r: red, g: green, b: blue } = rgb(clr)
+const parse_rgb = (color: string): RGBColor => {
+  const parsed = to_rendered_rgb(color)
+  if (!parsed) throw new Error(`Invalid color: ${color}`)
+  return parsed
+}
+
+// Calculate human-perceived brightness from gamma-encoded RGB channels.
+export function perceived_brightness(color: string): number {
+  const { r: red, g: green, b: blue } = parse_rgb(color)
 
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
-// CSS color string for a fully transparent background
-const NO_BG = `rgba(0, 0, 0, 0)`
-
-// get background color of passed DOM node, or recurse up the DOM tree if current node is transparent
-export function get_bg_color(
-  elem: HTMLElement | null,
-  bg_color: string | null = null,
-): string {
-  if (bg_color) return bg_color
-  // recurse up the DOM tree to find the first non-transparent background color
-  if (!elem) return NO_BG // if no DOM node, return transparent
-
-  const bg = getComputedStyle(elem).backgroundColor // get node background color
-  if (bg !== NO_BG) return bg // if not transparent, return it
-  return get_bg_color(elem.parentElement) // otherwise recurse up the DOM tree
+const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
+  const linearize = (channel: number): number => {
+    const fraction = channel / 255
+    return fraction <= 0.04045 ? fraction / 12.92 : ((fraction + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
 }
 
-export interface ContrastOptions {
-  bg_color?: string
-  luminance_threshold?: number
-  choices?: [string, string]
+// Calculate WCAG relative luminance from linearized sRGB channels.
+export const relative_luminance = (color: string): number => rgb_luminance(parse_rgb(color))
+const contrast_ratio = (first_luminance: number, second_luminance: number): number =>
+  (Math.max(first_luminance, second_luminance) + 0.05) /
+  (Math.min(first_luminance, second_luminance) + 0.05)
+
+const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
+  const foreground_alpha = clamp01(foreground.opacity)
+  const backdrop_alpha = clamp01(backdrop.opacity)
+  const opacity = foreground_alpha + backdrop_alpha * (1 - foreground_alpha)
+  if (opacity === 0) return rgb(0, 0, 0, 0)
+  const channel = (foreground_value: number, backdrop_value: number): number =>
+    (foreground_value * foreground_alpha +
+      backdrop_value * backdrop_alpha * (1 - foreground_alpha)) /
+    opacity
+  return rgb(
+    channel(foreground.r, backdrop.r),
+    channel(foreground.g, backdrop.g),
+    channel(foreground.b, backdrop.b),
+    opacity,
+  )
 }
 
-export function pick_contrast_color(options: ContrastOptions = {}) {
-  const { bg_color, luminance_threshold = 0.7, choices = [`black`, `white`] } = options
-  const light_bg = luminance(bg_color ?? `white`) > luminance_threshold
-  return light_bg ? choices[0] : choices[1] // dark text for light backgrounds, light for dark
+export const composite_colors = (foreground: string, backdrop: string): string =>
+  composite_rgb(parse_rgb(foreground), parse_rgb(backdrop)).formatRgb()
+
+// Explicit description of what gets painted where, so text contrast can be computed
+// from data instead of inferred by inspecting rendered DOM. `background` is the color
+// painted on the element itself; `backdrop` is the opaque color behind it and is only
+// consulted (and only required) when `background` is translucent.
+export interface Paint {
+  background: string
+  backdrop?: string
+  choices?: readonly [string, string]
 }
 
-// Attachment that picks dark or light text to maximize contrast with the node's
-// background. Ours only differs in reading `getComputedStyle` output, which is always
-// `rgb()`, so the library's regex parser covers it — `pick_contrast_color` below keeps
-// d3's full parser because color-scale output reaches it as hex/named/hsl too.
-export { contrast_color } from 'svelte-widgets/attachments'
+const DEFAULT_CONTRAST_CHOICES = [`black`, `white`] as const
 
-const is_valid_bg = (bg: string): boolean => bg !== `` && bg !== NO_BG && bg !== `transparent`
+export function pick_contrast_color(paint: Paint): string {
+  const { background, backdrop, choices = DEFAULT_CONTRAST_CHOICES } = paint
+  const parsed_bg = parse_rgb(background)
+  let effective_bg = parsed_bg
+  if (parsed_bg.opacity < 1) {
+    if (!backdrop) {
+      throw new Error(`Translucent background requires a backdrop: ${background}`)
+    }
+    const parsed_backdrop = parse_rgb(backdrop)
+    if (parsed_backdrop.opacity < 1) {
+      throw new Error(`backdrop must be opaque: ${backdrop}`)
+    }
+    effective_bg = composite_rgb(parsed_bg, parsed_backdrop)
+  }
+  const bg_luminance = rgb_luminance(effective_bg)
+  const choice_luminances = choices.map((choice) => {
+    const parsed_choice = parse_rgb(choice)
+    return rgb_luminance(
+      parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, effective_bg) : parsed_choice,
+    )
+  })
+  return contrast_ratio(bg_luminance, choice_luminances[0]) >=
+    contrast_ratio(bg_luminance, choice_luminances[1])
+    ? choices[0]
+    : choices[1]
+}
+
+// Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
+// currentcolor), where inheriting the surrounding text color is the only honest answer.
+export const contrast_text_color = (paint: Paint): string =>
+  is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
@@ -167,14 +282,15 @@ export function get_page_background(
 ): string {
   if (typeof window === `undefined`) return ``
 
-  // Try to get background from html or body
-  const html_bg = getComputedStyle(document.documentElement).backgroundColor
-  const body_bg = getComputedStyle(document.body).backgroundColor
+  const body_background = getComputedStyle(document.body).backgroundColor
+  if (is_opaque_color(body_background)) return body_background
 
-  // Check if background is not transparent/unset
-  // Prefer body background as it's more likely to be styled by the theme
-  if (is_valid_bg(body_bg)) return body_bg
-  if (is_valid_bg(html_bg)) return html_bg
+  const html_background = getComputedStyle(document.documentElement).backgroundColor
+  if (is_opaque_color(html_background)) {
+    return is_concrete_color(body_background)
+      ? composite_colors(body_background, html_background)
+      : html_background
+  }
 
   // Fall back to prefers-color-scheme
   const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
@@ -185,8 +301,6 @@ export function get_page_background(
 // preference (resolving `auto` against the OS), then falls back to OS preference.
 export function is_dark_mode(): boolean {
   if (typeof document === `undefined`) return false
-  // Prefer the resolved theme name on data-theme (light/dark/white/black), else
-  // fall back to the persisted preference (resolving `auto` against the OS)
   const data_theme = document.documentElement.dataset.theme
   const theme_name =
     data_theme && is_valid_theme_name(data_theme)
@@ -223,41 +337,14 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
 
 // Convert a CSS color string to hex format for use with <input type="color">.
 // Returns fallback for CSS variables, transparent, invalid colors, or undefined.
-// Uses d3-color for robust parsing of named colors, rgb(), hsl(), etc.
 export function css_color_to_hex(color: string | undefined, fallback: string): string {
-  if (!color || color.startsWith(`var(`)) return fallback
-  if (color === `transparent`) return `#ffffff`
-  const parsed = rgb(color)
-  return Number.isNaN(parsed.r) ? fallback : parsed.formatHex()
+  if (!color) return fallback
+  if (color.trim().toLowerCase() === `transparent`) return `#ffffff`
+  return to_rendered_rgb(color)?.formatHex() ?? fallback
 }
 
-// Add or modify the alpha channel of a color.
-// Supports hex (#rgb, #rgba, #rrggbb, #rrggbbaa), rgb(), and rgba() formats.
-// Returns the color in rgba() format, or the original color if format is unsupported.
+// Return a concrete CSS color with a replaced alpha channel.
 export function add_alpha(color: string, alpha: number): string {
-  // Clamp alpha to valid CSS range [0, 1]
-  const clamped_alpha = clamp01(alpha)
-
-  // Handle hex colors (#rgb, #rgba, #rrggbb, #rrggbbaa)
-  if (color.startsWith(`#`)) {
-    const hex = color.slice(1)
-    // Guard against malformed hex (only 3, 4, 6, or 8 chars are valid)
-    if (![3, 4, 6, 8].includes(hex.length)) return color
-
-    // Extract RGB, ignoring any existing alpha channel
-    const is_short = hex.length === 3 || hex.length === 4
-    const red = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
-    const green = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
-    const blue = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
-    return `rgba(${red}, ${green}, ${blue}, ${clamped_alpha})`
-  }
-  // Handle rgb() colors
-  if (color.startsWith(`rgb(`)) {
-    return color.replace(`rgb(`, `rgba(`).replace(`)`, `, ${clamped_alpha})`)
-  }
-  // Handle rgba() - replace existing alpha (supports scientific notation like 1e-5)
-  if (color.startsWith(`rgba(`)) {
-    return color.replace(/,\s*[\d.eE\-+]+\)$/, `, ${clamped_alpha})`)
-  }
-  return color
+  const parsed = to_rendered_rgb(color)
+  return parsed ? rgb(parsed.r, parsed.g, parsed.b, clamp01(alpha)).formatRgb() : color
 }

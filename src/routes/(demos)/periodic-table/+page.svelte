@@ -119,7 +119,7 @@
     >
       <ColorBar
         title="Atomic Radius (pm)"
-        color_scale="interpolateViridis"
+        scale="interpolateViridis"
         range={atomic_radius_range}
         orientation="horizontal"
         bar_style="width: 135px; height: 12px"
@@ -128,7 +128,7 @@
       />
       <ColorBar
         title="Electronegativity × 100"
-        color_scale="interpolateViridis"
+        scale="interpolateViridis"
         range={electronegativity_range}
         orientation="horizontal"
         bar_style="width: 135px; height: 12px"
@@ -137,7 +137,7 @@
       />
       <ColorBar
         title="Covalent Radius (pm)"
-        color_scale="interpolateViridis"
+        scale="interpolateViridis"
         range={covalent_radius_range}
         orientation="horizontal"
         bar_style="width: 135px; height: 12px"
@@ -146,7 +146,7 @@
       />
       <ColorBar
         title="|Electron Affinity| (kJ/mol)"
-        color_scale="interpolateViridis"
+        scale="interpolateViridis"
         range={electron_affinity_range}
         orientation="horizontal"
         bar_style="width: 135px; height: 12px"

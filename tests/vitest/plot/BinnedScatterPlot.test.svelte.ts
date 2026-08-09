@@ -858,7 +858,7 @@ describe(`BinnedScatterPlot`, () => {
     expected_color.style.backgroundColor = interpolateViridis(0)
     const tooltip = doc_query(`.plot-tooltip`)
     expect(tooltip.style.backgroundColor).toBe(expected_color.style.backgroundColor)
-    expect(tooltip.style.color).toBe(`#ffffff`)
+    expect(tooltip.style.color).toBe(`white`)
 
     click_plot(420, 247)
     expect(on_point_click).toHaveBeenCalledWith(
