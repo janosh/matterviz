@@ -39,7 +39,7 @@ def extract_pymatgen_properties(
 
 def main() -> None:
     """Main entry point."""
-    gz_path = Path(__file__).parents[2] / "src" / "lib" / "element" / "data.json.gz"
+    gz_path = Path(__file__).parents[1] / "lib" / "element" / "data.json.gz"
 
     print(f"Loading existing data from {gz_path}")
     existing_data: list[dict[str, Any]] = json.loads(

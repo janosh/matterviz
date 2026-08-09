@@ -1,4 +1,4 @@
-// Usage: node src/scripts/capture-screenshots.mjs <site|polyhedra> [out_dir]
+// Usage: node src/scripts/capture-screenshots.mjs <site|polyhedra> [polyhedra_out_dir]
 import { chromium } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, unlink } from 'node:fs/promises'

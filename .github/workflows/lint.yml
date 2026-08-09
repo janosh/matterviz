@@ -40,11 +40,12 @@ jobs:
       # Same blind spot as vscode: this tsconfig ran nowhere. verify-deps-before-run is off
       # because pnpm re-runs `install` before `run`, which fails over the ignored fontawesome
       # build script even immediately after a successful install.
-      - name: Type-check JupyterLab extension
-        run: pnpm --config.verify-deps-before-run=false -C extensions/jupyterlab run typecheck
-
-      - name: Test JupyterLab extension
-        run: pnpm --config.verify-deps-before-run=false -C extensions/jupyterlab test
+      - name: Type-check and test JupyterLab extension
+        env:
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
+        run: |
+          pnpm -C extensions/jupyterlab run typecheck
+          pnpm -C extensions/jupyterlab test
 
   knip:
     name: Check unused code
