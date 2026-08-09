@@ -27,9 +27,9 @@
     "@types/node": "^26.1.1",
     "anywidget": "^0.11.0",
     "matterviz": "file:../..",
-    "svelte": "^5.56.5",
+    "svelte": "^5.56.8",
     "svelte-widgets": "github:janosh/svelte-widgets#main",
-    "vite": "^8.1.4",
+    "vite": "^8.1.5",
     "vite-plus": "latest"
   },
   "packageManager": "pnpm@11.5.0"
