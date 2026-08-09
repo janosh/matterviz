@@ -7,9 +7,8 @@ import type { TrajHandlerData } from '$lib/trajectory'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { MULTI_FRAME_XYZ } from '../setup'
 
-const MULTI_FRAME_XYZ = `2\nStep 1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74
-2\nStep 2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.78`
 const BLOB_URL = `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
 const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
 

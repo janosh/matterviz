@@ -4,6 +4,7 @@
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
+  import { array_extent } from '$lib/math'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -36,32 +37,18 @@
     pane_props?: PaneProps
   } = $props()
 
-  // Helper functions
   const is_valid_number = (val: unknown): val is number =>
-    typeof val === `number` && isFinite(val)
+    typeof val === `number` && Number.isFinite(val)
 
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
-
-  // Loop rather than Math.min(...spread), which throws RangeError past ~125k arguments.
-  // Reachable since these aggregates started reading plot_metadata, which the indexed
-  // parser fills at sample_rate 1 — one entry per frame of a run that can be six digits.
-  // calc_force_stats avoids the same trap for the same reason.
-  const min_max = (values: number[]): [number, number] => {
-    let [min, max] = [values[0], values[0]]
-    for (const value of values) {
-      if (value < min) min = value
-      if (value > max) max = value
-    }
-    return [min, max]
-  }
 
   const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
     if (values.length === 0) return null
     if (values.length === 1) {
       return `${format_num(values[0], decimals)} ${unit}`.trim()
     }
-    const [min, max] = min_max(values)
+    const [min, max] = array_extent(values)
     return `${format_num(min, decimals)} - ${format_num(max, decimals)} ${unit}`.trim()
   }
 
@@ -284,7 +271,7 @@
       ).filter((volume) => volume > 0)
 
       if (volumes.length > 1) {
-        const [min_volume, max_volume] = min_max(volumes)
+        const [min_volume, max_volume] = array_extent(volumes)
         // A fixed cell would otherwise render `125 - 125 Å³` directly under the Structure
         // section's own Volume row. volumes is already filtered to finite positives, so the
         // ratio is finite and non-negative.

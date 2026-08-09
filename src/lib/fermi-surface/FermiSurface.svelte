@@ -167,12 +167,10 @@
   ) {
     try {
       await tick()
-      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
-
       // parse_fermi_file throws a descriptive error when parsing fails
-      const parsed = parse_fermi_file(text, filename)
+      const parsed = parse_fermi_file(io.as_text(content), filename)
 
-      const file_size = new Blob([content]).size
+      const file_size = io.content_byte_size(content)
       current_filename = filename
 
       // Check if it's already FermiSurfaceData or BandGridData

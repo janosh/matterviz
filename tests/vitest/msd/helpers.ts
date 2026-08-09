@@ -4,7 +4,10 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { MsdPositions } from '$lib/msd'
 import type { Pbc } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
+import { flatten_xyz_frames } from '../numeric-helpers'
 import { make_crystal } from '../setup'
+
+export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 
 export interface BuildPositionsOptions {
   elements?: ElementSymbol[]
@@ -21,19 +24,9 @@ export function build_positions(
 ): MsdPositions {
   const n_frames = frames.length
   const n_atoms = frames[0]?.length ?? 0
-  const positions = new Float64Array(n_frames * n_atoms * 3)
-  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const off = (frame_idx * n_atoms + atom_idx) * 3
-      const xyz = frames[frame_idx][atom_idx]
-      positions[off] = xyz[0]
-      positions[off + 1] = xyz[1]
-      positions[off + 2] = xyz[2]
-    }
-  }
   const { lattice = null } = options
   return {
-    positions,
+    positions: flatten_xyz_frames(frames),
     n_frames,
     n_atoms,
     elements: options.elements ?? Array.from({ length: n_atoms }, () => `H`),
@@ -87,32 +80,3 @@ export function make_frame(
     ...(coords_unwrapped === undefined ? {} : { metadata: { coords_unwrapped } }),
   }
 }
-
-// Park-Miller minimal standard LCG. Pure float arithmetic (16807 * 2^31 stays under
-// 2^53, so every product is exact), seeded so statistical assertions are reproducible.
-export function make_rng(seed: number): () => number {
-  let state = seed % 2147483647
-  if (state <= 0) state += 2147483646
-  return () => {
-    state = (state * 16807) % 2147483647
-    return (state - 1) / 2147483646
-  }
-}
-
-// Largest |a - b| over two equal-length series
-export const max_abs_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => Math.max(worst, Math.abs(value - expected[idx])), 0)
-
-// Largest |a - b| / |b| over two equal-length series, skipping zero references
-export const max_rel_error = (
-  actual: readonly number[],
-  expected: readonly number[],
-): number =>
-  actual.reduce((worst, value, idx) => {
-    const reference = expected[idx]
-    if (reference === 0) return worst
-    return Math.max(worst, Math.abs(value - reference) / Math.abs(reference))
-  }, 0)

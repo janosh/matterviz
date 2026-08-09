@@ -4,6 +4,7 @@ import type { EnergyModeInfo } from '$lib/convex-hull'
 import type { ElementSymbol } from '$lib/element'
 import type { AnyStructure } from '$lib/structure'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
+import { array_extent } from '$lib/math'
 import { scaleSequential } from 'd3-scale'
 import { symbol } from 'd3-shape'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
@@ -53,19 +54,15 @@ export const extract_structure_from_entry = (
   return (orig_entry?.structure as AnyStructure) || null
 }
 
-// Loop-based min/max — Math.min/max(...arr) blows the stack on large (>~100k) arrays
-export const array_min = (values: readonly number[]): number =>
-  values.reduce((min, val) => (val < min ? val : min), Infinity)
-export const array_max = (values: readonly number[]): number =>
-  values.reduce((max, val) => (val > max ? val : max), -Infinity)
-
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1).
 // Filter to finite values: NaN/undefined distances would otherwise produce a broken range.
 export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
   const dists = entries
     .map((entry) => entry.e_above_hull)
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
-  return dists.length > 0 ? [array_min(dists), Math.max(array_max(dists), 0.1)] : [0, 0.1]
+  if (dists.length === 0) return [0, 0.1]
+  const [min_dist, max_dist] = array_extent(dists)
+  return [min_dist, Math.max(max_dist, 0.1)]
 }
 
 export const entry_is_stable = (

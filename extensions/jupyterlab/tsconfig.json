@@ -1,21 +1,10 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "target": "esnext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
     "lib": ["esnext", "DOM", "DOM.Iterable"],
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "types": ["node", "svelte", "vite/client"],
-    "paths": {
-      "$lib": ["../../src/lib/index.ts"],
-      "$lib/*": ["../../src/lib/*"]
-    }
+    "types": ["node", "svelte", "vite/client"]
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts"]
 }

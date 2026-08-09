@@ -1,4 +1,5 @@
 // Tests for isosurface volumetric file parsers (CHGCAR, .cube)
+import { BOHR_TO_ANGSTROM } from '$lib/constants'
 import { parse_chgcar, parse_cube, parse_volumetric_file } from '$lib/isosurface/parse'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
@@ -358,7 +359,9 @@ function make_cube({
 }
 
 describe(`parse_cube`, () => {
-  const bohr = 0.529177249
+  // Import rather than hardcode: a literal here silently stopped matching the parser's
+  // constant once the two drifted apart.
+  const bohr = BOHR_TO_ANGSTROM
 
   test(`parses valid .cube with correct structure, grid shape, and volume`, () => {
     const result = parse_cube(make_cube())

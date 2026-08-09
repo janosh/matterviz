@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
-          extensions: vscode anywidget
+          extensions: vscode anywidget jupyterlab
       - name: Run prek checks
         uses: j178/prek-action@v2
 
@@ -31,6 +31,21 @@ jobs:
       # e.g. making HostFileRequest.filename required produced four errors nothing caught.
       - name: Type-check VS Code extension
         run: pnpm -C extensions/vscode run typecheck
+
+      # Its settings and custom-editor selectors are generated from $lib, but only by a local
+      # prebuild, so a change to the shared lists could land with package.json left behind.
+      - name: Check VS Code package.json is in sync with $lib
+        run: pnpm -C extensions/vscode run sync-config -- --check
+
+      # Same blind spot as vscode: this tsconfig ran nowhere. verify-deps-before-run is off
+      # because pnpm re-runs `install` before `run`, which fails over the ignored fontawesome
+      # build script even immediately after a successful install.
+      - name: Type-check and test JupyterLab extension
+        env:
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
+        run: |
+          pnpm -C extensions/jupyterlab run typecheck
+          pnpm -C extensions/jupyterlab test
 
   knip:
     name: Check unused code

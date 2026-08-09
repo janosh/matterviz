@@ -5,9 +5,9 @@
 // 4. https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json
 //
 // To regenerate data.json with latest pymatgen data:
-//   python scripts/extract_pymatgen_data.py
+//   uv run src/scripts/refresh_pymatgen_data.py
 
-// Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.ts
+// Source of truth is data.json.gz. During npm packaging, src/scripts/package-dist-assets.mjs
 // rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
 import element_data from './data.json.gz'
 import type { ChemicalElement, ElementSymbol } from './types'

@@ -62,18 +62,22 @@ jobs:
           fi
 
           for package_file in package.json extensions/anywidget/package.json \
-            extensions/vscode/package.json extensions/jupyterlab/package.json; do
+            extensions/vscode/package.json extensions/jupyterlab/package.json \
+            extensions/dash/package.json; do
             actual_version=$(node -p "require('./$package_file').version")
             [ "$actual_version" = "$version" ] || {
               echo "::error::$package_file version $actual_version != release $version"; exit 1; }
           done
 
-          # The jupyterlab wheel's filename pins this, but failing here beats failing
-          # after a full labextension build.
-          jupyterlab_py_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' extensions/jupyterlab/pyproject.toml)
-          [ "$jupyterlab_py_version" = "$version" ] || {
-            echo "::error::extensions/jupyterlab/pyproject.toml version $jupyterlab_py_version != release $version"
-            exit 1; }
+          # The jupyterlab wheel's filename pins its version, but failing here beats
+          # failing after a full labextension build. Dash is checked despite not being
+          # released here: unchecked, its two halves drifted to npm 0.3.2 vs PyPI 0.4.4.
+          for pyproject_file in extensions/jupyterlab/pyproject.toml \
+            extensions/dash/pyproject.toml; do
+            py_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$pyproject_file")
+            [ "$py_version" = "$version" ] || {
+              echo "::error::$pyproject_file version $py_version != release $version"; exit 1; }
+          done
 
           tag_ref="refs/tags/v$version"
           tag_sha=$(git rev-list -n 1 "$tag_ref" 2>/dev/null || true)
@@ -195,12 +199,8 @@ jobs:
         uses: actions/checkout@v6
       - name: Install dependencies
         uses: ./.github/actions/setup
-      # Not via the setup action's `extensions` input: @jupyterlab/application pulls
-      # in fontawesome, whose install script pnpm declines to run unattended and
-      # then exits non-zero over.
-      - name: Install JupyterLab extension dependencies
-        run: pnpm install --ignore-workspace --config.strict-dep-builds=false
-        working-directory: extensions/jupyterlab
+        with:
+          extensions: jupyterlab
       - name: Set up uv
         uses: astral-sh/setup-uv@v9
       - name: Build prebuilt labextension and wheel

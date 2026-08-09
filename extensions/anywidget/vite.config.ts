@@ -1,11 +1,10 @@
 import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { gunzipSync } from 'node:zlib'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
+import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
@@ -13,8 +12,6 @@ const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.j
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
 const moyo_wasm_source = `globalThis.matterviz_moyo_wasm_url ?? ${JSON.stringify(moyo_wasm_cdn)}`
-
-let json_gz_is_build = false
 
 const moyo_wasm_cdn_plugin: Plugin = {
   name: `moyo-wasm-cdn`,
@@ -26,33 +23,11 @@ const moyo_wasm_cdn_plugin: Plugin = {
   },
 }
 
-const json_gz_plugin: Plugin = {
-  name: `vite-plugin-json-gz`,
-  enforce: `pre`,
-  configResolved(resolved_config) {
-    json_gz_is_build = resolved_config.command === `build`
-  },
-  load(id) {
-    if (!id.endsWith(`.json.gz`)) return null
-    try {
-      const json_str = gunzipSync(readFileSync(id)).toString(`utf-8`)
-      JSON.parse(json_str) // validate before passing to bundler
-      // Rolldown (build) needs moduleType:'json' for import.meta.glob with
-      // import:'default' to properly unwrap the default export. Dev/test
-      // server doesn't support moduleType, needs JS module format.
-      if (json_gz_is_build) return { code: json_str, moduleType: `json` }
-      return `export default ${json_str}`
-    } catch (error) {
-      return this.error(`Failed to decompress ${id}: ${error}`)
-    }
-  },
-}
-
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
   moyo_wasm_cdn_plugin as unknown,
-  json_gz_plugin as unknown,
+  vite_plugin_json_gz() as unknown,
   svelte() as unknown,
 ] as PluginOption[]
 
@@ -69,11 +44,7 @@ export default defineConfig({
       // The widget never parses HDF5 client-side (pymatviz parses on the Python
       // side), so stub out h5wasm to drop ~5 MB of HDF5 WASM from the bundle.
       { find: `h5wasm`, replacement: resolve(import.meta.dirname, `h5wasm-stub.ts`) },
-      // one copy of three: matterviz imports three/webgpu, its addons and @threlte plain three
-      {
-        find: /^three$/,
-        replacement: resolve(import.meta.dirname, `../../src/lib/scene/three-compat.ts`),
-      },
+      three_compat_alias,
     ],
   },
   plugins,

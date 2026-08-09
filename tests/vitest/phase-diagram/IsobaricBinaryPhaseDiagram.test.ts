@@ -2,7 +2,7 @@ import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-d
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized } from '../setup'
+import { create_drop_event, mount_sized } from '../setup'
 import { create_hover_info } from './fixtures/test-data'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
@@ -197,12 +197,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const wrapper = await mount_diagram()
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     const drop = async (file: File) => {
-      const event = new DragEvent(`drop`, { bubbles: true })
-      // defineProperty, not Object.assign: dataTransfer is an accessor on the prototype
-      Object.defineProperty(event, `dataTransfer`, {
-        value: { files: [file], items: [], getData: () => `` },
-      })
-      wrapper.dispatchEvent(event)
+      wrapper.dispatchEvent(create_drop_event(file))
       await tick()
     }
 

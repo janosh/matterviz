@@ -118,7 +118,7 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
   }
 
 // Camera projection types for 3D
-export type CameraProjection3D = `perspective` | `orthographic`
+export type { CameraProjection as CameraProjection3D } from '$lib/settings'
 
 // 3D plot config extending base
 export interface PlotConfig3D {

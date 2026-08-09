@@ -14,14 +14,7 @@ import type {
   PhaseStats,
   ProcessedPhaseData,
 } from './types'
-import {
-  array_max,
-  array_min,
-  get_arity,
-  HULL_STABILITY_TOL,
-  is_on_hull,
-  is_unary_entry,
-} from './helpers'
+import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -367,13 +360,12 @@ export function get_convex_hull_stats(
     )
     .filter(Number.isFinite)
 
-  // array_min/array_max reduce instead of Math.min/max(...arr) to avoid stack
-  // overflow on large datasets
+  const [min_energy, max_energy] = math.array_extent(energies)
   const energy_range =
     energies.length > 0
       ? {
-          min: array_min(energies),
-          max: array_max(energies),
+          min: min_energy,
+          max: max_energy,
           avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
         }
       : { min: 0, max: 0, avg: 0 }
@@ -384,7 +376,7 @@ export function get_convex_hull_stats(
   const hull_distance =
     hull_distances.length > 0
       ? {
-          max: array_max(hull_distances),
+          max: math.array_max(hull_distances),
           avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
         }
       : { max: 0, avg: 0 }
@@ -1082,14 +1074,12 @@ const build_simplex_models_nd = (simplices: number[][][]): SimplexModelND[] =>
     // Spatial coords are all except last (energy)
     const vertices_spatial = vertices.map((pt) => pt.slice(0, dim - 1))
 
-    // Compute bounding box in spatial dimensions
-    const spatial_dim = dim - 1
-    const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
-      array_min(vertices_spatial.map((pt) => pt[idx])),
+    // Bounding box in spatial dimensions, one pass per axis
+    const extents = Array.from({ length: dim - 1 }, (_, idx) =>
+      math.array_extent(vertices_spatial.map((pt) => pt[idx])),
     )
-    const bbox_max = Array.from({ length: spatial_dim }, (_, idx) =>
-      array_max(vertices_spatial.map((pt) => pt[idx])),
-    )
+    const bbox_min = extents.map(([min]) => min)
+    const bbox_max = extents.map(([, max]) => max)
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }
   })

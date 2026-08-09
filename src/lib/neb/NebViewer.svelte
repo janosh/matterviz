@@ -4,7 +4,7 @@
   import { StatusMessage } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
   import { Pause, Play } from 'svelte-widgets/icons'
-  import { create_file_drop_handler, drag_over_handlers } from '$lib/io'
+  import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
@@ -89,9 +89,8 @@
   const handle_drop = create_file_drop_handler({
     allow: () => enable_drop,
     on_drop: (content, filename) => {
-      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       try {
-        const parsed = parse_dropped_paths([{ content: text, filename }])
+        const parsed = parse_dropped_paths([{ content: as_text(content), filename }])
         for (const [key, path] of Object.entries(parsed)) {
           dropped_paths.set(key, path)
           active_path_key = key

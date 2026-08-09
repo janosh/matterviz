@@ -1,17 +1,52 @@
 <script lang="ts">
+  import { page } from '$app/state'
   import type { ChemicalElement } from '$lib'
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
+  import { is_d3_interpolate_name } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table'
   import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
+  import { replace_url } from '$site/state.svelte'
+  import { onMount } from 'svelte'
   import { slide } from 'svelte/transition'
 
+  const DEFAULT_COLOR_SCALE: D3InterpolateName = `interpolateViridis`
+
   let window_width: number = $state(0)
-  let color_scale: D3InterpolateName = $state(`interpolateViridis`)
+
+  let color_scale: D3InterpolateName = $state(DEFAULT_COLOR_SCALE)
   let heatmap_key: keyof ChemicalElement | null = $state(null)
+
+  // Both selections live in the URL so a reload (or a shared link) restores the view.
+  // Read on mount rather than during init: prerendering forbids url.searchParams.
+  let url_synced = $state(false)
+  onMount(() => {
+    const scale = page.url.searchParams.get(`color_scale`)
+    if (scale && is_d3_interpolate_name(scale)) color_scale = scale
+    const property = page.url.searchParams.get(`heatmap`)
+    if (property && Object.hasOwn(ELEM_PROPERTY_LABELS, property)) {
+      heatmap_key = property as keyof ChemicalElement
+    }
+    url_synced = true
+  })
+
+  // Deriving these from the URL instead looks tidier but loses the selection: PropertySelect
+  // writes its own empty initial value back through `bind:` on mount, which would overwrite
+  // a derived and then get mirrored into the URL, dropping ?heatmap= before it is ever read.
+  $effect(() => {
+    if (!url_synced) return // don't clobber the incoming URL before it has been read
+    const params = new URLSearchParams(page.url.searchParams)
+    // Only the non-default halves are written, so an untouched page keeps a clean URL
+    if (heatmap_key) params.set(`heatmap`, heatmap_key)
+    else params.delete(`heatmap`)
+    if (color_scale === DEFAULT_COLOR_SCALE) params.delete(`color_scale`)
+    else params.set(`color_scale`, color_scale)
+    const search = params.size ? `?${params}` : ``
+    if (search !== page.url.search) void replace_url(`${page.url.pathname}${search}`)
+  })
 
   // Appearance control state
   let tile_gap: string = $state(`0.3cqw`)
@@ -26,15 +61,14 @@
   let tile_font_color: string | null = $state(null)
   let controls_open = $state(false)
 
-  let heatmap_values = $derived(
-    heatmap_key
-      ? element_data.map((el) => {
-          if (!heatmap_key || !(heatmap_key in el)) return 0
-          const value = el[heatmap_key]
-          return typeof value === `number` ? value : 0
-        })
-      : [],
-  )
+  let heatmap_values = $derived.by(() => {
+    const key = heatmap_key
+    if (!key) return []
+    return element_data.map((element) => {
+      const value = element[key]
+      return typeof value === `number` ? value : 0
+    })
+  })
 
   let [y_label = ``, y_unit = ``] = $derived(
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],

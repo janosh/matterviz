@@ -7,6 +7,7 @@
   import { Spinner } from '$lib/feedback'
   import { ColorBar } from '$lib/plot'
   import { create_pulse_animation } from '$lib/effects.svelte'
+  import { array_max, array_min } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import {
@@ -544,7 +545,7 @@
     let min_w = 0
     if (hull_face_color_mode === `formation_energy`) {
       const all_avg_w = triangles.map((tri) => tri.avg_w)
-      min_w = helpers.array_min(all_avg_w)
+      min_w = array_min(all_avg_w)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
@@ -562,7 +563,7 @@
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element with highest fraction
-        const max_idx = tri.centroid_bary.indexOf(helpers.array_max(tri.centroid_bary))
+        const max_idx = tri.centroid_bary.indexOf(array_max(tri.centroid_bary))
         const el = elements[max_idx]
         return element_colors[el] ?? `#888888`
       }
