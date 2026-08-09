@@ -1,10 +1,10 @@
 <script lang="ts">
   import {
     add_alpha,
-    composite_colors,
-    contrast_color,
+    contrast_text_color,
     pick_contrast_color,
-    watch_dark_mode,
+    resolve_backdrop,
+    resolve_css_color,
   } from '$lib/colors'
   import { Spinner } from '$lib/feedback'
   import { download } from '$lib/io/fetch'
@@ -227,6 +227,7 @@
     loading = $bindable(false),
     sort_data = true,
     heatmap_opacity = $bindable(1),
+    backdrop = undefined,
     empty_message = `No data`,
     show_row_numbers = false,
     allow_better_toggle = false,
@@ -318,6 +319,10 @@
     // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
     // color-mix() and the JS text contrast correction. Default 1 (fully opaque).
     heatmap_opacity?: number
+    // Opaque color painted behind the table. Required to get readable text on faded
+    // cells when heatmap_opacity < 1 and the host paints its own surface behind the
+    // table. Defaults to the --page-bg token read off the container.
+    backdrop?: string
     // Message shown when the table has no data rows. Set to empty string to hide.
     empty_message?: string
     // Show a row number column as the first column
@@ -335,20 +340,18 @@
   } = $props()
 
   let container_el = $state<HTMLDivElement>()
-
-  // Read --page-bg from computed style for text contrast calculation.
-  // Recalculates on mount and when the theme changes (dark/light mode toggle).
-  let page_bg_color = $state(`white`)
-  $effect(() => {
-    if (!container_el) return
-    const read_page_bg = () => {
-      if (!container_el) return
-      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`).trim()
-      page_bg_color = page_bg || `white`
-    }
-    read_page_bg()
-    return watch_dark_mode(read_page_bg)
+  const page_backdrop = resolve_backdrop(() => container_el)
+  const effective_backdrop = $derived(backdrop ?? page_backdrop.current)
+  const highlight_color = resolve_css_color(() => container_el, {
+    css_var: `--highlight`,
+    fallback: `#4a9eff`,
   })
+  const selection_badge_color = $derived(
+    contrast_text_color({
+      background: highlight_color.current,
+      backdrop: effective_backdrop,
+    }),
+  )
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
   // suffices since false positives just skip setting the attr (sorting still works by inner data-sort-value).
@@ -1250,11 +1253,11 @@
 
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
     if (color.bg && heatmap_opacity < 1) {
-      const effective_bg = composite_colors(
-        add_alpha(color.bg, heatmap_opacity),
-        page_bg_color,
-      )
-      return { bg: color.bg, text: pick_contrast_color({ bg_color: effective_bg }) }
+      const text = pick_contrast_color({
+        background: add_alpha(color.bg, heatmap_opacity),
+        backdrop: effective_backdrop,
+      })
+      return { bg: color.bg, text }
     }
     return color
   }
@@ -2199,7 +2202,7 @@
         onclick={() => (selected_rows = [])}
         title="Clear {selected_rows.length} selected rows"
       >
-        <span class="badge" {@attach contrast_color()}>{selected_rows.length}</span>
+        <span class="badge" style:color={selection_badge_color}>{selected_rows.length}</span>
         <Icon icon={Cross} />
       </button>
     {/if}

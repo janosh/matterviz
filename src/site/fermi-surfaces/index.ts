@@ -1,6 +1,7 @@
 // Fermi surface sample data files
 // Export file info for use in demo pages
-import type { FileInfo } from '$lib'
+import type { FileInfo, FileTypePaint } from '$lib'
+import { file_type_paint } from '$lib'
 
 // Example files served at /fermi-surfaces/<name> via the static symlink (url built from the
 // path key, not the glob value)
@@ -41,9 +42,9 @@ export const fermi_surface_files: FileInfo[] = Object.keys(fermi_file_modules)
   })
   .toSorted((a, b) => a.name.localeCompare(b.name))
 
-// File type colors for FilePicker
-export const fermi_file_colors: Record<string, string> = {
-  bxsf: `rgba(70, 130, 180, 0.8)`, // Steel blue for XCrySDen
-  frmsf: `rgba(255, 140, 0, 0.8)`, // Orange for FermiSurfer
-  json: `rgba(138, 43, 226, 0.8)`, // Purple for JSON
+// File type paints for FilePicker
+export const fermi_file_paints: Record<string, FileTypePaint> = {
+  bxsf: file_type_paint(`rgba(70, 130, 180, 0.8)`), // Steel blue for XCrySDen
+  frmsf: file_type_paint(`rgba(255, 140, 0, 0.8)`), // Orange for FermiSurfer
+  json: file_type_paint(`rgba(138, 43, 226, 0.8)`), // Purple for JSON
 }

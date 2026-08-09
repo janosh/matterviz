@@ -743,6 +743,12 @@ describe(`scales`, () => {
   })
 
   describe(`create_color_scale with arcsinh`, () => {
+    test(`rejects bare interpolator names`, () => {
+      expect(() => create_color_scale(`Viridis` as never, [0, 1])).toThrow(
+        `Unknown D3 color interpolator: Viridis`,
+      )
+    })
+
     test(`returns middle color when domain min equals max`, () => {
       const scale = create_color_scale(
         { type: `arcsinh`, scheme: `interpolateViridis`, value_range: [50, 50] },

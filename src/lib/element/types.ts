@@ -60,3 +60,17 @@ export type ChemicalElement = {
   ionic_radii?: Record<string, number> // oxidation_state (as string) -> radius in Angstrom
   shannon_radii?: ShannonRadii
 }
+
+// How a multi-segment ElementTile is carved up. Which layouts exist depends on the
+// segment count, so SPLIT_LAYOUTS_BY_COUNT in ElementTile.svelte is the source of truth
+// for valid pairings and rejects the rest.
+export type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
+
+// One slice of an ElementTile's fill. Color and value live in the same object so they
+// cannot get out of step, which the old parallel `bg_colors` / `value` arrays allowed.
+export interface TileSegment {
+  // Fill for this slice. Falls back to the element's category color.
+  color?: string
+  // Label drawn inside this slice. Omit it to paint the slice without a number.
+  value?: number | string
+}

@@ -1,5 +1,5 @@
-import { type FileInfo, FilePicker } from '$lib'
-import { flushSync, mount } from 'svelte'
+import { type FileInfo, FilePicker, file_type_paint } from '$lib'
+import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { doc_query } from './setup'
 
@@ -74,7 +74,10 @@ describe(`FilePicker`, () => {
         target: document.body,
         props: {
           files: labeled,
-          file_type_colors: { chgcar: `#4fc3f7`, cif: `#111111` },
+          file_type_paints: {
+            chgcar: file_type_paint(`#4fc3f7`),
+            cif: file_type_paint(`#111111`),
+          },
         },
       })
       flushSync()
@@ -83,7 +86,43 @@ describe(`FilePicker`, () => {
         [`CHGCAR`, `black`],
         [`CIF`, `white`],
       ])
-      expect(doc_query(`.file-item`).style.backgroundColor).toBe(`#4fc3f7`)
+      // row wash is a faded badge color. The old alpha-by-string-replace left non-rgba
+      // spellings at full strength, painting the row the same color as its badge.
+      expect(doc_query(`.file-item`).style.backgroundColor).toBe(`rgba(79, 195, 247, 0.08)`)
+    })
+
+    it.each([
+      [`#4fc3f7`, `rgba(79, 195, 247, 0.08)`],
+      [`rgb(79, 195, 247)`, `rgba(79, 195, 247, 0.08)`],
+      [`rgba(79, 195, 247, 0.8)`, `rgba(79, 195, 247, 0.08)`],
+    ])(`file_type_paint(%s) fades the row to %s`, (badge, expected_item) => {
+      expect(file_type_paint(badge)).toEqual({ badge, item: expected_item })
+    })
+
+    it(`recomputes translucent badge contrast after a theme change`, async () => {
+      const previous_theme = document.documentElement.dataset.theme
+      const component = mount(FilePicker, {
+        target: document.body,
+        props: {
+          files: [{ name: `Si`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` }],
+          file_type_paints: {
+            chgcar: file_type_paint(`rgba(255, 255, 255, 0.1)`),
+          },
+          style: `--page-bg: black`,
+        },
+      })
+      flushSync()
+      const picker = doc_query(`.file-picker`)
+      const badge = doc_query(`.file-type-badge`)
+      expect(badge.style.color).toBe(`white`)
+
+      picker.style.setProperty(`--page-bg`, `white`)
+      document.documentElement.dataset.theme = previous_theme === `dark` ? `light` : `dark`
+      await vi.waitFor(() => expect(badge.style.color).toBe(`black`))
+
+      if (previous_theme === undefined) delete document.documentElement.dataset.theme
+      else document.documentElement.dataset.theme = previous_theme
+      void unmount(component)
     })
   })
 

@@ -302,7 +302,7 @@ export function make_cell_color_scale(
     const color_val =
       scale_type === `log` && val === 0 ? range[better === `lower` ? 1 : 0] : val
     const bg = log_scale ? interpolator(log_scale(color_val)) : seq_scale(color_val)
-    return { bg, text: pick_contrast_color({ bg_color: bg }) }
+    return { bg, text: pick_contrast_color({ background: bg }) }
   }
 }
 

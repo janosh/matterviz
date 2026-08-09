@@ -35,7 +35,7 @@
 </script>
 
 <ColorBar
-  {color_scale}
+  scale={color_scale}
   {range}
   {...color_bar}
   tick_side={layout.tick_side}

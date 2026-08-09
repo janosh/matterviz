@@ -2413,8 +2413,10 @@
         <ColorBar
           title={color_range.label}
           range={[color_range.min, color_range.max]}
-          color_scale_fn={color_bar_config.color_scale_fn}
-          color_scale_domain={color_bar_config.color_scale_domain}
+          scale={{
+            fn: color_bar_config.color_scale_fn,
+            domain: color_bar_config.color_scale_domain,
+          }}
           wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
           bar_style="height: 12px;"
           title_style="margin-bottom: 4px;"

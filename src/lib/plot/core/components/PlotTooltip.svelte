@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_color } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
@@ -74,6 +74,16 @@
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the
   // label path is long — cap width to the constrained box and let the text wrap.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
+  const backdrop = resolve_backdrop(() => wrapper)
+  const text_color = $derived(
+    bg_color == null
+      ? undefined
+      : contrast_text_color({
+          background: bg_color,
+          backdrop: backdrop.current,
+          choices: [`#000000`, `#ffffff`],
+        }),
+  )
   const style = $derived(
     `position: ${fixed ? `fixed` : `absolute`}; pointer-events: none;
     left: ${pos.x}px; top: ${pos.y}px; ${rest.style ?? ``}`,
@@ -84,10 +94,10 @@
   {...rest}
   class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
   style:background-color={bg_color}
+  style:color={text_color}
   style:max-width={max_width != null ? `${max_width}px` : undefined}
   {style}
   bind:this={wrapper}
-  {@attach bg_color == null ? null : contrast_color({ choices: [`#000000`, `#ffffff`] })}
 >
   {@render children()}
 </div>

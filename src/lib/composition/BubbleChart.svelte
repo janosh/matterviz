@@ -95,7 +95,7 @@
         y: (node.y || 0) + padding,
         color: data.color,
         font_scale,
-        text_color: pick_contrast_color({ bg_color: data.color }),
+        text_color: pick_contrast_color({ background: data.color }),
       }
     })
   })

@@ -2,7 +2,7 @@ import { ConvexHull2D } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { flushSync, mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { mount_sized } from '../setup'
+import { doc_query, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
@@ -15,7 +15,7 @@ vi.mock(`$lib/convex-hull/helpers`, async (import_actual) => {
       _canvas: unknown,
       _event: unknown,
       entries: readonly unknown[],
-    ) => entries?.[0] ?? null,
+    ) => entries[0] ?? null,
   }
 })
 
@@ -40,14 +40,27 @@ const make_canvas_context = (
     },
   ) as unknown as CanvasRenderingContext2D
 const canvas_context = make_canvas_context(document.createElement(`canvas`))
-const button = (test_id: string): HTMLButtonElement | null =>
-  document.querySelector(`[data-testid="${test_id}"]`)
-const selected_text = (): string | null =>
-  document.querySelector(`[data-testid="selected-entry"]`)?.textContent ?? null
+// clearRect opens every repaint, so counting it per layer says which canvas actually redrew.
+const count_canvas_clears = (): { base: number; overlay: number } => {
+  const clears = { base: 0, overlay: 0 }
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
+    function (this: HTMLCanvasElement) {
+      // function body, so `this` stays the canvas getContext was called on
+      const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
+      return make_canvas_context(this, () => clears[layer]++)
+    },
+  )
+  return clears
+}
+const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
+const button = (test_id: string): HTMLButtonElement => doc_query(`[data-testid="${test_id}"]`)
+const selected_text = (): string =>
+  doc_query(`[data-testid="selected-entry"]`).textContent ?? ``
+
+beforeEach(() => document.body.replaceChildren())
 
 describe(`convex hull replacement state`, () => {
   beforeEach(() => {
-    document.body.innerHTML = ``
     Object.defineProperty(globalThis, `Path2D`, {
       configurable: true,
       value: MockPath2D,
@@ -66,22 +79,19 @@ describe(`convex hull replacement state`, () => {
       mount(ConvexHullSelectionHarness, { target: document.body, props })
       await tick()
 
-      button(`select-entry`)?.click()
-      flushSync()
+      button(`select-entry`).click()
       await tick()
 
       if (replaced === `none`) expect(selected_text()).not.toBe(`none`)
       else expect(selected_text()).toBe(replaced)
       const selected_before_refresh = selected_text()
 
-      button(`refresh-convex-entries`)?.click()
-      flushSync()
+      button(`refresh-convex-entries`).click()
       await tick()
 
       expect(selected_text()).toBe(selected_before_refresh)
 
-      button(`replace-convex-entries`)?.click()
-      flushSync()
+      button(`replace-convex-entries`).click()
       await tick()
 
       expect(selected_text()).toBe(replaced)
@@ -95,15 +105,13 @@ describe(`convex hull replacement state`, () => {
     `hovering a point does not trigger an infinite effect loop (%s)`,
     async (dim) => {
       mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
-      flushSync()
       await tick()
 
-      const canvas = document.querySelector(`canvas`)
-      expect(canvas instanceof HTMLCanvasElement).toBe(true)
+      const canvas = doc_query<HTMLCanvasElement>(`canvas`)
 
       // Dispatching a mousemove sets hover_data via the (mocked) hit-test; flushSync
       // would throw effect_update_depth_exceeded if the proxy-identity loop regressed.
-      canvas?.dispatchEvent(
+      canvas.dispatchEvent(
         new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
       )
       expect(() => flushSync()).not.toThrow()
@@ -118,20 +126,10 @@ describe(`convex hull replacement state`, () => {
   test.each([`3d`, `4d`] as const)(
     `pulse ticks repaint only the overlay canvas (%s)`,
     async (dim) => {
-      const clears = { base: 0, overlay: 0 }
-      vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
-        function (this: HTMLCanvasElement) {
-          // function body, so `this` stays the canvas getContext was called on
-          const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
-          return make_canvas_context(this, () => clears[layer]++)
-        },
-      )
-      const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
-
+      const clears = count_canvas_clears()
       mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
       await tick()
-      button(`select-entry`)?.click()
-      flushSync()
+      button(`select-entry`).click()
       await let_frames_run()
       expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
 
@@ -141,15 +139,28 @@ describe(`convex hull replacement state`, () => {
       expect(clears.base).toBe(settled.base)
     },
   )
+
+  // render_frame runs inside a requestAnimationFrame callback, so its reads don't register as
+  // dependencies and every one has to be declared in `repaint_deps`. `config` reaches the draw
+  // code only through merged_config, so the individual label toggles don't cover it: leaving it
+  // out left the hull showing labels the config had already turned off.
+  test.each([`3d`, `4d`] as const)(`a config change repaints the hull (%s)`, async (dim) => {
+    const clears = count_canvas_clears()
+    mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+    await tick()
+    await let_frames_run()
+    const before = clears.base
+    expect(before).toBeGreaterThan(0) // it painted at all to begin with
+
+    button(`toggle-hull-labels`).click()
+    await let_frames_run()
+    expect(clears.base).toBeGreaterThan(before)
+  })
 })
 
 // End-to-end: magnetic_ordering -> pipeline marker assignment -> 2D SVG symbol rendering,
 // and hidden_categories -> pipeline visible_entries -> fewer rendered points
 describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
-  beforeEach(() => {
-    document.body.innerHTML = ``
-  })
-
   const compound = (
     composition: Record<string, number>,
     entry_id: string,
@@ -172,7 +183,9 @@ describe(`magnetic ordering rendering (ConvexHull2D)`, () => {
     compound({ Li: 1, O: 2 }, `plain-1`, 0.1),
   ]
 
-  // ordering-less entries are unaffected by category filters
+  // ordering-less entries are unaffected by category filters. Hiding one category is the
+  // case that pins down *which* entries go: a filter that dropped every categorized entry
+  // once the list was non-empty still renders 3 for [FM, AFM] and 5 for [].
   test.each([
     [[], 5],
     [[`FM`], 4],

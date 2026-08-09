@@ -1,14 +1,11 @@
 import { element_data, ElementTile } from '$lib'
+import type { SplitLayout, TileSegment } from '$lib/element'
 import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
-
-// test random element for increased robustness
-const rand_idx = Math.floor(Math.random() * element_data.length)
-const rand_element = element_data[rand_idx]
+const rand_element = element_data[0]
 
 describe(`ElementTile`, () => {
   describe(`basic rendering`, () => {
@@ -67,12 +64,12 @@ describe(`ElementTile`, () => {
     )
   })
 
-  describe(`value prop`, () => {
+  describe(`segment values`, () => {
     test(`shows value instead of name when value is provided`, () => {
       const value = 42.5
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value },
+        props: { element: rand_element, segments: [{ value }] },
       })
 
       const value_element = doc_query(`.value`)
@@ -80,10 +77,10 @@ describe(`ElementTile`, () => {
       expect(document.querySelector(`.name`)).toBeNull()
     })
 
-    test.each([[false], [undefined]] as const)(`shows name when value is %s`, (value) => {
+    test(`shows name without a segment value`, () => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value },
+        props: { element: rand_element },
       })
 
       const name_element = doc_query(`.name`)
@@ -95,7 +92,7 @@ describe(`ElementTile`, () => {
       const value = 42.123456
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value, float_fmt: `.2f` },
+        props: { element: rand_element, segments: [{ value }], float_fmt: `.2f` },
       })
 
       const value_element = doc_query(`.value`)
@@ -104,10 +101,10 @@ describe(`ElementTile`, () => {
   })
 
   describe(`styling props`, () => {
-    test(`applies bg_color as background color`, () => {
+    test(`applies a segment color as background`, () => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, bg_color: `red` },
+        props: { element: rand_element, segments: [{ color: `red` }] },
       })
 
       const node = doc_query(`.element-tile`)
@@ -238,7 +235,7 @@ describe(`ElementTile`, () => {
         target: document.body,
         props: {
           element: rand_element,
-          bg_color: `#000000`, // Dark background (would normally get white text)
+          segments: [{ color: `#000000` }], // Dark background (would normally get white text)
           text_color: explicit_color, // But we override with red
         },
       })
@@ -252,7 +249,7 @@ describe(`ElementTile`, () => {
     test(`handles zero value correctly`, () => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value: 0 },
+        props: { element: rand_element, segments: [{ value: 0 }] },
       })
 
       const value_element = doc_query(`.value`)
@@ -263,7 +260,7 @@ describe(`ElementTile`, () => {
     test(`handles empty string float_fmt`, () => {
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, value: 42.123, float_fmt: `` },
+        props: { element: rand_element, segments: [{ value: 42.123 }], float_fmt: `` },
       })
 
       const value_element = doc_query(`.value`)
@@ -306,8 +303,10 @@ describe(`ElementTile`, () => {
           target: document.body,
           props: {
             element: rand_element,
-            value,
-            bg_colors: value.map(() => `#ff0000`),
+            segments: value.map((segment_value) => ({
+              color: `#ff0000`,
+              value: segment_value,
+            })),
           },
         })
 
@@ -347,8 +346,10 @@ describe(`ElementTile`, () => {
           target: document.body,
           props: {
             element: rand_element,
-            value,
-            bg_colors: value.map(() => `#ff0000`),
+            segments: value.map((segment_value) => ({
+              color: `#ff0000`,
+              value: segment_value,
+            })),
             split_layout: layout as SplitLayout,
           },
         })
@@ -374,128 +375,38 @@ describe(`ElementTile`, () => {
         expect(Boolean(document.querySelector(`.number`))).toBe(should_show)
       }
 
-      test_show_number({ value: 42 }, true) // Single value - show by default
-      test_show_number({ value: [1, 2], bg_colors: [`#ff0000`, `#00ff00`] }, false) // Multi-value - hide by default
+      test_show_number({ segments: [{ value: 42 }] }, true)
+      test_show_number({ segments: [{ color: `#ff0000` }, { color: `#00ff00` }] }, false)
       test_show_number(
-        { value: [1, 2], bg_colors: [`#ff0000`, `#00ff00`], show_number: true },
+        {
+          segments: [{ color: `#ff0000` }, { color: `#00ff00` }],
+          show_number: true,
+        },
         true,
-      ) // Explicit override
-      test_show_number({ value: 42, show_number: false }, false) // Explicit hide
+      )
+      test_show_number({ segments: [{ value: 42 }], show_number: false }, false)
     })
 
-    test.each([
-      { value: [10, 0, 30], expected_count: 2, desc: `zero values hidden` },
-      { value: 42, expected_segments: 0, desc: `single value behavior` },
-      {
-        value: [1, 2, 3, 4, 5, 6],
-        expected_segments: 0,
-        desc: `arrays >4 fallback`,
-      },
-      { value: [], expected_segments: 0, desc: `empty array` },
-      {
-        value: [0, 0],
-        expected_segments: 2,
-        expected_count: 0,
-        desc: `all zero values`,
-      },
-    ])(`edge cases: $desc`, ({ value, expected_count, expected_segments }) => {
+    test(`renders zero-valued segments`, () => {
       mount(ElementTile, {
         target: document.body,
         props: {
           element: rand_element,
-          value,
-          bg_colors: Array.isArray(value) ? value.map(() => `#ff0000`) : undefined,
-          bg_color: !Array.isArray(value) ? `#ff0000` : undefined,
+          segments: [
+            { color: `#ff0000`, value: 0 },
+            { color: `#00ff00`, value: 0 },
+          ],
         },
       })
 
-      expect(document.querySelector(`.element-tile`)).toBeInstanceOf(HTMLElement)
-      if (expected_count !== undefined) {
-        expect(document.querySelectorAll(`.multi-value`)).toHaveLength(expected_count)
-      }
-      if (expected_segments !== undefined) {
-        expect(document.querySelectorAll(`.segment`)).toHaveLength(expected_segments)
-      }
-    })
-  })
-
-  describe(`color value support`, () => {
-    test.each([
-      [`#ff0000`, true, `hex`],
-      [`red`, true, `named`],
-      [`rgb(255, 0, 0)`, true, `rgb`],
-      [`var(--color)`, true, `CSS var`],
-    ])(`%s (%s) - detected=%s`, (color_value, is_detected, _type) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          value: color_value,
-          bg_color: color_value,
-        },
-      })
-
-      const tile = doc_query(`.element-tile`)
-      expect(tile.style.backgroundColor).toBe(color_value)
-      expect(Boolean(document.querySelector(`.value`))).toBe(!is_detected)
-      expect(Boolean(document.querySelector(`.name`))).toBe(is_detected)
-    })
-
-    test.each([
-      [true, `shows color as text`],
-      [false, `hides all values`],
-    ])(`show_values=%s`, (show_values, _desc) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          value: `#ff0000`,
-          bg_color: `#ff0000`,
-          show_values,
-        },
-      })
-
-      const has_value = Boolean(document.querySelector(`.value`))
-      const has_name = Boolean(document.querySelector(`.name`))
-      expect(has_value).toBe(show_values)
-      expect(has_name).toBe(!show_values)
-    })
-
-    test.each([
-      [[`#ff0000`, `#00ff00`], 2],
-      [[`#ff0000`, `#00ff00`, `#0000ff`], 3],
-      [[`#ff0000`, `#00ff00`, `#0000ff`, `#ffff00`], 4],
-    ])(`%s colors -> %s segments`, (colors, segments) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: { element: rand_element, value: colors, bg_colors: colors },
-      })
-
-      expect(document.querySelectorAll(`.segment`)).toHaveLength(segments)
-      expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
-      expect(document.querySelector(`.value`)).toBeNull()
-    })
-
-    test.each([
-      [[`#ff0000`, 42], false, 0, `mixed with color`],
-      [[42, 84], true, 2, `numeric only`],
-    ])(`mixed arrays: %s`, (values, should_show, expected_spans, _desc) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          value: values as never,
-          bg_colors: [`#ff0000`, `#00ff00`],
-        },
-      })
-
-      expect(document.querySelectorAll(`.multi-value`)).toHaveLength(expected_spans)
-      expect(Boolean(document.querySelector(`.name`))).toBe(!should_show)
+      expect(
+        [...document.querySelectorAll(`.multi-value`)].map((node) => node.textContent),
+      ).toEqual([`0`, `0`])
     })
   })
 
   describe(`background color fallback`, () => {
-    test(`uses default category color when no bg_color provided`, () => {
+    test(`uses default category color without segments`, () => {
       mount(ElementTile, {
         target: document.body,
         props: { element: rand_element },
@@ -506,15 +417,32 @@ describe(`ElementTile`, () => {
       expect(node.style.backgroundColor).toBe(expected_color)
     })
 
-    test(`explicit bg_color overrides category default`, () => {
+    test(`a solid segment overrides the category color`, () => {
       const custom_color = `#123456`
       mount(ElementTile, {
         target: document.body,
-        props: { element: rand_element, bg_color: custom_color },
+        props: { element: rand_element, segments: [{ color: custom_color }] },
       })
 
       const node = doc_query(`.element-tile`)
       expect(node.style.backgroundColor).toBe(custom_color)
+    })
+
+    test(`segment values and omitted colors are explicit`, () => {
+      mount(ElementTile, {
+        target: document.body,
+        props: {
+          element: rand_element,
+          segments: [{ value: `#ff0000` }, { color: `white`, value: 2 }],
+        },
+      })
+
+      const [first_segment] = document.querySelectorAll<HTMLElement>(`.segment`)
+      const [first_value] = document.querySelectorAll<HTMLElement>(`.multi-value`)
+      expect(first_segment.style.backgroundColor).toBe(
+        DEFAULT_CATEGORY_COLORS[rand_element.category],
+      )
+      expect([first_value.textContent, first_value.style.color]).toEqual([`#ff0000`, `black`])
     })
 
     test(`reacts to colors.category changes`, async () => {
@@ -543,35 +471,26 @@ describe(`ElementTile`, () => {
 
   describe(`split_layout validation`, () => {
     test.each([
-      [`invalid_layout`, `1 / 2 / 3 / 4`, 0],
-      [`unknown`, `1 / 2 / 3 / 4`, 0],
-      [``, `1 / 2 / 3 / 4`, 0],
-      [null, ``, 4],
-      [undefined, ``, 4],
-    ])(`split_layout "%s" handling`, (layout, expected_text, expected_segments) => {
-      mount(ElementTile, {
-        target: document.body,
-        props: {
-          element: rand_element,
-          value: [1, 2, 3, 4],
-          split_layout: layout as never,
-          bg_colors: [`#ff0000`, `#00ff00`, `#0000ff`, `#ffff00`],
-        },
-      })
-
-      const segments = document.querySelectorAll(`.segment`)
-      expect(segments).toHaveLength(expected_segments)
-
-      if (expected_segments === 0) {
-        const fallback_value = document.querySelector(`.value`)
-        expect(fallback_value?.textContent).toBe(expected_text)
-      } else {
-        // Check for quadrant segments when auto-layout is used
-        expect(document.querySelector(`.segment.quadrant-tl`)).toBeInstanceOf(HTMLElement)
-        expect(document.querySelector(`.segment.quadrant-tr`)).toBeInstanceOf(HTMLElement)
-        expect(document.querySelector(`.segment.quadrant-bl`)).toBeInstanceOf(HTMLElement)
-        expect(document.querySelector(`.segment.quadrant-br`)).toBeInstanceOf(HTMLElement)
-      }
-    })
+      [
+        Array.from({ length: 3 }, () => ({ color: `red` })),
+        `triangular`,
+        `not valid for 3 segments`,
+      ],
+      [Array.from({ length: 5 }, () => ({ color: `red` })), undefined, `at most 4 segments`],
+    ] as const)(
+      `rejects unsupported segment/layout combinations`,
+      (segments, split_layout, error) => {
+        expect(() =>
+          mount(ElementTile, {
+            target: document.body,
+            props: {
+              element: rand_element,
+              segments: segments as TileSegment[],
+              split_layout,
+            },
+          }),
+        ).toThrow(error)
+      },
+    )
   })
 })

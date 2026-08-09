@@ -514,8 +514,10 @@
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        color_scale_fn={color_bar_config.color_scale_fn}
-        color_scale_domain={color_bar_config.color_scale_domain}
+        scale={{
+          fn: color_bar_config.color_scale_fn,
+          domain: color_bar_config.color_scale_domain,
+        }}
         wrapper_style="position: absolute; bottom: 70px; left: 50px; width: 180px; z-index: 10;"
         bar_style="height: 10px;"
         title_style="margin-bottom: 3px;"

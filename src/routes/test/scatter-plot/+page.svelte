@@ -842,7 +842,7 @@
     series={auto_placement_plot_series.map((srs) => ({ ...srs, markers: `points` }))}
     x_axis={{ label: `X Position`, range: [0, 100] }}
     y_axis={{ label: `Y Position`, range: [0, 100] }}
-    color_scale={{ scheme: `Turbo` }}
+    color_scale={{ scheme: `interpolateTurbo` }}
     color_bar={{ title: `Color Bar Title`, responsive: true }}
   >
     {#snippet tooltip({ x, y, color_value })}
@@ -1227,7 +1227,7 @@
     ]}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
-    color_scale={{ scheme: `Viridis` }}
+    color_scale={{ scheme: `interpolateViridis` }}
     color_bar={{ title: `Color Value` }}
     legend={{ draggable: true }}
     show_legend

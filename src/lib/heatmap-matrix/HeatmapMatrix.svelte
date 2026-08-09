@@ -1,12 +1,11 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import {
-    contrast_color,
-    get_bg_color,
     get_d3_interpolator,
     is_color,
     is_concrete_color,
     pick_contrast_color,
+    resolve_backdrop,
   } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
@@ -48,6 +47,7 @@
     color_scale_range = [null, null],
     color_overrides = {},
     missing = {},
+    backdrop = undefined,
     log = false,
     value_transform,
     normalize = `linear`,
@@ -127,6 +127,9 @@
     color_scale_range?: [number | null, number | null]
     color_overrides?: Record<string, string>
     missing?: MissingCellStyle
+    // Opaque color painted behind the matrix, used to composite translucent cell fills
+    // before picking label contrast. Defaults to the --page-bg token on the matrix.
+    backdrop?: string
     log?: boolean
     value_transform?: (
       value: number,
@@ -474,11 +477,17 @@
   })
 
   let matrix_el: HTMLDivElement | undefined = $state()
-  let backdrop_color = $derived(matrix_el ? (get_bg_color(matrix_el) ?? `white`) : `white`)
+  // Cell fills may be translucent (color overrides, missing-cell fills), so contrast
+  // needs to know what is painted behind them. Callers can name that surface with the
+  // `backdrop` prop; otherwise it comes from the page token.
+  const page_backdrop = resolve_backdrop(() => matrix_el)
+  const effective_backdrop = $derived(backdrop ?? page_backdrop.current)
   // Keep selected outlines visible against each cell's background.
   let selected_outline_flat = $derived(
     bg_flat.map((bg_color) =>
-      is_concrete_color(bg_color) ? pick_contrast_color({ bg_color, backdrop_color }) : null,
+      is_concrete_color(bg_color)
+        ? pick_contrast_color({ background: bg_color, backdrop: effective_backdrop })
+        : null,
     ),
   )
   // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
@@ -1259,7 +1268,6 @@
             style:background-color={bg}
             style:color={text_flat?.[flat_idx]}
             style:--heatmap-selected-outline-color={selected_outline_flat[flat_idx]}
-            {@attach bg && !is_concrete_color(bg) ? contrast_color() : null}
             style:grid-column={cell_grid_col(x_idx)}
             style:grid-row={cell_grid_row(y_idx)}
           >
@@ -1331,7 +1339,7 @@
       tick_format={legend_format}
       range={[cs_min, cs_max]}
       scale_type={use_log_norm ? `log` : `linear`}
-      {color_scale}
+      scale={typeof color_scale === `string` ? color_scale : { interpolator: color_scale }}
       wrapper_style={legend_wrapper_style}
     />
   {/if}

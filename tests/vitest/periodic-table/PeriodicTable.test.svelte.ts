@@ -658,6 +658,21 @@ describe(`PeriodicTable`, () => {
       },
     )
 
+    test(`explicit tile text color overrides segment contrast`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [[1, 2]],
+          tile_props: { show_name: false, text_color: `red` },
+        },
+      })
+      expect(
+        [...document.querySelectorAll<HTMLElement>(`.multi-value`)].map(
+          (label) => label.style.color,
+        ),
+      ).toEqual([`red`, `red`])
+    })
+
     test(`handles mixed data types and tooltip integration`, async () => {
       const mixed_data = [10, [20, 30], [40, 50, 60]]
       mount(PeriodicTable, {
@@ -775,29 +790,33 @@ describe(`PeriodicTable`, () => {
       expect(tiles[3].style.backgroundColor).not.toBe(`transparent`) // single number
     })
 
-    test.each([
-      [`color_overrides take precedence`, { color_overrides: { H: `purple`, He: `orange` } }],
-      [`show_values displays colors as text`, { tile_props: { show_values: true } }],
-    ])(`%s`, (_desc, extra_props) => {
+    test(`color_overrides take precedence`, () => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
           heatmap_values: [`#ff0000`, `#00ff00`] as never,
-          color_overrides: {},
+          color_overrides: { H: `purple`, He: `orange` },
           tile_props: { show_name: false },
-          ...extra_props,
         },
       })
 
-      if (`color_overrides` in extra_props) {
-        const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
-        expect(tiles[0].style.backgroundColor).toBe(`purple`)
-        expect(tiles[1].style.backgroundColor).toBe(`orange`)
-      } else {
-        const values = document.querySelectorAll(`.value`)
-        expect(values.length).toBeGreaterThan(0)
-        expect((values[0] as HTMLElement).textContent).toBe(`#ff0000`)
-      }
+      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+      expect([tiles[0].style.backgroundColor, tiles[1].style.backgroundColor]).toEqual([
+        `purple`,
+        `orange`,
+      ])
+    })
+
+    test(`tile_props cannot replace generated heatmap segments`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [[1, 2]],
+          tile_props: { segments: [{ color: `red` }] } as never,
+        },
+      })
+
+      expect(document.querySelectorAll(`.element-tile .segment`)).toHaveLength(2)
     })
 
     test(`tooltip with color arrays`, async () => {

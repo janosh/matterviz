@@ -172,9 +172,8 @@
   <div class="tooltip" style="left: {x}px; top: {y}px; transform: {transforms[tooltip_side]}">
     <ElementTile
       element={hovered_elem_data}
-      bg_color={tile_color}
       show_name={false}
-      value={hovered_elem_data.atomic_mass}
+      segments={[{ color: tile_color, value: hovered_elem_data.atomic_mass }]}
       style="width: var(--formula-tooltip-tile-size, 30px); height: var(--formula-tooltip-tile-size, 30px)"
     />
     {hovered_elem_data.name}

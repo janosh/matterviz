@@ -1,19 +1,19 @@
-import type { ContrastOptions } from '$lib/colors'
+import type { Paint } from '$lib/colors'
 import {
   add_alpha,
   composite_colors,
-  contrast_color,
+  contrast_text_color,
   css_color_to_hex,
   D3_INTERPOLATE_NAMES,
   DEFAULT_CATEGORY_COLORS,
   ELEMENT_COLOR_SCHEMES,
-  get_bg_color,
   get_d3_interpolator,
   get_page_background,
   is_color,
   is_concrete_color,
   is_dark_mode,
   is_d3_interpolate_name,
+  is_opaque_color,
   perceived_brightness,
   pick_contrast_color,
   PLOT_COLORS,
@@ -21,7 +21,7 @@ import {
   watch_dark_mode,
 } from '$lib/colors'
 import { ELEM_SYMBOLS } from '$lib/labels'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
@@ -208,6 +208,14 @@ describe(`is_color function`, () => {
   ])(`is_concrete_color(%s) is %s`, (color, expected) => {
     expect(is_concrete_color(color)).toBe(expected)
   })
+  test.each([
+    [`#4fc3f7`, true],
+    [`rgba(79, 195, 247, 0.5)`, false],
+    [`transparent`, false],
+    [`var(--accent)`, false],
+  ])(`is_opaque_color(%s) is %s`, (color, expected) => {
+    expect(is_opaque_color(color)).toBe(expected)
+  })
 })
 
 describe(`css_color_to_hex`, () => {
@@ -275,78 +283,45 @@ test.each([
   expect(relative_luminance(color)).toBeCloseTo(expected_luminance, 3)
 })
 
-describe(`get_bg_color`, () => {
-  const computed_style = (bg_color: string) =>
-    ({ backgroundColor: bg_color }) as CSSStyleDeclaration
-
-  afterEach(() => vi.restoreAllMocks())
-
-  it(`handles various scenarios`, () => {
-    expect(get_bg_color(null)).toBeUndefined()
-
-    // Mock element with background color
-    const mock_element = { style: {}, parentElement: null } as HTMLElement
-    const mock_get_computed_style = vi
-      .spyOn(globalThis, `getComputedStyle`)
-      .mockReturnValue(computed_style(`#ff0000`))
-
-    expect(get_bg_color(mock_element)).toBe(`rgb(255, 0, 0)`)
-    expect(mock_get_computed_style).toHaveBeenCalledWith(mock_element)
-  })
-
-  it.each([
-    [`rgba(0, 0, 0, 0)`, `#00ff00`, `rgb(0, 255, 0)`],
-    [`rgba(255, 255, 255, 0.1)`, `rgb(0, 0, 0)`, `rgb(26, 26, 26)`],
-  ])(`resolves %s over %s`, (foreground, backdrop, expected) => {
-    const parent = { style: {}, parentElement: null } as HTMLElement
-    const child = { style: {}, parentElement: parent } as HTMLElement
-    const mock_get_computed_style = vi
-      .spyOn(globalThis, `getComputedStyle`)
-      .mockReturnValueOnce(computed_style(foreground))
-      .mockReturnValueOnce(computed_style(backdrop))
-
-    expect(get_bg_color(child)).toBe(expected)
-    expect(mock_get_computed_style).toHaveBeenCalledTimes(2)
-  })
-})
-
 describe(`pick_contrast_color`, () => {
-  it.each<[ContrastOptions, string]>([
-    [{ bg_color: `#000000` }, `white`],
-    [{ bg_color: `#4fc3f7` }, `black`], // black has 10.48:1 contrast vs white's 2.00:1
-    [{ bg_color: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
-    [{ bg_color: `rgba(255, 255, 255, 0.1)`, backdrop_color: `black` }, `white`],
-    [{ bg_color: `rgba(0, 0, 0, 0.1)`, backdrop_color: `white` }, `black`],
-  ])(`pick_contrast_color(%o) = %s`, (options, expected) => {
-    expect(pick_contrast_color(options)).toBe(expected)
+  it.each<[Paint, string]>([
+    [{ background: `#000000` }, `white`],
+    [{ background: `#4fc3f7` }, `black`], // black has 10.48:1 contrast vs white's 2.00:1
+    [{ background: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
+    [{ background: `rgba(255, 255, 255, 0.1)`, backdrop: `black` }, `white`],
+    [{ background: `rgba(0, 0, 0, 0.1)`, backdrop: `white` }, `black`],
+    [{ background: `transparent`, backdrop: `black` }, `white`],
+  ])(`pick_contrast_color(%o) = %s`, (paint, expected) => {
+    expect(pick_contrast_color(paint)).toBe(expected)
   })
 
-  it.each<[ContrastOptions, string]>([
-    [{ bg_color: `transparent` }, `Invalid color: transparent`],
+  it.each<[Paint, string]>([
+    [{ background: `not-a-color` }, `Invalid color: not-a-color`],
+    [{ background: `rgba(255, 255, 255, 0.1)` }, `Translucent background requires a backdrop`],
     [
-      { bg_color: `rgba(255, 255, 255, 0.1)` },
-      `Translucent background requires backdrop_color`,
+      { background: `rgba(255, 255, 255, 0.1)`, backdrop: `rgba(0, 0, 0, 0.5)` },
+      `backdrop must be opaque`,
     ],
-  ])(`rejects invalid options %o`, (options, error) => {
-    expect(() => pick_contrast_color(options)).toThrow(error)
+  ])(`rejects invalid paint %o`, (paint, error) => {
+    expect(() => pick_contrast_color(paint)).toThrow(error)
   })
 
-  it(`contrast_color applies and cleans up the maximum-contrast foreground`, () => {
-    const parent = document.createElement(`div`)
-    parent.style.background = `black`
-    const node = document.createElement(`div`)
-    parent.append(node)
-    document.body.append(parent)
-    node.style.color = `red`
-    const cleanup = contrast_color()(node)
-    expect(node.style.color).toBe(`white`)
-    cleanup()
-    expect(node.style.color).toBe(`red`)
+  it.each<[Paint & { override?: string }, string]>([
+    [{ background: `#000000`, override: `rebeccapurple` }, `rebeccapurple`],
+    // CSS vars cannot be resolved in JS, so inherit rather than guess
+    [{ background: `var(--some-bg)` }, `currentColor`],
+    [{ background: `#000000` }, `white`],
+  ])(`contrast_text_color(%o) = %s`, (paint, expected) => {
+    expect(contrast_text_color(paint)).toBe(expected)
   })
 })
 
-test(`composite_colors applies source-over alpha blending`, () => {
-  expect(composite_colors(`rgba(255, 255, 255, 0.1)`, `black`)).toBe(`rgb(26, 26, 26)`)
+test.each([
+  [`rgba(255, 255, 255, 0.1)`, `black`, `rgb(26, 26, 26)`],
+  [`transparent`, `red`, `rgb(255, 0, 0)`],
+  [`red`, `transparent`, `rgb(255, 0, 0)`],
+])(`composites %s over %s`, (foreground, backdrop, expected) => {
+  expect(composite_colors(foreground, backdrop)).toBe(expected)
 })
 
 describe(`add_alpha`, () => {

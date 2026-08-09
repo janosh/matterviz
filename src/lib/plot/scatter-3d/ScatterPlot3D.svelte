@@ -370,8 +370,7 @@
       <ColorBar
         tick_labels={4}
         tick_side="primary"
-        {color_scale_fn}
-        color_scale_domain={color_domain}
+        scale={{ fn: color_scale_fn, domain: color_domain }}
         scale_type={normalized_color_scale.type}
         range={color_domain?.every((val) => val != null) ? color_domain : undefined}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??

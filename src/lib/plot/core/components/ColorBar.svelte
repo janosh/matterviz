@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    get_d3_interpolator,
-    is_d3_interpolate_name,
-    pick_contrast_color,
-  } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
+  import { get_d3_interpolator, pick_contrast_color } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -19,6 +16,7 @@
   import type {
     AxisOption,
     ColorBarDataLoaderFn,
+    ColorBarScale,
     ColorScaleOption,
     Orientation,
     ScaleType,
@@ -31,7 +29,7 @@
 
   let {
     title = $bindable(),
-    color_scale = $bindable(SCALE_DEFAULTS.scheme),
+    scale = $bindable(SCALE_DEFAULTS.scheme),
     bar_style = undefined,
     title_style = undefined,
     wrapper_style = undefined,
@@ -45,8 +43,6 @@
     title_side = undefined, // no default here, depends on orientation and tick_side
     tick_side = `primary`,
     scale_type = `linear`,
-    color_scale_fn = undefined,
-    color_scale_domain = undefined,
     // Property selection (interactive title)
     property_options = undefined,
     selected_property_key = $bindable(),
@@ -59,7 +55,9 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
-    color_scale?: ((x: number) => string) | string | null
+    // Either a d3 interpolator name, sampled across `range`, or a prebuilt function
+    // with the data domain it expects. One or the other, never both.
+    scale?: ColorBarScale
     title_side?: `left` | `right` | `top` | `bottom`
     bar_style?: string
     title_style?: string
@@ -80,12 +78,8 @@
     // computed "nice" range resulting from snapping ticks
     // https://github.com/d3/d3-scale/issues/86
     nice_range?: Vec2
-    // type of scale to use for ticks and potentially color (if color_scale_fn not provided)
+    // type of scale for ticks, and for color when `scale` names an interpolator
     scale_type?: ScaleType
-    // Optional pre-configured d3 color scale function
-    color_scale_fn?: (value: number) => string
-    // Optional domain for pre-configured color scale function
-    color_scale_domain?: Vec2
     // Property selection options (makes title interactive)
     property_options?: AxisOption[]
     selected_property_key?: string
@@ -164,25 +158,25 @@
     if (type_name === `arcsinh`) {
       // Guard against very small thresholds that could cause precision issues
       const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-      const scale = scale_arcsinh(threshold)
+      const tick_scale = scale_arcsinh(threshold)
         .domain([scale_min, scale_max])
         .range(orientation === `vertical` ? [100, 0] : [0, 100])
-      return scale
+      return tick_scale
     }
 
-    const scale = use_log_for_ticks ? d3.scaleLog() : d3.scaleLinear()
+    const tick_scale = use_log_for_ticks ? d3.scaleLog() : d3.scaleLinear()
     // Use potentially adjusted min/max for domain
-    scale.domain([scale_min, scale_max])
+    tick_scale.domain([scale_min, scale_max])
 
     // Set range based on orientation for positioning (0-100 for percent)
-    scale.range(orientation === `vertical` ? [100, 0] : [0, 100])
+    tick_scale.range(orientation === `vertical` ? [100, 0] : [0, 100])
 
     // Apply scale.nice() only if snapping is enabled and not an explicit array.
     if (snap_ticks && !Array.isArray(tick_labels)) {
-      scale.nice(n_ticks)
+      tick_scale.nice(n_ticks)
     }
 
-    return scale
+    return tick_scale
   })
 
   let ticks_array: number[] = $derived.by(() => {
@@ -195,8 +189,8 @@
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [scale_for_ticks.domain()[0]]
 
-    const scale = scale_for_ticks // Use derived scale (which handles log validation for ticks)
-    const [scale_min, scale_max] = scale.domain()
+    const tick_scale = scale_for_ticks
+    const [scale_min, scale_max] = tick_scale.domain()
     const type_name = get_scale_type_name(scale_type)
 
     // Arcsinh tick generation
@@ -213,7 +207,7 @@
       // Use D3's ticks for log scale if snapping is enabled
       if (snap_ticks) {
         // For snapped log ticks, manually generate integer powers of 10 within niced domain.
-        const [nice_min, nice_max] = scale.domain()
+        const [nice_min, nice_max] = tick_scale.domain()
 
         const start_exp = Math.ceil(Math.log10(nice_min))
         const end_exp = Math.floor(Math.log10(nice_max))
@@ -258,7 +252,7 @@
       })
     }
     // Use D3's default nice ticks for linear scale
-    if (snap_ticks) return scale.ticks(n_ticks)
+    if (snap_ticks) return tick_scale.ticks(n_ticks)
     // Generate exactly n_ticks evenly spaced linear ticks
     return [...Array(n_ticks).keys()].map((idx) => {
       const fraction = idx / (n_ticks - 1)
@@ -279,23 +273,12 @@
 
   // Determine effective color scale function to use
   let actual_color_scale_fn = $derived.by(() => {
-    if (color_scale_fn) return color_scale_fn // Prioritize passed function
+    // A prebuilt function already maps data values to colors; nothing left to build.
+    if (typeof scale === `object` && `fn` in scale) return scale.fn
 
-    // Fallback: create function from scheme name/function in 'color_scale' prop
-    let interpolator = get_d3_interpolator(SCALE_DEFAULTS.scheme) // Default interpolator
-    if (typeof color_scale === `string`) {
-      const func_name = color_scale.startsWith(`interpolate`)
-        ? color_scale
-        : `interpolate${color_scale}`
-      if (is_d3_interpolate_name(func_name)) {
-        interpolator = get_d3_interpolator(func_name)
-      } else {
-        console.error(`Color scale '${color_scale}' not found. Falling back on 'Viridis'.`)
-      }
-    } else if (typeof color_scale === `function`) {
-      // User passed a function (assumed interpolator [0,1] -> color)
-      interpolator = color_scale
-    }
+    let interpolator: (t: number) => string
+    if (typeof scale === `object`) interpolator = scale.interpolator
+    else interpolator = get_d3_interpolator(scale)
 
     // Need a domain for this fallback scale! Use 'range' prop.
     let [min_val, max_val] = range
@@ -334,9 +317,11 @@
       : d3.scaleSequential(interpolator).domain(domain_for_scale)
   })
 
-  // Determine effective domain for color ramp interpolation *steps*
-  // Prioritize color_scale_domain if provided, otherwise use general 'range' prop.
-  let color_interp_domain = $derived(color_scale_domain ?? range)
+  // Domain the gradient is sampled over. A prebuilt scale may cover a different span
+  // than the ticks, so it can name its own; interpolator names always follow `range`.
+  let color_interp_domain = $derived(
+    (typeof scale === `object` && `fn` in scale ? scale.domain : undefined) ?? range,
+  )
 
   let grad_dir = $derived(orientation === `horizontal` ? `to right` : `to top`)
 
@@ -468,7 +453,7 @@
     if (color_scale_options.some((option) => option.key === selected_color_scale_key)) return
     const first_option = color_scale_options[0]
     selected_color_scale_key = first_option.key
-    color_scale = first_option.scale
+    scale = first_option.scale
   })
 
   async function handle_property_change(new_key: string, prev_key?: string) {
@@ -505,7 +490,7 @@
       return
     }
 
-    color_scale = opt.scale
+    scale = opt.scale
     on_color_scale_change?.(new_key)
   }
 
@@ -578,7 +563,7 @@
         style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
         style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
         style:color={tick_side === `inside`
-          ? pick_contrast_color({ bg_color: actual_color_scale_fn(tick_label) })
+          ? pick_contrast_color({ background: actual_color_scale_fn(tick_label) })
           : `inherit`}
       >
         {#if tick_format}

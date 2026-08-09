@@ -4,9 +4,8 @@ import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig, LabelPlacementWeights } from '$lib/plot/core/types'
 import { is_time_scale } from '$lib/plot/core/types'
 
-// Anneal budget and starting temperature for a re-solve that inherits the previous layout.
-// Both are far below the cold defaults (2000 iterations, temperature 1): the layout is
-// already good, so the pass only has to nudge labels the frame's change actually disturbed.
+// Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
+// below the cold defaults (2000, 1): the layout is good, so the pass only nudges what moved.
 const WARM_SA_ITERATIONS = 12
 const WARM_START_TEMP = 0.05
 
@@ -507,9 +506,8 @@ export function compute_label_positions(
     height: number
     pad: { t: number; b: number; l: number; r: number }
   },
-  // In/out: each label's offset from its anchor, as solved last time. Supplying it turns a
-  // re-solve into a polish of the previous layout instead of a fresh search — see the greedy
-  // init below. Overwritten with this solve's offsets, so one Map per plot, reused per frame.
+  // In/out: last solve's per-label offset from its anchor. Supplying it polishes that layout
+  // instead of searching afresh. Overwritten here, so pass one Map per plot and reuse it.
   warm_start?: Map<string, Point2D>,
 ): Record<string, Point2D> {
   const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis } = scales
@@ -602,10 +600,9 @@ export function compute_label_positions(
   const weights: Required<LabelPlacementWeights> = { ...DEFAULT_WEIGHTS, ...config.weights }
   const anchors = label_infos.map((info) => info.anchor)
 
-  // Labels carried over from the previous solve keep their offset from the anchor. A pan
-  // translates every anchor by the same vector, so replaying the offsets reproduces the
-  // previous layout exactly and the anneal below only has to fix what genuinely changed
-  // (zoom crowding, the plot edges, labels that just scrolled into view).
+  // Carried-over labels keep their offset from the anchor. A pan moves every anchor by the
+  // same vector, so replaying offsets reproduces the previous layout exactly and the anneal
+  // only fixes what changed: zoom crowding, plot edges, labels that just scrolled in.
   const labels: LabelState[] = Array.from({ length: num_labels })
   const placed: LabelState[] = []
   const cold_labels: number[] = []
@@ -658,16 +655,15 @@ export function compute_label_positions(
     placed.push(labels[idx])
   }
 
-  // Simulated annealing. A warm re-solve is a polish, not a search: it gets a fraction of the
-  // step budget and starts cool, because full heat would shake apart a good layout before
-  // cooling could settle it again. That only holds when nearly everything carried over -- one
-  // restored label out of many must not put all the new ones on a polish budget, or the frame
-  // after a large data change lays out badly and stays that way until the next solve.
+  // Simulated annealing. A warm re-solve polishes rather than searches: a fraction of the step
+  // budget, started cool, since full heat would shake a good layout apart before it cooled
+  // again. Only when most labels carried over, though — one restored label must not put all
+  // the new ones on a polish budget and leave the frame after a data change badly laid out.
   const is_warm = cold_labels.length * 4 <= num_labels
-  const sa_iterations =
-    is_warm && config.sa_iterations !== 0
-      ? (config.warm_sa_iterations ?? WARM_SA_ITERATIONS)
-      : (config.sa_iterations ?? 2000)
+  const cold_iterations = config.sa_iterations ?? 2000
+  const warm_iterations = config.warm_sa_iterations ?? WARM_SA_ITERATIONS
+  // `> 0` so a caller that disabled annealing with sa_iterations: 0 keeps it off when warm
+  const sa_iterations = is_warm && cold_iterations > 0 ? warm_iterations : cold_iterations
   const start_temp = is_warm ? WARM_START_TEMP : 1
   const total_steps = sa_iterations * num_labels
   const cooling_rate = 1 / total_steps
@@ -726,17 +722,16 @@ export function compute_label_positions(
     }
   }
 
-  // Return label center positions (matching existing API)
-  const centers = labels.map((label) => ({
-    x: label.x + label.w / 2,
-    y: label.y + label.h / 2,
-  }))
-  if (warm_start) {
-    // Rebuilt, not merged: labels that scrolled out of view or got culled must not linger
-    warm_start.clear()
-    for (const [idx, { id, anchor }] of label_infos.entries()) {
-      warm_start.set(id, { x: centers[idx].x - anchor.x, y: centers[idx].y - anchor.y })
-    }
+  // Label centre positions (the existing API) and, alongside them, the anchor-relative
+  // offsets that warm-start the next solve. Those are rebuilt rather than merged: labels that
+  // scrolled out of view or got culled must not linger in the map.
+  warm_start?.clear()
+  const positions: Record<string, Point2D> = {}
+  for (const [idx, { id, anchor }] of label_infos.entries()) {
+    const label = labels[idx]
+    const center = { x: label.x + label.w / 2, y: label.y + label.h / 2 }
+    positions[id] = center
+    warm_start?.set(id, { x: center.x - anchor.x, y: center.y - anchor.y })
   }
-  return Object.fromEntries(label_infos.map(({ id }, idx) => [id, centers[idx]]))
+  return positions
 }

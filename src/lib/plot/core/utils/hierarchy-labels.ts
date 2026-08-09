@@ -3,7 +3,7 @@
 // text measurement, and SVG/PNG export. Pure + cache-factory functions so each
 // component instance owns its caches without sharing global state.
 
-import { pick_contrast_color } from '$lib/colors'
+import { is_opaque_color, pick_contrast_color } from '$lib/colors'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { format_value } from '$lib/labels'
 import { measure_text_width } from '$lib/plot/core/layout'
@@ -62,18 +62,18 @@ export function node_label_variants(
   return { text: node_display_name(node), extended: text, short }
 }
 
-// Black/white label text, whichever contrasts with the given fill. Memoized per
-// color string - parsing/luminance is too slow per label per frame, and distinct
-// node colors are few.
+// Black/white label text for opaque fills; unresolved/translucent fills inherit.
+// Memoized per color string because parsing/luminance is too slow per frame.
 export function make_cached_contrast(): (fill: string) => string {
   const cache = new Map<string, string>()
   return (fill) => {
+    if (!is_opaque_color(fill)) return `currentColor`
     let contrast = cache.get(fill)
     if (contrast === undefined) {
       // growth guard (same as make_cached_text_width): continuous metric coloring
       // can emit unbounded distinct fills
       if (cache.size > 10_000) cache.clear()
-      contrast = pick_contrast_color({ bg_color: fill })
+      contrast = pick_contrast_color({ background: fill })
       cache.set(fill, contrast)
     }
     return contrast

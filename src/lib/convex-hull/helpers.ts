@@ -813,9 +813,8 @@ function draw_hull_point<Entry extends HullEntry>(
   ctx.restore()
 }
 
-// Draw the depth-sorted hull points that never change between animation frames. Shared by
-// the ConvexHull3D/4D canvas renderers (which differ only in shadow_factor and in how
-// labels are drawn afterwards).
+// The depth-sorted points that hold still between animation frames. Shared by ConvexHull3D/4D,
+// which differ only in shadow_factor and in how labels are drawn afterwards.
 export function draw_hull_points<Entry extends HullEntry>(
   ctx: CanvasRenderingContext2D,
   sorted_points: HullPoint<Entry>[],
@@ -827,18 +826,16 @@ export function draw_hull_points<Entry extends HullEntry>(
   }
 }
 
-// Repaint just the selected/highlighted points onto a transparent canvas stacked over the
-// hull. The pulse ticks every frame, and rebuilding faces, points and labels that often
-// costs milliseconds per frame; this touches a handful of points instead. The marker is
-// redrawn on top of its own ring so the point still reads as sitting inside it.
+// Just the selected/highlighted points, onto the canvas stacked over the hull. Rebuilding
+// faces, points and labels at pulse rate costs milliseconds a frame; this costs a handful of
+// markers. Each marker is redrawn over its own ring so it still reads as sitting inside it.
 export function draw_pulse_overlay<Entry extends HullEntry>(
   ctx: CanvasRenderingContext2D,
   sorted_points: HullPoint<Entry>[],
   opts: HullPointOpts<Entry>,
   pulse: HullPulse,
 ): void {
-  // Device pixels, while the context is scaled to CSS pixels by the DPR transform. That
-  // over-covers the canvas, which is what a full clear wants.
+  // Device pixels under a DPR-scaled context, so this over-covers — right for a full clear
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
   for (const point of sorted_points) {
     if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, pulse)
@@ -858,9 +855,9 @@ export function marker_path_data(radius: number, marker: MarkerSymbol): string |
     : null
 }
 
-// Outlines are position-independent (callers translate the context), so they are shared by
-// shape and size. Rotating a hull asks for two per point per frame — a shadow and a marker —
-// off a handful of distinct sizes, so building them fresh each time was pure allocation.
+// Outlines are position-independent (callers translate the context), so shape and size key
+// them. Rotating a hull wants two per point per frame, a shadow and a marker, off a handful
+// of distinct sizes — building those fresh was pure allocation.
 const marker_path_cache = new Map<string, Path2D>()
 const MAX_MARKER_PATH_CACHE = 512
 

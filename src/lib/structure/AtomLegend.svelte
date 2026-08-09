@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_color, default_element_colors } from '$lib/colors'
+  import { contrast_text_color, default_element_colors } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
@@ -342,6 +342,7 @@
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
+          style:color={contrast_text_color({ background: colors.element[displayed_elem] })}
           class:hidden={is_hidden}
           class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
@@ -353,7 +354,6 @@
             remap_menu_open = remap_menu_open === elem ? null : (elem as ElementSymbol)
             remap_search = ``
           }}
-          {@attach contrast_color()}
         >
           {#if get_element_label}
             {get_element_label(displayed_elem, amt)}
@@ -462,7 +462,9 @@
                   class:selected={displayed_elem === target_elem}
                   onclick={() => remap_element(elem as ElementSymbol, target_elem)}
                   style:background-color={colors.element[target_elem]}
-                  {@attach contrast_color()}
+                  style:color={contrast_text_color({
+                    background: colors.element[target_elem],
+                  })}
                 >
                   <small style="opacity: 0.6">{elem_info?.number}</small>
                   <b>{target_elem}</b>
@@ -503,7 +505,7 @@
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
-            {@attach contrast_color()}
+            style:color={contrast_text_color({ background: color })}
           >
             {format_value(value)}
           </button>
@@ -512,7 +514,7 @@
     {:else if atom_color_config.scale_type === `continuous` && property_colors}
       <div title={legend_title} {@attach tooltip({ placement: `top` })}>
         <ColorBar
-          color_scale={atom_color_config.scale}
+          scale={atom_color_config.scale}
           range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
           tick_labels={Array.from(
             new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
@@ -533,7 +535,7 @@
             class="category-label color-swatch"
             class:hidden={is_hidden}
             style:background-color={color}
-            {@attach contrast_color()}
+            style:color={contrast_text_color({ background: color })}
           >
             {format_value(value)}
           </span>

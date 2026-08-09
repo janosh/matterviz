@@ -11,7 +11,7 @@ describe(`ColorBar Horizontal (Default)`, () => {
       target: document.body,
       props: {
         title: `Test Horizontal`,
-        color_scale: `Viridis`,
+        scale: `interpolateViridis`,
         tick_labels: 5, // D3 nice().ticks(5) for [0, 100] -> [0, 20, 40, 60, 80, 100]
         range: [0, 100],
         title_side: `left`,
@@ -46,16 +46,14 @@ describe(`ColorBar Horizontal (Default)`, () => {
     expect(wrapper.style.flexDirection).toBe(`row`) // title_side: left
   })
 
-  test(`handles invalid color_scale input`, () => {
-    const spy = vi.spyOn(console, `error`)
-
-    const color_scale = `test invalid`
-    mount(ColorBar, { target: document.body, props: { color_scale } })
-
-    expect(spy).toHaveBeenCalledWith(
-      `Color scale '${color_scale}' not found. Falling back on 'Viridis'.`,
-    )
-    spy.mockRestore()
+  test(`rejects invalid scale input`, () => {
+    const scale = `test invalid`
+    expect(() =>
+      mount(ColorBar, {
+        target: document.body,
+        props: { scale },
+      }),
+    ).toThrow(`Unknown D3 color interpolator: ${scale}`)
   })
 })
 
@@ -143,7 +141,7 @@ describe(`ColorBar tick_side='inside'`, () => {
         tick_side: `inside`,
         range: [0, 100],
         tick_labels: 6, // Request 6 -> gen 6 -> d3 gives 6 ([0, 20,.., 100]) -> slice -> 4 visible
-        color_scale: `Viridis`,
+        scale: `interpolateViridis`,
         style: `height: 30px;`,
       },
     })
@@ -386,11 +384,11 @@ describe(`ColorBar Other Features`, () => {
     expect(title_row.classList.contains(`top`)).toBe(true)
   })
 
-  test(`accepts a function for color_scale`, () => {
+  test(`accepts a custom interpolator`, () => {
     const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`) // Mock scale
     mount(ColorBar, {
       target: document.body,
-      props: { color_scale: custom_scale, range: [0, 1] }, // Use default steps=50
+      props: { scale: { interpolator: custom_scale }, range: [0, 1] }, // Use default steps=50
     })
 
     // Verify the mock function was called (steps times)

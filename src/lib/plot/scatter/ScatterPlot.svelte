@@ -2258,8 +2258,7 @@
         <ColorBar
           tick_labels={4}
           tick_side="primary"
-          {color_scale_fn}
-          color_scale_domain={color_domain}
+          scale={{ fn: color_scale_fn, domain: color_domain }}
           scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
           range={color_domain?.every((val) => val != null) ? color_domain : undefined}
           bar_style="width: {COLOR_BAR_DEFAULTS.width}px; height: {COLOR_BAR_DEFAULTS.horizontal_bar_height}px; {color_bar?.style ??

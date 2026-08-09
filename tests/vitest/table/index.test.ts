@@ -268,10 +268,10 @@ describe(`calc_cell_color`, () => {
     }
   })
 
-  it(`falls back to viridis for invalid color scale name`, () => {
+  it(`rejects invalid color scale names`, () => {
     const invalid_scale = `interpolateNonExistent` as D3InterpolateName
-    expect(calc_cell_color(50, [1, 50, 100], `higher`, invalid_scale)).toEqual(
-      calc_cell_color(50, [1, 50, 100], `higher`, `interpolateViridis`),
+    expect(() => calc_cell_color(50, [1, 50, 100], `higher`, invalid_scale)).toThrow(
+      `Unknown D3 color interpolator: interpolateNonExistent`,
     )
   })
 })

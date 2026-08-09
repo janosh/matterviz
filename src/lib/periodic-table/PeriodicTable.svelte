@@ -1,11 +1,18 @@
 <script lang="ts">
   import {
-    get_bg_color,
     get_d3_interpolator,
     is_color,
+    is_dark_mode,
     pick_contrast_color,
+    resolve_backdrop,
+    resolve_css_color,
   } from '$lib/colors'
-  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
+  import type {
+    ChemicalElement,
+    ElementCategory,
+    ElementSymbol,
+    TileSegment,
+  } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -57,7 +64,10 @@
     onkeydown: on_table_keydown,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    tile_props?: Partial<ComponentProps<typeof ElementTile>>
+    tile_props?: Omit<
+      Partial<ComponentProps<typeof ElementTile>>,
+      `active` | `element` | `href` | `label` | `segments` | `split_layout`
+    >
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
     // array (positional by atomic number, can be partial) or object keyed by element symbol.
@@ -305,9 +315,31 @@
     return color_scale_fn((num - cs_min) / span)
   }
 
-  // per-segment colors for multi-value tiles (bg_color already handles color strings)
-  const bg_colors = (value: HeatValue | false, element?: ChemicalElement) =>
-    Array.isArray(value) ? value.map((val) => bg_color(val, element)) : []
+  // Build a tile's fill. Color and label travel together per segment, so a multi-value
+  // cell can no longer end up with more colors than values or vice versa. Cells whose
+  // value already *is* a color paint with it but carry no label.
+  const tile_segments = (
+    value: HeatValue | false | null,
+    element: ChemicalElement,
+    override: string | undefined,
+    tile_missing: boolean,
+  ): TileSegment[] => {
+    if (tile_missing) return [{ color: override ?? bg_color(value, element) ?? undefined }]
+    if (Array.isArray(value)) {
+      // An override paints the whole tile, which leaves nothing to split.
+      if (override) return [{ color: override }]
+      return value.map((val) => ({
+        color: bg_color(val, element) ?? undefined,
+        value: val == null || is_color(val) ? undefined : val,
+      }))
+    }
+    return [
+      {
+        color: override ?? bg_color(value, element) ?? undefined,
+        value: value == null || value === false || is_color(value) ? undefined : value,
+      },
+    ]
+  }
 
   // Determine whether to automatically show the color bar
   let should_show_color_bar = $derived(show_color_bar && !inset && usable_heat_nums.length > 0)
@@ -319,19 +351,28 @@
     const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
     return [min, max]
   })
-  const tooltip_contrast = (node: HTMLElement): void => {
-    node.style.setProperty(
-      `--tooltip-auto-color`,
-      pick_contrast_color({ bg_color: get_bg_color(node) ?? `white` }),
-    )
-  }
+  // The tooltip fill is a translucent theme token, so it needs the page behind it to
+  // resolve to a real color. Both are read as named tokens rather than inferred.
+  let tooltip_node = $state<HTMLElement | null>(null)
+  const tooltip_backdrop = resolve_backdrop(() => tooltip_node)
+  const tooltip_fill = resolve_css_color(() => tooltip_node, {
+    css_var: `--tooltip-bg`,
+    // mirrors the light-dark() default in the .tooltip rule below
+    fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
+  })
+  const tooltip_text_color = $derived(
+    pick_contrast_color({
+      background: tooltip_fill.current,
+      backdrop: tooltip_backdrop.current,
+    }),
+  )
 </script>
 
 <div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
-        {color_scale}
+        scale={typeof color_scale === `string` ? color_scale : { interpolator: color_scale }}
         range={heat_range}
         tick_labels={color_bar_props.tick_labels ?? 3}
         tick_side="primary"
@@ -362,15 +403,13 @@
       tile_props?.style ? ` ${tile_props.style}` : ``
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
     <ElementTile
+      {...tile_props}
       {element}
       {href}
       data-element-symbol={symbol}
-      value={tile_missing ? undefined : (value ?? undefined)}
-      bg_color={override ?? bg_color(value, element) ?? undefined}
-      bg_colors={!override && Array.isArray(value) ? bg_colors(value, element) : []}
+      segments={tile_segments(value, element, override, tile_missing)}
       {active}
       label={labels[symbol] ?? (tile_missing ? missing.label : undefined)}
-      {...tile_props}
       {style}
       onmouseenter={(event: MouseEvent) => {
         set_active_element(element)
@@ -434,7 +473,12 @@
     {@const style = `left: ${tooltip_pos.x}px; top: ${tooltip_pos.y}px;`}
     {@const tooltip_value = heat_values[el.number - 1]}
     {#if tooltip !== false}
-      <div class="tooltip" {style} {@attach tooltip_contrast}>
+      <div
+        class="tooltip"
+        {style}
+        bind:this={tooltip_node}
+        style:--tooltip-auto-color={tooltip_text_color}
+      >
         {#if typeof tooltip == `function`}
           {@render tooltip({
             element: el,

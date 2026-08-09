@@ -744,6 +744,7 @@ describe(`show_values`, () => {
       color_overrides: {
         [make_color_override_key(`A`, `X`)]: `rgba(255, 255, 255, 0.1)`,
       },
+      backdrop: `black`,
       style: `background: black`,
     })
     await tick()

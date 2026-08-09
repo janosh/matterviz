@@ -1,3 +1,4 @@
+import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type {
@@ -7,7 +8,6 @@ import type {
   SizeScaleConfig,
   TimeInterval,
 } from '$lib/plot'
-import { get_d3_interpolator } from '$lib/colors'
 import { clamp01 } from '$lib/utils'
 import {
   get_arcsinh_threshold,
@@ -24,7 +24,6 @@ import {
   scaleSequentialLog,
   scaleTime,
 } from 'd3-scale'
-import * as d3_sc from 'd3-scale-chromatic'
 
 // Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
@@ -623,16 +622,14 @@ export function get_tick_label(
 
 // Create a color scale function from configuration
 export function create_color_scale(
-  color_scale_config: ColorScaleConfig | string,
+  color_scale_config: ColorScaleConfig | D3InterpolateName,
   auto_color_range: Vec2,
 ) {
   const scheme =
-    typeof color_scale_config === `string` ? color_scale_config : color_scale_config.scheme
-  const candidate_interpolator = Object.entries(d3_sc).find(([key]) => key === scheme)?.[1]
-  const interpolator =
-    typeof candidate_interpolator === `function`
-      ? candidate_interpolator
-      : get_d3_interpolator(SCALE_DEFAULTS.scheme)
+    (typeof color_scale_config === `string`
+      ? color_scale_config
+      : color_scale_config.scheme) ?? SCALE_DEFAULTS.scheme
+  const interpolator = get_d3_interpolator(scheme)
   const [min_val, max_val] =
     (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
     auto_color_range

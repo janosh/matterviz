@@ -39,6 +39,9 @@
   // component writing a raw plot entry back through this binding re-proxies it, which
   // used to loop the selection effect forever (raw !== proxy → effect_update_depth_exceeded)
   let selected_entry = $state<ConvexHullEntry | null>(null)
+  // Read by the draw code but only reachable through `config`, so it exercises whether the
+  // renderer's repaint list covers config as well as the individual toggles.
+  let config = $state({ show_labels: true })
 </script>
 
 <button
@@ -60,12 +63,20 @@
   type="button"
   data-testid="select-entry"
   onclick={() =>
+    // with element refs the compound sits above the hull, so prefer an unstable entry;
+    // without them the only stable entries are the refs the pipeline synthesizes
     (selected_entry =
-      (include_element_refs ? unstable_entries[0] : stable_entries[0]) ??
-      stable_entries[0] ??
-      null)}
+      (include_element_refs ? unstable_entries[0] : undefined) ?? stable_entries[0] ?? null)}
 >
   Select Entry
 </button>
 
-<Hull {entries} bind:selected_entry bind:stable_entries bind:unstable_entries />
+<button
+  type="button"
+  data-testid="toggle-hull-labels"
+  onclick={() => (config = { ...config, show_labels: !config.show_labels })}
+>
+  Toggle Labels
+</button>
+
+<Hull {entries} {config} bind:selected_entry bind:stable_entries bind:unstable_entries />

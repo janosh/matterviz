@@ -67,8 +67,8 @@
       return interpolator(normalized)
     }
   })
-  // getComputedStyle forces a style flush, and the contour pass below runs on every repaint
-  // while a slice slider is being dragged. Resolve the CSS colour per theme/style change instead.
+  // getComputedStyle forces a style flush and the contour pass repaints on every slider
+  // frame, so resolve the CSS colour per theme/style change instead.
   let color_revision = $state(0)
   $effect(() => watch_dark_mode(() => (color_revision += 1)))
   $effect(() => {
@@ -208,9 +208,7 @@
   {#if show_colorbar && slice}
     <ColorBar
       title={colorbar_title}
-      color_scale={colormap}
-      color_scale_fn={colorbar_color_scale}
-      color_scale_domain={resolved_color_range}
+      scale={{ fn: colorbar_color_scale, domain: resolved_color_range }}
       range={resolved_color_range}
       tick_labels={5}
       orientation={colorbar_orientation}

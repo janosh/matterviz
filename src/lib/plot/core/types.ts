@@ -1,5 +1,5 @@
 import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
+import type { D3InterpolateName } from '$lib/colors'
 import type { D3SymbolName } from '$lib/labels'
 import type { Point2D, Vec2 } from '$lib/math'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -278,7 +278,9 @@ export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConf
 // Color/size mapping configs shared by scatter, scatter-3d and binned-scatter plots
 export type ColorScaleConfig = {
   type?: ScaleType
-  scheme?: D3ColorSchemeName | D3InterpolateName
+  // Prefixed d3 interpolator name. Bare names like `Viridis` used to typecheck here but
+  // silently fell through to the default in create_color_scale.
+  scheme?: D3InterpolateName
   value_range?: Vec2
 }
 export type SizeScaleConfig = {
@@ -586,11 +588,22 @@ export interface AxisLoadError {
   message: string
 }
 
+// How a ColorBar gets its colors. The old API took a name, a bare function and a
+// separate `color_scale_fn` that silently outranked both, with the two function forms
+// meaning different things. Spelling the three cases out keeps them distinguishable:
+//   - a d3 interpolator name, sampled across the bar's `range`
+//   - `interpolator`: a unit function of t in [0, 1], also sampled across `range`
+//   - `fn`: maps data values straight to colors over the domain it declares
+export type ColorBarScale =
+  | D3InterpolateName
+  | { interpolator: (t: number) => string }
+  | { fn: (value: number) => string; domain?: Vec2 }
+
 // Option for color scale dropdown in ColorBar
 export interface ColorScaleOption {
   key: string // e.g., 'viridis', 'plasma'
   label: string // e.g., 'Viridis', 'Plasma'
-  scale: string | ((t: number) => string) // d3 interpolator name or function
+  scale: D3InterpolateName
 }
 
 // Data loader for ColorBar property changes

@@ -12,6 +12,7 @@ import {
   safe_hierarchy_layout,
   toggle_muted,
 } from '$lib/plot/core/utils/hierarchy-chart'
+import { make_cached_contrast } from '$lib/plot/core/utils/hierarchy-labels'
 import type { PositionedArc, SunburstNode } from '$lib/plot/sunburst/sunburst'
 import { compute_sunburst_layout } from '$lib/plot/sunburst/sunburst'
 import { SvelteSet } from 'svelte/reactivity'
@@ -26,6 +27,14 @@ const tree: SunburstNode = {
   ],
 }
 const { arcs } = compute_sunburst_layout(tree, {})
+
+test(`contrast labels inherit over non-opaque fills`, () => {
+  const contrast = make_cached_contrast()
+  expect([contrast(`transparent`), contrast(`rgba(0, 0, 0, 0.5)`)]).toEqual([
+    `currentColor`,
+    `currentColor`,
+  ])
+})
 const by_label = (label: string): PositionedArc => {
   const arc = arcs.find((candidate) => candidate.label === label)
   if (!arc) throw new Error(`no arc labelled ${label}`)

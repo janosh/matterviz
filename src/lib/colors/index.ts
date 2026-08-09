@@ -17,21 +17,23 @@ import muted_colors from './muted-colors.json' with { type: 'json' }
 import pastel_colors from './pastel-colors.json' with { type: 'json' }
 import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
+export * from './backdrop.svelte'
+
 // Extract color scheme interpolate function names from d3-scale-chromatic
+// Color scale names are always the prefixed d3 export name (`interpolateViridis`), which
+// is what get_d3_interpolator, the settings defaults and every dropdown value use. Bare
+// names are a display concern only -- strip the prefix at render time.
 export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
-export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
-  ? Name
-  : never
 const d3_interpolators = Object.fromEntries(
   Object.entries(d3_sc).filter(
     ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
   ),
 ) as Record<D3InterpolateName, (t: number) => string>
-export const D3_INTERPOLATE_NAMES = new Set(
-  Object.keys(d3_interpolators),
-) as ReadonlySet<D3InterpolateName>
+export const D3_INTERPOLATE_NAMES = Object.keys(
+  d3_interpolators,
+) as readonly D3InterpolateName[]
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
-  D3_INTERPOLATE_NAMES.has(name as D3InterpolateName)
+  D3_INTERPOLATE_NAMES.includes(name as D3InterpolateName)
 export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
   const interpolator = d3_interpolators[name]
   if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
@@ -105,18 +107,22 @@ export const is_color = (val: unknown): val is string => {
 const to_rgb = (color: string): RGBColor | undefined => {
   const parsed = d3_color(color)?.rgb()
   if (!parsed) return undefined
+  // `transparent` parses to NaN channels, which the finiteness check below would reject as
+  // unparseable and send to the canvas fallback. It is fully specified, so answer it here.
   if (parsed.opacity === 0) return rgb(0, 0, 0, 0)
   if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite)) return undefined
+  const clamp_channel = (channel: number) => Math.max(0, Math.min(255, channel))
   return rgb(
-    Math.max(0, Math.min(255, parsed.r)),
-    Math.max(0, Math.min(255, parsed.g)),
-    Math.max(0, Math.min(255, parsed.b)),
+    clamp_channel(parsed.r),
+    clamp_channel(parsed.g),
+    clamp_channel(parsed.b),
     clamp01(parsed.opacity),
   )
 }
-export const is_concrete_color = (val: unknown): val is string => {
-  return typeof val === `string` && (to_rgb(val.trim())?.opacity ?? 0) > 0
-}
+export const is_concrete_color = (val: unknown): val is string =>
+  typeof val === `string` && (to_rgb(val.trim())?.opacity ?? 0) > 0
+export const is_opaque_color = (val: unknown): val is string =>
+  typeof val === `string` && to_rgb(val.trim())?.opacity === 1
 
 export const PLOT_COLORS = [
   // Color series for e.g. line plots
@@ -134,28 +140,11 @@ export const PLOT_COLORS = [
 
 const parse_rgb = (color: string): RGBColor => {
   const parsed = to_rgb(color)
-  if (!parsed || parsed.opacity === 0) throw new Error(`Invalid color: ${color}`)
+  if (!parsed) throw new Error(`Invalid color: ${color}`)
   return parsed
 }
 
-let color_canvas_context: CanvasRenderingContext2D | null | undefined
-const parse_rendered_rgb = (color: string): RGBColor => {
-  const parsed = to_rgb(color)
-  if (parsed) return parsed
-  if (typeof document === `undefined`) throw new Error(`Invalid color: ${color}`)
-  const context = (color_canvas_context ??= document
-    .createElement(`canvas`)
-    .getContext(`2d`, { willReadFrequently: true }))
-  if (!context) throw new Error(`Browser cannot resolve CSS color: ${color}`)
-  context.clearRect(0, 0, 1, 1)
-  context.fillStyle = `rgba(0, 0, 0, 0)`
-  context.fillStyle = color
-  context.fillRect(0, 0, 1, 1)
-  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
-  return rgb(red, green, blue, alpha / 255)
-}
-const is_visible_bg = (color: string): boolean =>
-  color !== `` && color !== `transparent` && parse_rendered_rgb(color).opacity > 0
+const is_visible_bg = (color: string): boolean => (to_rgb(color)?.opacity ?? 0) > 0
 
 // Calculate human-perceived brightness from gamma-encoded RGB channels.
 export function perceived_brightness(color: string): number {
@@ -198,76 +187,54 @@ const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
 export const composite_colors = (foreground: string, backdrop: string): string =>
   composite_rgb(parse_rgb(foreground), parse_rgb(backdrop)).formatRgb()
 
-// Get the nearest visible background of a DOM node.
-export function get_bg_color(elem: HTMLElement | null): string | undefined {
-  let effective_bg: RGBColor | undefined
-  for (let node = elem; node; node = node.parentElement) {
-    const background = getComputedStyle(node).backgroundColor
-    if (!background || background === `transparent`) continue
-    const parsed = parse_rendered_rgb(background)
-    if (parsed.opacity === 0) continue
-    effective_bg = effective_bg ? composite_rgb(effective_bg, parsed) : parsed
-    if (effective_bg.opacity === 1) return effective_bg.formatRgb()
-  }
-  return effective_bg ? composite_rgb(effective_bg, parse_rgb(`white`)).formatRgb() : undefined
-}
-
-export interface ContrastOptions {
-  bg_color: string
-  backdrop_color?: string
+// Explicit description of what gets painted where, so text contrast can be computed
+// from data instead of inferred by inspecting rendered DOM. `background` is the color
+// painted on the element itself; `backdrop` is the opaque color behind it and is only
+// consulted (and only required) when `background` is translucent.
+export interface Paint {
+  background: string
+  backdrop?: string
   choices?: readonly [string, string]
 }
 
 const DEFAULT_CONTRAST_CHOICES = [`black`, `white`] as const
-const DEFAULT_CHOICE_LUMINANCES = [0, 1] as const
 
-export function pick_contrast_color(options: ContrastOptions): string {
-  const { bg_color, backdrop_color, choices = DEFAULT_CONTRAST_CHOICES } = options
-  const parsed_bg = parse_rgb(bg_color)
+export function pick_contrast_color(paint: Paint): string {
+  const { background, backdrop, choices = DEFAULT_CONTRAST_CHOICES } = paint
+  const parsed_bg = parse_rgb(background)
   let effective_bg = parsed_bg
   if (parsed_bg.opacity < 1) {
-    if (!backdrop_color) {
-      throw new Error(`Translucent background requires backdrop_color: ${bg_color}`)
+    if (!backdrop) {
+      throw new Error(`Translucent background requires a backdrop: ${background}`)
     }
-    const backdrop = parse_rgb(backdrop_color)
-    if (backdrop.opacity < 1) {
-      throw new Error(`backdrop_color must be opaque: ${backdrop_color}`)
+    const parsed_backdrop = parse_rgb(backdrop)
+    if (parsed_backdrop.opacity < 1) {
+      throw new Error(`backdrop must be opaque: ${backdrop}`)
     }
-    effective_bg = composite_rgb(parsed_bg, backdrop)
+    effective_bg = composite_rgb(parsed_bg, parsed_backdrop)
   }
   const bg_luminance = rgb_luminance(effective_bg)
-  const choice_luminances =
-    choices === DEFAULT_CONTRAST_CHOICES
-      ? DEFAULT_CHOICE_LUMINANCES
-      : choices.map((choice) => {
-          const parsed_choice = parse_rgb(choice)
-          return rgb_luminance(
-            parsed_choice.opacity < 1
-              ? composite_rgb(parsed_choice, effective_bg)
-              : parsed_choice,
-          )
-        })
+  const choice_luminances = choices.map((choice) => {
+    const parsed_choice = parse_rgb(choice)
+    return rgb_luminance(
+      parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, effective_bg) : parsed_choice,
+    )
+  })
   return contrast_ratio(bg_luminance, choice_luminances[0]) >=
     contrast_ratio(bg_luminance, choice_luminances[1])
     ? choices[0]
     : choices[1]
 }
 
-// Attachment that picks the text color with the highest WCAG contrast against the
-// node's nearest visible background.
-export const contrast_color =
-  (options: Omit<ContrastOptions, `bg_color`> & { bg_color?: string } = {}) =>
-  (node: HTMLElement): (() => void) => {
-    const previous_color = node.style.color
-    node.style.color = pick_contrast_color({
-      ...options,
-      bg_color: options.bg_color ?? get_bg_color(node) ?? `white`,
-      backdrop_color: options.backdrop_color ?? get_bg_color(node.parentElement) ?? `white`,
-    })
-    return () => {
-      node.style.color = previous_color
-    }
-  }
+// Like pick_contrast_color but yields to an explicit override and gives up on
+// backgrounds JS cannot resolve (CSS vars, currentcolor), where inheriting the
+// surrounding text color is the only honest answer.
+export const contrast_text_color = (paint: Paint & { override?: string }): string => {
+  const { override, background, ...rest } = paint
+  if (override) return override
+  if (!is_concrete_color(background)) return `currentColor`
+  return pick_contrast_color({ background, ...rest })
+}
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(

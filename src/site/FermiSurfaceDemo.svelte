@@ -15,7 +15,7 @@
     parse_fermi_file,
   } from '$lib/fermi-surface'
   import type { Vec3 } from '$lib/math'
-  import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
+  import { fermi_file_paints, fermi_surface_files } from '$site/fermi-surfaces'
   import { replace_url } from '$site/state.svelte'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -106,7 +106,7 @@
 <FilePicker
   files={fermi_surface_files}
   {active_files}
-  file_type_colors={fermi_file_colors}
+  file_type_paints={fermi_file_paints}
   show_category_filters
   on_drag_start={(file) => (active_file = file.name)}
   on_click={(file) => void load_file(file)}

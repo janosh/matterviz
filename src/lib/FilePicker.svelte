@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { contrast_color } from '$lib/colors'
-  import type { FileInfo } from '$lib/io'
+  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
+  import type { FileInfo, FileTypePaint } from '$lib/io'
+  import { DEFAULT_FILE_TYPE_PAINTS, FALLBACK_FILE_TYPE_PAINT } from '$lib/io'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -17,25 +18,7 @@
     on_click,
     on_dblclick,
     type_mapper,
-    file_type_colors = {
-      cif: `rgba(100, 149, 237, 0.8)`,
-      xyz: `rgba(50, 205, 50, 0.8)`,
-      extxyz: `rgba(50, 205, 50, 0.8)`,
-      poscar: `rgba(255, 140, 0, 0.8)`,
-      json: `rgba(138, 43, 226, 0.8)`,
-      traj: `rgba(255, 192, 203, 0.8)`,
-      hdf5: `rgba(255, 69, 0, 0.8)`,
-      gz: `rgba(169, 169, 169, 0.8)`,
-      md: `rgba(255, 215, 0, 0.8)`,
-      yaml: `rgba(255, 0, 255, 0.8)`,
-      xdatcar: `rgba(255, 215, 0, 0.8)`,
-      tdb: `rgba(0, 188, 212, 0.8)`,
-      chgcar: `rgba(59, 130, 246, 0.8)`,
-      parchg: `rgba(99, 102, 241, 0.8)`,
-      locpot: `rgba(245, 158, 11, 0.8)`,
-      elfcar: `rgba(16, 185, 129, 0.8)`,
-      cube: `rgba(168, 85, 247, 0.8)`,
-    },
+    file_type_paints = DEFAULT_FILE_TYPE_PAINTS,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     files?: FileInfo[]
@@ -47,9 +30,16 @@
     on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
     on_dblclick?: (file: FileInfo, event: MouseEvent) => void
     type_mapper?: (file: FileInfo) => string
-    file_type_colors?: Record<string, string>
+    // Per-file-type fills. `badge` paints the uppercase type chip, `item` the file row.
+    // Build them with `file_type_paint(badge)` to derive the row wash from the badge.
+    file_type_paints?: Record<string, FileTypePaint>
   } = $props()
 
+  const paint_for = (type: string): FileTypePaint =>
+    file_type_paints[type] ?? FALLBACK_FILE_TYPE_PAINT
+
+  let root: HTMLDivElement | undefined = $state()
+  const backdrop = resolve_backdrop(() => root)
   let active_category_filter = $state<string | null>(null)
   let active_type_filter = $state<string | null>(null)
   type FilterKind = `category` | `type`
@@ -131,7 +121,7 @@
   let uniq_categories = $derived([...new Set(files.map(get_category_id))].toSorted())
 </script>
 
-<div class="file-picker" class:vertical={layout === `vertical`} {...rest}>
+<div bind:this={root} class="file-picker" class:vertical={layout === `vertical`} {...rest}>
   <div class="legend">
     {#each show_category_filters ? uniq_categories : [] as category (category)}
       {@const is_active = active_category_filter === category}
@@ -163,7 +153,7 @@
         tabindex="0"
         {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
       >
-        <span class="format-circle" style:background-color={file_type_colors[format]}></span>
+        <span class="format-circle" style:background-color={paint_for(format).badge}></span>
         {format.toUpperCase()}
       </span>
     {/each}
@@ -181,10 +171,11 @@
 
   {#each filtered_files as file (file.name)}
     {@const base_type = get_base_file_type(file)}
+    {@const paint = paint_for(base_type)}
     <div
       class="file-item"
       class:active={active_files.includes(file.name)}
-      style:background-color={file_type_colors[base_type]?.replace(`0.8`, `0.08`)}
+      style:background-color={paint.item}
       draggable="true"
       ondragstart={handle_drag_start(file)}
       ondragend={() => on_drag_end?.()}
@@ -215,8 +206,11 @@
       {#if file.label}
         <span
           class="file-type-badge"
-          style:background-color={file_type_colors[base_type] ?? `rgba(128,128,128,0.8)`}
-          {@attach contrast_color()}>{base_type.toUpperCase()}</span
+          style:background-color={paint.badge}
+          style:color={contrast_text_color({
+            background: paint.badge,
+            backdrop: backdrop.current,
+          })}>{base_type.toUpperCase()}</span
         >
       {/if}
       <div class="file-name">

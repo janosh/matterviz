@@ -1,24 +1,16 @@
 <script lang="ts">
-  import {
-    contrast_color,
-    is_color,
-    is_concrete_color,
-    get_bg_color,
-    pick_contrast_color,
-  } from '$lib/colors'
-  import type { ChemicalElement } from '$lib/element'
+  import { is_concrete_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
+  import type { ChemicalElement, SplitLayout, TileSegment } from '$lib/element'
   import { format_num } from '$lib/labels'
   import { colors, selected } from '$lib/state.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
   let {
     element,
-    bg_color = undefined,
+    segments = [],
     show_symbol = true,
-    show_number = undefined, // auto-determine based on multi-value splits
+    show_number = undefined, // auto-determined from segment count
     show_name = true,
-    value = undefined,
     symbol_style = ``,
     active = false,
     href = undefined,
@@ -26,18 +18,17 @@
     float_fmt = undefined,
     node = $bindable(null),
     label = undefined,
-    bg_colors = [],
-    show_values = undefined,
-    split_layout = undefined, // auto-determine based on value count if not specified
+    split_layout = undefined, // auto-determined from segment count
     onclick,
     ...rest
   }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
     element: ChemicalElement
-    bg_color?: string
+    // 0 segments paints the category color, 1 paints a solid tile, 2-4 split it. Each
+    // segment carries its own color and optional value label.
+    segments?: TileSegment[]
     show_symbol?: boolean
     show_number?: boolean
     show_name?: boolean
-    value?: number | number[] | string | string[] | false
     symbol_style?: string
     active?: boolean
     href?: string
@@ -45,57 +36,50 @@
     float_fmt?: string
     node?: HTMLElement | null
     label?: string
-    // array of background colors for multi-segment tiles
-    bg_colors?: (string | null)[]
-    show_values?: boolean // explicitly control whether to show values when colors are passed
-    // control the layout of multi-value splits
+    // Which split to use. Only layouts valid for the segment count are accepted.
     split_layout?: SplitLayout
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
   } = $props()
 
-  // background color defaults to category color (initialized in colors/index.ts, user editable in PeriodicTableControls.svelte)
-  let fallback_bg_color = $derived(bg_color ?? colors.category[element.category] ?? `#cccccc`)
-  let backdrop_color = $derived(node ? (get_bg_color(node.parentElement) ?? `white`) : `white`)
-  const auto_text_color = (background: unknown): string | undefined =>
-    is_concrete_color(background)
-      ? pick_contrast_color({ bg_color: background, backdrop_color })
-      : undefined
-  let computed_text_color = $derived(
-    text_color ?? (Array.isArray(value) ? undefined : auto_text_color(bg_color)),
+  // Which splits exist for a given segment count. Asking for `triangular` with three
+  // segments has no rendering, so it is rejected rather than silently ignored.
+  // First entry of each list is the default for that count.
+  const SPLIT_LAYOUTS_BY_COUNT: Record<number, SplitLayout[]> = {
+    2: [`diagonal`],
+    3: [`horizontal`, `vertical`],
+    4: [`quadrant`, `triangular`],
+  }
+  const MAX_SEGMENTS = 4
+
+  const category_color = $derived(colors.category[element.category] ?? `#cccccc`)
+  const is_split = $derived(segments.length > 1)
+  // A split tile is painted by its segment divs, so the tile itself stays transparent.
+  let fallback_bg_color = $derived(
+    is_split ? `transparent` : (segments[0]?.color ?? category_color),
   )
 
-  // Determine if we should show the atomic number
-  const should_show_number = $derived.by(() => {
-    if (show_number !== undefined) return show_number
-    // Hide number for multi-value splits to prevent overlap with value labels
-    if (Array.isArray(value) && value.length > 1) return false
-    return true
-  })
+  const backdrop = resolve_backdrop(() => node)
+  const auto_text_color = (background: unknown): string | undefined =>
+    is_concrete_color(background)
+      ? pick_contrast_color({ background, backdrop: backdrop.current })
+      : undefined
+  // Symbol and number sit across all segments, so on a split tile they contrast against
+  // the backdrop rather than against any one segment.
+  let computed_text_color = $derived(
+    text_color ?? auto_text_color(is_split ? backdrop.current : fallback_bg_color),
+  )
 
-  // Helper function to format values appropriately
-  const format_value = (val: string | number): string => {
-    if (is_color(val)) return show_values === true ? val.toString() : ``
+  // Hide the atomic number on split tiles to prevent overlap with value labels.
+  let should_show_number = $derived(show_number ?? !is_split)
 
-    // Handle numeric values
+  const format_value = (val: number | string | undefined): string => {
     if (typeof val === `number`) return format_num(val, float_fmt)
-
-    // Handle string values - check if it's a numeric string
-    if (typeof val === `string`) {
-      const parsed_num = Number(val)
-      if (isFinite(parsed_num)) return format_num(parsed_num, float_fmt)
-      // If show_values is true, return the string as-is to preserve non-numeric strings
-      return show_values === true ? val : ``
-    }
-
-    return ``
+    if (typeof val !== `string`) return ``
+    const parsed_num = Number(val)
+    return isFinite(parsed_num) && val.trim() !== `` ? format_num(parsed_num, float_fmt) : val
   }
 
-  // Determine if we should show values - default to false if any array element is a color
-  const should_show_values = $derived.by(() => {
-    if (show_values !== undefined) return show_values
-    if (Array.isArray(value)) return !value.some(is_color)
-    return !is_color(value)
-  })
+  const has_values = $derived(segments.some((segment) => segment.value !== undefined))
 
   // CSS classes for segments and value positions, keyed by `layout-count`
   const layout_classes: Record<string, { segments: string[]; positions: string[] }> = {
@@ -121,15 +105,23 @@
     },
   }
 
-  // Get the appropriate CSS classes for segments and positions based on layout
+  // Resolve the split layout, rejecting counts and layouts that have no rendering.
   const layout_config = $derived.by(() => {
-    if (!Array.isArray(value)) return null
-    const count = value.length
-    // Use explicit split_layout or auto-determine based on count
-    const layout =
-      split_layout ??
-      ({ 2: `diagonal`, 3: `horizontal`, 4: `quadrant` }[count] as SplitLayout | undefined)
-    return layout ? (layout_classes[`${layout}-${count}`] ?? null) : null
+    const count = segments.length
+    if (count > MAX_SEGMENTS) {
+      throw new Error(
+        `ElementTile supports at most ${MAX_SEGMENTS} segments, got ${count} for ${element.symbol}`,
+      )
+    }
+    if (count < 2) return null
+    const allowed = SPLIT_LAYOUTS_BY_COUNT[count]
+    if (split_layout && !allowed.includes(split_layout)) {
+      throw new Error(
+        `split_layout "${split_layout}" is not valid for ${count} segments (${element.symbol}); use one of ${allowed.join(`, `)}`,
+      )
+    }
+    const layout = split_layout ?? allowed[0]
+    return layout_classes[`${layout}-${count}`]
   })
 </script>
 
@@ -142,11 +134,8 @@
   class:active
   class:last-active={selected.last_element === element}
   class:clickable={Boolean(onclick)}
-  style:background-color={Array.isArray(value) && bg_colors?.length > 1
-    ? `transparent`
-    : fallback_bg_color}
+  style:background-color={fallback_bg_color}
   style:color={computed_text_color}
-  {@attach computed_text_color ? null : contrast_color()}
   {...href ? { role: `link`, tabindex: 0 } : {}}
   onclick={(event: MouseEvent) => onclick?.({ element, event })}
   {...rest}
@@ -161,25 +150,21 @@
       {element.symbol}
     </span>
   {/if}
-  {#if should_show_values && value !== undefined && value !== null && value !== false}
-    {#if Array.isArray(value) && layout_config}
-      <!-- Multi-value positioning using layout config -->
-      {#each value as val, idx (idx)}
-        {#if val && format_value(val)}
+  {#if has_values}
+    {#if layout_config}
+      <!-- One label per segment, positioned by the layout -->
+      {#each segments as segment, idx (idx)}
+        {#if segment.value !== undefined}
           <span
             class="value multi-value {layout_config.positions[idx]}"
-            style:color={auto_text_color(bg_colors?.[idx])}
+            style:color={text_color ?? auto_text_color(segment.color ?? category_color)}
           >
-            {format_value(val)}
+            {format_value(segment.value)}
           </span>
         {/if}
       {/each}
-    {:else if Array.isArray(value)}
-      <!-- Fallback for other array lengths -->
-      <span class="value">{value.map(format_value).filter(Boolean).join(` / `)}</span>
     {:else}
-      <!-- Single value -->
-      <span class="value">{format_value(value)}</span>
+      <span class="value">{format_value(segments[0]?.value)}</span>
     {/if}
   {:else if show_name}
     <span class="name">
@@ -187,15 +172,13 @@
     </span>
   {/if}
 
-  <!-- Multi-segment backgrounds for heatmap arrays -->
-  {#if Array.isArray(value) && bg_colors && bg_colors.length > 1 && layout_config}
-    {#each bg_colors as bg_color, idx (idx)}
-      {#if layout_config.segments[idx]}
-        <div
-          class="segment {layout_config.segments[idx]}"
-          style:background-color={bg_color}
-        ></div>
-      {/if}
+  <!-- Split backgrounds, one div per segment -->
+  {#if layout_config}
+    {#each segments as segment, idx (idx)}
+      <div
+        class="segment {layout_config.segments[idx]}"
+        style:background-color={segment.color ?? category_color}
+      ></div>
     {/each}
   {/if}
 </svelte:element>
