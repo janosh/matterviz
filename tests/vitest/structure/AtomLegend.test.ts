@@ -2,6 +2,7 @@ import type { ElementSymbol } from '$lib'
 import { default_element_colors } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
+import type { AtomColorConfig } from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -9,8 +10,21 @@ import { doc_query } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
-const mount_legend = (props: ComponentProps<typeof AtomLegend>): ReturnType<typeof mount> => {
-  const mounted = mount(AtomLegend, { target: document.body, props })
+type WithoutScale<Config> = Config extends AtomColorConfig ? Omit<Config, `scale`> : never
+type AtomLegendTestProps = Omit<ComponentProps<typeof AtomLegend>, `atom_color_config`> & {
+  atom_color_config?: WithoutScale<AtomColorConfig>
+}
+
+const mount_legend = (props: AtomLegendTestProps): ReturnType<typeof mount> => {
+  const component_props: ComponentProps<typeof AtomLegend> = props.atom_color_config
+    ? Object.assign(props, {
+        atom_color_config: {
+          scale: `interpolateViridis` as const,
+          ...props.atom_color_config,
+        },
+      })
+    : props
+  const mounted = mount(AtomLegend, { target: document.body, props: component_props })
   mounted_components.push(mounted)
   return mounted
 }
@@ -273,9 +287,13 @@ describe(`AtomLegend Component`, () => {
       expect(coord_option).toBeDefined()
       coord_option.click()
       await tick()
-
-      expect(atom_color_config.mode).toBe(`coordination`)
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+
+      // Mode changes replace the config object rather than mutating it, so read the new
+      // mode back off the UI instead of the caller's now-stale object.
+      doc_query<HTMLButtonElement>(`button.mode-toggle`).click()
+      await tick()
+      expect(doc_query(`.mode-option.selected`).textContent?.trim()).toBe(`Coordination`)
     })
 
     test(`wyckoff mode disabled without sym_data`, async () => {
@@ -326,7 +344,11 @@ describe(`AtomLegend Component`, () => {
 
     test(`renders continuous gradient for non-integer numeric values`, () => {
       mount_legend({
-        atom_color_config: { mode: `custom`, scale_type: `continuous` },
+        atom_color_config: {
+          mode: `custom`,
+          scale_type: `continuous`,
+          color_fn: () => `#000000`,
+        },
         property_colors: {
           colors: [`#440154`, `#fde724`],
           values: [0.5, 2.5],
@@ -644,7 +666,7 @@ describe(`AtomLegend Component`, () => {
     test(`shows element legend when mode is element`, () => {
       mount_legend({
         elements: { Fe: 2, O: 3 },
-        atom_color_config: { mode: `element` },
+        atom_color_config: { mode: `element`, scale_type: `continuous` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
@@ -671,7 +693,7 @@ describe(`AtomLegend Component`, () => {
     test(`hides all legends when elements is empty and no property colors`, () => {
       mount_legend({
         elements: {},
-        atom_color_config: { mode: `element` },
+        atom_color_config: { mode: `element`, scale_type: `continuous` },
       })
 
       expect(document.querySelector(`.element-legend`)).toBeNull()

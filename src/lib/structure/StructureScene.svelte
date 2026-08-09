@@ -50,8 +50,12 @@
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import SiteLabels from './SiteLabels.svelte'
-  import type { AtomColorConfig } from '$lib/structure/atom-properties'
-  import { get_orig_site_idx, get_property_colors } from '$lib/structure/atom-properties'
+  import {
+    DEFAULT_ATOM_COLOR_CONFIG,
+    get_orig_site_idx,
+    get_property_colors,
+    type AtomColorConfig,
+  } from '$lib/structure/atom-properties'
   import type { SymmetryElement } from '$lib/symmetry'
   import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
   import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
@@ -229,7 +233,7 @@
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     atom_color_config = {
-      mode: DEFAULTS.structure.atom_color_mode,
+      ...DEFAULT_ATOM_COLOR_CONFIG,
       scale: DEFAULTS.structure.atom_color_scale as D3InterpolateName,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     },
@@ -358,7 +362,7 @@
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
     element_radius_overrides?: Partial<Record<ElementSymbol, number>> // Per-element absolute radius in Angstroms
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
-    atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
+    atom_color_config?: AtomColorConfig // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void

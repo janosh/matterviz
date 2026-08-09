@@ -51,7 +51,10 @@ describe(`ColorBar Horizontal (Default)`, () => {
     expect(() =>
       mount(ColorBar, {
         target: document.body,
-        props: { scale },
+        props: {
+          // @ts-expect-error exercise runtime validation for JavaScript callers
+          scale,
+        },
       }),
     ).toThrow(`Unknown D3 color interpolator: ${scale}`)
   })
@@ -538,6 +541,21 @@ describe(`ColorBar Interactive Selects`, () => {
     void unmount(component)
   })
 
+  test(`accepts custom interpolators in color scale options`, async () => {
+    const interpolator = vi.fn(() => `rgb(1, 2, 3)`)
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: {
+        color_scale_options: [{ key: `custom`, label: `Custom`, scale: { interpolator } }],
+        range: [0, 10],
+      },
+    })
+    await tick()
+    expect(interpolator).toHaveBeenCalled()
+    expect(doc_query(`.bar`).getAttribute(`style`)).toContain(`rgb(1, 2, 3)`)
+    void unmount(component)
+  })
+
   test(`resets stale selected keys to valid options`, async () => {
     const state = {
       selected_property_key: `energy`,
@@ -548,7 +566,9 @@ describe(`ColorBar Interactive Selects`, () => {
       props: bind_props(
         {
           property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
-          color_scale_options: [{ key: `magma`, label: `Magma`, scale: `interpolateMagma` }],
+          color_scale_options: [
+            { key: `magma`, label: `Magma`, scale: `interpolateMagma` },
+          ] satisfies ColorScaleOption[],
         },
         state,
       ),

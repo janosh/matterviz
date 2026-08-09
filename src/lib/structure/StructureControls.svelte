@@ -26,7 +26,7 @@
   import type { ZoneAxisMode } from '$lib/scene'
   import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
   import { ColorScaleSelect } from '$lib/plot'
-  import type { SettingType, VectorLayerConfig } from '$lib/settings'
+  import type { AtomColorMode, SettingType, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
   import {
     clear_structure_view_state,
@@ -47,11 +47,13 @@
     VECTOR_PALETTE,
   } from '$lib/structure'
   import type { ElementSymbol } from '$lib/element'
-  import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import {
+    atom_color_configs_equal,
+    DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
+    next_atom_color_config,
     structure_has_selective_dynamics,
-    sync_atom_color_mode,
+    type AtomColorConfig,
   } from '$lib/structure/atom-properties'
   import type { DisplacementSummary } from '$lib/structure/measure'
   import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
@@ -83,8 +85,8 @@
     background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
     color_scheme = $bindable(DEFAULTS.color_scheme),
-    atom_color_config = $bindable({
-      mode: DEFAULTS.structure.atom_color_mode,
+    atom_color_config = $bindable<AtomColorConfig>({
+      ...DEFAULT_ATOM_COLOR_CONFIG,
       scale: DEFAULTS.structure.atom_color_scale,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     }),
@@ -121,7 +123,7 @@
     background_color?: string
     background_opacity?: number
     color_scheme?: string
-    atom_color_config?: Partial<AtomColorConfig>
+    atom_color_config?: AtomColorConfig
     structure?: AnyStructure
     supercell_loading?: boolean
     sym_data?: MoyoDataset | null
@@ -176,13 +178,22 @@
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     show_trajectory_lines =
       structure_settings.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines
-    atom_color_config.mode =
+    // `custom` needs a runtime color_fn that no saved blob can carry, so a stored value
+    // that claims it is treated as unset rather than restored into an invalid config.
+    const stored_mode =
       structure_settings.atom_color_mode ?? DEFAULTS.structure.atom_color_mode
-    atom_color_config.scale =
-      structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale
-    atom_color_config.scale_type =
-      structure_settings.atom_color_scale_type ?? DEFAULTS.structure.atom_color_scale_type
-    delete atom_color_config.property_key
+    atom_color_config = next_atom_color_config(
+      {
+        mode: `element`,
+        scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
+        scale_type:
+          structure_settings.atom_color_scale_type ?? DEFAULTS.structure.atom_color_scale_type,
+      },
+      stored_mode === `custom` ? `element` : stored_mode,
+      // computed here rather than read off the $derived below, which is still in its
+      // temporal dead zone when a restore runs during component init
+      get_colorable_property_keys(structure),
+    )
     color_scheme = state.settings.color_scheme
     background_color = state.settings.background_color
     background_opacity = state.settings.background_opacity
@@ -416,10 +427,17 @@
   // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
   // structures whose parser produced no extra columns, in which case the mode is disabled.
   let colorable_property_keys = $derived(get_colorable_property_keys(structure))
-  // Keep partial configs and mode-derived fields valid after both nested edits and prop replacement.
+  // A newly loaded structure may not carry the property being colored by, in which case
+  // the mode drops back to element colors.
   $effect(() => {
-    atom_color_config.scale ??= DEFAULTS.structure.atom_color_scale
-    sync_atom_color_mode(atom_color_config, colorable_property_keys)
+    if (atom_color_config.mode !== `property`) return
+    const next = next_atom_color_config(
+      atom_color_config,
+      `property`,
+      colorable_property_keys,
+      atom_color_config.property_key,
+    )
+    if (!atom_color_configs_equal(next, atom_color_config)) atom_color_config = next
   })
 
   // Zone-axis camera: [uvw] is a direct-lattice direction, (hkl) a reciprocal one, so both
@@ -848,17 +866,28 @@ a disabled state, a non-scene_props target) stay written out in full. -->
               mode: atom_color_config.mode,
               scale_type: atom_color_config.scale_type,
             }),
-            (reference) => Object.assign(atom_color_config, reference),
+            (reference) => {
+              atom_color_config = next_atom_color_config(
+                atom_color_config,
+                reference.mode,
+                colorable_property_keys,
+              )
+            },
           ),
           atom_color_scale: local(
             () => atom_color_config.scale,
             (value) => (atom_color_config.scale = value),
           ),
           atom_color_property_key: local(
-            () => atom_color_config.property_key,
+            () =>
+              `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
             (value, present) => {
-              if (present) atom_color_config.property_key = value
-              else delete atom_color_config.property_key
+              atom_color_config = next_atom_color_config(
+                atom_color_config,
+                present && value ? `property` : `element`,
+                colorable_property_keys,
+                value,
+              )
             },
           ),
         })}
@@ -917,7 +946,17 @@ a disabled state, a non-scene_props target) stay written out in full. -->
         {#if atom_color_config.mode === `property` && colorable_property_keys.length > 0}
           <label {...setting_row(`atom_color_property_key`)}>
             <span>Property</span>
-            <select bind:value={atom_color_config.property_key}>
+            <select
+              value={atom_color_config.property_key}
+              onchange={(event) => {
+                atom_color_config = next_atom_color_config(
+                  atom_color_config,
+                  `property`,
+                  colorable_property_keys,
+                  event.currentTarget.value,
+                )
+              }}
+            >
               {#each colorable_property_keys as key (key)}
                 <option value={key}>{key}</option>
               {/each}

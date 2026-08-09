@@ -603,7 +603,7 @@ export type ColorBarScale =
 export interface ColorScaleOption {
   key: string // e.g., 'viridis', 'plasma'
   label: string // e.g., 'Viridis', 'Plasma'
-  scale: D3InterpolateName
+  scale: ColorBarScale
 }
 
 // Data loader for ColorBar property changes

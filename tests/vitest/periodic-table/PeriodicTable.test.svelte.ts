@@ -494,6 +494,9 @@ describe(`PeriodicTable`, () => {
     const tile = document.querySelector(`.element-tile`) as HTMLElement
     expect(tile.style.backgroundColor).toBe(`purple`) // override shown as solid background
     expect(tile.querySelectorAll(`.segment`)).toHaveLength(0) // segment colors suppressed
+    expect(
+      [...tile.querySelectorAll(`.multi-value`)].map((label) => label.textContent),
+    ).toEqual([`1`, `2`])
   })
 
   // in log mode, 0 (and negatives) are non-positive -> missing; positives still map

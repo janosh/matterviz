@@ -7,6 +7,7 @@ import {
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
 } from '$lib/settings/viewer-state'
 import { default_vector_configs, StructureControls } from '$lib/structure'
+import { next_atom_color_config } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { type ComponentProps, mount, tick } from 'svelte'
@@ -320,32 +321,23 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props.atom_radius).toBe(1.4)
   })
 
-  test(`fills a missing atom color scale at mount and after prop replacement`, async () => {
-    const state = $state<{ atom_color_config: AtomColorConfigProps }>({
-      atom_color_config: { mode: `coordination`, scale_type: `continuous` },
-    })
-
-    const target = await mount_bound_controls(state)
-
-    expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
-    expect(target.querySelector(`button[aria-label="Reset atoms to defaults"]`)).toBeNull()
-
-    state.atom_color_config = { mode: `coordination` }
-    await tick()
-    expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
-  })
-
   test(`atom color mode row reset restores its derived scale type`, async () => {
     const state = $state<{ atom_color_config: AtomColorConfigProps }>({
-      atom_color_config: {
-        mode: DEFAULTS.structure.atom_color_mode,
-        scale: DEFAULTS.structure.atom_color_scale,
-        scale_type: DEFAULTS.structure.atom_color_scale_type,
-      },
+      atom_color_config: next_atom_color_config(
+        {
+          mode: `element`,
+          scale: DEFAULTS.structure.atom_color_scale,
+          scale_type: DEFAULTS.structure.atom_color_scale_type,
+        },
+        DEFAULTS.structure.atom_color_mode,
+        [],
+      ),
     })
     const target = await mount_bound_controls(state)
 
-    state.atom_color_config.mode = `wyckoff`
+    // Mode switches go through next_atom_color_config, which derives the scale type; a
+    // bare `config.mode = ...` can no longer half-apply a mode change.
+    state.atom_color_config = next_atom_color_config(state.atom_color_config, `wyckoff`, [])
     await tick()
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
 
@@ -428,8 +420,11 @@ describe(`StructureControls reactive props`, () => {
     })
     await mount_bound_controls(state, { structure })
 
-    // The native property dropdown performs this same nested mutation through bind:value.
-    state.atom_color_config.property_key = CNA_TYPE_PROPERTY
+    const prop_select = doc_query<HTMLSelectElement>(
+      `[data-key="atom_color_property_key"] select`,
+    )
+    prop_select.value = CNA_TYPE_PROPERTY
+    prop_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
 
     expect(state.atom_color_config).toMatchObject({

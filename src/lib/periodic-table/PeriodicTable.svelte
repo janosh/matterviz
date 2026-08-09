@@ -66,7 +66,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     tile_props?: Omit<
       Partial<ComponentProps<typeof ElementTile>>,
-      `active` | `element` | `href` | `label` | `segments` | `split_layout`
+      `active` | `backdrop` | `element` | `href` | `label` | `segments` | `split_layout`
     >
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
@@ -326,10 +326,8 @@
   ): TileSegment[] => {
     if (tile_missing) return [{ color: override ?? bg_color(value, element) ?? undefined }]
     if (Array.isArray(value)) {
-      // An override paints the whole tile, which leaves nothing to split.
-      if (override) return [{ color: override }]
       return value.map((val) => ({
-        color: bg_color(val, element) ?? undefined,
+        color: override ?? bg_color(val, element) ?? undefined,
         value: val == null || is_color(val) ? undefined : val,
       }))
     }
@@ -351,10 +349,11 @@
     const max = color_scale_range[1] ?? Math.max(...usable_heat_nums)
     return [min, max]
   })
-  // The tooltip fill is a translucent theme token, so it needs the page behind it to
-  // resolve to a real color. Both are read as named tokens rather than inferred.
+  // Resolve the shared surface once rather than installing a theme observer per tile.
+  let table_node = $state<HTMLDivElement>()
+  const page_backdrop = resolve_backdrop(() => table_node)
+  // The tooltip fill is a translucent theme token, so it needs the page behind it.
   let tooltip_node = $state<HTMLElement | null>(null)
-  const tooltip_backdrop = resolve_backdrop(() => tooltip_node)
   const tooltip_fill = resolve_css_color(() => tooltip_node, {
     css_var: `--tooltip-bg`,
     // mirrors the light-dark() default in the .tooltip rule below
@@ -363,12 +362,18 @@
   const tooltip_text_color = $derived(
     pick_contrast_color({
       background: tooltip_fill.current,
-      backdrop: tooltip_backdrop.current,
+      backdrop: page_backdrop.current,
     }),
   )
 </script>
 
-<div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
+<div
+  bind:this={table_node}
+  {...rest}
+  class={[`periodic-table`, rest.class]}
+  style:gap
+  onkeydown={handle_key}
+>
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
@@ -406,6 +411,7 @@
       {...tile_props}
       {element}
       {href}
+      backdrop={page_backdrop.current}
       data-element-symbol={symbol}
       segments={tile_segments(value, element, override, tile_missing)}
       {active}

@@ -404,47 +404,64 @@ describe(`Custom`, () => {
   })
 })
 
-describe(`sync_atom_color_mode`, () => {
+describe(`next_atom_color_config`, () => {
   test.each([
     [`wyckoff`, undefined, `categorical`],
     [`selective_dynamics`, undefined, `categorical`],
     [`coordination`, undefined, `continuous`],
     [`property`, `charge`, `continuous`],
     [`property`, CNA_TYPE_PROPERTY, `categorical`],
-    [`custom`, undefined, `continuous`],
   ] as const)(`%s %s → scale_type %s`, (mode, property_key, scale_type) => {
-    // Start from the opposite type so a no-op would leave the wrong value
-    const config: Partial<ap.AtomColorConfig> = {
+    const config = ap.next_atom_color_config(
+      ap.DEFAULT_ATOM_COLOR_CONFIG,
       mode,
+      [`charge`, CNA_TYPE_PROPERTY],
       property_key,
-      scale_type: scale_type === `categorical` ? `continuous` : `categorical`,
-    }
-    ap.sync_atom_color_mode(config, [`charge`, CNA_TYPE_PROPERTY])
-    expect(config.scale_type).toBe(scale_type)
+    )
+    // property_key is absent entirely on modes that don't use one, which toMatchObject
+    // treats as a mismatch against an explicit `undefined`
+    expect(config).toMatchObject(
+      property_key === undefined ? { mode, scale_type } : { mode, property_key, scale_type },
+    )
   })
 
-  test.each([
-    [`missing`, { mode: `property` }],
-    [`stale`, { mode: `property`, property_key: `gone`, scale_type: `continuous` }],
-  ] as const)(
-    `repairs a %s property key before deriving scale type`,
-    (_case, initial_config) => {
-      const config: Partial<ap.AtomColorConfig> = { ...initial_config }
-      ap.sync_atom_color_mode(config, [CNA_TYPE_PROPERTY])
-      expect(config).toMatchObject({
-        property_key: CNA_TYPE_PROPERTY,
-        scale_type: `categorical`,
-      })
-    },
-  )
+  test(`repairs a stale property key before deriving scale type`, () => {
+    const config = ap.next_atom_color_config(
+      {
+        ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+        mode: `property`,
+        property_key: `gone`,
+      },
+      `property`,
+      [CNA_TYPE_PROPERTY],
+    )
+    expect(config).toMatchObject({
+      property_key: CNA_TYPE_PROPERTY,
+      scale_type: `categorical`,
+    })
+  })
 
   test(`falls back to element mode when no colorable properties remain`, () => {
-    const config: Partial<ap.AtomColorConfig> = {
-      mode: `property`,
-      property_key: `charge`,
+    expect(
+      ap.next_atom_color_config(ap.DEFAULT_ATOM_COLOR_CONFIG, `property`, []),
+    ).toMatchObject({ mode: `element` })
+  })
+
+  test(`custom mode requires and preserves its color function`, () => {
+    expect(() =>
+      ap.next_atom_color_config(ap.DEFAULT_ATOM_COLOR_CONFIG, `custom`, []),
+    ).toThrow(`without a color_fn`)
+
+    const color_fn = () => `red`
+    const custom: ap.AtomColorConfig = {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `custom`,
+      color_fn,
     }
-    ap.sync_atom_color_mode(config, [])
-    expect(config.mode).toBe(`element`)
+    expect(ap.next_atom_color_config(custom, `custom`, [])).toMatchObject({
+      mode: `custom`,
+      color_fn,
+    })
   })
 })
 
@@ -531,45 +548,40 @@ describe(`Site property coloring`, () => {
       { charge: -0.5, velocity: [3, 4, 0] },
       { charge: 0.5, velocity: [0, 1, 0] },
     ])
-    const result = ap.get_atom_colors(structure, { mode: `property`, property_key })
+    const result = ap.get_atom_colors(structure, {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `property`,
+      property_key,
+    })
     expect(result.values).toEqual(expected)
     expect(result.colors).toHaveLength(2)
-  })
-
-  test(`property mode without a key yields no colors`, () => {
-    const structure = with_props([{ charge: 1 }, { charge: 2 }])
-    expect(ap.get_atom_colors(structure, { mode: `property` })).toEqual({
-      colors: [],
-      values: [],
-    })
   })
 })
 
 describe(`get_atom_colors`, () => {
   const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
 
-  // element mode needs no property colors, so it yields empty arrays; wyckoff without
-  // symmetry data still colors every site gray rather than bailing
+  // Element mode needs no property colors; wyckoff without symmetry data still colors
+  // every site gray rather than bailing.
   test.each([
-    [`element mode`, { mode: `element` }, 0],
-    [`empty config (defaults to element)`, {}, 0],
-    [`coordination mode`, { mode: `coordination` }, 2],
-    [`wyckoff mode without symmetry data`, { mode: `wyckoff` }, 2],
-  ] as const)(`%s`, (_name, config, expected_len) => {
-    expect(ap.get_atom_colors(structure, config).colors).toHaveLength(expected_len)
+    [`element mode`, `element`, 0],
+    [`coordination mode`, `coordination`, 2],
+    [`wyckoff mode without symmetry data`, `wyckoff`, 2],
+  ] as const)(`%s`, (_name, mode, expected_len) => {
+    expect(
+      ap.get_atom_colors(structure, { ...ap.DEFAULT_ATOM_COLOR_CONFIG, mode }).colors,
+    ).toHaveLength(expected_len)
   })
 
-  test.each([
-    [
-      `custom with fn`,
-      { mode: `custom` as const, color_fn: (_: Site, idx: number) => idx * 10 },
-      [0, 10],
-    ],
-    [`custom without fn`, { mode: `custom` as const }, []],
-  ])(`%s`, (_name, config, expected_values) => {
+  test(`uses a custom color function`, () => {
+    const config: ap.AtomColorConfig = {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `custom`,
+      color_fn: (_site: Site, idx: number) => idx * 10,
+    }
     const { colors, values } = ap.get_atom_colors(structure, config)
-    expect(values).toEqual(expected_values)
-    expect(colors).toHaveLength(expected_values.length)
+    expect(values).toEqual([0, 10])
+    expect(colors).toHaveLength(2)
   })
 
   test(`scale option changes the rendered colors`, () => {
@@ -578,7 +590,11 @@ describe(`get_atom_colors`, () => {
     // oxfmt-ignore
     const chain = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1.5, 0, 0] }, { xyz: [3, 0, 0] }])
     const coord_colors = (scale: `interpolatePlasma` | `interpolateViridis`) =>
-      ap.get_atom_colors(chain, { mode: `coordination`, scale })
+      ap.get_atom_colors(chain, {
+        ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+        mode: `coordination`,
+        scale,
+      })
     const result_plasma = coord_colors(`interpolatePlasma`)
     expect(new Set(result_plasma.values).size).toBeGreaterThan(1)
     expect(result_plasma.colors[0]).not.toBe(coord_colors(`interpolateViridis`).colors[0])
@@ -673,15 +689,14 @@ describe(`Selective dynamics`, () => {
       [false, false, false],
       [true, true, true],
     ])
-    const via_mode = ap.get_atom_colors(structure, { mode: `selective_dynamics` })
+    const config: ap.AtomColorConfig = {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `selective_dynamics`,
+    }
+    const via_mode = ap.get_atom_colors(structure, config)
     expect(via_mode.values).toEqual([`fixed`, `free`])
     expect(via_mode.colors).toHaveLength(2)
-    const via_property = ap.get_property_colors(
-      structure,
-      { mode: `selective_dynamics` },
-      `electroneg_ratio`,
-      null,
-    )
+    const via_property = ap.get_property_colors(structure, config, `electroneg_ratio`, null)
     expect(via_property?.values).toEqual([`fixed`, `free`])
     // legend order stays mobility-descending, so `free` sorts ahead of `fixed`
     expect(via_property?.unique_values).toEqual([`free`, `fixed`])
@@ -749,8 +764,9 @@ describe(`CNA structure type coloring`, () => {
   })
 
   test(`reaches the palette through the shared atom color entry point`, () => {
-    // sync_atom_color_mode → categorical for cna_type is covered in sync_atom_color_mode
-    const config: Partial<ap.AtomColorConfig> = {
+    // next_atom_color_config → categorical for cna_type is covered above
+    const config: ap.AtomColorConfig = {
+      ...ap.DEFAULT_ATOM_COLOR_CONFIG,
       mode: `property`,
       property_key: CNA_TYPE_PROPERTY,
       scale_type: `categorical`,

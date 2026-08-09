@@ -15,6 +15,7 @@
     active = false,
     href = undefined,
     text_color = $bindable(),
+    backdrop: backdrop_color = undefined,
     float_fmt = undefined,
     node = $bindable(null),
     label = undefined,
@@ -33,6 +34,8 @@
     active?: boolean
     href?: string
     text_color?: string
+    // Opaque surface behind the tile. Supplying it avoids a per-tile theme observer.
+    backdrop?: string
     float_fmt?: string
     node?: HTMLElement | null
     label?: string
@@ -52,25 +55,33 @@
   const MAX_SEGMENTS = 4
 
   const category_color = $derived(colors.category[element.category] ?? `#cccccc`)
-  const is_split = $derived(segments.length > 1)
-  // A split tile is painted by its segment divs, so the tile itself stays transparent.
+  const has_multiple_segments = $derived(segments.length > 1)
+  const has_split_background = $derived(
+    has_multiple_segments &&
+      segments.some(
+        (segment) =>
+          (segment.color ?? category_color) !== (segments[0]?.color ?? category_color),
+      ),
+  )
+  // A visually split tile is painted by its segment divs, so the tile stays transparent.
   let fallback_bg_color = $derived(
-    is_split ? `transparent` : (segments[0]?.color ?? category_color),
+    has_split_background ? `transparent` : (segments[0]?.color ?? category_color),
   )
 
-  const backdrop = resolve_backdrop(() => node)
+  const resolved_backdrop = resolve_backdrop(() =>
+    backdrop_color === undefined ? node : undefined,
+  )
+  let backdrop = $derived(backdrop_color ?? resolved_backdrop.current)
   const auto_text_color = (background: unknown): string | undefined =>
-    is_concrete_color(background)
-      ? pick_contrast_color({ background, backdrop: backdrop.current })
-      : undefined
+    is_concrete_color(background) ? pick_contrast_color({ background, backdrop }) : undefined
   // Symbol and number sit across all segments, so on a split tile they contrast against
   // the backdrop rather than against any one segment.
   let computed_text_color = $derived(
-    text_color ?? auto_text_color(is_split ? backdrop.current : fallback_bg_color),
+    text_color ?? auto_text_color(has_split_background ? backdrop : fallback_bg_color),
   )
 
   // Hide the atomic number on split tiles to prevent overlap with value labels.
-  let should_show_number = $derived(show_number ?? !is_split)
+  let should_show_number = $derived(show_number ?? !has_multiple_segments)
 
   const format_value = (val: number | string | undefined): string => {
     if (typeof val === `number`) return format_num(val, float_fmt)
@@ -173,7 +184,7 @@
   {/if}
 
   <!-- Split backgrounds, one div per segment -->
-  {#if layout_config}
+  {#if layout_config && has_split_background}
     {#each segments as segment, idx (idx)}
       <div
         class="segment {layout_config.segments[idx]}"

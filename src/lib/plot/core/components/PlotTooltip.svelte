@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
+  import { contrast_text_color, resolve_backdrop, resolve_computed_color } from '$lib/colors'
   import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
   import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import type { Rect } from '$lib/plot/core/layout'
@@ -75,11 +75,16 @@
   // label path is long — cap width to the constrained box and let the text wrap.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
   const backdrop = resolve_backdrop(() => wrapper)
+  const rendered_bg = resolve_computed_color(
+    () => (bg_color == null ? undefined : wrapper),
+    `background-color`,
+    { fallback: () => bg_color ?? backdrop.current },
+  )
   const text_color = $derived(
     bg_color == null
       ? undefined
       : contrast_text_color({
-          background: bg_color,
+          background: rendered_bg.current,
           backdrop: backdrop.current,
           choices: [`#000000`, `#ffffff`],
         }),

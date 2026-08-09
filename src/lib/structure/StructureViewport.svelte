@@ -164,7 +164,7 @@
     bond_edits_enabled?: boolean
     bond_edit_order?: BondOrder
     measure_mode?: MeasureMode
-    atom_color_config?: Partial<AtomColorConfig>
+    atom_color_config?: AtomColorConfig
     sym_data?: MoyoDataset | null
     active_sites?: number[]
     camera_direction?: Vec3

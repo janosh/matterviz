@@ -102,7 +102,10 @@ export const default_element_colors = { ...vesta_hex }
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   const trimmed = val.trim()
-  return /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) || d3_color(trimmed) !== null
+  return (
+    /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) ||
+    to_rendered_rgb(trimmed) !== undefined
+  )
 }
 const to_rgb = (color: string): RGBColor | undefined => {
   const parsed = d3_color(color)?.rgb()
@@ -119,10 +122,32 @@ const to_rgb = (color: string): RGBColor | undefined => {
     clamp01(parsed.opacity),
   )
 }
+let color_canvas_context: CanvasRenderingContext2D | null | undefined
+function to_rendered_rgb(color: string): RGBColor | undefined {
+  const parsed = to_rgb(color)
+  if (parsed) return parsed
+  if (
+    typeof document === `undefined` ||
+    typeof CanvasRenderingContext2D === `undefined` ||
+    /^(?:var\(|currentcolor$)/i.test(color)
+  ) {
+    return undefined
+  }
+  const context = (color_canvas_context ??= document
+    .createElement(`canvas`)
+    .getContext(`2d`, { willReadFrequently: true }))
+  if (!context) return undefined
+  context.clearRect(0, 0, 1, 1)
+  context.fillStyle = `rgba(0, 0, 0, 0)`
+  context.fillStyle = color
+  context.fillRect(0, 0, 1, 1)
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
+  return rgb(red, green, blue, alpha / 255)
+}
 export const is_concrete_color = (val: unknown): val is string =>
-  typeof val === `string` && (to_rgb(val.trim())?.opacity ?? 0) > 0
+  typeof val === `string` && (to_rendered_rgb(val.trim())?.opacity ?? 0) > 0
 export const is_opaque_color = (val: unknown): val is string =>
-  typeof val === `string` && to_rgb(val.trim())?.opacity === 1
+  typeof val === `string` && to_rendered_rgb(val.trim())?.opacity === 1
 
 export const PLOT_COLORS = [
   // Color series for e.g. line plots
@@ -139,12 +164,12 @@ export const PLOT_COLORS = [
 ] as const
 
 const parse_rgb = (color: string): RGBColor => {
-  const parsed = to_rgb(color)
+  const parsed = to_rendered_rgb(color)
   if (!parsed) throw new Error(`Invalid color: ${color}`)
   return parsed
 }
 
-const is_visible_bg = (color: string): boolean => (to_rgb(color)?.opacity ?? 0) > 0
+const is_visible_bg = (color: string): boolean => (to_rendered_rgb(color)?.opacity ?? 0) > 0
 
 // Calculate human-perceived brightness from gamma-encoded RGB channels.
 export function perceived_brightness(color: string): number {

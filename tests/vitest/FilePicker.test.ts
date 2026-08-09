@@ -95,12 +95,18 @@ describe(`FilePicker`, () => {
       [`#4fc3f7`, `rgba(79, 195, 247, 0.08)`],
       [`rgb(79, 195, 247)`, `rgba(79, 195, 247, 0.08)`],
       [`rgba(79, 195, 247, 0.8)`, `rgba(79, 195, 247, 0.08)`],
+      [`red`, `rgba(255, 0, 0, 0.08)`],
+      [`hsl(120, 100%, 50%)`, `rgba(0, 255, 0, 0.08)`],
     ])(`file_type_paint(%s) fades the row to %s`, (badge, expected_item) => {
       expect(file_type_paint(badge)).toEqual({ badge, item: expected_item })
     })
+    it(`file_type_paint rejects colors it cannot resolve`, () => {
+      expect(() => file_type_paint(`var(--file-badge)`)).toThrow(
+        `Cannot derive file row paint from unsupported color`,
+      )
+    })
 
-    it(`recomputes translucent badge contrast after a theme change`, async () => {
-      const previous_theme = document.documentElement.dataset.theme
+    it(`recomputes translucent badge contrast after its backdrop token changes`, async () => {
       const component = mount(FilePicker, {
         target: document.body,
         props: {
@@ -117,11 +123,8 @@ describe(`FilePicker`, () => {
       expect(badge.style.color).toBe(`white`)
 
       picker.style.setProperty(`--page-bg`, `white`)
-      document.documentElement.dataset.theme = previous_theme === `dark` ? `light` : `dark`
       await vi.waitFor(() => expect(badge.style.color).toBe(`black`))
 
-      if (previous_theme === undefined) delete document.documentElement.dataset.theme
-      else document.documentElement.dataset.theme = previous_theme
       void unmount(component)
     })
   })

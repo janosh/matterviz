@@ -18,15 +18,26 @@ import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 
-export interface AtomColorConfig {
-  mode: AtomColorMode
-  scale?: D3InterpolateName
+// Modes that need nothing beyond the shared fields.
+type SimpleAtomColorMode = `element` | `coordination` | `wyckoff` | `selective_dynamics`
+
+interface AtomColorBase {
+  scale: D3InterpolateName
   scale_type: ColorScaleType
-  color_fn?: (site: Site, idx: number) => number | string
-  // Site property to color by in `property` mode (OVITO's Color Coding). Vec3 values
-  // (force, velocity, ...) are reduced to their magnitude.
-  property_key?: string
 }
+
+// Keyed on `mode` so the fields a mode depends on cannot go missing. `property_key` and
+// `color_fn` used to be optional on a flat interface, so `{ mode: 'property' }` type-checked
+// and then quietly painted every atom the same color.
+export type AtomColorConfig =
+  | (AtomColorBase & { mode: SimpleAtomColorMode })
+  // Site property to color by (OVITO's Color Coding). Vec3 values (force, velocity, ...)
+  // are reduced to their magnitude.
+  | (AtomColorBase & { mode: `property`; property_key: string })
+  | (AtomColorBase & {
+      mode: `custom`
+      color_fn: (site: Site, idx: number) => number | string
+    })
 
 export interface AtomPropertyColors {
   colors: string[] // Color for each site index
@@ -412,33 +423,70 @@ export function get_colorable_property_keys(
   return [...keys].sort((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
-// A mode change implies a scale type (categorical for bucketed properties, a ramp for the
-// rest) and, in `property` mode, a key to color by — without one every atom would land on
-// the same flat color. Both the controls panel and the legend's mode menu switch modes, so
-// they share this fixup instead of each re-deriving what a mode implies.
-export function sync_atom_color_mode(
-  config: Partial<AtomColorConfig>,
+// Shallow compare so reactive fixups can no-op instead of looping on fresh object identity.
+export const atom_color_configs_equal = (
+  first: AtomColorConfig,
+  second: AtomColorConfig,
+): boolean => {
+  if (
+    first.mode !== second.mode ||
+    first.scale !== second.scale ||
+    first.scale_type !== second.scale_type
+  )
+    return false
+  if (first.mode === `property` && second.mode === `property`) {
+    return first.property_key === second.property_key
+  }
+  if (first.mode === `custom` && second.mode === `custom`) {
+    return first.color_fn === second.color_fn
+  }
+  return true
+}
+
+export const DEFAULT_ATOM_COLOR_CONFIG: AtomColorConfig = {
+  mode: `element`,
+  scale: DEFAULT_COLOR_SCALE,
+  scale_type: `continuous`,
+}
+
+// Builds the config for a newly selected mode. A mode implies a scale type (categorical for
+// bucketed properties, a ramp for the rest) and, in `property` mode, a key to color by.
+// Returns a whole config rather than patching one in place, because a half-applied mode
+// change is exactly the state the discriminated union exists to rule out. Both the controls
+// panel and the legend's mode menu switch modes, so they share this.
+export function next_atom_color_config(
+  config: AtomColorConfig,
+  mode: AtomColorMode,
   property_keys: string[],
-): void {
-  const { mode } = config
-  let { property_key } = config
+  // Explicit choice from a property dropdown; falls back to the key already in use.
+  preferred_key?: string,
+): AtomColorConfig {
+  const { scale } = config
   if (mode === `property`) {
-    if (property_keys.length === 0) {
-      config.mode = `element`
-      return
-    }
-    if (!property_key || !property_keys.includes(property_key)) {
-      property_key = property_keys[0]
-      config.property_key = property_key
+    // Nothing to color by means the mode has no meaning, so stay on element colors.
+    if (property_keys.length === 0) return { mode: `element`, scale, scale_type: `continuous` }
+    const prev_key =
+      preferred_key ?? (`property_key` in config ? config.property_key : undefined)
+    const property_key =
+      prev_key && property_keys.includes(prev_key) ? prev_key : property_keys[0]
+    return {
+      mode,
+      scale,
+      scale_type: property_key === CNA_TYPE_PROPERTY ? `categorical` : `continuous`,
+      property_key,
     }
   }
-  if (mode && mode !== `element`) {
-    config.scale_type =
-      mode === `wyckoff` ||
-      mode === `selective_dynamics` ||
-      (mode === `property` && property_key === CNA_TYPE_PROPERTY)
-        ? `categorical`
-        : `continuous`
+  if (mode === `custom`) {
+    if (!(`color_fn` in config)) {
+      throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
+    }
+    return { mode, scale, scale_type: config.scale_type, color_fn: config.color_fn }
+  }
+  return {
+    mode,
+    scale,
+    scale_type:
+      mode === `wyckoff` || mode === `selective_dynamics` ? `categorical` : `continuous`,
   }
 }
 
@@ -501,24 +549,24 @@ export function get_custom_colors(
 
 export function get_atom_colors(
   structure: AnyStructure,
-  config: Partial<AtomColorConfig>,
+  config: AtomColorConfig,
   bonding_strategy: BondingStrategy = `electroneg_ratio`,
   sym_data: MoyoDataset | null = null,
 ): AtomPropertyColors {
-  const { mode = `element`, scale = DEFAULT_COLOR_SCALE, scale_type = `continuous` } = config
+  const { mode, scale, scale_type } = config
 
   if (mode === `coordination`) {
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
   if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
-  if (mode === `property` && config.property_key) {
+  if (mode === `property`) {
     return get_site_property_colors(structure, config.property_key, scale, scale_type)
   }
-  if (mode === `custom` && config.color_fn) {
+  if (mode === `custom`) {
     return get_custom_colors(structure, config.color_fn, scale, scale_type)
   }
-  // Element mode or custom without function, no property colors needed
+  // Element mode needs no property colors
   return { colors: [], values: [] }
 }
 
@@ -526,7 +574,7 @@ export function get_atom_colors(
 // Returns null if structure is missing, mode is element, or no colors computed
 export function get_property_colors(
   structure: AnyStructure | undefined,
-  config: Partial<AtomColorConfig>,
+  config: AtomColorConfig,
   bonding_strategy: BondingStrategy,
   sym_data: MoyoDataset | null,
 ): AtomPropertyColors | null {

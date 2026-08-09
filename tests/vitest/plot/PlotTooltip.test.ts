@@ -50,6 +50,17 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.color).toBe(text)
   })
 
+  test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
+    const tooltip = mount_tooltip({
+      bg_color: `var(--series-color)`,
+      style: `--series-color: white`,
+    })
+    await vi.waitFor(() => expect(tooltip.style.color).toBe(`#000000`))
+
+    tooltip.style.setProperty(`--series-color`, `black`)
+    await vi.waitFor(() => expect(tooltip.style.color).toBe(`#ffffff`))
+  })
+
   test(`passes through class and style`, () => {
     const tooltip = mount_tooltip({
       class: `custom-tooltip my-class`,

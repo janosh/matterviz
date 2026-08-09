@@ -10,10 +10,12 @@
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
   import { atomic_radii } from '$lib/structure'
+  import type { AtomColorMode } from '$lib/settings'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
   import {
+    DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
-    sync_atom_color_mode,
+    next_atom_color_config,
   } from '$lib/structure/atom-properties'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
@@ -22,11 +24,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   let {
-    atom_color_config = $bindable({
-      mode: `element`,
-      scale: undefined,
-      scale_type: `continuous`,
-    }),
+    atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     property_colors = null,
     elements,
     elem_color_picker_title = `Double click to reset color`,
@@ -48,7 +46,7 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
-    atom_color_config?: Partial<AtomColorConfig>
+    atom_color_config?: AtomColorConfig
     property_colors?: AtomPropertyColors | null
     elements?: CompositionType
     elem_color_picker_title?: string
@@ -129,7 +127,7 @@
   // Map each property value to its first color in a single O(n) pass (reused in
   // categorical and discrete legends). Skips undefined colors if arrays ever drift.
   let color_map = $derived.by(() => {
-    const map = new Map<number | string, string>()
+    const map = new SvelteMap<number | string, string>()
     const { values = [], colors: value_colors = [] } = property_colors ?? {}
     for (const [idx, val] of values.entries()) {
       const color = value_colors[idx]
@@ -137,6 +135,12 @@
     }
     return map
   })
+  const get_property_color = (value: number | string): string => {
+    const color = color_map.get(value)
+    if (color === undefined)
+      throw new Error(`Missing legend color for property value ${value}`)
+    return color
+  }
 
   // Continuous integer properties (e.g. coordination numbers) render as a discrete
   // segmented bar with one labeled block per integer value instead of a smooth gradient.
@@ -276,8 +280,11 @@
               ? `No per-atom properties on this structure`
               : undefined}
             onclick={() => {
-              atom_color_config.mode = value as AtomColorConfig[`mode`]
-              sync_atom_color_mode(atom_color_config, colorable_property_keys)
+              atom_color_config = next_atom_color_config(
+                atom_color_config,
+                value as AtomColorMode,
+                colorable_property_keys,
+              )
               mode_menu_open = false
             }}
           >
@@ -493,7 +500,7 @@
     {#if atom_color_config.scale_type === `continuous` && property_colors && is_discrete_numeric}
       <div class="discrete-colorbar">
         {#each property_colors.unique_values ?? [] as value (value)}
-          {@const color = color_map.get(value)}
+          {@const color = get_property_color(value)}
           {@const is_hidden = hidden_prop_vals.has(value)}
           <button
             type="button"
@@ -528,7 +535,7 @@
       </div>
     {:else if atom_color_config.scale_type === `categorical` && property_colors}
       {#each property_colors.unique_values || [] as value (`${atom_color_config.mode}-${value}`)}
-        {@const color = color_map.get(value)}
+        {@const color = get_property_color(value)}
         {@const is_hidden = hidden_prop_vals.has(value)}
         <div class="legend-item">
           <span

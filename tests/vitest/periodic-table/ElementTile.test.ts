@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 const rand_element = element_data[0]
+const TEST_COLORS = [`red`, `green`, `blue`, `yellow`] as const
 
 describe(`ElementTile`, () => {
   describe(`basic rendering`, () => {
@@ -303,8 +304,8 @@ describe(`ElementTile`, () => {
           target: document.body,
           props: {
             element: rand_element,
-            segments: value.map((segment_value) => ({
-              color: `#ff0000`,
+            segments: value.map((segment_value, idx) => ({
+              color: TEST_COLORS[idx],
               value: segment_value,
             })),
           },
@@ -346,8 +347,8 @@ describe(`ElementTile`, () => {
           target: document.body,
           props: {
             element: rand_element,
-            segments: value.map((segment_value) => ({
-              color: `#ff0000`,
+            segments: value.map((segment_value, idx) => ({
+              color: TEST_COLORS[idx],
               value: segment_value,
             })),
             split_layout: layout as SplitLayout,
