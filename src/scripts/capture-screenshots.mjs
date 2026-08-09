@@ -14,6 +14,14 @@ if (![`site`, `polyhedra`].includes(profile)) {
 const port = process.env.PORT ?? (profile === `polyhedra` ? `3017` : `3000`)
 const base_url = `http://localhost:${port}`
 
+const navigate = async (page, url) => {
+  const response = await page.goto(url, { waitUntil: `networkidle` })
+  if (response?.ok() !== false) return
+  throw new Error(
+    `Navigation failed: ${response.status()} ${response.statusText()} for ${url}`,
+  )
+}
+
 const capture_site = async (browser) => {
   const package_json = JSON.parse(await readFile(`package.json`, `utf8`))
   const release_tag = process.env.RELEASE_TAG ?? `v${package_json.version}`
@@ -41,7 +49,7 @@ const capture_site = async (browser) => {
       deviceScaleFactor: 3,
     })
     const page = await context.newPage()
-    await page.goto(`${base_url}${url}`, { waitUntil: `networkidle` })
+    await navigate(page, `${base_url}${url}`)
     await page.evaluate((scroll_px) => globalThis.scrollBy(0, scroll_px), scroll)
     await page.waitForTimeout(300)
 
@@ -114,9 +122,7 @@ const capture_polyhedra = async (browser) => {
     const params = new URLSearchParams({ file })
     if (supercell) params.set(`supercell`, supercell)
     try {
-      await page.goto(`${base_url}/structure/polyhedra?${params}`, {
-        waitUntil: `networkidle`,
-      })
+      await navigate(page, `${base_url}/structure/polyhedra?${params}`)
       await page.waitForTimeout(settle_ms)
       const slug = file.replaceAll(/[^\w.-]/g, `_`)
       await page

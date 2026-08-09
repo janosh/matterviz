@@ -22,7 +22,7 @@ Note that the last two cells are empty because there were only 8 items in the li
 
 ## Element Images
 
-Big thanks to the element image providers listed below. Each image caption links back to the source website. See [`fetch-elem-images.mjs`](https://github.com/janosh/matterviz/blob/-/src/scripts/fetch-elem-images.mjs) for details.
+Big thanks to the element image providers listed below. Each image caption links back to the source website. See [`fetch-elem-images.mjs`](https://github.com/janosh/matterviz/blob/consolidate-shared-tooling/src/scripts/fetch-elem-images.mjs) for details.
 
 <ul class="elem-img">
     {#each Object.entries(img_sources) as [key, href] (key)}

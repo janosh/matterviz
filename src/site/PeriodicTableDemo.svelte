@@ -27,7 +27,7 @@
     const scale = page.url.searchParams.get(`color_scale`)
     if (scale && is_d3_interpolate_name(scale)) color_scale = scale
     const property = page.url.searchParams.get(`heatmap`)
-    if (property && property in ELEM_PROPERTY_LABELS) {
+    if (property && Object.hasOwn(ELEM_PROPERTY_LABELS, property)) {
       heatmap_key = property as keyof ChemicalElement
     }
     url_synced = true

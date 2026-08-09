@@ -9,7 +9,11 @@ import { createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-const replace_url = vi.hoisted(() => vi.fn(async () => {}))
+const { page, replace_url } = vi.hoisted(() => ({
+  page: { url: new URL(`http://localhost/periodic-table`) },
+  replace_url: vi.fn(async () => {}),
+}))
+vi.mock(`$app/state`, () => ({ page }))
 vi.mock(`$site/state.svelte`, () => ({ replace_url }))
 
 const mouseenter = new MouseEvent(`mouseenter`)
@@ -20,6 +24,7 @@ describe(`PeriodicTable`, () => {
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
     replace_url.mockClear()
+    page.url.search = ``
     selected.category = null
     Object.assign(colors.category, DEFAULT_CATEGORY_COLORS)
   })
@@ -285,8 +290,12 @@ describe(`PeriodicTable`, () => {
     expect(tile.getAttribute(`tabindex`)).toBe(`2`)
   })
 
-  test(`demo heatmap uses automatic light and dark tile font colors`, async () => {
+  test(`demo rejects inherited heatmap keys and uses automatic tile contrast`, async () => {
+    page.url.search = `?heatmap=toString`
     mount(PeriodicTableDemo, { target: document.body })
+    await vi.waitFor(() => expect(replace_url).toHaveBeenCalledWith(`/periodic-table`))
+    expect(document.querySelector(`.periodic-table .value`)).toBeNull()
+
     doc_query(`ul.options > li`).click()
     await tick()
 
@@ -299,7 +308,7 @@ describe(`PeriodicTable`, () => {
     expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
       new Set([`white`, `black`]),
     )
-    expect(replace_url).toHaveBeenCalledWith(expect.stringContaining(`?heatmap=`))
+    expect(replace_url).toHaveBeenLastCalledWith(expect.stringContaining(`?heatmap=`))
   })
 
   test.each([

@@ -73,10 +73,12 @@ for (const { name, number } of element_data) {
 }
 
 if (download_promises.length > 0) {
-  const settled = await Promise.allSettled(download_promises)
-  const results = settled.flatMap((result) =>
-    result.status === `fulfilled` ? [result.value] : [],
-  )
+  const results = (await Promise.allSettled(download_promises)).flatMap((result) => {
+    if (result.status === `fulfilled`) return [result.value]
+    console.error(`Image download failed: ${result.reason}`)
+    process.exitCode = 1
+    return []
+  })
   const img_src_out = `./src/lib/element-image-urls.json`
   const img_urls = existsSync(img_src_out) ? JSON.parse(readFileSync(img_src_out, `utf8`)) : {}
   for (const { num_name, url } of results) {
