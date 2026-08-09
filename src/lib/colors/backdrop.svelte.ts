@@ -5,15 +5,12 @@ const DEFAULT_BACKDROP_VAR = `--page-bg`
 interface ColorOptions {
   fallback?: string | (() => string)
   require_opaque?: boolean
-  // Color the caller already knows, which short-circuits the lookup: no token read and no
-  // observer. Matters for repeated children -- a periodic table would otherwise walk the
-  // ancestor chain and install an observer once per tile. Ignored unless it is usable.
+  // A usable caller-supplied color skips token lookup and observation, avoiding an
+  // ancestor walk and observer for every repeated child.
   override?: () => string | undefined
 }
 
-interface CssColorOptions extends ColorOptions {
-  css_var?: string | readonly string[]
-}
+type CssColorOptions = ColorOptions & { css_var?: string | readonly string[] }
 
 // Re-run a computed-color read when the theme or an ancestor selector may have changed.
 export const watch_css_color = (node: Element, read: () => void): (() => void) => {
@@ -45,15 +42,13 @@ const resolve_live_color = (
   const resolve_fallback = () => (typeof fallback === `function` ? fallback() : fallback)
   const is_usable = require_opaque ? is_opaque_color : is_concrete_color
   let color = $state(resolve_fallback())
-  // Derived, not a plain call: `current` is read once per child and each read would
-  // otherwise re-parse the override, which is the per-child work it exists to skip.
-  const overridden = $derived.by(() => {
+  const override_color = $derived.by(() => {
     const supplied = override?.()
     return is_usable(supplied) ? supplied : undefined
   })
 
   $effect(() => {
-    const node = overridden === undefined ? get_node() : undefined
+    const node = override_color === undefined ? get_node() : undefined
     if (!node) return undefined
     const read = () => {
       color = read_colors(node).find(is_usable) ?? resolve_fallback()
@@ -64,14 +59,12 @@ const resolve_live_color = (
 
   return {
     get current() {
-      return overridden ?? color
+      return override_color ?? color
     },
   }
 }
 
 // Live CSS color token on `node`, re-read after theme and ancestor-attribute changes.
-// Named tokens work across gradients, canvases and shadow roots without guessing which
-// rendered background belongs to the component.
 export function resolve_css_color(
   get_node: () => Element | null | undefined,
   options: CssColorOptions = {},
@@ -100,9 +93,7 @@ export const resolve_computed_color = (
     options,
   )
 
-// The opaque color painted behind `node`. Compositing a translucent fill needs an opaque
-// base, so a translucent token -- or a translucent `override` -- is rejected in favour of
-// the fallback. Components exposing a `backdrop` prop pass it straight through as `override`.
+// Resolve an opaque backdrop, rejecting translucent tokens and overrides.
 export const resolve_backdrop = (
   get_node: () => Element | null | undefined,
   options: Omit<CssColorOptions, `require_opaque`> = {},

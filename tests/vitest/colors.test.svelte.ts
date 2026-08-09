@@ -12,7 +12,11 @@ afterEach(() => {
   delete document.documentElement.dataset.theme
 })
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+// Let the observer/storage callback land, then flush the effect it invalidated
+const settle = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  flushSync()
+}
 
 const make_node = (css_var?: string, value = ``): HTMLElement => {
   const node = document.createElement(`div`)
@@ -21,22 +25,14 @@ const make_node = (css_var?: string, value = ``): HTMLElement => {
   return node
 }
 
-const observe = (resolve: () => { readonly current: string }) => {
-  let current = ``
-  roots.push(
-    $effect.root(() => {
-      const color = resolve()
-      $effect(() => {
-        current = color.current
-      })
-    }),
-  )
+// An effect root, so the resolver's internal $effect runs and stays subscribed until cleanup.
+// The resolver object itself is returned, so assertions read the live value rather than a copy.
+const observe = <Color extends { readonly current: string }>(resolve: () => Color): Color => {
+  let color: Color | undefined
+  roots.push($effect.root(() => void (color = resolve())))
   flushSync()
-  return {
-    get current() {
-      return current
-    },
-  }
+  if (!color) throw new Error(`resolver did not run`)
+  return color
 }
 
 // The old one-shot DOM read left text at its previous contrast after a theme change.
@@ -48,7 +44,6 @@ test(`resolve_backdrop re-reads its token when the theme changes`, async () => {
   node.style.setProperty(`--page-bg`, `#ffffff`)
   document.documentElement.dataset.theme = `light`
   await settle()
-  flushSync()
 
   expect(backdrop.current).toBe(`#ffffff`)
 })
@@ -65,7 +60,6 @@ test(`theme-dependent fallback re-resolves without any attribute mutation`, asyn
   theme_color = `#ffffff`
   globalThis.dispatchEvent(new StorageEvent(`storage`, { key: THEME_STORAGE_KEY }))
   await settle()
-  flushSync()
 
   expect(backdrop.current).toBe(`#ffffff`)
 })

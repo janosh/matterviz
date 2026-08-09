@@ -282,9 +282,14 @@ export function get_page_background(
 ): string {
   if (typeof window === `undefined`) return ``
 
-  for (const element of [document.body, document.documentElement]) {
-    const background = getComputedStyle(element).backgroundColor
-    if (is_concrete_color(background)) return background
+  const body_background = getComputedStyle(document.body).backgroundColor
+  if (is_opaque_color(body_background)) return body_background
+
+  const html_background = getComputedStyle(document.documentElement).backgroundColor
+  if (is_opaque_color(html_background)) {
+    return is_concrete_color(body_background)
+      ? composite_colors(body_background, html_background)
+      : html_background
   }
 
   // Fall back to prefers-color-scheme

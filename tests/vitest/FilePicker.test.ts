@@ -208,7 +208,6 @@ describe(`FilePicker`, () => {
         expect(element.getAttribute(attr)).toBe(expected_value)
       },
     )
-
   })
 
   describe(`edge cases and configuration`, () => {

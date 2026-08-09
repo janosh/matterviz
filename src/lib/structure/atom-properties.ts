@@ -8,17 +8,14 @@ import { element_by_symbol } from '$lib/element/data'
 import * as math from '$lib/math'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, type AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
-import { get_majority_element } from '$lib/structure/bonding'
-import type { Pbc } from '$lib/structure/pbc'
-import { wrap_frac_coord } from '$lib/structure/pbc'
+import { get_majority_element, type BondingStrategy } from '$lib/structure/bonding'
+import { wrap_frac_coord, type Pbc } from '$lib/structure/pbc'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 
-// Modes that need nothing beyond the shared fields.
-type SimpleAtomColorMode = `element` | `coordination` | `wyckoff` | `selective_dynamics`
+type SimpleAtomColorMode = Exclude<AtomColorMode, `property` | `custom`>
 type AtomColorFn = (site: Site, idx: number) => number | string
 
 interface AtomColorBase {
@@ -105,8 +102,7 @@ const build_prop_colors = (
   unique_values?: number[],
 ): AtomPropertyColors => {
   const uniq = unique_values ?? [...new Set(vals)].toSorted((val_a, val_b) => val_a - val_b)
-  // Use sorted uniq array to avoid spreading large arrays into Math.min/max
-  const min_value = uniq.length > 0 ? uniq[0] : undefined
+  const min_value = uniq[0]
   const max_value = uniq.at(-1)
   return { colors, values: vals, min_value, max_value, unique_values: uniq }
 }
@@ -417,8 +413,7 @@ export function get_colorable_property_keys(
       if (site_property_scalar(site, key) !== null) keys.add(key)
     }
   }
-  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  return [...keys].sort((key_a, key_b) => key_a.localeCompare(key_b))
+  return [...keys].toSorted((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
 const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean =>
@@ -447,9 +442,7 @@ const default_scale_type = (mode: AtomColorMode, property_key?: unknown): ColorS
     ? `categorical`
     : `continuous`
 
-// Normalize untyped/serialized props before rendering. Missing shared fields use the
-// shipped defaults; property configs without a key and serialized custom configs fall
-// back to element coloring instead of reaching get_custom_colors with undefined.
+// Normalize untyped/serialized props before rendering.
 export function normalize_atom_color_config(config: unknown): AtomColorConfig {
   if (!config || typeof config !== `object` || Array.isArray(config)) {
     return { ...DEFAULT_ATOM_COLOR_CONFIG }
@@ -467,39 +460,29 @@ export function normalize_atom_color_config(config: unknown): AtomColorConfig {
   const finalize = (normalized: AtomColorConfig): AtomColorConfig =>
     configs_equal(candidate_config, normalized) ? candidate_config : normalized
 
-  if (
-    mode === `property` &&
-    typeof candidate.property_key === `string` &&
-    candidate.property_key.length > 0
-  ) {
-    return finalize({ mode, scale, scale_type, property_key: candidate.property_key })
-  }
-  if (mode === `custom` && is_atom_color_fn(candidate.color_fn)) {
+  const property_key = typeof candidate.property_key === `string` ? candidate.property_key : ``
+  if (mode === `property` && property_key)
+    return finalize({ mode, scale, scale_type, property_key })
+  if (mode === `custom` && is_atom_color_fn(candidate.color_fn))
     return finalize({ mode, scale, scale_type, color_fn: candidate.color_fn })
-  }
-  if (mode === `property` || mode === `custom`) {
-    return finalize({ mode: `element`, scale, scale_type: `continuous` })
-  }
+  if (mode === `property` || mode === `custom`)
+    return finalize({ mode: `element`, scale, scale_type: default_scale_type(`element`) })
   return finalize({ mode, scale, scale_type })
 }
 
-// Build a complete config for a mode/property selection. Preserve object identity when
-// unchanged so reactive callers can assign the result unconditionally.
+// Preserve object identity when unchanged so reactive callers can assign unconditionally.
 export const next_atom_color_config = (
   config: AtomColorConfig,
   mode: AtomColorMode,
   property_keys: string[],
-  // Explicit choice from a property dropdown; falls back to the key already in use.
   preferred_key?: string,
 ): AtomColorConfig => {
   const { scale } = config
   const finalize = (next: AtomColorConfig): AtomColorConfig =>
     configs_equal(next, config) ? config : next
   if (mode === `property`) {
-    // Nothing to color by means the mode has no meaning, so stay on element colors.
-    if (property_keys.length === 0) {
-      return finalize({ mode: `element`, scale, scale_type: `continuous` })
-    }
+    if (property_keys.length === 0)
+      return finalize({ mode: `element`, scale, scale_type: default_scale_type(`element`) })
     const previous_key =
       preferred_key ?? (`property_key` in config ? config.property_key : undefined)
     const property_key =
@@ -511,17 +494,10 @@ export const next_atom_color_config = (
       property_key,
     })
   }
-  if (mode === `custom`) {
-    if (!(`color_fn` in config)) {
-      throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
-    }
-    return config
-  }
-  return finalize({
-    mode,
-    scale,
-    scale_type: default_scale_type(mode),
-  })
+  if (mode === `custom` && `color_fn` in config) return config
+  if (mode === `custom`)
+    throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
+  return finalize({ mode, scale, scale_type: default_scale_type(mode) })
 }
 
 // Keep discrete CNA phases on OVITO's stable palette as phases appear or vanish.
@@ -542,13 +518,10 @@ export function get_site_property_colors(
   const present = scalars.filter((val) => val !== null)
   if (present.length === 0) return { colors: [], values: [] }
 
-  let colors: string[]
-  let unique_values: number[] | undefined
-  if (property_key === CNA_TYPE_PROPERTY && type === `categorical`) {
-    colors = cna_type_palette(present)
-  } else {
-    ;({ colors, unique_values } = apply_color_scale(present, scale, type))
-  }
+  const { colors, unique_values } =
+    property_key === CNA_TYPE_PROPERTY && type === `categorical`
+      ? { colors: cna_type_palette(present), unique_values: undefined }
+      : apply_color_scale(present, scale, type)
   const stats = build_prop_colors(present, colors, unique_values)
   if (present.length === scalars.length) return stats
 
@@ -590,22 +563,19 @@ export function get_atom_colors(
   const normalized_config = normalize_atom_color_config(config)
   const { mode, scale, scale_type } = normalized_config
 
-  if (mode === `coordination`) {
+  if (mode === `coordination`)
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)
-  }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, sym_data, scale)
   if (mode === `selective_dynamics`) return get_selective_dynamics_colors(structure, scale)
-  if (mode === `property`) {
+  if (mode === `property`)
     return get_site_property_colors(
       structure,
       normalized_config.property_key,
       scale,
       scale_type,
     )
-  }
-  if (mode === `custom`) {
+  if (mode === `custom`)
     return get_custom_colors(structure, normalized_config.color_fn, scale, scale_type)
-  }
   // Element mode needs no property colors
   return { colors: [], values: [] }
 }

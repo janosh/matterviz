@@ -359,14 +359,15 @@ describe(`get_page_background`, () => {
   test.each([
     [`#f5f5f5`, `rgba(0, 0, 0, 0)`, false, `#f5f5f5`, `html background`],
     [`transparent`, `#e0e0e0`, false, `#e0e0e0`, `body background`],
+    [`blue`, `rgba(255, 0, 0, 0.5)`, false, `rgb(128, 0, 128)`, `composited body`],
     [`transparent`, `transparent`, true, `#1a1a1a`, `dark mode fallback`],
     [`transparent`, `transparent`, false, `#ffffff`, `light mode fallback`],
   ])(`$4`, (html_bg, body_bg, prefers_dark, expected) => {
-    let call_idx = 0
-    vi.stubGlobal(`getComputedStyle`, (_elem: Element) => {
-      const bg = call_idx++ === 0 ? html_bg : body_bg
-      return { backgroundColor: bg } as CSSStyleDeclaration
-    })
+    const get_computed_style = (element: Element): CSSStyleDeclaration =>
+      ({
+        backgroundColor: element === document.body ? body_bg : html_bg,
+      }) as CSSStyleDeclaration
+    vi.stubGlobal(`getComputedStyle`, get_computed_style)
     vi.stubGlobal(`matchMedia`, (query: string) => ({
       matches: prefers_dark,
       media: query,
