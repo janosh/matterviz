@@ -380,7 +380,7 @@ describe(`click and dblclick handlers`, () => {
       onclick: () => {},
     })
     await tick()
-    const start = doc_query<HTMLElement>(`.cell[data-x="1"][data-y="1"]`)
+    const start = doc_query(`.cell[data-x="1"][data-y="1"]`)
     start.focus()
     const arrow_right = new KeyboardEvent(`keydown`, {
       key: `ArrowRight`,
@@ -390,16 +390,12 @@ describe(`click and dblclick handlers`, () => {
     start.dispatchEvent(arrow_right)
     expect(arrow_right.defaultPrevented).toBe(true)
     await tick()
-    expect(document.activeElement).toBe(
-      doc_query<HTMLElement>(`.cell[data-x="0"][data-y="1"]`),
-    )
+    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="1"]`))
     document.activeElement?.dispatchEvent(
       new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
     )
     await tick()
-    expect(document.activeElement).toBe(
-      doc_query<HTMLElement>(`.cell[data-x="0"][data-y="0"]`),
-    )
+    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="0"]`))
   })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {

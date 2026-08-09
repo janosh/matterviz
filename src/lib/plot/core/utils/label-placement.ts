@@ -7,7 +7,7 @@ import { is_time_scale } from '$lib/plot/core/types'
 // Anneal budget and starting temperature for a re-solve that inherits the previous layout.
 // Both are far below the cold defaults (2000 iterations, temperature 1): the layout is
 // already good, so the pass only has to nudge labels the frame's change actually disturbed.
-export const WARM_SA_ITERATIONS = 12 // exported: types.ts documents it as the config default
+const WARM_SA_ITERATIONS = 12
 const WARM_START_TEMP = 0.05
 
 export interface Rect {
