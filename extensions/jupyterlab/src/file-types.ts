@@ -26,11 +26,12 @@ const GZIP_EXTENSIONS = [...TEXT_EXTENSIONS, ...BINARY_VIEWER_EXTENSIONS].map(
 // trailing group deliberately excludes `.`: a looser `[._-].*` also swallowed
 // write_poscar.py, test_xdatcar.ipynb and contcar_reader.rs, and since JupyterLab
 // checks patterns before extensions those became MatterViz files by default.
-// Longest first so AECCAR0 is tried before AECCAR rather than relying on backtracking.
-const VASP_TOKEN = [...VASP_VIEWER_STEMS]
-  .sort((stem_a, stem_b) => stem_b.length - stem_a.length)
-  .flatMap((stem) => [stem.toUpperCase(), stem])
-  .join(`|`)
+//
+// The charge-index-less `aeccar` is dropped for the same reason: VASP only ever writes
+// AECCAR0/1/2, so claiming the bare stem would hand MatterViz the default opener for
+// anything merely named AECCAR. VS Code keeps it — there a claim only adds a menu entry.
+const VASP_STEMS = VASP_VIEWER_STEMS.filter((stem) => stem !== `aeccar`)
+const VASP_TOKEN = VASP_STEMS.flatMap((stem) => [stem.toUpperCase(), stem]).join(`|`)
 const VASP_NAME_BODY = `^(?:.*[._-])?(?:${VASP_TOKEN})(?:[_-][^.]*)?`
 
 // Base type minus the icon, which `index.ts` attaches — importing LabIcon here
