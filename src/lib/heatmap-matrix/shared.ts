@@ -32,10 +32,13 @@ export function window_axis_tracks(
     keeps_empty_tracks: boolean
   },
 ): number[] {
-  const start = Math.max(0, Math.floor((scroll - grid_offset) / stride) - overscan)
-  const end = Math.min(
-    track_count,
-    Math.ceil((scroll - grid_offset + viewport_extent) / stride) + overscan,
+  const clamp_track = (track: number) => Math.max(0, Math.min(track_count, track))
+  const viewport_start = scroll - grid_offset
+  const start = clamp_track(Math.floor(viewport_start / stride) - overscan)
+  // Keep bounds ordered so a pre-grid viewport cannot pass slice() a tail-relative negative end.
+  const end = Math.max(
+    start,
+    clamp_track(Math.ceil((viewport_start + viewport_extent) / stride) + overscan),
   )
   return keeps_empty_tracks
     ? visible.filter((item_idx) => item_idx >= start && item_idx < end)

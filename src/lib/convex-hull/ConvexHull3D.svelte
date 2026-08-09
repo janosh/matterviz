@@ -200,7 +200,6 @@
   let canvas = $state<HTMLCanvasElement>()
   let ctx: CanvasRenderingContext2D | null = null
   let overlay_canvas = $state<HTMLCanvasElement>()
-  let overlay_ctx: CanvasRenderingContext2D | null = null
 
   const camera_default = {
     elevation: DEFAULTS.convex_hull.ternary.camera_elevation,
@@ -289,6 +288,15 @@
     return { ...appearance, placement: `fill` as const }
   })
 
+  const hull_point_opts = () => ({
+    scale: canvas_dims.scale,
+    shadow_factor: 0.1,
+    selected_entry,
+    is_highlighted,
+    get_point_color,
+    highlight_style: merged_highlight_style,
+  })
+
   // Shared canvas-interaction scaffold (mouse/keyboard handlers, hover/drag/popup
   // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
   const interactions = create_canvas_interactions({
@@ -299,8 +307,6 @@
     wrapper: () => wrapper,
     ctx: () => ctx,
     set_ctx: (context) => (ctx = context),
-    overlay_ctx: () => overlay_ctx,
-    set_overlay_ctx: (context) => (overlay_ctx = context),
     set_canvas_dims: (dims) => (canvas_dims = dims),
     visible_entries: () => visible_entries,
     plot_entries: () => plot_entries,
@@ -318,7 +324,8 @@
     project_point: project_3d_point,
     extract_structure: extract_structure_from_entry,
     render_frame,
-    render_overlay_frame,
+    hull_point_opts,
+    pulse: () => ({ time: pulse.time, opacity: pulse_opacity }),
     on_drag: (dx, dy, panning) => {
       if (panning) {
         camera.center_x += dx
@@ -759,26 +766,9 @@
     }
   })
 
-  const hull_point_opts = () => ({
-    scale: canvas_dims.scale,
-    shadow_factor: 0.1,
-    selected_entry,
-    is_highlighted,
-    get_point_color,
-    highlight_style: merged_highlight_style,
-  })
-
   function draw_data_points(): void {
     if (!ctx || sorted_points_cache.length === 0) return
     helpers.draw_hull_points(ctx, sorted_points_cache, hull_point_opts())
-  }
-
-  function render_overlay_frame(): void {
-    if (!overlay_ctx) return
-    helpers.draw_pulse_overlay(overlay_ctx, sorted_points_cache, {
-      ...hull_point_opts(),
-      pulse: { time: pulse.time, opacity: pulse_opacity },
-    })
   }
 
   const hull_label_font_size = 12

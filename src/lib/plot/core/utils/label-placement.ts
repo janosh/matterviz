@@ -7,8 +7,8 @@ import { is_time_scale } from '$lib/plot/core/types'
 // Anneal budget and starting temperature for a re-solve that inherits the previous layout.
 // Both are far below the cold defaults (2000 iterations, temperature 1): the layout is
 // already good, so the pass only has to nudge labels the frame's change actually disturbed.
-export const WARM_SA_ITERATIONS = 12
-export const WARM_START_TEMP = 0.05
+export const WARM_SA_ITERATIONS = 12 // exported: types.ts documents it as the config default
+const WARM_START_TEMP = 0.05
 
 export interface Rect {
   x: number
@@ -258,14 +258,16 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
     far_x = Math.max(far_x, x)
     far_y = Math.max(far_y, y)
   }
-  // ~1 anchor per cell, measured fastest at every size against 2.25, 4 and 9 per cell: a
-  // query spans many cells, so finer cells buy a tighter box for more than they cost to walk
+  // ~1 anchor per cell measured fastest; the dominant-extent floor caps collinear grids.
+  const extent_x = far_x - origin_x
+  const extent_y = far_y - origin_y
   const size = Math.max(
     1,
-    Math.sqrt(((far_x - origin_x) * (far_y - origin_y)) / anchors.length),
+    Math.sqrt((extent_x * extent_y) / anchors.length),
+    Math.max(extent_x, extent_y) / anchors.length,
   )
-  const cols = Math.floor((far_x - origin_x) / size) + 1
-  const rows = Math.floor((far_y - origin_y) / size) + 1
+  const cols = Math.floor(extent_x / size) + 1
+  const rows = Math.floor(extent_y / size) + 1
   const lists: number[][] = Array.from({ length: cols * rows }, () => [])
   anchors.forEach(({ x, y }, idx) =>
     lists[Math.floor((y - origin_y) / size) * cols + Math.floor((x - origin_x) / size)].push(
@@ -657,14 +659,15 @@ export function compute_label_positions(
   }
 
   // Simulated annealing. A warm re-solve is a polish, not a search: it gets a fraction of the
-  // step budget, and starts cool because full heat would shake apart a good layout before
-  // cooling could settle it again.
-  // Nearly all carried over, not merely one: a single restored label would otherwise put every
-  // new one on a polish budget, so the frame after a large data change would lay out badly.
+  // step budget and starts cool, because full heat would shake apart a good layout before
+  // cooling could settle it again. That only holds when nearly everything carried over -- one
+  // restored label out of many must not put all the new ones on a polish budget, or the frame
+  // after a large data change lays out badly and stays that way until the next solve.
   const is_warm = cold_labels.length * 4 <= num_labels
   const sa_iterations =
-    (is_warm ? (config.warm_sa_iterations ?? WARM_SA_ITERATIONS) : config.sa_iterations) ??
-    2000
+    is_warm && config.sa_iterations !== 0
+      ? (config.warm_sa_iterations ?? WARM_SA_ITERATIONS)
+      : (config.sa_iterations ?? 2000)
   const start_temp = is_warm ? WARM_START_TEMP : 1
   const total_steps = sa_iterations * num_labels
   const cooling_rate = 1 / total_steps

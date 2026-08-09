@@ -164,7 +164,6 @@
     }
   })
 
-  let window_width: number = $state(0)
   let tooltip_element: ChemicalElement | null = $state(null)
   let tooltip_pos: Point2D = $state({ x: 0, y: 0 })
   let tooltip_visible: boolean = $state(false)
@@ -316,8 +315,6 @@
     return [min, max]
   })
 </script>
-
-<svelte:window bind:innerWidth={window_width} />
 
 <div {...rest} class={[`periodic-table`, rest.class]} style:gap onkeydown={handle_key}>
   {#if should_show_color_bar}

@@ -17,8 +17,6 @@ export interface CanvasInteractionInputs {
   // Canvas 2D context + dims live in the component (read by its draw functions)
   ctx: () => CanvasRenderingContext2D | null
   set_ctx: (ctx: CanvasRenderingContext2D | null) => void
-  overlay_ctx: () => CanvasRenderingContext2D | null
-  set_overlay_ctx: (ctx: CanvasRenderingContext2D | null) => void
   set_canvas_dims: (dims: { width: number; height: number; scale: number }) => void
   visible_entries: () => ConvexHullEntry[]
   plot_entries: () => ConvexHullEntry[]
@@ -38,7 +36,11 @@ export interface CanvasInteractionInputs {
   project_point: (x: number, y: number, z: number) => { x: number; y: number; depth: number }
   extract_structure: (entry: ConvexHullEntry) => AnyStructure | null
   render_frame: () => void
-  render_overlay_frame: () => void
+  // Everything the overlay needs to paint the pulsing markers. Drawing them lives here rather
+  // than in the components because the overlay canvas, its context, its sizing and its frame
+  // scheduling already do, and 3D/4D differ only by the shadow_factor inside these opts.
+  hull_point_opts: () => helpers.HullPointOpts<ConvexHullEntry>
+  pulse: () => { time: number; opacity: number }
   on_drag: (dx: number, dy: number, panning: boolean) => void
   on_fullscreen_change: () => void // e.g. reset camera pan center
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
@@ -49,7 +51,9 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   // Performance optimization: coalesce renders into one rAF
   let frame_id = 0
-  let overlay_frame_id = 0
+  let hull_is_stale = false
+  // Owned here, not by the component: nothing outside this module draws on the overlay
+  let overlay_ctx: CanvasRenderingContext2D | null = null
 
   // Interaction state
   let is_dragging = $state(false)
@@ -232,23 +236,31 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (entry) void copy_entry_data(entry, { x: event.clientX, y: event.clientY })
   }
 
-  function render_once() {
-    if (frame_id) return
-    frame_id = requestAnimationFrame(() => {
-      inputs.render_frame()
-      inputs.render_overlay_frame() // same projections, so redraw both together
-      frame_id = 0
-    })
+  function render_overlay_frame() {
+    if (!overlay_ctx) return
+    helpers.draw_pulse_overlay(
+      overlay_ctx,
+      sorted_points_cache,
+      inputs.hull_point_opts(),
+      inputs.pulse(),
+    )
   }
 
-  // Pulse ticks route here instead of render_once: repaints the highlight rings only.
-  function render_overlay_once() {
-    if (frame_id || overlay_frame_id) return
-    overlay_frame_id = requestAnimationFrame(() => {
-      inputs.render_overlay_frame()
-      overlay_frame_id = 0
+  // One frame for both layers. The overlay always repaints (it is a handful of markers and
+  // shares the hull's projections); the hull only when someone asked for it, so a pulse tick
+  // landing on a frame already scheduled for a full redraw is absorbed, not double-scheduled.
+  function schedule_frame(redraw_hull: boolean) {
+    hull_is_stale ||= redraw_hull
+    if (frame_id) return
+    frame_id = requestAnimationFrame(() => {
+      if (hull_is_stale) inputs.render_frame()
+      render_overlay_frame()
+      frame_id = 0
+      hull_is_stale = false
     })
   }
+  const render_once = () => schedule_frame(true)
+  const render_overlay_once = () => schedule_frame(false) // pulse ticks: rings only
 
   function update_canvas_size() {
     const canvas = inputs.canvas()
@@ -279,7 +291,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       }
     }
     size_canvas(canvas, inputs.ctx(), inputs.set_ctx)
-    size_canvas(inputs.overlay_canvas(), inputs.overlay_ctx(), inputs.set_overlay_ctx)
+    size_canvas(inputs.overlay_canvas(), overlay_ctx, (ctx) => (overlay_ctx = ctx))
     inputs.set_canvas_dims({ width, height, scale: Math.min(width, height) / 600 })
     render_once()
   }
@@ -298,7 +310,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
     return () => {
       if (frame_id) cancelAnimationFrame(frame_id)
-      if (overlay_frame_id) cancelAnimationFrame(overlay_frame_id)
       resize_observer.disconnect() // Cleanup on unmount
     }
   })

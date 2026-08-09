@@ -110,6 +110,28 @@ describe(`create_pulse_animation`, () => {
     }
     void unmount(component)
   })
+
+  // The production case the gate exists for: a chart mounted below the fold, which is reported
+  // off screen straight away. The observer's own initial report arrives a microtask after
+  // observe(), so it must not overwrite a verdict that has already landed.
+  test(`stays paused when the first verdict is off screen`, async () => {
+    install_animation_frame_mock()
+    const target = document.createElement(`div`)
+    const component = mount(PulseAnimationHarness, {
+      target: document.body,
+      props: { active: () => true, element: () => target },
+    })
+    flushSync()
+
+    trigger_intersection(target, false)
+    flushSync()
+    expect(requested_frames.size).toBe(0)
+
+    await Promise.resolve() // the observer's own initial report would land about here
+    flushSync()
+    expect(requested_frames.size).toBe(0)
+    void unmount(component)
+  })
 })
 
 test.each([

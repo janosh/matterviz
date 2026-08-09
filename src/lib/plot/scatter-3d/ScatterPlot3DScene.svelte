@@ -141,12 +141,10 @@
 
   const { invalidate } = useThrelte()
 
-  // Update backside positions when camera crosses axis planes.
-  // autoInvalidate: false is load-bearing. Threlte renders on demand, but a task registered
-  // with the default `true` sits in `autoInvalidations` for its whole lifetime, which keeps
-  // shouldRender() true and re-renders the entire scene every frame even while idle. The
-  // task still runs each frame (main stage is ungated), so crossings are still detected —
-  // only the frames that actually move an axis now ask for a redraw.
+  // Update backside positions when camera crosses axis planes. autoInvalidate defaults to
+  // true, which would park this task in the scheduler's `autoInvalidations` for its whole
+  // lifetime and so re-render the on-demand scene every frame, idle or not. Opting out still
+  // runs the task each frame (the main stage is ungated), so crossings are still caught.
   useTask(
     () => {
       if (!camera) return

@@ -1441,9 +1441,7 @@
     use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
   )
   const effective_line_tween = $derived(
-    pan_zoom.is_panning
-      ? { duration: 0 }
-      : resolve_line_tween(line_tween, line_tween_load),
+    pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
   )
   onDestroy(() => pan_zoom.destroy())
 

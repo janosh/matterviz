@@ -262,6 +262,12 @@ describe(`generate_candidates`, () => {
   })
 })
 
+test(`neighbor index handles collinear anchors spanning a huge extent`, () => {
+  const anchors = [0, Number.MAX_VALUE].map((anchor_x) => ({ x: anchor_x, y: 0, radius: 1 }))
+  const neighbors = create_neighbor_index(anchors)
+  expect(neighbors.collect(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+})
+
 // === compute_delta_energy ===
 
 describe(`compute_delta_energy`, () => {
@@ -505,8 +511,7 @@ function place_and_expect_finite(
   const result = place(points, config)
   expect(Object.keys(result)).toHaveLength(points.length)
   for (const pos of Object.values(result)) {
-    expect(pos.x).not.toBeNaN()
-    expect(pos.y).not.toBeNaN()
+    expect(Number.isFinite(pos.x) && Number.isFinite(pos.y)).toBe(true)
   }
   return result
 }
@@ -666,6 +671,19 @@ describe(`compute_label_positions`, () => {
       expect(seeded).toEqual(cold)
     })
 
+    test(`explicit zero iterations disables warm annealing`, () => {
+      const result = compute_label_positions(
+        make_labeled_series(pan_points),
+        { ...default_config, sa_iterations: 0, warm_sa_iterations: 100 },
+        default_scales,
+        default_bounds,
+        new Map(pan_points.map((_point, idx) => [`0-${idx}`, { x: 0, y: 0 }])),
+      )
+      expect(result).toEqual(
+        Object.fromEntries(pan_points.map(({ x, y }, idx) => [`0-${idx}`, { x, y }])),
+      )
+    })
+
     test(`labels that leave the data are dropped from the carried offsets`, () => {
       const offsets = new Map<string, { x: number; y: number }>()
       compute_label_positions(
@@ -709,14 +727,20 @@ describe(`compute_label_positions`, () => {
       // and is where a single GC pause drags the ratio under the bar (observed at 1.08x), so
       // that is the side worth taking the best of.
       const cold = elapsed(() =>
-        compute_label_positions(series, config, shifted_scales(1), default_bounds)
+        compute_label_positions(series, config, shifted_scales(1), default_bounds),
       )
       let warm = Infinity
       for (let rep = 0; rep < 3; rep++) {
         warm = Math.min(
           warm,
           elapsed(() =>
-            compute_label_positions(series, config, shifted_scales(rep), default_bounds, offsets)
+            compute_label_positions(
+              series,
+              config,
+              shifted_scales(rep),
+              default_bounds,
+              offsets,
+            ),
           ),
         )
       }

@@ -1,6 +1,6 @@
-import { SETTLE_MS } from '$lib/plot/core/utils'
+import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
-import { tick } from 'svelte'
+import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { mount_sized } from '../setup'
 
@@ -55,13 +55,40 @@ async function drag(
   return active
 }
 
+const plot_svg = (root: HTMLElement): SVGSVGElement => {
+  const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
+  if (!svg) throw new Error(`plot SVG not found`)
+  return svg
+}
+
+const marker_xs = (svg: SVGSVGElement): number[] =>
+  [...svg.querySelectorAll(`path.marker`)].map((marker) =>
+    Number(
+      /translate\((?<x>[-\d.]+)/.exec(marker.parentElement?.getAttribute(`transform`) ?? ``)
+        ?.groups?.x,
+    ),
+  )
+
+const mount_scatter = async (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>
+  plot_svg(
+    await mount_sized(
+      ScatterPlot,
+      { series: xy_series(), ...props },
+      { selector: `.scatter` },
+    ),
+  )
+// Keep every point on screen so culling cannot masquerade as marker motion.
+const slow_tween_props = {
+  point_tween: { duration: 60_000 },
+  x_axis: { range: [-2, 4] as [number, number] },
+}
+
 describe(`shared plot drag zoom bounds`, () => {
   test.each(plot_cases)(
     `%s rejects margin starts but allows the endpoint outside`,
     async (_name, mount_plot) => {
       const root = await mount_plot()
-      const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
-      if (!svg) throw new Error(`plot SVG not found`)
+      const svg = plot_svg(root)
 
       // Default 400×300 plots end at y=240; y=290 is in the x-label margin.
       expect(await drag(svg, { x: 100, y: 290 }, { x: 300, y: 100 })).toBe(false)
@@ -72,13 +99,56 @@ describe(`shared plot drag zoom bounds`, () => {
     },
   )
 
+  // Shift+wheel and two-finger drags pan too, and each notch retargets every marker. Only the
+  // shift-drag used to report itself as a pan, so those two still animated behind the axes.
+  test(`shift+wheel pan snaps markers instead of animating them`, async () => {
+    vi.useFakeTimers({ toFake: [`performance`] })
+    try {
+      const svg = await mount_scatter(slow_tween_props)
+      vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps anyway
+
+      svg.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
+      const before = marker_xs(svg)
+      expect(before.length).toBeGreaterThan(0)
+      // deltaX so the pan runs along the axis being measured; the wheel picks the dominant one
+      svg.dispatchEvent(
+        new WheelEvent(`wheel`, { deltaX: 40, bubbles: true, cancelable: true }),
+      )
+      await tick()
+
+      // A wheel pan has no gesture end to snap until, so the notch itself has to land every
+      // marker at its new position; animated, they would all still be sitting at `before`.
+      const after = marker_xs(svg)
+      expect(after).toHaveLength(before.length)
+      const deltas = after.map((pos, idx) => pos - before[idx])
+      expect(Math.abs(deltas[0])).toBeGreaterThan(1) // it panned, rather than sitting still
+      for (const delta of deltas) expect(delta).toBeCloseTo(deltas[0], 6) // by one shared offset
+      window.dispatchEvent(new KeyboardEvent(`keyup`, { key: `Shift` }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Tabbing away eats the keyup, so a latched shift would leave the wheel silently panning
+  // (and swallowing page scroll) while the cursor promises a pan mousedown won't deliver.
+  test(`window blur clears a latched shift`, async () => {
+    const svg = await mount_scatter()
+
+    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
+    await tick()
+    expect(svg.style.cursor).toBe(`grab`)
+
+    window.dispatchEvent(new FocusEvent(`blur`))
+    await tick()
+    expect(svg.style.cursor).toBe(`crosshair`)
+  })
+
   // A mouseup delivered outside the window never reaches the pan's own handler. That used to
   // leave the plot panning on bare mouse moves; now that consumers gate animation and hover
   // on `is_panning`, a wedged pan would also freeze both for the rest of the plot's life.
   test(`a move without the button held ends a pan that lost its mouseup`, async () => {
-    const root = await mount_sized(ScatterPlot, { series: xy_series() }, { selector: `.scatter` })
-    const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
-    if (!svg) throw new Error(`plot SVG not found`)
+    const svg = await mount_scatter()
     const bounds = svg.getBoundingClientRect()
     const at = (x: number, buttons: number): MouseEventInit => ({
       button: 0,
@@ -91,21 +161,15 @@ describe(`shared plot drag zoom bounds`, () => {
     svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(200, 1) }))
     window.dispatchEvent(new MouseEvent(`mousemove`, at(150, 1)))
     await tick()
-    const during = svg.getAttribute(`style`) ?? ``
 
     window.dispatchEvent(new MouseEvent(`mousemove`, at(100, 0))) // button released off-window
     await tick()
-    // the pan is over, so a later bare move must not keep panning the plot
-    const after_release = svg.querySelectorAll(`path.marker`)[0]?.parentElement?.getAttribute(
-      `transform`,
-    )
+    const after_release = marker_xs(svg)
+    expect(document.body.style.cursor).toBe(``) // the grabbing cursor is released
+
     window.dispatchEvent(new MouseEvent(`mousemove`, at(20, 0)))
     await tick()
-    expect(
-      svg.querySelectorAll(`path.marker`)[0]?.parentElement?.getAttribute(`transform`),
-    ).toBe(after_release)
-    expect(document.body.style.cursor).toBe(``) // and the grabbing cursor is released
-    expect(during).toBeDefined()
+    expect(marker_xs(svg)).toEqual(after_release) // a later bare move no longer pans the plot
   })
 
   // A pan retargets every marker on each pointer frame. Animating that leaves the markers
@@ -115,30 +179,10 @@ describe(`shared plot drag zoom bounds`, () => {
   test(`shift-drag pan moves markers with the cursor rather than animating behind it`, async () => {
     vi.useFakeTimers({ toFake: [`performance`] })
     try {
-      const root = await mount_sized(
-        ScatterPlot,
-        {
-          series: xy_series(),
-          point_tween: { duration: 60_000 },
-          // Padding keeps all three points on screen across the pan; a culled point would
-          // shift which markers the query returns and mask the comparison below.
-          x_axis: { range: [-2, 4] as [number, number] },
-        },
-        { selector: `.scatter` },
-      )
-      const svg = root.querySelector<SVGSVGElement>(`svg[role="application"]`)
-      if (!svg) throw new Error(`plot SVG not found`)
-      const marker_xs = () =>
-        [...svg.querySelectorAll(`path.marker`)].map((marker) =>
-          Number(
-            /translate\((?<x>[-\d.]+)/.exec(
-              marker.parentElement?.getAttribute(`transform`) ?? ``,
-            )?.groups?.x,
-          ),
-        )
+      const svg = await mount_scatter(slow_tween_props)
       vi.advanceTimersByTime(SETTLE_MS + 1)
 
-      const before = marker_xs()
+      const before = marker_xs(svg)
       expect(before).toHaveLength(3)
       let during: number[] = []
       await drag(
@@ -147,7 +191,7 @@ describe(`shared plot drag zoom bounds`, () => {
         { x: 100, y: 120 },
         {
           shift: true,
-          mid_drag: () => (during = marker_xs()),
+          mid_drag: () => (during = marker_xs(svg)),
         },
       )
 

@@ -2,10 +2,10 @@
   // FillArea component for rendering fill-between regions in ScatterPlot
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
-  import { untrack } from 'svelte'
   import type { TweenOptions } from 'svelte/motion'
   import type { FillGradient, FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
-  import { create_settling_tween, unique_id } from '$lib/plot/core/utils'
+  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
+  import { unique_id } from '$lib/plot/core/utils'
 
   let {
     region,
@@ -58,18 +58,12 @@
     region.hover_style?.cursor ?? (is_clickable ? `pointer` : `default`),
   )
 
-  // untrack: the seed is the path the region already has, so one appearing on screen draws it
-  // at once rather than morphing in from empty. Only the static defaults go in at construction
-  // — Tween.set merges the per-call options over them, so a `tween_options` of `{ duration: 0 }`
-  // captured here would outlive the condition that set it.
-  const default_tween = { duration: 300, interpolate: interpolatePath }
+  // tween_options per update, so a plot can drop the morph for a drag the way its lines do
   const tweened_path = create_settling_tween(
-    untrack(() => path),
-    default_tween,
+    () => path,
+    { duration: 300, interpolate: interpolatePath },
+    { live: () => tween_options },
   )
-
-  // per call, so a plot can drop the morph for the duration of a drag the way its lines do
-  $effect.pre(() => tweened_path.set_target(path, tween_options))
 
   // Emit helpers - call both region-level and prop-level handlers when distinct
   const emit_hover = (evt: FillHandlerEvent | null) => {

@@ -748,7 +748,7 @@ export function get_canvas_text_color(
 type HullEntry = PhaseData & { z: number; size?: number; marker?: MarkerSymbol }
 type HullPulse = { time: number; opacity: number }
 type HullPoint<Entry> = { entry: Entry; projected: { x: number; y: number } }
-type HullPointOpts<Entry> = {
+export type HullPointOpts<Entry> = {
   scale: number // canvas container scale factor
   shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
   selected_entry: Entry | null
@@ -834,13 +834,14 @@ export function draw_hull_points<Entry extends HullEntry>(
 export function draw_pulse_overlay<Entry extends HullEntry>(
   ctx: CanvasRenderingContext2D,
   sorted_points: HullPoint<Entry>[],
-  opts: HullPointOpts<Entry> & { pulse: HullPulse },
+  opts: HullPointOpts<Entry>,
+  pulse: HullPulse,
 ): void {
   // Device pixels, while the context is scaled to CSS pixels by the DPR transform. That
   // over-covers the canvas, which is what a full clear wants.
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
   for (const point of sorted_points) {
-    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, opts.pulse)
+    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, pulse)
   }
 }
 

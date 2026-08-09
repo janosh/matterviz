@@ -128,13 +128,12 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Wheel panning has no gesture end to listen for, so it reports itself as active for a
   // short window after the last notch. Consumers use this to drop animation for the duration
   // of an interaction, and a tween restarted per notch would otherwise trail the axes.
-  let wheel_pan_until = $state(0)
+  let wheel_panning = $state(false)
   let wheel_pan_timer: ReturnType<typeof setTimeout> | undefined
   const mark_wheel_panning = () => {
-    wheel_pan_until = Date.now() + WHEEL_PAN_IDLE_MS
+    wheel_panning = true
     clearTimeout(wheel_pan_timer)
-    // a timer, not just the timestamp: nothing else would invalidate the derived read
-    wheel_pan_timer = setTimeout(() => (wheel_pan_until = 0), WHEEL_PAN_IDLE_MS)
+    wheel_pan_timer = setTimeout(() => (wheel_panning = false), WHEEL_PAN_IDLE_MS)
   }
 
   // Pan drag handler (drag direction inverted on x for natural pan feel)
@@ -305,7 +304,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // every marker per frame too, and animating that leaves them trailing the axes while
     // hit-testing already uses the live scales.
     get is_panning() {
-      return pan_drag_state !== null || touch_state !== null || wheel_pan_until > Date.now()
+      return pan_drag_state !== null || touch_state !== null || wheel_panning
     },
     get cursor() {
       if (pan_drag_state) return `grabbing`

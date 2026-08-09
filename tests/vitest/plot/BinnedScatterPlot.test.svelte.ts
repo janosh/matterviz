@@ -684,6 +684,10 @@ describe(`BinnedScatterPlot`, () => {
   // every point in the plot. Counted per canvas because both share the mocked getContext.
   test(`pulse ticks repaint only the marked-points overlay`, async () => {
     const clears = { base: 0, overlay: 0 }
+    const width_setter = vi.spyOn(HTMLCanvasElement.prototype, `width`, `set`)
+    const css_width_setter = vi.spyOn(CSSStyleDeclaration.prototype, `width`, `set`)
+    const resize_count = () =>
+      width_setter.mock.calls.length + css_width_setter.mock.calls.length
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
       function (this: HTMLCanvasElement) {
         const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`
@@ -709,11 +713,12 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
     await new Promise((resolve) => setTimeout(resolve, 60))
 
-    const settled = { ...clears }
+    const settled = { ...clears, resizes: resize_count() }
     expect(settled.overlay).toBeGreaterThan(0) // the pulse is running
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(clears.overlay).toBeGreaterThan(settled.overlay)
     expect(clears.base).toBe(settled.base) // points layer untouched between view changes
+    expect(resize_count()).toBe(settled.resizes)
   })
 
   test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {

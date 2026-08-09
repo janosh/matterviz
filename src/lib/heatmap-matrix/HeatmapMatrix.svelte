@@ -7,7 +7,7 @@
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { quickselect } from '$lib/math'
   import { clamp01 } from '$lib/utils'
-  import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
+  import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
@@ -165,10 +165,8 @@
     sticky_x_labels?: boolean
     sticky_y_labels?: boolean
     // Render only the cells inside the scroll viewport. The window comes from the container's
-    // own scroll extent, so this helps exactly as much as the grid overflows it: a matrix that
-    // fits on screen renders every cell either way. One DOM node per cell is the design, and
-    // ~10k visible cells cost a few hundred ms to mount -- shrink `tile_size` and it fits on
-    // screen sooner, not faster. Cap the axes if you need more than that.
+    // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
+    // fits on screen mounts every cell either way, at a few hundred ms per 10k.
     virtualize?: boolean
     overscan?: number
     export_formats?: HeatmapExportFormat[]
@@ -558,32 +556,37 @@
   let gap_px = $derived(parse_px_size(gap))
   // never 0: the window maths divides by it
   let tile_stride_px = $derived(Math.max(1, tile_size_px + gap_px))
-  const window_opts = $derived({
-    stride: tile_stride_px,
-    overscan,
-    keeps_empty_tracks: gaps_mode,
-  })
-  let render_vis_x = $derived(
+  type AxisWindow = {
+    track_count: number
+    scroll: number
+    grid_offset: number
+    viewport_extent: number
+  }
+  // The stride, overscan and gaps mode are the same for both axes; only the scroll geometry differs
+  const window_axis = (visible: number[], axis: AxisWindow): number[] =>
     virtualize
-      ? window_axis_tracks(vis_x, {
-          ...window_opts,
-          track_count: visible_col_count,
-          scroll: scroll_left,
-          grid_offset: grid_offset_left,
-          viewport_extent: viewport_width,
+      ? window_axis_tracks(visible, {
+          ...axis,
+          stride: tile_stride_px,
+          overscan,
+          keeps_empty_tracks: gaps_mode,
         })
-      : vis_x,
+      : visible
+  let render_vis_x = $derived(
+    window_axis(vis_x, {
+      track_count: visible_col_count,
+      scroll: scroll_left,
+      grid_offset: grid_offset_left,
+      viewport_extent: viewport_width,
+    }),
   )
   let render_vis_y = $derived(
-    virtualize
-      ? window_axis_tracks(vis_y, {
-          ...window_opts,
-          track_count: visible_row_count,
-          scroll: scroll_top,
-          grid_offset: grid_offset_top,
-          viewport_extent: viewport_height,
-        })
-      : vis_y,
+    window_axis(vis_y, {
+      track_count: visible_row_count,
+      scroll: scroll_top,
+      grid_offset: grid_offset_top,
+      viewport_extent: viewport_height,
+    }),
   )
 
   const is_selected_cell = (x_idx: number, y_idx: number): boolean =>
@@ -912,12 +915,37 @@
     brush_end = null
   }
 
-  function focus_cell(x_idx: number, y_idx: number): boolean {
-    const target = matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    if (!(target instanceof HTMLElement)) return false
+  // A cell only has a DOM node while its track is inside the virtual window, so a step across
+  // the edge has to scroll the track in and wait for the re-render before anything can take
+  // focus. Track space is the item index under `gaps` (every item keeps a track) and the
+  // position within the visible list otherwise, matching window_axis_tracks.
+  async function focus_cell(
+    x_idx: number,
+    y_idx: number,
+    x_step = 0,
+    y_step = 0,
+  ): Promise<void> {
+    const cell_node = () => matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
+    if (virtualize && matrix_el && !cell_node()) {
+      // Align to the edge the step is travelling towards, so the newly focused cell lands
+      // just inside the viewport rather than jumping it half a screen.
+      const edge = (item_idx: number, step: number, horizontal: boolean) => {
+        const positions = horizontal ? vis_x_pos_map : vis_y_pos_map
+        const grid_offset = horizontal ? grid_offset_left : grid_offset_top
+        const extent = horizontal ? viewport_width : viewport_height
+        const track = (gaps_mode ? item_idx : positions.get(item_idx)) ?? item_idx
+        const near = grid_offset + track * tile_stride_px
+        return Math.max(0, step > 0 ? near + tile_stride_px - extent : near)
+      }
+      if (x_step) matrix_el.scrollLeft = edge(x_idx, x_step, true)
+      if (y_step) matrix_el.scrollTop = edge(y_idx, y_step, false)
+      update_viewport_state()
+      await tick()
+    }
+    const target = cell_node()
+    if (!(target instanceof HTMLElement)) return
     target.focus()
     active_cell = { x_idx, y_idx }
-    return true
   }
 
   function handle_keydown(event: KeyboardEvent): void {
@@ -947,7 +975,8 @@
         return
       }
       if (is_hidden_cell(next_x, next_y)) continue
-      if (focus_cell(next_x, next_y)) return
+      void focus_cell(next_x, next_y, x_step, y_step)
+      return
     }
   }
 

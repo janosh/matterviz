@@ -179,9 +179,11 @@ describe(`window_axis_tracks`, () => {
   })
 
   test(`selects by position when empty tracks are dropped`, () => {
-    // compact mode renumbers the tracks, so the visible items are the ones at positions 10-19
-    // of a longer list — here there are none, which is exactly what the viewport shows
-    expect(window_axis_tracks(visible, { ...opts, keeps_empty_tracks: false })).toEqual([])
+    // Compact mode renumbers the ten visible items to tracks 0-9.
+    const compact = { ...opts, track_count: visible.length, scroll: 0, viewport_extent: 50 }
+    expect(window_axis_tracks(visible, { ...compact, keeps_empty_tracks: false })).toEqual([
+      10, 11, 12, 13, 14,
+    ])
   })
 
   test.each([
@@ -201,6 +203,17 @@ describe(`window_axis_tracks`, () => {
     })
     expect(windowed).toEqual(expected)
   })
+
+  // A grid offset past the viewport (wide axis labels, or an unmeasured viewport at mount)
+  // drives `end` negative. Unclamped that reaches slice() as a from-the-end index, so the
+  // window came back as everything but the last few tracks instead of nothing.
+  test.each([false, true])(
+    `renders nothing before the grid with keeps_empty_tracks=%s`,
+    (keeps_empty_tracks) => {
+      const off_screen = { ...opts, scroll: 0, grid_offset: 135, keeps_empty_tracks }
+      expect(window_axis_tracks(visible, off_screen)).toEqual([])
+    },
+  )
 })
 
 describe(`subset + ordering combined`, () => {

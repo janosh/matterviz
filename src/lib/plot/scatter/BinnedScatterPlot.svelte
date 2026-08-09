@@ -635,20 +635,14 @@
   const selected_point = $derived.by(() => {
     if (selected_point_id == null) return null
     for (const [series_idx, srs] of series.entries()) {
-      const point_idx = srs.point_ids?.indexOf(selected_point_id) ?? -1
-      if (point_idx !== -1) return { series_idx, point_idx }
+      // scanned rather than indexOf: point_ids is ArrayLike, so it may be a typed array
+      const ids = srs.point_ids ?? []
+      for (let point_idx = 0; point_idx < ids.length; point_idx++) {
+        if (ids[point_idx] === selected_point_id) return { series_idx, point_idx }
+      }
     }
     return null
   })
-
-  const resize_canvas = (node: HTMLCanvasElement | undefined) => {
-    if (!node) return
-    const dpr = globalThis.devicePixelRatio || 1
-    node.width = Math.max(1, Math.round(width * dpr))
-    node.height = Math.max(1, Math.round(height * dpr))
-    node.style.width = `${width}px`
-    node.style.height = `${height}px`
-  }
 
   // Shared by both layers so a marker looks the same whichever one draws it. `pulse` is the
   // animation phase for the selected marker, or null for a plain one.
@@ -736,19 +730,19 @@
   // The two markers that change at interaction rate. Repainting these on their own canvas is
   // what keeps a pulse tick or a pointer move off the O(all points) path above.
   function draw_marked_points(ctx: CanvasRenderingContext2D) {
-    const { series_idx = -1, point_idx = -1 } = hovered_point ?? {}
-    // selected last so its ring sits on top when it is also the hovered point
-    const marks = [
-      { series_idx, point_idx, pulse: null },
-      { ...selected_point, pulse: selected_pulse.unit },
-    ]
-    for (const mark of marks) {
-      const srs = series[mark.series_idx ?? -1]
-      const [x, y] = [srs?.x[mark.point_idx], srs?.y[mark.point_idx]]
+    if (render_mode !== `points`) return // density mode has no per-point markers
+    for (const [mark, pulse] of [
+      [hovered_point, null],
+      [selected_point, selected_pulse.unit], // selected last, so its ring sits over the hover
+    ] as const) {
+      if (!mark) continue
+      const { series_idx, point_idx } = mark
+      const srs = series[series_idx]
+      const [x, y] = [srs?.x[point_idx], srs?.y[point_idx]]
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-      const radius = point_radius_for_value(srs.size_values?.[mark.point_idx])
-      const color = srs.color ?? get_series_color(mark.series_idx)
-      draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, mark.pulse)
+      const radius = point_radius_for_value(srs.size_values?.[point_idx])
+      const color = srs.color ?? get_series_color(series_idx)
+      draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
     }
     ctx.globalAlpha = 1
   }
@@ -759,10 +753,15 @@
     draw: (ctx: CanvasRenderingContext2D) => void,
   ) => {
     if (!node || width <= 0 || height <= 0) return
-    resize_canvas(node)
+    const dpr = globalThis.devicePixelRatio || 1
+    const backing_width = Math.max(1, Math.round(width * dpr))
+    const backing_height = Math.max(1, Math.round(height * dpr))
+    if (node.width !== backing_width) node.width = backing_width
+    if (node.height !== backing_height) node.height = backing_height
+    if (node.style.width !== `${width}px`) node.style.width = `${width}px`
+    if (node.style.height !== `${height}px`) node.style.height = `${height}px`
     const ctx = node.getContext(`2d`)
     if (!ctx) return
-    const dpr = globalThis.devicePixelRatio || 1
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.save()
@@ -774,9 +773,7 @@
   }
 
   $effect(() => paint(canvas, render_mode === `points` ? draw_points : draw_density))
-  $effect(() =>
-    paint(overlay_canvas, render_mode === `points` ? draw_marked_points : () => {}),
-  )
+  $effect(() => paint(overlay_canvas, draw_marked_points))
 
   function pointer_coords(event: PointerEvent | MouseEvent): Point2D | null {
     if (!canvas) return null
@@ -886,9 +883,8 @@
   // See ScatterPlot: carried between solves so a pan/zoom frame polishes the previous layout
   const label_offsets = new Map<string, Point2D>()
 
-  // An effect rather than $derived: the solve carries `label_offsets` across frames, and a
-  // lazy derived is skipped entirely while the template renders no labels — leaving offsets
-  // from an older dataset to warm-start the next non-empty solve. Matches ScatterPlot.
+  // An effect, not $derived: the solve mutates `label_offsets`, and a lazy derived is skipped
+  // while the template renders no labels, leaving stale offsets to warm-start the next solve.
   let point_label_positions = $state<Record<string, Point2D>>({})
   $effect(() => {
     if (point_label_payloads.length === 0) {
