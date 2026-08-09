@@ -89,6 +89,14 @@ describe(`create_pulse_animation`, () => {
     flushSync()
     expect(requested_frames.size).toBe(1)
 
+    // Advance the phase so the pause below has something to preserve
+    const pulse_time = () =>
+      Number(document.querySelector<HTMLElement>(`[data-testid="pulse"]`)?.dataset.time)
+    run_frame([...requested_frames.keys()][0])
+    flushSync()
+    const paused_at = pulse_time()
+    expect(paused_at).toBeGreaterThan(0)
+
     for (const [visible, expected_frames] of [
       [false, 0],
       [true, 1],
@@ -96,6 +104,9 @@ describe(`create_pulse_animation`, () => {
       trigger_intersection(target, visible)
       flushSync()
       expect(requested_frames.size).toBe(expected_frames)
+      // Scrolling away pauses rather than resets: only going inactive rewinds the phase
+      // (covered above), so the ring resumes where it left off instead of jumping.
+      expect(pulse_time()).toBe(paused_at)
     }
     void unmount(component)
   })

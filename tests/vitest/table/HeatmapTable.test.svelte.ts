@@ -2669,6 +2669,24 @@ describe(`HeatmapTable`, () => {
       expect(spacers()).toHaveLength(0)
     })
 
+    // A narrowed result set starts at its top: keeping the old offset drops the user past
+    // the end of the matches (row 140 of 111), so they land on the tail, not the first hit.
+    it(`returns to the top of the results when the search query changes`, async () => {
+      const state = $state({ search_query: `` })
+      mount_table(bind_props({ data: many_rows, columns: two_cols, virtual: true }, state))
+      const scroller = document.querySelector<HTMLDivElement>(`.table-scroll`)
+      assert(scroller)
+      scroller.scrollTop = 150 * row_height_px
+      scroller.dispatchEvent(new Event(`scroll`))
+      await tick()
+      expect(spacers()[0].style.height).toBe(`${(150 - overscan) * row_height_px}px`)
+
+      state.search_query = `Model 1` // matches 111 of the 200 rows
+      await tick()
+      expect(scroller.scrollTop).toBe(0)
+      expect(spacers()).toHaveLength(1) // bottom only, so the window starts at row 0
+    })
+
     it.each([
       [`virtualization is off by default: every row renders`, {}, many_rows.length],
       [`custom min_window bounds the window`, { virtual: { min_window: 25 } }, 25],

@@ -3,6 +3,7 @@ import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { LabelPlacementConfig } from '$lib/plot/core/types'
 import type { AnchorInfo, LabelState } from '$lib/plot/core/utils/label-placement'
 import {
+  build_neighbor_index,
   compute_delta_energy,
   compute_label_positions,
   estimate_label_size,
@@ -12,6 +13,7 @@ import {
   rect_circle_overlap,
   rect_out_of_bounds_area,
   rect_overlap_area,
+  reset_reach,
   segment_rect_intersects,
   segments_intersect,
 } from '$lib/plot/core/utils/label-placement'
@@ -283,20 +285,28 @@ describe(`compute_delta_energy`, () => {
     bounds: 100,
   }
 
+  // The solver always supplies a neighbour index, widened to cover every label's reach from
+  // its anchor plus the move being scored. Queries would drop real neighbours otherwise.
+  const delta_energy = (
+    labels: LabelState[],
+    anchors: AnchorInfo[],
+    changed_idx: number,
+    old_state: LabelState,
+    new_state: LabelState,
+    weights: typeof all_weights,
+  ): number => {
+    const neighbors = build_neighbor_index(anchors)
+    reset_reach(neighbors, [...labels, new_state], anchors)
+    const args = [labels, anchors, changed_idx, old_state, new_state] as const
+    return compute_delta_energy(...args, weights, bounds, neighbors)
+  }
+
   test(`moving label closer to its anchor yields negative distance delta`, () => {
     const anchors = [{ x: 100, y: 100, radius: 4 }]
     const far = { x: 150, y: 150, w: 30, h: 12, anchor_idx: 0 }
     const near = { ...far, x: 105, y: 95 }
-    const delta = compute_delta_energy(
-      [far],
-      anchors,
-      0,
-      far,
-      near,
-      { ...zero_weights, distance: 1 },
-      bounds,
-    )
-    expect(delta).toBeLessThan(0)
+    const weights = { ...zero_weights, distance: 1 }
+    expect(delta_energy([far], anchors, 0, far, near, weights)).toBeLessThan(0)
   })
 
   test(`moving label into overlap with another label yields positive overlap delta`, () => {
@@ -307,15 +317,8 @@ describe(`compute_delta_energy`, () => {
     const label_a = { x: 100, y: 90, w: 30, h: 12, anchor_idx: 0 }
     const label_b = { x: 200, y: 90, w: 30, h: 12, anchor_idx: 1 }
     const moved = { ...label_a, x: 200 }
-    const delta = compute_delta_energy(
-      [label_a, label_b],
-      anchors,
-      0,
-      label_a,
-      moved,
-      { ...zero_weights, overlap: 30 },
-      bounds,
-    )
+    const weights = { ...zero_weights, overlap: 30 }
+    const delta = delta_energy([label_a, label_b], anchors, 0, label_a, moved, weights)
     expect(delta).toBeGreaterThan(0)
   })
 
@@ -323,32 +326,16 @@ describe(`compute_delta_energy`, () => {
     const anchors = [{ x: 10, y: 10, radius: 4 }]
     const inside = { x: 10, y: 10, w: 30, h: 12, anchor_idx: 0 }
     const outside = { ...inside, x: -20 }
-    const delta = compute_delta_energy(
-      [inside],
-      anchors,
-      0,
-      inside,
-      outside,
-      { ...zero_weights, bounds: 100 },
-      bounds,
-    )
-    expect(delta).toBeGreaterThan(0)
+    const weights = { ...zero_weights, bounds: 100 }
+    expect(delta_energy([inside], anchors, 0, inside, outside, weights)).toBeGreaterThan(0)
   })
 
   test(`moving label onto a marker yields positive marker delta`, () => {
     const anchors = [{ x: 100, y: 100, radius: 8 }]
     const clear = { x: 120, y: 90, w: 30, h: 12, anchor_idx: 0 }
     const on_marker = { ...clear, x: 90, y: 94 }
-    const delta = compute_delta_energy(
-      [clear],
-      anchors,
-      0,
-      clear,
-      on_marker,
-      { ...zero_weights, marker: 100 },
-      bounds,
-    )
-    expect(delta).toBeGreaterThan(0)
+    const weights = { ...zero_weights, marker: 100 }
+    expect(delta_energy([clear], anchors, 0, clear, on_marker, weights)).toBeGreaterThan(0)
   })
 
   // Same energy as compute_delta_energy but scoring every marker and label, i.e. without its
@@ -444,8 +431,10 @@ describe(`compute_delta_energy`, () => {
         x: old_state.x + (random() - 0.5) * 300,
         y: old_state.y + (random() - 0.5) * 300,
       }
+      // The index skips whole buckets and the box test then rejects single labels, so both
+      // have to clear the same bar: either could silently drop a term.
       const args = [labels, anchors, changed_idx, old_state, new_state] as const
-      expect(compute_delta_energy(...args, all_weights, bounds)).toBe(full_delta(...args))
+      expect(delta_energy(...args, all_weights)).toBe(full_delta(...args))
     }
   })
 })
@@ -737,6 +726,44 @@ describe(`compute_label_positions`, () => {
       default_bounds,
     )
     expect(Object.keys(result).toSorted()).toEqual([...kept].toSorted())
+  })
+
+  const place = (points: LabeledPoint[]) =>
+    compute_label_positions(
+      make_labeled_series(points),
+      default_config,
+      default_scales,
+      default_bounds,
+    )
+
+  // A kept non-finite anchor poisons every delta, so no move ever beats `delta < 0` and the
+  // whole scene freezes at its greedy positions -- not just the offending label.
+  test.each([
+    [`NaN`, NaN],
+    [`Infinity`, Infinity],
+  ])(`drops %s anchors without disturbing the rest`, (_name, bad) => {
+    const good: LabeledPoint[] = [
+      { x: 20, y: 20, text: `A` },
+      { x: 26, y: 24, text: `B` },
+    ]
+    const poisoned = place([good[0], { x: bad, y: 30, text: `X` }, good[1]])
+    expect(Object.keys(poisoned)).toEqual([`0-0`, `0-2`])
+    expect(Object.values(poisoned)).toEqual(Object.values(place(good)))
+  })
+
+  test(`negative label size and marker radius clamp to zero`, () => {
+    const place_sized = (width: number, height: number, radius: number) => {
+      const series = make_labeled_series([
+        { x: 20, y: 20, text: `A` },
+        { x: 30, y: 25, text: `B` },
+      ])
+      for (const pt of series[0].filtered_data ?? []) {
+        pt.point_label = { ...pt.point_label, size: { width, height } }
+        pt.point_style = { ...pt.point_style, radius }
+      }
+      return compute_label_positions(series, default_config, default_scales, default_bounds)
+    }
+    expect(place_sized(-40, -12, -5)).toEqual(place_sized(0, 0, 0))
   })
 
   test(`high distance weight keeps labels closer to anchors than high overlap weight`, () => {

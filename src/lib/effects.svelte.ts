@@ -50,7 +50,11 @@ export function create_pulse_animation(
   })
 
   $effect(() => {
-    if (!active() || !on_screen) return stop()
+    if (!active()) return stop()
+    // Going off screen only pauses, so `time` survives and the pulse resumes mid-phase.
+    // stop() would reset it, which also republishes `unit` to every consumer of a chart
+    // nobody is looking at — the repaints this gate exists to avoid.
+    if (!on_screen) return cancel_frame()
 
     const animate = () => {
       time += step

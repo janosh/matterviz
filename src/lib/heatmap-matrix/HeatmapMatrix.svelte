@@ -164,6 +164,11 @@
     search_query?: string
     sticky_x_labels?: boolean
     sticky_y_labels?: boolean
+    // Render only the cells inside the scroll viewport. The window comes from the container's
+    // own scroll extent, so this helps exactly as much as the grid overflows it: a matrix that
+    // fits on screen renders every cell either way. One DOM node per cell is the design, and
+    // ~10k visible cells cost a few hundred ms to mount -- shrink `tile_size` and it fits on
+    // screen sooner, not faster. Cap the axes if you need more than that.
     virtualize?: boolean
     overscan?: number
     export_formats?: HeatmapExportFormat[]
@@ -545,8 +550,10 @@
   // input falls back. Treating 0 as invalid inflated the stride to 12px and made the
   // virtual window cover a fraction of the cells actually on screen.
   function parse_px_size(size: string): number {
-    const parsed = Number(size.replace(`px`, ``))
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 12
+    const trimmed = size.replace(`px`, ``).trim()
+    const parsed = Number(trimmed)
+    // `trimmed &&` because Number('') is 0, which would read as a valid zero size
+    return trimmed && Number.isFinite(parsed) && parsed >= 0 ? parsed : 12
   }
 
   let tile_size_px = $derived(parse_px_size(tile_size))

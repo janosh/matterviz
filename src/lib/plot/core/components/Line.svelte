@@ -94,10 +94,13 @@
   )
 
   $effect.pre(() => {
-    if (tween_disabled) return // paths bind line_path/area_path directly below
-    // line_tween per call so a plot can disable morphing while the view is being dragged
-    tweened_line.set_target(line_path, line_tween)
-    if (show_area) tweened_area.set_target(area_path, line_tween)
+    // Tracked even while disabled: the template binds the raw paths then, but `current` would
+    // stay frozen at whatever it last animated to, so re-enabling would jump back there and
+    // morph forward again. Zero duration keeps it in step without animating. Options are per
+    // call so a plot can drop the morph while the view is being dragged.
+    const live = tween_disabled ? { duration: 0 } : line_tween
+    tweened_line.set_target(line_path, live)
+    if (show_area) tweened_area.set_target(area_path, live)
   })
 
   let line_d = $derived(tween_disabled ? line_path : tweened_line.current)

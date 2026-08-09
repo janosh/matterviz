@@ -231,6 +231,127 @@ export function generate_candidates(
   ]
 }
 
+// Anchors never move, so bucketing them once serves a whole SA run. Labels do move, but each
+// one is bucketed by its own anchor and queries grow by `reach`, the furthest any rect now
+// sits from its anchor, so a bucket that could contribute is never skipped. Hits go into a
+// bitset rather than a list purely to keep candidates in ascending index order: the sums in
+// compute_delta_energy must stay float-identical to the unpruned scan. Requires
+// labels[idx].anchor_idx === idx, which the SA loop below guarantees.
+// Internal to this module; the two builders are exported only so the equivalence test can
+// score a move the same way the solver does.
+export interface NeighborIndex {
+  size: number
+  cols: number
+  rows: number
+  origin_x: number
+  origin_y: number
+  buckets: Int32Array[]
+  reach: number
+  bits: Uint32Array
+  candidates: Int32Array
+}
+
+export function build_neighbor_index(anchors: AnchorInfo[]): NeighborIndex {
+  let origin_x = Infinity,
+    origin_y = Infinity,
+    max_x = -Infinity,
+    max_y = -Infinity
+  for (const { x, y } of anchors) {
+    origin_x = Math.min(origin_x, x)
+    origin_y = Math.min(origin_y, y)
+    max_x = Math.max(max_x, x)
+    max_y = Math.max(max_y, y)
+  }
+  // ~1 anchor per cell, measured fastest at every size against 2.25, 4 and 9 per cell: a
+  // query spans many cells, so finer cells buy a tighter box for more than they cost to walk
+  const size = Math.max(
+    1,
+    Math.sqrt(((max_x - origin_x) * (max_y - origin_y)) / anchors.length),
+  )
+  const cols = Math.floor((max_x - origin_x) / size) + 1
+  const rows = Math.floor((max_y - origin_y) / size) + 1
+  const lists: number[][] = Array.from({ length: cols * rows }, () => [])
+  anchors.forEach(({ x, y }, idx) =>
+    lists[Math.floor((y - origin_y) / size) * cols + Math.floor((x - origin_x) / size)].push(
+      idx,
+    ),
+  )
+  return {
+    size,
+    cols,
+    rows,
+    origin_x,
+    origin_y,
+    buckets: lists.map((bucket) => Int32Array.from(bucket)),
+    reach: 0,
+    bits: new Uint32Array((anchors.length + 31) >>> 5),
+    candidates: new Int32Array(anchors.length),
+  }
+}
+
+// Grows `reach` to cover `label`, which every moved label needs before the next query
+function widen_reach(index: NeighborIndex, label: LabelState, anchor: AnchorInfo): void {
+  index.reach = Math.max(
+    index.reach,
+    Math.abs(label.x - anchor.x),
+    Math.abs(label.x + label.w - anchor.x),
+    Math.abs(label.y - anchor.y),
+    Math.abs(label.y + label.h - anchor.y),
+  )
+}
+
+// Re-derives `reach` from scratch, which callers must do once before their first query.
+// Widening alone never shrinks, so one label that wandered and came back would inflate every
+// later query; call this periodically to undo that. In between, an over-estimate only costs
+// extra candidates, it can never drop a neighbour.
+export function reset_reach(
+  index: NeighborIndex,
+  labels: LabelState[],
+  anchors: AnchorInfo[],
+): void {
+  // Marker circles reach `radius` past their anchor, so that is the floor
+  index.reach = anchors.reduce((widest, { radius }) => Math.max(widest, radius), 0)
+  for (const label of labels) widen_reach(index, label, anchors[label.anchor_idx])
+}
+
+// Fills `index.candidates` with the anchors whose bucket the query box can reach, ascending
+function collect_candidates(
+  index: NeighborIndex,
+  min_x: number,
+  max_x: number,
+  min_y: number,
+  max_y: number,
+): number {
+  const { size, cols, rows, origin_x, origin_y, reach } = index
+  const { buckets, bits, candidates } = index
+  const col_lo = Math.max(0, Math.floor((min_x - reach - origin_x) / size))
+  const col_hi = Math.min(cols - 1, Math.floor((max_x + reach - origin_x) / size))
+  const row_lo = Math.max(0, Math.floor((min_y - reach - origin_y) / size))
+  const row_hi = Math.min(rows - 1, Math.floor((max_y + reach - origin_y) / size))
+  let word_lo = bits.length
+  let word_hi = -1
+  for (let row = row_lo; row <= row_hi; row++) {
+    for (let col = col_lo; col <= col_hi; col++) {
+      for (const idx of buckets[row * cols + col]) {
+        const word = idx >>> 5
+        bits[word] |= 1 << (idx & 31)
+        word_lo = Math.min(word_lo, word)
+        word_hi = Math.max(word_hi, word)
+      }
+    }
+  }
+  let count = 0
+  for (let word = word_lo; word <= word_hi; word++) {
+    let mask = bits[word]
+    bits[word] = 0
+    while (mask !== 0) {
+      candidates[count++] = (word << 5) | (31 - Math.clz32(mask & -mask))
+      mask &= mask - 1
+    }
+  }
+  return count
+}
+
 // Compute energy delta when only label at `changed_idx` moves
 export function compute_delta_energy(
   labels: LabelState[],
@@ -240,6 +361,7 @@ export function compute_delta_energy(
   new_state: LabelState,
   weights: Required<LabelPlacementWeights>,
   bounds: PlotBounds,
+  neighbors: NeighborIndex,
 ): number {
   let delta = 0
   const anchor = anchors[new_state.anchor_idx]
@@ -271,8 +393,14 @@ export function compute_delta_energy(
   const misses_box = (min_x: number, max_x: number, min_y: number, max_y: number) =>
     max_x < box_min_x || min_x > box_max_x || max_y < box_min_y || min_y > box_max_y
 
+  // Everything outside the box contributes zero, so the index skips most of it up front and
+  // the box test only has to reject what survives its buckets.
+  const { candidates } = neighbors
+  const count = collect_candidates(neighbors, box_min_x, box_max_x, box_min_y, box_max_y)
+
   // Marker overlap change
-  for (const { x, y, radius } of anchors) {
+  for (let pos = 0; pos < count; pos++) {
+    const { x, y, radius } = anchors[candidates[pos]]
     if (misses_box(x - radius, x + radius, y - radius, y + radius)) continue
     delta +=
       weights.marker *
@@ -281,7 +409,8 @@ export function compute_delta_energy(
   }
 
   // Pairwise interactions with all other labels, each reaching over its rect and its anchor
-  for (let jdx = 0; jdx < labels.length; jdx++) {
+  for (let pos = 0; pos < count; pos++) {
+    const jdx = candidates[pos]
     if (jdx === changed_idx) continue
     const other = labels[jdx]
     const anchor_j = anchors[other.anchor_idx]
@@ -430,9 +559,14 @@ export function compute_label_positions(
       const label_size =
         pt.point_label.size ??
         estimate_label_size(pt.point_label.text, pt.point_label.font_size)
-      const label_w = label_size.width
-      const label_h = label_size.height
-      const radius = pt.point_style?.radius ?? 3
+      const label_w = Math.max(0, label_size.width)
+      const label_h = Math.max(0, label_size.height)
+      const radius = Math.max(0, pt.point_style?.radius ?? 3)
+      // A non-finite anchor (log scale on a non-positive value, say) has nothing to place a
+      // label against, and keeping it would make every delta NaN -- so every SA move loses to
+      // `delta < 0` and the whole scene silently freezes at its greedy positions, not just
+      // this label. Degenerate `plot_bounds` (max < min) is separate and not handled here.
+      if (![anchor_x, anchor_y, label_w, label_h, radius].every(Number.isFinite)) continue
 
       label_infos.push({
         id: `${pt.series_idx}-${pt.point_idx}`,
@@ -531,7 +665,11 @@ export function compute_label_positions(
   const old_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
   const new_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
 
+  const neighbors = build_neighbor_index(anchors)
+
   for (let step = 0; step < total_steps; step++) {
+    // once per sweep, which also seeds the reach on step 0
+    if (step % num_labels === 0) reset_reach(neighbors, labels, anchors)
     const temperature = Math.max(0.001, 1.0 - step * cooling_rate)
     const label_idx = Math.floor(next_random() * num_labels)
     const current = labels[label_idx]
@@ -560,11 +698,13 @@ export function compute_label_positions(
       new_scratch,
       weights,
       plot_bounds,
+      neighbors,
     )
 
     if (delta < 0 || next_random() < Math.exp(-delta / (temperature * 10 + 0.1))) {
       current.x = new_scratch.x
       current.y = new_scratch.y
+      widen_reach(neighbors, current, anchors[label_idx])
     }
   }
 

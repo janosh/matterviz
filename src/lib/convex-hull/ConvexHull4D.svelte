@@ -1,12 +1,7 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import {
-    add_alpha,
-    is_dark_mode,
-    PLOT_COLORS,
-    vesta_hex,
-    watch_dark_mode,
-  } from '$lib/colors'
+  import { add_alpha, PLOT_COLORS, vesta_hex } from '$lib/colors'
+  import { create_canvas_colors } from './canvas-colors.svelte'
   import { normalize_show_controls } from '$lib/controls'
   import { sanitize_html } from '$lib/sanitize'
   import { Spinner } from '$lib/feedback'
@@ -98,22 +93,10 @@
     colors: { ...default_hull_config.colors, ...config.colors },
   })
 
-  // Cache resolved canvas colors and refresh them only when the theme changes.
-  const initial_text_color = helpers.get_canvas_text_color(is_dark_mode())
-  let text_color = $state(initial_text_color)
-  let hull_edge_color = $state(initial_text_color)
-  function refresh_canvas_colors(dark_mode: boolean): void {
-    const next_text_color = helpers.get_canvas_text_color(dark_mode)
-    text_color = next_text_color
-    const resolved_edge_color = canvas
-      ? getComputedStyle(canvas).getPropertyValue(`--hull-edge-color`).trim()
-      : ``
-    hull_edge_color = resolved_edge_color || next_text_color
-  }
-  $effect(() => {
-    refresh_canvas_colors(is_dark_mode())
-    return watch_dark_mode(refresh_canvas_colors)
-  })
+  // Resolved per theme change rather than per draw (see create_canvas_colors)
+  const canvas_colors = create_canvas_colors(() => canvas)
+  const text_color = $derived(canvas_colors.text)
+  const hull_edge_color = $derived(canvas_colors.edge)
 
   // Shared reactive data pipeline (temperature → gas → energy mode → hull data → threshold)
   // Explicit generic breaks the circular type inference through the all_enriched_entries thunk
@@ -211,6 +194,8 @@
 
   let canvas = $state<HTMLCanvasElement>()
   let ctx: CanvasRenderingContext2D | null = null
+  let overlay_canvas = $state<HTMLCanvasElement>()
+  let overlay_ctx: CanvasRenderingContext2D | null = null
 
   // Camera state - following Materials Project's 3D camera setup
   let camera = $state({
@@ -227,9 +212,12 @@
     wheel_clamp: [1.0, 15],
     fullscreen_bg_var: `--hull-4d-bg-fullscreen`,
     canvas: () => canvas,
+    overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
     ctx: () => ctx,
     set_ctx: (context) => (ctx = context),
+    overlay_ctx: () => overlay_ctx,
+    set_overlay_ctx: (context) => (overlay_ctx = context),
     set_canvas_dims: (dims) => (canvas_dims = dims),
     visible_entries: () => hull_data.visible_entries,
     plot_entries: () => plot_entries,
@@ -247,6 +235,7 @@
     project_point: project_3d_point,
     extract_structure: extract_structure_from_entry,
     render_frame,
+    render_overlay_frame,
     on_drag: (dx, dy, panning) => {
       if (panning) {
         camera.center_x += dx
@@ -273,16 +262,17 @@
       l: () => (show_stable_labels = !show_stable_labels),
     }),
   })
-  const { render_once } = interactions
+  const { render_once, render_overlay_once } = interactions
   const sorted_points_cache = $derived(interactions.sorted_points_cache)
 
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
 
-  // Pulsating highlight for selection/highlights. Each tick repaints the whole hull, so gate on `wrapper`
+  // Pulsating highlight for selection/highlights. Ticks repaint only the overlay canvas,
+  // and the loop pauses entirely while `wrapper` is off screen.
   const pulse = create_pulse_animation(
     () => selected_entry !== null || highlighted_entries.length > 0,
-    { on_tick: render_once, element: () => wrapper },
+    { on_tick: render_overlay_once, element: () => wrapper },
   )
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
@@ -296,7 +286,9 @@
   // Re-render when important state changes
   $effect(() => {
     // oxfmt-ignore
-    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, hull_edge_color, elements] // track reactively
+    // selected_entry/highlighted_entries included: pulsing points move to the overlay
+    // canvas, so the hull has to repaint (once) whenever which points those are changes
+    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_data.visible_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, selected_entry, text_color, hull_edge_color, elements] // track reactively
 
     render_once()
   })
@@ -427,7 +419,7 @@
 
     // Reset dash and stroke for subsequent drawings
     ctx.setLineDash([])
-    ctx.strokeStyle = hull_edge_color
+    ctx.strokeStyle = hull_edge_color || text_color
 
     // Corner element labels: place just outside each vertex, along the centroid→vertex line
     if (elements.length === 4) {
@@ -608,18 +600,26 @@
     }
   }
 
+  const hull_point_opts = () => ({
+    scale: canvas_dims.scale,
+    shadow_factor: 2,
+    selected_entry,
+    is_highlighted,
+    get_point_color,
+    highlight_style: merged_highlight_style,
+  })
+
+  function render_overlay_frame(): void {
+    if (!overlay_ctx) return
+    helpers.draw_pulse_overlay(overlay_ctx, sorted_points_cache, {
+      ...hull_point_opts(),
+      pulse: { time: pulse.time, opacity: pulse_opacity },
+    })
+  }
+
   function draw_data_points(): void {
     if (!ctx || sorted_points_cache.length === 0) return
-    helpers.draw_hull_points(ctx, sorted_points_cache, {
-      scale: canvas_dims.scale,
-      shadow_factor: 2,
-      selected_entry,
-      is_highlighted,
-      get_point_color,
-      highlight_style: merged_highlight_style,
-      pulse_time: pulse.time,
-      pulse_opacity,
-    })
+    helpers.draw_hull_points(ctx, sorted_points_cache, hull_point_opts())
 
     if (!merged_config.show_labels) return
 
@@ -740,6 +740,7 @@
     aria-label={merged_controls.title || phase_stats?.chemical_system || `4D Convex Hull`}
     {...interactions.canvas_handlers}
   ></canvas>
+  <canvas bind:this={overlay_canvas} class="pulse-overlay" aria-hidden="true"></canvas>
 
   {#if entries.length === 0}
     <Spinner
@@ -841,5 +842,10 @@
   }
   canvas:active {
     cursor: grabbing;
+  }
+  canvas.pulse-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
   }
 </style>

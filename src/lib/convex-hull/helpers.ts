@@ -745,74 +745,102 @@ export function get_canvas_text_color(
   return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
 }
 
-// Draw depth-sorted hull points with shadow, selection/highlight effects and marker
-// symbols. Shared by the ConvexHull3D/4D canvas renderers (which differ only in
-// shadow_factor and in how labels are drawn afterwards).
-export function draw_hull_points<
-  Entry extends PhaseData & { z: number; size?: number; marker?: MarkerSymbol },
->(
+type HullEntry = PhaseData & { z: number; size?: number; marker?: MarkerSymbol }
+type HullPulse = { time: number; opacity: number }
+type HullPoint<Entry> = { entry: Entry; projected: { x: number; y: number } }
+type HullPointOpts<Entry> = {
+  scale: number // canvas container scale factor
+  shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
+  selected_entry: Entry | null
+  is_highlighted: (entry: Entry) => boolean
+  get_point_color: (entry: Entry) => string
+  highlight_style: Required<HighlightStyle>
+}
+
+// Points whose rings animate. same_entry, not raw entry_id comparison: undefined ===
+// undefined would mark EVERY id-less point as selected.
+const is_pulsing = <Entry extends HullEntry>(
+  entry: Entry,
+  opts: HullPointOpts<Entry>,
+): boolean => same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
+
+// One depth-sorted point: shadow, animated highlight rings (only when `pulse` is given)
+// and the marker symbol.
+function draw_hull_point<Entry extends HullEntry>(
   ctx: CanvasRenderingContext2D,
-  sorted_points: { entry: Entry; projected: { x: number; y: number } }[],
-  opts: {
-    scale: number // canvas container scale factor
-    shadow_factor: number // scales the depth-based shadow offset (0.1 for 3D, 2 for 4D)
-    selected_entry: Entry | null
-    is_highlighted: (entry: Entry) => boolean
-    get_point_color: (entry: Entry) => string
-    highlight_style: Required<HighlightStyle>
-    pulse_time: number
-    pulse_opacity: number
-  },
+  { entry, projected }: HullPoint<Entry>,
+  opts: HullPointOpts<Entry>,
+  pulse?: HullPulse,
 ): void {
-  const {
-    scale,
-    shadow_factor,
-    selected_entry,
-    highlight_style,
-    is_highlighted,
-    get_point_color,
-    pulse_time,
-    pulse_opacity,
-  } = opts
-  for (const { entry, projected } of sorted_points) {
-    const is_stable = entry_is_stable(entry)
-    const entry_highlighted = is_highlighted(entry)
-    const color = get_point_color(entry)
-    // `||` (not ??) on purpose: size=0 / empty marker fall back to defaults
-    // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-    const size = (entry.size || (is_stable ? 6 : 4)) * scale
-    // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-    const marker = entry.marker || `circle`
+  const { scale, shadow_factor, highlight_style, is_highlighted, get_point_color } = opts
+  const is_stable = entry_is_stable(entry)
+  const entry_highlighted = is_highlighted(entry)
+  const color = get_point_color(entry)
+  // `||` (not ??) on purpose: size=0 / empty marker fall back to defaults
+  // oxlint-disable-next-line typescript/prefer-nullish-coalescing
+  const size = (entry.size || (is_stable ? 6 : 4)) * scale
+  // oxlint-disable-next-line typescript/prefer-nullish-coalescing
+  const marker = entry.marker || `circle`
 
-    // Shadow
-    const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
-    ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
-    const shadow_path = create_marker_path(size * 0.8, marker)
-    ctx.save()
-    ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
-    ctx.fill(shadow_path)
-    ctx.restore()
+  // Shadow
+  const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
+  ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
+  const shadow_path = create_marker_path(size * 0.8, marker)
+  ctx.save()
+  ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
+  ctx.fill(shadow_path)
+  ctx.restore()
 
-    // Highlights (same_entry, not raw entry_id comparison: undefined === undefined
-    // would mark EVERY id-less point as selected)
-    if (same_entry(selected_entry, entry)) {
-      draw_selection_highlight(ctx, projected, size, scale, pulse_time, pulse_opacity)
+  if (pulse) {
+    if (same_entry(opts.selected_entry, entry)) {
+      draw_selection_highlight(ctx, projected, size, scale, pulse.time, pulse.opacity)
     }
     if (entry_highlighted) {
-      draw_highlight_effect(ctx, projected, size, scale, pulse_time, highlight_style)
+      draw_highlight_effect(ctx, projected, size, scale, pulse.time, highlight_style)
     }
+  }
 
-    // Main point with marker symbol
-    ctx.fillStyle =
-      entry_highlighted && highlight_style.effect === `color` ? highlight_style.color : color
-    ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
-    ctx.lineWidth = 0.5 * scale
-    const marker_path = create_marker_path(size, marker)
-    ctx.save()
-    ctx.translate(projected.x, projected.y)
-    ctx.fill(marker_path)
-    ctx.stroke(marker_path)
-    ctx.restore()
+  // Main point with marker symbol
+  ctx.fillStyle =
+    entry_highlighted && highlight_style.effect === `color` ? highlight_style.color : color
+  ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
+  ctx.lineWidth = 0.5 * scale
+  const marker_path = create_marker_path(size, marker)
+  ctx.save()
+  ctx.translate(projected.x, projected.y)
+  ctx.fill(marker_path)
+  ctx.stroke(marker_path)
+  ctx.restore()
+}
+
+// Draw the depth-sorted hull points that never change between animation frames. Shared by
+// the ConvexHull3D/4D canvas renderers (which differ only in shadow_factor and in how
+// labels are drawn afterwards).
+export function draw_hull_points<Entry extends HullEntry>(
+  ctx: CanvasRenderingContext2D,
+  sorted_points: HullPoint<Entry>[],
+  opts: HullPointOpts<Entry>,
+): void {
+  for (const point of sorted_points) {
+    if (is_pulsing(point.entry, opts)) continue // drawn on the pulse overlay instead
+    draw_hull_point(ctx, point, opts)
+  }
+}
+
+// Repaint just the selected/highlighted points onto a transparent canvas stacked over the
+// hull. The pulse ticks every frame, and rebuilding faces, points and labels that often
+// costs milliseconds per frame; this touches a handful of points instead. The marker is
+// redrawn on top of its own ring so the point still reads as sitting inside it.
+export function draw_pulse_overlay<Entry extends HullEntry>(
+  ctx: CanvasRenderingContext2D,
+  sorted_points: HullPoint<Entry>[],
+  opts: HullPointOpts<Entry> & { pulse: HullPulse },
+): void {
+  // Device pixels, while the context is scaled to CSS pixels by the DPR transform. That
+  // over-covers the canvas, which is what a full clear wants.
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  for (const point of sorted_points) {
+    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, opts.pulse)
   }
 }
 

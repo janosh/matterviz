@@ -10,10 +10,15 @@ export interface CanvasInteractionInputs {
   fullscreen_bg_var: string // e.g. `--hull-3d-bg-fullscreen`
   // Reactive getters / element refs
   canvas: () => HTMLCanvasElement | undefined
+  // Transparent canvas stacked over `canvas`, holding only the pulsing highlight rings so
+  // the animation loop never repaints the hull itself. Sized and cleared here.
+  overlay_canvas: () => HTMLCanvasElement | undefined
   wrapper: () => HTMLDivElement | undefined
   // Canvas 2D context + dims live in the component (read by its draw functions)
   ctx: () => CanvasRenderingContext2D | null
   set_ctx: (ctx: CanvasRenderingContext2D | null) => void
+  overlay_ctx: () => CanvasRenderingContext2D | null
+  set_overlay_ctx: (ctx: CanvasRenderingContext2D | null) => void
   set_canvas_dims: (dims: { width: number; height: number; scale: number }) => void
   visible_entries: () => ConvexHullEntry[]
   plot_entries: () => ConvexHullEntry[]
@@ -33,6 +38,7 @@ export interface CanvasInteractionInputs {
   project_point: (x: number, y: number, z: number) => { x: number; y: number; depth: number }
   extract_structure: (entry: ConvexHullEntry) => AnyStructure | null
   render_frame: () => void
+  render_overlay_frame: () => void
   on_drag: (dx: number, dy: number, panning: boolean) => void
   on_fullscreen_change: () => void // e.g. reset camera pan center
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
@@ -43,6 +49,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   // Performance optimization: coalesce renders into one rAF
   let frame_id = 0
+  let overlay_frame_id = 0
 
   // Interaction state
   let is_dragging = $state(false)
@@ -229,7 +236,17 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (frame_id) return
     frame_id = requestAnimationFrame(() => {
       inputs.render_frame()
+      inputs.render_overlay_frame() // same projections, so redraw both together
       frame_id = 0
+    })
+  }
+
+  // Pulse ticks route here instead of render_once: repaints the highlight rings only.
+  function render_overlay_once() {
+    if (frame_id || overlay_frame_id) return
+    overlay_frame_id = requestAnimationFrame(() => {
+      inputs.render_overlay_frame()
+      overlay_frame_id = 0
     })
   }
 
@@ -241,21 +258,28 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     const rect = container?.getBoundingClientRect()
     const [width, height] = rect ? [rect.width, rect.height] : [400, 400]
 
-    // Only update canvas dimensions if they actually changed
-    // (assigning canvas.width/height clears the canvas even if values are the same)
     const new_width = Math.max(0, Math.round(width * dpr))
     const new_height = Math.max(0, Math.round(height * dpr))
-    if (!inputs.ctx() || canvas.width !== new_width || canvas.height !== new_height) {
-      canvas.width = new_width
-      canvas.height = new_height
-      const ctx = canvas.getContext(`2d`)
-      inputs.set_ctx(ctx)
+    // Assigning width/height clears a canvas even when unchanged, so only resize on a real
+    // change; the DPR transform then lets draw code work in CSS pixels.
+    const size_canvas = (
+      node: HTMLCanvasElement | undefined,
+      existing: CanvasRenderingContext2D | null,
+      set_ctx: (ctx: CanvasRenderingContext2D | null) => void,
+    ) => {
+      if (!node || (existing && node.width === new_width && node.height === new_height)) return
+      node.width = new_width
+      node.height = new_height
+      const ctx = node.getContext(`2d`)
+      set_ctx(ctx)
       if (ctx) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         ctx.imageSmoothingEnabled = true
         ctx.imageSmoothingQuality = `high`
       }
     }
+    size_canvas(canvas, inputs.ctx(), inputs.set_ctx)
+    size_canvas(inputs.overlay_canvas(), inputs.overlay_ctx(), inputs.set_overlay_ctx)
     inputs.set_canvas_dims({ width, height, scale: Math.min(width, height) / 600 })
     render_once()
   }
@@ -274,6 +298,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
     return () => {
       if (frame_id) cancelAnimationFrame(frame_id)
+      if (overlay_frame_id) cancelAnimationFrame(overlay_frame_id)
       resize_observer.disconnect() // Cleanup on unmount
     }
   })
@@ -346,5 +371,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     handle_mouse_up,
     close_structure_popup,
     render_once,
+    render_overlay_once,
   }
 }
