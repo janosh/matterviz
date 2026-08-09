@@ -1,6 +1,4 @@
-// Build-time helpers shared by the root vite config and every extension's config. They live
-// at the repo root rather than under src/lib because svelte-package copies src/lib into the
-// published dist, and these are build tooling, not library code.
+// Build helpers shared by root and extension Vite configs, outside the published src/lib.
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -12,24 +10,20 @@ export const split_query = (path: string): [clean: string, query: string] => {
   return [clean, path.slice(clean.length)]
 }
 
-export const resolve_from_importer = (clean: string, importer?: string) =>
+export const resolve_from_importer = (clean: string, importer?: string): string =>
   importer ? resolve(dirname(split_query(importer)[0]), clean) : clean
 
 // Transparently import .json.gz files as ES modules.
-// `resolve_queries` is for the root config, which pairs this with a raw_text_plugin that
-// claims `?raw` and a Vite built-in that claims `?url`: there, queried ids must be left to
-// them and bare ones resolved against their importer. Extension configs have no such
-// neighbour, so they take ids as given.
+// Query-aware mode leaves ?raw and ?url to peer plugins and resolves bare importer paths.
 export function vite_plugin_json_gz({
   resolve_queries = false,
 }: { resolve_queries?: boolean } = {}): Plugin {
   let is_build = false
-  // the path to read, or null when the id belongs to another plugin
+  // Path to read, or null when the id belongs to another plugin.
   const claim = (path: string): string | null => {
-    if (!resolve_queries) return path.endsWith(`.json.gz`) ? path : null
-    const [clean, query] = split_query(path)
-    if (query.includes(`raw`) || query.includes(`url`)) return null
-    return clean.endsWith(`.json.gz`) ? clean : null
+    const [clean, query] = resolve_queries ? split_query(path) : [path, ``]
+    const delegated = query.includes(`raw`) || query.includes(`url`)
+    return !delegated && clean.endsWith(`.json.gz`) ? clean : null
   }
   return {
     name: `vite-plugin-json-gz`,
@@ -61,14 +55,8 @@ export function vite_plugin_json_gz({
   }
 }
 
-// Redirect bare `three` — which three/examples/jsm addons and @threlte import, but we don't —
-// onto the WebGPU build via a shim supplying the WebGL-only exports it lacks, so the bundle
-// carries one copy of three. Exact-match regex: three/webgpu, three/tsl and three/examples/*
-// must resolve normally. Resolved against this file so every config gets the same path
-// regardless of how deep it sits.
-// Typed structurally rather than as vite's `Alias`: the configs are spread across vite and
-// vite-plus, whose bundled copies of that type are distinct instances, and comparing the two
-// blows TS's instantiation depth.
+// Redirect bare `three` to the WebGPU compatibility shim without matching subpaths.
+// Use a structural type because separate Vite/Vite+ Alias types exceed TS's instantiation depth.
 export const three_compat_alias: { find: RegExp; replacement: string } = {
   find: /^three$/,
   replacement: resolve(import.meta.dirname, `src/lib/scene/three-compat.ts`),

@@ -9,11 +9,8 @@ import {
 } from '$lib/constants'
 import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
-// Formats with no decoder. Kept because a custom editor at priority `option` only adds a
-// "Reopen Editor With…" entry, and MatterViz answers .dcd with "convert with MDAnalysis
-// first" — more use than the byte soup the default editor shows. JupyterLab deliberately
-// does NOT claim these: there its file types are `defaultFor`, so a claim displaces a
-// working handler rather than sitting beside it.
+// Formats with no decoder still get a useful "Reopen Editor With…" conversion hint.
+// JupyterLab does not claim these because its file types displace the default handler.
 const HINT_ONLY_EXTENSIONS = [`dcd`, `xtc`, `trr`]
 
 // Heuristic selectors stay literal. They are narrower than the keyword lists in
@@ -26,6 +23,7 @@ const KEYWORD_SELECTORS = [
 ]
 
 const brace = (names: string[]) => `{${[...new Set(names)].sort().join(`,`)}}`
+const with_gzip = (pattern: string): string[] => [pattern, `${pattern}.gz`]
 const vscode_scalar_type = (value: unknown) =>
   typeof value === `boolean` || typeof value === `number` ? typeof value : `string`
 const vscode_setting_type = (value: unknown) =>
@@ -50,83 +48,67 @@ const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
     ...HINT_ONLY_EXTENSIONS,
   ])}`
   return [
-    ext_glob,
-    `${ext_glob}.gz`,
+    ...with_gzip(ext_glob),
     ...KEYWORD_SELECTORS,
-    stem_glob,
-    `${stem_glob}.gz`,
-    `*[._-]${stem_glob}`,
-    `*[._-]${stem_glob}.gz`,
-    `${decorated_stem_glob}[._-]*`,
-    `${decorated_stem_glob}[._-]*.gz`,
-    `*[._-]${decorated_stem_glob}[._-]*`,
-    `*[._-]${decorated_stem_glob}[._-]*.gz`,
+    ...with_gzip(stem_glob),
+    ...with_gzip(`*[._-]${stem_glob}`),
+    ...with_gzip(`${decorated_stem_glob}[._-]*`),
+    ...with_gzip(`*[._-]${decorated_stem_glob}[._-]*`),
   ].map((filenamePattern) => ({ filenamePattern }))
 }
 
 // VSCode configuration generator that derives from your central settings schema
-function sync_package_config() {
-  const script_dir = import.meta.dirname
-  const package_path = resolve(script_dir, `..`, `package.json`)
-  const package_content = JSON.parse(readFileSync(package_path, `utf-8`))
+function sync_package_config(): void {
+  const package_path = resolve(import.meta.dirname, `..`, `package.json`)
+  const package_text = readFileSync(package_path, `utf-8`)
+  const package_content = JSON.parse(package_text)
 
   // Auto-generate VSCode settings from SETTINGS_CONFIG
   const vscode_config: Record<string, unknown> = {}
 
   // Helper to process settings schema
-  function process_setting_schema(schema: SettingType, key_path: string) {
-    if (schema && typeof schema === `object` && `value` in schema) {
-      // Skip settings that don't apply to editor context
-      if (schema.context && ![`editor`, `all`].includes(schema.context)) return
-
-      const config: Record<string, unknown> = {
-        type: vscode_setting_type(schema.value),
-        default: schema.value,
-        description: schema.description,
-      }
-
-      // Add constraints from schema
-      if (schema.minimum !== undefined) config.minimum = schema.minimum
-      if (schema.maximum !== undefined) config.maximum = schema.maximum
-      if (schema.multipleOf !== undefined) config.multipleOf = schema.multipleOf
-      if (schema.minItems !== undefined) config.minItems = schema.minItems
-      if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
-      if (schema.enum) config.enum = Object.keys(schema.enum)
-
-      // Add array item type for arrays. Empty-array defaults (e.g. the polyhedra
-      // element lists) can't be introspected, so default those to string.
-      if (Array.isArray(schema.value)) {
-        const first_item = schema.value[0]
-        config.items = { type: vscode_scalar_type(first_item) }
-      }
-
-      vscode_config[key_path] = config
-    } else if (schema && typeof schema === `object`) {
-      // This is a nested object, recurse
-      Object.entries(schema).forEach(([key, value]) => {
+  function process_setting_schema(schema: SettingType, key_path: string): void {
+    if (!schema || typeof schema !== `object`) return
+    if (!(`value` in schema)) {
+      for (const [key, value] of Object.entries(schema)) {
         const nested_key = key_path ? `${key_path}.${key}` : key
         process_setting_schema(value as SettingType, nested_key)
-      })
+      }
+      return
     }
+    if (schema.context && ![`editor`, `all`].includes(schema.context)) return
+
+    const config: Record<string, unknown> = {
+      type: vscode_setting_type(schema.value),
+      default: schema.value,
+      description: schema.description,
+    }
+    if (schema.minimum !== undefined) config.minimum = schema.minimum
+    if (schema.maximum !== undefined) config.maximum = schema.maximum
+    if (schema.multipleOf !== undefined) config.multipleOf = schema.multipleOf
+    if (schema.minItems !== undefined) config.minItems = schema.minItems
+    if (schema.maxItems !== undefined) config.maxItems = schema.maxItems
+    if (schema.enum) config.enum = Object.keys(schema.enum)
+
+    // Empty-array defaults cannot reveal an item type, so default those to string.
+    if (Array.isArray(schema.value)) {
+      config.items = { type: vscode_scalar_type(schema.value[0]) }
+    }
+    vscode_config[key_path] = config
   }
 
-  // Process all settings from SETTINGS_CONFIG
-  Object.entries(SETTINGS_CONFIG).forEach(([key, value]) => {
-    const base_key = `matterviz.${key}`
-    process_setting_schema(value, base_key)
-  })
+  for (const [key, value] of Object.entries(SETTINGS_CONFIG)) {
+    process_setting_schema(value, `matterviz.${key}`)
+  }
 
   // Preserve existing non-schema settings (like auto_render, theme, etc.)
   const existing_props = package_content.contributes?.configuration?.properties ?? {}
-  const preserved_props: Record<string, unknown> = {}
-
-  for (const [key, value] of Object.entries(existing_props)) {
-    // Preserve settings that aren't auto-generated from SETTINGS_CONFIG
-    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some((config_key) =>
-      key.startsWith(`matterviz.${config_key}`),
-    )
-    if (!is_schema_setting) preserved_props[key] = value
-  }
+  const schema_prefixes = Object.keys(SETTINGS_CONFIG).map((key) => `matterviz.${key}`)
+  const preserved_props = Object.fromEntries(
+    Object.entries(existing_props).filter(([key]) =>
+      schema_prefixes.every((prefix) => !key.startsWith(prefix)),
+    ),
+  )
 
   // Update package.json with generated + preserved settings
   package_content.contributes ??= {}
@@ -149,12 +131,12 @@ function sync_package_config() {
   // --check: fail instead of writing, so CI catches a package.json that no longer matches
   // the shared lists (the settings half was only ever regenerated by a local prebuild).
   if (process.argv.includes(`--check`)) {
-    if (updated === readFileSync(package_path, `utf-8`)) {
-      console.info(`✅ package.json is in sync with SETTINGS_CONFIG and $lib file types`)
-      return
+    if (updated !== package_text) {
+      console.error(`❌ package.json is stale — run \`pnpm -C extensions/vscode sync-config\``)
+      process.exit(1)
     }
-    console.error(`❌ package.json is stale — run \`pnpm -C extensions/vscode sync-config\``)
-    process.exit(1)
+    console.info(`✅ package.json is in sync with SETTINGS_CONFIG and $lib file types`)
+    return
   }
 
   writeFileSync(package_path, updated, `utf-8`)
@@ -163,5 +145,4 @@ function sync_package_config() {
   )
 }
 
-// Run the sync
 sync_package_config()

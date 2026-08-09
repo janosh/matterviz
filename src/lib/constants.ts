@@ -12,18 +12,16 @@ export const BOHR_TO_ANGSTROM = 0.529177210544
 
 // compression formats and their file extensions
 export const COMPRESSION_FORMATS = {
-  gzip: [`.gz`, `.gzip`] as const,
-  deflate: [`.deflate`] as const,
-  'deflate-raw': [`.z`] as const,
-  zip: [`.zip`] as const, // Browser DecompressionStream doesn't support ZIP
-  xz: [`.xz`] as const, // Browser DecompressionStream doesn't support XZ
-  bz2: [`.bz2`] as const, // Browser DecompressionStream doesn't support BZ2
+  gzip: [`.gz`, `.gzip`],
+  deflate: [`.deflate`],
+  'deflate-raw': [`.z`],
+  zip: [`.zip`], // Browser DecompressionStream doesn't support ZIP
+  xz: [`.xz`], // Browser DecompressionStream doesn't support XZ
+  bz2: [`.bz2`], // Browser DecompressionStream doesn't support BZ2
 } as const satisfies Record<string, readonly string[]>
 
 // All detectable compression extensions
-export const COMPRESSION_EXTENSIONS = Object.freeze(
-  Object.values(COMPRESSION_FORMATS).flat(),
-) as readonly string[]
+export const COMPRESSION_EXTENSIONS = Object.freeze(Object.values(COMPRESSION_FORMATS).flat())
 
 // Keywords that indicate a file is likely a trajectory file.
 // `dpmd` (DeePMD trajectory outputs) precedes `md` so the longer token wins.
@@ -114,16 +112,12 @@ export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
 // JupyterLab alone left .xtc unclaimed. Listed without a leading dot, the form hosts want.
 
 // Formats a UTF-8 decode can hand straight to a parser.
-export const TEXT_VIEWER_EXTENSIONS = Object.freeze([
-  ...new Set(
-    [
-      ...STRUCTURE_EXTENSIONS,
-      ...XYZ_EXTENSIONS,
-      `.lammpstrj`, // the one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary
-      ...FERMI_FILE_EXTENSIONS,
-    ].map((ext) => ext.slice(1)),
+// .lammpstrj is the one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary.
+export const TEXT_VIEWER_EXTENSIONS = Object.freeze(
+  [...STRUCTURE_EXTENSIONS, ...XYZ_EXTENSIONS, `.lammpstrj`, ...FERMI_FILE_EXTENSIONS].map(
+    (ext) => ext.slice(1),
   ),
-])
+)
 
 // Binary containers MatterViz can actually decode, i.e. the payloads a host must hand over
 // as bytes rather than text. .xtc/.dcd/.trr are absent on purpose: there is no reader for

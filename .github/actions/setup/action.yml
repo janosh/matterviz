@@ -24,9 +24,12 @@ runs:
         # block-exotic-subdeps: these link matterviz from source, so its git-hosted
         # svelte-widgets arrives as a subdependency, which pnpm blocks by default. Has to be
         # a flag rather than pnpm-workspace.yaml, which --ignore-workspace also skips.
-        # strict-dep-builds: @jupyterlab/application pulls in fontawesome, whose install
-        # script pnpm declines to run unattended and then exits non-zero over.
+        # strict-dep-builds: only jupyterlab needs it off — @jupyterlab/application pulls in
+        # fontawesome, whose install script pnpm declines to run unattended and then exits
+        # non-zero over. Left on elsewhere so a real ignored-build failure stays visible.
         for ext in $EXTENSIONS; do
+          if [ "$ext" = jupyterlab ]; then strict_builds=false; else strict_builds=true; fi
           pnpm -C "extensions/$ext" install --ignore-workspace \
-            --config.block-exotic-subdeps=false --config.strict-dep-builds=false
+            --config.block-exotic-subdeps=false \
+            --config.strict-dep-builds="$strict_builds"
         done

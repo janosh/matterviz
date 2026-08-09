@@ -5,36 +5,32 @@ import json
 from pathlib import Path
 from typing import Any
 
+# pymatgen property name -> MatterViz property name. `_states` values are lists of
+# oxidation states, which pymatgen leaves unordered.
+KEY_MAP = {
+    "Mendeleev no": "mendeleev_number",
+    "Oxidation states": "oxidation_states",
+    "Common oxidation states": "common_oxidation_states",
+    "ICSD oxidation states": "icsd_oxidation_states",
+    "Ionic radii": "ionic_radii",
+    "Shannon radii": "shannon_radii",
+}
+
 
 def extract_pymatgen_properties(
     pymatgen_data: dict[str, Any], symbol: str
 ) -> dict[str, Any]:
     """Extract relevant properties from pymatgen data for a given element."""
     elem_data = pymatgen_data.get(symbol, {})
-    key_map = {
-        "Mendeleev no": "mendeleev_number",
-        "Oxidation states": "oxidation_states",
-        "Common oxidation states": "common_oxidation_states",
-        "ICSD oxidation states": "icsd_oxidation_states",
-        "Ionic radii": "ionic_radii",
-        "Shannon radii": "shannon_radii",
-    }
-    result = {
+    return {
         output_key: (
             sorted(elem_data[input_key])
             if output_key.endswith("_states")
             else elem_data[input_key]
         )
-        for input_key, output_key in key_map.items()
+        for input_key, output_key in KEY_MAP.items()
         if input_key in elem_data
     }
-    if "ionic_radii" in result:
-        result["ionic_radii"] = {
-            str(oxi_state): radius
-            for oxi_state, radius in result["ionic_radii"].items()
-        }
-
-    return result
 
 
 def main() -> None:

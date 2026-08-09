@@ -13,6 +13,10 @@ if (![`site`, `polyhedra`].includes(profile)) {
 
 const port = process.env.PORT ?? (profile === `polyhedra` ? `3017` : `3000`)
 const base_url = `http://localhost:${port}`
+const output_dir =
+  profile === `site`
+    ? `/tmp/matterviz-screenshots`
+    : (process.argv[3] ?? `/tmp/polyhedra-shots`)
 
 const navigate = async (page, url) => {
   const response = await page.goto(url, { waitUntil: `networkidle` })
@@ -57,7 +61,7 @@ const capture_site = async (browser) => {
       await page.locator(selector).click({ timeout: 10_000 })
       await page.waitForTimeout(300)
     }
-    if (wait) await page.waitForTimeout(wait)
+    await page.waitForTimeout(wait)
 
     const png_path = `${output_dir}/${today}-${name}.png`
     const webp_path = `${output_dir}/${today}-${name}.webp`
@@ -75,16 +79,17 @@ const capture_site = async (browser) => {
     console.info(`  -> ${output_paths.at(-1)}`)
   }
 
+  const upload_args = [
+    `release`,
+    `upload`,
+    release_tag,
+    ...output_paths,
+    `--repo`,
+    `janosh/matterviz`,
+    `--clobber`,
+  ]
   try {
-    await exec_file(`gh`, [
-      `release`,
-      `upload`,
-      release_tag,
-      ...output_paths,
-      `--repo`,
-      `janosh/matterviz`,
-      `--clobber`,
-    ])
+    await exec_file(`gh`, upload_args)
     console.info(`\nUploaded to ${release_tag}. README URLs:`)
     for (const path of output_paths) {
       const file = basename(path)
@@ -94,9 +99,7 @@ const capture_site = async (browser) => {
     }
   } catch (error) {
     console.error(`\nUpload failed: ${error}`)
-    console.error(
-      `Run manually:\ngh release upload ${release_tag} ${output_paths.join(` `)} --repo janosh/matterviz --clobber`,
-    )
+    console.error(`Run manually:\ngh ${upload_args.join(` `)}`)
   }
   console.info(`\nSaved to: ${output_dir}`)
 }
@@ -116,7 +119,7 @@ const capture_polyhedra = async (browser) => {
     { file: `MgNiF6.cif`, supercell: `2x2x2` },
   ]
   const page = await browser.newPage({ viewport: { width: 1100, height: 850 } })
-  let failures = 0
+  let failed = false
 
   for (const { file, supercell } of cases) {
     const params = new URLSearchParams({ file })
@@ -130,11 +133,11 @@ const capture_polyhedra = async (browser) => {
         .screenshot({ path: `${output_dir}/${slug}.png` })
       console.info(`Captured ${file}`)
     } catch (error) {
-      failures += 1
+      failed = true
       console.error(`Failed ${file}: ${error}`)
     }
   }
-  if (failures > 0) process.exitCode = 1
+  if (failed) process.exitCode = 1
 }
 
 try {
@@ -142,10 +145,6 @@ try {
 } catch {
   throw new Error(`Dev server not reachable at ${base_url}`)
 }
-const output_dir =
-  profile === `site`
-    ? `/tmp/matterviz-screenshots`
-    : (process.argv[3] ?? `/tmp/polyhedra-shots`)
 await mkdir(output_dir, { recursive: true })
 const browser = await chromium.launch()
 try {
