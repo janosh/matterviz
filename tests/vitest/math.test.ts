@@ -69,18 +69,18 @@ describe(`centered_frac`, () => {
 })
 
 test.each([
-  [0, 0, `zero angle`],
-  [Math.PI / 6, 30, `30 degrees`],
-  [Math.PI / 4, 45, `45 degrees`],
-  [Math.PI / 3, 60, `60 degrees`],
-  [Math.PI / 2, 90, `90 degrees`],
-  [Math.PI, 180, `180 degrees`],
-  [(3 * Math.PI) / 2, 270, `270 degrees`],
-  [2 * Math.PI, 360, `360 degrees`],
-  [-Math.PI / 2, -90, `negative 90 degrees`],
-  [-Math.PI, -180, `negative 180 degrees`],
-  [2.5, 143.2394, `arbitrary positive`],
-  [-1.5, -85.9437, `arbitrary negative`],
+  [0, 0],
+  [Math.PI / 6, 30],
+  [Math.PI / 4, 45],
+  [Math.PI / 3, 60],
+  [Math.PI / 2, 90],
+  [Math.PI, 180],
+  [(3 * Math.PI) / 2, 270],
+  [2 * Math.PI, 360],
+  [-Math.PI / 2, -90],
+  [-Math.PI, -180],
+  [2.5, 143.2394],
+  [-1.5, -85.9437],
 ])(`angle conversion round trip: %f rad ↔ %f deg`, (radians, degrees) => {
   expect(math.to_degrees(radians)).toBeCloseTo(degrees, 3)
   expect(math.to_radians(degrees)).toBeCloseTo(radians, 5)
@@ -105,11 +105,11 @@ test.each([
   [[1, 2], [3, 4], [4, 6]],
   [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
-])(`add vectors`, (vec1, vec2, expected) => {
+])(`add(%j, %j) = %j`, (vec1, vec2, expected) => {
   expect(math.add(vec1, vec2)).toEqual(expected)
 })
 
-test(`add function comprehensive`, () => {
+test(`add sums more than two vectors and rejects arity/length mismatches`, () => {
   // Test multiple vector addition
   expect(math.add([1, 2], [3, 4], [5, 6])).toEqual([9, 12])
   expect(math.add([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])).toEqual([22, 26, 30])
@@ -127,7 +127,7 @@ test.each([
   [[0, 0, 0], [1, 2, 3], [-1, -2, -3]],
   [[5, 5, 5], [5, 5, 5], [0, 0, 0]],
   [[-1, -2, -3], [-4, -5, -6], [3, 3, 3]],
-])(`subtract vectors`, (vec1, vec2, expected) => {
+])(`subtract(%j, %j) = %j`, (vec1, vec2, expected) => {
   expect(math.subtract(vec1, vec2)).toEqual(expected)
   expect(math.add(math.subtract(vec1, vec2), vec2)).toEqual(vec1)
 })
@@ -143,11 +143,11 @@ test.each([
   [[0, 0, 0], [1, 2, 3], 0], // Zero vector
   [[1], [5], 5], // Single element vectors
   [[-1, 2, -3], [4, -5, 6], -32], // Negative numbers
-])(`dot product`, (vec1, vec2, expected) => {
+])(`dot(%j, %j) = %j`, (vec1, vec2, expected) => {
   expect(math.dot(vec1, vec2)).toEqual(expected)
 })
 
-test(`dot function comprehensive`, () => {
+test(`dot handles matrix operands and rejects malformed shapes`, () => {
   // Test matrix-vector and matrix-matrix multiplication
   // oxfmt-ignore
   const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
@@ -204,7 +204,7 @@ test.each([
   [[[-1, 0, 0], [0, -1, 0], [0, 0, -1]], [1, 2, 3], [-1, -2, -3]],
   // Complex example
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], [2, 3, 1], [11, 7, 28]],
-])(`mat3x3_vec3_multiply`, (matrix, vector, expected) => {
+])(`mat3x3_vec3_multiply case %#`, (matrix, vector, expected) => {
   expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as Vec3)).toEqual(expected)
 })
 
@@ -227,7 +227,7 @@ test.each([
   // Triclinic
   [[[3, 0, 0], [1, 2, 0], [0.5, 1, 2]],
     { a: 3, b: Math.sqrt(5), c: Math.sqrt(5.25), alpha: 60.79, beta: 77.4, gamma: 63.43, volume: 12 }],
-])(`calc_lattice_params`, (matrix, expected) => {
+])(`calc_lattice_params case %#`, (matrix, expected) => {
   const result = math.calc_lattice_params(matrix as math.Matrix3x3)
   expect(result.a).toBeCloseTo(expected.a, 2)
   expect(result.b).toBeCloseTo(expected.b, 2)
@@ -541,7 +541,7 @@ describe(`tensor conversion utilities`, () => {
     })
   })
 
-  describe(`transpose_matrix`, () => {
+  describe(`transpose_3x3_matrix`, () => {
     // oxfmt-ignore
     it.each([
       [`basic`, [[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 4, 7], [2, 5, 8], [3, 6, 9]]],
@@ -742,24 +742,29 @@ describe(`tensor conversion utilities`, () => {
       expect(reconstructed[0][1]).toBeCloseTo(reconstructed[1][0], 10) // symmetry
     })
 
+    // Voigt only reorders entries, so magnitude must not cost precision anywhere in the
+    // tensor -- asserting the whole matrix, not just [0][0], is what would catch a lossy path.
     // oxfmt-ignore
     it.each([
       [`large numbers`, [[1e10, 1e9, 1e8], [1e9, 1e11, 1e7], [1e8, 1e7, 1e12]]],
       [`small numbers`, [[1e-10, 1e-11, 1e-12], [1e-11, 1e-9, 1e-13], [1e-12, 1e-13, 1e-8]]],
-      [`NaN values`, [[NaN, 1, 2], [1, NaN, 3], [2, 3, NaN]]],
-      [`Infinity values`, [[Infinity, 1, 2], [1, -Infinity, 3], [2, 3, Infinity]]],
-    ])(`handles %s`, (_, tensor) => {
-      const voigt = math.to_voigt(tensor)
-      const reconstructed = math.from_voigt(voigt)
+    ])(`Voigt round-trips %s`, (_name, tensor) => {
+      expect(math.from_voigt(math.to_voigt(tensor))).toEqual(
+        tensor.map((row) => row.map((val) => expect.closeTo(val, 10))),
+      )
+    })
 
-      if (tensor.some((row) => row.some(isNaN))) {
-        expect(voigt.some(isNaN)).toBe(true)
-        expect(reconstructed.some((row) => row.some(isNaN))).toBe(true)
-      } else if (tensor.some((row) => row.some((val) => !Number.isFinite(val)))) {
-        expect(voigt.some((val) => !Number.isFinite(val))).toBe(true)
-      } else {
-        expect(reconstructed[0][0]).toBeCloseTo(tensor[0][0], 5)
-      }
+    // Non-finite entries must survive both directions rather than being coerced to 0, which
+    // would turn a diverged simulation frame into a plausible-looking stress tensor.
+    // oxfmt-ignore
+    it.each([
+      [`NaN`, [[NaN, 1, 2], [1, NaN, 3], [2, 3, NaN]]],
+      [`Infinity`, [[Infinity, 1, 2], [1, -Infinity, 3], [2, 3, Infinity]]],
+    ])(`propagates %s through Voigt`, (_name, tensor) => {
+      const voigt = math.to_voigt(tensor)
+      const not_finite = (val: number) => !Number.isFinite(val)
+      expect(voigt.filter(not_finite)).toHaveLength(3) // the three diagonal entries
+      expect(math.from_voigt(voigt).flat().filter(not_finite)).toHaveLength(3)
     })
   })
 })

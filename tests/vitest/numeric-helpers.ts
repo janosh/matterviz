@@ -32,18 +32,8 @@ export const max_rel_error = (
   }, 0)
 
 // Pack frames[frame_idx][atom_idx] = [x, y, z] into the flat Float64Array layout that the
-// MSD and VACF kernels consume.
-export const flatten_xyz_frames = (frames: number[][][]): Float64Array => {
-  const n_atoms = frames[0]?.length ?? 0
-  const flat = new Float64Array(frames.length * n_atoms * 3)
-  for (let frame_idx = 0; frame_idx < frames.length; frame_idx++) {
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-      const offset = (frame_idx * n_atoms + atom_idx) * 3
-      const [x_val, y_val, z_val] = frames[frame_idx][atom_idx]
-      flat[offset] = x_val
-      flat[offset + 1] = y_val
-      flat[offset + 2] = z_val
-    }
-  }
-  return flat
-}
+// MSD and VACF kernels consume. Frame-major, atom-minor is exactly depth-2 flattening.
+// Every frame must carry the same atoms: callers pair the result with an n_atoms taken
+// from frames[0], and the kernels read it as a fixed stride.
+export const flatten_xyz_frames = (frames: number[][][]): Float64Array =>
+  Float64Array.from(frames.flat(2))
