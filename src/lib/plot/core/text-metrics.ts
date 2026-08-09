@@ -340,5 +340,7 @@ export function invalidate_text_metrics_after_fonts_ready(
   if (shared) return shared
   const pending = Promise.resolve(ready).then(() => clear_text_metrics_cache())
   invalidation_by_readiness.set(ready, pending)
+  // A cached rejection would be replayed to every later caller, so evict and let them retry
+  pending.catch(() => invalidation_by_readiness.delete(ready))
   return pending
 }

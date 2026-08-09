@@ -206,6 +206,28 @@ describe(`text metrics`, () => {
     ).resolves.toBe(revision_before + 2)
   })
 
+  // A memoized rejection would be replayed forever, wedging invalidation for that FontFaceSet
+  it(`evicts a rejected readiness instead of caching it`, async () => {
+    mock_canvas()
+    let reject_ready: (() => void) | undefined
+    const ready = new Promise<void>((_resolve, reject) => {
+      reject_ready = () => reject(new Error(`font load failed`))
+    })
+    const revision_before = get_text_metrics_revision()
+
+    const failed = invalidate_text_metrics_after_fonts_ready({ ready })
+    reject_ready?.()
+    await expect(failed).rejects.toThrow(`font load failed`)
+
+    // a fresh promise rather than the memoized one proves the entry was dropped
+    const retried = invalidate_text_metrics_after_fonts_ready({ ready })
+    expect(retried).not.toBe(failed)
+    await expect(retried).rejects.toThrow(`font load failed`)
+    await expect(
+      invalidate_text_metrics_after_fonts_ready({ ready: Promise.resolve() }),
+    ).resolves.toBe(revision_before + 1)
+  })
+
   it(`returns deterministic SSR metrics without touching browser globals`, async () => {
     const font = { ...DEFAULT_FONT_SPEC, font_size: 10, line_height: 15 }
     vi.stubGlobal(`document`, undefined)
