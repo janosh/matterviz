@@ -714,11 +714,25 @@ describe(`BinnedScatterPlot`, () => {
     await new Promise((resolve) => setTimeout(resolve, 60))
 
     const settled = { ...clears, resizes: resize_count() }
-    expect(settled.overlay).toBeGreaterThan(0) // the pulse is running
+    expect(settled.overlay).toBeGreaterThan(0)
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(clears.overlay).toBeGreaterThan(settled.overlay)
     expect(clears.base).toBe(settled.base) // points layer untouched between view changes
     expect(resize_count()).toBe(settled.resizes)
+  })
+
+  test(`missing selected point ID does not schedule pulse frames`, async () => {
+    const request_frame = vi.spyOn(globalThis, `requestAnimationFrame`)
+    mock_canvas_context()
+    mount_plot({
+      series: [{ x: [0.4], y: [0.5], point_ids: [`selected`] }],
+      ...point_mode(),
+      selected_point_id: `missing`,
+      ...unit_axes,
+    })
+    await settle()
+
+    expect(request_frame).not.toHaveBeenCalled()
   })
 
   test(`gates drag zoom starts, suppresses its trailing click, and resets zoom`, async () => {
@@ -883,6 +897,32 @@ describe(`BinnedScatterPlot`, () => {
     )
     expect(marginal_fills.has(get_series_color(0))).toBe(true)
     expect(marginal_fills.has(get_series_color(1))).toBe(true)
+  })
+
+  test(`does not paint canvas markers whose color is none`, async () => {
+    let fill_style = ``
+    const painted_colors: string[] = []
+    const ctx = mock_canvas_context({
+      fill: vi.fn(() => painted_colors.push(fill_style)),
+    })
+    Object.defineProperty(ctx, `fillStyle`, {
+      get: () => fill_style,
+      // Canvas retains the previous style when assigned the SVG-only `none` keyword.
+      set: (value: string) => {
+        if (value !== `none`) fill_style = value
+      },
+    })
+    mount_plot({
+      series: [
+        { x: [0.2], y: [0.2], color: `red` },
+        { x: [0.5], y: [0.5], color: `none` },
+      ],
+      ...point_mode(),
+      ...unit_axes,
+    })
+    await settle()
+
+    expect(painted_colors).toEqual([`red`])
   })
 
   test(`places the title below an outer top marginal`, async () => {

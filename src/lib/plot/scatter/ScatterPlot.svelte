@@ -1541,8 +1541,17 @@
   // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
   // both reads and writes it, and tracking that would re-trigger the effect forever.
   const label_offsets = new Map<string, Point2D>()
+  let previous_label_series: typeof series_with_ids | undefined
+  let previous_label_config: typeof actual_label_config | undefined
 
   $effect(() => {
+    const label_series = series_with_ids
+    const label_config = actual_label_config
+    if (label_series !== previous_label_series || label_config !== previous_label_config) {
+      label_offsets.clear()
+      previous_label_series = label_series
+      previous_label_config = label_config
+    }
     if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
       label_offsets.clear()
@@ -1551,7 +1560,7 @@
 
     label_positions = compute_label_positions(
       filtered_series,
-      actual_label_config,
+      label_config,
       { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis: final_x_axis },
       { width, height, pad },
       label_offsets,
@@ -2432,6 +2441,10 @@
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     font-size: var(--scatter-font-size);
+  }
+  div.scatter.fullscreen svg,
+  div.scatter.fullscreen :global(.axis-label) {
+    font-size: var(--scatter-fullscreen-font-size, var(--scatter-font-size, inherit));
   }
   .scatter :global(.axis-label) {
     text-align: center;

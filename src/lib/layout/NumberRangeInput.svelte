@@ -1,64 +1,14 @@
-<!-- NumberRangeInput now exists upstream. Delete this local copy and import it from
-svelte-widgets once a version above 1.4.0 is published. The upstream one additionally accepts
-`setting` + `schema` to resolve bounds itself; this pane resolves them at the call site via
-`setting_range()`, and upstream still honours plain min/max/step, so either style migrates. -->
+<!-- Keep local until upstream rejects null/invalid numeric updates instead of writing them. -->
 <script lang="ts">
-  import type { Snippet } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip } from 'svelte-widgets/attachments'
+  import type { ComponentProps } from 'svelte'
+  import { NumberRangeInput as UpstreamNumberRangeInput } from 'svelte-widgets'
 
-  // Keep rows at exactly text/number/range; `title` also names the otherwise unlabelled slider.
-  let {
-    value = $bindable(),
-    min,
-    max,
-    step,
-    title,
-    children,
-    ...rest
-  }: Omit<HTMLAttributes<HTMLLabelElement>, `title`> & {
-    value: number | undefined
-    min?: number | string
-    max?: number | string
-    step?: number | string
-    title?: string
-    children?: Snippet
-  } = $props()
+  let { value = $bindable(), ...rest }: ComponentProps<typeof UpstreamNumberRangeInput> =
+    $props()
 
   const update_value = (next_value: number | null | undefined): void => {
     if (typeof next_value === `number` && Number.isFinite(next_value)) value = next_value
   }
 </script>
 
-<label {@attach tooltip()} {title} {...rest}>
-  <span class="label-text">{@render children?.()}</span>
-  <input type="number" {min} {max} {step} bind:value={() => value, update_value} />
-  <input
-    type="range"
-    {min}
-    {max}
-    {step}
-    bind:value={() => value, update_value}
-    aria-label={title}
-  />
-</label>
-
-<style>
-  label {
-    display: flex;
-    align-items: center;
-    gap: 10pt;
-  }
-  /* no children means no label cell, so the flex gap shouldn't reserve one either */
-  .label-text:empty {
-    display: none;
-  }
-  input {
-    font-size: inherit;
-    font-family: inherit;
-  }
-  input[type='range'] {
-    flex: 1;
-    min-width: 40px;
-  }
-</style>
+<UpstreamNumberRangeInput {...rest} bind:value={() => value, update_value} />

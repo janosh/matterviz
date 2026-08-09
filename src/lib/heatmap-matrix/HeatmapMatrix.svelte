@@ -966,14 +966,27 @@
       return
     } else return
     event.preventDefault()
-    let [next_x, next_y] = [x_idx, y_idx]
-    const max_steps = Math.max(x_items.length, y_items.length) + 1
+    // Compact tracks follow their sorted/filtered visible order. Gap tracks retain their
+    // original grid positions, so their visual order is the ascending item index.
+    const navigation_x = gaps_mode ? vis_x.toSorted((left, right) => left - right) : vis_x
+    const navigation_y = gaps_mode ? vis_y.toSorted((top, bottom) => top - bottom) : vis_y
+    let x_position = navigation_x.indexOf(x_idx)
+    let y_position = navigation_y.indexOf(y_idx)
+    if (x_position < 0 || y_position < 0) return
+    const max_steps = Math.max(navigation_x.length, navigation_y.length)
     for (let step_idx = 0; step_idx < max_steps; step_idx++) {
-      next_x += x_step
-      next_y += y_step
-      if (next_x < 0 || next_y < 0 || next_x >= x_items.length || next_y >= y_items.length) {
+      x_position += x_step
+      y_position += y_step
+      if (
+        x_position < 0 ||
+        y_position < 0 ||
+        x_position >= navigation_x.length ||
+        y_position >= navigation_y.length
+      ) {
         return
       }
+      const next_x = navigation_x[x_position]
+      const next_y = navigation_y[y_position]
       if (is_hidden_cell(next_x, next_y)) continue
       void focus_cell(next_x, next_y, x_step, y_step)
       return

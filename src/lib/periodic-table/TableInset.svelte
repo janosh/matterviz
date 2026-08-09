@@ -26,5 +26,13 @@
     container-name: table-inset;
     overflow: visible;
     padding: var(--ptable-inset-padding);
+    /* An inset plot sits inside the table, so it should not also paint the tint that makes a
+       standalone plot read as its own panel. */
+    --plot-bg: var(--ptable-inset-plot-bg, transparent);
+    --scatter-fullscreen-bg: var(--ptable-inset-fullscreen-bg, var(--page-bg, Canvas));
+    /* Axis titles use this directly and tick labels take 0.8em of it, so one value shrinks
+       both. The inset is a fraction of a full plot, where the 16px default titles dwarf it. */
+    --scatter-font-size: var(--ptable-inset-font-size, 12px);
+    --scatter-fullscreen-font-size: var(--ptable-inset-fullscreen-font-size, 16px);
   }
 </style>

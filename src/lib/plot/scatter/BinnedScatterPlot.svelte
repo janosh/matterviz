@@ -259,11 +259,6 @@
     set_fullscreen_bg(wrapper, fullscreen, `--binned-scatter-fullscreen-bg`)
   })
 
-  const selected_pulse = create_pulse_animation(
-    () => selected_point_id != null && render_mode === `points`,
-    { step: 0.035, element: () => wrapper },
-  )
-
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>
     range?.[0] == null || range?.[1] == null
 
@@ -643,6 +638,10 @@
     }
     return null
   })
+  const selected_pulse = create_pulse_animation(
+    () => selected_point !== null && render_mode === `points`,
+    { step: 0.035, element: () => wrapper },
+  )
 
   // Shared by both layers so a marker looks the same whichever one draws it. `pulse` is the
   // animation phase for the selected marker, or null for a plain one.
@@ -655,6 +654,7 @@
     alpha: number,
     pulse: number | null,
   ) {
+    if (color === `none`) return
     ctx.fillStyle = color
     ctx.globalAlpha = alpha
     ctx.beginPath()
@@ -733,7 +733,9 @@
     if (render_mode !== `points`) return // density mode has no per-point markers
     for (const [mark, pulse] of [
       [hovered_point, null],
-      [selected_point, selected_pulse.unit], // selected last, so its ring sits over the hover
+      // selected last, so its ring sits over the hover. Don't subscribe this paint effect to
+      // pulse ticks when the selected ID does not resolve to a point.
+      [selected_point, selected_point ? selected_pulse.unit : null],
     ] as const) {
       if (!mark) continue
       const { series_idx, point_idx } = mark

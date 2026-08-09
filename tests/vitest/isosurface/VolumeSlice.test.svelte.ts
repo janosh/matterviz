@@ -64,7 +64,10 @@ async function mount_volume_slice(props: Partial<ComponentProps<typeof VolumeSli
   return { canvas: document.querySelector(`canvas`), context }
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  delete document.documentElement.dataset.theme
+})
 
 describe(`VolumeSlice`, () => {
   const mode_cases = [
@@ -183,6 +186,67 @@ describe(`VolumeSlice`, () => {
     expect(context.moveTo).toHaveBeenNthCalledWith(1, ...expect_move)
     if (stroke !== undefined) expect(context.strokeStyle).toBe(stroke)
     if (width !== undefined) expect(context.lineWidth).toBe(width)
+  })
+
+  // Canvas takes a colour value, so `currentColor` has to be sampled in JS and the slice
+  // repainted on a theme flip -- the cascade cannot restyle pixels already drawn.
+  test.each([
+    [`light`, `white`, `rgb(0, 0, 0)`, `rgb(20, 20, 20)`],
+    [`dark`, `black`, `rgb(255, 255, 255)`, `rgb(230, 230, 230)`],
+  ] as const)(
+    `resamples currentColor contours after a %s to %s theme switch`,
+    async (initial_theme, next_theme, initial_color, next_color) => {
+      const theme_colors = {
+        light: `rgb(0, 0, 0)`,
+        white: `rgb(20, 20, 20)`,
+        dark: `rgb(255, 255, 255)`,
+        black: `rgb(230, 230, 230)`,
+      }
+      vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(
+        () =>
+          ({
+            color:
+              theme_colors[
+                document.documentElement.dataset.theme as keyof typeof theme_colors
+              ],
+          }) as CSSStyleDeclaration,
+      )
+      document.documentElement.dataset.theme = initial_theme
+      const { context } = await mount_volume_slice({
+        mode: `contours`,
+        contour_levels: [4],
+      })
+      expect(context.strokeStyle).toBe(initial_color)
+
+      document.documentElement.dataset.theme = next_theme
+      await tick() // watch_dark_mode reports via MutationObserver, so not synchronously
+      expect(context.strokeStyle).toBe(next_color)
+    },
+  )
+
+  test(`resamples currentColor contours after an inherited style change`, async () => {
+    vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(
+      (element) =>
+        ({
+          color:
+            element
+              .closest(`.volume-slice`)
+              ?.getAttribute(`style`)
+              ?.match(/--volume-slice-contour-color:\s*([^;]+)/)?.[1] ?? `rgb(0, 0, 0)`,
+        }) as CSSStyleDeclaration,
+    )
+    const { canvas, context } = await mount_volume_slice({
+      mode: `contours`,
+      contour_levels: [4],
+    })
+    expect(context.strokeStyle).toBe(`rgb(0, 0, 0)`)
+    const wrapper = canvas?.closest<HTMLElement>(`.volume-slice`)
+    if (!wrapper) throw new Error(`volume slice wrapper not rendered`)
+
+    wrapper.style.setProperty(`--volume-slice-contour-color`, `rgb(12, 34, 56)`)
+    await tick()
+
+    expect(context.strokeStyle).toBe(`rgb(12, 34, 56)`)
   })
 
   test(`clears stale pixels when the slice is removed`, async () => {

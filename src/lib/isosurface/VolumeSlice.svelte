@@ -1,10 +1,5 @@
 <script lang="ts">
-  import {
-    type D3InterpolateName,
-    get_d3_interpolator,
-    is_dark_mode,
-    watch_dark_mode,
-  } from '$lib/colors'
+  import { type D3InterpolateName, get_d3_interpolator, watch_dark_mode } from '$lib/colors'
   import type { Vec2 } from '$lib/math'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import type { Orientation } from '$lib/plot/core/types'
@@ -73,11 +68,21 @@
     }
   })
   // getComputedStyle forces a style flush, and the contour pass below runs on every repaint
-  // while a slice slider is being dragged. Resolve the CSS colour per theme change instead.
-  let dark_mode = $state(is_dark_mode())
-  $effect(() => watch_dark_mode((dark) => (dark_mode = dark)))
+  // while a slice slider is being dragged. Resolve the CSS colour per theme/style change instead.
+  let color_revision = $state(0)
+  $effect(() => watch_dark_mode(() => (color_revision += 1)))
+  $effect(() => {
+    if (!canvas) return
+    const observer = new MutationObserver(() => (color_revision += 1))
+    let ancestor: HTMLElement | null = canvas
+    while (ancestor) {
+      observer.observe(ancestor, { attributes: true, attributeFilter: [`class`, `style`] })
+      ancestor = ancestor.parentElement
+    }
+    return () => observer.disconnect()
+  })
   let resolved_contour_color = $derived.by(() => {
-    void dark_mode
+    void color_revision
     return contour_color === `currentColor` && canvas
       ? getComputedStyle(canvas).color
       : contour_color

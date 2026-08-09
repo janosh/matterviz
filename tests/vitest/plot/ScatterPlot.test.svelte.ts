@@ -788,6 +788,36 @@ describe(`ScatterPlot`, () => {
     expect(document.querySelector(`text.label-text`)?.textContent).toBe(`Fallback`)
   })
 
+  test(`cold-solves labels after placement config changes`, async () => {
+    const props = $state({
+      series: [
+        {
+          x: [0.5],
+          y: [0.5],
+          point_label: { text: `A`, auto_placement: true, font_size: `10px` },
+        },
+      ],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      label_placement_config: { sa_iterations: 0, candidate_gap: 0 },
+      point_tween: { duration: 0 },
+      show_controls: false,
+      legend: null,
+    })
+    const plot = await mount_sized_scatter_plot(props)
+    const label_offset = () => {
+      const label = plot.querySelector(`text.label-text`)
+      if (!label) throw new Error(`auto-placed label not rendered`)
+      return { x: Number(label.getAttribute(`x`)), y: Number(label.getAttribute(`y`)) }
+    }
+    const initial_offset = label_offset()
+
+    props.label_placement_config = { sa_iterations: 0, candidate_gap: 100 }
+    await tick()
+
+    expect(label_offset()).not.toEqual(initial_offset)
+  })
+
   test(`hides auto labels culled by max_neighbors`, async () => {
     const coords = [...Array.from({ length: 6 }, (_val, idx) => 1 + idx * 0.001), 100]
     const plot = await mount_sized_scatter_plot({

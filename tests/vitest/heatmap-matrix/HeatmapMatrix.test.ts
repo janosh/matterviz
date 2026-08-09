@@ -365,6 +365,43 @@ describe(`click and dblclick handlers`, () => {
     },
   )
 
+  test(`arrow keys follow sorted display order`, async () => {
+    mount_matrix({
+      x_items: [
+        { label: `B`, sort_value: 2 },
+        { label: `A`, sort_value: 1 },
+      ],
+      y_items: [
+        { label: `Y`, sort_value: 2 },
+        { label: `X`, sort_value: 1 },
+      ],
+      x_order: `sort_value`,
+      y_order: `sort_value`,
+      onclick: () => {},
+    })
+    await tick()
+    const start = doc_query<HTMLElement>(`.cell[data-x="1"][data-y="1"]`)
+    start.focus()
+    const arrow_right = new KeyboardEvent(`keydown`, {
+      key: `ArrowRight`,
+      bubbles: true,
+      cancelable: true,
+    })
+    start.dispatchEvent(arrow_right)
+    expect(arrow_right.defaultPrevented).toBe(true)
+    await tick()
+    expect(document.activeElement).toBe(
+      doc_query<HTMLElement>(`.cell[data-x="0"][data-y="1"]`),
+    )
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+    )
+    await tick()
+    expect(document.activeElement).toBe(
+      doc_query<HTMLElement>(`.cell[data-x="0"][data-y="0"]`),
+    )
+  })
+
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
     const handler = vi.fn()
     mount_matrix({ onclick: handler, disabled: true })
