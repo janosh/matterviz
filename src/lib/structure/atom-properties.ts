@@ -19,6 +19,7 @@ import { rgb } from 'd3-color'
 
 // Modes that need nothing beyond the shared fields.
 type SimpleAtomColorMode = `element` | `coordination` | `wyckoff` | `selective_dynamics`
+type AtomColorFn = (site: Site, idx: number) => number | string
 
 interface AtomColorBase {
   scale: D3InterpolateName
@@ -33,10 +34,7 @@ export type AtomColorConfig =
   // Site property to color by (OVITO's Color Coding). Vec3 values (force, velocity, ...)
   // are reduced to their magnitude.
   | (AtomColorBase & { mode: `property`; property_key: string })
-  | (AtomColorBase & {
-      mode: `custom`
-      color_fn: (site: Site, idx: number) => number | string
-    })
+  | (AtomColorBase & { mode: `custom`; color_fn: AtomColorFn })
 
 // JSON-safe subset accepted from Dash. Runtime Svelte callers can still use custom
 // functions through AtomColorConfig, but serialized payloads cannot represent them.
@@ -423,21 +421,13 @@ export function get_colorable_property_keys(
   return [...keys].sort((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
-const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean => {
-  if (
-    first.mode !== second.mode ||
-    first.scale !== second.scale ||
-    first.scale_type !== second.scale_type
-  )
-    return false
-  if (first.mode === `property` && second.mode === `property`) {
-    return first.property_key === second.property_key
-  }
-  if (first.mode === `custom` && second.mode === `custom`) {
-    return first.color_fn === second.color_fn
-  }
-  return true
-}
+const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean =>
+  first.mode === second.mode &&
+  first.scale === second.scale &&
+  first.scale_type === second.scale_type &&
+  (first.mode !== `property` ||
+    (second.mode === `property` && first.property_key === second.property_key)) &&
+  (first.mode !== `custom` || (second.mode === `custom` && first.color_fn === second.color_fn))
 
 export const DEFAULT_ATOM_COLOR_CONFIG: AtomColorConfig = {
   mode: `element`,
@@ -449,9 +439,13 @@ const is_atom_color_mode = (value: unknown): value is AtomColorMode =>
   typeof value === `string` && ATOM_COLOR_MODE_OPTIONS.some((mode) => mode === value)
 const is_color_scale_type = (value: unknown): value is ColorScaleType =>
   typeof value === `string` && COLOR_SCALE_TYPES.some((scale_type) => scale_type === value)
-const is_atom_color_fn = (
-  value: unknown,
-): value is (site: Site, idx: number) => number | string => typeof value === `function`
+const is_atom_color_fn = (value: unknown): value is AtomColorFn => typeof value === `function`
+const default_scale_type = (mode: AtomColorMode, property_key?: unknown): ColorScaleType =>
+  mode === `wyckoff` ||
+  mode === `selective_dynamics` ||
+  (mode === `property` && property_key === CNA_TYPE_PROPERTY)
+    ? `categorical`
+    : `continuous`
 
 // Normalize untyped/serialized props before rendering. Missing shared fields use the
 // shipped defaults; property configs without a key and serialized custom configs fall
@@ -466,75 +460,31 @@ export function normalize_atom_color_config(config: unknown): AtomColorConfig {
     typeof candidate.scale === `string` && is_d3_interpolate_name(candidate.scale)
       ? candidate.scale
       : DEFAULT_ATOM_COLOR_CONFIG.scale
-  const default_scale_type =
-    mode === `wyckoff` || mode === `selective_dynamics` ? `categorical` : `continuous`
   const scale_type = is_color_scale_type(candidate.scale_type)
     ? candidate.scale_type
-    : default_scale_type
+    : default_scale_type(mode, candidate.property_key)
+  const candidate_config = candidate as unknown as AtomColorConfig
   const finalize = (normalized: AtomColorConfig): AtomColorConfig =>
-    configs_equal(candidate as unknown as AtomColorConfig, normalized)
-      ? (candidate as unknown as AtomColorConfig)
-      : normalized
+    configs_equal(candidate_config, normalized) ? candidate_config : normalized
 
-  if (mode === `property`) {
-    if (typeof candidate.property_key !== `string` || candidate.property_key.length === 0) {
-      return finalize({ mode: `element`, scale, scale_type: `continuous` })
-    }
+  if (
+    mode === `property` &&
+    typeof candidate.property_key === `string` &&
+    candidate.property_key.length > 0
+  ) {
     return finalize({ mode, scale, scale_type, property_key: candidate.property_key })
   }
-  if (mode === `custom`) {
-    if (!is_atom_color_fn(candidate.color_fn)) {
-      return finalize({ mode: `element`, scale, scale_type: `continuous` })
-    }
+  if (mode === `custom` && is_atom_color_fn(candidate.color_fn)) {
     return finalize({ mode, scale, scale_type, color_fn: candidate.color_fn })
+  }
+  if (mode === `property` || mode === `custom`) {
+    return finalize({ mode: `element`, scale, scale_type: `continuous` })
   }
   return finalize({ mode, scale, scale_type })
 }
 
-function build_atom_color_config(
-  config: AtomColorConfig,
-  mode: AtomColorMode,
-  property_keys: string[],
-  preferred_key?: string,
-): AtomColorConfig {
-  const { scale } = config
-  if (mode === `property`) {
-    // Nothing to color by means the mode has no meaning, so stay on element colors.
-    if (property_keys.length === 0) return { mode: `element`, scale, scale_type: `continuous` }
-    const prev_key =
-      preferred_key ?? (`property_key` in config ? config.property_key : undefined)
-    const property_key =
-      prev_key && property_keys.includes(prev_key) ? prev_key : property_keys[0]
-    return {
-      mode,
-      scale,
-      scale_type: property_key === CNA_TYPE_PROPERTY ? `categorical` : `continuous`,
-      property_key,
-    }
-  }
-  // Only a config already carrying a color_fn can be in custom mode, and then there is
-  // nothing left to re-derive.
-  if (mode === `custom`) {
-    if (!(`color_fn` in config)) {
-      throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
-    }
-    return config
-  }
-  return {
-    mode,
-    scale,
-    scale_type:
-      mode === `wyckoff` || mode === `selective_dynamics` ? `categorical` : `continuous`,
-  }
-}
-
-// Builds the config for a newly selected mode. A mode implies a scale type (categorical for
-// bucketed properties, a ramp for the rest) and, in `property` mode, a key to color by.
-// Returns a whole config rather than patching one in place, because a half-applied mode
-// change is exactly the state the discriminated union exists to rule out. When nothing
-// would change it hands back the same object, so reactive callers can assign the result
-// unconditionally without retriggering themselves on fresh object identity. Both the
-// controls panel and the legend's mode menu switch modes, so they share this.
+// Build a complete config for a mode/property selection. Preserve object identity when
+// unchanged so reactive callers can assign the result unconditionally.
 export const next_atom_color_config = (
   config: AtomColorConfig,
   mode: AtomColorMode,
@@ -542,8 +492,36 @@ export const next_atom_color_config = (
   // Explicit choice from a property dropdown; falls back to the key already in use.
   preferred_key?: string,
 ): AtomColorConfig => {
-  const next = build_atom_color_config(config, mode, property_keys, preferred_key)
-  return configs_equal(next, config) ? config : next
+  const { scale } = config
+  const finalize = (next: AtomColorConfig): AtomColorConfig =>
+    configs_equal(next, config) ? config : next
+  if (mode === `property`) {
+    // Nothing to color by means the mode has no meaning, so stay on element colors.
+    if (property_keys.length === 0) {
+      return finalize({ mode: `element`, scale, scale_type: `continuous` })
+    }
+    const previous_key =
+      preferred_key ?? (`property_key` in config ? config.property_key : undefined)
+    const property_key =
+      previous_key && property_keys.includes(previous_key) ? previous_key : property_keys[0]
+    return finalize({
+      mode,
+      scale,
+      scale_type: default_scale_type(mode, property_key),
+      property_key,
+    })
+  }
+  if (mode === `custom`) {
+    if (!(`color_fn` in config)) {
+      throw new Error(`Cannot switch to custom atom coloring without a color_fn`)
+    }
+    return config
+  }
+  return finalize({
+    mode,
+    scale,
+    scale_type: default_scale_type(mode),
+  })
 }
 
 // Keep discrete CNA phases on OVITO's stable palette as phases appear or vanish.
@@ -585,7 +563,7 @@ export function get_site_property_colors(
 
 export function get_custom_colors(
   structure: AnyStructure,
-  fn: (site: Site, idx: number) => number | string,
+  fn: AtomColorFn,
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
@@ -640,8 +618,7 @@ export function get_property_colors(
   bonding_strategy: BondingStrategy,
   sym_data: MoyoDataset | null,
 ): AtomPropertyColors | null {
-  const normalized_config = normalize_atom_color_config(config)
-  if (!structure || normalized_config.mode === `element`) return null
-  const result = get_atom_colors(structure, normalized_config, bonding_strategy, sym_data)
+  if (!structure) return null
+  const result = get_atom_colors(structure, config, bonding_strategy, sym_data)
   return result.colors.length > 0 ? result : null
 }

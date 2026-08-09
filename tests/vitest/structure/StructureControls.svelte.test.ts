@@ -151,7 +151,7 @@ describe(`StructureControls layout`, () => {
         const expected_step = step ?? config.multipleOf
         if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
       }
-      expect(label.dataset.originalTitle).toBe(config.description)
+      expect(inputs[1].getAttribute(`aria-label`)).toBe(config.description)
     }
   })
 })

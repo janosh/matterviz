@@ -107,29 +107,31 @@ export const is_color = (val: unknown): val is string => {
     to_rendered_rgb(trimmed) !== undefined
   )
 }
-const parse_modern_rgb = (color: string): RGBColor | undefined => {
-  const match = /^rgba?\(\s*(?<channels>[^,/]+?)(?:\s*\/\s*(?<alpha>[^,\s]+))?\s*\)$/i.exec(
+const parse_rgb_function = (color: string): RGBColor | undefined => {
+  const match = /^rgba?\(\s*(?<channels>[^/]+?)(?:\s*\/\s*(?<alpha>[^,\s]+))?\s*\)$/i.exec(
     color,
   )
-  const channels = match?.groups?.channels.trim().split(/\s+/)
-  if (channels?.length !== 3) return undefined
-  const [red, green, blue] = channels
+  if (!match?.groups) return undefined
+  const { channels: channel_text, alpha: slash_alpha } = match.groups
+  const comma_syntax = channel_text.includes(`,`)
+  const channels = channel_text.trim().split(comma_syntax ? /\s*,\s*/ : /\s+/)
+  let alpha: string | undefined = slash_alpha
+  if (comma_syntax && alpha) return undefined
+  if (comma_syntax && channels.length === 4 && color.toLowerCase().startsWith(`rgba`))
+    alpha = channels.pop()
+  if (channels.length !== 3) return undefined
   const parse_component = (value: string, percent_scale: number): number =>
     value.endsWith(`%`) ? (Number(value.slice(0, -1)) * percent_scale) / 100 : Number(value)
-  return rgb(
-    parse_component(red, 255),
-    parse_component(green, 255),
-    parse_component(blue, 255),
-    parse_component(match?.groups?.alpha ?? `1`, 1),
-  )
+  const [red, green, blue] = channels.map((value) => parse_component(value, 255))
+  return rgb(red, green, blue, parse_component(alpha ?? `1`, 1))
 }
 const to_rgb = (color: string): RGBColor | undefined => {
-  const parsed = d3_color(color)?.rgb() ?? parse_modern_rgb(color)
+  const parsed = parse_rgb_function(color) ?? d3_color(color)?.rgb()
   if (!parsed) return undefined
-  // `transparent` parses to NaN channels, which the finiteness check below would reject as
-  // unparsable and send to the canvas fallback. It is fully specified, so answer it here.
-  if (parsed.opacity === 0) return rgb(0, 0, 0, 0)
-  if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite)) return undefined
+  // The `transparent` keyword has NaN channels; normalize only that case without
+  // discarding channels from explicit rgba(..., 0).
+  if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite))
+    return parsed.opacity === 0 ? rgb(0, 0, 0, 0) : undefined
   const clamp_channel = (channel: number) => Math.max(0, Math.min(255, channel))
   return rgb(
     clamp_channel(parsed.r),
@@ -146,9 +148,8 @@ function to_rendered_rgb(color: string): RGBColor | undefined {
     typeof document === `undefined` ||
     typeof CanvasRenderingContext2D === `undefined` ||
     /^(?:var\(|currentcolor$)/i.test(color)
-  ) {
+  )
     return undefined
-  }
   const context = (color_canvas_context ??= document
     .createElement(`canvas`)
     .getContext(`2d`, { willReadFrequently: true }))
@@ -271,10 +272,8 @@ export function pick_contrast_color(paint: Paint): string {
 
 // Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
 // currentcolor), where inheriting the surrounding text color is the only honest answer.
-export const contrast_text_color = ({ background, ...rest }: Paint): string => {
-  if (!is_concrete_color(background)) return `currentColor`
-  return pick_contrast_color({ background, ...rest })
-}
+export const contrast_text_color = (paint: Paint): string =>
+  is_concrete_color(paint.background) ? pick_contrast_color(paint) : `currentColor`
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
@@ -283,14 +282,10 @@ export function get_page_background(
 ): string {
   if (typeof window === `undefined`) return ``
 
-  // Try to get background from html or body
-  const html_bg = getComputedStyle(document.documentElement).backgroundColor
-  const body_bg = getComputedStyle(document.body).backgroundColor
-
-  // Check if background is not transparent/unset
-  // Prefer body background as it's more likely to be styled by the theme
-  if (is_concrete_color(body_bg)) return body_bg
-  if (is_concrete_color(html_bg)) return html_bg
+  for (const element of [document.body, document.documentElement]) {
+    const background = getComputedStyle(element).backgroundColor
+    if (is_concrete_color(background)) return background
+  }
 
   // Fall back to prefers-color-scheme
   const prefers_dark = globalThis.matchMedia?.(`(prefers-color-scheme: dark)`)?.matches
@@ -301,8 +296,6 @@ export function get_page_background(
 // preference (resolving `auto` against the OS), then falls back to OS preference.
 export function is_dark_mode(): boolean {
   if (typeof document === `undefined`) return false
-  // Prefer the resolved theme name on data-theme (light/dark/white/black), else
-  // fall back to the persisted preference (resolving `auto` against the OS)
   const data_theme = document.documentElement.dataset.theme
   const theme_name =
     data_theme && is_valid_theme_name(data_theme)
@@ -340,8 +333,8 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
 // Convert a CSS color string to hex format for use with <input type="color">.
 // Returns fallback for CSS variables, transparent, invalid colors, or undefined.
 export function css_color_to_hex(color: string | undefined, fallback: string): string {
-  if (!color || color.startsWith(`var(`)) return fallback
-  if (color === `transparent`) return `#ffffff`
+  if (!color) return fallback
+  if (color.trim().toLowerCase() === `transparent`) return `#ffffff`
   return to_rendered_rgb(color)?.formatHex() ?? fallback
 }
 

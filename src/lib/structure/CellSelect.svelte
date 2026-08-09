@@ -165,6 +165,7 @@
             {disabled}
             onclick={() => (cell_type = type)}
             title={tooltip_text}
+            aria-label={tooltip_text}
             {@attach tooltip({ content: tooltip_text })}
           >
             {label}

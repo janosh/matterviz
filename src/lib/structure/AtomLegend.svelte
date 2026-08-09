@@ -386,6 +386,7 @@
               event,
             ))}
           title={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
+          aria-label={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
           {@attach tooltip({ placement: `top` })}
           type="button"
         >
@@ -511,6 +512,9 @@
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            aria-label={is_hidden
+              ? `Show ${format_value(value)}`
+              : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
             style:color={contrast_text_color({ background: color })}
           >
@@ -552,6 +556,9 @@
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
+            aria-label={is_hidden
+              ? `Show ${format_value(value)}`
+              : `Hide ${format_value(value)}`}
             {@attach tooltip({ placement: `top` })}
             type="button"
           >

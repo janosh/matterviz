@@ -5,6 +5,10 @@ const DEFAULT_BACKDROP_VAR = `--page-bg`
 interface ColorOptions {
   fallback?: string | (() => string)
   require_opaque?: boolean
+  // Color the caller already knows, which short-circuits the lookup: no token read and no
+  // observer. Matters for repeated children -- a periodic table would otherwise walk the
+  // ancestor chain and install an observer once per tile. Ignored unless it is usable.
+  override?: () => string | undefined
 }
 
 interface CssColorOptions extends ColorOptions {
@@ -37,13 +41,19 @@ const resolve_live_color = (
   read_colors: (node: Element) => readonly string[],
   options: ColorOptions,
 ): { readonly current: string } => {
-  const { fallback = `white`, require_opaque = false } = options
+  const { fallback = `white`, require_opaque = false, override } = options
   const resolve_fallback = () => (typeof fallback === `function` ? fallback() : fallback)
   const is_usable = require_opaque ? is_opaque_color : is_concrete_color
   let color = $state(resolve_fallback())
+  // Derived, not a plain call: `current` is read once per child and each read would
+  // otherwise re-parse the override, which is the per-child work it exists to skip.
+  const overridden = $derived.by(() => {
+    const supplied = override?.()
+    return is_usable(supplied) ? supplied : undefined
+  })
 
   $effect(() => {
-    const node = get_node()
+    const node = overridden === undefined ? get_node() : undefined
     if (!node) return undefined
     const read = () => {
       color = read_colors(node).find(is_usable) ?? resolve_fallback()
@@ -54,7 +64,7 @@ const resolve_live_color = (
 
   return {
     get current() {
-      return color
+      return overridden ?? color
     },
   }
 }
@@ -90,32 +100,11 @@ export const resolve_computed_color = (
     options,
   )
 
-// The opaque color painted behind `node`. Compositing a translucent fill needs an
-// opaque base, so a translucent token is rejected in favour of the fallback.
-// Components that expose a `backdrop` prop pass it as `override`: a caller-supplied
-// backdrop short-circuits the lookup, so no token read or observer is set up at all.
-// That matters for repeated children -- a periodic table would otherwise walk the
-// ancestor chain once per tile.
+// The opaque color painted behind `node`. Compositing a translucent fill needs an opaque
+// base, so a translucent token -- or a translucent `override` -- is rejected in favour of
+// the fallback. Components exposing a `backdrop` prop pass it straight through as `override`.
 export const resolve_backdrop = (
   get_node: () => Element | null | undefined,
-  options: Omit<CssColorOptions, `require_opaque`> & {
-    override?: () => string | undefined
-  } = {},
-): { readonly current: string } => {
-  const { override, ...css_options } = options
-  // Derived, not a plain call: `current` is read once per child and each read would
-  // otherwise re-parse the override, which is the per-child work `override` exists to skip.
-  const opaque_override = $derived.by(() => {
-    const color = override?.()
-    return is_opaque_color(color) ? color : undefined
-  })
-  const resolved = resolve_css_color(
-    () => (opaque_override === undefined ? get_node() : undefined),
-    { ...css_options, require_opaque: true },
-  )
-  return {
-    get current() {
-      return opaque_override ?? resolved.current
-    },
-  }
-}
+  options: Omit<CssColorOptions, `require_opaque`> = {},
+): { readonly current: string } =>
+  resolve_css_color(get_node, { ...options, require_opaque: true })

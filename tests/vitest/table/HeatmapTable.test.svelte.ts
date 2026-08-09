@@ -6,11 +6,11 @@ import {
   type RowData,
   type SummaryStat,
 } from '$lib'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { assert, describe, expect, it, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 
-const mount_table = (props: ComponentProps<typeof HeatmapTable>): unknown =>
+const mount_table = (props: ComponentProps<typeof HeatmapTable>): ReturnType<typeof mount> =>
   mount(HeatmapTable, { target: document.body, props })
 
 // Trimmed text of every cell in the given column.
@@ -77,7 +77,7 @@ describe(`HeatmapTable`, () => {
     expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
   })
 
-  it(`re-wires cell tooltips after cells re-render`, async () => {
+  it(`delegates cell tooltips after cells re-render`, async () => {
     const cell = (text: string, tip: string) => `<span title="${tip}">${text}</span>`
     const rows: RowData[] = $state([
       { Model: cell(`alpha`, `tip alpha v1`), Score: 1 },
@@ -87,23 +87,28 @@ describe(`HeatmapTable`, () => {
       { label: `Model`, description: `` },
       { label: `Score`, description: `` },
     ]
-    mount_table({ data: rows, columns })
+    const component = mount_table({ data: rows, columns })
     await tick()
 
-    const alpha_orig = () =>
-      [...document.querySelectorAll(`td[data-col="Model"] span`)]
-        .find((el) => el.textContent === `alpha`)
-        ?.getAttribute(`data-original-title`)
+    const alpha = (): HTMLElement => {
+      const node = [...document.querySelectorAll(`td[data-col="Model"] span`)].find(
+        (element) => element.textContent === `alpha`,
+      )
+      if (!(node instanceof HTMLElement)) throw new Error(`alpha cell not found`)
+      return node
+    }
+    const activate_tooltip = (expected_title: string) => {
+      expect(alpha().getAttribute(`title`)).toBe(expected_title)
+      alpha().dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      expect(alpha().getAttribute(`title`)).toBeNull()
+    }
 
-    // tooltip() wires a cell by moving its title -> data-original-title
-    expect(alpha_orig()).toBe(`tip alpha v1`)
+    activate_tooltip(`tip alpha v1`)
 
-    // mutating the cell value re-renders it, replacing the <span>. A one-time tooltip
-    // scan would miss the new node; table_tooltips must re-wire it on DOM mutation.
     rows[0].Model = cell(`alpha`, `tip alpha v2`)
     await tick()
-    // re-wiring happens in a MutationObserver microtask, so poll until it lands
-    await vi.waitFor(() => expect(alpha_orig()).toBe(`tip alpha v2`))
+    activate_tooltip(`tip alpha v2`)
+    await unmount(component)
   })
 
   it(`filters rows whose values are all undefined`, () => {

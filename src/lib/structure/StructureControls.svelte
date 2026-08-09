@@ -350,10 +350,14 @@
   // twice per row. Spread (not an attachment) so `data-key` is a real attribute from the first
   // render, which is when SettingsSection's row enhancer takes its inventory. `tip` is only for
   // the handful of rows whose advice depends on the structure (no lattice, no symmetry yet).
-  const setting_row = (key: SettingKey, tip?: string) => ({
-    'data-key': key,
-    [setting_attachment_key]: tooltip({ content: tip ?? description_for(key) }),
-  })
+  const setting_row = (key: SettingKey, tip?: string) => {
+    const description = tip ?? description_for(key)
+    return {
+      'data-key': key,
+      'aria-description': description,
+      [setting_attachment_key]: tooltip({ content: description }),
+    }
+  }
   type SettingKeysOfType<Value> = {
     [Key in StructureSettingKey]: (typeof SETTINGS_CONFIG.structure)[Key] extends SettingType<Value>
       ? Key
@@ -695,6 +699,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
   toggle_props={{
     title: controls_open ? `` : `Structure controls`,
     ...toggle_props,
+    'aria-label': toggle_props?.[`aria-label`] ?? `Structure controls`,
     class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
   open_icon={Cross}

@@ -62,15 +62,17 @@ describe(`HeatmapMatrixControls`, () => {
   })
 
   // CSS elsewhere keys off pane-open (e.g. hover-visible control bars stay visible)
-  test(`toggle flips title hint and the pane-open class`, async () => {
+  test(`toggle exposes its label and flips the pane-open state`, async () => {
     mount_controls({ controls_open: false })
     const toggle = get_toggle()
     const pane = doc_query(`.draggable-pane`)
-    expect(toggle.getAttribute(`title`)).toBe(`Heatmap controls`)
+    expect(toggle.getAttribute(`aria-label`)).toBe(`Heatmap controls`)
+    expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
     expect(pane.classList.contains(`pane-open`)).toBe(false)
     toggle.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     await tick()
-    expect(toggle.getAttribute(`title`)).toBe(``)
+    expect(toggle.getAttribute(`aria-label`)).toBe(`Heatmap controls`)
+    expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
     expect(pane.classList.contains(`pane-open`)).toBe(true)
   })
 

@@ -454,6 +454,15 @@ describe(`normalize_atom_color_config`, () => {
         scale_type: `continuous`,
       },
     ],
+    [
+      as_serialized({ mode: `property`, property_key: CNA_TYPE_PROPERTY }),
+      {
+        mode: `property`,
+        property_key: CNA_TYPE_PROPERTY,
+        scale: ap.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        scale_type: `categorical`,
+      },
+    ],
     [{ mode: `property` }, ap.DEFAULT_ATOM_COLOR_CONFIG],
     [as_serialized({ mode: `custom` }), ap.DEFAULT_ATOM_COLOR_CONFIG],
     [{}, ap.DEFAULT_ATOM_COLOR_CONFIG],

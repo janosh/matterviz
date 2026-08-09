@@ -214,17 +214,14 @@ describe(`CellSelect`, () => {
       await mount_and_open({ supercell_scaling: `1x1x1`, sym_data: mock_sym_data })
       const idx = cell_type === `original` ? 0 : cell_type === `primitive` ? 1 : 2
       const btn = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)[idx]
-      // tooltip attachment moves title to data-original-title to prevent native double-tooltip
-      const tooltip_text = btn.dataset.originalTitle ?? btn.title
-      expect(tooltip_text).toBe(expected_tooltip)
+      expect(btn.getAttribute(`aria-label`)).toBe(expected_tooltip)
     })
 
     test(`disabled buttons have "requires symmetry data" in tooltip`, async () => {
       await mount_and_open({ supercell_scaling: `1x1x1`, sym_data: null })
       const buttons = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)
       for (const btn of [buttons[1], buttons[2]]) {
-        const tooltip_text = btn.dataset.originalTitle ?? btn.title
-        expect(tooltip_text).toContain(`requires symmetry data`)
+        expect(btn.getAttribute(`aria-label`)).toContain(`requires symmetry data`)
       }
     })
 

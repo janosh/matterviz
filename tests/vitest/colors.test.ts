@@ -175,6 +175,7 @@ describe(`is_color function`, () => {
 
     // Invalid patterns - malformed
     [`rgb(255, 0)`, false], // incomplete rgb values are rejected
+    [`rgb(255, 0, 0, 0.5)`, false],
     [`#gg0000`, false],
     [`#12`, false],
     [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
@@ -236,6 +237,7 @@ describe(`css_color_to_hex`, () => {
     [`rgb(0 128 255)`, `#0080ff`],
     [`rgb(0, 128, 255)`, `#0080ff`],
     [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
+    [`rgba(255, 0, 0, 0)`, `#ff0000`],
     [`hsl(0, 100%, 50%)`, `#ff0000`],
     [`hsl(120, 100%, 50%)`, `#00ff00`],
     [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
@@ -264,6 +266,8 @@ describe(`css_color_to_hex`, () => {
     [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
     // Special cases
     [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
+    [`TRANSPARENT`, fallback, `#ffffff`, `handles uppercase transparent`],
+    [` Transparent `, fallback, `#ffffff`, `handles padded mixed-case transparent`],
     [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
     // Element color scheme values
     [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
@@ -334,6 +338,7 @@ describe(`add_alpha`, () => {
     [`#abc`, 0.3, `rgba(170, 187, 204, 0.3)`],
     [`rgb(100, 150, 200)`, 0.8, `rgba(100, 150, 200, 0.8)`],
     [`rgba(100, 150, 200, 0.2)`, 0.9, `rgba(100, 150, 200, 0.9)`],
+    [`rgba(255, 0, 0, 0)`, 0.5, `rgba(255, 0, 0, 0.5)`],
     [`rgba(100, 100, 100, 1e-5)`, 0.6, `rgba(100, 100, 100, 0.6)`], // scientific notation
     [`rgba(50, 50, 50, 1.5E+2)`, 0.1, `rgba(50, 50, 50, 0.1)`], // uppercase E with +
     [`unknown-format`, 0.5, `unknown-format`], // passthrough unknown

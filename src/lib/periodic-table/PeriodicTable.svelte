@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    type D3InterpolateName,
     get_d3_interpolator,
     is_color,
     is_dark_mode,
@@ -21,7 +22,6 @@
   import { colors } from '$lib/state.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { D3InterpolateName } from '$lib/colors'
   import type { MissingCellStyle } from '$lib/heatmap-matrix'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
@@ -133,7 +133,8 @@
         return []
       }
       return heatmap_values
-    } else if (typeof heatmap_values === `object`) {
+    }
+    if (typeof heatmap_values === `object`) {
       const bad_keys = Object.keys(heatmap_values).filter(
         (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
       )
@@ -180,11 +181,11 @@
     }
   })
 
-  let tooltip_element: ChemicalElement | null = $state(null)
-  let tooltip_pos: Point2D = $state({ x: 0, y: 0 })
-  let tooltip_visible: boolean = $state(false)
+  let tooltip_element = $state<ChemicalElement | null>(null)
+  let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
+  let tooltip_visible = $state(false)
 
-  function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }) {
+  function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
     on_table_keydown?.(event)
     if (disabled || event.defaultPrevented) return
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
@@ -229,7 +230,7 @@
       ?.focus()
   }
 
-  function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
+  function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
     if (tooltip === false || disabled) return
     tooltip_element = element
     const target = event.currentTarget
@@ -292,13 +293,13 @@
 
   const bg_color = (
     value: HeatValue | false | null,
-    element?: ChemicalElement,
+    element: ChemicalElement,
   ): string | null => {
     if (Array.isArray(value)) return bg_color(value[0], element) // arrays: use first value
     if (is_color(value)) return value // already a color string
 
-    if (!heat_values.length || !color_scale_fn || value_is_missing(value)) {
-      const category_color = (element && colors.category[element.category]) || `#cccccc`
+    if (!heat_values.length || value_is_missing(value)) {
+      const category_color = colors.category[element.category] || `#cccccc`
       if (missing.color === `element-category`) return category_color
       // default: category colors for a plain table, gray for missing heatmap data
       return missing.color || (heat_values.length ? `#666` : category_color)
@@ -316,22 +317,18 @@
     return color_scale_fn((num - cs_min) / span)
   }
 
-  // Build a tile's fill. Color and label travel together per segment, so a multi-value
-  // cell can no longer end up with more colors than values or vice versa. Cells whose
-  // value already *is* a color paint with it but carry no label.
+  // Keep each segment's fill and optional label together.
   const tile_segments = (
     value: HeatValue | false | null,
     element: ChemicalElement,
     override: string | undefined,
     tile_missing: boolean,
   ): TileSegment[] => {
-    // A cell whose value already is a color paints with it but carries no label, and a
-    // missing cell paints its placeholder without one either.
     const values = !tile_missing && Array.isArray(value) ? value : [value]
     return values.map((val) => ({
       color: override ?? bg_color(val, element) ?? undefined,
       value:
-        tile_missing || val == null || val === false || Array.isArray(val) || is_color(val)
+        tile_missing || val == null || val === false || is_color(val)
           ? undefined
           : val,
     }))
