@@ -65,10 +65,10 @@ export type Label = {
   cell_style?: string
 }
 
-// Always append the group, even when the raw key already ends in the same suffix, so
-// `{ key: "x", group: "g" }` and `{ key: "x (g)", group: "g" }` stay distinct.
+// Keep ungrouped IDs unchanged; grouped IDs encode the base and group separately so
+// `{ key: "x", group: "g" }` cannot collide with an ungrouped `{ key: "x (g)" }`.
 export const get_column_id = (col: Label): string =>
-  col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+  col.group ? JSON.stringify([col.key ?? col.label, col.group]) : (col.key ?? col.label)
 
 // Arguments passed to cell snippet renderers
 export type CellSnippetArgs = { row: RowData; col: Label; val: CellVal }

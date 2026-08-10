@@ -212,7 +212,7 @@
     row_title?: (row: RowData) => string | null | undefined
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
-    // - Grouped columns: `${col.key ?? col.label} (${col.group})`
+    // - Grouped columns: JSON.stringify([col.key ?? col.label, col.group])
     // This allows persisting/restoring column order across sessions.
     column_order?: string[]
     // Per-column user tuning (width, color scale, gradient direction, date format,
@@ -446,22 +446,24 @@
     columns = Object.keys(seen).map((key) => ({ label: key }))
   })
 
-  // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
+  // IDs and row keys are separate: grouped IDs use tuple encoding, while existing row data
+  // may still use display-style "Label (Group)" keys.
   let data_keys = $derived.by(() => {
     const keys = new SvelteMap<string, string>()
-    const qualified_ids: string[] = []
+    const qualified_keys = new SvelteMap<string, string>()
     for (const col of columns) {
       const col_id = get_col_id(col)
       const plain_key = col.key ?? col.label
       keys.set(col_id, plain_key) // upgraded below if the rows carry the qualified key
-      if (col_id !== plain_key) qualified_ids.push(col_id)
+      if (col.group) qualified_keys.set(col_id, `${plain_key} (${col.group})`)
     }
     // Only a grouped column can be keyed either way, so an ungrouped table skips the row
     // scan entirely — it costs O(rows x keys) and runs on every data change.
-    if (qualified_ids.length === 0) return keys
+    if (qualified_keys.size === 0) return keys
     const present_keys = new SvelteSet<string>()
     for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
-    for (const col_id of qualified_ids) if (present_keys.has(col_id)) keys.set(col_id, col_id)
+    for (const [col_id, data_key] of qualified_keys)
+      if (present_keys.has(data_key)) keys.set(col_id, data_key)
     return keys
   })
   // Row key for a column, by column or by ID (sort/context-menu state holds IDs)

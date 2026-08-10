@@ -96,9 +96,7 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
   } from '$lib/plot/core/fill-utils'
-  import {
-    get_relative_coords,
-  } from '$lib/plot/core/interactions'
+  import { get_relative_coords } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
@@ -108,10 +106,7 @@
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import {
-    group_ref_lines_by_z,
-    index_ref_lines,
-  } from '$lib/plot/core/reference-line'
+  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { resolve_line_tween } from '$lib/plot/core/utils'
@@ -428,7 +423,7 @@
     title: () => title,
     obstacles: () => obstacles_norm,
     legend: () => legend,
-    legend_visible: () => true,
+    legend_visible: () => should_show_legend,
     legend_items: () => legend_track_items,
     legend_footprint_fallback: { width: 120, height: 80 },
     // A legend the user grabbed or dropped owns its position; the solver only routes
@@ -462,7 +457,6 @@
   const width = $derived(frame.width)
   const height = $derived(frame.height)
   const pad = $derived(frame.pad)
-  const base_pad = $derived(frame.effective_base_pad)
   const effective_base_pad = $derived(frame.effective_base_pad)
   const ranges = $derived(frame.ranges)
   const clip_path_id = $derived(frame.clip_path_id)
@@ -657,7 +651,6 @@
         ]
       : [],
   )
-
 
   let [x_min, x_max] = $derived(ranges.current.x)
   let [x2_min, x2_max] = $derived(ranges.current.x2)
@@ -997,10 +990,10 @@
   let legend_data = $derived(
     build_legend_data(series_with_ids, computed_fills, color_scale_fn),
   )
-  // legend_data already folds fill regions in and dedupes by legend_group::label, so its
-  // length is the rendered entry count the shared auto rule needs.
+  // legend_track_items mirrors the rendered entries without depending on frame geometry,
+  // avoiding a frame -> visibility -> computed fills -> frame dependency cycle.
   const should_show_legend = $derived(
-    resolve_legend_visibility(show_legend, legend, legend_data.length),
+    resolve_legend_visibility(show_legend, legend, legend_track_items.length),
   )
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
@@ -1043,7 +1036,6 @@
     ...pinned_decoration_rects,
     ...frame.exclusion_rects,
   ])
-
 
   // Panning retargets every marker and line on each pointer frame. Animating that leaves
   // them trailing the axes while hover hit-testing already uses the live scales, so snap
@@ -1383,310 +1375,306 @@
   {...rest}
 >
   {#snippet layers()}
-      {@render user_content?.({
-        height,
-        width,
-        x_scale_fn,
-        x2_scale_fn,
-        y_scale_fn,
-        y2_scale_fn,
-        pad,
-        x_range: [x_min, x_max],
-        x2_range: [x2_min, x2_max],
-        y_range: [y_min, y_max],
-        y2_range: [y2_min, y2_max],
-        fullscreen,
-      })}
+    {@render user_content?.({
+      height,
+      width,
+      x_scale_fn,
+      x2_scale_fn,
+      y_scale_fn,
+      y2_scale_fn,
+      pad,
+      x_range: [x_min, x_max],
+      x2_range: [x2_min, x2_max],
+      y_range: [y_min, y_max],
+      y2_range: [y2_min, y2_max],
+      fullscreen,
+    })}
 
-      <!-- Fill regions: below grid -->
-      {@render fill_regions_layer(fills_by_z.below_grid)}
-      <!-- Reference lines: below grid -->
-      {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+    <!-- Fill regions: below grid -->
+    {@render fill_regions_layer(fills_by_z.below_grid)}
+    <!-- Reference lines: below grid -->
+    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-      {#if facet.axis_visible(`x`)}
-        <PlotAxis
-          side="x"
-          ticks={x_tick_values}
-          place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
-          axis={final_x_axis}
-          on_tick_font={(font) => (frame.tick_font = font)}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.x_grid}
-          show_baseline={false}
-          domain={[x_min, x_max]}
-          tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
-          label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
-          label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `x`}
-          on_axis_change={(key) => handle_axis_change(`x`, key)}
-        />
-      {/if}
+    {#if facet.axis_visible(`x`)}
+      <PlotAxis
+        side="x"
+        ticks={x_tick_values}
+        place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
+        axis={final_x_axis}
+        on_tick_font={(font) => (frame.tick_font = font)}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.x_grid}
+        show_baseline={false}
+        domain={[x_min, x_max]}
+        tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
+        label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `x`}
+        on_axis_change={(key) => handle_axis_change(`x`, key)}
+      />
+    {/if}
 
-      <!-- Current frame indicator -->
-      {#if current_x_value != null}
-        {@const current_pos_raw = is_time_x
-          ? x_scale_fn(new Date(current_x_value))
-          : x_scale_fn(current_x_value)}
-        {#if isFinite(current_pos_raw)}
-          {@const current_pos = current_pos_raw}
-          {#if current_pos >= pad.l && current_pos <= width - pad.r}
-            {@const active_tick_height = 7}
-            <rect
-              x={current_pos - 1.5}
-              y={height - pad.b - active_tick_height / 2}
-              width="3"
-              height={active_tick_height}
-              fill="var(--scatter-current-frame-color, #ff6b35)"
-              stroke="white"
-              stroke-width="1"
-              class="current-frame-indicator"
-            />
-          {/if}
+    <!-- Current frame indicator -->
+    {#if current_x_value != null}
+      {@const current_pos_raw = is_time_x
+        ? x_scale_fn(new Date(current_x_value))
+        : x_scale_fn(current_x_value)}
+      {#if isFinite(current_pos_raw)}
+        {@const current_pos = current_pos_raw}
+        {#if current_pos >= pad.l && current_pos <= width - pad.r}
+          {@const active_tick_height = 7}
+          <rect
+            x={current_pos - 1.5}
+            y={height - pad.b - active_tick_height / 2}
+            width="3"
+            height={active_tick_height}
+            fill="var(--scatter-current-frame-color, #ff6b35)"
+            stroke="white"
+            stroke-width="1"
+            class="current-frame-indicator"
+          />
         {/if}
       {/if}
+    {/if}
 
-      {#if facet.axis_visible(`y`)}
-        <PlotAxis
-          side="y"
-          ticks={y_tick_values}
-          place={y_scale_fn}
-          axis={final_y_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.y_grid}
-          show_baseline={false}
-          domain={[y_min, y_max]}
-          unit_on_first_tick
-          tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-          label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
-          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `y`}
-          on_axis_change={(key) => handle_axis_change(`y`, key)}
-        />
-      {/if}
+    {#if facet.axis_visible(`y`)}
+      <PlotAxis
+        side="y"
+        ticks={y_tick_values}
+        place={y_scale_fn}
+        axis={final_y_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.y_grid}
+        show_baseline={false}
+        domain={[y_min, y_max]}
+        unit_on_first_tick
+        tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
+        label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y`}
+        on_axis_change={(key) => handle_axis_change(`y`, key)}
+      />
+    {/if}
 
-      <!-- Y2-axis (Right) -->
-      {#if has_y2_points && facet.axis_visible(`y2`)}
-        <PlotAxis
-          side="y2"
-          ticks={y2_tick_values}
-          place={y2_scale_fn}
-          axis={final_y2_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.y2_grid}
-          show_baseline={false}
-          domain={[y2_min, y2_max]}
-          unit_on_first_tick
-          tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-          label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
-          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `y2`}
-          on_axis_change={(key) => handle_axis_change(`y2`, key)}
-        />
-      {/if}
+    <!-- Y2-axis (Right) -->
+    {#if has_y2_points && facet.axis_visible(`y2`)}
+      <PlotAxis
+        side="y2"
+        ticks={y2_tick_values}
+        place={y2_scale_fn}
+        axis={final_y2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.y2_grid}
+        show_baseline={false}
+        domain={[y2_min, y2_max]}
+        unit_on_first_tick
+        tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
+        label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y2`}
+        on_axis_change={(key) => handle_axis_change(`y2`, key)}
+      />
+    {/if}
 
-      <!-- X2-axis (Top) -->
-      {#if has_x2_points && facet.axis_visible(`x2`)}
-        <PlotAxis
-          side="x2"
-          ticks={x2_tick_values}
-          place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
-          axis={final_x2_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.x2_grid}
-          show_baseline={false}
-          domain={[x2_min, x2_max]}
-          tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
-          label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
-          label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
-          axis_loading={axis_loading === `x2`}
-          on_axis_change={(key) => handle_axis_change(`x2`, key)}
-        />
-      {/if}
+    <!-- X2-axis (Top) -->
+    {#if has_x2_points && facet.axis_visible(`x2`)}
+      <PlotAxis
+        side="x2"
+        ticks={x2_tick_values}
+        place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
+        axis={final_x2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.x2_grid}
+        show_baseline={false}
+        domain={[x2_min, x2_max]}
+        tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
+        label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
+        label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
+        axis_loading={axis_loading === `x2`}
+        on_axis_change={(key) => handle_axis_change(`x2`, key)}
+      />
+    {/if}
 
-      <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
+    <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
-      <ZeroLines {frame} display={final_display} />
+    <ZeroLines {frame} display={final_display} />
 
-      <!-- Fill regions: below lines (default z-index) -->
-      {@render fill_regions_layer(fills_by_z.below_lines)}
-      <!-- Reference lines: below lines (default z-index) -->
-      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+    <!-- Fill regions: below lines (default z-index) -->
+    {@render fill_regions_layer(fills_by_z.below_lines)}
+    <!-- Reference lines: below lines (default z-index) -->
+    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-      <!-- Lines -->
-      {#if styles.show_lines}
-        {#each filtered_series as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
-          <g
-            data-series-id={series_data._id}
-            clip-path="url(#{clip_path_id})"
-            opacity={hovered_legend_series_idx !== null &&
-            hovered_legend_series_idx !== series_data.orig_series_idx
-              ? 0.25
-              : 1}
-          >
-            {#if series_markers.includes(`line`)}
-              {@const all_line_points = series_data.x.map((x, idx) => ({
-                x,
-                y: series_data.y[idx],
-              }))}
-              {@const finite_screen_points = all_line_points
-                .map((point) => get_screen_coords(point, series_data))
-                .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
-              {@const apply_line_controls = applies_style_controls(series_data)}
-              {@const ls = series_data.line_style}
-              {@const tc = (key: string) => apply_line_controls && touched.has(key)}
-              {@const color_fallback =
-                ls?.stroke ??
-                (Array.isArray(series_data.point_style)
-                  ? series_data.point_style[0]?.fill
-                  : series_data.point_style?.fill) ??
-                (series_data.color_values?.[0] != null
-                  ? color_scale_fn(series_data.color_values[0])
-                  : series_default_color)}
-              <Line
-                points={finite_screen_points}
-                origin={[
-                  is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
-                  series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
-                ]}
-                line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
-                line_width={(tc(`line.width`) ? styles.line?.width : null) ??
-                  ls?.stroke_width ??
-                  2}
-                line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
-                curve={ls?.curve}
-                area_color="transparent"
-                line_tween={effective_line_tween}
-              />
-            {/if}
-          </g>
-        {/each}
-      {/if}
+    <!-- Lines -->
+    {#if styles.show_lines}
+      {#each filtered_series as series_data (series_data._id)}
+        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+        {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
+        <g
+          data-series-id={series_data._id}
+          clip-path="url(#{clip_path_id})"
+          opacity={hovered_legend_series_idx !== null &&
+          hovered_legend_series_idx !== series_data.orig_series_idx
+            ? 0.25
+            : 1}
+        >
+          {#if series_markers.includes(`line`)}
+            {@const all_line_points = series_data.x.map((x, idx) => ({
+              x,
+              y: series_data.y[idx],
+            }))}
+            {@const finite_screen_points = all_line_points
+              .map((point) => get_screen_coords(point, series_data))
+              .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
+            {@const apply_line_controls = applies_style_controls(series_data)}
+            {@const ls = series_data.line_style}
+            {@const tc = (key: string) => apply_line_controls && touched.has(key)}
+            {@const color_fallback =
+              ls?.stroke ??
+              (Array.isArray(series_data.point_style)
+                ? series_data.point_style[0]?.fill
+                : series_data.point_style?.fill) ??
+              (series_data.color_values?.[0] != null
+                ? color_scale_fn(series_data.color_values[0])
+                : series_default_color)}
+            <Line
+              points={finite_screen_points}
+              origin={[
+                is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
+                series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
+              ]}
+              line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
+              line_width={(tc(`line.width`) ? styles.line?.width : null) ??
+                ls?.stroke_width ??
+                2}
+              line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
+              curve={ls?.curve}
+              area_color="transparent"
+              line_tween={effective_line_tween}
+            />
+          {/if}
+        </g>
+      {/each}
+    {/if}
 
-      <!-- Fill regions: below points -->
-      {@render fill_regions_layer(fills_by_z.below_points)}
-      <!-- Reference lines: below points -->
-      {@render ref_lines_layer(ref_lines_by_z.below_points)}
+    <!-- Fill regions: below points -->
+    {@render fill_regions_layer(fills_by_z.below_points)}
+    <!-- Reference lines: below points -->
+    {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
-      {#if use_canvas_markers}
-        <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
+    {#if use_canvas_markers}
+      <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
              explicit above-all layers. Pointer events remain on the parent SVG. -->
-        <foreignObject
-          x="0"
-          y="0"
-          {width}
-          {height}
-          pointer-events="none"
-          {@attach attach_marker_canvas}
-        ></foreignObject>
-      {/if}
+      <foreignObject
+        x="0"
+        y="0"
+        {width}
+        {height}
+        pointer-events="none"
+        {@attach attach_marker_canvas}
+      ></foreignObject>
+    {/if}
 
-      <!-- Canvas mode retains only labelled/hovered/selected points here. -->
-      {#if styles.show_points}
-        {#each filtered_series as series_data, series_pos (series_data._id)}
-          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-          {@const rendered_points = use_canvas_markers
-            ? (svg_overlay_points_by_series[series_pos] ?? [])
-            : series_data.filtered_data}
-          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
-            {#if series_markers.includes(`points`)}
-              {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
-                {@const label_id = `${point.series_idx}-${point.point_idx}`}
-                {@const calculated_label_pos = label_positions[label_id]}
-                {@const point_label = point.point_label ?? {}}
-                {@const marker_screen = point_screen_xy(
-                  point,
-                  series_screen_scales(series_data),
-                )}
-                {@const label_style =
-                  point_label.auto_placement &&
-                  actual_label_config.max_neighbors &&
-                  !calculated_label_pos
-                    ? {}
-                    : point_label}
-                {@const final_label = calculated_label_pos
-                  ? {
-                      ...label_style,
-                      offset: {
-                        x: calculated_label_pos.x - marker_screen.cx,
-                        y: calculated_label_pos.y - marker_screen.cy,
-                      },
-                    }
-                  : label_style}
-                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
-                {@const screen_x = isFinite(raw_screen_x)
-                  ? raw_screen_x
-                  : x_scale_fn.range()[0]}
-                {@const screen_y = isFinite(raw_screen_y)
-                  ? raw_screen_y
-                  : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-                {@const appearance = point_appearance(point, series_data)}
-                <ScatterPoint
-                  x={screen_x}
-                  y={screen_y}
-                  is_dimmed={hovered_legend_series_idx !== null &&
-                    hovered_legend_series_idx !== point.series_idx}
-                  is_hovered={tooltip_point?.series_idx === point.series_idx &&
-                    tooltip_point?.point_idx === point.point_idx}
-                  is_selected={selected_point?.series_idx === point.series_idx &&
-                    selected_point?.point_idx === point.point_idx}
-                  leader_line_threshold={actual_label_config.leader_line_threshold}
-                  overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
-                  style={{
-                    symbol_type: appearance.symbol_type,
-                    ...point.point_style,
-                    radius: appearance.radius,
-                    stroke_width: appearance.stroke_width,
-                    stroke: appearance.stroke,
-                    stroke_opacity: appearance.stroke_opacity,
-                    fill_opacity: appearance.fill_opacity,
-                    cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
-                  }}
-                  hover={point.point_hover ?? {}}
-                  label={final_label}
-                  offset={point.point_offset ?? { x: 0, y: 0 }}
-                  point_tween={effective_point_tween}
-                  --point-fill-color={appearance.fill}
-                  {...point_events &&
-                    Object.fromEntries(
-                      point_event_names.map((name) => [
-                        name,
-                        (event: Event) => point_events?.[name]?.({ point, event }),
-                      ]),
-                    )}
-                  onclick={(event: MouseEvent) => {
-                    // Call user-provided onclick handler first if it exists
-                    point_events?.onclick?.({ point, event })
-                    // then handle internal logic
-                    const props = construct_handler_props(point)
-                    tooltip_point = point
-                    if (props) on_point_click?.({ ...props, event, point })
-                  }}
-                />
-              {/each}
-            {/if}
-          </g>
-        {/each}
-      {/if}
+    <!-- Canvas mode retains only labelled/hovered/selected points here. -->
+    {#if styles.show_points}
+      {#each filtered_series as series_data, series_pos (series_data._id)}
+        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+        {@const rendered_points = use_canvas_markers
+          ? (svg_overlay_points_by_series[series_pos] ?? [])
+          : series_data.filtered_data}
+        <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
+          {#if series_markers.includes(`points`)}
+            {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
+              {@const label_id = `${point.series_idx}-${point.point_idx}`}
+              {@const calculated_label_pos = label_positions[label_id]}
+              {@const point_label = point.point_label ?? {}}
+              {@const marker_screen = point_screen_xy(
+                point,
+                series_screen_scales(series_data),
+              )}
+              {@const label_style =
+                point_label.auto_placement &&
+                actual_label_config.max_neighbors &&
+                !calculated_label_pos
+                  ? {}
+                  : point_label}
+              {@const final_label = calculated_label_pos
+                ? {
+                    ...label_style,
+                    offset: {
+                      x: calculated_label_pos.x - marker_screen.cx,
+                      y: calculated_label_pos.y - marker_screen.cy,
+                    },
+                  }
+                : label_style}
+              {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
+              {@const screen_x = isFinite(raw_screen_x) ? raw_screen_x : x_scale_fn.range()[0]}
+              {@const screen_y = isFinite(raw_screen_y)
+                ? raw_screen_y
+                : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
+              {@const appearance = point_appearance(point, series_data)}
+              <ScatterPoint
+                x={screen_x}
+                y={screen_y}
+                is_dimmed={hovered_legend_series_idx !== null &&
+                  hovered_legend_series_idx !== point.series_idx}
+                is_hovered={tooltip_point?.series_idx === point.series_idx &&
+                  tooltip_point?.point_idx === point.point_idx}
+                is_selected={selected_point?.series_idx === point.series_idx &&
+                  selected_point?.point_idx === point.point_idx}
+                leader_line_threshold={actual_label_config.leader_line_threshold}
+                overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
+                style={{
+                  symbol_type: appearance.symbol_type,
+                  ...point.point_style,
+                  radius: appearance.radius,
+                  stroke_width: appearance.stroke_width,
+                  stroke: appearance.stroke,
+                  stroke_opacity: appearance.stroke_opacity,
+                  fill_opacity: appearance.fill_opacity,
+                  cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
+                }}
+                hover={point.point_hover ?? {}}
+                label={final_label}
+                offset={point.point_offset ?? { x: 0, y: 0 }}
+                point_tween={effective_point_tween}
+                --point-fill-color={appearance.fill}
+                {...point_events &&
+                  Object.fromEntries(
+                    point_event_names.map((name) => [
+                      name,
+                      (event: Event) => point_events?.[name]?.({ point, event }),
+                    ]),
+                  )}
+                onclick={(event: MouseEvent) => {
+                  // Call user-provided onclick handler first if it exists
+                  point_events?.onclick?.({ point, event })
+                  // then handle internal logic
+                  const props = construct_handler_props(point)
+                  tooltip_point = point
+                  if (props) on_point_click?.({ ...props, event, point })
+                }}
+              />
+            {/each}
+          {/if}
+        </g>
+      {/each}
+    {/if}
 
-      <!-- Fill regions: above all -->
-      {@render fill_regions_layer(fills_by_z.above_all)}
-      <!-- Reference lines: above all -->
-      {@render ref_lines_layer(ref_lines_by_z.above_all)}
-
+    <!-- Fill regions: above all -->
+    {@render fill_regions_layer(fills_by_z.above_all)}
+    <!-- Reference lines: above all -->
+    {@render ref_lines_layer(ref_lines_by_z.above_all)}
   {/snippet}
 
   {#snippet overlays()}
-
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
     {#if handler_props && hovered && tooltip_point}
       {@const { point_label, series_idx } = tooltip_point}

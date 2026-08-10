@@ -249,7 +249,7 @@ def generate_benzene_orbital_cube() -> str:
 
     def density(x: float, y: float, z: float) -> float:
         psi = 0.0
-        for (cx, cy), sign in zip(c_positions, signs):
+        for (cx, cy), sign in zip(c_positions, signs, strict=True):
             psi += sign * z * math.exp(-((x - cx) ** 2 + (y - cy) ** 2 + z**2) / 0.72)
         return psi
 

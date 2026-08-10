@@ -31,16 +31,12 @@ export const AXIS_LABEL_HEIGHT = 20
 // Axis titles historically used a 200px foreignObject. Retain that as the deterministic
 // wrapping span for vertical titles, whose available height is not forwarded through PlotAxis.
 export const AXIS_TITLE_WRAP_WIDTH = 200
-// Extra air reserved past an axis title's glyph box, on every side auto-padding sizes.
-// 0 lets titles sit flush against the plot's outer edge; raise it to inset them.
+// Air past an axis title's glyph box; 0 sits titles flush against the plot edge
 export const AXIS_LABEL_OUTER = 0
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
-// Floors for the per-side padding auto-sizing computes; measured ticks and titles win where
-// they need more, so a labelled y axis lands near 63 rather than this 50. Bottom clears the
-// x-title (AXIS_TITLE_OFFSET 36 + half its 20px height) with 4px to spare, and right only
-// catches the half of the last x tick label that overhangs the axis end.
+// Per-side floors; measured ticks and titles win when they need more
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 50, l: 50, r: 12 }
 
 const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({

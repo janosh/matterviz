@@ -22,6 +22,7 @@ MATTERVIZ_ROOT = (
 )
 _SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 _XRD_DIR = _SITE_DIR / "xrd"
+_XRD_TEXT_EXTENSIONS = (".xye", ".xy")
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -99,26 +100,34 @@ def load_electronic_bands(name: str) -> dict | None:
 
 def load_xrd_pattern(name: str) -> dict | None:
     """Load an XRD pattern from the site data directory."""
-    return load_xye_file(_XRD_DIR / f"{name}.xye")
+    file_path = _XRD_PATTERNS.get(name)
+    return load_xye_file(file_path) if file_path else None
 
 
-def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
-    """Discover available demo files by scanning a directory."""
+def _discover_files(directory: Path) -> list[str]:
+    """Discover available JSON demo files by scanning a directory."""
     if not directory.exists():
         return []
     seen: set[str] = set()
     names = []
-    for path in sorted(directory.glob(pattern)):
-        # Strip compound extensions like .json.gz or .xy.gz
-        name = path.stem
-        for ext in (".json", ".xy"):
-            if name.endswith(ext):
-                name = name[: -len(ext)]
-                break
+    for path in sorted(directory.glob("*.json*")):
+        name = path.stem.removesuffix(".json")
         if name and name not in seen:
             seen.add(name)
             names.append(name)
     return names
+
+
+def _discover_xrd_patterns(directory: Path) -> dict[str, Path]:
+    """Discover uncompressed XRD text patterns supported by load_xye_file."""
+    patterns: dict[str, Path] = {}
+    for extension in _XRD_TEXT_EXTENSIONS:
+        for file_path in sorted(directory.glob(f"*{extension}")):
+            patterns.setdefault(file_path.stem, file_path)
+    return patterns
+
+
+_XRD_PATTERNS = _discover_xrd_patterns(_XRD_DIR)
 
 
 # Fallback defaults for each data category (used when discovery finds nothing)
@@ -150,7 +159,7 @@ AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [_FALLBACK_
 AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
     _FALLBACK_BANDS
 ]
-AVAILABLE_XRD = _discover_files(_XRD_DIR, "*.xy*") or [_FALLBACK_XRD]
+AVAILABLE_XRD = list(_XRD_PATTERNS) or [_FALLBACK_XRD]
 
 
 def _safe_first(lst: list[str], fallback: str) -> str:

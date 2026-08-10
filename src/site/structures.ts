@@ -69,9 +69,11 @@ const category_icons: Record<ReturnType<typeof detect_structure_type>, string> =
 export const structure_files: FileInfo[] = Object.entries(raw_structure_modules).map(
   ([path, value]) => {
     const filename = path.split(`/`).pop() ?? path
-    const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
+    const uncompressed_filename = filename.replace(/\.gz$/i, ``)
+    const type = uncompressed_filename.split(`.`).pop()?.toUpperCase() ?? `FILE`
     const url = path.replace(`/src/site`, ``)
-    const category = detect_structure_type(filename, glob_text(value))
+    // raw_text_plugin decompresses eager `?raw` gzip imports before they reach this map.
+    const category = detect_structure_type(uncompressed_filename, glob_text(value))
     return { name: filename, url, type, category, category_icon: category_icons[category] }
   },
 )

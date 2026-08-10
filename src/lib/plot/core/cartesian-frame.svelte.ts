@@ -211,9 +211,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   $effect.pre(() => {
     if (y2_sync.mode === prev_sync_mode) return
     prev_sync_mode = y2_sync.mode
-    ranges.current.y2 = y2_sync.mode === `none`
-      ? ([...untrack(() => ranges.initial.y2)] as Vec2)
-      : synced_y2()
+    ranges.current.y2 =
+      y2_sync.mode === `none` ? ([...untrack(() => ranges.initial.y2)] as Vec2) : synced_y2()
   })
 
   // Sync ranges from axis.range overrides and auto ranges. resolve_axis_ranges returns
@@ -317,7 +316,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       width,
       height,
       obstacles_norm: opts.obstacles(),
-      exclusion_rects: opts.exclusion_rects?.() as Rect[] | undefined,
+      exclusion_rects: opts.exclusion_rects?.(),
       items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
     }),
   )
@@ -388,10 +387,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     pan: opts.pan,
     // y is written before y2, so the sync reads the just-updated y range
     set_range: (axis, range) =>
-      facet.update_range(
-        axis,
-        axis === `y2` && y2_sync.mode !== `none` ? synced_y2() : range,
-      ),
+      facet.update_range(axis, axis === `y2` && y2_sync.mode !== `none` ? synced_y2() : range),
     svg: () => svg_element,
     on_drag_move: opts.on_drag_move,
     on_rect_zoom: (start, current) => {
@@ -406,9 +402,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const next_y = invert_rect_range(scales.y, start.y, current.y)
       if (next_y && !facet.update_range(`y`, next_y)) opts.write_range(`y`, next_y)
       // A synced y2 is derived from y, so let the sync pass set it instead of the rect
-      const next_y2 = opts.has_y2() && y2_sync.mode === `none`
-        ? invert_rect_range(scales.y2, start.y, current.y)
-        : null
+      const next_y2 =
+        opts.has_y2() && y2_sync.mode === `none`
+          ? invert_rect_range(scales.y2, start.y, current.y)
+          : null
       if (next_y2 && !facet.update_range(`y2`, next_y2)) opts.write_range(`y2`, next_y2)
       apply_y2_sync()
     },

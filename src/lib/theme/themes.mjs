@@ -32,15 +32,21 @@ const btn_bg = (dark_op, light_op) => ({
   black: `rgba(255, 255, 255, ${dark_op})`,
 })
 
-// Slight contrast shading drawn behind plot SVGs and structure canvases so they read
-// as panels sitting on top of the page background. Shared so a plot and a structure
-// shown side by side (e.g. trajectory view) get an identical tint. Kept subtle; light
-// modes darken, dark modes lighten.
+// Slight contrast shading drawn behind structure canvases so they read as panels sitting
+// on top of the page background. Kept subtle; light modes darken, dark modes lighten.
+// Plots deliberately opt out (see 'plot-bg') and blend into the page instead.
 const canvas_bg = {
   light: `rgba(0, 0, 0, 0.03)`,
   dark: `rgba(255, 255, 255, 0.07)`,
   white: `rgba(0, 0, 0, 0.025)`,
   black: `rgba(255, 255, 255, 0.1)`,
+}
+
+const transparent = {
+  light: `transparent`,
+  dark: `transparent`,
+  white: `transparent`,
+  black: `transparent`,
 }
 
 const themes = {
@@ -169,8 +175,9 @@ const themes = {
     black: `1px solid rgba(255, 255, 255, 0.075)`,
   },
 
-  // Plot & structure canvas backgrounds (shared subtle panel shading)
-  'plot-bg': canvas_bg,
+  // Plots sit flush on the page by default; set --plot-bg (or a per-chart --<chart>-bg)
+  // to shade one as a panel. Structures keep the subtle canvas tint.
+  'plot-bg': transparent,
   'struct-bg': canvas_bg,
   'struct-bg-fullscreen': page_bg,
 

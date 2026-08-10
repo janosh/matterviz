@@ -8,7 +8,8 @@ import {
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
 import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { get_trajectory_type } from '$site/trajectories'
+import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import { describe, expect, it, test, vi } from 'vitest'
@@ -24,6 +25,18 @@ const TRAJECTORY_DIR = `src/site/trajectories`
 // Helper to read text trajectory files (auto-decompresses .gz)
 const read_test_file = (filename: string): string =>
   read_maybe_gz(join(process.cwd(), TRAJECTORY_DIR, filename))
+
+test.each([
+  [`movie.H5.gz`, `hdf5`],
+  [`movie.hdf5.GZ`, `hdf5`],
+  [`movie.json.gz`, `json`],
+  [`movie.xyz.gz`, `xyz`],
+  [`movie.extxyz.gz`, `xyz`],
+  [`vasp-XDATCAR.MD.gz`, `xdatcar`],
+  [`movie.traj.gz`, `traj`],
+] as const)(`classifies compressed site trajectory %s as %s`, (name, expected) => {
+  expect(get_trajectory_type({ name, url: name })).toBe(expected)
+})
 
 describe(`Trajectory File Detection`, () => {
   // only checking filename recognition, files don't need to exist
@@ -642,9 +655,7 @@ Si 0 0 0
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
     const structure = trajectory.frames[0].structure
-    expect(structure).toBeDefined()
-    expect(`lattice` in structure).toBe(true)
-    // @ts-expect-error - line above ensures lattice is defined but doesn't type narrow
+    if (!(`lattice` in structure)) throw new Error(`missing lattice`)
     expect(structure.lattice.matrix).toEqual([
       [5.0, 0.0, 0.0],
       [0.0, 5.0, 0.0],
@@ -1128,7 +1139,6 @@ const TRAJECTORY_REFERENCE_DATA: {
   frames: number
   atoms: number
   elements: ElementSymbol[]
-  periodic: boolean
   format: string
 }[] = [
   {
@@ -1136,7 +1146,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 2,
     atoms: 8,
     elements: [`Li`, `Mn`, `O`],
-    periodic: true,
     format: `ase_trajectory`,
   },
   {
@@ -1144,7 +1153,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 51,
     atoms: 119,
     elements: [`Ag`, `Al`, `O`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1152,7 +1160,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 9,
     atoms: 108,
     elements: [`Co`, `Cr`, `Fe`, `Ni`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1160,7 +1167,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 7,
     atoms: 99,
     elements: [`Re`, `Ta`, `V`, `W`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1168,7 +1174,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 6,
     atoms: 4,
     elements: [`Fe`, `W`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1176,7 +1181,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 100,
     atoms: 76,
     elements: [`Li`, `Si`],
-    periodic: true,
     format: `vasp_xdatcar`,
   },
   {
@@ -1184,7 +1188,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 6,
     atoms: 22,
     elements: [],
-    periodic: true,
     format: `lammps_trajectory`,
   },
 ]
@@ -1192,7 +1195,7 @@ const TRAJECTORY_REFERENCE_DATA: {
 describe(`Trajectory Files with Exact Reference Data`, () => {
   it.each(TRAJECTORY_REFERENCE_DATA)(
     `$file: $frames frames, $atoms atoms`,
-    async ({ file, frames, atoms, elements, periodic, format }) => {
+    async ({ file, frames, atoms, elements, format }) => {
       const is_binary = /\.(?:h5|hdf5|traj)$/.exec(file)
       const content = is_binary ? read_binary_test_file(file) : read_test_file(file)
 
@@ -1208,13 +1211,10 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
         const found = new Set(
           traj.frames[0].structure.sites.map((site) => site.species[0]?.element),
         )
-        expect([...found].toSorted()).toEqual(expect.arrayContaining(elements.toSorted()))
+        expect([...found].toSorted()).toEqual(elements.toSorted())
       }
 
-      // Periodic structures should have lattice
-      if (periodic) {
-        expect(`lattice` in traj.frames[0].structure).toBe(true)
-      }
+      expect(`lattice` in traj.frames[0].structure).toBe(true)
 
       // All frames should have same atom count
       expect(traj.frames.every((frame) => frame.structure.sites.length === atoms)).toBe(true)
@@ -1227,19 +1227,17 @@ describe(`Comprehensive File Coverage`, () => {
   const trajectory_dir = join(process.cwd(), TRAJECTORY_DIR)
   // Unsupported compression formats (not available in browser DecompressionStream)
   const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
-  const all_trajectory_files = existsSync(trajectory_dir)
-    ? readdirSync(trajectory_dir).filter((name: string) => {
-        const file_path = join(trajectory_dir, name)
-        return (
-          statSync(file_path).isFile() &&
-          !name.startsWith(`.`) &&
-          !name.includes(`bad-file`) && // Exclude intentionally broken test files
-          !name.endsWith(`.ts`) && // Exclude TypeScript files
-          !name.endsWith(`.js`) &&
-          !unsupported_compression.some((ext) => name.endsWith(ext))
-        ) // Exclude unsupported compression
-      })
-    : []
+  const all_trajectory_files = readdirSync(trajectory_dir).filter((name: string) => {
+    const file_path = join(trajectory_dir, name)
+    return (
+      statSync(file_path).isFile() &&
+      !name.startsWith(`.`) &&
+      !name.includes(`bad-file`) && // Exclude intentionally broken test files
+      !name.endsWith(`.ts`) && // Exclude TypeScript files
+      !name.endsWith(`.js`) &&
+      !unsupported_compression.some((ext) => name.endsWith(ext))
+    ) // Exclude unsupported compression
+  })
 
   it.each(all_trajectory_files)(
     `should successfully parse sample file: %s`,
@@ -1247,19 +1245,12 @@ describe(`Comprehensive File Coverage`, () => {
       const is_binary = /\.(?:h5|hdf5|traj)$/.exec(filename)
       const content = is_binary ? read_binary_test_file(filename) : read_test_file(filename)
 
-      // Should not throw an error
       const trajectory = await parse_trajectory_data(content, filename)
 
-      // Basic validation
-      expect(trajectory).toBeDefined()
-      expect(trajectory.frames).toBeDefined()
       expect(trajectory.frames.length).toBeGreaterThan(0)
       expect(trajectory.metadata?.source_format).toBeDefined()
 
-      // Each frame should have a valid structure
-      trajectory.frames.forEach((frame, _idx) => {
-        expect(frame.structure).toBeDefined()
-        expect(frame.structure.sites).toBeDefined()
+      trajectory.frames.forEach((frame) => {
         expect(frame.structure.sites.length).toBeGreaterThan(0)
         expect(typeof frame.step).toBe(`number`)
       })

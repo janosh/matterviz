@@ -72,7 +72,11 @@ describe(`package.json exports`, () => {
     // decoration plumbing public API. Only the prop-facing types and standalone components
     // named in plot/index.ts are published.
     const source = readFileSync(join(lib_dir, `plot/index.ts`), `utf8`)
-    expect(source).not.toMatch(/export (?:type )?\*(?: as \w+)? from ['"]\.\/core['"]/)
+    // Whole-core and single-module wildcards both leak, declarations added later included.
+    // Only chart prop types and plot titles are sanctioned; adding a third needs a decision.
+    const wildcard = /export (?:type )?\*(?: as \w+)? from ['"](?<mod>\.\/core[\w/-]*)['"]/g
+    const core_wildcards = [...source.matchAll(wildcard)].map((match) => match.groups?.mod)
+    expect(core_wildcards).toEqual([`./core/types`, `./core/plot-title`])
     expect(existsSync(join(lib_dir, `plot/core/index.ts`))).toBe(false)
     // and no subpath may reach plot/core the other way round
     expect(Object.keys(pkg.exports).filter((sub) => sub.startsWith(`./plot`))).toEqual([

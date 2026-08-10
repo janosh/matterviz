@@ -905,18 +905,17 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
     })
 
-    it(`keeps raw and already-qualified grouped keys distinct`, async () => {
+    it(`keeps grouped IDs distinct from display-style ungrouped keys`, async () => {
       const state = $state({ hidden_columns: [] as string[] })
       mount_table(
         bind_props(
           {
-            data: [{ 'Value (Group A)': 1, 'Value (Group A) (Group A)': 2 }],
+            data: [{ 'Value (Group A)': 1 }],
             columns: [
               { key: `Value`, label: `Value`, group: `Group A`, description: `` },
               {
                 key: `Value (Group A)`,
                 label: `Qualified value`,
-                group: `Group A`,
                 description: ``,
               },
             ],
@@ -933,7 +932,7 @@ describe(`HeatmapTable`, () => {
         .querySelectorAll<HTMLInputElement>(`.sections-container input`)
         .forEach((checkbox) => checkbox.click())
       await tick()
-      expect(state.hidden_columns).toEqual([`Value (Group A)`, `Value (Group A) (Group A)`])
+      expect(state.hidden_columns).toEqual([`["Value","Group A"]`, `Value (Group A)`])
 
       doc_query(`.column-toggles summary .reset-btn`).click()
       await tick()
@@ -1539,7 +1538,7 @@ describe(`HeatmapTable`, () => {
         const table = document.querySelector(`table`)
         expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 24px`)
 
-        state.hidden_columns = [`Mass (Physical)`]
+        state.hidden_columns = [`["Mass","Physical"]`]
         await tick()
         expect(table?.getAttribute(`style`)).toContain(`--group-header-height: 0px`)
       } finally {
@@ -1660,7 +1659,7 @@ describe(`HeatmapTable`, () => {
         await tick()
 
         await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenCalledWith(`Value (Group B)`, expect.any(String)),
+          expect(onsort_mock).toHaveBeenCalledWith(`["Value","Group B"]`, expect.any(String)),
         )
       })
     })

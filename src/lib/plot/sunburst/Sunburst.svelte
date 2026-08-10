@@ -563,7 +563,7 @@
   .arcs path {
     /* stroke via CSS (not presentation attributes): var() substitution in SVG
     presentation attributes is not reliably supported across browsers */
-    stroke: var(--sunburst-arc-stroke, var(--plot-bg, white));
+    stroke: var(--sunburst-arc-stroke, var(--page-bg, white));
     stroke-width: var(--sunburst-arc-stroke-width, 0.25);
     transition:
       fill-opacity 0.15s ease,
@@ -587,7 +587,7 @@
   .sunburst :global(.hatch-pattern-line) {
     stroke: var(
       --sunburst-hatch-stroke,
-      color-mix(in srgb, var(--sunburst-arc-stroke, var(--plot-bg, white)) 30%, transparent)
+      color-mix(in srgb, var(--sunburst-arc-stroke, var(--page-bg, white)) 30%, transparent)
     );
     stroke-width: var(--sunburst-hatch-stroke-width, 0.35);
   }
