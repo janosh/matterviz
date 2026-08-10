@@ -20,12 +20,9 @@
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
-  import {
-    collect_msd_positions,
-    has_all_frames_in_memory,
-    suggest_msd_frame_stride,
-  } from '$lib/msd/collect'
+  import { collect_msd_positions, suggest_msd_frame_stride } from '$lib/msd/collect'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
+  import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
@@ -150,7 +147,7 @@
     on_file_load,
     on_error,
     fps_range = DEFAULTS.trajectory.fps_range,
-    fps = $bindable(5),
+    fps = $bindable(DEFAULTS.trajectory.fps),
     loading_options = {},
     atom_type_mapping,
     plot_skimming = true,
@@ -297,9 +294,7 @@
   )
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
-  let data_url_load_id = 0
-  let loaded_data_url: string | undefined
-  let url_owned_trajectory: TrajectoryType | undefined
+  const data_url_loader = io.create_data_url_loader<TrajectoryType>()
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -450,16 +445,18 @@
   )
   let plot_metadata_loading = $derived(trajectory?.metadata?.plot_metadata_loading === true)
 
-  const skip_stale_url_stream = () =>
-    Boolean(data_url && loaded_data_url && data_url !== loaded_data_url)
+  const skip_stale_url_stream = () => {
+    const { loaded_url } = data_url_loader
+    return Boolean(data_url && loaded_url && data_url !== loaded_url)
+  }
 
   // Replace the trajectory with an updated copy, keeping URL ownership if it applied.
   // No-ops while a data_url switch is in flight so stale streams can't mutate the old model.
   const update_trajectory = (updates: Partial<TrajectoryType>) => {
     if (!trajectory || skip_stale_url_stream()) return
-    const preserves_url_ownership = trajectory === url_owned_trajectory
+    const preserves_url_ownership = trajectory === data_url_loader.owned_value
     trajectory = { ...trajectory, ...updates }
-    if (preserves_url_ownership) url_owned_trajectory = trajectory
+    if (preserves_url_ownership) data_url_loader.claim(trajectory)
   }
 
   const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
@@ -1104,57 +1101,34 @@
   // Load trajectory from URL when data_url is provided. Track the model produced by
   // this effect so caller-owned trajectory props keep precedence while URL-owned
   // models can reload when data_url changes.
-  $effect(() => {
-    const requested_url = data_url
-    const current_trajectory = trajectory
-    const caller_owns_trajectory = Boolean(
-      current_trajectory && current_trajectory !== url_owned_trajectory,
-    )
-    if (!requested_url || caller_owns_trajectory) {
-      loaded_data_url = undefined
-      url_owned_trajectory = undefined
-      return
-    }
-    if (loaded_data_url === requested_url) return
-
-    const load_id = ++data_url_load_id
-    const is_current = () => load_id === data_url_load_id
-    loading = true
-    error_msg = null
-
-    io.load_from_url(requested_url, (content, filename, metadata) => {
-      if (!is_current()) return
-      current_filename = filename
-      file_size = io.content_byte_size(content)
-      return load_trajectory_data(content, filename, {
-        ...metadata,
-        on_trajectory_loaded: (loaded_trajectory) => {
-          if (!is_current()) return
-          url_owned_trajectory = loaded_trajectory
-          loaded_data_url = requested_url
-        },
-        should_commit: is_current,
-      })
-    })
-      .catch((err: Error) => {
-        if (!is_current()) return
+  $effect(() =>
+    data_url_loader.request({
+      url: data_url,
+      current_value: trajectory,
+      set_loading: (value) => {
+        loading = value
+      },
+      clear_error: () => {
+        error_msg = null
+      },
+      on_load: ({ content, filename, metadata, is_current, mark_owned }) => {
+        current_filename = filename
+        file_size = io.content_byte_size(content)
+        return load_trajectory_data(content, filename, {
+          ...metadata,
+          on_trajectory_loaded: mark_owned,
+          should_commit: is_current,
+        })
+      },
+      on_error: (err, filename) => {
         console.error(`Failed to load trajectory from URL:`, err)
         error_msg = `Failed to load trajectory: ${err.message}`
         current_filename = undefined
         file_size = undefined
-        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
-      })
-      .finally(() => {
-        if (is_current()) loading = false
-      })
-
-    return () => {
-      if (is_current()) {
-        data_url_load_id += 1
-        loading = false
-      }
-    }
-  })
+        on_error?.({ error_msg, filename })
+      },
+    }),
+  )
 
   // Watch for frame rate changes
   $effect(() => {

@@ -1,4 +1,5 @@
 export { default as ExportPane } from './ExportPane.svelte'
+export * from './data-url'
 // strip_compression_extensions lives in ./decompress (Svelte-free) so parser
 // modules can import it inside Web Workers; re-exported here.
 export * from './decompress'

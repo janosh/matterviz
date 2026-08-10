@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
+    ControlPane,
     create_clipboard_feedback,
-    DraggablePane,
     type PaneProps,
     type PaneToggleProps,
   } from '$lib/overlays'
@@ -65,7 +65,7 @@
   import { createAttachmentKey } from 'svelte/attachments'
   import { SvelteSet } from 'svelte/reactivity'
   import { Icon, MultiSelect as Select } from 'svelte-widgets'
-  import { Cross, Reset, Settings } from 'svelte-widgets/icons'
+  import { Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 
   let {
@@ -109,7 +109,7 @@
     pane_props = {},
     toggle_props = {},
     ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+  }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     controls_open?: boolean // Control pane state
     scene_props?: ComponentProps<typeof StructureScene>
     lattice_props?: ComponentProps<typeof Lattice>
@@ -646,7 +646,7 @@
   )
 </script>
 
-<!-- Declared outside <DraggablePane> so it is a template snippet, not a prop of the pane -->
+<!-- Declared outside <ControlPane> so it is a template snippet, not a prop of the pane -->
 {#snippet enum_options(key: StructureSettingKey)}
   {#each Object.entries(SETTINGS_CONFIG.structure[key].enum ?? {}) as [value, label] (value)}
     <option {value}>{label}</option>
@@ -687,23 +687,20 @@ a disabled state, a non-scene_props target) stay written out in full. -->
   </label>
 {/snippet}
 
-<DraggablePane
-  bind:open={controls_open}
+<ControlPane
+  bind:controls_open
   bind:pane={controls_pane}
   resize="both"
-  pane_props={{
-    ...pane_props,
-    class: `controls-pane ${pane_props?.class ?? ``}`,
-    style: `--pane-max-height: 70vh; --pane-padding: 1ex 1ex 0; ${pane_props?.style ?? ``}`,
-  }}
+  pane_class="controls-pane"
+  toggle_class="structure-controls-toggle"
+  pane_style="--pane-max-height: 70vh; --pane-padding: 1ex 1ex 0;"
+  toggle_style=""
   toggle_props={{
     title: controls_open ? `` : `Structure controls`,
     ...toggle_props,
     'aria-label': toggle_props?.[`aria-label`] ?? `Structure controls`,
-    class: `structure-controls-toggle ${toggle_props?.class ?? ``}`,
   }}
-  open_icon={Cross}
-  closed_icon={Settings}
+  {pane_props}
   {...rest}
 >
   {#if on_reset_camera}
@@ -1603,7 +1600,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
       </small>
     {/if}
   </SettingsGroup>
-</DraggablePane>
+</ControlPane>
 
 <style>
   /* Column rhythm for every grid section in this pane. Widening the pane widens the slider

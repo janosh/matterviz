@@ -47,26 +47,26 @@
     band_data = $bindable(),
     structure,
     bz_data = $bindable(),
-    mu = $bindable(0),
+    mu = $bindable(DEFAULTS.fermi.mu),
     controls_open = $bindable(false),
-    color_property = $bindable(`band`),
-    color_scale = $bindable(`interpolateViridis`),
+    color_property = $bindable(DEFAULTS.fermi.color_property),
+    color_scale = $bindable(DEFAULTS.fermi.color_scale),
     custom_property_label,
-    representation = $bindable(`solid`),
-    surface_opacity = $bindable(0.8),
+    representation = $bindable(DEFAULTS.fermi.representation),
+    surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands = $bindable(),
-    show_bz = $bindable(true),
-    bz_opacity = $bindable(0.1),
-    show_vectors = $bindable(true),
-    tile_bz = $bindable(false),
+    show_bz = $bindable(DEFAULTS.fermi.show_bz),
+    bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
+    show_vectors = $bindable(DEFAULTS.fermi.show_vectors),
+    tile_bz = $bindable(DEFAULTS.fermi.tile_bz),
     // Clipping plane
-    clip_enabled = $bindable(false),
-    clip_axis = $bindable(`z`),
-    clip_position = $bindable(0),
-    clip_flip = $bindable(false),
+    clip_enabled = $bindable(DEFAULTS.fermi.clip_enabled),
+    clip_axis = $bindable(DEFAULTS.fermi.clip_axis),
+    clip_position = $bindable(DEFAULTS.fermi.clip_position),
+    clip_flip = $bindable(DEFAULTS.fermi.clip_flip),
     // Interpolation
-    interpolation_factor = $bindable(1),
-    camera_projection = $bindable(`perspective`),
+    interpolation_factor = $bindable(DEFAULTS.fermi.interpolation_factor),
+    camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
     show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -75,7 +75,7 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
+    fullscreen_toggle = DEFAULTS.fermi.fullscreen_toggle,
     data_url,
     spinner_props = {},
     loading = $bindable(false),
@@ -283,27 +283,26 @@
     }
   })
 
-  // Load from URL (with race condition protection for rapid URL changes)
-  let load_id = 0
-  $effect(() => {
-    const requested_url = data_url
-    if (!requested_url || fermi_data || band_data) return
-    const current_load_id = ++load_id
-    loading = true
-    error_msg = undefined
-    io.load_from_url(requested_url, (content, filename, metadata) => {
-      if (current_load_id !== load_id) return
-      return safe_parse(content, filename, metadata)
-    })
-      .catch((err) => {
-        if (current_load_id !== load_id) return
-        error_msg = to_error(err).message
-        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
-      })
-      .finally(() => {
-        if (current_load_id === load_id) loading = false
-      })
-  })
+  // Load from URL
+  const data_url_loader = io.create_data_url_loader()
+
+  $effect(() =>
+    data_url_loader.request({
+      url: data_url,
+      skip: Boolean(fermi_data || band_data),
+      set_loading: (value) => {
+        loading = value
+      },
+      clear_error: () => {
+        error_msg = undefined
+      },
+      on_load: ({ content, filename, metadata }) => safe_parse(content, filename, metadata),
+      on_error: (err, filename) => {
+        error_msg = err.message
+        on_error?.({ error_msg, filename })
+      },
+    }),
+  )
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,

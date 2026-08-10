@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
   import { StatusMessage } from '$lib/feedback'
@@ -47,21 +48,21 @@
   }
   let {
     structure = $bindable(),
-    bz_order = $bindable(1),
+    bz_order = $bindable(DEFAULTS.brillouin.bz_order),
     bz_data = $bindable(),
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
-    surface_color = $bindable(`#4488ff`),
-    surface_opacity = $bindable(0.3),
-    edge_color = $bindable(`#000000`),
-    edge_width = $bindable(0.002),
-    show_vectors = $bindable(true),
-    vector_scale = $bindable(1.0),
-    camera_projection = $bindable(`perspective`),
+    surface_color = $bindable(DEFAULTS.brillouin.surface_color),
+    surface_opacity = $bindable(DEFAULTS.brillouin.surface_opacity),
+    edge_color = $bindable(DEFAULTS.brillouin.edge_color),
+    edge_width = $bindable(DEFAULTS.brillouin.edge_width),
+    show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
+    vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
+    camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
     // Irreducible BZ options
-    show_ibz = $bindable(false),
-    ibz_color = $bindable(`#ff8844`),
-    ibz_opacity = $bindable(0.5),
+    show_ibz = $bindable(DEFAULTS.brillouin.show_ibz),
+    ibz_color = $bindable(DEFAULTS.brillouin.ibz_color),
+    ibz_opacity = $bindable(DEFAULTS.brillouin.ibz_opacity),
     ibz_data = $bindable<IrreducibleBZData | null>(null),
     show_controls,
     fullscreen = $bindable(false),
@@ -73,8 +74,8 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    png_dpi = $bindable(150),
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
+    fullscreen_toggle = DEFAULTS.brillouin.fullscreen_toggle,
     data_url,
     structure_string,
     on_file_drop,
@@ -239,44 +240,44 @@
     }
   })
 
-  // Load structure from URL or string
-  let data_url_load_id = 0
-  $effect(() => {
-    const handle_error = (err: unknown, source: string) => {
-      error_msg = to_error(err).message
-      on_error?.({ error_msg, filename: source })
-    }
+  const handle_load_error = (err: unknown, source: string) => {
+    error_msg = to_error(err).message
+    on_error?.({ error_msg, filename: source })
+  }
 
-    const requested_url = data_url
-    if (requested_url && !structure) {
-      const load_id = ++data_url_load_id
-      loading = true
-      error_msg = undefined
-      io.load_from_url(requested_url, (content, filename, metadata) => {
-        if (load_id !== data_url_load_id) return
-        return on_file_drop
-          ? on_file_drop(content, filename, metadata)
-          : safe_parse(content, filename, metadata)
-      })
-        .catch((err) => {
-          if (load_id !== data_url_load_id) return
-          handle_error(err, io.basename_from_url(requested_url))
-        })
-        .finally(() => {
-          if (load_id === data_url_load_id) loading = false
-        })
-    } else if (structure_string && !data_url) {
-      loading = true
-      error_msg = undefined
-      try {
-        safe_parse(structure_string, `string`)
-      } catch (err) {
-        handle_error(err, `string`)
-      } finally {
-        loading = false
-      }
+  // Load structure from URL or string
+  const data_url_loader = io.create_data_url_loader<Crystal>()
+
+  $effect(() => {
+    if (data_url || !structure_string) return
+    loading = true
+    error_msg = undefined
+    try {
+      safe_parse(structure_string, `string`)
+    } catch (err) {
+      handle_load_error(err, `string`)
+    } finally {
+      loading = false
     }
   })
+
+  $effect(() =>
+    data_url_loader.request({
+      url: data_url,
+      current_value: structure,
+      set_loading: (value) => {
+        loading = value
+      },
+      clear_error: () => {
+        error_msg = undefined
+      },
+      on_load: ({ content, filename, metadata }) =>
+        on_file_drop
+          ? on_file_drop(content, filename, metadata)
+          : safe_parse(content, filename, metadata),
+      on_error: handle_load_error,
+    }),
+  )
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
