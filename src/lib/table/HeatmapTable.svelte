@@ -51,6 +51,7 @@
   } from '$lib/table'
   import {
     compute_column_stats,
+    get_column_id as get_col_id,
     make_cell_color_scale,
     merge_domains,
     resolve_color_domain,
@@ -444,10 +445,6 @@
     }
     columns = Object.keys(seen).map((key) => ({ label: key }))
   })
-
-  // Helper to make column IDs (needed since column labels in different groups can be repeated)
-  const get_col_id = (col: Label) =>
-    col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
 
   // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
   let data_keys = $derived.by(() => {
@@ -1864,7 +1861,6 @@
   let toggle_columns = $derived(
     ordered_columns.map((col) => ({
       ...col,
-      key: get_col_id(col),
       default_visible: col.visible !== false,
       // Caller-hidden columns cannot be shown through `hidden_columns`.
       disabled: col.disabled || col.visible === false,
@@ -2128,7 +2124,7 @@
           () => open_dropdown === `columns`,
           (open) => (open_dropdown = open ? `columns` : null)
         }
-        on_toggle={(col, visible) => set_column_visible(col.key ?? col.label, visible)}
+        on_toggle={(col, visible) => set_column_visible(get_col_id(col), visible)}
       >
         {#snippet trigger({ open })}
           <span

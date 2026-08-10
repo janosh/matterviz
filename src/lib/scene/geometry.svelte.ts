@@ -12,6 +12,7 @@ export function line_geometry(start: Vec3, end: Vec3): BufferGeometry {
 }
 
 // Dispose geometries on dependency changes and unmount to release their GPU buffers.
+// The getter transfers ownership: do not return geometries still used outside this effect.
 export function dispose_on_change(
   get_geometries: () => (BufferGeometry | null | undefined)[],
 ): void {

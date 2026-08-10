@@ -53,6 +53,8 @@
     aria_label: string
     fullscreen?: boolean
     fullscreen_toggle?: boolean
+    // The outer container, exposed so charts can re-export it to their own callers
+    wrapper?: HTMLDivElement
     // Charts that render their SVG before the container is measured (Histogram)
     require_size?: boolean
     marginals: ResolvedMarginals
@@ -60,6 +62,7 @@
     marginal_tick_label?: Partial<Record<MarginalAxisBinding, (pos: number) => string>>
     on_mouse_enter?: () => void
     on_mouse_leave?: () => void
+    on_mouse_move?: (event: MouseEvent) => void
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
@@ -77,12 +80,14 @@
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
+    wrapper = $bindable(),
     require_size = true,
     marginals,
     marginal_series,
     marginal_tick_label = {},
     on_mouse_enter,
     on_mouse_leave,
+    on_mouse_move,
     header_controls,
     layers,
     overlays,
@@ -90,7 +95,6 @@
     ...rest
   }: Props = $props()
 
-  let wrapper: HTMLDivElement | undefined = $state()
   const pan_zoom = $derived(frame.pan_zoom)
 
   const css_vars = $derived(
@@ -167,6 +171,7 @@
       onkeydown={pan_zoom.on_key_down}
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
+      onmousemove={on_mouse_move}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
       ontouchmove={pan_zoom.on_touch_move}

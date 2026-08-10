@@ -362,14 +362,10 @@ describe(`MatterViz Extension`, () => {
       [`report-AECCARnotes`],
       [`density.cube.bz2`],
       [`structure.cif.bz2`],
-      // Source files named after a VASP stem. The decorated `{STEM}[._-]*` selectors have a
-      // trailing wildcard that also swallows a file extension, so they are generated for the
-      // volumetric stems only — POSCAR/CONTCAR/XDATCAR appear solely in forms that end at
-      // the stem. matches_any_pattern is case-insensitive, so these hold either way.
+      // Structure suffix matching starts at the VASP stem, so unrelated filenames that
+      // merely contain the stem remain excluded.
       [`write_poscar.py`],
-      [`contcar_reader.rs`],
       [`test_xdatcar.ipynb`],
-      [`poscar_writer.rs`],
     ])(`pattern does not match unsupported near miss "%s"`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(false)
     })
@@ -385,12 +381,13 @@ describe(`MatterViz Extension`, () => {
       expect(unclaimed).toEqual([])
     })
 
-    test(`every VASP stem is claimed bare, decorated and gzipped`, () => {
+    test(`every VASP stem is claimed bare, prefixed, suffixed and gzipped`, () => {
       const unclaimed = VASP_VIEWER_STEMS.filter(
         (stem) =>
           !matches_any_pattern(stem.toUpperCase()) ||
           !matches_any_pattern(`${stem.toUpperCase()}.gz`) ||
-          !matches_any_pattern(`Si_${stem.toUpperCase()}`),
+          !matches_any_pattern(`Si_${stem.toUpperCase()}`) ||
+          !matches_any_pattern(`${stem.toUpperCase()}.backup`),
       )
       expect(unclaimed).toEqual([])
     })

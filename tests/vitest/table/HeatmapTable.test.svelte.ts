@@ -905,15 +905,20 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
     })
 
-    it(`resets duplicate grouped labels by their qualified column IDs`, async () => {
+    it(`keeps raw and already-qualified grouped keys distinct`, async () => {
       const state = $state({ hidden_columns: [] as string[] })
       mount_table(
         bind_props(
           {
-            data: [{ 'Value (Group A)': 1, 'Value (Group B)': 2 }],
+            data: [{ 'Value (Group A)': 1, 'Value (Group A) (Group A)': 2 }],
             columns: [
-              { label: `Value`, group: `Group A`, description: `` },
-              { label: `Value`, group: `Group B`, visible: false, description: `` },
+              { key: `Value`, label: `Value`, group: `Group A`, description: `` },
+              {
+                key: `Value (Group A)`,
+                label: `Qualified value`,
+                group: `Group A`,
+                description: ``,
+              },
             ],
             show_column_toggle: true,
           },
@@ -924,9 +929,11 @@ describe(`HeatmapTable`, () => {
 
       doc_query(`.column-toggles summary`).click()
       await tick()
-      doc_query<HTMLInputElement>(`.sections-container input`).click()
+      document
+        .querySelectorAll<HTMLInputElement>(`.sections-container input`)
+        .forEach((checkbox) => checkbox.click())
       await tick()
-      expect(state.hidden_columns).toEqual([`Value (Group A)`])
+      expect(state.hidden_columns).toEqual([`Value (Group A)`, `Value (Group A) (Group A)`])
 
       doc_query(`.column-toggles summary .reset-btn`).click()
       await tick()

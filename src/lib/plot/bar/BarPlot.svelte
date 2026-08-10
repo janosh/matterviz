@@ -802,28 +802,7 @@
          self-clips to the plot area inside ReferenceLine, only its annotation text
          is allowed to overflow the plot edges. -->
     <g clip-path="url(#{frame.clip_path_id})">
-      <ZeroLines
-        display={resolved_display}
-        x_scale_fn={frame.scales.x}
-        x2_scale_fn={frame.scales.x2}
-        y_scale_fn={frame.scales.y}
-        y2_scale_fn={frame.scales.y2}
-        x_range={frame.ranges.current.x}
-        x2_range={frame.ranges.current.x2}
-        y_range={frame.ranges.current.y}
-        y2_range={frame.ranges.current.y2}
-        x_scale_type={x_axis.scale_type}
-        x2_scale_type={x2_axis.scale_type}
-        y_scale_type={y_axis.scale_type}
-        y2_scale_type={y2_axis.scale_type}
-        x_is_time={is_time_scale(x_axis.scale_type)}
-        x2_is_time={is_time_scale(x2_axis.scale_type)}
-        has_x2={show_x2}
-        has_y2={show_y2}
-        width={frame.width}
-        height={frame.height}
-        {pad}
-      />
+      <ZeroLines {frame} display={resolved_display} />
     </g>
 
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}

@@ -180,6 +180,9 @@
   const axis_labels = $derived([z_axis.label, x_axis.label, y_axis.label])
 
   const grid_config = $derived.by(() => {
+    const show_axes = display.show_axes
+    const show_grid = display.show_grid
+    if (!show_axes && !show_grid && !display.show_axis_labels) return []
     // Offsets live in data-axis space and nudge the two axes that aren't being drawn:
     // depth and horizontal ticks stand off along d2, vertical ones along d1.
     const tick_mark_offsets: Vec3[] = [
@@ -209,30 +212,36 @@
         axis,
         color: axis_colors[axis],
         label: axis_labels[axis] || chem_axis_label(axis),
-        line_geom: line_geometry(point(axis, range[0]), point(axis, range[1])),
+        line_geom: show_axes
+          ? line_geometry(point(axis, range[0]), point(axis, range[1]))
+          : null,
         // Axis label past the outer end of the axis (near 0, projects outward)
         label_pos: point(
           axis,
           outer_end(range) + outer_direction(range) * axis_label_dist,
           label_offset,
         ),
-        tick_geoms: ticks.map((val) =>
-          line_geometry(point(axis, val), point(axis, val, tick_mark_offsets[axis])),
-        ),
-        // One grid line per tick per other axis, sweeping that axis across its full range
-        grid_geoms: ticks.flatMap((val) =>
-          others.map((other) => {
-            const [start, end] = [[...back], [...back]]
-            start[axis] = val
-            end[axis] = val
-            start[other] = niced_range[other][0]
-            end[other] = niced_range[other][1]
-            return line_geometry(
-              swiz(start[0], start[1], start[2]),
-              swiz(end[0], end[1], end[2]),
+        tick_geoms: show_axes
+          ? ticks.map((val) =>
+              line_geometry(point(axis, val), point(axis, val, tick_mark_offsets[axis])),
             )
-          }),
-        ),
+          : [],
+        // One grid line per tick per other axis, sweeping that axis across its full range
+        grid_geoms: show_grid
+          ? ticks.flatMap((val) =>
+              others.map((other) => {
+                const [start, end] = [[...back], [...back]]
+                start[axis] = val
+                end[axis] = val
+                start[other] = niced_range[other][0]
+                end[other] = niced_range[other][1]
+                return line_geometry(
+                  swiz(start[0], start[1], start[2]),
+                  swiz(end[0], end[1], end[2]),
+                )
+              }),
+            )
+          : [],
         tick_labels: ticks.map((val) => ({
           pos: point(axis, val, label_offset),
           text: format_num(val, `.3~g`),
@@ -284,6 +293,7 @@
   })
 
   const bounding_box_geometry = $derived.by(() => {
+    if (!display.show_bounding_box) return null
     const [r0, r1, r2] = niced_range
     const vertices = [
       swiz(r0[0], r1[0], r2[0]),
@@ -446,14 +456,14 @@
   </T.Mesh>
 {/each}
 
-{#if display.show_bounding_box}
+{#if bounding_box_geometry}
   <T.LineSegments geometry={bounding_box_geometry}>
     <T.LineBasicMaterial color="#666" opacity={0.6} transparent />
   </T.LineSegments>
 {/if}
 
 {#each grid_config as gc (gc.axis)}
-  {#if display.show_axes}
+  {#if gc.line_geom}
     <T.Line geometry={gc.line_geom}>
       <T.LineBasicMaterial color={gc.color} linewidth={2} />
     </T.Line>
@@ -463,13 +473,11 @@
       </T.Line>
     {/each}
   {/if}
-  {#if display.show_grid}
-    {#each gc.grid_geoms as grid_geom, gdx (gdx)}
-      <T.Line geometry={grid_geom}>
-        <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
-      </T.Line>
-    {/each}
-  {/if}
+  {#each gc.grid_geoms as grid_geom, gdx (gdx)}
+    <T.Line geometry={grid_geom}>
+      <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
+    </T.Line>
+  {/each}
   {#if display.show_axis_labels}
     {#each gc.tick_labels as tick, tick_idx (tick_idx)}
       <extras.HTML position={tick.pos} center {portal} zIndexRange={[1, 0]}>

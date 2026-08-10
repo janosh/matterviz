@@ -3,7 +3,7 @@
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
-  import { type Label, strip_html } from '$lib/table'
+  import { get_column_id as col_id, type Label, strip_html } from '$lib/table'
   import type { Snippet } from 'svelte'
   import { slide } from 'svelte/transition'
 
@@ -33,9 +33,6 @@
     trigger?: Snippet<[{ open: boolean }]>
   } = $props()
 
-  // Explicit keys are already unique; qualify duplicate keyless labels by group.
-  const col_id = (col: Label) =>
-    col.key ?? (col.group ? `${col.label} (${col.group})` : col.label)
   const default_visible = (col: ToggleColumn): boolean =>
     col.default_visible ?? col.visible !== false
   const toggle_menu_id = $props.id()

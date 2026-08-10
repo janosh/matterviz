@@ -486,26 +486,7 @@
     <!-- Reference lines: below grid (must render first to appear behind grid) -->
     {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-    <ZeroLines
-      {display}
-      x_scale_fn={frame.scales.x}
-      x2_scale_fn={frame.scales.x2}
-      y_scale_fn={frame.scales.y}
-      y2_scale_fn={frame.scales.y2}
-      x_range={frame.ranges.current.x}
-      x2_range={frame.ranges.current.x2}
-      y_range={frame.ranges.current.y}
-      y2_range={frame.ranges.current.y2}
-      x_scale_type={final_x_axis.scale_type}
-      x2_scale_type={final_x2_axis.scale_type}
-      y_scale_type={final_y_axis.scale_type}
-      y2_scale_type={final_y2_axis.scale_type}
-      has_x2={has_x2_points}
-      has_y2={has_y2_points}
-      width={frame.width}
-      height={frame.height}
-      pad={frame.pad}
-    />
+    <ZeroLines {frame} {display} />
 
     <!-- Reference lines: below lines -->
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}

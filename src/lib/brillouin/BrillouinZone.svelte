@@ -270,17 +270,18 @@
       // Without mark_owned the structure this URL just produced reads as caller-supplied
       // on the next effect run, so the loader stops fetching and a second data_url never
       // loads at all.
-      on_load: async ({ content, filename, metadata, mark_owned }) => {
+      on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
         if (on_file_drop) {
           try {
             await on_file_drop(content, filename, metadata)
+            if (!is_current()) return
             mark_owned()
           } catch (error) {
-            handle_load_error(error, filename)
+            if (is_current()) handle_load_error(error, filename)
           }
           return
         }
-        if (safe_parse(content, filename, metadata)) mark_owned(structure)
+        if (is_current() && safe_parse(content, filename, metadata)) mark_owned(structure)
       },
       on_error: handle_load_error,
     }),

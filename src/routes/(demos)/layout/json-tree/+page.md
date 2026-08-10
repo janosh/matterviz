@@ -1,7 +1,3 @@
----
-title: JsonTree
----
-
 <script lang="ts">
   import { JsonTree } from '$lib'
 

@@ -83,6 +83,9 @@
             "filenamePattern": "*{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}.gz"
           },
           {
+            "filenamePattern": "{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}[._-]*"
+          },
+          {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
           },
           {

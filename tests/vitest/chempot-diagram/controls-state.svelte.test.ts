@@ -99,3 +99,13 @@ test(`ChemPotScene3D derives backside placement from current ranges`, () => {
   expect(source).toContain(`const center = data_center`)
   expect(source).toContain(`update_backside_indices(center)`)
 })
+
+test(`ChemPotScene3D skips hidden overlay geometry construction`, () => {
+  const source = read_component_source(`ChemPotScene3D`)
+  expect(source).toContain(
+    `if (!show_axes && !show_grid && !display.show_axis_labels) return []`,
+  )
+  expect(source).toMatch(/line_geom:\s*show_axes\s*\?\s*line_geometry/)
+  expect(source).toMatch(/grid_geoms:\s*show_grid/)
+  expect(source).toContain(`if (!display.show_bounding_box) return null`)
+})

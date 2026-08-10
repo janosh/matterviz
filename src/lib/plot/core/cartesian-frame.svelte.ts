@@ -10,6 +10,7 @@ import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-p
 import {
   create_legend_decoration_item,
   decoration_placement_rects,
+  type DecorationItem,
   get_decoration_placement,
   solve_decorations,
 } from '$lib/plot/core/decorations'
@@ -17,8 +18,11 @@ import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
 import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
 import {
   axis_ranges_equal,
+  expand_range_if_needed,
   invert_rect_range,
+  normalize_y2_sync,
   resolve_axis_ranges,
+  sync_y2_range,
   vec2_equal,
 } from '$lib/plot/core/interactions'
 import {
@@ -26,6 +30,7 @@ import {
   DEFAULT_PLOT_PADDING,
   filter_padding,
   measured_axis,
+  type Rect,
   resolve_tick_layout,
   sides_equal,
   type Sides,
@@ -75,6 +80,20 @@ export interface CartesianFrameOptions {
   legend: () => LegendConfig | null | undefined
   legend_visible: () => boolean
   legend_items: () => readonly { label: string; legend_group?: string }[]
+  // Extra decorations solved alongside the legend (ScatterPlot's colorbar)
+  decorations?: () => readonly DecorationItem[]
+  // Measured rects the solver must route around but doesn't own: decorations the user
+  // positioned explicitly or is currently dragging
+  exclusion_rects?: () => readonly Rect[]
+  // Extra gate on the legend joining automatic placement, beyond the frame's own checks.
+  // False while the user drags the legend or has pinned it to a manual position.
+  legend_auto_placed?: () => boolean
+  // Freeze the legend's tweened coords mid-drag
+  legend_suspended?: () => boolean
+  // Position a dragged legend keeps once the user lets go, overriding the solver
+  legend_manual_position?: () => { x: number; y: number } | null
+  // Estimated legend size used until the element has been measured
+  legend_footprint_fallback?: { width: number; height: number }
   marginals: () => ResolvedMarginals
   ref_lines: () => readonly IndexedRefLine[]
   pan: () => PanConfig | undefined
@@ -89,8 +108,14 @@ export interface CartesianFrameOptions {
   // Histogram log-sanitizes its count axes here.
   range_sources?: () => Record<FacetAxis, Pick<AxisConfig, `range`>>
   // `per-axis` leaves a panned axis alone when a different axis's auto range moves,
-  // `all-axes` resnaps every axis whenever any of them changes.
-  range_sync?: `per-axis` | `all-axes`
+  // `all-axes` resnaps every axis whenever any of them changes, `expand` additionally
+  // keeps the current view when the auto range collapses to the [0, 1] "no data"
+  // sentinel (every series hidden) so the chart doesn't jump.
+  range_sync?: `per-axis` | `all-axes` | `expand`
+  // Tick counts per axis when the axis config leaves `ticks` unset
+  tick_counts?: PerAxis<number>
+  // Forwarded to the pan/zoom controller so charts can track a live rect drag
+  on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
   // Replace an axis's generated ticks (categorical axes plot one tick per category). An
   // empty array falls back to generated ticks, since a categorical axis with no categories
   // has nothing to label.
@@ -161,12 +186,35 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
           config.scale_type ?? `linear`,
           config.ticks,
           axis_scales[axis],
-          { default_count: DEFAULT_TICK_COUNTS[axis] },
+          { default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis] },
         ),
       ]
     })
     return Object.fromEntries(entries) as Record<FacetAxis, number[]>
   }
+
+  // y2 can be tied to y ('synced' shares y's range, 'align' pins a common value to the
+  // same relative height). The sync is a post-pass over `current` so every writer —
+  // the range effect, panning and rect zoom — lands on the same derived y2.
+  const y2_sync = $derived(normalize_y2_sync(opts.axes().y2.sync))
+  // Untracked throughout: every caller writes ranges.current.y2 right after, and a
+  // tracked read of the ranges it is about to overwrite would loop the effect.
+  const synced_y2 = (): Vec2 =>
+    untrack(() => sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync))
+  const apply_y2_sync = () => {
+    if (y2_sync.mode !== `none`) ranges.current.y2 = synced_y2()
+  }
+
+  // Re-derive y2 the moment the mode is toggled rather than waiting for the next data
+  // change. $effect.pre so it lands before the range effect reads `current`.
+  let prev_sync_mode = $state<string>(`none`)
+  $effect.pre(() => {
+    if (y2_sync.mode === prev_sync_mode) return
+    prev_sync_mode = y2_sync.mode
+    ranges.current.y2 = y2_sync.mode === `none`
+      ? ([...untrack(() => ranges.initial.y2)] as Vec2)
+      : synced_y2()
+  })
 
   // Sync ranges from axis.range overrides and auto ranges. resolve_axis_ranges returns
   // null for transient non-finite bounds (skip: writing NaN breaks scales and, since
@@ -184,9 +232,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         ranges.initial[axis] = next[axis]
         ranges.current[axis] = [...next[axis]] as Vec2
       }
+    } else if (opts.range_sync === `expand`) {
+      // Adopt each axis's new range unless it collapsed to the "no data" sentinel
+      for (const axis of FACET_AXES) {
+        const { range, changed } = expand_range_if_needed(initial[axis], next[axis])
+        if (!changed) continue
+        // copy: initial is the reset target, so it must not alias the live current range
+        ranges.initial[axis] = range
+        ranges.current[axis] = [...range] as Vec2
+      }
     } else if (!axis_ranges_equal(initial, next)) {
       ranges = { initial: { ...next }, current: copy_axis_ranges(next) }
     }
+    apply_y2_sync()
     facet.apply_ranges()
   })
 
@@ -234,7 +292,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 
   const legend_footprint = $derived.by(() => {
     void legend_size_revision
-    return measured_footprint(legend_element, { width: 120, height: 60 })
+    return measured_footprint(
+      legend_element,
+      opts.legend_footprint_fallback ?? { width: 120, height: 60 },
+    )
   })
   const legend_has_explicit_pos = $derived(has_explicit_position(opts.legend()?.style))
   const legend_item = $derived(
@@ -243,7 +304,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         opts.legend() != null &&
         opts.legend_visible() &&
         legend_element != null &&
-        !legend_has_explicit_pos,
+        !legend_has_explicit_pos &&
+        (opts.legend_auto_placed?.() ?? true),
       footprint: legend_footprint,
       items: opts.legend_items(),
       config: { ...opts.legend(), filter_query: legend_filter_query },
@@ -255,7 +317,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       width,
       height,
       obstacles_norm: opts.obstacles(),
-      items: legend_item ? [legend_item] : [],
+      exclusion_rects: opts.exclusion_rects?.() as Rect[] | undefined,
+      items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
     }),
   )
   const marginal_pad = $derived.by(() => reserve_marginal_pad(opts.marginals()))
@@ -308,7 +371,13 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     element: () => legend_element,
     tween: () => opts.legend()?.tween,
     on_element_resize: () => (legend_size_revision += 1),
-    placement_revision: () => legend_placement?.location,
+    // Re-tween whenever the solved rect moves, not just when it changes side
+    placement_revision: () =>
+      legend_placement
+        ? `${legend_placement.location}:${legend_placement.side}:${legend_placement.x}:${legend_placement.y}:${legend_placement.footprint.width}:${legend_placement.footprint.height}`
+        : `none`,
+    suspended: opts.legend_suspended,
+    manual_position: opts.legend_manual_position,
   })
 
   const pan_zoom = create_pan_zoom({
@@ -317,8 +386,14 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
     plot_bounds: () => ({ x: pad.l, y: pad.t, width: chart_width, height: chart_height }),
     pan: opts.pan,
-    set_range: facet.update_range,
+    // y is written before y2, so the sync reads the just-updated y range
+    set_range: (axis, range) =>
+      facet.update_range(
+        axis,
+        axis === `y2` && y2_sync.mode !== `none` ? synced_y2() : range,
+      ),
     svg: () => svg_element,
+    on_drag_move: opts.on_drag_move,
     on_rect_zoom: (start, current) => {
       // Write the inverted rect back into the axis props so the range sync effect can't
       // override it. Gate x2/y2 on real data: their scales are [0, 1] sentinels
@@ -330,14 +405,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       if (next_x2 && !facet.update_range(`x2`, next_x2)) opts.write_range(`x2`, next_x2)
       const next_y = invert_rect_range(scales.y, start.y, current.y)
       if (next_y && !facet.update_range(`y`, next_y)) opts.write_range(`y`, next_y)
-      const next_y2 = opts.has_y2() ? invert_rect_range(scales.y2, start.y, current.y) : null
+      // A synced y2 is derived from y, so let the sync pass set it instead of the rect
+      const next_y2 = opts.has_y2() && y2_sync.mode === `none`
+        ? invert_rect_range(scales.y2, start.y, current.y)
+        : null
       if (next_y2 && !facet.update_range(`y2`, next_y2)) opts.write_range(`y2`, next_y2)
+      apply_y2_sync()
     },
     on_reset: () => {
       if (facet.reset_ranges()) return
       // Undo any pan/zoom, then clear the axis range overrides so future data
       // changes recalculate auto ranges
       ranges.current = copy_axis_ranges(ranges.initial)
+      apply_y2_sync()
       for (const axis of FACET_AXES) opts.write_range(axis, [null, null])
     },
   })
@@ -425,6 +505,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get legend_placement() {
       return legend_placement
+    },
+    get legend_footprint() {
+      return legend_footprint
     },
     get exclusion_rects() {
       return exclusion_rects

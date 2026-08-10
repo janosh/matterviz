@@ -416,10 +416,10 @@ describe(`ToggleMenu`, () => {
       expect(on_toggle.mock.calls).toEqual([[expect.objectContaining({ key: `name` }), true]])
     })
 
-    it(`resets duplicate labels in different groups independently`, async () => {
+    it(`resets duplicate grouped keys independently`, async () => {
       const columns = [
-        { label: `Value`, group: `A`, visible: true },
-        { label: `Value`, group: `B`, visible: false },
+        { key: `Value`, label: `Value A`, group: `A`, visible: true },
+        { key: `Value`, label: `Value B`, group: `B`, visible: false },
       ]
       mount_menu(columns, { column_panel_open: true })
 

@@ -4,6 +4,13 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { create_drop_event } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
+const mock_animation_frames = (): FrameRequestCallback[] => {
+  const callbacks: FrameRequestCallback[] = []
+  vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) =>
+    callbacks.push(callback),
+  )
+  return callbacks
+}
 const drop_file = (file: File, props: ComponentProps<typeof FermiSurface> = {}): void => {
   mounted.push(mount(FermiSurface, { target: document.body, props }))
   const drop_zone = document.querySelector<HTMLElement>(`.fermi-surface`)
@@ -39,11 +46,7 @@ test(`custom file drop handler receives content and bypasses default parsing`, a
 })
 
 test(`default file parsing yields while loading state renders`, async () => {
-  const frame_callbacks: FrameRequestCallback[] = []
-  vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
-    frame_callbacks.push(callback)
-    return frame_callbacks.length
-  })
+  const frame_callbacks = mock_animation_frames()
   const on_file_load = vi.fn()
   const content = JSON.stringify({
     isosurfaces: [],
@@ -80,21 +83,33 @@ test(`default file parsing yields while loading state renders`, async () => {
 test(`a slow first data_url cannot overwrite a newer one`, async () => {
   const bxsf = (fermi_energy: number) =>
     `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
-  const slow = Promise.withResolvers<string>()
-  vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
+  const frame_callbacks = mock_animation_frames()
+  const responses = new Map<string, (response: Response) => void>()
+  vi.spyOn(globalThis, `fetch`).mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString()
-    const body = url.endsWith(`a.bxsf`) ? slow.promise : Promise.resolve(bxsf(2))
-    return body.then((text) => new Response(text, { status: 200 }))
+    if (init?.headers) return Promise.resolve(new Response(`text`))
+    return new Promise((resolve) => responses.set(url, resolve))
   })
 
+  const url_a = `http://x/a.bxsf`
+  const url_b = `http://x/b.bxsf`
   const on_file_load = vi.fn()
-  const props = $state({ data_url: `http://x/a.bxsf`, on_file_load })
+  const props = $state({ data_url: url_a, on_file_load })
   mounted.push(mount(FermiSurface, { target: document.body, props }))
 
-  // Let A's fetch land so it enters on_load, then supersede it while safe_parse is still
-  // awaiting its tick. Only the is_current() check inside safe_parse stops A committing.
-  slow.resolve(bxsf(1))
-  props.data_url = `http://x/b.bxsf`
+  await vi.waitFor(() => expect(responses.has(url_a)).toBe(true))
+  responses.get(url_a)?.(new Response(bxsf(1)))
+  await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
+
+  props.data_url = url_b
+  await vi.waitFor(() => expect(responses.has(url_b)).toBe(true))
+  frame_callbacks.shift()?.(0)
+  frame_callbacks.shift()?.(0)
+
+  responses.get(url_b)?.(new Response(bxsf(2)))
+  await vi.waitFor(() => expect(frame_callbacks).toHaveLength(1))
+  frame_callbacks.shift()?.(0)
+  frame_callbacks.shift()?.(0)
 
   await vi.waitFor(() =>
     expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ filename: `b.bxsf` })),
