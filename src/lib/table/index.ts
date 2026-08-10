@@ -30,8 +30,8 @@ export type Label = {
   // labels are developer-defined, not user input, to avoid XSS vulnerabilities.
   label: string
   key?: string
-  // Group name for ToggleMenu section grouping. Columns with the same group
-  // are displayed together under a collapsible section header.
+  // Columns sharing a group render under one spanning header row in HeatmapTable and can
+  // only be drag-reordered within that group. ToggleMenu also sections its list by it.
   group?: string
   description?: string
   format?: string

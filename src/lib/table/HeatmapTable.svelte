@@ -58,6 +58,7 @@
   } from '$lib/table'
   import type { D3InterpolateName } from '$lib/colors'
   import { sanitize_html } from '$lib/sanitize'
+  import ToggleMenu from './ToggleMenu.svelte'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
   import { type Snippet, tick, untrack } from 'svelte'
   import { flip } from 'svelte/animate'
@@ -1855,12 +1856,23 @@
     return { color, rest: remaining }
   }
 
-  // Column visibility toggle
-  function toggle_column(col_id: string) {
-    hidden_columns = hidden_columns.includes(col_id)
-      ? hidden_columns.filter((id) => id !== col_id)
-      : [...hidden_columns, col_id]
+  // `hidden_columns` stays the source of truth (bindable, hosts persist it), so ToggleMenu
+  // edits a projection of it and reports back here. Set rather than toggle, so a reset
+  // replaying every column's default lands on the state ToggleMenu just rendered.
+  function set_column_visible(col_id: string, visible: boolean) {
+    const others = hidden_columns.filter((id) => id !== col_id)
+    hidden_columns = visible ? others : [...others, col_id]
   }
+  let toggle_columns = $derived(
+    ordered_columns.map((col) => ({
+      ...col,
+      // a column the caller declared invisible is theirs, not the menu's, to control:
+      // `hidden_columns` cannot override it, so offer it read-only rather than as a
+      // checkbox that springs back
+      disabled: col.disabled || col.visible === false,
+      visible: col.visible !== false && !hidden_columns.includes(get_col_id(col)),
+    })),
+  )
 
   // Column resize handlers
   function start_resize(event: MouseEvent, col: Label) {
@@ -1929,7 +1941,6 @@
   onkeydown={handle_cell_selection_keydown}
 />
 
-<!-- Shared toolbar dropdown; `id` also tracks the single open pane. -->
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
   <button
     class="icon-btn"
@@ -1939,34 +1950,6 @@
   >
     <Icon {icon} />
   </button>
-{/snippet}
-
-{#snippet dropdown(id: `columns` | `export`, icon: IconData, options: Snippet)}
-  <div class="dropdown-wrapper">
-    {@render icon_btn(
-      icon,
-      id === `columns` ? `Columns` : `Export`,
-      () => (open_dropdown = open_dropdown === id ? null : id),
-      open_dropdown === id,
-    )}
-    {#if open_dropdown === id}
-      <div class="dropdown-pane">{@render options()}</div>
-    {/if}
-  </div>
-{/snippet}
-
-{#snippet column_options()}
-  {#each ordered_columns as col (get_col_id(col))}
-    {@const col_id = get_col_id(col)}
-    <label class="dropdown-option">
-      <input
-        type="checkbox"
-        checked={!hidden_columns.includes(col_id)}
-        onchange={() => toggle_column(col_id)}
-      />
-      {@html sanitize_html(col.label)}
-    </label>
-  {/each}
 {/snippet}
 
 {#snippet export_options()}
@@ -2141,11 +2124,37 @@
     {/if}
 
     {#if show_column_toggle}
-      {@render dropdown(`columns`, Columns, column_options)}
+      <ToggleMenu
+        columns={toggle_columns}
+        bind:column_panel_open={
+          () => open_dropdown === `columns`,
+          (open) => (open_dropdown = open ? `columns` : null)
+        }
+        on_toggle={(col, visible) => set_column_visible(get_col_id(col), visible)}
+      >
+        {#snippet trigger({ open })}
+          <span
+            class="icon-btn"
+            class:active={open}
+            {@attach tooltip({ content: `Columns`, placement: `top` })}
+            ><Icon icon={Columns} /></span
+          >
+        {/snippet}
+      </ToggleMenu>
     {/if}
 
     {#if export_config}
-      {@render dropdown(`export`, Export, export_options)}
+      <div class="dropdown-wrapper">
+        {@render icon_btn(
+          Export,
+          `Export`,
+          () => (open_dropdown = open_dropdown === `export` ? null : `export`),
+          open_dropdown === `export`,
+        )}
+        {#if open_dropdown === `export`}
+          <div class="dropdown-pane">{@render export_options()}</div>
+        {/if}
+      </div>
     {/if}
 
     {#if show_row_select && selected_rows.length > 0}
@@ -3129,11 +3138,6 @@
   }
   .dropdown-option:hover {
     background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  }
-  /* Column toggle labels - more compact */
-  label.dropdown-option {
-    padding: 4px 10px;
-    gap: 6px;
   }
   .search-input {
     padding: 2px 4px;

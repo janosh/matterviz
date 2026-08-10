@@ -384,6 +384,61 @@ describe(`ToggleMenu`, () => {
       expect(on_reset).toHaveBeenCalledWith()
     })
 
+    // Hosts that mirror visibility elsewhere (HeatmapTable keeps a `hidden_columns` id
+    // list) only stay in sync if resets report back. Only CHANGED columns may be reported:
+    // replaying untouched ones would push their ids into a list that never held them.
+    it.each([
+      [`whole menu`, `summary .reset-btn`],
+      [`one section`, `.section-header-row .reset-btn`],
+    ])(`a %s reset reports only the columns it changed`, async (_desc, selector) => {
+      const on_toggle = vi.fn()
+      mount_menu(
+        [
+          { key: `name`, label: `Name`, group: `Personal` },
+          { key: `age`, label: `Age`, group: `Personal` },
+          { key: `email`, label: `Email`, group: `Contact` },
+          { key: `phone`, label: `Phone`, group: `Contact` },
+        ],
+        { column_panel_open: true, on_toggle },
+      )
+
+      document.querySelectorAll<HTMLElement>(`.toggle-label`)[0].click()
+      await tick()
+      expect(on_toggle.mock.calls.at(-1)).toEqual([
+        expect.objectContaining({ key: `name` }),
+        false,
+      ])
+
+      on_toggle.mockClear()
+      document.querySelector<HTMLElement>(selector)?.click()
+      await tick()
+      expect(on_toggle.mock.calls).toEqual([[expect.objectContaining({ key: `name` }), true]])
+    })
+
+    // A host reordering its columns must not read as a new column set, which would
+    // resnapshot defaults and strand the shown column with no way back to hidden.
+    it(`keeps the reset baseline when only column order changes`, async () => {
+      mount(ToggleMenuHarness, { target: document.body }) // col1 visible, col2 hidden
+      const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
+      const col2_checked = () =>
+        [...document.querySelectorAll<HTMLLabelElement>(`.toggle-label`)]
+          .find((label) => label.textContent?.includes(`Column 2`))
+          ?.querySelector(`input`)?.checked
+
+      document.querySelectorAll<HTMLElement>(`.toggle-label`)[1].click() // show col2
+      await tick()
+      expect(col2_checked()).toBe(true)
+      expect(reset_btn()).not.toBeNull()
+
+      document.querySelector<HTMLElement>(`[data-testid="reverse-columns"]`)?.click()
+      await tick()
+      expect(reset_btn(), `a reorder must not become the new baseline`).not.toBeNull()
+
+      reset_btn()?.click()
+      await tick()
+      expect(col2_checked()).toBe(false)
+    })
+
     it(`resnapshots defaults when same keys receive new source visibility`, async () => {
       mount(ToggleMenuHarness, { target: document.body })
       const checkboxes = () =>

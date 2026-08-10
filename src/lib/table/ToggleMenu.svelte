@@ -4,6 +4,7 @@
   import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import { type Label, strip_html } from '$lib/table'
+  import type { Snippet } from 'svelte'
   import { slide } from 'svelte/transition'
 
   let {
@@ -12,6 +13,8 @@
     n_columns,
     collapsed_sections = $bindable<string[]>([]),
     on_reset,
+    on_toggle,
+    trigger,
   }: {
     columns: Label[]
     column_panel_open?: boolean
@@ -20,6 +23,11 @@
     collapsed_sections?: string[]
     // Called after reset with the section name (or undefined for global reset)
     on_reset?: (section?: string) => void
+    // Every visibility change, resets included, for hosts that track it outside
+    // `col.visible` (HeatmapTable keeps an id list)
+    on_toggle?: (col: Label, visible: boolean) => void
+    // Replaces the default "Columns" button. The summary keeps owning the click.
+    trigger?: Snippet<[{ open: boolean }]>
   } = $props()
 
   const col_id = (col: Label) => col.key ?? col.label
@@ -42,21 +50,26 @@
       .includes(normalized_column_filter)
   let filtered_columns = $derived(columns.filter(column_matches_filter))
 
-  // Snapshot default visibility when column set changes (new dataset).
+  // Snapshot default visibility when the column set changes (new dataset).
   // Compare by keys and visibility defaults. Internal updates opt out below.
   // Signature state is non-reactive; default visibility is state so reset UI updates after snapshots.
-  let prev_default_signature = ``
+  let last_seen_signature = ``
   let internal_default_signature: string | undefined
   let default_visibility = $state<Record<string, boolean>>({})
+  // Sorted so a pure reorder (a host rearranging its columns) is not mistaken for a new
+  // column set, which would resnapshot defaults and silently drop the reset baseline.
   const default_signature = () =>
-    columns.map((col) => `${col_id(col)}:${col.visible !== false}`).join(`\0`)
+    columns
+      .map((col) => `${col_id(col)}:${col.visible !== false}`)
+      .toSorted()
+      .join(`\0`)
 
   function snapshot_defaults() {
     default_visibility = {}
     for (const col of columns) {
       default_visibility[col_id(col)] = col.visible !== false
     }
-    prev_default_signature = default_signature()
+    last_seen_signature = default_signature()
   }
   snapshot_defaults()
 
@@ -64,9 +77,13 @@
     const current_signature = default_signature()
     if (current_signature === internal_default_signature) {
       internal_default_signature = undefined
+      // Track our own writes too. Leaving this stale meant the NEXT effect run for any
+      // reason (a reorder, a parent re-render) read the user's toggles as a new dataset
+      // and resnapshotted them as defaults, silently dropping the reset baseline.
+      last_seen_signature = current_signature
       return
     }
-    if (current_signature === prev_default_signature) return
+    if (current_signature === last_seen_signature) return
     snapshot_defaults()
   })
 
@@ -78,11 +95,13 @@
 
   // Reset columns to default visibility
   function reset_columns(items: Label[]): void {
-    for (const col of items) {
-      col.visible = default_visibility[col_id(col)] ?? true
-    }
+    const changed = items.filter(is_changed)
+    for (const col of changed) col.visible = default_visibility[col_id(col)] ?? true
+    // Signature first: notifying a host that mirrors visibility elsewhere feeds new
+    // `columns` back in, and the $effect below must recognize that as our own write.
     internal_default_signature = default_signature()
     columns = [...columns]
+    for (const col of changed) on_toggle?.(col, col.visible !== false)
   }
 
   function reset_all(): void {
@@ -138,6 +157,7 @@
     col.visible = event.target.checked
     internal_default_signature = default_signature()
     columns = [...columns] // trigger reactivity on parent binding
+    on_toggle?.(col, event.target.checked)
   }
 
   // Prefer two tall columns, adding more only when the item count would make them unwieldy.
@@ -155,9 +175,9 @@
   let details_el = $state<HTMLElement>()
   let dropdown_el = $state<HTMLElement>()
   const position_dropdown = (): void => {
-    const trigger = details_el?.querySelector(`summary`)
-    if (!column_panel_open || !trigger || !dropdown_el) return
-    const trigger_rect = trigger.getBoundingClientRect()
+    const summary_el = details_el?.querySelector(`summary`)
+    if (!column_panel_open || !summary_el || !dropdown_el) return
+    const trigger_rect = summary_el.getBoundingClientRect()
     const dropdown_rect = dropdown_el.getBoundingClientRect()
     const viewport_padding = 8
     const gap = 4
@@ -228,13 +248,16 @@
   })}
 >
   <summary
+    class:custom={Boolean(trigger)}
     aria-expanded={column_panel_open}
+    aria-label={trigger ? `Columns` : undefined}
     onclick={(event) => {
       event.preventDefault()
       column_panel_open = !column_panel_open
     }}
   >
-    Columns <Icon icon={Columns} />
+    {#if trigger}{@render trigger({ open: column_panel_open })}{:else}Columns
+      <Icon icon={Columns} />{/if}
     {#if has_any_changes}
       <button
         class="reset-btn"
@@ -331,19 +354,23 @@
   .column-toggles {
     position: relative;
     summary {
-      background: var(--tgl-btn-bg, var(--btn-bg));
-      padding: 0 6pt;
-      margin: 4pt 0;
-      border-radius: var(--tgl-border-radius, 4pt);
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 4px;
-      &:hover {
-        background: var(--tgl-hover-bg, var(--nav-bg));
-      }
       &::-webkit-details-marker {
         display: none;
+      }
+      /* a custom trigger brings its own chrome. :where() keeps this at the specificity
+      the bare `summary` selector had, so host overrides still win instead of tying. */
+      &:where(:not(.custom)) {
+        background: var(--tgl-btn-bg, var(--btn-bg));
+        padding: 0 6pt;
+        margin: 4pt 0;
+        border-radius: var(--tgl-border-radius, 4pt);
+        &:hover {
+          background: var(--tgl-hover-bg, var(--nav-bg));
+        }
       }
     }
   }

@@ -866,23 +866,111 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Column Visibility Toggle`, () => {
+    // The menu is ToggleMenu, whose dropdown portals to <body>, so query from document.
     it(`dropdown lists all columns and unchecking one hides it`, async () => {
       mount_table({ data: sample_data, columns: sample_columns, show_column_toggle: true })
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
 
-      const toggle_btn = document.querySelector(
-        `.dropdown-wrapper .icon-btn`,
-      ) as HTMLButtonElement
-      toggle_btn.click()
+      doc_query(`.column-toggles summary`).click()
       await tick()
 
-      const checkboxes = document.querySelectorAll(`.dropdown-pane input[type="checkbox"]`)
+      const checkboxes = document.querySelectorAll<HTMLInputElement>(
+        `.column-menu input[type="checkbox"]`,
+      )
       expect(checkboxes).toHaveLength(3)
-      ;(checkboxes[0] as HTMLInputElement).click()
+      checkboxes[0].click()
       await tick()
 
       expect(document.querySelectorAll(`th`)).toHaveLength(2)
     })
+
+    // Reset restores each column's mount-time visibility, so a column hidden via the
+    // `hidden_columns` prop must go back to hidden — not become visible along with the rest.
+    it(`reset restores the columns hidden at mount rather than showing everything`, async () => {
+      const state = $state({ hidden_columns: [`Value`] })
+      mount_table(
+        bind_props(
+          { data: sample_data, columns: sample_columns, show_column_toggle: true },
+          state,
+        ),
+      )
+      await tick()
+      expect(document.querySelectorAll(`th`)).toHaveLength(2)
+
+      doc_query(`.column-toggles summary`).click()
+      await tick()
+      const value_checkbox = [
+        ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
+      ][2]
+      value_checkbox.click()
+      await tick()
+      expect(state.hidden_columns).toEqual([])
+
+      doc_query(`.column-toggles summary .reset-btn`).click()
+      await tick()
+      expect(state.hidden_columns).toEqual([`Value`])
+    })
+
+    // `hidden_columns` can't override a column the caller declared invisible, so the menu
+    // must not offer it as a live checkbox nor sweep its id into the list on reset.
+    it(`shows caller-hidden columns as disabled and keeps them out of hidden_columns`, async () => {
+      const state = $state({ hidden_columns: [] as string[] })
+      mount_table(
+        bind_props(
+          {
+            data: sample_data,
+            columns: [...sample_columns, { label: `Static`, visible: false, description: `` }],
+            show_column_toggle: true,
+          },
+          state,
+        ),
+      )
+      await tick()
+
+      doc_query(`.column-toggles summary`).click()
+      await tick()
+      const boxes = [
+        ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
+      ]
+      expect(boxes.at(-1)?.disabled).toBe(true)
+
+      boxes[0].click() // hide a normal column so reset has something to undo
+      await tick()
+      expect(state.hidden_columns).toEqual([`Model`])
+
+      doc_query(`.column-toggles summary .reset-btn`).click()
+      await tick()
+      expect(state.hidden_columns).toEqual([])
+    })
+
+    // The two menus overlap, so only one may be open. ToggleMenu owns its own open state,
+    // so the column side has to route through the shared `open_dropdown` slot to close.
+    it.each([[`columns`], [`export`]] as const)(
+      `opening the %s menu closes the other`,
+      async (first) => {
+        mount_table({
+          data: sample_data,
+          columns: sample_columns,
+          show_column_toggle: true,
+          export_data: true,
+        })
+        const columns_btn = () => doc_query(`.column-toggles summary`)
+        const export_btn = () => doc_query<HTMLButtonElement>(`.dropdown-wrapper .icon-btn`)
+        // ToggleMenu keeps its dropdown mounted and toggles `hidden`; export renders on demand
+        const open_menus = () =>
+          [
+            document.querySelector(`.column-menu:not([hidden])`),
+            document.querySelector(`.dropdown-pane`),
+          ].filter(Boolean).length
+
+        ;(first === `columns` ? columns_btn() : export_btn()).click()
+        await tick()
+        expect(open_menus()).toBe(1)
+        ;(first === `columns` ? export_btn() : columns_btn()).click()
+        await tick()
+        expect(open_menus()).toBe(1)
+      },
+    )
   })
 
   describe(`Row Selection`, () => {
