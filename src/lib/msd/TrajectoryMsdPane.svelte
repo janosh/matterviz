@@ -4,13 +4,10 @@
   import { format_bytes, format_num } from '$lib/labels'
   import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
+  import { analysis_pane_setup } from '$lib/trajectory/analysis'
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'
-  import {
-    analysis_pane_setup,
-    collect_msd_positions,
-    suggest_msd_frame_stride,
-  } from './collect'
+  import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
   import type { MsdOptions, MsdPositions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
 

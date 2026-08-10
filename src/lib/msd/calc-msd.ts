@@ -129,11 +129,17 @@ export function group_atoms_by_element(elements: readonly string[]): {
   return { labels, group_sizes, atom_group }
 }
 
-// Accumulate minimum-image steps straight into a second flat buffer. math.unwrap_positions
-// is the same algorithm but takes Vec3[][]; inflating the flat buffer into that shape and
-// back costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x 2000 atoms,
-// measured), putting the module's own 512 MB collect budget out of reach. The kernel is
-// still math's verified min_image_displacement, driven over one reused scratch pair.
+// Turn per-frame WRAPPED Cartesian positions into a continuous unwrapped trajectory by
+// accumulating minimum-image steps straight into a second flat buffer. Stays flat because
+// a Vec3[][] round trip costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x
+// 2000 atoms, measured), putting the module's own 512 MB collect budget out of reach. The
+// kernel is still math's verified min_image_displacement over one reused scratch pair.
+//
+// CALLER BEWARE: the input must be wrapped coordinates. Feeding coordinates that are
+// ALREADY unwrapped (e.g. a LAMMPS dump with xu/yu/zu columns, which the parser flags as
+// `coords_unwrapped: true`) re-applies the minimum image convention and silently truncates
+// every real displacement longer than half a cell — check that flag before calling this.
+//
 // Exported for $lib/vacf, which differentiates the same unwrapped coordinates, and for
 // trajectory lines, which draws them.
 export function unwrap_flat_positions(

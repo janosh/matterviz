@@ -1,13 +1,13 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
 //
-// Same trap as $lib/msd/collect: for indexed trajectories `trajectory.frames` holds only
+// Same trap $lib/trajectory/analysis guards: for indexed trajectories `trajectory.frames` holds only
 // the first handful of frames (the parser loads min(10, total_frames)) while `total_frames`
 // can be six digits. Looping over `frames` would compute the VACF over 10 frames and put
 // the whole VDOS in the wrong place, and neither validate_trajectory nor
 // generate_plot_series notices. So every entry point here either drives a full streaming
 // pass or throws with instructions.
 import type { Vec3 } from '$lib/math'
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/msd/collect'
+import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
 import type {
   ParseProgress,
   TrajectoryFrame,

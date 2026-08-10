@@ -6,6 +6,7 @@ import type { Matrix3x3 } from '$lib/math'
 import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
 
+export * from './analysis'
 export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspectorPane.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'

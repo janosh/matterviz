@@ -6,6 +6,7 @@
 // windowed normalized VACF: the power spectrum of the atomic motion, peaking wherever the
 // system vibrates. Longer lags have fewer origins, so `n_origins` and `std_error` come back
 // per lag and callers are expected to show that the tail is statistically weak.
+import { THZ_TO_INVERSE_CM } from '$lib/constants'
 import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '$lib/fft'
 // Imported from the kernel module, not $lib/msd: the barrel pulls in MsdPlot.svelte, which
 // a Web Worker bundle cannot load.
@@ -23,9 +24,6 @@ import type {
   VelocitySource,
 } from './index'
 import { thz_per_inverse_time, TIME_UNIT_TO_THZ } from './units'
-
-// THz -> cm^-1: 1e12 Hz divided by the speed of light in cm/s
-const THZ_TO_INVERSE_CM = 1e12 / (299792458 * 100)
 
 const fail = (message: string): never => {
   throw new Error(`calc_vacf: ${message}`)

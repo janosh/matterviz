@@ -1,15 +1,10 @@
 import type { ElementSymbol } from '$lib/element'
 import type { MsdPositions, MsdResult } from '$lib/msd'
-import {
-  calc_msd,
-  collect_msd_positions,
-  has_all_frames_in_memory,
-  MsdPlot,
-  suggest_msd_frame_stride,
-} from '$lib/msd'
+import { calc_msd, collect_msd_positions, MsdPlot, suggest_msd_frame_stride } from '$lib/msd'
 import * as async_compute from '$lib/msd/async-compute.svelte'
 import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
 import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
+import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
 import { join } from 'node:path'
 import process from 'node:process'
