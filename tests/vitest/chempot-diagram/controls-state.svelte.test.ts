@@ -90,15 +90,14 @@ test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
   expect(sinks).toEqual([`sanitize_html(gc.label)`])
 })
 
-test(`ChemPotScene3D refreshes backside placement when data ranges change`, () => {
+test(`ChemPotScene3D derives backside placement from current ranges`, () => {
   const source = read_component_source(`ChemPotScene3D`)
+  expect(source).toContain(
+    `niced_range.map((range, axis_idx) => range[backside_indices[axis_idx]])`,
+  )
   const effects = source.match(/\$effect\(\(\) => \{[\s\S]*?\n  \}\)/g) ?? []
-  expect(
-    effects.some(
-      (effect) =>
-        effect.includes(`const ranges = niced_range`) &&
-        effect.includes(`const center = data_center`) &&
-        effect.includes(`update_backside(ranges, center)`),
-    ),
-  ).toBe(true)
+  const backside_effect = effects.find((effect) =>
+    effect.includes(`update_backside_indices(center)`),
+  )
+  expect(backside_effect).toContain(`const center = data_center`)
 })

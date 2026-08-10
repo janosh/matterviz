@@ -16,6 +16,7 @@
   import type { ChemPotHoverInfo3D } from './types'
 
   type OverlayGeometry = { geometry: BufferGeometry; color: string }
+  type BacksideIndices = [0 | 1, 0 | 1, 0 | 1]
   type RenderDomain = {
     formula: string
     points_3d: number[][]
@@ -64,6 +65,9 @@
     y_axis: AxisConfig3D
     z_axis: AxisConfig3D
     display: DisplayConfig3D
+    // Mean of the domain points in RENDERED xyz, not data order: the parent averages
+    // to_render_xyz output, so it is already swizzled and axis-scaled. Compare camera
+    // coordinates against it directly (cam.z vs data_center[2]), never by data axis.
     data_center: Vec3
     data_extent: number
     camera_position: Vec3
@@ -90,12 +94,8 @@
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
 
-  // Backside tracking: axes/ticks/labels render on the far side from the camera.
-  // back[idx] = backside data coordinate value for data axis idx.
-  let back = $state([0, 0, 0])
-  // Outward offset signs for tick/label placement (away from the bounding box)
-  let out_x = $state(-1) // sign for Three.js X (data axis 1) direction
-  let out_y = $state(-1) // sign for Three.js Y (data axis 2) direction
+  // Select the range endpoint farthest from the camera for each data axis.
+  let backside_indices = $state<BacksideIndices>([0, 0, 0])
 
   // Axis range controls are in swizzled axis order:
   // x-axis control -> data axis 1, y-axis control -> data axis 2, z-axis control -> data axis 0
@@ -151,6 +151,12 @@
       return [lo - step, hi + step]
     }),
   )
+  const back = $derived(
+    niced_range.map((range, axis_idx) => range[backside_indices[axis_idx]]),
+  )
+  // Outward offset signs for tick/label placement (away from the bounding box).
+  const out_x = $derived(backside_indices[1] === 0 ? -1 : 1)
+  const out_y = $derived(backside_indices[2] === 0 ? -1 : 1)
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
   const chem_axis_label = (data_axis: number): string =>
@@ -316,34 +322,28 @@
 
   // Update backside positions when camera crosses axis planes.
   // Only updates when sign changes to avoid triggering geometry recreation every frame.
-  function update_backside(ranges: Vec2[], center: Vec3): void {
+  function update_backside_indices(center: Vec3): void {
     const cam = orbit_controls?.object?.position
     if (!cam) return
-    const [r0, r1, r2] = ranges
     // swiz: data[0]→Z, data[1]→X, data[2]→Y
-    const new_back_0 = cam.z > center[2] ? r0[0] : r0[1]
-    const new_back_1 = cam.x > center[0] ? r1[0] : r1[1]
-    const new_back_2 = cam.y > center[1] ? r2[0] : r2[1]
-    if (back[0] !== new_back_0 || back[1] !== new_back_1 || back[2] !== new_back_2) {
-      back = [new_back_0, new_back_1, new_back_2]
-      out_x = cam.x > center[0] ? -1 : 1
-      out_y = cam.y > center[1] ? -1 : 1
+    const next_indices: BacksideIndices = [
+      cam.z > center[2] ? 0 : 1,
+      cam.x > center[0] ? 0 : 1,
+      cam.y > center[1] ? 0 : 1,
+    ]
+    if (backside_indices.some((endpoint, axis_idx) => endpoint !== next_indices[axis_idx])) {
+      backside_indices = next_indices
     }
   }
 
   $effect(() => {
     const controls = orbit_controls
+    const center = data_center
     if (!controls) return
-    const update_from_camera = () => update_backside(niced_range, data_center)
+    const update_from_camera = () => update_backside_indices(center)
     controls.addEventListener(`change`, update_from_camera)
     untrack(update_from_camera)
     return () => controls.removeEventListener(`change`, update_from_camera)
-  })
-
-  $effect(() => {
-    const ranges = niced_range
-    const center = data_center
-    untrack(() => update_backside(ranges, center))
   })
 
   // OrbitControls' own default sensitivities in both projections: build_orbit_props doubles the

@@ -259,10 +259,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       items: legend_item ? [legend_item] : [],
     }),
   )
-  const pad = $derived.by(() => {
-    const marginals = opts.marginals()
-    return add_sides(base_decoration_solution.pad, reserve_marginal_pad(marginals))
-  })
+  const marginal_pad = $derived.by(() => reserve_marginal_pad(opts.marginals()))
+  const pad = $derived(add_sides(base_decoration_solution.pad, marginal_pad))
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
