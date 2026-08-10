@@ -44,7 +44,6 @@
   })
   // Keep browser wrapping from splitting titles when canvas metrics under-estimate page fonts.
   let container_width = $derived(Math.max(wrap_width, title_layout.width))
-  let container_height = $derived(Math.max(AXIS_LABEL_CONTAINER.height, title_layout.height))
   let first_line_y = $derived(
     y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
   )
@@ -78,9 +77,9 @@
   {:else}
     <foreignObject
       x={x - container_width / 2}
-      y={y - container_height / 2}
+      y={y - title_layout.height / 2}
       width={container_width}
-      height={container_height}
+      height={title_layout.height}
       style="overflow: visible; pointer-events: none"
     >
       <InteractiveAxisLabel

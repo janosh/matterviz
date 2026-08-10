@@ -9,6 +9,7 @@ import type { Vec2 } from '$lib/math'
 import { has_explicit_position, measured_footprint } from '$lib/plot/core/auto-place'
 import {
   create_legend_decoration_item,
+  decoration_placement_revision,
   decoration_placement_rects,
   type DecorationItem,
   get_decoration_placement,
@@ -371,10 +372,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     tween: () => opts.legend()?.tween,
     on_element_resize: () => (legend_size_revision += 1),
     // Re-tween whenever the solved rect moves, not just when it changes side
-    placement_revision: () =>
-      legend_placement
-        ? `${legend_placement.location}:${legend_placement.side}:${legend_placement.x}:${legend_placement.y}:${legend_placement.footprint.width}:${legend_placement.footprint.height}`
-        : `none`,
+    placement_revision: () => decoration_placement_revision(legend_placement),
     suspended: opts.legend_suspended,
     manual_position: opts.legend_manual_position,
   })

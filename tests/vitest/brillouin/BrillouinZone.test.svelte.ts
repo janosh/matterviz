@@ -33,9 +33,12 @@ test(`loads a second data_url after the first has produced a structure`, async (
 test(`ignores a stale async on_file_drop failure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
   const first_drop = Promise.withResolvers<undefined>()
-  const on_file_drop = vi.fn((_content: string | ArrayBuffer, filename: string) =>
-    filename === `a.poscar` ? first_drop.promise : Promise.resolve(),
-  )
+  const second_drop = Promise.withResolvers<undefined>()
+  const completed_filenames: string[] = []
+  const on_file_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
+    await (filename === `a.poscar` ? first_drop.promise : second_drop.promise)
+    completed_filenames.push(filename)
+  })
   const on_error = vi.fn()
   const props = $state({
     data_url: `http://x/a.poscar`,
@@ -48,8 +51,9 @@ test(`ignores a stale async on_file_drop failure`, async () => {
   props.data_url = `http://x/b.poscar`
   await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
   first_drop.reject(new Error(`stale parse failure`))
-  await first_drop.promise.catch(() => {})
-  await Promise.resolve()
-
-  expect(on_error).not.toHaveBeenCalled()
+  second_drop.resolve(undefined)
+  await vi.waitFor(() => {
+    expect(completed_filenames).toEqual([`b.poscar`])
+    expect(on_error).not.toHaveBeenCalled()
+  })
 })

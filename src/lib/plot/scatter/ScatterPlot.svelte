@@ -64,6 +64,7 @@
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
+    decoration_placement_revision,
     get_decoration_placement,
     resolve_legend_layout_tracks,
     type DecorationItem,
@@ -1027,10 +1028,7 @@
     element: () => colorbar_element,
     tween: () => color_bar?.tween,
     on_element_resize: () => (colorbar_size_revision += 1),
-    placement_revision: () =>
-      colorbar_placement
-        ? `${colorbar_placement.location}:${colorbar_placement.side}:${colorbar_placement.x}:${colorbar_placement.y}:${colorbar_placement.footprint.width}:${colorbar_placement.footprint.height}`
-        : `none`,
+    placement_revision: () => decoration_placement_revision(colorbar_placement),
   })
   const decoration_exclusion_rects = $derived([
     ...pinned_decoration_rects,
