@@ -51,6 +51,7 @@
   } from '$lib/table'
   import {
     compute_column_stats,
+    get_column_id as get_col_id,
     make_cell_color_scale,
     merge_domains,
     resolve_color_domain,
@@ -58,6 +59,7 @@
   } from '$lib/table'
   import type { D3InterpolateName } from '$lib/colors'
   import { sanitize_html } from '$lib/sanitize'
+  import ToggleMenu from './ToggleMenu.svelte'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
   import { type Snippet, tick, untrack } from 'svelte'
   import { flip } from 'svelte/animate'
@@ -210,7 +212,7 @@
     row_title?: (row: RowData) => string | null | undefined
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
-    // - Grouped columns: `${col.key ?? col.label} (${col.group})`
+    // - Grouped columns: JSON.stringify([col.key ?? col.label, col.group])
     // This allows persisting/restoring column order across sessions.
     column_order?: string[]
     // Per-column user tuning (width, color scale, gradient direction, date format,
@@ -444,26 +446,24 @@
     columns = Object.keys(seen).map((key) => ({ label: key }))
   })
 
-  // Helper to make column IDs (needed since column labels in different groups can be repeated)
-  const get_col_id = (col: Label) =>
-    col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
-
-  // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
+  // IDs and row keys are separate: grouped IDs use tuple encoding, while existing row data
+  // may still use display-style "Label (Group)" keys.
   let data_keys = $derived.by(() => {
     const keys = new SvelteMap<string, string>()
-    const qualified_ids: string[] = []
+    const qualified_keys = new SvelteMap<string, string>()
     for (const col of columns) {
       const col_id = get_col_id(col)
       const plain_key = col.key ?? col.label
       keys.set(col_id, plain_key) // upgraded below if the rows carry the qualified key
-      if (col_id !== plain_key) qualified_ids.push(col_id)
+      if (col.group) qualified_keys.set(col_id, `${plain_key} (${col.group})`)
     }
     // Only a grouped column can be keyed either way, so an ungrouped table skips the row
     // scan entirely — it costs O(rows x keys) and runs on every data change.
-    if (qualified_ids.length === 0) return keys
+    if (qualified_keys.size === 0) return keys
     const present_keys = new SvelteSet<string>()
     for (const row of data) for (const key of Object.keys(row)) present_keys.add(key)
-    for (const col_id of qualified_ids) if (present_keys.has(col_id)) keys.set(col_id, col_id)
+    for (const [col_id, data_key] of qualified_keys)
+      if (present_keys.has(data_key)) keys.set(col_id, data_key)
     return keys
   })
   // Row key for a column, by column or by ID (sort/context-menu state holds IDs)
@@ -1855,12 +1855,20 @@
     return { color, rest: remaining }
   }
 
-  // Column visibility toggle
-  function toggle_column(col_id: string) {
-    hidden_columns = hidden_columns.includes(col_id)
-      ? hidden_columns.filter((id) => id !== col_id)
-      : [...hidden_columns, col_id]
+  // Keep the bindable `hidden_columns` list authoritative while ToggleMenu edits a projection.
+  function set_column_visible(col_id: string, visible: boolean) {
+    const others = hidden_columns.filter((id) => id !== col_id)
+    hidden_columns = visible ? others : [...others, col_id]
   }
+  let toggle_columns = $derived(
+    ordered_columns.map((col) => ({
+      ...col,
+      default_visible: col.visible !== false,
+      // Caller-hidden columns cannot be shown through `hidden_columns`.
+      disabled: col.disabled || col.visible === false,
+      visible: col.visible !== false && !hidden_columns.includes(get_col_id(col)),
+    })),
+  )
 
   // Column resize handlers
   function start_resize(event: MouseEvent, col: Label) {
@@ -1929,7 +1937,6 @@
   onkeydown={handle_cell_selection_keydown}
 />
 
-<!-- Shared toolbar dropdown; `id` also tracks the single open pane. -->
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
   <button
     class="icon-btn"
@@ -1939,34 +1946,6 @@
   >
     <Icon {icon} />
   </button>
-{/snippet}
-
-{#snippet dropdown(id: `columns` | `export`, icon: IconData, options: Snippet)}
-  <div class="dropdown-wrapper">
-    {@render icon_btn(
-      icon,
-      id === `columns` ? `Columns` : `Export`,
-      () => (open_dropdown = open_dropdown === id ? null : id),
-      open_dropdown === id,
-    )}
-    {#if open_dropdown === id}
-      <div class="dropdown-pane">{@render options()}</div>
-    {/if}
-  </div>
-{/snippet}
-
-{#snippet column_options()}
-  {#each ordered_columns as col (get_col_id(col))}
-    {@const col_id = get_col_id(col)}
-    <label class="dropdown-option">
-      <input
-        type="checkbox"
-        checked={!hidden_columns.includes(col_id)}
-        onchange={() => toggle_column(col_id)}
-      />
-      {@html sanitize_html(col.label)}
-    </label>
-  {/each}
 {/snippet}
 
 {#snippet export_options()}
@@ -2141,11 +2120,37 @@
     {/if}
 
     {#if show_column_toggle}
-      {@render dropdown(`columns`, Columns, column_options)}
+      <ToggleMenu
+        columns={toggle_columns}
+        bind:column_panel_open={
+          () => open_dropdown === `columns`,
+          (open) => (open_dropdown = open ? `columns` : null)
+        }
+        on_toggle={(col, visible) => set_column_visible(get_col_id(col), visible)}
+      >
+        {#snippet trigger({ open })}
+          <span
+            class="icon-btn"
+            class:active={open}
+            {@attach tooltip({ content: `Columns`, placement: `top` })}
+            ><Icon icon={Columns} /></span
+          >
+        {/snippet}
+      </ToggleMenu>
     {/if}
 
     {#if export_config}
-      {@render dropdown(`export`, Export, export_options)}
+      <div class="dropdown-wrapper">
+        {@render icon_btn(
+          Export,
+          `Export`,
+          () => (open_dropdown = open_dropdown === `export` ? null : `export`),
+          open_dropdown === `export`,
+        )}
+        {#if open_dropdown === `export`}
+          <div class="dropdown-pane">{@render export_options()}</div>
+        {/if}
+      </div>
     {/if}
 
     {#if show_row_select && selected_rows.length > 0}
@@ -3129,11 +3134,6 @@
   }
   .dropdown-option:hover {
     background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  }
-  /* Column toggle labels - more compact */
-  label.dropdown-option {
-    padding: 4px 10px;
-    gap: 6px;
   }
   .search-input {
     padding: 2px 4px;

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // Tests for FillArea.svelte component
-import { FillArea } from '$lib/plot'
+import FillArea from '$lib/plot/core/components/FillArea.svelte'
 import type { FillGradient, FillRegion } from '$lib/plot/core/types'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'

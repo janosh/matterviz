@@ -1,4 +1,9 @@
 import { BarPlot } from '$lib'
+import {
+  AXIS_LABEL_HEIGHT,
+  AXIS_LABEL_OUTER,
+  DEFAULT_PLOT_PADDING,
+} from '$lib/plot/core/layout'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -20,6 +25,15 @@ const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
   size: { width?: number; height?: number } = {},
 ): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot`, ...size })
+
+// Right padding read off the chart-area clip rect. Asserting this rather than the clip
+// width keeps the left pad, which these tests don't constrain, out of the expectation.
+const right_pad = (plot: HTMLElement, width = 400): number => {
+  const clip_rect = plot.querySelector(`clipPath rect`)
+  return (
+    width - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+  )
+}
 
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
@@ -257,9 +271,8 @@ describe(`BarPlot`, () => {
       x2_axis: { label: `Top` },
       y2_axis: { label: `Secondary` },
     })
-    const clip_rect = plot.querySelector(`clipPath rect`)
-    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
-    expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
+    expect(right_pad(plot)).toBe(10)
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`y`))).toBe(10)
   })
 
   test(`title-only y2 axis expands right padding`, async () => {
@@ -268,7 +281,9 @@ describe(`BarPlot`, () => {
       y_axis: { ticks: [] },
       y2_axis: { label: `Secondary`, ticks: [] },
     })
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(308)
+    // a title with no ticks still reserves its own band, past the shared default
+    expect(right_pad(plot)).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+    expect(right_pad(plot)).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
@@ -279,7 +294,7 @@ describe(`BarPlot`, () => {
     expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(60)
   })
 
-  test(`line markers render zero-valued color and size inputs`, async () => {
+  test(`line markers preserve zero-valued inputs and fractional range edges`, async () => {
     // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
     // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
     const on_point_hover = vi.fn()
@@ -294,13 +309,21 @@ describe(`BarPlot`, () => {
           size_values: [0, 5, 10, 15, 20],
         },
       ],
+      x_axis: { range: [1, 5] },
+      y_axis: { range: [10, 25] },
+      padding: { l: 0.2, r: 64.4, t: 15.1, b: 40.9 },
       on_point_hover,
       on_point_click,
     })
-    expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
+    const line_series = plot.querySelector(`.line-series`)
+    expect(line_series?.getAttribute(`clip-path`)).toBeNull()
+    expect(line_series?.querySelector(`polyline`)?.getAttribute(`clip-path`)).toMatch(
+      /^url\(#.+\)$/,
+    )
     const markers = [...plot.querySelectorAll(`.line-points .marker`)]
     expect(markers).toHaveLength(5)
     expect(markers.every((marker) => !marker.getAttribute(`d`)?.includes(`NaN`))).toBe(true)
+    expect(markers.every((marker) => marker.closest(`[clip-path]`) === null)).toBe(true)
     markers[0].dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
     markers[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenCalledOnce()
@@ -311,22 +334,44 @@ describe(`BarPlot`, () => {
     const on_point_hover = vi.fn()
     const on_point_click = vi.fn()
     const plot = await mount_sized_bar_plot({
-      series: [{ ...basic, render_mode: `line`, markers: `line` }],
+      series: [{ x: [-0.01, 1], y: [1, 0], render_mode: `line`, markers: `line` }],
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
       on_point_hover,
       on_point_click,
     })
     const hit_target = plot.querySelector(`.line-series polyline[stroke="transparent"]`)
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    const edge_event = {
+      bubbles: true,
+      clientX: Number(clip_rect?.getAttribute(`x`)),
+      clientY: Number(clip_rect?.getAttribute(`y`)),
+    }
     expect(hit_target).toBeInstanceOf(SVGPolylineElement)
-    hit_target?.dispatchEvent(
-      new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
-    )
-    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    expect(on_point_hover).toHaveBeenCalledOnce()
-    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
-    expect(on_point_click).toHaveBeenCalledOnce()
-    expect(on_point_click.mock.calls[0][0]).toMatchObject({ series_idx: 0 })
+    hit_target?.dispatchEvent(new MouseEvent(`mousemove`, edge_event))
+    hit_target?.dispatchEvent(new MouseEvent(`click`, edge_event))
+    for (const callback of [on_point_hover, on_point_click]) {
+      expect(callback).toHaveBeenCalledOnce()
+      expect(callback.mock.calls[0][0]).toMatchObject({
+        series_idx: 0,
+        point: { data_x: 1 },
+      })
+    }
     hit_target?.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`omits line hit targets when no data vertex is in range`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [-1, 2], y: [0.5, 0.5], render_mode: `line`, markers: `line` }],
+      x_axis: { range: [0, 1] },
+      y_axis: { range: [0, 1] },
+      on_point_click: vi.fn(),
+    })
+    expect(
+      plot.querySelector(`.line-series polyline:not([stroke="transparent"])`),
+    ).not.toBeNull()
+    expect(plot.querySelector(`.line-series polyline[stroke="transparent"]`)).toBeNull()
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
@@ -362,20 +407,16 @@ describe(`BarPlot`, () => {
   test(`default tooltip shows series label for multi-series on hover`, async () => {
     const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
     const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [series_a, series_b],
-        x_axis: { label: `X` },
-        y_axis: { label: `Count` },
-      },
+    const plot = await mount_sized_bar_plot({
+      series: [series_a, series_b],
+      x_axis: { label: `X` },
+      y_axis: { label: `Count` },
     })
-    await tick()
-    const bar = document.querySelector(`path[role="button"]`)
+    const bar = plot.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
-    const text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
     expect(text).toContain(`Group A`)
     expect(text).toContain(`Count`)
   })
@@ -517,24 +558,19 @@ describe(`BarPlot`, () => {
 
     test(`hover reports category_label + metadata and tooltip shows the category name`, async () => {
       const hover_fn = vi.fn()
-      mount(BarPlot, {
-        target: document.body,
-        props: {
-          series: [
-            {
-              x: [`Alpha`, `Beta`, `Gamma`],
-              y: [10, 20, 30],
-              color: `blue`,
-              metadata: [{ id: 1 }, { id: 2 }, { id: 3 }],
-            },
-          ],
-          x_axis: { label: `Greek` },
-          on_bar_hover: hover_fn,
-          style: `width: 400px; height: 300px`,
-        },
+      const plot = await mount_sized_bar_plot({
+        series: [
+          {
+            x: [`Alpha`, `Beta`, `Gamma`],
+            y: [10, 20, 30],
+            color: `blue`,
+            metadata: [{ id: 1 }, { id: 2 }, { id: 3 }],
+          },
+        ],
+        x_axis: { label: `Greek` },
+        on_bar_hover: hover_fn,
       })
-      await tick()
-      const bar = document.querySelector(`path[role="button"]`)
+      const bar = plot.querySelector(`path[role="button"]`)
       if (!bar) throw new Error(`bar element not found`)
       bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
       await tick()
@@ -543,7 +579,7 @@ describe(`BarPlot`, () => {
       expect(data.category_label).toBe(`Alpha`)
       expect(data.metadata).toEqual({ id: 1 })
       // tooltip shows the category name, not its numeric index
-      const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+      const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
       expect(tooltip_text).toContain(`Alpha`)
       expect(tooltip_text).not.toMatch(/\b0\b/)
     })
@@ -552,32 +588,18 @@ describe(`BarPlot`, () => {
   const multi_series = [basic, { ...basic, color: `orangered`, label: `S2` }]
 
   test.each([
-    {
-      props: { series: multi_series, show_legend: false },
-      visible: false,
-      label: `hidden when show_legend=false`,
+    [`hidden when show_legend=false`, { series: multi_series, show_legend: false }, false],
+    [`visible when show_legend=true`, { series: multi_series, show_legend: true }, true],
+    [`auto-shows for multiple series`, { series: multi_series }, true],
+    [`hidden when null`, { series: multi_series, legend: null }, false],
+    [`auto-hides for single series`, { series: [basic] }, false],
+  ] satisfies [string, Partial<ComponentProps<typeof BarPlot>>, boolean][])(
+    `legend %s`,
+    async (_label, props, visible) => {
+      const plot = await mount_sized_bar_plot(props)
+      expect(Boolean(plot.querySelector(`.legend`))).toBe(visible)
     },
-    {
-      props: { series: multi_series, show_legend: true },
-      visible: true,
-      label: `visible when show_legend=true`,
-    },
-    {
-      props: { series: multi_series },
-      visible: true,
-      label: `auto-shows for multiple series`,
-    },
-    {
-      props: { series: multi_series, legend: null },
-      visible: false,
-      label: `hidden when null`,
-    },
-    { props: { series: [basic] }, visible: false, label: `auto-hides for single series` },
-  ])(`legend $label`, async ({ props, visible }) => {
-    mount(BarPlot, { target: document.body, props })
-    await tick()
-    expect(Boolean(document.querySelector(`.legend`))).toBe(visible)
-  })
+  )
 
   test(`renders grouped and ungrouped legend entries`, async () => {
     const series = (

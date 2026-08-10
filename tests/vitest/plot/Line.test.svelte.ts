@@ -1,4 +1,5 @@
-import { Line, type Vec2 } from '$lib'
+import type { Vec2 } from '$lib'
+import Line from '$lib/plot/core/components/Line.svelte'
 import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { resolve_line_tween } from '$lib/plot/core/utils'
 import { flushSync, mount } from 'svelte'

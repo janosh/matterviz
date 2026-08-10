@@ -1,6 +1,6 @@
 # Box Plot
 
-`BoxPlot` summarizes one or more raw numeric distributions as boxes (interquartile range), median lines, whiskers, and optional outlier points. Each series is one box; quartiles and whiskers are computed internally from the raw `y` array, so you only pass the data.
+Each series is one box computed from its raw `y` values; configure whiskers with `whisker_mode`.
 
 ## Basic Usage
 

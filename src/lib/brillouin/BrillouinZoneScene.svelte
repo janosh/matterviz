@@ -5,6 +5,7 @@
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
+    dispose_on_change,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
@@ -29,18 +30,18 @@
   let {
     bz_data = $bindable(),
     camera_position = $bindable(),
-    camera_projection = $bindable(`perspective`),
-    surface_color = $bindable(`#4488ff`),
-    surface_opacity = $bindable(0.3),
-    edge_color = $bindable(`#000000`),
-    edge_width = $bindable(0.002),
-    show_vectors = $bindable(true),
-    vector_scale = $bindable(1.0),
+    camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
+    surface_color = $bindable(DEFAULTS.brillouin.surface_color),
+    surface_opacity = $bindable(DEFAULTS.brillouin.surface_opacity),
+    edge_color = $bindable(DEFAULTS.brillouin.edge_color),
+    edge_width = $bindable(DEFAULTS.brillouin.edge_width),
+    show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
+    vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
     // Irreducible BZ options
-    show_ibz = false,
+    show_ibz = DEFAULTS.brillouin.show_ibz,
     ibz_data = null as IrreducibleBZData | null,
-    ibz_color = `#ff8844`,
-    ibz_opacity = 0.5,
+    ibz_color = DEFAULTS.brillouin.ibz_color,
+    ibz_opacity = DEFAULTS.brillouin.ibz_opacity,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
     min_zoom = DEFAULTS.structure.min_zoom,
@@ -166,15 +167,9 @@
     show_ibz && ibz_data ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces) : null,
   )
 
-  // Separate effects to avoid disposing one geometry when only the other changes
-  $effect(() => {
-    const prev = bz_geometry
-    return () => prev?.dispose()
-  })
-  $effect(() => {
-    const prev = ibz_geometry
-    return () => prev?.dispose()
-  })
+  // Separate calls to avoid disposing one geometry when only the other changes
+  dispose_on_change(() => [bz_geometry])
+  dispose_on_change(() => [ibz_geometry])
 
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))

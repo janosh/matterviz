@@ -175,6 +175,7 @@
       {@const y_ts = y_scale_fn(analysis.ts_energy - offset)}
       {@const y_final = y_scale_fn(analysis.final_energy - offset)}
       {@const arrow_x = Math.min(x_scale_fn(analysis.ts_coordinate) + 14, right - 4)}
+      {@const barrier_label = format_num(analysis.forward_barrier, `.3~`)}
       <!-- reference rules at the initial, transition and final state energies -->
       {#each [y_initial, y_ts, y_final] as y_pos, rule_idx (rule_idx)}
         {#if in_y(y_pos)}{@render seg([left, y_pos, right, y_pos], IS_TS_FS_RULE)}{/if}
@@ -197,7 +198,7 @@
           font-size="0.8em"
           dominant-baseline="middle"
         >
-          Ea = {format_num(analysis.forward_barrier, `.3~`)}
+          E<tspan baseline-shift="sub" font-size="0.75em">act</tspan> = {barrier_label}
           {energy_unit}
         </text>
       {/if}

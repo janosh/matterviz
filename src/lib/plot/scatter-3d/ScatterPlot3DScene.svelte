@@ -19,7 +19,7 @@
   } from '$lib/plot/core/types'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
   import type { GizmoOptions } from '$lib/scene'
-  import { bind_renderer, create_orthographic_zoom, Gizmo } from '$lib/scene'
+  import { bind_renderer, create_orthographic_zoom, Gizmo, line_geometry } from '$lib/scene'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -456,14 +456,6 @@
   let y_ticks = $derived(gen_ticks(y_range, y_axis.ticks))
   let z_ticks = $derived(gen_ticks(z_range, z_axis.ticks))
 
-  // Create axis line geometry - reuses a shared Float32Array for efficiency
-  function create_line_geometry(start: Vec3, end: Vec3): THREE.BufferGeometry {
-    const geometry = new THREE.BufferGeometry()
-    const positions = new Float32Array([...start, ...end])
-    geometry.setAttribute(`position`, new THREE.BufferAttribute(positions, 3))
-    return geometry
-  }
-
   // Build event data for point interactions
   function make_event_data(
     point: InternalPoint3D<Metadata>,
@@ -540,9 +532,9 @@
 
   // Main axis line geometries - updated when backside positions change
   let axis_geometries: Record<AxisKey, THREE.BufferGeometry> = $state({
-    x: create_line_geometry([-half_x, -half_z, -half_y], [half_x, -half_z, -half_y]),
-    y: create_line_geometry([-half_x, -half_z, -half_y], [-half_x, -half_z, half_y]),
-    z: create_line_geometry([-half_x, -half_z, -half_y], [-half_x, half_z, -half_y]),
+    x: line_geometry([-half_x, -half_z, -half_y], [half_x, -half_z, -half_y]),
+    y: line_geometry([-half_x, -half_z, -half_y], [-half_x, -half_z, half_y]),
+    z: line_geometry([-half_x, -half_z, -half_y], [-half_x, half_z, -half_y]),
   })
 
   $effect(() => {
@@ -552,11 +544,11 @@
       for (const key of AXIS_KEYS) axis_geometries[key].dispose()
     })
     // X-axis: spans full X, positioned at backside Y and Z
-    axis_geometries.x = create_line_geometry([-half_x, py, pz], [half_x, py, pz])
+    axis_geometries.x = line_geometry([-half_x, py, pz], [half_x, py, pz])
     // Y-axis (user Y → Three.js Z): spans full Z, positioned at backside X and Y
-    axis_geometries.y = create_line_geometry([px, py, -half_y], [px, py, half_y])
+    axis_geometries.y = line_geometry([px, py, -half_y], [px, py, half_y])
     // Z-axis (user Z → Three.js Y): spans full Y, positioned at backside X and Z
-    axis_geometries.z = create_line_geometry([px, -half_z, pz], [px, half_z, pz])
+    axis_geometries.z = line_geometry([px, -half_z, pz], [px, half_z, pz])
   })
 
   // Axis rendering config - all positions use backside `pos` values
@@ -679,11 +671,9 @@
     })
     for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {
       axis_geom_data[key] = {
-        tick_geoms: ticks.map((val) =>
-          create_line_geometry(get_tick_pos(val), get_tick_end(val)),
-        ),
+        tick_geoms: ticks.map((val) => line_geometry(get_tick_pos(val), get_tick_end(val))),
         grid_geoms: ticks.map((val) =>
-          get_grid_lines(val).map(([start, end]) => create_line_geometry(start, end)),
+          get_grid_lines(val).map(([start, end]) => line_geometry(start, end)),
         ),
       }
     }

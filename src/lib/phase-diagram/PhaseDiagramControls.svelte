@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { Cross, Settings } from 'svelte-widgets/icons'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { ControlPane } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -38,8 +37,7 @@
     children,
     post_children,
     ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
-    controls_open?: boolean
+  }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     // Visibility toggles
     show_boundaries?: boolean
     show_labels?: boolean
@@ -58,9 +56,6 @@
     // Export settings
     enable_export?: boolean
     png_dpi?: number
-    // Pane customization
-    pane_props?: PaneProps
-    toggle_props?: PaneToggleProps
     // Custom content snippets
     children?: Snippet<[{ controls_open: boolean }]>
     post_children?: Snippet<[{ controls_open: boolean }]>
@@ -111,20 +106,14 @@
   ] as const
 </script>
 
-<DraggablePane
-  bind:open={controls_open}
-  pane_props={{
-    ...pane_props,
-    class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
-    style: pane_props?.style ?? ``,
-  }}
-  toggle_props={{
-    title: controls_open ? `` : `Phase diagram controls`,
-    class: `phase-diagram-controls-toggle`,
-    ...toggle_props,
-  }}
-  open_icon={Cross}
-  closed_icon={Settings}
+<ControlPane
+  bind:controls_open
+  controls_class="phase-diagram"
+  pane_style=""
+  toggle_style=""
+  toggle_title="Phase diagram"
+  {toggle_props}
+  {pane_props}
   {...rest}
 >
   <h4 style="margin: 0 0 8pt 0">{title}</h4>
@@ -339,7 +328,7 @@
   {/if}
 
   {@render post_children?.({ controls_open })}
-</DraggablePane>
+</ControlPane>
 
 <style>
   :global(.phase-diagram-controls-pane) {

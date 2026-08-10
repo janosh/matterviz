@@ -4,35 +4,11 @@ import { describe, expect, test } from 'vitest'
 class StubPath2D {
   added: { path: StubPath2D; transform: DOMMatrix }[] = []
   d?: string
-  constructor(source?: string | StubPath2D) {
-    if (typeof source === `string`) this.d = source
-    else if (source) {
-      this.d = source.d
-      this.added = source.added.map(({ path, transform }) => ({
-        path,
-        transform: new DOMMatrix([
-          transform.a,
-          transform.b,
-          transform.c,
-          transform.d,
-          transform.e,
-          transform.f,
-        ]),
-      }))
-    }
+  constructor(path_data?: string) {
+    this.d = path_data
   }
   addPath(path: StubPath2D, transform: DOMMatrix) {
-    this.added.push({
-      path,
-      transform: new DOMMatrix([
-        transform.a,
-        transform.b,
-        transform.c,
-        transform.d,
-        transform.e,
-        transform.f,
-      ]),
-    })
+    this.added.push({ path, transform: DOMMatrix.fromMatrix(transform) })
   }
 }
 globalThis.Path2D ??= StubPath2D as unknown as typeof Path2D
@@ -41,7 +17,7 @@ type Call = { op: string; args: unknown[] }
 const fake_ctx = () => {
   const calls: Call[] = []
   const ctx: Record<string, unknown> = { calls }
-  for (const op of `setTransform clearRect scale beginPath rect clip moveTo arc fill stroke save restore`.split(
+  for (const op of `setTransform clearRect scale beginPath moveTo arc fill stroke save restore`.split(
     ` `,
   )) {
     ctx[op] = (...args: unknown[]) => void calls.push({ op, args })
@@ -75,13 +51,13 @@ const draw = (
   draw_markers(ctx, markers, options)
   return ctx
 }
-const batch = (n: number, overrides: Partial<CanvasMarker> = {}) =>
-  Array.from({ length: n }, (_, idx) => marker({ cx: idx, cy: idx, ...overrides }))
+const batch = (n_markers: number, overrides: Partial<CanvasMarker> = {}) =>
+  Array.from({ length: n_markers }, (_, idx) => marker({ cx: idx, cy: idx, ...overrides }))
 // Symbol markers accumulate into one Path2D; these are the stamped entries.
 const stamps = (overrides: Partial<CanvasMarker>) =>
   filled_path(draw([marker(overrides)])).added
 
-describe(`draw_markers`, () => {
+describe(`canvas markers`, () => {
   test(`clears and scales the canvas while preserving context state`, () => {
     const hidpi = draw([marker()], { width: 400, height: 300, pixel_ratio: 2 })
     expect(ops(hidpi, `clearRect`)[0].args).toEqual([0, 0, 800, 600])
@@ -131,21 +107,14 @@ describe(`draw_markers`, () => {
     }
   })
 
-  test(`clips, moves before arcs, and restores between redraws`, () => {
-    const clip_ctx = fake_ctx()
+  test(`moves before arcs and restores between redraws`, () => {
+    const ctx = fake_ctx()
     const markers = [marker({ cx: 5, cy: 6, radius: 2 })]
-    for (const clip of [
-      { x: 10, y: 20, width: 100, height: 80 },
-      { x: 50, y: 60, width: 200, height: 180 },
-    ]) {
-      draw_markers(clip_ctx, markers, { width: 400, height: 300, clip })
-      expect(clip_ctx.calls.at(-1)?.op).toBe(`restore`)
+    for (let redraw = 0; redraw < 2; redraw++) {
+      draw_markers(ctx, markers, { width: 400, height: 300 })
+      expect(ctx.calls.at(-1)?.op).toBe(`restore`)
     }
-    expect(ops(clip_ctx, `moveTo`)[0].args).toEqual([7, 6])
-    expect(ops(clip_ctx, `rect`).map((call) => call.args)).toEqual([
-      [10, 20, 100, 80],
-      [50, 60, 200, 180],
-    ])
+    expect(ops(ctx, `moveTo`)[0].args).toEqual([7, 6])
   })
 
   test(`combines marker and fill or stroke opacity`, () => {
@@ -211,17 +180,5 @@ describe(`draw_markers`, () => {
     )
     expect(ops(mixed, `arc`)).toHaveLength(2)
     expect(ops(mixed, `fill`)).toHaveLength(2)
-  })
-
-  test(`Path2D stub preserves accumulated geometry when cloned`, () => {
-    const source = new StubPath2D()
-    const transform = new DOMMatrix()
-    transform.e = 3
-    transform.f = 4
-    source.addPath(new StubPath2D(`M0,0`), transform)
-    const clone = new StubPath2D(source)
-    source.added.length = 0
-    expect(clone.added).toHaveLength(1)
-    expect([clone.added[0].transform.e, clone.added[0].transform.f]).toEqual([3, 4])
   })
 })

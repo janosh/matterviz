@@ -8,7 +8,7 @@ import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 // @ts-expect-error Node ESM config load needs the .ts extension here
-import * as shared from './vite-plugins.ts'
+import * as shared from './src/vite-plugins.ts'
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
@@ -36,8 +36,6 @@ const starry_night_theme_plugin: Plugin = {
   },
 }
 
-// Decompresses .json.gz on the fly. resolve_queries because ?raw belongs to raw_text_plugin
-// below and ?url to Vite's asset handling; the extension configs have neither and omit it.
 const json_gz_plugin = () => shared.vite_plugin_json_gz({ resolve_queries: true })
 
 // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
@@ -151,7 +149,7 @@ export default defineConfig({
   // try to read as UTF-8. Text formats (.xyz, .cif, .poscar) are handled
   // by vite-plugin-raw-text above (they use ?raw, not ?url).
   assetsInclude: [
-    `static/xrd/**`,
+    `src/site/xrd/**`,
     `**/*.tdb`,
     `**/*.bxsf.gz`,
     `**/*.frmsf.gz`,

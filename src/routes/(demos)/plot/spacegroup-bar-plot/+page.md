@@ -1,10 +1,8 @@
 # Spacegroup Bar Plot
 
-Visualize crystallographic space group distributions with automatic crystal system coloring and annotations.
-
 ## Basic Usage with Interactive Controls
 
-Pass space group numbers (1-230) to visualize their distribution with automatic crystal system coloring and region annotations:
+`data` accepts space-group numbers (1–230) or Hermann–Mauguin symbols.
 
 ```svelte example
 <script lang="ts">
@@ -60,13 +58,6 @@ Pass space group numbers (1-230) to visualize their distribution with automatic 
 
   let show_counts = $state(true)
 </script>
-
-<div
-  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
->
-  <strong>Tip:</strong> Hover over any bar to see space group number, crystal system, and count.
-  Click and drag to zoom into specific regions. Double-click to reset.
-</div>
 
 <label style="margin-bottom: 1em; display: block">
   <input type="checkbox" bind:checked={show_counts} />

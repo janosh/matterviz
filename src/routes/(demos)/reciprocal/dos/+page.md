@@ -17,7 +17,7 @@ Pass DOS data to the `doses` prop. The component auto-detects phonon vs electron
 
 ## Electronic DOS with Spin Polarization
 
-Electronic DOS from pymatgen `CompleteDos` objects render directly. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted. Use `shift_to_fermi()` to center energies at E_F = 0:
+Electronic DOS from pymatgen `CompleteDos` and `LobsterCompleteDos` objects render directly. Spin-polarized data (stored as `{1: [...], -1: [...]}`) is automatically extracted and drawn according to `spin_mode`: `mirror` (default, spin-down below zero), `overlay`, `up_only` or `down_only`. Use `shift_to_fermi()` to center energies at E_F = 0:
 
 ```svelte example
 <script lang="ts">
@@ -28,12 +28,6 @@ Electronic DOS from pymatgen `CompleteDos` objects render directly. Spin-polariz
 
 <Dos doses={shift_to_fermi(dos_spin_polarization)} />
 ```
-
-The toolbar appears on hover and toggles spin modes:
-
-- **↕ Mirror**: Spin-up above, spin-down below zero
-- **≡ Overlay**: Both spins on positive axis
-- **↑/↓**: Single spin channel
 
 ## Projected DOS (pDOS)
 
@@ -61,7 +55,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
 
 ## Stacking and Smearing
 
-Multiple DOS curves can be stacked as filled areas. Gaussian smearing (σ) smooths noisy data:
+Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`max`, `sum`, `integral`). Phonon DOS also accepts `units` (`THz`, `eV`, `meV`, `Ha`, `cm-1`).
 
 ```svelte example
 <script lang="ts">
@@ -150,15 +144,3 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
   show_units_control={!is_electronic}
 />
 ```
-
-## Features
-
-| Feature           | Description                            |
-| ----------------- | -------------------------------------- |
-| **Spin modes**    | Mirror, overlay, up-only, down-only    |
-| **Projected DOS** | Atom and orbital (s, p, d) projections |
-| **Stacking**      | Filled area plots                      |
-| **Smearing**      | Gaussian broadening (σ slider)         |
-| **Normalization** | Max, sum, integral                     |
-| **Units**         | THz, eV, meV, Ha, cm⁻¹                 |
-| **Formats**       | `CompleteDos`, `LobsterCompleteDos`    |

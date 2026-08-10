@@ -1,6 +1,6 @@
 """Generate small example volumetric data files for the isosurface demo.
 
-Run: python src/site/isosurfaces/generate_examples.py
+Run: uv run src/scripts/generate_isosurface_examples.py
 """
 
 import gzip
@@ -249,7 +249,7 @@ def generate_benzene_orbital_cube() -> str:
 
     def density(x: float, y: float, z: float) -> float:
         psi = 0.0
-        for (cx, cy), sign in zip(c_positions, signs):
+        for (cx, cy), sign in zip(c_positions, signs, strict=True):
             psi += sign * z * math.exp(-((x - cx) ** 2 + (y - cy) ** 2 + z**2) / 0.72)
         return psi
 
@@ -672,7 +672,7 @@ if __name__ == "__main__":
     import os
     import sys
 
-    out_dir = os.path.dirname(__file__)
+    output_dir = f"{os.path.dirname(os.path.dirname(__file__))}/site/isosurfaces"
     generators: dict[str, Callable[[], str]] = {
         "h2o-density.cube.gz": generate_h2o_cube,
         "Si-CHGCAR.gz": generate_si_chgcar,
@@ -690,18 +690,17 @@ if __name__ == "__main__":
     }
 
     # Pass filenames as args to regenerate a subset, e.g.
-    # python generate_examples.py glycine-density.cube.gz glycine-esp.cube.gz
+    # uv run src/scripts/generate_isosurface_examples.py glycine-density.cube.gz glycine-esp.cube.gz
     selected = sys.argv[1:] or list(generators)
     if unknown := [name for name in selected if name not in generators]:
         known = "\n  ".join(generators)
         raise SystemExit(f"Unknown file(s): {', '.join(unknown)}. Known:\n  {known}")
 
     for filename in selected:
-        gen_fn = generators[filename]
         print(f"Generating {filename} ...")
-        content = gen_fn()
-        with gzip.open(f"{out_dir}/{filename}", "wt") as fh:
-            fh.write(content)
+        content = generators[filename]()
+        with gzip.open(f"{output_dir}/{filename}", "wt") as file:
+            file.write(content)
         print(f"  -> {len(content)} bytes uncompressed")
 
     print("Done!")

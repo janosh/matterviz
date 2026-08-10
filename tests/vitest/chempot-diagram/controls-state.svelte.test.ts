@@ -8,6 +8,12 @@ import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
+const read_component_source = (component: string): string =>
+  readFileSync(
+    `${import.meta.dirname}/../../../src/lib/chempot-diagram/${component}.svelte`,
+    `utf8`,
+  )
+
 describe(`create_chempot_overrides`, () => {
   test(`resolve falls back override > config > custom default > CHEMPOT_DEFAULTS`, () => {
     let config: ChemPotDiagramConfig = {}
@@ -76,13 +82,30 @@ test.each([
   expect(options.map(([value]) => value)).toEqual([...values])
 })
 
-describe(`ChemPotDiagram3D rendering contracts`, () => {
-  const chempot_3d_source = readFileSync(
-    `${import.meta.dirname}/../../../src/lib/chempot-diagram/ChemPotDiagram3D.svelte`,
-    `utf8`,
+test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
+  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`].map(read_component_source).join(`\n`)
+  const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
+    (match.groups?.expr ?? ``).trim(),
   )
+  expect(sinks).toEqual([`sanitize_html(gc.label)`])
+})
 
-  test(`sanitizes custom axis labels at the raw-HTML sink`, () => {
-    expect(chempot_3d_source).toMatch(/\{@html\s+sanitize_html\(gc\.label\)\}/)
-  })
+test(`ChemPotScene3D derives backside placement from current ranges`, () => {
+  const source = read_component_source(`ChemPotScene3D`)
+  expect(source).toContain(
+    `niced_range.map((range, axis_idx) => range[backside_indices[axis_idx]])`,
+  )
+  expect(source).not.toMatch(/let (?:back|out_[xy]) = \$state/)
+  expect(source).toContain(`const center = data_center`)
+  expect(source).toContain(`update_backside_indices(center)`)
+})
+
+test(`ChemPotScene3D skips hidden overlay geometry construction`, () => {
+  const source = read_component_source(`ChemPotScene3D`)
+  expect(source).toContain(
+    `if (!show_axes && !show_grid && !display.show_axis_labels) return []`,
+  )
+  expect(source).toMatch(/line_geom:\s*show_axes\s*\?\s*line_geometry/)
+  expect(source).toMatch(/grid_geoms:\s*show_grid/)
+  expect(source).toContain(`if (!display.show_bounding_box) return null`)
 })

@@ -393,12 +393,8 @@ const trajectory_props = (defaults: DefaultSettings) => {
   const { trajectory, plot, scatter, histogram } = defaults
   // Settings every plot kind honours, so adding one does not have to be remembered twice
   const shared_plot_props = {
-    enable_zoom: plot.enable_zoom,
-    zoom_factor: plot.zoom_factor,
-    auto_fit_range: plot.auto_fit_range,
     show_grid: plot.grid_lines,
     show_axis_labels: plot.axis_labels,
-    animation_duration: plot.animation_duration,
   }
   return {
     ...trajectory,
@@ -407,11 +403,6 @@ const trajectory_props = (defaults: DefaultSettings) => {
       bin_file_threshold: trajectory.bin_file_threshold,
       text_file_threshold: trajectory.text_file_threshold,
       use_indexing: trajectory.use_indexing,
-      chunk_size: trajectory.chunk_size,
-      max_frames_in_memory: trajectory.max_frames_in_memory,
-      enable_performance_monitoring: trajectory.enable_performance_monitoring,
-      prefetch_frames: trajectory.prefetch_frames,
-      cache_parsed_data: trajectory.cache_parsed_data,
     },
     scatter_props: {
       markers: scatter.symbol_type,

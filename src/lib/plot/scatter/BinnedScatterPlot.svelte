@@ -731,6 +731,8 @@
   // what keeps a pulse tick or a pointer move off the O(all points) path above.
   function draw_marked_points(ctx: CanvasRenderingContext2D) {
     if (render_mode !== `points`) return // density mode has no per-point markers
+    const [x_min, x_max] = range_bounds(ranges.x)
+    const [y_min, y_max] = range_bounds(ranges.y)
     for (const [mark, pulse] of [
       [hovered_point, null],
       // selected last, so its ring sits over the hover. Don't subscribe this paint effect to
@@ -742,6 +744,7 @@
       const srs = series[series_idx]
       const [x, y] = [srs?.x[point_idx], srs?.y[point_idx]]
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      if (x < x_min || x > x_max || y < y_min || y > y_max) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
       const color = srs.color ?? get_series_color(series_idx)
       draw_marker(ctx, x_scale_fn(x), y_scale_fn(y), radius, color, 1, pulse)
@@ -749,10 +752,12 @@
     ctx.globalAlpha = 1
   }
 
-  // Both layers clip to the plot area and work in CSS pixels via the DPR transform
+  // Density bins are continuous geometry and clip to the plot area. Point centers are
+  // range-filtered before drawing, so leave their complete marker glyphs visible at the edges.
   const paint = (
     node: HTMLCanvasElement | undefined,
     draw: (ctx: CanvasRenderingContext2D) => void,
+    clip_to_plot = false,
   ) => {
     if (!node || width <= 0 || height <= 0) return
     const dpr = globalThis.devicePixelRatio || 1
@@ -767,14 +772,22 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.save()
-    ctx.beginPath()
-    ctx.rect(pad.l, pad.t, plot_width, plot_height)
-    ctx.clip()
+    if (clip_to_plot) {
+      ctx.beginPath()
+      ctx.rect(pad.l, pad.t, plot_width, plot_height)
+      ctx.clip()
+    }
     draw(ctx)
     ctx.restore()
   }
 
-  $effect(() => paint(canvas, render_mode === `points` ? draw_points : draw_density))
+  $effect(() =>
+    paint(
+      canvas,
+      render_mode === `points` ? draw_points : draw_density,
+      render_mode === `density`,
+    ),
+  )
   $effect(() => paint(overlay_canvas, draw_marked_points))
 
   function pointer_coords(event: PointerEvent | MouseEvent): Point2D | null {

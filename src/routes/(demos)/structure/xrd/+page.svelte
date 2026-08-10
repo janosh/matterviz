@@ -20,10 +20,9 @@
   import { to_error } from '$lib/utils'
   import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
 
-  // Auto-discover XRD data files from static/xrd/ (served at /xrd/<name>); restart the dev
-  // server to pick up newly added files. Both plain and gzipped (.gz) formats are supported.
+  // static/xrd symlinks these fixtures so the globbed files remain available at /xrd/<name>.
   const xrd_file_modules = import.meta.glob(
-    `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
+    `$site/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
     { query: `?url` },
   )
 
@@ -56,7 +55,7 @@
   // Convert glob results to FileInfo array
   const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map((path) => {
     const name = path.split(`/`).pop() || path
-    const url = path.replace(`/static`, ``) // e.g. /xrd/cao.xy
+    const url = path.replace(`/src/site`, ``)
     const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
     const { category, icon } = xrd_formats[ext] ?? ascii
     return { name, url, type: ext, category, category_icon: icon }
@@ -199,11 +198,10 @@
 
   <h2>X-ray vs neutron vs electron</h2>
   <p>
-    All three probes share the same Bragg geometry, so the peaks sit at identical 2θ for a
-    given wavelength; only the relative intensities change. Neutrons scatter off nuclei, and
-    the negative <code>b_coh</code> of H, Li, Ti, V and Mn can invert which reflection is strongest.
-    Electrons use Mott–Bethe form factors; a real electron pattern would use a wavelength near 0.025
-    Å, but the shared wavelength here keeps the comparison aligned.
+    Equal wavelengths keep peak positions aligned while probe-specific scattering factors
+    change their intensities: the negative <code>b_coh</code> of H, Li, Ti, V and Mn can invert which
+    reflection is strongest for neutrons, and electron factors come from Mott–Bethe. Electron wavelengths
+    are normally much shorter; this comparison deliberately shares λ.
   </p>
   <div class="demo-controls">
     <label>
@@ -225,16 +223,10 @@
 
   <h2>Electron diffraction (SAED)</h2>
   <p>
-    Spot pattern down a direct-lattice zone axis [uvw] for {compute_id}. At {accelerating_voltage}
-    kV the electron wavelength is {format_num(
+    {compute_id} viewed down [uvw] at {accelerating_voltage} kV (λ = {format_num(
       electron_wavelength(accelerating_voltage),
       `.4~`,
-    )} Å, so the Ewald sphere radius is {format_num(
-      1 / electron_wavelength(accelerating_voltage),
-      `.4~`,
-    )}
-    1/Å. At that radius the Ewald sphere is nearly flat across the pattern, so a whole plane of reflections
-    lights up at once.
+    )} Å).
   </p>
   <div class="demo-controls">
     <MillerIndexInput bind:value={zone_axis} />
@@ -266,7 +258,6 @@
   {/if}
 
   <h2>Overlay multiple structures</h2>
-  <p>Click on a structure to add it to the overlay.</p>
   <StructurePicker bind:selected={selected_ids} />
   <section>
     <XrdPlot

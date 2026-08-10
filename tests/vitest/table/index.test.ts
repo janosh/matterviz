@@ -3,12 +3,21 @@ import type { CellVal } from '$lib/table'
 import {
   calc_cell_color,
   compute_column_stats,
+  get_column_id,
   make_cell_color_scale,
   merge_domains,
   resolve_color_domain,
   strip_html,
 } from '$lib/table'
 import { describe, expect, it } from 'vitest'
+
+it(`encodes grouped column IDs without changing ungrouped IDs`, () => {
+  expect(get_column_id({ label: `x` })).toBe(`x`)
+  expect(get_column_id({ key: `x`, label: `X`, group: `g` })).toBe(`["x","g"]`)
+  expect(get_column_id({ key: `x`, label: `X`, group: `g` })).not.toBe(
+    get_column_id({ key: `x (g)`, label: `X` }),
+  )
+})
 
 describe(`column stats and color domains`, () => {
   const values = [...Array.from({ length: 20 }, (_v, idx) => idx * 5), 10_000]

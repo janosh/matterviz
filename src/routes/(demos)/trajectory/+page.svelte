@@ -33,13 +33,8 @@
 
 {#each trajectory_files_paths as file (file)}
   {#if file === `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`}
-    <h2>Bindable <code>visible_properties</code> Demo</h2>
-    <p>
-      This trajectory has multiple properties (energy, force_max, volume, etc.). The plot shows
-      those defined in the <code>visible_properties</code> on page load. But the prop is two-way
-      bindable and allows for external monitoring and modification. Toggle other properties in the
-      plot legend to see the binding below update to show which properties are currently displayed.
-    </p>
+    <h2>Bindable <code>visible_properties</code></h2>
+    <p>Legend toggles update the bound list of displayed trajectory properties.</p>
     <strong
       style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"
     >

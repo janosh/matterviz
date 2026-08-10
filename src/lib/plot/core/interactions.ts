@@ -156,7 +156,7 @@ export function zoom_range_by_factor(
 }
 
 // Coerce a scale.invert result (number, or Date for time scales) to an epoch number
-export const to_epoch_num = (val: number | Date): number =>
+const to_epoch_num = (val: number | Date): number =>
   val instanceof Date ? val.getTime() : val
 
 // Remove window drag/pan listeners and reset the body cursor. Call from onDestroy:

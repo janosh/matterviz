@@ -47,26 +47,26 @@
     band_data = $bindable(),
     structure,
     bz_data = $bindable(),
-    mu = $bindable(0),
+    mu = $bindable(DEFAULTS.fermi.mu),
     controls_open = $bindable(false),
-    color_property = $bindable(`band`),
-    color_scale = $bindable(`interpolateViridis`),
+    color_property = $bindable(DEFAULTS.fermi.color_property),
+    color_scale = $bindable(DEFAULTS.fermi.color_scale),
     custom_property_label,
-    representation = $bindable(`solid`),
-    surface_opacity = $bindable(0.8),
+    representation = $bindable(DEFAULTS.fermi.representation),
+    surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands = $bindable(),
-    show_bz = $bindable(true),
-    bz_opacity = $bindable(0.1),
-    show_vectors = $bindable(true),
-    tile_bz = $bindable(false),
+    show_bz = $bindable(DEFAULTS.fermi.show_bz),
+    bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
+    show_vectors = $bindable(DEFAULTS.fermi.show_vectors),
+    tile_bz = $bindable(DEFAULTS.fermi.tile_bz),
     // Clipping plane
-    clip_enabled = $bindable(false),
-    clip_axis = $bindable(`z`),
-    clip_position = $bindable(0),
-    clip_flip = $bindable(false),
+    clip_enabled = $bindable(DEFAULTS.fermi.clip_enabled),
+    clip_axis = $bindable(DEFAULTS.fermi.clip_axis),
+    clip_position = $bindable(DEFAULTS.fermi.clip_position),
+    clip_flip = $bindable(DEFAULTS.fermi.clip_flip),
     // Interpolation
-    interpolation_factor = $bindable(1),
-    camera_projection = $bindable(`perspective`),
+    interpolation_factor = $bindable(DEFAULTS.fermi.interpolation_factor),
+    camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
     show_controls,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
@@ -75,7 +75,7 @@
     hovered = $bindable(false),
     dragover = $bindable(false),
     allow_file_drop = true,
-    fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
+    fullscreen_toggle = DEFAULTS.fermi.fullscreen_toggle,
     data_url,
     spinner_props = {},
     loading = $bindable(false),
@@ -164,9 +164,13 @@
     content: string | ArrayBuffer,
     filename: string,
     metadata?: io.FileLoadMeta,
-  ) {
+    // False once a newer data_url request superseded this one, so a slow URL A cannot
+    // overwrite URL B's surface or report its parse error over B's
+    is_current: () => boolean = () => true,
+  ): Promise<boolean> {
     try {
       await tick()
+      if (!is_current()) return false
       // parse_fermi_file throws a descriptive error when parsing fails
       const parsed = parse_fermi_file(io.as_text(content), filename)
 
@@ -183,9 +187,12 @@
       }
 
       on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
+      return true
     } catch (err) {
+      if (!is_current()) return false
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename, ...metadata })
+      return false
     }
   }
 
@@ -208,6 +215,9 @@
       // Only update state if this is still the latest job
       if (job_id === recompute_job_id) {
         fermi_data = result
+        // Re-extraction edits URL-loaded data in place; without re-claiming it the loader
+        // would read the new object as caller-supplied and stop defending its URL.
+        if (data_url_loader.loaded_url) data_url_loader.claim(fermi_data)
       }
     } catch (err) {
       console.error(`Failed to re-extract Fermi surface:`, err)
@@ -283,32 +293,32 @@
     }
   })
 
-  // Load from URL (with race condition protection for rapid URL changes)
-  let load_id = 0
-  $effect(() => {
-    const requested_url = data_url
-    if (!requested_url || fermi_data || band_data) return
-    const current_load_id = ++load_id
-    loading = true
-    error_msg = undefined
-    io.load_from_url(requested_url, (content, filename, metadata) => {
-      if (current_load_id !== load_id) return
-      return safe_parse(content, filename, metadata)
-    })
-      .catch((err) => {
-        if (current_load_id !== load_id) return
-        error_msg = to_error(err).message
-        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
-      })
-      .finally(() => {
-        if (current_load_id === load_id) loading = false
-      })
-  })
+  // Load from URL
+  const data_url_loader = io.create_data_url_loader()
+
+  $effect(() =>
+    data_url_loader.request({
+      url: data_url,
+      current_value: fermi_data ?? band_data,
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = undefined),
+      on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
+        if (await safe_parse(content, filename, metadata, is_current)) {
+          mark_owned(fermi_data ?? band_data)
+        }
+      },
+      on_error: (err, filename) => {
+        error_msg = err.message
+        on_error?.({ error_msg, filename })
+      },
+    }),
+  )
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename, metadata) =>
-      (on_file_drop || safe_parse)(content, filename, metadata),
+    on_drop: async (content, filename, metadata) => {
+      await (on_file_drop || safe_parse)(content, filename, metadata)
+    },
     on_error: (msg) => {
       error_msg = msg
       on_error?.({ error_msg: msg })

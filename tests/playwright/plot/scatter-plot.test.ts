@@ -272,7 +272,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const top_strip = plot.locator(`.marginal-top`)
     const top_hit = plot.locator(`.marginal-hit-top`)
     const right_hit = plot.locator(`.marginal-hit-right`)
-    const plot_clip = svg.locator(`clipPath[id^="plot-area-clip-"] rect`)
+    // The chart area's own clip. Marginal strips derive theirs from the same id plus a
+    // `-<side>` suffix, so exclude those to keep this matching a single rect.
+    const plot_clip = svg.locator(
+      `clipPath[id^="plot-area-clip-"]:not([id$="-top"]):not([id$="-right"]):not([id$="-bottom"]):not([id$="-left"]) rect`,
+    )
     const zoom_rect = plot.locator(`rect.zoom-rect`)
     const x_axis = plot.locator(`g.x-axis`)
     const y_axis = plot.locator(`g.y-axis`)

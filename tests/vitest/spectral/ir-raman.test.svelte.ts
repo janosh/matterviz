@@ -590,13 +590,14 @@ describe(`broaden_spectrum`, () => {
 })
 
 // Also pins the conversion factors themselves, so the IR/Raman work cannot have shifted
-// the shared DOS/bands helpers underneath.
+// the shared DOS/bands helpers underneath. Literals are CODATA 2022, matching
+// HARTREE_TO_EV in $lib/constants.
 it.each([
   [`THz`, 1],
   [`cm-1`, 33.35640951981521],
   [`meV`, 4.135667696923859],
   [`eV`, 4.135667696923859e-3],
-  [`Ha`, 1.5198298460570399e-4],
+  [`Ha`, 1.5198298460574307e-4],
 ] as const)(`convert_frequencies round-trips 1 THz through %s`, (unit, factor) => {
   const [converted] = convert_frequencies([1], unit)
   expect(converted).toBeCloseTo(factor, 10)

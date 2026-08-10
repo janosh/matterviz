@@ -8,6 +8,7 @@ import {
   is_binary,
   is_binary_payload,
   is_known_text_file,
+  magic_head,
   strip_gz_ext,
 } from '$lib/io/is-binary'
 import { describe, expect, test } from 'vitest'
@@ -130,5 +131,32 @@ describe(`is_binary_payload (extension or magic bytes)`, () => {
     [`unknown ext, text bytes`, `payload.dump`, [0x48, 0x49], false],
   ])(`%s -> %s`, (_desc, filename, byte_seq, expected) => {
     expect(is_binary_payload(filename, to_buffer(byte_seq))).toBe(expected)
+  })
+})
+
+describe(`magic_head`, () => {
+  // slice() throws on a detached ArrayBuffer, so every magic-sniffing call site used to be
+  // one transferred buffer away from a TypeError.
+  test(`returns empty for a detached buffer instead of throwing`, () => {
+    const buffer = new ArrayBuffer(64)
+    structuredClone(buffer, { transfer: [buffer] })
+    expect(buffer.byteLength).toBe(0)
+    expect(magic_head(buffer)).toHaveLength(0)
+    expect(is_binary_payload(`x.dump`, buffer)).toBe(false)
+  })
+
+  // Short buffers pass through so a 2-byte gzip header still matches; the has_*_magic
+  // predicates length-check themselves.
+  test.each([
+    [2, 2],
+    [8, 8],
+    [64, 8],
+  ])(`%i-byte buffer yields %i leading bytes`, (size, expected) => {
+    expect(magic_head(new ArrayBuffer(size))).toHaveLength(expected)
+  })
+
+  test(`keeps gzip detectable in a buffer shorter than the 8-byte window`, () => {
+    const head = magic_head(to_buffer([0x1f, 0x8b]))
+    expect(has_gzip_magic(head)).toBe(true)
   })
 })

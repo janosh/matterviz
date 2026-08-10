@@ -1,7 +1,3 @@
----
-title: JsonTree
----
-
 <script lang="ts">
   import { JsonTree } from '$lib'
 
@@ -163,8 +159,6 @@ title: JsonTree
   }
 </script>
 
-A fully-featured JSON tree viewer with folding, search, copy, keyboard navigation, diff mode, and change highlighting.
-
 ## Quick Start
 
 ```svelte
@@ -186,13 +180,9 @@ Search for "alice", "admin", or "editor". Right-click any node for the context m
 
 ### Scientific Data
 
-Large nested structure. Note the **size annotations** on collapsed nodes, **sticky headers** as you scroll, and the **⊟ button** on hover to collapse children:
-
 <JsonTree value={materials_data} default_fold_level={2} auto_fold_arrays={5} />
 
 ### All Supported Data Types
-
-Every JavaScript type rendered correctly with type annotations:
 
 <JsonTree value={all_types} default_fold_level={1} show_data_types={true} />
 

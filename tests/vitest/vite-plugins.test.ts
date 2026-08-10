@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins'
+import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins'
 
 const fixture_path = `${import.meta.dirname}/fixtures/file-viewer/all-viz-types.json.gz`
 const expected_data = JSON.parse(gunzipSync(readFileSync(fixture_path)).toString(`utf-8`))

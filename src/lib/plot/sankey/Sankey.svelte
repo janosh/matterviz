@@ -702,7 +702,7 @@
     fill: var(--text-color);
     pointer-events: none;
     paint-order: stroke;
-    stroke: var(--sankey-label-halo, var(--plot-bg, white));
+    stroke: var(--sankey-label-halo, var(--page-bg, white));
     stroke-width: var(--sankey-label-halo-width, 3px);
     stroke-linejoin: round;
   }

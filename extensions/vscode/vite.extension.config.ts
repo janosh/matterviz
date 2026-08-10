@@ -1,7 +1,7 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { defineConfig, type PluginOption } from 'vite'
-import { vite_plugin_json_gz } from '../../vite-plugins.ts'
+import { vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 
 export default defineConfig({
   build: {

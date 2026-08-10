@@ -77,7 +77,7 @@ The three acoustic modes are identified at Γ and excluded from the stick spectr
 
 ## Transmittance presentation
 
-IR spectra are conventionally plotted as transmittance, with absorption bands pointing down. Set `presentation="transmittance"`; the peak shape (Gaussian ↔ Lorentzian) and width are adjustable in the controls pane.
+Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the peak width, `shape_factor` the pseudo-Voigt mixing (0 = Gaussian, 1 = Lorentzian).
 
 ```svelte example
 <script lang="ts">

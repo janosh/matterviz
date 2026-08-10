@@ -1,22 +1,10 @@
 <script lang="ts">
-  import { Cross, Settings } from 'svelte-widgets/icons'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
   import { format_num } from '$lib/labels'
-  import { DraggablePane } from '$lib/overlays'
-  import type { CameraProjection } from '$lib/settings'
+  import { ControlPane } from '$lib/overlays'
+  import { type CameraProjection, DEFAULTS } from '$lib/settings'
 
-  const defaults = {
-    bz_order: 1,
-    surface_color: `#4488ff`,
-    surface_opacity: 0.3,
-    edge_color: `#000000`,
-    edge_width: 0.002,
-    show_vectors: true,
-    camera_projection: `perspective` as CameraProjection,
-    show_ibz: false,
-    ibz_color: `#ff8844`,
-    ibz_opacity: 0.5,
-  }
+  const defaults = DEFAULTS.brillouin
 
   let {
     controls_open = $bindable(false),
@@ -47,15 +35,13 @@
   } = $props()
 </script>
 
-<DraggablePane
-  bind:open={controls_open}
-  pane_props={{
-    class: `bz-controls`,
-    style: `--ctrl-label-w: 7.5em; --ctrl-value-w: 3.5em;`,
-  }}
-  toggle_props={{ class: `controls-toggle`, title: `Brillouin zone controls` }}
-  open_icon={Cross}
-  closed_icon={Settings}
+<ControlPane
+  bind:controls_open
+  pane_class="bz-controls"
+  toggle_class="controls-toggle"
+  pane_style="--ctrl-label-w: 7.5em; --ctrl-value-w: 3.5em;"
+  toggle_style=""
+  toggle_props={{ title: `Brillouin zone controls` }}
 >
   <SettingsGroup title="Geometry" open>
     <SettingsSection
@@ -150,4 +136,4 @@
       </select>
     </label>
   </SettingsSection>
-</DraggablePane>
+</ControlPane>

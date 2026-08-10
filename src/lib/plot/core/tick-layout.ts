@@ -71,7 +71,7 @@ export const measured_axis = <Tick extends string | number>(
 
 export type TickLayoutSide = `x` | `x2` | `y` | `y2`
 
-export interface ResolvedTickLabel {
+interface ResolvedTickLabel {
   tick_index: number
   full_text: string
   lines: readonly string[]

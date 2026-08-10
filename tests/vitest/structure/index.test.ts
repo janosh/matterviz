@@ -580,6 +580,14 @@ test(`structure_files includes crystals`, () => {
   const by_name = new Map(structure_files.map((file) => [file.name, file]))
   expect(by_name.get(`Li4Fe3Mn1(PO4)4.cif`)?.category).toBe(`crystal`)
   expect(by_name.get(`Cu-FCC.json`)?.category).toBe(`crystal`)
+  expect(by_name.get(`mp-19017.json.gz`)).toMatchObject({
+    type: `JSON`,
+    category: `crystal`,
+  })
+  expect(by_name.get(`AgI-fq978185p-phono3py.yaml.gz`)).toMatchObject({
+    type: `YAML`,
+    category: `crystal`,
+  })
   expect(structure_files.filter((file) => file.category === `crystal`).length).toBeGreaterThan(
     30,
   )

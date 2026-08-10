@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { Cross, Settings } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import { SettingsGroup, SettingsSection } from '$lib/layout'
-  import { DraggablePane } from '$lib/overlays'
-  import type { CameraProjection } from '$lib/settings'
+  import { ControlPane } from '$lib/overlays'
+  import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import { make_change_detector, parse_num_token } from '$lib/utils'
   import { untrack, type Snippet } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -15,23 +14,7 @@
     RepresentationMode,
   } from './types'
 
-  const defaults = {
-    mu: 0,
-    color_property: `band` as ColorProperty,
-    color_scale: `interpolateViridis` as D3InterpolateName,
-    representation: `solid` as RepresentationMode,
-    surface_opacity: 0.8,
-    show_bz: true,
-    bz_opacity: 0.1,
-    show_vectors: true,
-    tile_bz: false,
-    clip_enabled: false,
-    clip_axis: `z` as const,
-    clip_position: 0,
-    clip_flip: false,
-    interpolation_factor: 1,
-    camera_projection: `perspective` as CameraProjection,
-  }
+  const defaults = DEFAULTS.fermi
 
   let {
     controls_open = $bindable(false),
@@ -159,15 +142,13 @@
   }
 </script>
 
-<DraggablePane
-  bind:open={controls_open}
-  pane_props={{
-    class: `fermi-controls`,
-    style: `--ctrl-label-w: 8.5em; --ctrl-value-w: 4em;`,
-  }}
-  toggle_props={{ class: `controls-toggle`, title: `Fermi surface controls` }}
-  open_icon={Cross}
-  closed_icon={Settings}
+<ControlPane
+  bind:controls_open
+  pane_class="fermi-controls"
+  toggle_class="controls-toggle"
+  pane_style="--ctrl-label-w: 8.5em; --ctrl-value-w: 4em;"
+  toggle_style=""
+  toggle_props={{ title: `Fermi surface controls` }}
 >
   <SettingsGroup title="Surface" open>
     <SettingsSection
@@ -390,7 +371,7 @@
   </SettingsSection>
 
   {@render children?.({ fermi_data, band_data })}
-</DraggablePane>
+</ControlPane>
 
 <style>
   :is(.band-checkboxes, .band-actions, .export-buttons, small) {

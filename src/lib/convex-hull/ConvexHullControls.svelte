@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { Cross, Settings } from 'svelte-widgets/icons'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
@@ -215,20 +214,13 @@
   </div>
 {/snippet}
 
-<DraggablePane
-  bind:open={controls_open}
-  pane_props={{
-    ...pane_props,
-    class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
-    style: pane_props?.style ?? ``,
-  }}
-  toggle_props={{
-    title: controls_open ? `` : `Convex hull controls`,
-    class: `convex-hull-controls-toggle`,
-    ...toggle_props,
-  }}
-  open_icon={Cross}
-  closed_icon={Settings}
+<ControlPane
+  bind:controls_open
+  controls_class="convex-hull"
+  pane_style=""
+  toggle_style=""
+  toggle_props={{ title: controls_open ? `` : `Convex hull controls`, ...toggle_props }}
+  {pane_props}
   {...rest}
 >
   <h4>
@@ -495,7 +487,7 @@
       </div>
     {/if}
   </SettingsSection>
-</DraggablePane>
+</ControlPane>
 
 <style>
   :global(.convex-hull-controls-pane) {

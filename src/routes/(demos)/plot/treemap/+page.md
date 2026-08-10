@@ -1,10 +1,10 @@
 # Treemap
 
-Zoomable hierarchical part-of-whole charts as squarified nested rectangles (the plotly-treemap counterpart to [Sunburst](/plot/sunburst)). Cell areas are proportional to values, branch cells carry plotly-style header strips, and clicking any cell re-tiles its subtree to fill the viewport with an animated transition (clicking a zoomed-in leaf zooms back out). Treemaps consume the same node trees, data builders (`sunburst_from_paths`, `chem_sys_sunburst_data`, `spacegroup_sunburst_data`, …) and value semantics as Sunburst, so switching between the two charts is a one-line change.
+`Treemap` renders the same node trees, builders, and value semantics as [Sunburst](/plot/sunburst) as squarified rectangles.
 
 ## Basic Treemap
 
-Pass `data` as a nested tree (or array of trees). Leaves carry `value`; cell areas are the sum of their leaves by default. Sibling cells tile largest-to-smallest from the top-left corner toward the bottom-right (pass `sort="none"` to keep input order instead). Depth-1 categories auto-cycle the default palette unless you set `color`, and descendants inherit their ancestor's color. Click any cell to zoom into it (plotly-style); the breadcrumb pathbar at the top (or <kbd>Escape</kbd> / double-clicking empty background) zooms back out.
+Leaves carry `value`; cell areas are proportional to it and parents sum their leaves by default. Set `sort="none"` to preserve input order. Click a cell to zoom into it; the breadcrumb pathbar, <kbd>Escape</kbd> (one level) or a double-click on empty background (back to the root) zoom out, and arrow keys move focus between siblings (left/right), children (down) and parents (up).
 
 ```svelte example
 <script lang="ts">

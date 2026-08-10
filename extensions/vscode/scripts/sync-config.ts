@@ -29,44 +29,43 @@ const vscode_scalar_type = (value: unknown) =>
 const vscode_setting_type = (value: unknown) =>
   Array.isArray(value) ? `array` : vscode_scalar_type(value)
 
-// VASP's canonical filenames carry no extension, so they are matched as name stems.
-const stem_glob = brace(VASP_VIEWER_STEMS.flatMap((stem) => [stem.toUpperCase(), stem]))
+const case_variants = (stems: readonly string[]): string[] =>
+  stems.flatMap((stem) => [stem.toUpperCase(), stem])
 
-// A trailing `[._-]*` also swallows a file extension, so these forms would claim
-// write_poscar.py and contcar_reader.rs. Restricted to upper-case volumetric stems, which
-// is what the hand-written list did and the only combination where decorated names
-// (PARCHG.BAND_1, run_PARCHG_001) are real. Whether VS Code compares these case-sensitively
-// is not worth depending on, hence a narrower stem set rather than a lower-case exclusion.
-const decorated_stem_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCase()))
+// Structure stems must end the filename; a suffix wildcard would claim source files such
+// as poscar_writer.py. Volumetric stems support decorated names such as run_CHGCAR_001.
+const structure_glob = brace(
+  case_variants(VASP_VIEWER_STEMS.filter((stem) => !VASP_VOLUMETRIC_FILES.includes(stem))),
+)
+const volumetric_glob = brace(case_variants(VASP_VOLUMETRIC_FILES))
+const decorated_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCase()))
 
-// Every extension MatterViz offers to open, plus the same set compressed. Both are derived
-// so adding a format to $lib/constants reaches the editor registration automatically.
+const vasp_selectors = [
+  ...with_gzip(`*${structure_glob}`),
+  ...with_gzip(volumetric_glob),
+  ...with_gzip(`*[._-]${volumetric_glob}`),
+  `${decorated_glob}[._-]*`,
+  `*[._-]${decorated_glob}[._-]*`,
+]
+
 const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
   const ext_glob = `*.${brace([
     ...TEXT_VIEWER_EXTENSIONS,
     ...BINARY_VIEWER_EXTENSIONS,
     ...HINT_ONLY_EXTENSIONS,
   ])}`
-  return [
-    ...with_gzip(ext_glob),
-    ...KEYWORD_SELECTORS,
-    ...with_gzip(stem_glob),
-    ...with_gzip(`*[._-]${stem_glob}`),
-    ...with_gzip(`${decorated_stem_glob}[._-]*`),
-    ...with_gzip(`*[._-]${decorated_stem_glob}[._-]*`),
-  ].map((filenamePattern) => ({ filenamePattern }))
+  return [...with_gzip(ext_glob), ...KEYWORD_SELECTORS, ...vasp_selectors].map(
+    (filenamePattern) => ({ filenamePattern }),
+  )
 }
 
-// VSCode configuration generator that derives from your central settings schema
 function sync_package_config(): void {
   const package_path = resolve(import.meta.dirname, `..`, `package.json`)
   const package_text = readFileSync(package_path, `utf-8`)
   const package_content = JSON.parse(package_text)
 
-  // Auto-generate VSCode settings from SETTINGS_CONFIG
   const vscode_config: Record<string, unknown> = {}
 
-  // Helper to process settings schema
   function process_setting_schema(schema: SettingType, key_path: string): void {
     if (!schema || typeof schema !== `object`) return
     if (!(`value` in schema)) {
@@ -104,13 +103,14 @@ function sync_package_config(): void {
   // Preserve existing non-schema settings (like auto_render, theme, etc.)
   const existing_props = package_content.contributes?.configuration?.properties ?? {}
   const schema_prefixes = Object.keys(SETTINGS_CONFIG).map((key) => `matterviz.${key}`)
+  // Match at a `.` boundary so a manually maintained matterviz.structurePreview survives
+  // alongside a generated matterviz.structure.* group.
   const preserved_props = Object.fromEntries(
     Object.entries(existing_props).filter(([key]) =>
-      schema_prefixes.every((prefix) => !key.startsWith(prefix)),
+      schema_prefixes.every((prefix) => key !== prefix && !key.startsWith(`${prefix}.`)),
     ),
   )
 
-  // Update package.json with generated + preserved settings
   package_content.contributes ??= {}
   package_content.contributes.configuration ??= { title: `MatterViz`, properties: {} }
   package_content.contributes.configuration.properties = {

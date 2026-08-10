@@ -11,7 +11,7 @@ export const unique_id = (prefix = ``): string =>
 // Path-morph (interpolatePath) tweening scales poorly with many simultaneously morphing
 // <path> elements (band structures with 100+ bands) or a single very long line. Disable
 // the morph above these budgets unless the caller explicitly opts into a tween.
-export const LINE_TWEEN = { max_series: 16, max_points: 8000 }
+const LINE_TWEEN = { max_series: 16, max_points: 8000 }
 
 export const resolve_line_tween = (
   line_tween: TweenOptions<string> | undefined,

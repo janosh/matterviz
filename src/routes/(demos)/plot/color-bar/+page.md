@@ -44,7 +44,7 @@ You can make fat and skinny bars:
 <br />
 ```
 
-`PeriodicTable.svelte` now automatically shows a `ColorBar` when `heatmap_values` is provided!
+`PeriodicTable` shows a `ColorBar` when `heatmap_values` is provided.
 
 ```svelte example code_above
 <script lang="ts">
@@ -421,8 +421,6 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
 
 ## Arcsinh Scale: Symmetric Ranges Including Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both positive and negative values, which log scale cannot do. The gradient smoothly transitions through zero, with symmetric ticks like -1000, -100, -10, 0, 10, 100, 1000.
-
 ```svelte example
 <script lang="ts">
   import { ColorBar } from 'matterviz'
@@ -490,9 +488,4 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles ranges that span both pos
     bar_style="width: 350px"
   />
 </div>
-
-<p style="font-size: 0.9em; opacity: 0.8; text-align: center">
-  Try switching to "log" to see it fail on negative ranges. Arcsinh handles all ranges
-  smoothly.
-</p>
 ```

@@ -1,5 +1,5 @@
 // Tests for PortalSelect component
-import { PortalSelect } from '$lib/plot'
+import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

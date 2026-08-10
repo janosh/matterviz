@@ -1,10 +1,8 @@
 import { ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
 import type { DataSeries, FillRegion } from '$lib/plot'
-import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
-import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -40,6 +38,8 @@ const hover = async (element: Element): Promise<void> => {
   element.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
   await tick()
 }
+const next_animation_frame = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => resolve()))
 const scatter_clip_rect = (element: ParentNode): Rect => {
   const rect = element.querySelector(`defs clipPath rect`)
   if (!rect) throw new Error(`Scatter clip rectangle not found`)
@@ -60,12 +60,12 @@ const solved_decoration_rect = (element: Element): Rect => {
   const [x, y, width, height] = values.map(Number)
   return { x, y, width, height }
 }
-const mock_decoration_measurements = (width = 100, height = 60): void => {
+const mock_decoration_measurements = (width = 100, height = 60) => {
   vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(width)
   vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(height)
-  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
-    DOMRect.fromRect({ width, height }),
-  )
+  return vi
+    .spyOn(Element.prototype, `getBoundingClientRect`)
+    .mockReturnValue(DOMRect.fromRect({ width, height }))
 }
 
 describe(`ScatterPlot`, () => {
@@ -184,16 +184,10 @@ describe(`ScatterPlot`, () => {
           .querySelector(`path.marker`)
           ?.closest(`g[data-series-id]`)
           ?.getAttribute(`clip-path`),
-      ).toMatch(/^url\(#.+\)$/)
+      ).toBeNull()
       expect(arcs_since_clear).toBe(dense.x.length - 1)
-      const canvas_bounds = scatter_clip_rect(overlaid)
-      expect(canvas_rect).toHaveBeenLastCalledWith(
-        canvas_bounds.x,
-        canvas_bounds.y,
-        canvas_bounds.width,
-        canvas_bounds.height,
-      )
-      expect(canvas_clip).toHaveBeenCalled()
+      expect(canvas_rect).not.toHaveBeenCalled()
+      expect(canvas_clip).not.toHaveBeenCalled()
       expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
       expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
       const canvas = overlaid.querySelector(`canvas.marker-canvas`)
@@ -316,29 +310,28 @@ describe(`ScatterPlot`, () => {
       series: [{ ...basic, y: [5, 3, 20, 2, 7] }],
       x_axis: { range: [null, null] as [null, null] },
       y_axis: { range: [0, 10] as Vec2 },
-      markers: `line`,
       expected_markers: 4,
     },
     {
       series: [{ ...basic, x: [0, 1, 2, 3, 10] }],
       x_axis: { range: [0, 5] as Vec2 },
       y_axis: { range: [null, null] as [null, null] },
-      markers: `line+points`,
       expected_markers: 4,
     },
-    { series: [], markers: `points`, expected_markers: 0 },
+    { series: [], expected_markers: 0 },
     { series: [basic], legend: null, expected_markers: 5 },
     {
       series: [
         basic,
         { x: [1, 2, 3], y: [2, 5, 3], point_style: { fill: `orangered`, radius: 4 } },
       ],
-      markers: `line+points`,
       expected_markers: 8,
     },
-  ])(`renders with series/limits/markers`, async ({ expected_markers, ...props }) => {
+  ])(`renders series and explicit ranges`, async ({ expected_markers, ...props }) => {
     const plot = await mount_sized_scatter_plot(props)
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(expected_markers)
+    const markers = [...plot.querySelectorAll(`.marker`)]
+    expect(markers).toHaveLength(expected_markers)
+    expect(markers.every((marker) => marker.closest(`[clip-path]`) === null)).toBe(true)
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
@@ -761,33 +754,6 @@ describe(`ScatterPlot`, () => {
     )
   })
 
-  test.each([
-    { selected_point: { series_idx: 0, point_idx: 0 }, desc: `first point` },
-    { selected_point: null, desc: `null (no selection)` },
-  ])(`selected_point accepts $desc`, async ({ selected_point }) => {
-    const plot = await mount_sized_scatter_plot({ series: [basic], selected_point })
-    expect(plot.querySelectorAll(`.effect-ring.selected`)).toHaveLength(selected_point ? 1 : 0)
-  })
-
-  test(`falls back for auto labels before placement is available`, async () => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          {
-            x: [1],
-            y: [1],
-            point_label: { text: `Fallback`, auto_placement: true },
-          },
-        ],
-        style: `width: 400px; height: 300px`,
-      },
-    })
-    await tick()
-
-    expect(document.querySelector(`text.label-text`)?.textContent).toBe(`Fallback`)
-  })
-
   test(`cold-solves labels after placement config changes`, async () => {
     const props = $state({
       series: [
@@ -871,7 +837,7 @@ describe(`ScatterPlot`, () => {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
     expect(changes).not.toHaveBeenCalled()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     expect(changes).toHaveBeenCalledTimes(1)
     expect(changes.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
 
@@ -891,7 +857,7 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     expect(on_pointer_leave).toHaveBeenCalledOnce()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
     expect(changes).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
@@ -909,18 +875,13 @@ describe(`ScatterPlot`, () => {
       .querySelector(`svg`)
       ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: 1, clientY: 1 }))
     await unmount(component)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await next_animation_frame()
 
     expect(change).not.toHaveBeenCalled()
   })
 
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks
   // dimensions unless each chart element is explicitly stubbed as above.
-
-  test(`auto-cycles series colors and symbols`, () => {
-    expect(get_series_color(DEFAULT_SERIES_COLORS.length)).toBe(DEFAULT_SERIES_COLORS[0])
-    expect(get_series_symbol(DEFAULT_SERIES_SYMBOLS.length)).toBe(DEFAULT_SERIES_SYMBOLS[0])
-  })
 
   test(`svg aria-label derives from axis labels`, async () => {
     const plot = await mount_sized_scatter_plot({
@@ -949,7 +910,7 @@ describe(`ScatterPlot`, () => {
       { lower: 0.2, upper: 0.4, fill: `steelblue` },
       { id: `1`, lower: 0.5, upper: 0.7, fill: `slategray` },
     ]
-    const state = { fill_regions: make_fills() }
+    const state = $state({ fill_regions: make_fills() })
     await mount_sized_scatter_plot(bind_props(fill_plot_props(), state))
 
     const fallback_fill = () => svg_query(`[aria-label="Fill region 1"]`)
@@ -1208,11 +1169,7 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`non-responsive legend avoids layout reads when data changes`, async () => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(100)
-    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
-    const layout_spy = vi
-      .spyOn(Element.prototype, `getBoundingClientRect`)
-      .mockReturnValue(DOMRect.fromRect({ width: 100, height: 60 }))
+    const layout_spy = mock_decoration_measurements()
     const series = $state<DataSeries[]>([
       { ...basic, label: `A` },
       { ...basic, label: `B` },

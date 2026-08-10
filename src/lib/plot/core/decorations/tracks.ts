@@ -1,7 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity'
 import type { DecorationSize, LegendDecorationItem } from './types'
 
-export type LegendOrientation = `horizontal` | `vertical`
+type LegendOrientation = `horizontal` | `vertical`
 
 export type LegendItemExtent = Partial<DecorationSize>
 

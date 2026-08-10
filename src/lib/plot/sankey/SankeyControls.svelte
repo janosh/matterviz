@@ -1,7 +1,7 @@
 <script lang="ts">
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, Orientation } from '$lib/plot'
-  import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
+  import { ControlPane } from '$lib/overlays'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

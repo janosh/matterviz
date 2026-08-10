@@ -351,89 +351,77 @@
     return parts.length > 0 ? parts.join(`, `) : `No issues found`
   }
 
-  // Syntax highlighting helpers
-  const kw = (s: string) => `<span class="kw">${s}</span>`
-  const str = (s: string) => `<span class="str">'${s}'</span>`
-  const num = (s: number | string) => `<span class="num">${s}</span>`
-  const typ = (s: string) => `<span class="typ">${s}</span>`
-  const fn = (s: string) => `<span class="fn">${s}</span>`
-  const cmt = (s: string) => `<span class="cmt">// ${s}</span>`
-  const prop = (s: string) => `<span class="prop">${s}</span>`
+  // Tag tokens with starry-night's pl-* classes so the snippet below matches the fences
+  // highlighted at build time elsewhere on the site and follows the active theme. Rule order
+  // is load-bearing: comments and strings must swallow whatever code-like text they contain.
+  const SYNTAX_RULES = [
+    [`c`, /\/\/[^\n]*/], // comment
+    [`s`, /'[^']*'/], // string
+    [`k`, /\bimport(?: type)?\b|\b(?:from|const)\b/], // keyword
+    [`en`, /\bclean_series\b/], // function
+    [`smi`, /\b(?:DataSeries|CleaningConfig)\b/], // type
+    [`c1`, /-?\d+(?:\.\d+)?|\b(?:true|false|NaN)\b/], // number, boolean, NaN
+  ] as const
+  const SYNTAX_RE = new RegExp(SYNTAX_RULES.map(([, re]) => `(${re.source})`).join(`|`), `g`)
 
-  // Live code example with syntax highlighting
+  const highlight = (code: string) =>
+    code.replace(SYNTAX_RE, (token, ...groups) => {
+      const [cls] = SYNTAX_RULES[groups.findIndex((group) => group !== undefined)]
+      return `<span class="pl-${cls}">${token}</span>`
+    })
+
   let live_code_html = $derived.by(() => {
-    // Build config lines with highlighting
-    const config_lines: string[] = []
-    config_lines.push(
-      `  ${prop(`invalid_values`)}: ${str(invalid_mode)},`,
-      `  ${prop(`oscillation_threshold`)}: ${num(oscillation_threshold)},`,
-      `  ${prop(`window_size`)}: ${num(window_size)},`,
-      `  ${prop(`truncation_mode`)}: ${str(truncation_mode)},`,
-    )
+    const config_lines = [
+      `  invalid_values: '${invalid_mode}',`,
+      `  oscillation_threshold: ${oscillation_threshold},`,
+      `  window_size: ${window_size},`,
+      `  truncation_mode: '${truncation_mode}',`,
+    ]
 
     if (apply_bounds) {
       config_lines.push(
-        `  ${prop(`bounds`)}: { ${prop(`min`)}: ${num(bounds_min)}, ${prop(`max`)}: ${num(
-          bounds_max,
-        )}, ${prop(`mode`)}: ${str(bounds_mode)} },`,
+        `  bounds: { min: ${bounds_min}, max: ${bounds_max}, mode: '${bounds_mode}' },`,
       )
     }
 
     if (apply_smoothing) {
-      if (smoothing_type === `savgol`) {
-        config_lines.push(
-          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`savgol`)}, ${prop(
-            `window`,
-          )}: ${num(smoothing_window)}, ${prop(`polynomial_order`)}: ${num(2)} },`,
-        )
-      } else {
-        config_lines.push(
-          `  ${prop(`smooth`)}: { ${prop(`type`)}: ${str(`moving_avg`)}, ${prop(
-            `window`,
-          )}: ${num(smoothing_window)} },`,
-        )
-      }
+      const window_prop = `window: ${smoothing_window}`
+      config_lines.push(
+        smoothing_type === `savgol`
+          ? `  smooth: { type: 'savgol', ${window_prop}, polynomial_order: 2 },`
+          : `  smooth: { type: 'moving_avg', ${window_prop} },`,
+      )
     }
 
-    config_lines.push(`  ${prop(`in_place`)}: ${kw(`false`)},`)
+    config_lines.push(`  in_place: false,`)
 
-    const x_preview = raw_data.x
-      .slice(0, 5)
-      .map((val) => num(val))
-      .join(`, `)
+    const x_preview = raw_data.x.slice(0, 5).join(`, `)
     const y_preview = raw_data.y
       .slice(0, 5)
-      .map((val) => (Number.isFinite(val) ? num(val.toFixed(1)) : kw(`NaN`)))
+      .map((val) => (Number.isFinite(val) ? val.toFixed(1) : `NaN`))
       .join(`, `)
+    const { series, quality } = cleaned_result
 
-    return `${kw(`import`)} { ${fn(`clean_series`)} } ${kw(`from`)} ${str(`$lib/plot`)}
-${kw(`import type`)} { ${typ(`DataSeries`)}, ${typ(`CleaningConfig`)} } ${kw(
-      `from`,
-    )} ${str(`$lib/plot`)}
+    return highlight(`import { clean_series } from '$lib/plot'
+import type { DataSeries, CleaningConfig } from '$lib/plot'
 
-${kw(`const`)} series: ${typ(`DataSeries`)} = {
-  ${prop(`x`)}: [${x_preview}, ...],
-  ${prop(`y`)}: [${y_preview}, ...],
+const series: DataSeries = {
+  x: [${x_preview}, ...],
+  y: [${y_preview}, ...],
 }
 
-${kw(`const`)} config: ${typ(`CleaningConfig`)} = {
+const config: CleaningConfig = {
 ${config_lines.join(`\n`)}
 }
 
-${kw(`const`)} { series: cleaned, quality } = ${fn(`clean_series`)}(series, config)
-${cmt(`Result: ${cleaned_result.series.x.length} points (${cleaned_result.quality.points_removed} removed)`)}
-${cmt(`quality.invalid_values_found = ${cleaned_result.quality.invalid_values_found}`)}
-${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detected}`)}`
+const { series: cleaned, quality } = clean_series(series, config)
+// Result: ${series.x.length} points (${quality.points_removed} removed)
+// quality.invalid_values_found = ${quality.invalid_values_found}
+// quality.oscillation_detected = ${quality.oscillation_detected}`)
   })
 </script>
 
 <h1>Data Cleaning Demo</h1>
-
-<p class="intro">
-  Interactive demonstration of data cleaning utilities for handling noisy, erratic, or
-  unreliable scientific data. Generate various types of problematic data and experiment with
-  different filtering strategies.
-</p>
 
 <section class="controls-panel">
   <h2>Data Generation</h2>
@@ -499,6 +487,11 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
   {/if}
 
   <h2>Cleaning Options</h2>
+  <p class="description">
+    <code>detect_instability</code> combines derivative variance, amplitude growth, and
+    sign-change frequency over <code>window_size</code>; <code>oscillation_threshold</code> applies
+    to the derivative and combined scores.
+  </p>
 
   <div class="control-row">
     <label>
@@ -618,10 +611,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 <section class="plot-section">
   <h2>Multi-Series Cleaning (Correlated Data)</h2>
   <p class="description">
-    For <em>correlated</em> measurements (e.g., temperature and pressure from the same sensor
-    at each timestep), if one reading is invalid, the comparison at that point is meaningless.
-    Here, synchronized filtering removes the entire row when <em>any</em>
-    series has a bad value.
+    Synchronized filtering removes a row from every series when any value is invalid.
   </p>
 
   <div class="quality-report">
@@ -724,8 +714,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
 <section class="plot-section">
   <h2>Trajectory Alignment</h2>
   <p class="description">
-    A spiral trajectory with NaN values at t=15, 35, and 42. When <em>any</em> coordinate (x or
-    y) has NaN, that entire point is removed from <em>both</em> arrays, keeping the trajectory synchronized.
+    Invalid coordinates remove the corresponding point from every trajectory array.
   </p>
 
   <div class="quality-report">
@@ -793,44 +782,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
   </div>
 </section>
 
-<section class="explanation">
-  <h2>How It Works</h2>
-  <ul>
-    <li>
-      <strong>Invalid Values:</strong> Remove,
-      <a href="https://en.wikipedia.org/wiki/Interpolation">interpolate</a>, or keep
-      <a href="https://en.wikipedia.org/wiki/NaN">NaN</a>/Infinity
-    </li>
-    <li>
-      <strong>Oscillation Detection:</strong> Finds unstable regions via
-      <a href="https://en.wikipedia.org/wiki/Numerical_differentiation">derivative</a>
-      analysis
-    </li>
-    <li>
-      <strong>Bounds:</strong>
-      <a href="https://en.wikipedia.org/wiki/Clamping_(graphics)">Clamp</a>, filter, or nullify
-      out-of-range values
-    </li>
-    <li>
-      <strong>Smoothing:</strong>
-      <a href="https://en.wikipedia.org/wiki/Moving_average">Moving average</a> or
-      <a href="https://en.wikipedia.org/wiki/Savitzky%E2%80%93Golay_filter">Savitzky-Golay</a> filtering
-    </li>
-    <li><strong>Alignment:</strong> Multi-series and 3D data stay synchronized</li>
-    <li>
-      <strong>Quality Reports:</strong> Track points removed, violations, and issues found
-    </li>
-  </ul>
-</section>
-
 <style>
-  .intro {
-    font-size: 1.1em;
-    opacity: 0.9;
-    max-width: 800px;
-    margin: 0 auto 2em;
-    text-align: center;
-  }
   .controls-panel {
     background: var(--surface-bg-hover, rgba(255, 255, 255, 0.02));
     border-radius: 8px;
@@ -907,58 +859,11 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
       text-align: center;
     }
   }
-  .explanation {
-    margin-top: 3em;
-    padding-top: 2em;
-    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-    ul {
-      margin: 0.5em 0 0;
-      padding-left: 1.5em;
-    }
-    li {
-      margin-bottom: 0.3em;
-    }
-  }
   .code-block {
     margin-top: 1.5em;
-    pre {
-      margin: 0;
-      padding: 1em;
-      overflow-x: auto;
-      background: #1e1e2e;
-      border-radius: 6px;
-    }
     code {
-      font-family:
-        ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono',
-        monospace;
       font-size: 0.85em;
       line-height: 1.6;
-      color: #cdd6f4;
-      white-space: pre;
-    }
-    /* Syntax highlighting (Catppuccin Mocha) */
-    :global(.kw) {
-      color: #cba6f7;
-    }
-    :global(.str) {
-      color: #a6e3a1;
-    }
-    :global(.num) {
-      color: #fab387;
-    }
-    :global(.typ) {
-      color: #89dceb;
-    }
-    :global(.fn) {
-      color: #89b4fa;
-    }
-    :global(.cmt) {
-      color: #6c7086;
-      font-style: italic;
-    }
-    :global(.prop) {
-      color: #f5c2e7;
     }
   }
   @media (max-width: 600px) {

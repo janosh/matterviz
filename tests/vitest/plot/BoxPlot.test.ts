@@ -1,4 +1,5 @@
 import { BoxPlot, type Vec2 } from '$lib'
+import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -88,6 +89,12 @@ describe(`BoxPlot`, () => {
       expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(expected)
     },
   )
+
+  // No slots means no category labels, so the axis must fall back to generated ticks
+  test(`empty series leaves the category axis with generated ticks`, async () => {
+    const plot = await mount_sized_box_plot({ series: [] })
+    expect(plot.querySelectorAll(`g.x-axis g.tick`).length).toBeGreaterThan(0)
+  })
 
   test.each([
     [`vertical`, `y`],
@@ -179,12 +186,19 @@ describe(`BoxPlot`, () => {
   })
 
   test.each([`vertical`, `horizontal`] satisfies Orientation[])(
-    `outliers render unclipped in %s tukey mode, none in minmax`,
+    `outliers render whole at %s range edges, hide outside, and vanish in minmax`,
     async (orientation) => {
       const outlier_series: BoxPlotSeries[] = [
-        { y: [...dist(60, 0, 1), 8, 9, -7, -8], label: `Outliers` },
+        { y: [...dist(60, 0, 1), 8, 9, -7, -8, 100], label: `Outliers` },
       ]
-      const tukey = await mount_sized_box_plot({ series: outlier_series, orientation })
+      const value_range: Vec2 = [-8, 9]
+      const tukey = await mount_sized_box_plot({
+        series: outlier_series,
+        orientation,
+        ...(orientation === `vertical`
+          ? { y_axis: { range: value_range } }
+          : { x_axis: { range: value_range } }),
+      })
       const outlier_circles = tukey.querySelectorAll(`.box-series circle`)
       expect(outlier_circles.length).toBeGreaterThan(0)
       const clip_rect = tukey.querySelector(`clipPath rect`)
@@ -193,12 +207,12 @@ describe(`BoxPlot`, () => {
       const size = orientation === `vertical` ? `height` : `width`
       const clip_start = Number(clip_rect?.getAttribute(coordinate))
       const clip_end = clip_start + Number(clip_rect?.getAttribute(size))
-      for (const circle of outlier_circles) {
-        const center_pos = Number(circle.getAttribute(center))
-        const radius = Number(circle.getAttribute(`r`))
-        expect(center_pos - radius).toBeGreaterThanOrEqual(clip_start)
-        expect(center_pos + radius).toBeLessThanOrEqual(clip_end)
-      }
+      const centers = [...outlier_circles].map((circle) => Number(circle.getAttribute(center)))
+      expect(Math.min(...centers)).toBeCloseTo(clip_start)
+      expect(Math.max(...centers)).toBeCloseTo(clip_end)
+      expect(
+        [...outlier_circles].every((circle) => circle.closest(`[clip-path]`) === null),
+      ).toBe(true)
       document.body.innerHTML = ``
       const minmax = await mount_sized_box_plot({
         series: outlier_series,
@@ -238,7 +252,10 @@ describe(`BoxPlot`, () => {
       padding: { r: 10 },
       y2_axis: { label: `Secondary` },
     })
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(330)
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    const right_pad =
+      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+    expect(right_pad).toBe(10)
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
@@ -455,7 +472,9 @@ describe(`BoxPlot`, () => {
         Number(initial_legend.style.left.replace(`px`, ``)),
       )
       expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
-      expect(Number(resized_clip.getAttribute(`height`))).toBe(340 - 20 - 60 - 44 - 8)
+      expect(Number(resized_clip.getAttribute(`height`))).toBe(
+        340 - DEFAULT_PLOT_PADDING.t - DEFAULT_PLOT_PADDING.b - 44 - 8,
+      )
     } finally {
       width_spy.mockRestore()
       height_spy.mockRestore()

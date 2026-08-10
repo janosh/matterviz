@@ -421,20 +421,8 @@
 {/if}
 
 <section class="features">
-  <h2>Features</h2>
+  <h2>Details</h2>
   <ul>
-    <li>
-      <strong>Multi-volume registration</strong>: several cube/CHGCAR files coexist as
-      independent volumes in one scene
-    </li>
-    <li>
-      <strong>Simultaneous surfaces</strong>: every volume can show isosurfaces at once;
-      switching the edited volume hides nothing
-    </li>
-    <li>
-      <strong>Cross-volume coloring</strong>: each surface can sample any loaded volume for
-      per-vertex colors with a configurable colormap and value range
-    </li>
     <li>
       <strong>Hidden color sources</strong>: a volume with no surfaces of its own still colors
       other surfaces
@@ -454,10 +442,6 @@
     <li>
       <strong>Fast recolor</strong>: changing colormap or range remaps cached vertex scalars
       without rerunning marching cubes
-    </li>
-    <li>
-      <strong>Multi-file import</strong>: drop several files at once; same-cell files append,
-      new systems replace
     </li>
   </ul>
 </section>

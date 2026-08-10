@@ -139,8 +139,10 @@ END_BLOCK_BANDGRID_3D`
       expect(band_data.k_grid).toEqual([3, 3, 3])
       expect(band_data.n_bands).toBe(1)
       expect(band_data.n_spins).toBe(1)
-      // 0.1 Hartree * 27.2114 = 2.72114 eV
-      expect(band_data.energies[0][0][0][0][0]).toBeCloseTo(0.1 * 27.2114, 3)
+      // 0.1 Hartree in eV, pinned as a literal rather than via HARTREE_TO_EV so that
+      // reverting to the old hardcoded 27.2114 (1.4e-6 off) fails here. The tolerance
+      // used to be 5e-4, loose enough to accept either constant.
+      expect(band_data.energies[0][0][0][0][0]).toBeCloseTo(2.7211386245981, 9)
     })
 
     test(`throws on invalid FRMSF file`, () => {
@@ -153,8 +155,8 @@ END_BLOCK_BANDGRID_3D`
       // Fortran codes write doubles as D-exponents which Number() rejects
       const d_exp_frmsf = sample_frmsf.replace(/^0\.1$/m, `0.1D+00`)
       expect(parse_grid(d_exp_frmsf, `test.frmsf`).energies[0][0][0][0][0]).toBeCloseTo(
-        0.1 * 27.2114,
-        3,
+        2.7211386245981,
+        9,
       )
     })
   })

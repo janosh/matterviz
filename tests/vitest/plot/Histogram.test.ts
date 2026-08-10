@@ -1,4 +1,5 @@
 import { Histogram, type Vec2 } from '$lib'
+import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import type { DataSeries } from '$lib/plot/core/types'
 import {
   compute_count_range,
@@ -286,8 +287,9 @@ describe(`Histogram`, () => {
       y_axis: { label: `Count` },
     })
     await resize_element(get_plot(), 400, 300)
+    // a wide measured y tick label pushes the left pad past the shared default
     expect(Number(document.querySelector(`clipPath rect`)?.getAttribute(`x`))).toBeGreaterThan(
-      60,
+      DEFAULT_PLOT_PADDING.l,
     )
     await expect_custom_x_ticks_grow_bottom_pad(
       async (ticks) => {

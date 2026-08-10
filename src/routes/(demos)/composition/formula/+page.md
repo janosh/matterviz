@@ -4,8 +4,6 @@ Render chemical formulas with colored element symbols, subscripted amounts, supe
 
 ## Basic Usage
 
-Simple formulas with subscripted amounts and oxidation states:
-
 ```svelte example
 <script lang="ts">
   import { Formula } from 'matterviz'
@@ -34,8 +32,6 @@ Simple formulas with subscripted amounts and oxidation states:
 ```
 
 ## Element Ordering & Color Schemes
-
-Control element ordering and apply different color schemes:
 
 ```svelte example
 <script lang="ts">
@@ -86,8 +82,6 @@ Control element ordering and apply different color schemes:
 
 ## Interactive Click Handlers
 
-Click element symbols to trigger custom actions:
-
 ```svelte example
 <script lang="ts">
   import { Formula } from 'matterviz'
@@ -120,8 +114,6 @@ Click element symbols to trigger custom actions:
 ```
 
 ## Tooltip Positioning
-
-Control tooltip placement and distance from elements:
 
 ```svelte example
 <script lang="ts">
@@ -229,8 +221,6 @@ Use `OxiComposition` objects and customize number formatting:
 
 ## Real-World Compounds
 
-Battery materials, minerals, and organic compounds:
-
 ```svelte example
 <script lang="ts">
   import { Formula } from 'matterviz'
@@ -277,8 +267,6 @@ Battery materials, minerals, and organic compounds:
 ```
 
 ## Interactive Builder
-
-Build formulas dynamically with live preview:
 
 ```svelte example
 <script lang="ts">

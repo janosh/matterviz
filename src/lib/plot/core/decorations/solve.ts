@@ -48,6 +48,13 @@ export const get_decoration_placement = (
   id: string,
 ): DecorationPlacement | undefined => placements.find((placement) => placement.id === id)
 
+export const decoration_placement_revision = (
+  placement: DecorationPlacement | null | undefined,
+): string =>
+  placement
+    ? `${placement.location}:${placement.side}:${placement.x}:${placement.y}:${placement.footprint.width}:${placement.footprint.height}`
+    : `none`
+
 const with_auto_legend_tracks = (
   placement: DecorationPlacement,
   item: DecorationItem,

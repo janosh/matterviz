@@ -2,7 +2,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
-import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
+import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 
@@ -49,6 +49,7 @@ export default defineConfig({
     stub_vite_preload(),
     svelte({ compilerOptions: { runes: true } }),
   ] as PluginOption[],
+  worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
   build: {
     outDir: `lib`,
     target: `es2023`,

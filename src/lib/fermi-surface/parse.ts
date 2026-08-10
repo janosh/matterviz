@@ -1,5 +1,5 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
-import { BOHR_TO_ANGSTROM } from '$lib/constants'
+import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '$lib/constants'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
@@ -8,7 +8,6 @@ import {
   parse_leading_num,
   to_error,
 } from '$lib/utils'
-import * as constants from './constants'
 import { compute_vertex_normals } from '$lib/marching-cubes'
 import type {
   BandGridData,
@@ -235,9 +234,7 @@ function parse_frmsf(content: string): BandGridData {
     const band_grid: number[][][] = Array.from({ length: nx }, (_x_row, ix) =>
       Array.from({ length: ny }, (_y_row, iy) => {
         const offset = (ix * ny + iy) * nz
-        return energy_values
-          .slice(offset, offset + nz)
-          .map((energy) => energy * constants.HARTREE_TO_EV)
+        return energy_values.slice(offset, offset + nz).map((energy) => energy * HARTREE_TO_EV)
       }),
     )
     energies[0].push(band_grid)

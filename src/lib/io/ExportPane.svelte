@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { Cross, Export } from 'svelte-widgets/icons'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { create_clipboard_feedback, DraggablePane } from '$lib/overlays'
@@ -11,7 +12,7 @@
   let {
     export_pane_open = $bindable(false),
     sections = [],
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     dpi_range = [50, 600],
     icon_style = ``,
     toggle_props = {},
@@ -33,7 +34,7 @@
   // Clamp DPI into dpi_range on input change (fires on blur, before any download click)
   function clamp_dpi(): void {
     const [min_dpi, max_dpi] = dpi_range
-    if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = 150
+    if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = DEFAULT_PNG_DPI
     else png_dpi = Math.round(Math.min(max_dpi, Math.max(min_dpi, png_dpi)))
   }
 

@@ -63,6 +63,7 @@ describe(`handle_url_drop`, () => {
     )
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
+      headers: new Headers(),
       text: () => Promise.resolve(`data`),
     } as Response)
 

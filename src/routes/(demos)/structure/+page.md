@@ -256,8 +256,6 @@ the RMSD through the bindable `displacement_rmsd` prop.
 
 ## Different Crystal Systems
 
-Structures from several crystal systems.
-
 ```svelte example
 <script lang="ts">
   import { CRYSTAL_SYSTEMS, Structure } from 'matterviz'

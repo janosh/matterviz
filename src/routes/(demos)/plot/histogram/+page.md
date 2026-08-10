@@ -320,8 +320,6 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
 
 ## Arcsinh Scale: Handling Data with Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) covers positive and negative values with a large dynamic range. Unlike log, it handles zero and negatives: roughly linear near zero, logarithmic for large absolute values.
-
 ```svelte example
 <script lang="ts">
   import { Histogram } from 'matterviz'
@@ -404,11 +402,6 @@ The **arcsinh scale** (`scale_type='arcsinh'`) covers positive and negative valu
     </label>
   {/if}
 </div>
-
-<p style="font-size: 0.9em; opacity: 0.8">
-  Data spans -1000 to +1000 with concentration near zero. Try "log" to see it fail on
-  negatives.
-</p>
 
 <Histogram
   series={[
@@ -895,14 +888,6 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
 
 ## Interactive Axis Labels for Property Exploration
 
-This demo stress-tests histograms with interactive property switching:
-
-- **9,000 data points** (3,000 per series) for performance testing
-- **8 different distributions** with varied shapes (normal, exponential, bimodal, etc.)
-- **Multi-series comparison** showing 3 material classes simultaneously
-- **Dynamic bin adjustment** based on selected property
-- **Rapid property switching** to test state management
-
 ```svelte example
 <script lang="ts">
   import { type DataSeries, Histogram } from 'matterviz'
@@ -1111,11 +1096,6 @@ This demo stress-tests histograms with interactive property switching:
   legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
-
-<p style="margin-top: 0.5em; font-size: 0.8em; opacity: 0.7">
-  {total_points.toLocaleString()} samples across 3 material classes. Try rapidly switching properties.
-  Current distribution type: <code>{property_configs[current_prop].type}</code>
-</p>
 ```
 
 ## Multiple Plots in 2×2 Grid Layout

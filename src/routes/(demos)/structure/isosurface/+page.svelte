@@ -158,8 +158,10 @@
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP
   <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>/
   <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your own
-  files onto the viewer. To render several volumes at once and color one surface by another
-  volume's values (e.g. density by ESP), see the
+  files onto the viewer. Spin-polarized VASP files load as charge and magnetization volumes;
+  the cross-section view slices along HKL or arbitrary Cartesian planes. To render several
+  volumes at once and color one surface by another volume's values (e.g. density by ESP), see
+  the
   <a href="/structure/multi-volume">multi-volume demo</a>.
 </p>
 
@@ -216,35 +218,6 @@
   </div>
 {/if}
 
-<section class="features">
-  <h2>Features</h2>
-  <ul>
-    <li>
-      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong>: VASP charge density, partial charge
-      density, ELF, and local potential
-    </li>
-    <li>
-      <strong>.cube</strong>: Gaussian/CP2K molecular orbitals, electron density, ESP
-    </li>
-    <li>
-      <strong>Dual lobes</strong>: Positive and negative isosurfaces with independent colors
-    </li>
-    <li>
-      <strong>Interactive controls</strong>: Adjust isovalue, opacity, colors, and wireframe
-    </li>
-    <li>
-      <strong>Transparency</strong>: Two-pass rendering for correct transparent surfaces
-    </li>
-    <li><strong>Drag & drop</strong>: Load your own volumetric data files</li>
-    <li>
-      <strong>Spin-polarized</strong>: Switch between charge density and magnetization volumes
-    </li>
-    <li>
-      <strong>Cross-section</strong>: HKL and arbitrary Cartesian filled/contour maps
-    </li>
-  </ul>
-</section>
-
 <style>
   h1 {
     margin-bottom: 0.5em;
@@ -279,25 +252,6 @@
     span {
       white-space: nowrap;
       opacity: 0.85;
-    }
-  }
-  .features {
-    margin-top: 1.5em;
-    padding: 1em;
-    background: var(--surface-bg, #f5f5f5);
-    border-radius: 6px;
-    h2 {
-      margin: 0 0 0.5rem;
-      font-size: 1.1rem;
-    }
-    ul {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 0.4rem 1.5rem;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      font-size: 0.9rem;
     }
   }
 </style>
