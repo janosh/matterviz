@@ -32,6 +32,12 @@ export const is_binary = (content: string): boolean => {
 const starts_with = (bytes: Uint8Array, sig: number[]): boolean =>
   bytes.length >= sig.length && sig.every((byte, idx) => bytes[idx] === byte)
 
+// Leading bytes to test a magic signature against. Guards the slice: byteLength reads 0 for
+// a detached ArrayBuffer and slice() throws on one. Short buffers are passed through as-is
+// so a 2-byte gzip header still matches — every has_*_magic below length-checks itself.
+export const magic_head = (buffer: ArrayBuffer, count = 8): Uint8Array =>
+  buffer.byteLength === 0 ? new Uint8Array() : new Uint8Array(buffer.slice(0, count))
+
 // gzip member header
 export const has_gzip_magic = (bytes: Uint8Array): boolean => starts_with(bytes, [0x1f, 0x8b])
 
@@ -39,6 +45,10 @@ export const has_gzip_magic = (bytes: Uint8Array): boolean => starts_with(bytes,
 // claiming a .h5/.hdf5 extension really is HDF5 (stricter than the binary sniff below).
 export const has_hdf5_magic = (bytes: Uint8Array): boolean =>
   starts_with(bytes, [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
+
+// ASE .traj container header "- of Ulm"
+export const has_ase_traj_magic = (bytes: Uint8Array): boolean =>
+  starts_with(bytes, [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d])
 
 // Leading bytes that mark a payload as binary so a lossy UTF-8 decode would corrupt it.
 // HDF5 is matched by its 4-byte "\x89HDF" prefix (the non-ASCII 0x89 already rules out text
@@ -49,7 +59,7 @@ export const has_binary_magic = (bytes: Uint8Array): boolean =>
   starts_with(bytes, [0x50, 0x4b, 0x03, 0x04]) || // ZIP local file
   starts_with(bytes, [0x50, 0x4b, 0x05, 0x06]) || // ZIP empty archive (EOCD)
   starts_with(bytes, [0x50, 0x4b, 0x07, 0x08]) || // ZIP spanned
-  starts_with(bytes, [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]) // ASE .traj "- of Ulm"
+  has_ase_traj_magic(bytes)
 
 // === (3) extension / filename classification ===
 export const ext_of = (name: string): string => name.split(`.`).pop()?.toLowerCase() ?? ``
@@ -84,5 +94,4 @@ export const has_binary_inner_ext = (filename: string): boolean =>
 // Binary if the (post-decompression) extension is a known binary data format or the leading
 // bytes match a magic signature
 export const is_binary_payload = (filename: string, buffer: ArrayBuffer): boolean =>
-  BINARY_DATA_EXTENSIONS.has(ext_of(filename)) ||
-  has_binary_magic(new Uint8Array(buffer.slice(0, 8)))
+  BINARY_DATA_EXTENSIONS.has(ext_of(filename)) || has_binary_magic(magic_head(buffer))

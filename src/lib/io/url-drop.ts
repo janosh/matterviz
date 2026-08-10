@@ -8,6 +8,7 @@ import {
   has_gzip_magic,
   has_hdf5_magic,
   is_known_text_file,
+  magic_head,
   strip_gz_ext,
 } from './is-binary'
 import type { FileInfo, FileLoadCallback } from './types'
@@ -128,7 +129,7 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
       if (
         result instanceof ArrayBuffer &&
         result.byteLength >= 8 &&
-        !has_hdf5_magic(new Uint8Array(result.slice(0, 8)))
+        !has_hdf5_magic(magic_head(result))
       ) {
         console.warn(`File has .h5/.hdf5 extension but missing HDF5 signature`)
       }

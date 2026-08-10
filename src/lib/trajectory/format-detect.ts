@@ -8,6 +8,7 @@ import {
   XDATCAR_REGEX,
 } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
+import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binary'
 import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
@@ -43,19 +44,13 @@ export const FORMAT_PATTERNS = {
     if (ext_hint(filename, /\.traj$/) === false || !(data instanceof ArrayBuffer)) {
       return false
     }
-    const view = new Uint8Array(data.slice(0, 24))
-    return [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every(
-      (byte, idx) => view[idx] === byte,
-    )
+    return has_ase_traj_magic(magic_head(data))
   },
 
   hdf5: (data: unknown, filename?: string) => {
     if (ext_hint(filename, /\.(?:h5|hdf5)$/) === false) return false
-    if (!(data instanceof ArrayBuffer) || data.byteLength < 8) return false
-    const signature = new Uint8Array(data.slice(0, 8))
-    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
-      (byte, idx) => signature[idx] === byte,
-    )
+    if (!(data instanceof ArrayBuffer)) return false
+    return has_hdf5_magic(magic_head(data))
   },
 
   vasp: (data: string, filename?: string) => {
