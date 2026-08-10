@@ -7,7 +7,7 @@ import {
 
 export const structures = Object.entries(
   // JSON structure files (OPTIMADE/pymatgen format) as JS objects
-  import.meta.glob<unknown>(`./*.json`, { eager: true, import: `default` }),
+  import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string

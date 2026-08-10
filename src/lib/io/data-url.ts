@@ -79,7 +79,13 @@ export function create_data_url_loader<Value>(): DataUrlLoader<Value> {
 
     load_from_url(url, async (content, filename, metadata) => {
       if (!is_current()) return
-      await on_load({ content, filename, metadata, is_current, mark_owned })
+      try {
+        await on_load({ content, filename, metadata, is_current, mark_owned })
+      } catch (error) {
+        // Keep parse/consumer failures out of the transport-only on_error callback.
+        if (is_current())
+          console.error(`Failed to process loaded URL '${filename}':`, to_error(error))
+      }
     })
       .catch((error: unknown) => {
         if (is_current()) on_error(to_error(error), basename_from_url(url))

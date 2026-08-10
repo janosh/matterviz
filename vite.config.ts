@@ -151,7 +151,7 @@ export default defineConfig({
   // try to read as UTF-8. Text formats (.xyz, .cif, .poscar) are handled
   // by vite-plugin-raw-text above (they use ?raw, not ?url).
   assetsInclude: [
-    `static/xrd/**`,
+    `src/site/xrd/**`,
     `**/*.tdb`,
     `**/*.bxsf.gz`,
     `**/*.frmsf.gz`,

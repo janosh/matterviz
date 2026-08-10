@@ -878,8 +878,9 @@
           range,
         )
         if (result.changed) {
+          // copy: initial is the reset target, so it must not alias the live current range
           ranges.initial[axis] = result.range
-          ranges.current[axis] = result.range
+          ranges.current[axis] = [...result.range] as Vec2
         }
       }
     }

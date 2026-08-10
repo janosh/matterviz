@@ -229,9 +229,10 @@ describe(`VASP XDATCAR Parser`, () => {
     )
   })
 
+  const xdatcar_with_scale = (scale: string) =>
+    `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
+
   it(`should reject blank scale lines but tolerate trailing comments like parseFloat`, async () => {
-    const xdatcar_with_scale = (scale: string) =>
-      `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
     // Number(``) is 0, not NaN - a blank scale line must be a parse error
     await expect(parse_trajectory_data(xdatcar_with_scale(``), `XDATCAR`)).rejects.toThrow(
       `Invalid scale factor`,
@@ -243,6 +244,16 @@ describe(`VASP XDATCAR Parser`, () => {
     const structure = trajectory.frames[0].structure
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
   })
+
+  // VASP accepts one factor or exactly three positive per-axis factors
+  it.each([`1 2`, `1 2 3 4`, `0 1 1`, `-1 1 1`])(
+    `rejects malformed XDATCAR scale line %s`,
+    async (scale) => {
+      await expect(
+        parse_trajectory_data(xdatcar_with_scale(scale), `XDATCAR`),
+      ).rejects.toThrow(`Invalid scale factor`)
+    },
+  )
 
   // XDATCAR shares the POSCAR header grammar, so it now honours the same scale forms:
   // three per-axis Cartesian factors, a negative single factor meaning target cell volume,
@@ -285,6 +296,10 @@ describe(`VASP XDATCAR Parser`, () => {
     [`blank symbol line`, `\n1`, `Invalid element symbol in XDATCAR`],
     [`non-element symbol`, `Xx\n1`, `Invalid element symbol in XDATCAR: Xx`],
     [`fewer counts than symbols`, `H O Na\n1 1`, `3 element symbol(s) but 2 atom count(s)`],
+    [`fractional count`, `H\n1.5`, `invalid atom counts`],
+    [`zero count`, `H\n0`, `invalid atom counts`],
+    [`negative count`, `H\n-1`, `invalid atom counts`],
+    [`non-finite count`, `H\nInfinity`, `invalid atom counts`],
   ])(`rejects an XDATCAR %s`, async (_label, species_block, expected_error) => {
     const content = [
       `title`,
@@ -301,9 +316,9 @@ describe(`VASP XDATCAR Parser`, () => {
     await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(expected_error)
   })
 
-  it(`should re-read repeated headers in variable-cell (NPT) XDATCAR`, async () => {
+  it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
     const frame = (lat_a: number, idx: number) =>
-      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5`
+      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 0.25`
     const trajectory = await parse_trajectory_data(
       `${frame(10, 1)}\n${frame(20, 2)}`,
       `XDATCAR`,
@@ -313,6 +328,7 @@ describe(`VASP XDATCAR Parser`, () => {
     const structure = trajectory.frames[1].structure
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(20)
     expect(structure.sites[0].xyz).toEqual([10, 10, 10])
+    expect(structure.sites.map((site) => site.species[0].element)).toEqual([`H`, `He`])
   })
 })
 

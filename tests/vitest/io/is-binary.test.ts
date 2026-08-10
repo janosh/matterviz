@@ -156,6 +156,7 @@ describe(`magic_head`, () => {
   })
 
   test(`keeps gzip detectable in a buffer shorter than the 8-byte window`, () => {
-    expect(has_gzip_magic(magic_head(to_buffer([0x1f, 0x8b])))).toBe(true)
+    const head = magic_head(to_buffer([0x1f, 0x8b]))
+    expect(has_gzip_magic(head)).toBe(true)
   })
 })

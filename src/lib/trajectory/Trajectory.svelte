@@ -147,7 +147,7 @@
     on_file_load,
     on_error,
     fps_range = DEFAULTS.trajectory.fps_range,
-    fps = $bindable(DEFAULTS.trajectory.fps),
+    fps = $bindable(5),
     loading_options = {},
     atom_type_mapping,
     plot_skimming = true,

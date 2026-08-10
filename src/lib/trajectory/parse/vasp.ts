@@ -53,10 +53,10 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     }
     if (config_idx === lines.length) break
 
-    // Variable-cell runs (NPT/ISIF=3) repeat the full 7-line header before each configuration
-    if (config_idx - line_idx >= 7) {
-      const { result: repeat } = parse_xdatcar_header(lines, config_idx - 7)
-      if (repeat.ok) {
+    // Variable-cell runs repeat full headers; wrapped species blocks exceed seven lines.
+    if (config_idx > line_idx) {
+      const { result: repeat, end } = parse_xdatcar_header(lines, line_idx)
+      if (repeat.ok && end === config_idx) {
         lattice_matrix = repeat.header.lattice
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
         elements = expand_element_counts(repeat.header.elements, repeat.header.counts)

@@ -1,0 +1,31 @@
+import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
+import { mount, unmount } from 'svelte'
+import { afterEach, expect, test, vi } from 'vitest'
+
+let mounted_component: ReturnType<typeof mount> | undefined
+
+afterEach(async () => {
+  vi.restoreAllMocks()
+  if (mounted_component) await unmount(mounted_component)
+  mounted_component = undefined
+})
+
+const poscar = `cubic\n1.0\n3 0 0\n0 3 0\n0 0 3\nSi\n1\nDirect\n0 0 0\n`
+
+// Without mark_owned, the first parsed structure looks caller-supplied and prevents the
+// loader from fetching a second URL.
+test(`loads a second data_url after the first has produced a structure`, async () => {
+  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
+
+  const on_file_load = vi.fn()
+  const props = $state({ data_url: `http://x/a.poscar`, on_file_load })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+
+  props.data_url = `http://x/b.poscar`
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([
+    `a.poscar`,
+    `b.poscar`,
+  ])
+})

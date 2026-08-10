@@ -361,25 +361,26 @@ describe(`ToggleMenu`, () => {
   })
 
   describe(`Reset functionality`, () => {
+    const checkbox_states = () =>
+      Array.from(
+        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
+        (checkbox) => checkbox.checked,
+      )
+
     it(`reset all restores defaults, hides its button and fires on_reset`, async () => {
       const on_reset = vi.fn()
       mount_menu(make_columns(), { column_panel_open: true, on_reset }) // true, false, true
-      const checked = () =>
-        Array.from(
-          document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-          (checkbox) => checkbox.checked,
-        )
       const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
       expect(reset_btn()).toBeNull() // nothing differs from defaults yet
 
       document.querySelectorAll<HTMLElement>(`.toggle-label`)[0].click()
       await tick()
-      expect(checked()).toEqual([false, false, true])
+      expect(checkbox_states()).toEqual([false, false, true])
       expect(reset_btn()).not.toBeNull()
 
       reset_btn()?.click()
       await tick()
-      expect(checked()).toEqual([true, false, true])
+      expect(checkbox_states()).toEqual([true, false, true])
       expect(reset_btn()).toBeNull() // no more changes
       expect(on_reset).toHaveBeenCalledWith()
     })
@@ -413,6 +414,23 @@ describe(`ToggleMenu`, () => {
       document.querySelector<HTMLElement>(selector)?.click()
       await tick()
       expect(on_toggle.mock.calls).toEqual([[expect.objectContaining({ key: `name` }), true]])
+    })
+
+    it(`resets duplicate labels in different groups independently`, async () => {
+      const columns = [
+        { label: `Value`, group: `A`, visible: true },
+        { label: `Value`, group: `B`, visible: false },
+      ]
+      mount_menu(columns, { column_panel_open: true })
+
+      for (const label of document.querySelectorAll<HTMLElement>(`.toggle-label`))
+        label.click()
+      await tick()
+      expect(checkbox_states()).toEqual([false, true])
+
+      document.querySelector<HTMLElement>(`summary .reset-btn`)?.click()
+      await tick()
+      expect(checkbox_states()).toEqual([true, false])
     })
 
     // A host reordering its columns must not read as a new column set, which would

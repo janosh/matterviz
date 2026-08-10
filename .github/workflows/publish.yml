@@ -214,6 +214,8 @@ jobs:
         working-directory: extensions/jupyterlab
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          # As in lint.yml: pnpm's pre-run `install` fails over the ignored fontawesome build script
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
         run: |
           # --no-project: uv would otherwise try to install this package, which
           # cannot build until the labextension below has written data/.

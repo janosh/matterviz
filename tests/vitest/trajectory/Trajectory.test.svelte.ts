@@ -1,4 +1,3 @@
-import { DEFAULTS } from '$lib/settings'
 import type { TrajectoryType, TrajectoryXQuantity, TrajHandlerData } from '$lib/trajectory'
 import { Trajectory } from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
@@ -268,10 +267,7 @@ describe(`Trajectory`, () => {
     expect(fps_slider.value).toBe(`12.5`)
   })
 
-  // An unpassed fps used to fall back to a hardcoded 5 while the schema (and so every
-  // VS Code / file-viewer mount, which spreads DEFAULTS.trajectory) said 10, making
-  // playback speed depend on how the viewer was embedded.
-  test(`defaults FPS to the shipped setting rather than a literal`, async () => {
+  test(`preserves the component's five FPS default`, async () => {
     const props = $state({ trajectory: energy_traj(-1, -2), show_controls: `always` as const })
     const target = mount_traj(props)
     await flush_render()
@@ -280,7 +276,7 @@ describe(`Trajectory`, () => {
       `.fps-section input[type="number"]`,
     )
     if (!fps_input) throw new Error(`FPS controls not found`)
-    expect(fps_input.value).toBe(String(DEFAULTS.trajectory.fps))
+    expect(fps_input.value).toBe(`5`)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range

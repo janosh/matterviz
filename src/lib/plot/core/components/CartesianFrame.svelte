@@ -72,6 +72,7 @@
     css_prefix,
     css_var_fallbacks = {},
     aria_label,
+    'aria-label': aria_label_override,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     require_size = true,
@@ -168,7 +169,7 @@
     <svg
       bind:this={frame.svg_element}
       role="application"
-      aria-label={rest[`aria-label`] ?? aria_label}
+      aria-label={aria_label_override ?? aria_label}
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}

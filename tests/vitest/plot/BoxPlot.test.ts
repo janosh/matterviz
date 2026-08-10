@@ -89,6 +89,12 @@ describe(`BoxPlot`, () => {
     },
   )
 
+  // No slots means no category labels, so the axis must fall back to generated ticks
+  test(`empty series leaves the category axis with generated ticks`, async () => {
+    const plot = await mount_sized_box_plot({ series: [] })
+    expect(plot.querySelectorAll(`g.x-axis g.tick`).length).toBeGreaterThan(0)
+  })
+
   test.each([
     [`vertical`, `y`],
     [`horizontal`, `x`],

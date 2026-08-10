@@ -446,8 +446,11 @@
   })
 
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
-  const get_col_id = (col: Label) =>
-    col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
+  const get_col_id = (col: Label) => {
+    const key = col.key ?? col.label
+    const group_suffix = col.group ? ` (${col.group})` : ``
+    return group_suffix && !key.endsWith(group_suffix) ? `${key}${group_suffix}` : key
+  }
 
   // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
   let data_keys = $derived.by(() => {
@@ -1866,6 +1869,8 @@
   let toggle_columns = $derived(
     ordered_columns.map((col) => ({
       ...col,
+      key: get_col_id(col),
+      default_visible: col.visible !== false,
       // a column the caller declared invisible is theirs, not the menu's, to control:
       // `hidden_columns` cannot override it, so offer it read-only rather than as a
       // checkbox that springs back

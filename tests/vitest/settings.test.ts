@@ -86,9 +86,7 @@ describe(`Settings`, () => {
     // smooth_playback, structure.show_cell, ...) plus four plot.show_*_grid keys that lost
     // to scatter.display.*_grid. Leaf-name matching, so a generic name like `opacity` can
     // still hide, but every distinctive dead key gets caught.
-    // Reads ~9900 files (56 MB) off disk, ~900 ms unloaded but well past the 5 s default
-    // when the rest of the suite is competing for I/O.
-    test(`every setting is read somewhere outside settings.ts`, { timeout: 30_000 }, () => {
+    test(`every setting is read somewhere outside settings.ts`, () => {
       const leaf_paths: string[] = []
       const walk = (node: unknown, path: string[]): void => {
         if (!node || typeof node !== `object` || Array.isArray(node)) return
@@ -105,6 +103,9 @@ describe(`Settings`, () => {
       const sources: string[] = []
       const collect = (dir: string): void => {
         for (const entry of readdirSync(dir)) {
+          // extensions/*/node_modules holds a built copy of matterviz including
+          // dist/settings.js, which mentions every key and would mask every dead one
+          if (entry === `node_modules`) continue
           const full = join(dir, entry)
           if (statSync(full).isDirectory()) collect(full)
           else if (/\.(?:ts|svelte)$/.test(entry) && full !== settings_module) {

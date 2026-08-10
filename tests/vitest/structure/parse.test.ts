@@ -491,6 +491,9 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_xyz, content: `` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nSelective dynamics` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n2\nDirect\n0.0 0.0 0.0` },
+    // VASP 4 count-only headers must reject malformed counts for non-strict callers too
+    { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n1.5\nDirect\n0.0 0.0 0.0` },
+    { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n-1\nDirect\n0.0 0.0 0.0` },
     { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0` },

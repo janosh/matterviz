@@ -110,9 +110,11 @@ function sync_package_config(): void {
   // Preserve existing non-schema settings (like auto_render, theme, etc.)
   const existing_props = package_content.contributes?.configuration?.properties ?? {}
   const schema_prefixes = Object.keys(SETTINGS_CONFIG).map((key) => `matterviz.${key}`)
+  // Match at a `.` boundary so a manually maintained matterviz.structurePreview survives
+  // alongside a generated matterviz.structure.* group.
   const preserved_props = Object.fromEntries(
     Object.entries(existing_props).filter(([key]) =>
-      schema_prefixes.every((prefix) => !key.startsWith(prefix)),
+      schema_prefixes.every((prefix) => key !== prefix && !key.startsWith(`${prefix}.`)),
     ),
   )
 

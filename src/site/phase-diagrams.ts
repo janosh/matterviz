@@ -5,7 +5,7 @@ import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
 import { normalize_system_name } from '$lib/phase-diagram/parse'
 
 // Import all diagram JSON files eagerly
-const diagram_modules = import.meta.glob<DiagramInput>(`./binary/data/*.json`, {
+const diagram_modules = import.meta.glob<DiagramInput>(`./phase-diagrams/binary/data/*.json`, {
   eager: true,
   import: `default`,
 })

@@ -74,6 +74,7 @@ describe(`parse_chgcar`, () => {
       make_chgcar({
         lattice: [`5.43D+00 0.0 0.0`, `0.0 5.43D+00 0.0`, `0.0 0.0 5.43D+00`],
         positions: [`0.0 0.0 0.0`, `5.0D-01 5.0D-01 5.0D-01`],
+        data: `1.0D+00 2.0D+00 3.0D+00 4.0D+00 5.0D+00 6.0D+00 7.0D+00 8.0D+00`,
       }),
     )
     expect(result).not.toBeNull()
@@ -204,19 +205,22 @@ describe(`parse_chgcar`, () => {
     expect(result).toBeNull()
   })
 
-  test(`treats an unrecognized coordinate mode as Cartesian`, () => {
-    // parse_poscar rejects this; CHGCAR stays lenient because only `D...` means Direct
-    const result = parse_chgcar(
-      make_chgcar({
-        coord_mode: `Foo`,
-        lattice: [`5 0 0`, `0 5 0`, `0 0 5`],
-        elements: `Si`,
-        counts: `1`,
-        positions: [`2.5 2.5 2.5`],
-      }),
-    )
-    expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
-  })
+  test.each([`Foo`, `Superlattice`])(
+    `treats unrecognized coordinate mode %s as Cartesian without consuming it as selective dynamics`,
+    (coord_mode) => {
+      // parse_poscar rejects this; CHGCAR stays lenient because only `D...` means Direct
+      const result = parse_chgcar(
+        make_chgcar({
+          coord_mode,
+          lattice: [`5 0 0`, `0 5 0`, `0 0 5`],
+          elements: `Si`,
+          counts: `1`,
+          positions: [`2.5 2.5 2.5`],
+        }),
+      )
+      expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+    },
+  )
 
   test(`handles Cartesian coordinates`, () => {
     const result = parse_chgcar(
@@ -326,6 +330,14 @@ describe(`parse_chgcar`, () => {
     [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
     // blank scale line must error, not silently become scale 0 (Number(``) is 0)
     [`blank scale factor line`, make_chgcar({ scale: `` })],
+    // VASP accepts one factor or exactly three positive per-axis factors
+    [`two scale factors`, make_chgcar({ scale: `1 2` })],
+    [`four scale factors`, make_chgcar({ scale: `1 2 3 4` })],
+    [`zero per-axis scale factor`, make_chgcar({ scale: `0 1 1` })],
+    [`negative per-axis scale factor`, make_chgcar({ scale: `-1 1 1` })],
+    [`non-finite atom count`, make_chgcar({ counts: `nan` })],
+    [`fractional atom count`, make_chgcar({ counts: `1.5` })],
+    [`negative atom count`, make_chgcar({ counts: `-1` })],
   ])(`returns null for %s`, (_label, content) => {
     expect(parse_chgcar(content)).toBeNull()
   })

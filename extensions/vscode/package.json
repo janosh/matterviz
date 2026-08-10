@@ -155,7 +155,7 @@
         },
         "matterviz.background_opacity": {
           "type": "number",
-          "default": 0,
+          "default": 0.1,
           "description": "Opacity of the background (0.0 = transparent, 1.0 = opaque)",
           "minimum": 0,
           "maximum": 1
@@ -935,41 +935,10 @@
           "default": false,
           "description": "Use frame indexing for large trajectories"
         },
-        "matterviz.trajectory.chunk_size": {
-          "type": "number",
-          "default": 1000,
-          "description": "Number of frames to process at once",
-          "minimum": 10,
-          "maximum": 10000
-        },
         "matterviz.trajectory.show_parsing_progress": {
           "type": "boolean",
           "default": true,
           "description": "Show progress indicator while parsing files"
-        },
-        "matterviz.trajectory.max_frames_in_memory": {
-          "type": "number",
-          "default": 1000,
-          "description": "Maximum frames to keep in memory",
-          "minimum": 10,
-          "maximum": 10000
-        },
-        "matterviz.trajectory.enable_performance_monitoring": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable performance monitoring"
-        },
-        "matterviz.trajectory.prefetch_frames": {
-          "type": "number",
-          "default": 5,
-          "description": "Number of frames to prefetch ahead",
-          "minimum": 0,
-          "maximum": 100
-        },
-        "matterviz.trajectory.cache_parsed_data": {
-          "type": "boolean",
-          "default": true,
-          "description": "Cache parsed trajectory data"
         },
         "matterviz.histogram.mode": {
           "type": "string",
@@ -1664,30 +1633,6 @@
           "default": "solid",
           "description": "Line dash pattern for scatter plots (e.g. \"4,4\" for dashed)"
         },
-        "matterviz.plot.animation_duration": {
-          "type": "number",
-          "default": 200,
-          "description": "Duration of plot animations in milliseconds",
-          "minimum": 0,
-          "maximum": 2000
-        },
-        "matterviz.plot.enable_zoom": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable zooming in plots"
-        },
-        "matterviz.plot.zoom_factor": {
-          "type": "number",
-          "default": 1.5,
-          "description": "Zoom factor for plot interactions",
-          "minimum": 1.1,
-          "maximum": 5
-        },
-        "matterviz.plot.auto_fit_range": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically fit plot range to data"
-        },
         "matterviz.plot.grid_lines": {
           "type": "boolean",
           "default": true,
@@ -1767,16 +1712,6 @@
           "minimum": 0.1,
           "maximum": 10
         },
-        "matterviz.convex_hull.binary.camera_center_x": {
-          "type": "number",
-          "default": 0,
-          "description": "Initial X center for binary (2D) convex hull"
-        },
-        "matterviz.convex_hull.binary.camera_center_y": {
-          "type": "number",
-          "default": 0,
-          "description": "Initial Y center for binary (2D) convex hull"
-        },
         "matterviz.convex_hull.binary.color_mode": {
           "type": "string",
           "default": "energy",
@@ -1846,16 +1781,6 @@
           "description": "Initial camera zoom for ternary (3D) convex hull",
           "minimum": 0.1,
           "maximum": 10
-        },
-        "matterviz.convex_hull.ternary.camera_center_x": {
-          "type": "number",
-          "default": 0,
-          "description": "Initial X center for ternary (3D) convex hull"
-        },
-        "matterviz.convex_hull.ternary.camera_center_y": {
-          "type": "number",
-          "default": -50,
-          "description": "Initial Y center for ternary (3D) convex hull"
         },
         "matterviz.convex_hull.ternary.color_mode": {
           "type": "string",
@@ -1968,16 +1893,6 @@
           "description": "Initial camera zoom for quaternary (4D) convex hull",
           "minimum": 0.1,
           "maximum": 20
-        },
-        "matterviz.convex_hull.quaternary.camera_center_x": {
-          "type": "number",
-          "default": 0,
-          "description": "Initial X center for quaternary (4D) convex hull"
-        },
-        "matterviz.convex_hull.quaternary.camera_center_y": {
-          "type": "number",
-          "default": 20,
-          "description": "Initial Y center for quaternary (4D) convex hull"
         },
         "matterviz.convex_hull.quaternary.color_mode": {
           "type": "string",

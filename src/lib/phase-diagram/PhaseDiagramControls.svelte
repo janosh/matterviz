@@ -115,7 +115,8 @@
   controls_class="phase-diagram"
   pane_style=""
   toggle_style=""
-  toggle_props={{ title: controls_open ? `` : `Phase diagram controls`, ...toggle_props }}
+  toggle_title="Phase diagram"
+  {toggle_props}
   {pane_props}
   {...rest}
 >

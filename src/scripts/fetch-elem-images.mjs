@@ -36,23 +36,25 @@ if (action.endsWith(`download`)) {
 
 mkdirSync(`./static/elements`, { recursive: true })
 
+// fetch() rejects outright on DNS/TLS/connection errors, which would otherwise skip the fallback
+const try_fetch = (url) => fetch(url).catch(() => undefined)
+
 const download_elem_image = async (num_name) => {
   let url = `https://images-of-elements.com/s/${num_name.split(`-`)[1]}.jpg`
-  let response = await fetch(url)
-  if (!response.ok) {
+  let response = await try_fetch(url)
+  if (!response?.ok && fallback_urls[num_name]) {
     url = fallback_urls[num_name]
-    if (url) response = await fetch(url)
+    response = await try_fetch(url)
   }
-  if (!response.ok) {
-    console.error(`Error downloading image for ${num_name}: ${response.statusText}`)
-    return undefined
+  if (!response?.ok) {
+    const reason = response ? `HTTP ${response.status} ${response.statusText}` : `fetch failed`
+    throw new Error(`Error downloading image for ${num_name} from ${url}: ${reason}`)
   }
   const content_type = response.headers.get(`content-type`)
   if (!content_type?.startsWith(`image/`)) {
-    console.error(
-      `Error downloading image for ${num_name}: unexpected content type ${content_type}`,
+    throw new Error(
+      `Error downloading image for ${num_name} from ${url}: unexpected content type ${content_type}`,
     )
-    return undefined
   }
   await sharp(new Uint8Array(await response.arrayBuffer())).toFile(
     `./static/elements/${num_name}.avif`,
@@ -73,16 +75,14 @@ for (const { name, number } of element_data) {
 }
 
 if (download_promises.length > 0) {
-  const results = (await Promise.allSettled(download_promises)).flatMap((result) => {
-    if (result.status === `fulfilled`) return [result.value]
-    console.error(`Image download failed: ${result.reason}`)
-    process.exitCode = 1
-    return []
-  })
   const img_src_out = `./src/lib/element-image-urls.json`
   const img_urls = existsSync(img_src_out) ? JSON.parse(readFileSync(img_src_out, `utf8`)) : {}
-  for (const { num_name, url } of results) {
-    if (url) img_urls[num_name] = url
+  for (const result of await Promise.allSettled(download_promises)) {
+    if (result.status === `fulfilled`) img_urls[result.value.num_name] = result.value.url
+    else {
+      console.error(result.reason.message)
+      process.exitCode = 1
+    }
   }
   writeFileSync(img_src_out, `${JSON.stringify(img_urls, null, 2)}\n`)
 }

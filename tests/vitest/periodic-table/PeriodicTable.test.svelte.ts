@@ -25,6 +25,7 @@ describe(`PeriodicTable`, () => {
     vi.restoreAllMocks()
     replace_url.mockClear()
     page.url.search = ``
+    page.url.hash = ``
     selected.category = null
     Object.assign(colors.category, DEFAULT_CATEGORY_COLORS)
   })
@@ -292,8 +293,11 @@ describe(`PeriodicTable`, () => {
 
   test(`demo rejects inherited heatmap keys and uses automatic tile contrast`, async () => {
     page.url.search = `?heatmap=toString`
+    page.url.hash = `#test-anchor` // URL rewrites must not drop the fragment
     mount(PeriodicTableDemo, { target: document.body })
-    await vi.waitFor(() => expect(replace_url).toHaveBeenCalledWith(`/periodic-table`))
+    await vi.waitFor(() =>
+      expect(replace_url).toHaveBeenCalledWith(`/periodic-table#test-anchor`),
+    )
     expect(document.querySelector(`.periodic-table .value`)).toBeNull()
 
     doc_query(`ul.options > li`).click()
@@ -308,7 +312,9 @@ describe(`PeriodicTable`, () => {
     expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
       new Set([`white`, `black`]),
     )
-    expect(replace_url).toHaveBeenLastCalledWith(expect.stringContaining(`?heatmap=`))
+    expect(replace_url).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^\/periodic-table\?heatmap=.+#test-anchor$/),
+    )
   })
 
   test.each([

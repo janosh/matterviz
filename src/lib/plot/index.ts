@@ -33,6 +33,7 @@ export {
   handle_invalid_values,
   sync_metadata,
 } from './core/data-cleaning'
+export type { DecorationSide, FreeAnnotationDecorationItem } from './core/decorations'
 export type {
   FacetAxis,
   FacetAxisMode,
@@ -62,12 +63,7 @@ export type {
   MarginalsProp,
   MarginalType,
 } from './core/marginals'
-export type {
-  PlotTitleAlign,
-  PlotTitleConfig,
-  PlotTitleFontOverrides,
-  PlotTitleProp,
-} from './core/plot-title'
+export * from './core/plot-title'
 export type { TicksOption } from './core/scales'
 // to_structure_entries shapes the headline prop of CoordinationBarPlot/BondAnglePlot
 export {

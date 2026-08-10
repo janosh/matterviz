@@ -340,3 +340,45 @@ export function handle_hierarchy_escape(
     ctx.exit_fullscreen()
   }
 }
+
+// Structural subset shared by every hierarchy chart's pre-order node representation.
+type PreorderNode = Pick<PositionedArc, `node_idx` | `subtree_end` | `parent_idx` | `depth`>
+
+// Arrow-key navigation over the pre-order node array: ArrowLeft/ArrowRight cycle
+// through visible siblings (wrapping), ArrowDown enters the first child, ArrowUp
+// returns to the parent (never the hidden root at depth 0). Visibility is delegated
+// to is_visible (the component supplies screen-space collapse state). Returns the
+// target node_idx, or null when the key isn't an arrow key or no target qualifies.
+export function arrow_nav_target(
+  nodes: readonly PreorderNode[],
+  is_visible: (idx: number) => boolean,
+  current_idx: number,
+  key: string,
+): number | null {
+  const current = nodes[current_idx]
+  if (!current) return null
+  if (key === `ArrowDown`) {
+    // pre-order: a branch's first child directly follows it
+    const child = nodes[current.node_idx + 1]
+    return child && child.parent_idx === current.node_idx && is_visible(child.node_idx)
+      ? child.node_idx
+      : null
+  }
+  const parent = current.parent_idx != null ? nodes[current.parent_idx] : null
+  if (key === `ArrowUp`) {
+    return parent && parent.depth > 0 && is_visible(parent.node_idx) ? parent.node_idx : null
+  }
+  if (key !== `ArrowRight` && key !== `ArrowLeft`) return null
+  // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts right
+  // after the previous one's subtree ends) - pre-order already lists siblings in draw
+  // order, so no sorting is needed and no full scan runs per keypress
+  const last = parent?.subtree_end ?? nodes.length - 1
+  const siblings: number[] = []
+  for (let idx = (parent?.node_idx ?? 0) + 1; idx <= last; idx = nodes[idx].subtree_end + 1) {
+    if (is_visible(idx)) siblings.push(idx)
+  }
+  if (siblings.length < 2) return null
+  const current_pos = siblings.indexOf(current.node_idx)
+  const step = key === `ArrowRight` ? 1 : -1
+  return siblings[(current_pos + step + siblings.length) % siblings.length]
+}

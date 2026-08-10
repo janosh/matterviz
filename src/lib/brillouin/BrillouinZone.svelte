@@ -175,7 +175,7 @@
     content: string | ArrayBuffer,
     filename: string,
     metadata?: io.FileLoadMeta,
-  ) {
+  ): boolean {
     try {
       const parsed = parse_any_structure(io.as_text(content), filename)
       if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
@@ -184,9 +184,11 @@
       current_filename = filename
       const file_size = io.content_byte_size(content)
       on_file_load?.({ structure, bz_data, bz_order, filename, ...metadata, file_size })
+      return true
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename, ...metadata })
+      return false
     }
   }
 
@@ -271,18 +273,24 @@
       clear_error: () => {
         error_msg = undefined
       },
-      on_load: ({ content, filename, metadata }) =>
-        on_file_drop
-          ? on_file_drop(content, filename, metadata)
-          : safe_parse(content, filename, metadata),
+      // Without mark_owned the structure this URL just produced reads as caller-supplied
+      // on the next effect run, so the loader stops fetching and a second data_url never
+      // loads at all.
+      on_load: async ({ content, filename, metadata, mark_owned }) => {
+        if (on_file_drop) {
+          await on_file_drop(content, filename, metadata)
+          mark_owned()
+        } else if (safe_parse(content, filename, metadata)) mark_owned(structure)
+      },
       on_error: handle_load_error,
     }),
   )
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename, metadata) =>
-      (on_file_drop || safe_parse)(content, filename, metadata),
+    on_drop: async (content, filename, metadata) => {
+      await (on_file_drop || safe_parse)(content, filename, metadata)
+    },
     on_error: (msg) => {
       error_msg = msg
       on_error?.({ error_msg: msg })

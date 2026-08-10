@@ -71,6 +71,8 @@ export interface CartesianFrameOptions {
   title: () => PlotTitleProp | null | undefined
   // Normalized [0, 1] obstacle field (mark geometry) the decoration solver avoids
   obstacles: () => readonly { x: number; y: number }[]
+  // Read during construction (initial filter text, create_placed_tween's tween config), so
+  // unlike the other thunks it can't close over a binding declared after the call.
   legend: () => LegendConfig | null | undefined
   legend_visible: () => boolean
   legend_items: () => readonly { label: string; legend_group?: string }[]
@@ -90,7 +92,9 @@ export interface CartesianFrameOptions {
   // `per-axis` leaves a panned axis alone when a different axis's auto range moves,
   // `all-axes` resnaps every axis whenever any of them changes.
   range_sync?: `per-axis` | `all-axes`
-  // Replace an axis's generated ticks (categorical axes plot one tick per category)
+  // Replace an axis's generated ticks (categorical axes plot one tick per category). An
+  // empty array falls back to generated ticks, since a categorical axis with no categories
+  // has nothing to label.
   tick_override?: (axis: FrameAxis) => number[] | undefined
   // Axis configs used only when measuring tick labels (categorical axes measure their
   // category labels rather than the numeric slot indices)
@@ -109,8 +113,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_size_revision = $state(0)
   let hovered_series_idx = $state<number | null>(null)
-  let legend_filter_query = $derived(opts.legend()?.filter_query ?? ``)
+  // PlotLegendLayer binds this, so the frame owns the text and the legend config only seeds
+  // it: a $derived would discard what the user typed on every new legend object.
+  let legend_filter_query = $state(opts.legend()?.filter_query ?? ``)
   const clip_path_id = unique_id(opts.clip_id_prefix ?? `plot-clip`)
+
+  // `initial` and `current` must never share a Vec2: on_reset restores current from initial,
+  // so one in-place edit of a current range would silently rewrite the reset target too.
+  const copy_axis_ranges = (src: AxisRanges): AxisRanges =>
+    Object.fromEntries(FACET_AXES.map((axis) => [axis, [...src[axis]] as Vec2])) as AxisRanges
 
   let ranges = $state<{ initial: AxisRanges; current: AxisRanges }>({
     initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
@@ -141,7 +152,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const entries = FACET_AXES.map((axis): [FrameAxis, number[]] => {
       if (!width || !height) return [axis, []]
       const override = opts.tick_override?.(axis)
-      if (override) return [axis, override]
+      if (override?.length) return [axis, override]
       if (!axis_shown(axis)) return [axis, []]
       const config = opts.axes()[axis]
       return [
@@ -172,10 +183,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       for (const axis of FACET_AXES) {
         if (vec2_equal(initial[axis], next[axis])) continue
         ranges.initial[axis] = next[axis]
-        ranges.current[axis] = next[axis]
+        ranges.current[axis] = [...next[axis]] as Vec2
       }
     } else if (!axis_ranges_equal(initial, next)) {
-      ranges = { initial: { ...next }, current: { ...next } }
+      ranges = { initial: { ...next }, current: copy_axis_ranges(next) }
     }
     facet.apply_ranges()
   })
@@ -327,12 +338,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       if (facet.reset_ranges()) return
       // Undo any pan/zoom, then clear the axis range overrides so future data
       // changes recalculate auto ranges
-      ranges.current = {
-        x: [...ranges.initial.x] as Vec2,
-        x2: [...ranges.initial.x2] as Vec2,
-        y: [...ranges.initial.y] as Vec2,
-        y2: [...ranges.initial.y2] as Vec2,
-      }
+      ranges.current = copy_axis_ranges(ranges.initial)
       for (const axis of FACET_AXES) opts.write_range(axis, [null, null])
     },
   })

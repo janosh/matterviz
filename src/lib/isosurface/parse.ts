@@ -73,11 +73,9 @@ function parse_float_block(
     const start = pos
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
-    // Parse number (handles scientific notation)
-    const num = Number(text.slice(start, pos))
-    if (!Number.isNaN(num)) {
-      data[idx++] = num
-    }
+    // Parse number (including Fortran-style D exponents)
+    const num = Number(normalize_scientific_notation(text.slice(start, pos)))
+    if (!Number.isNaN(num)) data[idx++] = num
   }
   return { count: idx - data_offset, end_pos: pos }
 }

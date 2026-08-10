@@ -3,7 +3,10 @@
   // *Controls component. Centralizes the toggle/pane icons, the
   // `*-controls-{toggle,pane}` class convention and the pane style vars so they live in
   // one place instead of being re-typed per viewer.
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  // DraggablePane straight from svelte-widgets: $lib/overlays re-exports it, and this
+  // component lives in that barrel, so going through it would be a cycle.
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane } from 'svelte-widgets'
   import type { ComponentProps, Snippet } from 'svelte'
   import { Cross, Settings } from 'svelte-widgets/icons'
 

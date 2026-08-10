@@ -113,4 +113,12 @@ describe(`PhaseDiagramControls`, () => {
     expect(pane).toBeInstanceOf(HTMLElement)
     expect(pane?.style.display).toBe(`none`)
   })
+
+  test.each([
+    [true, `Close Phase diagram controls`],
+    [false, `Open Phase diagram controls`],
+  ])(`keeps the generated toggle title when controls_open=%s`, (controls_open, expected) => {
+    const target = mount_controls({ controls_open })
+    expect(target.querySelector<HTMLButtonElement>(`button[title]`)?.title).toBe(expected)
+  })
 })

@@ -96,8 +96,8 @@ def load_electronic_bands(name: str) -> dict | None:
 
 
 def load_xrd_pattern(name: str) -> dict | None:
-    """Load XRD pattern from the static/xrd directory."""
-    xrd_dir = MATTERVIZ_ROOT / "static" / "xrd"
+    """Load XRD pattern from the site data directory."""
+    xrd_dir = MATTERVIZ_ROOT / "src" / "site" / "xrd"
     return load_xye_file(xrd_dir / f"{name}.xye")
 
 

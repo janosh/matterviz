@@ -12,7 +12,7 @@ type Deferred = { resolve: () => Promise<void>; reject: (err: Error) => Promise<
 
 // Queue a load_from_url call that only delivers `content` once the test says so, so two
 // requests can be put in flight and completed out of order.
-function defer_next_load(content: string): Deferred {
+function defer_next_load(content = ``): Deferred {
   let deliver: () => Promise<void> = () => Promise.resolve()
   let fail: (err: Error) => Promise<void> = () => Promise.resolve()
   vi.mocked(load_from_url).mockImplementationOnce(
@@ -29,6 +29,8 @@ function defer_next_load(content: string): Deferred {
         }
       }),
   )
+  // Wrappers, not the bindings themselves: the executor runs when load_from_url is called,
+  // which is after this returns, so returning `deliver` directly would capture the no-op.
   return { resolve: () => deliver(), reject: (err) => fail(err) }
 }
 
@@ -138,16 +140,85 @@ describe(`create_data_url_loader`, () => {
     expect(loader.loaded_url).toBe(url)
   })
 
+  // The context's central contract: an on_load that awaits must be able to tell it has been
+  // superseded, otherwise a slow parse commits over a newer URL's result.
+  test(`is_current goes false for an on_load still awaiting when a newer request lands`, async () => {
+    const loader = create_data_url_loader<string>()
+    const { request } = make_harness()
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    let seen_current: boolean | undefined
+
+    const first = defer_next_load(`stale`)
+    loader.request(
+      request({
+        url: `https://x.test/a.xyz`,
+        on_load: async ({ is_current }) => {
+          await gate
+          seen_current = is_current()
+        },
+      }),
+    )
+    const parked = first.resolve() // on_load is now waiting on the gate
+    await Promise.resolve()
+
+    defer_next_load()
+    loader.request(request({ url: `https://x.test/b.xyz` }))
+    release()
+    await parked
+
+    expect(seen_current).toBe(false)
+  })
+
+  test(`mark_owned() without a value still marks the URL loaded`, async () => {
+    const loader = create_data_url_loader<string>()
+    const { request } = make_harness()
+    const url = `https://x.test/a.xyz`
+
+    const load = defer_next_load(`payload`)
+    loader.request(request({ url, on_load: ({ mark_owned }) => mark_owned() }))
+    await load.resolve()
+
+    expect(loader.loaded_url).toBe(url)
+    expect(loader.owned_value).toBeUndefined()
+    // still not refetched, even though no value was attributed to the URL
+    loader.request(request({ url }))
+    expect(load_from_url).toHaveBeenCalledTimes(1)
+  })
+
   test(`routes a transport failure to on_error with the URL basename`, async () => {
     const loader = create_data_url_loader<string>()
     const { state, request } = make_harness()
 
-    const load = defer_next_load(`unused`)
+    const load = defer_next_load()
     loader.request(request({ url: `https://x.test/dir/a.xyz?token=1` }))
     await load.reject(new Error(`404`))
 
     expect(state.error).toBe(`a.xyz: 404`)
     expect(state.loading).toBe(false)
     expect(loader.loaded_url).toBeUndefined()
+  })
+
+  test(`does not route an on_load rejection through the transport error callback`, async () => {
+    const loader = create_data_url_loader<string>()
+    const { state, request } = make_harness()
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+
+    const load = defer_next_load(`bad payload`)
+    loader.request(
+      request({
+        url: `https://x.test/a.xyz`,
+        on_load: () => Promise.reject(new Error(`parse failed`)),
+      }),
+    )
+    await load.resolve()
+
+    expect(state.error).toBeUndefined()
+    expect(console_error).toHaveBeenCalledWith(
+      `Failed to process loaded URL 'f.xyz':`,
+      expect.objectContaining({ message: `parse failed` }),
+    )
+    expect(state.loading).toBe(false)
+    console_error.mockRestore()
   })
 })

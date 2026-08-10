@@ -164,9 +164,13 @@
     content: string | ArrayBuffer,
     filename: string,
     metadata?: io.FileLoadMeta,
-  ) {
+    // False once a newer data_url request superseded this one, so a slow URL A cannot
+    // overwrite URL B's surface or report its parse error over B's
+    is_current: () => boolean = () => true,
+  ): Promise<boolean> {
     try {
       await tick()
+      if (!is_current()) return false
       // parse_fermi_file throws a descriptive error when parsing fails
       const parsed = parse_fermi_file(io.as_text(content), filename)
 
@@ -183,9 +187,12 @@
       }
 
       on_file_load?.({ fermi_data, band_data, filename, ...metadata, file_size })
+      return true
     } catch (err) {
+      if (!is_current()) return false
       error_msg = `Failed to parse ${filename}: ${to_error(err).message}`
       on_error?.({ error_msg, filename, ...metadata })
+      return false
     }
   }
 
@@ -208,6 +215,9 @@
       // Only update state if this is still the latest job
       if (job_id === recompute_job_id) {
         fermi_data = result
+        // Re-extraction edits URL-loaded data in place; without re-claiming it the loader
+        // would read the new object as caller-supplied and stop defending its URL.
+        if (data_url_loader.loaded_url) data_url_loader.claim(fermi_data)
       }
     } catch (err) {
       console.error(`Failed to re-extract Fermi surface:`, err)
@@ -288,15 +298,21 @@
 
   $effect(() =>
     data_url_loader.request({
+      // Ownership rather than a plain skip: `skip` stayed true once a URL had produced
+      // data, so switching to a second URL never fetched.
       url: data_url,
-      skip: Boolean(fermi_data || band_data),
+      current_value: fermi_data ?? band_data,
       set_loading: (value) => {
         loading = value
       },
       clear_error: () => {
         error_msg = undefined
       },
-      on_load: ({ content, filename, metadata }) => safe_parse(content, filename, metadata),
+      on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
+        if (await safe_parse(content, filename, metadata, is_current)) {
+          mark_owned(fermi_data ?? band_data)
+        }
+      },
       on_error: (err, filename) => {
         error_msg = err.message
         on_error?.({ error_msg, filename })
@@ -306,8 +322,9 @@
 
   const handle_file_drop = io.create_file_drop_handler({
     allow: () => allow_file_drop,
-    on_drop: (content, filename, metadata) =>
-      (on_file_drop || safe_parse)(content, filename, metadata),
+    on_drop: async (content, filename, metadata) => {
+      await (on_file_drop || safe_parse)(content, filename, metadata)
+    },
     on_error: (msg) => {
       error_msg = msg
       on_error?.({ error_msg: msg })

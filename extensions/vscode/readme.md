@@ -136,7 +136,6 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 
 ```json
 {
-  "matterviz.trajectory.chunk_size": 500,
   "matterviz.trajectory.bin_file_threshold": 10485760,
   "matterviz.structure.sphere_segments": 16
 }
@@ -149,8 +148,8 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 | **General**     | Global appearance and behavior  | `color_scheme`, `background_color`                                                        |
 | **Structure**   | 3D structure visualization      | `atom_radius`, `bond_thickness`, `show_cell_vectors`, `ambient_light`, `show_image_atoms` |
 | **Trajectory**  | Animation and playback controls | `fps`, `auto_play`, `display_mode`, `show_controls`                                       |
-| **Plots**       | Scatter plots and histograms    | `scatter.point.size`, `plot.grid_lines`, `plot.auto_fit_range`                            |
-| **Performance** | Memory and processing options   | `trajectory.chunk_size`, `trajectory.use_indexing`, `structure.sphere_segments`           |
+| **Plots**       | Scatter plots and histograms    | `scatter.point.size`, `plot.grid_lines`, `plot.axis_labels`                               |
+| **Performance** | Memory and processing options   | `trajectory.use_indexing`, `trajectory.bin_file_threshold`, `structure.sphere_segments`   |
 
 ### Pro Tips
 

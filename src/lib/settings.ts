@@ -173,8 +173,6 @@ type BoxViolinStyleType = {
 
 type ConvexHullCommonType = {
   camera_zoom: SettingType<number>
-  camera_center_x: SettingType<number>
-  camera_center_y: SettingType<number>
   color_mode: SettingType<`stability` | `energy`>
   color_scale: SettingType<string>
   show_stable: SettingType<boolean>
@@ -364,24 +362,13 @@ export interface SettingsConfig {
     bin_file_threshold: SettingType<number>
     text_file_threshold: SettingType<number>
     use_indexing: SettingType<boolean>
-    chunk_size: SettingType<number>
 
     // UI/UX
     show_parsing_progress: SettingType<boolean>
-
-    // Performance
-    max_frames_in_memory: SettingType<number>
-    enable_performance_monitoring: SettingType<boolean>
-    prefetch_frames: SettingType<number>
-    cache_parsed_data: SettingType<boolean>
   }
 
   plot: {
     // General plot settings
-    animation_duration: SettingType<number>
-    enable_zoom: SettingType<boolean>
-    zoom_factor: SettingType<number>
-    auto_fit_range: SettingType<boolean>
     grid_lines: SettingType<boolean>
     axis_labels: SettingType<boolean>
     show_x_zero_line: SettingType<boolean>
@@ -555,7 +542,6 @@ const convex_hull_settings = (
   values: {
     camera_zoom: number
     camera_zoom_max: number
-    camera_center_y: number
     max_hull_dist_show_phases: number
   },
 ): ConvexHullCommonType => {
@@ -567,14 +553,6 @@ const convex_hull_settings = (
       description: `Initial camera zoom for ${system} (${dim}) convex hull`,
       minimum: 0.1,
       maximum: values.camera_zoom_max,
-    },
-    camera_center_x: {
-      value: 0,
-      description: `Initial X center for ${system} (${dim}) convex hull`,
-    },
-    camera_center_y: {
-      value: values.camera_center_y,
-      description: `Initial Y center for ${system} (${dim}) convex hull`,
     },
     color_mode: {
       value: `energy` as const,
@@ -667,7 +645,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     description: `Background color of the 3D viewport`,
   },
   background_opacity: {
-    value: 0,
+    // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
+    // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
+    value: 0.1,
     description: `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
     minimum: 0,
     maximum: 1,
@@ -1236,37 +1216,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Use frame indexing for large trajectories`,
     },
-    chunk_size: {
-      value: 1000,
-      description: `Number of frames to process at once`,
-      minimum: 10,
-      maximum: 10000,
-    },
 
     // UI/UX
     show_parsing_progress: {
       value: true,
       description: `Show progress indicator while parsing files`,
     },
-
-    // Performance
-    max_frames_in_memory: {
-      value: 1000,
-      description: `Maximum frames to keep in memory`,
-      minimum: 10,
-      maximum: 10000,
-    },
-    enable_performance_monitoring: {
-      value: false,
-      description: `Enable performance monitoring`,
-    },
-    prefetch_frames: {
-      value: 5,
-      description: `Number of frames to prefetch ahead`,
-      minimum: 0,
-      maximum: 100,
-    },
-    cache_parsed_data: { value: true, description: `Cache parsed trajectory data` },
   },
 
   // Histogram specific
@@ -1646,20 +1601,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Plot general
   plot: {
-    animation_duration: {
-      value: 200,
-      description: `Duration of plot animations in milliseconds`,
-      minimum: 0,
-      maximum: 2000,
-    },
-    enable_zoom: { value: true, description: `Enable zooming in plots` },
-    zoom_factor: {
-      value: 1.5,
-      description: `Zoom factor for plot interactions`,
-      minimum: 1.1,
-      maximum: 5.0,
-    },
-    auto_fit_range: { value: true, description: `Automatically fit plot range to data` },
     grid_lines: { value: true, description: `Show grid lines in plots` },
     axis_labels: { value: true, description: `Show axis labels in plots` },
     show_x_zero_line: { value: true, description: `Show X-axis zero reference line` },
@@ -1709,14 +1650,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     binary: convex_hull_settings(`binary`, {
       camera_zoom: 1.0,
       camera_zoom_max: 10,
-      camera_center_y: 0,
       max_hull_dist_show_phases: 0.1,
     }),
     ternary: {
       ...convex_hull_settings(`ternary`, {
         camera_zoom: 1.5,
         camera_zoom_max: 10,
-        camera_center_y: -50,
         max_hull_dist_show_phases: 0.5,
       }),
       ...hull_face_settings(`3D`, { opacity: 0.3, color_mode: `uniform` }),
@@ -1737,7 +1676,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       ...convex_hull_settings(`quaternary`, {
         camera_zoom: 1.4,
         camera_zoom_max: 20,
-        camera_center_y: 20,
         max_hull_dist_show_phases: 0.1,
       }),
       ...hull_face_settings(`4D`, { opacity: 0.03, color_mode: `dominant_element` }),

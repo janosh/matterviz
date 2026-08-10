@@ -1,6 +1,12 @@
+import {
+  resolve_plot_title,
+  type DecorationSide,
+  type FreeAnnotationDecorationItem,
+  type PlotTitleLineKind,
+} from '$lib/plot'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, expectTypeOf, test } from 'vitest'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
@@ -72,6 +78,13 @@ describe(`package.json exports`, () => {
     expect(Object.keys(pkg.exports).filter((sub) => sub.startsWith(`./plot`))).toEqual([
       `./plot`,
     ])
+  })
+
+  test(`plot keeps selected title and decoration compatibility exports`, () => {
+    expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()
+    expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
+    expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
+    expect(resolve_plot_title({ text: `Title` }, { width: 100 }).lines[0]?.kind).toBe(`title`)
   })
 
   test(`worker-backed parser ships its sibling worker entry`, () => {

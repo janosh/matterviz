@@ -151,14 +151,15 @@ export function parse_vasp_header(
     const scale_tokens = split_tokens(scale_line).map((token) =>
       parse_num_token(normalize_scientific_notation(token)),
     )
-    let uniform_scale = scale_tokens[0]
-    if (!Number.isFinite(uniform_scale)) {
-      return fail(`Invalid scale factor in ${format}: '${scale_line.trim()}'`)
-    }
+    const bad_scale = () => fail(`Invalid scale factor in ${format}: '${scale_line.trim()}'`)
+    // The leading numeric run may be followed by a comment. Accept one uniform/volume
+    // factor or exactly three positive per-axis factors.
+    const non_numeric = scale_tokens.findIndex((value) => !Number.isFinite(value))
+    const factors = non_numeric === -1 ? scale_tokens : scale_tokens.slice(0, non_numeric)
     const per_axis_scale =
-      scale_tokens.length >= 3 && scale_tokens.slice(0, 3).every(Number.isFinite)
-        ? (scale_tokens.slice(0, 3) as Vec3)
-        : null
+      factors.length === 3 && factors.every((value) => value > 0) ? (factors as Vec3) : null
+    if (factors.length !== 1 && !per_axis_scale) return bad_scale()
+    let uniform_scale = factors[0]
 
     // Lattice rows sit on file lines 3-5 of the header and are named by that line in errors
     const lattice_rows: string[] = []
@@ -239,9 +240,14 @@ export function parse_vasp_header(
       elements = raw_symbols.map((symbol, idx) => validate_element_symbol(symbol, idx))
     }
 
-    if (strict_species && counts.some((count) => !Number.isInteger(count) || count <= 0)) {
+    const count_requirement = `finite ${strict_species ? `positive` : `non-negative`} integers`
+    const min_count = strict_species ? 1 : 0
+    if (
+      counts.length === 0 ||
+      counts.some((count) => !Number.isInteger(count) || count < min_count)
+    ) {
       return fail(
-        `${format} has invalid atom counts (need finite positive integers): [${counts.join(
+        `${format} has invalid atom counts (need ${count_requirement}): [${counts.join(
           `, `,
         )}]`,
       )
@@ -259,7 +265,7 @@ export function parse_vasp_header(
       if (mode_line === undefined) {
         return fail(`${format}: file ends before the coordinate mode line`)
       }
-      has_selective_dynamics = mode_line.trim().toUpperCase().startsWith(`S`)
+      has_selective_dynamics = /^selective\s+dynamics$/i.test(mode_line.trim())
       if (has_selective_dynamics) {
         cursor.advance()
         mode_line = cursor.peek()

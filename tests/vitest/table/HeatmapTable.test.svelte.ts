@@ -884,9 +884,8 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelectorAll(`th`)).toHaveLength(2)
     })
 
-    // Reset restores each column's mount-time visibility, so a column hidden via the
-    // `hidden_columns` prop must go back to hidden — not become visible along with the rest.
-    it(`reset restores the columns hidden at mount rather than showing everything`, async () => {
+    // Persisted hidden state is current UI state, not the declared column reset baseline.
+    it(`reset restores declared defaults rather than persisted hidden columns`, async () => {
       const state = $state({ hidden_columns: [`Value`] })
       mount_table(
         bind_props(
@@ -899,16 +898,39 @@ describe(`HeatmapTable`, () => {
 
       doc_query(`.column-toggles summary`).click()
       await tick()
-      const value_checkbox = [
-        ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
-      ][2]
-      value_checkbox.click()
-      await tick()
-      expect(state.hidden_columns).toEqual([])
 
       doc_query(`.column-toggles summary .reset-btn`).click()
       await tick()
-      expect(state.hidden_columns).toEqual([`Value`])
+      expect(state.hidden_columns).toEqual([])
+      expect(document.querySelectorAll(`th`)).toHaveLength(3)
+    })
+
+    it(`resets duplicate grouped labels by their qualified column IDs`, async () => {
+      const state = $state({ hidden_columns: [] as string[] })
+      mount_table(
+        bind_props(
+          {
+            data: [{ 'Value (Group A)': 1, 'Value (Group B)': 2 }],
+            columns: [
+              { label: `Value`, group: `Group A`, description: `` },
+              { label: `Value`, group: `Group B`, visible: false, description: `` },
+            ],
+            show_column_toggle: true,
+          },
+          state,
+        ),
+      )
+      await tick()
+
+      doc_query(`.column-toggles summary`).click()
+      await tick()
+      doc_query<HTMLInputElement>(`.sections-container input`).click()
+      await tick()
+      expect(state.hidden_columns).toEqual([`Value (Group A)`])
+
+      doc_query(`.column-toggles summary .reset-btn`).click()
+      await tick()
+      expect(state.hidden_columns).toEqual([])
     })
 
     // `hidden_columns` can't override a column the caller declared invisible, so the menu

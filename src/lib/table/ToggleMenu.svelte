@@ -7,6 +7,9 @@
   import type { Snippet } from 'svelte'
   import { slide } from 'svelte/transition'
 
+  // Hosts with external visibility state can keep the declared reset baseline separate.
+  type ToggleColumn = Label & { default_visible?: boolean }
+
   let {
     columns = $bindable([]),
     column_panel_open = $bindable(false),
@@ -16,7 +19,7 @@
     on_toggle,
     trigger,
   }: {
-    columns: Label[]
+    columns: ToggleColumn[]
     column_panel_open?: boolean
     // Maximum number of grid columns for toggle layout
     n_columns?: number
@@ -25,12 +28,20 @@
     on_reset?: (section?: string) => void
     // Every visibility change, resets included, for hosts that track it outside
     // `col.visible` (HeatmapTable keeps an id list)
-    on_toggle?: (col: Label, visible: boolean) => void
+    on_toggle?: (col: ToggleColumn, visible: boolean) => void
     // Replaces the default "Columns" button. The summary keeps owning the click.
     trigger?: Snippet<[{ open: boolean }]>
   } = $props()
 
-  const col_id = (col: Label) => col.key ?? col.label
+  // Group-qualified IDs keep duplicate labels distinct. HeatmapTable already passes
+  // qualified keys, so avoid appending the suffix twice.
+  const col_id = (col: Label) => {
+    const key = col.key ?? col.label
+    const group_suffix = col.group ? ` (${col.group})` : ``
+    return group_suffix && !key.endsWith(group_suffix) ? `${key}${group_suffix}` : key
+  }
+  const default_visible = (col: ToggleColumn): boolean =>
+    col.default_visible ?? col.visible !== false
   const toggle_menu_id = $props.id()
   const dropdown_selector = `[data-toggle-menu-id="${toggle_menu_id}"]`
   const COLUMN_FILTER_THRESHOLD = 20
@@ -60,14 +71,14 @@
   // column set, which would resnapshot defaults and silently drop the reset baseline.
   const default_signature = () =>
     columns
-      .map((col) => `${col_id(col)}:${col.visible !== false}`)
+      .map((col) => `${col_id(col)}:${default_visible(col)}`)
       .toSorted()
       .join(`\0`)
 
   function snapshot_defaults() {
     default_visibility = {}
     for (const col of columns) {
-      default_visibility[col_id(col)] = col.visible !== false
+      default_visibility[col_id(col)] = default_visible(col)
     }
     last_seen_signature = default_signature()
   }

@@ -2,7 +2,7 @@ import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LegendTrackSuggestionConfig } from './tracks'
 
 export type DecorationKind = `legend` | `colorbar` | `free-annotation` | `reference-annotation`
-type DecorationSide = `top` | `right` | `bottom` | `left`
+export type DecorationSide = `top` | `right` | `bottom` | `left`
 export type DecorationPoint = { x: number; y: number }
 export type DecorationSize = { width: number; height: number }
 export type ReferenceAnnotationPosition = `start` | `center` | `end`
@@ -47,7 +47,7 @@ export type ColorbarDecorationItem = DecorationItemBase & {
   horizontal?: boolean
 }
 
-type FreeAnnotationDecorationItem = DecorationItemBase & {
+export type FreeAnnotationDecorationItem = DecorationItemBase & {
   kind: `free-annotation`
 }
 
