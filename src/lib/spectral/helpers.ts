@@ -1,4 +1,10 @@
 // Helper utilities for band structure and DOS data processing
+import {
+  ELEMENTARY_CHARGE_C,
+  HARTREE_TO_EV,
+  PLANCK_J_S,
+  THZ_TO_INVERSE_CM,
+} from '$lib/constants'
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
 import { euclidean_dist, is_square_matrix } from '$lib/math'
@@ -32,15 +38,10 @@ export const detect_zoom_change = (
     current_synced,
   )
 
-// Physical constants for unit conversions (SI units)
-const PLANCK = 6.62607015e-34 // J⋅s
-const EV_TO_J = 1.602176634e-19 // J
-const C_LIGHT = 299792458 // m/s
-const THz_TO_HZ = 1e12
-const THz_TO_EV = (PLANCK * THz_TO_HZ) / EV_TO_J
+// Phonon frequency unit conversions, derived from the shared CODATA constants
+const THz_TO_EV = (PLANCK_J_S * 1e12) / ELEMENTARY_CHARGE_C
 const THz_TO_MEV = THz_TO_EV * 1000
-const THz_TO_HA = THz_TO_EV / 27.211386245988 // Hartree
-const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
+const THz_TO_HA = THz_TO_EV / HARTREE_TO_EV
 
 // Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
@@ -196,7 +197,7 @@ export function convert_frequencies(
     eV: THz_TO_EV,
     meV: THz_TO_MEV,
     Ha: THz_TO_HA,
-    'cm-1': THz_TO_CM,
+    'cm-1': THZ_TO_INVERSE_CM,
   }
 
   const factor = conversion_factors[unit]
@@ -407,7 +408,7 @@ const parse_qpoint = (qpt: unknown, label_entries: [string, Vec3][]): types.QPoi
 
 // Inverse conversion factors (derived from THz_TO_* for consistency)
 const EV_TO_THZ = 1 / THz_TO_EV
-const CM_TO_THZ = 1 / THz_TO_CM
+const CM_TO_THZ = 1 / THZ_TO_INVERSE_CM
 
 // Spin key constants for pymatgen spin-polarized data
 const SPIN_UP_KEYS = [`1`, `Spin.up`]
@@ -1227,12 +1228,6 @@ export const NORMALIZATION_MODES = [
 
 // Available frequency units for phonon DOS
 export const FREQUENCY_UNITS: types.FrequencyUnit[] = [`THz`, `eV`, `meV`, `cm-1`, `Ha`]
-
-// Default values for DOS controls
-export const DEFAULT_SPIN_MODE: types.SpinMode = `mirror`
-export const DEFAULT_SIGMA = 0
-export const DEFAULT_NORMALIZE: types.NormalizationMode = null
-export const DEFAULT_UNITS: types.FrequencyUnit = `THz`
 
 // Format sigma with adaptive precision: 0→"0", <0.01→exp, <1→3dp, else→2dp
 export function format_sigma(val: number): string {

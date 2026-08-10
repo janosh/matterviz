@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { PaneToggleProps } from '$lib/overlays'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
@@ -16,7 +17,7 @@
     svg_element = undefined,
     svg_query_selector = `svg.binary-phase-diagram`,
     filename = `phase-diagram`,
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
     ...rest

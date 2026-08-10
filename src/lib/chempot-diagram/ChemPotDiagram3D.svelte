@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { Cross, Filter } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
@@ -1793,7 +1794,7 @@
     overrides.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 
-  let png_dpi = $state(150)
+  let png_dpi = $state(DEFAULT_PNG_DPI)
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
   const current_view_settings = (): Record<string, unknown> =>

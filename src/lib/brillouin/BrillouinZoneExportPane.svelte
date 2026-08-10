@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
@@ -14,7 +15,7 @@
     scene,
     camera,
     filename = `brillouin-zone`,
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean

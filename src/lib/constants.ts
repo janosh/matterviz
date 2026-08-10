@@ -1,4 +1,5 @@
-// Shared constants: physical unit conversions, then file type detection keywords.
+// Shared constants with no dependencies of their own, so build scripts can import them:
+// physical unit conversions, export defaults, then file type detection keywords.
 
 // === physical constants ===
 
@@ -7,6 +8,25 @@
 // parse.ts) can't drift apart again — they previously carried 0.529177249 (CODATA 1986)
 // and 0.529177, which disagreed by 4.7e-7 relative.
 export const BOHR_TO_ANGSTROM = 0.529177210544
+
+// Hartree energy in eV (CODATA 2022). Same drift story as BOHR_TO_ANGSTROM: the FRMSF
+// band reader carried 27.2114 while the phonon unit table carried 27.211386245988, which
+// disagreed by 5.1e-7 relative — 2.3e9x f64 eps, so not round-off.
+export const HARTREE_TO_EV = 27.211386245981
+
+// Exact by SI definition. Shared so the phonon unit table (spectral/helpers.ts) and the
+// X-ray wavelength math (xrd/calc-xrd.ts) can't drift apart the way the Hartree values did.
+export const PLANCK_J_S = 6.62607015e-34 // J*s
+export const ELEMENTARY_CHARGE_C = 1.602176634e-19 // C (numerically also 1 eV in J)
+export const SPEED_OF_LIGHT_M_S = 299792458 // m/s
+
+// Wavenumber of a 1 THz vibration, i.e. 1e12 Hz over c in cm/s. The phonon unit table and
+// the VDOS frequency axis both need it and had derived it separately.
+export const THZ_TO_INVERSE_CM = 1e12 / (SPEED_OF_LIGHT_M_S * 100)
+
+// Default resolution for PNG export, shared by every viewer's export pane and by the
+// export helpers themselves — it was previously written out as a literal in 11 files.
+export const DEFAULT_PNG_DPI = 150
 
 // === file type detection ===
 

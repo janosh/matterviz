@@ -7,12 +7,8 @@
 //
 // Schema reference: ferrox src/io/vasp/hdf5/mod.rs path constants (which follow
 // py4vasp's VASP 6.x schema definitions).
-import {
-  create_frac_to_cart,
-  euclidean_dist,
-  matrix_inverse_3x3,
-  transpose_3x3_matrix,
-} from '$lib/math'
+import { reciprocal_lattice } from '$lib/brillouin/compute'
+import { create_frac_to_cart, euclidean_dist } from '$lib/math'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { pretty_sym_point } from '$lib/spectral/helpers'
 import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
@@ -106,21 +102,20 @@ const read_lattice = (h5_file: h5wasm.File): Matrix3x3 | null => {
   return null
 }
 
-// B = 2π (A⁻¹)ᵀ for row-vector real lattice A; falls back to 2π·identity so
-// bands-only files without any (invertible) lattice still get monotonic path
-// distances.
-const reciprocal_lattice = (lattice: Matrix3x3 | null): Matrix3x3 => {
-  let recip: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+// B = 2π (A⁻¹)ᵀ, falling back to 2π·identity so bands-only files without an invertible
+// lattice still get monotonic path distances. Builds a fresh array per call: the result
+// escapes into recip_lattice.matrix, so a shared constant would alias across parses.
+const reciprocal_lattice_or_identity = (lattice: Matrix3x3 | null): Matrix3x3 => {
   try {
-    if (lattice) recip = transpose_3x3_matrix(matrix_inverse_3x3(lattice))
+    if (lattice) return reciprocal_lattice(lattice)
   } catch {
-    // singular lattice: keep identity
+    // singular lattice — fall through to identity
   }
-  return recip.map((row) => row.map((val) => val * 2 * Math.PI)) as Matrix3x3
+  return [
+    [2 * Math.PI, 0, 0],
+    [0, 2 * Math.PI, 0],
+    [0, 0, 2 * Math.PI],
+  ]
 }
 
 // VASP line-mode label layout: 2 labels per path segment of `per_segment` points
@@ -181,7 +176,7 @@ export const read_vaspout_bands = (
         ? transpose(spin_down)
         : undefined
 
-    const recip = reciprocal_lattice(read_lattice(h5_file))
+    const recip = reciprocal_lattice_or_identity(read_lattice(h5_file))
     const line_mode = line_mode_labels(
       to_string_array(
         read_first_dataset(h5_file, [`${group}/kpoints_labels`, ...KPOINT_LABEL_PATHS]),
