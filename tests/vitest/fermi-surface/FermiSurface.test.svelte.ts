@@ -82,10 +82,7 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
     `# Fermi energy: ${fermi_energy} eV\nBEGIN_BLOCK_BANDGRID_3D\n  band_energies\n  BEGIN_BANDGRID_3D\n    1\n    3 3 3\n    0.0 0.0 0.0\n    1.0 0.0 0.0\n    0.0 1.0 0.0\n    0.0 0.0 1.0\n    BAND:   1\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    7.0 8.0 7.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n    6.0 7.0 6.0\n    5.0 6.0 5.0\n  END_BANDGRID_3D\nEND_BLOCK_BANDGRID_3D\n`
   const slow = Promise.withResolvers<string>()
   vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
-    let url: string
-    if (typeof input === `string`) url = input
-    else if (input instanceof URL) url = input.href
-    else url = input.url
+    const url = input instanceof Request ? input.url : input.toString()
     const body = url.endsWith(`a.bxsf`) ? slow.promise : Promise.resolve(bxsf(2))
     return body.then((text) => new Response(text, { status: 200 }))
   })

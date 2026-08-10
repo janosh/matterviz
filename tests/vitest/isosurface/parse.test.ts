@@ -54,21 +54,6 @@ describe(`parse_chgcar`, () => {
     warn.mockRestore()
   })
 
-  // The scale line goes through parse_leading_num rather than the vec3 path, so it needs
-  // its own Fortran case. Blank must stay NaN: Number('') is 0, which would silently
-  // collapse the lattice instead of reporting a bad header.
-  test.each([
-    [`1.0D+00`, 5.43],
-    [`5.0D-01`, 2.715],
-  ])(`applies Fortran-exponent scale %s`, (scale, expected_a) => {
-    const result = parse_chgcar(make_chgcar({ scale }))
-    expect(result?.structure.lattice?.a).toBeCloseTo(expected_a, 3)
-  })
-
-  test(`rejects a blank scale line`, () => {
-    expect(parse_chgcar(make_chgcar({ scale: `   ` }))).toBeNull()
-  })
-
   test(`parses valid CHGCAR with Fortran exponents, grid, and volume normalization`, () => {
     const result = parse_chgcar(
       make_chgcar({
@@ -330,6 +315,7 @@ describe(`parse_chgcar`, () => {
     [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
     // blank scale line must error, not silently become scale 0 (Number(``) is 0)
     [`blank scale factor line`, make_chgcar({ scale: `` })],
+    [`whitespace-only scale factor line`, make_chgcar({ scale: `   ` })],
     // VASP accepts one factor or exactly three positive per-axis factors
     [`two scale factors`, make_chgcar({ scale: `1 2` })],
     [`four scale factors`, make_chgcar({ scale: `1 2 3 4` })],

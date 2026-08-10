@@ -613,12 +613,10 @@ const hull_face_settings = (
     value: `#4caf50`,
     description: `Color for hull faces in ${dim} convex hull`,
   },
-  hull_face_opacity: {
-    value: values.opacity,
-    description: `Opacity for hull faces in ${dim} convex hull (0-1)`,
-    minimum: 0,
-    maximum: 1,
-  },
+  hull_face_opacity: opacity_setting(
+    values.opacity,
+    `Opacity for hull faces in ${dim} convex hull (0-1)`,
+  ),
   hull_face_color_mode: {
     value: values.color_mode,
     description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
@@ -730,12 +728,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `When to render coordination polyhedra around cation-like centers`,
       enum: SHOW_BONDS_ENUM,
     },
-    polyhedra_opacity: {
-      value: 0.2,
-      description: `Opacity of coordination polyhedra faces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    polyhedra_opacity: opacity_setting(0.2, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {
       value: true,
       description: `Draw outlines along coordination polyhedra edges`,
@@ -1019,18 +1012,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       enum: { unwrap: `Unwrap (continuous)`, break: `Break at cell crossings` },
     },
     show_cell_vectors: { value: true, description: `Display cell vectors` },
-    cell_edge_opacity: {
-      value: 0.3,
-      description: `Opacity of cell edge lines`,
-      minimum: 0,
-      maximum: 1,
-    },
-    cell_surface_opacity: {
-      value: 0.1,
-      description: `Opacity of cell surfaces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    cell_edge_opacity: opacity_setting(0.3, `Opacity of cell edge lines`),
+    cell_surface_opacity: opacity_setting(0.1, `Opacity of cell surfaces`),
     cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: {
@@ -1226,12 +1209,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     bar: {
       color: { value: `#4A9EFF`, description: `Histogram bar fill color` },
-      opacity: {
-        value: 0.7,
-        description: `Histogram bar opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.7, `Histogram bar opacity`),
       stroke_width: {
         value: 1,
         description: `Histogram bar stroke width`,
@@ -1239,12 +1217,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 5,
       },
       stroke_color: { value: `#000000`, description: `Histogram bar stroke color` },
-      stroke_opacity: {
-        value: 0.5,
-        description: `Histogram bar stroke opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      stroke_opacity: opacity_setting(0.5, `Histogram bar stroke opacity`),
     },
     display: DISPLAY_CONFIG,
   },
@@ -1253,12 +1226,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   bar: {
     bar: {
       color: { value: `#4A9EFF`, description: `Bar plot fill color` },
-      opacity: {
-        value: 0.6,
-        description: `Bar plot opacity (overlay mode)`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.6, `Bar plot opacity (overlay mode)`),
       border_radius: {
         value: 3,
         description: `Corner radius for bar tops (px)`,
@@ -1325,7 +1293,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     box: {
       color: { value: `#4A9EFF`, description: `Box fill color` },
-      opacity: { value: 0.6, description: `Box fill opacity`, minimum: 0, maximum: 1 },
+      opacity: opacity_setting(0.6, `Box fill opacity`),
       stroke_width: {
         value: 0.5,
         description: `Box outline width`,
@@ -1370,12 +1338,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0.5,
         maximum: 10,
       },
-      opacity: {
-        value: 0.6,
-        description: `Outlier point opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.6, `Outlier point opacity`),
       stroke_width: {
         value: 0,
         description: `Outlier point stroke width`,
@@ -1384,7 +1347,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     violin: {
-      opacity: { value: 0.5, description: `Violin fill opacity`, minimum: 0, maximum: 1 },
+      opacity: opacity_setting(0.5, `Violin fill opacity`),
       stroke_width: {
         value: 1,
         description: `Violin outline width`,
@@ -1539,12 +1502,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 20,
       },
       color: { value: `#4A9EFF`, description: `Default color for scatter plot points` },
-      opacity: {
-        value: 1,
-        description: `Opacity of scatter plot points`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(1, `Opacity of scatter plot points`),
       stroke_width: {
         value: 1,
         description: `Stroke width for scatter plot points`,
@@ -1555,12 +1513,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `#000000`,
         description: `Stroke color for scatter plot points`,
       },
-      stroke_opacity: {
-        value: 1,
-        description: `Stroke opacity for scatter plot points`,
-        minimum: 0,
-        maximum: 1,
-      },
+      stroke_opacity: opacity_setting(1, `Stroke opacity for scatter plot points`),
     },
     line: {
       width: {
@@ -1570,12 +1523,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 10,
       },
       color: { value: `#4A9EFF`, description: `Default color for scatter plot lines` },
-      opacity: {
-        value: 1,
-        description: `Opacity of scatter plot lines`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(1, `Opacity of scatter plot lines`),
       dash: {
         value: `solid`,
         description: `Line dash pattern for scatter plots (e.g. "4,4" for dashed)`,

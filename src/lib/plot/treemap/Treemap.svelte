@@ -609,21 +609,6 @@
     cursor: default;
     font-weight: bold;
   }
-  .treemap :global(.pane-toggle),
-  .treemap :global(.header-controls) {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  .treemap:hover :global(.pane-toggle),
-  .treemap:hover :global(.header-controls),
-  .treemap :global(.pane-toggle:focus-visible),
-  .treemap :global(.pane-toggle[aria-expanded='true']),
-  .treemap :global(.header-controls:has([aria-expanded='true'])),
-  .treemap :global(.header-controls:focus-within) {
-    opacity: 1;
-  }
   .treemap :global(svg[role='application']) {
     width: var(--treemap-svg-width, 100%);
     height: var(--treemap-svg-height, 100%);

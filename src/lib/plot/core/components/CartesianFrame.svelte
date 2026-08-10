@@ -1,6 +1,7 @@
 <script lang="ts">
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import type { CartesianFrame, FrameAxis } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { FacetAxis } from '$lib/plot/core/facets'
   import {
     marginal_axis,
     marginal_axis_presence,
@@ -103,7 +104,7 @@
 
   const dims = $derived({ width: frame.width, height: frame.height, fullscreen })
   const title_pad = $derived(frame.effective_base_pad)
-  const get_marginal_axis = (axis: FrameAxis, binding: MarginalAxisBinding): MarginalAxis =>
+  const get_marginal_axis = (axis: FacetAxis, binding: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
       frame.scales[axis],
       frame.ranges.current[axis],

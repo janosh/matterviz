@@ -232,9 +232,12 @@ describe(`VASP XDATCAR Parser`, () => {
   const xdatcar_with_scale = (scale: string) =>
     `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
 
-  it(`should reject blank scale lines but tolerate trailing comments like parseFloat`, async () => {
+  it(`uses the shared VASP scale grammar`, async () => {
     // Number(``) is 0, not NaN - a blank scale line must be a parse error
     await expect(parse_trajectory_data(xdatcar_with_scale(``), `XDATCAR`)).rejects.toThrow(
+      `Invalid scale factor`,
+    )
+    await expect(parse_trajectory_data(xdatcar_with_scale(`1 2`), `XDATCAR`)).rejects.toThrow(
       `Invalid scale factor`,
     )
     const trajectory = await parse_trajectory_data(
@@ -243,49 +246,18 @@ describe(`VASP XDATCAR Parser`, () => {
     )
     const structure = trajectory.frames[0].structure
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
-  })
-
-  // VASP accepts one factor or exactly three positive per-axis factors
-  it.each([`1 2`, `1 2 3 4`, `0 1 1`, `-1 1 1`])(
-    `rejects malformed XDATCAR scale line %s`,
-    async (scale) => {
-      await expect(
-        parse_trajectory_data(xdatcar_with_scale(scale), `XDATCAR`),
-      ).rejects.toThrow(`Invalid scale factor`)
-    },
-  )
-
-  // XDATCAR shares the POSCAR header grammar, so it now honours the same scale forms:
-  // three per-axis Cartesian factors, a negative single factor meaning target cell volume,
-  // and Fortran `D` exponents (all three used to be read as a plain leading number)
-  it.each([
-    [`per-axis factors`, `2 1 3`, [`1 0 0`, `0 1 0`, `0 0 1`], [2, 1, 3]],
-    [`negative factor = target volume`, `-27.0`, [`1 0 0`, `0 1 0`, `0 0 1`], [3, 3, 3]],
-    [`Fortran exponent factor`, `5.0D-01`, [`6 0 0`, `0 6 0`, `0 0 6`], [3, 3, 3]],
-    [
-      `Fortran exponent lattice`,
-      `1.0`,
-      [`3.0D+00 0 0`, `0 3.0D+00 0`, `0 0 3.0D+00`],
-      [3, 3, 3],
-    ],
-  ])(`applies %s to the XDATCAR lattice`, async (_label, scale, lattice, abc) => {
-    const content = [
-      `title`,
-      scale,
-      ...lattice,
-      `H`,
-      `1`,
-      `Direct configuration= 1`,
-      `0.5 0.5 0.5`,
-      `Direct configuration= 2`,
-      `0.5 0.5 0.5`,
-    ].join(`\n`)
-    const { structure } = (await parse_trajectory_data(content, `XDATCAR`)).frames[0]
-    const lattice_abc =
-      `lattice` in structure
-        ? [structure.lattice.a, structure.lattice.b, structure.lattice.c]
-        : null
-    expect(lattice_abc).toEqual(abc)
+    const per_axis_structure = (
+      await parse_trajectory_data(xdatcar_with_scale(`2 1 3`), `XDATCAR`)
+    ).frames[0].structure
+    expect(
+      `lattice` in per_axis_structure
+        ? [
+            per_axis_structure.lattice.a,
+            per_axis_structure.lattice.b,
+            per_axis_structure.lattice.c,
+          ]
+        : null,
+    ).toEqual([10, 5, 15])
   })
 
   // Unlike POSCAR/CHGCAR, XDATCAR refuses to invent element symbols: they go straight into

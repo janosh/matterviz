@@ -14,7 +14,7 @@
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { type ColorBarSide, is_activation_key } from '$lib/plot/core/utils/hierarchy-chart'
+  import { is_activation_key } from '$lib/plot/core/utils/hierarchy-chart'
   import {
     HierarchyChartState,
     type HierarchyChartProps,
@@ -551,21 +551,6 @@
     cursor: default;
     font-weight: bold;
     background: transparent;
-  }
-  .sunburst :global(.pane-toggle),
-  .sunburst :global(.header-controls) {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  .sunburst:hover :global(.pane-toggle),
-  .sunburst:hover :global(.header-controls),
-  .sunburst :global(.pane-toggle:focus-visible),
-  .sunburst :global(.pane-toggle[aria-expanded='true']),
-  .sunburst :global(.header-controls:has([aria-expanded='true'])),
-  .sunburst :global(.header-controls:focus-within) {
-    opacity: 1;
   }
   .sunburst :global(svg[role='application']) {
     width: var(--sunburst-svg-width, 100%);

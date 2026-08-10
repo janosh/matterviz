@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { CartesianFrame, FrameAxis } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { FacetAxis } from '$lib/plot/core/facets'
   import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
   import { AXIS_TITLE_OFFSET, y_axis_label_x, y2_axis_label_x } from '$lib/plot/core/layout'
   import { get_tick_label, type TicksOption } from '$lib/plot/core/scales'
@@ -18,14 +19,14 @@
     frame: CartesianFrame
     display: DisplayConfig
     // Tick label source overriding `axis.ticks` (categorical axes label their slots)
-    label_ticks?: Partial<Record<FrameAxis, TicksOption>>
-    tick_color?: Partial<Record<FrameAxis, (tick: number) => string | undefined>>
-    axis_loading?: FrameAxis | null
-    on_axis_change?: (axis: FrameAxis, key: string) => void
+    label_ticks?: Partial<Record<FacetAxis, TicksOption>>
+    tick_color?: Partial<Record<FacetAxis, (tick: number) => string | undefined>>
+    axis_loading?: FacetAxis | null
+    on_axis_change?: (axis: FacetAxis, key: string) => void
   } = $props()
 </script>
 
-{#snippet plot_axis(side: FrameAxis)}
+{#snippet plot_axis(side: FacetAxis)}
   {@const axis = frame.axes[side]}
   {@const pad = frame.pad}
   {@const shift = axis.label_shift ?? {}}

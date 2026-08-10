@@ -14,7 +14,7 @@ import {
   solve_decorations,
 } from '$lib/plot/core/decorations'
 import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
-import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
+import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
 import {
   axis_ranges_equal,
   invert_rect_range,
@@ -50,12 +50,11 @@ import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '$lib/plot/
 import { unique_id } from '$lib/plot/core/utils'
 import { untrack } from 'svelte'
 
-export type FrameAxis = (typeof FACET_AXES)[number]
-type FrameAxes = Record<FrameAxis, AxisConfig>
-type PerAxis<Value> = Partial<Record<FrameAxis, Value>>
+type FrameAxes = Record<FacetAxis, AxisConfig>
+type PerAxis<Value> = Partial<Record<FacetAxis, Value>>
 
 // Tick counts each axis asks for when the axis config leaves `ticks` unset
-const DEFAULT_TICK_COUNTS: Record<FrameAxis, number> = { x: 8, x2: 8, y: 6, y2: 6 }
+const DEFAULT_TICK_COUNTS: Record<FacetAxis, number> = { x: 8, x2: 8, y: 6, y2: 6 }
 
 export interface CartesianFrameOptions {
   // Axis configs with component defaults already merged in. Drive scales, ticks,
@@ -82,20 +81,20 @@ export interface CartesianFrameOptions {
   facet_layout: () => FacetLayoutContext | undefined
   // Write a resolved range back to the chart's (bindable) axis prop. `[null, null]`
   // clears the override so later data changes recompute the auto range.
-  write_range: (axis: FrameAxis, range: Vec2 | [null, null]) => void
+  write_range: (axis: FacetAxis, range: Vec2 | [null, null]) => void
   // Ranges the padding pass measures against inside a facet grid. Defaults to
   // `auto_ranges`; Histogram re-bins against the reconciled x domain first.
   facet_ranges?: () => AxisRanges
   // Axis configs whose `range` overrides feed the range sync. Defaults to `axes`;
   // Histogram log-sanitizes its count axes here.
-  range_sources?: () => Record<FrameAxis, Pick<AxisConfig, `range`>>
+  range_sources?: () => Record<FacetAxis, Pick<AxisConfig, `range`>>
   // `per-axis` leaves a panned axis alone when a different axis's auto range moves,
   // `all-axes` resnaps every axis whenever any of them changes.
   range_sync?: `per-axis` | `all-axes`
   // Replace an axis's generated ticks (categorical axes plot one tick per category). An
   // empty array falls back to generated ticks, since a categorical axis with no categories
   // has nothing to label.
-  tick_override?: (axis: FrameAxis) => number[] | undefined
+  tick_override?: (axis: FacetAxis) => number[] | undefined
   // Axis configs used only when measuring tick labels (categorical axes measure their
   // category labels rather than the numeric slot indices)
   measured_axes?: () => PerAxis<AxisConfig>
@@ -131,9 +130,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // base_pad reserves space for tick labels/axis titles; `pad` adds decoration reservations
   let base_pad = $derived(filter_padding(opts.padding(), DEFAULT_PLOT_PADDING))
   const title_config = $derived(normalize_plot_title(opts.title()))
-  const axis_shown = (axis: FrameAxis): boolean =>
+  const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
-  const measured_axis_config = (axis: FrameAxis): AxisConfig =>
+  const measured_axis_config = (axis: FacetAxis): AxisConfig =>
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
 
   const facet = create_facet_plot_adapter({
@@ -148,8 +147,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const compute_ticks = (
     axis_scales: ReturnType<typeof create_axis_scales>,
     axis_ranges: AxisRanges,
-  ): Record<FrameAxis, number[]> => {
-    const entries = FACET_AXES.map((axis): [FrameAxis, number[]] => {
+  ): Record<FacetAxis, number[]> => {
+    const entries = FACET_AXES.map((axis): [FacetAxis, number[]] => {
       if (!width || !height) return [axis, []]
       const override = opts.tick_override?.(axis)
       if (override?.length) return [axis, override]
@@ -166,7 +165,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         ),
       ]
     })
-    return Object.fromEntries(entries) as Record<FrameAxis, number[]>
+    return Object.fromEntries(entries) as Record<FacetAxis, number[]>
   }
 
   // Sync ranges from axis.range overrides and auto ranges. resolve_axis_ranges returns
@@ -208,7 +207,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const padding_ticks = compute_ticks(padding_scales, padding_ranges)
     const x_extent = { start: base_pad.l, end: width - base_pad.r }
     const y_extent = { start: height - base_pad.b, end: base_pad.t }
-    const measure = (axis: FrameAxis) =>
+    const measure = (axis: FacetAxis) =>
       measured_axis(
         axis_shown(axis) ? measured_axis_config(axis) : {},
         padding_ticks[axis],
@@ -284,7 +283,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render
   const tick_label_widths = $derived.by(() => {
     const extent = { start: height - pad.b, end: pad.t }
-    const band = (axis: FrameAxis) =>
+    const band = (axis: FacetAxis) =>
       resolve_tick_layout(
         measured_axis(
           measured_axis_config(axis),
@@ -396,9 +395,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get ranges() {
       return ranges
-    },
-    get base_pad() {
-      return base_pad
     },
     get effective_base_pad() {
       return effective_base_pad

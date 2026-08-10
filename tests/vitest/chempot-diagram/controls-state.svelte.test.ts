@@ -95,9 +95,7 @@ test(`ChemPotScene3D derives backside placement from current ranges`, () => {
   expect(source).toContain(
     `niced_range.map((range, axis_idx) => range[backside_indices[axis_idx]])`,
   )
-  const effects = source.match(/\$effect\(\(\) => \{[\s\S]*?\n  \}\)/g) ?? []
-  const backside_effect = effects.find((effect) =>
-    effect.includes(`update_backside_indices(center)`),
-  )
-  expect(backside_effect).toContain(`const center = data_center`)
+  expect(source).not.toMatch(/let (?:back|out_[xy]) = \$state/)
+  expect(source).toContain(`const center = data_center`)
+  expect(source).toContain(`update_backside_indices(center)`)
 })

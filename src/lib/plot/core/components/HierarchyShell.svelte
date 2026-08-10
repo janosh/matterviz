@@ -220,6 +220,15 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    opacity: 0;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
+  }
+  :global(:is(.sunburst, .treemap):hover) .header-controls,
+  .header-controls:has(:global([aria-expanded='true'])),
+  .header-controls:focus-within {
+    opacity: 1;
   }
   .header-controls :global(.fullscreen-toggle) {
     position: static;

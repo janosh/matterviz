@@ -92,21 +92,6 @@ function find_line_offset(text: string, target_line: number): number {
   return pos
 }
 
-// Read N lines starting from pos, returning array of trimmed lines and final offset
-function read_lines(
-  text: string,
-  pos: number,
-  count: number,
-): { lines: string[]; next: number } {
-  const result: string[] = []
-  for (let idx = 0; idx < count; idx++) {
-    const { line, next } = read_text_line(text, pos)
-    result.push(line.trim())
-    pos = next
-  }
-  return { lines: result, next: pos }
-}
-
 // Build 3D grid directly from Float64Array, computing data_range in the same pass.
 type BuildGridOptions = {
   data: Float64Array
@@ -376,12 +361,16 @@ export function parse_cube(
 
   // Parse header (first 6 lines + atom lines)
   let pos = 0
-  const header = read_lines(content, pos, 6)
-  pos = header.next
+  const header_lines: string[] = []
+  for (let line_idx = 0; line_idx < 6; line_idx++) {
+    const { line, next } = read_text_line(content, pos)
+    header_lines.push(line.trim())
+    pos = next
+  }
 
   // Line 2: n_atoms, origin_x, origin_y, origin_z
   // (negative n_atoms indicates orbital data with extra header line)
-  const line2 = header.lines[2].split(/\s+/).map(Number)
+  const line2 = header_lines[2].split(/\s+/).map(Number)
   if (line2.length < 4 || line2.some(isNaN)) {
     vol_error(`.cube header line 3 malformed: expected 4 numbers`)
     return null
@@ -393,9 +382,9 @@ export function parse_cube(
   // Lines 3-5: grid dimensions and voxel vectors
   // Positive N means coordinates in Bohr, negative N means Angstrom
   const voxel_lines = [
-    header.lines[3].split(/\s+/).map(Number),
-    header.lines[4].split(/\s+/).map(Number),
-    header.lines[5].split(/\s+/).map(Number),
+    header_lines[3].split(/\s+/).map(Number),
+    header_lines[4].split(/\s+/).map(Number),
+    header_lines[5].split(/\s+/).map(Number),
   ]
   if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
     vol_error(`.cube voxel lines malformed: expected 4 numbers per line`)

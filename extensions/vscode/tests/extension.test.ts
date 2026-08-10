@@ -346,9 +346,9 @@ describe(`MatterViz Extension`, () => {
         `LOCPOT`,
         `PARCHG`,
         `PARCHG.gz`,
-        ...[`CHGCAR.BAND_1`, `run_CHGCAR_001`].flatMap((name) => [name, `${name}.gz`]),
-        `PARCHG.BAND_1`,
-        `run_PARCHG_001`,
+        ...[`CHGCAR.BAND_1`, `run_CHGCAR_001`, `PARCHG.BAND_1`, `run_PARCHG_001`].flatMap(
+          (name) => [name, `${name}.gz`],
+        ),
       ].map((filename) => [filename, `VASP volumetric`] as [string, string]),
     ])(`pattern matches "%s" (%s)`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(true)
