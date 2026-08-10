@@ -15,7 +15,6 @@ import type { LegendConfig, LegendItem } from '$lib/plot/core/types'
 import type { ColorBarSide } from '$lib/plot/core/utils/hierarchy-chart'
 import {
   ancestor_chain,
-  arrow_nav_target,
   color_bar_layout,
   compute_metric_colors,
   compute_node_dim,
@@ -37,6 +36,7 @@ import {
   make_cached_text_width,
 } from '$lib/plot/core/utils/hierarchy-labels'
 import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+import { arrow_nav_target } from '$lib/plot/sunburst/render'
 import type {
   PositionedArc,
   SunburstLabelText,
@@ -393,7 +393,7 @@ export class HierarchyChartState<
 
   // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
   // down enters the first child, up returns to the parent. The pre-order walk
-  // lives in hierarchy-chart.ts (arrow_nav_target); this supplies the event's
+  // lives in sunburst/render.ts (arrow_nav_target); this supplies the event's
   // node and the chart's current screen-space visibility.
   handle_keydown = (event: KeyboardEvent): void => {
     const cur_idx = this.#node_idx_from_event(event)
