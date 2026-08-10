@@ -1,4 +1,5 @@
 import { BoxPlot, type Vec2 } from '$lib'
+import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -244,7 +245,10 @@ describe(`BoxPlot`, () => {
       padding: { r: 10 },
       y2_axis: { label: `Secondary` },
     })
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(330)
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    const right_pad =
+      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+    expect(right_pad).toBe(10)
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
@@ -461,7 +465,9 @@ describe(`BoxPlot`, () => {
         Number(initial_legend.style.left.replace(`px`, ``)),
       )
       expect(Number(resized_legend.style.top.replace(`px`, ``))).toBe(340 - 44 - 8)
-      expect(Number(resized_clip.getAttribute(`height`))).toBe(340 - 20 - 60 - 44 - 8)
+      expect(Number(resized_clip.getAttribute(`height`))).toBe(
+        340 - DEFAULT_PLOT_PADDING.t - DEFAULT_PLOT_PADDING.b - 44 - 8,
+      )
     } finally {
       width_spy.mockRestore()
       height_spy.mockRestore()

@@ -1,6 +1,6 @@
 import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib'
 import { place_decorations } from '$lib/plot/core/auto-place'
-import { calc_auto_padding } from '$lib/plot/core/layout'
+import { calc_auto_padding, DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
 import { resolve_plot_title } from '$lib/plot/core/plot-title'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -71,9 +71,12 @@ describe(`Cartesian plot titles`, () => {
       const clip_rect = root.querySelector(`clipPath rect`)
       const clip_x = Number(clip_rect?.getAttribute(`x`))
       expect(root.querySelector(`.x2-axis, .y2-axis`)).toBeNull()
-      // every Cartesian plot now starts from the shared DEFAULT_PLOT_PADDING top of 20
-      expect(Number(clip_rect?.getAttribute(`y`))).toBe(20)
-      expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(20)
+      // every Cartesian plot falls back to the shared DEFAULT_PLOT_PADDING on a side
+      // whose axis is hidden, so assert the constants rather than their current values
+      expect(Number(clip_rect?.getAttribute(`y`))).toBe(DEFAULT_PLOT_PADDING.t)
+      expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(
+        DEFAULT_PLOT_PADDING.r,
+      )
     },
   )
 

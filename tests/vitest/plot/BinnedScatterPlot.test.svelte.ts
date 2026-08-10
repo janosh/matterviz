@@ -42,9 +42,16 @@ const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
     props: { style: `width: 800px; height: 600px`, ...props },
   })
 }
-// Pinning both axes to [0,1] makes client coordinates map to known data values, e.g. the
-// plot center (420, 280) lands on (0.5, 0.5).
+// Pinning both axes to [0,1] makes client coordinates map to known data values, so
+// plot_center() lands on (0.5, 0.5).
 const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
+// Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
+// so tuning the default padding can't silently move these hit tests off their target.
+const plot_center = (): Vec2 => {
+  const clip = doc_query(`clipPath rect`)
+  const num = (attr: string) => Number(clip.getAttribute(attr))
+  return [num(`x`) + num(`width`) / 2, num(`y`) + num(`height`) / 2]
+}
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
 const click_plot = (clientX: number, clientY: number): boolean =>
@@ -645,7 +652,8 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    click_plot(437, 280)
+    const [center_x, center_y] = plot_center()
+    click_plot(center_x + 17, center_y)
 
     expect(on_point_click).toHaveBeenCalledOnce()
   })
@@ -782,19 +790,25 @@ describe(`BinnedScatterPlot`, () => {
     await drag([400, 590], [200, 200])
     expect(document.querySelector(`.reset-view`)).toBeNull()
 
-    await drag([206, 436], [633, 124])
+    // Every point sits at (0.5, 0.5), so the single populated bin sits at the plot-area
+    // centre in canvas coords. A zoom moves it, so only click it in the unzoomed view.
+    const [bin_x, bin_y] = [420, 220]
+    await drag([bin_x - 150, bin_y + 100], [bin_x + 150, bin_y - 100])
 
-    click(420, 247)
+    // The drag's trailing click is swallowed rather than zooming the bin under it
+    click(bin_x, bin_y)
     expect(on_density_zoom).not.toHaveBeenCalled()
-    click(420, 247)
-    expect(on_density_zoom).toHaveBeenCalledOnce()
-    await tick()
 
     const reset_btn = doc_query<HTMLButtonElement>(`.reset-view`)
     expect(reset_btn.getAttribute(`aria-label`)).toBe(`Reset view`)
     reset_btn.click()
     await tick()
     expect(document.querySelector(`.reset-view`)).toBeNull()
+
+    // Reset restores the pre-zoom geometry, so the bin is back under the centre
+    click(bin_x, bin_y)
+    expect(on_density_zoom).toHaveBeenCalledOnce()
+    await tick()
 
     // Only the start is gated: an interior start may end outside the plot.
     await drag([400, 300], [10, 100])
@@ -976,7 +990,9 @@ describe(`BinnedScatterPlot`, () => {
     const first_label = labels[0]
     if (!first_leader) throw new Error(`missing first point label leader`)
     if (!first_label) throw new Error(`missing first point label`)
-    const point_center = { x: 420, y: 280 }
+    // the first point sits at (0.5, 0.5), i.e. dead centre of the plot area
+    const [center_x, center_y] = plot_center()
+    const point_center = { x: center_x, y: center_y }
     const label_center = {
       x: Number(first_label.style.left.replace(`px`, ``)),
       y: Number(first_label.style.top.replace(`px`, ``)),

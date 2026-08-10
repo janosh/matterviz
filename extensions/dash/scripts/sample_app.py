@@ -108,14 +108,10 @@ def _discover_files(directory: Path) -> list[str]:
     """Discover available JSON demo files by scanning a directory."""
     if not directory.exists():
         return []
-    seen: set[str] = set()
-    names = []
-    for path in sorted(directory.glob("*.json*")):
-        name = path.stem.removesuffix(".json")
-        if name and name not in seen:
-            seen.add(name)
-            names.append(name)
-    return names
+    names = (
+        path.stem.removesuffix(".json") for path in sorted(directory.glob("*.json*"))
+    )
+    return list(dict.fromkeys(filter(None, names)))
 
 
 def _discover_xrd_patterns(directory: Path) -> dict[str, Path]:

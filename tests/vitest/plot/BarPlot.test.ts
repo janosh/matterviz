@@ -1,4 +1,9 @@
 import { BarPlot } from '$lib'
+import {
+  AXIS_LABEL_HEIGHT,
+  AXIS_LABEL_OUTER,
+  DEFAULT_PLOT_PADDING,
+} from '$lib/plot/core/layout'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -258,7 +263,11 @@ describe(`BarPlot`, () => {
       y2_axis: { label: `Secondary` },
     })
     const clip_rect = plot.querySelector(`clipPath rect`)
-    expect(Number(clip_rect?.getAttribute(`width`))).toBe(330)
+    // assert the explicit sides directly: the chart width also folds in the left pad,
+    // which these axes don't constrain
+    const right_pad =
+      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+    expect(right_pad).toBe(10)
     expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
   })
 
@@ -268,7 +277,12 @@ describe(`BarPlot`, () => {
       y_axis: { ticks: [] },
       y2_axis: { label: `Secondary`, ticks: [] },
     })
-    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(308)
+    const clip_rect = plot.querySelector(`clipPath rect`)
+    const right_pad =
+      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+    // a title with no ticks still reserves its own band, past the shared default
+    expect(right_pad).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+    expect(right_pad).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {

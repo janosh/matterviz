@@ -362,10 +362,11 @@ describe(`MatterViz Extension`, () => {
       [`report-AECCARnotes`],
       [`density.cube.bz2`],
       [`structure.cif.bz2`],
-      // Structure suffix matching starts at the VASP stem, so unrelated filenames that
-      // merely contain the stem remain excluded.
+      // Structure stems must end the filename, so source files remain excluded.
       [`write_poscar.py`],
+      [`contcar_reader.rs`],
       [`test_xdatcar.ipynb`],
+      [`poscar_writer.py`],
     ])(`pattern does not match unsupported near miss "%s"`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(false)
     })
@@ -381,13 +382,12 @@ describe(`MatterViz Extension`, () => {
       expect(unclaimed).toEqual([])
     })
 
-    test(`every VASP stem is claimed bare, prefixed, suffixed and gzipped`, () => {
+    test(`every VASP stem is claimed bare, prefixed and gzipped`, () => {
       const unclaimed = VASP_VIEWER_STEMS.filter(
         (stem) =>
           !matches_any_pattern(stem.toUpperCase()) ||
           !matches_any_pattern(`${stem.toUpperCase()}.gz`) ||
-          !matches_any_pattern(`Si_${stem.toUpperCase()}`) ||
-          !matches_any_pattern(`${stem.toUpperCase()}.backup`),
+          !matches_any_pattern(`Si_${stem.toUpperCase()}`),
       )
       expect(unclaimed).toEqual([])
     })

@@ -32,8 +32,8 @@ const vscode_setting_type = (value: unknown) =>
 const case_variants = (stems: readonly string[]): string[] =>
   stems.flatMap((stem) => [stem.toUpperCase(), stem])
 
-// Structure stems support suffixes when the stem starts the filename (POSCAR.backup).
-// Volumetric stems additionally support decorated prefixes such as run_CHGCAR_001.
+// Structure stems must end the filename; a suffix wildcard would claim source files such
+// as poscar_writer.py. Volumetric stems support decorated names such as run_CHGCAR_001.
 const structure_glob = brace(
   case_variants(VASP_VIEWER_STEMS.filter((stem) => !VASP_VOLUMETRIC_FILES.includes(stem))),
 )
@@ -42,7 +42,6 @@ const decorated_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCas
 
 const vasp_selectors = [
   ...with_gzip(`*${structure_glob}`),
-  `${structure_glob}[._-]*`,
   ...with_gzip(volumetric_glob),
   ...with_gzip(`*[._-]${volumetric_glob}`),
   `${decorated_glob}[._-]*`,
