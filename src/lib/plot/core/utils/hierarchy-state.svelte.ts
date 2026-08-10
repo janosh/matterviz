@@ -15,6 +15,7 @@ import type { LegendConfig, LegendItem } from '$lib/plot/core/types'
 import type { ColorBarSide } from '$lib/plot/core/utils/hierarchy-chart'
 import {
   ancestor_chain,
+  arrow_nav_target,
   color_bar_layout,
   compute_metric_colors,
   compute_node_dim,
@@ -36,7 +37,6 @@ import {
   make_cached_text_width,
 } from '$lib/plot/core/utils/hierarchy-labels'
 import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-import { arrow_nav_target } from '$lib/plot/sunburst/render'
 import type {
   PositionedArc,
   SunburstLabelText,
@@ -296,7 +296,7 @@ export class HierarchyChartState<
 
   legend_points = (): Point[] => this.#opts.legend_points()
 
-  node_props = (arc: PositionedArc<Metadata>): NodeProps<Metadata> =>
+  readonly #node_props = (arc: PositionedArc<Metadata>): NodeProps<Metadata> =>
     node_handler_props(this.arcs, arc, this.color_for(arc))
 
   set_hover(idx: number | null, event?: MouseEvent | FocusEvent): void {
@@ -312,7 +312,7 @@ export class HierarchyChartState<
     if (idx != null) {
       this.#opts.set_hovered(true)
       this.hovered_idx = idx
-      this.hover_info = this.node_props(this.arcs[idx])
+      this.hover_info = this.#node_props(this.arcs[idx])
       this.hover_pos =
         pointer_pos(event, this.svg_element) ?? this.#opts.node_center(idx) ?? this.hover_pos
       this.#opts.change(this.hover_info)
@@ -333,13 +333,13 @@ export class HierarchyChartState<
   clear_hover = (): void => this.set_hover(null)
 
   // Node idx carried by the event's nearest [data-<chart>-node-idx] element
-  node_idx_from_event = (event: Event): number | null => {
+  readonly #node_idx_from_event = (event: Event): number | null => {
     const idx = closest_data_idx(event, this.node_attr, this.svg_element)
     return idx != null && this.arcs[idx] ? idx : null
   }
 
   handle_hover_event = (event: MouseEvent | FocusEvent): void => {
-    const idx = this.node_idx_from_event(event)
+    const idx = this.#node_idx_from_event(event)
     // roving tabindex follows keyboard focus
     if (event.type === `focusin` && idx != null) this.focused_idx = idx
     this.set_hover(idx, event)
@@ -352,7 +352,7 @@ export class HierarchyChartState<
     // The clicked node collapses into the hole / expands to fill the viewport -
     // drop the now-stale hover/tooltip
     this.set_hover(null)
-    this.#opts.on_zoom({ root: root && this.node_props(root) })
+    this.#opts.on_zoom({ root: root && this.#node_props(root) })
   }
 
   zoom_out = (event?: Event): void => {
@@ -363,10 +363,10 @@ export class HierarchyChartState<
 
   handle_click = (event: MouseEvent | KeyboardEvent): void => {
     if (event instanceof MouseEvent && selection_within(this.wrapper)) return
-    const idx = this.node_idx_from_event(event)
+    const idx = this.#node_idx_from_event(event)
     if (idx == null) return
     const arc = this.arcs[idx]
-    this.#opts.on_node_click({ ...this.node_props(arc), event })
+    this.#opts.on_node_click({ ...this.#node_props(arc), event })
     if (!this.#opts.zoom_on_click()) return
     if (this.#opts.zoom_mode === `branches`) {
       if (!arc.is_leaf && arc.id !== this.zoom_root?.id) this.zoom_to(arc)
@@ -377,7 +377,7 @@ export class HierarchyChartState<
   // Double-clicking empty chart background resets the zoom to the root (double-
   // clicking a node or label is click-to-zoom/text-selection territory, not a reset)
   handle_dblclick = (event: MouseEvent): void => {
-    if (this.node_idx_from_event(event) != null || selection_within(this.wrapper)) return
+    if (this.#node_idx_from_event(event) != null || selection_within(this.wrapper)) return
     const ignore = this.#opts.dblclick_ignore
     const target = event.target as Element | null
     if (ignore && target?.closest?.(ignore)) return
@@ -393,10 +393,10 @@ export class HierarchyChartState<
 
   // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
   // down enters the first child, up returns to the parent. The pre-order walk
-  // lives in sunburst/render.ts (arrow_nav_target); this supplies the event's
+  // lives in hierarchy-chart.ts (arrow_nav_target); this supplies the event's
   // node and the chart's current screen-space visibility.
   handle_keydown = (event: KeyboardEvent): void => {
-    const cur_idx = this.node_idx_from_event(event)
+    const cur_idx = this.#node_idx_from_event(event)
     const nav_target =
       cur_idx == null
         ? null
