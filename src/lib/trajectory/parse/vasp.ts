@@ -4,57 +4,43 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
-import { is_elem_symbol } from '$lib/element/helpers'
-import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
-import { parse_leading_num } from '$lib/utils'
+import { lines_cursor, parse_vasp_header } from '$lib/structure/parsers/vasp-header'
+import { create_trajectory_frame } from '$lib/trajectory/helpers'
 
-// Parse the 7-line XDATCAR header at lines[start]: title, scale factor, 3 lattice rows
-// (multiplied by scale), element names, element counts
-function parse_xdatcar_header(lines: string[], start: number) {
-  const scale = parse_leading_num(lines[start + 1])
-  const rows = lines.slice(start + 2, start + 5).map((line) =>
-    line
-      .trim()
-      .split(/\s+/)
-      .map((val) => Number(val) * scale),
-  )
-  const names = lines[start + 5].trim().split(/\s+/)
-  const counts = lines[start + 6].trim().split(/\s+/).map(Number)
-  return { scale, rows, names, counts }
+// The XDATCAR header is the POSCAR one minus the coordinate-mode line, because its
+// `Direct configuration= N` line doubles as the frame marker and the frame loop needs to
+// read it. `strict_species` keeps XDATCAR's refusal to invent element symbols: they end up
+// in the trajectory metadata, where an indexed fallback would be a silent lie.
+const parse_xdatcar_header = (lines: string[], start: number) => {
+  const cursor = lines_cursor(lines, start)
+  const result = parse_vasp_header(cursor, {
+    format: `XDATCAR`,
+    coord_mode: `skip`,
+    strict_species: true,
+    line_offset: start,
+  })
+  // `end` is normally start + 7, but a wrapped element-symbol block makes the header longer
+  return { result, end: cursor.position() }
 }
 
 export function parse_vasp_xdatcar(content: string, filename?: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
-  const header = parse_xdatcar_header(lines, 0)
-  const { names: element_names, counts: element_counts } = header
-  if (isNaN(header.scale)) throw new Error(`Invalid scale factor`)
-  let lattice_matrix = validate_3x3_matrix(header.rows)
+  const { result: parsed, end: header_end } = parse_xdatcar_header(lines, 0)
+  if (!parsed.ok) throw new Error(parsed.error)
+  const { elements: element_names, counts: element_counts } = parsed.header
+  let lattice_matrix = parsed.header.lattice
 
-  if (element_names.length !== element_counts.length) {
-    throw new Error(
-      `XDATCAR element names/counts mismatch: names=${element_names.length}, counts=${element_counts.length}`,
-    )
-  }
-  if (
-    element_counts.some(
-      (count) => !Number.isFinite(count) || !Number.isInteger(count) || count <= 0,
-    )
-  ) {
-    throw new Error(
-      `XDATCAR contains invalid element counts: expected finite positive integers`,
-    )
-  }
-  const bad_element = element_names.find((name) => !is_elem_symbol(name))
-  if (bad_element) throw new Error(`Invalid element symbol in XDATCAR: ${bad_element}`)
   // "Na Cl" + [2, 2] -> [Na, Na, Cl, Cl]
-  const expand_element_counts = (names: string[], counts: number[]): ElementSymbol[] =>
-    names.flatMap((name, idx) => Array(counts[idx]).fill(name))
+  const expand_element_counts = (
+    names: readonly ElementSymbol[],
+    counts: readonly number[],
+  ): ElementSymbol[] => names.flatMap((name, idx) => Array(counts[idx]).fill(name))
   let elements = expand_element_counts(element_names, element_counts)
 
   const frames: TrajectoryFrame[] = []
-  let line_idx = 7
+  let line_idx = header_end
   let frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
@@ -67,22 +53,13 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     }
     if (config_idx === lines.length) break
 
-    // Variable-cell runs (NPT/ISIF=3) repeat the full 7-line header before each configuration
-    if (config_idx - line_idx >= 7) {
-      const hdr = parse_xdatcar_header(lines, config_idx - 7)
-      if (
-        Number.isFinite(hdr.scale) &&
-        hdr.rows.every((row) => row.length === 3 && row.every(Number.isFinite))
-      ) {
-        lattice_matrix = validate_3x3_matrix(hdr.rows)
+    // Variable-cell runs repeat full headers; wrapped species blocks exceed seven lines.
+    if (config_idx > line_idx) {
+      const { result: repeat, end } = parse_xdatcar_header(lines, line_idx)
+      if (repeat.ok && end === config_idx) {
+        lattice_matrix = repeat.header.lattice
         frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-        if (
-          hdr.names.length === hdr.counts.length &&
-          hdr.names.every(is_elem_symbol) &&
-          hdr.counts.every((count) => Number.isInteger(count) && count > 0)
-        ) {
-          elements = expand_element_counts(hdr.names, hdr.counts)
-        }
+        elements = expand_element_counts(repeat.header.elements, repeat.header.counts)
       }
     }
 

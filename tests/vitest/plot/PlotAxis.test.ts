@@ -1,6 +1,7 @@
 import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
 import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
 import {
+  AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
   AXIS_TITLE_WRAP_WIDTH,
   TICK_LABEL_HEIGHT,
@@ -222,6 +223,9 @@ describe(`PlotAxis`, () => {
       label_y: 50,
     })
     expect(with_label.querySelector(`.axis-label.x-label`)).not.toBeNull()
+    expect(Number(query(with_label, `foreignObject`).getAttribute(`height`))).toBe(
+      AXIS_LABEL_HEIGHT,
+    )
 
     const no_coords = await mount_axis({ side: `x`, ticks: [50], axis: { label: `Energy` } })
     expect(no_coords.querySelector(`.axis-label`)).toBeNull()

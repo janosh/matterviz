@@ -78,7 +78,8 @@
     keywords: [`mode`, `colour`, `appearance`],
     action: () => (theme_mode = value),
   }))
-  const actions = [...theme_actions, ...route_actions]
+  // Routes come from loadOptions; adding them here duplicates fallback results in dev.
+  const actions: ((typeof theme_actions)[number] | SiteSearchAction)[] = theme_actions
   const load_search_options = create_site_search_loader({
     route_actions,
     navigate: goto,

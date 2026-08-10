@@ -1,4 +1,5 @@
 import type { CompositionType } from '$lib/composition'
+import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import * as math from '$lib/math'
@@ -55,12 +56,9 @@ export type RadiationKey = keyof typeof WAVELENGTHS
 // Type guard to safely check if a string is a valid RadiationKey
 const is_radiation_key = (key: string): key is RadiationKey => key in WAVELENGTHS
 
-// CODATA 2018 constants, SI. Kept explicit rather than folded into one fitted prefactor so the
-// relativistic de Broglie formula below stays auditable against a textbook.
-const PLANCK_CONSTANT = 6.62607015e-34 // J·s
-const ELECTRON_REST_MASS = 9.1093837015e-31 // kg
-const ELEMENTARY_CHARGE = 1.602176634e-19 // C
-const SPEED_OF_LIGHT = 299792458 // m/s
+// Only consumer is electron_wavelength below, so it stays local. CODATA 2018, matching the
+// vintage the frozen Mott-Bethe prefactor in $lib/scattering was evaluated at.
+const ELECTRON_REST_MASS_KG = 9.1093837015e-31 // kg
 
 // Shared guard for the numeric options of every entry point here. Names the option and echoes
 // the offending value, so NaN from a bad parse is distinguishable from a negative literal.
@@ -78,13 +76,13 @@ export function require_positive(name: string, value: number, unit = ``): number
 export function electron_wavelength(voltage_kv: number): number {
   require_positive(`accelerating voltage`, voltage_kv, ` of kV`)
   const voltage_volts = voltage_kv * 1000
-  const rest_energy_joule = ELECTRON_REST_MASS * SPEED_OF_LIGHT * SPEED_OF_LIGHT
-  const kinetic_joule = ELEMENTARY_CHARGE * voltage_volts
+  const rest_energy_joule = ELECTRON_REST_MASS_KG * SPEED_OF_LIGHT_M_S ** 2
+  const kinetic_joule = ELEMENTARY_CHARGE_C * voltage_volts
   const momentum = Math.sqrt(
-    2 * ELECTRON_REST_MASS * kinetic_joule * (1 + kinetic_joule / (2 * rest_energy_joule)),
+    2 * ELECTRON_REST_MASS_KG * kinetic_joule * (1 + kinetic_joule / (2 * rest_energy_joule)),
   )
   // h/p is in metres; 1 m = 1e10 Angstrom
-  return (PLANCK_CONSTANT / momentum) * 1e10
+  return (PLANCK_J_S / momentum) * 1e10
 }
 
 // Resolve the wavelength in Angstrom for a given radiation type, rejecting nonsensical
@@ -588,5 +586,3 @@ export async function add_xrd_pattern(
     return { error: `Failed to compute XRD pattern: ${to_error(exc).message}` }
   }
 }
-
-export const AVAILABLE_RADIATION = Object.keys(WAVELENGTHS) as RadiationKey[]

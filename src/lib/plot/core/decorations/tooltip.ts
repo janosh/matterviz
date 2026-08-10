@@ -1,7 +1,7 @@
 import type { Rect } from '$lib/plot/core/layout'
 
 const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const
-export type TooltipPlacementDirection = (typeof DIRECTIONS)[number]
+type TooltipPlacementDirection = (typeof DIRECTIONS)[number]
 
 export type TooltipPlacementConfig = {
   anchor: { x: number; y: number }

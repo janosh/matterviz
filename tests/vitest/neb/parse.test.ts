@@ -345,7 +345,7 @@ describe(`NebPlot`, () => {
   test(`annotates the forward barrier and the fitted saddle of the active path`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     // Forward barrier of the direct hop is 0.8339 eV, formatted with 3 significant digits
-    expect(squash(plot.textContent)).toContain(`Ea = 0.834 eV`)
+    expect(squash(plot.textContent)).toContain(`Eact = 0.834 eV`)
     // One dashed rule per IS/TS/FS energy, plus the active-image marker
     expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
     expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)

@@ -261,6 +261,12 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 
+    // The axis frame and the domain names are HTML portaled over the canvas, so unlike anything
+    // drawn into it they are assertable — and they are what a broken axis/label pass would drop.
+    await expect(diagram.locator(`.axis-label`)).toHaveCount(3)
+    await expect.poll(() => diagram.locator(`.tick-label`).count()).toBeGreaterThan(5)
+    await expect.poll(() => diagram.locator(`.domain-label`).count()).toBeGreaterThan(0)
+
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
     await assert_pin_toggle_and_escape(page, canvas, phase_tooltip, diagram)
 

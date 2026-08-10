@@ -14,7 +14,6 @@ export const IRREDUCIBLE_BZ_TOLERANCE = 0.01 // Threshold for detecting irreduci
 export const IRREDUCIBLE_BZ_MIN_VERTICES = 10 // Minimum significant vertex count for irreducible BZ detection
 
 export const SPANNING_THRESHOLD = 0.8 // Fraction of BZ extent a surface must cover to be considered "spanning" that direction
-export const HARTREE_TO_EV = 27.2114 // 1 Hartree = 27.2114 eV
 
 // Band colors (ColorBrewer Set1 palette for categorical data)
 export const BAND_COLORS = [

@@ -2,7 +2,6 @@
 // path, keeping dense scatter plots efficient.
 
 import { type D3SymbolName, symbol_map } from '$lib/labels'
-import type { Rect } from '$lib/plot/core/layout'
 import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 
@@ -49,13 +48,13 @@ const symbol_path = (
   return path
 }
 
-// Clear and draw markers. The backing store uses CSS size * pixel_ratio; clip is in CSS px.
+// Clear and draw markers. The backing store uses CSS size * pixel_ratio.
 export function draw_markers(
   ctx: CanvasRenderingContext2D,
   markers: readonly CanvasMarker[],
-  options: { width: number; height: number; pixel_ratio?: number; clip?: Rect },
+  options: { width: number; height: number; pixel_ratio?: number },
 ): void {
-  const { width, height, pixel_ratio = 1, clip } = options
+  const { width, height, pixel_ratio = 1 } = options
 
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -66,11 +65,6 @@ export function draw_markers(
   }
 
   ctx.scale(pixel_ratio, pixel_ratio)
-  if (clip) {
-    ctx.beginPath()
-    ctx.rect(clip.x, clip.y, clip.width, clip.height)
-    ctx.clip()
-  }
 
   let open_key: string | null = null
   // Circles use the current path; translated symbols accumulate in one Path2D.

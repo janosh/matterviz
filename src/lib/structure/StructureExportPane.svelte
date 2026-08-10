@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
@@ -18,7 +19,7 @@
     image_canvas = undefined,
     image_filename = undefined,
     enable_3d_export = true,
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     pane_props = {},
     toggle_props = {},
     ...rest

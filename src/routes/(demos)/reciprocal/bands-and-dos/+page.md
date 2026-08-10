@@ -1,10 +1,8 @@
 # Band Structure and DOS
 
-Combined visualization of band structures with density of states.
-
 ## Electronic Bands with Fermi Level
 
-Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration purposes.
+This example uses bands and DOS from different materials.
 
 ```svelte example
 <script lang="ts">
@@ -25,8 +23,6 @@ Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed r
 ```
 
 ## Phonon Bands with Custom Styling
-
-Phonon band structure with DOS side-by-side, synchronized axes and custom styling:
 
 ```svelte example
 <script lang="ts">
@@ -52,8 +48,6 @@ Phonon band structure with DOS side-by-side, synchronized axes and custom stylin
 
 ## Multiple bands and DOS comparison
 
-Compare band structures and DOS from different computational methods:
-
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
@@ -78,9 +72,9 @@ Compare band structures and DOS from different computational methods:
 />
 ```
 
-## Showcasing New Bands Features via `bands_props`
+## Forwarding `Bands` Options
 
-`BandsAndDos` forwards all `Bands` options through `bands_props`, so you can use path controls, unit conversion, highlights, spin display, and gap annotation in the combined layout.
+`bands_props` and `dos_props` forward options to the underlying plots.
 
 ```svelte example
 <script lang="ts">

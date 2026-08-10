@@ -1,8 +1,7 @@
 import type { FileInfo, Molecule } from '$lib'
 
-// Array of molecules
 const molecules = Object.entries(
-  import.meta.glob<Molecule>(`./*.json`, {
+  import.meta.glob<Molecule>(`./molecules/*.json`, {
     eager: true,
     import: `default`,
   }),
@@ -12,16 +11,16 @@ const molecules = Object.entries(
   return mol
 })
 
-// Object of molecules by ID
 export const test_molecules = Object.fromEntries(molecules.map((mol) => [mol.id, mol]))
 
-// Only the glob keys (paths) are needed to build FileInfo entries, so don't eager-load
-// file contents
+// ?url like the other site registries: only the keys are read here, and without it Vite
+// puts every non-JS fixture (.mol2, .pdb, .sdf, .xyz) through the module transform pipeline
+// instead of emitting it as an asset. The static symlink serves them at /molecules/<name>.
 export const molecule_files: FileInfo[] = Object.keys(
-  import.meta.glob(`$site/molecules/*`),
+  import.meta.glob(`$site/molecules/*`, { query: `?url` }),
 ).map((path) => {
   const filename = path.split(`/`).pop() ?? path
-  const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
+  const type = filename.split(`.`).pop()?.toUpperCase() ?? `FILE`
   const url = path.replace(`/src/site`, ``)
   return { name: filename, url, type, category: `molecule`, category_icon: `🧬` }
 })

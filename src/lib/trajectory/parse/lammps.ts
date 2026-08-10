@@ -18,7 +18,7 @@ const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`
 
 // Position column sets LAMMPS can dump, most to least informative. `scaled` coords are
 // fractional and need the cell to become Cartesian. `unwrapped` means LAMMPS already
-// removed the periodic images, so consumers (e.g. math.unwrap_positions) must not
+// removed the periodic images, so consumers (e.g. unwrap_flat_positions) must not
 // re-apply the minimum image convention. x/y/z and xs/ys/zs are wrapped into the box.
 export const POS_COL_VARIANTS = [
   { keys: [`xu`, `yu`, `zu`], scaled: false, unwrapped: true },

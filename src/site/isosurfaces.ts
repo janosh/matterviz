@@ -1,8 +1,6 @@
-// Isosurface example data files
 import type { FileInfo } from '$lib/io'
 
-// Example files served at /isosurfaces/<name> via the static symlink (url built from the
-// path key, not the glob value)
+// The static symlink serves these fixtures at /isosurfaces/<name>.
 const volumetric_file_modules = import.meta.glob(`$site/isosurfaces/*.gz`, {
   query: `?url`,
 })
@@ -121,4 +119,4 @@ export const volumetric_files: VolumetricFileInfo[] = Object.keys(volumetric_fil
     }
     return { name, url, ...meta }
   })
-  .toSorted((a, b) => a.name.localeCompare(b.name))
+  .toSorted((file_a, file_b) => file_a.name.localeCompare(file_b.name))

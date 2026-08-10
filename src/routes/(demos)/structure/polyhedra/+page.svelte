@@ -48,34 +48,28 @@
     {
       id: `NaCl`,
       label: `NaCl (rocksalt)`,
-      description: `Na⁺ octahedrally coordinated by 6 Cl⁻. Boundary octahedra are
-        completed by image atoms, so the framework fills the cell out to its surfaces.`,
+      description: `Image atoms complete polyhedra at cell boundaries.`,
       structure: parse(nacl_poscar, `NaCl-cubic.poscar`),
       supercell: `2x2x2`,
     },
     {
       id: `rutile`,
       label: `TiO₂ (rutile)`,
-      description: `Edge-sharing TiO₆ octahedra forming chains along the c-axis,
-        linked by corners into the rutile framework.`,
+      description: `TiO₆ chains along the c-axis.`,
       structure: parse(rutile_cif, `TiO2.cif`),
       supercell: `2x2x2`,
     },
     {
       id: `BaTiO3`,
       label: `BaTiO₃ (perovskite)`,
-      description: `B-site TiO₆ octahedra. The large Ba A-site cations are spectator
-        cations: their polyhedra are hidden by default to keep the framework visible.
-        Toggle Ba below to draw them anyway.`,
+      description: `Ba polyhedra are hidden by default; toggle Ba below to show them.`,
       structure: parse(batio3_poscar, `BaTiO3-tetragonal.poscar`),
       supercell: `2x2x2`,
     },
     {
       id: `LiFePO4`,
       label: `LiFePO₄ (olivine)`,
-      description: `The iconic olivine framework: corner-sharing PO₄ tetrahedra and
-        FeO₆ octahedra, with spectator Li⁺ shown as plain spheres in the diffusion
-        channels.`,
+      description: `Spectator Li⁺ remains visible as spheres in the diffusion channels.`,
       structure: parse(lifepo4_cif, `LiFePO4.cif`),
     },
   ]

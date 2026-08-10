@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import process from 'node:process'
 import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
-import { three_compat_alias } from '../../vite-plugins.ts'
+import { three_compat_alias } from '../../src/vite-plugins.ts'
 
 // Plugin to strip Node.js imports from the UMD bundle
 const strip_node_imports_plugin = (): Plugin => ({

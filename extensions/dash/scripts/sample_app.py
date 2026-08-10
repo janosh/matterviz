@@ -20,6 +20,9 @@ _env_root = os.environ.get("MATTERVIZ_ROOT")
 MATTERVIZ_ROOT = (
     Path(_env_root) if _env_root else Path(__file__).parent.parent.parent.parent
 )
+_SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
+_XRD_DIR = _SITE_DIR / "xrd"
+_XRD_TEXT_EXTENSIONS = (".xye", ".xy")
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -63,7 +66,7 @@ def load_xye_file(file_path: Path) -> dict | None:
 
 def _load_site_data(subpath: str, name: str, ext: str = ".json.gz") -> Any:
     """Load JSON data from src/site/{subpath}/{name}{ext}."""
-    return load_json_file(MATTERVIZ_ROOT / "src" / "site" / subpath / f"{name}{ext}")
+    return load_json_file(_SITE_DIR / subpath / f"{name}{ext}")
 
 
 def load_phase_diagram(system: str) -> dict | None:
@@ -73,7 +76,7 @@ def load_phase_diagram(system: str) -> dict | None:
 
 def load_structure(name: str) -> dict | None:
     """Load a structure file (tries .json then .json.gz)."""
-    struct_dir = MATTERVIZ_ROOT / "src" / "site" / "structures"
+    struct_dir = _SITE_DIR / "structures"
     for ext in (".json", ".json.gz"):
         if (path := struct_dir / f"{name}{ext}").exists():
             return load_json_file(path)
@@ -96,32 +99,32 @@ def load_electronic_bands(name: str) -> dict | None:
 
 
 def load_xrd_pattern(name: str) -> dict | None:
-    """Load XRD pattern from the static/xrd directory."""
-    xrd_dir = MATTERVIZ_ROOT / "static" / "xrd"
-    return load_xye_file(xrd_dir / f"{name}.xye")
+    """Load an XRD pattern from the site data directory."""
+    file_path = _XRD_PATTERNS.get(name)
+    return load_xye_file(file_path) if file_path else None
 
 
-def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
-    """Discover available demo files by scanning a directory."""
+def _discover_files(directory: Path) -> list[str]:
+    """Discover available JSON demo files by scanning a directory."""
     if not directory.exists():
         return []
-    seen: set[str] = set()
-    names = []
-    for path in sorted(directory.glob(pattern)):
-        # Strip compound extensions like .json.gz or .xy.gz
-        name = path.stem
-        for ext in (".json", ".xy"):
-            if name.endswith(ext):
-                name = name[: -len(ext)]
-                break
-        if name and name not in seen:
-            seen.add(name)
-            names.append(name)
-    return names
+    names = (
+        path.stem.removesuffix(".json") for path in sorted(directory.glob("*.json*"))
+    )
+    return list(dict.fromkeys(filter(None, names)))
 
 
-# Dynamically discover available demo files from the site directory
-_SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
+def _discover_xrd_patterns(directory: Path) -> dict[str, Path]:
+    """Discover uncompressed XRD text patterns supported by load_xye_file."""
+    patterns: dict[str, Path] = {}
+    for extension in _XRD_TEXT_EXTENSIONS:
+        for file_path in sorted(directory.glob(f"*{extension}")):
+            patterns.setdefault(file_path.stem, file_path)
+    return patterns
+
+
+_XRD_PATTERNS = _discover_xrd_patterns(_XRD_DIR)
+
 
 # Fallback defaults for each data category (used when discovery finds nothing)
 _FALLBACK_STRUCTURE = "mp-1234"
@@ -152,9 +155,7 @@ AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [_FALLBACK_
 AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
     _FALLBACK_BANDS
 ]
-AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
-    _FALLBACK_XRD
-]
+AVAILABLE_XRD = list(_XRD_PATTERNS) or [_FALLBACK_XRD]
 
 
 def _safe_first(lst: list[str], fallback: str) -> str:

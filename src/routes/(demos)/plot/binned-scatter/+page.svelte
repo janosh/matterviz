@@ -280,18 +280,10 @@
   {/if}
 </BinnedScatterPlot>
 
-<section>
-  <h2>What to Try</h2>
-  <ul>
-    <li>Click a density bin or point to open the draggable <code>StructurePopup</code>.</li>
-    <li>Switch to point mode to see the same materials rendered individually.</li>
-    <li>Use the mouse wheel or drag-select to zoom into crowded regions.</li>
-    <li>
-      The stats badge and density colorbar are measured and placed by the same decoration
-      solver, away from occupied bins and each other. Zoom around and watch them relocate.
-    </li>
-  </ul>
-</section>
+<p>
+  The stats badge and density color bar share the decoration placer, avoiding occupied bins and
+  each other.
+</p>
 
 <style>
   .render-mode {

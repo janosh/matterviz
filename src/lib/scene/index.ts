@@ -3,6 +3,7 @@
 export * from './bind-renderer.svelte'
 export * from './colors'
 export * from './fly-to'
+export * from './geometry.svelte'
 export * from './gizmo'
 export { default as Gizmo } from './Gizmo.svelte'
 export * from './props.svelte'

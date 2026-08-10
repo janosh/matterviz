@@ -1,10 +1,8 @@
 # Band Structures
 
-Interactive phonon and electronic band structure visualization. The `Bands` component natively renders pymatgen band structure objects without manual data transformation.
+`Bands` renders pymatgen band-structure objects without manual transformation.
 
 ## Phonon Bands with Custom Styling
-
-A phonon band structure plot with custom line styling for acoustic and optical modes:
 
 ```svelte example
 <script lang="ts">
@@ -24,7 +22,7 @@ A phonon band structure plot with custom line styling for acoustic and optical m
 
 ## Electronic Band Structures
 
-Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down):
+Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed bands (`"1"` for spin-up, `"-1"` for spin-down). The Fermi level is drawn as a dashed line whenever the data carries `efermi` or the `fermi_level` prop is set:
 
 ```svelte example
 <script lang="ts">
@@ -71,8 +69,6 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
 ```
 
 ## Comparing Multiple Band Structures
-
-Compare multiple band structures on the same plot with interactive controls:
 
 ```svelte example
 <script lang="ts">
@@ -153,8 +149,6 @@ Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions`
 For phonons with negative frequencies, `shade_imaginary_modes` shades the `y < 0` region by default. Disable it with `shade_imaginary_modes={false}` if you want a clean axis-only view.
 
 ## Fat Bands (Band-Resolved Quantities)
-
-The `Bands` component supports "fat bands" visualization, where the width of each band at each k/q-point is proportional to a quantity like electron-phonon coupling (λ<sub>nk</sub> for electronic bands, λ<sub>qν</sub> for phonon modes) or orbital character.
 
 ### Basic Fat Bands
 
@@ -250,18 +244,6 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 
 <Bands {band_structs} ribbon_config={{ opacity: 0.4, max_width: 10 }} />
 ```
-
-## Features
-
-- **High-symmetry points**: Automatic labeling with Greek letters (Γ, Δ, Σ)
-- **Acoustic vs optical**: Different styling for phonon mode types
-- **Spin display modes**: `overlay`, `up_only`, `down_only` for spin-polarized electronic bands
-- **Band gap annotation**: Automatic `E_g` label with VBM/CBM guide lines for gapped electronic bands
-- **Fat bands**: Visualize band-resolved quantities like electron-phonon coupling λ<sub>nk</sub>
-- **Shaded regions**: Highlight custom ranges and optional imaginary-mode region shading
-- **Path modes**: When plotting multiple bands, choose from different path resolutions (union/intersection/strict = error on mismatch)
-- **Interactive**: Zoom, pan, hover tooltips
-- **Responsive**: Adapts to container size
 
 ## Supported Formats
 

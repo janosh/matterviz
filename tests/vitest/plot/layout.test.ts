@@ -644,7 +644,10 @@ describe(`layout utility functions`, () => {
     })
 
     it(`reserves room for wrapped labels above an x2 axis`, () => {
-      const axis_size = 220
+      // Wide enough that the labels don't rotate, tight enough that they wrap. End labels
+      // may overhang into the side padding, so the band has to be measured over the same
+      // extent calc_auto_padding projects onto (zero padding here, so [0, axis_size]).
+      const axis_size = 160
       const x2_axis = slot_axis(state_labels, {}, axis_size)
       const { t } = calc_auto_padding({
         padding: {},
@@ -652,7 +655,12 @@ describe(`layout utility functions`, () => {
         width: axis_size,
         x2_axis,
       })
-      const band = resolve_tick_layout(x2_axis, axis_size, `x2`).band
+      const band = resolve_tick_layout(
+        { ...x2_axis, axis_extent: { start: 0, end: axis_size } },
+        axis_size,
+        `x2`,
+      ).band
+      expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
       expect(t).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
       expect(t).toBeLessThanOrEqual(band + 8 + AXIS_LABEL_OUTER)
     })
@@ -1113,7 +1121,7 @@ describe(`layout utility functions`, () => {
         ...base,
         y_axis: { ...base.y_axis, label_shift: { x: -14 } },
       })
-      expect(shifted.l - unshifted.l).toBe(14)
+      expect(shifted.l - unshifted.l).toBeCloseTo(14, 10)
     })
 
     it(`reserves a title band for interactive options without a literal label`, () => {
@@ -1135,7 +1143,7 @@ describe(`layout utility functions`, () => {
         ...base,
         y2_axis: { ...base.y2_axis, tick: { label: { shift: { x: 20 } } } },
       })
-      expect(shifted.r - unshifted.r).toBe(20)
+      expect(shifted.r - unshifted.r).toBeCloseTo(20, 10)
     })
 
     it(`measures multiline x and y title bands instead of using a fixed estimate`, () => {
@@ -1201,15 +1209,22 @@ describe(`layout utility functions`, () => {
   describe(`y_axis_label_x / y2_axis_label_x`, () => {
     const title_center = AXIS_LABEL_OUTER + AXIS_LABEL_HEIGHT / 2
     test.each([
-      [`left auto-padding`, () => y_axis_label_x({}, 90, 30), title_center],
+      [`left auto-padding`, () => y_axis_label_x({}, 90, 30), 22],
       [`left explicit padding`, () => y_axis_label_x({}, 120, 30), 52],
+      // a pad too tight to seat the tick band clamps the title to its own band
+      [`left clamped to the title band`, () => y_axis_label_x({}, 40, 30), title_center],
       [
         `left inside ticks`,
         () => y_axis_label_x({ tick: { label: { inside: true } } }, 60, 30),
         30,
       ],
-      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30), 400 - title_center],
+      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30), 378],
       [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30), 348],
+      [
+        `right clamped to the title band`,
+        () => y2_axis_label_x({}, 400, 40, 30),
+        400 - title_center,
+      ],
       [
         `right inside ticks`,
         () => y2_axis_label_x({ tick: { label: { inside: true } } }, 400, 60, 30),

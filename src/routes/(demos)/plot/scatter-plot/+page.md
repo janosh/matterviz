@@ -2,7 +2,7 @@
 
 ## Basic Plot with Multiple Display Modes
 
-A simple scatter plot showing different display modes (points, lines, or both). Notice the gear icon in the top-right corner. Click it to access styling controls including point size, colors, line width, opacity, and more:
+Set `markers` to `points`, `line`, or `line+points`; series and gear controls expose styling.
 
 ```svelte example
 <script lang="ts">
@@ -1038,9 +1038,7 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
 
 ## Arcsinh Scale: Handling Negative Values and Wide Ranges
 
-The **arcsinh scale** (`scale_type='arcsinh'`) covers positive, negative, and zero values with a wide dynamic range. Log cannot take non-positive values; arcsinh is roughly linear near zero and logarithmic for large absolute values (formation energies, charge densities, and similar signed data).
-
-The configurable `threshold` parameter controls the transition point: smaller values make the transition sharper, larger values extend the linear region.
+Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-range axes.
 
 ```svelte example
 <script lang="ts">
@@ -1786,12 +1784,6 @@ Adjust SA iterations and the leader-line threshold to see how placement changes:
 {/key}
 ```
 
-**What to observe:**
-
-- **Low iterations** (100–500): Labels may still overlap, especially in the dense transition metal and lanthanide rows
-- **High iterations** (2000+): Labels find non-overlapping positions with leader lines connecting them to their markers
-- **Leader line threshold**: Controls when the dotted connecting line appears. Set to 0 to always show them, or increase to only show for labels displaced far from their anchor
-
 ## External Vertical Color Bar with Dynamic Controls
 
 Vertical color bar on the right, outside the plot, spanning the full height. Change the color scheme and switch between linear and log color scales below.
@@ -1841,10 +1833,6 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
 
   <ColorScaleSelect bind:value={color_scale.scheme} style="min-width: 250px" />
 </div>
-
-The color bar is positioned vertically to the right, outside the plot. The plot's right padding
-is increased to prevent overlap. Use the controls above to change the color scheme and scale
-type.
 
 <ScatterPlot
   series={[{ ...vertical_color_data, markers: 'points' }]}
@@ -2318,9 +2306,6 @@ When series have different x-values, fill-between interpolates automatically. He
     },
   ]
 </script>
-
-The sparse series (red, 11 points) and dense series (blue, 41 points) have completely different
-x-coordinates. The fill region correctly interpolates between them:
 
 <ScatterPlot
   series={[series_sparse, series_dense]}
@@ -3330,9 +3315,6 @@ Several fill regions between series at different sample densities, to stress-tes
     },
   ]
 </script>
-
-Five series with 8, 15, 25, 12, and 40 points respectively. Each fill region interpolates
-between adjacent series with different densities:
 
 <ScatterPlot
   series={all_series}

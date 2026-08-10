@@ -3,6 +3,7 @@
 // text measurement, and SVG/PNG export. Pure + cache-factory functions so each
 // component instance owns its caches without sharing global state.
 
+import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { is_opaque_color, pick_contrast_color } from '$lib/colors'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { format_value } from '$lib/labels'
@@ -119,5 +120,12 @@ export function export_hierarchy_chart(
   const filename = `${base_filename}.${format}`
   if (format === `svg`)
     export_svg_as_svg(svg_element, filename, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
-  else export_svg_as_png(svg_element, filename, 150, EXPORT_INLINE_STYLES, EXPORT_OPTIONS)
+  else
+    export_svg_as_png(
+      svg_element,
+      filename,
+      DEFAULT_PNG_DPI,
+      EXPORT_INLINE_STYLES,
+      EXPORT_OPTIONS,
+    )
 }

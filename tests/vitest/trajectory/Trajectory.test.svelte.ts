@@ -267,6 +267,18 @@ describe(`Trajectory`, () => {
     expect(fps_slider.value).toBe(`12.5`)
   })
 
+  test(`preserves the component's five FPS default`, async () => {
+    const props = $state({ trajectory: energy_traj(-1, -2), show_controls: `always` as const })
+    const target = mount_traj(props)
+    await flush_render()
+
+    const fps_input = target.querySelector<HTMLInputElement>(
+      `.fps-section input[type="number"]`,
+    )
+    if (!fps_input) throw new Error(`FPS controls not found`)
+    expect(fps_input.value).toBe(`5`)
+  })
+
   // Regression: hosts restore viewer position by passing an out-of-range
   // current_step_idx (MAX_SAFE_INTEGER = "last frame"); the clamp must both
   // write back the corrected index and notify on_step_change. Slider bursts

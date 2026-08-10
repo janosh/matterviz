@@ -15,8 +15,6 @@
 
 # Hooking Up to External APIs
 
-A common use case is to fetch materials data from external APIs and databases and visualize them using MatterViz components, most commonly the `Structure`, `PeriodicTable`, and `Trajectory` viewers.
-
 ## OPTIMADE Example
 
 The [OPTIMADE](https://www.optimade.org) standard gives a common API over 50+ materials databases. The demo below fetches and renders a structure from any OPTIMADE provider:

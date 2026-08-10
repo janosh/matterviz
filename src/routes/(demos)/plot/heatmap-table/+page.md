@@ -1,10 +1,6 @@
 # Heatmap Table
 
-A sortable, colorable data table component with heatmap-style cell coloring, column grouping, drag-and-drop column reordering, and customizable cell rendering.
-
 ## Basic Usage
-
-A simple table with sortable columns and automatic heatmap coloring based on cell values:
 
 ```svelte example
 <script lang="ts">
@@ -677,7 +673,7 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
 
 ## Filters, Summaries and Normalization
 
-Everything the table learned in one place: per-column filters (funnel icons in the headers), a summary row that follows the filter, diverging color normalization centered on zero for formation energies, quantile clipping so the one outlier doesn't flatten the conductivity column, a shared color domain across the two error columns so they're directly comparable, data bars instead of a fill, and a ring on each column's best value.
+Combines per-column filters, filtered summaries, diverging normalization, quantile clipping, shared domains, data bars, and best-value rings.
 
 ```svelte example
 <script lang="ts">

@@ -1,10 +1,18 @@
 import adapter from '@sveltejs/adapter-static'
 import type { Config } from '@sveltejs/kit'
+import { common } from '@wooorm/starry-night'
+import svelte_grammar from '@wooorm/starry-night/source.svelte'
+import tsx_grammar from '@wooorm/starry-night/source.tsx'
+import vue_grammar from '@wooorm/starry-night/text.html.vue'
 import { mdsvex } from 'mdsvex'
 import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
 import { heading_ids } from 'svelte-widgets/heading-anchors'
-import { mdsvex_transform, starry_night_highlighter } from 'svelte-widgets/live-examples'
+import { mdsvex_transform } from 'svelte-widgets/live-examples'
+import {
+  create_highlighter,
+  render_block,
+} from 'svelte-widgets/live-examples/create-highlighter'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
@@ -16,6 +24,11 @@ const defaults = {
   collapsible: true,
 }
 
+// svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
+// Svelte, which would leave the tsx/vue fences in the framework-interop docs unstyled
+const grammars = [...common, svelte_grammar, tsx_grammar, vue_grammar]
+const starry_night = await create_highlighter(grammars).ready()
+
 export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
@@ -24,7 +37,7 @@ export default {
       remarkPlugins: [[mdsvex_transform, { defaults }], math],
       rehypePlugins: [katex],
       extensions: [`.svx`, `.md`],
-      highlight: { highlighter: starry_night_highlighter },
+      highlight: { highlighter: (code, lang) => render_block(starry_night, code, lang) },
     }),
     heading_ids(), // runs after mdsvex converts markdown to HTML
   ],

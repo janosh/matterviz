@@ -12,7 +12,7 @@
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import ControlPane from './ControlPane.svelte'
+  import { ControlPane } from '$lib/overlays'
 
   let {
     chart,

@@ -8,7 +8,8 @@ import {
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
 import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { get_trajectory_type } from '$site/trajectories'
+import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import { describe, expect, it, test, vi } from 'vitest'
@@ -24,6 +25,18 @@ const TRAJECTORY_DIR = `src/site/trajectories`
 // Helper to read text trajectory files (auto-decompresses .gz)
 const read_test_file = (filename: string): string =>
   read_maybe_gz(join(process.cwd(), TRAJECTORY_DIR, filename))
+
+test.each([
+  [`movie.H5.gz`, `hdf5`],
+  [`movie.hdf5.GZ`, `hdf5`],
+  [`movie.json.gz`, `json`],
+  [`movie.xyz.gz`, `xyz`],
+  [`movie.extxyz.gz`, `xyz`],
+  [`vasp-XDATCAR.MD.gz`, `xdatcar`],
+  [`movie.traj.gz`, `traj`],
+] as const)(`classifies compressed site trajectory %s as %s`, (name, expected) => {
+  expect(get_trajectory_type({ name, url: name })).toBe(expected)
+})
 
 describe(`Trajectory File Detection`, () => {
   // only checking filename recognition, files don't need to exist
@@ -229,11 +242,15 @@ describe(`VASP XDATCAR Parser`, () => {
     )
   })
 
-  it(`should reject blank scale lines but tolerate trailing comments like parseFloat`, async () => {
-    const xdatcar_with_scale = (scale: string) =>
-      `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
+  const xdatcar_with_scale = (scale: string) =>
+    `title\n${scale}\n5 0 0\n0 5 0\n0 0 5\nH\n1\nDirect configuration= 1\n0.5 0.5 0.5\nDirect configuration= 2\n0.5 0.5 0.5`
+
+  it(`uses the shared VASP scale grammar`, async () => {
     // Number(``) is 0, not NaN - a blank scale line must be a parse error
     await expect(parse_trajectory_data(xdatcar_with_scale(``), `XDATCAR`)).rejects.toThrow(
+      `Invalid scale factor`,
+    )
+    await expect(parse_trajectory_data(xdatcar_with_scale(`1 2`), `XDATCAR`)).rejects.toThrow(
       `Invalid scale factor`,
     )
     const trajectory = await parse_trajectory_data(
@@ -242,11 +259,51 @@ describe(`VASP XDATCAR Parser`, () => {
     )
     const structure = trajectory.frames[0].structure
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
+    const per_axis_structure = (
+      await parse_trajectory_data(xdatcar_with_scale(`2 1 3`), `XDATCAR`)
+    ).frames[0].structure
+    expect(
+      `lattice` in per_axis_structure
+        ? [
+            per_axis_structure.lattice.a,
+            per_axis_structure.lattice.b,
+            per_axis_structure.lattice.c,
+          ]
+        : null,
+    ).toEqual([10, 5, 15])
   })
 
-  it(`should re-read repeated headers in variable-cell (NPT) XDATCAR`, async () => {
+  // Unlike POSCAR/CHGCAR, XDATCAR refuses to invent element symbols: they go straight into
+  // the trajectory metadata, where an indexed fallback would be a silent lie. The blank
+  // symbol used to slip past a falsy `if (bad_element)` guard and become an atom.
+  it.each([
+    [`VASP 4 header with no symbol line`, `2 1`, `element symbols are missing`],
+    [`blank symbol line`, `\n1`, `Invalid element symbol in XDATCAR`],
+    [`non-element symbol`, `Xx\n1`, `Invalid element symbol in XDATCAR: Xx`],
+    [`fewer counts than symbols`, `H O Na\n1 1`, `3 element symbol(s) but 2 atom count(s)`],
+    [`fractional count`, `H\n1.5`, `invalid atom counts`],
+    [`zero count`, `H\n0`, `invalid atom counts`],
+    [`negative count`, `H\n-1`, `invalid atom counts`],
+    [`non-finite count`, `H\nInfinity`, `invalid atom counts`],
+  ])(`rejects an XDATCAR %s`, async (_label, species_block, expected_error) => {
+    const content = [
+      `title`,
+      `1.0`,
+      `5 0 0`,
+      `0 5 0`,
+      `0 0 5`,
+      species_block,
+      `Direct configuration= 1`,
+      `0.5 0.5 0.5`,
+      `Direct configuration= 2`,
+      `0.5 0.5 0.5`,
+    ].join(`\n`)
+    await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(expected_error)
+  })
+
+  it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
     const frame = (lat_a: number, idx: number) =>
-      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5`
+      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 0.25`
     const trajectory = await parse_trajectory_data(
       `${frame(10, 1)}\n${frame(20, 2)}`,
       `XDATCAR`,
@@ -256,6 +313,7 @@ describe(`VASP XDATCAR Parser`, () => {
     const structure = trajectory.frames[1].structure
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(20)
     expect(structure.sites[0].xyz).toEqual([10, 10, 10])
+    expect(structure.sites.map((site) => site.species[0].element)).toEqual([`H`, `He`])
   })
 })
 
@@ -597,9 +655,7 @@ Si 0 0 0
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
     const structure = trajectory.frames[0].structure
-    expect(structure).toBeDefined()
-    expect(`lattice` in structure).toBe(true)
-    // @ts-expect-error - line above ensures lattice is defined but doesn't type narrow
+    if (!(`lattice` in structure)) throw new Error(`missing lattice`)
     expect(structure.lattice.matrix).toEqual([
       [5.0, 0.0, 0.0],
       [0.0, 5.0, 0.0],
@@ -1083,7 +1139,6 @@ const TRAJECTORY_REFERENCE_DATA: {
   frames: number
   atoms: number
   elements: ElementSymbol[]
-  periodic: boolean
   format: string
 }[] = [
   {
@@ -1091,7 +1146,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 2,
     atoms: 8,
     elements: [`Li`, `Mn`, `O`],
-    periodic: true,
     format: `ase_trajectory`,
   },
   {
@@ -1099,7 +1153,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 51,
     atoms: 119,
     elements: [`Ag`, `Al`, `O`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1107,7 +1160,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 9,
     atoms: 108,
     elements: [`Co`, `Cr`, `Fe`, `Ni`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1115,7 +1167,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 7,
     atoms: 99,
     elements: [`Re`, `Ta`, `V`, `W`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1123,7 +1174,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 6,
     atoms: 4,
     elements: [`Fe`, `W`],
-    periodic: true,
     format: `xyz_trajectory`,
   },
   {
@@ -1131,7 +1181,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 100,
     atoms: 76,
     elements: [`Li`, `Si`],
-    periodic: true,
     format: `vasp_xdatcar`,
   },
   {
@@ -1139,7 +1188,6 @@ const TRAJECTORY_REFERENCE_DATA: {
     frames: 6,
     atoms: 22,
     elements: [],
-    periodic: true,
     format: `lammps_trajectory`,
   },
 ]
@@ -1147,7 +1195,7 @@ const TRAJECTORY_REFERENCE_DATA: {
 describe(`Trajectory Files with Exact Reference Data`, () => {
   it.each(TRAJECTORY_REFERENCE_DATA)(
     `$file: $frames frames, $atoms atoms`,
-    async ({ file, frames, atoms, elements, periodic, format }) => {
+    async ({ file, frames, atoms, elements, format }) => {
       const is_binary = /\.(?:h5|hdf5|traj)$/.exec(file)
       const content = is_binary ? read_binary_test_file(file) : read_test_file(file)
 
@@ -1163,13 +1211,10 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
         const found = new Set(
           traj.frames[0].structure.sites.map((site) => site.species[0]?.element),
         )
-        expect([...found].toSorted()).toEqual(expect.arrayContaining(elements.toSorted()))
+        expect([...found].toSorted()).toEqual(elements.toSorted())
       }
 
-      // Periodic structures should have lattice
-      if (periodic) {
-        expect(`lattice` in traj.frames[0].structure).toBe(true)
-      }
+      expect(`lattice` in traj.frames[0].structure).toBe(true)
 
       // All frames should have same atom count
       expect(traj.frames.every((frame) => frame.structure.sites.length === atoms)).toBe(true)
@@ -1182,19 +1227,17 @@ describe(`Comprehensive File Coverage`, () => {
   const trajectory_dir = join(process.cwd(), TRAJECTORY_DIR)
   // Unsupported compression formats (not available in browser DecompressionStream)
   const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
-  const all_trajectory_files = existsSync(trajectory_dir)
-    ? readdirSync(trajectory_dir).filter((name: string) => {
-        const file_path = join(trajectory_dir, name)
-        return (
-          statSync(file_path).isFile() &&
-          !name.startsWith(`.`) &&
-          !name.includes(`bad-file`) && // Exclude intentionally broken test files
-          !name.endsWith(`.ts`) && // Exclude TypeScript files
-          !name.endsWith(`.js`) &&
-          !unsupported_compression.some((ext) => name.endsWith(ext))
-        ) // Exclude unsupported compression
-      })
-    : []
+  const all_trajectory_files = readdirSync(trajectory_dir).filter((name: string) => {
+    const file_path = join(trajectory_dir, name)
+    return (
+      statSync(file_path).isFile() &&
+      !name.startsWith(`.`) &&
+      !name.includes(`bad-file`) && // Exclude intentionally broken test files
+      !name.endsWith(`.ts`) && // Exclude TypeScript files
+      !name.endsWith(`.js`) &&
+      !unsupported_compression.some((ext) => name.endsWith(ext))
+    ) // Exclude unsupported compression
+  })
 
   it.each(all_trajectory_files)(
     `should successfully parse sample file: %s`,
@@ -1202,19 +1245,12 @@ describe(`Comprehensive File Coverage`, () => {
       const is_binary = /\.(?:h5|hdf5|traj)$/.exec(filename)
       const content = is_binary ? read_binary_test_file(filename) : read_test_file(filename)
 
-      // Should not throw an error
       const trajectory = await parse_trajectory_data(content, filename)
 
-      // Basic validation
-      expect(trajectory).toBeDefined()
-      expect(trajectory.frames).toBeDefined()
       expect(trajectory.frames.length).toBeGreaterThan(0)
       expect(trajectory.metadata?.source_format).toBeDefined()
 
-      // Each frame should have a valid structure
-      trajectory.frames.forEach((frame, _idx) => {
-        expect(frame.structure).toBeDefined()
-        expect(frame.structure.sites).toBeDefined()
+      trajectory.frames.forEach((frame) => {
         expect(frame.structure.sites.length).toBeGreaterThan(0)
         expect(typeof frame.step).toBe(`number`)
       })

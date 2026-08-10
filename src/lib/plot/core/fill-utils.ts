@@ -30,9 +30,6 @@ import type {
   LineCurve,
 } from '$lib/plot/core/types'
 
-// Epsilon value for log scale clamping (to avoid log(0) = -Infinity)
-export const LOG_EPSILON = 1e-10
-
 // A 2D point in data (or pixel) coordinates
 export interface Pt {
   x: number

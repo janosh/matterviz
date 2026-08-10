@@ -44,8 +44,9 @@
     else params.delete(`heatmap`)
     if (color_scale === DEFAULT_COLOR_SCALE) params.delete(`color_scale`)
     else params.set(`color_scale`, color_scale)
-    const search = params.size ? `?${params}` : ``
-    if (search !== page.url.search) void replace_url(`${page.url.pathname}${search}`)
+    const query = params.size ? `?${params}` : ``
+    const { pathname, search, hash } = page.url
+    if (query !== search) void replace_url(`${pathname}${query}${hash}`)
   })
 
   // Appearance control state

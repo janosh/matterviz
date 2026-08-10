@@ -1,10 +1,6 @@
 # Violin Plot
 
-A violin plot is the same chart as a [box plot](/plot/box-plot) (one raw `y[]` distribution per
-series on a categorical axis), but draws a smoothed kernel-density estimate (KDE) of the
-distribution instead of (or in addition to) the quartile box. `Violin` is a thin wrapper around
-`BoxPlot` with `kind="violin"`; everything (orientation, pan/zoom, legend, dual axes, tooltips,
-controls) is shared.
+`Violin` wraps [BoxPlot](/plot/box-plot) with `kind="violin"`, drawing a smoothed kernel-density estimate of each raw `y[]` distribution instead of the quartile box, and shares its orientation, axes, controls, and interactions.
 
 ## Basic Usage
 

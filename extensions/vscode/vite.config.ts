@@ -1,7 +1,7 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { defineConfig, type PluginOption } from 'vite'
-import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
+import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 import { mock_vscode } from './tests/vscode-mock.ts'
 
 export default defineConfig(({ mode }) => ({
@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => ({
       : svelte(),
     mode === `test` ? mock_vscode() : null,
   ] as PluginOption[],
+  worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
   build: {
     outDir: `dist`,
     rollupOptions: {

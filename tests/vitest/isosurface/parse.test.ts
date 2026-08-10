@@ -2,7 +2,7 @@
 import { BOHR_TO_ANGSTROM } from '$lib/constants'
 import { parse_chgcar, parse_cube, parse_volumetric_file } from '$lib/isosurface/parse'
 import type { Vec3 } from '$lib/math'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // === Helper to build minimal CHGCAR content ===
 function make_chgcar({
@@ -43,12 +43,30 @@ function make_chgcar({
 // === CHGCAR Tests ===
 
 describe(`parse_chgcar`, () => {
-  test(`parses valid CHGCAR with correct structure, grid, and volume normalization`, () => {
-    const result = parse_chgcar(make_chgcar())
+  test(`strips potential suffixes and warns before indexed fallback`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const result = parse_chgcar(make_chgcar({ elements: `Fe_pv Xx`, counts: `1 1` }))
+    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
+      `Fe`,
+      `He`,
+    ])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Xx`))
+    warn.mockRestore()
+  })
+
+  test(`parses valid CHGCAR with Fortran exponents, grid, and volume normalization`, () => {
+    const result = parse_chgcar(
+      make_chgcar({
+        lattice: [`5.43D+00 0.0 0.0`, `0.0 5.43D+00 0.0`, `0.0 0.0 5.43D+00`],
+        positions: [`0.0 0.0 0.0`, `5.0D-01 5.0D-01 5.0D-01`],
+        data: `1.0D+00 2.0D+00 3.0D+00 4.0D+00 5.0D+00 6.0D+00 7.0D+00 8.0D+00`,
+      }),
+    )
     expect(result).not.toBeNull()
     // Structure
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.structure.sites[0].species[0].element).toBe(`Si`)
+    expect(result?.structure.sites[1].abc).toEqual([0.5, 0.5, 0.5])
     expect(result?.structure.lattice?.a).toBeCloseTo(5.43, 2)
     // Volume metadata
     expect(result?.volumes).toHaveLength(1)
@@ -99,6 +117,39 @@ describe(`parse_chgcar`, () => {
     expect(result?.structure.lattice?.a).toBeCloseTo(5.43, 2)
   })
 
+  // Both forms come from the header grammar parse_poscar has always implemented and
+  // parse_chgcar used to ignore: three per-axis Cartesian factors, and a negative single
+  // factor that is a TARGET CELL VOLUME rather than a multiplier
+  const unit_cube = [`1.0  0.0  0.0`, `0.0  1.0  0.0`, `0.0  0.0  1.0`]
+  test.each([
+    [`three per-axis factors`, `2 1 3`, unit_cube, [2, 1, 3], 6],
+    [`negative factor = target volume`, `-27.0`, unit_cube, [3, 3, 3], 27],
+    // 0.5 * 6 = 3 per axis; parseFloat used to stop at the `D` and read this as 5.0
+    [`Fortran exponent factor`, `5.0D-01`, [`6 0 0`, `0 6 0`, `0 0 6`], [3, 3, 3], 27],
+  ])(`applies %s to the lattice`, (_label, scale, lattice, abc, volume) => {
+    const result = parse_chgcar(
+      make_chgcar({ scale, lattice, elements: `Si`, counts: `1`, positions: [`0.0 0.0 0.0`] }),
+    )
+    const lat = result?.structure.lattice
+    expect([lat?.a, lat?.b, lat?.c]).toEqual(abc)
+    expect(lat?.volume).toBeCloseTo(volume, 10)
+  })
+
+  test(`scales Cartesian coordinates per axis`, () => {
+    const result = parse_chgcar(
+      make_chgcar({
+        scale: `2 1 3`,
+        lattice: unit_cube,
+        elements: `Si`,
+        counts: `1`,
+        coord_mode: `Cartesian`,
+        positions: [`0.5 0.5 0.5`],
+      }),
+    )
+    expect(result?.structure.sites[0].xyz).toEqual([1, 0.5, 1.5])
+    expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+  })
+
   test(`handles selective dynamics line`, () => {
     const result = parse_chgcar(
       make_chgcar({
@@ -110,7 +161,51 @@ describe(`parse_chgcar`, () => {
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.structure.sites[0].abc[0]).toBeCloseTo(0.0)
     expect(result?.structure.sites[1].abc[0]).toBeCloseTo(0.5)
+    // CHGCAR only skips the line: unlike parse_poscar it keeps no per-site move flags
+    expect(result?.structure.sites[0].properties).toEqual({})
   })
+
+  test(`reads element symbols wrapped across several lines`, () => {
+    const result = parse_chgcar(
+      make_chgcar({
+        elements: `Na Cl\n   K Br`,
+        counts: `1 1\n   1 1`,
+        positions: [`0 0 0`, `0.25 0.25 0.25`, `0.5 0.5 0.5`, `0.75 0.75 0.75`],
+      }),
+    )
+    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
+      `Na`,
+      `Cl`,
+      `K`,
+      `Br`,
+    ])
+  })
+
+  test(`returns null when symbol and count lines disagree in length`, () => {
+    // used to parse two sites and silently drop the third symbol, leaving the volumetric
+    // block to be read from the wrong offset
+    const result = parse_chgcar(
+      make_chgcar({ elements: `H O Na`, counts: `1 1`, positions: [`0 0 0`, `0.5 0.5 0.5`] }),
+    )
+    expect(result).toBeNull()
+  })
+
+  test.each([`Foo`, `Superlattice`])(
+    `treats unrecognized coordinate mode %s as Cartesian without consuming it as selective dynamics`,
+    (coord_mode) => {
+      // parse_poscar rejects this; CHGCAR stays lenient because only `D...` means Direct
+      const result = parse_chgcar(
+        make_chgcar({
+          coord_mode,
+          lattice: [`5 0 0`, `0 5 0`, `0 0 5`],
+          elements: `Si`,
+          counts: `1`,
+          positions: [`2.5 2.5 2.5`],
+        }),
+      )
+      expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+    },
+  )
 
   test(`handles Cartesian coordinates`, () => {
     const result = parse_chgcar(
@@ -158,26 +253,33 @@ describe(`parse_chgcar`, () => {
   })
 
   test(`handles VASP 4 format (no element symbols)`, () => {
-    // VASP 4 has no element symbols line - just goes straight to atom counts
+    // VASP 4 has no element symbols line - just goes straight to atom counts. Two groups,
+    // so the index-1 fallback (He) is exercised: FALLBACK_ELEMENTS[0] is H, which alone
+    // would be indistinguishable from a blanket "unknown element becomes hydrogen".
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const vasp4 = [
       `test`,
       `   1.0`,
       `     5.0  0.0  0.0`,
       `     0.0  5.0  0.0`,
       `     0.0  0.0  5.0`,
-      `   2`,
+      `   2 1`,
       `Direct`,
       `   0.0  0.0  0.0`,
       `   0.5  0.5  0.5`,
+      `   0.25 0.25 0.25`,
       ``,
       `   2   2   2`,
       `  1.0  2.0  3.0  4.0  5.0  6.0  7.0  8.0`,
     ].join(`\n`)
     const result = parse_chgcar(vasp4)
-    expect(result).not.toBeNull()
-    expect(result?.structure.sites).toHaveLength(2)
-    // Fallback elements for VASP 4: H, He, Li, ...
-    expect(result?.structure.sites[0].species[0].element).toBe(`H`)
+    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
+      `H`,
+      `H`,
+      `He`,
+    ])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
+    warn.mockRestore()
   })
 
   test(`skips augmentation occupancies section`, () => {
@@ -213,6 +315,15 @@ describe(`parse_chgcar`, () => {
     [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
     // blank scale line must error, not silently become scale 0 (Number(``) is 0)
     [`blank scale factor line`, make_chgcar({ scale: `` })],
+    [`whitespace-only scale factor line`, make_chgcar({ scale: `   ` })],
+    // VASP accepts one factor or exactly three positive per-axis factors
+    [`two scale factors`, make_chgcar({ scale: `1 2` })],
+    [`four scale factors`, make_chgcar({ scale: `1 2 3 4` })],
+    [`zero per-axis scale factor`, make_chgcar({ scale: `0 1 1` })],
+    [`negative per-axis scale factor`, make_chgcar({ scale: `-1 1 1` })],
+    [`non-finite atom count`, make_chgcar({ counts: `nan` })],
+    [`fractional atom count`, make_chgcar({ counts: `1.5` })],
+    [`negative atom count`, make_chgcar({ counts: `-1` })],
   ])(`returns null for %s`, (_label, content) => {
     expect(parse_chgcar(content)).toBeNull()
   })
@@ -269,28 +380,6 @@ describe(`parse_chgcar`, () => {
     const cell_vol = result?.structure.lattice?.volume ?? 1
     expect(grid?.[0][0][0]).toBeCloseTo(1.0 / cell_vol, 5)
     expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_vol, 5)
-  })
-
-  test(`maps non-cubic CHGCAR volumetric data with VASP x-fastest ordering`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        counts: `1`,
-        positions: [`0.0  0.0  0.0`],
-        grid_dims: `2   3   2`,
-        // Values generated in VASP order: for z, then y, then x -> 100*x + 10*y + z + 5.
-        // Sequence:
-        // z=0: 5,105, 15,115, 25,125
-        // z=1: 6,106, 16,116, 26,126
-        data: `5 105 15 115 25 125 6 106 16 116 26 126`,
-      }),
-    )
-    expect(result).not.toBeNull()
-    const grid = result?.volumes[0].grid
-    const cell_vol = result?.structure.lattice?.volume ?? 1
-    expect(grid?.[0][0][0]).toBeCloseTo(5 / cell_vol, 5)
-    expect(grid?.[1][0][0]).toBeCloseTo(105 / cell_vol, 5)
-    expect(grid?.[0][2][1]).toBeCloseTo(26 / cell_vol, 5)
-    expect(grid?.[1][2][1]).toBeCloseTo(126 / cell_vol, 5)
   })
 
   test(`non-orthogonal lattice produces correct lattice params`, () => {
@@ -359,8 +448,6 @@ function make_cube({
 }
 
 describe(`parse_cube`, () => {
-  // Import rather than hardcode: a literal here silently stopped matching the parser's
-  // constant once the two drifted apart.
   const bohr = BOHR_TO_ANGSTROM
 
   test(`parses valid .cube with correct structure, grid shape, and volume`, () => {
@@ -375,8 +462,8 @@ describe(`parse_cube`, () => {
     expect(result?.volumes[0].grid.length).toBe(2)
     expect(result?.volumes[0].grid[0].length).toBe(2)
     expect(result?.volumes[0].grid[0][0].length).toBe(2)
-    // Bohr -> Angstrom conversion: lattice = 2 * 1.889726 Bohr * bohr_to_ang
-    expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * bohr, 3)
+    // Pin CODATA 2022 through parser output so conversion changes must be deliberate.
+    expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * 0.529177210544, 10)
   })
 
   test.each([

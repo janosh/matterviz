@@ -211,7 +211,6 @@
       return { ...entry, magnetic_ordering }
     }),
   )
-  let hidden_orderings = $state<string[]>([])
   // oxfmt-ignore
   const magnetic_marker_legend = [`△ FM (ferromagnetic)`, `◆ FiM (ferrimagnetic)`, `■ AFM (antiferromagnetic)`, `● NM (non-magnetic)`]
 
@@ -236,17 +235,8 @@
   ])
   const get_entry_href = (entry: ConvexHullEntry): string | null =>
     entry.entry_id ? `#${entry.entry_id}` : null
-  const ternary_features = [
-    `<b>Barycentric coordinates</b>: composition mapped to an equilateral triangle base`,
-    `<b>Formation energy</b> on the z-axis, with convex hull faces between stable points`,
-  ]
   const quaternary_features = [
-    `<b>Tetrahedral projection</b>: 4D composition coordinates mapped into 3D space`,
-    `<b>Color-coded stability</b>: each point colored by energy above hull`,
-    `<b>Drag & drop</b>: load your own JSON data onto any diagram`,
-  ]
-  const binary_features = [
-    `<b>Formation energy vs. composition</b>: stable phases lie on the lower convex hull`,
+    `<b>Drag & drop</b>: load your own JSON data onto the quaternary diagrams`,
   ]
   const stats_features = [
     `<b>Live-bound stats</b>: phase counts, energy ranges, and hull distances update with the diagram`,
@@ -261,9 +251,7 @@
     `<b><code>layout="side-by-side"</code></b>: stats and table visible simultaneously, no toggle needed`,
   ]
   const highlighted_features = [
-    `<b>Visual effects</b>: pulse, glow, or size changes on selected entries`,
-    `<b>Tooltip badge</b>: hover to see "★ Highlighted" on marked entries`,
-    `<b>Cross-dimensional</b>: works on 2D, 3D, and 4D diagrams`,
+    `<b>API</b>: <code>highlighted_entries</code> + <code>highlight_style</code> (pulse/glow effect, color, size multiplier) on 2D, 3D and 4D`,
   ]
   const magnetic_features = [
     `<b>Shape-coded orderings</b>: entries with <code>magnetic_ordering</code> render as △ FM, ◆ FiM, ■ AFM, ● NM (built-in default <code>entry_category</code>)`,
@@ -273,12 +261,10 @@
   ]
   const temp_features = [
     `<b>Temperature slider</b>: appears when entries include <code>temperatures</code> + <code>free_energies</code> arrays`,
-    `<b>Live hull recomputation</b>: phase stability changes are visible as you drag the slider`,
-    `<b>Order-disorder transitions</b>: high-entropy polymorphs stabilize at elevated temperatures`,
+    `<b>Synthetic G(T) data</b>: every composition has an ordered and a high-entropy polymorph, so hull membership shifts with temperature`,
   ]
   const gas_features = [
-    `<b>Chemical potential</b>: μ(T, P) = μ°(T) + RT·ln(P) for gas-phase elements (O, N, H, ...)`,
-    `<b>Pressure controls</b>: adjust partial pressures to simulate reducing/oxidizing conditions`,
+    `<b>Chemical potential</b>: gas-forming elements (O, N, H, C, F) use μ(T, P) = μ°(T) + k<sub>B</sub>T·ln(P/P₀) / n<sub>atoms</sub> (per-atom convention, P in bar, P₀ = 1 bar)`,
     `<b>Multi-gas support</b>: O<sub>2</sub>, N<sub>2</sub>, H<sub>2</sub>, CO, CO<sub>2</sub>, H<sub>2</sub>O, F<sub>2</sub>`,
   ]
   const quinary_stats_features = [
@@ -434,7 +420,6 @@
 
   <section class="demo-section">
     <h2>Ternary Chemical Systems</h2>
-    {@render feature_list(ternary_features)}
     <div class="ternary-grid">
       {#each ternary_examples as { title, entries } (title)}
         <ConvexHull3D {entries} controls={{ title }} />
@@ -459,7 +444,6 @@
 
   <section class="demo-section">
     <h2>Binary Chemical Systems</h2>
-    {@render feature_list(binary_features)}
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
         <ConvexHull2D {entries} controls={{ title }} style="height: 500px" />
@@ -560,10 +544,8 @@
       <h2>Magnetic States & Custom Categories</h2>
       {@render feature_list(magnetic_features)}
       <p class="section-note">
-        Currently hidden orderings: {hidden_orderings.length > 0
-          ? hidden_orderings.join(`, `)
-          : `none`} (synthetic demo data; categories assigned by entry ID hash. Missing pure element
-        references are automatically added with E<sub>form</sub> = 0 eV/atom.)
+        Synthetic orderings are assigned by entry-ID hash. Missing pure-element references are
+        added with E<sub>form</sub> = 0 eV/atom.
       </p>
       <div class="ternary-grid">
         <div>
@@ -573,7 +555,6 @@
           <ConvexHull3D
             entries={magnetic_ternary_entries}
             controls={{ title: `Na-Fe-O Magnetic Orderings` }}
-            bind:hidden_categories={hidden_orderings}
           />
         </div>
         <div>
@@ -640,10 +621,6 @@
           bind:gas_pressures={gas_demo_pressures}
         />
       </div>
-      <p class="section-note">
-        <strong>Tip:</strong> Try very low pressure (10⁻⁶ bar) for reducing or high (1 bar) for oxidizing
-        conditions.
-      </p>
     </section>
   {/if}
 

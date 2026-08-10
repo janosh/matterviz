@@ -104,32 +104,12 @@
 </script>
 
 <h1>Chemical Potential Diagram</h1>
-<p>
-  The chemical potential diagram is the mathematical dual of the compositional phase diagram,
-  related by a
-  <a
-    href="https://en.wikipedia.org/wiki/Legendre_transformation"
-    target="_blank"
-    rel="noopener"
-  >
-    Legendre transform
-  </a>
-  that swaps composition variables for their conjugate chemical potentials. Each phase becomes a
-  convex polytope domain in chemical potential (mu) space, showing the region where that phase is
-  thermodynamically most stable.
-</p>
 
 <section data-demo-id="binary">
   <h2>Binary System (Li-O) &mdash; 2D</h2>
   <p>
-    For a binary system, the chemical potential diagram shows domain boundaries as line
-    segments in 2D mu-space. Each line represents the stability region of a phase.
-  </p>
-  <p>
-    <strong>Features in this demo:</strong>
-    interactive hover + click-to-pin tooltips, control pane for formal potentials and bounds/padding,
-    and export options (SVG, PNG, JSON). This panel also supports the full 2D color modes (none,
-    energy/atom, formation energy, arity, entry count) with color bar/legend where applicable.
+    Demonstrates pinned tooltips, formal-potential and bounds controls, color modes, and
+    export.
   </p>
   {#if !visible_demo_ids.has(`binary`)}
     <div class="deferred-diagram" style:height="550px"></div>
@@ -149,12 +129,10 @@
 
 <section data-demo-id="ternary">
   <h2>Ternary System (Li-Co-O) &mdash; 3D</h2>
-  <p>For a ternary system, stability domains are 3D polytopes. Drag to rotate the view.</p>
   <p>
-    <strong>Features in this demo:</strong>
-    3D hull rendering with domain boundaries, hover + click-to-pin tooltips, camera and display controls,
-    color modes/scales, and export options (PNG, SVG snapshot, JSON, view JSON, GLB). Projection
-    switching is intentionally hidden here because this is a true ternary system.
+    Demonstrates pinned tooltips, camera and display controls, color modes, and 3D export.
+    Projection axis switching is hidden here since it only appears for systems with 4+
+    elements.
   </p>
   {#if !visible_demo_ids.has(`ternary`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -174,11 +152,9 @@
 
 <section data-demo-id="li_fe_o">
   <h2>Ternary System (Li-Fe-O) &mdash; 3D</h2>
-  <p>Li-Fe-O ternary from pymatgen test data. Axes: x=Li, y=Fe, z=O.</p>
   <p>
-    <strong>Features in this demo:</strong>
-    same core 3D interactions as Li-Co-O, useful as a parity/reference dataset against pymatgen expectations
-    (domain topology, labels, and energy-aware coloring).
+    Reference data from pymatgen for checking domain topology, labels, and energy-aware
+    coloring.
   </p>
   {#if !visible_demo_ids.has(`li_fe_o`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -218,9 +194,8 @@
 <section data-demo-id="quaternary">
   <h2>Quaternary System (Li-Co-Ni-O) &mdash; All Ternary Projections</h2>
   <p>
-    For quaternary and higher systems, a single 3D diagram projects onto 3 chosen elements,
-    hiding assumptions about the remaining chemical potentials. Grid mode shows all C(n,3)
-    ternary projections simultaneously for a complete picture.
+    Grid mode exposes all C(n,3) ternary projections instead of hiding the unselected chemical
+    potentials behind one projection.
   </p>
   {#if !visible_demo_ids.has(`quaternary`)}
     <div class="deferred-diagram" style:height="700px"></div>
@@ -243,15 +218,9 @@
 <section data-demo-id="ytos_ti_s_y">
   <h2>YTOS Quaternary &mdash; Ti-S-Y Projection</h2>
   <p>
-    Full Y-Ti-O-S quaternary projected onto Ti-S-Y axes with Y<sub>2</sub>Ti<sub>2</sub>S<sub
+    Y-Ti-O-S projected onto Ti-S-Y, with runtime axis switching and a Y<sub>2</sub>Ti<sub
       >2</sub
-    >O<sub>5</sub> overlay.
-  </p>
-  <p>
-    <strong>Features in this demo:</strong>
-    multinary projection mode (4D system projected into 3D), runtime projection axis switching in
-    the 3D controls pane (X/Y/Z selectors + presets), and formula overlay tooling (searchable picker,
-    surface/neighbor quick-select actions).
+    >S<sub>2</sub>O<sub>5</sub> formula overlay.
   </p>
   {#if !visible_demo_ids.has(`ytos_ti_s_y`)}
     <div class="deferred-diagram" style:height="500px"></div>
@@ -272,12 +241,9 @@
 
 <section data-demo-id="ytos_ti_y_o">
   <h2>YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub></h2>
-  <p>Same quaternary data projected onto Ti-Y-O axes.</p>
   <p>
-    <strong>Features in this demo:</strong>
-    alternative projection of the same multinary dataset, showing how domain geometry and visible
-    phase relationships change with axis selection while preserving the same underlying computed
-    chemical-potential domains.
+    The same domains projected onto Ti-Y-O with a Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
+    overlay.
   </p>
   {#if !visible_demo_ids.has(`ytos_ti_y_o`)}
     <div class="deferred-diagram" style:height="500px"></div>

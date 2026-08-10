@@ -3,6 +3,7 @@ import type DraggablePane from 'svelte-widgets/DraggablePane.svelte'
 import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/clipboard'
 
 export { ContextMenu, DraggablePane } from 'svelte-widgets'
+export { default as ControlPane } from './ControlPane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as GlassChip } from './GlassChip.svelte'
 export { portal } from 'svelte-widgets/attachments'

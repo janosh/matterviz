@@ -5,10 +5,8 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import type {
-    AxisRanges,
     AxisLoadError,
     BasePlotProps,
     ColorScaleConfig,
@@ -35,28 +33,26 @@
   } from '$lib/plot'
   import {
     ColorBar,
-    FillArea,
-    get_tick_label,
-    Line,
-    PlotAxis,
     PlotLegend,
-    PlotMarginals,
     PlotTooltip,
     ScatterPlotControls,
     ScatterPoint,
-    ZeroLines,
-    ZoomRect,
   } from '$lib/plot'
-  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { FillArea, Line, PlotAxis, ZeroLines } from '$lib/plot/core/components'
   import {
-    add_sides,
-    marginal_axis,
-    marginal_axis_presence,
-    normalize_marginals,
-    reserve_marginal_pad,
-  } from '$lib/plot/core/marginals'
+    get_tick_label,
+    accumulate_extent,
+    create_color_scale,
+    create_scale,
+    create_size_scale,
+    empty_extent,
+    nice_range_from_extent,
+    type RunningExtent,
+  } from '$lib/plot/core/scales'
+  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
+  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  import { normalize_marginals } from '$lib/plot/core/marginals'
   import {
     build_obstacles_norm,
     has_explicit_position,
@@ -66,14 +62,11 @@
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
   import { get_series_color, get_series_symbol } from '$lib/plot/core/data-transform'
-  import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
-  import { FACET_AXES, type FacetLayoutContext } from '$lib/plot/core/facets'
+  import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
-    create_legend_decoration_item,
-    decoration_placement_rects,
+    decoration_placement_revision,
     get_decoration_placement,
     resolve_legend_layout_tracks,
-    solve_decorations,
     type DecorationItem,
     type DecorationPlacement,
   } from '$lib/plot/core/decorations'
@@ -93,7 +86,6 @@
   } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
   import { extent } from 'd3-array'
-  import { scaleTime } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -105,48 +97,20 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
   } from '$lib/plot/core/fill-utils'
-  import {
-    expand_range_if_needed,
-    get_relative_coords,
-    invert_rect_range,
-    normalize_y2_sync,
-    sync_y2_range,
-  } from '$lib/plot/core/interactions'
-  import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
+  import { get_relative_coords } from '$lib/plot/core/interactions'
+  import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     AXIS_TITLE_OFFSET,
-    DEFAULT_PLOT_PADDING,
-    calc_auto_padding,
-    filter_padding,
-    measured_axis,
-    resolve_tick_layout,
-    sides_equal,
     stride_sample,
     y_axis_label_x,
     y2_axis_label_x,
   } from '$lib/plot/core/layout'
-  import type { FontSpec } from '$lib/plot/core/text-metrics'
-  import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import {
-    group_ref_lines_by_z,
-    index_ref_lines,
-    solve_reference_annotations,
-  } from '$lib/plot/core/reference-line'
-  import {
-    accumulate_extent,
-    create_color_scale,
-    create_scale,
-    create_size_scale,
-    empty_extent,
-    generate_ticks,
-    nice_range_from_extent,
-    type RunningExtent,
-  } from '$lib/plot/core/scales'
+  import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
   import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
-  import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'
+  import { resolve_line_tween } from '$lib/plot/core/utils'
   import { color as d3_color } from 'd3-color'
   import { build_legend_data, filter_series_to_ranges, pick_tooltip_bg } from './scatter-data'
 
@@ -347,15 +311,8 @@
       ...styles_init,
     })),
   )
-  let [width, height] = $state([0, 0])
-  let svg_element: SVGElement | null = $state(null) // Bind the SVG element
-
   // Track which specific control properties user has modified
   let touched = new SvelteSet<string>()
-
-  // Unique component ID to avoid clipPath conflicts between multiple instances
-  let component_id = $state(unique_id(`scatter`))
-  let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Assign stable IDs to series for keying
   let series_with_ids = $derived(
@@ -367,42 +324,10 @@
     }),
   )
 
-  // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
-  let ranges = $state<{
-    initial: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
-    current: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
-  }>({
-    initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
-    current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
-  })
   const legend_vis = create_legend_visibility(
     () => series,
     (next) => (series = next),
   )
-
-  // Y2 axis sync configuration
-  let y2_sync_config = $derived(normalize_y2_sync(y2_axis?.sync))
-  // Track previous sync mode to detect changes (updated in $effect.pre to avoid race conditions)
-  let prev_sync_mode = $state<string>(`none`)
-
-  // Helper to compute synced y2 range or return fallback when sync disabled
-  const get_synced_y2 = (y1_range: Vec2, fallback: Vec2): Vec2 =>
-    y2_sync_config.mode !== `none`
-      ? sync_y2_range(y1_range, ranges.initial.y2, y2_sync_config)
-      : fallback
-
-  // Effect to update y2 range when sync mode changes - use $effect.pre to capture
-  // mode change before the main range-update effect runs, ensuring sync is applied
-  // immediately when toggled (not delayed until next data change)
-  $effect.pre(() => {
-    const mode = y2_sync_config.mode
-    if (mode === prev_sync_mode) return
-    ranges.current.y2 =
-      mode === `none`
-        ? ([...ranges.initial.y2] as Vec2)
-        : sync_y2_range(ranges.current.y, ranges.initial.y2, y2_sync_config)
-    prev_sync_mode = mode
-  })
 
   // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
@@ -423,9 +348,7 @@
   let hovered_legend_series_idx = $state<number | null>(null)
 
   // State for legend/colorbar placement stability
-  let legend_element = $state<HTMLDivElement | undefined>()
   let colorbar_element = $state<HTMLDivElement | undefined>()
-  let legend_filter_query = $derived(legend?.filter_query ?? ``)
 
   // Avoid materializing point objects when only axis extrema and counts are needed.
   let extents_by_axis = $derived.by(() => {
@@ -466,9 +389,6 @@
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
-  // Layout: tick-label padding (decoration reservations are added in `pad` below)
-  let tick_font = $state<Readonly<FontSpec> | undefined>()
-  let base_pad = $state(untrack(() => filter_padding(padding, DEFAULT_PLOT_PADDING)))
   const auto_range = (
     data_extent: RunningExtent,
     axis: typeof final_x_axis,
@@ -491,141 +411,71 @@
     y: auto_y_range,
     y2: auto_y2_range,
   })
-  const create_plot_scales = (axis_ranges: AxisRanges, layout_padding: Required<Sides>) => {
-    const x_extent: Vec2 = [layout_padding.l, width - layout_padding.r]
-    const y_extent: Vec2 = [height - layout_padding.b, layout_padding.t]
-    const horizontal_scale = (axis: typeof final_x_axis, range: Vec2, time_scale: boolean) =>
-      time_scale
-        ? scaleTime()
-            .domain(range.map((value) => new Date(value)))
-            .range(x_extent)
-        : create_scale(axis.scale_type ?? `linear`, range, x_extent)
-    return {
-      x: horizontal_scale(final_x_axis, axis_ranges.x, is_time_x),
-      x2: horizontal_scale(final_x2_axis, axis_ranges.x2, is_time_x2),
-      y: create_scale(final_y_axis.scale_type ?? `linear`, axis_ranges.y, y_extent),
-      y2: create_scale(final_y2_axis.scale_type ?? `linear`, axis_ranges.y2, y_extent),
-    }
-  }
-  const get_axis_ticks = (
-    axis_ranges: AxisRanges,
-    axis_scales: ReturnType<typeof create_plot_scales>,
-    require_size = false,
-  ) => {
-    if (require_size && (!width || !height)) return { x: [], x2: [], y: [], y2: [] }
-    return {
-      x: generate_ticks(
-        axis_ranges.x,
-        final_x_axis.scale_type ?? `linear`,
-        final_x_axis.ticks,
-        axis_scales.x,
-      ),
-      x2: has_x2_points
-        ? generate_ticks(
-            axis_ranges.x2,
-            final_x2_axis.scale_type ?? `linear`,
-            final_x2_axis.ticks,
-            axis_scales.x2,
-          )
-        : [],
-      y: generate_ticks(
-        axis_ranges.y,
-        final_y_axis.scale_type ?? `linear`,
-        final_y_axis.ticks,
-        axis_scales.y,
-        { default_count: 5 },
-      ),
-      y2: has_y2_points
-        ? generate_ticks(
-            axis_ranges.y2,
-            final_y2_axis.scale_type ?? `linear`,
-            final_y2_axis.ticks,
-            axis_scales.y2,
-            { default_count: 5 },
-          )
-        : [],
-    }
-  }
-  const facet = create_facet_plot_adapter({
-    axes: FACET_AXES,
+  const frame = create_cartesian_frame({
+    axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
+    auto_ranges: () => intrinsic_ranges,
+    // Keep the current view when every series is hidden instead of snapping to the
+    // [0, 1] sentinel, so toggling series off doesn't jump the plot
+    range_sync: `expand`,
+    has_x2: () => has_x2_points,
+    has_y2: () => has_y2_points,
+    tick_counts: { y: 5, y2: 5 },
+    padding: () => padding,
+    title: () => title,
+    obstacles: () => obstacles_norm,
+    legend: () => legend,
+    legend_visible: () => should_show_legend,
+    legend_items: () => legend_track_items,
+    legend_footprint_fallback: { width: 120, height: 80 },
+    // A legend the user grabbed or dropped owns its position; the solver only routes
+    // around it (via exclusion_rects) from then on.
+    legend_auto_placed: () => !legend_is_dragging && !legend_manual_position,
+    legend_suspended: () => legend_is_dragging,
+    legend_manual_position: () => legend_manual_position,
+    decorations: () => colorbar_decoration,
+    exclusion_rects: () => pinned_decoration_rects,
+    marginals: () => resolved_marginals,
+    ref_lines: () => indexed_ref_lines,
+    pan: () => pan,
     facet_layout: () => facet_layout,
-    intrinsic_padding: () => base_pad,
-    intrinsic_ranges: () => intrinsic_ranges,
-    ranges: () => ranges.current,
+    write_range: (axis, range) => {
+      if (axis === `x`) x_axis = { ...x_axis, range }
+      else if (axis === `x2`) x2_axis = { ...x2_axis, range }
+      else if (axis === `y`) y_axis = { ...y_axis, range }
+      else y2_axis = { ...y2_axis, range }
+    },
+    // Live tooltip while rect-dragging: update for the closest point inside the plot
+    // bounds, clear when the cursor leaves the svg
+    on_drag_move: (coords, inside_svg) => {
+      if (inside_svg) update_tooltip_point(coords.x, coords.y)
+      else tooltip_point = null
+    },
+    clip_id_prefix: `plot-area-clip`,
   })
-  const effective_base_pad = $derived(facet.padding(base_pad))
-  const title_config = $derived(normalize_plot_title(title))
 
-  // Update padding when format or ticks change
-  $effect(() => {
-    const measured_ticks = facet_layout
-      ? intrinsic_axis_ticks
-      : { x: x_tick_values, x2: x2_tick_values, y: y_tick_values, y2: y2_tick_values }
-    // `range()` is set as a statement, not chained: these scales are unions of
-    // ScaleContinuousNumeric and ArcsinhScale, and resolving the overloaded
-    // `range` on a union widens the result to `Vec2 | ArcsinhScale`, which is
-    // no longer callable.
-    const padding_x_scale = x_scale_fn.copy()
-    const padding_x2_scale = x2_scale_fn.copy()
-    const padding_y_scale = y_scale_fn.copy()
-    const padding_y2_scale = y2_scale_fn.copy()
-    padding_x_scale.range([base_pad.l, width - base_pad.r])
-    padding_x2_scale.range([base_pad.l, width - base_pad.r])
-    padding_y_scale.range([height - base_pad.b, base_pad.t])
-    padding_y2_scale.range([height - base_pad.b, base_pad.t])
-    const measured_scales = facet_layout
-      ? intrinsic_scale_fns
-      : {
-          x: padding_x_scale,
-          x2: padding_x2_scale,
-          y: padding_y_scale,
-          y2: padding_y2_scale,
-        }
-    const x_extent = { start: base_pad.l, end: width - base_pad.r }
-    const y_extent = { start: height - base_pad.b, end: base_pad.t }
-    const axis_pad =
-      width && height
-        ? calc_auto_padding({
-            padding,
-            default_padding: DEFAULT_PLOT_PADDING,
-            width,
-            height,
-            x_axis: measured_axis(
-              final_x_axis,
-              measured_ticks.x,
-              (tick) =>
-                is_time_x ? measured_scales.x(new Date(tick)) : measured_scales.x(tick),
-              x_extent,
-              tick_font,
-            ),
-            x2_axis: measured_axis(
-              has_x2_points ? final_x2_axis : {},
-              measured_ticks.x2,
-              (tick) =>
-                is_time_x2 ? measured_scales.x2(new Date(tick)) : measured_scales.x2(tick),
-              x_extent,
-              tick_font,
-            ),
-            y_axis: measured_axis(
-              final_y_axis,
-              measured_ticks.y,
-              measured_scales.y,
-              y_extent,
-              tick_font,
-            ),
-            y2_axis: measured_axis(
-              has_y2_points ? final_y2_axis : {},
-              measured_ticks.y2,
-              measured_scales.y2,
-              y_extent,
-              tick_font,
-            ),
-          })
-        : filter_padding(padding, DEFAULT_PLOT_PADDING)
-    const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)
-
-    if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
-  })
+  // Aliases onto the frame so the marks, axes and overlays below read the same names
+  // they did when ScatterPlot owned this machinery itself.
+  const width = $derived(frame.width)
+  const height = $derived(frame.height)
+  const pad = $derived(frame.pad)
+  const effective_base_pad = $derived(frame.effective_base_pad)
+  const ranges = $derived(frame.ranges)
+  const clip_path_id = $derived(frame.clip_path_id)
+  const title_config = $derived(frame.title_config)
+  const facet = frame.facet
+  const pan_zoom = frame.pan_zoom
+  const legend_tween = frame.legend_tween
+  const decoration_solution = $derived(frame.decoration_solution)
+  const legend_placement = $derived(frame.legend_placement)
+  const x_scale_fn = $derived(frame.scales.x)
+  const x2_scale_fn = $derived(frame.scales.x2)
+  const y_scale_fn = $derived(frame.scales.y)
+  const y2_scale_fn = $derived(frame.scales.y2)
+  const x_tick_values = $derived(frame.ticks.x)
+  const x2_tick_values = $derived(frame.ticks.x2)
+  const y_tick_values = $derived(frame.ticks.y)
+  const y2_tick_values = $derived(frame.ticks.y2)
+  const tick_label_widths = $derived(frame.tick_label_widths)
 
   // === Unified automatic legend/colorbar layout ===
   // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too
@@ -639,15 +489,11 @@
       : COLOR_BAR_DEFAULTS.vertical_footprint,
   )
   let colorbar_size_revision = $state(0)
-  let legend_size_revision = $state(0)
   const colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
     return measured_footprint(colorbar_element, colorbar_fallback_size)
   })
-  const legend_footprint = $derived.by(() => {
-    void legend_size_revision
-    return measured_footprint(legend_element, { width: 120, height: 80 })
-  })
+  const legend_footprint = $derived(frame.legend_footprint)
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
@@ -665,19 +511,12 @@
         const y_config = uses_y2 ? final_y2_axis : final_y_axis
         const x_range = uses_x2 ? ([x2_min, x2_max] as Vec2) : ([x_min, x_max] as Vec2)
         const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
-        const time_x = uses_x2 ? is_time_x2 : is_time_x
-        const norm_x = time_x
-          ? scaleTime()
-              .domain(x_range.map((value) => new Date(value)))
-              .range([0, 1])
-          : create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
+        const norm_x = create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
         const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
         // Thin before projecting because the placement solver also caps its obstacle field.
         return {
           points: stride_sample(srs.filtered_data, OBSTACLE_SAMPLE_LIMIT).map((point) => ({
-            x:
-              (time_x ? norm_x(new Date(point.x)) : norm_x(point.x)) +
-              (point.point_offset?.x ?? 0) / base_w,
+            x: norm_x(point.x) + (point.point_offset?.x ?? 0) / base_w,
             y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),
           draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
@@ -692,6 +531,7 @@
   // rectangles remain exclusions for the automatic item.
   const pinned_decoration_rects = $derived.by((): Rect[] => {
     const rects: Rect[] = []
+    const legend_element = frame.legend_element
     if (
       legend_element &&
       (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
@@ -748,49 +588,6 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  const base_decoration_items = $derived.by(() => {
-    const legend_item = create_legend_decoration_item({
-      enabled:
-        legend != null &&
-        legend_element != null &&
-        !legend_has_explicit_pos &&
-        !legend_is_dragging &&
-        !legend_manual_position,
-      footprint: legend_footprint,
-      items: legend_track_items,
-      config: { ...legend, filter_query: legend_filter_query },
-    })
-    const items: DecorationItem[] = legend_item ? [legend_item] : []
-    if (
-      color_bar &&
-      all_color_values.length > 0 &&
-      !color_bar.wrapper_style &&
-      width > 0 &&
-      height > 0
-    ) {
-      items.push({
-        id: `colorbar`,
-        kind: `colorbar`,
-        footprint: colorbar_footprint,
-        horizontal: colorbar_is_horizontal,
-        clearance: color_bar.axis_clearance,
-      })
-    }
-    return items
-  })
-  const base_decoration_solution = $derived(
-    solve_decorations({
-      base_pad: effective_base_pad,
-      width,
-      height,
-      obstacles_norm,
-      exclusion_rects: pinned_decoration_rects,
-      items: base_decoration_items,
-    }),
-  )
-  const pad = $derived(
-    add_sides(base_decoration_solution.pad, reserve_marginal_pad(resolved_marginals)),
-  )
   // Map series to the generic marginal input, reusing the line/legend color fallback
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series_with_ids.map((srs, idx) => {
@@ -811,15 +608,6 @@
       }
     }),
   )
-  const marginal_has_axis = $derived(marginal_axis_presence(has_x2_points, has_y2_points))
-  // Reactive clip area dimensions to ensure proper responsiveness
-  let clip_area = $derived({
-    x: pad.l || 0,
-    y: pad.t || 0,
-    width: isFinite(width - pad.l - pad.r) ? Math.max(1, width - pad.l - pad.r) : 1,
-    height: isFinite(height - pad.t - pad.b) ? Math.max(1, height - pad.t - pad.b) : 1,
-  })
-
   // Extract color and size values in single pass (used for scale computations)
   let series_value_arrays = $derived.by(() => {
     const color_values: number[] = []
@@ -838,74 +626,24 @@
   })
   let all_color_values = $derived(series_value_arrays.color_values)
 
-  // Facet reports and intrinsic padding measurement stay data-local. Shared ranges/padding are
-  // applied only after these values are computed, so grid output never becomes the next report.
-  const intrinsic_scale_fns = $derived(create_plot_scales(intrinsic_ranges, base_pad))
-  const intrinsic_axis_ticks = $derived(get_axis_ticks(intrinsic_ranges, intrinsic_scale_fns))
-
-  // Update zoom ranges when auto ranges or explicit ranges change
-  // - Explicit ranges (from zoom/pan): apply directly
-  // - Auto ranges (from data changes): use lazy expansion to preserve view context
-  $effect(() => {
-    // Helper to get effective range (explicit ?? auto) and check if explicit
-    const get_range = (
-      axis: { range?: [number | null, number | null] },
-      auto: Vec2,
-    ): { explicit: boolean; range: Vec2 } => {
-      const explicit = axis.range?.[0] != null && axis.range?.[1] != null
-      const range = [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]] as Vec2
-      return { explicit, range }
-    }
-
-    const resolved = {
-      x: get_range(final_x_axis, auto_x_range),
-      x2: get_range(final_x2_axis, auto_x2_range),
-      y: get_range(final_y_axis, auto_y_range),
-      y2: get_range(final_y2_axis, auto_y2_range),
-    }
-
-    // untrack reads of `ranges`: this effect also writes it, and tracked reads of the
-    // deep proxy would re-trigger the effect on every current/initial write
-    for (const axis of [`x`, `x2`, `y`] as const) {
-      const { explicit, range } = resolved[axis]
-      if (explicit) {
-        ranges.current[axis] = range
-      } else {
-        const result = expand_range_if_needed(
-          untrack(() => ranges.initial[axis]),
-          range,
-        )
-        if (result.changed) {
-          ranges.initial[axis] = result.range
-          ranges.current[axis] = result.range
-        }
-      }
-    }
-
-    // Y2 axis: explicit → direct, else expand initial range then optionally sync
-    if (resolved.y2.explicit) {
-      ranges.current.y2 = resolved.y2.range
-    } else {
-      const result = expand_range_if_needed(
-        untrack(() => ranges.initial.y2),
-        resolved.y2.range,
-      )
-      if (result.changed) ranges.initial.y2 = result.range
-      // Apply sync if enabled, otherwise use expanded range (or keep current if unchanged)
-      if (y2_sync_config.mode !== `none`) {
-        // Pan/zoom handlers sync y2 themselves.
-        ranges.current.y2 = sync_y2_range(
-          untrack(() => ranges.current.y),
-          untrack(() => ranges.initial.y2),
-          y2_sync_config,
-        )
-      } else if (result.changed) {
-        ranges.current.y2 = result.range
-      }
-    }
-
-    facet.apply_ranges()
-  })
+  // The frame owns the legend item; the colorbar is ScatterPlot's own decoration
+  const colorbar_decoration = $derived<DecorationItem[]>(
+    color_bar &&
+      all_color_values.length > 0 &&
+      !color_bar.wrapper_style &&
+      width > 0 &&
+      height > 0
+      ? [
+          {
+            id: `colorbar`,
+            kind: `colorbar`,
+            footprint: colorbar_footprint,
+            horizontal: colorbar_is_horizontal,
+            clearance: color_bar.axis_clearance,
+          },
+        ]
+      : [],
+  )
 
   let [x_min, x_max] = $derived(ranges.current.x)
   let [x2_min, x2_max] = $derived(ranges.current.x2)
@@ -916,12 +654,6 @@
   let auto_color_range = $derived(
     all_color_values.length > 0 ? extent(all_color_values) : [0, 1],
   ) as Vec2
-
-  const scale_fns = $derived(create_plot_scales(ranges.current, pad))
-  let x_scale_fn = $derived(scale_fns.x)
-  let x2_scale_fn = $derived(scale_fns.x2)
-  let y_scale_fn = $derived(scale_fns.y)
-  let y2_scale_fn = $derived(scale_fns.y2)
 
   // All size values from series (for size scale) - extracted in series_value_arrays
   let all_size_values = $derived(series_value_arrays.size_values)
@@ -1129,7 +861,7 @@
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
     const ctx = canvas.getContext(`2d`)
-    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio, clip: clip_area })
+    if (ctx) draw_markers(ctx, canvas_markers, { width, height, pixel_ratio })
   })
 
   const fill_hover_key = (
@@ -1251,10 +983,10 @@
   let legend_data = $derived(
     build_legend_data(series_with_ids, computed_fills, color_scale_fn),
   )
-  // legend_data already folds fill regions in and dedupes by legend_group::label, so its
-  // length is the rendered entry count the shared auto rule needs.
+  // legend_track_items mirrors the rendered entries without depending on frame geometry,
+  // avoiding a frame -> visibility -> computed fills -> frame dependency cycle.
   const should_show_legend = $derived(
-    resolve_legend_visibility(show_legend, legend, legend_data.length),
+    resolve_legend_visibility(show_legend, legend, legend_track_items.length),
   )
 
   // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
@@ -1278,43 +1010,9 @@
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
-  const decoration_solution = $derived(
-    solve_reference_annotations({
-      base_solution: base_decoration_solution,
-      base_pad: pad,
-      width,
-      height,
-      obstacles_norm,
-      exclusion_rects: pinned_decoration_rects,
-      lines: indexed_ref_lines,
-      ranges: ranges.current,
-      scales: { x: x_scale_fn, x2: x2_scale_fn, y: y_scale_fn, y2: y2_scale_fn },
-    }),
-  )
-  const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
   const colorbar_placement = $derived(
-    get_decoration_placement(decoration_solution, `colorbar`),
+    get_decoration_placement(frame.decoration_solution, `colorbar`),
   )
-
-  const placement_signature = (placement: DecorationPlacement | undefined): string =>
-    placement
-      ? `${placement.location}:${placement.side}:${placement.x}:${placement.y}:${placement.footprint.width}:${placement.footprint.height}`
-      : `none`
-
-  // Tweened colorbar/legend coordinates retain the established resize, hover-lock, responsive,
-  // and manual-drag behavior while both targets now come from one deterministic solve.
-  const legend_tween = create_placed_tween({
-    placement: () => legend_placement ?? null,
-    dims: () => ({ width, height }),
-    responsive: () => legend?.responsive ?? false,
-    element: () => legend_element,
-    tween: () => legend?.tween,
-    on_element_resize: () => (legend_size_revision += 1),
-    placement_revision: () => placement_signature(legend_placement),
-    // Leave coords alone mid-drag; once dragged, the manual position wins permanently
-    suspended: () => legend_is_dragging,
-    manual_position: () => legend_manual_position,
-  })
   const colorbar_tween = create_placed_tween({
     placement: () => colorbar_placement ?? null,
     dims: () => ({ width, height }),
@@ -1322,117 +1020,12 @@
     element: () => colorbar_element,
     tween: () => color_bar?.tween,
     on_element_resize: () => (colorbar_size_revision += 1),
-    placement_revision: () => placement_signature(colorbar_placement),
+    placement_revision: () => decoration_placement_revision(colorbar_placement),
   })
   const decoration_exclusion_rects = $derived([
     ...pinned_decoration_rects,
-    ...decoration_placement_rects(decoration_solution),
+    ...frame.exclusion_rects,
   ])
-
-  let axis_ticks = $derived(get_axis_ticks(ranges.current, scale_fns, true))
-
-  let x_tick_values = $derived(axis_ticks.x)
-  let x2_tick_values = $derived(axis_ticks.x2)
-  let y_tick_values = $derived(axis_ticks.y)
-  let y2_tick_values = $derived(axis_ticks.y2)
-
-  // Use the same adaptive y/y2 bands for title placement that padding and PlotAxis render.
-  let tick_label_widths = $derived.by(() => {
-    const y_extent = { start: height - pad.b, end: pad.t }
-    const band = Math.max(0, height - pad.t - pad.b)
-    return {
-      y_max: resolve_tick_layout(
-        measured_axis(final_y_axis, y_tick_values, y_scale_fn, y_extent, tick_font),
-        band,
-        `y`,
-      ).band,
-      y2_max: resolve_tick_layout(
-        measured_axis(final_y2_axis, y2_tick_values, y2_scale_fn, y_extent, tick_font),
-        band,
-        `y2`,
-      ).band,
-    }
-  })
-
-  // Shared pan/zoom/touch/drag-rect interaction controller. set_range routes y2
-  // writes through get_synced_y2 (write-order contract: y is written before y2, so
-  // the sync reads the just-updated y range).
-  const pan_zoom = create_pan_zoom({
-    ranges: () => ranges.current,
-    scale_type: (axis) =>
-      ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis })[axis]
-        .scale_type,
-    // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
-    plot_bounds: () => ({
-      x: pad.l,
-      y: pad.t,
-      width: Math.max(1, width - pad.l - pad.r),
-      height: Math.max(1, height - pad.t - pad.b),
-    }),
-    pan: () => pan,
-    set_range: (axis, range) => {
-      const next_range = axis === `y2` ? get_synced_y2(ranges.current.y, range) : range
-      facet.update_range(axis, next_range)
-    },
-    svg: () => svg_element,
-    on_rect_zoom: (start, current) => {
-      // Update axis ranges to trigger reactivity; both x and y must invert to valid
-      // (finite, non-degenerate) ranges or the rect zoom is discarded entirely
-      const next_x = invert_rect_range(x_scale_fn, start.x, current.x)
-      const next_y = invert_rect_range(y_scale_fn, start.y, current.y)
-      if (!next_x || !next_y) return
-      if (!facet.update_range(`x`, next_x)) {
-        x_axis = { ...x_axis, range: next_x }
-      }
-      if (!facet.update_range(`y`, next_y)) {
-        y_axis = { ...y_axis, range: next_y }
-      }
-
-      // X2 axis: invert screen coords using x2 scale
-      const next_x2 = has_x2_points ? invert_rect_range(x2_scale_fn, start.x, current.x) : null
-      if (next_x2) {
-        if (!facet.update_range(`x2`, next_x2)) x2_axis = { ...x2_axis, range: next_x2 }
-      }
-
-      // Y2 axis: when sync is enabled the y_axis effect derives y2; with sync 'none'
-      // y2 must zoom from the rect directly (parity with BarPlot/Histogram/BoxPlot)
-      const next_y2 =
-        has_y2_points && y2_sync_config.mode === `none`
-          ? invert_rect_range(y2_scale_fn, start.y, current.y)
-          : null
-      if (next_y2) {
-        if (!facet.update_range(`y2`, next_y2)) y2_axis = { ...y2_axis, range: next_y2 }
-      }
-    },
-    on_reset: () => {
-      if (facet.reset_ranges()) return
-      // Reset to current auto ranges (not stale initial ranges which may have expanded)
-      // This ensures lazy expansion restarts fresh from current data bounds
-      ranges.initial = {
-        x: [...auto_x_range] as Vec2,
-        x2: [...auto_x2_range] as Vec2,
-        y: [...auto_y_range] as Vec2,
-        y2: [...auto_y2_range] as Vec2,
-      }
-      ranges.current = {
-        x: [...auto_x_range] as Vec2,
-        x2: [...auto_x2_range] as Vec2,
-        y: [...auto_y_range] as Vec2,
-        y2: get_synced_y2(auto_y_range, [...auto_y2_range] as Vec2),
-      }
-      // Also reset axis props so future data changes recalculate auto ranges
-      x_axis = { ...x_axis, range: [null, null] }
-      x2_axis = { ...x2_axis, range: [null, null] }
-      y_axis = { ...y_axis, range: [null, null] }
-      y2_axis = { ...y2_axis, range: [null, null] }
-    },
-    // Live tooltip while rect-dragging: update for the closest point inside the
-    // plot bounds, clear when the cursor leaves the svg
-    on_drag_move: (coords, inside_svg) => {
-      if (inside_svg) update_tooltip_point(coords.x, coords.y)
-      else tooltip_point = null
-    },
-  })
 
   // Panning retargets every marker and line on each pointer frame. Animating that leaves
   // them trailing the axes while hover hit-testing already uses the live scales, so snap
@@ -1443,7 +1036,6 @@
   const effective_line_tween = $derived(
     pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
   )
-  onDestroy(() => pan_zoom.destroy())
 
   // Lazily index screen-space markers so pointer moves probe nearby cells only.
   const hover_index = $derived.by(() => {
@@ -1569,7 +1161,7 @@
 
   // Legend drag handlers
   function handle_legend_drag_start(event: MouseEvent) {
-    if (!svg_element) return
+    if (!frame.svg_element) return
 
     legend_is_dragging = true
 
@@ -1584,9 +1176,10 @@
   }
 
   function handle_legend_drag(event: MouseEvent) {
-    if (!legend_is_dragging || !svg_element || !legend_element) return
+    const legend_element = frame.legend_element
+    if (!legend_is_dragging || !frame.svg_element || !legend_element) return
 
-    const svg_rect = svg_element.getBoundingClientRect()
+    const svg_rect = frame.svg_element.getBoundingClientRect()
 
     // Calculate new position: mouse position relative to SVG, minus the offset within the legend
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
@@ -1680,9 +1273,6 @@
     point_events ? Object.keys(point_events).filter((name) => name !== `onclick`) : [],
   )
 
-  // Set theme-aware background when entering fullscreen
-  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--scatter-fullscreen-bg`))
-
   // State accessors for shared axis change handler
   // Spread into existing state in each setter to preserve merged type structure
   const axis_state: AxisChangeState<DataSeries<Metadata>> = {
@@ -1744,426 +1334,339 @@
   />
 {/snippet}
 
-<svelte:window
-  onkeydown={(evt) => {
-    if (evt.key === `Escape` && fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-    pan_zoom.on_window_key_down(evt)
+<CartesianFrame
+  {frame}
+  plot_class="scatter"
+  css_prefix="scatter"
+  css_var_fallbacks={{ 'min-height': `350px` }}
+  aria_label={frame.title_config?.text ||
+    [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
+    `Scatter plot`}
+  bind:fullscreen
+  bind:wrapper
+  {fullscreen_toggle}
+  marginals={resolved_marginals}
+  {marginal_series}
+  on_mouse_enter={() => (hovered = true)}
+  on_mouse_move={(evt) => {
+    // Only find the closest point when not actively dragging
+    if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
   }}
-  onkeyup={pan_zoom.on_window_key_up}
-  onblur={pan_zoom.on_window_blur}
-/>
-
-<div
-  bind:this={wrapper}
-  bind:clientWidth={width}
-  bind:clientHeight={height}
+  on_mouse_leave={() => {
+    end_queued_mouse_move(false)
+    hovered = false
+    tooltip_point = null
+    change(null)
+    on_point_hover?.(null)
+    on_pointer_leave?.()
+  }}
+  {header_controls}
+  {children}
   {...rest}
-  class={[`scatter`, rest.class]}
-  class:fullscreen
 >
-  {#if width && height}
-    <div class="header-controls">
-      {@render header_controls?.({ height, width, fullscreen })}
-      {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
-      {/if}
-    </div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <svg
-      bind:this={svg_element}
-      role="application"
-      aria-label={rest[`aria-label`] ??
-        (title_config?.text ||
-          [final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
-          `Scatter plot`)}
-      tabindex="0"
-      onfocusin={() => pan_zoom.set_focused(true)}
-      onfocusout={() => pan_zoom.set_focused(false)}
-      onmouseenter={() => (hovered = true)}
-      onmousedown={pan_zoom.on_mouse_down}
-      onmousemove={(evt: MouseEvent) => {
-        // Only find closest point if not actively dragging
-        if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
-      }}
-      onmouseleave={() => {
-        end_queued_mouse_move(false)
-        hovered = false
-        tooltip_point = null
-        change(null)
-        on_point_hover?.(null)
-        on_pointer_leave?.()
-      }}
-      ondblclick={pan_zoom.reset_view}
-      onkeydown={pan_zoom.on_key_down}
-      onwheel={pan_zoom.on_wheel}
-      ontouchstart={pan_zoom.on_touch_start}
-      ontouchmove={pan_zoom.on_touch_move}
-      ontouchend={pan_zoom.on_touch_end}
-      ontouchcancel={pan_zoom.on_touch_end}
-      style:cursor={pan_zoom.cursor}
-    >
-      <PlotTitle
-        config={title_config}
-        x={effective_base_pad.l}
-        y={decoration_solution.pad.t - effective_base_pad.t}
-        width={Math.max(0, width - effective_base_pad.l - effective_base_pad.r)}
+  {#snippet layers()}
+    {@render user_content?.({
+      height,
+      width,
+      x_scale_fn,
+      x2_scale_fn,
+      y_scale_fn,
+      y2_scale_fn,
+      pad,
+      x_range: [x_min, x_max],
+      x2_range: [x2_min, x2_max],
+      y_range: [y_min, y_max],
+      y2_range: [y2_min, y2_max],
+      fullscreen,
+    })}
+
+    <!-- Fill regions: below grid -->
+    {@render fill_regions_layer(fills_by_z.below_grid)}
+    <!-- Reference lines: below grid -->
+    {@render ref_lines_layer(ref_lines_by_z.below_grid)}
+
+    {#if facet.axis_visible(`x`)}
+      <PlotAxis
+        side="x"
+        ticks={x_tick_values}
+        place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
+        axis={final_x_axis}
+        on_tick_font={(font) => (frame.tick_font = font)}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.x_grid}
+        show_baseline={false}
+        domain={[x_min, x_max]}
+        tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
+        label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
+        label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `x`}
+        on_axis_change={(key) => handle_axis_change(`x`, key)}
       />
-      {@render user_content?.({
-        height,
-        width,
-        x_scale_fn,
-        x2_scale_fn,
-        y_scale_fn,
-        y2_scale_fn,
-        pad,
-        x_range: [x_min, x_max],
-        x2_range: [x2_min, x2_max],
-        y_range: [y_min, y_max],
-        y2_range: [y2_min, y2_max],
-        fullscreen,
-      })}
+    {/if}
 
-      <!-- Fill regions: below grid -->
-      {@render fill_regions_layer(fills_by_z.below_grid)}
-      <!-- Reference lines: below grid -->
-      {@render ref_lines_layer(ref_lines_by_z.below_grid)}
-
-      {#if facet.axis_visible(`x`)}
-        <PlotAxis
-          side="x"
-          ticks={x_tick_values}
-          place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
-          axis={final_x_axis}
-          on_tick_font={(font) => (tick_font = font)}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.x_grid}
-          show_baseline={false}
-          domain={[x_min, x_max]}
-          tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
-          label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
-          label_y={height - pad.b + AXIS_TITLE_OFFSET + (final_x_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `x`}
-          on_axis_change={(key) => handle_axis_change(`x`, key)}
-        />
-      {/if}
-
-      <!-- Current frame indicator -->
-      {#if current_x_value != null}
-        {@const current_pos_raw = is_time_x
-          ? x_scale_fn(new Date(current_x_value))
-          : x_scale_fn(current_x_value)}
-        {#if isFinite(current_pos_raw)}
-          {@const current_pos = current_pos_raw}
-          {#if current_pos >= pad.l && current_pos <= width - pad.r}
-            {@const active_tick_height = 7}
-            <rect
-              x={current_pos - 1.5}
-              y={height - pad.b - active_tick_height / 2}
-              width="3"
-              height={active_tick_height}
-              fill="var(--scatter-current-frame-color, #ff6b35)"
-              stroke="white"
-              stroke-width="1"
-              class="current-frame-indicator"
-            />
-          {/if}
+    <!-- Current frame indicator -->
+    {#if current_x_value != null}
+      {@const current_pos_raw = is_time_x
+        ? x_scale_fn(new Date(current_x_value))
+        : x_scale_fn(current_x_value)}
+      {#if isFinite(current_pos_raw)}
+        {@const current_pos = current_pos_raw}
+        {#if current_pos >= pad.l && current_pos <= width - pad.r}
+          {@const active_tick_height = 7}
+          <rect
+            x={current_pos - 1.5}
+            y={height - pad.b - active_tick_height / 2}
+            width="3"
+            height={active_tick_height}
+            fill="var(--scatter-current-frame-color, #ff6b35)"
+            stroke="white"
+            stroke-width="1"
+            class="current-frame-indicator"
+          />
         {/if}
       {/if}
+    {/if}
 
-      {#if facet.axis_visible(`y`)}
-        <PlotAxis
-          side="y"
-          ticks={y_tick_values}
-          place={y_scale_fn}
-          axis={final_y_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.y_grid}
-          show_baseline={false}
-          domain={[y_min, y_max]}
-          unit_on_first_tick
-          tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
-          label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
-          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `y`}
-          on_axis_change={(key) => handle_axis_change(`y`, key)}
-        />
-      {/if}
-
-      <!-- Y2-axis (Right) -->
-      {#if has_y2_points && facet.axis_visible(`y2`)}
-        <PlotAxis
-          side="y2"
-          ticks={y2_tick_values}
-          place={y2_scale_fn}
-          axis={final_y2_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.y2_grid}
-          show_baseline={false}
-          domain={[y2_min, y2_max]}
-          unit_on_first_tick
-          tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
-          label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
-          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
-          axis_loading={axis_loading === `y2`}
-          on_axis_change={(key) => handle_axis_change(`y2`, key)}
-        />
-      {/if}
-
-      <!-- X2-axis (Top) -->
-      {#if has_x2_points && facet.axis_visible(`x2`)}
-        <PlotAxis
-          side="x2"
-          ticks={x2_tick_values}
-          place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
-          axis={final_x2_axis}
-          {pad}
-          {width}
-          {height}
-          show_grid={final_display.x2_grid}
-          show_baseline={false}
-          domain={[x2_min, x2_max]}
-          tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
-          label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
-          label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
-          axis_loading={axis_loading === `x2`}
-          on_axis_change={(key) => handle_axis_change(`x2`, key)}
-        />
-      {/if}
-
-      <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
-
-      <ZoomRect start={pan_zoom.drag_start} current={pan_zoom.drag_current} />
-
-      <ZeroLines
-        display={final_display}
-        {x_scale_fn}
-        {x2_scale_fn}
-        {y_scale_fn}
-        {y2_scale_fn}
-        x_range={ranges.current.x}
-        x2_range={ranges.current.x2}
-        y_range={ranges.current.y}
-        y2_range={ranges.current.y2}
-        x_scale_type={final_x_axis.scale_type}
-        x2_scale_type={final_x2_axis.scale_type}
-        y_scale_type={final_y_axis.scale_type}
-        y2_scale_type={final_y2_axis.scale_type}
-        x_is_time={is_time_x}
-        x2_is_time={is_time_x2}
-        has_x2={has_x2_points}
-        has_y2={has_y2_points}
+    {#if facet.axis_visible(`y`)}
+      <PlotAxis
+        side="y"
+        ticks={y_tick_values}
+        place={y_scale_fn}
+        axis={final_y_axis}
+        {pad}
         {width}
         {height}
-        {pad}
+        show_grid={final_display.y_grid}
+        show_baseline={false}
+        domain={[y_min, y_max]}
+        unit_on_first_tick
+        tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
+        label_x={y_axis_label_x(final_y_axis, pad.l, tick_label_widths.y_max)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y`}
+        on_axis_change={(key) => handle_axis_change(`y`, key)}
       />
+    {/if}
 
-      <defs>
-        <clipPath id={clip_path_id}>
-          <rect
-            x={clip_area.x}
-            y={clip_area.y}
-            width={clip_area.width}
-            height={clip_area.height}
-          />
-        </clipPath>
-      </defs>
+    <!-- Y2-axis (Right) -->
+    {#if has_y2_points && facet.axis_visible(`y2`)}
+      <PlotAxis
+        side="y2"
+        ticks={y2_tick_values}
+        place={y2_scale_fn}
+        axis={final_y2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.y2_grid}
+        show_baseline={false}
+        domain={[y2_min, y2_max]}
+        unit_on_first_tick
+        tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
+        label_x={y2_axis_label_x(final_y2_axis, width, pad.r, tick_label_widths.y2_max)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y2`}
+        on_axis_change={(key) => handle_axis_change(`y2`, key)}
+      />
+    {/if}
 
-      <!-- Fill regions: below lines (default z-index) -->
-      {@render fill_regions_layer(fills_by_z.below_lines)}
-      <!-- Reference lines: below lines (default z-index) -->
-      {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+    <!-- X2-axis (Top) -->
+    {#if has_x2_points && facet.axis_visible(`x2`)}
+      <PlotAxis
+        side="x2"
+        ticks={x2_tick_values}
+        place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
+        axis={final_x2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.x2_grid}
+        show_baseline={false}
+        domain={[x2_min, x2_max]}
+        tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
+        label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
+        label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET))}
+        axis_loading={axis_loading === `x2`}
+        on_axis_change={(key) => handle_axis_change(`x2`, key)}
+      />
+    {/if}
 
-      <!-- Lines -->
-      {#if styles.show_lines}
-        {#each filtered_series as series_data (series_data._id)}
-          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-          {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
-          <g
-            data-series-id={series_data._id}
-            clip-path="url(#{clip_path_id})"
-            opacity={hovered_legend_series_idx !== null &&
-            hovered_legend_series_idx !== series_data.orig_series_idx
-              ? 0.25
-              : 1}
-          >
-            {#if series_markers.includes(`line`)}
-              {@const all_line_points = series_data.x.map((x, idx) => ({
-                x,
-                y: series_data.y[idx],
-              }))}
-              {@const finite_screen_points = all_line_points
-                .map((point) => get_screen_coords(point, series_data))
-                .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
-              {@const apply_line_controls = applies_style_controls(series_data)}
-              {@const ls = series_data.line_style}
-              {@const tc = (key: string) => apply_line_controls && touched.has(key)}
-              {@const color_fallback =
-                ls?.stroke ??
-                (Array.isArray(series_data.point_style)
-                  ? series_data.point_style[0]?.fill
-                  : series_data.point_style?.fill) ??
-                (series_data.color_values?.[0] != null
-                  ? color_scale_fn(series_data.color_values[0])
-                  : series_default_color)}
-              <Line
-                points={finite_screen_points}
-                origin={[
-                  is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
-                  series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
-                ]}
-                line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
-                line_width={(tc(`line.width`) ? styles.line?.width : null) ??
-                  ls?.stroke_width ??
-                  2}
-                line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
-                curve={ls?.curve}
-                area_color="transparent"
-                line_tween={effective_line_tween}
-              />
-            {/if}
-          </g>
-        {/each}
-      {/if}
+    <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
-      <!-- Fill regions: below points -->
-      {@render fill_regions_layer(fills_by_z.below_points)}
-      <!-- Reference lines: below points -->
-      {@render ref_lines_layer(ref_lines_by_z.below_points)}
+    <ZeroLines {frame} display={final_display} />
 
-      {#if use_canvas_markers}
-        <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
+    <!-- Fill regions: below lines (default z-index) -->
+    {@render fill_regions_layer(fills_by_z.below_lines)}
+    <!-- Reference lines: below lines (default z-index) -->
+    {@render ref_lines_layer(ref_lines_by_z.below_lines)}
+
+    <!-- Lines -->
+    {#if styles.show_lines}
+      {#each filtered_series as series_data (series_data._id)}
+        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+        {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
+        <g
+          data-series-id={series_data._id}
+          clip-path="url(#{clip_path_id})"
+          opacity={hovered_legend_series_idx !== null &&
+          hovered_legend_series_idx !== series_data.orig_series_idx
+            ? 0.25
+            : 1}
+        >
+          {#if series_markers.includes(`line`)}
+            {@const all_line_points = series_data.x.map((x, idx) => ({
+              x,
+              y: series_data.y[idx],
+            }))}
+            {@const finite_screen_points = all_line_points
+              .map((point) => get_screen_coords(point, series_data))
+              .filter(([sx, sy]) => isFinite(sx) && isFinite(sy))}
+            {@const apply_line_controls = applies_style_controls(series_data)}
+            {@const ls = series_data.line_style}
+            {@const tc = (key: string) => apply_line_controls && touched.has(key)}
+            {@const color_fallback =
+              ls?.stroke ??
+              (Array.isArray(series_data.point_style)
+                ? series_data.point_style[0]?.fill
+                : series_data.point_style?.fill) ??
+              (series_data.color_values?.[0] != null
+                ? color_scale_fn(series_data.color_values[0])
+                : series_default_color)}
+            <Line
+              points={finite_screen_points}
+              origin={[
+                is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
+                series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
+              ]}
+              line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
+              line_width={(tc(`line.width`) ? styles.line?.width : null) ??
+                ls?.stroke_width ??
+                2}
+              line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
+              curve={ls?.curve}
+              area_color="transparent"
+              line_tween={effective_line_tween}
+            />
+          {/if}
+        </g>
+      {/each}
+    {/if}
+
+    <!-- Fill regions: below points -->
+    {@render fill_regions_layer(fills_by_z.below_points)}
+    <!-- Reference lines: below points -->
+    {@render ref_lines_layer(ref_lines_by_z.below_points)}
+
+    {#if use_canvas_markers}
+      <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
              explicit above-all layers. Pointer events remain on the parent SVG. -->
-        <foreignObject
-          x="0"
-          y="0"
-          {width}
-          {height}
-          pointer-events="none"
-          {@attach attach_marker_canvas}
-        ></foreignObject>
-      {/if}
-
-      <!-- Canvas mode retains only labelled/hovered/selected points here. -->
-      {#if styles.show_points}
-        {#each filtered_series as series_data, series_pos (series_data._id)}
-          {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
-          {@const rendered_points = use_canvas_markers
-            ? (svg_overlay_points_by_series[series_pos] ?? [])
-            : series_data.filtered_data}
-          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
-            {#if series_markers.includes(`points`)}
-              {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
-                {@const label_id = `${point.series_idx}-${point.point_idx}`}
-                {@const calculated_label_pos = label_positions[label_id]}
-                {@const point_label = point.point_label ?? {}}
-                {@const marker_screen = point_screen_xy(
-                  point,
-                  series_screen_scales(series_data),
-                )}
-                {@const label_style =
-                  point_label.auto_placement &&
-                  actual_label_config.max_neighbors &&
-                  !calculated_label_pos
-                    ? {}
-                    : point_label}
-                {@const final_label = calculated_label_pos
-                  ? {
-                      ...label_style,
-                      offset: {
-                        x: calculated_label_pos.x - marker_screen.cx,
-                        y: calculated_label_pos.y - marker_screen.cy,
-                      },
-                    }
-                  : label_style}
-                {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
-                {@const screen_x = isFinite(raw_screen_x)
-                  ? raw_screen_x
-                  : x_scale_fn.range()[0]}
-                {@const screen_y = isFinite(raw_screen_y)
-                  ? raw_screen_y
-                  : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
-                {@const appearance = point_appearance(point, series_data)}
-                <ScatterPoint
-                  x={screen_x}
-                  y={screen_y}
-                  is_dimmed={hovered_legend_series_idx !== null &&
-                    hovered_legend_series_idx !== point.series_idx}
-                  is_hovered={tooltip_point?.series_idx === point.series_idx &&
-                    tooltip_point?.point_idx === point.point_idx}
-                  is_selected={selected_point?.series_idx === point.series_idx &&
-                    selected_point?.point_idx === point.point_idx}
-                  leader_line_threshold={actual_label_config.leader_line_threshold}
-                  overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
-                  style={{
-                    symbol_type: appearance.symbol_type,
-                    ...point.point_style,
-                    radius: appearance.radius,
-                    stroke_width: appearance.stroke_width,
-                    stroke: appearance.stroke,
-                    stroke_opacity: appearance.stroke_opacity,
-                    fill_opacity: appearance.fill_opacity,
-                    cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
-                  }}
-                  hover={point.point_hover ?? {}}
-                  label={final_label}
-                  offset={point.point_offset ?? { x: 0, y: 0 }}
-                  point_tween={effective_point_tween}
-                  --point-fill-color={appearance.fill}
-                  {...point_events &&
-                    Object.fromEntries(
-                      point_event_names.map((name) => [
-                        name,
-                        (event: Event) => point_events?.[name]?.({ point, event }),
-                      ]),
-                    )}
-                  onclick={(event: MouseEvent) => {
-                    // Call user-provided onclick handler first if it exists
-                    point_events?.onclick?.({ point, event })
-                    // then handle internal logic
-                    const props = construct_handler_props(point)
-                    tooltip_point = point
-                    if (props) on_point_click?.({ ...props, event, point })
-                  }}
-                />
-              {/each}
-            {/if}
-          </g>
-        {/each}
-      {/if}
-
-      <!-- Fill regions: above all -->
-      {@render fill_regions_layer(fills_by_z.above_all)}
-      <!-- Reference lines: above all -->
-      {@render ref_lines_layer(ref_lines_by_z.above_all)}
-
-      <!-- Marginal distribution strips -->
-      <PlotMarginals
-        marginals={resolved_marginals}
-        series={marginal_series}
+      <foreignObject
+        x="0"
+        y="0"
         {width}
         {height}
-        {pad}
-        has_axis={marginal_has_axis}
-        axes={{
-          x1: marginal_axis(x_scale_fn, [x_min, x_max], final_x_axis),
-          x2: marginal_axis(x2_scale_fn, [x2_min, x2_max], final_x2_axis),
-          y1: marginal_axis(y_scale_fn, [y_min, y_max], final_y_axis),
-          y2: marginal_axis(y2_scale_fn, [y2_min, y2_max], final_y2_axis),
-        }}
-        id={component_id}
-      />
-    </svg>
+        pointer-events="none"
+        {@attach attach_marker_canvas}
+      ></foreignObject>
+    {/if}
 
+    <!-- Canvas mode retains only labelled/hovered/selected points here. -->
+    {#if styles.show_points}
+      {#each filtered_series as series_data, series_pos (series_data._id)}
+        {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
+        {@const rendered_points = use_canvas_markers
+          ? (svg_overlay_points_by_series[series_pos] ?? [])
+          : series_data.filtered_data}
+        <!-- Point centers are range-filtered, but marker geometry may extend beyond the plot
+             edge. Keep complete icons visible; only lines and area geometry are clipped. -->
+        <g data-series-id={series_data._id}>
+          {#if series_markers.includes(`points`)}
+            {#each rendered_points as point (`${point.series_idx}-${point.point_idx}`)}
+              {@const label_id = `${point.series_idx}-${point.point_idx}`}
+              {@const calculated_label_pos = label_positions[label_id]}
+              {@const point_label = point.point_label ?? {}}
+              {@const marker_screen = point_screen_xy(
+                point,
+                series_screen_scales(series_data),
+              )}
+              {@const label_style =
+                point_label.auto_placement &&
+                actual_label_config.max_neighbors &&
+                !calculated_label_pos
+                  ? {}
+                  : point_label}
+              {@const final_label = calculated_label_pos
+                ? {
+                    ...label_style,
+                    offset: {
+                      x: calculated_label_pos.x - marker_screen.cx,
+                      y: calculated_label_pos.y - marker_screen.cy,
+                    },
+                  }
+                : label_style}
+              {@const [raw_screen_x, raw_screen_y] = get_screen_coords(point, series_data)}
+              {@const screen_x = isFinite(raw_screen_x) ? raw_screen_x : x_scale_fn.range()[0]}
+              {@const screen_y = isFinite(raw_screen_y)
+                ? raw_screen_y
+                : (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn).range()[0]}
+              {@const appearance = point_appearance(point, series_data)}
+              <ScatterPoint
+                x={screen_x}
+                y={screen_y}
+                is_dimmed={hovered_legend_series_idx !== null &&
+                  hovered_legend_series_idx !== point.series_idx}
+                is_hovered={tooltip_point?.series_idx === point.series_idx &&
+                  tooltip_point?.point_idx === point.point_idx}
+                is_selected={selected_point?.series_idx === point.series_idx &&
+                  selected_point?.point_idx === point.point_idx}
+                leader_line_threshold={actual_label_config.leader_line_threshold}
+                overlay_only={use_canvas_markers && !needs_static_svg_overlay(point)}
+                style={{
+                  symbol_type: appearance.symbol_type,
+                  ...point.point_style,
+                  radius: appearance.radius,
+                  stroke_width: appearance.stroke_width,
+                  stroke: appearance.stroke,
+                  stroke_opacity: appearance.stroke_opacity,
+                  fill_opacity: appearance.fill_opacity,
+                  cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
+                }}
+                hover={point.point_hover ?? {}}
+                label={final_label}
+                offset={point.point_offset ?? { x: 0, y: 0 }}
+                point_tween={effective_point_tween}
+                --point-fill-color={appearance.fill}
+                {...point_events &&
+                  Object.fromEntries(
+                    point_event_names.map((name) => [
+                      name,
+                      (event: Event) => point_events?.[name]?.({ point, event }),
+                    ]),
+                  )}
+                onclick={(event: MouseEvent) => {
+                  // Call user-provided onclick handler first if it exists
+                  point_events?.onclick?.({ point, event })
+                  // then handle internal logic
+                  const props = construct_handler_props(point)
+                  tooltip_point = point
+                  if (props) on_point_click?.({ ...props, event, point })
+                }}
+              />
+            {/each}
+          {/if}
+        </g>
+      {/each}
+    {/if}
+
+    <!-- Fill regions: above all -->
+    {@render fill_regions_layer(fills_by_z.above_all)}
+    <!-- Reference lines: above all -->
+    {@render ref_lines_layer(ref_lines_by_z.above_all)}
+  {/snippet}
+
+  {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
     {#if handler_props && hovered && tooltip_point}
       {@const { point_label, series_idx } = tooltip_point}
@@ -2281,7 +1784,7 @@
       {@const current_position =
         legend_is_dragging && legend_manual_position ? legend_manual_position : auto_position}
       <PlotLegend
-        bind:root_element={legend_element}
+        bind:root_element={frame.legend_element}
         data-decoration-location={legend_placement?.location}
         data-decoration-side={legend_placement?.side}
         data-decoration-x={legend_placement?.x}
@@ -2311,7 +1814,7 @@
           ?.idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        bind:filter_query={legend_filter_query}
+        bind:filter_query={frame.legend_filter_query}
         layout_tracks={resolve_legend_layout_tracks(legend?.layout_tracks, legend_placement)}
         on_toggle={legend?.on_toggle ?? legend_vis.on_toggle}
         on_double_click={legend?.on_double_click ?? legend_vis.on_double_click}
@@ -2357,46 +1860,10 @@
         `}
       />
     {/if}
-  {/if}
-
-  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
-  {@render children?.({ height, width, fullscreen })}
-</div>
+  {/snippet}
+</CartesianFrame>
 
 <style>
-  div.scatter {
-    position: relative; /* Needed for absolute positioning of children like ColorBar */
-    width: var(--scatter-width, 100%);
-    height: var(--scatter-height, auto);
-    min-height: var(--scatter-min-height, 350px);
-    container-type: size; /* enable cqh for panes */
-    container-name: scatter-plot;
-    z-index: var(--scatter-z-index);
-    flex: var(--scatter-flex, 1); /* Allow filling available space in flex containers */
-    display: var(--scatter-display, flex);
-    flex-direction: column;
-    background: var(--scatter-bg, var(--plot-bg));
-    border-radius: var(--scatter-border-radius, 0);
-  }
-  div.scatter.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    /* Must be higher than Structure.svelte's --struct-buttons-z-index. */
-    z-index: var(--scatter-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
-    margin: 0;
-    border-radius: 0;
-    background: var(--scatter-fullscreen-bg, var(--scatter-bg, var(--plot-bg)));
-    max-height: none !important;
-    overflow: hidden;
-    /* border-top (not padding-top): bind:clientHeight includes padding but excludes
-    borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
-    border-top: var(--plot-fullscreen-padding-top, 2em) solid
-      var(--scatter-fullscreen-bg, var(--scatter-bg, var(--plot-bg, transparent)));
-    box-sizing: border-box;
-  }
   /* Center the colorbar within its wrapper when shorter than it (e.g. capped by --cbar-max-height
      in fullscreen). Users can override via wrapper_style (inline wins). */
   .colorbar-wrapper {
@@ -2404,48 +1871,11 @@
     align-items: center;
     justify-content: center;
   }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static; /* Override absolute positioning since container handles it */
-    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
-  }
-  /* Hide controls and fullscreen toggles by default, show on hover */
-  div.scatter :global(.pane-toggle),
-  div.scatter .header-controls {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  div.scatter:hover :global(.pane-toggle),
-  div.scatter:hover .header-controls,
-  div.scatter :global(.pane-toggle:focus-visible),
-  div.scatter :global(.pane-toggle[aria-expanded='true']),
-  div.scatter .header-controls:focus-within {
-    opacity: 1;
-  }
-  svg {
-    width: var(--scatter-svg-width, 100%);
-    height: var(--scatter-svg-height, 100%);
-    flex: var(--scatter-svg-flex, 1);
-    overflow: var(--scatter-svg-overflow, visible);
-    fill: var(--text-color);
-    font-weight: var(--scatter-font-weight);
-    font-size: var(--scatter-font-size);
-  }
-  div.scatter.fullscreen svg,
-  div.scatter.fullscreen :global(.axis-label) {
+  :global(.scatter.fullscreen svg),
+  :global(.scatter.fullscreen .axis-label) {
     font-size: var(--scatter-fullscreen-font-size, var(--scatter-font-size, inherit));
   }
-  .scatter :global(.axis-label) {
+  :global(.scatter .axis-label) {
     text-align: center;
     width: 100%;
     height: 100%;

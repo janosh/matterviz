@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { Cross, Settings } from 'svelte-widgets/icons'
   import { SettingsSection } from '$lib/layout'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import type { Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type {
@@ -57,9 +56,6 @@
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 
-  const merge_styles = (base_style: string, override_style: unknown): string =>
-    `${base_style}${typeof override_style === `string` && override_style ? `; ${override_style}` : ``}`
-
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format = $state<string | null>(null)
 
@@ -83,24 +79,20 @@
   ].join(`; `)
 </script>
 
-<!-- gated here so the toggle goes with the pane; DraggablePane has no prop for it -->
+<!-- gated here so the toggle goes with the pane; ControlPane has no prop for it -->
 {#if show_pane}
-  <DraggablePane
-    bind:open={controls_open}
-    pane_props={{
-      ...pane_props,
-      class: `heatmap-controls ${pane_props?.class ?? ``}`.trim(),
-      style: merge_styles(default_pane_style, pane_props?.style),
-    }}
+  <ControlPane
+    bind:controls_open
+    pane_class="heatmap-controls"
+    toggle_class="heatmap-matrix-controls-toggle"
+    pane_style={default_pane_style}
+    toggle_style={default_toggle_style}
     toggle_props={{
       ...toggle_props,
       title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
       'aria-label': toggle_props[`aria-label`] ?? `Heatmap controls`,
-      class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
-      style: merge_styles(default_toggle_style, toggle_props?.style),
     }}
-    open_icon={Cross}
-    closed_icon={Settings}
+    {pane_props}
   >
     <SettingsSection title="Heatmap" layout="grid">
       <label>
@@ -195,7 +187,7 @@
       </div>
     </SettingsSection>
     {@render children?.({ controls_open })}
-  </DraggablePane>
+  </ControlPane>
 {/if}
 
 <style>

@@ -256,12 +256,9 @@
 <h1>Isobaric Binary Phase Diagram</h1>
 
 <p>
-  Interactive binary temperature-composition phase diagram. Hover over different regions to see
-  phase information. Drag and drop phase diagram files (<code>.json</code>,
-  <code>.json.gz</code>) onto the viewer to load them.
+  Drop <code>.json</code>, <code>.json.gz</code>, <code>.svg</code>, or <code>.tdb</code> files onto
+  the viewer.
 </p>
-
-<h2>Binary Phase Diagrams</h2>
 
 <FilePicker
   files={all_phase_diagram_files}
@@ -273,18 +270,13 @@
 <details class="tdb-info">
   <summary>About this data</summary>
   <p>
-    The phase diagrams shown here use <strong>simplified/approximate data</strong> for
-    demonstration purposes. They illustrate typical phase diagram features (eutectics,
-    peritectics, intermetallic compounds) but are not thermodynamically accurate. For research
-    applications, compute phase diagrams from validated TDB files using
+    <strong>Demo only:</strong> the included boundaries are approximate, not thermodynamically
+    accurate. Compute research diagrams from validated TDB files with
     <a href="https://pycalphad.org">pycalphad</a> or similar CALPHAD software.
   </p>
   <p>
-    <strong>TDB files</strong> contain CALPHAD model parameters (Gibbs energy functions and interaction
-    coefficients) but not the phase diagram itself. Computing phase boundaries requires Gibbs energy
-    minimization at thousands of temperature-composition points. When you drop a TDB file here, we
-    parse it and display any matching pre-computed diagram. The included TDB files (Al-Fe, Al-Mg,
-    Pb-Sn) have demo data available.
+    Dropped TDB files are parsed but not solved; matching precomputed diagrams are available
+    for Al-Fe, Al-Mg, and Pb-Sn.
   </p>
 </details>
 
@@ -355,11 +347,6 @@
     text-align: center;
     margin: 0 0 0.5em;
     font-weight: 600;
-  }
-  h2 {
-    margin-top: 2em;
-    border-bottom: 1px solid var(--border-color, #444);
-    padding-bottom: 0.5em;
   }
   .tdb-info {
     margin: 0.5em 0 1em;

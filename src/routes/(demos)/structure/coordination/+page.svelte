@@ -57,11 +57,8 @@
 <h1>Coordination Number Histograms</h1>
 
 <p>
-  Visualize coordination numbers in crystal structures using different bonding strategies. The
-  coordination number (CN) is the number of nearest neighbors around each atom. The structure
-  viewers color each atom by its CN and show a <strong>discrete color bar</strong>
-  legend (bottom-right) with one labeled segment per integer CN value. Click a segment to hide atoms
-  with that CN; changing the strategy updates both the histogram and the bar.
+  Histograms and structure colors share the selected bonding strategy. Click a discrete
+  color-bar segment to hide that coordination number.
 </p>
 
 <div class="bleed-1400">

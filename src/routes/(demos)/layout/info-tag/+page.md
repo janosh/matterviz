@@ -1,7 +1,5 @@
 # InfoTag
 
-A compact, interactive tag for displaying labeled values. Click to copy, supports variants, sizes, icons, and removal.
-
 ## All Variants & Sizes
 
 Five semantic variants (default, success, warning, error, info) × three sizes (sm, md, lg):

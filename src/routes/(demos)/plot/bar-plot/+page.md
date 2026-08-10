@@ -466,8 +466,6 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
 
 ## Arcsinh Scale: Large Range with Positive and Negative Values
 
-The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges including negative values (formation energies, binding energies). Unlike log scale, it smoothly transitions through zero.
-
 ```svelte example
 <script lang="ts">
   import { BarPlot } from 'matterviz'
@@ -514,10 +512,6 @@ The **arcsinh scale** (`scale_type='arcsinh'`) handles data spanning wide ranges
     </label>
   {/if}
 </div>
-
-<p style="font-size: 0.9em; opacity: 0.8">
-  Energy values span -500 to +500 eV. Log scale can't display negatives. Try switching scales!
-</p>
 
 <BarPlot series={energy_data} x_axis={{ label: `Element` }} {y_axis} style="height: 400px">
   {#snippet tooltip({ y, category_label })}
@@ -1035,13 +1029,6 @@ When comparing results from different computational methods or experimental tech
 ```
 
 ## Interactive Axis Labels with Complex Data
-
-This demo stress-tests interactive axis labels with:
-
-- **50 materials** across multiple crystal systems
-- **7 switchable properties** with realistic value ranges
-- **Grouped bars** showing multiple series simultaneously
-- **Rapid switching test** - try clicking properties quickly!
 
 ```svelte example
 <script lang="ts">

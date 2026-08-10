@@ -3,16 +3,29 @@
 // Reference: pymatgen/analysis/chempot_diagram.py
 
 import type { PhaseData } from '$lib/convex-hull/types'
-import { convex_hull_2d, EPS, gcd_all, polygon_centroid, solve_linear_system } from '$lib/math'
-import type { Vec2 } from '$lib/math'
+import {
+  combinations,
+  convex_hull_2d,
+  EPS,
+  gcd_all,
+  polygon_centroid,
+  solve_linear_system,
+} from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
-// Inlined from $lib/composition/parse to keep this module worker-safe
-// ($lib/composition barrel transitively imports binary .json.gz data
-// that the worker bundler can't handle).
+// Inlined from $lib/composition/parse to keep chempot-worker's bundle small: the
+// $lib/composition barrel transitively pulls in the gzipped element data table, which
+// the worker build can load (vite.config.ts registers the .json.gz plugin for workers)
+// but has no use for.
 const count_atoms_in_composition = (composition: Record<string, number>): number =>
   Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
 
+// Deliberately NOT $lib/composition/parse's get_reduced_formula: that one leaves
+// non-integer compositions untouched (pinned by its own test: {Fe: 1.5, O: 3} stays put),
+// while this one first scales fractional amounts to integers (multiplier <= 100, 0.03
+// tolerance) to match pymatgen. Merging the two would silently relabel every fractional
+// composition, so don't.
 const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
   const amounts = Object.values(composition).filter((amt) => amt > 0)
   if (amounts.length === 0) return {}
@@ -795,6 +808,11 @@ export function scale_to_font_range(
   )
 }
 
+// Map Plotly/pymatgen's Z-up data axes to Three.js's Y-up render axes.
+export const swizzle_to_render =
+  (scale: Vec3) =>
+  (d0: number, d1: number, d2: number): Vec3 => [d1 * scale[0], d2 * scale[1], d0 * scale[2]]
+
 export interface VisibleDomainLabel {
   formula: string
   position: [number, number, number]
@@ -875,20 +893,8 @@ export function get_visible_domain_labels(
 
 // Generate all C(n,3) ternary element combinations from a sorted element list.
 // Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
-export function get_ternary_combinations(elements: string[]): string[][] {
-  const sorted = [...elements].toSorted()
-  const n_elems = sorted.length
-  if (n_elems < 3) return []
-  const combos: string[][] = []
-  for (let first = 0; first < n_elems - 2; first++) {
-    for (let second = first + 1; second < n_elems - 1; second++) {
-      for (let third = second + 1; third < n_elems; third++) {
-        combos.push([sorted[first], sorted[second], sorted[third]])
-      }
-    }
-  }
-  return combos
-}
+export const get_ternary_combinations = (elements: string[]): string[][] =>
+  combinations([...elements].toSorted(), 3)
 
 // === Full N-D Computation Cache ===
 // In projection mode, the expensive vertex enumeration (compute_domains) depends only

@@ -59,5 +59,5 @@ export function vite_plugin_json_gz({
 // Use a structural type because separate Vite/Vite+ Alias types exceed TS's instantiation depth.
 export const three_compat_alias: { find: RegExp; replacement: string } = {
   find: /^three$/,
-  replacement: resolve(import.meta.dirname, `src/lib/scene/three-compat.ts`),
+  replacement: resolve(import.meta.dirname, `lib/scene/three-compat.ts`),
 }

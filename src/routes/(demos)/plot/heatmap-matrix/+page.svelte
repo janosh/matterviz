@@ -90,7 +90,7 @@
 
 <h1>Heatmap Matrix</h1>
 <p>
-  Interactive square heatmap for visualizing pairwise relationships. Inspired by the
+  This demo is based on the
   <a href="https://viz.whsunresearch.group/gliquid/interactive-matrix.html">
     Binary Phase Diagram Map
   </a> from the Sun Research Group.
@@ -188,9 +188,7 @@
 <!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
 <h2>Symmetric Subset with Custom Tooltip</h2>
 <p>
-  20 metals with switchable symmetric mode (lower/upper/off) and <code>interpolatePlasma</code>
-  color scale. Custom tooltip shows element names and electronegativity values. Double-click updates
-  the status text below. Use the controls (gear icon) to toggle symmetric mode.
+  Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
 </p>
 
 <div

@@ -2,15 +2,20 @@
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import { BOHR_TO_ANGSTROM, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
-import { coerce_elem_symbol, FALLBACK_ELEMENTS } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Site } from '$lib/structure'
+import {
+  apply_axis_scale,
+  parse_vasp_header,
+  read_text_line,
+  text_cursor,
+} from '$lib/structure/parsers/vasp-header'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
-import { parse_leading_num } from '$lib/utils'
+import { normalize_scientific_notation, parse_leading_num } from '$lib/utils'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 
 // === Parse error contract ===
@@ -68,11 +73,9 @@ function parse_float_block(
     const start = pos
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
-    // Parse number (handles scientific notation)
-    const num = Number(text.slice(start, pos))
-    if (!Number.isNaN(num)) {
-      data[idx++] = num
-    }
+    // Parse number (including Fortran-style D exponents)
+    const num = Number(normalize_scientific_notation(text.slice(start, pos)))
+    if (!Number.isNaN(num)) data[idx++] = num
   }
   return { count: idx - data_offset, end_pos: pos }
 }
@@ -87,32 +90,6 @@ function find_line_offset(text: string, target_line: number): number {
     pos++
   }
   return pos
-}
-
-// Read a single line from text at the given offset, returning the line and next offset
-function read_line(text: string, pos: number): { line: string; next: number } {
-  let end = pos
-  while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) end++
-  const line = text.slice(pos, end)
-  let next = end
-  if (next < text.length && text.charCodeAt(next) === 13) next++ // skip \r
-  if (next < text.length && text.charCodeAt(next) === 10) next++ // skip \n
-  return { line, next }
-}
-
-// Read N lines starting from pos, returning array of trimmed lines and final offset
-function read_lines(
-  text: string,
-  pos: number,
-  count: number,
-): { lines: string[]; next: number } {
-  const result: string[] = []
-  for (let idx = 0; idx < count; idx++) {
-    const { line, next } = read_line(text, pos)
-    result.push(line.trim())
-    pos = next
-  }
-  return { lines: result, next: pos }
 }
 
 // Build 3D grid directly from Float64Array, computing data_range in the same pass.
@@ -203,6 +180,16 @@ function build_grid({
 
 // === CHGCAR Parser ===
 
+// VASP writes Fortran-style exponents (1.0D-04) that a bare Number() turns into NaN.
+// Used for the coordinate lines after the header (which parse_vasp_header normalizes on its
+// own). Non-throwing on purpose: parse_chgcar reports failures via vol_error, returning null.
+const parse_vasp_vec3 = (line: string): Vec3 =>
+  line
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .map((token) => Number(normalize_scientific_notation(token))) as Vec3
+
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format.
 // CHGCAR/PARCHG consists of a POSCAR header followed by volumetric data on a 3D grid.
 // Spin-polarized files contain two data blocks (total charge + magnetization).
@@ -211,82 +198,17 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
 
-  // Parse header line by line (only the first ~20 lines, not the whole file)
-  // Line 0: comment
-  let cur = read_line(content, pos)
-  pos = cur.next
-
-  // Line 1: scale factor
-  cur = read_line(content, pos)
-  const scale_factor = parse_leading_num(cur.line)
-  if (isNaN(scale_factor)) {
-    vol_error(`Invalid scaling factor in CHGCAR`)
+  // Shared POSCAR-family header. `lenient` keeps CHGCAR's habit of treating any mode line
+  // that isn't `D...` as Cartesian, and the result object keeps this parser non-throwing.
+  const cursor = text_cursor(content, pos)
+  const parsed = parse_vasp_header(cursor, { format: `CHGCAR`, coord_mode: `lenient` })
+  if (!parsed.ok) {
+    vol_error(parsed.error)
     return null
   }
-  pos = cur.next
-
-  // Lines 2-4: lattice vectors
-  const parse_vector = (line: string): Vec3 =>
-    math.scale(line.trim().split(/\s+/).slice(0, 3).map(Number) as Vec3, scale_factor)
-
-  const lat_lines = read_lines(content, pos, 3)
-  const lattice: Matrix3x3 = [
-    parse_vector(lat_lines.lines[0]),
-    parse_vector(lat_lines.lines[1]),
-    parse_vector(lat_lines.lines[2]),
-  ]
-  pos = lat_lines.next
-
-  // Lines 5+: element symbols and atom counts
-  let element_symbols: string[] = []
-  let atom_counts: number[] = []
-
-  cur = read_line(content, pos)
-  if (pos >= content.length) {
-    vol_error(`CHGCAR: file ends before element/count lines`)
-    return null
-  }
-
-  // Detect VASP 5+ format (has element symbols before counts)
-  const has_element_symbols = isNaN(parse_leading_num(cur.line))
-
-  if (has_element_symbols) {
-    element_symbols = cur.line.trim().split(/\s+/)
-    pos = cur.next
-    cur = read_line(content, pos)
-    if (pos >= content.length) {
-      vol_error(`CHGCAR: file ends before atom counts line`)
-      return null
-    }
-    atom_counts = cur.line.trim().split(/\s+/).map(Number)
-  } else {
-    atom_counts = cur.line.trim().split(/\s+/).map(Number)
-    element_symbols = atom_counts.map(
-      (_count, idx) => FALLBACK_ELEMENTS[idx % FALLBACK_ELEMENTS.length],
-    )
-  }
-  pos = cur.next
-
-  if (pos >= content.length) {
-    vol_error(`CHGCAR: file ends before coordinate mode line`)
-    return null
-  }
-
-  // Check for selective dynamics line
-  cur = read_line(content, pos)
-  if (cur.line.trim().toUpperCase().startsWith(`S`)) {
-    pos = cur.next // skip selective dynamics line
-    cur = read_line(content, pos)
-  }
-
-  if (pos >= content.length) {
-    vol_error(`CHGCAR: file ends before coordinate mode line`)
-    return null
-  }
-
-  // Coordinate mode line
-  const is_direct = cur.line.trim().toUpperCase().startsWith(`D`)
-  pos = cur.next
+  const { scale, lattice, elements, counts, is_direct } = parsed.header
+  pos = cursor.position()
+  let cur: { line: string; next: number }
 
   // Parse atomic positions
   let cart_to_frac: (v: Vec3) => Vec3
@@ -300,18 +222,17 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   const sites: Site[] = []
   let atom_idx = 0
 
-  for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
-    const symbol = element_symbols[elem_idx].split(/[_/]/)[0]
-    const element = coerce_elem_symbol(symbol) ?? `H`
-    const count = atom_counts[elem_idx]
+  for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
+    const element = elements[elem_idx]
+    const count = counts[elem_idx]
 
     for (let count_idx = 0; count_idx < count; count_idx++) {
       if (pos >= content.length) {
         vol_error(`CHGCAR: file ends before all atom coordinates are read`)
         return null
       }
-      cur = read_line(content, pos)
-      const coords = cur.line.trim().split(/\s+/).slice(0, 3).map(Number) as Vec3
+      cur = read_text_line(content, pos)
+      const coords = parse_vasp_vec3(cur.line)
       pos = cur.next
 
       let abc: Vec3
@@ -321,7 +242,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
         abc = wrap_to_unit_cell(coords)
         xyz = frac_to_cart(abc)
       } else {
-        xyz = math.scale(coords, scale_factor)
+        xyz = apply_axis_scale(coords, scale)
         const raw = cart_to_frac(xyz)
         abc = wrap_to_unit_cell(raw)
       }
@@ -345,7 +266,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   for (let vol_idx = 0; vol_idx < 2; vol_idx++) {
     // Skip blank lines
     while (pos < content.length) {
-      cur = read_line(content, pos)
+      cur = read_text_line(content, pos)
       if (cur.line.trim() !== ``) break
       pos = cur.next
     }
@@ -353,7 +274,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     if (pos >= content.length) break
 
     // Parse grid dimensions: NGX NGY NGZ
-    cur = read_line(content, pos)
+    cur = read_text_line(content, pos)
     const grid_tokens = cur.line.trim().split(/\s+/).map(Number)
     if (grid_tokens.length < 3 || grid_tokens.some(isNaN)) break
 
@@ -404,7 +325,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
     // Skip augmentation occupancies and any remaining non-numeric lines
     while (pos < content.length) {
-      cur = read_line(content, pos)
+      cur = read_text_line(content, pos)
       const trimmed = cur.line.trim()
       if (trimmed === `` || /^\d+\s+\d+\s+\d+$/.test(trimmed)) break
       pos = cur.next
@@ -440,12 +361,16 @@ export function parse_cube(
 
   // Parse header (first 6 lines + atom lines)
   let pos = 0
-  const header = read_lines(content, pos, 6)
-  pos = header.next
+  const header_lines: string[] = []
+  for (let line_idx = 0; line_idx < 6; line_idx++) {
+    const { line, next } = read_text_line(content, pos)
+    header_lines.push(line.trim())
+    pos = next
+  }
 
   // Line 2: n_atoms, origin_x, origin_y, origin_z
   // (negative n_atoms indicates orbital data with extra header line)
-  const line2 = header.lines[2].split(/\s+/).map(Number)
+  const line2 = header_lines[2].split(/\s+/).map(Number)
   if (line2.length < 4 || line2.some(isNaN)) {
     vol_error(`.cube header line 3 malformed: expected 4 numbers`)
     return null
@@ -457,9 +382,9 @@ export function parse_cube(
   // Lines 3-5: grid dimensions and voxel vectors
   // Positive N means coordinates in Bohr, negative N means Angstrom
   const voxel_lines = [
-    header.lines[3].split(/\s+/).map(Number),
-    header.lines[4].split(/\s+/).map(Number),
-    header.lines[5].split(/\s+/).map(Number),
+    header_lines[3].split(/\s+/).map(Number),
+    header_lines[4].split(/\s+/).map(Number),
+    header_lines[5].split(/\s+/).map(Number),
   ]
   if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
     vol_error(`.cube voxel lines malformed: expected 4 numbers per line`)
@@ -507,7 +432,7 @@ export function parse_cube(
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    const cur = read_line(content, pos)
+    const cur = read_text_line(content, pos)
     const atom_line = cur.line.trim().split(/\s+/).map(Number)
     pos = cur.next
 
@@ -547,7 +472,7 @@ export function parse_cube(
 
   // Skip orbital header line if present
   if (has_orbital_header && pos < content.length) {
-    const cur = read_line(content, pos)
+    const cur = read_text_line(content, pos)
     pos = cur.next
   }
 
@@ -638,14 +563,14 @@ export function parse_volumetric_file(
   // CHGCAR detection: requires POSCAR-like header (scale factor on line 2) AND
   // a grid dimensions line (3 integers) somewhere after the header. This distinguishes
   // CHGCAR from plain POSCAR/CONTCAR files which share the same header format.
-  if (lines.length > 2 && !isNaN(parse_leading_num(lines[1]))) {
+  if (lines.length > 2 && !isNaN(parse_leading_num(normalize_scientific_notation(lines[1])))) {
     // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
     // Only scan a limited window, not the entire file
     // Scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms max)
     const scan_end = Math.min(content.length, scan_pos + 25000)
     while (scan_pos < scan_end) {
-      const { line, next } = read_line(content, scan_pos)
+      const { line, next } = read_text_line(content, scan_pos)
       if (/^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) {
         return parse_chgcar(content)
       }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { Cross, Filter } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
@@ -17,8 +18,7 @@
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import { DraggablePane } from '$lib/overlays'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
-  import { create_renderer, page_visibility, webgpu_available } from '$lib/scene'
-  import { sanitize_html } from '$lib/sanitize'
+  import { create_renderer, dispose_on_change, webgpu_available } from '$lib/scene'
   import { constrain_tooltip_position, pad_rect, rects_overlap } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
@@ -26,14 +26,11 @@
     DataSeries3D,
     DisplayConfig3D,
   } from '$lib/plot/core/types'
-  import { Canvas, T } from '@threlte/core'
-  import * as extras from '@threlte/extras'
-  import { scaleLinear } from 'd3-scale'
-  import type { Snippet } from 'svelte'
-  import { onDestroy, onMount, untrack } from 'svelte'
+  import { Canvas } from '@threlte/core'
+  import type { ComponentProps } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three/webgpu'
-  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
@@ -65,6 +62,8 @@
     get_visible_domain_labels,
     pad_domain_points,
     scale_to_font_range,
+    swizzle_to_render,
+    type VisibleDomainLabel,
   } from './compute'
   import { with_hover_pointer } from './pointer'
   import {
@@ -80,6 +79,10 @@
     ChemPotHoverInfo3D,
   } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
+
+  type SceneProps = ComponentProps<typeof ChemPotScene3D>
+  type RenderDomain = SceneProps[`render_domains`][number]
+  type HoverMesh = SceneProps[`hover_meshes`][number]
 
   const edge_key = (key_a: string, key_b: string): string =>
     key_a < key_b ? `${key_a}|${key_b}` : `${key_b}|${key_a}`
@@ -209,14 +212,7 @@
 
   let mounted = $state(false)
   onMount(() => (mounted = true))
-  let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
-  // Backside tracking: axes/ticks/labels render on the far side from the camera
-  // back[i] = backside data coordinate value for data axis i
-  // Matches ScatterPlot3DScene pattern where pos tracks the opposite side from camera
-  let back = $state([0, 0, 0])
-  // Outward offset signs for tick/label placement (away from bounding box)
-  let out_x = $state(-1) // sign for Three.js X (data axis 1) direction
-  let out_y = $state(-1) // sign for Three.js Y (data axis 2) direction
+  let orbit_controls_ref = $state<SceneProps[`orbit_controls`]>()
   let camera_projection = $state<CameraProjection3D>(`orthographic`)
   let auto_rotate = $state(0)
   let display = $state<DisplayConfig3D>({
@@ -231,13 +227,7 @@
   let x_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
-  const projection_opacity = $derived(display.projection_opacity ?? 0.15)
 
-  // Plotly/pymatgen uses Z-up with x-axis projecting left in isometric view.
-  // Three.js uses Y-up with X projecting right. To match pymatgen's visual layout:
-  //   data[0] (plotly x, projects left)  → Three.js Z (projects left)
-  //   data[1] (plotly y, projects right) → Three.js X (projects right)
-  //   data[2] (plotly z, projects up)    → Three.js Y (projects up)
   function to_vec3(pt: number[]): THREE.Vector3 {
     const [x_val, y_val, z_val] = to_render_xyz(pt)
     return new THREE.Vector3(x_val, y_val, z_val)
@@ -361,21 +351,6 @@
     return available_formulas.filter((formula) => formula.toLowerCase().includes(query))
   })
 
-  // Process domains for rendering
-  interface DomainRenderData {
-    formula: string
-    points_3d: number[][]
-    ann_loc: number[]
-    is_draw_formula: boolean
-    label_font_size: number
-  }
-
-  interface HoverMeshData {
-    formula: string
-    geometry: THREE.BufferGeometry
-    info: ChemPotHoverInfo3D
-  }
-
   const domain_annotation_cache = new Map<string, number[]>()
 
   function get_domain_ann_loc(points_3d: number[][]): number[] {
@@ -393,7 +368,7 @@
     )
   }
 
-  const render_domains = $derived.by((): DomainRenderData[] => {
+  const render_domains = $derived.by((): RenderDomain[] => {
     if (!diagram_data || plot_elements.length < 2) return []
 
     const dim = diagram_data.elements.length
@@ -408,7 +383,7 @@
           )
         : null
 
-    const result: DomainRenderData[] = []
+    const result: RenderDomain[] = []
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
       const padded = new_lims
         ? pad_domain_points(pts, indices, new_lims, default_min_limit, element_padding)
@@ -496,14 +471,14 @@
     ]
   })
 
+  // Swizzle a data-coord triple to Three.js coords; ChemPotScene3D frames the axes with the same
+  const swiz = $derived(swizzle_to_render(render_axis_scale))
   const to_render_xyz = (point: number[]): Vec3 => swiz(point[0], point[1], point[2])
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
-    if (points.length === 0) {
-      return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
-    }
+    if (points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
     // Compute center in rendered coordinates (swizzled + axis scaling).
     let [sum_x, sum_y, sum_z] = [0, 0, 0]
     for (const point_3d of points) {
@@ -513,22 +488,22 @@
       sum_z += z_val
     }
     const n_points = points.length
-    const center = new THREE.Vector3(sum_x / n_points, sum_y / n_points, sum_z / n_points)
+    const center: Vec3 = [sum_x / n_points, sum_y / n_points, sum_z / n_points]
     // Compute max distance from center
     let max_dist = 0
     for (const point of points) {
       const [x_val, y_val, z_val] = to_render_xyz(point)
-      const dist = Math.hypot(x_val - center.x, y_val - center.y, z_val - center.z)
+      const dist = Math.hypot(x_val - center[0], y_val - center[1], z_val - center[2])
       if (dist > max_dist) max_dist = dist
     }
     return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
   })
   const default_camera_position = $derived<Vec3>([
-    data_center.x + data_extent,
-    data_center.y + data_extent,
-    data_center.z + data_extent,
+    data_center[0] + data_extent,
+    data_center[1] + data_extent,
+    data_center[2] + data_extent,
   ])
-  const default_camera_target = $derived<Vec3>([data_center.x, data_center.y, data_center.z])
+  const default_camera_target = $derived<Vec3>([...data_center])
   const default_orthographic_zoom = $derived(
     Math.min(render_width, render_height) / (data_extent * 1.6),
   )
@@ -947,13 +922,16 @@
     return geom
   })
 
-  const domain_label = (domain: DomainRenderData) => ({
+  // Uncolored hulls read as a faint envelope; colored ones have to carry their hue
+  const hull_opacity = $derived(color_mode === `none` ? 0.25 : 0.4)
+
+  const domain_label = (domain: RenderDomain): VisibleDomainLabel => ({
     formula: domain.formula,
     position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
     label_font_size: domain.label_font_size,
   })
 
-  const visible_domain_labels = $derived.by(() => {
+  const visible_domain_labels = $derived.by((): VisibleDomainLabel[] => {
     if (!hull_base_geometry || face_domain_map.length === 0) {
       return render_domains.map(domain_label)
     }
@@ -973,18 +951,15 @@
     )
   })
 
-  // Register an effect that disposes the given geometries whenever they are
-  // recomputed or the component unmounts.
-  function dispose_on_change(
-    get_geometries: () => (THREE.BufferGeometry | null | undefined)[],
-  ): void {
-    $effect(() => {
-      const geometries = get_geometries()
-      return () => {
-        for (const geometry of geometries) geometry?.dispose()
-      }
-    })
-  }
+  // Pre-format the formulas so the scene component only has to place the labels
+  const scene_domain_labels = $derived(
+    label_stable
+      ? visible_domain_labels.map((label) => ({
+          ...label,
+          segments: formula_label_segments(label.formula),
+        }))
+      : [],
+  )
 
   dispose_on_change(() => [hull_base_geometry])
   // Don't dispose colored hull if it's the same object as hull_base_geometry (no clone made)
@@ -1179,9 +1154,9 @@
     return result
   })
 
-  const hover_mesh_data = $derived.by((): HoverMeshData[] => {
+  const hover_mesh_data = $derived.by((): HoverMesh[] => {
     if (!diagram_data) return []
-    const result: HoverMeshData[] = []
+    const result: HoverMesh[] = []
     const lims = diagram_data.lims
     const energy_stats_by_formula = entry_energy_stats_by_formula
 
@@ -1229,230 +1204,9 @@
 
   dispose_on_change(() => [edge_geometry])
   dispose_on_change(() => [occlusion_hull_geometry])
-  dispose_on_change(() => [bounding_box_geometry])
   dispose_on_change(() => formula_edge_data.map((data) => data.geometry))
   dispose_on_change(() => formula_mesh_data.map((data) => data.geometry))
   dispose_on_change(() => hover_mesh_data.map((data) => data.geometry))
-
-  // === Grid, axes, ticks (matching ScatterPlot3D style) ===
-
-  // Bounding box of all data points in DATA coordinates (before swizzle)
-  const raw_data_bbox = $derived.by(() => {
-    const pts = render_domains.flatMap((domain) => domain.points_3d)
-    if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
-    const mins = [Infinity, Infinity, Infinity]
-    const maxs = [-Infinity, -Infinity, -Infinity]
-    for (const pt of pts) {
-      for (let dim = 0; dim < 3; dim++) {
-        if (pt[dim] < mins[dim]) mins[dim] = pt[dim]
-        if (pt[dim] > maxs[dim]) maxs[dim] = pt[dim]
-      }
-    }
-    return { mins, maxs }
-  })
-
-  // Axis range controls are in swizzled axis order:
-  // x-axis control -> data axis 1, y-axis control -> data axis 2, z-axis control -> data axis 0
-  const data_bbox = $derived.by(() => {
-    const mins = [...raw_data_bbox.mins]
-    const maxs = [...raw_data_bbox.maxs]
-    const range_by_data_axis: ([number | null, number | null] | undefined)[] = [
-      z_axis.range,
-      x_axis.range,
-      y_axis.range,
-    ]
-    for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
-      const range = range_by_data_axis[axis_idx]
-      if (!range) continue
-      const [range_min, range_max] = range
-      if (range_min !== null) mins[axis_idx] = range_min
-      if (range_max !== null) maxs[axis_idx] = range_max
-    }
-    return { mins, maxs }
-  })
-
-  // Generate nice tick values for each data axis using D3
-  function gen_ticks(min_val: number, max_val: number, count: number = 5): number[] {
-    if (!isFinite(min_val) || !isFinite(max_val) || min_val === max_val) {
-      return [min_val]
-    }
-    return scaleLinear().domain([min_val, max_val]).nice().ticks(count)
-  }
-
-  // Ticks in DATA coordinates for each of the 3 data axes
-  const data_ticks = $derived([
-    gen_ticks(data_bbox.mins[0], data_bbox.maxs[0]),
-    gen_ticks(data_bbox.mins[1], data_bbox.maxs[1]),
-    gen_ticks(data_bbox.mins[2], data_bbox.maxs[2]),
-  ])
-
-  // Niced ranges (from ticks) padded so the grid extends beyond the diagram.
-  // For horizontal axes (0,1): pad both sides.
-  // For vertical axis (2): use actual data range and round min down to an integer.
-  const niced_range = $derived(
-    [0, 1, 2].map((axis): Vec2 => {
-      const ticks = data_ticks[axis]
-      const lo = ticks[0]
-      const hi = ticks.at(-1) ?? lo
-      const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1
-      if (axis === 2) {
-        const min_data = data_bbox.mins[2]
-        return [Math.floor(min_data), hi]
-      }
-      return [lo - step, hi + step]
-    }),
-  )
-
-  // Helper to create a line geometry from two Vec3 arrays
-  function make_line_geom(start: Vec3, end: Vec3): THREE.BufferGeometry {
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(
-      `position`,
-      new THREE.BufferAttribute(new Float32Array([...start, ...end]), 3),
-    )
-    return geom
-  }
-
-  // Swizzle a data-coord triple to Three.js coords
-  function swiz(d0: number, d1: number, d2: number): Vec3 {
-    const [scale_x, scale_y, scale_z] = render_axis_scale
-    return [d1 * scale_x, d2 * scale_y, d0 * scale_z] // data[0]→Z, data[1]→X, data[2]→Y
-  }
-
-  const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
-  function chem_axis_label(data_axis: number): string {
-    const el = plot_elements[data_axis]
-    const prefix = formal_chempots ? `\u0394` : ``
-    return `${prefix}\u03BC<sub>${el}</sub> <span class="axis-unit">(eV)</span>`
-  }
-
-  // Proportional offsets for tick marks and labels, scaled to data extent
-  const tick_size = $derived(data_extent * 0.015)
-  const tick_label_dist = $derived(data_extent * 0.04)
-  const axis_label_dist = $derived(data_extent * 0.02)
-
-  // Place axis label just past the outer end of the axis (the end closer to 0).
-  // In isometric 3D, the end near 0 projects outward at the front edge of the
-  // bounding box, while the negative end projects inward toward the center.
-  const outer_end = (range: Vec2): number =>
-    Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
-  // Direction from range center toward outer end (to extend the label beyond the grid)
-  const outer_direction = (range: Vec2): number => {
-    const end = outer_end(range)
-    const mid = (range[0] + range[1]) / 2
-    return end >= mid ? 1 : -1
-  }
-
-  // Grid/axis configuration for each data axis.
-  // Axes, ticks, and labels are placed on the backside (far from camera)
-  // matching ScatterPlot3DScene's dynamic backside tracking pattern.
-  const grid_config = $derived.by(() => {
-    const [r0, r1, r2] = niced_range
-
-    return [0, 1, 2].map((axis) => {
-      const ticks = data_ticks[axis]
-      const color = axis_colors[axis]
-      const label =
-        axis === 0
-          ? z_axis.label || chem_axis_label(0)
-          : axis === 1
-            ? x_axis.label || chem_axis_label(1)
-            : y_axis.label || chem_axis_label(2)
-
-      const tick_geoms: THREE.BufferGeometry[] = []
-      const grid_geoms: THREE.BufferGeometry[] = []
-      const tick_labels: { pos: Vec3; text: string }[] = []
-      let line_geom: THREE.BufferGeometry
-      let label_pos: Vec3
-
-      if (axis === 0) {
-        // Data axis 0 (Three.js Z, depth): axis at backside d1 and d2
-        const ls = swiz(r0[0], back[1], back[2])
-        const le = swiz(r0[1], back[1], back[2])
-        line_geom = make_line_geom(ls, le)
-        // Axis label past the outer end of the axis (near 0, projects outward)
-        label_pos = swiz(
-          outer_end(r0) + outer_direction(r0) * axis_label_dist,
-          back[1] + out_x * tick_label_dist * 0.5,
-          back[2] + out_y * tick_label_dist,
-        )
-        for (const val of ticks) {
-          tick_geoms.push(
-            make_line_geom(
-              swiz(val, back[1], back[2]),
-              swiz(val, back[1], back[2] + out_y * tick_size),
-            ),
-          )
-          grid_geoms.push(
-            make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])),
-            make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])),
-          )
-          tick_labels.push({
-            pos: swiz(
-              val,
-              back[1] + out_x * tick_label_dist * 0.5,
-              back[2] + out_y * tick_label_dist,
-            ),
-            text: format_num(val, `.3~g`),
-          })
-        }
-      } else if (axis === 1) {
-        // Data axis 1 (Three.js X, horizontal): axis at backside d0 and d2
-        const ls = swiz(back[0], r1[0], back[2])
-        const le = swiz(back[0], r1[1], back[2])
-        line_geom = make_line_geom(ls, le)
-        label_pos = swiz(
-          back[0],
-          outer_end(r1) + outer_direction(r1) * axis_label_dist,
-          back[2] + out_y * tick_label_dist,
-        )
-        for (const val of ticks) {
-          tick_geoms.push(
-            make_line_geom(
-              swiz(back[0], val, back[2]),
-              swiz(back[0], val, back[2] + out_y * tick_size),
-            ),
-          )
-          grid_geoms.push(
-            make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])),
-            make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])),
-          )
-          tick_labels.push({
-            pos: swiz(back[0], val, back[2] + out_y * tick_label_dist),
-            text: format_num(val, `.3~g`),
-          })
-        }
-      } else {
-        // Data axis 2 (Three.js Y, vertical): axis at backside d0 and d1
-        const ls = swiz(back[0], back[1], r2[0])
-        const le = swiz(back[0], back[1], r2[1])
-        line_geom = make_line_geom(ls, le)
-        label_pos = swiz(
-          back[0],
-          back[1] + out_x * tick_label_dist,
-          outer_end(r2) + outer_direction(r2) * axis_label_dist,
-        )
-        for (const val of ticks) {
-          tick_geoms.push(
-            make_line_geom(
-              swiz(back[0], back[1], val),
-              swiz(back[0], back[1] + out_x * tick_size, val),
-            ),
-          )
-          grid_geoms.push(
-            make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)),
-            make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)),
-          )
-          tick_labels.push({
-            pos: swiz(back[0], back[1] + out_x * tick_label_dist, val),
-            text: format_num(val, `.3~g`),
-          })
-        }
-      }
-
-      return { axis, color, label, line_geom, tick_geoms, grid_geoms, tick_labels, label_pos }
-    })
-  })
 
   let label_occlusion_frame: number | null = null
   let tick_labels_occluded = false
@@ -1462,7 +1216,6 @@
   const can_update_label_occlusion = $derived(
     mounted &&
       display.show_axis_labels &&
-      grid_config.length > 0 &&
       Number.isFinite(zoom_scale) &&
       container_width > 0 &&
       container_height > 0,
@@ -1503,23 +1256,6 @@
     })
   }
 
-  // Update backside positions when camera crosses axis planes.
-  // Only updates when sign changes to avoid triggering geometry recreation every frame.
-  function update_backside(): void {
-    const cam = orbit_controls_ref?.object?.position
-    if (!cam) return
-    const [r0, r1, r2] = niced_range
-    // swiz: data[0]→Z, data[1]→X, data[2]→Y
-    const new_back_0 = cam.z > data_center.z ? r0[0] : r0[1]
-    const new_back_1 = cam.x > data_center.x ? r1[0] : r1[1]
-    const new_back_2 = cam.y > data_center.y ? r2[0] : r2[1]
-    if (back[0] !== new_back_0 || back[1] !== new_back_1 || back[2] !== new_back_2) {
-      back = [new_back_0, new_back_1, new_back_2]
-      out_x = cam.x > data_center.x ? -1 : 1
-      out_y = cam.y > data_center.y ? -1 : 1
-    }
-  }
-
   // OrbitControls dispatches `change` only once the camera has moved past its own epsilon, so
   // any change arriving mid-gesture is real movement — measured: a bare click emits start/end
   // with no change at all. Auto-rotation drives `change` with no `start`, and must not pin.
@@ -1528,7 +1264,7 @@
     gesture_active = event.type === `start`
     // Prime the framing baseline on first interaction so the next geometry change can
     // preserve zoom/center immediately (not only from the second change).
-    if (gesture_active) last_data_center ??= [data_center.x, data_center.y, data_center.z]
+    if (gesture_active) last_data_center ??= [...data_center]
     else gesture_had_input = false
   }
 
@@ -1580,9 +1316,9 @@
   $effect(() => {
     if (camera_position_override && camera_target_override && last_data_center) {
       const [last_x, last_y, last_z] = last_data_center
-      const delta_x = data_center.x - last_x
-      const delta_y = data_center.y - last_y
-      const delta_z = data_center.z - last_z
+      const delta_x = data_center[0] - last_x
+      const delta_y = data_center[1] - last_y
+      const delta_z = data_center[2] - last_z
       if (delta_x !== 0 || delta_y !== 0 || delta_z !== 0) {
         camera_position_override = [
           camera_position_override[0] + delta_x,
@@ -1601,7 +1337,7 @@
       last_default_zoom,
       default_orthographic_zoom,
     )
-    last_data_center = [data_center.x, data_center.y, data_center.z]
+    last_data_center = [...data_center]
     // A zero fit means the container has no size yet; keep the last real one as the baseline
     // so the pinned zoom resumes from it rather than losing a rescale step.
     if (default_orthographic_zoom > 0) last_default_zoom = default_orthographic_zoom
@@ -1611,7 +1347,6 @@
     const controls = orbit_controls_ref
     if (!controls) return
     const on_controls_change = (): void => {
-      update_backside()
       // Once pinned keep tracking; before that only a live gesture may pin. Reading allocates
       // two arrays, and auto-rotation fires this every frame, so stay out of that path.
       if (camera_position_override || (gesture_active && gesture_had_input)) {
@@ -1626,7 +1361,6 @@
     controls.addEventListener(`start`, on_gesture_edge)
     controls.addEventListener(`change`, on_controls_change)
     controls.addEventListener(`end`, on_gesture_edge)
-    untrack(() => update_backside())
     controls.update()
     return () => {
       controls.removeEventListener(`start`, on_gesture_edge)
@@ -1647,94 +1381,6 @@
     get_fullscreen: () => fullscreen,
     set_fullscreen: (val) => (fullscreen = val),
     get_bg_css_var: () => `--chempot-3d-bg-fullscreen`,
-  })
-
-  dispose_on_change(() =>
-    grid_config.flatMap((grid_item) => [
-      grid_item.line_geom,
-      ...grid_item.tick_geoms,
-      ...grid_item.grid_geoms,
-    ]),
-  )
-
-  const projection_planes = $derived.by(() => {
-    const projections = display.projections
-    if (!projections) return []
-    const [r0, r1, r2] = niced_range
-    const projection_scale = display.projection_scale ?? 0.5
-    const [s0, s1, s2] = niced_range.map(([lo, hi]) => (hi - lo) * projection_scale)
-    const planes: {
-      key: string
-      pos: Vec3
-      rot: Vec3
-      size: Vec2
-      color: string
-    }[] = []
-    if (projections.xy) {
-      planes.push({
-        key: `xy`,
-        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, back[2]),
-        rot: [-Math.PI / 2, 0, 0],
-        size: [s1, s0],
-        color: `#5dade2`,
-      })
-    }
-    if (projections.xz) {
-      planes.push({
-        key: `xz`,
-        pos: swiz((r0[0] + r0[1]) / 2, back[1], (r2[0] + r2[1]) / 2),
-        rot: [0, Math.PI / 2, 0],
-        size: [s0, s2],
-        color: `#58d68d`,
-      })
-    }
-    if (projections.yz) {
-      planes.push({
-        key: `yz`,
-        pos: swiz(back[0], (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
-        rot: [0, 0, 0],
-        size: [s1, s2],
-        color: `#f5b041`,
-      })
-    }
-    return planes
-  })
-
-  const bounding_box_geometry = $derived.by(() => {
-    const [r0, r1, r2] = niced_range
-    const vertices = [
-      swiz(r0[0], r1[0], r2[0]),
-      swiz(r0[1], r1[0], r2[0]),
-      swiz(r0[1], r1[1], r2[0]),
-      swiz(r0[0], r1[1], r2[0]),
-      swiz(r0[0], r1[0], r2[1]),
-      swiz(r0[1], r1[0], r2[1]),
-      swiz(r0[1], r1[1], r2[1]),
-      swiz(r0[0], r1[1], r2[1]),
-    ]
-    const edges = [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 0],
-      [4, 5],
-      [5, 6],
-      [6, 7],
-      [7, 4],
-      [0, 4],
-      [1, 5],
-      [2, 6],
-      [3, 7],
-    ]
-    const positions: number[] = []
-    for (const [start_idx, end_idx] of edges) {
-      const start = vertices[start_idx]
-      const end = vertices[end_idx]
-      positions.push(start[0], start[1], start[2], end[0], end[1], end[2])
-    }
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    return geom
   })
 
   function reset_controls(): void {
@@ -1793,7 +1439,7 @@
     overrides.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 
-  let png_dpi = $state(150)
+  let png_dpi = $state(DEFAULT_PNG_DPI)
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
   const current_view_settings = (): Record<string, unknown> =>
@@ -1853,10 +1499,10 @@
             export_glb_file(
               {
                 hull_geometry: colored_hull_geometry,
-                hull_opacity: color_mode === `none` ? 0.25 : 0.4,
+                hull_opacity,
                 edge_geometry,
                 formula_meshes: formula_mesh_data,
-                formula_edges: draw_formula_lines ? formula_edge_data : [],
+                formula_edges: formula_edge_data,
               },
               export_basename,
             ),
@@ -1886,7 +1532,7 @@
     )
   })
 
-  function set_hover_info(domain_data: HoverMeshData, raw_event: unknown): void {
+  function set_hover_info(domain_data: HoverMesh, raw_event: unknown): void {
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
       domain_data.info,
       raw_event,
@@ -1908,12 +1554,12 @@
     event?.nativeEvent?.stopPropagation?.()
   }
 
-  function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
+  function handle_phase_hover(domain_data: HoverMesh, raw_event: unknown): void {
     if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
     set_hover_info(domain_data, raw_event)
   }
 
-  function toggle_phase_lock(domain_data: HoverMeshData, raw_event: unknown): void {
+  function toggle_phase_lock(domain_data: HoverMesh, raw_event: unknown): void {
     stop_phase_pointer_event(raw_event)
     if (locked_hover_formula === domain_data.formula) {
       clear_hover_lock()
@@ -1921,6 +1567,10 @@
     }
     locked_hover_formula = domain_data.formula
     set_hover_info(domain_data, raw_event)
+  }
+
+  function handle_phase_leave(domain_data: HoverMesh): void {
+    if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
   // Color mode cycling (keyboard shortcut 'c')
@@ -2211,198 +1861,37 @@
         <p>Need at least 2 elements with elemental reference entries.</p>
       </div>
     {:else if mounted && webgpu_available()}
-      {#snippet orbit_controls()}
-        <extras.OrbitControls
-          bind:ref={orbit_controls_ref}
-          enableRotate
-          enableZoom
-          enablePan
-          autoRotate={auto_rotate > 0 && page_visibility.visible}
-          autoRotateSpeed={auto_rotate}
-          target={camera_target}
-        />
-      {/snippet}
       <Canvas createRenderer={create_renderer}>
-        <ChemPotScene3D>
-          {#if camera_projection === `orthographic`}
-            <!-- Orthographic camera matching pymatgen's projection style -->
-            <T.OrthographicCamera
-              makeDefault
-              position={camera_position}
-              zoom={orthographic_zoom}
-              near={0.1}
-              far={data_extent * 10}
-            >
-              {@render orbit_controls()}
-            </T.OrthographicCamera>
-          {:else}
-            <T.PerspectiveCamera
-              makeDefault
-              position={camera_position}
-              fov={50}
-              near={0.1}
-              far={data_extent * 10}
-            >
-              {@render orbit_controls()}
-            </T.PerspectiveCamera>
-          {/if}
-
-          <!-- Ambient light for visibility -->
-          <T.AmbientLight intensity={0.8} />
-          <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
-
-          <!-- Vertex-colored hull for both plain and colored modes.
-           {#key domain_colors} forces Threlte to re-create the mesh whenever
-           colors change (covers color_mode, color_scale, and data updates),
-           since on-demand rendering won't detect mutated vertex color buffers. -->
-          {#if colored_hull_geometry}
-            {#key domain_colors}
-              <T.Mesh geometry={colored_hull_geometry}>
-                <T.MeshBasicMaterial
-                  vertexColors
-                  transparent
-                  opacity={color_mode === `none` ? 0.25 : 0.4}
-                  side={THREE.DoubleSide}
-                  polygonOffset
-                  polygonOffsetFactor={1}
-                  polygonOffsetUnits={1}
-                />
-              </T.Mesh>
-            {/key}
-          {/if}
-
-          <!-- Domain boundary edges (wireframe on top of opaque fills) -->
-          <T.LineSegments geometry={edge_geometry}>
-            <T.LineBasicMaterial color={0x333333} linewidth={1} />
-          </T.LineSegments>
-
-          <!-- Invisible pick meshes for per-phase hover tooltip -->
-          {#each hover_mesh_data as domain_hover (domain_hover.formula)}
-            <T.Mesh
-              geometry={domain_hover.geometry}
-              onpointerenter={(event: unknown) => handle_phase_hover(domain_hover, event)}
-              onpointermove={(event: unknown) => handle_phase_hover(domain_hover, event)}
-              onpointerdown={(event: unknown) => toggle_phase_lock(domain_hover, event)}
-              onpointerleave={() => {
-                if (!locked_hover_formula && hover_info?.formula === domain_hover.formula) {
-                  hover_info = null
-                }
-              }}
-            >
-              <T.MeshBasicMaterial
-                transparent
-                opacity={0}
-                side={THREE.DoubleSide}
-                depthWrite={false}
-              />
-            </T.Mesh>
-          {/each}
-
-          <!-- Formula overlay meshes (semi-transparent colored fill) -->
-          {#each formula_mesh_data as { geometry, color }, mesh_idx (mesh_idx)}
-            <T.Mesh {geometry}>
-              <T.MeshBasicMaterial
-                color={new THREE.Color(color)}
-                transparent
-                opacity={0.13}
-                side={THREE.DoubleSide}
-                depthWrite={false}
-              />
-            </T.Mesh>
-          {/each}
-
-          <!-- Formula overlay edges (colored, thicker) -->
-          {#if draw_formula_lines}
-            {#each formula_edge_data as { geometry, color }, edge_idx (edge_idx)}
-              <T.LineSegments {geometry}>
-                <T.LineBasicMaterial color={new THREE.Color(color)} linewidth={2} />
-              </T.LineSegments>
-            {/each}
-          {/if}
-
-          {#each projection_planes as plane (`${plane.key}-${projection_opacity}`)}
-            <T.Mesh position={plane.pos} rotation={plane.rot}>
-              <T.PlaneGeometry args={plane.size} />
-              <T.MeshBasicMaterial
-                color={plane.color}
-                opacity={projection_opacity}
-                transparent
-                side={THREE.DoubleSide}
-                depthWrite={false}
-              />
-            </T.Mesh>
-          {/each}
-
-          {#if display.show_bounding_box}
-            <T.LineSegments geometry={bounding_box_geometry}>
-              <T.LineBasicMaterial color="#666" opacity={0.6} transparent />
-            </T.LineSegments>
-          {/if}
-
-          <!-- Axes, ticks, grid lines, and labels -->
-          {#each grid_config as gc (gc.axis)}
-            {#if display.show_axes}
-              <!-- Main axis line -->
-              <T.Line geometry={gc.line_geom}>
-                <T.LineBasicMaterial color={gc.color} linewidth={2} />
-              </T.Line>
-              <!-- Tick marks -->
-              {#each gc.tick_geoms as tick_geom, tdx (tdx)}
-                <T.Line geometry={tick_geom}>
-                  <T.LineBasicMaterial color={gc.color} />
-                </T.Line>
-              {/each}
-            {/if}
-            {#if display.show_grid}
-              <!-- Grid lines -->
-              {#each gc.grid_geoms as grid_geom, gdx (gdx)}
-                <T.Line geometry={grid_geom}>
-                  <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
-                </T.Line>
-              {/each}
-            {/if}
-            {#if display.show_axis_labels}
-              <!-- Tick labels (billboarded, always face camera) -->
-              {#each gc.tick_labels as tick, tick_idx (tick_idx)}
-                <extras.HTML position={tick.pos} center portal={wrapper} zIndexRange={[1, 0]}>
-                  <span class="tick-label axis-tick-label">{tick.text}</span>
-                </extras.HTML>
-              {/each}
-              <!-- Axis label -->
-              <extras.HTML
-                position={gc.label_pos}
-                center
-                portal={wrapper}
-                zIndexRange={[1, 0]}
-              >
-                <span class="axis-label" style:color={gc.color}
-                  >{@html sanitize_html(gc.label)}</span
-                >
-              </extras.HTML>
-            {/if}
-          {/each}
-
-          <!-- Domain labels -->
-          {#if label_stable}
-            {#each visible_domain_labels as domain (domain.formula)}
-              <extras.HTML
-                position={domain.position}
-                center
-                portal={wrapper}
-                zIndexRange={[5, 5]}
-              >
-                <span
-                  class="domain-label"
-                  style:font-size="{(domain.label_font_size * zoom_scale).toFixed(1)}px"
-                >
-                  {#each formula_label_segments(domain.formula) as segment}
-                    <span class:formula-subscript={segment.subscript}>{segment.text}</span>
-                  {/each}
-                </span>
-              </extras.HTML>
-            {/each}
-          {/if}
-        </ChemPotScene3D>
+        <ChemPotScene3D
+          bind:orbit_controls={orbit_controls_ref}
+          {render_domains}
+          {render_axis_scale}
+          {plot_elements}
+          {formal_chempots}
+          {x_axis}
+          {y_axis}
+          {z_axis}
+          {display}
+          {data_center}
+          {data_extent}
+          {camera_position}
+          {camera_target}
+          {camera_projection}
+          {orthographic_zoom}
+          {auto_rotate}
+          hull_geometry={colored_hull_geometry}
+          {hull_opacity}
+          {edge_geometry}
+          hover_meshes={hover_mesh_data}
+          on_domain_hover={handle_phase_hover}
+          on_domain_press={toggle_phase_lock}
+          on_domain_leave={handle_phase_leave}
+          formula_meshes={formula_mesh_data}
+          formula_edges={formula_edge_data}
+          domain_labels={scene_domain_labels}
+          label_scale={zoom_scale}
+          portal={wrapper}
+        />
       </Canvas>
       <!-- Color bar for continuous modes -->
       {#if color_range}
@@ -2663,29 +2152,6 @@
     justify-content: center;
     height: 100%;
     color: var(--text-color, #666);
-  }
-  :is(.axis-label, .tick-label) {
-    pointer-events: none;
-    user-select: none;
-    white-space: nowrap;
-  }
-  .axis-label {
-    font: bold 13px sans-serif;
-  }
-  .axis-label :global(.axis-unit) {
-    font-weight: 300;
-    opacity: 0.7;
-  }
-  .tick-label {
-    font-size: 10px;
-    color: var(--text-color, #333);
-  }
-  .domain-label {
-    font-family: sans-serif;
-    color: var(--text-color, #333);
-    opacity: 0.7;
-    white-space: nowrap;
-    pointer-events: none;
   }
   .formula-subscript {
     font-size: calc(11em / 12);

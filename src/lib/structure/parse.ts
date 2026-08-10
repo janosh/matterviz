@@ -27,6 +27,11 @@ import {
   validate_element_symbol,
   vec3_from_values,
 } from '$lib/structure/parsers/shared'
+import {
+  apply_axis_scale,
+  lines_cursor,
+  parse_vasp_header,
+} from '$lib/structure/parsers/vasp-header'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
@@ -188,115 +193,30 @@ export const parse_poscar = (content: string): ParsedStructure | null =>
       return null
     }
 
-    // Scale line: one value (negative = target volume) or three per-axis Cartesian factors
-    const scale_tokens = lines[1].trim().split(/\s+/).map(parseFloat)
-    let scale_factor = scale_tokens[0]
-    if (isNaN(scale_factor)) {
-      diag_error(`Invalid scaling factor in POSCAR`)
-      return null
-    }
-    const scale_vec = scale_tokens.slice(0, 3) as Vec3
-    const per_axis_scale = scale_vec.length === 3 && !scale_vec.some(isNaN) ? scale_vec : null
-
-    // Lattice vectors are on file lines 3-5, named by that 1-based line in errors
-    const lattice_vecs = [3, 4, 5].map((line_num) =>
-      vec3_from_values(
-        lines[line_num - 1].trim().split(/\s+/).map(parse_coordinate),
-        `lattice vector on line ${line_num}`,
-      ),
-    ) as math.Matrix3x3
-
-    // Handle negative scale factor (volume-based scaling, single-factor form only)
-    if (!per_axis_scale && scale_factor < 0) {
-      const volume = Math.abs(math.det_3x3(lattice_vecs))
-      if (volume < math.EPS) {
-        diag_error(`POSCAR target-volume scaling requires a non-singular lattice`)
-        return null
-      }
-      scale_factor = (-scale_factor / volume) ** (1 / 3)
-    }
-
-    // Scale lattice vectors (per-axis factors multiply Cartesian components)
-    const axis_scale: Vec3 = per_axis_scale ?? [scale_factor, scale_factor, scale_factor]
-    const apply_axis_scale = (vec: Vec3): Vec3 =>
-      vec.map((val, axis) => val * axis_scale[axis]) as Vec3
-    const scaled_lattice = lattice_vecs.map(apply_axis_scale) as math.Matrix3x3
-
-    let line_index = 5
-    let element_symbols: string[] = []
-    let atom_counts: number[] = []
-
-    // A numeric first token on line 6 means VASP 4 (counts only, no element symbols)
-    if (isNaN(parse_leading_num(lines[line_index]))) {
-      // VASP 5+ format - element symbols (possibly spanning multiple lines),
-      // followed by as many atom-count lines. Look ahead to find where numbers start.
-      let symbol_lines = 1
-      for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
-        if (line_index + lookahead_idx >= lines.length) break
-        if (!isNaN(parse_leading_num(lines[line_index + lookahead_idx]))) {
-          symbol_lines = lookahead_idx
-          break
-        }
-      }
-
-      for (let offset = 0; offset < symbol_lines; offset++) {
-        const symbol_tokens = lines[line_index + offset]?.trim().split(/\s+/) ?? []
-        element_symbols.push(...symbol_tokens)
-        const count_tokens = lines[line_index + symbol_lines + offset]?.trim().split(/\s+/)
-        atom_counts.push(...(count_tokens?.map(Number) ?? []))
-      }
-
-      line_index += 2 * symbol_lines
-    } else {
-      // VASP 4 format - only atom counts, generate default element symbols
-      atom_counts = lines[line_index].trim().split(/\s+/).map(Number)
-      element_symbols = atom_counts.map((_, idx) =>
-        validate_element_symbol(`Element${idx}`, idx),
-      )
-      line_index += 1
-    }
-
-    if (element_symbols.length !== atom_counts.length) {
-      diag_error(`Mismatch between element symbols and atom counts`)
-      return null
-    }
-
-    if (line_index >= lines.length) {
-      diag_error(`Missing coordinate mode line in POSCAR`)
-      return null
-    }
-
-    let coordinate_mode = lines[line_index].trim().toUpperCase()
-    const has_selective_dynamics = coordinate_mode.startsWith(`S`)
-    if (has_selective_dynamics) {
-      line_index += 1
-      if (line_index >= lines.length) {
-        diag_error(`Missing coordinate mode after selective dynamics`)
-        return null
-      }
-      coordinate_mode = lines[line_index].trim().toUpperCase()
-    }
-
-    const is_direct = coordinate_mode.startsWith(`D`)
-    if (!is_direct && !/^[CK]/.test(coordinate_mode)) {
-      diag_error(`Unknown coordinate mode in POSCAR: ${coordinate_mode}`)
-      return null
-    }
+    const cursor = lines_cursor(lines)
+    const parsed = parse_vasp_header(cursor, { format: `POSCAR` })
+    // Rethrow so guard_parse records the reason: header failures reach the collector the
+    // same way the inline lattice validation they replace always did
+    if (!parsed.ok) throw new Error(parsed.error)
+    const { scale, lattice: scaled_lattice, elements, counts } = parsed.header
+    const { has_selective_dynamics, is_direct } = parsed.header
 
     const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
     const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
     if (!is_direct && !poscar_cart_to_frac.exact) {
       diag_warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
     }
+    // The header cursor stops on the first coordinate line
+    const first_coord_line = cursor.position()
     const sites: Site[] = []
     let atom_index = 0
 
-    for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
-      const element = validate_element_symbol(element_symbols[elem_idx], elem_idx)
-      const count = atom_counts[elem_idx]
+    for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
+      const element = elements[elem_idx]
+      const count = counts[elem_idx]
 
       for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
-        const coord_line_idx = line_index + 1 + atom_index + atom_count_idx
+        const coord_line_idx = first_coord_line + atom_index + atom_count_idx
         if (coord_line_idx >= lines.length) {
           diag_error(`Not enough coordinate lines in POSCAR`)
           return null
@@ -315,7 +235,7 @@ export const parse_poscar = (content: string): ParsedStructure | null =>
         // Cartesian input is scaled then converted to fractional (axis-length fallback
         // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
         // both stay consistent (singular Cartesian keeps the scaled input as xyz)
-        const cart = is_direct ? null : apply_axis_scale(coords)
+        const cart = is_direct ? null : apply_axis_scale(coords, scale)
         const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
         const abc = wrap_to_unit_cell(raw_abc)
         const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)

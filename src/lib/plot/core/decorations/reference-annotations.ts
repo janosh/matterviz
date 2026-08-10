@@ -45,7 +45,7 @@ const validate_candidate = (
 
 // Higher is better. Rectangle collisions dominate point collisions, and candidate order is the
 // final deterministic tie-breaker so an obstacle-free annotation keeps its legacy anchor.
-export const score_reference_annotation_candidate = ({
+const score_reference_annotation_candidate = ({
   candidate,
   candidate_idx,
   clearance = 0,

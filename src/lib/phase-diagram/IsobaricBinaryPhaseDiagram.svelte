@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
@@ -65,7 +66,7 @@
     controls_open = $bindable(false),
     controls_props = {},
     export_pane_open = $bindable(false),
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
     lever_rule_mode = $bindable(`horizontal`),
     diagram_input = $bindable<DiagramInput | null>(null),

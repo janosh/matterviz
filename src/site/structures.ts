@@ -4,10 +4,10 @@ import {
   is_optimade_json,
   parse_optimade_json,
 } from '$lib/structure/parse'
+import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
-  // JSON structure files (OPTIMADE/pymatgen format) as JS objects
-  import.meta.glob<unknown>(`./*.json`, { eager: true, import: `default` }),
+  import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
@@ -33,7 +33,7 @@ export const structures = Object.entries(
       .localeCompare((struct_b.id?.split(`-`)[1] ?? ``).padStart(6, `0`)),
   )
 
-export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
+export const structure_map = new SvelteMap(structures.map((struct) => [struct.id, struct]))
 
 // dev yields strings; the Rolldown prod build yields the module namespace (text
 // under `.default`, JSON parsed) — unwrap and re-stringify objects back to text
@@ -44,7 +44,6 @@ export const glob_text = (value: unknown): string => {
   return raw == null ? `` : JSON.stringify(raw)
 }
 
-// all structure files as raw text
 const raw_structure_modules = import.meta.glob(`$site/structures/*`, {
   eager: true,
   query: `?raw`,
@@ -70,9 +69,11 @@ const category_icons: Record<ReturnType<typeof detect_structure_type>, string> =
 export const structure_files: FileInfo[] = Object.entries(raw_structure_modules).map(
   ([path, value]) => {
     const filename = path.split(`/`).pop() ?? path
-    const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
+    const uncompressed_filename = filename.replace(/\.gz$/i, ``)
+    const type = uncompressed_filename.split(`.`).pop()?.toUpperCase() ?? `FILE`
     const url = path.replace(`/src/site`, ``)
-    const category = detect_structure_type(filename, glob_text(value))
+    // raw_text_plugin decompresses eager `?raw` gzip imports before they reach this map.
+    const category = detect_structure_type(uncompressed_filename, glob_text(value))
     return { name: filename, url, type, category, category_icon: category_icons[category] }
   },
 )

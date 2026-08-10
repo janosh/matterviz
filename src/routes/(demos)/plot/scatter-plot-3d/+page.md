@@ -1,10 +1,8 @@
 # 3D Scatter Plot
 
-The `ScatterPlot3D` component provides efficient 3D scatter plot visualization using Three.js (via Threlte) with instanced rendering for optimal performance with thousands of points. It supports colored surfaces, multiple data series, and interactive camera controls.
+`ScatterPlot3D` uses instanced Three.js/Threlte points and supports multiple series, `color_values`, and optional surfaces.
 
 ## Basic 3D Scatter Plot
-
-A simple 3D scatter plot with multiple data series. Use mouse to rotate, scroll to zoom, and right-click drag to pan:
 
 ```svelte example
 <script lang="ts">
@@ -39,8 +37,6 @@ A simple 3D scatter plot with multiple data series. Use mouse to rotate, scroll 
 ```
 
 ## Color-Coded Points
-
-Points can be colored based on data values using a continuous color scale. The color bar automatically displays the value range:
 
 ```svelte example
 <script lang="ts">

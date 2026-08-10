@@ -217,7 +217,6 @@ Additional features in `FormulaFilter`:
 - validation hooks (`validate`, `on_validation`) and structured parsing callbacks (`onparse`)
 - searchable, pinnable, clearable history entries
 - token chips for include/exclude and wildcard expressions
-- quick example pills and live parse/validation preview are wired above
 
 ## Include/Exclude Filters
 

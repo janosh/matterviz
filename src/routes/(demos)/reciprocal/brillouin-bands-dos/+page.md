@@ -1,10 +1,8 @@
 # Band Structure, DOS, and Brillouin Zone
 
-Integrated visualization of band structures, density of states, and Brillouin zone with k-path synchronization.
-
 ## Electronic Bands with Fermi Level
 
-Electronic band structures display the Fermi level (E<sub>F</sub>) as a dashed red line when `efermi` is present. Note: this example uses bands and DOS from different materials for demonstration.
+This example uses bands and DOS from different materials.
 
 ```svelte example
 <script lang="ts">
@@ -55,17 +53,12 @@ Phonon band structure with acoustic/optical mode styling:
 
 ## Features
 
-- **Customizable responsive 3-panel layout**: Brillouin zone, band structure, and DOS in side-by-side or stacked views based on screen size (with customizable column widths)
 - **K-path visualization**: Band structure path displayed in Brillouin zone
 - **Hover synchronization**: Hovering over bands highlights the corresponding point in reciprocal space
 - **DOS hover reference lines**: Hovering over DOS shows synchronized horizontal reference lines across both plots to identify contributing bands
-- **Interactive BZ**: Full 3D controls for rotating and exploring the Brillouin zone
-- **Custom styling**: Individual control over each panel's appearance
 - **Multiple datasets**: Compare band structures and DOS from different methods or calculations
 
 ## Comparing DFT vs ML potential
-
-Compare phonon predictions from DFT and machine learning potentials:
 
 ```svelte example
 <script lang="ts">

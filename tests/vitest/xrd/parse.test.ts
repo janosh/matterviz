@@ -781,10 +781,10 @@ describe(`is_xrd_data_file`, () => {
 })
 
 describe(`real example files`, () => {
-  // These tests load actual example files from static/xrd/ to catch corrupted downloads
-  const static_xrd_dir = path.resolve(`static/xrd`)
+  // These tests load actual example files from src/site/xrd/ to catch corrupted downloads
+  const site_xrd_dir = path.resolve(`src/site/xrd`)
 
-  // Get all XRD files in static/xrd/ (including gzipped variants)
+  // Get all XRD files in src/site/xrd/ (including gzipped variants)
   // Include all supported extensions: original + new formats
   const xrd_extensions = [
     `.xy`,
@@ -803,14 +803,14 @@ describe(`real example files`, () => {
     `.fxye`, // Header-based
     `.raw`, // Binary
   ]
-  const xrd_files: string[] = fs.readdirSync(static_xrd_dir).filter((file: string) => {
+  const xrd_files: string[] = fs.readdirSync(site_xrd_dir).filter((file: string) => {
     const lower = file.toLowerCase()
     // Match .xy, .xy.gz, .xye, .xye.gz, etc.
     return xrd_extensions.some((ext) => lower.endsWith(ext) || lower.endsWith(`${ext}.gz`))
   })
 
   test.each(xrd_files)(`parses %s successfully`, async (filename) => {
-    const filepath = path.join(static_xrd_dir, filename)
+    const filepath = path.join(site_xrd_dir, filename)
     let content: Buffer = fs.readFileSync(filepath)
 
     // Decompress gzipped files

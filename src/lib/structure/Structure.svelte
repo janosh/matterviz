@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { coerce_elem_symbol, type ElementSymbol } from '$lib/element'
   import { StatusMessage } from '$lib/feedback'
@@ -180,7 +181,7 @@
     bond_edit_mode = $bindable<BondEditMode>(`add`),
     bond_edit_order = $bindable<BondOrder>(1),
     background_color = $bindable(),
-    background_opacity = $bindable(0.1),
+    background_opacity = $bindable(DEFAULTS.background_opacity),
     show_controls,
     persist_settings = false,
     fullscreen = $bindable(false),
@@ -194,7 +195,7 @@
     dragover = $bindable(false),
     allow_file_drop = true,
     enable_info_pane = true,
-    png_dpi = $bindable(150),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
     show_image_atoms = $bindable(true),
     supercell_scaling = $bindable(`1x1x1`),
     fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
@@ -448,66 +449,43 @@
     view_layout_menu_open = false
   }
 
-  // Load structure from URL when data_url is provided. A monotonic load_id ignores stale
-  // completions so a newer data_url (or an externally-supplied structure, via the cleanup)
-  // can't be clobbered by a slow earlier fetch.
-  let data_url_load_id = 0
-  let loaded_data_url: string | undefined
-  let url_owned_structure: AnyStructure | undefined
+  const handle_url_load_error = (error: unknown, filename: string): void => {
+    console.error(`Failed to load structure from URL:`, error)
+    error_msg = `Failed to load structure: ${to_error(error).message}`
+    on_error?.({ error_msg, filename })
+  }
 
-  $effect(() => {
-    const requested_url = data_url
-    const current_structure = structure
-    // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
-    const caller_owns_structure = Boolean(
-      !on_file_drop && current_structure && current_structure !== url_owned_structure,
-    )
-    if (!requested_url || caller_owns_structure) {
-      loaded_data_url = undefined
-      url_owned_structure = undefined
-      return
-    }
-    if (loaded_data_url === requested_url) return
+  // Load structure from URL when data_url is provided
+  const data_url_loader = io.create_data_url_loader<AnyStructure>()
 
-    const load_id = ++data_url_load_id
-    const is_current = () => load_id === data_url_load_id
-    loading = true
-    error_msg = undefined
-
-    io.load_from_url(requested_url, async (content, filename, metadata) => {
-      if (!is_current()) return // stale response
-      if (on_file_drop) {
-        await on_file_drop(content, filename, metadata)
-        if (is_current()) loaded_data_url = requested_url
-      } else {
-        // Parse structure internally when no handler provided
+  $effect(() =>
+    data_url_loader.request({
+      url: data_url,
+      // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
+      current_value: on_file_drop ? undefined : structure,
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = undefined),
+      on_load: async ({ content, filename, metadata, mark_owned }) => {
+        if (on_file_drop) {
+          try {
+            await on_file_drop(content, filename, metadata)
+            mark_owned()
+          } catch (error) {
+            handle_url_load_error(error, filename)
+          }
+          return
+        }
         try {
           parse_and_emit_file(content, filename, metadata)
-          url_owned_structure = structure
-          loaded_data_url = requested_url
+          mark_owned(structure)
         } catch (error) {
           error_msg = `Failed to parse structure: ${to_error(error).message}`
           on_error?.({ error_msg, filename })
         }
-      }
-    })
-      .catch((error: Error) => {
-        if (!is_current()) return
-        console.error(`Failed to load structure from URL:`, error)
-        error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename: io.basename_from_url(requested_url) })
-      })
-      .finally(() => {
-        if (is_current()) loading = false
-      })
-
-    return () => {
-      // invalidate in-flight load on data_url change / structure arrival / unmount
-      if (!is_current()) return
-      data_url_load_id += 1
-      loading = false
-    }
-  })
+      },
+      on_error: handle_url_load_error,
+    }),
+  )
 
   $effect(() => {
     // Parse structure from string when structure_string is provided
@@ -838,8 +816,9 @@
   // Claim URL ownership before regular effects so internal edits aren't treated as caller-owned.
   $effect.pre(() => {
     void structure
-    if (is_internal_edit && loaded_data_url && loaded_data_url === data_url && structure) {
-      url_owned_structure = structure
+    const { loaded_url } = data_url_loader
+    if (is_internal_edit && loaded_url && loaded_url === data_url && structure) {
+      data_url_loader.claim(structure)
     }
   })
 

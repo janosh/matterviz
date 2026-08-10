@@ -30,8 +30,8 @@ export type Label = {
   // labels are developer-defined, not user input, to avoid XSS vulnerabilities.
   label: string
   key?: string
-  // Group name for ToggleMenu section grouping. Columns with the same group
-  // are displayed together under a collapsible section header.
+  // Columns sharing a group render under one spanning header row in HeatmapTable and can
+  // only be drag-reordered within that group. ToggleMenu also sections its list by it.
   group?: string
   description?: string
   format?: string
@@ -64,6 +64,11 @@ export type Label = {
   style?: string
   cell_style?: string
 }
+
+// Keep ungrouped IDs unchanged; grouped IDs encode the base and group separately so
+// `{ key: "x", group: "g" }` cannot collide with an ungrouped `{ key: "x (g)" }`.
+export const get_column_id = (col: Label): string =>
+  col.group ? JSON.stringify([col.key ?? col.label, col.group]) : (col.key ?? col.label)
 
 // Arguments passed to cell snippet renderers
 export type CellSnippetArgs = { row: RowData; col: Label; val: CellVal }

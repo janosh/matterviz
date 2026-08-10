@@ -9,12 +9,28 @@ import pytest
 
 import matterviz_dash_components as mvc
 from matterviz_dash_components import MatterViz
+from scripts import sample_app
 from scripts.sync_typed_wrappers import (
     _py_type_hint,
     add_extra_props,
     generate_wrappers,
     parse_svelte_dts_with_includes,
 )
+
+
+def test_xrd_discovery_only_returns_loadable_patterns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XRD discovery only exposes extensions the sample loader can read."""
+    (tmp_path / "alpha.xye").write_text("10 100\n", encoding="utf-8")
+    (tmp_path / "beta.xy").write_text("20 200\n", encoding="utf-8")
+    (tmp_path / "ignored.xy.gz").write_bytes(b"compressed")
+
+    patterns = sample_app._discover_xrd_patterns(tmp_path)
+    monkeypatch.setattr(sample_app, "_XRD_PATTERNS", patterns)
+    names = list(patterns)
+    assert names == ["alpha", "beta"]
+    assert all(sample_app.load_xrd_pattern(name) for name in names)
 
 
 def test_matterviz_forwards_props() -> None:

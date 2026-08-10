@@ -3,6 +3,7 @@
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
+import type { ColorProperty, RepresentationMode } from '$lib/fermi-surface/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
@@ -25,7 +26,7 @@ import type {
   TrajectoryLineColorMode,
   TrajectoryLineWrapMode,
 } from '$lib/structure/trajectory-lines'
-import { merge_nested } from './utils'
+import { is_plain_object, merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
 // context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts
@@ -62,6 +63,25 @@ const legend_visibility_setting = (plot: string): SettingType<LegendVisibilityMo
 })
 
 export type CameraProjection = `perspective` | `orthographic`
+const camera_projection_setting = (
+  value: CameraProjection,
+  description: string,
+): SettingType<CameraProjection> => ({
+  value,
+  description,
+  enum: { perspective: `Perspective`, orthographic: `Orthographic` },
+})
+const opacity_setting = (value: number, description: string): SettingType<number> => ({
+  value,
+  description,
+  minimum: 0,
+  maximum: 1,
+})
+const fullscreen_toggle_setting = (): SettingType<boolean> => ({
+  value: true,
+  description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
+  context: `web`,
+})
 
 export const VECTOR_COLOR_MODES = [
   `auto`,
@@ -159,8 +179,6 @@ type BoxViolinStyleType = {
 
 type ConvexHullCommonType = {
   camera_zoom: SettingType<number>
-  camera_center_x: SettingType<number>
-  camera_center_y: SettingType<number>
   color_mode: SettingType<`stability` | `energy`>
   color_scale: SettingType<string>
   show_stable: SettingType<boolean>
@@ -286,13 +304,48 @@ export interface SettingsConfig {
     trajectory_line_frame_stride: SettingType<number>
     trajectory_line_color_mode: SettingType<TrajectoryLineColorMode>
     trajectory_line_wrap_mode: SettingType<TrajectoryLineWrapMode>
-    show_cell: SettingType<boolean>
     show_cell_vectors: SettingType<boolean>
     cell_edge_opacity: SettingType<number>
     cell_surface_opacity: SettingType<number>
     cell_edge_color: SettingType<string>
     cell_surface_color: SettingType<string>
     cell_edge_width: SettingType<number>
+    fullscreen_toggle: SettingType<boolean>
+  }
+
+  brillouin: {
+    bz_order: SettingType<number>
+    surface_color: SettingType<string>
+    surface_opacity: SettingType<number>
+    edge_color: SettingType<string>
+    edge_width: SettingType<number>
+    show_vectors: SettingType<boolean>
+    vector_scale: SettingType<number>
+    camera_projection: SettingType<CameraProjection>
+    // Irreducible BZ
+    show_ibz: SettingType<boolean>
+    ibz_color: SettingType<string>
+    ibz_opacity: SettingType<number>
+    fullscreen_toggle: SettingType<boolean>
+  }
+
+  fermi: {
+    mu: SettingType<number>
+    color_property: SettingType<ColorProperty>
+    color_scale: SettingType<D3InterpolateName>
+    representation: SettingType<RepresentationMode>
+    surface_opacity: SettingType<number>
+    show_bz: SettingType<boolean>
+    bz_opacity: SettingType<number>
+    show_vectors: SettingType<boolean>
+    tile_bz: SettingType<boolean>
+    // Clipping plane
+    clip_enabled: SettingType<boolean>
+    clip_axis: SettingType<`x` | `y` | `z`>
+    clip_position: SettingType<number>
+    clip_flip: SettingType<boolean>
+    interpolation_factor: SettingType<number>
+    camera_projection: SettingType<CameraProjection>
     fullscreen_toggle: SettingType<boolean>
   }
 
@@ -315,48 +368,17 @@ export interface SettingsConfig {
     bin_file_threshold: SettingType<number>
     text_file_threshold: SettingType<number>
     use_indexing: SettingType<boolean>
-    chunk_size: SettingType<number>
-
-    // Formatting
-    step_label_format: SettingType<string>
-    property_value_format: SettingType<string>
-    tooltip_format: SettingType<string>
 
     // UI/UX
-    enable_keyboard_shortcuts: SettingType<boolean>
     show_parsing_progress: SettingType<boolean>
-    compact_controls: SettingType<boolean>
-    show_filename_in_controls: SettingType<boolean>
-
-    // Playback behavior
-    smooth_playback: SettingType<boolean>
-    loop_playback: SettingType<boolean>
-    pause_on_hover: SettingType<boolean>
-    highlight_current_frame: SettingType<boolean>
-    show_frame_info: SettingType<boolean>
-
-    // Performance
-    max_frames_in_memory: SettingType<number>
-    memory_usage_warning_threshold: SettingType<number>
-    enable_performance_monitoring: SettingType<boolean>
-    prefetch_frames: SettingType<number>
-    cache_parsed_data: SettingType<boolean>
   }
 
   plot: {
     // General plot settings
-    animation_duration: SettingType<number>
-    enable_zoom: SettingType<boolean>
-    zoom_factor: SettingType<number>
-    auto_fit_range: SettingType<boolean>
     grid_lines: SettingType<boolean>
     axis_labels: SettingType<boolean>
     show_x_zero_line: SettingType<boolean>
     show_y_zero_line: SettingType<boolean>
-    show_x_grid: SettingType<boolean>
-    show_x2_grid: SettingType<boolean>
-    show_y_grid: SettingType<boolean>
-    show_y2_grid: SettingType<boolean>
     x_format: SettingType<string>
     x2_format: SettingType<string>
     y_format: SettingType<string>
@@ -526,7 +548,6 @@ const convex_hull_settings = (
   values: {
     camera_zoom: number
     camera_zoom_max: number
-    camera_center_y: number
     max_hull_dist_show_phases: number
   },
 ): ConvexHullCommonType => {
@@ -538,14 +559,6 @@ const convex_hull_settings = (
       description: `Initial camera zoom for ${system} (${dim}) convex hull`,
       minimum: 0.1,
       maximum: values.camera_zoom_max,
-    },
-    camera_center_x: {
-      value: 0,
-      description: `Initial X center for ${system} (${dim}) convex hull`,
-    },
-    camera_center_y: {
-      value: values.camera_center_y,
-      description: `Initial Y center for ${system} (${dim}) convex hull`,
     },
     color_mode: {
       value: `energy` as const,
@@ -600,12 +613,10 @@ const hull_face_settings = (
     value: `#4caf50`,
     description: `Color for hull faces in ${dim} convex hull`,
   },
-  hull_face_opacity: {
-    value: values.opacity,
-    description: `Opacity for hull faces in ${dim} convex hull (0-1)`,
-    minimum: 0,
-    maximum: 1,
-  },
+  hull_face_opacity: opacity_setting(
+    values.opacity,
+    `Opacity for hull faces in ${dim} convex hull (0-1)`,
+  ),
   hull_face_color_mode: {
     value: values.color_mode,
     description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
@@ -637,12 +648,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     value: `#000000`,
     description: `Background color of the 3D viewport`,
   },
-  background_opacity: {
-    value: 0,
-    description: `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
-    minimum: 0,
-    maximum: 1,
-  },
+  // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
+  // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
+  background_opacity: opacity_setting(
+    0.1,
+    `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
+  ),
 
   // Symmetry Analysis
   symmetry: {
@@ -717,12 +728,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `When to render coordination polyhedra around cation-like centers`,
       enum: SHOW_BONDS_ENUM,
     },
-    polyhedra_opacity: {
-      value: 0.2,
-      description: `Opacity of coordination polyhedra faces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    polyhedra_opacity: opacity_setting(0.2, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {
       value: true,
       description: `Draw outlines along coordination polyhedra edges`,
@@ -796,11 +802,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minItems: 3,
       maxItems: 3,
     },
-    camera_projection: {
-      value: `orthographic` as const,
-      description: `Camera projection type`,
-      enum: { perspective: `Perspective`, orthographic: `Orthographic` },
-    },
+    camera_projection: camera_projection_setting(`orthographic`, `Camera projection type`),
     initial_zoom: {
       value: 50,
       description: `Relative orthographic zoom scale (50 = fit structure bounding sphere to the shorter viewport edge; ignored for perspective)`,
@@ -1009,20 +1011,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Unwrap paths across periodic boundaries (real diffusion paths, may leave the cell) or keep them wrapped and break the line where an atom crosses a cell face`,
       enum: { unwrap: `Unwrap (continuous)`, break: `Break at cell crossings` },
     },
-    show_cell: { value: false, description: `Display system cell` },
     show_cell_vectors: { value: true, description: `Display cell vectors` },
-    cell_edge_opacity: {
-      value: 0.3,
-      description: `Opacity of cell edge lines`,
-      minimum: 0,
-      maximum: 1,
-    },
-    cell_surface_opacity: {
-      value: 0.1,
-      description: `Opacity of cell surfaces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    cell_edge_opacity: opacity_setting(0.3, `Opacity of cell edge lines`),
+    cell_surface_opacity: opacity_setting(0.1, `Opacity of cell surfaces`),
     cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
     cell_edge_width: {
@@ -1031,11 +1022,100 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.5,
       maximum: 5.0,
     },
-    fullscreen_toggle: {
-      value: true,
-      description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
-      context: `web`,
+    fullscreen_toggle: fullscreen_toggle_setting(),
+  },
+
+  // Brillouin zone viewer settings
+  brillouin: {
+    bz_order: {
+      value: 1,
+      description: `Brillouin zone order to render (1 = first BZ)`,
+      minimum: 1,
+      maximum: 5,
     },
+    surface_color: { value: `#4488ff`, description: `Brillouin zone face color` },
+    surface_opacity: opacity_setting(0.3, `Opacity of Brillouin zone faces`),
+    edge_color: { value: `#000000`, description: `Brillouin zone edge color` },
+    edge_width: {
+      value: 0.002,
+      description: `Width of Brillouin zone edges (fraction of zone size)`,
+      minimum: 0,
+      maximum: 0.05,
+    },
+    show_vectors: { value: true, description: `Display reciprocal lattice vectors` },
+    vector_scale: {
+      value: 1.0,
+      description: `Length multiplier for reciprocal lattice vectors`,
+      minimum: 0.1,
+      maximum: 5,
+    },
+    camera_projection: camera_projection_setting(
+      `perspective`,
+      `Camera projection mode for the Brillouin zone scene`,
+    ),
+    // Irreducible BZ
+    show_ibz: { value: false, description: `Display the irreducible Brillouin zone` },
+    ibz_color: { value: `#ff8844`, description: `Irreducible Brillouin zone face color` },
+    ibz_opacity: opacity_setting(0.5, `Opacity of irreducible Brillouin zone faces`),
+    fullscreen_toggle: fullscreen_toggle_setting(),
+  },
+
+  // Fermi surface viewer settings
+  fermi: {
+    mu: {
+      value: 0,
+      description: `Chemical potential offset from the Fermi level (eV)`,
+    },
+    color_property: {
+      value: `band`,
+      description: `Quantity mapped onto the Fermi surface color scale`,
+      enum: { band: `Band`, velocity: `Velocity`, spin: `Spin`, custom: `Custom` },
+    },
+    color_scale: {
+      value: `interpolateViridis`,
+      description: `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
+    },
+    representation: {
+      value: `solid`,
+      description: `How to render the Fermi surface`,
+      enum: { solid: `Solid`, wireframe: `Wireframe`, transparent: `Transparent` },
+    },
+    surface_opacity: opacity_setting(0.8, `Opacity of the Fermi surface`),
+    show_bz: { value: true, description: `Display the Brillouin zone around the surface` },
+    bz_opacity: opacity_setting(0.1, `Opacity of the Brillouin zone faces`),
+    show_vectors: { value: true, description: `Display reciprocal lattice vectors` },
+    tile_bz: {
+      value: false,
+      description: `Tile an irreducible surface across the full Brillouin zone`,
+    },
+    // Clipping plane
+    clip_enabled: {
+      value: false,
+      description: `Cut the surface with a plane to reveal its interior`,
+    },
+    clip_axis: {
+      value: `z` as const,
+      description: `Axis the clipping plane is normal to`,
+      enum: { x: `X`, y: `Y`, z: `Z` },
+    },
+    clip_position: {
+      value: 0,
+      description: `Clipping plane offset along its axis (fraction of the zone extent)`,
+      minimum: -1,
+      maximum: 1,
+    },
+    clip_flip: { value: false, description: `Keep the other side of the clipping plane` },
+    interpolation_factor: {
+      value: 1,
+      description: `Band-grid upsampling factor (higher = smoother surface, slower)`,
+      minimum: 1,
+      maximum: 5,
+    },
+    camera_projection: camera_projection_setting(
+      `perspective`,
+      `Camera projection mode for the Fermi surface scene`,
+    ),
+    fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
   // Trajectory viewer settings
@@ -1069,11 +1149,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     show_controls: { value: true, description: `Show playback controls` },
-    fullscreen_toggle: {
-      value: true,
-      description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
-      context: `web`,
-    },
+    fullscreen_toggle: fullscreen_toggle_setting(),
     step_labels: {
       value: 5,
       description: `Number of frame labels to display`,
@@ -1107,85 +1183,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: false,
       description: `Use frame indexing for large trajectories`,
     },
-    chunk_size: {
-      value: 1000,
-      description: `Number of frames to process at once`,
-      minimum: 10,
-      maximum: 10000,
-    },
-
-    // Formatting
-    step_label_format: {
-      value: `.3~s`,
-      description: `Number format for step labels (D3 format specifier)`,
-    },
-    property_value_format: {
-      value: `.2~s`,
-      description: `Number format for property values (D3 format specifier)`,
-    },
-    tooltip_format: {
-      value: `.3~s`,
-      description: `Number format for tooltips (D3 format specifier)`,
-    },
 
     // UI/UX
-    enable_keyboard_shortcuts: {
-      value: true,
-      description: `Enable keyboard shortcuts for playback`,
-    },
     show_parsing_progress: {
       value: true,
       description: `Show progress indicator while parsing files`,
     },
-    compact_controls: {
-      value: false,
-      description: `Use compact layout for playback controls`,
-    },
-    show_filename_in_controls: {
-      value: true,
-      description: `Display filename in control pane`,
-    },
-
-    // Playback behavior
-    smooth_playback: {
-      value: false,
-      description: `Use smooth interpolation between frames`,
-    },
-    loop_playback: { value: true, description: `Loop trajectory playback` },
-    pause_on_hover: {
-      value: false,
-      description: `Pause playback when hovering over controls`,
-    },
-    highlight_current_frame: {
-      value: true,
-      description: `Highlight current frame in timeline`,
-    },
-    show_frame_info: { value: true, description: `Show frame information overlay` },
-
-    // Performance
-    max_frames_in_memory: {
-      value: 1000,
-      description: `Maximum frames to keep in memory`,
-      minimum: 10,
-      maximum: 10000,
-    },
-    memory_usage_warning_threshold: {
-      value: 500,
-      description: `Frame count threshold for memory warnings`,
-      minimum: 10,
-      maximum: 5000,
-    },
-    enable_performance_monitoring: {
-      value: false,
-      description: `Enable performance monitoring`,
-    },
-    prefetch_frames: {
-      value: 5,
-      description: `Number of frames to prefetch ahead`,
-      minimum: 0,
-      maximum: 100,
-    },
-    cache_parsed_data: { value: true, description: `Cache parsed trajectory data` },
   },
 
   // Histogram specific
@@ -1197,6 +1200,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     show_legend: legend_visibility_setting(`histogram`),
     bin_count: {
+      // Wider than the HistogramControls slider (5..100 in steps of 5) on purpose: the
+      // component accepts any positive bin count and tests drive it with 2 and 3.
       value: 100,
       description: `Number of bins for histogram plots`,
       minimum: 1,
@@ -1204,12 +1209,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     bar: {
       color: { value: `#4A9EFF`, description: `Histogram bar fill color` },
-      opacity: {
-        value: 0.7,
-        description: `Histogram bar opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.7, `Histogram bar opacity`),
       stroke_width: {
         value: 1,
         description: `Histogram bar stroke width`,
@@ -1217,12 +1217,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 5,
       },
       stroke_color: { value: `#000000`, description: `Histogram bar stroke color` },
-      stroke_opacity: {
-        value: 0.5,
-        description: `Histogram bar stroke opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      stroke_opacity: opacity_setting(0.5, `Histogram bar stroke opacity`),
     },
     display: DISPLAY_CONFIG,
   },
@@ -1231,12 +1226,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   bar: {
     bar: {
       color: { value: `#4A9EFF`, description: `Bar plot fill color` },
-      opacity: {
-        value: 0.6,
-        description: `Bar plot opacity (overlay mode)`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.6, `Bar plot opacity (overlay mode)`),
       border_radius: {
         value: 3,
         description: `Corner radius for bar tops (px)`,
@@ -1303,7 +1293,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     box: {
       color: { value: `#4A9EFF`, description: `Box fill color` },
-      opacity: { value: 0.6, description: `Box fill opacity`, minimum: 0, maximum: 1 },
+      opacity: opacity_setting(0.6, `Box fill opacity`),
       stroke_width: {
         value: 0.5,
         description: `Box outline width`,
@@ -1348,12 +1338,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0.5,
         maximum: 10,
       },
-      opacity: {
-        value: 0.6,
-        description: `Outlier point opacity`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(0.6, `Outlier point opacity`),
       stroke_width: {
         value: 0,
         description: `Outlier point stroke width`,
@@ -1362,7 +1347,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
     },
     violin: {
-      opacity: { value: 0.5, description: `Violin fill opacity`, minimum: 0, maximum: 1 },
+      opacity: opacity_setting(0.5, `Violin fill opacity`),
       stroke_width: {
         value: 1,
         description: `Violin outline width`,
@@ -1517,12 +1502,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 20,
       },
       color: { value: `#4A9EFF`, description: `Default color for scatter plot points` },
-      opacity: {
-        value: 1,
-        description: `Opacity of scatter plot points`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(1, `Opacity of scatter plot points`),
       stroke_width: {
         value: 1,
         description: `Stroke width for scatter plot points`,
@@ -1533,12 +1513,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `#000000`,
         description: `Stroke color for scatter plot points`,
       },
-      stroke_opacity: {
-        value: 1,
-        description: `Stroke opacity for scatter plot points`,
-        minimum: 0,
-        maximum: 1,
-      },
+      stroke_opacity: opacity_setting(1, `Stroke opacity for scatter plot points`),
     },
     line: {
       width: {
@@ -1548,12 +1523,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 10,
       },
       color: { value: `#4A9EFF`, description: `Default color for scatter plot lines` },
-      opacity: {
-        value: 1,
-        description: `Opacity of scatter plot lines`,
-        minimum: 0,
-        maximum: 1,
-      },
+      opacity: opacity_setting(1, `Opacity of scatter plot lines`),
       dash: {
         value: `solid`,
         description: `Line dash pattern for scatter plots (e.g. "4,4" for dashed)`,
@@ -1563,28 +1533,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
   // Plot general
   plot: {
-    animation_duration: {
-      value: 200,
-      description: `Duration of plot animations in milliseconds`,
-      minimum: 0,
-      maximum: 2000,
-    },
-    enable_zoom: { value: true, description: `Enable zooming in plots` },
-    zoom_factor: {
-      value: 1.5,
-      description: `Zoom factor for plot interactions`,
-      minimum: 1.1,
-      maximum: 5.0,
-    },
-    auto_fit_range: { value: true, description: `Automatically fit plot range to data` },
     grid_lines: { value: true, description: `Show grid lines in plots` },
     axis_labels: { value: true, description: `Show axis labels in plots` },
     show_x_zero_line: { value: true, description: `Show X-axis zero reference line` },
     show_y_zero_line: { value: true, description: `Show Y-axis zero reference line` },
-    show_x_grid: { value: true, description: `Show X-axis grid lines` },
-    show_x2_grid: { value: false, description: `Show secondary X-axis grid lines` },
-    show_y_grid: { value: true, description: `Show Y-axis grid lines` },
-    show_y2_grid: { value: true, description: `Show secondary Y-axis grid lines` },
     x_format: {
       value: `.2~s`,
       description: `Number format for X-axis ticks (D3 format specifier)`,
@@ -1630,14 +1582,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     binary: convex_hull_settings(`binary`, {
       camera_zoom: 1.0,
       camera_zoom_max: 10,
-      camera_center_y: 0,
       max_hull_dist_show_phases: 0.1,
     }),
     ternary: {
       ...convex_hull_settings(`ternary`, {
         camera_zoom: 1.5,
         camera_zoom_max: 10,
-        camera_center_y: -50,
         max_hull_dist_show_phases: 0.5,
       }),
       ...hull_face_settings(`3D`, { opacity: 0.3, color_mode: `uniform` }),
@@ -1658,7 +1608,6 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       ...convex_hull_settings(`quaternary`, {
         camera_zoom: 1.4,
         camera_zoom_max: 20,
-        camera_center_y: 20,
         max_hull_dist_show_phases: 0.1,
       }),
       ...hull_face_settings(`4D`, { opacity: 0.03, color_mode: `dominant_element` }),
@@ -1678,40 +1627,24 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   },
 }
 
-// Extract the value types for runtime use (up to 3 nested levels)
-export type DefaultSettings = {
-  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T>
-    ? T
-    : SettingsConfig[K] extends Record<string, unknown>
-      ? {
-          [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends SettingType<infer T>
-            ? T
-            : SettingsConfig[K][NK] extends Record<string, unknown>
-              ? {
-                  [NNK in keyof SettingsConfig[K][NK]]: SettingsConfig[K][NK][NNK] extends SettingType<
-                    infer T
-                  >
-                    ? T
-                    : never
-                }
-              : never
-        }
+// Recursively extract each setting's runtime value type from the schema.
+type SettingsValues<Config> = {
+  [Key in keyof Config]: Config[Key] extends SettingType<infer Value>
+    ? Value
+    : Config[Key] extends object
+      ? SettingsValues<Config[Key]>
       : never
 }
+export type DefaultSettings = SettingsValues<SettingsConfig>
 
 // Extract values from settings config for runtime use
-const extract_values = (
-  config: SettingsConfig | SettingType | Record<string, unknown>,
-): DefaultSettings => {
+const extract_values = <Config extends object>(config: Config): SettingsValues<Config> => {
   const result = {} as Record<string, unknown>
   for (const [key, value] of Object.entries(config)) {
-    if (value && typeof value === `object` && `value` in value) {
-      result[key] = (value as SettingType).value
-    } else if (value && typeof value === `object`) {
-      result[key] = extract_values(value as Record<string, unknown>)
-    }
+    if (!value || typeof value !== `object`) continue
+    result[key] = `value` in value ? value.value : extract_values(value)
   }
-  return result as DefaultSettings
+  return result as SettingsValues<Config>
 }
 
 // Runtime defaults - extracted values for use in components
@@ -1725,24 +1658,19 @@ export type PartialSettings = {
     : DefaultSettings[Key]
 }
 
-// Helper to merge with defaults - handles nested structure
-export const merge = (user?: PartialSettings): DefaultSettings => ({
-  ...DEFAULTS,
-  ...user,
-  symmetry: merge_nested(DEFAULTS.symmetry, user?.symmetry),
-  structure: merge_nested(DEFAULTS.structure, user?.structure),
-  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
-  composition: merge_nested(DEFAULTS.composition, user?.composition),
-  plot: merge_nested(DEFAULTS.plot, user?.plot),
-  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
-  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
-  bar: merge_nested(DEFAULTS.bar, user?.bar),
-  box: merge_nested(DEFAULTS.box, user?.box),
-  sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
-  sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
-  treemap: merge_nested(DEFAULTS.treemap, user?.treemap),
-  convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
-})
+// Merge all top-level setting groups to the schema's full nesting depth.
+export const merge = (user: PartialSettings = {}): DefaultSettings => {
+  const merged = { ...DEFAULTS, ...user } as DefaultSettings
+  for (const key of Object.keys(DEFAULTS) as (keyof DefaultSettings)[]) {
+    const defaults = DEFAULTS[key]
+    if (!is_plain_object(defaults)) continue
+    const overrides = user[key]
+    Object.assign(merged, {
+      [key]: merge_nested(defaults, is_plain_object(overrides) ? overrides : undefined),
+    })
+  }
+  return merged
+}
 
 // Group the structure defaults into the prop bundles <Structure> expects. Used by embedders
 // (file viewer, VS Code webview) that build a viewer from settings alone.

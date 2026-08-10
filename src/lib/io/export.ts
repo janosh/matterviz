@@ -1,3 +1,4 @@
+import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { download } from '$lib/io/fetch'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
@@ -102,7 +103,7 @@ async function capture_native(
 // DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
 export async function canvas_to_png_blob(
   canvas: HTMLCanvasElement,
-  png_dpi = 150,
+  png_dpi = DEFAULT_PNG_DPI,
   scene: Scene | null = null,
   camera: Camera | null = null,
 ): Promise<Blob> {
@@ -151,7 +152,7 @@ export async function canvas_to_png_blob(
 export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure_or_filename: AnyStructure | string | undefined,
-  png_dpi = 150,
+  png_dpi = DEFAULT_PNG_DPI,
   scene: Scene | null = null,
   camera: Camera | null = null,
 ): void {
@@ -327,7 +328,7 @@ export function export_svg_as_svg(
 // DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
 export function svg_to_png_blob(
   svg_element: SVGElement,
-  png_dpi = 150,
+  png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
 ): Promise<Blob> {
@@ -402,7 +403,7 @@ export function svg_to_png_blob(
 export function export_svg_as_png(
   svg_element: SVGElement | null,
   filename: string,
-  png_dpi = 150,
+  png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
 ): void {

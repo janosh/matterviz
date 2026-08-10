@@ -3,7 +3,7 @@
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { SettingsGroup, SettingsSection } from '$lib/layout'
-  import ControlPane from '$lib/plot/core/components/ControlPane.svelte'
+  import { ControlPane } from '$lib/overlays'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
@@ -221,7 +221,7 @@
   <ControlPane
     bind:controls_open
     {controls_class}
-    title={controls_title}
+    toggle_title={controls_title}
     {toggle_props}
     {pane_props}
   >

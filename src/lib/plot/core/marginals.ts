@@ -35,7 +35,7 @@ export type MarginalCurve =
   | { kind: `rug`; positions: number[] }
 
 // Context handed to a marginal's `reduce`/`data` callbacks
-export interface MarginalComputeContext {
+interface MarginalComputeContext {
   config: ResolvedMarginalConfig
   side: MarginalSide
   positional_range: Vec2
@@ -177,7 +177,7 @@ export interface MarginalRenderContext extends MarginalComputeContext {
 }
 
 // Pixel tolerance for rug-tick hit-testing (a tick farther than this from the pointer is a miss)
-export const MARGINAL_HIT_TOLERANCE_PX = 10
+const MARGINAL_HIT_TOLERANCE_PX = 10
 
 // Tooltip payload describing the marginal datum nearest the pointer (returned by marginal_hit)
 export interface MarginalHover {

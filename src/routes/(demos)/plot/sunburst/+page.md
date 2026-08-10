@@ -1,10 +1,10 @@
 # Sunburst
 
-Zoomable hierarchical part-of-whole charts (rings of nested categories, e.g. crystal system &rarr; spacegroup distributions). Built on [`d3-hierarchy`](https://github.com/d3/d3-hierarchy)'s partition layout with animated click-to-zoom drill-down, hover highlighting of ancestor/descendant chains, and theming via CSS variables.
+`Sunburst` renders partition rings from nested node trees.
 
 ## Basic Sunburst
 
-Pass `data` as a nested tree (or array of trees). Leaves carry `value`; branch angles are the sum of their leaves by default. Depth-1 categories auto-cycle the default palette unless you set `color`, and descendants inherit their ancestor's color. Click a branch arc to zoom into it, click the center to zoom back out.
+Leaves carry `value`; branch angles sum their leaves by default. Top-level categories receive default colors unless set explicitly.
 
 ```svelte example
 <script lang="ts">
@@ -41,14 +41,7 @@ Pass `data` as a nested tree (or array of trees). Leaves carry `value`; branch a
 
 ## Crystal-structure taxonomy (5 levels)
 
-Deeply nested trees are easiest to build from path rows via `sunburst_from_paths` (plotly-express style). This crystal-structure taxonomy spans five levels: crystal system &rarr; point group &rarr; space group &rarr; structure prototype &rarr; compound (illustrative entry counts). Color follows crystal system; `level_lighten` brightens each ring outward. Features here:
-
-- when zoomed, a clickable breadcrumb trail (top-left) jumps straight to any ancestor; <kbd>Escape</kbd> zooms out one level and double-clicking empty background resets to the root
-- the bindable `zoom_root_id` tracks the current drill-down root (and powers the reset button)
-- `max_depth` limits how many rings show below the zoom root (like plotly's `maxdepth`). Switch to 3 rings and zooming reveals deeper levels progressively
-- a custom `tooltip` snippet renders the `label_path` breadcrumb plus share-of-parent
-- labels auto-hide on arcs too small to fit them, so zooming in reveals more labels; arrow keys move keyboard focus between siblings (left/right), children (down) and parents (up)
-- the controls pane (gear icon, top-right) holds SVG/PNG export buttons
+`sunburst_from_paths` builds deep trees from path rows. Bind `zoom_root_id` to track drill-down state and use `max_depth` to limit rings below it. Arrow keys move focus between siblings (left/right), children (down) and parents (up); the breadcrumb trail and <kbd>Escape</kbd> zoom back out.
 
 ```svelte example
 <script lang="ts">

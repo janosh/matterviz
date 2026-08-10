@@ -5,7 +5,7 @@
 // min(10, total_frames)) while `total_frames` can be six digits, so looping over `frames`
 // would silently analyse ten of them and label the plot with the whole run. Frames outside
 // that window are pulled through `frame_loader.load_frame`, or the sweep throws.
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/msd/collect'
+import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
 import type { AnyStructure } from '$lib/structure'
 import { normalize_fractional_coords } from '$lib/structure/parse'
 import type { TrajectoryType } from '$lib/trajectory'

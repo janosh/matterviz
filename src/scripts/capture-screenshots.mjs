@@ -100,6 +100,7 @@ const capture_site = async (browser) => {
   } catch (error) {
     console.error(`\nUpload failed: ${error}`)
     console.error(`Run manually:\ngh ${upload_args.join(` `)}`)
+    process.exitCode = 1
   }
   console.info(`\nSaved to: ${output_dir}`)
 }

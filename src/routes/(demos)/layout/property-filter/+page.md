@@ -1,7 +1,5 @@
 # PropertyFilter
 
-A numeric range filter with histogram visualization for filtering materials by quantitative properties.
-
 ## Interactive Demo
 
 Filter with histogram, logarithmic scale toggle, and callbacks:

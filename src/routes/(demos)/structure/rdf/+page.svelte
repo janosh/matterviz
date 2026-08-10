@@ -99,17 +99,8 @@
 
 <h1>Radial Distribution Functions (RDF)</h1>
 
-<p>
-  g(r) describes the probability of finding an atom at distance r from a reference atom,
-  normalized by bulk density. The line at g(r) = 1 represents uniform distribution (ideal gas).
-</p>
-
 <div class="bleed-1400">
   <h2>Element-Pair RDFs</h2>
-  <p>
-    Partial RDFs show correlations between specific element pairs in Al₂Lu: Al-Al, Al-Lu and
-    Lu-Lu reveal the crystal structure.
-  </p>
   <section class="demo-2col">
     <Structure structure={structures[`Al₂Lu`]} />
     <RdfPlot
@@ -122,7 +113,6 @@
   </section>
 
   <h2>Full RDF</h2>
-  <p>The full RDF averages all element pairs, like experimental measurements.</p>
   <RdfPlot
     structures={structures[`Al₂Lu`]}
     mode="full"
@@ -133,11 +123,9 @@
 
   <h2>Pair Distribution Function G(r)</h2>
   <p>
-    The reduced PDF G(r) = 4πrρ₀(g(r) − 1) is what total-scattering experiments refine against.
-    Partial g<sub>ab</sub>(r) are combined with Faber–Ziman weights w<sub>ab</sub> = c<sub
-      >a</sub
-    >c<sub>b</sub>b<sub>a</sub>b<sub>b</sub>/⟨b⟩², so the curve depends on the radiation. Below
-    the closest approach G(r) falls on the straight line −4πrρ₀.
+    The reduced PDF G(r) = 4πrρ₀(g(r) − 1) combines partial RDFs with radiation-dependent
+    Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the closest
+    approach.
   </p>
   <PdfPlot
     {structures}
@@ -150,9 +138,9 @@
 
   <h2>Negative Scattering Length: NiH</h2>
   <p>
-    Hydrogen has b<sub>coh</sub> = −3.739 fm. In rock-salt NiH the shortest distance (a/2 = 1.865
-    Å) is a Ni–H contact, so switching from X-ray to neutron flips that correlation from a peak to
-    a trough while the Ni–Ni shell at a/√2 stays positive. Toggle the radiation to see the reversal.
+    Switching from X-ray to neutron flips the Ni–H correlation because H has negative b<sub
+      >coh</sub
+    >, while the Ni–Ni shell stays positive.
   </p>
   <section class="demo-2col">
     <Structure structure={nickel_hydride} />
@@ -166,10 +154,6 @@
   </section>
 
   <h2>Complex: Bi₂Zr₂O₈</h2>
-  <p>
-    Cubic oxide structure (Fm3m) with partial occupancy, showing multiple element pairs (Bi-Bi,
-    Bi-Zr, Bi-O, Zr-Zr, Zr-O, O-O).
-  </p>
   <section class="demo-2col">
     <Structure structure={structures[`Bi₂Zr₂O₈`]} />
     <RdfPlot
@@ -222,10 +206,6 @@
   />
 
   <h2>Amorphous Structure</h2>
-  <p>
-    Random atomic positions (Si-O-Al-Fe) show broad peaks vs sharp crystalline peaks.
-    Increasing atoms shows g(r) → 1 at large distances.
-  </p>
 
   <div class="demo-controls">
     {#each [[`element_pairs`, `Element Pairs`], [`full`, `Full`]] as const as [mode, label] (mode)}
@@ -256,7 +236,6 @@
   </section>
 
   <h2>Try Your Own Structure</h2>
-  <p>Pick a file below or drag &amp; drop onto the plot.</p>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
   <RdfPlot mode="element_pairs" enable_drop cutoff={7} style="height: 500px" />
 </div>

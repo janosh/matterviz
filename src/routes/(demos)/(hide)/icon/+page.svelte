@@ -5,6 +5,7 @@
   // Namespace import is gallery-only: computed access pins every glyph into the bundle.
   import * as icons from 'svelte-widgets/icons'
   import type { IconData } from 'svelte-widgets'
+  import Usage from './usage.md'
 
   let filter_text = $state(``)
   let copied_text = $state<string | null>(null)
@@ -85,20 +86,7 @@
 
 <h2>Usage</h2>
 
-<pre class="language-svelte">
-<code
-    >{`${`<`}script>
-  import { Icon } from 'svelte-widgets'
-  import { GitHub, Settings } from 'svelte-widgets/icons'
-${`<`}/script>
-
-<!-- Pass the glyph binding, not its name -->
-<Icon icon={GitHub} />
-
-<!-- With custom size -->
-<Icon icon={Settings} style="font-size: 2em" />
-<Icon icon={Settings} style="--icon-size: 32px" />`}</code
-  ></pre>
+<Usage />
 
 <style>
   ::highlight(text-filter-highlight) {
@@ -203,11 +191,5 @@ ${`<`}/script>
     padding: 3em;
     text-align: center;
     color: var(--text-color, inherit);
-  }
-  pre {
-    background: var(--code-bg, #f5f5f5);
-    padding: 1em;
-    border-radius: 8px;
-    overflow-x: auto;
   }
 </style>

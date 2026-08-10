@@ -16,9 +16,6 @@ export {
   resolve_tick_layout,
   TICK_LABEL_HEIGHT,
   type MeasuredAxis,
-  type ResolvedTickLabel,
-  type ResolvedTickLayout,
-  type TickLayoutSide,
 } from '$lib/plot/core/tick-layout'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -34,16 +31,15 @@ export const AXIS_LABEL_HEIGHT = 20
 // Axis titles historically used a 200px foreignObject. Retain that as the deterministic
 // wrapping span for vertical titles, whose available height is not forwarded through PlotAxis.
 export const AXIS_TITLE_WRAP_WIDTH = 200
-// Air between the plot's outer edge and the y-title glyph box. Matches the slack under
-// the x-title (default pad.b 60 − AXIS_TITLE_OFFSET 36 − ~half the title ≈ 14).
-export const AXIS_LABEL_OUTER = 12
+// Air past an axis title's glyph box; 0 sits titles flush against the plot edge
+export const AXIS_LABEL_OUTER = 0
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
-// Default plot padding (px) reserved for axis ticks/labels across Cartesian plots.
-export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
+// Per-side floors; measured ticks and titles win when they need more
+export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 50, l: 50, r: 12 }
 
-export const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
+const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
   ...DEFAULT_FONT_SPEC,
   font_size: 14,
   line_height: AXIS_LABEL_HEIGHT,
@@ -54,7 +50,7 @@ export interface AxisTitleSegment {
   readonly shift?: `sub` | `super`
 }
 
-export interface AxisTitleLine {
+interface AxisTitleLine {
   readonly text: string
   readonly segments: readonly AxisTitleSegment[]
   readonly metrics: TextLineMetrics

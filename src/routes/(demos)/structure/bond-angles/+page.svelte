@@ -41,12 +41,8 @@
 <h1>Bond-Angle Distributions (ADF)</h1>
 
 <p>
-  The angular distribution function counts, for every atom, the angle subtended at it by each
-  pair of its bonded neighbours. Splitting by triplet type separates the coordination
-  environments: a silicate shows a sharp tetrahedral <code>O-Si-O</code> peak near 109.5°
-  alongside a much broader <code>Si-O-Si</code> linkage distribution. Angles that close through a
-  periodic boundary are included. The cell is expanded with image atoms before the bond search, so
-  boundary atoms are not under-coordinated.
+  Periodic image atoms are included in the bond search, so boundary sites remain correctly
+  coordinated.
 </p>
 
 <div class="bleed-1400">
@@ -83,9 +79,7 @@
 
   <h2>Compare Structures</h2>
   <p>
-    Raw counts scale with the number of atoms in the cell, so structures of different size are
-    only comparable as densities. In density mode each structure contributes a distribution of
-    unit area.
+    Density normalization gives each structure unit area for cell-size-independent comparison.
   </p>
 
   <div class="demo-controls">
@@ -105,7 +99,6 @@
   />
 
   <h2>Try Your Own Structure</h2>
-  <p>Pick a file below or drag &amp; drop onto the plot.</p>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
   <BondAnglePlot structures={{}} split_mode="by_triplet" style="height: 500px" />
 </div>

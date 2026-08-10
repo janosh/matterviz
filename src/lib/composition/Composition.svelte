@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
@@ -106,7 +107,7 @@
         else console.warn(`Chart SVG not available for SVG export`)
       } else if (export_type === `export_png`) {
         const filename = `${get_electro_neg_formula(composition, true, ``)}.png`
-        if (svg_node) export_svg_as_png(svg_node, filename, 150)
+        if (svg_node) export_svg_as_png(svg_node, filename, DEFAULT_PNG_DPI)
         else console.warn(`Chart SVG not available for PNG export`)
       } else console.warn(`Invalid export type:`, export_type)
     } catch (error) {

@@ -42,9 +42,16 @@ const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
     props: { style: `width: 800px; height: 600px`, ...props },
   })
 }
-// Pinning both axes to [0,1] makes client coordinates map to known data values, e.g. the
-// plot center (420, 280) lands on (0.5, 0.5).
+// Pinning both axes to [0,1] makes client coordinates map to known data values, so
+// plot_center() lands on (0.5, 0.5).
 const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
+// Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
+// so tuning the default padding can't silently move these hit tests off their target.
+const plot_center = (): { x: number; y: number } => {
+  const clip = doc_query(`clipPath rect`)
+  const num = (attr: string) => Number(clip.getAttribute(attr))
+  return { x: num(`x`) + num(`width`) / 2, y: num(`y`) + num(`height`) / 2 }
+}
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
 const click_plot = (clientX: number, clientY: number): boolean =>
@@ -84,6 +91,7 @@ const point_tooltip_snippet = () =>
   }))
 const svg_num = (element: Element, attr_name: string): number =>
   Number(element.getAttribute(attr_name))
+const css_px = (value: string): number => Number(value.replace(`px`, ``))
 type TestRect = { x: number; y: number; width: number; height: number }
 const decoration_rect = (selector: string): TestRect => {
   const element = doc_query(selector)
@@ -102,8 +110,9 @@ const rects_intersect = (first: TestRect, second: TestRect): boolean =>
   second.y < first.y + first.height
 const uniform_density_series = (columns = 32, rows = 24) => [
   {
-    x: Array.from({ length: columns * rows }, (_value, point_idx) => point_idx % columns).map(
-      (column_idx) => (column_idx + 0.5) / columns,
+    x: Array.from(
+      { length: columns * rows },
+      (_value, point_idx) => ((point_idx % columns) + 0.5) / columns,
     ),
     y: Array.from(
       { length: columns * rows },
@@ -213,21 +222,14 @@ describe(`BinnedScatterPlot`, () => {
   // a NaN bound in a partially-set axis range would otherwise loop the auto-range
   // effect forever (NaN !== NaN never settles) until effect_update_depth_exceeded
   test(`NaN axis-range bound mounts without a reactive loop`, async () => {
-    const errors: unknown[][] = []
-    const error_spy = vi
-      .spyOn(console, `error`)
-      .mockImplementation((...args) => void errors.push(args))
-    try {
-      mount_plot({
-        series: [{ x: [0, 1], y: [0, 1] }],
-        ...hidden_colorbar,
-        x_axis: { range: [null, NaN] as [null, number] },
-      })
-      await settle()
-    } finally {
-      error_spy.mockRestore()
-    }
-    expect(errors.map(String).join(`\n`)).toBe(``)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      ...hidden_colorbar,
+      x_axis: { range: [null, NaN] as [null, number] },
+    })
+    await settle()
+    expect(error_spy).not.toHaveBeenCalled()
   })
 
   test(`auto-ranges finite pairs on logarithmic axes`, async () => {
@@ -392,10 +394,7 @@ describe(`BinnedScatterPlot`, () => {
     const anno_rect = decoration_rect(`.binned-scatter .annotation`)
     const bar_rect = decoration_rect(`.binned-scatter .color-bar`)
     for (const rect of [anno_rect, bar_rect]) {
-      expect(Number.isFinite(rect.x), `${rect.x}`).toBe(true)
-      expect(Number.isFinite(rect.y), `${rect.y}`).toBe(true)
-      expect(Number.isFinite(rect.width), `${rect.width}`).toBe(true)
-      expect(Number.isFinite(rect.height), `${rect.height}`).toBe(true)
+      expect(Object.values(rect).every(Number.isFinite), JSON.stringify(rect)).toBe(true)
     }
     expect(rects_intersect(anno_rect, bar_rect), JSON.stringify({ anno_rect, bar_rect })).toBe(
       false,
@@ -565,6 +564,7 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
+    const ctx = mock_canvas_context()
     mount_plot({
       series: [{ x: Array(100).fill(0), y: Array(100).fill(0) }],
       ...density_mode_with_colorbar({
@@ -579,6 +579,7 @@ describe(`BinnedScatterPlot`, () => {
       ),
     )
     expect(tick_by_label).toMatchObject({ '1': `0%`, '10': `50%`, '100': `100%` })
+    expect(ctx.clip).toHaveBeenCalled()
   })
 
   test(`skips non-finite coordinates in point rendering`, async () => {
@@ -587,7 +588,7 @@ describe(`BinnedScatterPlot`, () => {
       expect(Number.isFinite(y)).toBe(true)
       expect(radius).toBe(4)
     })
-    mock_canvas_context({ arc })
+    const ctx = mock_canvas_context({ arc })
 
     mount_plot({
       series: [{ x: [0, NaN, 0.5, Infinity], y: [0, 0.5, NaN, 0.8] }],
@@ -598,6 +599,7 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(render_mode()).toBe(`points`)
     expect(arc).toHaveBeenCalledOnce()
+    expect(ctx.clip).not.toHaveBeenCalled()
   })
 
   test(`scales point radii from size values in point mode`, async () => {
@@ -645,7 +647,8 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    click_plot(437, 280)
+    const center = plot_center()
+    click_plot(center.x + 17, center.y)
 
     expect(on_point_click).toHaveBeenCalledOnce()
   })
@@ -782,19 +785,26 @@ describe(`BinnedScatterPlot`, () => {
     await drag([400, 590], [200, 200])
     expect(document.querySelector(`.reset-view`)).toBeNull()
 
-    await drag([206, 436], [633, 124])
+    // Where the single populated bin (every point is at (0.5, 0.5)) sits in the pointer
+    // frame these events use, which the mocked canvas rect offsets from the SVG. Measured,
+    // not derived from the clip rect. A zoom moves it, so only click it while unzoomed.
+    const [bin_x, bin_y] = [420, 220]
+    await drag([bin_x - 150, bin_y + 100], [bin_x + 150, bin_y - 100])
 
-    click(420, 247)
+    // The drag's trailing click is swallowed rather than zooming the bin under it
+    click(bin_x, bin_y)
     expect(on_density_zoom).not.toHaveBeenCalled()
-    click(420, 247)
-    expect(on_density_zoom).toHaveBeenCalledOnce()
-    await tick()
 
     const reset_btn = doc_query<HTMLButtonElement>(`.reset-view`)
     expect(reset_btn.getAttribute(`aria-label`)).toBe(`Reset view`)
     reset_btn.click()
     await tick()
     expect(document.querySelector(`.reset-view`)).toBeNull()
+
+    // Reset restores the pre-zoom geometry, so the bin is back under the centre
+    click(bin_x, bin_y)
+    expect(on_density_zoom).toHaveBeenCalledOnce()
+    await tick()
 
     // Only the start is gated: an interior start may end outside the plot.
     await drag([400, 300], [10, 100])
@@ -890,13 +900,12 @@ describe(`BinnedScatterPlot`, () => {
     expect(fill_styles).toContain(get_series_color(0))
     expect(fill_styles).toContain(get_series_color(1))
     // per-series marginals get the same index colors so they're visually distinguishable
-    const marginal_fills = new Set(
-      [...document.querySelectorAll(`.marginal-top rect`)].map((rect) =>
-        rect.getAttribute(`fill`),
-      ),
+    const marginal_fills = [...document.querySelectorAll(`.marginal-top rect`)].map((rect) =>
+      rect.getAttribute(`fill`),
     )
-    expect(marginal_fills.has(get_series_color(0))).toBe(true)
-    expect(marginal_fills.has(get_series_color(1))).toBe(true)
+    expect(marginal_fills).toEqual(
+      expect.arrayContaining([get_series_color(0), get_series_color(1)]),
+    )
   })
 
   test(`does not paint canvas markers whose color is none`, async () => {
@@ -976,10 +985,11 @@ describe(`BinnedScatterPlot`, () => {
     const first_label = labels[0]
     if (!first_leader) throw new Error(`missing first point label leader`)
     if (!first_label) throw new Error(`missing first point label`)
-    const point_center = { x: 420, y: 280 }
+    // the first point sits at (0.5, 0.5), i.e. dead centre of the plot area
+    const point_center = plot_center()
     const label_center = {
-      x: Number(first_label.style.left.replace(`px`, ``)),
-      y: Number(first_label.style.top.replace(`px`, ``)),
+      x: css_px(first_label.style.left),
+      y: css_px(first_label.style.top),
     }
     const delta_x = label_center.x - point_center.x
     const delta_y = label_center.y - point_center.y
@@ -1061,9 +1071,8 @@ describe(`BinnedScatterPlot`, () => {
 
   // A single labelled point at the plot center (420, 280); placement tests vary only the
   // point_labels config. Placement runs after measurement, hence the second settle.
-  type PlotProps = ComponentProps<typeof BinnedScatterPlot>
   const mount_labelled_point = async (
-    point_labels: PlotProps[`point_labels`],
+    point_labels: BinnedProps[`point_labels`],
   ): Promise<void> => {
     document.body.replaceChildren()
     mount_plot({
@@ -1081,8 +1090,8 @@ describe(`BinnedScatterPlot`, () => {
     mock_label_measurement(40, 10)
     const label_distance = (): number => {
       const label = doc_query(`.point-labels .point-label`)
-      const left = Number(label.style.left.replace(`px`, ``))
-      const top = Number(label.style.top.replace(`px`, ``))
+      const left = css_px(label.style.left)
+      const top = css_px(label.style.top)
       return Math.hypot(left - 420, top - 284)
     }
 

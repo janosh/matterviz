@@ -35,4 +35,11 @@
 >
   Replace columns again
 </button>
+<button
+  type="button"
+  data-testid="reverse-columns"
+  onclick={() => (columns = [...columns].reverse())}
+>
+  Reverse columns
+</button>
 <ToggleMenu bind:columns bind:column_panel_open />
