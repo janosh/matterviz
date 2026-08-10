@@ -17,7 +17,7 @@
   "scripts": {
     "sync-config": "npx tsx scripts/sync-config.ts",
     "prebuild": "npm run sync-config",
-    "build": "rm -rf dist && vite build --config vite.extension.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
+    "build": "rm -rf dist && vite build --config vite.extension.config.ts && vite build",
     "package": "npm run build && vsce package --no-dependencies",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
@@ -77,16 +77,22 @@
             "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md_,_md,-md,md-,md.,dynamics,simulation}*"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}"
+            "filenamePattern": "*{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}.gz"
+            "filenamePattern": "*{CONTCAR,POSCAR,XDATCAR,contcar,poscar,xdatcar}.gz"
           },
           {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
           },
           {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,CONTCAR,ELFCAR,LOCPOT,PARCHG,POSCAR,XDATCAR,aeccar,aeccar0,aeccar1,aeccar2,chgcar,contcar,elfcar,locpot,parchg,poscar,xdatcar}.gz"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}.gz"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}.gz"
           },
           {
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
@@ -638,11 +644,6 @@
             "break"
           ]
         },
-        "matterviz.structure.show_cell": {
-          "type": "boolean",
-          "default": false,
-          "description": "Display system cell"
-        },
         "matterviz.structure.show_cell_vectors": {
           "type": "boolean",
           "default": true,
@@ -678,6 +679,178 @@
           "description": "Width of cell edge lines",
           "minimum": 0.5,
           "maximum": 5
+        },
+        "matterviz.brillouin.bz_order": {
+          "type": "number",
+          "default": 1,
+          "description": "Brillouin zone order to render (1 = first BZ)",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "matterviz.brillouin.surface_color": {
+          "type": "string",
+          "default": "#4488ff",
+          "description": "Brillouin zone face color"
+        },
+        "matterviz.brillouin.surface_opacity": {
+          "type": "number",
+          "default": 0.3,
+          "description": "Opacity of Brillouin zone faces",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.brillouin.edge_color": {
+          "type": "string",
+          "default": "#000000",
+          "description": "Brillouin zone edge color"
+        },
+        "matterviz.brillouin.edge_width": {
+          "type": "number",
+          "default": 0.002,
+          "description": "Width of Brillouin zone edges (fraction of zone size)",
+          "minimum": 0,
+          "maximum": 0.05
+        },
+        "matterviz.brillouin.show_vectors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display reciprocal lattice vectors"
+        },
+        "matterviz.brillouin.vector_scale": {
+          "type": "number",
+          "default": 1,
+          "description": "Length multiplier for reciprocal lattice vectors",
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        "matterviz.brillouin.camera_projection": {
+          "type": "string",
+          "default": "perspective",
+          "description": "Camera projection mode for the Brillouin zone scene",
+          "enum": [
+            "perspective",
+            "orthographic"
+          ]
+        },
+        "matterviz.brillouin.show_ibz": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display the irreducible Brillouin zone"
+        },
+        "matterviz.brillouin.ibz_color": {
+          "type": "string",
+          "default": "#ff8844",
+          "description": "Irreducible Brillouin zone face color"
+        },
+        "matterviz.brillouin.ibz_opacity": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Opacity of irreducible Brillouin zone faces",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.fermi.mu": {
+          "type": "number",
+          "default": 0,
+          "description": "Chemical potential offset from the Fermi level (eV)"
+        },
+        "matterviz.fermi.color_property": {
+          "type": "string",
+          "default": "band",
+          "description": "Quantity mapped onto the Fermi surface color scale",
+          "enum": [
+            "band",
+            "velocity",
+            "spin",
+            "custom"
+          ]
+        },
+        "matterviz.fermi.color_scale": {
+          "type": "string",
+          "default": "interpolateViridis",
+          "description": "D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)"
+        },
+        "matterviz.fermi.representation": {
+          "type": "string",
+          "default": "solid",
+          "description": "How to render the Fermi surface",
+          "enum": [
+            "solid",
+            "wireframe",
+            "transparent"
+          ]
+        },
+        "matterviz.fermi.surface_opacity": {
+          "type": "number",
+          "default": 0.8,
+          "description": "Opacity of the Fermi surface",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.fermi.show_bz": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display the Brillouin zone around the surface"
+        },
+        "matterviz.fermi.bz_opacity": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Opacity of the Brillouin zone faces",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "matterviz.fermi.show_vectors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display reciprocal lattice vectors"
+        },
+        "matterviz.fermi.tile_bz": {
+          "type": "boolean",
+          "default": false,
+          "description": "Tile an irreducible surface across the full Brillouin zone"
+        },
+        "matterviz.fermi.clip_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Cut the surface with a plane to reveal its interior"
+        },
+        "matterviz.fermi.clip_axis": {
+          "type": "string",
+          "default": "z",
+          "description": "Axis the clipping plane is normal to",
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ]
+        },
+        "matterviz.fermi.clip_position": {
+          "type": "number",
+          "default": 0,
+          "description": "Clipping plane offset along its axis (fraction of the zone extent)",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "matterviz.fermi.clip_flip": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep the other side of the clipping plane"
+        },
+        "matterviz.fermi.interpolation_factor": {
+          "type": "number",
+          "default": 1,
+          "description": "Band-grid upsampling factor (higher = smoother surface, slower)",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "matterviz.fermi.camera_projection": {
+          "type": "string",
+          "default": "perspective",
+          "description": "Camera projection mode for the Fermi surface scene",
+          "enum": [
+            "perspective",
+            "orthographic"
+          ]
         },
         "matterviz.trajectory.auto_play": {
           "type": "boolean",
@@ -769,65 +942,10 @@
           "minimum": 10,
           "maximum": 10000
         },
-        "matterviz.trajectory.step_label_format": {
-          "type": "string",
-          "default": ".3~s",
-          "description": "Number format for step labels (D3 format specifier)"
-        },
-        "matterviz.trajectory.property_value_format": {
-          "type": "string",
-          "default": ".2~s",
-          "description": "Number format for property values (D3 format specifier)"
-        },
-        "matterviz.trajectory.tooltip_format": {
-          "type": "string",
-          "default": ".3~s",
-          "description": "Number format for tooltips (D3 format specifier)"
-        },
-        "matterviz.trajectory.enable_keyboard_shortcuts": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable keyboard shortcuts for playback"
-        },
         "matterviz.trajectory.show_parsing_progress": {
           "type": "boolean",
           "default": true,
           "description": "Show progress indicator while parsing files"
-        },
-        "matterviz.trajectory.compact_controls": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use compact layout for playback controls"
-        },
-        "matterviz.trajectory.show_filename_in_controls": {
-          "type": "boolean",
-          "default": true,
-          "description": "Display filename in control pane"
-        },
-        "matterviz.trajectory.smooth_playback": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use smooth interpolation between frames"
-        },
-        "matterviz.trajectory.loop_playback": {
-          "type": "boolean",
-          "default": true,
-          "description": "Loop trajectory playback"
-        },
-        "matterviz.trajectory.pause_on_hover": {
-          "type": "boolean",
-          "default": false,
-          "description": "Pause playback when hovering over controls"
-        },
-        "matterviz.trajectory.highlight_current_frame": {
-          "type": "boolean",
-          "default": true,
-          "description": "Highlight current frame in timeline"
-        },
-        "matterviz.trajectory.show_frame_info": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show frame information overlay"
         },
         "matterviz.trajectory.max_frames_in_memory": {
           "type": "number",
@@ -835,13 +953,6 @@
           "description": "Maximum frames to keep in memory",
           "minimum": 10,
           "maximum": 10000
-        },
-        "matterviz.trajectory.memory_usage_warning_threshold": {
-          "type": "number",
-          "default": 500,
-          "description": "Frame count threshold for memory warnings",
-          "minimum": 10,
-          "maximum": 5000
         },
         "matterviz.trajectory.enable_performance_monitoring": {
           "type": "boolean",
@@ -1596,26 +1707,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show Y-axis zero reference line"
-        },
-        "matterviz.plot.show_x_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show X-axis grid lines"
-        },
-        "matterviz.plot.show_x2_grid": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show secondary X-axis grid lines"
-        },
-        "matterviz.plot.show_y_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Y-axis grid lines"
-        },
-        "matterviz.plot.show_y2_grid": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show secondary Y-axis grid lines"
         },
         "matterviz.plot.x_format": {
           "type": "string",
