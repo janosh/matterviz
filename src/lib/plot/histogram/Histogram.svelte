@@ -40,6 +40,7 @@
     nice_range_from_extent,
   } from '$lib/plot/core/scales'
   import type {
+    AxisConfig,
     BasePlotProps,
     DataSeries,
     LegendConfig,
@@ -55,7 +56,7 @@
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Vec2 } from '$lib/math'
+  import type { Point2D, Vec2 } from '$lib/math'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
 
@@ -152,25 +153,19 @@
   // Using $state because these have bindings in HistogramControls/PlotControls
   // untrack() explicitly captures initial prop values (intentional - props provide initial config)
   const { format: _, ...axis_state_defaults } = AXIS_DEFAULTS // Exclude format (has component-specific default)
+  const init_axis = (get_initial: () => AxisConfig, label_shift?: Point2D): AxisConfig =>
+    untrack(() => ({
+      ...axis_state_defaults,
+      ...(label_shift ? { label_shift } : {}),
+      ...get_initial(),
+    }))
   let bar = $state(untrack(() => ({ ...DEFAULTS.histogram.bar, ...bar_init })))
-  let x_axis = $state(untrack(() => ({ ...axis_state_defaults, ...x_axis_init })))
+  let x_axis = $state(init_axis(() => x_axis_init))
   // x2-axis needs different default label_shift for top-side positioning
-  let x2_axis = $state(
-    untrack(() => ({
-      ...axis_state_defaults,
-      label_shift: { x: 0, y: AXIS_TITLE_OFFSET },
-      ...x2_axis_init,
-    })),
-  )
-  let y_axis = $state(untrack(() => ({ ...axis_state_defaults, ...y_axis_init })))
+  let x2_axis = $state(init_axis(() => x2_axis_init, { x: 0, y: AXIS_TITLE_OFFSET }))
+  let y_axis = $state(init_axis(() => y_axis_init))
   // y2 title stays vertically centered; its x position is computed by y2_axis_label_x
-  let y2_axis = $state(
-    untrack(() => ({
-      ...axis_state_defaults,
-      label_shift: { x: 0, y: 0 },
-      ...y2_axis_init,
-    })),
-  )
+  let y2_axis = $state(init_axis(() => y2_axis_init, { x: 0, y: 0 }))
   let display = $state(untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })))
 
   // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
@@ -179,7 +174,6 @@
   const final_x_axis = $derived({ label: `Value`, ...x_axis })
   const final_x2_axis = $derived({ label: `Value`, ...x2_axis })
   const final_y_axis = $derived({ label: `Count`, format: `d`, ...y_axis })
-  const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const final_y2_axis = $derived({ label: `Count`, format: `d`, ...y2_axis })
 
   let hover_info = $state<HistogramHandlerProps | null>(null)
@@ -361,7 +355,7 @@
 
   // a lone series uses the configured bar color; with multiple, each gets its own
   const series_color = (series_data: DataSeries) =>
-    selected_series.length === 1 ? final_bar.color : extract_series_color(series_data)
+    selected_series.length === 1 ? bar.color : extract_series_color(series_data)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data }) => ({
       x: series_data.y ?? [],
@@ -544,13 +538,13 @@
                 bar_y,
                 bar_width,
                 bar_height,
-                Math.min(final_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
+                Math.min(bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
               )}
               fill={color}
-              opacity={final_bar.opacity}
-              stroke={final_bar.stroke_color}
-              stroke-opacity={final_bar.stroke_opacity}
-              stroke-width={final_bar.stroke_width}
+              opacity={bar.opacity}
+              stroke={bar.stroke_color}
+              stroke-opacity={bar.stroke_opacity}
+              stroke-width={bar.stroke_width}
               role="button"
               tabindex="0"
               onmousemove={(evt) =>

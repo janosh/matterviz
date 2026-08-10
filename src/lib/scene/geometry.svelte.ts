@@ -1,5 +1,4 @@
-// Small geometry helpers every Threlte scene here repeats: building the two-point lines that
-// axes, ticks, grids and bounding boxes are made of, and disposing derived geometry.
+// Shared two-point line construction and derived-geometry disposal for Threlte scenes.
 import type { Vec3 } from '$lib/math'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
@@ -12,10 +11,7 @@ export function line_geometry(start: Vec3, end: Vec3): BufferGeometry {
   return geometry
 }
 
-// Dispose the geometries a getter returns whenever it recomputes, and once more on unmount.
-// Geometry built inside a $derived is otherwise leaked on every recompute: Threlte drops the
-// object from the scene graph but never frees the GPU buffers behind it. Registers an $effect,
-// so it has to be called during component init.
+// Dispose geometries on dependency changes and unmount to release their GPU buffers.
 export function dispose_on_change(
   get_geometries: () => (BufferGeometry | null | undefined)[],
 ): void {

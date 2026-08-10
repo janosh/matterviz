@@ -75,12 +75,14 @@
     ChemPotColorMode,
     ChemPotDiagramConfig,
     ChemPotDiagramData,
-    ChemPotDomainRender,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
-    ChemPotHoverMesh,
   } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
+
+  type SceneProps = ComponentProps<typeof ChemPotScene3D>
+  type RenderDomain = SceneProps[`render_domains`][number]
+  type HoverMesh = SceneProps[`hover_meshes`][number]
 
   const edge_key = (key_a: string, key_b: string): string =>
     key_a < key_b ? `${key_a}|${key_b}` : `${key_b}|${key_a}`
@@ -210,8 +212,7 @@
 
   let mounted = $state(false)
   onMount(() => (mounted = true))
-  let orbit_controls_ref =
-    $state<ComponentProps<typeof ChemPotScene3D>[`orbit_controls`]>(undefined)
+  let orbit_controls_ref = $state<SceneProps[`orbit_controls`]>()
   let camera_projection = $state<CameraProjection3D>(`orthographic`)
   let auto_rotate = $state(0)
   let display = $state<DisplayConfig3D>({
@@ -367,7 +368,7 @@
     )
   }
 
-  const render_domains = $derived.by((): ChemPotDomainRender[] => {
+  const render_domains = $derived.by((): RenderDomain[] => {
     if (!diagram_data || plot_elements.length < 2) return []
 
     const dim = diagram_data.elements.length
@@ -382,7 +383,7 @@
           )
         : null
 
-    const result: ChemPotDomainRender[] = []
+    const result: RenderDomain[] = []
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
       const padded = new_lims
         ? pad_domain_points(pts, indices, new_lims, default_min_limit, element_padding)
@@ -475,33 +476,28 @@
   const to_render_xyz = (point: number[]): Vec3 => swiz(point[0], point[1], point[2])
 
   // Compute data center and extent for camera positioning (in swizzled coords)
-  const { data_center, data_extent } = $derived.by(
-    (): {
-      data_center: Vec3
-      data_extent: number
-    } => {
-      const points = render_domains.flatMap((domain) => domain.points_3d)
-      if (points.length === 0) return { data_center: [0, 0, 0], data_extent: 10 }
-      // Compute center in rendered coordinates (swizzled + axis scaling).
-      let [sum_x, sum_y, sum_z] = [0, 0, 0]
-      for (const point_3d of points) {
-        const [x_val, y_val, z_val] = to_render_xyz(point_3d)
-        sum_x += x_val
-        sum_y += y_val
-        sum_z += z_val
-      }
-      const n_points = points.length
-      const center: Vec3 = [sum_x / n_points, sum_y / n_points, sum_z / n_points]
-      // Compute max distance from center
-      let max_dist = 0
-      for (const point of points) {
-        const [x_val, y_val, z_val] = to_render_xyz(point)
-        const dist = Math.hypot(x_val - center[0], y_val - center[1], z_val - center[2])
-        if (dist > max_dist) max_dist = dist
-      }
-      return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
-    },
-  )
+  const { data_center, data_extent } = $derived.by(() => {
+    const points = render_domains.flatMap((domain) => domain.points_3d)
+    if (points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
+    // Compute center in rendered coordinates (swizzled + axis scaling).
+    let [sum_x, sum_y, sum_z] = [0, 0, 0]
+    for (const point_3d of points) {
+      const [x_val, y_val, z_val] = to_render_xyz(point_3d)
+      sum_x += x_val
+      sum_y += y_val
+      sum_z += z_val
+    }
+    const n_points = points.length
+    const center: Vec3 = [sum_x / n_points, sum_y / n_points, sum_z / n_points]
+    // Compute max distance from center
+    let max_dist = 0
+    for (const point of points) {
+      const [x_val, y_val, z_val] = to_render_xyz(point)
+      const dist = Math.hypot(x_val - center[0], y_val - center[1], z_val - center[2])
+      if (dist > max_dist) max_dist = dist
+    }
+    return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
+  })
   const default_camera_position = $derived<Vec3>([
     data_center[0] + data_extent,
     data_center[1] + data_extent,
@@ -929,7 +925,7 @@
   // Uncolored hulls read as a faint envelope; colored ones have to carry their hue
   const hull_opacity = $derived(color_mode === `none` ? 0.25 : 0.4)
 
-  const domain_label = (domain: ChemPotDomainRender): VisibleDomainLabel => ({
+  const domain_label = (domain: RenderDomain): VisibleDomainLabel => ({
     formula: domain.formula,
     position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
     label_font_size: domain.label_font_size,
@@ -1158,9 +1154,9 @@
     return result
   })
 
-  const hover_mesh_data = $derived.by((): ChemPotHoverMesh[] => {
+  const hover_mesh_data = $derived.by((): HoverMesh[] => {
     if (!diagram_data) return []
-    const result: ChemPotHoverMesh[] = []
+    const result: HoverMesh[] = []
     const lims = diagram_data.lims
     const energy_stats_by_formula = entry_energy_stats_by_formula
 
@@ -1506,7 +1502,7 @@
                 hull_opacity,
                 edge_geometry,
                 formula_meshes: formula_mesh_data,
-                formula_edges: draw_formula_lines ? formula_edge_data : [],
+                formula_edges: formula_edge_data,
               },
               export_basename,
             ),
@@ -1536,7 +1532,7 @@
     )
   })
 
-  function set_hover_info(domain_data: ChemPotHoverMesh, raw_event: unknown): void {
+  function set_hover_info(domain_data: HoverMesh, raw_event: unknown): void {
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
       domain_data.info,
       raw_event,
@@ -1558,12 +1554,12 @@
     event?.nativeEvent?.stopPropagation?.()
   }
 
-  function handle_phase_hover(domain_data: ChemPotHoverMesh, raw_event: unknown): void {
+  function handle_phase_hover(domain_data: HoverMesh, raw_event: unknown): void {
     if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
     set_hover_info(domain_data, raw_event)
   }
 
-  function toggle_phase_lock(domain_data: ChemPotHoverMesh, raw_event: unknown): void {
+  function toggle_phase_lock(domain_data: HoverMesh, raw_event: unknown): void {
     stop_phase_pointer_event(raw_event)
     if (locked_hover_formula === domain_data.formula) {
       clear_hover_lock()
@@ -1573,7 +1569,7 @@
     set_hover_info(domain_data, raw_event)
   }
 
-  function handle_phase_leave(domain_data: ChemPotHoverMesh): void {
+  function handle_phase_leave(domain_data: HoverMesh): void {
     if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
@@ -1885,7 +1881,6 @@
           {auto_rotate}
           hull_geometry={colored_hull_geometry}
           {hull_opacity}
-          {domain_colors}
           {edge_geometry}
           hover_meshes={hover_mesh_data}
           on_domain_hover={handle_phase_hover}
@@ -1893,7 +1888,6 @@
           on_domain_leave={handle_phase_leave}
           formula_meshes={formula_mesh_data}
           formula_edges={formula_edge_data}
-          show_formula_edges={draw_formula_lines}
           domain_labels={scene_domain_labels}
           label_scale={zoom_scale}
           portal={wrapper}

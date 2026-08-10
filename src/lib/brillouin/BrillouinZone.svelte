@@ -242,9 +242,9 @@
     }
   })
 
-  const handle_load_error = (err: unknown, source: string) => {
-    error_msg = to_error(err).message
-    on_error?.({ error_msg, filename: source })
+  const handle_load_error = (error: unknown, filename: string): void => {
+    error_msg = to_error(error).message
+    on_error?.({ error_msg, filename })
   }
 
   // Load structure from URL or string
@@ -256,8 +256,6 @@
     error_msg = undefined
     try {
       safe_parse(structure_string, `string`)
-    } catch (err) {
-      handle_load_error(err, `string`)
     } finally {
       loading = false
     }
@@ -267,20 +265,22 @@
     data_url_loader.request({
       url: data_url,
       current_value: structure,
-      set_loading: (value) => {
-        loading = value
-      },
-      clear_error: () => {
-        error_msg = undefined
-      },
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = undefined),
       // Without mark_owned the structure this URL just produced reads as caller-supplied
       // on the next effect run, so the loader stops fetching and a second data_url never
       // loads at all.
       on_load: async ({ content, filename, metadata, mark_owned }) => {
         if (on_file_drop) {
-          await on_file_drop(content, filename, metadata)
-          mark_owned()
-        } else if (safe_parse(content, filename, metadata)) mark_owned(structure)
+          try {
+            await on_file_drop(content, filename, metadata)
+            mark_owned()
+          } catch (error) {
+            handle_load_error(error, filename)
+          }
+          return
+        }
+        if (safe_parse(content, filename, metadata)) mark_owned(structure)
       },
       on_error: handle_load_error,
     }),

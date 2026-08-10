@@ -205,12 +205,6 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
     .slice(0, 3)
     .map((token) => Number(normalize_scientific_notation(token))) as Vec3
 
-// Same tolerance for single-value header lines. Normalizing the whole line is safe only
-// because these lines are numeric — normalize_scientific_notation lowercases and rewrites
-// every `d`, which would mangle an element symbol line (Cd -> ce).
-const parse_vasp_num = (line: string): number =>
-  parse_leading_num(normalize_scientific_notation(line))
-
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format.
 // CHGCAR/PARCHG consists of a POSCAR header followed by volumetric data on a 3D grid.
 // Spin-polarized files contain two data blocks (total charge + magnetization).
@@ -580,7 +574,7 @@ export function parse_volumetric_file(
   // CHGCAR detection: requires POSCAR-like header (scale factor on line 2) AND
   // a grid dimensions line (3 integers) somewhere after the header. This distinguishes
   // CHGCAR from plain POSCAR/CONTCAR files which share the same header format.
-  if (lines.length > 2 && !isNaN(parse_vasp_num(lines[1]))) {
+  if (lines.length > 2 && !isNaN(parse_leading_num(normalize_scientific_notation(lines[1])))) {
     // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
     // Only scan a limited window, not the entire file

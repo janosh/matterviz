@@ -123,6 +123,27 @@ describe(`create_data_url_loader`, () => {
     expect(loader.loaded_url).toBeUndefined()
   })
 
+  // A file dropped while a URL is still loading is the newer intent and must survive.
+  // Viewers read their value inside the request effect, so committing a dropped file
+  // re-runs it: Svelte tears the in-flight request down first, which invalidates it.
+  test(`a value arriving mid-flight blocks the in-flight load from committing`, async () => {
+    const loader = create_data_url_loader<string>()
+    const { state, request } = make_harness()
+    const url = `https://x.test/a.xyz`
+
+    const load = defer_next_load(`from url`)
+    const teardown = loader.request(request({ url }))
+
+    state.value = `from drop`
+    teardown()
+    loader.request(request({ url, current_value: `from drop` }))
+
+    await load.resolve()
+    expect(state.value).toBe(`from drop`)
+    expect(state.loading).toBe(false)
+    expect(loader.loaded_url).toBeUndefined()
+  })
+
   test(`claim keeps an edited value attributed to the URL`, async () => {
     const loader = create_data_url_loader<string>()
     const { request } = make_harness()

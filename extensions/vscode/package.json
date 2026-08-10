@@ -98,13 +98,7 @@
             "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*.gz"
-          },
-          {
             "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
-          },
-          {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*.gz"
           }
         ],
         "priority": "option"

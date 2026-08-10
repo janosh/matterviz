@@ -1,15 +1,6 @@
-// One implementation of the VASP POSCAR-family header grammar, shared by parse_poscar
-// (whole file as a line array), parse_chgcar (streaming char offsets, so multi-hundred-MB
-// volumetric files are never split into lines) and the XDATCAR trajectory reader (which
-// re-reads the header before every frame of a variable-cell run).
-//
-// Grammar: comment / scale / 3 lattice rows / [element symbols] / atom counts /
-// [Selective dynamics] / coordinate mode. Everything after that is the caller's.
-//
-// The three callers have three different failure contracts — parse_poscar records a reason
-// and returns null, parse_chgcar reports via vol_error and returns null, XDATCAR throws —
-// so this module never throws and never writes to the shared parse-error collector. It
-// returns a result object that each caller turns into its own failure shape.
+// Shared VASP POSCAR-family header parser: comment / scale / 3 lattice rows /
+// [element symbols] / atom counts / [Selective dynamics] / coordinate mode.
+// Callers supply either an array or text cursor and adapt the result to their error contract.
 import type { ElementSymbol } from '$lib/element'
 import { FALLBACK_ELEMENTS, is_elem_symbol } from '$lib/element/helpers'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -29,10 +20,7 @@ import {
 
 // === Line cursors ===
 
-// A pull cursor over a VASP file's lines. `peek` looks ahead without consuming, which is
-// what the multi-line element-symbol block needs; `position` is the caller's own coordinate
-// for the next unconsumed line (array index or char offset) and is where the caller resumes
-// once the header is read.
+// `position` is the array index or character offset of the next unconsumed line.
 export interface VaspLineCursor {
   peek: (lookahead?: number) => string | undefined
   advance: (count?: number) => void
@@ -50,8 +38,7 @@ export const lines_cursor = (lines: readonly string[], start = 0): VaspLineCurso
   }
 }
 
-// Read the line at `offset`, returning it plus the offset of the next one (handles \n, \r\n
-// and bare \r line endings)
+// Read one line, handling \n, \r\n and bare \r endings.
 export const read_text_line = (
   text: string,
   offset: number,
@@ -67,8 +54,7 @@ export const read_text_line = (
   return { line, next }
 }
 
-// Cursor straight over the file text, so a CHGCAR's volumetric payload is never materialized
-// as a line array just to read its ~10-line header
+// Text cursor keeps a CHGCAR's volumetric payload out of a line array.
 export const text_cursor = (text: string, start = 0): VaspLineCursor => {
   let pos = start
   const offset_of = (lookahead: number): number => {
@@ -92,30 +78,20 @@ export const text_cursor = (text: string, start = 0): VaspLineCursor => {
 
 // === Header parsing ===
 
-// strict: only Direct/Cartesian/Kartesian are accepted (POSCAR)
-// lenient: anything that isn't `D...` is Cartesian (CHGCAR, whose mode line is often junk)
-// skip: there is no coordinate-mode line — treat as Direct and leave the cursor on it
-//   (XDATCAR, where `Direct configuration= N` doubles as the frame marker)
-type VaspCoordModePolicy = `strict` | `lenient` | `skip`
-
 export interface VaspHeaderOptions {
-  // Format name used in error messages
   format: string
-  coord_mode?: VaspCoordModePolicy
-  // Reject VASP 4 headers (counts but no symbols), non-element symbols and non-positive
-  // counts rather than falling back by index. XDATCAR needs real symbols for its metadata.
+  // lenient treats every non-Direct mode as Cartesian; skip leaves the mode line unconsumed.
+  coord_mode?: `strict` | `lenient` | `skip`
+  // XDATCAR needs real species metadata instead of VASP 4 fallbacks.
   strict_species?: boolean
-  // 0-based index of the comment line within the file, so messages can name the real file
-  // line (XDATCAR repeats the header before every frame of an NPT run)
+  // 0-based comment-line index for errors in repeated XDATCAR headers.
   line_offset?: number
 }
 
 interface VaspHeader {
-  // Per-axis Cartesian factors actually applied; a single or negative scale resolves to three
+  // Resolved per-axis Cartesian factors.
   scale: Vec3
-  // Lattice rows with `scale` already applied
   lattice: Matrix3x3
-  // One entry per element group, after fallback (or validation under strict_species)
   elements: ElementSymbol[]
   counts: number[]
   has_selective_dynamics: boolean
@@ -128,6 +104,11 @@ const fail = (error: string): VaspHeaderResult => ({ ok: false, error })
 
 const split_tokens = (line: string): string[] => line.trim().split(/\s+/)
 
+const require_line = (line: string | undefined, error: string): string => {
+  if (line === undefined) throw new Error(error)
+  return line
+}
+
 // Multiply a Cartesian vector by the header's per-axis scale factors
 export const apply_axis_scale = (vec: Vec3, scale: Vec3): Vec3 =>
   vec.map((value, axis) => value * scale[axis]) as Vec3
@@ -138,36 +119,38 @@ export function parse_vasp_header(
 ): VaspHeaderResult {
   const { format, coord_mode = `strict`, strict_species = false, line_offset = 0 } = options
   try {
-    if (cursor.peek() === undefined)
-      return fail(`${format}: file ends before the comment line`)
+    require_line(cursor.peek(), `${format}: file ends before the comment line`)
     cursor.advance() // the comment line carries no data
 
     // Scale line: one factor (negative means target volume) or three per-axis Cartesian
     // factors. Tokenized before normalizing because normalize_scientific_notation rewrites
     // every `d`, which is only safe on a token already known to be numeric.
-    const scale_line = cursor.peek()
-    if (scale_line === undefined) return fail(`${format}: file ends before the scale line`)
+    const scale_line = require_line(
+      cursor.peek(),
+      `${format}: file ends before the scale line`,
+    )
     cursor.advance()
     const scale_tokens = split_tokens(scale_line).map((token) =>
       parse_num_token(normalize_scientific_notation(token)),
     )
-    const bad_scale = () => fail(`Invalid scale factor in ${format}: '${scale_line.trim()}'`)
     // The leading numeric run may be followed by a comment. Accept one uniform/volume
     // factor or exactly three positive per-axis factors.
     const non_numeric = scale_tokens.findIndex((value) => !Number.isFinite(value))
     const factors = non_numeric === -1 ? scale_tokens : scale_tokens.slice(0, non_numeric)
     const per_axis_scale =
       factors.length === 3 && factors.every((value) => value > 0) ? (factors as Vec3) : null
-    if (factors.length !== 1 && !per_axis_scale) return bad_scale()
+    if (factors.length !== 1 && !per_axis_scale) {
+      return fail(`Invalid scale factor in ${format}: '${scale_line.trim()}'`)
+    }
     let uniform_scale = factors[0]
 
     // Lattice rows sit on file lines 3-5 of the header and are named by that line in errors
     const lattice_rows: string[] = []
     for (let row_idx = 0; row_idx < 3; row_idx++) {
-      const row = cursor.peek(row_idx)
-      if (row === undefined) {
-        return fail(`${format}: file ends before lattice vector ${row_idx + 1}`)
-      }
+      const row = require_line(
+        cursor.peek(row_idx),
+        `${format}: file ends before lattice vector ${row_idx + 1}`,
+      )
       lattice_rows.push(row)
     }
     cursor.advance(3)
@@ -189,10 +172,10 @@ export function parse_vasp_header(
     const scale: Vec3 = per_axis_scale ?? [uniform_scale, uniform_scale, uniform_scale]
     const lattice = raw_lattice.map((row) => apply_axis_scale(row, scale)) as Matrix3x3
 
-    const species_line = cursor.peek()
-    if (species_line === undefined) {
-      return fail(`${format}: file ends before the element/count lines`)
-    }
+    const species_line = require_line(
+      cursor.peek(),
+      `${format}: file ends before the element/count lines`,
+    )
 
     const raw_symbols: string[] = []
     let counts: number[] = []
@@ -231,11 +214,10 @@ export function parse_vasp_header(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
     } else if (strict_species) {
-      // `!== undefined`, not a truthiness check: a blank symbol line yields '' and used to
-      // slip through XDATCAR's falsy guard to become an atom with no element
+      // Keep the invalid value in the error, including an empty symbol.
       const invalid = raw_symbols.find((symbol) => !is_elem_symbol(symbol))
       if (invalid !== undefined) return fail(`Invalid element symbol in ${format}: ${invalid}`)
-      elements = raw_symbols.filter(is_elem_symbol)
+      elements = raw_symbols as ElementSymbol[]
     } else {
       elements = raw_symbols.map((symbol, idx) => validate_element_symbol(symbol, idx))
     }
@@ -261,17 +243,17 @@ export function parse_vasp_header(
     let has_selective_dynamics = false
     let is_direct = true
     if (coord_mode !== `skip`) {
-      let mode_line = cursor.peek()
-      if (mode_line === undefined) {
-        return fail(`${format}: file ends before the coordinate mode line`)
-      }
+      let mode_line = require_line(
+        cursor.peek(),
+        `${format}: file ends before the coordinate mode line`,
+      )
       has_selective_dynamics = /^selective\s+dynamics$/i.test(mode_line.trim())
       if (has_selective_dynamics) {
         cursor.advance()
-        mode_line = cursor.peek()
-        if (mode_line === undefined) {
-          return fail(`${format}: file ends after the selective dynamics line`)
-        }
+        mode_line = require_line(
+          cursor.peek(),
+          `${format}: file ends after the selective dynamics line`,
+        )
       }
       const mode = mode_line.trim().toUpperCase()
       is_direct = mode.startsWith(`D`)

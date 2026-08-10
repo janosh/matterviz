@@ -49,8 +49,6 @@ export default defineConfig({
     stub_vite_preload(),
     svelte({ compilerOptions: { runes: true } }),
   ] as PluginOption[],
-  // Worker bundles are a separate rolldown pass that does not inherit `plugins`, so the
-  // .json.gz loader must be registered again — structure-id's worker imports element data.
   worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
   build: {
     outDir: `lib`,

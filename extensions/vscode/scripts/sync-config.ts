@@ -32,8 +32,7 @@ const vscode_setting_type = (value: unknown) =>
 const case_variants = (stems: readonly string[]): string[] =>
   stems.flatMap((stem) => [stem.toUpperCase(), stem])
 
-// Structure stems can safely match any suffix. Decorated volumetric stems are upper-case
-// only because their trailing wildcard would otherwise claim names like write_chgcar.py.
+// Only volumetric stems support suffixes such as CHGCAR.BAND_1 and run_CHGCAR_001.
 const structure_glob = brace(
   case_variants(VASP_VIEWER_STEMS.filter((stem) => !VASP_VOLUMETRIC_FILES.includes(stem))),
 )
@@ -41,38 +40,31 @@ const volumetric_glob = brace(case_variants(VASP_VOLUMETRIC_FILES))
 const decorated_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCase()))
 
 const vasp_selectors = [
-  `*${structure_glob}`,
-  volumetric_glob,
-  `*[._-]${volumetric_glob}`,
+  ...with_gzip(`*${structure_glob}`),
+  ...with_gzip(volumetric_glob),
+  ...with_gzip(`*[._-]${volumetric_glob}`),
   `${decorated_glob}[._-]*`,
   `*[._-]${decorated_glob}[._-]*`,
 ]
 
-// Every extension MatterViz offers to open, plus the same set compressed. Both are derived
-// so adding a format to $lib/constants reaches the editor registration automatically.
 const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
   const ext_glob = `*.${brace([
     ...TEXT_VIEWER_EXTENSIONS,
     ...BINARY_VIEWER_EXTENSIONS,
     ...HINT_ONLY_EXTENSIONS,
   ])}`
-  return [
-    ...with_gzip(ext_glob),
-    ...KEYWORD_SELECTORS,
-    ...vasp_selectors.flatMap(with_gzip),
-  ].map((filenamePattern) => ({ filenamePattern }))
+  return [...with_gzip(ext_glob), ...KEYWORD_SELECTORS, ...vasp_selectors].map(
+    (filenamePattern) => ({ filenamePattern }),
+  )
 }
 
-// VSCode configuration generator that derives from your central settings schema
 function sync_package_config(): void {
   const package_path = resolve(import.meta.dirname, `..`, `package.json`)
   const package_text = readFileSync(package_path, `utf-8`)
   const package_content = JSON.parse(package_text)
 
-  // Auto-generate VSCode settings from SETTINGS_CONFIG
   const vscode_config: Record<string, unknown> = {}
 
-  // Helper to process settings schema
   function process_setting_schema(schema: SettingType, key_path: string): void {
     if (!schema || typeof schema !== `object`) return
     if (!(`value` in schema)) {
@@ -118,7 +110,6 @@ function sync_package_config(): void {
     ),
   )
 
-  // Update package.json with generated + preserved settings
   package_content.contributes ??= {}
   package_content.contributes.configuration ??= { title: `MatterViz`, properties: {} }
   package_content.contributes.configuration.properties = {

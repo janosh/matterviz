@@ -4,9 +4,9 @@ import {
   is_optimade_json,
   parse_optimade_json,
 } from '$lib/structure/parse'
+import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
-  // JSON structure files (OPTIMADE/pymatgen format) as JS objects
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
   .map(([path, data]) => {
@@ -33,7 +33,7 @@ export const structures = Object.entries(
       .localeCompare((struct_b.id?.split(`-`)[1] ?? ``).padStart(6, `0`)),
   )
 
-export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
+export const structure_map = new SvelteMap(structures.map((struct) => [struct.id, struct]))
 
 // dev yields strings; the Rolldown prod build yields the module namespace (text
 // under `.default`, JSON parsed) — unwrap and re-stringify objects back to text
@@ -44,7 +44,6 @@ export const glob_text = (value: unknown): string => {
   return raw == null ? `` : JSON.stringify(raw)
 }
 
-// all structure files as raw text
 const raw_structure_modules = import.meta.glob(`$site/structures/*`, {
   eager: true,
   query: `?raw`,

@@ -20,8 +20,6 @@ export default defineConfig(({ mode }) => ({
       : svelte(),
     mode === `test` ? mock_vscode() : null,
   ] as PluginOption[],
-  // Worker bundles are a separate rolldown pass that does not inherit `plugins`, so the
-  // .json.gz loader must be registered again — structure-id's worker imports element data.
   worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
   build: {
     outDir: `dist`,

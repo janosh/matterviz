@@ -697,9 +697,8 @@ if __name__ == "__main__":
         raise SystemExit(f"Unknown file(s): {', '.join(unknown)}. Known:\n  {known}")
 
     for filename in selected:
-        generator = generators[filename]
         print(f"Generating {filename} ...")
-        content = generator()
+        content = generators[filename]()
         with gzip.open(f"{output_dir}/{filename}", "wt") as file:
             file.write(content)
         print(f"  -> {len(content)} bytes uncompressed")

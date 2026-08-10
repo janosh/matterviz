@@ -20,6 +20,7 @@ _env_root = os.environ.get("MATTERVIZ_ROOT")
 MATTERVIZ_ROOT = (
     Path(_env_root) if _env_root else Path(__file__).parent.parent.parent.parent
 )
+_SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -63,7 +64,7 @@ def load_xye_file(file_path: Path) -> dict | None:
 
 def _load_site_data(subpath: str, name: str, ext: str = ".json.gz") -> Any:
     """Load JSON data from src/site/{subpath}/{name}{ext}."""
-    return load_json_file(MATTERVIZ_ROOT / "src" / "site" / subpath / f"{name}{ext}")
+    return load_json_file(_SITE_DIR / subpath / f"{name}{ext}")
 
 
 def load_phase_diagram(system: str) -> dict | None:
@@ -73,7 +74,7 @@ def load_phase_diagram(system: str) -> dict | None:
 
 def load_structure(name: str) -> dict | None:
     """Load a structure file (tries .json then .json.gz)."""
-    struct_dir = MATTERVIZ_ROOT / "src" / "site" / "structures"
+    struct_dir = _SITE_DIR / "structures"
     for ext in (".json", ".json.gz"):
         if (path := struct_dir / f"{name}{ext}").exists():
             return load_json_file(path)
@@ -96,9 +97,8 @@ def load_electronic_bands(name: str) -> dict | None:
 
 
 def load_xrd_pattern(name: str) -> dict | None:
-    """Load XRD pattern from the site data directory."""
-    xrd_dir = MATTERVIZ_ROOT / "src" / "site" / "xrd"
-    return load_xye_file(xrd_dir / f"{name}.xye")
+    """Load an XRD pattern from the site data directory."""
+    return load_xye_file(_SITE_DIR / "xrd" / f"{name}.xye")
 
 
 def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
@@ -119,9 +119,6 @@ def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
             names.append(name)
     return names
 
-
-# Dynamically discover available demo files from the site directory
-_SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
 
 # Fallback defaults for each data category (used when discovery finds nothing)
 _FALLBACK_STRUCTURE = "mp-1234"

@@ -313,34 +313,6 @@ export function color_bar_layout(opts: {
   }
 }
 
-// Escape zooms out one level, then exits fullscreen once at the root — but only
-// when the user is interacting with this chart (pointer over it, focus inside
-// it, or fullscreen)
-export function handle_hierarchy_escape(
-  evt: KeyboardEvent,
-  ctx: {
-    wrapper: HTMLElement | undefined
-    fullscreen: boolean
-    zoomed: boolean
-    zoom_out: () => void
-    exit_fullscreen: () => void
-  },
-): void {
-  if (evt.key !== `Escape`) return
-  const within =
-    ctx.fullscreen ||
-    (ctx.wrapper != null &&
-      (ctx.wrapper.matches(`:hover`) || ctx.wrapper.contains(document.activeElement)))
-  if (!within) return
-  if (ctx.zoomed) {
-    evt.preventDefault()
-    ctx.zoom_out()
-  } else if (ctx.fullscreen) {
-    evt.preventDefault()
-    ctx.exit_fullscreen()
-  }
-}
-
 // Structural subset shared by every hierarchy chart's pre-order node representation.
 type PreorderNode = Pick<PositionedArc, `node_idx` | `subtree_end` | `parent_idx` | `depth`>
 

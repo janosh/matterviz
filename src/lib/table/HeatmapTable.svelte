@@ -446,11 +446,8 @@
   })
 
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
-  const get_col_id = (col: Label) => {
-    const key = col.key ?? col.label
-    const group_suffix = col.group ? ` (${col.group})` : ``
-    return group_suffix && !key.endsWith(group_suffix) ? `${key}${group_suffix}` : key
-  }
+  const get_col_id = (col: Label) =>
+    col.group ? `${col.key ?? col.label} (${col.group})` : (col.key ?? col.label)
 
   // Group-qualified IDs distinguish duplicate labels; rows may use qualified or plain keys.
   let data_keys = $derived.by(() => {
@@ -1859,9 +1856,7 @@
     return { color, rest: remaining }
   }
 
-  // `hidden_columns` stays the source of truth (bindable, hosts persist it), so ToggleMenu
-  // edits a projection of it and reports back here. Set rather than toggle, so a reset
-  // replaying every column's default lands on the state ToggleMenu just rendered.
+  // Keep the bindable `hidden_columns` list authoritative while ToggleMenu edits a projection.
   function set_column_visible(col_id: string, visible: boolean) {
     const others = hidden_columns.filter((id) => id !== col_id)
     hidden_columns = visible ? others : [...others, col_id]
@@ -1871,9 +1866,7 @@
       ...col,
       key: get_col_id(col),
       default_visible: col.visible !== false,
-      // a column the caller declared invisible is theirs, not the menu's, to control:
-      // `hidden_columns` cannot override it, so offer it read-only rather than as a
-      // checkbox that springs back
+      // Caller-hidden columns cannot be shown through `hidden_columns`.
       disabled: col.disabled || col.visible === false,
       visible: col.visible !== false && !hidden_columns.includes(get_col_id(col)),
     })),
@@ -2135,7 +2128,7 @@
           () => open_dropdown === `columns`,
           (open) => (open_dropdown = open ? `columns` : null)
         }
-        on_toggle={(col, visible) => set_column_visible(get_col_id(col), visible)}
+        on_toggle={(col, visible) => set_column_visible(col.key ?? col.label, visible)}
       >
         {#snippet trigger({ open })}
           <span

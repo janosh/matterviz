@@ -808,11 +808,7 @@ export function scale_to_font_range(
   )
 }
 
-// Plotly/pymatgen draws these diagrams Z-up with data axis 0 projecting left, while Three.js is
-// Y-up with X projecting right. Reproduce pymatgen's layout by mapping data[0]→Z, data[1]→X and
-// data[2]→Y, stretching each rendered axis by `scale` (see the render_axis_scale that inflates
-// short axes so anisotropic systems still fill the viewport). Shared by ChemPotDiagram3D, which
-// places the domain geometry, and ChemPotScene3D, which places the axis frame around it.
+// Map Plotly/pymatgen's Z-up data axes to Three.js's Y-up render axes.
 export const swizzle_to_render =
   (scale: Vec3) =>
   (d0: number, d1: number, d2: number): Vec3 => [d1 * scale[0], d2 * scale[1], d0 * scale[2]]

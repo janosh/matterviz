@@ -230,7 +230,7 @@
     facet_layout: () => facet_layout,
     // Categorical axes show one tick per category instead of generated numeric ticks
     tick_override: (axis) =>
-      category_indices && axis === cat_axis ? cat_tick_indices : undefined,
+      cat_tick_indices.length > 0 && axis === cat_axis ? cat_tick_indices : undefined,
     measured_axes: () => ({
       [cat_axis]: { ...plot_axes[cat_axis], ticks: effective_cat_ticks },
     }),
@@ -316,13 +316,9 @@
     ),
   )
 
-  let category_indices = $derived(
-    category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
-  )
-
   // Keep every category available to the shared adaptive resolver. Its measured, bounded
   // thinning candidate replaces the former fixed 28px/category heuristic.
-  let cat_tick_indices = $derived(category_indices ?? [])
+  let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
   // Compute auto ranges from visible series
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
@@ -535,7 +531,7 @@
     visible_series
       .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
       .flatMap((srs: BarSeries<Metadata>) =>
-        [...(srs.size_values ?? [])].filter((val): val is number => typeof val === `number`),
+        (srs.size_values ?? []).filter((val): val is number => typeof val === `number`),
       ),
   )
 
@@ -565,24 +561,26 @@
       const has_line = series_markers === `line` || series_markers === `line+points`
       const has_points = series_markers === `points` || series_markers === `line+points`
       const series_color = srs.color ?? (is_line ? line_state.color : bar_state.color)
-
-      // Get point style for symbol color (handle array or single object)
-      const first_point_style = Array.isArray(srs.point_style)
-        ? srs.point_style[0]
-        : srs.point_style
-      const first_color_value = srs.color_values?.[0]
-      const point_color =
-        first_color_value != null
-          ? color_scale_fn(first_color_value)
-          : (first_point_style?.fill ?? series_color)
+      const legend_item = {
+        series_idx: idx,
+        label: srs.label ?? `Series ${idx + 1}`,
+        visible: srs.visible ?? true,
+        legend_group: srs.legend_group,
+      }
 
       if (is_line) {
+        // Get point style for symbol color (handle array or single object)
+        const first_point_style = Array.isArray(srs.point_style)
+          ? srs.point_style[0]
+          : srs.point_style
+        const first_color_value = srs.color_values?.[0]
+        const point_color =
+          first_color_value != null
+            ? color_scale_fn(first_color_value)
+            : (first_point_style?.fill ?? series_color)
         // Line series: show line and/or symbol based on markers
         return {
-          series_idx: idx,
-          label: srs.label ?? `Series ${idx + 1}`,
-          visible: srs.visible ?? true,
-          legend_group: srs.legend_group,
+          ...legend_item,
           display_style: {
             ...(has_line
               ? {
@@ -601,10 +599,7 @@
       }
       // Bar series: show square symbol
       return {
-        series_idx: idx,
-        label: srs.label ?? `Series ${idx + 1}`,
-        visible: srs.visible ?? true,
-        legend_group: srs.legend_group,
+        ...legend_item,
         display_style: {
           symbol_type: `Square` as const,
           symbol_color: series_color,
@@ -635,7 +630,7 @@
     const active_y_axis = srs.y_axis ?? `y1`
     const active_x_axis = srs.x_axis ?? `x1`
     const category_label = category_list[x]
-    const coords = {
+    return {
       x,
       y,
       orient_x,
@@ -644,9 +639,6 @@
       x2_axis,
       y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
       y2_axis,
-    }
-    return {
-      ...coords,
       metadata,
       color,
       label,
@@ -855,10 +847,8 @@
               {@const color = srs.color ?? line_state.color ?? `steelblue`}
               {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width ?? 2}
               {@const line_dash = srs.line_style?.line_dash ?? `none`}
-              {@const use_y2 = srs.y_axis === `y2`}
-              {@const y_scale = use_y2 ? frame.scales.y2 : frame.scales.y}
-              {@const use_x2 = srs.x_axis === `x2`}
-              {@const x_scale = use_x2 ? frame.scales.x2 : frame.scales.x}
+              {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
+              {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
               {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
               {@const show_line =
                 series_markers === `line` || series_markers === `line+points`}

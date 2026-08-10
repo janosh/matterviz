@@ -310,23 +310,17 @@
     ),
   )
 
-  let slot_lookup = $derived(new Map(slot_list.map((slot, idx) => [slot, idx])))
+  let slot_lookup = $derived(new SvelteMap(slot_list.map((slot, idx) => [slot, idx])))
   const slot_of = (idx: number): number =>
     use_categories ? (slot_lookup.get(slot_key(series[idx], idx)) ?? idx) : idx
   let slot_indices = $derived(slot_list.map((_, idx) => idx))
   // A slot's tick label is colored only when a single series occupies it. Precompute
   // slot -> color in one pass so the PlotAxis tick_color callback stays O(1) per tick.
   let slot_colors = $derived.by(() => {
-    const by_slot = new SvelteMap<number, number[]>()
-    series.forEach((_srs, idx) => {
-      const slot = slot_of(idx)
-      const idxs = by_slot.get(slot)
-      if (idxs) idxs.push(idx)
-      else by_slot.set(slot, [idx])
-    })
     const colors = new SvelteMap<number, string | undefined>()
-    for (const [slot, idxs] of by_slot) {
-      colors.set(slot, idxs.length === 1 ? box_color(idxs[0]) : undefined)
+    for (const [idx] of series.entries()) {
+      const slot = slot_of(idx)
+      colors.set(slot, colors.has(slot) ? undefined : box_color(idx))
     }
     return colors
   })
@@ -343,9 +337,10 @@
       .filter((box_item) => box_item.series.visible ?? true),
   )
 
+  type ViolinKde = KdeResult & { max_density: number }
   // KDE per visible violin series, keyed by series index (bandwidth from the full sample)
   let violin_kdes = $derived.by(() => {
-    const map = new SvelteMap<number, KdeResult>()
+    const map = new SvelteMap<number, ViolinKde>()
     const [val_axis, val_axis2] =
       orientation === `vertical` ? [y_axis, y2_axis] : [x_axis, x2_axis]
     for (const box_item of visible_boxes) {
@@ -365,16 +360,18 @@
           clip = [Math.max(clip?.[0] ?? -Infinity, min_pos), clip?.[1] ?? null]
         }
       }
-      map.set(
-        box_item.idx,
-        gaussian_kde(samples, {
-          bandwidth: box_item.series.bandwidth ?? bandwidth,
-          n_points: kde_points,
-          cut: kde_cut,
-          clip,
-          max_samples: kde_max_samples,
-        }),
-      )
+      const kde = gaussian_kde(samples, {
+        bandwidth: box_item.series.bandwidth ?? bandwidth,
+        n_points: kde_points,
+        cut: kde_cut,
+        clip,
+        max_samples: kde_max_samples,
+      })
+      let max_density = 0
+      for (const density of kde.density) {
+        if (density > max_density) max_density = density
+      }
+      map.set(box_item.idx, { ...kde, max_density })
     }
     return map
   })
@@ -387,18 +384,6 @@
       : eff_side === `positive`
         ? `negative`
         : `positive`
-
-  // Peak density per violin, computed once on data change (avoids spreading kde.density into
-  // Math.max — unsafe for large kde_points — and re-deriving it on every render/hover).
-  let violin_max_density = $derived.by(() => {
-    const map = new SvelteMap<number, number>()
-    for (const [idx, kde] of violin_kdes) {
-      let max = 0
-      for (const den of kde.density) if (den > max) max = den
-      map.set(idx, max)
-    }
-    return map
-  })
 
   // Which boxes live on the secondary value axis (y2 for vertical, x2 for horizontal)
   const is_secondary = (srs: BoxPlotSeries<Metadata>): boolean =>
@@ -793,7 +778,6 @@
             cat_scale(box_item.slot + (box_item.series.violin_width ?? violin_width) / 2) -
               c_center,
           )}
-          {@const max_density = kde ? (violin_max_density.get(box_item.idx) ?? 0) : 0}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <g
             class="box-series"
@@ -817,9 +801,11 @@
             }}
           >
             <!-- violin (KDE density) -->
-            {#if kde && max_density > 0}
+            {#if kde && kde.max_density > 0}
               {@const grid_px = kde.grid.map((g_val) => val_scale(g_val))}
-              {@const offsets = kde.density.map((den) => (den / max_density) * violin_half)}
+              {@const offsets = kde.density.map(
+                (density) => (density / kde.max_density) * violin_half,
+              )}
               {@const screen_side = to_screen_side(eff_side, vertical)}
               <path
                 class="violin-area"

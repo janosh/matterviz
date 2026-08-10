@@ -2,22 +2,15 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
-  import { DEG_TO_RAD, type Vec2 } from '$lib/math'
+  import { DEG_TO_RAD } from '$lib/math'
   import type {
     BasePlotProps,
-    LegendConfig,
     SunburstGroupGap,
     SunburstLabelRotation,
-    SunburstLabelText,
-    SunburstNode,
-    SunburstNodeHandlerProps,
     SunburstShape,
-    SunburstSort,
-    SunburstValueMode,
   } from '$lib/plot'
-  import { ColorBar, SunburstControls } from '$lib/plot'
+  import { SunburstControls } from '$lib/plot'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
@@ -35,7 +28,7 @@
   import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'
-  import { type ComponentProps, type Snippet, untrack } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
@@ -128,7 +121,6 @@
   const chart_state: HierarchyChartState<Metadata> = new HierarchyChartState<Metadata>({
     chart: `sunburst`,
     uid,
-    zoom_mode: `branches`, // leaves are terminal here (unlike the treemap)
     default_padding: DEFAULT_PADDING,
     // the center circle/label run their own zoom-out click action, so a fast
     // double-click on them must not compound a full reset on top of it
@@ -177,11 +169,10 @@
     // mid-animation. Polar mode hands focus to the center zoom-out button.
     focus_after_zoom: () => {
       if (shape === `sunburst`) center_el?.focus()
-      else {
+      else
         chart_state.focus_node(
           chart_state.zoom_root ? chart_state.zoom_root.node_idx + 1 : roving_idx,
         )
-      }
     },
   })
 
@@ -352,35 +343,33 @@
     {children}
   >
     {#snippet controls()}
-      {#if show_controls}
-        <SunburstControls
-          chart="sunburst"
-          toggle_props={{
-            ...controls_toggle_props,
-            // join the header flex row instead of absolute positioning (overrides
-            // ControlPane's default; flex layout can't overlap with the other buttons)
-            style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-          }}
-          pane_props={controls_pane_props}
-          bind:show_controls
-          bind:controls_open
-          bind:shape
-          bind:value_mode
-          bind:max_depth
-          bind:inner_radius
-          bind:pad_angle
-          bind:min_fraction
-          bind:show_labels
-          bind:label_rotation
-          bind:label_text
-          bind:zoom_on_click
-          bind:show_breadcrumbs
-          {export_buttons}
-          on_export={chart_state.export_chart}
-        >
-          {@render controls_extra?.({ zoom_root_id })}
-        </SunburstControls>
-      {/if}
+      <SunburstControls
+        chart="sunburst"
+        toggle_props={{
+          ...controls_toggle_props,
+          // join the header flex row instead of absolute positioning (overrides
+          // ControlPane's default; flex layout can't overlap with the other buttons)
+          style: `position: static; ${controls_toggle_props?.style ?? ``}`,
+        }}
+        pane_props={controls_pane_props}
+        bind:show_controls
+        bind:controls_open
+        bind:shape
+        bind:value_mode
+        bind:max_depth
+        bind:inner_radius
+        bind:pad_angle
+        bind:min_fraction
+        bind:show_labels
+        bind:label_rotation
+        bind:label_text
+        bind:zoom_on_click
+        bind:show_breadcrumbs
+        {export_buttons}
+        on_export={chart_state.export_chart}
+      >
+        {@render controls_extra?.({ zoom_root_id })}
+      </SunburstControls>
     {/snippet}
 
     {#snippet body()}

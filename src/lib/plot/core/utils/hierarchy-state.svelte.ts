@@ -20,7 +20,6 @@ import {
   compute_metric_colors,
   compute_node_dim,
   compute_node_infos,
-  handle_hierarchy_escape,
   hierarchy_legend_items,
   is_activation_key,
   node_handler_props,
@@ -53,17 +52,9 @@ import { SvelteSet } from 'svelte/reactivity'
 type Point = { x: number; y: number }
 type NodeProps<Metadata extends Record<string, unknown>> = SunburstNodeHandlerProps<Metadata>
 
-// The half of the two charts' published prop surface that is identical. Their
-// geometry options (sunburst shape/radius/rotation, treemap paddings and label
-// fitting), zoom `tween` types and content snippets stay on the components.
-// `Node`/`Handler` are parameters so each chart keeps publishing its own type
-// aliases, and defaults/doc notes stay next to each component's destructuring.
-export interface HierarchyChartProps<
-  Metadata extends Record<string, unknown>,
-  Node = SunburstNode<Metadata>,
-  Handler = SunburstNodeHandlerProps<Metadata>,
-> {
-  data?: Node | Node[]
+// Shared public props; geometry options and content snippets stay on each component.
+export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
+  data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
   value_mode?: SunburstValueMode
   sort?: SunburstSort
   level_lighten?: number
@@ -90,11 +81,13 @@ export interface HierarchyChartProps<
   padding?: Sides
   legend?: LegendConfig | null
   show_legend?: boolean
-  tooltip?: Snippet<[Handler]>
-  change?: (data: Handler | null) => void
-  on_node_click?: (data: Handler & { event: MouseEvent | KeyboardEvent }) => void
-  on_node_hover?: (data: (Handler & { event: MouseEvent | FocusEvent }) | null) => void
-  on_zoom?: (data: { root: Handler | null }) => void
+  tooltip?: Snippet<[NodeProps<Metadata>]>
+  change?: (data: NodeProps<Metadata> | null) => void
+  on_node_click?: (data: NodeProps<Metadata> & { event: MouseEvent | KeyboardEvent }) => void
+  on_node_hover?: (
+    data: (NodeProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+  ) => void
+  on_zoom?: (data: { root: NodeProps<Metadata> | null }) => void
   header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
   controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
 }
@@ -103,13 +96,9 @@ export interface HierarchyChartProps<
 // forward one of its `$props()` per line and each derived below only tracks what
 // it actually reads.
 export interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
-  // Picks the `data-<chart>-node-idx` attribute, the CSS variable namespace and
-  // the group the roving-focus query looks in
+  // Picks the `data-<chart>-node-idx` attribute and CSS variable namespace.
   readonly chart: `sunburst` | `treemap`
   readonly uid: string
-  // Sunburst only zooms branches (leaves are terminal); treemap zooms any node
-  // and treats a click on the current zoom root as zoom-out (plotly semantics)
-  readonly zoom_mode: `branches` | `any`
   readonly default_padding: Required<Sides>
   // Elements whose double-click must not reset the zoom because they run their
   // own click action, as a selector passed to Element.closest
@@ -162,7 +151,6 @@ export class HierarchyChartState<
 > {
   readonly #opts: HierarchyChartOptions<Metadata>
   readonly #contrast = make_cached_contrast()
-  readonly #focus_group: string
   // Memoized canvas text measurement, shared with the chart's own label fitting
   readonly text_width = make_cached_text_width()
   readonly node_attr: string
@@ -185,7 +173,6 @@ export class HierarchyChartState<
     this.#opts = opts
     this.node_attr = `data-${opts.chart}-node-idx`
     this.hatch_pattern_id = `${opts.chart}-hatch-${opts.uid}`
-    this.#focus_group = opts.chart === `sunburst` ? `.arcs` : `.cells`
   }
 
   // `$derived.by` throughout: `#opts` is only assigned in the constructor, so a
@@ -300,34 +287,32 @@ export class HierarchyChartState<
     node_handler_props(this.arcs, arc, this.color_for(arc))
 
   set_hover(idx: number | null, event?: MouseEvent | FocusEvent): void {
-    // Same node as before: only the cursor anchor moves - skip rebuilding the
-    // handler payload and re-firing change/on_node_hover on every mousemove
-    // within a node. Requires hover_info: legend item hover sets hovered_idx
-    // alone (for dimming), and skipping then would leave the node's own tooltip
-    // permanently suppressed.
-    if (idx != null && idx === this.hovered_idx && this.hover_info) {
-      this.hover_pos = pointer_pos(event, this.svg_element) ?? this.hover_pos
-      return
-    }
-    if (idx != null) {
-      this.#opts.set_hovered(true)
-      this.hovered_idx = idx
-      this.hover_info = this.#node_props(this.arcs[idx])
-      this.hover_pos =
-        pointer_pos(event, this.svg_element) ?? this.#opts.node_center(idx) ?? this.hover_pos
-      this.#opts.change(this.hover_info)
-      if (event) this.#opts.on_node_hover({ ...this.hover_info, event })
-    } else {
-      // Already clear: don't re-fire change(null)/on_node_hover(null) - both the
-      // svg and the chart group have mouseleave handlers, and zoom_to clears
-      // unconditionally
+    if (idx == null) {
+      // Both the svg and chart group report mouseleave; clear callbacks only once.
       if (this.hovered_idx == null && this.hover_info == null) return
       this.#opts.set_hovered(false)
       this.hovered_idx = null
       this.hover_info = null
       this.#opts.change(null)
       this.#opts.on_node_hover(null)
+      return
     }
+    // Same node as before: only the cursor anchor moves - skip rebuilding the
+    // handler payload and re-firing change/on_node_hover on every mousemove
+    // within a node. Requires hover_info: legend item hover sets hovered_idx
+    // alone (for dimming), and skipping then would leave the node's own tooltip
+    // permanently suppressed.
+    if (idx === this.hovered_idx && this.hover_info) {
+      this.hover_pos = pointer_pos(event, this.svg_element) ?? this.hover_pos
+      return
+    }
+    this.#opts.set_hovered(true)
+    this.hovered_idx = idx
+    this.hover_info = this.#node_props(this.arcs[idx])
+    this.hover_pos =
+      pointer_pos(event, this.svg_element) ?? this.#opts.node_center(idx) ?? this.hover_pos
+    this.#opts.change(this.hover_info)
+    if (event) this.#opts.on_node_hover({ ...this.hover_info, event })
   }
 
   clear_hover = (): void => this.set_hover(null)
@@ -368,7 +353,7 @@ export class HierarchyChartState<
     const arc = this.arcs[idx]
     this.#opts.on_node_click({ ...this.#node_props(arc), event })
     if (!this.#opts.zoom_on_click()) return
-    if (this.#opts.zoom_mode === `branches`) {
+    if (this.chart === `sunburst`) {
       if (!arc.is_leaf && arc.id !== this.zoom_root?.id) this.zoom_to(arc)
     } else if (arc.id === this.zoom_root?.id) this.zoom_out()
     else this.zoom_to(arc)
@@ -387,7 +372,7 @@ export class HierarchyChartState<
   focus_node = (idx: number | null): void => {
     if (idx == null) return
     this.svg_element
-      ?.querySelector<SVGGraphicsElement>(`${this.#focus_group} [${this.node_attr}="${idx}"]`)
+      ?.querySelector<SVGGraphicsElement>(`[${this.node_attr}="${idx}"]`)
       ?.focus()
   }
 
@@ -396,35 +381,41 @@ export class HierarchyChartState<
   // lives in hierarchy-chart.ts (arrow_nav_target); this supplies the event's
   // node and the chart's current screen-space visibility.
   handle_keydown = (event: KeyboardEvent): void => {
-    const cur_idx = this.#node_idx_from_event(event)
-    const nav_target =
-      cur_idx == null
+    const current_idx = this.#node_idx_from_event(event)
+    const navigation_target =
+      current_idx == null
         ? null
-        : arrow_nav_target(this.arcs, this.#opts.visible, cur_idx, event.key)
-    if (nav_target != null) {
+        : arrow_nav_target(this.arcs, this.#opts.visible, current_idx, event.key)
+    if (navigation_target != null) {
       event.preventDefault()
-      this.focus_node(nav_target)
+      this.focus_node(navigation_target)
       return
     }
     if (!is_activation_key(event)) return
     event.preventDefault()
-    const prev_root = this.#opts.zoom_root_id()
+    const previous_root = this.#opts.zoom_root_id()
     this.handle_click(event)
     // Zooming via keyboard unmounts the focused node - hand focus to whatever
     // the chart nominates so keyboard users stay inside it
-    if (this.#opts.zoom_root_id() !== prev_root) {
+    if (this.#opts.zoom_root_id() !== previous_root) {
       void tick().then(() => this.#opts.focus_after_zoom())
     }
   }
 
-  handle_escape = (event: KeyboardEvent): void =>
-    handle_hierarchy_escape(event, {
-      wrapper: this.wrapper,
-      fullscreen: this.fullscreen,
-      zoomed: this.zoomed,
-      zoom_out: () => this.zoom_out(),
-      exit_fullscreen: () => this.#opts.set_fullscreen(false),
-    })
+  // Escape zooms out one level, then exits fullscreen at the root, but only
+  // while the user is interacting with this chart.
+  handle_escape = (event: KeyboardEvent): void => {
+    if (event.key !== `Escape`) return
+    const within =
+      this.fullscreen ||
+      (this.wrapper != null &&
+        (this.wrapper.matches(`:hover`) || this.wrapper.contains(document.activeElement)))
+    if (!within) return
+    if (this.zoomed) this.zoom_out()
+    else if (this.fullscreen) this.fullscreen = false
+    else return
+    event.preventDefault()
+  }
 
   // Data changed: drop muted ids that no longer exist and clear the index-based
   // hover/focus state, which would otherwise leave a stale tooltip and highlight

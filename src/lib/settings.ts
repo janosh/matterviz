@@ -26,7 +26,7 @@ import type {
   TrajectoryLineColorMode,
   TrajectoryLineWrapMode,
 } from '$lib/structure/trajectory-lines'
-import { merge_nested } from './utils'
+import { is_plain_object, merge_nested } from './utils'
 
 // SettingType interface with optional context to control where settings apply
 // context: 'web' = web browser only, 'editor' = VSCode extension only, 'notebook' = Jupyter/marimo only, 'all' or undefined = all contexts
@@ -70,6 +70,12 @@ const camera_projection_setting = (
   value,
   description,
   enum: { perspective: `Perspective`, orthographic: `Orthographic` },
+})
+const opacity_setting = (value: number, description: string): SettingType<number> => ({
+  value,
+  description,
+  minimum: 0,
+  maximum: 1,
 })
 const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   value: true,
@@ -644,14 +650,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     value: `#000000`,
     description: `Background color of the 3D viewport`,
   },
-  background_opacity: {
-    // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
-    // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
-    value: 0.1,
-    description: `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
-    minimum: 0,
-    maximum: 1,
-  },
+  // 0.1 is what Structure rendered for years via its own prop default; the schema said 0,
+  // so embedded viewers (which spread DEFAULTS) got a transparent background instead.
+  background_opacity: opacity_setting(
+    0.1,
+    `Opacity of the background (0.0 = transparent, 1.0 = opaque)`,
+  ),
 
   // Symmetry Analysis
   symmetry: {
@@ -1047,12 +1051,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 5,
     },
     surface_color: { value: `#4488ff`, description: `Brillouin zone face color` },
-    surface_opacity: {
-      value: 0.3,
-      description: `Opacity of Brillouin zone faces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    surface_opacity: opacity_setting(0.3, `Opacity of Brillouin zone faces`),
     edge_color: { value: `#000000`, description: `Brillouin zone edge color` },
     edge_width: {
       value: 0.002,
@@ -1074,12 +1073,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     // Irreducible BZ
     show_ibz: { value: false, description: `Display the irreducible Brillouin zone` },
     ibz_color: { value: `#ff8844`, description: `Irreducible Brillouin zone face color` },
-    ibz_opacity: {
-      value: 0.5,
-      description: `Opacity of irreducible Brillouin zone faces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    ibz_opacity: opacity_setting(0.5, `Opacity of irreducible Brillouin zone faces`),
     fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
@@ -1103,19 +1097,9 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `How to render the Fermi surface`,
       enum: { solid: `Solid`, wireframe: `Wireframe`, transparent: `Transparent` },
     },
-    surface_opacity: {
-      value: 0.8,
-      description: `Opacity of the Fermi surface`,
-      minimum: 0,
-      maximum: 1,
-    },
+    surface_opacity: opacity_setting(0.8, `Opacity of the Fermi surface`),
     show_bz: { value: true, description: `Display the Brillouin zone around the surface` },
-    bz_opacity: {
-      value: 0.1,
-      description: `Opacity of the Brillouin zone faces`,
-      minimum: 0,
-      maximum: 1,
-    },
+    bz_opacity: opacity_setting(0.1, `Opacity of the Brillouin zone faces`),
     show_vectors: { value: true, description: `Display reciprocal lattice vectors` },
     tile_bz: {
       value: false,
@@ -1695,40 +1679,24 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   },
 }
 
-// Extract the value types for runtime use (up to 3 nested levels)
-export type DefaultSettings = {
-  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T>
-    ? T
-    : SettingsConfig[K] extends Record<string, unknown>
-      ? {
-          [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends SettingType<infer T>
-            ? T
-            : SettingsConfig[K][NK] extends Record<string, unknown>
-              ? {
-                  [NNK in keyof SettingsConfig[K][NK]]: SettingsConfig[K][NK][NNK] extends SettingType<
-                    infer T
-                  >
-                    ? T
-                    : never
-                }
-              : never
-        }
+// Recursively extract each setting's runtime value type from the schema.
+type SettingsValues<Config> = {
+  [Key in keyof Config]: Config[Key] extends SettingType<infer Value>
+    ? Value
+    : Config[Key] extends object
+      ? SettingsValues<Config[Key]>
       : never
 }
+export type DefaultSettings = SettingsValues<SettingsConfig>
 
 // Extract values from settings config for runtime use
-const extract_values = (
-  config: SettingsConfig | SettingType | Record<string, unknown>,
-): DefaultSettings => {
+const extract_values = <Config extends object>(config: Config): SettingsValues<Config> => {
   const result = {} as Record<string, unknown>
   for (const [key, value] of Object.entries(config)) {
-    if (value && typeof value === `object` && `value` in value) {
-      result[key] = (value as SettingType).value
-    } else if (value && typeof value === `object`) {
-      result[key] = extract_values(value as Record<string, unknown>)
-    }
+    if (!value || typeof value !== `object`) continue
+    result[key] = `value` in value ? value.value : extract_values(value)
   }
-  return result as DefaultSettings
+  return result as SettingsValues<Config>
 }
 
 // Runtime defaults - extracted values for use in components
@@ -1742,26 +1710,19 @@ export type PartialSettings = {
     : DefaultSettings[Key]
 }
 
-// Helper to merge with defaults - handles nested structure
-export const merge = (user?: PartialSettings): DefaultSettings => ({
-  ...DEFAULTS,
-  ...user,
-  symmetry: merge_nested(DEFAULTS.symmetry, user?.symmetry),
-  structure: merge_nested(DEFAULTS.structure, user?.structure),
-  brillouin: merge_nested(DEFAULTS.brillouin, user?.brillouin),
-  fermi: merge_nested(DEFAULTS.fermi, user?.fermi),
-  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
-  composition: merge_nested(DEFAULTS.composition, user?.composition),
-  plot: merge_nested(DEFAULTS.plot, user?.plot),
-  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
-  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
-  bar: merge_nested(DEFAULTS.bar, user?.bar),
-  box: merge_nested(DEFAULTS.box, user?.box),
-  sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
-  sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
-  treemap: merge_nested(DEFAULTS.treemap, user?.treemap),
-  convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
-})
+// Merge all top-level setting groups to the schema's full nesting depth.
+export const merge = (user: PartialSettings = {}): DefaultSettings => {
+  const merged = { ...DEFAULTS, ...user } as DefaultSettings
+  for (const key of Object.keys(DEFAULTS) as (keyof DefaultSettings)[]) {
+    const defaults = DEFAULTS[key]
+    if (!is_plain_object(defaults)) continue
+    const overrides = user[key]
+    Object.assign(merged, {
+      [key]: merge_nested(defaults, is_plain_object(overrides) ? overrides : undefined),
+    })
+  }
+  return merged
+}
 
 // Group the structure defaults into the prop bundles <Structure> expects. Used by embedders
 // (file viewer, VS Code webview) that build a viewer from settings alone.

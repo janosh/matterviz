@@ -449,6 +449,12 @@
     view_layout_menu_open = false
   }
 
+  const handle_url_load_error = (error: unknown, filename: string): void => {
+    console.error(`Failed to load structure from URL:`, error)
+    error_msg = `Failed to load structure: ${to_error(error).message}`
+    on_error?.({ error_msg, filename })
+  }
+
   // Load structure from URL when data_url is provided
   const data_url_loader = io.create_data_url_loader<AnyStructure>()
 
@@ -457,32 +463,27 @@
       url: data_url,
       // Host on_file_drop owns the structure; don't treat it as caller-owned cancel.
       current_value: on_file_drop ? undefined : structure,
-      set_loading: (value) => {
-        loading = value
-      },
-      clear_error: () => {
-        error_msg = undefined
-      },
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = undefined),
       on_load: async ({ content, filename, metadata, mark_owned }) => {
         if (on_file_drop) {
-          await on_file_drop(content, filename, metadata)
-          mark_owned()
-        } else {
-          // Parse structure internally when no handler provided
           try {
-            parse_and_emit_file(content, filename, metadata)
-            mark_owned(structure)
+            await on_file_drop(content, filename, metadata)
+            mark_owned()
           } catch (error) {
-            error_msg = `Failed to parse structure: ${to_error(error).message}`
-            on_error?.({ error_msg, filename })
+            handle_url_load_error(error, filename)
           }
+          return
+        }
+        try {
+          parse_and_emit_file(content, filename, metadata)
+          mark_owned(structure)
+        } catch (error) {
+          error_msg = `Failed to parse structure: ${to_error(error).message}`
+          on_error?.({ error_msg, filename })
         }
       },
-      on_error: (error, filename) => {
-        console.error(`Failed to load structure from URL:`, error)
-        error_msg = `Failed to load structure: ${error.message}`
-        on_error?.({ error_msg, filename })
-      },
+      on_error: handle_url_load_error,
     }),
   )
 

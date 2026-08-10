@@ -17,13 +17,11 @@ import type { FileInfo, FileLoadCallback } from './types'
 // Trailing-slash URLs yield an empty segment — fall back to the original URL.
 export const basename_from_url = (url: string): string => {
   const basename = url.split(/[?#]/)[0].split(`/`).pop()
-  if (!basename) return url
-  return basename
+  return basename || url
 }
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
-function extract_filename(headers: Headers | undefined, fallback: string): string {
-  if (!headers) return fallback
+function extract_filename(headers: Headers, fallback: string): string {
   const content_disposition_str = headers.get(`content-disposition`)
   if (!content_disposition_str) return fallback
   const star_match = /filename\*=(?<value>[^;]+)/i.exec(content_disposition_str)
@@ -108,7 +106,7 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
     // sends the identical header. The magic bytes tell the two apart; the header cannot.
     if (ext === `gz` || ext === `gzip`) {
       const buffer = await resp.arrayBuffer()
-      if (has_gzip_magic(new Uint8Array(buffer.slice(0, 2)))) {
+      if (has_gzip_magic(magic_head(buffer, 2))) {
         const [content, filename] = await decompress_gz_payload(buffer, source_filename)
         return emit_loaded(content, filename, source_filename)
       }
@@ -163,8 +161,7 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
       if (head.ok) {
         const buf = new Uint8Array(await head.arrayBuffer())
         // gzip is gunzipped downstream; other binary magic (HDF5, ZIP, ASE Ulm) stays raw
-        if (has_gzip_magic(buf)) sniffed = `gzip`
-        else if (has_binary_magic(buf)) sniffed = `binary`
+        sniffed = has_gzip_magic(buf) ? `gzip` : has_binary_magic(buf) ? `binary` : null
       }
     } catch {
       // Fall through to text fetch if the Range HEAD request fails

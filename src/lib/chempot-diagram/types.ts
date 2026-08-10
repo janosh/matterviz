@@ -1,8 +1,6 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { PhaseData } from '$lib/convex-hull/types'
-import type { FormulaLabelSegment } from '$lib/composition/format'
-import type { Point2D, Vec2, Vec3 } from '$lib/math'
-import type { BufferGeometry } from 'three/webgpu'
+import type { Point2D, Vec2 } from '$lib/math'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen
@@ -101,31 +99,6 @@ export interface ChemPotHoverInfo3D extends ChemPotHoverInfoBase {
 }
 
 export type ChemPotHoverInfo = ChemPotHoverInfo2D | ChemPotHoverInfo3D
-
-// One stability domain ready to render: its (optionally padded) vertices in data coordinates,
-// the interior point its label sits at, and the label size its bounding box earned.
-export interface ChemPotDomainRender {
-  formula: string
-  points_3d: number[][]
-  ann_loc: number[]
-  is_draw_formula: boolean
-  label_font_size: number
-}
-
-// Invisible per-domain pick mesh: hovering or clicking it raises `info` as the tooltip payload.
-export interface ChemPotHoverMesh {
-  formula: string
-  geometry: BufferGeometry
-  info: ChemPotHoverInfo3D
-}
-
-// A domain label resolved to render coordinates and pre-formatted formula segments.
-export interface ChemPotDomainLabel {
-  formula: string
-  position: Vec3
-  label_font_size: number
-  segments: FormulaLabelSegment[]
-}
 
 // Default configuration values
 export const CHEMPOT_DEFAULTS = {

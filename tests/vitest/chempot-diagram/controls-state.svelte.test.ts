@@ -76,17 +76,17 @@ test.each([
   expect(options.map(([value]) => value)).toEqual([...values])
 })
 
-describe(`ChemPotDiagram3D rendering contracts`, () => {
-  test(`the custom axis label is the only raw-HTML sink, and it is sanitized`, () => {
-    const sinks = [`ChemPotDiagram3D`, `ChemPotScene3D`].flatMap((component) => {
-      const source = readFileSync(
+test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
+  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`]
+    .map((component) =>
+      readFileSync(
         `${import.meta.dirname}/../../../src/lib/chempot-diagram/${component}.svelte`,
         `utf8`,
-      )
-      return [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
-        (match.groups?.expr ?? ``).trim(),
-      )
-    })
-    expect(sinks).toEqual([`sanitize_html(gc.label)`])
-  })
+      ),
+    )
+    .join(`\n`)
+  const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
+    (match.groups?.expr ?? ``).trim(),
+  )
+  expect(sinks).toEqual([`sanitize_html(gc.label)`])
 })

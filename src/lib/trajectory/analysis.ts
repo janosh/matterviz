@@ -1,17 +1,10 @@
-// Frame-accounting shared by every trajectory analysis pane (MSD, VACF, structure ID).
-//
-// The trap these helpers exist to close: for indexed trajectories `trajectory.frames`
-// holds only the first handful of frames (the parser loads min(10, total_frames)) while
-// `total_frames` can be six digits. Looping over `frames` would silently analyse 10
-// frames, and neither validate_trajectory nor generate_plot_series notices.
+// Frame accounting shared by trajectory analyses. Indexed trajectories keep only a small
+// frame window in memory, so treating `frames.length` as the total silently truncates them.
 import type { TrajectoryType } from '$lib/trajectory'
 import { to_error } from '$lib/utils'
 
 export function trajectory_total_frames(trajectory: TrajectoryType): number {
   if (trajectory.total_frames != null) return trajectory.total_frames
-  // Falling back to frames.length is only safe for an eagerly parsed trajectory. An
-  // indexed one holds min(10, total) frames, so assuming the window is complete is
-  // exactly the silent truncation these helpers exist to prevent.
   if (trajectory.frame_loader != null || trajectory.is_indexed === true) {
     throw new Error(
       `Trajectory is indexed (or carries a frame_loader) but reports no total_frames, so ` +
@@ -22,19 +15,14 @@ export function trajectory_total_frames(trajectory: TrajectoryType): number {
   return trajectory.frames.length
 }
 
-// True when the in-memory `frames` array is the whole trajectory. False means a full
-// pass over the raw payload is mandatory.
+// False means a full pass over the raw payload is mandatory.
 export const has_all_frames_in_memory = (trajectory: TrajectoryType): boolean => {
-  const total = trajectory_total_frames(trajectory)
-  return total > 0 && trajectory.frames.length >= total
+  const total_frames = trajectory_total_frames(trajectory)
+  return total_frames > 0 && trajectory.frames.length >= total_frames
 }
 
-// Frame counts and stride advice every trajectory analysis pane opens with.
-//
-// trajectory_total_frames throws for an indexed trajectory that reports no total_frames,
-// and has_all_frames_in_memory and the stride suggesters all route through it. The message
-// is returned rather than thrown so a pane can render it in place of its controls instead
-// of taking the whole viewer down.
+// Frame counts and stride advice for trajectory analysis panes. Setup errors are returned
+// so a pane can render them without taking down the viewer.
 export function analysis_pane_setup(
   trajectory: TrajectoryType | undefined,
   // Omit for a pane that reads frames one at a time and so has no buffer to budget
@@ -48,9 +36,10 @@ export function analysis_pane_setup(
   const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
   if (!trajectory) return blank
   try {
+    const total_frames = trajectory_total_frames(trajectory)
     return {
-      total_frames: trajectory_total_frames(trajectory),
-      is_lazy: !has_all_frames_in_memory(trajectory),
+      total_frames,
+      is_lazy: total_frames <= 0 || trajectory.frames.length < total_frames,
       suggested_stride: suggest_stride?.(trajectory) ?? null,
     }
   } catch (exc) {

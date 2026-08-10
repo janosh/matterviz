@@ -2,7 +2,7 @@ import { to_error } from '$lib/utils'
 import type { FileLoadMeta } from './types'
 import { basename_from_url, load_from_url } from './url-drop'
 
-// Everything a `on_load` callback needs to commit a fetched payload safely.
+// Everything an `on_load` callback needs to commit a fetched payload safely.
 export interface DataUrlLoadContext<Value> {
   content: string | ArrayBuffer
   filename: string
@@ -59,8 +59,7 @@ export function create_data_url_loader<Value>(): DataUrlLoader<Value> {
 
   const request = (req: DataUrlRequest<Value>): (() => void) => {
     const { url, current_value, skip, set_loading, clear_error, on_load, on_error } = req
-    const caller_owns_value = current_value !== undefined && current_value !== url_owned_value
-    if (!url || skip || caller_owns_value) {
+    if (!url || skip || (current_value !== undefined && current_value !== url_owned_value)) {
       loaded_url = undefined
       url_owned_value = undefined
       return noop

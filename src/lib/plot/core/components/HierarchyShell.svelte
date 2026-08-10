@@ -43,7 +43,7 @@
     // is the only real empty-space hit target once cells tile the full area)
     dblclick_target?: `svg` | `group`
     fullscreen_toggle?: boolean
-    controls?: Snippet
+    controls: Snippet
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     extra_defs?: Snippet
     body: Snippet
@@ -68,13 +68,6 @@
       points: chart_state.legend_points(),
     })
   })
-
-  // Only shown for continuous metric coloring, and only while the chart wants a bar
-  let color_bar_props = $derived(
-    chart_state.metric && chart_state.color_bar != null
-      ? { color_bar: chart_state.color_bar, range: chart_state.metric.range }
-      : null,
-  )
 
   // untrack avoids a self-trigger loop from reading/writing muted ids and hover
   // state in the same effect
@@ -103,7 +96,7 @@
 {#if chart_state.width && chart_state.height}
   <div class="header-controls">
     {@render header_controls?.(slot_args)}
-    {@render controls?.()}
+    {@render controls()}
     {#if fullscreen_toggle}
       <FullscreenToggle bind:fullscreen={chart_state.fullscreen} />
     {/if}
@@ -205,9 +198,10 @@
   />
 {/if}
 
-{#if color_bar_props}
+{#if chart_state.metric && chart_state.color_bar}
   <HierarchyColorBar
-    {...color_bar_props}
+    color_bar={chart_state.color_bar}
+    range={chart_state.metric.range}
     color_scale={chart_state.color_scale}
     layout={chart_state.cbar}
     css_prefix={chart_state.chart}

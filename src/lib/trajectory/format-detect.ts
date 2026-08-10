@@ -48,14 +48,15 @@ export const FORMAT_PATTERNS = {
   },
 
   hdf5: (data: unknown, filename?: string) => {
-    if (ext_hint(filename, /\.(?:h5|hdf5)$/) === false) return false
-    if (!(data instanceof ArrayBuffer)) return false
+    if (ext_hint(filename, /\.(?:h5|hdf5)$/) === false || !(data instanceof ArrayBuffer)) {
+      return false
+    }
     return has_hdf5_magic(magic_head(data))
   },
 
   vasp: (data: string, filename?: string) => {
     const basename = filename?.toLowerCase().split(`/`).pop() ?? ``
-    if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
+    if (basename.startsWith(`xdatcar`)) return true
     const lines = data.trim().split(/\r?\n/)
     return (
       lines.length >= 10 &&

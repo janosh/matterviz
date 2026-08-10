@@ -15,7 +15,7 @@ import {
   STRUCTURE_VIEW_STATE_VERSION,
   type StructureViewState,
 } from '$lib/settings/viewer-state'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
@@ -33,16 +33,22 @@ describe(`Settings`, () => {
       const result = merge({
         color_scheme: `Jmol`,
         structure: { atom_radius: 1.5 },
+        brillouin: { bz_order: 2 },
+        fermi: { mu: 0.25 },
         trajectory: { auto_play: true },
       })
 
       // Overrides applied
       expect(result.color_scheme).toBe(`Jmol`)
       expect(result.structure.atom_radius).toBe(1.5)
+      expect(result.brillouin.bz_order).toBe(2)
+      expect(result.fermi.mu).toBe(0.25)
       expect(result.trajectory.auto_play).toBe(true)
 
       // Defaults preserved
       expect(result.structure.show_atoms).toBe(DEFAULTS.structure.show_atoms)
+      expect(result.brillouin.edge_color).toBe(DEFAULTS.brillouin.edge_color)
+      expect(result.fermi.representation).toBe(DEFAULTS.fermi.representation)
       expect(result.trajectory.fps).toBe(DEFAULTS.trajectory.fps)
       expect(result.scatter.point.size).toBe(DEFAULTS.scatter.point.size)
     })
@@ -100,21 +106,17 @@ describe(`Settings`, () => {
       walk(SETTINGS_CONFIG, [])
       expect(leaf_paths.length).toBeGreaterThan(200)
 
-      const sources: string[] = []
-      const collect = (dir: string): void => {
-        for (const entry of readdirSync(dir)) {
-          // extensions/*/node_modules holds a built copy of matterviz including
-          // dist/settings.js, which mentions every key and would mask every dead one
-          if (entry === `node_modules`) continue
-          const full = join(dir, entry)
-          if (statSync(full).isDirectory()) collect(full)
-          else if (/\.(?:ts|svelte)$/.test(entry) && full !== settings_module) {
-            sources.push(readFileSync(full, `utf8`))
-          }
-        }
-      }
-      for (const dir of [`src/lib`, `src/routes`, `extensions/anywidget`]) collect(dir)
-      const haystack = sources.join(`\n`)
+      const haystack = globSync(
+        [
+          `src/lib/**/*.{ts,svelte}`,
+          `src/routes/**/*.{ts,svelte}`,
+          `extensions/anywidget/**/*.{ts,svelte}`,
+        ],
+        // node_modules contains built copies of settings.js that would mask every dead key
+        { exclude: [`**/node_modules/**`, settings_module] },
+      )
+        .map((path) => readFileSync(path, `utf8`))
+        .join(`\n`)
 
       const unread = leaf_paths.filter(
         (path) => !new RegExp(`\\b${path.split(`.`).at(-1)}\\b`).test(haystack),
@@ -128,8 +130,8 @@ describe(`Settings`, () => {
   describe.each([
     [`brillouin`, `brillouin/BrillouinZone`, `brillouin/BrillouinZoneControls`],
     [`fermi`, `fermi-surface/FermiSurface`, `fermi-surface/FermiSurfaceControls`],
-  ])(`%s defaults`, (section, viewer, controls) => {
-    const keys = Object.keys(DEFAULTS[section as `brillouin` | `fermi`])
+  ] as const)(`%s defaults`, (section, viewer, controls) => {
+    const keys = Object.keys(DEFAULTS[section])
 
     test.each([viewer, controls])(`%s.svelte takes them from the schema`, (component) => {
       const source = readFileSync(join(`src`, `lib`, `${component}.svelte`), `utf8`)

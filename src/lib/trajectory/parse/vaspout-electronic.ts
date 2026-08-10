@@ -204,11 +204,10 @@ export const read_vaspout_bands = (
     }
 
     // One branch per labeled line-mode segment, else a single whole-path branch
-    const per_segment = line_mode?.per_segment ?? 0
     const branches: Branch[] = []
-    if (labels && Number.isInteger(per_segment) && per_segment >= 2) {
-      for (let start = 0; start < n_kpoints; start += per_segment) {
-        const end = start + per_segment - 1
+    if (line_mode) {
+      for (let start = 0; start < n_kpoints; start += line_mode.per_segment) {
+        const end = start + line_mode.per_segment - 1
         branches.push({
           start_index: start,
           end_index: end,

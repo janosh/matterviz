@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { ControlPane } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -38,7 +38,6 @@
     post_children,
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
-    controls_open?: boolean
     // Visibility toggles
     show_boundaries?: boolean
     show_labels?: boolean
@@ -57,9 +56,6 @@
     // Export settings
     enable_export?: boolean
     png_dpi?: number
-    // Pane customization
-    pane_props?: PaneProps
-    toggle_props?: PaneToggleProps
     // Custom content snippets
     children?: Snippet<[{ controls_open: boolean }]>
     post_children?: Snippet<[{ controls_open: boolean }]>

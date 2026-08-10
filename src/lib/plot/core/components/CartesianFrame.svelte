@@ -1,9 +1,10 @@
 <script lang="ts">
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { CartesianFrame, FrameAxis } from '$lib/plot/core/cartesian-frame.svelte'
   import {
     marginal_axis,
     marginal_axis_presence,
+    type MarginalAxis,
     type MarginalAxisBinding,
     type MarginalSeriesInput,
     type ResolvedMarginals,
@@ -102,31 +103,18 @@
 
   const dims = $derived({ width: frame.width, height: frame.height, fullscreen })
   const title_pad = $derived(frame.effective_base_pad)
+  const get_marginal_axis = (axis: FrameAxis, binding: MarginalAxisBinding): MarginalAxis =>
+    marginal_axis(
+      frame.scales[axis],
+      frame.ranges.current[axis],
+      frame.axes[axis],
+      marginal_tick_label[binding],
+    )
   const marginal_axes = $derived({
-    x1: marginal_axis(
-      frame.scales.x,
-      frame.ranges.current.x,
-      frame.axes.x,
-      marginal_tick_label.x1,
-    ),
-    x2: marginal_axis(
-      frame.scales.x2,
-      frame.ranges.current.x2,
-      frame.axes.x2,
-      marginal_tick_label.x2,
-    ),
-    y1: marginal_axis(
-      frame.scales.y,
-      frame.ranges.current.y,
-      frame.axes.y,
-      marginal_tick_label.y1,
-    ),
-    y2: marginal_axis(
-      frame.scales.y2,
-      frame.ranges.current.y2,
-      frame.axes.y2,
-      marginal_tick_label.y2,
-    ),
+    x1: get_marginal_axis(`x`, `x1`),
+    x2: get_marginal_axis(`x2`, `x2`),
+    y1: get_marginal_axis(`y`, `y1`),
+    y2: get_marginal_axis(`y2`, `y2`),
   })
 
   // Theme-aware background when entering fullscreen

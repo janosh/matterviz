@@ -298,16 +298,10 @@
 
   $effect(() =>
     data_url_loader.request({
-      // Ownership rather than a plain skip: `skip` stayed true once a URL had produced
-      // data, so switching to a second URL never fetched.
       url: data_url,
       current_value: fermi_data ?? band_data,
-      set_loading: (value) => {
-        loading = value
-      },
-      clear_error: () => {
-        error_msg = undefined
-      },
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = undefined),
       on_load: async ({ content, filename, metadata, is_current, mark_owned }) => {
         if (await safe_parse(content, filename, metadata, is_current)) {
           mark_owned(fermi_data ?? band_data)

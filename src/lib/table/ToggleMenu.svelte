@@ -33,13 +33,9 @@
     trigger?: Snippet<[{ open: boolean }]>
   } = $props()
 
-  // Group-qualified IDs keep duplicate labels distinct. HeatmapTable already passes
-  // qualified keys, so avoid appending the suffix twice.
-  const col_id = (col: Label) => {
-    const key = col.key ?? col.label
-    const group_suffix = col.group ? ` (${col.group})` : ``
-    return group_suffix && !key.endsWith(group_suffix) ? `${key}${group_suffix}` : key
-  }
+  // Explicit keys are already unique; qualify duplicate keyless labels by group.
+  const col_id = (col: Label) =>
+    col.key ?? (col.group ? `${col.label} (${col.group})` : col.label)
   const default_visible = (col: ToggleColumn): boolean =>
     col.default_visible ?? col.visible !== false
   const toggle_menu_id = $props.id()
@@ -62,10 +58,9 @@
   let filtered_columns = $derived(columns.filter(column_matches_filter))
 
   // Snapshot default visibility when the column set changes (new dataset).
-  // Compare by keys and visibility defaults. Internal updates opt out below.
-  // Signature state is non-reactive; default visibility is state so reset UI updates after snapshots.
+  // Compare by keys and visibility defaults. Signature state is non-reactive;
+  // default visibility is state so reset UI updates after snapshots.
   let last_seen_signature = ``
-  let internal_default_signature: string | undefined
   let default_visibility = $state<Record<string, boolean>>({})
   // Sorted so a pure reorder (a host rearranging its columns) is not mistaken for a new
   // column set, which would resnapshot defaults and silently drop the reset baseline.
@@ -86,14 +81,6 @@
 
   $effect(() => {
     const current_signature = default_signature()
-    if (current_signature === internal_default_signature) {
-      internal_default_signature = undefined
-      // Track our own writes too. Leaving this stale meant the NEXT effect run for any
-      // reason (a reorder, a parent re-render) read the user's toggles as a new dataset
-      // and resnapshotted them as defaults, silently dropping the reset baseline.
-      last_seen_signature = current_signature
-      return
-    }
     if (current_signature === last_seen_signature) return
     snapshot_defaults()
   })
@@ -108,9 +95,8 @@
   function reset_columns(items: Label[]): void {
     const changed = items.filter(is_changed)
     for (const col of changed) col.visible = default_visibility[col_id(col)] ?? true
-    // Signature first: notifying a host that mirrors visibility elsewhere feeds new
-    // `columns` back in, and the $effect below must recognize that as our own write.
-    internal_default_signature = default_signature()
+    // Record our write before notifying a host that may feed new columns back in.
+    last_seen_signature = default_signature()
     columns = [...columns]
     for (const col of changed) on_toggle?.(col, col.visible !== false)
   }
@@ -163,12 +149,14 @@
       : [...collapsed_sections, name]
   }
 
-  function toggle_column_visibility(col: Label, event: Event) {
-    if (!(event.target instanceof HTMLInputElement)) return
-    col.visible = event.target.checked
-    internal_default_signature = default_signature()
+  function toggle_column_visibility(
+    col: Label,
+    event: Event & { currentTarget: HTMLInputElement },
+  ) {
+    col.visible = event.currentTarget.checked
+    last_seen_signature = default_signature()
     columns = [...columns] // trigger reactivity on parent binding
-    on_toggle?.(col, event.target.checked)
+    on_toggle?.(col, event.currentTarget.checked)
   }
 
   // Prefer two tall columns, adding more only when the item count would make them unwieldy.
@@ -267,8 +255,11 @@
       column_panel_open = !column_panel_open
     }}
   >
-    {#if trigger}{@render trigger({ open: column_panel_open })}{:else}Columns
-      <Icon icon={Columns} />{/if}
+    {#if trigger}
+      {@render trigger({ open: column_panel_open })}
+    {:else}
+      Columns <Icon icon={Columns} />
+    {/if}
     {#if has_any_changes}
       <button
         class="reset-btn"
@@ -343,7 +334,7 @@
               style:grid-template-columns={grid_template(section.items.length)}
               transition:slide={{ duration: 200 }}
             >
-              {#each section.items as col, idx (col.key ?? col.label ?? idx)}
+              {#each section.items as col (col_id(col))}
                 {@render toggle_item(col)}
               {/each}
             </div>
@@ -351,7 +342,7 @@
         </div>
       {/each}
     {:else}
-      {#each filtered_columns as col, idx (col.key ?? col.label ?? idx)}
+      {#each filtered_columns as col (col_id(col))}
         {@render toggle_item(col)}
       {/each}
     {/if}
@@ -372,8 +363,7 @@
       &::-webkit-details-marker {
         display: none;
       }
-      /* a custom trigger brings its own chrome. :where() keeps this at the specificity
-      the bare `summary` selector had, so host overrides still win instead of tying. */
+      /* A custom trigger brings its own chrome. */
       &:where(:not(.custom)) {
         background: var(--tgl-btn-bg, var(--btn-bg));
         padding: 0 6pt;

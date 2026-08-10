@@ -1105,12 +1105,8 @@
     data_url_loader.request({
       url: data_url,
       current_value: trajectory,
-      set_loading: (value) => {
-        loading = value
-      },
-      clear_error: () => {
-        error_msg = null
-      },
+      set_loading: (value) => (loading = value),
+      clear_error: () => (error_msg = null),
       on_load: ({ content, filename, metadata, is_current, mark_owned }) => {
         current_filename = filename
         file_size = io.content_byte_size(content)

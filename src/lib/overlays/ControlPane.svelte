@@ -1,10 +1,5 @@
 <script lang="ts">
-  // Shared draggable controls-pane shell (gear toggle + settings pane) used by every
-  // *Controls component. Centralizes the toggle/pane icons, the
-  // `*-controls-{toggle,pane}` class convention and the pane style vars so they live in
-  // one place instead of being re-typed per viewer.
-  // DraggablePane straight from svelte-widgets: $lib/overlays re-exports it, and this
-  // component lives in that barrel, so going through it would be a cycle.
+  // Shared gear toggle + draggable pane shell for viewer controls.
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { DraggablePane } from 'svelte-widgets'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -25,12 +20,11 @@
     ...rest
   }: Omit<ComponentProps<typeof DraggablePane>, `children` | `open`> & {
     controls_open?: boolean
-    controls_class?: string // class prefix -> `${controls_class}-controls-{toggle,pane}`
-    pane_class?: string // full pane class, for viewers with a pre-existing name
-    toggle_class?: string // full toggle class, likewise
-    toggle_title?: string // toggle button title text ("Open <toggle_title> controls")
-    // Default parks the gear at the top right of the chart. Viewers that put it in an
-    // existing button row (ViewerChrome) pass `` and let the row do the layout.
+    controls_class?: string
+    pane_class?: string
+    toggle_class?: string
+    toggle_title?: string
+    // Empty style opts out when ViewerChrome owns toggle layout.
     toggle_style?: string
     pane_style?: string
     toggle_props?: PaneToggleProps
@@ -38,12 +32,9 @@
     children?: Snippet
   } = $props()
 
-  // caller styles win, so they go last; base gets a `;` in case it lacks one
-  const join_style = (base: string, extra?: string | null) => {
-    if (!extra) return base
-    if (!base) return extra
-    return `${base.trim().replace(/;?$/, `;`)} ${extra}`
-  }
+  // Caller styles go last and therefore win.
+  const join_style = (base: string, extra?: string | null): string =>
+    [base, extra].filter(Boolean).join(`; `)
 </script>
 
 <DraggablePane
@@ -52,13 +43,13 @@
   toggle_props={{
     title: `${controls_open ? `Close` : `Open`} ${toggle_title} controls`,
     ...toggle_props,
-    class: [toggle_class, toggle_props?.class],
-    style: join_style(toggle_style, toggle_props?.style),
+    class: [toggle_class, toggle_props.class],
+    style: join_style(toggle_style, toggle_props.style),
   }}
   pane_props={{
     ...pane_props,
-    class: [pane_class, pane_props?.class],
-    style: join_style(pane_style, pane_props?.style),
+    class: [pane_class, pane_props.class],
+    style: join_style(pane_style, pane_props.style),
   }}
   open_icon={Cross}
   closed_icon={Settings}

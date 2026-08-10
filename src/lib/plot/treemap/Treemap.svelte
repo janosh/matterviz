@@ -2,20 +2,11 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3InterpolateName } from '$lib/colors'
-  import type { Vec2 } from '$lib/math'
-  import type {
-    BasePlotProps,
-    LegendConfig,
-    SunburstLabelText,
-    SunburstSort,
-    SunburstValueMode,
-  } from '$lib/plot'
-  import { ColorBar, TreemapControls } from '$lib/plot'
+  import type { BasePlotProps } from '$lib/plot'
+  import { TreemapControls } from '$lib/plot'
   import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import type { ColorBarSide } from '$lib/plot/core/utils/hierarchy-chart'
   import {
     HierarchyChartState,
     type HierarchyChartProps,
@@ -32,10 +23,9 @@
     TreemapLabelLine,
     TreemapLabelPlacement,
   } from '$lib/plot/treemap/labels'
-  import type { TreemapNode, TreemapNodeHandlerProps } from '$lib/plot/treemap/treemap'
   import { lerp_rects, tile_rects } from '$lib/plot/treemap/treemap'
   import { DEFAULTS } from '$lib/settings'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -103,7 +93,7 @@
     Omit<BasePlotProps, `change` | `range_padding` | `title`> &
     // data/value semantics, coloring, legend, export and node handlers are
     // shared verbatim with Sunburst
-    HierarchyChartProps<Metadata, TreemapNode<Metadata>, TreemapNodeHandlerProps<Metadata>> & {
+    HierarchyChartProps<Metadata> & {
       padding_inner?: number // px gap between sibling cells
       padding_top?: number // px header strip on branch cells (0 = no headers)
       padding_outer?: number // px inset of children within their parent (plotly marker.pad)
@@ -134,9 +124,6 @@
   const chart_state: HierarchyChartState<Metadata> = new HierarchyChartState<Metadata>({
     chart: `treemap`,
     uid,
-    // plotly semantics: clicking any cell (leaves included) zooms into it,
-    // clicking the current zoom root zooms back out one level
-    zoom_mode: `any`,
     default_padding: DEFAULT_PADDING,
     data: () => data,
     layout_options: () => ({ value_mode, sort, level_lighten, min_fraction, other_label }),
@@ -177,8 +164,13 @@
     // leaf zooms (rendered full-viewport), so keyboard users stay in the chart
     focus_after_zoom: () => {
       const { zoom_root } = chart_state
-      if (!zoom_root) return chart_state.focus_node(roving_idx)
-      chart_state.focus_node(zoom_root.is_leaf ? zoom_root.node_idx : zoom_root.node_idx + 1)
+      chart_state.focus_node(
+        zoom_root
+          ? zoom_root.is_leaf
+            ? zoom_root.node_idx
+            : zoom_root.node_idx + 1
+          : roving_idx,
+      )
     },
   })
 
@@ -396,33 +388,31 @@
     {children}
   >
     {#snippet controls()}
-      {#if show_controls}
-        <TreemapControls
-          chart="treemap"
-          toggle_props={{
-            ...controls_toggle_props,
-            // join the header flex row instead of absolute positioning
-            style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-          }}
-          pane_props={controls_pane_props}
-          bind:show_controls
-          bind:controls_open
-          bind:value_mode
-          bind:max_depth
-          bind:padding_inner
-          bind:padding_top
-          bind:padding_outer
-          bind:min_fraction
-          bind:show_labels
-          bind:label_text
-          bind:zoom_on_click
-          bind:show_breadcrumbs
-          {export_buttons}
-          on_export={chart_state.export_chart}
-        >
-          {@render controls_extra?.({ zoom_root_id })}
-        </TreemapControls>
-      {/if}
+      <TreemapControls
+        chart="treemap"
+        toggle_props={{
+          ...controls_toggle_props,
+          // join the header flex row instead of absolute positioning
+          style: `position: static; ${controls_toggle_props?.style ?? ``}`,
+        }}
+        pane_props={controls_pane_props}
+        bind:show_controls
+        bind:controls_open
+        bind:value_mode
+        bind:max_depth
+        bind:padding_inner
+        bind:padding_top
+        bind:padding_outer
+        bind:min_fraction
+        bind:show_labels
+        bind:label_text
+        bind:zoom_on_click
+        bind:show_breadcrumbs
+        {export_buttons}
+        on_export={chart_state.export_chart}
+      >
+        {@render controls_extra?.({ zoom_root_id })}
+      </TreemapControls>
     {/snippet}
 
     {#snippet extra_defs()}
