@@ -3,67 +3,42 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import { DEG_TO_RAD, type Vec2 } from '$lib/math'
   import type {
     BasePlotProps,
     LegendConfig,
-    LegendItem,
+    SunburstGroupGap,
     SunburstLabelRotation,
     SunburstLabelText,
-    SunburstGroupGap,
     SunburstNode,
     SunburstNodeHandlerProps,
     SunburstShape,
     SunburstSort,
     SunburstValueMode,
   } from '$lib/plot'
-  import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
-  import { HierarchyColorBar } from '$lib/plot/core/components'
-  import { closest_data_idx } from '$lib/plot/core/interactions'
-  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
+  import { ColorBar, SunburstControls } from '$lib/plot'
+  import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+  import { type ColorBarSide, is_activation_key } from '$lib/plot/core/utils/hierarchy-chart'
   import {
-    ancestor_chain,
-    color_bar_layout,
-    type ColorBarSide,
-    compute_metric_colors,
-    compute_node_dim,
-    compute_node_infos,
-    handle_hierarchy_escape,
-    hierarchy_legend_items,
-    is_activation_key,
-    node_handler_props,
-    pointer_pos,
-    prune_muted_ids,
-    safe_hierarchy_layout,
-    selection_within,
-    svg_label_font,
-    toggle_muted,
-  } from '$lib/plot/core/utils/hierarchy-chart'
-  import {
-    export_hierarchy_chart,
-    make_cached_contrast,
-    make_cached_text_width,
-    node_display_name,
-  } from '$lib/plot/core/utils/hierarchy-labels'
+    HierarchyChartState,
+    type HierarchyChartProps,
+  } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import { node_display_name } from '$lib/plot/core/utils/hierarchy-labels'
   import {
     arc_label_transform,
-    arrow_nav_target,
     project_arcs,
+    type ScreenArc as ScreenArcOf,
   } from '$lib/plot/sunburst/render'
-  import type { ScreenArc as ScreenArcOf } from '$lib/plot/sunburst/render'
-  import { compute_sunburst_layout, type PositionedArc } from '$lib/plot/sunburst/sunburst'
+  import type { PositionedArc } from '$lib/plot/sunburst/sunburst'
   import { DEFAULTS } from '$lib/settings'
   import { arc as d3_arc } from 'd3-shape'
-  import { type ComponentProps, type Snippet, tick, untrack } from 'svelte'
+  import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
-  import { SvelteSet } from 'svelte/reactivity'
 
   // Preserve the established outer inset; pass `padding` to override chart-edge space.
   const DEFAULT_PADDING: Required<Sides> = { t: 10, b: 10, l: 10, r: 10 }
@@ -122,41 +97,16 @@
   }: HTMLAttributes<HTMLDivElement> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
-      data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
+    Omit<BasePlotProps, `change` | `range_padding` | `title`> &
+    // data/value semantics, coloring, legend, export and node handlers are
+    // shared verbatim with Treemap
+    HierarchyChartProps<Metadata> & {
       shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
-      value_mode?: SunburstValueMode
-      sort?: SunburstSort
-      level_lighten?: number
-      // Aggregate sibling arcs below this fraction of the total into one 'Other' leaf
-      // per parent (only when >= 2 qualify); 0 disables
-      min_fraction?: number
-      other_label?: string
-      max_depth?: number // rings shown below the current zoom root (0 = all)
       inner_radius?: number // center hole as fraction of outer radius
       pad_angle?: number // degrees between sibling arcs
-      show_labels?: boolean
       label_rotation?: SunburstLabelRotation
-      label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
-      zoom_on_click?: boolean
-      zoom_root_id?: string | number | null // id of the arc the view is rooted on
-      show_breadcrumbs?: boolean // clickable ancestor trail when zoomed
-      // Color arcs by a numeric metric (continuous colormap) instead of categorical
-      // inheritance; return null to keep an arc's categorical color
-      color_values?: (arc: PositionedArc<Metadata>) => number | null
-      color_scale?: D3InterpolateName
-      color_range?: Vec2 // defaults to the metric's [min, max]
-      color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
-      color_bar_side?: ColorBarSide // side reserved for vertical color bars
       group_gap?: SunburstGroupGap<Metadata> | null
-      export_buttons?: boolean // SVG/PNG download buttons in the controls pane
-      export_filename?: string
       tween?: TweenOptions<{ x0: number; x1: number; y0: number; n_rings: number }>
-      value_format?: string
-      padding?: Sides
-      legend?: LegendConfig | null
-      show_legend?: boolean
-      tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
       // Fully replace the default arc path. NOTE: this also replaces the built-in
       // hover/focus/click + tooltip wiring, so re-implement any interactivity you
       // need inside the snippet.
@@ -166,82 +116,79 @@
       center_content?: Snippet<
         [{ root: PositionedArc<Metadata> | null; radius: number; zoomed: boolean }]
       >
-      change?: (data: SunburstNodeHandlerProps<Metadata> | null) => void
-      on_node_click?: (
-        data: SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-      ) => void
-      on_node_hover?: (
-        data: (SunburstNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
-      ) => void
-      on_zoom?: (data: { root: SunburstNodeHandlerProps<Metadata> | null }) => void
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
-      controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
     } = $props()
 
   let [width, height] = $state([0, 0])
-  let wrapper: HTMLDivElement | undefined = $state()
-  let svg_element: SVGSVGElement | null = $state(null)
   let center_el: SVGCircleElement | null = $state(null)
-  // Unique per instance so multiple sunbursts on one page don't collide on
-  // the hatch pattern's SVG id.
   const uid = $props.id()
-  const hatch_pattern_id = `sunburst-hatch-${uid}`
 
-  let hovered_idx = $state<number | null>(null)
-  let hover_info = $state<SunburstNodeHandlerProps<Metadata> | null>(null)
-  let hover_pos = $state<{ x: number; y: number }>({ x: 0, y: 0 })
-  // Depth-1 category ids muted via legend toggle (dimmed, not removed - keeps layout stable)
-  let muted_ids = new SvelteSet<string | number>()
-
-  let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
-  let avail_width = $derived(Math.max(0, width - pad.l - pad.r))
-  let avail_height = $derived(Math.max(0, height - pad.t - pad.b))
-  // Vertical color bars sit beside the rings and reserve width; horizontal ones sit
-  // below and reserve height so they never shrink the radius from both directions.
-  let colorbar_size = $state({ height: 0, width: 0 })
-  let cbar = $derived(
-    color_bar_layout({
-      color_bar,
-      side: color_bar_side,
-      measured: colorbar_size,
-      avail_width,
-      avail_height,
-      pad,
-      tick_space_var: `--sunburst-colorbar-tick-space`,
-    }),
-  )
-  let { inner_width, inner_height, plot_left } = $derived(cbar)
-
-  // Layout depends only on data/value semantics - not on size or zoom.
-  let layout = $derived(
-    safe_hierarchy_layout(data, {
-      value_mode,
-      sort,
-      level_lighten,
-      min_fraction,
-      other_label,
-    }),
-  )
-  // Resolve the zoom root; stale ids (e.g. after a data swap) fall back to the root
-  let zoom_root = $derived(layout.arcs.find((arc) => arc.id === zoom_root_id) ?? layout.root)
-  let zoomed = $derived((zoom_root?.depth ?? 0) > 0)
-
-  // Drop muted ids that no longer exist when data changes (untrack avoids a
-  // self-trigger loop from reading/writing muted_ids in the same effect).
-  // Hover/focus state is index-based, so a layout swap would otherwise leave a stale
-  // tooltip and highlight whatever unrelated node now occupies the old index.
-  $effect(() => {
-    const { arcs } = layout
-    untrack(() => {
-      prune_muted_ids(arcs, muted_ids)
-      set_arc_hover(null)
-      focused_idx = null
-    })
+  // Hierarchy ingestion, zoom/hover/legend state, color-bar layout and keyboard
+  // plumbing are shared with Treemap; only the polar projection below is ours.
+  // annotated because the geometry hooks below close over `chart_state` itself
+  const chart_state: HierarchyChartState<Metadata> = new HierarchyChartState<Metadata>({
+    chart: `sunburst`,
+    uid,
+    zoom_mode: `branches`, // leaves are terminal here (unlike the treemap)
+    default_padding: DEFAULT_PADDING,
+    // the center circle/label run their own zoom-out click action, so a fast
+    // double-click on them must not compound a full reset on top of it
+    dblclick_ignore: `.center-circle, .center-label`,
+    data: () => data,
+    layout_options: () => ({ value_mode, sort, level_lighten, min_fraction, other_label }),
+    label_text: () => label_text,
+    value_format: () => value_format,
+    width: () => width,
+    height: () => height,
+    padding: () => padding,
+    color_values: () => color_values,
+    color_scale: () => color_scale,
+    color_range: () => color_range,
+    color_bar: () => color_bar,
+    color_bar_side: () => color_bar_side,
+    legend: () => legend,
+    show_legend: () => show_legend,
+    zoom_on_click: () => zoom_on_click,
+    export_filename: () => export_filename,
+    zoom_root_id: () => zoom_root_id,
+    set_zoom_root_id: (value) => (zoom_root_id = value),
+    set_hovered: (value) => (hovered = value),
+    fullscreen: () => fullscreen,
+    set_fullscreen: (value) => (fullscreen = value),
+    change: (info) => change(info),
+    on_node_click: (payload) => on_node_click?.(payload),
+    on_node_hover: (payload) => on_node_hover?.(payload),
+    on_zoom: (payload) => on_zoom?.(payload),
+    clickable: (arc) => arc_clickable(arc),
+    visible: (idx) => screen_arcs[idx]?.visible ?? false,
+    node_center: (idx) => {
+      const screen = screen_arcs[idx]
+      return screen ? arc_center(screen) : null
+    },
+    // Place against the settled (target) geometry, not the animated view -
+    // placement is stable during zoom tweens and runs once per zoom instead of
+    // once per frame
+    legend_points: () =>
+      project_arcs(chart_state.arcs, view.target, screen_geom, { group_gap }).visible.map(
+        arc_center,
+      ),
+    // In icicle mode focus the new root's first child (pre-order: node_idx + 1):
+    // the clicked arc itself collapses to zero height once the zoom tween
+    // settles, so focusing it (the roving index) would drop focus to <body>
+    // mid-animation. Polar mode hands focus to the center zoom-out button.
+    focus_after_zoom: () => {
+      if (shape === `sunburst`) center_el?.focus()
+      else {
+        chart_state.focus_node(
+          chart_state.zoom_root ? chart_state.zoom_root.node_idx + 1 : roving_idx,
+        )
+      }
+    },
   })
 
   // The view window in normalized partition coordinates: the zoom root's angular
   // span + how many rings to show below it
   let view_target = $derived.by(() => {
+    const { layout, zoom_root } = chart_state
     const below = layout.root ? layout.max_depth - (zoom_root?.depth ?? 0) : 1
     return {
       x0: zoom_root?.x0 ?? 0,
@@ -263,19 +210,27 @@
   )
 
   // Pixel geometry
-  let radius = $derived(Math.max(0, Math.min(inner_width, inner_height) / 2))
-  let cx = $derived(plot_left + inner_width / 2)
-  let cy = $derived(pad.t + inner_height / 2)
+  let radius = $derived(
+    Math.max(0, Math.min(chart_state.inner_width, chart_state.inner_height) / 2),
+  )
+  let cx = $derived(chart_state.plot_left + chart_state.inner_width / 2)
+  let cy = $derived(chart_state.pad.t + chart_state.inner_height / 2)
   // Min 14px center hole when zoomed so there's always a zoom-out click target
-  let hole_r = $derived(Math.max(inner_radius * radius, zoomed ? 14 : 0))
+  let hole_r = $derived(Math.max(inner_radius * radius, chart_state.zoomed ? 14 : 0))
 
-  let screen_geom = $derived({ shape, inner_width, inner_height, radius, hole_r })
+  let screen_geom = $derived({
+    shape,
+    inner_width: chart_state.inner_width,
+    inner_height: chart_state.inner_height,
+    radius,
+    hole_r,
+  })
 
   // Projected with view.current once per animation frame; project_arcs is also called
   // with view.target where settled geometry suffices (e.g. legend placement, which
   // shouldn't rerun per frame)
   let projection = $derived(
-    project_arcs(layout.arcs, view.current, screen_geom, { group_gap }),
+    project_arcs(chart_state.arcs, view.current, screen_geom, { group_gap }),
   )
   let screen_arcs = $derived(projection.all)
   // Rendering iterates only non-collapsed arcs - when zoomed into a small subtree of
@@ -285,8 +240,8 @@
   // Roving tabindex: exactly one arc is in the tab order (the last-focused one, else
   // the first visible clickable arc); arrow keys move focus between arcs. Without
   // this, tabbing through a large chart would visit every single arc.
-  let focused_idx = $state<number | null>(null)
   let roving_idx = $derived.by(() => {
+    const { focused_idx } = chart_state
     if (focused_idx != null && screen_arcs[focused_idx]?.visible) return focused_idx
     return visible_arcs.find((screen) => arc_clickable(screen.arc))?.arc.node_idx ?? null
   })
@@ -310,15 +265,17 @@
   // The chart group's transform: sunburst draws around the center, icicle from the
   // top-left of the padded plot area
   let chart_transform = $derived(
-    shape === `icicle` ? `translate(${plot_left}, ${pad.t})` : `translate(${cx}, ${cy})`,
+    shape === `icicle`
+      ? `translate(${chart_state.plot_left}, ${chart_state.pad.t})`
+      : `translate(${cx}, ${cy})`,
   )
 
   // Arc centroid in container (pad-offset) pixel space, for tooltip + legend placement
   const arc_center = (screen: ScreenArc): { x: number; y: number } => {
     if (shape === `icicle`) {
       return {
-        x: plot_left + (screen.a0 + screen.a1) / 2,
-        y: pad.t + (screen.r0 + screen.r1) / 2,
+        x: chart_state.plot_left + (screen.a0 + screen.a1) / 2,
+        y: chart_state.pad.t + (screen.r0 + screen.r1) / 2,
       }
     }
     const mid_a = (screen.a0 + screen.a1) / 2
@@ -326,170 +283,14 @@
     return { x: cx + Math.sin(mid_a) * mid_r, y: cy - Math.cos(mid_a) * mid_r }
   }
 
-  // Continuous metric coloring: when color_values is given, arcs are colored by their
-  // metric on a d3 colormap (arcs returning null keep their categorical color)
-  let metric = $derived(
-    compute_metric_colors(layout.arcs, color_values, color_scale, color_range),
-  )
-  const arc_color = (arc: PositionedArc<Metadata>): string =>
-    metric?.colors[arc.node_idx] ?? arc.color
-  // Hovered arc + its ancestors/descendants stay fully opaque, others dim
-  let arc_dim = $derived(compute_node_dim(layout.arcs, muted_ids, hovered_idx))
-
-  // Black/white label text, whichever contrasts with the arc's fill (light arcs from
-  // explicit colors or level_lighten would hide white labels, esp. when highlighted)
-  const contrast_for = make_cached_contrast()
-
-  const make_node_props = (arc: PositionedArc<Metadata>): SunburstNodeHandlerProps<Metadata> =>
-    node_handler_props(layout.arcs, arc, arc_color(arc))
-
-  function set_arc_hover(screen: ScreenArc | null, event?: MouseEvent | FocusEvent) {
-    // Same arc as before: only the cursor anchor moves - skip rebuilding the handler
-    // payload and re-firing change/on_node_hover on every mousemove within an arc.
-    // Requires hover_info: legend item hover sets hovered_idx alone (for dimming), and
-    // skipping then would leave the arc's own tooltip permanently suppressed.
-    if (screen && screen.arc.node_idx === hovered_idx && hover_info) {
-      hover_pos = pointer_pos(event, svg_element) ?? hover_pos
-      return
-    }
-    if (screen) {
-      hovered = true
-      hovered_idx = screen.arc.node_idx
-      hover_info = make_node_props(screen.arc)
-      hover_pos = pointer_pos(event, svg_element) ?? arc_center(screen)
-      change(hover_info)
-      if (event) on_node_hover?.({ ...hover_info, event })
-    } else {
-      // Already clear: don't re-fire change(null)/on_node_hover(null) - both the svg
-      // and chart group have mouseleave handlers, and zoom_to clears unconditionally
-      if (hovered_idx == null && hover_info == null) return
-      hovered = false
-      hovered_idx = null
-      hover_info = null
-      change(null)
-      on_node_hover?.(null)
-    }
-  }
-
-  const screen_arc_from_event = (event: Event): ScreenArc | null => {
-    const idx = closest_data_idx(event, `data-sunburst-node-idx`, svg_element)
-    return idx == null ? null : (screen_arcs[idx] ?? null)
-  }
-
-  function handle_arc_hover_event(event: MouseEvent | FocusEvent) {
-    const screen = screen_arc_from_event(event)
-    // roving tabindex follows keyboard focus
-    if (event.type === `focusin` && screen) focused_idx = screen.arc.node_idx
-    set_arc_hover(screen, event)
-  }
-
-  // Re-root the view on the given arc (or the data root when null) and notify
-  function zoom_to(arc: PositionedArc<Metadata> | null) {
-    const root = arc && arc.depth > 0 ? arc : null
-    zoom_root_id = root?.id ?? null
-    // The clicked arc collapses into the hole - drop the now-stale hover/tooltip
-    set_arc_hover(null)
-    on_zoom?.({ root: root && make_node_props(root) })
-  }
-
-  function handle_arc_click(event: MouseEvent | KeyboardEvent) {
-    if (event instanceof MouseEvent && selection_within(wrapper)) return
-    const screen = screen_arc_from_event(event)
-    if (!screen) return
-    const { arc } = screen
-    on_node_click?.({ ...make_node_props(arc), event })
-    if (zoom_on_click && !arc.is_leaf && arc.id !== zoom_root?.id) zoom_to(arc)
-  }
-
-  function zoom_out(event?: Event) {
-    if (event instanceof MouseEvent && selection_within(wrapper)) return
-    if (!zoomed) return
-    zoom_to(breadcrumb_arcs.at(-2) ?? null)
-  }
-
-  // Double-clicking empty chart background resets the zoom to the root (double-
-  // clicking an arc or label is click-to-zoom/text-selection territory, not a reset;
-  // the center zoom-out button already fired its own click action twice - compounding
-  // a third full reset would teleport step-by-step zoom-outs straight to the root)
-  function handle_dblclick(event: MouseEvent) {
-    if (screen_arc_from_event(event) || selection_within(wrapper)) return
-    const target = event.target as Element | null
-    if (target?.closest?.(`.center-circle, .center-label`)) return
-    if (zoomed) zoom_to(null)
-  }
-
-  const focus_arc = (idx: number | null) => {
-    if (idx == null) return
-    svg_element
-      ?.querySelector<SVGPathElement>(`.arcs [data-sunburst-node-idx="${idx}"]`)
-      ?.focus()
-  }
-
-  // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
-  // down enters the first child, up returns to the parent. The pre-order walk
-  // lives in render.ts (arrow_nav_target); this wrapper supplies the event's arc
-  // and the current screen-space visibility.
-  const nav_target_from_event = (event: KeyboardEvent): number | null => {
-    const cur = screen_arc_from_event(event)?.arc
-    if (!cur) return null
-    return arrow_nav_target(
-      layout.arcs,
-      (idx) => screen_arcs[idx]?.visible ?? false,
-      cur.node_idx,
-      event.key,
-    )
-  }
-
-  function handle_arc_keydown(event: KeyboardEvent) {
-    const nav_target = nav_target_from_event(event)
-    if (nav_target != null) {
-      event.preventDefault()
-      focus_arc(nav_target)
-      return
-    }
-    if (!is_activation_key(event)) return
-    event.preventDefault()
-    const prev_root = zoom_root_id
-    handle_arc_click(event)
-    // Zooming via keyboard unmounts the focused arc - move focus to the center circle
-    // (the zoom-out button) so keyboard users stay inside the chart. In icicle mode
-    // focus the new root's first child (pre-order: node_idx + 1): the clicked arc
-    // itself collapses to zero height once the zoom tween settles, so focusing it
-    // (the roving index) would drop focus to <body> mid-animation.
-    if (zoom_root_id !== prev_root) {
-      tick().then(() => {
-        if (shape === `sunburst`) center_el?.focus()
-        else focus_arc(zoom_root ? zoom_root.node_idx + 1 : roving_idx)
-      })
-    }
-  }
+  const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
+    Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf)
 
   function handle_center_keydown(event: KeyboardEvent) {
     if (!is_activation_key(event)) return
     event.preventDefault()
-    zoom_out()
+    chart_state.zoom_out()
   }
-
-  const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
-    Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf)
-
-  let label_font = $derived(svg_label_font(svg_element))
-  const cached_text_width = make_cached_text_width()
-
-  // Per-arc label text, measured width, fill/label colors, clickability and aria
-  // string - all view-independent, so computed once per layout/option change
-  // instead of per animation frame
-  let arc_info = $derived(
-    compute_node_infos(layout.arcs, {
-      label_text,
-      value_format,
-      label_font,
-      color_for: arc_color,
-      text_width: cached_text_width,
-      contrast: contrast_for,
-      clickable: arc_clickable,
-    }),
-  )
 
   // Downscale steps tried when no label variant fits at full size: narrow
   // slices keep a (smaller) label instead of losing it entirely.
@@ -502,7 +303,8 @@
     screen: ScreenArc,
   ): { transform: string; text: string; font_scale: number } | null {
     for (const font_scale of LABEL_FONT_SCALES) {
-      for (const { text, width: text_w } of arc_info[screen.arc.node_idx].variants) {
+      for (const { text, width: text_w } of chart_state.node_infos[screen.arc.node_idx]
+        .variants) {
         const transform = arc_label_transform(
           screen,
           text_w * font_scale,
@@ -517,64 +319,19 @@
     return null
   }
 
-  // Legend: one item per depth-1 category, toggling mutes (dims) rather than removes.
-  let depth1_arcs = $derived(layout.arcs.filter((arc) => arc.depth === 1))
-  // Arcs are labelled in place, so a legend stays opt-in here
-  let legend_visible = $derived(
-    resolve_legend_visibility(show_legend, legend, depth1_arcs.length, false),
+  let center_label = $derived(
+    chart_state.zoom_root?.label ?? (chart_state.zoomed ? `${chart_state.zoom_root?.id}` : ``),
   )
-  let legend_element = $state<HTMLDivElement | undefined>()
-  let legend_placement = $derived.by(() => {
-    if (!legend_visible || !width || !height) return null
-    // Place against the settled (target) geometry, not the animated view - placement
-    // is stable during zoom tweens and compute_element_placement runs once per zoom
-    // instead of once per frame
-    const settled = project_arcs(layout.arcs, view.target, screen_geom, { group_gap }).visible
-    return compute_element_placement({
-      plot_bounds: { x: plot_left, y: pad.t, width: inner_width, height: inner_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
-      points: settled.map(arc_center),
-    })
-  })
-  let legend_data: LegendItem[] = $derived(
-    hierarchy_legend_items(depth1_arcs, muted_ids, arc_color),
-  )
-
-  const toggle_category = (series_idx: number) =>
-    toggle_muted(muted_ids, depth1_arcs[series_idx]?.id)
-
-  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sunburst-fullscreen-bg`))
-
-  let center_label = $derived(zoom_root?.label ?? (zoomed ? `${zoom_root?.id}` : ``))
   // Where the center circle takes you on click (parent of the current zoom root)
   let zoom_out_label = $derived.by(() => {
-    const parent = breadcrumb_arcs.at(-2)
+    const parent = chart_state.breadcrumb_arcs.at(-2)
     if (!parent) return ``
     return parent.depth === 0 ? `full chart` : node_display_name(parent)
   })
-
-  let breadcrumb_arcs = $derived(ancestor_chain(layout.arcs, zoom_root))
-
-  const export_chart = (format: `svg` | `png`) =>
-    export_hierarchy_chart(svg_element, export_filename, format)
 </script>
 
-<svelte:window
-  onkeydown={(evt) =>
-    handle_hierarchy_escape(evt, {
-      wrapper,
-      fullscreen,
-      zoomed,
-      zoom_out: () => zoom_out(),
-      exit_fullscreen: () => (fullscreen = false),
-    })}
-/>
-
 <div
-  bind:this={wrapper}
+  bind:this={chart_state.wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
@@ -582,9 +339,19 @@
   class:fullscreen
   class:icicle={shape === `icicle`}
 >
-  {#if width && height}
-    <div class="header-controls">
-      {@render header_controls?.({ height, width, fullscreen })}
+  <HierarchyShell
+    {chart_state}
+    aria_label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
+    {chart_transform}
+    {show_breadcrumbs}
+    crumb_separator
+    dblclick_target="group"
+    {fullscreen_toggle}
+    {header_controls}
+    {tooltip}
+    {children}
+  >
+    {#snippet controls()}
       {#if show_controls}
         <SunburstControls
           chart="sunburst"
@@ -609,220 +376,124 @@
           bind:zoom_on_click
           bind:show_breadcrumbs
           {export_buttons}
-          on_export={export_chart}
+          on_export={chart_state.export_chart}
         >
           {@render controls_extra?.({ zoom_root_id })}
         </SunburstControls>
       {/if}
-      {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
-      {/if}
-    </div>
-    {#if show_breadcrumbs && breadcrumb_arcs.length > 0}
-      <nav class="breadcrumbs" aria-label="zoom path">
-        {#each breadcrumb_arcs as crumb, crumb_idx (crumb.node_idx)}
-          {#if crumb_idx > 0}<span style="opacity: 0.6" aria-hidden="true">›</span>{/if}
-          <button
-            type="button"
-            class="breadcrumb"
-            disabled={crumb_idx === breadcrumb_arcs.length - 1}
-            onclick={() => zoom_to(crumb)}
-          >
-            {crumb.depth === 0 ? `all` : (crumb.label ?? crumb.id)}
-          </button>
-        {/each}
-      </nav>
-    {/if}
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <svg
-      bind:this={svg_element}
-      viewBox="0 0 {width} {height}"
-      role="application"
-      aria-label={rest[`aria-label`] ?? `${shape === `icicle` ? `Icicle` : `Sunburst`} chart`}
-      onmouseleave={() => set_arc_hover(null)}
-    >
-      <!-- inert unless some arc references it via fill -->
-      <defs>
-        <pattern id={hatch_pattern_id} patternUnits="userSpaceOnUse" width="8" height="8">
-          <path class="hatch-pattern-line" d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" />
-        </pattern>
-      </defs>
-      <!-- Hover/click delegation sits on the chart group (not the arcs group) so
-      labels - which carry the same data-sunburst-node-idx and are selectable text -
-      forward interactions to their arc instead of swallowing them -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <g
-        transform={chart_transform}
-        onmousemove={handle_arc_hover_event}
-        onmouseleave={() => set_arc_hover(null)}
-        onfocusin={handle_arc_hover_event}
-        onfocusout={() => set_arc_hover(null)}
-        onclick={handle_arc_click}
-        ondblclick={handle_dblclick}
-        onkeydown={handle_arc_keydown}
-      >
-        <!-- Arcs -->
-        <g class="arcs">
-          {#each visible_arcs as screen (screen.arc.node_idx)}
-            {#if arc_content}
-              {@render arc_content(screen)}
-            {:else}
-              <!-- @const so the path is generated (and info looked up) once per
-              arc per frame, shared by the base path and the hatch overlay -->
-              {@const info = arc_info[screen.arc.node_idx]}
-              {@const opacity = arc_dim[screen.arc.node_idx].opacity}
-              {@const path_d = screen_path(screen)}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
+    {/snippet}
+
+    {#snippet body()}
+      <!-- Arcs -->
+      <g class="arcs">
+        {#each visible_arcs as screen (screen.arc.node_idx)}
+          {#if arc_content}
+            {@render arc_content(screen)}
+          {:else}
+            <!-- @const so the path is generated (and info looked up) once per
+            arc per frame, shared by the base path and the hatch overlay -->
+            {@const info = chart_state.node_infos[screen.arc.node_idx]}
+            {@const opacity = chart_state.node_dim[screen.arc.node_idx].opacity}
+            {@const path_d = screen_path(screen)}
+            <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
+            <path
+              d={path_d}
+              data-sunburst-node-idx={screen.arc.node_idx}
+              fill={info.fill}
+              fill-opacity={opacity}
+              role={info.clickable ? `button` : undefined}
+              tabindex={info.clickable
+                ? screen.arc.node_idx === roving_idx
+                  ? 0
+                  : -1
+                : undefined}
+              aria-label={info.clickable ? info.aria : undefined}
+              style:cursor={info.clickable ? `pointer` : `default`}
+            />
+            {#if screen.arc.hatch}
+              <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
+              the base path's next sibling so the hover 'pull' can track it -->
               <path
+                class="arc-hatch"
+                aria-hidden="true"
                 d={path_d}
-                data-sunburst-node-idx={screen.arc.node_idx}
-                fill={info.fill}
+                fill="url(#{chart_state.hatch_pattern_id})"
                 fill-opacity={opacity}
-                role={info.clickable ? `button` : undefined}
-                tabindex={info.clickable
-                  ? screen.arc.node_idx === roving_idx
-                    ? 0
-                    : -1
-                  : undefined}
-                aria-label={info.clickable ? info.aria : undefined}
-                style:cursor={info.clickable ? `pointer` : `default`}
               />
-              {#if screen.arc.hatch}
-                <!-- Decorative texture overlay (e.g. preemptible jobs); rendered as
-                the base path's next sibling so the hover 'pull' can track it -->
-                <path
-                  class="arc-hatch"
-                  aria-hidden="true"
-                  d={path_d}
-                  fill="url(#{hatch_pattern_id})"
-                  fill-opacity={opacity}
-                />
-              {/if}
+            {/if}
+          {/if}
+        {/each}
+      </g>
+
+      <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
+      to the underlying arc via the chart-group delegation in the shell -->
+      {#if show_labels}
+        <g class="arc-labels">
+          {#each visible_arcs as screen (screen.arc.node_idx)}
+            {@const lbl = label_attrs(screen)}
+            {#if lbl}
+              {@const info = chart_state.node_infos[screen.arc.node_idx]}
+              <text
+                class="arc-label"
+                data-sunburst-node-idx={screen.arc.node_idx}
+                transform={lbl.transform}
+                fill={info.label_fill}
+                fill-opacity={chart_state.node_dim[screen.arc.node_idx].label_opacity}
+                style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
+                  ? ``
+                  : `; font-size: ${lbl.font_scale}em`}"
+              >
+                {lbl.text}
+              </text>
             {/if}
           {/each}
         </g>
-
-        <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
-        to the underlying arc via the chart-group delegation above -->
-        {#if show_labels}
-          <g class="arc-labels">
-            {#each visible_arcs as screen (screen.arc.node_idx)}
-              {@const lbl = label_attrs(screen)}
-              {#if lbl}
-                {@const info = arc_info[screen.arc.node_idx]}
-                <text
-                  class="arc-label"
-                  data-sunburst-node-idx={screen.arc.node_idx}
-                  transform={lbl.transform}
-                  fill={info.label_fill}
-                  fill-opacity={arc_dim[screen.arc.node_idx].label_opacity}
-                  style="cursor: {info.clickable ? `pointer` : `text`}{lbl.font_scale === 1
-                    ? ``
-                    : `; font-size: ${lbl.font_scale}em`}"
-                >
-                  {lbl.text}
-                </text>
-              {/if}
-            {/each}
-          </g>
-        {/if}
-
-        {#if shape === `sunburst`}
-          <!-- Center: zoom-out button + current-root summary -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <circle
-            bind:this={center_el}
-            class="center-circle"
-            r={hole_r}
-            role={zoomed ? `button` : undefined}
-            tabindex={zoomed ? 0 : undefined}
-            aria-label={zoomed ? `zoom out to ${zoom_out_label}` : undefined}
-            style="cursor: {zoomed ? `pointer` : `default`}; pointer-events: {zoomed
-              ? `auto`
-              : `none`}"
-            onclick={zoom_out}
-            onkeydown={handle_center_keydown}
-          />
-          {#if center_content}
-            {@render center_content({ root: zoom_root, radius: hole_r, zoomed })}
-          {:else if hole_r >= 18 && zoom_root}
-            <!-- Selectable text overlaying the center circle; clicks forward to the
-            same zoom-out action as the circle (which also handles keyboard) -->
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <text
-              class="center-label"
-              style:cursor={zoomed ? `pointer` : `text`}
-              onclick={zoom_out}
-            >
-              {#if center_label}
-                <tspan x="0" dy={zoom_root.value ? `-0.3em` : `0.35em`}>
-                  {center_label}
-                </tspan>
-              {/if}
-              <tspan x="0" dy={center_label ? `1.2em` : `0.35em`} class="center-value">
-                {format_value(zoom_root.value, value_format)}
-              </tspan>
-            </text>
-          {/if}
-        {/if}
-      </g>
-    </svg>
-  {/if}
-
-  {#if hover_info}
-    <PlotTooltip
-      x={hover_pos.x}
-      y={hover_pos.y}
-      offset={{ x: 10, y: 5 }}
-      constrain_to={{ width, height }}
-      fallback_size={{ width: 140, height: 44 }}
-      bg_color={hover_info.color}
-    >
-      {#if tooltip}
-        {@render tooltip(hover_info)}
-      {:else}
-        <strong>{hover_info.label_path.join(` › `)}</strong>: {format_value(
-          hover_info.value,
-          value_format,
-        )}
-        ({format_value(hover_info.fraction, `.1%`)} of total{hover_info.depth > 1
-          ? `, ${format_value(hover_info.parent_fraction, `.1%`)} of parent`
-          : ``})
       {/if}
-    </PlotTooltip>
-  {/if}
 
-  {#if legend_visible}
-    {@const legend_left = legend_placement?.x ?? pad.l + 10}
-    {@const legend_top = legend_placement?.y ?? pad.t + 10}
-    <PlotLegend
-      bind:root_element={legend_element}
-      {...legend}
-      series_data={legend_data}
-      on_toggle={legend?.on_toggle ?? toggle_category}
-      on_item_hover={(item) =>
-        (hovered_idx =
-          item != null && item.series_idx >= 0
-            ? (depth1_arcs[item.series_idx]?.node_idx ?? null)
-            : null)}
-      style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
-        legend?.style ?? ``
-      }`}
-    />
-  {/if}
-
-  {#if metric && color_bar != null}
-    <HierarchyColorBar
-      {color_bar}
-      {color_scale}
-      range={metric.range}
-      layout={cbar}
-      css_prefix="sunburst"
-      on_measure={(size) => (colorbar_size = size)}
-    />
-  {/if}
-
-  {@render children?.({ height, width, fullscreen })}
+      {#if shape === `sunburst`}
+        <!-- Center: zoom-out button + current-root summary -->
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
+        <circle
+          bind:this={center_el}
+          class="center-circle"
+          r={hole_r}
+          role={chart_state.zoomed ? `button` : undefined}
+          tabindex={chart_state.zoomed ? 0 : undefined}
+          aria-label={chart_state.zoomed ? `zoom out to ${zoom_out_label}` : undefined}
+          style="cursor: {chart_state.zoomed
+            ? `pointer`
+            : `default`}; pointer-events: {chart_state.zoomed ? `auto` : `none`}"
+          onclick={chart_state.zoom_out}
+          onkeydown={handle_center_keydown}
+        />
+        {#if center_content}
+          {@render center_content({
+            root: chart_state.zoom_root,
+            radius: hole_r,
+            zoomed: chart_state.zoomed,
+          })}
+        {:else if hole_r >= 18 && chart_state.zoom_root}
+          <!-- Selectable text overlaying the center circle; clicks forward to the
+          same zoom-out action as the circle (which also handles keyboard) -->
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <text
+            class="center-label"
+            style:cursor={chart_state.zoomed ? `pointer` : `text`}
+            onclick={chart_state.zoom_out}
+          >
+            {#if center_label}
+              <tspan x="0" dy={chart_state.zoom_root.value ? `-0.3em` : `0.35em`}>
+                {center_label}
+              </tspan>
+            {/if}
+            <tspan x="0" dy={center_label ? `1.2em` : `0.35em`} class="center-value">
+              {format_value(chart_state.zoom_root.value, value_format)}
+            </tspan>
+          </text>
+        {/if}
+      {/if}
+    {/snippet}
+  </HierarchyShell>
 </div>
 
 <style>
@@ -860,20 +531,10 @@
       var(--sunburst-fullscreen-bg, var(--sunburst-bg, var(--plot-bg, transparent)));
     box-sizing: border-box;
   }
-  .header-controls {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static;
-    opacity: 1;
-  }
-  .breadcrumb {
+  /* :global for everything HierarchyShell renders (header row, breadcrumbs, the
+  chart svg and the hatch pattern): those elements carry the shell's scope, not
+  this component's, but their theming stays in the chart's variable namespace */
+  .sunburst :global(.breadcrumb) {
     background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
     border: none;
@@ -882,10 +543,10 @@
     cursor: pointer;
     font: inherit;
   }
-  .breadcrumb:hover:not(:disabled) {
+  .sunburst :global(.breadcrumb:hover:not(:disabled)) {
     background: var(--sunburst-btn-hover-bg, rgba(128, 128, 128, 0.35));
   }
-  .breadcrumbs {
+  .sunburst :global(.breadcrumbs) {
     position: absolute;
     top: var(--sunburst-breadcrumbs-top, 5pt);
     left: var(--sunburst-breadcrumbs-left, 8px);
@@ -897,27 +558,27 @@
     max-width: 75%;
     font-size: var(--sunburst-breadcrumbs-font-size, 0.85em);
   }
-  .breadcrumb:disabled {
+  .sunburst :global(.breadcrumb:disabled) {
     cursor: default;
     font-weight: bold;
     background: transparent;
   }
   .sunburst :global(.pane-toggle),
-  .sunburst .header-controls {
+  .sunburst :global(.header-controls) {
     opacity: 0;
     transition:
       opacity 0.2s,
       background-color 0.2s;
   }
   .sunburst:hover :global(.pane-toggle),
-  .sunburst:hover .header-controls,
+  .sunburst:hover :global(.header-controls),
   .sunburst :global(.pane-toggle:focus-visible),
   .sunburst :global(.pane-toggle[aria-expanded='true']),
-  .sunburst .header-controls:has(:global([aria-expanded='true'])),
-  .sunburst .header-controls:focus-within {
+  .sunburst :global(.header-controls:has([aria-expanded='true'])),
+  .sunburst :global(.header-controls:focus-within) {
     opacity: 1;
   }
-  svg {
+  .sunburst :global(svg[role='application']) {
     width: var(--sunburst-svg-width, 100%);
     height: var(--sunburst-svg-height, 100%);
     flex: var(--sunburst-svg-flex, 1);
@@ -949,7 +610,7 @@
   /* subtle by default: thin stripes inheriting the arc border color (itself
   defaulting to the chart bg) at low opacity, so hatching matches the gaps
   between slices instead of reading as solid white */
-  .hatch-pattern-line {
+  .sunburst :global(.hatch-pattern-line) {
     stroke: var(
       --sunburst-hatch-stroke,
       color-mix(in srgb, var(--sunburst-arc-stroke, var(--plot-bg, white)) 30%, transparent)
