@@ -47,10 +47,10 @@ const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
 const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
 // Plot-area centre in client coords, read off the rendered chart rect rather than hardcoded
 // so tuning the default padding can't silently move these hit tests off their target.
-const plot_center = (): Vec2 => {
+const plot_center = (): { x: number; y: number } => {
   const clip = doc_query(`clipPath rect`)
   const num = (attr: string) => Number(clip.getAttribute(attr))
-  return [num(`x`) + num(`width`) / 2, num(`y`) + num(`height`) / 2]
+  return { x: num(`x`) + num(`width`) / 2, y: num(`y`) + num(`height`) / 2 }
 }
 const binned_plot = (): HTMLElement => doc_query(`.binned-scatter`)
 const render_mode = (): string | undefined => binned_plot().dataset.renderMode
@@ -652,8 +652,8 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    const [center_x, center_y] = plot_center()
-    click_plot(center_x + 17, center_y)
+    const center = plot_center()
+    click_plot(center.x + 17, center.y)
 
     expect(on_point_click).toHaveBeenCalledOnce()
   })
@@ -790,8 +790,9 @@ describe(`BinnedScatterPlot`, () => {
     await drag([400, 590], [200, 200])
     expect(document.querySelector(`.reset-view`)).toBeNull()
 
-    // Every point sits at (0.5, 0.5), so the single populated bin sits at the plot-area
-    // centre in canvas coords. A zoom moves it, so only click it in the unzoomed view.
+    // Where the single populated bin (every point is at (0.5, 0.5)) sits in the pointer
+    // frame these events use, which the mocked canvas rect offsets from the SVG. Measured,
+    // not derived from the clip rect. A zoom moves it, so only click it while unzoomed.
     const [bin_x, bin_y] = [420, 220]
     await drag([bin_x - 150, bin_y + 100], [bin_x + 150, bin_y - 100])
 
@@ -991,8 +992,7 @@ describe(`BinnedScatterPlot`, () => {
     if (!first_leader) throw new Error(`missing first point label leader`)
     if (!first_label) throw new Error(`missing first point label`)
     // the first point sits at (0.5, 0.5), i.e. dead centre of the plot area
-    const [center_x, center_y] = plot_center()
-    const point_center = { x: center_x, y: center_y }
+    const point_center = plot_center()
     const label_center = {
       x: Number(first_label.style.left.replace(`px`, ``)),
       y: Number(first_label.style.top.replace(`px`, ``)),

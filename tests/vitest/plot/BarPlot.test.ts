@@ -26,6 +26,15 @@ const mount_sized_bar_plot = (
   size: { width?: number; height?: number } = {},
 ): Promise<HTMLElement> => mount_sized(BarPlot, props, { selector: `.bar-plot`, ...size })
 
+// Right padding read off the chart-area clip rect. Asserting this rather than the clip
+// width keeps the left pad, which these tests don't constrain, out of the expectation.
+const right_pad = (plot: HTMLElement, width = 400): number => {
+  const clip_rect = plot.querySelector(`clipPath rect`)
+  return (
+    width - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
+  )
+}
+
 describe(`BarPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
 
@@ -262,13 +271,8 @@ describe(`BarPlot`, () => {
       x2_axis: { label: `Top` },
       y2_axis: { label: `Secondary` },
     })
-    const clip_rect = plot.querySelector(`clipPath rect`)
-    // assert the explicit sides directly: the chart width also folds in the left pad,
-    // which these axes don't constrain
-    const right_pad =
-      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
-    expect(right_pad).toBe(10)
-    expect(Number(clip_rect?.getAttribute(`y`))).toBe(10)
+    expect(right_pad(plot)).toBe(10)
+    expect(Number(plot.querySelector(`clipPath rect`)?.getAttribute(`y`))).toBe(10)
   })
 
   test(`title-only y2 axis expands right padding`, async () => {
@@ -277,12 +281,9 @@ describe(`BarPlot`, () => {
       y_axis: { ticks: [] },
       y2_axis: { label: `Secondary`, ticks: [] },
     })
-    const clip_rect = plot.querySelector(`clipPath rect`)
-    const right_pad =
-      400 - Number(clip_rect?.getAttribute(`x`)) - Number(clip_rect?.getAttribute(`width`))
     // a title with no ticks still reserves its own band, past the shared default
-    expect(right_pad).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
-    expect(right_pad).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
+    expect(right_pad(plot)).toBe(AXIS_LABEL_HEIGHT + AXIS_LABEL_OUTER)
+    expect(right_pad(plot)).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
   })
 
   test(`default padding grows for wide y-axis ticks`, async () => {
