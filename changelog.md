@@ -27,7 +27,7 @@
 
 ### 💡 Refactoring
 
-- Narrow the `matterviz/plot` public API: former `./core` exports are no longer re-exported wholesale, so external consumers importing unlisted core symbols may break.
+- Narrow the `matterviz` public API: direct `matterviz/plot/...` subpath imports and wholesale `./core` re-exports are no longer available, and the root package exports fewer symbols. Consumers importing unlisted plot, core, or root symbols must update their imports.
 - Replace local UI widget copies with `svelte-widgets` 1.1 https://github.com/janosh/matterviz/pull/418
 - Make releases artifact-first, retry-safe, and tag-last https://github.com/janosh/matterviz/commit/53d508778bad2994197c316cc7fe9c6e76b7452f
 

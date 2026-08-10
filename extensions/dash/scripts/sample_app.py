@@ -21,6 +21,7 @@ MATTERVIZ_ROOT = (
     Path(_env_root) if _env_root else Path(__file__).parent.parent.parent.parent
 )
 _SITE_DIR = MATTERVIZ_ROOT / "src" / "site"
+_XRD_DIR = _SITE_DIR / "xrd"
 
 
 def load_json_file(file_path: Path) -> Any:
@@ -98,7 +99,7 @@ def load_electronic_bands(name: str) -> dict | None:
 
 def load_xrd_pattern(name: str) -> dict | None:
     """Load an XRD pattern from the site data directory."""
-    return load_xye_file(_SITE_DIR / "xrd" / f"{name}.xye")
+    return load_xye_file(_XRD_DIR / f"{name}.xye")
 
 
 def _discover_files(directory: Path, pattern: str = "*.json*") -> list[str]:
@@ -149,9 +150,7 @@ AVAILABLE_DOS = _discover_files(_SITE_DIR / "electronic" / "dos") or [_FALLBACK_
 AVAILABLE_BANDS = _discover_files(_SITE_DIR / "electronic" / "bands") or [
     _FALLBACK_BANDS
 ]
-AVAILABLE_XRD = _discover_files(MATTERVIZ_ROOT / "static" / "xrd", "*.xy*") or [
-    _FALLBACK_XRD
-]
+AVAILABLE_XRD = _discover_files(_XRD_DIR, "*.xy*") or [_FALLBACK_XRD]
 
 
 def _safe_first(lst: list[str], fallback: str) -> str:

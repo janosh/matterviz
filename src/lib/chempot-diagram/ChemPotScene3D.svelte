@@ -316,27 +316,34 @@
 
   // Update backside positions when camera crosses axis planes.
   // Only updates when sign changes to avoid triggering geometry recreation every frame.
-  function update_backside(): void {
+  function update_backside(ranges: Vec2[], center: Vec3): void {
     const cam = orbit_controls?.object?.position
     if (!cam) return
-    const [r0, r1, r2] = niced_range
+    const [r0, r1, r2] = ranges
     // swiz: data[0]→Z, data[1]→X, data[2]→Y
-    const new_back_0 = cam.z > data_center[2] ? r0[0] : r0[1]
-    const new_back_1 = cam.x > data_center[0] ? r1[0] : r1[1]
-    const new_back_2 = cam.y > data_center[1] ? r2[0] : r2[1]
+    const new_back_0 = cam.z > center[2] ? r0[0] : r0[1]
+    const new_back_1 = cam.x > center[0] ? r1[0] : r1[1]
+    const new_back_2 = cam.y > center[1] ? r2[0] : r2[1]
     if (back[0] !== new_back_0 || back[1] !== new_back_1 || back[2] !== new_back_2) {
       back = [new_back_0, new_back_1, new_back_2]
-      out_x = cam.x > data_center[0] ? -1 : 1
-      out_y = cam.y > data_center[1] ? -1 : 1
+      out_x = cam.x > center[0] ? -1 : 1
+      out_y = cam.y > center[1] ? -1 : 1
     }
   }
 
   $effect(() => {
     const controls = orbit_controls
     if (!controls) return
-    controls.addEventListener(`change`, update_backside)
-    untrack(() => update_backside())
-    return () => controls.removeEventListener(`change`, update_backside)
+    const update_from_camera = () => update_backside(niced_range, data_center)
+    controls.addEventListener(`change`, update_from_camera)
+    untrack(update_from_camera)
+    return () => controls.removeEventListener(`change`, update_from_camera)
+  })
+
+  $effect(() => {
+    const ranges = niced_range
+    const center = data_center
+    untrack(() => update_backside(ranges, center))
   })
 
   // OrbitControls' own default sensitivities in both projections: build_orbit_props doubles the

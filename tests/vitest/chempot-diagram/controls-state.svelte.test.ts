@@ -8,6 +8,12 @@ import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
+const read_component_source = (component: string): string =>
+  readFileSync(
+    `${import.meta.dirname}/../../../src/lib/chempot-diagram/${component}.svelte`,
+    `utf8`,
+  )
+
 describe(`create_chempot_overrides`, () => {
   test(`resolve falls back override > config > custom default > CHEMPOT_DEFAULTS`, () => {
     let config: ChemPotDiagramConfig = {}
@@ -77,16 +83,22 @@ test.each([
 })
 
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
-  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`]
-    .map((component) =>
-      readFileSync(
-        `${import.meta.dirname}/../../../src/lib/chempot-diagram/${component}.svelte`,
-        `utf8`,
-      ),
-    )
-    .join(`\n`)
+  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`].map(read_component_source).join(`\n`)
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
     (match.groups?.expr ?? ``).trim(),
   )
   expect(sinks).toEqual([`sanitize_html(gc.label)`])
+})
+
+test(`ChemPotScene3D refreshes backside placement when data ranges change`, () => {
+  const source = read_component_source(`ChemPotScene3D`)
+  const effects = source.match(/\$effect\(\(\) => \{[\s\S]*?\n  \}\)/g) ?? []
+  expect(
+    effects.some(
+      (effect) =>
+        effect.includes(`const ranges = niced_range`) &&
+        effect.includes(`const center = data_center`) &&
+        effect.includes(`update_backside(ranges, center)`),
+    ),
+  ).toBe(true)
 })

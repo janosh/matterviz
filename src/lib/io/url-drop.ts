@@ -17,7 +17,8 @@ import type { FileInfo, FileLoadCallback } from './types'
 // Trailing-slash URLs yield an empty segment — fall back to the original URL.
 export const basename_from_url = (url: string): string => {
   const basename = url.split(/[?#]/)[0].split(`/`).pop()
-  return basename || url
+  if (!basename) return url
+  return basename
 }
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
