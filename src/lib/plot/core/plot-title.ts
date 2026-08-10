@@ -8,7 +8,7 @@ import type { Sides } from './layout'
 
 export type PlotTitleAlign = `start` | `middle` | `end`
 export type PlotTitleFontOverrides = Partial<FontSpec>
-export type PlotTitleLineKind = `title` | `subtitle`
+type PlotTitleLineKind = `title` | `subtitle`
 
 export interface PlotTitleConfig {
   text?: string
@@ -49,7 +49,7 @@ export interface PlotTitleLayoutInput {
 
 export type PlotTitleMeasure = (text: string, font: Readonly<FontSpec>) => TextLineMetrics
 
-export interface PlotTitleLine {
+interface PlotTitleLine {
   readonly kind: PlotTitleLineKind
   readonly text: string
   readonly x: number
@@ -86,20 +86,20 @@ export interface ResolvedPlotTitle {
   readonly lines: readonly PlotTitleLine[]
 }
 
-export const DEFAULT_PLOT_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
+const DEFAULT_PLOT_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
   ...DEFAULT_FONT_SPEC,
   font_size: 18,
   font_weight: `600`,
   line_height: 22,
 })
 
-export const DEFAULT_PLOT_SUBTITLE_FONT: Readonly<FontSpec> = Object.freeze({
+const DEFAULT_PLOT_SUBTITLE_FONT: Readonly<FontSpec> = Object.freeze({
   ...DEFAULT_FONT_SPEC,
   font_size: 13,
   line_height: 17,
 })
 
-export const DEFAULT_PLOT_TITLE_GAP = 4
+const DEFAULT_PLOT_TITLE_GAP = 4
 
 const normalized_font = (
   overrides: PlotTitleFontOverrides | undefined,

@@ -24,9 +24,7 @@ export interface AxisGroup<Series extends AxisAssignableSeries> {
   series_indices: readonly number[]
 }
 
-export interface AssignedAxisGroup<
-  Series extends AxisAssignableSeries,
-> extends AxisGroup<Series> {
+interface AssignedAxisGroup<Series extends AxisAssignableSeries> extends AxisGroup<Series> {
   axis: AxisSlot
 }
 
@@ -49,7 +47,7 @@ interface AxisAssignmentBase<Series extends AxisAssignableSeries> {
   groups: readonly AssignedAxisGroup<Series>[]
 }
 
-export interface CompleteAxisAssignment<
+interface CompleteAxisAssignment<
   Series extends AxisAssignableSeries,
 > extends AxisAssignmentBase<Series> {
   status: `assigned`
@@ -83,7 +81,7 @@ export interface AxisScaleTypeOptions<Series extends AxisValueSeries> {
   min_log_decades?: number
 }
 
-export type AxisAccessor<Series extends AxisAssignableSeries> = (
+type AxisAccessor<Series extends AxisAssignableSeries> = (
   series: Series,
   series_idx: number,
 ) => AxisSlot | undefined

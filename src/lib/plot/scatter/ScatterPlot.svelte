@@ -35,18 +35,30 @@
   } from '$lib/plot'
   import {
     ColorBar,
-    FillArea,
-    get_tick_label,
-    Line,
-    PlotAxis,
     PlotLegend,
-    PlotMarginals,
     PlotTooltip,
     ScatterPlotControls,
     ScatterPoint,
+  } from '$lib/plot'
+  import {
+    FillArea,
+    Line,
+    PlotAxis,
+    PlotMarginals,
     ZeroLines,
     ZoomRect,
-  } from '$lib/plot'
+  } from '$lib/plot/core/components'
+  import {
+    get_tick_label,
+    accumulate_extent,
+    create_color_scale,
+    create_scale,
+    create_size_scale,
+    empty_extent,
+    generate_ticks,
+    nice_range_from_extent,
+    type RunningExtent,
+  } from '$lib/plot/core/scales'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
@@ -134,16 +146,6 @@
     index_ref_lines,
     solve_reference_annotations,
   } from '$lib/plot/core/reference-line'
-  import {
-    accumulate_extent,
-    create_color_scale,
-    create_scale,
-    create_size_scale,
-    empty_extent,
-    generate_ticks,
-    nice_range_from_extent,
-    type RunningExtent,
-  } from '$lib/plot/core/scales'
   import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
   import { resolve_line_tween, unique_id } from '$lib/plot/core/utils'

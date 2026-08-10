@@ -16,9 +16,6 @@ export {
   resolve_tick_layout,
   TICK_LABEL_HEIGHT,
   type MeasuredAxis,
-  type ResolvedTickLabel,
-  type ResolvedTickLayout,
-  type TickLayoutSide,
 } from '$lib/plot/core/tick-layout'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
@@ -43,7 +40,7 @@ export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 // Default plot padding (px) reserved for axis ticks/labels across Cartesian plots.
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 60, l: 60, r: 20 }
 
-export const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
+const DEFAULT_AXIS_TITLE_FONT: Readonly<FontSpec> = Object.freeze({
   ...DEFAULT_FONT_SPEC,
   font_size: 14,
   line_height: AXIS_LABEL_HEIGHT,
@@ -54,7 +51,7 @@ export interface AxisTitleSegment {
   readonly shift?: `sub` | `super`
 }
 
-export interface AxisTitleLine {
+interface AxisTitleLine {
   readonly text: string
   readonly segments: readonly AxisTitleSegment[]
   readonly metrics: TextLineMetrics

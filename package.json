@@ -90,10 +90,6 @@
       "types": "./dist/file-viewer/parse-in-worker.d.ts",
       "default": "./dist/file-viewer/parse-in-worker.js"
     },
-    "./file-viewer/eligibility": {
-      "types": "./dist/file-viewer/eligibility.d.ts",
-      "default": "./dist/file-viewer/eligibility.js"
-    },
     "./file-viewer/host-protocol": {
       "types": "./dist/file-viewer/host-protocol.d.ts",
       "default": "./dist/file-viewer/host-protocol.js"
@@ -130,10 +126,6 @@
       "types": "./dist/isosurface/parse-vaspwave.d.ts",
       "default": "./dist/isosurface/parse-vaspwave.js"
     },
-    "./json-path": {
-      "types": "./dist/json-path.d.ts",
-      "default": "./dist/json-path.js"
-    },
     "./labels": {
       "types": "./dist/labels.d.ts",
       "default": "./dist/labels.js"
@@ -149,10 +141,6 @@
     "./math": {
       "types": "./dist/math.d.ts",
       "default": "./dist/math.js"
-    },
-    "./marching-cubes": {
-      "types": "./dist/marching-cubes.d.ts",
-      "default": "./dist/marching-cubes.js"
     },
     "./msd": {
       "types": "./dist/msd/index.d.ts",
@@ -185,10 +173,6 @@
     "./plot": {
       "types": "./dist/plot/index.d.ts",
       "default": "./dist/plot/index.js"
-    },
-    "./plot/*": {
-      "types": "./dist/plot/*/index.d.ts",
-      "default": "./dist/plot/*/index.js"
     },
     "./rdf": {
       "types": "./dist/rdf/index.d.ts",

@@ -10,7 +10,8 @@
     RefLine,
     RefLineEvent,
   } from '$lib/plot'
-  import { HistogramControls, PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot'
+  import { HistogramControls } from '$lib/plot'
+  import { PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot/core/components'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
@@ -111,7 +112,7 @@
     range_padding = 0,
     padding = {},
     title,
-    bins = $bindable(100),
+    bins = $bindable(DEFAULTS.histogram.bin_count),
     // explicit type arg keeps `undefined` (auto) in the prop type - a bare fallback
     // would collapse it to plain boolean
     show_legend = $bindable<boolean | undefined>(

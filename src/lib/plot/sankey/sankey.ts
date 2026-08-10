@@ -300,6 +300,3 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
 
   return graph
 }
-
-// Map a node alignment string to the d3-sankey alignment function
-export const sankey_align_fn = (align: SankeyNodeAlign) => ALIGN_FNS[align]

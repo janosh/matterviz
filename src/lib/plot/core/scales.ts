@@ -602,13 +602,6 @@ export function generate_log_ticks(
   return fallback.length > 0 ? fallback : filtered_powers
 }
 
-// The strings an axis will actually draw, for callers that must measure them (auto-padding
-// sizes a categorical axis from its category names, not the numeric indices behind them).
-export const resolve_tick_labels = (
-  ticks: number[],
-  ticks_option: TicksOption | undefined,
-): (string | number)[] => ticks.map((tick) => get_tick_label(tick, ticks_option) ?? tick)
-
 // Get custom label for a tick value if provided, otherwise return null
 export function get_tick_label(
   tick_value: number,

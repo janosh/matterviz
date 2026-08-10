@@ -7,7 +7,7 @@ import type {
   LegendDecorationItem,
 } from './types'
 
-export const DEFAULT_DECORATION_GAP = 8
+const DEFAULT_DECORATION_GAP = 8
 
 const standard_items = (items: readonly DecorationItem[]) => {
   const legends = items.filter((item): item is LegendDecorationItem => item.kind === `legend`)

@@ -22,7 +22,8 @@
     ViolinSide,
     WhiskerMode,
   } from '$lib/plot'
-  import { BoxPlotControls, PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot'
+  import { BoxPlotControls } from '$lib/plot'
+  import { PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot/core/components'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'

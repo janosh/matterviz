@@ -129,7 +129,7 @@ describe(`PlotControls`, () => {
       await tick()
       expect(state.display).not.toBe(initial_display)
       expect(state.display).toMatchObject({
-        x_grid: DEFAULTS.plot.show_x_grid,
+        x_grid: DEFAULTS.scatter.display.x_grid,
         x_zero_line: DEFAULTS.plot.show_x_zero_line,
         x2_zero_line: false,
         y_zero_line: DEFAULTS.plot.show_y_zero_line,

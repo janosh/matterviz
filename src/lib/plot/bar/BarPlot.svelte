@@ -30,13 +30,8 @@
     UserContentProps,
   } from '$lib/plot'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-  import {
-    BarPlotControls,
-    PlotAxis,
-    PlotLegend,
-    PlotMarginals,
-    ScatterPoint,
-  } from '$lib/plot'
+  import { BarPlotControls, ScatterPoint } from '$lib/plot'
+  import { PlotAxis, PlotLegend, PlotMarginals } from '$lib/plot/core/components'
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'

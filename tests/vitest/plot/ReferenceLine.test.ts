@@ -1,5 +1,5 @@
 // ReferenceLine component tests
-import { ReferenceLine } from '$lib'
+import ReferenceLine from '$lib/plot/core/components/ReferenceLine.svelte'
 import type { Vec4 } from '$lib/math'
 import type { RefLine } from '$lib/plot'
 import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'

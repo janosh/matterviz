@@ -37,7 +37,7 @@ export type ReferenceLineScales = {
   y2?: (val: number) => number
 }
 
-export const reference_annotation_id = (line_idx: number): string =>
+const reference_annotation_id = (line_idx: number): string =>
   `reference-annotation-${line_idx}`
 
 // Create indexed ref_lines, filtering out invisible ones
@@ -395,7 +395,7 @@ export interface ReferenceAnnotationMetrics {
   padding: number
 }
 
-export type ReferenceAnnotationItemInput = {
+type ReferenceAnnotationItemInput = {
   id: string
   endpoints: Vec4
   annotation: RefLineAnnotation
@@ -548,7 +548,7 @@ export function create_reference_annotation_candidates(
   )
 }
 
-export function create_reference_annotation_item({
+function create_reference_annotation_item({
   id,
   endpoints,
   annotation,
@@ -569,7 +569,7 @@ export function create_reference_annotation_item({
   }
 }
 
-export function create_reference_annotation_items({
+function create_reference_annotation_items({
   lines,
   ranges,
   scales,

@@ -6,14 +6,16 @@ import {
   clean_series,
   clean_trajectory_props,
   clean_xyz,
+  handle_invalid_values,
+  sync_metadata,
+} from '$lib/plot'
+import {
   compute_local_variance,
   detect_instability,
-  handle_invalid_values,
   remove_local_outliers,
   smooth_moving_average,
   smooth_savitzky_golay,
-  sync_metadata,
-} from '$lib/plot'
+} from '$lib/plot/core/data-cleaning-signal'
 import { describe, expect, it } from 'vitest'
 
 // --- Test Data Generators ---

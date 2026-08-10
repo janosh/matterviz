@@ -20,13 +20,8 @@
     SunburstSort,
     SunburstValueMode,
   } from '$lib/plot'
-  import {
-    ColorBar,
-    HierarchyColorBar,
-    PlotLegend,
-    PlotTooltip,
-    SunburstControls,
-  } from '$lib/plot'
+  import { ColorBar, PlotLegend, PlotTooltip, SunburstControls } from '$lib/plot'
+  import { HierarchyColorBar } from '$lib/plot/core/components'
   import { closest_data_idx } from '$lib/plot/core/interactions'
   import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'

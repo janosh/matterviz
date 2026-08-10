@@ -19,18 +19,6 @@ function source_candidates(dist_target: string): string[] {
   const rel = dist_target.replace(/^\.\/dist\//, ``).replace(/\.d\.ts$/, ``)
   if (/\.(?:css|json)$/.test(rel)) return [join(lib_dir, rel)] // assets copied verbatim
   const base = rel.replace(/\.(?:js|mjs|cjs)$/, ``)
-  // Subpath-pattern export (e.g. plot/*/index): expand the single `*` segment against the
-  // real subdirectories so the wildcard is validated to point at >= 1 source file.
-  if (base.includes(`*`)) {
-    const [prefix, suffix] = base.split(`*`)
-    const parent = join(lib_dir, prefix)
-    if (!existsSync(parent)) return []
-    return readdirSync(parent, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .flatMap((entry) =>
-        source_extensions.map((ext) => join(lib_dir, `${prefix}${entry.name}${suffix}${ext}`)),
-      )
-  }
   return source_extensions.map((ext) => join(lib_dir, `${base}${ext}`))
 }
 
@@ -57,13 +45,10 @@ describe(`package.json exports`, () => {
   test.each([
     `./constants`,
     `./controls`,
-    `./file-viewer/eligibility`,
     `./file-viewer/host-protocol`,
     `./file-viewer/host-transfer`,
     `./file-viewer/parse-in-worker`,
     `./isosurface/parse-vaspwave`,
-    `./json-path`,
-    `./marching-cubes`,
     `./optimade`,
     `./sanitize`,
     `./settings`,
@@ -74,6 +59,19 @@ describe(`package.json exports`, () => {
     `./url-params`,
   ])(`publishes dedicated subpath %s`, (subpath) => {
     expect(pkg.exports[subpath]).toBeDefined()
+  })
+
+  test(`plot publishes a curated core surface, never all of plot/core`, () => {
+    // A blanket re-export would make tick math, layout solvers, pan/zoom internals and
+    // decoration plumbing public API. Only the prop-facing types and standalone components
+    // named in plot/index.ts are published.
+    const source = readFileSync(join(lib_dir, `plot/index.ts`), `utf8`)
+    expect(source).not.toMatch(/export (?:type )?\*(?: as \w+)? from ['"]\.\/core['"]/)
+    expect(existsSync(join(lib_dir, `plot/core/index.ts`))).toBe(false)
+    // and no subpath may reach plot/core the other way round
+    expect(Object.keys(pkg.exports).filter((sub) => sub.startsWith(`./plot`))).toEqual([
+      `./plot`,
+    ])
   })
 
   test(`worker-backed parser ships its sibling worker entry`, () => {

@@ -4,8 +4,8 @@ import { is_valid_range, max_side_padding, union_ranges } from '$lib/plot/core/s
 import { SvelteMap } from 'svelte/reactivity'
 
 export const FACET_AXES = [`x`, `x2`, `y`, `y2`] as const
-export const FACET_AXIS_MODES = [`shared`, `free`, `row`, `col`] as const
-export const FACET_AXIS_VISIBILITY_MODES = [`auto`, `all`, `outer`, `inner`, `none`] as const
+const FACET_AXIS_MODES = [`shared`, `free`, `row`, `col`] as const
+const FACET_AXIS_VISIBILITY_MODES = [`auto`, `all`, `outer`, `inner`, `none`] as const
 
 export type FacetAxis = (typeof FACET_AXES)[number]
 export type FacetAxisMode = (typeof FACET_AXIS_MODES)[number]
@@ -16,10 +16,10 @@ export type FacetAxisModes = Record<FacetAxis, FacetAxisMode>
 export type FacetAxisVisibilityModes = Partial<Record<FacetAxis, FacetAxisVisibilityMode>>
 export type FacetAxisVisibility = Record<FacetAxis, boolean>
 export type FacetRangeUpdate = Vec2 | null
-export type FacetRangeUpdateCallback = (axis: FacetAxis, range: FacetRangeUpdate) => void
-export type FacetSharedBand = `title` | `legend` | `color_bar`
+type FacetRangeUpdateCallback = (axis: FacetAxis, range: FacetRangeUpdate) => void
+type FacetSharedBand = `title` | `legend` | `color_bar`
 
-export const DEFAULT_FACET_AXIS_MODES: FacetAxisModes = {
+const DEFAULT_FACET_AXIS_MODES: FacetAxisModes = {
   x: `shared`,
   x2: `shared`,
   y: `shared`,
@@ -252,7 +252,7 @@ export function assign_facet_panels<Datum>(
 }
 
 // Whether two panels participate in the same range-sharing group for one axis.
-export const facet_panels_share_axis = (
+const facet_panels_share_axis = (
   left: PositionedFacetPanel,
   right: PositionedFacetPanel,
   mode: FacetAxisMode,
