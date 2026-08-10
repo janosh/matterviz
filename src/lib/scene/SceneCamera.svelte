@@ -15,6 +15,7 @@
     fov = DEFAULTS.structure.fov,
     zoom = DEFAULTS.structure.initial_zoom,
     near = undefined,
+    ortho_near = -100,
     far = undefined,
     orbit_props,
     gizmo = false,
@@ -24,7 +25,10 @@
     position: Vec3 // camera position
     fov?: number // perspective field of view
     zoom?: number // orthographic zoom level
-    near?: number // perspective near plane (orthographic always uses -100)
+    near?: number // perspective near plane
+    // Orthographic near plane. The default sits behind the camera so nothing in front of it can
+    // clip; a positive value clips geometry nearer than that distance (ChemPotDiagram3D).
+    ortho_near?: number
     far?: number // far plane (applied to either projection when provided)
     orbit_props: ReturnType<typeof build_orbit_props>
     gizmo?: boolean | GizmoOptions
@@ -53,7 +57,7 @@
     {@render camera_contents()}
   </T.PerspectiveCamera>
 {:else}
-  <T.OrthographicCamera makeDefault {position} {zoom} near={-100} {...ortho_far}>
+  <T.OrthographicCamera makeDefault {position} {zoom} near={ortho_near} {...ortho_far}>
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}

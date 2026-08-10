@@ -5,6 +5,7 @@
     bind_renderer,
     build_orbit_props,
     create_orthographic_zoom,
+    dispose_on_change,
     SceneCamera,
   } from '$lib/scene'
   import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
@@ -166,15 +167,9 @@
     show_ibz && ibz_data ? polyhedron_geometry(ibz_data.vertices, ibz_data.faces) : null,
   )
 
-  // Separate effects to avoid disposing one geometry when only the other changes
-  $effect(() => {
-    const prev = bz_geometry
-    return () => prev?.dispose()
-  })
-  $effect(() => {
-    const prev = ibz_geometry
-    return () => prev?.dispose()
-  })
+  // Separate calls to avoid disposing one geometry when only the other changes
+  dispose_on_change(() => [bz_geometry])
+  dispose_on_change(() => [ibz_geometry])
 
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
