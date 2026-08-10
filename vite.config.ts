@@ -8,7 +8,7 @@ import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 // @ts-expect-error Node ESM config load needs the .ts extension here
-import * as shared from './vite-plugins.ts'
+import * as shared from './src/vite-plugins.ts'
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not

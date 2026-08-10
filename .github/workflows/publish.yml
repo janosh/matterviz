@@ -61,23 +61,30 @@ jobs:
             echo "::error::releases must run from main, got $GITHUB_REF"; exit 1
           fi
 
-          for package_file in package.json extensions/anywidget/package.json \
-            extensions/vscode/package.json extensions/jupyterlab/package.json \
-            extensions/dash/package.json; do
-            actual_version=$(node -p "require('./$package_file').version")
-            [ "$actual_version" = "$version" ] || {
-              echo "::error::$package_file version $actual_version != release $version"; exit 1; }
+          py_version() { sed -n 's/^version = "\(.*\)"$/\1/p' "$1"; }
+          assert_version() {
+            [ "$2" = "$3" ] || {
+              echo "::error::$1 version $2 != $3"; exit 1; }
+          }
+
+          # Everything this workflow publishes must carry the release version.
+          for manifest in package.json extensions/anywidget/package.json \
+            extensions/vscode/package.json extensions/jupyterlab/package.json; do
+            assert_version "$manifest" "$(node -p "require('./$manifest').version")" "$version"
           done
 
-          # The jupyterlab wheel's filename pins its version, but failing here beats
-          # failing after a full labextension build. Dash is checked despite not being
-          # released here: unchecked, its two halves drifted to npm 0.3.2 vs PyPI 0.4.4.
-          for pyproject_file in extensions/jupyterlab/pyproject.toml \
-            extensions/dash/pyproject.toml; do
-            py_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$pyproject_file")
-            [ "$py_version" = "$version" ] || {
-              echo "::error::$pyproject_file version $py_version != release $version"; exit 1; }
-          done
+          # The jupyterlab wheel filename pins this too, but failing here beats failing
+          # after a full labextension build.
+          assert_version extensions/jupyterlab/pyproject.toml \
+            "$(py_version extensions/jupyterlab/pyproject.toml)" "$version"
+
+          # Dash is not held to the release version: this workflow never ships it, so that
+          # would block releases over an unrelated package. Its npm and PyPI halves are one
+          # distributable though, and drifted to 0.3.2 vs 0.4.4 unnoticed, so they are
+          # checked against each other.
+          assert_version "extensions/dash package.json vs pyproject.toml" \
+            "$(node -p "require('./extensions/dash/package.json').version")" \
+            "$(py_version extensions/dash/pyproject.toml)"
 
           tag_ref="refs/tags/v$version"
           tag_sha=$(git rev-list -n 1 "$tag_ref" 2>/dev/null || true)

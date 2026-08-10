@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
-import { three_compat_alias, vite_plugin_json_gz } from '../../vite-plugins.ts'
+import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.

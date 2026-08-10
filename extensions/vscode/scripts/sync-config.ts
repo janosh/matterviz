@@ -29,15 +29,24 @@ const vscode_scalar_type = (value: unknown) =>
 const vscode_setting_type = (value: unknown) =>
   Array.isArray(value) ? `array` : vscode_scalar_type(value)
 
-// VASP's canonical filenames carry no extension, so they are matched as name stems.
-const stem_glob = brace(VASP_VIEWER_STEMS.flatMap((stem) => [stem.toUpperCase(), stem]))
+const case_variants = (stems: readonly string[]): string[] =>
+  stems.flatMap((stem) => [stem.toUpperCase(), stem])
 
-// A trailing `[._-]*` also swallows a file extension, so these forms would claim
-// write_poscar.py and contcar_reader.rs. Restricted to upper-case volumetric stems, which
-// is what the hand-written list did and the only combination where decorated names
-// (PARCHG.BAND_1, run_PARCHG_001) are real. Whether VS Code compares these case-sensitively
-// is not worth depending on, hence a narrower stem set rather than a lower-case exclusion.
-const decorated_stem_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCase()))
+// Structure stems can safely match any suffix. Decorated volumetric stems are upper-case
+// only because their trailing wildcard would otherwise claim names like write_chgcar.py.
+const structure_glob = brace(
+  case_variants(VASP_VIEWER_STEMS.filter((stem) => !VASP_VOLUMETRIC_FILES.includes(stem))),
+)
+const volumetric_glob = brace(case_variants(VASP_VOLUMETRIC_FILES))
+const decorated_glob = brace(VASP_VOLUMETRIC_FILES.map((stem) => stem.toUpperCase()))
+
+const vasp_selectors = [
+  `*${structure_glob}`,
+  volumetric_glob,
+  `*[._-]${volumetric_glob}`,
+  `${decorated_glob}[._-]*`,
+  `*[._-]${decorated_glob}[._-]*`,
+]
 
 // Every extension MatterViz offers to open, plus the same set compressed. Both are derived
 // so adding a format to $lib/constants reaches the editor registration automatically.
@@ -50,10 +59,7 @@ const build_custom_editor_selectors = (): { filenamePattern: string }[] => {
   return [
     ...with_gzip(ext_glob),
     ...KEYWORD_SELECTORS,
-    ...with_gzip(stem_glob),
-    ...with_gzip(`*[._-]${stem_glob}`),
-    ...with_gzip(`${decorated_stem_glob}[._-]*`),
-    ...with_gzip(`*[._-]${decorated_stem_glob}[._-]*`),
+    ...vasp_selectors.flatMap(with_gzip),
   ].map((filenamePattern) => ({ filenamePattern }))
 }
 
