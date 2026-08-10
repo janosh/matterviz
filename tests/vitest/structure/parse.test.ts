@@ -165,6 +165,13 @@ describe(`POSCAR Parser`, () => {
     { name: `element symbol cleaning`, content: `Test\n${cube3}\nH_pv O/12345abc\n1 1\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5`, expected: { elements: [`H`, `O`] } },
     // Scientific notation preserved: 1e-3 -2e-3 -3e-3, negative coordinates wrapped
     { name: `sci notation in malformed coords`, content: `Test\n${cube3}\nH\n1\nDirect\n1e-3-2e-3-3e-3`, expected: { abc: [0.001, 0.998, 0.997] } },
+    // Fortran exponent on the SCALE line: parseFloat used to stop at the `D` and read 5.0,
+    // inflating a 3 Å cube to 30 Å. 0.5 * 6 = 3 per axis, so volume 27.
+    { name: `Fortran exponent scale factor`, content: `Test\n5.0D-01\n6.0 0.0 0.0\n0.0 6.0 0.0\n0.0 0.0 6.0\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
+    // VASP 4 has no symbol line, so groups fall back by index. Two groups, because
+    // FALLBACK_ELEMENTS[0] is H and an index-0-only check can't tell the indexed fallback
+    // apart from a blanket "unknown element becomes hydrogen".
+    { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
   ])(`should handle $name`, ({ content, expected }) => {
     const result = parse_poscar(content)
     assert(result, `Failed to parse POSCAR`)

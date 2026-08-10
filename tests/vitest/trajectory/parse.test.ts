@@ -244,6 +244,63 @@ describe(`VASP XDATCAR Parser`, () => {
     expect(`lattice` in structure && structure.lattice.a).toBeCloseTo(10, 5)
   })
 
+  // XDATCAR shares the POSCAR header grammar, so it now honours the same scale forms:
+  // three per-axis Cartesian factors, a negative single factor meaning target cell volume,
+  // and Fortran `D` exponents (all three used to be read as a plain leading number)
+  it.each([
+    [`per-axis factors`, `2 1 3`, [`1 0 0`, `0 1 0`, `0 0 1`], [2, 1, 3]],
+    [`negative factor = target volume`, `-27.0`, [`1 0 0`, `0 1 0`, `0 0 1`], [3, 3, 3]],
+    [`Fortran exponent factor`, `5.0D-01`, [`6 0 0`, `0 6 0`, `0 0 6`], [3, 3, 3]],
+    [
+      `Fortran exponent lattice`,
+      `1.0`,
+      [`3.0D+00 0 0`, `0 3.0D+00 0`, `0 0 3.0D+00`],
+      [3, 3, 3],
+    ],
+  ])(`applies %s to the XDATCAR lattice`, async (_label, scale, lattice, abc) => {
+    const content = [
+      `title`,
+      scale,
+      ...lattice,
+      `H`,
+      `1`,
+      `Direct configuration= 1`,
+      `0.5 0.5 0.5`,
+      `Direct configuration= 2`,
+      `0.5 0.5 0.5`,
+    ].join(`\n`)
+    const { structure } = (await parse_trajectory_data(content, `XDATCAR`)).frames[0]
+    const lattice_abc =
+      `lattice` in structure
+        ? [structure.lattice.a, structure.lattice.b, structure.lattice.c]
+        : null
+    expect(lattice_abc).toEqual(abc)
+  })
+
+  // Unlike POSCAR/CHGCAR, XDATCAR refuses to invent element symbols: they go straight into
+  // the trajectory metadata, where an indexed fallback would be a silent lie. The blank
+  // symbol used to slip past a falsy `if (bad_element)` guard and become an atom.
+  it.each([
+    [`VASP 4 header with no symbol line`, `2 1`, `element symbols are missing`],
+    [`blank symbol line`, `\n1`, `Invalid element symbol in XDATCAR`],
+    [`non-element symbol`, `Xx\n1`, `Invalid element symbol in XDATCAR: Xx`],
+    [`fewer counts than symbols`, `H O Na\n1 1`, `3 element symbol(s) but 2 atom count(s)`],
+  ])(`rejects an XDATCAR %s`, async (_label, species_block, expected_error) => {
+    const content = [
+      `title`,
+      `1.0`,
+      `5 0 0`,
+      `0 5 0`,
+      `0 0 5`,
+      species_block,
+      `Direct configuration= 1`,
+      `0.5 0.5 0.5`,
+      `Direct configuration= 2`,
+      `0.5 0.5 0.5`,
+    ].join(`\n`)
+    await expect(parse_trajectory_data(content, `XDATCAR`)).rejects.toThrow(expected_error)
+  })
+
   it(`should re-read repeated headers in variable-cell (NPT) XDATCAR`, async () => {
     const frame = (lat_a: number, idx: number) =>
       `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5`
