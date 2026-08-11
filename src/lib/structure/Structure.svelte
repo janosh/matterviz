@@ -2299,6 +2299,7 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
+    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem));
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);

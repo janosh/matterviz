@@ -345,7 +345,8 @@ describe(`NebPlot`, () => {
   test(`annotates the forward barrier and the fitted saddle of the active path`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     // Forward barrier of the direct hop is 0.8339 eV, formatted with 3 significant digits
-    expect(squash(plot.textContent)).toContain(`Ea = 0.834 eV`)
+    expect(squash(plot.textContent)).toContain(`Eact = 0.834 eV`)
+    expect(plot.querySelector(`tspan[baseline-shift="sub"]`)?.textContent).toBe(`act`)
     // One dashed rule per IS/TS/FS energy, plus the active-image marker
     expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
     expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)
@@ -355,7 +356,7 @@ describe(`NebPlot`, () => {
 
   test(`hides the barrier annotation when asked`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, annotate_barrier: false })
-    expect(plot.textContent).not.toContain(`Ea = `)
+    expect(squash(plot.textContent)).not.toContain(`Eact = `)
   })
 
   // oxfmt-ignore
@@ -378,6 +379,9 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
+    expect(viewer.querySelector(`.neb-controls.sequence-control-bar`)).not.toBeNull()
+    expect(viewer.querySelector(`.sequence-controls`)).not.toBeNull()
+    expect(viewer.querySelector(`.structure-pane .sequence-controls`)).toBeNull()
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
     expect(summary).toContain(`0.8339 eV`)
@@ -388,9 +392,9 @@ describe(`NebViewer`, () => {
   test(`offers a path selector only when several paths are present`, async () => {
     const multi = await mount_viewer({ paths: reaction_paths })
     // path picker + x-axis mode + energy reference
-    expect(multi.querySelectorAll(`.controls select`)).toHaveLength(3)
+    expect(multi.querySelectorAll(`.neb-controls select`)).toHaveLength(3)
     const single = await mount_viewer({ paths: reaction_paths[`direct hop`] })
-    expect(single.querySelectorAll(`.controls select`)).toHaveLength(2)
+    expect(single.querySelectorAll(`.neb-controls select`)).toHaveLength(2)
   })
 
   test.each([
@@ -401,7 +405,7 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: start_idx })
     viewer.querySelector<HTMLButtonElement>(sel)?.click()
     await tick()
-    expect(viewer.querySelector(`.stepper`)?.textContent).toContain(`(${label}/7)`)
+    expect(viewer.querySelector(`.sequence-controls`)?.textContent).toContain(`(${label}/7)`)
   })
 
   test(`the previous button is disabled at the first image`, async () => {
@@ -416,12 +420,31 @@ describe(`NebViewer`, () => {
   test(`the image slider is reachable by its accessible name`, async () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
     const slider = viewer.querySelector<HTMLInputElement>(
-      `.stepper input[aria-label="NEB image"]`,
+      `.sequence-controls input[aria-label="NEB image"]`,
     )
     expect(slider?.type).toBe(`range`)
     expect(slider?.max).toBe(`6`)
     // mirrors the visible stepper caption so both convey the same position
     expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 0 (1 of 7)`)
+    expect(
+      viewer.querySelector(`.step-section > span[aria-label]`)?.getAttribute(`aria-label`),
+    ).toBe(`7 total images`)
+  })
+
+  test(`applies shared control visibility names`, async () => {
+    const viewer = await mount_viewer({
+      paths: reaction_paths[`direct hop`],
+      show_controls: {
+        mode: `always`,
+        hidden: [`fps`, `energy`, `spline`, `fullscreen`],
+      },
+    })
+
+    expect(viewer.querySelector(`.fps-section`)).toBeNull()
+    expect(viewer.querySelector(`.image-status`)).toBeNull()
+    expect(viewer.querySelector(`.neb-options input[type="checkbox"]`)).toBeNull()
+    expect(viewer.querySelector(`.fullscreen-button`)).toBeNull()
+    expect(viewer.querySelector(`.step-section`)).not.toBeNull()
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {

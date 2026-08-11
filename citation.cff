@@ -20,5 +20,5 @@ repository-code: https://github.com/janosh/matterviz
 type: software
 url: https://github.com/janosh/matterviz
 doi: 10.5281/zenodo.17094509
-version: 0.4.4 # replace with whatever version you use
-date-released: 2026-07-30
+version: 0.5.0 # replace with whatever version you use
+date-released: 2026-08-11

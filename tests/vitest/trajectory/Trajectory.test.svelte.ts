@@ -37,6 +37,20 @@ const flush_render = async () => {
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
+type ElementConstructor<T extends Element> = abstract new (...args: never[]) => T
+const query = <T extends Element>(
+  target: ParentNode,
+  selector: string,
+  element_constructor: ElementConstructor<T>,
+): T => {
+  const element = target.querySelector(selector)
+  if (!element) throw new Error(`No element found for selector: ${selector}`)
+  if (!(element instanceof element_constructor)) {
+    throw new Error(`Element found for selector ${selector} has the wrong type`)
+  }
+  return element
+}
+
 const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
   vi.stubGlobal(`fetch`, fetch_impl)
   try {
@@ -92,8 +106,7 @@ describe(`Trajectory`, () => {
       scatter_props: { controls_open: true },
     })
     await flush_render()
-    const plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found`)
+    const plot = query(target, `.scatter`, HTMLElement)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
@@ -117,8 +130,7 @@ describe(`Trajectory`, () => {
         show_controls: false,
       })
       await flush_render()
-      const plot = target.querySelector<HTMLElement>(`.scatter`)
-      if (!plot) throw new Error(`trajectory scatter plot not found`)
+      const plot = query(target, `.scatter`, HTMLElement)
       await resize_element(plot, 600, 400)
       const width = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
       if (!Number.isFinite(width))
@@ -143,8 +155,7 @@ describe(`Trajectory`, () => {
     })
     const target = mount_traj(props)
     await flush_render()
-    let plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found`)
+    let plot = query(target, `.scatter`, HTMLElement)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
@@ -155,8 +166,7 @@ describe(`Trajectory`, () => {
       metadata: {},
     }
     await flush_render()
-    plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found after swap`)
+    plot = query(target, `.scatter`, HTMLElement)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
@@ -237,7 +247,14 @@ describe(`Trajectory`, () => {
     },
   )
 
-  test(`restricts FPS controls and binding to half-integer values`, async () => {
+  test(`defaults to five FPS and restricts values to half-integers`, async () => {
+    const default_target = mount_traj({ trajectory: energy_traj(-1, -2) })
+    await flush_render()
+    expect(
+      default_target.querySelector<HTMLInputElement>(`.fps-section input[type="number"]`)
+        ?.value,
+    ).toBe(`5`)
+
     const props = $state({
       trajectory: energy_traj(-1, -2),
       fps: 0.2,
@@ -267,16 +284,79 @@ describe(`Trajectory`, () => {
     expect(fps_slider.value).toBe(`12.5`)
   })
 
-  test(`preserves the component's five FPS default`, async () => {
-    const props = $state({ trajectory: energy_traj(-1, -2), show_controls: `always` as const })
+  test(`preserves playback callback order and payloads through a loop`, async () => {
+    const events: string[] = []
+    const props = $state({
+      trajectory: energy_traj(-1, -2),
+      current_step_idx: 0,
+      fps: 10,
+      show_controls: `always` as const,
+      on_play: ({ step_idx }: TrajHandlerData) => events.push(`play:${step_idx}`),
+      on_pause: ({ step_idx }: TrajHandlerData) => events.push(`pause:${step_idx}`),
+      on_end: ({ step_idx }: TrajHandlerData) => events.push(`end:${step_idx}`),
+      on_loop: () => events.push(`loop`),
+    })
     const target = mount_traj(props)
     await flush_render()
+    const play = query(target, `.play-button`, HTMLButtonElement)
 
-    const fps_input = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="number"]`,
-    )
-    if (!fps_input) throw new Error(`FPS controls not found`)
-    expect(fps_input.value).toBe(`5`)
+    vi.useFakeTimers()
+    try {
+      play.click()
+      flushSync()
+      vi.advanceTimersByTime(120)
+      flushSync()
+      expect(props.current_step_idx).toBe(1)
+
+      play.click()
+      flushSync()
+      play.click()
+      flushSync()
+      vi.advanceTimersByTime(120)
+      flushSync()
+      expect(props.current_step_idx).toBe(0)
+      expect(events).toEqual([`play:0`, `pause:1`, `play:1`, `end:1`, `loop`])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test(`keeps sequence keyboard navigation and handled-event suppression`, async () => {
+    const on_frame_rate_change = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3),
+      current_step_idx: 0,
+      fps: 5,
+      show_controls: `always` as const,
+      on_frame_rate_change,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    const viewer = query(target, `.trajectory`, HTMLElement)
+
+    const press_key = async (key: string, init: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent(`keydown`, {
+        ...init,
+        key,
+        bubbles: true,
+        cancelable: true,
+      })
+      viewer.dispatchEvent(event)
+      await flush_render()
+      return event
+    }
+    const next = await press_key(`ArrowRight`)
+    expect(props.current_step_idx).toBe(1)
+    expect(next.defaultPrevented).toBe(true)
+
+    const last = await press_key(`ArrowRight`, { metaKey: true })
+    expect(props.current_step_idx).toBe(2)
+    expect(last.defaultPrevented).toBe(true)
+
+    const calls_before_speed_change = on_frame_rate_change.mock.calls.length
+    for (const key of [` `, `+`, ` `]) await press_key(key)
+    expect(props.fps).toBe(5.5)
+    expect(on_frame_rate_change).toHaveBeenCalledTimes(calls_before_speed_change + 1)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -301,10 +381,18 @@ describe(`Trajectory`, () => {
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
 
-    const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
-    if (!slider) throw new Error(`step slider not found`)
-    const trajectory_element = target.querySelector<HTMLElement>(`.trajectory`)
-    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const step_input = query(target, `.step-input`, HTMLInputElement)
+    for (const rejected_value of [``, `99`]) {
+      step_input.value = rejected_value
+      step_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      step_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await flush_render()
+      expect(props.current_step_idx).toBe(2)
+      expect(step_input.value).toBe(`2`)
+    }
+
+    const slider = query(target, `.step-slider`, HTMLInputElement)
+    const trajectory_element = query(target, `.trajectory`, HTMLElement)
     const commit_events: number[] = []
     trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
       commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
@@ -406,9 +494,9 @@ describe(`Trajectory`, () => {
     })
     await flush_render()
 
-    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
-    if (!controls) throw new Error(`trajectory controls not found`)
-    expect(getComputedStyle(controls).zIndex).toBe(z_index)
+    const controls = query(target, `.trajectory-controls`, HTMLElement)
+    // jsdom preserves unresolved var() expressions; browsers resolve the fallback to 10.
+    expect(getComputedStyle(controls).zIndex).toContain(z_index)
     expect(getComputedStyle(controls).color).toBe(color)
   })
 
@@ -421,13 +509,11 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
-    const view_mode_button = target.querySelector<HTMLButtonElement>(`.view-mode-button`)
-    if (!view_mode_button) throw new Error(`view mode button not found`)
+    const view_mode_button = query(target, `.view-mode-button`, HTMLButtonElement)
     view_mode_button.click()
     await tick()
 
-    const dropdown = target.querySelector<HTMLElement>(`.view-mode-dropdown`)
-    if (!dropdown) throw new Error(`view mode dropdown not found`)
+    const dropdown = query(target, `.view-mode-dropdown`, HTMLElement)
     // Inline stacking: jsdom applies no scoped styles; menu must stay above
     // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
