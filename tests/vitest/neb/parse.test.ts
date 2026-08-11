@@ -8,9 +8,9 @@ import {
 import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import { li_mgo_hop_json, LI_MGO_HOP_FILENAME, reaction_paths } from '$site/neb'
-import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
-import { make_crystal, resize_element } from '../setup'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { bind_props, create_drop_event, make_crystal, resize_element } from '../setup'
 
 const CELL = 4
 const cubic_structure = (x_frac: number) =>
@@ -295,7 +295,16 @@ const reset_mounts = async (): Promise<void> => {
   document.body.innerHTML = ``
 }
 
-afterEach(reset_mounts)
+afterEach(async () => {
+  await reset_mounts()
+  Object.defineProperty(document, `fullscreenElement`, { value: null, configurable: true })
+  vi.restoreAllMocks()
+})
+
+const flush_render = async (): Promise<void> => {
+  flushSync()
+  await tick()
+}
 
 const mount_plot = async (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
   await reset_mounts()
@@ -380,8 +389,6 @@ describe(`NebViewer`, () => {
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.neb-controls.sequence-control-bar`)).not.toBeNull()
-    expect(viewer.querySelector(`.sequence-controls`)).not.toBeNull()
-    expect(viewer.querySelector(`.structure-pane .sequence-controls`)).toBeNull()
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
     expect(summary).toContain(`0.8339 eV`)
@@ -398,30 +405,26 @@ describe(`NebViewer`, () => {
   })
 
   test.each([
-    [`the next button`, `[title="Next image"]`, 0, 2],
-    [`the previous button`, `[title="Previous image"]`, 2, 2],
-    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1],
-  ])(`stepping with %s moves to image %i -> %i`, async (_name, sel, start_idx, label) => {
-    const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: start_idx })
-    viewer.querySelector<HTMLButtonElement>(sel)?.click()
-    await tick()
-    expect(viewer.querySelector(`.sequence-controls`)?.textContent).toContain(`(${label}/7)`)
-  })
-
-  test(`the previous button is disabled at the first image`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: 0 })
-    expect(viewer.querySelector<HTMLButtonElement>(`[title="Previous image"]`)?.disabled).toBe(
-      true,
-    )
-  })
+    [`the next button`, `[title="Next image"]`, 0, 2, false],
+    [`the previous button`, `[title="Previous image"]`, 2, 2, false],
+    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1, true],
+  ])(
+    `stepping with %s moves to image %i -> %i`,
+    async (_name, selector, start_idx, label, disabled) => {
+      const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: start_idx })
+      const button = viewer.querySelector<HTMLButtonElement>(selector)
+      expect(button?.disabled).toBe(disabled)
+      button?.click()
+      await tick()
+      expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(${label}/7)`)
+    },
+  )
 
   // The stepper's range input has no visible <label>. The name omits "slider" (role=slider
   // already announces that) and valuetext carries the label a bare index would not convey.
   test(`the image slider is reachable by its accessible name`, async () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
-    const slider = viewer.querySelector<HTMLInputElement>(
-      `.sequence-controls input[aria-label="NEB image"]`,
-    )
+    const slider = viewer.querySelector<HTMLInputElement>(`input[aria-label="NEB image"]`)
     expect(slider?.type).toBe(`range`)
     expect(slider?.max).toBe(`6`)
     // mirrors the visible stepper caption so both convey the same position
@@ -440,11 +443,153 @@ describe(`NebViewer`, () => {
       },
     })
 
-    expect(viewer.querySelector(`.fps-section`)).toBeNull()
-    expect(viewer.querySelector(`.image-status`)).toBeNull()
-    expect(viewer.querySelector(`.neb-options input[type="checkbox"]`)).toBeNull()
-    expect(viewer.querySelector(`.fullscreen-button`)).toBeNull()
+    for (const selector of [
+      `.fps-section`,
+      `.image-status`,
+      `.neb-options input[type="checkbox"]`,
+      `.fullscreen-button`,
+    ]) {
+      expect(viewer.querySelector(selector)).toBeNull()
+    }
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
+  })
+
+  test(`updates path and image bindings through shared navigation`, async () => {
+    const state = {
+      active_path_key: `direct hop`,
+      active_image_idx: 0,
+    }
+    const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
+    const slider = viewer.querySelector<HTMLInputElement>(`.step-slider`)
+    if (!slider) throw new Error(`NEB image slider not found`)
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await flush_render()
+    expect(state.active_image_idx).toBe(2)
+
+    const path_select = viewer.querySelector<HTMLSelectElement>(`.path-control select`)
+    if (!path_select) throw new Error(`NEB path selector not found`)
+    path_select.value = `curved hop`
+    path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await flush_render()
+    expect([state.active_path_key, state.active_image_idx]).toEqual([`curved hop`, 0])
+  })
+
+  test(`auto-plays images and can be paused`, async () => {
+    vi.useFakeTimers()
+    try {
+      const state = {
+        active_image_idx: 0,
+        fps: 2,
+        auto_play: true,
+      }
+      const viewer = await mount_viewer(
+        bind_props({ paths: reaction_paths[`direct hop`] }, state),
+      )
+      vi.advanceTimersByTime(550)
+      flushSync()
+      expect(state.active_image_idx).toBe(1)
+
+      viewer.querySelector<HTMLButtonElement>(`.play-button`)?.click()
+      flushSync()
+      vi.advanceTimersByTime(1000)
+      flushSync()
+      expect(state.active_image_idx).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test(`normalizes bound FPS values`, async () => {
+    const state = { fps: 0.73 }
+    const viewer = await mount_viewer(
+      bind_props({ paths: reaction_paths[`direct hop`] }, state),
+    )
+    const fps_input = viewer.querySelector<HTMLInputElement>(
+      `.fps-section input[type="number"]`,
+    )
+    if (!fps_input) throw new Error(`NEB FPS input not found`)
+    expect(state.fps).toBe(1)
+
+    for (const [input, expected] of [
+      [4.8, 5],
+      [301, 300],
+    ]) {
+      fps_input.value = String(input)
+      fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      fps_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await flush_render()
+      expect([state.fps, fps_input.value]).toEqual([expected, String(expected)])
+    }
+  })
+
+  test(`loads valid drops and reports invalid ones`, async () => {
+    const state = {
+      active_path_key: ``,
+      active_image_idx: 1,
+      error_msg: undefined as string | undefined,
+    }
+    const viewer = await mount_viewer(bind_props({}, state))
+    const content = JSON.stringify({
+      format: `matterviz-reaction-path`,
+      label: `dropped`,
+      images: reaction_paths[`direct hop`].images,
+    })
+    viewer.dispatchEvent(create_drop_event(new File([content], `path.json`)))
+    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped`))
+    expect(state.active_image_idx).toBe(0)
+    expect(viewer.querySelector(`.scatter`)).not.toBeNull()
+
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    viewer.dispatchEvent(create_drop_event(new File([`{`], `bad.json`)))
+    await vi.waitFor(() =>
+      expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
+    )
+  })
+
+  test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {
+    const rejected_state = { fullscreen: false }
+    const rejected_callback = vi.fn()
+    const rejected_viewer = await mount_viewer(
+      bind_props(
+        {
+          paths: reaction_paths[`direct hop`],
+          on_fullscreen_change: rejected_callback,
+        },
+        rejected_state,
+      ),
+    )
+    rejected_viewer.requestFullscreen = vi
+      .fn()
+      .mockRejectedValue(new Error(`fullscreen denied`))
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    rejected_viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)?.click()
+    await flush_render()
+    expect(rejected_state.fullscreen).toBe(false)
+    expect(rejected_callback).not.toHaveBeenCalled()
+
+    let fullscreen_element: Element | null = null
+    Object.defineProperty(document, `fullscreenElement`, {
+      configurable: true,
+      get: () => fullscreen_element,
+    })
+    const state = { fullscreen: false }
+    const on_fullscreen_change = vi.fn()
+    const viewer = await mount_viewer(
+      bind_props({ paths: reaction_paths[`direct hop`], on_fullscreen_change }, state),
+    )
+    const button = viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)
+    expect(button?.style.getPropertyValue(`--icon-size`)).toBe(
+      `var(--neb-fullscreen-icon-size, 1.25rem)`,
+    )
+    viewer.requestFullscreen = vi.fn(async () => {
+      fullscreen_element = viewer
+      document.dispatchEvent(new Event(`fullscreenchange`))
+    })
+    button?.click()
+    await flush_render()
+    expect(state.fullscreen).toBe(true)
+    expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {

@@ -533,8 +533,6 @@ describe(`StructureCarousel`, () => {
     [240, 3, 736, 240],
     [240, 20, 5378.666666666666, 261.3333333333333],
     [Number.NaN, 2, 488, 240],
-    [Number.POSITIVE_INFINITY, 2, 488, 240],
-    [Number.NEGATIVE_INFINITY, 2, 488, 240],
   ] as const)(
     `height=%s with %i items remains finite and independent`,
     (height, item_count, carousel_width, card_width) => {

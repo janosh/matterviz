@@ -922,6 +922,13 @@
     }
   }
 
+  const emit_playback = (
+    handler: ((data: TrajHandlerData) => void) | undefined,
+    extra: TrajHandlerData = {},
+  ) => {
+    if (trajectory) handler?.({ trajectory, frame_count: total_frames, ...extra })
+  }
+
   const playback = create_sequence_player({
     count: () => total_frames,
     index: () => current_step_idx,
@@ -931,29 +938,16 @@
     set_fps: (value) => (fps = value),
     fps_range: () => fps_range,
     should_auto_play: () => auto_play && Boolean(trajectory),
-    on_play: () => {
-      if (trajectory)
-        on_play?.({ trajectory, step_idx: current_step_idx, frame_count: total_frames })
-    },
-    on_pause: () => {
-      if (trajectory)
-        on_pause?.({ trajectory, step_idx: current_step_idx, frame_count: total_frames })
-    },
+    on_play: () => emit_playback(on_play, { step_idx: current_step_idx }),
+    on_pause: () => emit_playback(on_pause, { step_idx: current_step_idx }),
     on_end: () => {
-      if (trajectory) {
-        on_end?.({
-          trajectory,
-          step_idx: current_step_idx,
-          frame_count: total_frames,
-          frame: current_frame || undefined,
-        })
-      }
+      emit_playback(on_end, {
+        step_idx: current_step_idx,
+        frame: current_frame || undefined,
+      })
     },
-    on_loop: () => {
-      if (trajectory) on_loop?.({ trajectory, frame_count: total_frames })
-    },
+    on_loop: () => emit_playback(on_loop),
   })
-  let is_playing = $derived(playback.is_playing)
 
   // Handle internal file format drops
   async function handle_internal_file_drop(internal_data: string): Promise<boolean> {
@@ -1204,10 +1198,10 @@
     else if (event.key === `PageDown`) playback.go_to(current_step_idx + 25)
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
-    else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      fps = Math.min(playback.fps_max, fps + playback.fps_step)
-    } else if (event.key === `-` && is_playing) {
-      fps = Math.max(playback.fps_min, fps - playback.fps_step)
+    else if ((event.key === `=` || event.key === `+`) && playback.is_playing) {
+      fps = Math.min(playback.fps_limits[1], fps + playback.fps_step)
+    } else if (event.key === `-` && playback.is_playing) {
+      fps = Math.max(playback.fps_limits[0], fps - playback.fps_step)
     } else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
@@ -1294,7 +1288,7 @@
 
 <div
   class:dragover
-  class:active={is_playing ||
+  class:active={playback.is_playing ||
     structure_info_open ||
     controls_open ||
     scatter_controls_open ||
@@ -1386,13 +1380,9 @@
           {playback}
           {step_label_positions}
           previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
-          play_title={`${
-            is_playing ? `Pause` : `Play`
-          } (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
+          play_title={`${playback.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
           next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
-          on_number_input={playback.go_to}
           on_index_input={queue_scrub_step}
-          on_index_commit={flush_scrub_step}
         />
 
         <!-- Frame info section -->

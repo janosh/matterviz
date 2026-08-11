@@ -77,7 +77,7 @@ describe(`Composition component`, () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
     await tick()
-    expect(doc_query(`.context-menu`)).toBeInstanceOf(HTMLElement)
+    expect(doc_query(`.action-menu`)).toBeInstanceOf(HTMLElement)
     expect(doc_query(`.section-title`).textContent).toBe(`Display Mode`)
     // the active mode is a checked radio, so a screen reader announces the selection
     const pie = doc_query(`[role="menuitemradio"]`)
@@ -92,7 +92,7 @@ describe(`Composition component`, () => {
     open_context_menu()
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    const menu_options = document.querySelectorAll(`.context-menu button`)
+    const menu_options = document.querySelectorAll(`.action-menu button`)
     expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
 
     const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
@@ -117,7 +117,7 @@ describe(`Composition component`, () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     const bubble_option = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
+      document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
     ).find((opt) => opt.textContent?.includes(`Bubble Chart`))
     if (!bubble_option) throw new Error(`Bubble Chart option not found`)
     bubble_option.click()

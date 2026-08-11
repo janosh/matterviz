@@ -2,7 +2,8 @@
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
   import { DEFAULT_FPS_RANGE } from '$lib/constants'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ShowControlsProp } from '$lib/controls'
   import { StatusMessage } from '$lib/feedback'
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
@@ -98,6 +99,7 @@
     Math.min(Math.max(active_image_idx, 0), Math.max(n_images - 1, 0)),
   )
   const current_image = $derived(active?.path.images[image_idx])
+  const image_caption = $derived(current_image?.label ?? `image ${image_idx}`)
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
   const playback = create_sequence_player({
@@ -216,17 +218,15 @@
         item_name="image"
         play_title={playback.is_playing ? `Pause` : `Play along the path`}
         aria_label="NEB image"
-        aria_valuetext="{current_image?.label ?? `image ${image_idx}`} ({image_idx +
-          1} of {n_images})"
+        aria_valuetext="{image_caption} ({image_idx + 1} of {n_images})"
         disable_step_while_playing={false}
-      >
-        {#if controls_config.visible(`energy`)}
-          <span class="image-status">
-            {current_image?.label ?? `image ${image_idx}`} ({image_idx + 1}/{n_images})
-            <strong>{format_num(shown_energy, `.4~`)} {energy_unit}</strong>
-          </span>
-        {/if}
-      </SequenceControls>
+      />
+      {#if controls_config.visible(`energy`)}
+        <span class="image-status">
+          {image_caption} ({image_idx + 1}/{n_images})
+          <strong>{format_num(shown_energy, `.4~`)} {energy_unit}</strong>
+        </span>
+      {/if}
 
       <div class="neb-options">
         {#if controls_config.visible(`coord`)}

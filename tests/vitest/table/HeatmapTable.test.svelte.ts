@@ -2596,7 +2596,7 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       const copy_option = [
-        ...document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
+        ...document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
       ].find((btn) => btn.textContent?.includes(`Copy column`))
       expect(copy_option?.textContent).toContain(`3 values`)
       copy_option?.click()
@@ -2604,7 +2604,7 @@ describe(`HeatmapTable`, () => {
 
       // all rows, not just the 2 on the current page
       expect(written_text()).toBe(`Model A\nModel B\nModel C`)
-      expect(document.querySelector(`.context-menu`)).toBeNull()
+      expect(document.querySelector(`.action-menu`)).toBeNull()
     })
 
     it(`context menu on headers offers copy for non-heatmap columns`, async () => {
@@ -2614,7 +2614,7 @@ describe(`HeatmapTable`, () => {
       header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
 
-      const options = [...document.querySelectorAll(`.context-menu button`)].map((btn) =>
+      const options = [...document.querySelectorAll(`.action-menu button`)].map((btn) =>
         btn.textContent?.trim(),
       )
       expect(options.some((text) => text?.includes(`Copy column`))).toBe(true)
@@ -2627,7 +2627,7 @@ describe(`HeatmapTable`, () => {
       score_header?.dispatchEvent(pointer(`pointerdown`, { button: 2 }))
       score_header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
-      expect(document.querySelector(`.context-menu`)).not.toBeNull()
+      expect(document.querySelector(`.action-menu`)).not.toBeNull()
     })
 
     it(`hides gradient controls when preferences disable the effective color scale`, async () => {
@@ -2641,7 +2641,7 @@ describe(`HeatmapTable`, () => {
 
       document.querySelector(`th`)?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
       await tick()
-      expect(document.querySelector(`.context-menu`)?.textContent).not.toMatch(
+      expect(document.querySelector(`.action-menu`)?.textContent).not.toMatch(
         /Higher is better|Lower is better/,
       )
     })

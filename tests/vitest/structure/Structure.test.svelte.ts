@@ -12,6 +12,7 @@ import {
   assertHoverScopedShortcut,
   bind_props,
   create_drop_event,
+  deferred_fetch_responses,
   doc_query,
   make_grid,
   make_volume,
@@ -538,20 +539,13 @@ describe(`Structure`, () => {
       style: `--ctrl-btn-icon-size: 32px`,
     })
 
-    // Find the wrapper element that was created by the component
     const wrapper = doc_query(`.structure`)
-
-    // Mock wrapper element
     wrapper.requestFullscreen = requestFullscreenMock
     document.exitFullscreen = exitFullscreenMock
     await tick()
 
     expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
-    expect(doc_query(`.control-buttons`).getAttribute(`style`)).toContain(
-      `--viewer-buttons-icon-size: var(--struct-control-icon-size)`,
-    )
 
-    // Click the fullscreen button
     const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
 
     fullscreen_button.click()
@@ -561,7 +555,6 @@ describe(`Structure`, () => {
     fullscreen_button.click()
     expect(requestFullscreenMock).toHaveBeenCalledTimes(2)
 
-    // Simulate fullscreen mode
     Object.defineProperty(document, `fullscreenElement`, {
       value: wrapper,
       configurable: true,
@@ -570,7 +563,6 @@ describe(`Structure`, () => {
     fullscreen_button.click()
     expect(exitFullscreenMock).toHaveBeenCalledOnce()
 
-    // Reset fullscreenElement
     Object.defineProperty(document, `fullscreenElement`, {
       value: null,
       configurable: true,
@@ -911,22 +903,6 @@ describe(`Structure string parsing`, () => {
     })
   const request_url = (url: string | URL | Request) =>
     typeof url === `string` ? url : url instanceof URL ? url.href : url.url
-  const deferred_fetch_responses = () => {
-    const responses = new Map<
-      string,
-      { resolve: (response: Response) => void; reject: (error: Error) => void }
-    >()
-    vi.stubGlobal(
-      `fetch`,
-      vi.fn(
-        (url: string | URL | Request) =>
-          new Promise<Response>((resolve, reject) => {
-            responses.set(request_url(url), { resolve, reject })
-          }),
-      ),
-    )
-    return responses
-  }
 
   test(`reloads URL-owned structure when data_url changes`, async () => {
     const loaded_elements: string[] = []

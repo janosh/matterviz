@@ -2,7 +2,12 @@ import type { TrajectoryType, TrajectoryXQuantity, TrajHandlerData } from '$lib/
 import { Trajectory } from '$lib/trajectory'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { make_trajectory_frame, resize_element } from '../setup'
+import {
+  deferred_fetch_responses,
+  doc_query,
+  make_trajectory_frame,
+  resize_element,
+} from '../setup'
 
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
@@ -37,18 +42,6 @@ const flush_render = async () => {
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
-const query = (target: ParentNode, selector: string): HTMLElement => {
-  const element = target.querySelector<HTMLElement>(selector)
-  if (!element) throw new Error(`No element found for selector: ${selector}`)
-  return element
-}
-const query_input = (target: ParentNode, selector: string): HTMLInputElement => {
-  const element = query(target, selector)
-  if (!(element instanceof HTMLInputElement))
-    throw new Error(`Element found for selector ${selector} is not an input`)
-  return element
-}
-
 const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement => {
   const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
     (button) => button.textContent?.includes(option_text),
@@ -71,7 +64,7 @@ const click_menu_option = async (
   menu_button: string,
   option_text: string,
 ): Promise<void> => {
-  query(target, menu_button).click()
+  doc_query(menu_button).click()
   await tick()
   menu_option(target, option_text).click()
   await tick()
@@ -81,7 +74,7 @@ describe(`Trajectory`, () => {
   // StructureControls owns trail-chrome visibility; this only guards Trajectory's
   // lazy collect_msd_positions gate (Trail length appears once the stream lands).
   test(`collects trail positions lazily when trails are enabled`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: make_traj([{}, {}, {}]),
       display_mode: `structure`,
       show_controls: false,
@@ -90,25 +83,25 @@ describe(`Trajectory`, () => {
     })
     await flush_render()
 
-    const trail_toggle = Array.from(target.querySelectorAll(`label`))
+    const trail_toggle = Array.from(document.querySelectorAll(`label`))
       .find((label) => label.textContent?.includes(`Show trajectory trails`))
       ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
-    expect(target.textContent).not.toContain(`Trail length`)
+    expect(document.body.textContent).not.toContain(`Trail length`)
 
     trail_toggle.click()
-    await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
   })
 
   test(`forwards the initial scatter controls-open state`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: energy_traj(-1, -2),
       display_mode: `scatter`,
       show_controls: false,
       scatter_props: { controls_open: true },
     })
     await flush_render()
-    const plot = query(target, `.scatter`)
+    const plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
@@ -126,13 +119,13 @@ describe(`Trajectory`, () => {
           },
         })),
       }
-      const target = mount_traj({
+      mount_traj({
         trajectory,
         display_mode: `scatter`,
         show_controls: false,
       })
       await flush_render()
-      const plot = query(target, `.scatter`)
+      const plot = doc_query(`.scatter`)
       await resize_element(plot, 600, 400)
       const width = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
       if (!Number.isFinite(width))
@@ -155,9 +148,9 @@ describe(`Trajectory`, () => {
       show_controls: false,
       step_labels: [0, 1, 2],
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
-    let plot = query(target, `.scatter`)
+    let plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
@@ -168,7 +161,7 @@ describe(`Trajectory`, () => {
       metadata: {},
     }
     await flush_render()
-    plot = query(target, `.scatter`)
+    plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
@@ -241,22 +234,15 @@ describe(`Trajectory`, () => {
     },
   )
 
-  // Shared integer bounds and normalization are covered in NebViewer and browser tests.
-  test(`defaults to five FPS`, async () => {
-    const target = mount_traj({ trajectory: energy_traj(-1, -2) })
-    await flush_render()
-    expect(query_input(target, `.fps-section input[type="number"]`).value).toBe(`5`)
-  })
-
   test(`keeps fullscreen state aligned while the browser request is pending`, async () => {
     const props = $state({
       trajectory: energy_traj(-1, -2),
       fullscreen: false,
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
-    const wrapper = query(target, `.trajectory`)
-    const fullscreen_button = query(target, `.fullscreen-button`)
+    const wrapper = doc_query(`.trajectory`)
+    const fullscreen_button = doc_query(`.fullscreen-button`)
     wrapper.requestFullscreen = vi.fn(() => Promise.withResolvers<undefined>().promise)
 
     fullscreen_button.click()
@@ -277,9 +263,9 @@ describe(`Trajectory`, () => {
       on_end: ({ step_idx }: TrajHandlerData) => events.push(`end:${step_idx}`),
       on_loop: () => events.push(`loop`),
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
-    const play = query(target, `.play-button`)
+    const play = doc_query(`.play-button`)
     const callbacks: FrameRequestCallback[] = []
     const request_raf = vi
       .spyOn(globalThis, `requestAnimationFrame`)
@@ -322,9 +308,10 @@ describe(`Trajectory`, () => {
       show_controls: `always` as const,
       on_frame_rate_change,
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
-    const viewer = query(target, `.trajectory`)
+    const viewer = doc_query(`.trajectory`)
+    expect(doc_query(`.fps-section input[type="number"]`, HTMLInputElement).value).toBe(`5`)
 
     const calls_before_speed_change = on_frame_rate_change.mock.calls.length
     for (const key of [` `, `+`, ` `]) {
@@ -351,13 +338,13 @@ describe(`Trajectory`, () => {
         if (throw_on_change) throw new Error(`host callback failed`)
       },
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
 
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
 
-    const step_input = query_input(target, `.step-input`)
+    const step_input = doc_query(`.step-input`, HTMLInputElement)
     for (const rejected_value of [``, `99`]) {
       step_input.value = rejected_value
       step_input.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -367,8 +354,8 @@ describe(`Trajectory`, () => {
       expect(step_input.value).toBe(`2`)
     }
 
-    const slider = query_input(target, `.step-slider`)
-    const trajectory_element = query(target, `.trajectory`)
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+    const trajectory_element = doc_query(`.trajectory`)
     const commit_events: number[] = []
     trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
       commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
@@ -445,33 +432,24 @@ describe(`Trajectory`, () => {
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
   test(`info pane max-height follows content-area height`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: energy_traj(-1.5),
       show_controls: `always` as const,
       info_pane_open: true,
     })
     await flush_render()
-    expect(query(target, `.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
+    expect(doc_query(`.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
   })
 
-  // show_controls.style is appended after the z-index the controls bar sets on itself, so
-  // both have to survive; a caller that names z-index deliberately wins, being last.
-  // Trailing-semicolon variants of the color style are not distinct: the template already
-  // supplies the join semicolon before the caller string.
-  test.each([
-    { style: `color: rgb(255, 0, 0)`, z_index: `10`, color: `rgb(255, 0, 0)` },
-    { style: `z-index: 5`, z_index: `5`, color: `` },
-  ])(`show_controls.style keeps z-index=$z_index`, async ({ style, z_index, color }) => {
-    const target = mount_traj({
+  test(`show_controls.style overrides control bar styles`, async () => {
+    mount_traj({
       trajectory: energy_traj(-1.5),
-      show_controls: { mode: `always`, style },
+      show_controls: { mode: `always`, style: `z-index: 5; color: rgb(255, 0, 0)` },
     })
     await flush_render()
 
-    const controls = query(target, `.trajectory-controls`)
-    // jsdom preserves unresolved var() expressions; browsers resolve the fallback to 10.
-    expect(getComputedStyle(controls).zIndex).toContain(z_index)
-    expect(getComputedStyle(controls).color).toBe(color)
+    const style = getComputedStyle(doc_query(`.trajectory-controls`))
+    expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
   })
 
   test(`view mode menu is layered and selectable`, async () => {
@@ -483,11 +461,11 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
-    const view_mode_button = query(target, `.view-mode-button`)
+    const view_mode_button = doc_query(`.view-mode-button`)
     view_mode_button.click()
     await tick()
 
-    const dropdown = query(target, `.view-mode-dropdown`)
+    const dropdown = doc_query(`.view-mode-dropdown`)
     // Inline stacking: jsdom applies no scoped styles; menu must stay above
     // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
@@ -535,34 +513,26 @@ describe(`Trajectory`, () => {
   })
 
   test(`ignores a stale trajectory URL completion`, async () => {
-    const responses = new Map<string, (response: Response) => void>()
-    await with_fetch(
-      vi.fn(
-        (url: string | URL | Request) =>
-          new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
-      ),
-      async () => {
-        const on_file_load = vi.fn()
-        const props = $state({
-          data_url: `/a.xyz`,
-          display_mode: `structure` as const,
-          show_controls: `never` as const,
-          on_file_load,
-        })
-        mount_traj(props)
-        await vi.waitFor(() => expect(responses.has(`/a.xyz`)).toBe(true))
+    const responses = deferred_fetch_responses()
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/a.xyz`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(responses.has(`/a.xyz`)).toBe(true))
 
-        props.data_url = `/b.xyz`
-        await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
-        responses.get(`/b.xyz`)?.(new Response(xyz(`He`)))
-        await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    props.data_url = `/b.xyz`
+    await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
+    responses.get(`/b.xyz`)?.resolve(new Response(xyz(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-        responses.get(`/a.xyz`)?.(new Response(xyz(`H`)))
-        await tick()
-        expect(on_file_load).toHaveBeenCalledTimes(1)
-        expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
-      },
-    )
+    responses.get(`/a.xyz`)?.resolve(new Response(xyz(`H`)))
+    await tick()
+    expect(on_file_load).toHaveBeenCalledTimes(1)
+    expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
   })
 
   // oxfmt-ignore

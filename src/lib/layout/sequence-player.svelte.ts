@@ -1,9 +1,8 @@
 import { FPS_STEP } from '$lib/constants'
 import { untrack } from 'svelte'
 
-// Shared playback/navigation state for ordered collections such as trajectory frames and
-// reaction-path images. Reactive values are supplied as getters so one controller can drive
-// bindable component props without taking ownership of their domain-specific callbacks.
+// Shared playback/navigation for ordered collections. Getter inputs preserve reactivity
+// without taking ownership of bindable component state or domain callbacks.
 
 type SequencePlayerInputs = {
   count: () => number
@@ -13,7 +12,7 @@ type SequencePlayerInputs = {
   fps: () => number
   set_fps: (fps: number) => void
   fps_range: () => readonly [number, number]
-  should_auto_play?: () => boolean
+  should_auto_play: () => boolean
   on_play?: () => void
   on_pause?: () => void
   on_end?: () => void
@@ -48,48 +47,39 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   function set_valid_index(index: number, setter: (index: number) => void): void {
     const count = inputs.count()
     if (count < 1 || !Number.isFinite(index)) return
-    const next = Math.min(Math.max(Math.round(index), 0), count - 1)
-    if (next !== inputs.index()) setter(next)
+    const next_index = Math.min(Math.max(Math.round(index), 0), count - 1)
+    if (next_index !== inputs.index()) setter(next_index)
   }
 
   const go_to = (index: number) => set_valid_index(index, inputs.set_index)
-  const step_to = (index: number) =>
-    set_valid_index(index, inputs.set_step_index ?? inputs.set_index)
-  const previous = () => step_to(inputs.index() - 1)
-  const next = () => step_to(inputs.index() + 1)
+  const set_step_index = inputs.set_step_index ?? inputs.set_index
+  const previous = () => set_valid_index(inputs.index() - 1, set_step_index)
+  const next = () => set_valid_index(inputs.index() + 1, set_step_index)
 
-  function start(): void {
-    if (is_playing || inputs.count() <= 1) return
-    is_playing = true
-    inputs.on_play?.()
+  function set_playing(playing: boolean): void {
+    if (playing === is_playing || (playing && inputs.count() <= 1)) return
+    is_playing = playing
+    if (playing) inputs.on_play?.()
+    else inputs.on_pause?.()
   }
 
-  function toggle(): void {
-    if (!is_playing) return start()
-    is_playing = false
-    inputs.on_pause?.()
-  }
+  const toggle = () => set_playing(!is_playing)
 
   $effect(() => {
-    if (inputs.should_auto_play?.() && inputs.count() > 1 && !untrack(() => is_playing))
-      untrack(start)
+    if (inputs.should_auto_play() && inputs.count() > 1) untrack(() => set_playing(true))
   })
 
   function advance(): void {
-    if (inputs.index() >= inputs.count() - 1) {
-      inputs.on_end?.()
-      go_to(0)
-      inputs.on_loop?.()
-    } else {
-      next()
-    }
+    if (inputs.index() < inputs.count() - 1) return next()
+    inputs.on_end?.()
+    go_to(0)
+    inputs.on_loop?.()
   }
 
-  // rAF pauses in background tabs and avoids setInterval queueing when rendering overruns.
-  // FPS and index are read live inside the callback so changing either does not restart it.
+  // rAF avoids background-tab queueing while reading FPS and index live without restarting.
   $effect(() => {
     if (!is_playing) return undefined
-    let last = performance.now()
+    let last_timestamp = performance.now()
     let accumulated_ms = 0
     let play_raf: number
     const tick = (now: number) => {
@@ -97,8 +87,8 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
         is_playing = false
         return
       }
-      accumulated_ms += Math.min(Math.max(now - last, 0), 250)
-      last = now
+      accumulated_ms += Math.min(Math.max(now - last_timestamp, 0), 250)
+      last_timestamp = now
       const step_ms = 1000 / Math.max(0.1, inputs.fps())
       if (accumulated_ms >= step_ms) {
         accumulated_ms = Math.min(accumulated_ms - step_ms, step_ms)
@@ -114,11 +104,8 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     get is_playing() {
       return is_playing
     },
-    get fps_min() {
-      return fps_limits[0]
-    },
-    get fps_max() {
-      return fps_limits[1]
+    get fps_limits() {
+      return fps_limits
     },
     get fps() {
       return inputs.fps()

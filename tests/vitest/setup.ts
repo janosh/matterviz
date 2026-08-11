@@ -82,6 +82,25 @@ export function doc_query<T extends Element = HTMLElement>(
   return node as T
 }
 
+export const deferred_fetch_responses = () => {
+  const responses = new Map<
+    string,
+    { resolve: (response: Response) => void; reject: (error: Error) => void }
+  >()
+  vi.stubGlobal(
+    `fetch`,
+    vi.fn(
+      (url: string | URL | Request) =>
+        new Promise<Response>((resolve_response, reject_response) => {
+          const request_url =
+            typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+          responses.set(request_url, { resolve: resolve_response, reject: reject_response })
+        }),
+    ),
+  )
+  return responses
+}
+
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
 
 export function expect_transition_properties(

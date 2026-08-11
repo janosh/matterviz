@@ -10,7 +10,7 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -72,7 +72,11 @@
 
   const tooltip_selector = `[title], [aria-label], [data-title]`
   // Delegation keeps tooltips working as sorting, filtering and pagination replace cells.
-  const table_tooltips = tooltip({ allow_html: true, delegate: tooltip_selector })
+  const table_tooltips = tooltip({
+    allow_html: true,
+    sanitize_html,
+    delegate: tooltip_selector,
+  })
 
   // Close a header popover when the pointer goes down anywhere outside it
   const close_header_popovers_on_outside_pointerdown = (event: PointerEvent) => {
@@ -2709,19 +2713,19 @@
 
   <!-- trigger="none": the right-click targets are the column headers and cells, which
   record which column was hit, so the menu must not also trigger off <body> -->
-  <ContextMenu
+  <ActionMenu
     trigger="none"
     bind:at={context_menu_at}
     actions={context_menu_actions}
     on_select={() => (context_menu_col = null)}
     style={[
-      `--context-menu-bg: light-dark(#fff, #1e1e1e)`,
-      `--context-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
-      `--context-menu-section-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--action-menu-bg: light-dark(#fff, #1e1e1e)`,
+      `--action-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--action-menu-section-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
       `color: light-dark(#333, #eee)`,
-      `--context-menu-item-hover-bg: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
-      `--context-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
-      `--context-menu-z-index: 200`,
+      `--action-menu-item-hover-bg: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
+      `--action-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
+      `--action-menu-z-index: 200`,
     ].join(`; `)}
   />
 </div>
