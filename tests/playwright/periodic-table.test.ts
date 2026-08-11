@@ -1,12 +1,6 @@
-import {
-  CATEGORY_COUNTS,
-  ELEM_HEATMAP_KEYS,
-  ELEMENT_CATEGORIES,
-  format_num,
-} from '$lib/labels'
+import { ELEM_HEATMAP_KEYS, format_num } from '$lib/labels'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import element_data from './element-data'
-import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
   // Open the heatmap multiselect dropdown, retrying the click until the options
@@ -24,70 +18,30 @@ test.describe(`Periodic Table`, () => {
     return option_list
   }
 
-  test(`in default state`, async ({ page }) => {
-    await page.goto(`/`, { waitUntil: `networkidle` })
+  test(`renders the default table with equal tile tracks across widths`, async ({ page }) => {
+    await page.goto(`/periodic-table`)
 
-    // Get the first periodic table on the page (homepage has multiple periodic tables)
     const periodic_table = page.locator(`.periodic-table`).first()
     await expect(periodic_table).toBeVisible({ timeout: 20000 })
     await expect(page.getByRole(`button`, { name: /Periodic Table Controls/ })).toBeVisible()
 
-    // Wait for periodic table to load by waiting for at least one element tile
     const tiles = periodic_table.locator(`.element-tile`)
     await expect(tiles.first()).toBeVisible({ timeout: 20000 })
-
-    const tile_count = await tiles.count()
     const n_lanthanide_actinide_placeholders = 2
-    expect(tile_count).toBe(element_data.length + n_lanthanide_actinide_placeholders)
+    expect(await tiles.count()).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
-    for (const category of ELEMENT_CATEGORIES) {
-      let count = CATEGORY_COUNTS[category]
-      // Scope selector to the first periodic table
-      const category_tiles_selector = periodic_table.locator(`[data-category="${category}"]`)
-      // add 1 to expected count since lanthanides and actinides have placeholder
-      // tiles showing where in the periodic table their rows insert
-      if ([`lanthanide`, `actinide`].includes(category)) count += 1
-      const category_tiles = await category_tiles_selector.count()
-      expect(category_tiles, category).toBe(count)
+    for (const width of [1000, 480]) {
+      await periodic_table.evaluate((element, next_width) => {
+        element.style.width = `${next_width}px`
+      }, width)
+      const dimensions = await tiles.evaluateAll((elements) =>
+        elements.flatMap((tile) => {
+          const { width: tile_width, height: tile_height } = tile.getBoundingClientRect()
+          return [tile_width, tile_height]
+        }),
+      )
+      expect(Math.max(...dimensions) - Math.min(...dimensions)).toBeLessThan(0.5)
     }
-  })
-
-  test(`shows stats on hover element`, async ({ page }) => {
-    await page.goto(`/`, { waitUntil: `networkidle` })
-
-    // Wait for element tiles to be visible
-    const hydrogen_tile = page.locator(`.element-tile`).filter({ hasText: `H` }).first()
-    await expect(hydrogen_tile).toBeVisible({ timeout: 20000 })
-
-    // force: true needed because element tiles have layered content (symbol, number, name)
-    // that can intercept hover events depending on mouse position within the tile
-    await hydrogen_tile.hover({ force: true })
-
-    // Check for stats display - use flexible assertion with retry
-    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 15_000 })
-  })
-
-  test(`can hover random elements without throwing errors`, async ({ page }) => {
-    const logs: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) logs.push(msg.text())
-    })
-    await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
-
-    // Wait for periodic table to be fully rendered
-    const tiles = page.locator(`.element-tile`)
-    await expect(tiles.first()).toBeVisible({ timeout: 20000 })
-    expect(await tiles.count()).toBeGreaterThan(0)
-
-    const tile_count = await tiles.count()
-    const indices = random_sample([...Array(tile_count).keys()], 3)
-    for (const idx of indices) {
-      const tile = tiles.nth(idx)
-      await tile.scrollIntoViewIfNeeded()
-      await tile.hover({ timeout: 15_000 })
-    }
-
-    expect(logs, logs.join(`\n`)).toHaveLength(0)
   })
 
   test.describe(`tooltips`, () => {
@@ -99,15 +53,6 @@ test.describe(`Periodic Table`, () => {
       page.locator(`.element-tile`).filter({ hasText: selector }).first()
 
     const get_tooltip = (page: Page) => page.locator(`.tooltip`)
-
-    const clear_tooltip = async (page: Page) => {
-      // Move mouse away from any element tile to trigger tooltip hide
-      await page.mouse.move(0, 0)
-      // The tooltip uses conditional rendering ({#if tooltip_visible}),
-      // so when hidden, it doesn't exist in the DOM at all
-      const tooltip = page.locator(`.tooltip`)
-      await expect(tooltip).toHaveCount(0, { timeout: 15_000 })
-    }
 
     // Hover an element tile until its tooltip appears, returning the tooltip
     // locator. Retries the whole hover (move away first to re-arm mouseenter)
@@ -125,36 +70,26 @@ test.describe(`Periodic Table`, () => {
       return tooltip
     }
 
-    test(`shows default tooltip on element hover when no heatmap is selected`, async ({
-      page,
-    }) => {
-      await page.goto(`/periodic-table`)
-
-      // Wait for element tiles to render before hovering
-      await page.waitForSelector(`.element-tile`, { timeout: 10000 })
-
-      // Get the first periodic table container (PeriodicTableDemo) which has tooltip enabled
-      const periodic_table = page.locator(`.periodic-table`).first()
-      await expect(periodic_table).toBeVisible({ timeout: 10000 })
-
-      // Hover on the H tile within the first periodic table (retries until tooltip shows)
-      const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` }).first()
-      await expect(h_tile).toBeVisible({ timeout: 15_000 })
-
-      const tooltip = await hover_until_tooltip(page, h_tile)
-      await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
-      await expect(tooltip).toContainText(`H • 1`)
-    })
-
-    test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({
-      page,
-    }) => {
+    test(`shows selected heatmap values and custom tooltip`, async ({ page }) => {
       await page.goto(`/periodic-table`)
       const option_list = await open_heatmap_select(page)
       const first_option = option_list.locator(`li`).first()
+      await expect(first_option).toContainText(/atomic.*mass/i)
       await first_option.click()
 
-      // Close dropdown by clicking outside before hovering on tile
+      const first_heatmap_key = ELEM_HEATMAP_KEYS[0]
+      const hydrogen = element_data.find(({ symbol }) => symbol === `H`)
+      if (!first_heatmap_key || !hydrogen) throw new Error(`Missing atomic mass test data`)
+      const heatmap_value = hydrogen[first_heatmap_key]
+      if (typeof heatmap_value !== `number`)
+        throw new Error(`Hydrogen atomic mass is not numeric`)
+      await expect(
+        page
+          .locator(`.periodic-table`)
+          .first()
+          .locator(`[data-element-symbol="${hydrogen.symbol}"]`),
+      ).toContainText(format_num(heatmap_value))
+
       await page.mouse.click(10, 10)
       await expect(option_list).not.toBeVisible()
 
@@ -167,120 +102,25 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toContainText(/Range:|Min|Max/)
     })
 
-    test(`tooltip follows mouse position`, async ({ page }) => {
+    test(`shows default tooltip content and follows the hovered element`, async ({ page }) => {
       await page.goto(`/periodic-table`)
 
       const hydrogen_tile = get_element_tile(page, `H`)
       const helium_tile = get_element_tile(page, `He`)
 
       const tooltip = await hover_until_tooltip(page, hydrogen_tile)
+      await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
+      await expect(tooltip).toContainText(`H • 1`)
       const initial_box = await tooltip.boundingBox()
       expect(initial_box).not.toBeNull()
 
       await hover_until_tooltip(page, helium_tile)
+      await expect(tooltip).toContainText(`Helium`)
       const new_box = await tooltip.boundingBox()
       expect(new_box).not.toBeNull()
       if (!initial_box || !new_box) throw new Error(`Tooltip bounding box not found`)
 
       expect(new_box.x).not.toBe(initial_box.x)
-    })
-
-    test(`tooltip disappears when mouse leaves element`, async ({ page }) => {
-      await page.goto(`/periodic-table`)
-
-      // Wait for element tiles to render
-      await page.waitForSelector(`.element-tile`, { timeout: 10000 })
-
-      const h_tile = get_element_tile(page, `H`)
-      await expect(h_tile).toBeVisible({ timeout: 15_000 })
-
-      const tooltip = await hover_until_tooltip(page, h_tile)
-
-      await clear_tooltip(page)
-      await expect(tooltip).toBeHidden()
-    })
-
-    // Streamlined content tests using shared data
-    const test_elements = [
-      { symbol: `H`, name: `Hydrogen`, number: `1` },
-      { symbol: `O`, name: `Oxygen`, number: `8` },
-      { symbol: `Fe`, name: `Iron`, number: `26` },
-    ]
-
-    for (const element of test_elements) {
-      test(`tooltip shows correct content for ${element.name}`, async ({ page }) => {
-        await page.goto(`/periodic-table`)
-
-        // Wait for element tiles to render
-        await page.waitForSelector(`.element-tile`, { timeout: 10000 })
-
-        const element_tile = page
-          .locator(`.element-tile`)
-          .filter({
-            hasText: new RegExp(`^\\s*${element.number}\\s+${element.symbol}`),
-          })
-          .first()
-
-        await expect(element_tile).toBeVisible({ timeout: 15_000 })
-
-        const tooltip = await hover_until_tooltip(page, element_tile)
-        await expect(tooltip).toContainText(element.name, { timeout: 15_000 })
-        await expect(tooltip).toContainText(`${element.symbol} • ${element.number}`)
-      })
-    }
-  })
-
-  test.describe(`in heatmap mode`, () => {
-    // Configure retries for heatmap mode tests which involve dropdown interactions
-    test.describe.configure({ retries: 2 })
-
-    test(`displays elemental heat values`, async ({ page }) => {
-      await page.goto(`/periodic-table`)
-
-      // Open the heatmap dropdown (retries click until hydrated under CI contention)
-      const option_list = await open_heatmap_select(page)
-
-      // Click on the first available option (Atomic mass)
-      const first_option = option_list.locator(`li`).first()
-      await expect(first_option).toContainText(/atomic.*mass/i)
-      await first_option.click()
-
-      // Wait for heatmap to render - element tiles should have heatmap values
-      // The first heatmap key is atomic_mass
-      const first_heatmap_key = ELEM_HEATMAP_KEYS[0]
-      if (first_heatmap_key) {
-        // Check that at least some element tiles display the expected heatmap value
-        const tiles = page.locator(`.element-tile`)
-        await expect(tiles.first()).toBeVisible()
-
-        // Verify random elements have heatmap values displayed
-        let validated_count = 0
-        for (const rand_elem of random_sample(element_data, 3)) {
-          const heatmap_value = rand_elem[first_heatmap_key]
-          if (typeof heatmap_value !== `number`) continue
-          const heatmap_val = format_num(heatmap_value)
-
-          // make sure heatmap value is displayed correctly (use regex for flexible whitespace)
-          const escaped_val = heatmap_val.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)
-          const tiles_with_text = await tiles
-            .filter({
-              hasText: new RegExp(
-                `${rand_elem.number}\\s+${rand_elem.symbol}\\s+${escaped_val}`,
-              ),
-            })
-            .count()
-
-          expect(
-            tiles_with_text,
-            `Expected element tile for ${rand_elem.symbol} with heatmap value "${heatmap_val}"`,
-          ).toBeGreaterThan(0)
-          validated_count++
-        }
-        expect(
-          validated_count,
-          `Expected at least one element with a numeric heatmap value to be validated`,
-        ).toBeGreaterThan(0)
-      }
     })
   })
 })

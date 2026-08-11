@@ -863,7 +863,7 @@ describe(`BarPlot`, () => {
     },
   )
 
-  test(`automatic y1 assignment preserves legacy unassigned geometry`, async () => {
+  test(`implicit and explicit y1 assignment render identically`, async () => {
     const collect_geometry = async (series: BarSeries[]) => {
       const plot = await mount_sized_bar_plot({
         series,

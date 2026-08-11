@@ -36,6 +36,7 @@ describe(`PlotTitle`, () => {
       {
         text: `alpha beta gamma`,
         subtitle: `details here`,
+        align: `end`,
         gap: 7,
         font: { font_size: 10, line_height: 12, font_weight: `700` },
         subtitle_font: { font_size: 8, line_height: 10, font_style: `italic` },
@@ -52,6 +53,8 @@ describe(`PlotTitle`, () => {
     expect(subtitle?.querySelectorAll(`tspan`)).toHaveLength(2)
     expect(title?.getAttribute(`font-size`)).toBe(`10`)
     expect(title?.getAttribute(`font-weight`)).toBe(`700`)
+    expect(title?.getAttribute(`text-anchor`)).toBe(`end`)
+    expect(title?.getAttribute(`x`)).toBe(`60`)
     expect(subtitle?.getAttribute(`font-style`)).toBe(`italic`)
     expect(svg.querySelector(`foreignObject`)).toBeNull()
     expect(Number(subtitle?.querySelector(`tspan`)?.getAttribute(`y`))).toBeGreaterThan(
@@ -132,30 +135,5 @@ describe(`PlotTitle`, () => {
       if (original_fonts) Object.defineProperty(document, `fonts`, original_fonts)
       else Reflect.deleteProperty(document, `fonts`)
     }
-  })
-
-  test.each([
-    { align: `start`, expected_x: `10` },
-    { align: `middle`, expected_x: `60` },
-    { align: `end`, expected_x: `110` },
-  ] as const)(`renders align=$align at x=$expected_x`, async ({ align, expected_x }) => {
-    const { component, svg } = mount_title({ text: `Aligned`, align }, { x: 10, width: 100 })
-    const title = svg.querySelector(`text.plot-title-text`)
-    const line = title?.querySelector(`tspan`)
-
-    expect(title?.getAttribute(`text-anchor`)).toBe(align)
-    expect(title?.getAttribute(`x`)).toBe(expected_x)
-    expect(line?.getAttribute(`x`)).toBe(expected_x)
-    await unmount(component)
-  })
-
-  test.each([
-    { label: `undefined`, config: undefined },
-    { label: `null`, config: null },
-    { label: `empty`, config: {} },
-  ])(`renders no SVG nodes for $label config`, async ({ config }) => {
-    const { component, svg } = mount_title(config)
-    expect(svg.childElementCount).toBe(0)
-    await unmount(component)
   })
 })

@@ -6,15 +6,23 @@ import {
   REACTION_PATH_FORMAT,
 } from '$lib/neb/parse'
 import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
-import { count_xyz_frames } from '$lib/trajectory/helpers'
-import { li_mgo_hop_json, LI_MGO_HOP_FILENAME, reaction_paths } from '$site/neb'
-import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
-import { make_crystal, resize_element } from '../setup'
+import { li_mgo_hop_json, reaction_paths } from '$site/neb'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import {
+  bind_props,
+  create_drop_event,
+  doc_query,
+  flush_render,
+  make_crystal,
+  resize_element,
+} from '../setup'
 
 const CELL = 4
 const cubic_structure = (x_frac: number) =>
   make_crystal(CELL, [{ element: `Li`, abc: [x_frac, 0, 0] }])
+const direct_path = reaction_paths[`direct hop`]
+const curved_path = reaction_paths[`curved hop`]
 
 const minimal_doc = (extra: Record<string, unknown> = {}) => ({
   format: REACTION_PATH_FORMAT,
@@ -66,7 +74,6 @@ describe(`reaction-path JSON`, () => {
     const path = parse_reaction_path_json(JSON.stringify(doc), `f.json`)[`f.json`]
     expect(path.images[0].forces).toEqual([[0.1, -0.2, 0.3]])
     expect(path.images[1].forces).toBeUndefined()
-    expect(path.images.map((image) => image.label)).toEqual([`IS`, `TS`, `FS`])
   })
 
   test(`an unrecognised top-level key such as _comment provenance is tolerated`, () => {
@@ -108,7 +115,6 @@ describe(`extended XYZ reaction paths`, () => {
 
   test(`splits a multi-frame file into one image per frame`, () => {
     const content = [frame(0, -10), frame(1, -9.2), frame(2, -9.7)].join(`\n`)
-    expect(count_xyz_frames(content)).toBe(3)
     const path = parse_xyz_reaction_path(content, `neb.xyz`)
     expect(path.images.map((image) => image.energy)).toEqual([-10, -9.2, -9.7])
     expect(path.images.map((image) => image.label)).toEqual([`image 0`, `image 1`, `image 2`])
@@ -165,13 +171,11 @@ describe(`dropped files`, () => {
 
   test(`loose structure files are assembled into one path in drop order`, () => {
     const paths = parse_dropped_paths(
-      (
-        [
-          [0.1, -10],
-          [0.3, -9.2],
-          [0.5, -9.7],
-        ] as const
-      ).map(([x_frac, energy], idx) => ({
+      [
+        [0.1, -10],
+        [0.3, -9.2],
+        [0.5, -9.7],
+      ].map(([x_frac, energy], idx) => ({
         content: JSON.stringify({ ...cubic_structure(x_frac), properties: { energy } }),
         filename: `0${idx}.json`,
       })),
@@ -183,7 +187,7 @@ describe(`dropped files`, () => {
   // The single-frame XYZ branch reads the comment at line index 1, so it has to trim the
   // content first like parse_xyz_reaction_path does — otherwise a leading blank line
   // shifts the comment out from under it and the energy reads as missing
-  test.each([``, `\n`, `  \n\n`])(
+  test.each([``, `  \n\n`])(
     `a loose single-frame XYZ keeps its comment energy after %j of leading whitespace`,
     (lead) => {
       const xyz = (x_val: number, energy: number) =>
@@ -208,10 +212,9 @@ describe(`dropped files`, () => {
 describe(`Li/MgO demo fixture`, () => {
   test(`ships two mechanisms whose images all hold the same 9 atoms, migrating Li last`, () => {
     expect(Object.keys(reaction_paths)).toEqual([`direct hop`, `curved hop`])
-    expect(reaction_paths[`direct hop`].images).toHaveLength(7)
-    expect(reaction_paths[`curved hop`].images).toHaveLength(9)
+    expect(direct_path.images).toHaveLength(7)
+    expect(curved_path.images).toHaveLength(9)
     expect(li_mgo_hop_json).toContain(REACTION_PATH_FORMAT)
-    expect(LI_MGO_HOP_FILENAME).toBe(`li-mgo-interstitial-hop.json`)
 
     for (const path of Object.values(reaction_paths)) {
       for (const image of path.images) {
@@ -238,15 +241,15 @@ describe(`Li/MgO demo fixture`, () => {
   })
 
   test(`both mechanisms share endpoints, so only the barrier differs`, () => {
-    const direct = analyze_barrier(reaction_paths[`direct hop`])
-    const curved = analyze_barrier(reaction_paths[`curved hop`])
+    const direct = analyze_barrier(direct_path)
+    const curved = analyze_barrier(curved_path)
     expect(direct.initial_energy).toBeCloseTo(curved.initial_energy, 6)
     expect(direct.final_energy).toBeCloseTo(curved.final_energy, 6)
     expect(curved.forward_barrier).toBeGreaterThan(direct.forward_barrier)
   })
 
   test(`the migrating Li crosses the z cell face, so the metric choice matters`, () => {
-    const images = reaction_paths[`direct hop`].images
+    const images = direct_path.images
     const min_image = reaction_coordinate(images).at(-1) as number
     const raw = reaction_coordinate(images, { metric: `cartesian` }).at(-1) as number
     // Li moves 0.45 fractional units through the face in a 4.21 Å cell => 1.89 Å
@@ -268,7 +271,6 @@ describe(`Li/MgO demo fixture`, () => {
     expect(spline.fitted_max.energy - path.images[0].energy).toBeCloseTo(rel, 2)
     expect(spline.fitted_max.energy).toBeGreaterThan(spline.highest_image.energy)
     expect(spline.saddle_at_image).toBe(false)
-    expect(spline.fitted_max.between_images[0]).not.toBe(spline.fitted_max.between_images[1])
   })
 })
 
@@ -287,15 +289,18 @@ const sized = async (root: HTMLElement | null, label: string): Promise<HTMLEleme
 // Both mounters tear down what came before so a test can mount twice and still query the
 // component it just made. Clearing innerHTML alone drops the nodes but leaves the previous
 // component's effects, timers and window listeners running, which makes tests order-dependent.
-let mounted_components: ReturnType<typeof mount>[] = []
+const mounted_components: ReturnType<typeof mount>[] = []
 
 const reset_mounts = async (): Promise<void> => {
-  await Promise.all(mounted_components.map((component) => unmount(component)))
-  mounted_components = []
-  document.body.innerHTML = ``
+  await Promise.all(mounted_components.splice(0).map((component) => unmount(component)))
+  document.body.replaceChildren()
 }
 
-afterEach(reset_mounts)
+afterEach(async () => {
+  await reset_mounts()
+  Object.defineProperty(document, `fullscreenElement`, { value: null, configurable: true })
+  vi.restoreAllMocks()
+})
 
 const mount_plot = async (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
   await reset_mounts()
@@ -317,11 +322,11 @@ const mount_viewer = async (
 
 describe(`NebPlot`, () => {
   test.each([
-    [`a keyed record of paths`, () => reaction_paths],
-    [`a single path object`, () => reaction_paths[`direct hop`]],
-    [`a bare image array`, () => reaction_paths[`direct hop`].images],
-  ])(`renders %s`, async (_name, make_paths) => {
-    const plot = await mount_plot({ paths: make_paths() })
+    [`a keyed record of paths`, reaction_paths],
+    [`a single path object`, direct_path],
+    [`a bare image array`, direct_path.images],
+  ])(`renders %s`, async (_name, paths) => {
+    const plot = await mount_plot({ paths })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`eV`)
   })
@@ -346,6 +351,7 @@ describe(`NebPlot`, () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     // Forward barrier of the direct hop is 0.8339 eV, formatted with 3 significant digits
     expect(squash(plot.textContent)).toContain(`Eact = 0.834 eV`)
+    expect(plot.querySelector(`tspan[baseline-shift="sub"]`)?.textContent).toBe(`act`)
     // One dashed rule per IS/TS/FS energy, plus the active-image marker
     expect(plot.querySelectorAll(`line[stroke-dasharray="4 4"]`)).toHaveLength(3)
     expect(plot.querySelectorAll(`line[stroke-dasharray="2 3"]`)).toHaveLength(1)
@@ -355,7 +361,7 @@ describe(`NebPlot`, () => {
 
   test(`hides the barrier annotation when asked`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, annotate_barrier: false })
-    expect(plot.textContent).not.toContain(`Ea = `)
+    expect(squash(plot.textContent)).not.toContain(`Eact = `)
   })
 
   // oxfmt-ignore
@@ -369,7 +375,7 @@ describe(`NebPlot`, () => {
 
 describe(`NebViewer`, () => {
   test(`shows a drop prompt when no path is supplied`, async () => {
-    const viewer = await mount_viewer({})
+    const viewer = await mount_viewer()
     expect(viewer.textContent).toContain(`Drop a matterviz-reaction-path JSON`)
     expect(viewer.querySelector(`.scatter`)).toBeNull()
   })
@@ -378,6 +384,7 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
+    expect(viewer.querySelector(`.neb-controls.sequence-control-bar`)).not.toBeNull()
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)
     expect(summary).toContain(`0.8339 eV`)
@@ -388,40 +395,189 @@ describe(`NebViewer`, () => {
   test(`offers a path selector only when several paths are present`, async () => {
     const multi = await mount_viewer({ paths: reaction_paths })
     // path picker + x-axis mode + energy reference
-    expect(multi.querySelectorAll(`.controls select`)).toHaveLength(3)
-    const single = await mount_viewer({ paths: reaction_paths[`direct hop`] })
-    expect(single.querySelectorAll(`.controls select`)).toHaveLength(2)
+    expect(multi.querySelectorAll(`.neb-controls select`)).toHaveLength(3)
+    const single = await mount_viewer({ paths: direct_path })
+    expect(single.querySelectorAll(`.neb-controls select`)).toHaveLength(2)
   })
 
   test.each([
-    [`the next button`, `[title="Next image"]`, 0, 2],
-    [`the previous button`, `[title="Previous image"]`, 2, 2],
-    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1],
-  ])(`stepping with %s moves to image %i -> %i`, async (_name, sel, start_idx, label) => {
-    const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: start_idx })
-    viewer.querySelector<HTMLButtonElement>(sel)?.click()
-    await tick()
-    expect(viewer.querySelector(`.stepper`)?.textContent).toContain(`(${label}/7)`)
-  })
-
-  test(`the previous button is disabled at the first image`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: 0 })
-    expect(viewer.querySelector<HTMLButtonElement>(`[title="Previous image"]`)?.disabled).toBe(
-      true,
-    )
-  })
+    [`the next button`, `[title="Next image"]`, 0, 2, false],
+    [`the previous button`, `[title="Previous image"]`, 2, 2, false],
+    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1, true],
+  ])(
+    `stepping with %s moves to image %i -> %i`,
+    async (_name, selector, start_idx, label, disabled) => {
+      const viewer = await mount_viewer({ paths: reaction_paths, active_image_idx: start_idx })
+      const button = viewer.querySelector<HTMLButtonElement>(selector)
+      expect(button?.disabled).toBe(disabled)
+      button?.click()
+      await tick()
+      expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(${label}/7)`)
+    },
+  )
 
   // The stepper's range input has no visible <label>. The name omits "slider" (role=slider
   // already announces that) and valuetext carries the label a bare index would not convey.
   test(`the image slider is reachable by its accessible name`, async () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
-    const slider = viewer.querySelector<HTMLInputElement>(
-      `.stepper input[aria-label="NEB image"]`,
-    )
+    const slider = viewer.querySelector<HTMLInputElement>(`input[aria-label="NEB image"]`)
     expect(slider?.type).toBe(`range`)
     expect(slider?.max).toBe(`6`)
     // mirrors the visible stepper caption so both convey the same position
     expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 0 (1 of 7)`)
+    expect(
+      viewer.querySelector(`.step-section > span[aria-label]`)?.getAttribute(`aria-label`),
+    ).toBe(`7 total images`)
+  })
+
+  test(`applies shared control visibility names`, async () => {
+    const viewer = await mount_viewer({
+      paths: direct_path,
+      show_controls: {
+        mode: `always`,
+        hidden: [`fps`, `energy`, `spline`, `fullscreen`],
+      },
+    })
+
+    for (const selector of [
+      `.fps-section`,
+      `.image-status`,
+      `.neb-options input[type="checkbox"]`,
+      `.fullscreen-button`,
+    ]) {
+      expect(viewer.querySelector(selector)).toBeNull()
+    }
+    expect(viewer.querySelector(`.step-section`)).not.toBeNull()
+  })
+
+  test(`updates path and image bindings through shared navigation`, async () => {
+    const state = {
+      active_path_key: `direct hop`,
+      active_image_idx: 0,
+    }
+    const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
+    const slider = viewer.querySelector<HTMLInputElement>(`.step-slider`)
+    if (!slider) throw new Error(`NEB image slider not found`)
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await flush_render()
+    expect(state.active_image_idx).toBe(2)
+
+    const path_select = viewer.querySelector<HTMLSelectElement>(`.path-control select`)
+    if (!path_select) throw new Error(`NEB path selector not found`)
+    path_select.value = `curved hop`
+    path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await flush_render()
+    expect([state.active_path_key, state.active_image_idx]).toEqual([`curved hop`, 0])
+  })
+
+  test(`auto-plays images and can be paused`, async () => {
+    vi.useFakeTimers()
+    try {
+      const state = {
+        active_image_idx: 0,
+        fps: 2,
+        auto_play: true,
+      }
+      const viewer = await mount_viewer(bind_props({ paths: direct_path }, state))
+      vi.advanceTimersByTime(550)
+      flushSync()
+      expect(state.active_image_idx).toBe(1)
+
+      viewer.querySelector<HTMLButtonElement>(`.play-button`)?.click()
+      flushSync()
+      vi.advanceTimersByTime(1000)
+      flushSync()
+      expect(state.active_image_idx).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test(`normalizes bound FPS values to 0.1 increments`, async () => {
+    const state = { fps: 0.73 }
+    await mount_viewer(bind_props({ paths: direct_path }, state))
+    const fps_input = doc_query<HTMLInputElement>(`.fps-section input[type="number"]`)
+    expect(state.fps).toBe(0.7)
+    expect(fps_input.step).toBe(`0.1`)
+
+    for (const [input, expected] of [
+      [12.36, 12.4],
+      [301, 300],
+    ]) {
+      fps_input.value = String(input)
+      fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      fps_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await flush_render()
+      expect([state.fps, fps_input.value]).toEqual([expected, String(expected)])
+    }
+  })
+
+  test(`loads valid drops and reports invalid ones`, async () => {
+    const state = {
+      active_path_key: ``,
+      active_image_idx: 1,
+      error_msg: undefined as string | undefined,
+    }
+    const viewer = await mount_viewer(bind_props({}, state))
+    const content = JSON.stringify({
+      format: `matterviz-reaction-path`,
+      label: `dropped`,
+      images: direct_path.images,
+    })
+    viewer.dispatchEvent(create_drop_event(new File([content], `path.json`)))
+    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped`))
+    expect(state.active_image_idx).toBe(0)
+    expect(viewer.querySelector(`.scatter`)).not.toBeNull()
+
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    viewer.dispatchEvent(create_drop_event(new File([`{`], `bad.json`)))
+    await vi.waitFor(() =>
+      expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
+    )
+  })
+
+  test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {
+    const rejected_state = { fullscreen: false }
+    const rejected_callback = vi.fn()
+    const rejected_viewer = await mount_viewer(
+      bind_props(
+        {
+          paths: direct_path,
+          on_fullscreen_change: rejected_callback,
+        },
+        rejected_state,
+      ),
+    )
+    rejected_viewer.requestFullscreen = vi
+      .fn()
+      .mockRejectedValue(new Error(`fullscreen denied`))
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    rejected_viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)?.click()
+    await flush_render()
+    expect(rejected_state.fullscreen).toBe(false)
+    expect(rejected_callback).not.toHaveBeenCalled()
+
+    let fullscreen_element: Element | null = null
+    Object.defineProperty(document, `fullscreenElement`, {
+      configurable: true,
+      get: () => fullscreen_element,
+    })
+    const state = { fullscreen: false }
+    const on_fullscreen_change = vi.fn()
+    const viewer = await mount_viewer(
+      bind_props({ paths: direct_path, on_fullscreen_change }, state),
+    )
+    const button = viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)
+    if (!button) throw new Error(`NEB fullscreen button not found`)
+    viewer.requestFullscreen = vi.fn(async () => {
+      fullscreen_element = viewer
+      document.dispatchEvent(new Event(`fullscreenchange`))
+    })
+    button.click()
+    await flush_render()
+    expect(state.fullscreen).toBe(true)
+    expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
   })
 
   test(`the fitted saddle is a physical energy, not an artefact of the x-axis`, async () => {
@@ -436,10 +592,8 @@ describe(`NebViewer`, () => {
       if (!excess) throw new Error(`no fitted saddle row in "${summary}"`)
       return Number(excess)
     }
-    const [arc, index] = [
-      await fitted_excess(`arc_length`),
-      await fitted_excess(`image_index`),
-    ]
+    const arc = await fitted_excess(`arc_length`)
+    const index = await fitted_excess(`image_index`)
     // dE/ds comes out of the forces in eV/Å. Grafting it unchanged onto the unitless bead
     // number reported 0.0818 eV here — 12x the truth. Reparametrising 7 knots does move
     // the interpolant a little, so allow 2 meV rather than demanding f64 agreement.

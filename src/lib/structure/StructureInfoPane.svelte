@@ -2,7 +2,7 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { Icon } from 'svelte-widgets'
+  import { DraggablePane, Icon } from 'svelte-widgets'
   import { Check, Cross, Info } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
@@ -15,7 +15,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { create_clipboard_feedback, DraggablePane } from '$lib/overlays'
+  import { create_clipboard_feedback } from '$lib/overlays'
 
   type SiteDetail = {
     label: string

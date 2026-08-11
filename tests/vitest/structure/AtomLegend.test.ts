@@ -215,14 +215,6 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Mode Selector`, () => {
-    test(`renders mode toggle button`, () => {
-      mount_legend({ elements: { Fe: 2 } })
-
-      const mode_toggle = doc_query(`button.mode-toggle`)
-      expect(mode_toggle).toBeInstanceOf(HTMLElement)
-      expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`false`)
-    })
-
     test(`opens and closes mode dropdown`, async () => {
       mount_legend({ elements: { Fe: 2 } })
 

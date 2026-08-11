@@ -2,6 +2,7 @@
 // Used by both main package and VSCode extension
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
+import { DEFAULT_FPS_RANGE, FPS_STEP } from '$lib/constants'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { ColorProperty, RepresentationMode } from '$lib/fermi-surface/types'
 import type { D3SymbolName } from '$lib/labels'
@@ -39,6 +40,7 @@ export interface SettingType<T = unknown> {
   multipleOf?: number
   minItems?: number
   maxItems?: number
+  items?: { minimum?: number; maximum?: number; multipleOf?: number }
   context?: `web` | `editor` | `notebook` | `all`
 }
 
@@ -354,7 +356,7 @@ export interface SettingsConfig {
     // Core trajectory settings
     auto_play: SettingType<boolean>
     fps: SettingType<number>
-    fps_range: SettingType<Vec2>
+    fps_range: SettingType<Readonly<Vec2>>
     display_mode: SettingType<
       `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
     >
@@ -1127,15 +1129,21 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     fps: {
       value: 10,
-      description: `Frames per second for trajectory playback`,
-      minimum: 0.1,
-      maximum: 60,
+      description: `Playback FPS in 0.1 increments (0 pauses)`,
+      minimum: DEFAULT_FPS_RANGE[0],
+      maximum: DEFAULT_FPS_RANGE[1],
+      multipleOf: FPS_STEP,
     },
     fps_range: {
-      value: [0.2, 60] as const,
-      description: `Allowed range for playback speed [min, max]`,
+      value: DEFAULT_FPS_RANGE,
+      description: `Allowed range for playback speed [min, max], where 0 means paused`,
       minItems: 2,
       maxItems: 2,
+      items: {
+        minimum: DEFAULT_FPS_RANGE[0],
+        maximum: DEFAULT_FPS_RANGE[1],
+        multipleOf: FPS_STEP,
+      },
     },
     display_mode: {
       value: `structure+scatter` as const,

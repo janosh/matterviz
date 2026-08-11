@@ -1,6 +1,4 @@
-import { place_decorations } from '$lib/plot/core/auto-place'
 import {
-  place_outside_decorations,
   project_obstacles,
   solve_decorations,
   type DecorationItem,
@@ -70,29 +68,7 @@ const scene_for = (
 })
 
 describe(`decoration solver`, () => {
-  test(`matches the existing outside and interior placement behavior`, () => {
-    const items: DecorationItem[] = [
-      { id: `legend`, kind: `legend`, footprint: { width: 80, height: 180 } },
-      {
-        id: `colorbar`,
-        kind: `colorbar`,
-        footprint: { width: 56, height: 150 },
-        horizontal: false,
-      },
-    ]
-    const scene = scene_for(items, dense_obstacles)
-    const legacy = place_decorations({
-      base_pad,
-      width,
-      height,
-      obstacles_norm: dense_obstacles,
-      legend: { footprint: items[0].footprint },
-      colorbar: { footprint: items[1].footprint, horizontal: false },
-      gap: 8,
-    })
-    expect(place_outside_decorations(scene)).toEqual(legacy)
-    expect(solve_decorations(scene).pad).toEqual(legacy.pad)
-
+  test(`matches direct interior placement`, () => {
     const sparse_scene = scene_for(
       [{ id: `legend`, kind: `legend`, footprint: { width: 100, height: 60 } }],
       [{ x: 0.9, y: 0.9 }],

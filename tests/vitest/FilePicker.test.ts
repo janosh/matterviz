@@ -1,5 +1,7 @@
 import { type FileInfo, FilePicker, file_type_paint } from '$lib'
+import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { doc_query } from './setup'
 
@@ -48,19 +50,22 @@ describe(`FilePicker`, () => {
       expect(document.querySelectorAll(`.file-item.active`)).toHaveLength(expected_active)
     })
 
-    it(`shows and contrasts file type badges only when labels are set`, () => {
+    it(`shows and updates contrasting file type badges only when labels are set`, () => {
       const labeled: FileInfo[] = [
         { name: `Si-CHGCAR.gz`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` },
         { name: `structure.cif`, url: `/files/cif`, type: `cif`, label: `Crystal` },
         { name: `molecule.xyz`, url: `/files/xyz`, type: `xyz` },
       ]
+      const paints = new SvelteMap([
+        [`chgcar`, file_type_paint(`#4fc3f7`)],
+        [`cif`, file_type_paint(`#111111`)],
+      ])
       const component = mount(FilePicker, {
         target: document.body,
         props: {
           files: labeled,
-          file_type_paints: {
-            chgcar: file_type_paint(`#4fc3f7`),
-            cif: file_type_paint(`#111111`),
+          get file_type_paints() {
+            return Object.fromEntries(paints)
           },
         },
       })
@@ -70,9 +75,16 @@ describe(`FilePicker`, () => {
         [`CHGCAR`, `black`],
         [`CIF`, `white`],
       ])
+      expect(d3_color(badges[0].style.backgroundColor)?.formatRgb()).toBe(`rgb(79, 195, 247)`)
       // row wash is a faded badge color. The old alpha-by-string-replace left non-rgba
       // spellings at full strength, painting the row the same color as its badge.
       expect(doc_query(`.file-item`).style.backgroundColor).toBe(`rgba(79, 195, 247, 0.08)`)
+
+      paints.set(`chgcar`, file_type_paint(`#000000`))
+      flushSync()
+
+      expect(d3_color(badges[0].style.backgroundColor)?.formatRgb()).toBe(`rgb(0, 0, 0)`)
+      expect(badges[0].style.color).toBe(`white`)
       void unmount(component)
     })
 

@@ -100,6 +100,19 @@ describe(`ScatterPlot`, () => {
     expect(update_range).not.toHaveBeenCalled()
   })
 
+  test(`unannotated series use a single unlabeled y-axis`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [1, 2], y: [1, 2], label: `A` },
+        { x: [1, 2], y: [3, 4], label: `B` },
+      ],
+    })
+
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+    expect(plot.querySelector(`.y-axis .axis-label`)).toBeNull()
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(4)
+  })
+
   test.each([
     [`closed by default`, {}, true, false],
     [`hidden`, { show_controls: false }, false, false],
@@ -557,19 +570,6 @@ describe(`ScatterPlot`, () => {
     ).toThrow(
       `ScatterPlot cannot automatically assign visible value series: Cannot assign 3 visible axis groups to 2 axes: eV, GPa, K. Set y_axis explicitly or hide an axis group.`,
     )
-  })
-
-  test(`keeps unannotated series on the historical single y-axis`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { x: [1, 2], y: [1, 2], label: `A` },
-        { x: [1, 2], y: [3, 4], label: `B` },
-      ],
-    })
-
-    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
-    expect(plot.querySelector(`.y-axis .axis-label`)).toBeNull()
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(4)
   })
 
   test.each([

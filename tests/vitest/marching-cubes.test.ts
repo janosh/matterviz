@@ -213,7 +213,7 @@ describe(`marching_cubes`, () => {
       { ...valid_scalar_grid, values: new Float64Array(7) },
       RangeError,
     ],
-    [`legacy field names`, { data, dimensions, order }, TypeError],
+    [`obsolete field names`, { data, dimensions, order }, TypeError],
     [`negative dimension`, { ...valid_scalar_grid, dims: [-1, 2, 2] }, RangeError],
     [`fractional dimension`, { ...valid_scalar_grid, dims: [2, 2, 1.5] }, RangeError],
     [`missing dimension`, { ...valid_scalar_grid, dims: [2, 2] }, RangeError],

@@ -1,6 +1,10 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, pick_contrast_color, resolve_backdrop } from '$lib/colors'
+  import {
+    get_d3_interpolator,
+    pick_contrast_color,
+    resolve_backdrop,
+    type D3InterpolateName,
+  } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -323,6 +327,15 @@
       : d3.scaleSequential(interpolator).domain(domain_for_scale)
   })
 
+  const inside_tick_color = (value: number): string => {
+    try {
+      const background = actual_color_scale_fn(value)
+      return pick_contrast_color({ background, backdrop: backdrop.current })
+    } catch {
+      return `inherit`
+    }
+  }
+
   // Domain the gradient is sampled over. A prebuilt scale may cover a different span
   // than the ticks, so it can name its own; interpolator names always follow `range`.
   let color_interp_domain = $derived(
@@ -569,12 +582,7 @@
         class="tick-label {orientation} tick-{tick_side}"
         style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
         style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
-        style:color={tick_side === `inside`
-          ? pick_contrast_color({
-              background: actual_color_scale_fn(tick_label),
-              backdrop: backdrop.current,
-            })
-          : `inherit`}
+        style:color={tick_side === `inside` ? inside_tick_color(tick_label) : `inherit`}
       >
         {#if tick_format}
           {#if tick_format.startsWith(`%`)}

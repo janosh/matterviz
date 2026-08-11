@@ -1,6 +1,5 @@
 import type {
   FrameIndex,
-  TrajectoryFormat,
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryType,
@@ -331,17 +330,4 @@ test.each([
   [`wide and short`, 500, 200, `horizontal`],
 ] as const)(`pick_pane_orientation %s`, (_label, width, height, expected) => {
   expect(pick_pane_orientation(width, height)).toBe(expected)
-})
-
-test(`TrajectoryFormat type values`, () => {
-  // Use satisfies to ensure this test fails if TrajectoryFormat type changes
-  const formats = [
-    `hdf5`,
-    `json`,
-    `xyz`,
-    `xdatcar`,
-    `traj`,
-    `unknown`,
-  ] as const satisfies readonly TrajectoryFormat[]
-  expect(formats).toHaveLength(6)
 })

@@ -2,7 +2,6 @@
 
 import { element_data } from '$lib/element'
 import {
-  COLOR_OVERRIDE_KEY_SEPARATOR,
   ELEMENT_ORDERINGS,
   elements_to_axis,
   make_color_override_key,
@@ -152,10 +151,8 @@ describe(`ORDERING_LABELS`, () => {
   })
 })
 
-describe(`make_color_override_key`, () => {
-  test(`builds stable unambiguous key format`, () => {
-    expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe${COLOR_OVERRIDE_KEY_SEPARATOR}O`)
-  })
+test(`color override keys retain their persisted NUL-separated format`, () => {
+  expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe\0O`)
 })
 
 describe(`window_axis_tracks`, () => {

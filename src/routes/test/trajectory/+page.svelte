@@ -186,7 +186,7 @@
   id="loaded-trajectory"
   trajectory={test_trajectory}
   bind:current_step_idx={current_step}
-  fps={0.2}
+  fps={1}
   allow_file_drop
   step_labels={3}
   show_controls="always"

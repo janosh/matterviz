@@ -5,6 +5,8 @@ import { defineConfig } from 'vite'
 import { three_compat_alias, vite_plugin_json_gz } from '../../src/vite-plugins.ts'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
+// Root and extension Vite instances have recursively incompatible Plugin types.
+const json_gz_plugin = () => vite_plugin_json_gz() as unknown as PluginOption
 
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
 
@@ -42,14 +44,13 @@ export default defineConfig({
   // Relative asset URLs so @jupyterlab/builder can re-emit them under static/.
   // Absolute `/assets/...` 404 when Lab isn't served from the domain root.
   base: `./`,
-  // vite@8 vs svelte plugin's bundled Plugin type exceeds TS instantiation depth.
   plugins: [
-    vite_plugin_json_gz(),
+    json_gz_plugin(),
     moyo_wasm_asset_plugin(),
     stub_vite_preload(),
     svelte({ compilerOptions: { runes: true } }),
-  ] as PluginOption[],
-  worker: { plugins: () => [vite_plugin_json_gz()] as PluginOption[] },
+  ],
+  worker: { plugins: () => [json_gz_plugin()] },
   build: {
     outDir: `lib`,
     target: `es2023`,

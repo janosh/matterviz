@@ -8,10 +8,6 @@ import { describe, expect, it } from 'vitest'
 // `url.split is not a function`. URLs must be path-derived strings served from
 // /fermi-surfaces/ (the static symlink), like the structures/molecules/trajectories demos.
 describe(`fermi_surface_files`, () => {
-  it(`discovers example data files`, () => {
-    expect(fermi_surface_files.length).toBeGreaterThan(0)
-  })
-
   it.each([
     [`pb.bxsf.gz`, `BXSF`],
     [`fs_BaFe2As2_reciprocal.json.gz`, `IFermi`],

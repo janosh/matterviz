@@ -11,7 +11,7 @@ import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-import { beforeEach, expect, vi } from 'vitest'
+import { beforeEach, expect, onTestFinished, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
@@ -82,7 +82,45 @@ export function doc_query<T extends Element = HTMLElement>(
   return node as T
 }
 
+export const deferred_fetch_responses = () => {
+  const responses = new Map<
+    string,
+    { resolve: (response: Response) => void; reject: (error: Error) => void }[]
+  >()
+  const fetch_spy = vi.spyOn(globalThis, `fetch`).mockImplementation(
+    (url: string | URL | Request) =>
+      new Promise<Response>((resolve_response, reject_response) => {
+        const request_url =
+          typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+        const queue = responses.get(request_url) ?? []
+        queue.push({ resolve: resolve_response, reject: reject_response })
+        responses.set(request_url, queue)
+      }),
+  )
+  onTestFinished(() => fetch_spy.mockRestore())
+  return responses
+}
+
+export const flush_render = async (): Promise<void> => {
+  flushSync()
+  await tick()
+}
+
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
+
+export function expect_transition_properties(
+  element: Element,
+  properties: readonly string[],
+  duration = `0.2s`,
+): void {
+  const transition = getComputedStyle(element).transition
+  const transitions = transition.split(`,`).map((value) => value.trim())
+  for (const property of properties) {
+    expect(transitions.some((value) => value.startsWith(`${property} ${duration}`))).toBe(true)
+  }
+  expect(transition).not.toContain(`all`)
+  expect(transition).not.toMatch(/(?:^|,)\s*d\s/)
+}
 
 export const expect_labelled_settings_grid = (
   root: ParentNode = document,
@@ -486,34 +524,6 @@ export const get_dummy_structure = (
   },
   charge: 0,
 })
-
-// Thin wrapper over make_crystal supporting two legacy call shapes:
-// 1. Fractional coordinates: create_test_structure(lattice, elements, frac_coords)
-// 2. Cartesian coordinates: create_test_structure(lattice, sites_data)
-export function create_test_structure(
-  lattice: math.Matrix3x3 | number,
-  elements_or_sites:
-    | ElementSymbol[]
-    | {
-        species: { element: string; occu: number; oxidation_state: number }[]
-        xyz: number[]
-      }[],
-  frac_coords?: Vec3[],
-): Crystal {
-  const site_inputs: SimpleSite[] = frac_coords
-    ? frac_coords.map((abc, idx) => {
-        const element = (elements_or_sites as ElementSymbol[])[idx]
-        return { element, abc, label: element }
-      })
-    : elements_or_sites.map((site) => {
-        const { species, xyz } = site as {
-          species: { element: string; occu: number; oxidation_state: number }[]
-          xyz: number[]
-        }
-        return { ...species[0], xyz: xyz as Vec3 }
-      })
-  return make_crystal(lattice, site_inputs)
-}
 
 // Simplified site input for make_crystal helper
 // Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }

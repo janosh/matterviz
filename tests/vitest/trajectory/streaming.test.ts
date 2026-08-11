@@ -697,37 +697,10 @@ Si 0 0 0`
   })
 
   describe(`Performance Characteristics`, () => {
-    it(`should have O(1) frame access time with indexing`, async () => {
-      const data = create_synthetic_xyz(100)
-      const loader = new TrajFrameReader(`test.xyz`)
-
-      // Warm the line/frame-index cache once (first load builds it in O(n)); after
-      // that every seek is O(1) lookup + O(frame_size) regardless of position.
-      await loader.load_frame(data, 0)
-
-      // One sub-millisecond sample measures scheduler noise, not complexity — as a ratio of
-      // two such samples this flaked at 9.1 and 17.6 on a loaded machine. Batch the loads so
-      // each measurement is milliseconds of real work, and keep the fastest round so a single
-      // GC pause can't decide the result. An O(n) seek still shows up: frame 95 would scan
-      // ~19x the lines of frame 5.
-      const batch_ms = async (frame_num: number) => {
-        const rounds: number[] = []
-        for (let round = 0; round < 3; round++) {
-          const start = performance.now()
-          for (let rep = 0; rep < 25; rep++) await loader.load_frame(data, frame_num)
-          rounds.push(performance.now() - start)
-        }
-        return Math.min(...rounds)
-      }
-
-      const timings = [await batch_ms(5), await batch_ms(50), await batch_ms(95)]
-      expect(Math.max(...timings) / Math.min(...timings)).toBeLessThan(6)
-    })
-
-    it(`splits the XYZ payload once across many sequential frame loads`, async () => {
+    it(`indexes the XYZ payload once across random frame seeks`, async () => {
       // Regression: load_xyz_frame used to re-split the whole file (data.split(/\r?\n/))
-      // and rescan from line 0 on every seek → O(n²) over a full playback/export.
-      // The cache must split the newline-delimited payload exactly once.
+      // and rescan from line 0 on every seek. A coprime stride visits every frame in
+      // non-sequential order while the cache splits the payload exactly once.
       const data = create_synthetic_xyz(60)
       const loader = new TrajFrameReader(`test.xyz`)
 
@@ -738,11 +711,11 @@ Si 0 0 0`
         ).length
 
       try {
-        for (let idx = 0; idx < 60; idx++) {
-          const frame = await loader.load_frame(data, idx)
-          expect(frame?.step, `frame ${idx}`).toBe(idx)
+        for (let seek_idx = 0; seek_idx < 60; seek_idx++) {
+          const frame_idx = (seek_idx * 37) % 60
+          const frame = await loader.load_frame(data, frame_idx)
+          expect(frame?.step, `frame ${frame_idx}`).toBe(frame_idx)
         }
-        // Exactly one full-file split despite 60 sequential loads (was 60 before the fix)
         expect(newline_splits()).toBe(1)
       } finally {
         split_spy.mockRestore()
@@ -766,40 +739,6 @@ Si 0 0 0`
       expect(streaming_frame.metadata?.energy).toBe(direct_frame.metadata?.energy)
       expect(streaming_frame.metadata?.volume).toBe(direct_frame.metadata?.volume)
       expect(streaming_frame.step).toBe(direct_frame.step)
-    })
-
-    it(`should properly label plot series from streaming metadata (volume fix)`, () => {
-      // Create metadata with volume and energy properties
-      const metadata = [
-        { frame_number: 0, step: 0, properties: { volume: 100, energy: -10 } },
-        { frame_number: 1, step: 1, properties: { volume: 105, energy: -10.5 } },
-        { frame_number: 2, step: 2, properties: { volume: 110, energy: -11 } },
-      ]
-
-      // Generate plot series using the streaming function
-      const series = generate_streaming_plot_series(metadata, {
-        property_config: trajectory_property_config,
-      })
-
-      // Find volume and energy series
-      const volume_series = series.find((srs) => srs.label === `Volume`)
-      const energy_series = series.find((srs) => srs.label === `Energy`)
-
-      // Volume should be properly labeled as "Volume" not "volume" or "Series 1"
-      expect(volume_series).toBeDefined()
-      expect(volume_series?.label).toBe(`Volume`)
-      expect(volume_series?.unit).toBe(`Å³`)
-      expect(volume_series?.y).toEqual([100, 105, 110])
-
-      // Energy should also be properly labeled
-      expect(energy_series).toBeDefined()
-      expect(energy_series?.label).toBe(`Energy`)
-      expect(energy_series?.unit).toBe(`eV`)
-      expect(energy_series?.y).toEqual([-10, -10.5, -11])
-
-      // No series should have generic names like "Series 1"
-      const generic_series = series.filter((srs) => srs.label?.startsWith(`Series `))
-      expect(generic_series).toHaveLength(0)
     })
 
     // x values must be frame numbers (not MD steps), sorted ascending

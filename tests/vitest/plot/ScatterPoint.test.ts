@@ -2,7 +2,7 @@ import { ScatterPoint, symbol_names } from '$lib'
 import type { PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, expect_transition_properties } from '../setup'
 
 describe(`ScatterPoint`, () => {
   const container_style = `width: 800px; height: 600px;`
@@ -24,6 +24,16 @@ describe(`ScatterPoint`, () => {
     expect(path.getAttribute(`stroke-width`)).toBe(`1`)
     expect(path.getAttribute(`stroke-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`d`)).not.toBeNull()
+    expect_transition_properties(path, [
+      `transform`,
+      `stroke`,
+      `stroke-width`,
+      `stroke-opacity`,
+      `fill`,
+      `fill-opacity`,
+      `filter`,
+      `opacity`,
+    ])
   })
 
   test(`applies custom point styles`, () => {

@@ -57,44 +57,8 @@ function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceDa
 }
 
 describe(`FermiSlice`, () => {
-  // Slicing math (miller indices, distances) is covered by compute_fermi_slice tests;
-  // these mount cases only need to exercise each prop-driven render path once
   test.each([
-    { desc: `empty props`, props: {} },
-    { desc: `multiple bands`, props: { fermi_data: create_mock_fermi_data([0, 1, 2]) } },
-    {
-      desc: `miller diagonal at distance`,
-      props: {
-        fermi_data: create_mock_fermi_data([0]),
-        miller_indices: [1, 1, 1] as Vec3,
-        distance: 0.05,
-      },
-    },
-    {
-      desc: `slice plane misses surface entirely`,
-      props: { fermi_data: create_mock_fermi_data([0]), distance: 100 },
-    },
-    { desc: `show_axes=false`, props: { show_axes: false } },
-    { desc: `show_legend=false`, props: { show_legend: false } },
-    {
-      desc: `custom colors, line width, axis labels`,
-      props: {
-        fermi_data: create_mock_fermi_data([0]),
-        band_colors: [`#ff0000`, `#00ff00`],
-        line_width: 5,
-        axis_labels: [`X`, `Y`] as [string, string],
-      },
-    },
-  ])(`mounts without error: $desc`, ({ props }) => {
-    expect(() => mount(FermiSlice, { target: document.body, props })).not.toThrow()
-    expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
-  })
-
-  // Fermi slices keep their historical always-on legend default; explicit false still wins.
-  // oxfmt-ignore
-  test.each([
-    [`default shows one band`, [0], undefined, true],
-    [`default shows three bands`, [0, 1, 2], undefined, true],
+    [`omitted defaults to visible for one band`, [0], undefined, true],
     [`true shows one band`, [0], true, true],
     [`false hides three bands`, [0, 1, 2], false, false],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
@@ -135,17 +99,10 @@ describe(`FermiSlice`, () => {
   })
 
   test(`children snippet receives export_svg and slice_data`, async () => {
-    let snippet_called = false
-    let export_svg_fn: (() => string | null) | undefined
-    let received_slice_data: FermiSliceData | null =
-      `not-set` as unknown as FermiSliceData | null
-
-    const children_snippet = createRawSnippet<
-      [{ slice_data: FermiSliceData | null; export_svg: () => string | null }]
-    >((data) => {
-      snippet_called = true
-      export_svg_fn = data().export_svg
-      received_slice_data = data().slice_data
+    type SnippetData = { slice_data: FermiSliceData | null; export_svg: () => string | null }
+    let received: SnippetData | undefined
+    const children_snippet = createRawSnippet<[SnippetData]>((data) => {
+      received = data()
       return { render: () => `<div class="children-rendered"></div>` }
     })
 
@@ -157,17 +114,10 @@ describe(`FermiSlice`, () => {
     })
     await tick()
 
-    expect(snippet_called).toBe(true)
-    expect(typeof export_svg_fn).toBe(`function`)
+    expect(received?.export_svg).toBeTypeOf(`function`)
+    const exported = received?.export_svg()
+    expect(exported === null || typeof exported === `string`).toBe(true)
     expect(document.querySelector(`.children-rendered`)).not.toBeNull()
-    expect(received_slice_data).toBeNull() // null when no fermi_data
-
-    // Verify export_svg returns string or null (consistent return type)
-    // Note: bind:wrapper may not propagate correctly in happy-dom, so we just verify
-    // the function is callable and returns the expected type
-    if (export_svg_fn) {
-      const result = export_svg_fn()
-      expect(result === null || typeof result === `string`).toBe(true)
-    }
+    expect(received?.slice_data).toBeNull() // null when no fermi_data
   })
 })

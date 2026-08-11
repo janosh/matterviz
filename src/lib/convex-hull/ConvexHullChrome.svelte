@@ -6,7 +6,7 @@
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
@@ -129,11 +129,9 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <!-- presentational: the viewer above owns the flag, so the click stays imperative -->
       <FullscreenButton
-        {fullscreen}
+        bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
         children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-        onclick={() => toggle_fullscreen(wrapper)}
       />
     {/if}
 

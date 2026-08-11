@@ -1,10 +1,11 @@
 <script lang="ts">
   import { Cross, Graph } from 'svelte-widgets/icons'
+  import { DraggablePane } from 'svelte-widgets'
   import { StatusMessage } from '$lib/feedback'
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import { format_bytes, format_num } from '$lib/labels'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import type { ComponentProps } from 'svelte'

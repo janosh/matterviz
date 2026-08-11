@@ -1,4 +1,5 @@
 import { PlotTooltip } from '$lib/plot'
+import { color as d3_color } from 'd3-color'
 import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -41,13 +42,13 @@ describe(`PlotTooltip`, () => {
 
   // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
   test.each([
-    { bg: `#000000`, text: `white` },
-    { bg: `#4fc3f7`, text: `black` },
-    { bg: null, text: `` },
-  ])(`sets background $bg and contrasting text $text`, ({ bg, text }) => {
+    [`#000000`, `white`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
+    [`#4fc3f7`, `black`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
+    [null, ``, ``, ``],
+  ])(`sets background %s and contrasting text %s`, (bg, _text, expected_bg, expected_text) => {
     const tooltip = mount_tooltip({ bg_color: bg })
-    expect(tooltip.style.backgroundColor).toBe(bg ?? ``)
-    expect(tooltip.style.color).toBe(text)
+    expect(d3_color(tooltip.style.backgroundColor)?.formatRgb() ?? ``).toBe(expected_bg)
+    expect(d3_color(tooltip.style.color)?.formatRgb() ?? ``).toBe(expected_text)
   })
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {

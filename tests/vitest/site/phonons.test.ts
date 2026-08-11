@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest'
 describe(`Phonon Module Tests`, () => {
   const band_entries = Object.entries(phonon_bands)
 
-  it(`exports non-empty phonon_data, phonon_bands and phonon_dos records`, () => {
-    expect(Object.keys(phonon_data).length).toBeGreaterThan(0)
-    expect(Object.keys(phonon_bands).length).toBeGreaterThan(0)
-    expect(Object.keys(phonon_dos).length).toBeGreaterThan(0)
+  it(`exports all three phonon data records`, () => {
+    expect(phonon_data).not.toEqual({})
+    expect(phonon_bands).not.toEqual({})
+    expect(phonon_dos).not.toEqual({})
   })
 
   // Minimum qpoints threshold: band structure calculations typically sample 100+ k-points

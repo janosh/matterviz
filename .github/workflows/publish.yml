@@ -205,7 +205,7 @@ jobs:
         with:
           extensions: jupyterlab
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
       - name: Build prebuilt labextension and wheel
         working-directory: extensions/jupyterlab
         env:
@@ -297,7 +297,7 @@ jobs:
           name: matterviz-jupyterlab-wheel-${{ needs.prepare.outputs.version }}
           path: release
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
       - name: Publish or verify PyPI wheel
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}

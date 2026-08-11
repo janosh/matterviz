@@ -3,11 +3,11 @@
   import {
     ArrowDown,
     ArrowUp,
-    Collapse,
+    ChevronCollapse,
+    ChevronExpand,
     Copy,
     Cross,
     Download,
-    Expand,
     Search,
   } from 'svelte-widgets/icons'
   import { download } from '$lib/io/fetch'
@@ -661,10 +661,10 @@
       <div class="divider"></div>
       <div class="controls">
         <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
-          <Icon icon={Expand} style="width: 14px; height: 14px" />
+          <Icon icon={ChevronExpand} style="width: 14px; height: 14px" />
         </button>
         <button type="button" onclick={collapse_all} title="Collapse all" {@attach tooltip()}>
-          <Icon icon={Collapse} style="width: 14px; height: 14px" />
+          <Icon icon={ChevronCollapse} style="width: 14px; height: 14px" />
         </button>
         {#each [1, 2, 3] as level (level)}
           <button

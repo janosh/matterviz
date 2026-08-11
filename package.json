@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",
@@ -303,7 +303,7 @@
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
     "js-yaml": "^5.2.2",
-    "svelte-widgets": "github:janosh/svelte-widgets#main",
+    "svelte-widgets": "^1.5.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
@@ -337,7 +337,7 @@
     "svelte-check": "^4.7.4",
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
-    "vite-plus": "0.2.7",
+    "vite-plus": "0.2.8",
     "vitest": "4.1.10"
   },
   "peerDependencies": {

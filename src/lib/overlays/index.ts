@@ -1,12 +1,10 @@
 import type { ComponentProps } from 'svelte'
-import type DraggablePane from 'svelte-widgets/DraggablePane.svelte'
+import type { DraggablePane } from 'svelte-widgets'
 import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/clipboard'
 
-export { ContextMenu, DraggablePane } from 'svelte-widgets'
 export { default as ControlPane } from './ControlPane.svelte'
 export { default as DragControlTab } from './DragControlTab.svelte'
 export { default as GlassChip } from './GlassChip.svelte'
-export { portal } from 'svelte-widgets/attachments'
 
 // Attribute types of DraggablePane's toggle button / pane div, for components forwarding
 // toggle_props/pane_props

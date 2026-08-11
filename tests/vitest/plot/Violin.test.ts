@@ -32,6 +32,7 @@ describe(`Violin`, () => {
     const plot = await mount_violin({ series })
     expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
     expect(plot.querySelectorAll(`.box-series rect.iqr-box`)).toHaveLength(0)
+    expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
   test(`forwards kind override to draw inner boxes`, async () => {

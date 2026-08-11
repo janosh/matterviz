@@ -3,7 +3,7 @@
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
-  import { Collapse, Expand } from 'svelte-widgets/icons'
+  import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
   import { SETTINGS_CONFIG } from '$lib/settings'
@@ -263,7 +263,7 @@
       tabindex={mode_toggle_visible ? undefined : -1}
       {@attach tooltip()}
     >
-      <Icon icon={mode_menu_open ? Collapse : Expand} />
+      <Icon icon={mode_menu_open ? ChevronCollapse : ChevronExpand} />
     </button>
     {#if mode_menu_open}
       <div class="mode-dropdown">

@@ -1,6 +1,6 @@
 import { ConvexHull2D } from '$lib/convex-hull'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mount_sized } from '../setup'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
@@ -60,6 +60,12 @@ const mounted_components: ReturnType<typeof mount>[] = []
 const track_component = (component: ReturnType<typeof mount>): void => {
   mounted_components.push(component)
 }
+const mount_harness = async (
+  props: ComponentProps<typeof ConvexHullSelectionHarness>,
+): Promise<void> => {
+  track_component(mount(ConvexHullSelectionHarness, { target: document.body, props }))
+  await tick()
+}
 
 beforeEach(() => document.body.replaceChildren())
 afterEach(async () => {
@@ -85,8 +91,7 @@ describe(`convex hull replacement state`, () => {
   ] as const)(
     `keeps refreshed selected entries and handles replacements`,
     async (props, replaced) => {
-      track_component(mount(ConvexHullSelectionHarness, { target: document.body, props }))
-      await tick()
+      await mount_harness(props)
 
       button(`select-entry`).click()
       await tick()
@@ -107,16 +112,25 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
+  test(`fullscreen button waits for confirmed browser state`, async () => {
+    await mount_harness({ dim: `3d` })
+    const wrapper = doc_query<HTMLDivElement>(`.convex-hull-3d`)
+    wrapper.requestFullscreen = vi.fn(() => Promise.withResolvers<undefined>().promise)
+    const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-btn`)
+
+    fullscreen_button.click()
+
+    expect(wrapper.requestFullscreen).toHaveBeenCalledOnce()
+    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
+  })
+
   // Regression: hovering a point stored hover_data in a deeply-proxied $state, so
   // current_entry() returned the raw plot entry while hover_data.entry was its proxy.
   // The identity comparison was always unequal -> reassign -> effect_update_depth_exceeded.
   test.each([`3d`, `4d`] as const)(
     `hovering a point does not trigger an infinite effect loop (%s)`,
     async (dim) => {
-      track_component(
-        mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
-      )
-      await tick()
+      await mount_harness({ dim })
 
       const canvas = doc_query<HTMLCanvasElement>(`canvas`)
 
@@ -126,7 +140,6 @@ describe(`convex hull replacement state`, () => {
         new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
       )
       expect(() => flushSync()).not.toThrow()
-      await tick()
 
       expect(document.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
     },
@@ -138,10 +151,7 @@ describe(`convex hull replacement state`, () => {
     `pulse ticks repaint only the overlay canvas (%s)`,
     async (dim) => {
       const clears = count_canvas_clears()
-      track_component(
-        mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
-      )
-      await tick()
+      await mount_harness({ dim })
       button(`select-entry`).click()
       await let_frames_run()
       expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
@@ -159,10 +169,7 @@ describe(`convex hull replacement state`, () => {
   // out left the hull showing labels the config had already turned off.
   test.each([`3d`, `4d`] as const)(`a config change repaints the hull (%s)`, async (dim) => {
     const clears = count_canvas_clears()
-    track_component(
-      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } }),
-    )
-    await tick()
+    await mount_harness({ dim })
     await let_frames_run()
     const before = clears.base
     expect(before).toBeGreaterThan(0) // it painted at all to begin with

@@ -1,14 +1,21 @@
 <script lang="ts">
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
+  import { DEFAULT_FPS_RANGE } from '$lib/constants'
+  import { normalize_show_controls } from '$lib/controls'
+  import type { ShowControlsProp } from '$lib/controls'
   import { StatusMessage } from '$lib/feedback'
-  import { Icon } from 'svelte-widgets'
-  import { Pause, Play } from 'svelte-widgets/icons'
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
+  import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
+  import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
+  import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
+  import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
+  import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type {
     EnergyReference,
     PathMetric,
@@ -29,12 +36,19 @@
     active_path_key = $bindable(``),
     active_image_idx = $bindable(0),
     enable_drop = true,
-    fps = 4,
+    fps = $bindable(4),
+    fps_range = DEFAULT_FPS_RANGE,
+    auto_play = false,
+    show_controls = `always`,
+    fullscreen_toggle = true,
+    fullscreen = $bindable(false),
+    wrapper = $bindable(),
     error_msg = $bindable(undefined),
     plot_style = `height: 460px`,
     structure_style = `height: 460px`,
+    on_fullscreen_change,
     ...rest
-  }: {
+  }: HTMLAttributes<HTMLDivElement> & {
     paths?: ReactionPathInput
     coord_mode?: ReactionCoordMode
     energy_reference?: EnergyReference
@@ -44,14 +58,23 @@
     active_image_idx?: number
     enable_drop?: boolean
     fps?: number
+    fps_range?: readonly [number, number]
+    auto_play?: boolean
+    // Names: path, nav, step, fps, coord, energy-reference, spline, energy, fullscreen
+    show_controls?: ShowControlsProp
+    fullscreen_toggle?: FullscreenToggleProp
+    fullscreen?: boolean
+    wrapper?: HTMLDivElement
     error_msg?: string
     plot_style?: string
     structure_style?: string
-  } & Record<string, unknown> = $props()
+    on_fullscreen_change?: (fullscreen: boolean) => void
+  } = $props()
 
   let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
   let dragover = $state(false)
-  let is_playing = $state(false)
+  let controls_height = $state(0)
+  let controls_config = $derived(normalize_show_controls(show_controls))
 
   const merged: ReactionPathInput = $derived({
     ...(paths
@@ -72,18 +95,22 @@
     Math.min(Math.max(active_image_idx, 0), Math.max(n_images - 1, 0)),
   )
   const current_image = $derived(active?.path.images[image_idx])
+  const image_caption = $derived(current_image?.label ?? `image ${image_idx}`)
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
-  const go_to_image = (idx: number) => {
-    if (idx >= 0 && idx < n_images) active_image_idx = idx
-  }
+  const playback = create_sequence_player({
+    count: () => n_images,
+    index: () => active_image_idx,
+    set_index: (index) => (active_image_idx = index),
+    fps: () => fps,
+    set_fps: (value) => (fps = value),
+    fps_range: () => fps_range,
+    should_auto_play: () => auto_play && Boolean(active),
+  })
 
+  // Keep the public binding aligned with the clamped image shown after changing paths.
   $effect(() => {
-    if (!is_playing || n_images < 2) return
-    const timer = setInterval(() => {
-      active_image_idx = (active_image_idx + 1) % n_images
-    }, 1000 / fps)
-    return () => clearInterval(timer)
+    if (active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
   const handle_drop = create_file_drop_handler({
@@ -135,9 +162,22 @@
       [`Fitted saddle (${spline.method})`, `+${excess} ${energy_unit} above image #${ts_idx}`],
     ]
   })
+
+  sync_fullscreen({
+    get_wrapper: () => wrapper,
+    get_fullscreen: () => fullscreen,
+    set_fullscreen: (value) => (fullscreen = value),
+    get_bg_css_var: () => `--neb-bg-fullscreen`,
+    on_change: (value) => on_fullscreen_change?.(value),
+  })
 </script>
 
-<div class="neb-viewer {dragover ? `dragging` : ``}" {...drop_zone} {...rest}>
+<div
+  {...drop_zone}
+  {...rest}
+  bind:this={wrapper}
+  class={[`neb-viewer sequence-viewer`, dragover && `dragging`, rest.class]}
+>
   <StatusMessage bind:message={error_msg} type="error" dismissible />
 
   {#if !active || !profile}
@@ -150,9 +190,9 @@
       />
     </div>
   {:else}
-    <div class="controls">
-      {#if named_paths.length > 1}
-        <label>
+    <SequenceControlBar class="neb-controls" {controls_config} bind:height={controls_height}>
+      {#if named_paths.length > 1 && controls_config.visible(`path`)}
+        <label class="path-control">
           Path
           <select
             value={active.key}
@@ -165,24 +205,63 @@
           </select>
         </label>
       {/if}
-      <label>
-        x-axis
-        <select bind:value={coord_mode}>
-          <option value="arc_length">Arc length</option>
-          <option value="image_index">Image index</option>
-        </select>
-      </label>
-      <label>
-        Energies
-        <select bind:value={energy_reference}>
-          <option value="initial">Relative to initial</option>
-          <option value="absolute">Absolute</option>
-        </select>
-      </label>
-      <label><input type="checkbox" bind:checked={show_spline} /> Spline</label>
-    </div>
 
-    <div class="panes">
+      <SequenceControls
+        {controls_config}
+        index={image_idx}
+        count={n_images}
+        {playback}
+        item_name="image"
+        play_title={playback.is_playing ? `Pause` : `Play along the path`}
+        aria_label="NEB image"
+        aria_valuetext="{image_caption} ({image_idx + 1} of {n_images})"
+        disable_step_while_playing={false}
+      />
+      {#if controls_config.visible(`energy`)}
+        <span class="image-status">
+          {image_caption} ({image_idx + 1}/{n_images})
+          <strong>{format_num(shown_energy, `.4~`)} {energy_unit}</strong>
+        </span>
+      {/if}
+
+      <div class="neb-options">
+        {#if controls_config.visible(`coord`)}
+          <label>
+            x-axis
+            <select bind:value={coord_mode}>
+              <option value="arc_length">Arc length</option>
+              <option value="image_index">Image index</option>
+            </select>
+          </label>
+        {/if}
+        {#if controls_config.visible(`energy-reference`)}
+          <label>
+            Energies
+            <select bind:value={energy_reference}>
+              <option value="initial">Relative to initial</option>
+              <option value="absolute">Absolute</option>
+            </select>
+          </label>
+        {/if}
+        {#if controls_config.visible(`spline`)}
+          <label><input type="checkbox" bind:checked={show_spline} /> Spline</label>
+        {/if}
+        {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+          <FullscreenButton
+            bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
+            children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+            class="fullscreen-button"
+          />
+        {/if}
+      </div>
+    </SequenceControlBar>
+
+    <div
+      class="panes"
+      style:--viewer-buttons-top={controls_config.mode === `hover`
+        ? `calc(${controls_height}px + 1ex)`
+        : undefined}
+    >
       <NebPlot
         paths={merged}
         {coord_options}
@@ -196,38 +275,6 @@
         {#if current_image}
           <Structure structure={current_image.structure} style={structure_style} />
         {/if}
-        {#snippet step_button(delta: number, title: string, glyph: string)}
-          <button
-            onclick={() => go_to_image(image_idx + delta)}
-            disabled={image_idx + delta < 0 || image_idx + delta >= n_images}
-            {title}>{glyph}</button
-          >
-        {/snippet}
-        <div class="stepper">
-          {@render step_button(-1, `Previous image`, `‹`)}
-          <button
-            onclick={() => (is_playing = !is_playing)}
-            disabled={n_images < 2}
-            title={is_playing ? `Pause` : `Play along the path`}
-          >
-            <Icon icon={is_playing ? Pause : Play} />
-          </button>
-          {@render step_button(1, `Next image`, `›`)}
-          <input
-            type="range"
-            min="0"
-            max={Math.max(n_images - 1, 0)}
-            value={image_idx}
-            oninput={(event) => go_to_image(Number(event.currentTarget.value))}
-            aria-label="NEB image"
-            aria-valuetext="{current_image?.label ?? `image ${image_idx}`} ({image_idx +
-              1} of {n_images})"
-          />
-          <span>
-            {current_image?.label ?? `image ${image_idx}`} ({image_idx + 1}/{n_images})
-          </span>
-          <strong>{format_num(shown_energy, `.4~`)} {energy_unit}</strong>
-        </div>
       </div>
     </div>
 
@@ -242,9 +289,32 @@
 
 <style>
   .neb-viewer {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8pt;
+    container-type: inline-size;
+    --sequence-controls-wrap: wrap;
+    --sequence-slider-min-width: 80pt;
+  }
+  .neb-viewer:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    padding: 8pt;
+    box-sizing: border-box;
+    overflow: auto;
+    background: var(--neb-bg-fullscreen, var(--page-bg, Canvas));
+  }
+  .neb-viewer:fullscreen .panes {
+    flex: 1;
+    min-height: 0;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+  .neb-viewer:fullscreen .panes > :global(.scatter),
+  .neb-viewer:fullscreen .structure-pane,
+  .neb-viewer:fullscreen .structure-pane > :global(.structure) {
+    height: 100% !important;
+    min-height: 0 !important;
   }
   .neb-viewer.dragging {
     outline: 2px dashed var(--accent-color, #4e79a7);
@@ -256,18 +326,35 @@
     text-align: center;
     padding: 2em 1em;
   }
-  .controls {
+  .path-control,
+  .neb-options {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6pt 12pt;
     align-items: center;
-    justify-content: center;
-    label {
-      display: inline-flex;
-      align-items: center;
-      gap: 4pt;
-      font-size: 0.85em;
-    }
+  }
+  .path-control {
+    gap: 4pt;
+    white-space: nowrap;
+  }
+  .neb-options {
+    flex-wrap: wrap;
+    gap: 4pt 8pt;
+    margin-inline-start: auto;
+  }
+  .neb-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4pt;
+    white-space: nowrap;
+  }
+  .image-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4pt;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .image-status strong {
+    color: var(--accent-color, currentColor);
   }
   .panes {
     display: grid;
@@ -278,32 +365,7 @@
     }
   }
   .structure-pane {
-    display: flex;
-    flex-direction: column;
-    gap: 6pt;
     min-width: 0;
-  }
-  .stepper {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6pt;
-    font-size: 0.85em;
-    button {
-      padding: 2pt 8pt;
-      cursor: pointer;
-      background: var(--surface-bg-hover, rgba(255, 255, 255, 0.1));
-      border: 1px solid var(--border-color, #999);
-      border-radius: var(--border-radius, 3pt);
-    }
-    button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    input[type='range'] {
-      flex: 1 1 90pt;
-      min-width: 80pt;
-    }
   }
   .barrier-summary {
     display: grid;

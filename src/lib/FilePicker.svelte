@@ -40,10 +40,10 @@
 
   let root: HTMLDivElement | undefined = $state()
   const backdrop = resolve_backdrop(() => root)
-  const badge_contrast = (node: HTMLElement) => {
+  const badge_contrast = (bg_color: string) => (node: HTMLElement) => {
     const update = () => {
       const color = contrast_text_color({
-        background: getComputedStyle(node).backgroundColor,
+        background: getComputedStyle(node).backgroundColor || bg_color,
         backdrop: backdrop.current,
       })
       if (node.style.color !== color) node.style.color = color
@@ -218,7 +218,7 @@
         <span
           class="file-type-badge"
           style:background-color={paint.badge}
-          {@attach badge_contrast}>{base_type.toUpperCase()}</span
+          {@attach badge_contrast(paint.badge)}>{base_type.toUpperCase()}</span
         >
       {/if}
       <div class="file-name">

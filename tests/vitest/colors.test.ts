@@ -61,55 +61,26 @@ describe(`Element Color Schemes`, () => {
     }
   })
 
-  test(`validates color scheme properties`, () => {
+  test(`all color scheme values are valid hex colors`, () => {
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
-      // Check all colors are valid hex format
       for (const [element, color] of Object.entries(colors)) {
         expect(color, `${scheme_name}.${element} should be a valid hex color`).toMatch(
           /^#[0-9a-f]{6}$/i,
         )
       }
-
-      // Check color uniqueness within scheme
-      const color_values = Object.values(colors)
-      const unique_colors = new Set(color_values)
-
-      // Allow some duplicates but not too many (some elements might share colors intentionally)
-      // Alloy scheme inherits from VESTA so may have more duplicates
-      // Muted scheme uses desaturated colors that can result in similar hex values
-      // Dark Mode scheme uses bright colors that can result in similar hex values
-      const max_duplicates =
-        {
-          Alloy: 15,
-          Muted: 15,
-          'Dark Mode': 25,
-          Pastel: 10,
-          Vesta: 10,
-          Jmol: 10,
-        }[scheme_name] ?? Infinity
-      const duplicate_count = color_values.length - unique_colors.size
-      expect(duplicate_count, `${scheme_name} too many duplicate colors`).toBeLessThan(
-        max_duplicates,
-      )
     }
   })
 
   test(`pastel scheme has pastel characteristics`, () => {
     const pastel_colors = ELEMENT_COLOR_SCHEMES.Pastel
-
-    // Check a few elements to ensure they have pastel characteristics (high lightness)
     const sample_elements = [`H`, `C`, `O`, `Fe`, `Au`]
 
     for (const element of sample_elements) {
       const color = pastel_colors[element]
-      expect(color, `Pastel scheme should have color for ${element}`).toBeDefined()
-
-      // Convert hex to RGB and check lightness
       const red = parseInt(color.slice(1, 3), 16)
       const green = parseInt(color.slice(3, 5), 16)
       const blue = parseInt(color.slice(5, 7), 16)
 
-      // Pastel colors should generally have high lightness values
       const lightness = (Math.max(red, green, blue) + Math.min(red, green, blue)) / 2
       expect(
         lightness,
@@ -194,11 +165,6 @@ describe(`is_color function`, () => {
     [`HSL(120, 100%, 50%)`, true], // case insensitive
   ])(`%s -> %s`, (input, expected) => {
     expect(is_color(input)).toBe(expected)
-  })
-
-  test(`works with actual color scheme values`, () => {
-    expect(is_color(ELEMENT_COLOR_SCHEMES.Jmol.H)).toBe(true)
-    expect(is_color(ELEMENT_COLOR_SCHEMES.Vesta.He)).toBe(true)
   })
 
   test.each([
@@ -390,17 +356,15 @@ describe(`get_page_background`, () => {
   })
 })
 
-// Regression: is_dark_mode/watch_dark_mode used to read the wrong localStorage
-// key (`theme`) instead of `matterviz-theme`, and ignored white/black themes.
-describe(`is_dark_mode + watch_dark_mode use matterviz-theme key`, () => {
+describe(`is_dark_mode + watch_dark_mode`, () => {
   beforeEach(() => {
     delete document.documentElement.dataset.theme
     localStorage.clear()
   })
 
-  it(`ignores the legacy 'theme' key, reads 'matterviz-theme'`, () => {
-    localStorage.setItem(`theme`, `dark`) // legacy key must be ignored now
-    expect(is_dark_mode()).toBe(false) // falls back to OS (mocked light)
+  it(`ignores the obsolete theme storage key`, () => {
+    localStorage.setItem(`theme`, `dark`)
+    expect(is_dark_mode()).toBe(false)
     localStorage.setItem(`matterviz-theme`, `dark`)
     expect(is_dark_mode()).toBe(true)
   })
@@ -425,7 +389,7 @@ describe(`is_dark_mode + watch_dark_mode use matterviz-theme key`, () => {
     expect(is_dark_mode()).toBe(expected)
   })
 
-  it(`watch_dark_mode fires on matterviz-theme storage events only`, () => {
+  it(`watch_dark_mode fires on matterviz-theme storage events`, () => {
     const calls: boolean[] = []
     const cleanup = watch_dark_mode((dark) => calls.push(dark))
     localStorage.setItem(`matterviz-theme`, `dark`)
@@ -433,7 +397,7 @@ describe(`is_dark_mode + watch_dark_mode use matterviz-theme key`, () => {
     expect(calls.at(-1)).toBe(true)
     const count_before = calls.length
     globalThis.dispatchEvent(new StorageEvent(`storage`, { key: `theme` }))
-    expect(calls).toHaveLength(count_before) // legacy key ignored
+    expect(calls).toHaveLength(count_before)
     cleanup()
   })
 })

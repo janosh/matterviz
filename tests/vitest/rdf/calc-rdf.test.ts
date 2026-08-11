@@ -1,11 +1,11 @@
-import type { ElementSymbol } from '$lib'
+import type { ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { create_test_structure, make_crystal } from '../setup'
+import { make_crystal } from '../setup'
 
 const lu_al_structure = structure_map.get(`mp-1234`) // Lu-Al structure (binary compound)
 const pd_structure = structure_map.get(`mp-2`) // Pd (simple metallic FCC)
@@ -15,11 +15,7 @@ if (!lu_al_structure || !pd_structure || !bi2zr2o8_structure) {
   throw new Error(`Required test structures not found in structure_map`)
 }
 
-// Cartesian-site shorthand for create_test_structure
-const make_site = (element: ElementSymbol, xyz: number[]) => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
-  xyz,
-})
+const make_site = (element: ElementSymbol, xyz: Vec3) => ({ element, xyz })
 
 function check_basic_rdf_properties(radii: number[], g_r: number[], n_bins: number): void {
   expect(radii).toHaveLength(n_bins)
@@ -68,7 +64,7 @@ describe(`calculate_rdf`, () => {
       cutoff: 0.1,
     },
   ])(`should handle edge cases: $name`, ({ sites, cutoff = 5 }) => {
-    const structure = create_test_structure(5, sites)
+    const structure = make_crystal(5, sites)
     const result = calculate_rdf(structure, { n_bins: 50, cutoff, pbc: [false, false, false] })
     check_basic_rdf_properties(result.r, result.g_r, 50)
     expect(result.g_r.every((val) => val === 0)).toBe(true)
@@ -116,7 +112,7 @@ describe(`calculate_rdf`, () => {
       make_site(`Si`, [random() * 30, random() * 30, random() * 30]),
     )
 
-    const large_structure = create_test_structure(30, sites)
+    const large_structure = make_crystal(30, sites)
     const result = calculate_rdf(large_structure, { cutoff: 12, n_bins: 75 })
     check_basic_rdf_properties(result.r, result.g_r, 75)
 
@@ -127,11 +123,11 @@ describe(`calculate_rdf`, () => {
   })
 
   const corner_sites = [
-    [0.5, 0.5, 0.5],
-    [9.5, 0.5, 0.5],
-    [0.5, 9.5, 0.5],
-    [9.5, 9.5, 0.5],
-  ].map((xyz) => make_site(`Si`, xyz))
+    make_site(`Si`, [0.5, 0.5, 0.5]),
+    make_site(`Si`, [9.5, 0.5, 0.5]),
+    make_site(`Si`, [0.5, 9.5, 0.5]),
+    make_site(`Si`, [9.5, 9.5, 0.5]),
+  ]
   const slab_sites = [make_site(`Si`, [0.5, 0.5, 5.0]), make_site(`Si`, [9.5, 0.5, 5.0])]
 
   test.each([
@@ -140,7 +136,7 @@ describe(`calculate_rdf`, () => {
     { pbc: [true, true, false] as Pbc, name: `slab PBC (xy only)`, sites: slab_sites },
   ])(`PBC effects: $name`, ({ pbc, sites }) => {
     expect.assertions(5)
-    const structure = create_test_structure(10, sites)
+    const structure = make_crystal(10, sites)
     const options = { cutoff: 8, n_bins: 100, pbc, auto_expand: false }
     const result = calculate_rdf(structure, options)
     check_basic_rdf_properties(result.r, result.g_r, 100)
@@ -148,7 +144,7 @@ describe(`calculate_rdf`, () => {
 
   test(`different PBC settings should give different neighbor counts`, () => {
     const sites = [make_site(`Si`, [0.5, 0.5, 0.5]), make_site(`Si`, [9.5, 0.5, 0.5])]
-    const structure = create_test_structure(10, sites)
+    const structure = make_crystal(10, sites)
 
     const opts = { cutoff: 8, n_bins: 100, auto_expand: false }
     const result_pbc = calculate_rdf(structure, { ...opts, pbc: [true, true, true] })
@@ -160,7 +156,7 @@ describe(`calculate_rdf`, () => {
   })
 
   test(`auto_expand 1-atom with no PBC stays all-zero`, () => {
-    const { g_r } = calculate_rdf(create_test_structure(5, [make_site(`Si`, [0, 0, 0])]), {
+    const { g_r } = calculate_rdf(make_crystal(5, [make_site(`Si`, [0, 0, 0])]), {
       cutoff: 8,
       n_bins: 80,
       auto_expand: true,
@@ -172,10 +168,12 @@ describe(`calculate_rdf`, () => {
   // 1D chain: no y/z bleed + first-shell amplitude exactly 2 (not 1×/4×)
   test(`mixed-PBC auto_expand: first-shell coordination exactly 2`, () => {
     const [a_len, cutoff, n_bins] = [5, 9, 90]
-    const { r, g_r } = calculate_rdf(
-      create_test_structure(a_len, [make_site(`Si`, [0, 0, 0])]),
-      { cutoff, n_bins, auto_expand: true, pbc: [true, false, false] },
-    )
+    const { r, g_r } = calculate_rdf(make_crystal(a_len, [make_site(`Si`, [0, 0, 0])]), {
+      cutoff,
+      n_bins,
+      auto_expand: true,
+      pbc: [true, false, false],
+    })
     const density = 1 / a_len ** 3
     const bin_size = cutoff / n_bins
     expect(g_r.every((val, idx) => val === 0 || r[idx] < 6)).toBe(true)
@@ -185,7 +183,7 @@ describe(`calculate_rdf`, () => {
 
   test(`simple cubic auto-expansion: coordination numbers exact`, () => {
     const [a_len, cutoff, n_bins] = [4, 15, 150]
-    const { r, g_r } = calculate_rdf(create_test_structure(a_len, [`Si`], [[0, 0, 0]]), {
+    const { r, g_r } = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), {
       cutoff,
       n_bins,
       auto_expand: true,
@@ -207,14 +205,10 @@ describe(`calculate_rdf`, () => {
   test(`calculate_all_pair_rdfs preserves caller pbc`, () => {
     // min-image distance between the sites is 1 Å, reachable only with PBC; without PBC
     // the nearest pair sits at 9 Å, beyond the cutoff, leaving g(r) all zero
-    const structure = create_test_structure(
-      10,
-      [`Si`, `Si`],
-      [
-        [0.05, 0.05, 0.05],
-        [0.95, 0.05, 0.05],
-      ],
-    )
+    const structure = make_crystal(10, [
+      [`Si`, [0.05, 0.05, 0.05]],
+      [`Si`, [0.95, 0.05, 0.05]],
+    ])
     const opts = { cutoff: 8, n_bins: 80, auto_expand: false, pbc: [true, true, true] as Pbc }
     const [all_pair] = calculate_all_pair_rdfs(structure, opts)
     const direct = calculate_rdf(structure, {
@@ -229,14 +223,10 @@ describe(`calculate_rdf`, () => {
   })
 
   test(`omitted pbc option defaults to structure.lattice.pbc`, () => {
-    const open = create_test_structure(
-      5,
-      [`Si`, `Si`],
-      [
-        [0, 0, 0],
-        [0.5, 0, 0],
-      ],
-    )
+    const open = make_crystal(5, [
+      [`Si`, [0, 0, 0]],
+      [`Si`, [0.5, 0, 0]],
+    ])
     open.lattice.pbc = [false, false, false]
     const opts = { cutoff: 8, n_bins: 40 }
     const from_lattice = calculate_rdf(open, opts)
@@ -320,7 +310,7 @@ describe(`calculate_rdf`, () => {
   ])(
     `should calculate RDF correctly for $name lattice`,
     ({ lattice, sites, cutoff, n_bins }) => {
-      const structure = create_test_structure(lattice, sites)
+      const structure = make_crystal(lattice, sites)
       const result = calculate_rdf(structure, { cutoff, n_bins, pbc: [true, true, true] })
 
       check_basic_rdf_properties(result.r, result.g_r, n_bins)

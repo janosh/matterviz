@@ -259,7 +259,7 @@ describe(`MatterViz Extension`, () => {
         type,
         default: schema.value,
         enum: schema.enum && Object.keys(schema.enum),
-        items: type === `array` ? { type: item_type } : undefined,
+        items: type === `array` ? { type: item_type, ...schema.items } : undefined,
       })
     }
     collect(SETTINGS_CONFIG, `matterviz`)

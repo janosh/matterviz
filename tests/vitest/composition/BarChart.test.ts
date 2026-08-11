@@ -4,7 +4,8 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`BarChart component`, () => {
-  test.each([300, 400])(`renders container with correct dimensions (size=%i)`, (size) => {
+  test(`uses the requested size`, () => {
+    const size = 400
     mount(BarChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 }, size },
@@ -46,9 +47,6 @@ describe(`BarChart component`, () => {
         outer_corners_only,
       },
     })
-
-    const segments = document.querySelectorAll(`rect.bar-segment`)
-    expect(segments.length).toBeGreaterThan(0)
 
     // Check that clip path exists for border radius
     const clip_path = document.querySelector(`clipPath`)

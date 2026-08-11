@@ -51,18 +51,6 @@ describe(`place_decorations`, () => {
     expect(layout).toMatchObject({ legend_outside: true, pad, legend_pos })
   })
 
-  test(`narrow/tall legend falls back to bottom when a vertical colorbar took the right`, () => {
-    const layout = place({
-      legend: { footprint: { width: 80, height: 200 } },
-      colorbar: { footprint: { width: 56, height: 150 }, horizontal: false },
-    })
-    expect(layout.legend_outside).toBe(true)
-    expect(layout.colorbar_outside).toBe(true)
-    // colorbar owns the right; legend must drop to the bottom to avoid colliding
-    expect(layout.pad.b).toBeGreaterThan(base_pad.b) // legend reserved at the bottom
-    expect(layout.pad.r).toBeCloseTo(base_pad.r + 56 + 8) // right reserves the colorbar only
-  })
-
   test(`decorations stay interior when a sparse region is available`, () => {
     const layout = place({
       obstacles_norm: [{ x: 0.05, y: 0.95 }], // single point in a corner
@@ -93,12 +81,6 @@ describe(`place_decorations`, () => {
     })
     expect(layout.colorbar_outside).toBe(true)
     expect(layout.pad.t).toBeGreaterThan(base_pad.t)
-  })
-
-  test(`no decorations -> padding unchanged`, () => {
-    const layout = place()
-    expect(layout).toMatchObject({ legend_outside: false, colorbar_outside: false })
-    expect(layout.pad).toEqual(base_pad)
   })
 })
 

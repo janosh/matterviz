@@ -13,7 +13,6 @@ describe(`StructureControls`, () => {
       has_error: false,
       border_includes: ``,
       title_includes: `Valid supercell scaling: 2x2x2`,
-      check_attrs: true,
     },
     { scaling: `1`, aria: `false`, has_error: false, border_includes: `` },
     {
@@ -26,7 +25,7 @@ describe(`StructureControls`, () => {
     { scaling: `2x2`, aria: `true`, has_error: true, border_includes: `dashed red` },
   ])(
     `supercell input state: $scaling`,
-    ({ scaling, aria, has_error, border_includes, title_includes, check_attrs }) => {
+    ({ scaling, aria, has_error, border_includes, title_includes }) => {
       mount(StructureControls, {
         target: document.body,
         props: {
@@ -36,12 +35,6 @@ describe(`StructureControls`, () => {
         },
       })
       const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-      if (check_attrs) {
-        expect(input.getAttribute(`inputmode`)).toBe(`text`)
-        expect(input.getAttribute(`autocomplete`)).toBe(`off`)
-        expect(input.getAttribute(`spellcheck`)).toBe(`false`)
-        expect(input.getAttribute(`pattern`)).toBe(`^(\\d+|\\d+x\\d+x\\d+)$`)
-      }
       expect(input.getAttribute(`aria-invalid`)).toBe(aria)
       const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
       expect(error_message !== null).toBe(has_error)

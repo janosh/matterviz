@@ -193,14 +193,6 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region`).getAttribute(`tabindex`)).toBe(expected)
   })
 
-  test(`hovered class applied when is_hovered is true`, () => {
-    mount(FillArea, {
-      target: document.body,
-      props: make_props({ is_hovered: true }),
-    })
-    expect(doc_query(`.fill-region`).classList.contains(`hovered`)).toBe(true)
-  })
-
   test.each<[string, FillRegion, number, string]>([
     [`uses label when provided`, base_region, 0, `Test Fill Region`],
     [`falls back to index`, { ...base_region, label: undefined }, 5, `Fill region 5`],

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Cross, Info } from 'svelte-widgets/icons'
+  import { DraggablePane } from 'svelte-widgets'
   import type { PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
-  import { DraggablePane } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'

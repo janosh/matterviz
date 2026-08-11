@@ -2,7 +2,7 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { ColorSchemeName } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
-  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {
     Circle,
     ColorPalette,
@@ -118,7 +118,7 @@
 
 <!-- the chart itself is the right-click region; `at` is also set from the keyboard
 path below, which has no pointer position to read -->
-<ContextMenu bind:at={context_menu_at} actions={context_menu_actions}>
+<ActionMenu bind:at={context_menu_at} actions={context_menu_actions}>
   <Component
     composition={parsed}
     color_scheme={current_color_scheme}
@@ -149,4 +149,4 @@ path below, which has no pointer position to read -->
     {/if}
     {action.label}
   {/snippet}
-</ContextMenu>
+</ActionMenu>

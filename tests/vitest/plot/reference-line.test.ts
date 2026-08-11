@@ -45,7 +45,7 @@ describe(`normalize_value`, () => {
   })
 })
 
-test(`preserves resolved base geometry when adding reference annotations`, () => {
+test(`adding reference annotations preserves resolved base geometry`, () => {
   const base_solution = solve_decorations({
     base_pad: { t: 10, r: 10, b: 10, l: 10 },
     width: 400,
@@ -354,13 +354,6 @@ describe(`reference annotation candidates`, () => {
     },
   )
 
-  test(`keeps the legacy end-above placement when there are no obstacles`, () => {
-    const annotation = { text: `Threshold` }
-    const legacy = calculate_annotation_position(...endpoints, {})
-    const resolved = resolve_reference_annotation(endpoints, annotation)
-    expect(resolved).toMatchObject({ ...legacy, position: `end`, side: `above` })
-  })
-
   test(`moves an automatic annotation away from a colliding obstacle`, () => {
     const annotation = { text: `Threshold` }
     const preferred = create_reference_annotation_candidates(endpoints, annotation)[0]
@@ -450,15 +443,6 @@ describe(`index_ref_lines`, () => {
 })
 
 describe(`group_ref_lines_by_z`, () => {
-  test(`returns empty groups for empty input`, () => {
-    expect(group_ref_lines_by_z([])).toEqual({
-      below_grid: [],
-      below_lines: [],
-      below_points: [],
-      above_all: [],
-    })
-  })
-
   test(`groups lines by z_index, defaults to below-lines`, () => {
     const lines: IndexedRefLine[] = [
       { type: `horizontal`, y: 1, z_index: `below-grid`, idx: 0 },

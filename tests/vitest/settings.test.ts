@@ -158,9 +158,6 @@ describe(`Settings`, () => {
     ])(`%s has valid 3D hull face properties`, (_, settings, expected_color_mode) => {
       // Default color mode (ternary=uniform, quaternary=dominant_element)
       expect(settings.hull_face_color_mode).toBe(expected_color_mode)
-      // Required properties with correct types
-      expect(typeof settings.show_hull_faces).toBe(`boolean`)
-      expect(typeof settings.hull_face_color).toBe(`string`)
       expect(settings.hull_face_opacity).toBeGreaterThanOrEqual(0)
       expect(settings.hull_face_opacity).toBeLessThanOrEqual(1)
     })

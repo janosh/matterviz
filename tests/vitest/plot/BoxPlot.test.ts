@@ -60,7 +60,6 @@ describe(`BoxPlot`, () => {
   // series with finite data. Named per row so a failure says which config broke.
   test.each([
     [`axis labels`, { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Err` } }],
-    [`no series at all`, { series: [] as BoxPlotSeries[] }],
     [`whisker_mode=minmax`, { series: [basic], whisker_mode: `minmax` as WhiskerMode }],
     [
       `whisker_mode=percentile`,
@@ -384,11 +383,11 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  // Shared rule across all plots: legend=null always hides, an explicit show_legend wins,
-  // and otherwise Cartesian charts auto-show once there's more than one series to tell apart
+  // Category labels already identify each box, so legends stay opt-in.
+  // legend=null remains the hard off switch even when show_legend is explicit.
   const multi_series = [basic, { ...basic, label: `B`, color: `orangered` }]
   test.each([
-    [`auto-shows for multiple series`, { series: multi_series }, true],
+    [`defaults off for multiple series`, { series: multi_series }, false],
     [`renders when show_legend=true`, { series: multi_series, show_legend: true }, true],
     [`hides when show_legend=false`, { series: multi_series, show_legend: false }, false],
     [
@@ -396,7 +395,6 @@ describe(`BoxPlot`, () => {
       { series: multi_series, show_legend: true, legend: null },
       false,
     ],
-    [`auto-hides for a single series`, { series: [basic] }, false],
     [`can force a single-series legend`, { series: [basic], show_legend: true }, true],
   ] as [string, Partial<ComponentProps<typeof BoxPlot>>, boolean][])(
     `legend %s`,
@@ -573,25 +571,11 @@ describe(`BoxPlot`, () => {
     expect(iqr_box(plot)).toHaveLength(1) // only the box series
   })
 
-  test.each([`both`, `positive`, `negative`] as const)(
-    `side=%s renders one violin path per series`,
-    async (side) => {
-      const plot = await mount_sized_box_plot({ series: [basic], kind: `violin`, side })
-      const path = plot.querySelector<SVGPathElement>(`.violin-area`)
-      expect(path).not.toBeNull()
-      expect(path?.getAttribute(`d`)).toMatch(/^M[\d.\-,]/) // valid, finite path
-      expect(path?.getAttribute(`d`)).not.toContain(`NaN`)
-    },
-  )
-
-  test(`violins render horizontally`, async () => {
-    const series = [basic, { ...basic, label: `B`, color: `tomato` }]
-    const plot = await mount_sized_box_plot({
-      series,
-      kind: `violin`,
-      orientation: `horizontal`,
-    })
-    expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
+  test(`renders a finite violin path`, async () => {
+    const plot = await mount_sized_box_plot({ series: [basic], kind: `violin` })
+    const path = plot.querySelector<SVGPathElement>(`.violin-area`)
+    expect(path?.getAttribute(`d`)).toMatch(/^M[\d.\-,]/)
+    expect(path?.getAttribute(`d`)).not.toContain(`NaN`)
   })
 
   test(`split violins share one category slot`, async () => {
@@ -601,7 +585,9 @@ describe(`BoxPlot`, () => {
     ]
     const plot = await mount_sized_box_plot({ series, kind: `violin`, show_legend: true })
     // two violins, but a single category slot (one x-axis tick)
-    expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
+    const paths = plot.querySelectorAll<SVGPathElement>(`.violin-area`)
+    expect(paths).toHaveLength(2)
+    for (const path of paths) expect(path.getAttribute(`d`)).not.toContain(`NaN`)
     expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(1)
     expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
   })

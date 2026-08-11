@@ -84,7 +84,7 @@ describe(`package.json exports`, () => {
     ])
   })
 
-  test(`plot keeps selected title and decoration compatibility exports`, () => {
+  test(`plot keeps its selected public title and decoration exports`, () => {
     expectTypeOf<DecorationSide>().toEqualTypeOf<`top` | `right` | `bottom` | `left`>()
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()

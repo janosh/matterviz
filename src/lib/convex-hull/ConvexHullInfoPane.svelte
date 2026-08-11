@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Cross, Info } from 'svelte-widgets/icons'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane } from 'svelte-widgets'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { ComponentProps } from 'svelte'

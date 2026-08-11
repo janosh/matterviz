@@ -174,24 +174,24 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     axis_scales: ReturnType<typeof create_axis_scales>,
     axis_ranges: AxisRanges,
   ): Record<FacetAxis, number[]> => {
-    const entries = FACET_AXES.map((axis): [FacetAxis, number[]] => {
-      if (!width || !height) return [axis, []]
+    const axis_ticks = (axis: FacetAxis): number[] => {
+      if (!width || !height) return []
       const override = opts.tick_override?.(axis)
-      if (override?.length) return [axis, override]
-      if (!axis_shown(axis)) return [axis, []]
+      if (override?.length) return override
+      if (!axis_shown(axis)) return []
       const config = opts.axes()[axis]
-      return [
-        axis,
-        generate_ticks(
-          axis_ranges[axis],
-          config.scale_type ?? `linear`,
-          config.ticks,
-          axis_scales[axis],
-          { default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis] },
-        ),
-      ]
-    })
-    return Object.fromEntries(entries) as Record<FacetAxis, number[]>
+      return generate_ticks(
+        axis_ranges[axis],
+        config.scale_type ?? `linear`,
+        config.ticks,
+        axis_scales[axis],
+        { default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis] },
+      )
+    }
+    return Object.fromEntries(FACET_AXES.map((axis) => [axis, axis_ticks(axis)])) as Record<
+      FacetAxis,
+      number[]
+    >
   }
 
   // y2 can be tied to y ('synced' shares y's range, 'align' pins a common value to the
@@ -321,7 +321,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
     }),
   )
-  const marginal_pad = $derived.by(() => reserve_marginal_pad(opts.marginals()))
+  const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
   const pad = $derived(add_sides(base_decoration_solution.pad, marginal_pad))
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
@@ -392,19 +392,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       // Write the inverted rect back into the axis props so the range sync effect can't
       // override it. Gate x2/y2 on real data: their scales are [0, 1] sentinels
       // otherwise, so inverting would store a phantom range in the bindable prop.
+      const commit = (axis: FacetAxis, range: Vec2 | null) => {
+        if (range && !facet.update_range(axis, range)) opts.write_range(axis, range)
+      }
       const next_x = invert_rect_range(scales.x, start.x, current.x)
       if (!next_x) return
-      if (!facet.update_range(`x`, next_x)) opts.write_range(`x`, next_x)
-      const next_x2 = opts.has_x2() ? invert_rect_range(scales.x2, start.x, current.x) : null
-      if (next_x2 && !facet.update_range(`x2`, next_x2)) opts.write_range(`x2`, next_x2)
-      const next_y = invert_rect_range(scales.y, start.y, current.y)
-      if (next_y && !facet.update_range(`y`, next_y)) opts.write_range(`y`, next_y)
+      commit(`x`, next_x)
+      commit(`x2`, opts.has_x2() ? invert_rect_range(scales.x2, start.x, current.x) : null)
+      commit(`y`, invert_rect_range(scales.y, start.y, current.y))
       // A synced y2 is derived from y, so let the sync pass set it instead of the rect
-      const next_y2 =
-        opts.has_y2() && y2_sync.mode === `none`
-          ? invert_rect_range(scales.y2, start.y, current.y)
-          : null
-      if (next_y2 && !facet.update_range(`y2`, next_y2)) opts.write_range(`y2`, next_y2)
+      const zoom_y2 = opts.has_y2() && y2_sync.mode === `none`
+      commit(`y2`, zoom_y2 ? invert_rect_range(scales.y2, start.y, current.y) : null)
       apply_y2_sync()
     },
     on_reset: () => {

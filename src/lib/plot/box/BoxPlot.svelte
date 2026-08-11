@@ -501,7 +501,8 @@
   })
 
   const should_show_legend = $derived(
-    resolve_legend_visibility(show_legend, legend, series.length),
+    // Category labels identify each series; show_legend remains an explicit opt-in.
+    resolve_legend_visibility(show_legend, legend, series.length, false),
   )
   // Marginals are opt-in and bind to the value axis.
   const marginal_vertical = $derived(orientation === `vertical`)

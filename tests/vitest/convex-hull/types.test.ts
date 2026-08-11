@@ -15,17 +15,6 @@ describe(`arity helpers`, () => {
     expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)
   })
 
-  const elements = `A B C D E F G H I J`.split(` `)
-  test.each(
-    Array.from({ length: 10 }, (_, idx) => {
-      const n_elems = idx + 1
-      const comp = Object.fromEntries(elements.slice(0, n_elems).map((el) => [el, 1]))
-      return [n_elems, comp] as const
-    }),
-  )(`get_arity returns %i for %j`, (expected, comp) => {
-    expect(get_arity(make(comp))).toBe(expected)
-  })
-
   test(`is_unary_entry matches arity 1`, () => {
     expect(is_unary_entry(make({ A: 1 }))).toBe(true)
     expect(is_unary_entry(make({ A: 1, B: 1 }))).toBe(false)

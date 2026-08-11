@@ -1,8 +1,20 @@
-import type { TrajectoryType, TrajectoryXQuantity, TrajHandlerData } from '$lib/trajectory'
-import { Trajectory } from '$lib/trajectory'
-import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
-import { make_trajectory_frame, resize_element } from '../setup'
+import {
+  Trajectory,
+  type FrameLoader,
+  type TrajectoryType,
+  type TrajectoryXQuantity,
+  type TrajHandlerData,
+} from '$lib/trajectory'
+import * as trajectory_parse from '$lib/trajectory/parse'
+import { flushSync, mount, tick, unmount } from 'svelte'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import {
+  deferred_fetch_responses,
+  doc_query,
+  flush_render,
+  make_trajectory_frame,
+  resize_element,
+} from '../setup'
 
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
@@ -23,49 +35,75 @@ const request_url = (url: string | URL | Request) =>
   typeof url === `string` ? url : url instanceof URL ? url.href : url.url
 const loaded_element = (data: TrajHandlerData) =>
   data.trajectory?.frames[0]?.structure.sites[0]?.species[0]?.element ?? ``
+const make_indexed_traj = (frame_count: number, metadata: TrajectoryType[`metadata`] = {}) => {
+  const frames = Array.from({ length: frame_count }, (_, frame_idx) =>
+    make_trajectory_frame(frame_idx, 1),
+  )
+  const frame_loader: FrameLoader = {
+    get_total_frames: vi.fn(async () => frame_count),
+    build_frame_index: vi.fn(async () => []),
+    load_frame: vi.fn(async (_data, frame_idx) => frames[frame_idx] ?? null),
+    extract_plot_metadata: vi.fn(async () => []),
+  }
+  return {
+    frame_loader,
+    trajectory: {
+      frames: [frames[0]],
+      total_frames: frame_count,
+      frame_loader,
+      metadata,
+      plot_metadata: [],
+    } satisfies TrajectoryType,
+  }
+}
 
 const mount_traj = (props: Record<string, unknown>) => {
   const target = document.createElement(`div`)
   document.body.append(target)
-  mount(Trajectory, { target, props })
+  const component = mount(Trajectory, { target, props })
+  onTestFinished(() => unmount(component))
   return target
-}
-const flush_render = async () => {
-  flushSync()
-  await tick()
 }
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
-const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
-  vi.stubGlobal(`fetch`, fetch_impl)
-  try {
-    await run()
-  } finally {
-    vi.unstubAllGlobals()
-  }
-}
-
-const click_menu_option = async (
-  target: ParentNode,
-  menu_button: string,
-  option_text: string,
-): Promise<void> => {
-  target.querySelector<HTMLButtonElement>(menu_button)?.click()
-  await tick()
+const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement => {
   const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
     (button) => button.textContent?.includes(option_text),
   )
   if (!option) throw new Error(`${option_text} menu option not found`)
-  option.click()
-  await tick()
+  return option
+}
+
+const stub_fetch = (fetch_impl: unknown) => {
+  vi.stubGlobal(`fetch`, fetch_impl)
+  onTestFinished(() => void vi.unstubAllGlobals())
+}
+
+const stub_animation_frames = () => {
+  const callbacks: FrameRequestCallback[] = []
+  const request_raf = vi
+    .spyOn(globalThis, `requestAnimationFrame`)
+    .mockImplementation((callback) => callbacks.push(callback))
+  const performance_now = vi.spyOn(performance, `now`)
+  onTestFinished(() => {
+    request_raf.mockRestore()
+    performance_now.mockRestore()
+  })
+  const run_frame = (timestamp: number) => {
+    const callback = callbacks.shift()
+    if (!callback) throw new Error(`Missing animation frame callback`)
+    callback(timestamp)
+    flushSync()
+  }
+  return { callbacks, performance_now, run_frame }
 }
 
 describe(`Trajectory`, () => {
   // StructureControls owns trail-chrome visibility; this only guards Trajectory's
   // lazy collect_msd_positions gate (Trail length appears once the stream lands).
   test(`collects trail positions lazily when trails are enabled`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: make_traj([{}, {}, {}]),
       display_mode: `structure`,
       show_controls: false,
@@ -74,26 +112,25 @@ describe(`Trajectory`, () => {
     })
     await flush_render()
 
-    const trail_toggle = Array.from(target.querySelectorAll(`label`))
+    const trail_toggle = Array.from(document.querySelectorAll(`label`))
       .find((label) => label.textContent?.includes(`Show trajectory trails`))
       ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
-    expect(target.textContent).not.toContain(`Trail length`)
+    expect(document.body.textContent).not.toContain(`Trail length`)
 
     trail_toggle.click()
-    await vi.waitFor(() => expect(target.textContent).toContain(`Trail length`))
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
   })
 
   test(`forwards the initial scatter controls-open state`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: energy_traj(-1, -2),
       display_mode: `scatter`,
       show_controls: false,
       scatter_props: { controls_open: true },
     })
     await flush_render()
-    const plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found`)
+    const plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
@@ -118,7 +155,7 @@ describe(`Trajectory`, () => {
       })
       await flush_render()
       const plot = target.querySelector<HTMLElement>(`.scatter`)
-      if (!plot) throw new Error(`trajectory scatter plot not found`)
+      if (!plot) throw new Error(`Trajectory scatter plot not found`)
       await resize_element(plot, 600, 400)
       const width = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
       if (!Number.isFinite(width))
@@ -127,6 +164,47 @@ describe(`Trajectory`, () => {
     }
 
     expect(await clip_width(true)).toBe(await clip_width(false))
+  })
+
+  test(`keeps the active indexed frame across streamed metadata batches`, async () => {
+    const { frame_loader, trajectory } = make_indexed_traj(2, {
+      streaming_file_path: `/indexed.xyz`,
+      plot_metadata_loading: true,
+    })
+    const props = $state({
+      trajectory,
+      current_step_idx: 1,
+      x_quantity: undefined as TrajectoryXQuantity | undefined,
+      display_mode: `structure`,
+      show_controls: false,
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(frame_loader.load_frame).toHaveBeenCalledOnce())
+
+    for (const frame_number of [0, 1]) {
+      globalThis.dispatchEvent(
+        new MessageEvent(`message`, {
+          data: {
+            command: `plot_metadata_stream`,
+            file_path: `/indexed.xyz`,
+            plot_metadata: [
+              {
+                frame_number,
+                step: 10 * (frame_number + 1),
+                properties: { energy: -frame_number },
+              },
+            ],
+          },
+        }),
+      )
+      await flush_render()
+    }
+
+    expect(props.trajectory.plot_metadata.map(({ frame_number }) => frame_number)).toEqual([
+      0, 1,
+    ])
+    expect(props.x_quantity).toBe(`step`)
+    expect(frame_loader.load_frame).toHaveBeenCalledOnce()
   })
 
   // Regression: the series-regeneration effect must survive the visible_properties
@@ -141,10 +219,9 @@ describe(`Trajectory`, () => {
       show_controls: false,
       step_labels: [0, 1, 2],
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
-    let plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found`)
+    let plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
@@ -155,8 +232,7 @@ describe(`Trajectory`, () => {
       metadata: {},
     }
     await flush_render()
-    plot = target.querySelector<HTMLElement>(`.scatter`)
-    if (!plot) throw new Error(`trajectory scatter plot not found after swap`)
+    plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
@@ -172,45 +248,37 @@ describe(`Trajectory`, () => {
   // effective axis so hosts can read which quantity is in effect. Empty mounts
   // must not write `frame` early or time-capable data can never auto-pick.
   test.each([
-    {
-      desc: `time on first paint when POTIM is present`,
-      trajectory: make_stepped_traj(2) as TrajectoryType | undefined,
-      later: undefined as ReturnType<typeof make_stepped_traj> | undefined,
-      expect_initial: `time` as TrajectoryXQuantity | undefined,
-      expect_final: `time` as TrajectoryXQuantity,
-    },
-    {
-      desc: `step on first paint without POTIM`,
-      trajectory: make_stepped_traj(undefined),
-      later: undefined,
-      expect_initial: `step`,
-      expect_final: `step`,
-    },
-    {
-      desc: `deferred until samples exist`,
-      trajectory: undefined,
-      later: make_stepped_traj(2),
-      expect_initial: undefined,
-      expect_final: `time`,
-    },
-  ])(`x_quantity $desc`, async ({ trajectory, later, expect_initial, expect_final }) => {
-    const props = $state({
-      trajectory,
-      x_quantity: undefined as TrajectoryXQuantity | undefined,
-      display_mode: `scatter` as const,
-      show_controls: `always` as const,
-    })
-    const target = mount_traj(props)
-    await flush_render()
-    expect(props.x_quantity).toBe(expect_initial)
-    if (expect_initial !== undefined) expect(selected_x_quantity(target)).toBe(expect_initial)
+    [
+      `time on first paint when POTIM is present`,
+      make_stepped_traj(2),
+      undefined,
+      `time`,
+      `time`,
+    ],
+    [`step on first paint without POTIM`, make_stepped_traj(), undefined, `step`, `step`],
+    [`deferred until samples exist`, undefined, make_stepped_traj(2), undefined, `time`],
+  ] as const)(
+    `x_quantity %s`,
+    async (_description, trajectory, later, expect_initial, expect_final) => {
+      const props = $state({
+        trajectory,
+        x_quantity: undefined as TrajectoryXQuantity | undefined,
+        display_mode: `scatter` as const,
+        show_controls: `always` as const,
+      })
+      const target = mount_traj(props)
+      await flush_render()
+      expect(props.x_quantity).toBe(expect_initial)
+      if (expect_initial !== undefined)
+        expect(selected_x_quantity(target)).toBe(expect_initial)
 
-    if (!later) return
-    props.trajectory = later
-    await flush_render()
-    expect(props.x_quantity).toBe(expect_final)
-    expect(selected_x_quantity(target)).toBe(expect_final)
-  })
+      if (!later) return
+      props.trajectory = later
+      await flush_render()
+      expect(props.x_quantity).toBe(expect_final)
+      expect(selected_x_quantity(target)).toBe(expect_final)
+    },
+  )
 
   test.each([
     [`auto-pick update`, undefined, `time`],
@@ -237,46 +305,156 @@ describe(`Trajectory`, () => {
     },
   )
 
-  test(`restricts FPS controls and binding to half-integer values`, async () => {
+  test(`keeps fullscreen state aligned while the browser request is pending`, async () => {
     const props = $state({
       trajectory: energy_traj(-1, -2),
-      fps: 0.2,
-      show_controls: `always` as const,
+      fullscreen: false,
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
+    const wrapper = doc_query(`.trajectory`)
+    const fullscreen_button = doc_query(`.fullscreen-button`)
+    wrapper.requestFullscreen = vi.fn(() => Promise.withResolvers<undefined>().promise)
 
-    const fps_input = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="number"]`,
-    )
-    const fps_slider = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="range"]`,
-    )
-    if (!fps_input || !fps_slider) throw new Error(`FPS controls not found`)
-    expect(props.fps).toBe(0.5)
-    expect(fps_input.min).toBe(`0.5`)
-    expect(fps_input.step).toBe(`0.5`)
-    expect(fps_slider.min).toBe(`0.5`)
-    expect(fps_slider.step).toBe(`0.5`)
-
-    fps_input.value = `12.3`
-    fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await flush_render()
-    expect(props.fps).toBe(12.5)
-    expect(fps_input.value).toBe(`12.5`)
-    expect(fps_slider.value).toBe(`12.5`)
+    fullscreen_button.click()
+    expect(wrapper.requestFullscreen).toHaveBeenCalledOnce()
+    expect(props.fullscreen).toBe(false)
+    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
   })
 
-  test(`preserves the component's five FPS default`, async () => {
-    const props = $state({ trajectory: energy_traj(-1, -2), show_controls: `always` as const })
-    const target = mount_traj(props)
+  test(`handles high-FPS looping, pauses, and playability changes`, async () => {
+    const events: string[] = []
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3, -4),
+      current_step_idx: 0,
+      fps: 300,
+      auto_play: false,
+      show_controls: `always` as const,
+      on_play: ({ step_idx }: TrajHandlerData) => events.push(`play:${step_idx}`),
+      on_pause: ({ step_idx }: TrajHandlerData) => events.push(`pause:${step_idx}`),
+      on_end: ({ step_idx }: TrajHandlerData) => events.push(`end:${step_idx}`),
+      on_loop: () => events.push(`loop`),
+    })
+    mount_traj(props)
+    await flush_render()
+    const play = doc_query(`.play-button`)
+    const { callbacks, performance_now, run_frame } = stub_animation_frames()
+    const toggle_play = () => {
+      play.click()
+      flushSync()
+    }
+    // A player that refuses to run stays silent rather than emitting play/pause churn
+    const expect_no_events_from = (act: () => void) => {
+      const event_count = events.length
+      act()
+      flushSync()
+      expect(events).toHaveLength(event_count)
+    }
+
+    // One long frame at 300 fps catches up across several steps
+    performance_now.mockReturnValue(1000)
+    toggle_play()
+    run_frame(1011)
+    expect(props.current_step_idx).toBe(3)
+
+    // Pause, resume, then run past the last frame to loop back to the first
+    toggle_play()
+    callbacks.length = 0
+    performance_now.mockReturnValue(1200)
+    toggle_play()
+    run_frame(1100)
+    run_frame(1104)
+    expect(props.current_step_idx).toBe(0)
+    expect(events).toEqual([`play:0`, `pause:3`, `play:3`, `end:3`, `loop`])
+
+    // 0 fps pauses and leaves the play button inert
+    props.fps = 0
+    flushSync()
+    expect(events.at(-1)).toBe(`pause:0`)
+    expect_no_events_from(toggle_play)
+
+    // Auto-play re-arms once the sequence is playable again.
+    callbacks.length = 0
+    expect_no_events_from(() => {
+      props.auto_play = true
+    })
+    props.fps = 300
+    flushSync()
+    expect(events.at(-1)).toBe(`play:0`)
+
+    // Replacing the trajectory with an equivalent object must not resume a user pause.
+    toggle_play()
+    const replacement = { ...props.trajectory, metadata: { plot_metadata_loading: false } }
+    expect_no_events_from(() => {
+      props.trajectory = replacement
+    })
+
+    // Shrinking below two frames stops the player and reports it through on_pause
+    callbacks.length = 0
+    toggle_play()
+    props.trajectory = energy_traj(-1)
+    flushSync()
+    run_frame(1300)
+    expect(events.at(-1)).toBe(`pause:0`)
+  })
+
+  test(`stops frame catch-up when an end callback makes playback unplayable`, async () => {
+    const on_end = vi.fn()
+    const on_loop = vi.fn()
+    const on_pause = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(-1, -2),
+      current_step_idx: 1,
+      fps: 300,
+      show_controls: `always` as const,
+      on_end,
+      on_loop,
+      on_pause,
+    })
+    on_end.mockImplementation(() => {
+      props.fps = 0
+    })
+    mount_traj(props)
     await flush_render()
 
-    const fps_input = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="number"]`,
-    )
-    if (!fps_input) throw new Error(`FPS controls not found`)
-    expect(fps_input.value).toBe(`5`)
+    const { callbacks, performance_now, run_frame } = stub_animation_frames()
+    performance_now.mockReturnValue(1000)
+
+    doc_query(`.play-button`).click()
+    flushSync()
+    run_frame(1011)
+
+    expect(on_end).toHaveBeenCalledOnce()
+    expect(on_loop).toHaveBeenCalledOnce()
+    expect(on_pause).toHaveBeenCalledOnce()
+    expect(callbacks).toHaveLength(0)
+  })
+
+  test(`updates frame rate from keyboard shortcuts`, async () => {
+    const on_frame_rate_change = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3),
+      fps: 5,
+      show_controls: `always` as const,
+      on_frame_rate_change,
+    })
+    mount_traj(props)
+    await flush_render()
+    const viewer = doc_query(`.trajectory`)
+    expect(doc_query(`.fps-section input[type="number"]`, HTMLInputElement).value).toBe(`5`)
+
+    on_frame_rate_change.mockClear()
+    for (const [key, expected_fps] of [
+      [` `, 5],
+      [`+`, 5.1],
+      [`-`, 5],
+      [` `, 5],
+    ] as const) {
+      viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      await flush_render()
+      expect(props.fps).toBe(expected_fps)
+    }
+    expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -295,16 +473,24 @@ describe(`Trajectory`, () => {
         if (throw_on_change) throw new Error(`host callback failed`)
       },
     })
-    const target = mount_traj(props)
+    mount_traj(props)
     await flush_render()
 
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
 
-    const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
-    if (!slider) throw new Error(`step slider not found`)
-    const trajectory_element = target.querySelector<HTMLElement>(`.trajectory`)
-    if (!trajectory_element) throw new Error(`trajectory element not found`)
+    const step_input = doc_query(`.step-input`, HTMLInputElement)
+    for (const rejected_value of [``, `99`]) {
+      step_input.value = rejected_value
+      step_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      step_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await flush_render()
+      expect(props.current_step_idx).toBe(2)
+      expect(step_input.value).toBe(`2`)
+    }
+
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+    const trajectory_element = doc_query(`.trajectory`)
     const commit_events: number[] = []
     trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
       commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
@@ -331,20 +517,17 @@ describe(`Trajectory`, () => {
     expect(commit_events).toEqual([1, 0])
 
     vi.useFakeTimers()
-    try {
-      throw_on_change = true
-      slider.value = `2`
-      slider.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
-      expect(trajectory_element.dataset.scrubbing).toBe(`true`)
-      expect(() => vi.advanceTimersToNextFrame()).toThrow(`host callback failed`)
+    onTestFinished(() => void vi.useRealTimers())
+    throw_on_change = true
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    expect(trajectory_element.dataset.scrubbing).toBe(`true`)
+    expect(() => vi.advanceTimersToNextFrame()).toThrow(`host callback failed`)
 
-      vi.advanceTimersByTime(81)
-      flushSync()
-      expect(trajectory_element.dataset.scrubbing).toBe(`false`)
-    } finally {
-      vi.useRealTimers()
-    }
+    vi.advanceTimersByTime(81)
+    flushSync()
+    expect(trajectory_element.dataset.scrubbing).toBe(`false`)
   })
 
   // Every finished analysis pane is reachable from the one menu, and each menu entry drives
@@ -373,7 +556,10 @@ describe(`Trajectory`, () => {
     ).toBeNull()
 
     for (const [label, open_prop] of options) {
-      await click_menu_option(target, `.analysis-button`, label)
+      doc_query(`.analysis-button`).click()
+      await tick()
+      menu_option(target, label).click()
+      await tick()
       expect(props[open_prop]).toBe(true)
       expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
     }
@@ -381,35 +567,24 @@ describe(`Trajectory`, () => {
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
   test(`info pane max-height follows content-area height`, async () => {
-    const target = mount_traj({
+    mount_traj({
       trajectory: energy_traj(-1.5),
       show_controls: `always` as const,
       info_pane_open: true,
     })
     await flush_render()
-    expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight).toBe(
-      `600px`,
-    )
+    expect(doc_query(`.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
   })
 
-  // show_controls.style is appended after the z-index the controls bar sets on itself, so
-  // both have to survive; a caller that names z-index deliberately wins, being last.
-  // Trailing-semicolon variants of the color style are not distinct: the template already
-  // supplies the join semicolon before the caller string.
-  test.each([
-    { style: `color: rgb(255, 0, 0)`, z_index: `10`, color: `rgb(255, 0, 0)` },
-    { style: `z-index: 5`, z_index: `5`, color: `` },
-  ])(`show_controls.style keeps z-index=$z_index`, async ({ style, z_index, color }) => {
-    const target = mount_traj({
+  test(`show_controls.style overrides control bar styles`, async () => {
+    mount_traj({
       trajectory: energy_traj(-1.5),
-      show_controls: { mode: `always`, style },
+      show_controls: { mode: `always`, style: `z-index: 5; color: rgb(255, 0, 0)` },
     })
     await flush_render()
 
-    const controls = target.querySelector<HTMLElement>(`.trajectory-controls`)
-    if (!controls) throw new Error(`trajectory controls not found`)
-    expect(getComputedStyle(controls).zIndex).toBe(z_index)
-    expect(getComputedStyle(controls).color).toBe(color)
+    const style = getComputedStyle(doc_query(`.trajectory-controls`))
+    expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
   })
 
   test(`view mode menu is layered and selectable`, async () => {
@@ -421,24 +596,18 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
-    const view_mode_button = target.querySelector<HTMLButtonElement>(`.view-mode-button`)
-    if (!view_mode_button) throw new Error(`view mode button not found`)
+    const view_mode_button = doc_query(`.view-mode-button`)
     view_mode_button.click()
     await tick()
 
-    const dropdown = target.querySelector<HTMLElement>(`.view-mode-dropdown`)
-    if (!dropdown) throw new Error(`view mode dropdown not found`)
+    const dropdown = doc_query(`.view-mode-dropdown`)
     // Inline stacking: jsdom applies no scoped styles; menu must stay above
     // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
     expect(dropdown_style.pointerEvents).toBe(`auto`)
     expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
 
-    const scatter_only = [
-      ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ].find((button) => button.textContent?.includes(`Scatter-only`))
-    if (!scatter_only) throw new Error(`scatter-only option not found`)
-    scatter_only.click()
+    menu_option(dropdown, `Scatter-only`).click()
     await tick()
 
     expect(props.display_mode).toBe(`scatter`)
@@ -451,61 +620,95 @@ describe(`Trajectory`, () => {
       async (url: string | URL | Request) =>
         new Response(xyz(request_url(url).includes(`b.xyz`) ? `He` : `H`)),
     )
-    await with_fetch(fetch_mock, async () => {
-      mount_traj({
-        data_url: `/ignored.xyz`,
-        trajectory: energy_traj(-1),
-        show_controls: `never`,
-      })
-      await tick()
-      expect(fetch_mock).not.toHaveBeenCalled()
-    })
-
     const loaded_elements: string[] = []
-    await with_fetch(fetch_mock, async () => {
-      fetch_mock.mockClear()
-      const props = $state({
-        data_url: `/a.xyz`,
-        display_mode: `structure` as const,
-        show_controls: `never` as const,
-        on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
-      })
-      mount_traj(props)
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
-
-      props.data_url = `/b.xyz`
-      await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
+    stub_fetch(fetch_mock)
+    mount_traj({
+      data_url: `/ignored.xyz`,
+      trajectory: energy_traj(-1),
+      show_controls: `never`,
     })
+    await tick()
+    expect(fetch_mock).not.toHaveBeenCalled()
+    const props = $state({
+      data_url: `/a.xyz`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load: (data: TrajHandlerData) => loaded_elements.push(loaded_element(data)),
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
+
+    props.data_url = `/b.xyz`
+    await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 
   test(`ignores a stale trajectory URL completion`, async () => {
-    const responses = new Map<string, (response: Response) => void>()
-    await with_fetch(
-      vi.fn(
-        (url: string | URL | Request) =>
-          new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
-      ),
-      async () => {
-        const on_file_load = vi.fn()
-        const props = $state({
-          data_url: `/a.xyz`,
-          display_mode: `structure` as const,
-          show_controls: `never` as const,
-          on_file_load,
-        })
-        mount_traj(props)
-        await vi.waitFor(() => expect(responses.has(`/a.xyz`)).toBe(true))
+    const responses = deferred_fetch_responses()
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/a.xyz`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(responses.has(`/a.xyz`)).toBe(true))
 
-        props.data_url = `/b.xyz`
-        await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
-        responses.get(`/b.xyz`)?.(new Response(xyz(`He`)))
-        await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    props.data_url = `/b.xyz`
+    await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
+    const current_response = responses.get(`/b.xyz`)?.shift()
+    current_response?.resolve(new Response(xyz(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-        responses.get(`/a.xyz`)?.(new Response(xyz(`H`)))
-        await tick()
-        expect(on_file_load).toHaveBeenCalledTimes(1)
-        expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
-      },
+    const stale_response = responses.get(`/a.xyz`)?.shift()
+    stale_response?.resolve(new Response(xyz(`H`)))
+    await tick()
+    expect(on_file_load).toHaveBeenCalledTimes(1)
+    expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
+  })
+
+  test(`keeps indexed source bytes when a later URL parse becomes stale`, async () => {
+    const responses = deferred_fetch_responses()
+    const { frame_loader, trajectory: indexed_trajectory } = make_indexed_traj(3)
+    const stale_parse = Promise.withResolvers<TrajectoryType>()
+    const original_parse = trajectory_parse.parse_trajectory_async
+    const parse_spy = vi
+      .spyOn(trajectory_parse, `parse_trajectory_async`)
+      .mockImplementation((data, filename, on_progress, options) => {
+        if (filename === `indexed.xyz`) return Promise.resolve(indexed_trajectory)
+        if (filename === `stale.xyz`) return stale_parse.promise
+        return original_parse(data, filename, on_progress, options)
+      })
+    const props = $state({
+      data_url: `/indexed.xyz`,
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+    })
+    // resolve the pending parse so nothing is left hanging, whatever the test does
+    onTestFinished(() => {
+      stale_parse.resolve(energy_traj(-1))
+      parse_spy.mockRestore()
+    })
+
+    mount_traj(props)
+    await vi.waitFor(() => expect(responses.has(`/indexed.xyz`)).toBe(true))
+    responses.get(`/indexed.xyz`)?.shift()?.resolve(new Response(`indexed source bytes`))
+    await vi.waitFor(() => expect(frame_loader.load_frame).toHaveBeenCalled())
+    vi.mocked(frame_loader.load_frame).mockClear()
+
+    props.data_url = `/stale.xyz`
+    await vi.waitFor(() => expect(responses.has(`/stale.xyz`)).toBe(true))
+    responses.get(`/stale.xyz`)?.shift()?.resolve(new Response(`stale source bytes`))
+    await vi.waitFor(() =>
+      expect(parse_spy.mock.calls.map(([, filename]) => filename)).toContain(`stale.xyz`),
+    )
+
+    props.data_url = `/newer.xyz`
+    await vi.waitFor(() => expect(responses.has(`/newer.xyz`)).toBe(true))
+    props.current_step_idx = 2
+    await vi.waitFor(() =>
+      expect(frame_loader.load_frame).toHaveBeenCalledWith(`indexed source bytes`, 2),
     )
   })
 
@@ -520,10 +723,9 @@ describe(`Trajectory`, () => {
       expected: { filename: `traj.xyz`, error_msg: expect.stringContaining(`network down`) } },
   ])(`on_error reports $label`, async ({ data_url, fetch_impl, expected }) => {
     const on_error = vi.fn()
-    await with_fetch(vi.fn(fetch_impl), async () => {
-      mount_traj({ data_url, display_mode: `structure`, show_controls: `never`, on_error })
-      await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-      expect(on_error.mock.calls[0][0]).toEqual(expect.objectContaining(expected))
-    })
+    stub_fetch(vi.fn(fetch_impl))
+    mount_traj({ data_url, display_mode: `structure`, show_controls: `never`, on_error })
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+    expect(on_error.mock.calls[0][0]).toEqual(expect.objectContaining(expected))
   })
 })

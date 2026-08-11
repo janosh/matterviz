@@ -119,7 +119,7 @@ describe(`format-specific edge cases`, () => {
     expect(captured_blobs[0].type).toBe(`application/octet-stream`)
   })
 
-  it(`OBJ creates valid text structure`, async () => {
+  it(`OBJ writes the exporter payload`, async () => {
     await export_scene(mock_scene, `obj`, `test`)
     const text = await captured_blobs[0].text()
     expect(text).toMatch(/^# OBJ file/)
@@ -127,7 +127,7 @@ describe(`format-specific edge cases`, () => {
     expect(text).toMatch(/f \d+ \d+ \d+/)
   })
 
-  it(`GLTF creates valid JSON structure`, async () => {
+  it(`GLTF serializes the exporter payload as JSON`, async () => {
     await export_to_gltf(mock_scene, `test`)
     const parsed = JSON.parse(await captured_blobs[0].text())
     expect(parsed.asset.version).toBe(`2.0`)

@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.5.0](https://github.com/janosh/matterviz/compare/v0.4.4...v0.5.0)
+
+> 11 August 2026
+
+### ⚠️ Breaking Changes
+
+- Narrow the public API: import plot components from `matterviz/plot` rather than `matterviz/plot/...`; the `matterviz/json-path`, `matterviz/marching-cubes`, and `matterviz/file-viewer/eligibility` subpaths and broad root/core re-exports are no longer public https://github.com/janosh/matterviz/pull/431
+- Require Svelte 5.48 or newer
+- Migrate VS Code settings: `matterviz.structure.show_cell` and `matterviz.plot.show_x2_grid` are no longer supported; replace `matterviz.plot.{show_x_grid,show_y_grid,show_y2_grid}` with the corresponding `matterviz.{histogram,bar,box,scatter}.display.{x_grid,y_grid,y2_grid}` setting.
+- The removed camera settings `matterviz.convex_hull.binary.camera_center_x`, `matterviz.convex_hull.binary.camera_center_y`, `matterviz.convex_hull.ternary.camera_center_x`, `matterviz.convex_hull.ternary.camera_center_y`, `matterviz.convex_hull.quaternary.camera_center_x`, and `matterviz.convex_hull.quaternary.camera_center_y` have no setting replacements; pan hull views interactively instead.
+- The remaining removed legacy `matterviz.plot.*` and `matterviz.trajectory.*` settings have no replacements. This includes plot animation, auto-range, zoom, trajectory caching/chunking, playback-loop, prefetch, memory, formatting, tooltip, and compact-control settings.
+
+### 🚀 New Features
+
+- Add a JupyterLab file viewer for structures, trajectories, volumetric data, bands, DOS, and other supported materials files https://github.com/janosh/matterviz/pull/421
+- Add per-atom trajectory analysis, CNA and centrosymmetry, VACF/VDOS, trajectory lines, a data inspector, and CSV export https://github.com/janosh/matterviz/pull/422
+- Add plot facets, coordinated axes, adaptive ticks and titles, shared decoration placement, and improved accessibility https://github.com/janosh/matterviz/pull/425
+
+### 🛠 Enhancements
+
+- Improve camera framing, color parsing, extXYZ fidelity, and trajectory data export https://github.com/janosh/matterviz/pull/420
+- Overhaul plot controls, legends, dense rendering, searchable settings, and viewer preferences https://github.com/janosh/matterviz/pull/424 https://github.com/janosh/matterviz/pull/426 https://github.com/janosh/matterviz/pull/427
+- Speed up plots, convex hulls, and tables while improving their correctness and interaction behavior https://github.com/janosh/matterviz/pull/428
+- Derive readable foreground colors automatically from a shared theme backdrop token https://github.com/janosh/matterviz/pull/429
+
+### 💡 Refactoring
+
+- Share reusable file-parsing utilities across the library and extensions https://github.com/janosh/matterviz/pull/423
+- Consolidate common tooling, test helpers, settings factories, and maintenance infrastructure https://github.com/janosh/matterviz/pull/430
+
 ## [v0.4.4](https://github.com/janosh/matterviz/compare/v0.4.3...v0.4.4)
 
 > 30 July 2026
@@ -27,7 +57,6 @@
 
 ### 💡 Refactoring
 
-- Narrow the `matterviz` public API: direct `matterviz/plot/...` subpath imports and wholesale `./core` re-exports are no longer available, and the root package exports fewer symbols. Consumers importing unlisted plot, core, or root symbols must update their imports.
 - Replace local UI widget copies with `svelte-widgets` 1.1 https://github.com/janosh/matterviz/pull/418
 - Make releases artifact-first, retry-safe, and tag-last https://github.com/janosh/matterviz/commit/53d508778bad2994197c316cc7fe9c6e76b7452f
 

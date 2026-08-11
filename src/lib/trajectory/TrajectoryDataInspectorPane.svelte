@@ -1,11 +1,11 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { type CellVal, HeatmapTable, type Label, type RowData } from '$lib/table'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { Tabs } from 'svelte-widgets'
+  import { DraggablePane, Tabs } from 'svelte-widgets'
   import { Cross, HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import { full_data_extractor } from './extract'
   import type {

@@ -508,7 +508,7 @@
     container-type: inline-size; /* for gap: 0.3cqw */
     width: 100%; /* prevent collapse in shrink-to-fit contexts */
     display: grid;
-    grid-template-columns: repeat(18, 1fr);
+    grid-template-columns: repeat(18, minmax(0, 1fr));
     position: relative;
     gap: var(--ptable-gap, 0.3cqw);
   }

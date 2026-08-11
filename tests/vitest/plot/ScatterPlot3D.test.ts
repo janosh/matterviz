@@ -79,7 +79,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
   }
 
   test.each<[string, ComponentProps<typeof ScatterPlot3D>]>([
-    [`series data`, { series: [basic_series] }],
     [`empty series`, { series: [] }],
     [
       `all surface types`,

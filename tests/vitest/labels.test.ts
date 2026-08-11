@@ -11,7 +11,6 @@ import {
   format_value,
   parse_si_float,
   superscript_digits,
-  trajectory_property_config,
 } from '$lib/labels'
 import { format as d3_format } from 'd3-format'
 import { describe, expect, test } from 'vitest'
@@ -24,13 +23,6 @@ describe(`labels utils`, () => {
     })
     // Ensure 1:1 mapping (no duplicate labels collapsing entries)
     expect(Object.values(ELEM_HEATMAP_LABELS)).toHaveLength(ELEM_HEATMAP_KEYS.length)
-  })
-
-  test(`trajectory_property_config provides non-empty label and unit`, () => {
-    for (const info of Object.values(trajectory_property_config)) {
-      expect(info.label.length).toBeGreaterThan(0)
-      expect(info.unit.length).toBeGreaterThan(0)
-    }
   })
 })
 

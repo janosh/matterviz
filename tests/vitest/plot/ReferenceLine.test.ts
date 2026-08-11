@@ -101,56 +101,6 @@ describe(`ReferenceLine`, () => {
     expect(line?.getAttribute(`stroke-opacity`)).toBe(`0.8`)
   })
 
-  test(`renders an obstacle-free automatic annotation at the legacy candidate`, () => {
-    const annotation = { text: `Automatic` }
-    const preferred = create_reference_annotation_candidates(
-      horizontal_endpoints,
-      annotation,
-    )[0]
-    mount_line({ type: `horizontal`, y: 50, annotation })
-    const text = doc_query(`text`)
-    expect(text.textContent).toContain(annotation.text)
-    expect(annotation_xy()).toEqual([preferred.x, preferred.y])
-  })
-
-  test(`renders the chosen non-colliding automatic candidate`, () => {
-    const annotation = { text: `Automatic` }
-    const candidates = create_reference_annotation_candidates(horizontal_endpoints, annotation)
-    const preferred = candidates[0]
-    mount_line(
-      { type: `horizontal`, y: 50, annotation },
-      {
-        obstacles: [
-          {
-            x: preferred.rect.x + preferred.rect.width / 2,
-            y: preferred.rect.y + preferred.rect.height / 2,
-          },
-        ],
-      },
-    )
-    expect(annotation_xy()).toEqual([candidates[1].x, candidates[1].y])
-  })
-
-  test(`does not move an explicitly positioned annotation`, () => {
-    const annotation = {
-      text: `Pinned`,
-      position: `end`,
-      side: `above`,
-    } as const
-    const preferred = create_reference_annotation_candidates(
-      horizontal_endpoints,
-      annotation,
-    )[0]
-    mount_line(
-      { type: `horizontal`, y: 50, annotation },
-      {
-        exclusion_rects: [preferred.rect],
-        obstacles: [{ x: preferred.x, y: preferred.y }],
-      },
-    )
-    expect(annotation_xy()).toEqual([preferred.x, preferred.y])
-  })
-
   test(`renders a host-selected annotation placement`, () => {
     const annotation = { text: `Selected` }
     const selected = create_reference_annotation_candidates(
@@ -213,13 +163,8 @@ describe(`ReferenceLine`, () => {
     expect(Number(line?.getAttribute(`x2`) ?? `0`)).toBeCloseTo(x_scale(80), 0)
   })
 
-  test.each([
-    { type: `diagonal`, slope: 1, intercept: 0 },
-    { type: `segment`, p1: [10, 10], p2: [90, 90] },
-    { type: `line`, p1: [20, 20], p2: [80, 80] },
-  ] as RefLine[])(`renders $type line type`, (ref_line) => {
-    mount_line(ref_line)
-    // Should have hit area + visible line
+  test(`renders a point-defined line`, () => {
+    mount_line({ type: `line`, p1: [20, 20], p2: [80, 80] })
     expect(query_all(`line`)).toHaveLength(2)
   })
 

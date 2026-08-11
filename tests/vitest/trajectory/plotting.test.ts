@@ -189,7 +189,7 @@ describe(`generate_plot_series`, () => {
     })
   })
 
-  it(`memoizes extraction until extractor, trajectory, or frame identities change`, () => {
+  it(`reuses extraction until extractor, trajectory, or frame identities change`, () => {
     const trajectory = create_trajectory([{ energy: -10 }, { energy: -11 }])
     let call_count = 0
     const counting_extractor = (frame: TrajectoryFrame) => {
@@ -370,7 +370,14 @@ describe(`streaming visibility characterization`, () => {
   }))
   const assignments = (series: DataSeries[]) =>
     series
-      .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
+      .map(({ label, unit, visible, x, y, y_axis }) => ({
+        label,
+        unit,
+        visible,
+        x,
+        y,
+        y_axis,
+      }))
       .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
 
   it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
@@ -386,13 +393,16 @@ describe(`streaming visibility characterization`, () => {
     expect(assignments(streaming)).toEqual(assignments(eager))
   })
 
-  it(`keeps historical priority and two-group selection when defaults add a third group`, () => {
+  it(`limits default visibility to two prioritized axis groups`, () => {
     const series = generate_streaming_plot_series(metadata, {
       property_config,
       default_visible_properties: new Set([`energy`]),
     })
+    const axis_assignments = series
+      .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
+      .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
 
-    expect(assignments(series)).toEqual([
+    expect(axis_assignments).toEqual([
       { label: `Energy`, visible: true, y_axis: `y1` },
       { label: `Temperature`, visible: true, y_axis: `y2` },
       { label: `Volume`, visible: false, y_axis: `y1` },

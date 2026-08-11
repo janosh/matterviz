@@ -188,19 +188,21 @@ describe(`ColorBar tick_side='inside'`, () => {
     expect(last_visible_tick.style.top).toBe(`12.5%`)
   })
 
-  test(`resolves translucent interpolator colors against an opaque backdrop`, async () => {
+  test.each([
+    [`transparent`, `transparent`, `white`],
+    [`translucent`, `rgba(255, 255, 255, 0.1)`, `white`],
+    [`unresolved`, `var(--missing-scale-color)`, `inherit`],
+  ])(`handles %s custom scale colors for inside ticks`, async (_desc, color, expected) => {
     mount(ColorBar, {
       target: document.body,
       props: {
         tick_side: `inside`,
-        tick_labels: [0, 0.5, 1],
-        range: [0, 1],
-        scale: { fn: () => `rgba(255, 255, 255, 0.1)`, domain: [0, 1] },
+        scale: { fn: () => color },
         style: `--page-bg: black`,
       },
     })
     await tick()
-    expect(doc_query(`.tick-label`).style.color).toBe(`white`)
+    expect(doc_query(`.tick-label`).style.color).toBe(expected)
   })
 })
 
