@@ -1170,12 +1170,12 @@
   function onkeydown(event: KeyboardEvent): boolean {
     if (!trajectory) return false
 
-    // Don't handle shortcuts if the user is typing in an input field.
+    // Don't handle shortcuts while the user is editing form or rich-text content.
     const target = event.target instanceof HTMLElement ? event.target : null
-    const is_step_input = target?.classList.contains(`step-input`) ?? false
-    const is_input_focused = target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
-    if (is_input_focused) {
-      if (is_step_input && [`Escape`, `Enter`].includes(event.key)) target?.blur()
+    if (target && (target.matches(`input, textarea, select`) || target.isContentEditable)) {
+      if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
+        target.blur()
+      }
       return false
     }
 
@@ -1198,10 +1198,8 @@
     else if (event.key === `PageDown`) playback.go_to(current_step_idx + 25)
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
-    else if ((event.key === `=` || event.key === `+`) && playback.is_playing) {
-      fps = Math.min(playback.fps_limits[1], fps + playback.fps_step)
-    } else if (event.key === `-` && playback.is_playing) {
-      fps = Math.max(playback.fps_limits[0], fps - playback.fps_step)
+    else if (playback.is_playing && [`=`, `+`, `-`].includes(event.key)) {
+      playback.fps += event.key === `-` ? -playback.fps_step : playback.fps_step
     } else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false

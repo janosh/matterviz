@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   deferred_fetch_responses,
   doc_query,
+  flush_render,
   make_trajectory_frame,
   resize_element,
 } from '../setup'
@@ -34,10 +35,6 @@ const mount_traj = (props: Record<string, unknown>) => {
   document.body.append(target)
   mount(Trajectory, { target, props })
   return target
-}
-const flush_render = async () => {
-  flushSync()
-  await tick()
 }
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
@@ -119,13 +116,14 @@ describe(`Trajectory`, () => {
           },
         })),
       }
-      mount_traj({
+      const target = mount_traj({
         trajectory,
         display_mode: `scatter`,
         show_controls: false,
       })
       await flush_render()
-      const plot = doc_query(`.scatter`)
+      const plot = target.querySelector<HTMLElement>(`.scatter`)
+      if (!plot) throw new Error(`Trajectory scatter plot not found`)
       await resize_element(plot, 600, 400)
       const width = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
       if (!Number.isFinite(width))
@@ -313,13 +311,18 @@ describe(`Trajectory`, () => {
     const viewer = doc_query(`.trajectory`)
     expect(doc_query(`.fps-section input[type="number"]`, HTMLInputElement).value).toBe(`5`)
 
-    const calls_before_speed_change = on_frame_rate_change.mock.calls.length
-    for (const key of [` `, `+`, ` `]) {
+    on_frame_rate_change.mockClear()
+    for (const [key, expected_fps] of [
+      [` `, 5],
+      [`+`, 6],
+      [`-`, 5],
+      [` `, 5],
+    ] as const) {
       viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
       await flush_render()
+      expect(props.fps).toBe(expected_fps)
     }
-    expect(props.fps).toBe(6)
-    expect(on_frame_rate_change).toHaveBeenCalledTimes(calls_before_speed_change + 1)
+    expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -526,10 +529,12 @@ describe(`Trajectory`, () => {
 
     props.data_url = `/b.xyz`
     await vi.waitFor(() => expect(responses.has(`/b.xyz`)).toBe(true))
-    responses.get(`/b.xyz`)?.resolve(new Response(xyz(`He`)))
+    const current_response = responses.get(`/b.xyz`)?.shift()
+    current_response?.resolve(new Response(xyz(`He`)))
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-    responses.get(`/a.xyz`)?.resolve(new Response(xyz(`H`)))
+    const stale_response = responses.get(`/a.xyz`)?.shift()
+    stale_response?.resolve(new Response(xyz(`H`)))
     await tick()
     expect(on_file_load).toHaveBeenCalledTimes(1)
     expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)

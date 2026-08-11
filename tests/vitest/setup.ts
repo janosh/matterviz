@@ -11,7 +11,7 @@ import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-import { beforeEach, expect, vi } from 'vitest'
+import { afterEach, beforeEach, expect, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
@@ -68,6 +68,8 @@ beforeEach(() => {
   })
 })
 
+afterEach(() => vi.unstubAllGlobals())
+
 type Element_constructor<T extends Element> = abstract new (...args: never[]) => T
 
 export function doc_query<T extends Element = HTMLElement>(
@@ -85,7 +87,7 @@ export function doc_query<T extends Element = HTMLElement>(
 export const deferred_fetch_responses = () => {
   const responses = new Map<
     string,
-    { resolve: (response: Response) => void; reject: (error: Error) => void }
+    { resolve: (response: Response) => void; reject: (error: Error) => void }[]
   >()
   vi.stubGlobal(
     `fetch`,
@@ -94,11 +96,18 @@ export const deferred_fetch_responses = () => {
         new Promise<Response>((resolve_response, reject_response) => {
           const request_url =
             typeof url === `string` ? url : url instanceof URL ? url.href : url.url
-          responses.set(request_url, { resolve: resolve_response, reject: reject_response })
+          const queue = responses.get(request_url) ?? []
+          queue.push({ resolve: resolve_response, reject: reject_response })
+          responses.set(request_url, queue)
         }),
     ),
   )
   return responses
+}
+
+export const flush_render = async (): Promise<void> => {
+  flushSync()
+  await tick()
 }
 
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
@@ -109,7 +118,10 @@ export function expect_transition_properties(
   duration = `0.2s`,
 ): void {
   const transition = getComputedStyle(element).transition
-  for (const property of properties) expect(transition).toContain(`${property} ${duration}`)
+  const transitions = transition.split(`,`).map((value) => value.trim())
+  for (const property of properties) {
+    expect(transitions.some((value) => value.startsWith(`${property} ${duration}`))).toBe(true)
+  }
   expect(transition).not.toContain(`all`)
   expect(transition).not.toMatch(/(?:^|,)\s*d\s/)
 }

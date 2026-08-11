@@ -944,10 +944,12 @@ describe(`Structure string parsing`, () => {
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses.get(`/b.json`)?.resolve(new Response(structure_json(`He`)))
+    const current_response = responses.get(`/b.json`)?.shift()
+    current_response?.resolve(new Response(structure_json(`He`)))
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-    responses.get(`/a.json`)?.resolve(new Response(structure_json(`H`)))
+    const stale_response = responses.get(`/a.json`)?.shift()
+    stale_response?.resolve(new Response(structure_json(`H`)))
     await tick()
     expect(on_file_load).toHaveBeenCalledTimes(1)
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
@@ -965,11 +967,11 @@ describe(`Structure string parsing`, () => {
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses.get(`/a.json`)?.reject(new Error(`network down`))
+    responses.get(`/a.json`)?.shift()?.reject(new Error(`network down`))
     await tick()
     expect(on_error).not.toHaveBeenCalled()
 
-    responses.get(`/b.json`)?.reject(new Error(`gone`))
+    responses.get(`/b.json`)?.shift()?.reject(new Error(`gone`))
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
     expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
   })

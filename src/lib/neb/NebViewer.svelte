@@ -7,12 +7,8 @@
   import { StatusMessage } from '$lib/feedback'
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
-  import {
-    FullscreenButton,
-    sync_fullscreen,
-    toggle_fullscreen_from_button,
-    type FullscreenToggleProp,
-  } from '$lib/layout'
+  import { FullscreenButton, toggle_fullscreen_from_button } from '$lib/layout'
+  import type { FullscreenToggleProp } from '$lib/layout'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
@@ -20,6 +16,7 @@
   import { to_error } from '$lib/utils'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
+  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type {
     EnergyReference,
     PathMetric,

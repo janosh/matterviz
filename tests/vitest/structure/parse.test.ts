@@ -1630,7 +1630,10 @@ describe(`OPTIMADE JSON parser`, () => {
     expect(result.sites).toHaveLength(cartesian_site_positions.length)
     expect(result.sites[0].species[0].element).toBe(first_element)
 
-    if (!lattice_vectors) return expect(result.lattice).toBeUndefined()
+    if (!lattice_vectors) {
+      expect(result.lattice).toBeUndefined()
+      return
+    }
     expect(result.lattice?.matrix).toEqual(lattice_vectors)
     expect_sites_reconstruct(result)
   })

@@ -855,14 +855,15 @@
           "type": "number",
           "default": 10,
           "description": "Frames per second for trajectory playback",
-          "minimum": 0.1,
-          "maximum": 60
+          "minimum": 0,
+          "maximum": 300,
+          "multipleOf": 1
         },
         "matterviz.trajectory.fps_range": {
           "type": "array",
           "default": [
-            0.2,
-            60
+            0,
+            300
           ],
           "description": "Allowed range for playback speed [min, max]",
           "minItems": 2,

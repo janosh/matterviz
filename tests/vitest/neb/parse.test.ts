@@ -10,7 +10,13 @@ import { count_xyz_frames } from '$lib/trajectory/helpers'
 import { li_mgo_hop_json, LI_MGO_HOP_FILENAME, reaction_paths } from '$site/neb'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, create_drop_event, make_crystal, resize_element } from '../setup'
+import {
+  bind_props,
+  create_drop_event,
+  flush_render,
+  make_crystal,
+  resize_element,
+} from '../setup'
 
 const CELL = 4
 const cubic_structure = (x_frac: number) =>
@@ -300,11 +306,6 @@ afterEach(async () => {
   Object.defineProperty(document, `fullscreenElement`, { value: null, configurable: true })
   vi.restoreAllMocks()
 })
-
-const flush_render = async (): Promise<void> => {
-  flushSync()
-  await tick()
-}
 
 const mount_plot = async (props: ComponentProps<typeof NebPlot>): Promise<HTMLElement> => {
   await reset_mounts()
