@@ -91,7 +91,7 @@ function sync_package_config(): void {
 
     // Empty-array defaults cannot reveal an item type, so default those to string.
     if (Array.isArray(schema.value)) {
-      config.items = { type: vscode_scalar_type(schema.value[0]) }
+      config.items = { type: vscode_scalar_type(schema.value[0]), ...schema.items }
     }
     vscode_config[key_path] = config
   }

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Cross, Lattice } from 'svelte-widgets/icons'
+  import { DraggablePane } from 'svelte-widgets'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import { type ComponentProps, untrack } from 'svelte'

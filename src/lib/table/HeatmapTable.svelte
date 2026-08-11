@@ -10,7 +10,7 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ContextMenu, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, DraggablePane, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -22,7 +22,6 @@
     Search as SearchIcon,
     Settings,
   } from 'svelte-widgets/icons'
-  import { DraggablePane } from '$lib/overlays'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
     CellColor,
@@ -62,7 +61,6 @@
   import ToggleMenu from './ToggleMenu.svelte'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
   import { type Snippet, tick, untrack } from 'svelte'
-  import { flip } from 'svelte/animate'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
@@ -72,7 +70,11 @@
 
   const tooltip_selector = `[title], [aria-label], [data-title]`
   // Delegation keeps tooltips working as sorting, filtering and pagination replace cells.
-  const table_tooltips = tooltip({ allow_html: true, delegate: tooltip_selector })
+  const table_tooltips = tooltip({
+    allow_html: true,
+    sanitize_html,
+    delegate: tooltip_selector,
+  })
 
   // Close a header popover when the pointer goes down anywhere outside it
   const close_header_popovers_on_outside_pointerdown = (event: PointerEvent) => {
@@ -362,13 +364,6 @@
       : null,
   )
 
-  // Derive sort_state from bindable prop, falling back to initial_sort if sort not yet set
-  // This ensures immediate sorting on first render without waiting for effects
-  let sort_state = $derived<SortState>({
-    column: sort.column || initial_sort_config?.column || ``,
-    ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
-  })
-
   // Multi-column sort state (for Shift+click)
   let multi_sort = $state<MultiSortState>([])
 
@@ -411,6 +406,55 @@
   let resize_start_x = $state(0)
   let resize_start_width = $state(0)
 
+  // Migrate persisted grouped IDs from the former "key (group)" encoding. If that text is
+  // also a current ungrouped ID, leave it alone because the old state is ambiguous.
+  let legacy_column_ids = $derived.by(() => {
+    const current_ids = new SvelteSet(columns.map(get_col_id))
+    const migrations = new SvelteMap<string, string>()
+    for (const col of columns) {
+      if (!col.group) continue
+      const legacy_id = `${col.key ?? col.label} (${col.group})`
+      if (!current_ids.has(legacy_id)) migrations.set(legacy_id, get_col_id(col))
+    }
+    return migrations
+  })
+  const migrate_col_id = (col_id: string): string => legacy_column_ids.get(col_id) ?? col_id
+  $effect.pre(() => {
+    const migrated_hidden = [...new Set(hidden_columns.map(migrate_col_id))]
+    if (
+      migrated_hidden.length !== hidden_columns.length ||
+      migrated_hidden.some((col_id, idx) => col_id !== hidden_columns[idx])
+    ) {
+      hidden_columns = migrated_hidden
+    }
+
+    const migrated_sort_col = migrate_col_id(sort.column)
+    if (migrated_sort_col !== sort.column) sort = { ...sort, column: migrated_sort_col }
+
+    // Start from the entries already keyed by a current id, then fold each legacy entry
+    // into its replacement. Prefs stored under the current id win on overlapping fields.
+    const migrated_prefs = Object.fromEntries(
+      Object.entries(column_prefs).filter(([col_id]) => !legacy_column_ids.has(col_id)),
+    )
+    let prefs_changed = false
+    for (const [legacy_id, current_id] of legacy_column_ids) {
+      if (!(legacy_id in column_prefs)) continue
+      migrated_prefs[current_id] = {
+        ...column_prefs[legacy_id],
+        ...migrated_prefs[current_id],
+      }
+      prefs_changed = true
+    }
+    if (prefs_changed) column_prefs = migrated_prefs
+  })
+
+  // Derive sort state from the bindable prop, falling back to initial_sort if sort is unset.
+  // Normalize the fallback too so legacy persisted grouped IDs work on the first render.
+  let sort_state = $derived<SortState>({
+    column: migrate_col_id(sort.column || initial_sort_config?.column || ``),
+    ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
+  })
+
   // Everything the user tunes per column lives in the bindable column_prefs record, so a
   // host can persist and restore it wholesale. Reads fall back to the column's config.
   const prefs_of = (col_id: string): ColumnPrefs => column_prefs[col_id] ?? {}
@@ -443,7 +487,8 @@
         if (key !== `style` && key !== `class`) seen[key] = true
       }
     }
-    columns = Object.keys(seen).map((key) => ({ label: key }))
+    const discovered = Object.keys(seen)
+    if (discovered.length > 0) columns = discovered.map((key) => ({ label: key }))
   })
 
   // IDs and row keys are separate: grouped IDs use tuple encoding, while existing row data
@@ -653,8 +698,10 @@
     if (columns.length === 0) return
     const col_ids = columns.map(get_col_id)
     const valid_ids = new Set(col_ids)
-    const kept = column_order.filter((id) => valid_ids.has(id))
-    const new_order = [...kept, ...col_ids.filter((id) => !kept.includes(id))]
+    const kept = new SvelteSet(
+      column_order.map(migrate_col_id).filter((id) => valid_ids.has(id)),
+    )
+    const new_order = [...kept, ...col_ids.filter((id) => !kept.has(id))]
 
     // Assign only on a real change, or the new array reference re-triggers this effect
     // forever: after a drag reorder column_order differs from the default col_ids order,
@@ -945,6 +992,7 @@
   let scroll_top = $state(0)
   let viewport_height = $state(0)
   let avg_row_height = $state(33) // refined from rendered rows after mount
+  let row_height_measured = $state(false)
   let scroll_left = $state(0)
   let viewport_width = $state(0)
   let virtual_config = $derived(
@@ -953,48 +1001,81 @@
       : { overscan: 10, min_window: 60, ...(typeof virtual === `object` ? virtual : {}) },
   )
 
-  let virtual_range = $derived.by(() => {
+  // Keep pixel-level scroll changes out of the rendered-window dependency graph.
+  // These primitives only invalidate downstream slices when a row boundary is crossed.
+  let first_virtual_row = $derived.by(() => {
+    if (!virtual_config) return 0
     const total = sorted_data.length
-    if (!virtual_config) return { start: 0, end: total }
-    const { overscan, min_window } = virtual_config
     // Shrinking data can leave scroll_top past the new content height (the
     // browser only clamps the real scrollTop after a re-render); clamp here so
     // the window and spacers never index past the data.
     const max_scroll = Math.max(0, total * avg_row_height - viewport_height)
-    const first_visible = Math.floor(Math.min(scroll_top, max_scroll) / avg_row_height)
-    const visible_count = Math.ceil(viewport_height / avg_row_height)
-    const start = Math.max(0, first_visible - overscan)
-    const end = Math.min(
-      total,
-      Math.max(first_visible + visible_count + overscan, start + min_window),
-    )
-    return { start, end }
+    return Math.floor(Math.min(scroll_top, max_scroll) / avg_row_height)
   })
+  let virtual_row_count = $derived(Math.ceil(viewport_height / avg_row_height))
+  let virtual_start = $derived(
+    virtual_config ? Math.max(0, first_virtual_row - virtual_config.overscan) : 0,
+  )
+  let virtual_end = $derived(
+    virtual_config
+      ? Math.min(
+          sorted_data.length,
+          Math.max(
+            first_virtual_row + virtual_row_count + virtual_config.overscan,
+            virtual_start + virtual_config.min_window,
+          ),
+        )
+      : sorted_data.length,
+  )
+  let virtual_range = $derived({ start: virtual_start, end: virtual_end })
 
-  const sync_viewport = () => {
-    if (!scroll_el) return
-    scroll_top = scroll_el.scrollTop
-    viewport_height = scroll_el.clientHeight
-    scroll_left = scroll_el.scrollLeft
-    viewport_width = scroll_el.clientWidth
+  // Scroll events are hot: only read offsets there. Client dimensions can force
+  // layout and belong to mount/ResizeObserver paths instead.
+  const sync_viewport = (measure_size = false) => {
+    const element = scroll_el
+    if (!element) return
+    if (virtual_config) {
+      scroll_top = element.scrollTop
+      if (measure_size) viewport_height = element.clientHeight
+    }
+    if (virtual_cols_config) {
+      scroll_left = element.scrollLeft
+      if (measure_size) viewport_width = element.clientWidth
+    }
   }
 
-  // Refine the row-height estimate from actually rendered rows (needed for
-  // accurate spacer heights).
-  $effect(() => {
-    if (!virtual_config || !scroll_el) return
-    void virtual_range // re-measure whenever the rendered window changes
+  // Measure one rendered sample, then unsubscribe from row-count changes. Re-measuring
+  // after every append can force layout and make heterogeneous rows jump under a fixed
+  // scrollTop; re-measure only when the viewport width or density actually changes.
+  const measure_row_height = (): boolean => {
+    if (!scroll_el) return false
     const rows = scroll_el.querySelectorAll<HTMLTableRowElement>(
       `tbody tr:not(.virtual-spacer):not(.empty-row)`,
     )
     let height_sum = 0
     for (const row of rows) height_sum += row.offsetHeight
     const measured = rows.length ? height_sum / rows.length : 0
-    // threshold stops measure→window→measure feedback loops from tiny jitters
-    if (measured > 0 && Math.abs(measured - avg_row_height) > 0.5) {
+    if (measured <= 0) return false
+    const previous = untrack(() => avg_row_height)
+    if (Math.abs(measured - previous) > 0.5) {
       avg_row_height = Math.min(400, Math.max(8, measured))
     }
-    sync_viewport()
+    return true
+  }
+  $effect(() => {
+    if (row_height_measured) return
+    const row_count = sorted_data.length
+    if (!virtual_config || !scroll_el || row_count === 0) return
+    row_height_measured = measure_row_height()
+    sync_viewport(true)
+  })
+
+  let measured_density = untrack(() => density)
+  $effect(() => {
+    const next_density = density
+    if (next_density === measured_density) return
+    measured_density = next_density
+    row_height_measured = measure_row_height()
   })
 
   // Narrowing the rows produces a new result set, which starts at its top. Without this a
@@ -1016,7 +1097,21 @@
   $effect(() => {
     const windowing = virtual_config || virtual_cols_config
     if (!windowing || !scroll_el || typeof ResizeObserver === `undefined`) return
-    const observer = new ResizeObserver(sync_viewport)
+    let observed_width: number | undefined
+    const observer = new ResizeObserver(([entry]) => {
+      const next_width = entry?.contentRect.width
+      const width_changed =
+        next_width !== undefined &&
+        observed_width !== undefined &&
+        next_width !== observed_width
+      observed_width = next_width
+      sync_viewport(true)
+      // Retry directly when the previous attempt had no layout box. Writing false over
+      // false would not invalidate the measuring effect when a hidden table becomes visible.
+      if (virtual_config && (width_changed || !row_height_measured)) {
+        row_height_measured = measure_row_height()
+      }
+    })
     observer.observe(scroll_el)
     return () => observer.disconnect()
   })
@@ -1227,12 +1322,18 @@
   // screen at any scroll — but only a leading run of them keeps its place: a sticky column
   // from the middle would render right after the window, at the wrong position (and the
   // single left/right spacer pair could not stand in for the columns it skipped).
-  let sticky_cols_lead = $derived(
-    visible_columns.findIndex((col) => !col.sticky) >=
-      visible_columns.findLastIndex((col) => col.sticky),
-  )
+  let sticky_layout = $derived.by(() => {
+    const count = visible_columns.findIndex((col) => !col.sticky)
+    const leading_count = count === -1 ? visible_columns.length : count
+    return {
+      leading_count,
+      can_virtualize:
+        leading_count < visible_columns.length &&
+        !visible_columns.slice(leading_count).some((col) => col.sticky),
+    }
+  })
   let virtual_cols_config = $derived(
-    !virtual_columns || has_group_header || !sticky_cols_lead
+    !virtual_columns || has_group_header || !sticky_layout.can_virtualize
       ? null
       : {
           overscan: 3,
@@ -1240,45 +1341,68 @@
           ...(typeof virtual_columns === `object` ? virtual_columns : {}),
         },
   )
-  let column_window = $derived.by(() => {
-    const total = visible_columns.length
-    if (!virtual_cols_config) return { start: 0, end: total }
-    // Before the first measurement, assume a viewport rather than rendering every column
-    const width = viewport_width || 1200
-    // A fixed estimate, never measured back from the window it chose: that feedback loop
-    // oscillates instead of settling when columns differ in width.
-    const { col_width } = virtual_cols_config
-    const first = Math.floor(scroll_left / col_width)
-    const visible_count = Math.ceil(width / col_width)
-    return {
-      start: Math.max(0, first - virtual_cols_config.overscan),
-      end: Math.min(total, first + visible_count + virtual_cols_config.overscan),
-    }
-  })
+  // As with rows, sub-column pixel movement must not rebuild the rendered cells.
+  let first_virtual_col = $derived(
+    virtual_cols_config ? Math.floor(scroll_left / virtual_cols_config.col_width) : 0,
+  )
+  let virtual_col_count = $derived(
+    Math.ceil((viewport_width || 1200) / (virtual_cols_config?.col_width ?? 120)),
+  )
+  let clamped_first_virtual_col = $derived(
+    virtual_cols_config
+      ? Math.min(
+          Math.max(sticky_layout.leading_count, visible_columns.length - virtual_col_count),
+          Math.max(sticky_layout.leading_count, first_virtual_col),
+        )
+      : 0,
+  )
+  // A fixed estimate, never measured back from the window it chose: that feedback loop
+  // oscillates instead of settling when columns differ in width.
+  let virtual_col_start = $derived(
+    virtual_cols_config
+      ? Math.max(
+          sticky_layout.leading_count,
+          clamped_first_virtual_col - virtual_cols_config.overscan,
+        )
+      : 0,
+  )
+  let virtual_col_end = $derived(
+    virtual_cols_config
+      ? Math.min(
+          visible_columns.length,
+          clamped_first_virtual_col + virtual_col_count + virtual_cols_config.overscan,
+        )
+      : visible_columns.length,
+  )
   // [absolute index, column] pairs for the cells actually rendered. The index stays
   // absolute so cell-selection coordinates and copy ranges are unaffected by windowing.
   let rendered_columns = $derived.by(() => {
-    const pairs = visible_columns.map((col, col_idx) => [col_idx, col] as const)
-    if (!virtual_cols_config) return pairs
-    const { start, end } = column_window
-    return pairs.filter(([col_idx, col]) => col.sticky || (col_idx >= start && col_idx < end))
+    if (!virtual_cols_config) {
+      return visible_columns.map((col, col_idx) => [col_idx, col] as const)
+    }
+    const pairs: (readonly [number, Label])[] = []
+    for (let col_idx = 0; col_idx < sticky_layout.leading_count; col_idx++) {
+      pairs.push([col_idx, visible_columns[col_idx]])
+    }
+    for (let col_idx = virtual_col_start; col_idx < virtual_col_end; col_idx++) {
+      pairs.push([col_idx, visible_columns[col_idx]])
+    }
+    return pairs
   })
   // Widths standing in for the columns skipped either side, so the horizontal scrollbar
   // and the sticky offsets keep the geometry of the full table.
   let col_spacers = $derived.by(() => {
     if (!virtual_cols_config) return { left: 0, right: 0 }
-    const skipped = (from: number, to: number) =>
-      visible_columns.slice(from, to).filter((col) => !col.sticky).length *
-      virtual_cols_config.col_width
+    const { leading_count } = sticky_layout
     return {
-      left: skipped(0, column_window.start),
-      right: skipped(column_window.end, visible_columns.length),
+      left: (virtual_col_start - leading_count) * virtual_cols_config.col_width,
+      right: (visible_columns.length - virtual_col_end) * virtual_cols_config.col_width,
     }
   })
   // Seed the viewport size once mounted, so the first window is sized from the real
   // container instead of the fallback guess
   $effect(() => {
-    if (virtual_cols_config && scroll_el) sync_viewport()
+    if (virtual_cols_config && scroll_el) sync_viewport(true)
   })
   let summary_stats = $derived<SummaryStat[]>(
     summary === true ? [`mean`] : summary === false ? [] : summary,
@@ -2262,7 +2386,7 @@
     style={scroll_style}
     class:has-scroll={scroll_style}
     bind:this={scroll_el}
-    onscroll={virtual_config || virtual_cols_config ? sync_viewport : undefined}
+    onscroll={virtual_config || virtual_cols_config ? () => sync_viewport() : undefined}
   >
     {#if loading}
       <div class="loading-overlay">
@@ -2494,7 +2618,6 @@
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
-            animate:flip={{ duration: virtual_config ? 0 : 500 }}
             style={row.style}
             class={row.class}
             class:selected={row_selected}
@@ -2709,19 +2832,19 @@
 
   <!-- trigger="none": the right-click targets are the column headers and cells, which
   record which column was hit, so the menu must not also trigger off <body> -->
-  <ContextMenu
+  <ActionMenu
     trigger="none"
     bind:at={context_menu_at}
     actions={context_menu_actions}
     on_select={() => (context_menu_col = null)}
     style={[
-      `--context-menu-bg: light-dark(#fff, #1e1e1e)`,
-      `--context-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
-      `--context-menu-section-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--action-menu-bg: light-dark(#fff, #1e1e1e)`,
+      `--action-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--action-menu-section-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
       `color: light-dark(#333, #eee)`,
-      `--context-menu-item-hover-bg: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
-      `--context-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
-      `--context-menu-z-index: 200`,
+      `--action-menu-item-hover-bg: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
+      `--action-menu-item-checked-bg: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
+      `--action-menu-z-index: 200`,
     ].join(`; `)}
   />
 </div>

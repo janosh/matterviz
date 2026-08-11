@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Cross, Edit } from 'svelte-widgets/icons'
-  import { DraggablePane, type PaneToggleProps } from '$lib/overlays'
+  import { DraggablePane } from 'svelte-widgets'
+  import type { PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
   import type { ComponentProps } from 'svelte'

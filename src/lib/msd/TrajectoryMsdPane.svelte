@@ -1,8 +1,9 @@
 <script lang="ts">
   import { Cross, Graph } from 'svelte-widgets/icons'
+  import { DraggablePane } from 'svelte-widgets'
   import { StatusMessage } from '$lib/feedback'
   import { format_bytes, format_num } from '$lib/labels'
-  import { DraggablePane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
   import { to_error } from '$lib/utils'

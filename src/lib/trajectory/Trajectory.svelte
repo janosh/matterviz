@@ -24,7 +24,15 @@
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import {
+    FullscreenButton,
+    type FullscreenToggleProp,
+    toggle_fullscreen,
+    toggle_fullscreen_from_button,
+  } from '$lib/layout'
+  import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
+  import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
+  import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type { DataSeries, Orientation, Point } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
@@ -106,7 +114,6 @@
     plot_metadata?: TrajectoryMetadata[]
     is_complete?: boolean
   }
-  const FPS_STEP = 0.5
   const DISPLAY_MODES = [
     { mode: `structure`, icon: Atom, label: `Structure-only` },
     { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
@@ -226,7 +233,7 @@
       // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
       // - merged with built-in trajectory_property_config
       property_labels?: Record<string, string>
-      fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
+      fps_range?: Readonly<Vec2> // allowed FPS range [min_fps, max_fps]
       fps?: number // frame rate for playback
       // Loading options for large files
       loading_options?: LoadingOptions
@@ -268,20 +275,7 @@
           )}`
         : undefined
   })
-  let is_playing = $state(false)
-  // requestAnimationFrame handle for the playback loop (rAF auto-pauses in background tabs and
-  // self-throttles, unlike setInterval which drifts and queues work when a frame render overruns)
-  let play_raf: number | undefined
   let controls_height = $state(0)
-
-  let fps_min = $derived(Math.ceil(fps_range[0] / FPS_STEP) * FPS_STEP)
-  let fps_max = $derived(Math.floor(fps_range[1] / FPS_STEP) * FPS_STEP)
-  // Restrict FPS to half-integer values within the allowed range.
-  $effect(() => {
-    const rounded = Math.round(fps / FPS_STEP) * FPS_STEP
-    const normalized = Math.max(fps_min, Math.min(fps_max, rounded))
-    if (normalized !== fps) fps = normalized
-  })
   let current_filename = $state<string | undefined>(undefined)
   let current_file_path = $state<string | null>(null)
   let file_size = $state<number | undefined>(undefined)
@@ -294,6 +288,7 @@
   )
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
+  let trajectory_metadata_revision = $state(0)
   const data_url_loader = io.create_data_url_loader<TrajectoryType>()
 
   let controls_config = $derived(normalize_show_controls(show_controls))
@@ -402,13 +397,6 @@
   let frame_read_active = false
   let pending_frame_idx: number | undefined
 
-  // Auto-play when trajectory changes (handles both props and file loading)
-  $effect(() => {
-    if (auto_play && trajectory && !untrack(() => is_playing) && total_frames > 1) {
-      start_playback()
-    }
-  })
-
   // Update current frame when step changes
   $effect(() => {
     if (trajectory && current_step_idx >= 0 && current_step_idx < total_frames) {
@@ -443,20 +431,20 @@
   let streaming_file_path = $derived(
     trajectory?.metadata?.streaming_file_path as string | undefined,
   )
-  let plot_metadata_loading = $derived(trajectory?.metadata?.plot_metadata_loading === true)
+  let plot_metadata_loading = $derived.by(() => {
+    void trajectory_metadata_revision
+    return trajectory?.metadata?.plot_metadata_loading === true
+  })
 
-  const skip_stale_url_stream = () => {
+  // Apply metadata in place so active indexed-frame loads and caches keep their owner.
+  // No-op while a data_url switch is in flight so stale streams can't mutate the old model.
+  const update_trajectory = (
+    updates: Partial<Pick<TrajectoryType, `metadata` | `plot_metadata`>>,
+  ) => {
     const { loaded_url } = data_url_loader
-    return Boolean(data_url && loaded_url && data_url !== loaded_url)
-  }
-
-  // Replace the trajectory with an updated copy, keeping URL ownership if it applied.
-  // No-ops while a data_url switch is in flight so stale streams can't mutate the old model.
-  const update_trajectory = (updates: Partial<TrajectoryType>) => {
-    if (!trajectory || skip_stale_url_stream()) return
-    const preserves_url_ownership = trajectory === data_url_loader.owned_value
-    trajectory = { ...trajectory, ...updates }
-    if (preserves_url_ownership) data_url_loader.claim(trajectory)
+    if (!trajectory || (data_url && loaded_url && data_url !== loaded_url)) return
+    Object.assign(trajectory, updates)
+    trajectory_metadata_revision += 1
   }
 
   const merge_plot_metadata = (batch: TrajectoryMetadata[]) => {
@@ -737,6 +725,7 @@
       visible_properties,
       x_map,
     ]
+    void trajectory_metadata_revision
     if (syncing_visible_properties) return
     const keys_set = keys ? new Set(keys) : undefined
 
@@ -789,9 +778,10 @@
 
   // Frame/step pairs backing the x axis. Eager trajectories supply every frame, indexed
   // ones only the sampled frames their plot metadata covers.
-  let frame_step_samples = $derived(
-    trajectory ? get_frame_step_samples(trajectory) : { frame_numbers: [], steps: [] },
-  )
+  let frame_step_samples = $derived.by(() => {
+    void trajectory_metadata_revision
+    return trajectory ? get_frame_step_samples(trajectory) : { frame_numbers: [], steps: [] }
+  })
   let x_quantity_options = $derived(
     available_x_quantities(frame_step_samples, trajectory?.time_step, trajectory?.time_unit),
   )
@@ -883,7 +873,7 @@
       frame: current_frame || undefined,
     })
   }
-  // Step navigation functions (streaming frame loading is handled by the reactive effect)
+  // Step navigation (streaming frame loading is handled by the reactive effect).
   function commit_step(idx: number) {
     if (idx < 0 || idx >= total_frames || idx === current_step_idx) return
     current_step_idx = idx
@@ -927,18 +917,6 @@
     if (idx !== undefined) commit_step(idx)
   }
 
-  function next_step() {
-    commit_step(current_step_idx + 1)
-  }
-
-  function prev_step() {
-    commit_step(current_step_idx - 1)
-  }
-
-  function go_to_step(idx: number) {
-    flush_scrub_step(idx)
-  }
-
   // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
   // time), so it has to be mapped back before it can index a frame.
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
@@ -947,72 +925,31 @@
     }
   }
 
-  // Play/pause functionality
-  function toggle_play() {
-    if (is_playing) pause_playback()
-    else start_playback()
-  }
-  function start_playback() {
-    if (total_frames <= 1) return
-    is_playing = true
-    if (trajectory) {
-      on_play?.({ trajectory, step_idx: current_step_idx, frame_count: total_frames })
-    }
-  }
-  function pause_playback() {
-    is_playing = false
-    if (trajectory) {
-      on_pause?.({
-        trajectory,
-        step_idx: current_step_idx,
-        frame_count: total_frames,
-      })
-    }
-  }
-  // Advance one frame (or loop back to start), firing the matching callbacks
-  function advance_playback() {
-    if (current_step_idx >= total_frames - 1) {
-      if (trajectory) {
-        on_end?.({
-          trajectory,
-          step_idx: current_step_idx,
-          frame_count: total_frames,
-          frame: current_frame || undefined,
-        })
-      }
-      go_to_step(0) // loop back to 1st step
-      if (trajectory) on_loop?.({ trajectory, frame_count: total_frames })
-    } else next_step()
+  const emit_playback = (
+    handler: ((data: TrajHandlerData) => void) | undefined,
+    extra: TrajHandlerData = {},
+  ) => {
+    if (trajectory) handler?.({ trajectory, frame_count: total_frames, ...extra })
   }
 
-  // rAF playback loop. Only tracks `is_playing`; `fps`/`current_step_idx`/`total_frames` are read
-  // live in the untracked tick, so changing fps mid-play retargets the cadence without restarting.
-  // Clamped delta + at most one advance per tick lets a background tab resume cleanly (no jump),
-  // but also caps playback at the ~60fps refresh rate (= default fps_range max; higher won't help).
-  $effect(() => {
-    if (!is_playing) return
-    let last = performance.now()
-    let accumulated_ms = 0
-    const tick = (now: number) => {
-      // stop if the trajectory went away or is no longer animatable (e.g. swapped mid-play)
-      if (!trajectory || total_frames <= 1) {
-        is_playing = false
-        return
-      }
-      accumulated_ms += Math.min(now - last, 250)
-      last = now
-      const step_ms = 1000 / Math.max(0.1, fps)
-      if (accumulated_ms >= step_ms) {
-        accumulated_ms = Math.min(accumulated_ms - step_ms, step_ms)
-        advance_playback()
-      }
-      play_raf = requestAnimationFrame(tick)
-    }
-    play_raf = requestAnimationFrame(tick)
-    return () => {
-      if (play_raf !== undefined) cancelAnimationFrame(play_raf)
-      play_raf = undefined
-    }
+  const playback = create_sequence_player({
+    count: () => total_frames,
+    index: () => current_step_idx,
+    set_index: flush_scrub_step,
+    set_step_index: commit_step,
+    fps: () => fps,
+    set_fps: (value) => (fps = value),
+    fps_range: () => fps_range,
+    should_auto_play: () => auto_play && Boolean(trajectory),
+    on_play: () => emit_playback(on_play, { step_idx: current_step_idx }),
+    on_pause: () => emit_playback(on_pause, { step_idx: current_step_idx }),
+    on_end: () => {
+      emit_playback(on_end, {
+        step_idx: current_step_idx,
+        frame: current_frame || undefined,
+      })
+    },
+    on_loop: () => emit_playback(on_loop),
   })
 
   // Handle internal file format drops
@@ -1108,8 +1045,6 @@
       set_loading: (value) => (loading = value),
       clear_error: () => (error_msg = null),
       on_load: ({ content, filename, metadata, is_current, mark_owned }) => {
-        current_filename = filename
-        file_size = io.content_byte_size(content)
         return load_trajectory_data(content, filename, {
           ...metadata,
           on_trajectory_loaded: mark_owned,
@@ -1144,8 +1079,6 @@
     error_msg = null
     parsing_progress = null
 
-    // Reset previous loading state
-    orig_data = null
     const file_size_bytes = io.content_byte_size(data)
 
     try {
@@ -1236,69 +1169,44 @@
   function onkeydown(event: KeyboardEvent): boolean {
     if (!trajectory) return false
 
-    // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
+    // Don't handle shortcuts while the user is editing form or rich-text content.
     const target = event.target instanceof HTMLElement ? event.target : null
-    const is_step_input = target?.classList.contains(`step-input`) ?? false
-    const is_input_focused = target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
-
-    // Skip if typing in an input that's not our step input
-    if (is_input_focused && !is_step_input) return false
-
-    // If typing in step input, only handle certain navigation keys
-    if (is_step_input && is_input_focused) {
-      // Allow normal typing, but handle special navigation keys
-      if ([`Escape`, `Enter`].includes(event.key)) target?.blur() // Remove focus from input
+    if (target && (target.matches(`input, textarea, select`) || target.isContentEditable)) {
+      if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
+        target.blur()
+      }
       return false
     }
 
     const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
-
-    // Only the Arrow keys intentionally use Cmd/Ctrl (jump to first/last). For any
-    // other key a Cmd/Ctrl combo is a browser/OS shortcut (find, tab switch, zoom)
-    // — bail so we neither hijack it nor preventDefault the browser's own action.
     if (is_cmd_or_ctrl && event.key !== `ArrowLeft` && event.key !== `ArrowRight`) return false
 
-    // Track whether a shortcut fired so callers suppress browser defaults (page
-    // scroll on Space/arrows/PageUp-Down/Home/End) only when we handled the key.
     let handled = true
-    if (event.key === ` `) toggle_play()
+    if (event.key === ` `) playback.toggle()
     else if (event.key === `ArrowLeft`) {
-      if (is_cmd_or_ctrl) go_to_step(0)
-      else prev_step()
+      if (is_cmd_or_ctrl) playback.go_to(0)
+      else playback.previous()
     } else if (event.key === `ArrowRight`) {
-      if (is_cmd_or_ctrl) go_to_step(total_frames - 1)
-      else next_step()
-    } else if (event.key === `Home`) go_to_step(0)
-    else if (event.key === `End`) go_to_step(total_frames - 1)
-    else if (event.key === `j`) {
-      go_to_step(Math.max(0, current_step_idx - 10))
-    } else if (event.key === `l`) {
-      go_to_step(Math.min(total_frames - 1, current_step_idx + 10))
-    } else if (event.key === `PageUp`) {
-      go_to_step(Math.max(0, current_step_idx - 25))
-    } else if (event.key === `PageDown`) {
-      go_to_step(Math.min(total_frames - 1, current_step_idx + 25))
-    }  // Interface shortcuts
+      if (is_cmd_or_ctrl) playback.go_to(total_frames - 1)
+      else playback.next()
+    } else if (event.key === `Home`) playback.go_to(0)
+    else if (event.key === `End`) playback.go_to(total_frames - 1)
+    else if (event.key === `j`) playback.go_to(current_step_idx - 10)
+    else if (event.key === `l`) playback.go_to(current_step_idx + 10)
+    else if (event.key === `PageUp`) playback.go_to(current_step_idx - 25)
+    else if (event.key === `PageDown`) playback.go_to(current_step_idx + 25)
     else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
-    // Playback speed shortcuts (only when playing)
-    else if ((event.key === `=` || event.key === `+`) && is_playing) {
-      fps = Math.min(fps_max, fps + FPS_STEP)
-      on_frame_rate_change?.({ trajectory, fps })
-    } else if (event.key === `-` && is_playing) {
-      fps = Math.max(fps_min, fps - FPS_STEP)
-      on_frame_rate_change?.({ trajectory, fps })
-    }  // System shortcuts
-    else if (event.key === `Escape`) {
+    else if (playback.is_playing && [`=`, `+`, `-`].includes(event.key)) {
+      playback.fps += event.key === `-` ? -playback.fps_step : playback.fps_step
+    } else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
       else if (analysis_menu_open) analysis_menu_open = false
       // Escape key for info pane handled by DraggablePane
-    }  // Number keys 0-9 - jump to percentage of trajectory
-    else if (event.key >= `0` && event.key <= `9`) {
-      go_to_step(Math.floor((Number(event.key) / 10) * (total_frames - 1)))
+    } else if (event.key >= `0` && event.key <= `9`) {
+      playback.go_to(Math.floor((Number(event.key) / 10) * (total_frames - 1)))
     } else handled = false
-
     return handled
   }
 
@@ -1377,7 +1285,7 @@
 
 <div
   class:dragover
-  class:active={is_playing ||
+  class:active={playback.is_playing ||
     structure_info_open ||
     controls_open ||
     scatter_controls_open ||
@@ -1399,7 +1307,7 @@
   onclick={handle_click_outside}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
-  class={[`trajectory`, actual_layout, rest.class]}
+  class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&
     show_plot &&
     show_structure}
@@ -1426,302 +1334,209 @@
       />
     {/if}
     <!-- Trajectory Controls -->
-    {#if controls_config.mode !== `never`}
-      <!-- z-index inline, not in the scoped block: content-area follows in the DOM, so
-        without a stacking value the open view-mode menu paints under the scatter traces -->
-      <div
-        class="trajectory-controls {controls_config.class}"
-        bind:clientHeight={controls_height}
-        style="z-index: var(--traj-controls-z-index, var(--z-index-viewer-pane, 10)); {controls_config.style ??
-          ``}"
-      >
-        {#if trajectory_controls}
-          {@render trajectory_controls({
-            trajectory,
-            current_step_idx,
-            total_frames: total_frames,
-            on_step_change: go_to_step,
-          })}
-        {:else}
-          {#if current_filename && controls_config.visible(`filename`)}
-            <button
-              class="filename"
-              title="Click to copy filename <code>{current_filename}</code>"
-              {@attach tooltip({ allow_html: true })}
-              onclick={() => {
-                if (current_filename) {
-                  navigator.clipboard.writeText(current_filename)
-                  filename_copied = true
-                  setTimeout(() => (filename_copied = false), 1000)
-                }
-              }}
-            >
+    <SequenceControlBar
+      class="trajectory-controls"
+      {controls_config}
+      bind:height={controls_height}
+    >
+      {#if trajectory_controls}
+        {@render trajectory_controls({
+          trajectory,
+          current_step_idx,
+          total_frames,
+          on_step_change: flush_scrub_step,
+        })}
+      {:else}
+        {#if current_filename && controls_config.visible(`filename`)}
+          <button
+            class="filename"
+            title="Click to copy filename <code>{current_filename}</code>"
+            {@attach tooltip({ allow_html: true })}
+            onclick={() => {
+              if (current_filename) {
+                navigator.clipboard.writeText(current_filename)
+                filename_copied = true
+                setTimeout(() => (filename_copied = false), 1000)
+              }
+            }}
+          >
+            {current_filename}
+            {#if filename_copied}
+              <Icon
+                icon={Check}
+                style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
+              />
+            {/if}
+          </button>
+        {/if}
+
+        <SequenceControls
+          {controls_config}
+          index={current_step_idx}
+          count={total_frames}
+          {playback}
+          {step_label_positions}
+          previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
+          play_title={`${playback.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
+          next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
+          on_index_input={queue_scrub_step}
+        />
+
+        <!-- Frame info section -->
+        <div class="info-section">
+          {#if controls_config.visible(`info-pane`)}
+            <TrajectoryInfoPane
+              {trajectory}
+              {current_frame}
+              {current_step_idx}
               {current_filename}
-              {#if filename_copied}
-                <Icon
-                  icon={Check}
-                  style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"
-                />
-              {/if}
-            </button>
+              {current_file_path}
+              {file_size}
+              {file_object}
+              bind:pane_open={info_pane_open}
+              pane_props={{ style: pane_max_height }}
+            />
           {/if}
-
-          <!-- Navigation controls -->
-          {#if controls_config.visible(`nav`)}
-            <div class="nav-section">
-              <button
-                onclick={prev_step}
-                disabled={current_step_idx === 0 || is_playing}
-                title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
-              >
-                ⏮
-              </button>
-              <button
-                onclick={toggle_play}
-                disabled={total_frames <= 1}
-                title={`${
-                  is_playing ? `Pause` : `Play`
-                } (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
-                class="play-button"
-                class:playing={is_playing}
-              >
-                {is_playing ? `⏸` : `▶`}
-              </button>
-              <button
-                onclick={next_step}
-                disabled={current_step_idx === total_frames - 1 || is_playing}
-                title="Next step (→) · End: last · l: +10 · PageDown: +25"
-              >
-                ⏭
-              </button>
-            </div>
+          <!-- Trajectory Export Pane -->
+          {#if controls_config.visible(`export-pane`)}
+            <TrajectoryExportPane
+              bind:export_pane_open={trajectory_export_open}
+              {trajectory}
+              {wrapper}
+              filename={current_filename || `trajectory`}
+              on_step_change={flush_scrub_step}
+              {resolve_frame}
+              pane_props={{ style: pane_max_height }}
+            />
           {/if}
-
-          <!-- Frame slider and counter -->
-          {#if controls_config.visible(`step`)}
-            <div class="step-section">
-              <input
-                type="number"
-                min="0"
-                max={total_frames - 1}
-                value={current_step_idx}
-                oninput={(event) => go_to_step(event.currentTarget.valueAsNumber)}
-                class="step-input"
-                title="Enter step number to jump to"
-                aria-label="Step input"
-                {@attach tooltip()}
-              />
-              <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
-              <div class="slider-container">
-                <input
-                  type="range"
-                  min="0"
-                  max={total_frames - 1}
-                  value={current_step_idx}
-                  oninput={(event) => queue_scrub_step(event.currentTarget.valueAsNumber)}
-                  onchange={(event) => flush_scrub_step(event.currentTarget.valueAsNumber)}
-                  class="step-slider"
-                  title="Drag to navigate steps"
-                />
-                {#if step_label_positions.length > 0}
-                  <div class="step-labels">
-                    {#each step_label_positions as step_idx (step_idx)}
-                      {@const position_percent =
-                        total_frames > 1 ? (step_idx / (total_frames - 1)) * 100 : 0}
-                      {@const adjusted_position = 1.5 + (position_percent * (100 - 2)) / 100}
-                      <div class="step-tick" style:left="{adjusted_position}%"></div>
-                      <div class="step-label" style:left="{adjusted_position}%">
-                        {format_num(step_idx, `.3~s`)}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            </div>
-          {/if}
-
-          <!-- Frame rate control: shown for any multi-frame trajectory so speed can be set before play -->
-          {#if total_frames > 1 && controls_config.visible(`fps`)}
-            <label class="fps-section">
-              FPS
-              <input
-                type="range"
-                min={fps_min}
-                max={fps_max}
-                step={FPS_STEP}
-                bind:value={fps}
-                title="Frame rate: {format_num(fps, `.2~s`)} fps"
-                style="width: clamp(60px, 8cqw, 90px)"
-              />
-              <input
-                type="number"
-                min={fps_min}
-                max={fps_max}
-                step={FPS_STEP}
-                bind:value={fps}
-                title="Enter precise FPS value"
-                style="text-align: center; border: var(--tooltip-border)"
-              />
-            </label>
-          {/if}
-
-          <!-- Frame info section -->
-          <div class="info-section">
-            {#if trajectory && controls_config.visible(`info-pane`)}
-              <TrajectoryInfoPane
-                {trajectory}
-                {current_frame}
-                {current_step_idx}
-                {current_filename}
-                {current_file_path}
-                {file_size}
-                {file_object}
-                bind:pane_open={info_pane_open}
-                pane_props={{ style: pane_max_height }}
-              />
-            {/if}
-            <!-- Trajectory Export Pane -->
-            {#if controls_config.visible(`export-pane`)}
-              <TrajectoryExportPane
-                bind:export_pane_open={trajectory_export_open}
-                {trajectory}
-                {wrapper}
-                filename={current_filename || `trajectory`}
-                on_step_change={go_to_step}
-                {resolve_frame}
-                pane_props={{ style: pane_max_height }}
-              />
-            {/if}
-            <!-- Analysis menu. These plot their own x axis (MSD plots lag time, not frame
+          <!-- Analysis menu. These plot their own x axis (MSD plots lag time, not frame
             index) so they cannot share the step-linked scatter/histogram display modes. -->
-            {#if trajectory && visible_analyses.length > 0}
-              <div class="analysis-dropdown-wrapper">
-                <button
-                  type="button"
-                  class="analysis-button"
-                  class:active={analysis_menu_open || any_analysis_open}
-                  title="Analysis"
-                  aria-label="Analysis"
-                  aria-expanded={analysis_menu_open}
-                  onclick={() => {
-                    analysis_menu_open = !analysis_menu_open
-                    view_mode_dropdown_open = false
-                  }}
-                  style="background-color: transparent; padding: 0"
-                >
-                  <Icon icon={Graph} />
-                  <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
-                </button>
-                {#if analysis_menu_open}
-                  <div class="view-mode-dropdown analysis-dropdown">
-                    {#each visible_analyses as entry (entry.control_name)}
-                      <button
-                        type="button"
-                        class="view-mode-option"
-                        class:selected={entry.is_open}
-                        title={entry.label}
-                        aria-pressed={entry.is_open}
-                        onclick={() => {
-                          entry.toggle()
-                          analysis_menu_open = false
-                        }}
-                      >
-                        <Icon icon={entry.icon} />
-                        <span>{entry.label}</span>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-                <TrajectoryMsdPane
-                  {...correlation_pane_props}
-                  bind:pane_open={msd_pane_open}
-                />
-                <TrajectoryVacfPane
-                  {...correlation_pane_props}
-                  bind:pane_open={vacf_pane_open}
-                />
-                <TrajectoryStructureIdPane
-                  {...analysis_pane_props}
-                  raw_data={orig_data}
-                  bind:pane_open={structure_id_pane_open}
-                />
-                <!-- current_frame is only ever assigned for the index that was current when
+          {#if visible_analyses.length > 0}
+            <div class="analysis-dropdown-wrapper">
+              <button
+                type="button"
+                class="analysis-button"
+                class:active={analysis_menu_open || any_analysis_open}
+                title="Analysis"
+                aria-label="Analysis"
+                aria-expanded={analysis_menu_open}
+                onclick={() => {
+                  analysis_menu_open = !analysis_menu_open
+                  view_mode_dropdown_open = false
+                }}
+                style="background-color: transparent; padding: 0"
+              >
+                <Icon icon={Graph} />
+                <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
+              </button>
+              {#if analysis_menu_open}
+                <div class="view-mode-dropdown analysis-dropdown">
+                  {#each visible_analyses as entry (entry.control_name)}
+                    <button
+                      type="button"
+                      class="view-mode-option"
+                      class:selected={entry.is_open}
+                      title={entry.label}
+                      aria-pressed={entry.is_open}
+                      onclick={() => {
+                        entry.toggle()
+                        analysis_menu_open = false
+                      }}
+                    >
+                      <Icon icon={entry.icon} />
+                      <span>{entry.label}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+              <TrajectoryMsdPane {...correlation_pane_props} bind:pane_open={msd_pane_open} />
+              <TrajectoryVacfPane
+                {...correlation_pane_props}
+                bind:pane_open={vacf_pane_open}
+              />
+              <TrajectoryStructureIdPane
+                {...analysis_pane_props}
+                raw_data={orig_data}
+                bind:pane_open={structure_id_pane_open}
+              />
+              <!-- current_frame is only ever assigned for the index that was current when
                 the load was issued (see load_frame_on_demand's request_is_current), so the
                 two props below always describe the same frame even mid-scrub. -->
-                <TrajectoryDataInspectorPane
-                  {...analysis_pane_props}
-                  {current_step_idx}
-                  {current_frame}
-                  {data_extractor}
-                  bind:pane_open={data_inspector_open}
-                  on_step_change={go_to_step}
-                />
-              </div>
-            {/if}
-            <!-- X-axis quantity: only offered when the file records steps (or a timestep)
-            that say more than the frame index already does -->
-            {#if plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
-              <select
-                bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
-                class="x-quantity-select"
-                title="Plot x axis"
-                aria-label="Plot x axis"
-              >
-                {#each x_quantity_options as option (option)}
-                  <option value={option}>{X_QUANTITY_LABELS[option]}</option>
-                {/each}
-              </select>
-            {/if}
-            <!-- Display mode dropdown -->
-            {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
-              <div class="view-mode-dropdown-wrapper">
-                <button
-                  onclick={() => {
-                    view_mode_dropdown_open = !view_mode_dropdown_open
-                    analysis_menu_open = false
-                  }}
-                  title={current_display_mode.label}
-                  class="view-mode-button"
-                  class:active={view_mode_dropdown_open}
-                  style="background-color: transparent; padding: 0"
-                >
-                  <Icon icon={current_display_mode.icon} />
-                  <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
-                </button>
-                {#if view_mode_dropdown_open}
-                  <div class="view-mode-dropdown">
-                    {#each DISPLAY_MODES as option (option.mode)}
-                      <button
-                        class="view-mode-option"
-                        class:selected={display_mode === option.mode}
-                        onclick={() => {
-                          display_mode = option.mode
-                          on_display_mode_change?.({ trajectory, mode: option.mode })
-                          view_mode_dropdown_open = false
-                        }}
-                      >
-                        <Icon icon={option.icon} />
-                        <span>{option.label}</span>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-            <!-- Fullscreen button - rightmost position -->
-            {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-              <FullscreenButton
-                bind:fullscreen
-                children={typeof fullscreen_toggle === `function`
-                  ? fullscreen_toggle
-                  : undefined}
-                class="fullscreen-button"
+              <TrajectoryDataInspectorPane
+                {...analysis_pane_props}
+                {current_step_idx}
+                {current_frame}
+                {data_extractor}
+                bind:pane_open={data_inspector_open}
+                on_step_change={flush_scrub_step}
               />
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/if}
+            </div>
+          {/if}
+          <!-- X-axis quantity: only offered when the file records steps (or a timestep)
+            that say more than the frame index already does -->
+          {#if plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+            <select
+              bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
+              class="x-quantity-select"
+              title="Plot x axis"
+              aria-label="Plot x axis"
+            >
+              {#each x_quantity_options as option (option)}
+                <option value={option}>{X_QUANTITY_LABELS[option]}</option>
+              {/each}
+            </select>
+          {/if}
+          <!-- Display mode dropdown -->
+          {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
+            <div class="view-mode-dropdown-wrapper">
+              <button
+                onclick={() => {
+                  view_mode_dropdown_open = !view_mode_dropdown_open
+                  analysis_menu_open = false
+                }}
+                title={current_display_mode.label}
+                class="view-mode-button"
+                class:active={view_mode_dropdown_open}
+                style="background-color: transparent; padding: 0"
+              >
+                <Icon icon={current_display_mode.icon} />
+                <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
+              </button>
+              {#if view_mode_dropdown_open}
+                <div class="view-mode-dropdown">
+                  {#each DISPLAY_MODES as option (option.mode)}
+                    <button
+                      class="view-mode-option"
+                      class:selected={display_mode === option.mode}
+                      onclick={() => {
+                        display_mode = option.mode
+                        on_display_mode_change?.({ trajectory, mode: option.mode })
+                        view_mode_dropdown_open = false
+                      }}
+                    >
+                      <Icon icon={option.icon} />
+                      <span>{option.label}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+          <!-- Fullscreen button - rightmost position -->
+          {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
+            <FullscreenButton
+              bind:fullscreen
+              children={typeof fullscreen_toggle === `function`
+                ? fullscreen_toggle
+                : undefined}
+              onclick={() =>
+                toggle_fullscreen_from_button(wrapper, (value) => (fullscreen = value))}
+              class="fullscreen-button"
+            />
+          {/if}
+        </div>
+      {/if}
+    </SequenceControlBar>
 
     <div
       class="content-area"
@@ -1902,12 +1717,6 @@
       background-color: var(--traj-dragover-bg, var(--dragover-bg));
       border: var(--traj-dragover-border, var(--dragover-border));
     }
-    /* Mode: hover - controls visible on component hover */
-    &:hover .trajectory-controls.hover-visible,
-    &:focus-within .trajectory-controls.hover-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
   }
   /* Content area - grid container for equal sizing */
   .content-area {
@@ -1925,132 +1734,6 @@
       grid-template-columns: minmax(0, 1fr) !important;
       grid-template-rows: minmax(0, 1fr) !important;
     }
-  }
-  .trajectory-controls {
-    display: flex;
-    align-items: center;
-    gap: clamp(4pt, 1.6cqw, 1.5ex);
-    padding: clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex);
-    font-size: var(--traj-controls-font-size, 0.85rem);
-    /* Square icon boxes: Export's viewBox is taller than wide, so height:auto
-       from svelte-widgets Icon makes it overshoot neighboring glyphs. */
-    --icon-size: var(--traj-controls-icon-size, 1.05em);
-    /* Pair chrome + ink with light-dark so a light toolbar hosted in a dark app
-       (chat attachments) does not inherit near-white --text-color onto FPS/labels. */
-    background: var(--traj-controls-bg, var(--surface-bg-hover, light-dark(#f4f4f5, #2a2c33)));
-    color: var(--traj-controls-color, light-dark(#1a1a1a, #e8e8e8));
-    backdrop-filter: blur(4px);
-    position: relative;
-    border-radius: var(--traj-controls-border-radius, var(--traj-border-radius, 4px));
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-    /* Hover controls overlay the viewer instead of reserving a permanently visible band. */
-    &.hover-visible {
-      position: absolute;
-      inset: 0 0 auto;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    /* Mode: always - controls always visible */
-    &.always-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    /* Mode: never - stays hidden (default state, no additional CSS needed) */
-    &:focus-within {
-      z-index: var(--traj-controls-focus-z-index, var(--z-index-viewer-dropdown, 100));
-    }
-    button {
-      background: var(--btn-bg);
-      font-size: inherit;
-      line-height: 1;
-      &:hover:not(:disabled) {
-        background: var(--btn-bg-hover);
-      }
-    }
-    /* Force square icons inside panes/toggles that pierce scoped styles. */
-    :global(svg) {
-      width: var(--icon-size);
-      height: var(--icon-size);
-    }
-    input[type='number'] {
-      font: inherit;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.2;
-      padding: 1px 3px;
-      &::-webkit-outer-spin-button,
-      &::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-    }
-  }
-  .nav-section {
-    display: flex;
-    align-items: center;
-    gap: 3pt;
-  }
-  .step-section {
-    display: flex;
-    align-items: center;
-    gap: clamp(0.25rem, 1.5cqw, 0.5rem);
-    flex: 1;
-    min-width: 0;
-  }
-  .step-section > span {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    opacity: 0.75;
-  }
-  .fps-section {
-    display: flex;
-    align-items: center;
-    gap: 5pt;
-    margin-inline: 6pt;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .step-input {
-    border: 1px solid rgba(99, 179, 237, 0.3);
-    text-align: center;
-    margin: 0 -5px 0 0;
-    min-width: 3.5em;
-  }
-  .slider-container {
-    position: relative;
-    flex: 1;
-    min-width: var(--trajectory-slider-min-width, 100px);
-  }
-  .step-slider {
-    width: 100%;
-    position: relative;
-    z-index: 1; /* keep the slider knob above the step labels (which follow it in the DOM) */
-  }
-  .step-labels {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-  }
-  .step-tick {
-    position: absolute;
-    transform: translateX(-50%);
-    width: var(--trajectory-step-tick-width, 1px);
-    height: var(--trajectory-step-tick-height, 3px);
-    background: var(--text-color-muted);
-    top: var(--trajectory-step-tick-offset, 5px);
-  }
-  .step-label {
-    position: absolute;
-    transform: translateX(-50%);
-    font-size: clamp(0.5em, 1.2cqw, 0.65em);
-    color: var(--text-color-muted);
-    white-space: nowrap;
-    text-align: center;
-    top: calc(
-      var(--trajectory-step-tick-offset, 5px) + var(--trajectory-step-tick-height, 3px) + 1px
-    );
   }
   button.filename {
     align-items: center;
@@ -2071,14 +1754,6 @@
       opacity: 0;
     }
   }
-  /* :global pierces into FullscreenButton's markup (anchored on local .info-section) */
-  .info-section :global(.fullscreen-button) {
-    background: transparent !important;
-    padding: 0;
-    &:hover:not(:disabled) {
-      background: var(--border-color);
-    }
-  }
   .info-section {
     display: flex;
     align-items: center;
@@ -2090,18 +1765,6 @@
     line-height: 1;
     padding: 0;
     background: transparent;
-  }
-  .play-button {
-    min-width: clamp(32px, 4cqw, 36px);
-    &:hover:not(:disabled) {
-      background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));
-    }
-    &.playing {
-      background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
-      &:hover:not(:disabled) {
-        background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
-      }
-    }
   }
   :global(.trajectory-empty-state) {
     padding: 2rem;

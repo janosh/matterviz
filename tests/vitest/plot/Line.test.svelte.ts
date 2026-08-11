@@ -4,7 +4,7 @@ import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { resolve_line_tween } from '$lib/plot/core/utils'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, expect_transition_properties } from '../setup'
 
 describe(`resolve_line_tween (path-morph budget)`, () => {
   test.each([
@@ -104,10 +104,28 @@ describe(`Line`, () => {
     expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
       expected_line.strokeDasharray ?? null,
     )
-
     // Assert area styles using getAttribute
     expect(area_path.getAttribute(`fill`)).toBe(expected_area.fill)
     expect(area_path.getAttribute(`stroke`)).toBe(expected_area.stroke ?? null)
+  })
+
+  test(`does not CSS-transition path geometry`, () => {
+    mount(Line, {
+      target: document.body,
+      props: { points: [[0, 0]], origin: [0, 0] },
+    })
+    const path = document.querySelector(`path`)
+    if (!path) throw new Error(`Line path not found`)
+    expect(path).toBeInstanceOf(SVGElement)
+    expect_transition_properties(path, [
+      `stroke`,
+      `stroke-width`,
+      `stroke-dasharray`,
+      `stroke-opacity`,
+      `fill`,
+      `fill-opacity`,
+      `opacity`,
+    ])
   })
 
   test(`calculates line path correctly for 2 and 3 points`, () => {

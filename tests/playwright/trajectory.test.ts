@@ -273,7 +273,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(play_button).toHaveText(`▶`)
     })
 
-    test(`FPS range slider covers full range and stays synchronized`, async ({ page }) => {
+    test(`FPS input uses 0.1 increments and shared bounds`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const play_button = trajectory.locator(`.play-button`)
 
@@ -282,21 +282,19 @@ test.describe(`Trajectory Component`, () => {
       const fps_section = trajectory.locator(`.fps-section`)
       await expect(fps_section).toBeVisible()
       const fps_input = fps_section.locator(`input[type="number"]`)
-      const fps_slider = fps_section.locator(`input[type="range"]`)
-      for (const fps of [`0.5`, `5`, `15`, `60`, `12.5`]) {
-        await fps_input.fill(fps)
+      for (const [input, expected] of [
+        [`12.34`, `12.3`],
+        [`300`, `300`],
+        [`0`, `0`],
+      ]) {
+        await fps_input.fill(input)
         await fps_input.press(`Enter`)
-        await expect(fps_input).toHaveValue(fps)
-        await expect(fps_slider).toHaveValue(fps)
+        await expect(fps_input).toHaveValue(expected)
       }
-      await fps_input.fill(`12.3`)
-      await expect(fps_input).toHaveValue(`12.5`)
-      await expect(fps_slider).toHaveValue(`12.5`)
-      await expect(fps_input).toHaveAttribute(`step`, `0.5`)
-      await expect(fps_slider).toHaveAttribute(`min`, `0.5`)
-      await expect(fps_slider).toHaveAttribute(`max`, `60`)
-      await expect(fps_slider).toHaveAttribute(`step`, `0.5`)
-      await play_button.click() // Stop playing
+      await expect(fps_input).toHaveAttribute(`min`, `0`)
+      await expect(fps_input).toHaveAttribute(`max`, `300`)
+      await expect(fps_input).toHaveAttribute(`step`, `0.1`)
+      await expect(fps_section.locator(`input[type="range"]`)).toHaveCount(0)
       await expect(play_button).toHaveText(`▶`)
     })
   })

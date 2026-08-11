@@ -7,6 +7,7 @@
   import Structure from './Structure.svelte'
 
   type Layout = `horizontal` | `vertical`
+  const default_min_card_width = 240
 
   interface Props {
     items: StructureCarouselItem[]
@@ -36,7 +37,7 @@
     items,
     layout = `horizontal`,
     height = 360,
-    min_card_width = 190,
+    min_card_width = default_min_card_width,
     visible_rows = 8,
     overscan = 3,
     resizable = false,
@@ -73,7 +74,7 @@
   const keyboard_resize_step_px = 16
   const is_horizontal = $derived(layout === `horizontal`)
   const safe_min_card_width = $derived(
-    Number.isFinite(min_card_width) ? Math.max(1, min_card_width) : 190,
+    Number.isFinite(min_card_width) ? Math.max(1, min_card_width) : default_min_card_width,
   )
   const safe_height = $derived(Number.isFinite(height) ? Math.max(1, height) : 1)
   const effective_height = $derived(

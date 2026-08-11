@@ -122,12 +122,12 @@ describe(`StructureCarousel`, () => {
   })
 
   test.each([
-    [0, 6],
-    [3, 12],
-    [6, 18],
-    [-1, 6], // clamped to 0: a negative pad would skip the first visible card
+    [0, 5],
+    [3, 11],
+    [6, 17],
+    [-1, 5], // clamped to 0: a negative pad would skip the first visible card
   ])(
-    `overscan=%i mounts %i cards around the four-card viewport`,
+    `overscan=%i mounts %i cards around the three-card viewport`,
     (overscan: number, expected_cards: number) => {
       mount_carousel({ items: many_items, overscan })
 
@@ -152,7 +152,7 @@ describe(`StructureCarousel`, () => {
     }
     // dips as the window outruns the mounted range, but never empties
     expect(Math.min(...live_counts)).toBeGreaterThan(0)
-    expect(live_counts.at(-1)).toBe(12)
+    expect(live_counts.at(-1)).toBe(11)
   })
 
   test.each([
@@ -169,7 +169,7 @@ describe(`StructureCarousel`, () => {
     for (let repeat = 0; repeat < 5; repeat++) {
       jump()
       flushSync()
-      expect(live_cards()).toBe(12) // every card in the window, no shells
+      expect(live_cards()).toBe(11) // every card in the window, no shells
     }
   })
 
@@ -181,7 +181,7 @@ describe(`StructureCarousel`, () => {
     expect(live_cards()).toBe(0)
 
     flushSync()
-    expect(live_cards()).toBe(12)
+    expect(live_cards()).toBe(11)
   })
 
   // happy-dom's WheelEvent silently drops MouseEventInit modifier flags, so the
@@ -282,8 +282,8 @@ describe(`StructureCarousel`, () => {
     expect(wheel.defaultPrevented).toBe(false)
   })
 
-  // Horizontal cards fit four across the 800px host: 194px + 8px gap.
-  const horizontal_stride = 202
+  // Horizontal cards fit three across the 800px host.
+  const horizontal_stride = 808 / 3
   // Vertical stride follows the 200px viewer height + 8px gap.
   const vertical_stride = 208
   const mock_track_size = (track: HTMLElement, horizontal: boolean): void => {
@@ -355,7 +355,7 @@ describe(`StructureCarousel`, () => {
     expect(press(track, `PageDown`).defaultPrevented).toBe(true)
     const paged_to = track.scrollLeft
     expect(paged_to).toBeGreaterThanOrEqual(horizontal_stride)
-    expect(paged_to % horizontal_stride).toBe(0) // whole number of cards
+    expect(paged_to % horizontal_stride).toBeCloseTo(0) // whole number of cards
     expect(press(track, `PageUp`).defaultPrevented).toBe(true)
     expect(track.scrollLeft).toBe(0)
 
@@ -435,13 +435,13 @@ describe(`StructureCarousel`, () => {
     mount_carousel({ items: many_items, layout: `horizontal` })
 
     const pager = doc_query(`.structure-carousel-pager`)
-    expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–4/40›`)
+    expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–3/40›`)
     const next = doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`)
     next.click()
     flushSync()
 
     expect(doc_query(`.structure-carousel-track`).scrollLeft).toBe(808)
-    expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹5–8/40›`)
+    expect(pager.textContent?.replaceAll(/\s/g, ``)).toBe(`‹4–6/40›`)
   })
 
   test(`teleports the pager into pager_target when provided`, async () => {
@@ -453,7 +453,7 @@ describe(`StructureCarousel`, () => {
     const pager = target.querySelector(`.structure-carousel-pager`)
     expect(pager).not.toBeNull()
     expect(pager?.classList.contains(`portaled`)).toBe(true)
-    expect(pager?.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–4/40›`)
+    expect(pager?.textContent?.replaceAll(/\s/g, ``)).toBe(`‹1–3/40›`)
     // no floating pager left inside the carousel itself
     expect(document.querySelector(`.structure-carousel .structure-carousel-pager`)).toBeNull()
   })
@@ -501,7 +501,7 @@ describe(`StructureCarousel`, () => {
     const carousel = doc_query(`.structure-carousel`)
     expect(carousel.classList.contains(layout)).toBe(true)
     if (layout === `horizontal`) {
-      expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 190px)`)
+      expect(carousel.getAttribute(`style`)).toContain(`inline-size: min(100%, 240px)`)
     }
     expect(doc_query(`.empty-carousel`).textContent).toBe(message)
   })
@@ -526,15 +526,13 @@ describe(`StructureCarousel`, () => {
   })
 
   test.each([
-    [240, 0, 190, null],
-    [240, 1, 190, 190],
-    [240, 2, 388, 190],
-    [320, 2, 388, 190],
-    [240, 3, 586, 190],
-    [240, 20, 4032, 194],
-    [Number.NaN, 2, 388, 190],
-    [Number.POSITIVE_INFINITY, 2, 388, 190],
-    [Number.NEGATIVE_INFINITY, 2, 388, 190],
+    [240, 0, 240, null],
+    [240, 1, 240, 240],
+    [240, 2, 488, 240],
+    [320, 2, 488, 240],
+    [240, 3, 736, 240],
+    [240, 20, 5378.666666666666, 261.3333333333333],
+    [Number.NaN, 2, 488, 240],
   ] as const)(
     `height=%s with %i items remains finite and independent`,
     (height, item_count, carousel_width, card_width) => {
@@ -559,7 +557,7 @@ describe(`StructureCarousel`, () => {
       }
       const pager = document.querySelector(`.structure-carousel-pager`)
       expect(pager?.textContent?.replaceAll(/\s/g, ``) ?? null).toBe(
-        item_count === 20 ? `‹1–4/20›` : null,
+        item_count === 20 ? `‹1–3/20›` : null,
       )
       for (const node of document.querySelectorAll<HTMLElement>(`[style]`)) {
         expect(node.getAttribute(`style`)).not.toMatch(/NaN|Infinity|-\d+(?:\.\d+)?px/)

@@ -26,6 +26,7 @@
   }
   type HoverMesh = { formula: string; geometry: BufferGeometry; info: ChemPotHoverInfo3D }
   type DomainLabel = VisibleDomainLabel & { segments: FormulaLabelSegment[] }
+  const axis_indices = [0, 1, 2] as const
 
   let {
     render_domains,
@@ -104,18 +105,12 @@
     const mins = points.length === 0 ? [0, 0, 0] : [Infinity, Infinity, Infinity]
     const maxs = points.length === 0 ? [1, 1, 1] : [-Infinity, -Infinity, -Infinity]
     for (const point of points) {
-      for (let dim = 0; dim < 3; dim++) {
-        if (point[dim] < mins[dim]) mins[dim] = point[dim]
-        if (point[dim] > maxs[dim]) maxs[dim] = point[dim]
+      for (const axis_idx of axis_indices) {
+        if (point[axis_idx] < mins[axis_idx]) mins[axis_idx] = point[axis_idx]
+        if (point[axis_idx] > maxs[axis_idx]) maxs[axis_idx] = point[axis_idx]
       }
     }
-    const range_by_data_axis: ([number | null, number | null] | undefined)[] = [
-      z_axis.range,
-      x_axis.range,
-      y_axis.range,
-    ]
-    for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
-      const range = range_by_data_axis[axis_idx]
+    for (const [axis_idx, range] of [z_axis.range, x_axis.range, y_axis.range].entries()) {
       if (!range) continue
       const [range_min, range_max] = range
       if (range_min !== null) mins[axis_idx] = range_min
@@ -124,31 +119,27 @@
     return { mins, maxs }
   })
 
-  const gen_ticks = (min_val: number, max_val: number, count: number = 5): number[] =>
+  const gen_ticks = (min_val: number, max_val: number): number[] =>
     !isFinite(min_val) || !isFinite(max_val) || min_val === max_val
       ? [min_val]
-      : scaleLinear().domain([min_val, max_val]).nice().ticks(count)
+      : scaleLinear().domain([min_val, max_val]).nice().ticks(5)
 
-  const data_ticks = $derived([
-    gen_ticks(data_bbox.mins[0], data_bbox.maxs[0]),
-    gen_ticks(data_bbox.mins[1], data_bbox.maxs[1]),
-    gen_ticks(data_bbox.mins[2], data_bbox.maxs[2]),
-  ])
+  const data_ticks = $derived(
+    axis_indices.map((axis_idx) =>
+      gen_ticks(data_bbox.mins[axis_idx], data_bbox.maxs[axis_idx]),
+    ),
+  )
 
   // Niced ranges (from ticks) padded so the grid extends beyond the diagram.
   // For horizontal axes (0,1): pad both sides.
   // For vertical axis (2): use actual data range and round min down to an integer.
   const niced_range = $derived(
-    [0, 1, 2].map((axis): Vec2 => {
+    axis_indices.map((axis): Vec2 => {
       const ticks = data_ticks[axis]
       const lo = ticks[0]
       const hi = ticks.at(-1) ?? lo
       const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1
-      if (axis === 2) {
-        const min_data = data_bbox.mins[2]
-        return [Math.floor(min_data), hi]
-      }
-      return [lo - step, hi + step]
+      return axis === 2 ? [Math.floor(data_bbox.mins[2]), hi] : [lo - step, hi + step]
     }),
   )
   const back = $derived(
@@ -169,10 +160,10 @@
   // Place axis label just past the outer end of the axis (the end closer to 0).
   // In isometric 3D, the end near 0 projects outward at the front edge of the
   // bounding box, while the negative end projects inward toward the center.
-  const outer_end = (range: Vec2): number =>
-    Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
-  const outer_direction = (range: Vec2): number =>
-    outer_end(range) >= (range[0] + range[1]) / 2 ? 1 : -1
+  const axis_label_value = (range: Vec2): number => {
+    const end = Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
+    return end + (end >= (range[0] + range[1]) / 2 ? axis_label_dist : -axis_label_dist)
+  }
 
   // Axes, ticks, and labels are placed on the backside (far from camera)
   // matching ScatterPlot3DScene's dynamic backside tracking pattern.
@@ -202,11 +193,11 @@
       return swiz(coords[0], coords[1], coords[2])
     }
 
-    return [0, 1, 2].map((axis) => {
+    return axis_indices.map((axis) => {
       const ticks = data_ticks[axis]
       const range = niced_range[axis]
       const label_offset = tick_label_offsets[axis]
-      const others = [0, 1, 2].filter((other) => other !== axis)
+      const others = axis_indices.filter((other) => other !== axis)
 
       return {
         axis,
@@ -216,11 +207,7 @@
           ? line_geometry(point(axis, range[0]), point(axis, range[1]))
           : null,
         // Axis label past the outer end of the axis (near 0, projects outward)
-        label_pos: point(
-          axis,
-          outer_end(range) + outer_direction(range) * axis_label_dist,
-          label_offset,
-        ),
+        label_pos: point(axis, axis_label_value(range), label_offset),
         tick_geoms: show_axes
           ? ticks.map((val) =>
               line_geometry(point(axis, val), point(axis, val, tick_mark_offsets[axis])),

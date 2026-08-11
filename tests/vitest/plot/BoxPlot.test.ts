@@ -384,11 +384,11 @@ describe(`BoxPlot`, () => {
     expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
   })
 
-  // Shared rule across all plots: legend=null always hides, an explicit show_legend wins,
-  // and otherwise Cartesian charts auto-show once there's more than one series to tell apart
+  // Category labels already identify each box, so legends stay opt-in.
+  // legend=null remains the hard off switch even when show_legend is explicit.
   const multi_series = [basic, { ...basic, label: `B`, color: `orangered` }]
   test.each([
-    [`auto-shows for multiple series`, { series: multi_series }, true],
+    [`defaults off for multiple series`, { series: multi_series }, false],
     [`renders when show_legend=true`, { series: multi_series, show_legend: true }, true],
     [`hides when show_legend=false`, { series: multi_series, show_legend: false }, false],
     [
@@ -396,7 +396,6 @@ describe(`BoxPlot`, () => {
       { series: multi_series, show_legend: true, legend: null },
       false,
     ],
-    [`auto-hides for a single series`, { series: [basic] }, false],
     [`can force a single-series legend`, { series: [basic], show_legend: true }, true],
   ] as [string, Partial<ComponentProps<typeof BoxPlot>>, boolean][])(
     `legend %s`,

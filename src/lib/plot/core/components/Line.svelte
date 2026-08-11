@@ -101,6 +101,16 @@
 
 <style>
   path {
-    transition: var(--line-transition, all 0.2s);
+    /* Geometry belongs to create_settling_tween; never CSS-transition `d`. */
+    transition: var(
+      --line-transition,
+      stroke 0.2s,
+      stroke-width 0.2s,
+      stroke-dasharray 0.2s,
+      stroke-opacity 0.2s,
+      fill 0.2s,
+      fill-opacity 0.2s,
+      opacity 0.2s
+    );
   }
 </style>

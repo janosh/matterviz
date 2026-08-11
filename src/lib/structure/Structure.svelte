@@ -2299,6 +2299,7 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
+    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem));
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
@@ -2424,7 +2425,7 @@
     justify-content: center;
     background: transparent;
     padding: 1px 2px;
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    font-size: var(--ctrl-btn-icon-size);
   }
   .view-mode-button :global(.view-mode-caret) {
     position: absolute;

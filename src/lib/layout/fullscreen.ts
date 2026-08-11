@@ -30,6 +30,16 @@ export async function toggle_fullscreen(wrapper?: HTMLDivElement): Promise<void>
   }
 }
 
+// FullscreenButton flips its bound flag before chained onclick handlers run. Restore the
+// current DOM state first so a rejected imperative request cannot leave stale UI state.
+export function toggle_fullscreen_from_button(
+  wrapper: HTMLDivElement | undefined,
+  set_fullscreen: (fullscreen: boolean) => void,
+): void {
+  set_fullscreen(document.fullscreenElement === wrapper)
+  void toggle_fullscreen(wrapper)
+}
+
 // Setup fullscreen effect with optional callback for when fullscreen state changes
 export function setup_fullscreen_effect(
   fullscreen: boolean,

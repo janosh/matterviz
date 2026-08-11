@@ -55,8 +55,9 @@ describe(`Trajectory keyboard shortcuts`, () => {
     await assertHoverScopedShortcut({ viewer, fire, read_state })
   })
 
-  test(`suppresses the browser default only for keys it handles`, async () => {
-    const viewer = await mount_trajectory()
+  test(`suppresses browser defaults only for handled keys outside editing contexts`, async () => {
+    const state = { current_step_idx: 0 }
+    const viewer = await mount_trajectory(state)
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
     // handled (nav keys + Cmd/Ctrl+Arrow) suppress default; plain typing keys and
@@ -79,6 +80,22 @@ describe(`Trajectory keyboard shortcuts`, () => {
     ]
     for (const [init, prevented] of cases) {
       expect(press_window_key(init).defaultPrevented, JSON.stringify(init)).toBe(prevented)
+    }
+    const step_before = state.current_step_idx
+    const select = document.createElement(`select`)
+    const editable = document.createElement(`div`)
+    editable.contentEditable = `true`
+
+    for (const target of [select, editable]) {
+      viewer.append(target)
+      target.focus()
+      const event = new KeyboardEvent(`keydown`, {
+        key: `ArrowRight`,
+        bubbles: true,
+        cancelable: true,
+      })
+      target.dispatchEvent(event)
+      expect([state.current_step_idx, event.defaultPrevented]).toEqual([step_before, false])
     }
   })
 

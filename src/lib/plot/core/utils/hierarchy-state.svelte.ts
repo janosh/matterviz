@@ -153,6 +153,7 @@ export class HierarchyChartState<
   readonly #contrast = make_cached_contrast()
   // Memoized canvas text measurement, shared with the chart's own label fitting
   readonly text_width = make_cached_text_width()
+  readonly chart: `sunburst` | `treemap`
   readonly node_attr: string
   // Unique per instance so multiple charts on one page don't collide on the
   // hatch pattern's SVG id
@@ -171,6 +172,7 @@ export class HierarchyChartState<
 
   constructor(opts: HierarchyChartOptions<Metadata>) {
     this.#opts = opts
+    this.chart = opts.chart
     this.node_attr = `data-${opts.chart}-node-idx`
     this.hatch_pattern_id = `${opts.chart}-hatch-${opts.uid}`
   }
@@ -193,13 +195,13 @@ export class HierarchyChartState<
   // sit below and reserve height, so neither ever overlaps the geometry.
   cbar = $derived.by(() =>
     color_bar_layout({
-      color_bar: this.#opts.color_bar(),
+      color_bar: this.color_bar,
       side: this.#opts.color_bar_side(),
       measured: this.colorbar_size,
       avail_width: Math.max(0, this.width - this.pad.l - this.pad.r),
       avail_height: Math.max(0, this.height - this.pad.t - this.pad.b),
       pad: this.pad,
-      tick_space_var: `--${this.#opts.chart}-colorbar-tick-space`,
+      tick_space_var: `--${this.chart}-colorbar-tick-space`,
     }),
   )
   inner_width = $derived(this.cbar.inner_width)
@@ -253,27 +255,13 @@ export class HierarchyChartState<
   )
 
   // Inputs HierarchyShell and the charts read back verbatim
-  get chart(): `sunburst` | `treemap` {
-    return this.#opts.chart
-  }
-  get width(): number {
-    return this.#opts.width()
-  }
-  get height(): number {
-    return this.#opts.height()
-  }
-  get value_format(): string {
-    return this.#opts.value_format()
-  }
-  get color_bar(): ComponentProps<typeof ColorBar> | null {
-    return this.#opts.color_bar()
-  }
-  get color_scale(): D3InterpolateName {
-    return this.#opts.color_scale()
-  }
-  get legend(): LegendConfig | null {
-    return this.#opts.legend()
-  }
+  width = $derived.by(() => this.#opts.width())
+  height = $derived.by(() => this.#opts.height())
+  value_format = $derived.by(() => this.#opts.value_format())
+  color_bar = $derived.by(() => this.#opts.color_bar())
+  color_scale = $derived.by(() => this.#opts.color_scale())
+  legend = $derived.by(() => this.#opts.legend())
+  // Not a $derived: the setter has to reach the chart's own bindable prop
   get fullscreen(): boolean {
     return this.#opts.fullscreen()
   }
@@ -364,8 +352,7 @@ export class HierarchyChartState<
   handle_dblclick = (event: MouseEvent): void => {
     if (this.#node_idx_from_event(event) != null || selection_within(this.wrapper)) return
     const ignore = this.#opts.dblclick_ignore
-    const target = event.target as Element | null
-    if (ignore && target?.closest?.(ignore)) return
+    if (ignore && (event.target as Element | null)?.closest?.(ignore)) return
     if (this.zoomed) this.zoom_to(null)
   }
 

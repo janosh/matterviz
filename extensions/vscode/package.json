@@ -1,7 +1,7 @@
 {
   "name": "matterviz",
   "displayName": "MatterViz",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
   "categories": [
     "Data Science",
@@ -854,21 +854,25 @@
         "matterviz.trajectory.fps": {
           "type": "number",
           "default": 10,
-          "description": "Frames per second for trajectory playback",
-          "minimum": 0.1,
-          "maximum": 60
+          "description": "Playback FPS in 0.1 increments (0 pauses)",
+          "minimum": 0,
+          "maximum": 300,
+          "multipleOf": 0.1
         },
         "matterviz.trajectory.fps_range": {
           "type": "array",
           "default": [
-            0.2,
-            60
+            0,
+            300
           ],
-          "description": "Allowed range for playback speed [min, max]",
+          "description": "Allowed range for playback speed [min, max], where 0 means paused",
           "minItems": 2,
           "maxItems": 2,
           "items": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0,
+            "maximum": 300,
+            "multipleOf": 0.1
           }
         },
         "matterviz.trajectory.display_mode": {

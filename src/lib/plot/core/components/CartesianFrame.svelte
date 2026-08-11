@@ -106,6 +106,8 @@
       .join(` `),
   )
 
+  // Container measured by bind:clientWidth/Height; 0 until the first layout pass
+  const measured = $derived(Boolean(frame.width && frame.height))
   const dims = $derived({ width: frame.width, height: frame.height, fullscreen })
   const title_pad = $derived(frame.effective_base_pad)
   const get_marginal_axis = (axis: FacetAxis, binding: MarginalAxisBinding): MarginalAxis =>
@@ -148,7 +150,7 @@
   class:fullscreen
   style={`${css_vars} ${rest.style ?? ``}`}
 >
-  {#if frame.width && frame.height}
+  {#if measured}
     <div class="header-controls">
       {@render header_controls?.(dims)}
       {#if fullscreen_toggle}
@@ -156,7 +158,7 @@
       {/if}
     </div>
   {/if}
-  {#if !require_size || (frame.width && frame.height)}
+  {#if !require_size || measured}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <svg

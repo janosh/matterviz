@@ -24,6 +24,10 @@ export const SPEED_OF_LIGHT_M_S = 299792458 // m/s
 // the VDOS frequency axis both need it and had derived it separately.
 export const THZ_TO_INVERSE_CM = 1e12 / (SPEED_OF_LIGHT_M_S * 100)
 
+// Shared playback bounds keep trajectory and reaction-path controls consistent.
+export const DEFAULT_FPS_RANGE = [0, 300] as const
+export const FPS_STEP = 0.1
+
 // Default resolution for PNG export, shared by every viewer's export pane and by the
 // export helpers themselves — it was previously written out as a literal in 11 files.
 export const DEFAULT_PNG_DPI = 150
