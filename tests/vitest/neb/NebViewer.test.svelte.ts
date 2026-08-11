@@ -2,7 +2,7 @@ import type { ReactionPath } from '$lib/neb'
 import { NebViewer } from '$lib/neb'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { create_drop_event, make_trajectory_frame } from '../setup'
+import { create_drop_event, doc_query, make_trajectory_frame } from '../setup'
 
 const make_path = (...energies: number[]): ReactionPath => ({
   images: energies.map((energy, idx) => {
@@ -41,10 +41,9 @@ const mount_fullscreen_viewer = async () => {
     fullscreen: false,
     on_fullscreen_change: vi.fn(),
   })
-  const target = await mount_viewer(props)
-  const wrapper = target.querySelector<HTMLDivElement>(`.neb-viewer`)
-  const button = target.querySelector<HTMLButtonElement>(`.fullscreen-button`)
-  if (!wrapper || !button) throw new Error(`NEB fullscreen controls not found`)
+  await mount_viewer(props)
+  const wrapper = doc_query(`.neb-viewer`, HTMLDivElement)
+  const button = doc_query(`.fullscreen-button`, HTMLButtonElement)
   return { props, wrapper, button }
 }
 
@@ -58,21 +57,19 @@ describe(`NebViewer bindings`, () => {
       active_path_key: `direct`,
       active_image_idx: 0,
     })
-    const target = await mount_viewer(props)
+    await mount_viewer(props)
 
-    target.querySelector<HTMLButtonElement>(`button[aria-label="Next image"]`)?.click()
+    doc_query(`button[aria-label="Next image"]`, HTMLButtonElement).click()
     await flush_render()
     expect(props.active_image_idx).toBe(1)
 
-    const slider = target.querySelector<HTMLInputElement>(`.step-slider`)
-    if (!slider) throw new Error(`NEB image slider not found`)
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
     slider.value = `2`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
     await flush_render()
     expect(props.active_image_idx).toBe(2)
 
-    const path_select = target.querySelector<HTMLSelectElement>(`.path-control select`)
-    if (!path_select) throw new Error(`NEB path selector not found`)
+    const path_select = doc_query(`.path-control select`, HTMLSelectElement)
     path_select.value = `curved`
     path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await flush_render()
@@ -93,9 +90,8 @@ describe(`NebViewer bindings`, () => {
         fps: 2,
         auto_play: true,
       })
-      const target = await mount_viewer(props)
-      const play = target.querySelector<HTMLButtonElement>(`.play-button`)
-      if (!play) throw new Error(`NEB play button not found`)
+      await mount_viewer(props)
+      const play = doc_query(`.play-button`, HTMLButtonElement)
 
       vi.advanceTimersByTime(550)
       flushSync()
@@ -111,35 +107,33 @@ describe(`NebViewer bindings`, () => {
     }
   })
 
-  test(`preserves arbitrary FPS values and exact ranges`, async () => {
+  test(`uses an integer-only FPS number input`, async () => {
     const props = $state({
       paths: make_path(0, 1),
       fps: 0.73,
-      fps_range: [0.6, 0.9] as [number, number],
     })
     const target = await mount_viewer(props)
 
-    expect(props.fps).toBe(0.73)
-    const fps_input = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="number"]`,
-    )
-    const fps_slider = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="range"]`,
-    )
-    if (!fps_input || !fps_slider) throw new Error(`NEB FPS controls not found`)
+    const fps_input = doc_query(`.fps-section input[type="number"]`, HTMLInputElement)
     expect([fps_input.min, fps_input.max, fps_input.step, fps_input.value]).toEqual([
-      `0.6`,
-      `0.9`,
-      `any`,
-      `0.73`,
+      `0`,
+      `300`,
+      `1`,
+      `1`,
     ])
-    expect([fps_slider.step, fps_slider.value]).toEqual([`any`, `0.73`])
+    expect(target.querySelector(`.fps-section input[type="range"]`)).toBeNull()
+    expect(props.fps).toBe(1)
 
-    fps_input.value = `1.2`
-    fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await flush_render()
-    expect(props.fps).toBe(0.9)
-    expect([fps_input.value, fps_slider.value]).toEqual([`0.9`, `0.9`])
+    for (const [input, expected] of [
+      [4.8, 5],
+      [301, 300],
+    ]) {
+      fps_input.value = String(input)
+      fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await flush_render()
+      expect(props.fps).toBe(expected)
+      expect(fps_input.value).toBe(String(expected))
+    }
   })
 
   test(`loads valid drops and reports invalid ones`, async () => {
@@ -149,8 +143,7 @@ describe(`NebViewer bindings`, () => {
       error_msg: undefined as string | undefined,
     })
     const target = await mount_viewer(props)
-    const wrapper = target.querySelector<HTMLElement>(`.neb-viewer`)
-    if (!wrapper) throw new Error(`NEB viewer not found`)
+    const wrapper = doc_query(`.neb-viewer`)
     const content = JSON.stringify({
       format: `matterviz-reaction-path`,
       label: `dropped`,
@@ -182,13 +175,16 @@ describe(`NebViewer bindings`, () => {
     expect(props.on_fullscreen_change).not.toHaveBeenCalled()
   })
 
-  test(`reports successful user fullscreen entry once`, async () => {
+  test(`renders a larger fullscreen icon and reports successful entry once`, async () => {
     let fullscreen_element: Element | null = null
     Object.defineProperty(document, `fullscreenElement`, {
       configurable: true,
       get: () => fullscreen_element,
     })
     const { button, props, wrapper } = await mount_fullscreen_viewer()
+    expect(button.style.getPropertyValue(`--icon-size`)).toBe(
+      `var(--neb-fullscreen-icon-size, 1.25rem)`,
+    )
     wrapper.requestFullscreen = vi.fn(async () => {
       fullscreen_element = wrapper
       document.dispatchEvent(new Event(`fullscreenchange`))

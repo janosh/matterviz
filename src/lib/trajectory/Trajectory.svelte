@@ -24,7 +24,12 @@
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import {
+    FullscreenButton,
+    type FullscreenToggleProp,
+    toggle_fullscreen,
+    toggle_fullscreen_from_button,
+  } from '$lib/layout'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
@@ -228,7 +233,7 @@
       // - e.g. {energy: 'Total Energy', volume: 'Cell Volume', force_max: 'Max Force'}
       // - merged with built-in trajectory_property_config
       property_labels?: Record<string, string>
-      fps_range?: Vec2 // allowed FPS range [min_fps, max_fps]
+      fps_range?: Readonly<Vec2> // allowed FPS range [min_fps, max_fps]
       fps?: number // frame rate for playback
       // Loading options for large files
       loading_options?: LoadingOptions
@@ -1537,6 +1542,8 @@
               children={typeof fullscreen_toggle === `function`
                 ? fullscreen_toggle
                 : undefined}
+              onclick={() =>
+                toggle_fullscreen_from_button(wrapper, (value) => (fullscreen = value))}
               class="fullscreen-button"
             />
           {/if}

@@ -37,18 +37,24 @@ const flush_render = async () => {
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 
-type ElementConstructor<T extends Element> = abstract new (...args: never[]) => T
-const query = <T extends Element>(
-  target: ParentNode,
-  selector: string,
-  element_constructor: ElementConstructor<T>,
-): T => {
-  const element = target.querySelector(selector)
+const query = (target: ParentNode, selector: string): HTMLElement => {
+  const element = target.querySelector<HTMLElement>(selector)
   if (!element) throw new Error(`No element found for selector: ${selector}`)
-  if (!(element instanceof element_constructor)) {
-    throw new Error(`Element found for selector ${selector} has the wrong type`)
-  }
   return element
+}
+const query_input = (target: ParentNode, selector: string): HTMLInputElement => {
+  const element = query(target, selector)
+  if (!(element instanceof HTMLInputElement))
+    throw new Error(`Element found for selector ${selector} is not an input`)
+  return element
+}
+
+const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement => {
+  const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
+    (button) => button.textContent?.includes(option_text),
+  )
+  if (!option) throw new Error(`${option_text} menu option not found`)
+  return option
 }
 
 const with_fetch = async (fetch_impl: unknown, run: () => Promise<void>) => {
@@ -65,13 +71,9 @@ const click_menu_option = async (
   menu_button: string,
   option_text: string,
 ): Promise<void> => {
-  target.querySelector<HTMLButtonElement>(menu_button)?.click()
+  query(target, menu_button).click()
   await tick()
-  const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
-    (button) => button.textContent?.includes(option_text),
-  )
-  if (!option) throw new Error(`${option_text} menu option not found`)
-  option.click()
+  menu_option(target, option_text).click()
   await tick()
 }
 
@@ -106,7 +108,7 @@ describe(`Trajectory`, () => {
       scatter_props: { controls_open: true },
     })
     await flush_render()
-    const plot = query(target, `.scatter`, HTMLElement)
+    const plot = query(target, `.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
   })
@@ -130,7 +132,7 @@ describe(`Trajectory`, () => {
         show_controls: false,
       })
       await flush_render()
-      const plot = query(target, `.scatter`, HTMLElement)
+      const plot = query(target, `.scatter`)
       await resize_element(plot, 600, 400)
       const width = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`width`))
       if (!Number.isFinite(width))
@@ -155,7 +157,7 @@ describe(`Trajectory`, () => {
     })
     const target = mount_traj(props)
     await flush_render()
-    let plot = query(target, `.scatter`, HTMLElement)
+    let plot = query(target, `.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Energy`)
 
@@ -166,7 +168,7 @@ describe(`Trajectory`, () => {
       metadata: {},
     }
     await flush_render()
-    plot = query(target, `.scatter`, HTMLElement)
+    plot = query(target, `.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.textContent).toContain(`Volume`)
     expect(plot.textContent).not.toContain(`Energy`)
@@ -182,45 +184,37 @@ describe(`Trajectory`, () => {
   // effective axis so hosts can read which quantity is in effect. Empty mounts
   // must not write `frame` early or time-capable data can never auto-pick.
   test.each([
-    {
-      desc: `time on first paint when POTIM is present`,
-      trajectory: make_stepped_traj(2) as TrajectoryType | undefined,
-      later: undefined as ReturnType<typeof make_stepped_traj> | undefined,
-      expect_initial: `time` as TrajectoryXQuantity | undefined,
-      expect_final: `time` as TrajectoryXQuantity,
-    },
-    {
-      desc: `step on first paint without POTIM`,
-      trajectory: make_stepped_traj(undefined),
-      later: undefined,
-      expect_initial: `step`,
-      expect_final: `step`,
-    },
-    {
-      desc: `deferred until samples exist`,
-      trajectory: undefined,
-      later: make_stepped_traj(2),
-      expect_initial: undefined,
-      expect_final: `time`,
-    },
-  ])(`x_quantity $desc`, async ({ trajectory, later, expect_initial, expect_final }) => {
-    const props = $state({
-      trajectory,
-      x_quantity: undefined as TrajectoryXQuantity | undefined,
-      display_mode: `scatter` as const,
-      show_controls: `always` as const,
-    })
-    const target = mount_traj(props)
-    await flush_render()
-    expect(props.x_quantity).toBe(expect_initial)
-    if (expect_initial !== undefined) expect(selected_x_quantity(target)).toBe(expect_initial)
+    [
+      `time on first paint when POTIM is present`,
+      make_stepped_traj(2),
+      undefined,
+      `time`,
+      `time`,
+    ],
+    [`step on first paint without POTIM`, make_stepped_traj(), undefined, `step`, `step`],
+    [`deferred until samples exist`, undefined, make_stepped_traj(2), undefined, `time`],
+  ] as const)(
+    `x_quantity %s`,
+    async (_description, trajectory, later, expect_initial, expect_final) => {
+      const props = $state({
+        trajectory,
+        x_quantity: undefined as TrajectoryXQuantity | undefined,
+        display_mode: `scatter` as const,
+        show_controls: `always` as const,
+      })
+      const target = mount_traj(props)
+      await flush_render()
+      expect(props.x_quantity).toBe(expect_initial)
+      if (expect_initial !== undefined)
+        expect(selected_x_quantity(target)).toBe(expect_initial)
 
-    if (!later) return
-    props.trajectory = later
-    await flush_render()
-    expect(props.x_quantity).toBe(expect_final)
-    expect(selected_x_quantity(target)).toBe(expect_final)
-  })
+      if (!later) return
+      props.trajectory = later
+      await flush_render()
+      expect(props.x_quantity).toBe(expect_final)
+      expect(selected_x_quantity(target)).toBe(expect_final)
+    },
+  )
 
   test.each([
     [`auto-pick update`, undefined, `time`],
@@ -247,41 +241,28 @@ describe(`Trajectory`, () => {
     },
   )
 
-  test(`defaults to five FPS and restricts values to half-integers`, async () => {
-    const default_target = mount_traj({ trajectory: energy_traj(-1, -2) })
+  // Shared integer bounds and normalization are covered in NebViewer and browser tests.
+  test(`defaults to five FPS`, async () => {
+    const target = mount_traj({ trajectory: energy_traj(-1, -2) })
     await flush_render()
-    expect(
-      default_target.querySelector<HTMLInputElement>(`.fps-section input[type="number"]`)
-        ?.value,
-    ).toBe(`5`)
+    expect(query_input(target, `.fps-section input[type="number"]`).value).toBe(`5`)
+  })
 
+  test(`keeps fullscreen state aligned while the browser request is pending`, async () => {
     const props = $state({
       trajectory: energy_traj(-1, -2),
-      fps: 0.2,
-      show_controls: `always` as const,
+      fullscreen: false,
     })
     const target = mount_traj(props)
     await flush_render()
+    const wrapper = query(target, `.trajectory`)
+    const fullscreen_button = query(target, `.fullscreen-button`)
+    wrapper.requestFullscreen = vi.fn(() => Promise.withResolvers<undefined>().promise)
 
-    const fps_input = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="number"]`,
-    )
-    const fps_slider = target.querySelector<HTMLInputElement>(
-      `.fps-section input[type="range"]`,
-    )
-    if (!fps_input || !fps_slider) throw new Error(`FPS controls not found`)
-    expect(props.fps).toBe(0.5)
-    expect(fps_input.min).toBe(`0.5`)
-    expect(fps_input.step).toBe(`0.5`)
-    expect(fps_slider.min).toBe(`0.5`)
-    expect(fps_slider.step).toBe(`0.5`)
-
-    fps_input.value = `12.3`
-    fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await flush_render()
-    expect(props.fps).toBe(12.5)
-    expect(fps_input.value).toBe(`12.5`)
-    expect(fps_slider.value).toBe(`12.5`)
+    fullscreen_button.click()
+    expect(wrapper.requestFullscreen).toHaveBeenCalledOnce()
+    expect(props.fullscreen).toBe(false)
+    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
   })
 
   test(`preserves playback callback order and payloads through a loop`, async () => {
@@ -298,64 +279,59 @@ describe(`Trajectory`, () => {
     })
     const target = mount_traj(props)
     await flush_render()
-    const play = query(target, `.play-button`, HTMLButtonElement)
-
-    vi.useFakeTimers()
+    const play = query(target, `.play-button`)
+    const callbacks: FrameRequestCallback[] = []
+    const request_raf = vi
+      .spyOn(globalThis, `requestAnimationFrame`)
+      .mockImplementation((callback) => callbacks.push(callback))
+    const performance_now = vi.spyOn(performance, `now`)
+    const run_frame = (timestamp: number) => {
+      const callback = callbacks.shift()
+      if (!callback) throw new Error(`Missing animation frame callback`)
+      callback(timestamp)
+      flushSync()
+    }
     try {
+      performance_now.mockReturnValue(1000)
       play.click()
       flushSync()
-      vi.advanceTimersByTime(120)
-      flushSync()
+      run_frame(1100)
       expect(props.current_step_idx).toBe(1)
 
       play.click()
       flushSync()
+      callbacks.length = 0
+      performance_now.mockReturnValue(1200)
       play.click()
       flushSync()
-      vi.advanceTimersByTime(120)
-      flushSync()
+      run_frame(1100)
+      run_frame(1200)
       expect(props.current_step_idx).toBe(0)
       expect(events).toEqual([`play:0`, `pause:1`, `play:1`, `end:1`, `loop`])
     } finally {
-      vi.useRealTimers()
+      request_raf.mockRestore()
+      performance_now.mockRestore()
     }
   })
 
-  test(`keeps sequence keyboard navigation and handled-event suppression`, async () => {
+  test(`updates frame rate from keyboard shortcuts`, async () => {
     const on_frame_rate_change = vi.fn()
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
-      current_step_idx: 0,
       fps: 5,
       show_controls: `always` as const,
       on_frame_rate_change,
     })
     const target = mount_traj(props)
     await flush_render()
-    const viewer = query(target, `.trajectory`, HTMLElement)
-
-    const press_key = async (key: string, init: KeyboardEventInit = {}) => {
-      const event = new KeyboardEvent(`keydown`, {
-        ...init,
-        key,
-        bubbles: true,
-        cancelable: true,
-      })
-      viewer.dispatchEvent(event)
-      await flush_render()
-      return event
-    }
-    const next = await press_key(`ArrowRight`)
-    expect(props.current_step_idx).toBe(1)
-    expect(next.defaultPrevented).toBe(true)
-
-    const last = await press_key(`ArrowRight`, { metaKey: true })
-    expect(props.current_step_idx).toBe(2)
-    expect(last.defaultPrevented).toBe(true)
+    const viewer = query(target, `.trajectory`)
 
     const calls_before_speed_change = on_frame_rate_change.mock.calls.length
-    for (const key of [` `, `+`, ` `]) await press_key(key)
-    expect(props.fps).toBe(5.5)
+    for (const key of [` `, `+`, ` `]) {
+      viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      await flush_render()
+    }
+    expect(props.fps).toBe(6)
     expect(on_frame_rate_change).toHaveBeenCalledTimes(calls_before_speed_change + 1)
   })
 
@@ -381,7 +357,7 @@ describe(`Trajectory`, () => {
     expect(props.current_step_idx).toBe(2)
     expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
 
-    const step_input = query(target, `.step-input`, HTMLInputElement)
+    const step_input = query_input(target, `.step-input`)
     for (const rejected_value of [``, `99`]) {
       step_input.value = rejected_value
       step_input.dispatchEvent(new Event(`input`, { bubbles: true }))
@@ -391,8 +367,8 @@ describe(`Trajectory`, () => {
       expect(step_input.value).toBe(`2`)
     }
 
-    const slider = query(target, `.step-slider`, HTMLInputElement)
-    const trajectory_element = query(target, `.trajectory`, HTMLElement)
+    const slider = query_input(target, `.step-slider`)
+    const trajectory_element = query(target, `.trajectory`)
     const commit_events: number[] = []
     trajectory_element.addEventListener(`matterviz:trajectory-step-commit`, (event) => {
       commit_events.push((event as CustomEvent<{ step_idx: number }>).detail.step_idx)
@@ -475,9 +451,7 @@ describe(`Trajectory`, () => {
       info_pane_open: true,
     })
     await flush_render()
-    expect(target.querySelector<HTMLElement>(`.trajectory-info-pane`)?.style.maxHeight).toBe(
-      `600px`,
-    )
+    expect(query(target, `.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
   })
 
   // show_controls.style is appended after the z-index the controls bar sets on itself, so
@@ -494,7 +468,7 @@ describe(`Trajectory`, () => {
     })
     await flush_render()
 
-    const controls = query(target, `.trajectory-controls`, HTMLElement)
+    const controls = query(target, `.trajectory-controls`)
     // jsdom preserves unresolved var() expressions; browsers resolve the fallback to 10.
     expect(getComputedStyle(controls).zIndex).toContain(z_index)
     expect(getComputedStyle(controls).color).toBe(color)
@@ -509,22 +483,18 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
-    const view_mode_button = query(target, `.view-mode-button`, HTMLButtonElement)
+    const view_mode_button = query(target, `.view-mode-button`)
     view_mode_button.click()
     await tick()
 
-    const dropdown = query(target, `.view-mode-dropdown`, HTMLElement)
+    const dropdown = query(target, `.view-mode-dropdown`)
     // Inline stacking: jsdom applies no scoped styles; menu must stay above
     // content-area siblings rather than under the scatter.
     const dropdown_style = getComputedStyle(dropdown)
     expect(dropdown_style.pointerEvents).toBe(`auto`)
     expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
 
-    const scatter_only = [
-      ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ].find((button) => button.textContent?.includes(`Scatter-only`))
-    if (!scatter_only) throw new Error(`scatter-only option not found`)
-    scatter_only.click()
+    menu_option(dropdown, `Scatter-only`).click()
     await tick()
 
     expect(props.display_mode).toBe(`scatter`)

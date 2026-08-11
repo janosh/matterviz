@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toggle_fullscreen, type FullscreenToggleProp } from './fullscreen'
+  import { toggle_fullscreen_from_button, type FullscreenToggleProp } from './fullscreen'
   import type { ShowControlsState } from '$lib/controls'
   // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
   // Full-width sequence viewers use SequenceControlBar instead.
@@ -48,12 +48,10 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <!-- presentational: the viewer above owns the flag, so the click stays imperative
-      and the library chains it after its own -->
       <FullscreenButton
-        {fullscreen}
+        bind:fullscreen
         children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-        onclick={() => toggle_fullscreen(wrapper)}
+        onclick={() => toggle_fullscreen_from_button(wrapper, (value) => (fullscreen = value))}
         class="fullscreen-toggle"
         style={fullscreen_btn_style}
         {...tooltip_attachment}
@@ -102,7 +100,10 @@
     justify-content: center;
     padding: var(--viewer-buttons-btn-padding, 4px);
     border-radius: var(--border-radius, 3pt);
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    font-size: var(
+      --viewer-buttons-icon-size,
+      var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem))
+    );
   }
   section.control-buttons :global(button:hover) {
     background-color: var(

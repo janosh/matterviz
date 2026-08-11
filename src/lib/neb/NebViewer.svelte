@@ -1,6 +1,7 @@
 <script lang="ts">
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
+  import { DEFAULT_FPS_RANGE } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { StatusMessage } from '$lib/feedback'
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
@@ -8,13 +9,12 @@
   import {
     FullscreenButton,
     sync_fullscreen,
-    toggle_fullscreen,
+    toggle_fullscreen_from_button,
     type FullscreenToggleProp,
   } from '$lib/layout'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import type { Vec2 } from '$lib/math'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -40,7 +40,7 @@
     active_image_idx = $bindable(0),
     enable_drop = true,
     fps = $bindable(4),
-    fps_range = [0.2, 60],
+    fps_range = DEFAULT_FPS_RANGE,
     auto_play = false,
     show_controls = `always`,
     fullscreen_toggle = true,
@@ -61,7 +61,7 @@
     active_image_idx?: number
     enable_drop?: boolean
     fps?: number
-    fps_range?: Vec2
+    fps_range?: readonly [number, number]
     auto_play?: boolean
     // Names: path, nav, step, fps, coord, energy-reference, spline, energy, fullscreen
     show_controls?: ShowControlsProp
@@ -107,7 +107,6 @@
     fps: () => fps,
     set_fps: (value) => (fps = value),
     fps_range: () => fps_range,
-    snap_fps: false,
     should_auto_play: () => auto_play && Boolean(active),
   })
 
@@ -255,11 +254,10 @@
           <FullscreenButton
             bind:fullscreen
             children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-            onclick={() => {
-              fullscreen = document.fullscreenElement === wrapper
-              void toggle_fullscreen(wrapper)
-            }}
+            onclick={() =>
+              toggle_fullscreen_from_button(wrapper, (value) => (fullscreen = value))}
             class="fullscreen-button"
+            style="--icon-size: var(--neb-fullscreen-icon-size, 1.25rem)"
           />
         {/if}
       </div>

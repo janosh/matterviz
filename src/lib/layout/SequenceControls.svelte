@@ -3,7 +3,6 @@
   import { format_num } from '$lib/labels'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
-  import NumberRangeInput from './NumberRangeInput.svelte'
   import type { create_sequence_player } from './sequence-player.svelte'
 
   let {
@@ -125,14 +124,21 @@
   {/if}
 
   {#if count > 1 && controls_config.visible(`fps`)}
-    <NumberRangeInput
-      class="fps-section"
-      min={playback.fps_min}
-      max={playback.fps_max}
-      step={playback.fps_input_step}
-      bind:value={playback.fps}
-      title="Frame rate: {format_num(playback.fps, `.2~s`)} fps">FPS</NumberRangeInput
-    >
+    <label class="fps-section" title="Frame rate: {format_num(playback.fps, `.2~s`)} fps">
+      FPS
+      <input
+        type="number"
+        min={playback.fps_min}
+        max={playback.fps_max}
+        step={playback.fps_step}
+        value={playback.fps}
+        oninput={(event) => {
+          const value = event.currentTarget.valueAsNumber
+          if (Number.isFinite(value)) playback.fps = value
+        }}
+        onchange={({ currentTarget }) => (currentTarget.value = String(playback.fps))}
+      />
+    </label>
   {/if}
   {@render children?.()}
 </div>
@@ -178,7 +184,7 @@
     text-align: center;
   }
   .step-input,
-  .sequence-controls :global(.fps-section input[type='number']) {
+  .fps-section input[type='number'] {
     padding: 1px 3px;
     font: inherit;
     font-variant-numeric: tabular-nums;
@@ -186,8 +192,8 @@
   }
   .step-input::-webkit-outer-spin-button,
   .step-input::-webkit-inner-spin-button,
-  .sequence-controls :global(.fps-section input[type='number']::-webkit-outer-spin-button),
-  .sequence-controls :global(.fps-section input[type='number']::-webkit-inner-spin-button) {
+  .fps-section input[type='number']::-webkit-outer-spin-button,
+  .fps-section input[type='number']::-webkit-inner-spin-button {
     margin: 0;
     -webkit-appearance: none;
   }
@@ -227,20 +233,20 @@
     text-align: center;
     white-space: nowrap;
   }
-  .sequence-controls :global(.fps-section) {
+  .fps-section {
     display: flex;
     align-items: center;
     gap: 5pt;
     margin-inline: 6pt;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-  .sequence-controls :global(.fps-section input[type='range']) {
-    width: clamp(60px, 8cqw, 90px);
-  }
-  .sequence-controls :global(.fps-section input[type='number']) {
-    border: var(--tooltip-border);
-    text-align: center;
+    input[type='number'] {
+      min-width: 2ch;
+      max-width: 4ch;
+      border: var(--tooltip-border);
+      field-sizing: content;
+      text-align: center;
+    }
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);

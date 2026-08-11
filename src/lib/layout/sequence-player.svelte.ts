@@ -1,3 +1,4 @@
+import { FPS_STEP } from '$lib/constants'
 import { untrack } from 'svelte'
 
 // Shared playback/navigation state for ordered collections such as trajectory frames and
@@ -12,7 +13,6 @@ type SequencePlayerInputs = {
   fps: () => number
   set_fps: (fps: number) => void
   fps_range: () => readonly [number, number]
-  snap_fps?: boolean
   should_auto_play?: () => boolean
   on_play?: () => void
   on_pause?: () => void
@@ -23,25 +23,25 @@ type SequencePlayerInputs = {
 export function create_sequence_player(inputs: SequencePlayerInputs) {
   let is_playing = $state(false)
 
-  const fps_step = 0.5
-  const snap_fps = inputs.snap_fps ?? true
   const fps_limits = $derived.by(() => {
     const [range_start, range_end] = inputs.fps_range()
     const lower = Math.min(range_start, range_end)
     const upper = Math.max(range_start, range_end)
-    if (!snap_fps) return [lower, upper] as const
-    const min = Math.ceil(lower / fps_step) * fps_step
-    const max = Math.floor(upper / fps_step) * fps_step
+    const min = Math.ceil(lower / FPS_STEP) * FPS_STEP
+    const max = Math.floor(upper / FPS_STEP) * FPS_STEP
     return min > max ? ([lower, lower] as const) : ([min, max] as const)
   })
 
-  // Keep externally-bound values within the control range. Trajectories also snap to
-  // half-integer FPS, while viewers that historically accepted arbitrary rates can opt out.
+  const normalize_fps = (value: number): number => {
+    const finite = Number.isFinite(value) ? value : fps_limits[0]
+    const stepped = Math.round(finite / FPS_STEP) * FPS_STEP
+    return Math.max(fps_limits[0], Math.min(fps_limits[1], stepped))
+  }
+
+  // Keep externally-bound values within the control range and configured step grid.
   $effect(() => {
     const current = inputs.fps()
-    const finite = Number.isFinite(current) ? current : fps_limits[0]
-    const stepped = snap_fps ? Math.round(finite / fps_step) * fps_step : finite
-    const normalized = Math.max(fps_limits[0], Math.min(fps_limits[1], stepped))
+    const normalized = normalize_fps(current)
     if (normalized !== current) inputs.set_fps(normalized)
   })
 
@@ -97,7 +97,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
         is_playing = false
         return
       }
-      accumulated_ms += Math.min(now - last, 250)
+      accumulated_ms += Math.min(Math.max(now - last, 0), 250)
       last = now
       const step_ms = 1000 / Math.max(0.1, inputs.fps())
       if (accumulated_ms >= step_ms) {
@@ -124,10 +124,9 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
       return inputs.fps()
     },
     set fps(value: number) {
-      inputs.set_fps(value)
+      inputs.set_fps(normalize_fps(value))
     },
-    fps_input_step: snap_fps ? fps_step : (`any` as const),
-    fps_step,
+    fps_step: FPS_STEP,
     go_to,
     previous,
     next,

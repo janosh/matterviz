@@ -1834,7 +1834,7 @@
       {fullscreen}
       {fullscreen_toggle}
       {wrapper}
-      style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
+      style="--viewer-buttons-icon-size: var(--struct-control-icon-size); --viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
         <div
@@ -2299,7 +2299,10 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
-    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem));
+    --struct-control-icon-size: var(
+      --struct-ctrl-btn-icon-size,
+      var(--ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem))
+    );
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);
@@ -2425,7 +2428,7 @@
     justify-content: center;
     background: transparent;
     padding: 1px 2px;
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    font-size: var(--struct-control-icon-size);
   }
   .view-mode-button :global(.view-mode-caret) {
     position: absolute;

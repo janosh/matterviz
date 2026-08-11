@@ -529,6 +529,8 @@ describe(`Structure`, () => {
   test(`preserves control chrome overrides and toggles fullscreen`, async () => {
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
     const exitFullscreenMock = vi.fn()
+    requestFullscreenMock.mockRejectedValueOnce(new Error(`fullscreen denied`))
+    vi.spyOn(console, `error`).mockImplementation(() => undefined)
 
     mount_structure({
       structure,
@@ -545,16 +547,19 @@ describe(`Structure`, () => {
     await tick()
 
     expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
-    expect(doc_query(`.control-buttons`).getAttribute(`style`)).not.toContain(
-      `--ctrl-btn-icon-size`,
+    expect(doc_query(`.control-buttons`).getAttribute(`style`)).toContain(
+      `--viewer-buttons-icon-size: var(--struct-control-icon-size)`,
     )
 
     // Click the fullscreen button
     const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
 
     fullscreen_button.click()
+    await tick()
+    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
 
-    expect(requestFullscreenMock).toHaveBeenCalledOnce()
+    fullscreen_button.click()
+    expect(requestFullscreenMock).toHaveBeenCalledTimes(2)
 
     // Simulate fullscreen mode
     Object.defineProperty(document, `fullscreenElement`, {
