@@ -126,6 +126,7 @@
   labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,
     '/how-to/use-without-svelte': `Use without Svelte`,
+    '/neb': `NEB`,
     '/structure/rdf': `RDF`,
     '/structure/xrd': `XRD`,
     '/reciprocal/dos': `DOS`,
