@@ -11,7 +11,7 @@ import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-import { afterEach, beforeEach, expect, vi } from 'vitest'
+import { beforeEach, expect, onTestFinished, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
@@ -68,8 +68,6 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => vi.unstubAllGlobals())
-
 type Element_constructor<T extends Element> = abstract new (...args: never[]) => T
 
 export function doc_query<T extends Element = HTMLElement>(
@@ -89,19 +87,17 @@ export const deferred_fetch_responses = () => {
     string,
     { resolve: (response: Response) => void; reject: (error: Error) => void }[]
   >()
-  vi.stubGlobal(
-    `fetch`,
-    vi.fn(
-      (url: string | URL | Request) =>
-        new Promise<Response>((resolve_response, reject_response) => {
-          const request_url =
-            typeof url === `string` ? url : url instanceof URL ? url.href : url.url
-          const queue = responses.get(request_url) ?? []
-          queue.push({ resolve: resolve_response, reject: reject_response })
-          responses.set(request_url, queue)
-        }),
-    ),
+  const fetch_spy = vi.spyOn(globalThis, `fetch`).mockImplementation(
+    (url: string | URL | Request) =>
+      new Promise<Response>((resolve_response, reject_response) => {
+        const request_url =
+          typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+        const queue = responses.get(request_url) ?? []
+        queue.push({ resolve: resolve_response, reject: reject_response })
+        responses.set(request_url, queue)
+      }),
   )
+  onTestFinished(() => fetch_spy.mockRestore())
   return responses
 }
 

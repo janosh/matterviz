@@ -24,9 +24,10 @@ const inline_moyo_wasm_plugin = (): Plugin => ({
   transform(code: string, id: string) {
     if (!id.includes(`@spglib/moyo-wasm`) || !code.includes(moyo_glue_url)) return null
     return {
-      code:
-        `import __matterviz_moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url';\n` +
-        code.replace(moyo_glue_url, `__matterviz_moyo_wasm_url`),
+      code: `import __matterviz_moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url';\n${code.replace(
+        moyo_glue_url,
+        `__matterviz_moyo_wasm_url`,
+      )}`,
       map: null,
     }
   },

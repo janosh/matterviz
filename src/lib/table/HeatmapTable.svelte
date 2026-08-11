@@ -10,7 +10,7 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, DraggablePane, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -22,7 +22,6 @@
     Search as SearchIcon,
     Settings,
   } from 'svelte-widgets/icons'
-  import { DraggablePane } from '$lib/overlays'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
     CellColor,

@@ -1,6 +1,7 @@
 // Regression tests for the shared Cartesian scaffold (create_cartesian_frame), exercised
 // through the charts that mount it rather than in isolation (it creates $effects).
 import { BarPlot, BoxPlot, Histogram } from '$lib'
+import type { Vec2 } from '$lib/math'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, doc_query, mount_sized } from '../setup'
@@ -64,6 +65,46 @@ describe(`cartesian frame`, () => {
       expect(doc_query<HTMLInputElement>(`input.legend-filter`).value).toBe(`alp`)
     },
   )
+
+  // Rect zoom inverts the drag rect and writes it into each bindable axis prop, so the
+  // range sync effect can't snap the view straight back to the auto range. x2/y2 have no
+  // data behind them here, so their [0, 1] sentinel scales must stay out of the props.
+  test(`rect zoom writes only the primary axis ranges back to the props`, async () => {
+    const bound = $state({
+      x_axis: { range: [0, 10] as Vec2 },
+      y_axis: { range: [0, 10] as Vec2 },
+      x2_axis: {},
+      y2_axis: {},
+    })
+    await mount_sized(
+      BarPlot,
+      bind_props({ series: [{ x: [0, 1, 2], y: [1, 2, 3] }] }, bound),
+      {
+        selector: `.bar-plot`,
+      },
+    )
+
+    // jsdom reports a zero-origin bounding rect, so client coords are plot-local
+    const at = (x: number, y: number): MouseEventInit => ({
+      button: 0,
+      buttons: 1,
+      clientX: x,
+      clientY: y,
+    })
+    const svg = doc_query<SVGSVGElement>(`svg[role="application"]`)
+    svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(150, 120) }))
+    window.dispatchEvent(new MouseEvent(`mousemove`, at(300, 200)))
+    window.dispatchEvent(new MouseEvent(`mouseup`, { ...at(300, 200), buttons: 0 }))
+    await tick()
+
+    for (const [min, max] of [bound.x_axis.range, bound.y_axis.range]) {
+      expect(min).toBeGreaterThan(0)
+      expect(max).toBeLessThan(10)
+      expect(max).toBeGreaterThan(min)
+    }
+    expect(bound.x2_axis).toEqual({}) // a write would have added a `range` key
+    expect(bound.y2_axis).toEqual({})
+  })
 
   test.each(frame_charts)(
     `%s applies an aria-label only to its SVG`,
