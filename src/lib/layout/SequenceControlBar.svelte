@@ -63,6 +63,11 @@
       width: var(--icon-size);
       height: var(--icon-size);
     }
+    :global(.fullscreen-button) {
+      --icon-size: var(--sequence-fullscreen-icon-size, 1.25rem);
+      --fullscreen-btn-padding: 0;
+      --fullscreen-btn-bg: transparent;
+    }
   }
   :global(.sequence-viewer:hover) > .sequence-control-bar.hover-visible,
   :global(.sequence-viewer:focus-within) > .sequence-control-bar.hover-visible {

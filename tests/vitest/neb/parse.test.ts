@@ -579,14 +579,12 @@ describe(`NebViewer`, () => {
       bind_props({ paths: reaction_paths[`direct hop`], on_fullscreen_change }, state),
     )
     const button = viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)
-    expect(button?.style.getPropertyValue(`--icon-size`)).toBe(
-      `var(--neb-fullscreen-icon-size, 1.25rem)`,
-    )
+    if (!button) throw new Error(`NEB fullscreen button not found`)
     viewer.requestFullscreen = vi.fn(async () => {
       fullscreen_element = viewer
       document.dispatchEvent(new Event(`fullscreenchange`))
     })
-    button?.click()
+    button.click()
     await flush_render()
     expect(state.fullscreen).toBe(true)
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)

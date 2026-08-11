@@ -257,7 +257,6 @@
             onclick={() =>
               toggle_fullscreen_from_button(wrapper, (value) => (fullscreen = value))}
             class="fullscreen-button"
-            style="--icon-size: var(--neb-fullscreen-icon-size, 1.25rem)"
           />
         {/if}
       </div>
@@ -362,10 +361,6 @@
   }
   .image-status strong {
     color: var(--accent-color, currentColor);
-  }
-  .neb-options :global(.fullscreen-button) {
-    padding: 0;
-    background: transparent;
   }
   .panes {
     display: grid;

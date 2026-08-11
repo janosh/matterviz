@@ -1757,14 +1757,6 @@
       opacity: 0;
     }
   }
-  /* :global pierces into FullscreenButton's markup (anchored on local .info-section) */
-  .info-section :global(.fullscreen-button) {
-    background: transparent !important;
-    padding: 0;
-    &:hover:not(:disabled) {
-      background: var(--border-color);
-    }
-  }
   .info-section {
     display: flex;
     align-items: center;
