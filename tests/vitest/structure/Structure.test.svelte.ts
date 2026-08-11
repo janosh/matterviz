@@ -106,7 +106,7 @@ const mount_volumetric = (
 }
 
 const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
-  globalThis.fetch = vi.fn().mockResolvedValue(new Response(content, { headers }))
+  vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
 }
 
 // Tests for Structure component functionality
@@ -427,7 +427,7 @@ describe(`Structure`, () => {
 
   test(`falls back to untransformed structure when make_supercell throws`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    vi.mocked(make_supercell).mockImplementation(() => {
+    vi.mocked(make_supercell).mockImplementationOnce(() => {
       throw new Error(`malformed scaling matrix`)
     })
     try {
@@ -452,7 +452,6 @@ describe(`Structure`, () => {
       })
       expect(state.measure_mode).toBe(`edit-bonds`)
     } finally {
-      vi.mocked(make_supercell).mockReset()
       error_spy.mockRestore()
     }
   })
@@ -527,11 +526,15 @@ describe(`Structure`, () => {
     },
   )
 
-  test(`toggle fullscreen mode`, async () => {
+  test(`preserves control chrome overrides and toggles fullscreen`, async () => {
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
     const exitFullscreenMock = vi.fn()
 
-    mount_structure({ structure, show_controls: true })
+    mount_structure({
+      structure,
+      show_controls: `always`,
+      style: `--ctrl-btn-icon-size: 32px`,
+    })
 
     // Find the wrapper element that was created by the component
     const wrapper = doc_query(`.structure`)
@@ -540,6 +543,11 @@ describe(`Structure`, () => {
     wrapper.requestFullscreen = requestFullscreenMock
     document.exitFullscreen = exitFullscreenMock
     await tick()
+
+    expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
+    expect(doc_query(`.control-buttons`).getAttribute(`style`)).not.toContain(
+      `--ctrl-btn-icon-size`,
+    )
 
     // Click the fullscreen button
     const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
@@ -801,7 +809,12 @@ describe(`Structure string parsing`, () => {
       structure_string: `not parseable`,
       on_error,
     })
-    await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith({
+        error_msg: expect.stringContaining(`Failed to parse structure from string`),
+        filename: `string`,
+      }),
+    )
   })
 
   test(`prioritizes data_url over structure_string`, async () => {
@@ -893,6 +906,22 @@ describe(`Structure string parsing`, () => {
     })
   const request_url = (url: string | URL | Request) =>
     typeof url === `string` ? url : url instanceof URL ? url.href : url.url
+  const deferred_fetch_responses = () => {
+    const responses = new Map<
+      string,
+      { resolve: (response: Response) => void; reject: (error: Error) => void }
+    >()
+    vi.stubGlobal(
+      `fetch`,
+      vi.fn(
+        (url: string | URL | Request) =>
+          new Promise<Response>((resolve, reject) => {
+            responses.set(request_url(url), { resolve, reject })
+          }),
+      ),
+    )
+    return responses
+  }
 
   test(`reloads URL-owned structure when data_url changes`, async () => {
     const loaded_elements: string[] = []
@@ -923,12 +952,7 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`ignores a stale structure URL completion`, async () => {
-    const responses = new Map<string, (response: Response) => void>()
-    const fetch_mock = vi.fn(
-      (url: string | URL | Request) =>
-        new Promise<Response>((resolve) => responses.set(request_url(url), resolve)),
-    )
-    vi.stubGlobal(`fetch`, fetch_mock)
+    const responses = deferred_fetch_responses()
     const on_file_load = vi.fn()
     const props = $state<ComponentProps<typeof Structure>>({
       data_url: `/a.json`,
@@ -939,27 +963,17 @@ describe(`Structure string parsing`, () => {
 
     props.data_url = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses.get(`/b.json`)?.(new Response(structure_json(`He`)))
+    responses.get(`/b.json`)?.resolve(new Response(structure_json(`He`)))
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
 
-    responses.get(`/a.json`)?.(new Response(structure_json(`H`)))
+    responses.get(`/a.json`)?.resolve(new Response(structure_json(`H`)))
     await tick()
     expect(on_file_load).toHaveBeenCalledTimes(1)
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
   })
 
   test(`on_error reports the requested URL, not a superseded data_url`, async () => {
-    const responses = new Map<
-      string,
-      { resolve: (response: Response) => void; reject: (error: Error) => void }
-    >()
-    const fetch_mock = vi.fn(
-      (url: string | URL | Request) =>
-        new Promise<Response>((resolve, reject) => {
-          responses.set(request_url(url), { resolve, reject })
-        }),
-    )
-    vi.stubGlobal(`fetch`, fetch_mock)
+    const responses = deferred_fetch_responses()
     const on_error = vi.fn()
     const props = $state<ComponentProps<typeof Structure>>({
       data_url: `/a.json`,
@@ -980,11 +994,14 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`load error state renders StatusMessage`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      text: () => Promise.resolve(``),
-    })
+    vi.stubGlobal(
+      `fetch`,
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        text: () => Promise.resolve(``),
+      }),
+    )
     mount_structure({ data_url: `/missing-structure.json` })
     await vi.waitFor(() =>
       expect(document.querySelector(`.status-message.error`)).toBeInstanceOf(HTMLElement),
@@ -1006,7 +1023,7 @@ describe(`Multi-side view`, () => {
   }
   afterEach(() => vi.restoreAllMocks())
 
-  test(`layout dropdown switches multi_view and wrapper class`, async () => {
+  test(`layout dropdown is layered and switches multi_view`, async () => {
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       show_controls: `always`,
@@ -1015,52 +1032,34 @@ describe(`Multi-side view`, () => {
     mount_structure(props)
     await tick()
 
-    expect(doc_query(`button[aria-label="View layout: 3D single view"]`)).toBeInstanceOf(
-      HTMLButtonElement,
+    const layout_button = doc_query<HTMLButtonElement>(
+      `button[aria-label="View layout: 3D single view"]`,
     )
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
-    await select_structure_layout(`3D 2×2 grid`)
-    expect(props.multi_view).toBe(true)
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
-
-    await select_structure_layout(`3D single view`)
-    expect(props.multi_view).toBe(false)
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
-  })
-
-  // Regression: the open panel needs a stacking context above canvas siblings,
-  // and options must remain clickable (paired light-dark ink is in CSS).
-  test(`view layout menu is layered and selectable`, async () => {
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      show_controls: `always`,
-      multi_view: false,
-    })
-    mount_structure(props)
+    layout_button.click()
     await tick()
-
-    doc_query<HTMLButtonElement>(`button[aria-label^="View layout:"]`).click()
-    await tick()
-
     const dropdown = doc_query(`.view-mode-dropdown`)
-    const dropdown_style = getComputedStyle(dropdown)
-    expect(dropdown_style.pointerEvents).toBe(`auto`)
-    expect(Number(dropdown_style.zIndex)).toBeGreaterThan(0)
+    expect(getComputedStyle(dropdown).pointerEvents).toBe(`auto`)
+    expect(Number(getComputedStyle(dropdown).zIndex)).toBeGreaterThan(0)
+    const view_mode_control = doc_query(`.view-mode-control`)
+    expect(Number(getComputedStyle(view_mode_control).zIndex)).toBeGreaterThan(0)
 
-    const control = doc_query(`.view-mode-control`)
-    expect(Number(getComputedStyle(control).zIndex)).toBeGreaterThan(0)
-
-    const grid_option = Array.from(
-      dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-    ).find((button) => button.textContent?.trim() === `3D 2×2 grid`)
+    const grid_option = [
+      ...dropdown.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+    ].find((button) => button.textContent?.trim() === `3D 2×2 grid`)
     if (!grid_option) throw new Error(`Missing structure layout option: 3D 2×2 grid`)
     grid_option.click()
     flushSync()
     await tick()
 
     expect(props.multi_view).toBe(true)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
     expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
+
+    await select_structure_layout(`3D single view`)
+    expect(props.multi_view).toBe(false)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
   })
 
   test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
