@@ -152,7 +152,17 @@
 
 <style>
   .marker {
-    transition: var(--scatter-point-transition, all 0.2s);
+    transition: var(
+      --scatter-point-transition,
+      transform 0.2s,
+      stroke 0.2s,
+      stroke-width 0.2s,
+      stroke-opacity 0.2s,
+      fill 0.2s,
+      fill-opacity 0.2s,
+      filter 0.2s,
+      opacity 0.2s
+    );
   }
   .marker.is-hovered {
     transform: scale(var(--hover-scale));

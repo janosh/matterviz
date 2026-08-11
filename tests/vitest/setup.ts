@@ -84,6 +84,17 @@ export function doc_query<T extends Element = HTMLElement>(
 
 export const svg_query = (selector: string): SVGElement => doc_query<SVGElement>(selector)
 
+export function expect_transition_properties(
+  element: Element,
+  properties: readonly string[],
+  duration = `0.2s`,
+): void {
+  const transition = getComputedStyle(element).transition
+  for (const property of properties) expect(transition).toContain(`${property} ${duration}`)
+  expect(transition).not.toContain(`all`)
+  expect(transition).not.toMatch(/(?:^|,)\s*d\s/)
+}
+
 export const expect_labelled_settings_grid = (
   root: ParentNode = document,
   {
