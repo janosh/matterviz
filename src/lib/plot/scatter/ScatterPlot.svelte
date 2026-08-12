@@ -53,11 +53,7 @@
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import {
-    build_obstacles_norm,
-    has_explicit_position,
-    measured_footprint,
-  } from '$lib/plot/core/auto-place'
+  import { build_obstacles_norm, has_explicit_position } from '$lib/plot/core/auto-place'
   import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
@@ -102,6 +98,8 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     AXIS_TITLE_OFFSET,
+    element_position_for_footprint,
+    full_footprint_or,
     stride_sample,
     y_axis_label_x,
     y2_axis_label_x,
@@ -198,7 +196,7 @@
             margin?: number | Sides
             tween?: TweenOptions<Point2D>
             responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
-            axis_clearance?: number // Min distance kept from plot edges/axes (default: 15)
+            axis_clearance?: number // Min distance kept from plot edges/axes (default: 8)
           })
         | null
       label_placement_config?: Partial<LabelPlacementConfig>
@@ -491,7 +489,7 @@
   let colorbar_size_revision = $state(0)
   const colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return measured_footprint(colorbar_element, colorbar_fallback_size)
+    return full_footprint_or(colorbar_element, colorbar_fallback_size)
   })
   const legend_footprint = $derived(frame.legend_footprint)
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
@@ -544,8 +542,8 @@
     }
     if (colorbar_element && color_bar?.wrapper_style) {
       rects.push({
-        x: colorbar_element.offsetLeft,
-        y: colorbar_element.offsetTop,
+        x: colorbar_element.offsetLeft + colorbar_footprint.offset_x,
+        y: colorbar_element.offsetTop + colorbar_footprint.offset_y,
         ...colorbar_footprint,
       })
     }
@@ -639,7 +637,7 @@
             kind: `colorbar`,
             footprint: colorbar_footprint,
             horizontal: colorbar_is_horizontal,
-            clearance: color_bar.axis_clearance,
+            clearance: color_bar.axis_clearance ?? COLOR_BAR_DEFAULTS.axis_clearance,
           },
         ]
       : [],
@@ -1014,7 +1012,7 @@
     get_decoration_placement(frame.decoration_solution, `colorbar`),
   )
   const colorbar_tween = create_placed_tween({
-    placement: () => colorbar_placement ?? null,
+    placement: () => element_position_for_footprint(colorbar_placement, colorbar_footprint),
     dims: () => ({ width, height }),
     responsive: () => color_bar?.responsive ?? false,
     element: () => colorbar_element,

@@ -376,12 +376,12 @@ describe(`layout utility functions`, () => {
     // Negative throughout: labels anchored at their end trail left of the tick, so the
     // rightmost one cannot run off the plot.
     it.each([
-      [`labels that already fit`, 100, 0],
+      [`the minimum 1 px gap`, 71, 0],
+      [`less than the minimum gap`, 70.99, -30],
       [`a shallow tilt`, 60, -30],
-      [`a steeper tilt`, 30, -60],
-      [`vertical labels`, 24, -90],
-      // Below one line height even vertical labels touch; 90 is the best on offer.
-      [`the steepest angle it has`, 8, -90],
+      [`a medium tilt`, 30, -45],
+      [`a steeper tilt`, 24, -60],
+      [`the steepest feasible angle`, 8, -60],
       [`no pitch at all to work with`, 0, 0],
     ])(`crowding at %s`, (_label, pitch, expected) => {
       const layout = x_layout(crowded, pitch * crowded.length, {
@@ -458,8 +458,10 @@ describe(`layout utility functions`, () => {
       expect(wide).toMatchObject({ rotation: 0, band: TICK_LABEL_HEIGHT })
       expect(resolved_lines(wide)).toEqual(state_labels.map((label) => [label]))
 
-      const wrapping_disabled = x_layout(state_labels, 220, {
-        tick: { label: { max_lines: 1 } },
+      const wrapping_disabled = x_layout(state_labels, 160, {
+        tick: {
+          label: { max_lines: 1, auto_layout: { strategies: [`upright`, `rotate`] } },
+        },
       })
       expect(wrapping_disabled.rotation).toBe(-30)
       expect(resolved_lines(wrapping_disabled)).toEqual(state_labels.map((label) => [label]))
@@ -547,7 +549,7 @@ describe(`layout utility functions`, () => {
           tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] as const } } },
         },
       )
-      expect(crowded_multiline.rotation).toBe(-60)
+      expect(crowded_multiline.rotation).toBe(-45)
       expect(resolved_lines(crowded_multiline)).toEqual([
         [`abcdefghij`, `klmnopqrst`],
         [`abcdefghij`, `klmnopqrst`],
@@ -556,7 +558,9 @@ describe(`layout utility functions`, () => {
 
     it(`keeps an unbreakable word intact and rotates it when crowded`, () => {
       const label = `SUPERCALIFRAGILISTIC`
-      const layout = x_layout([label, label], 220)
+      const layout = x_layout([label, label], 220, {
+        tick: { label: { auto_layout: { strategies: [`upright`, `rotate`] } } },
+      })
       expect(layout.rotation).toBe(-30)
       expect(resolved_lines(layout)).toEqual([[label], [label]])
     })
@@ -784,7 +788,7 @@ describe(`layout utility functions`, () => {
         `x`,
       )
 
-      expect(layout).toMatchObject({ strategy: `thin`, rotation: -90 })
+      expect(layout).toMatchObject({ strategy: `thin`, rotation: -60 })
       expect(layout.visible_tick_indices).toHaveLength(4)
     })
 

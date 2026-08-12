@@ -28,7 +28,7 @@ import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
 
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16
-export const TICK_LABEL_GAP = 6
+export const TICK_LABEL_GAP = 1
 const TICK_STAGGER_GAP = 4
 
 // Widths come from the shared text-metrics cache either way; hierarchy labels hold a canvas

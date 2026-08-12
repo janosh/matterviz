@@ -49,6 +49,20 @@ const MAX_CACHED_LINES = 10_000
 const positive_number = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? value : fallback
 
+// Chromium serializes named font stretches as percentages, which canvas font shorthand rejects
+// silently. Map the standard equivalents back to accepted keywords.
+const FONT_STRETCH_PERCENTAGES: Readonly<Record<string, string>> = {
+  '50%': `ultra-condensed`,
+  '62.5%': `extra-condensed`,
+  '75%': `condensed`,
+  '87.5%': `semi-condensed`,
+  '100%': `normal`,
+  '112.5%': `semi-expanded`,
+  '125%': `expanded`,
+  '150%': `extra-expanded`,
+  '200%': `ultra-expanded`,
+}
+
 const normalize_font_spec = (font: Readonly<FontSpec>): FontSpec => {
   const font_size = positive_number(font.font_size, DEFAULT_FONT_SPEC.font_size)
   return {
@@ -146,11 +160,13 @@ export function resolve_font_spec(
 // equivalent computed styles (for example `normal` and weight `400`) to one cache key.
 export function font_spec_to_css(font: Readonly<FontSpec>): string {
   const normalized = normalize_font_spec(font)
+  const font_stretch =
+    FONT_STRETCH_PERCENTAGES[normalized.font_stretch] ?? normalized.font_stretch
   const qualifiers = [
     normalized.font_style === `normal` ? `` : normalized.font_style,
     normalized.font_variant === `normal` ? `` : normalized.font_variant,
     [`normal`, `400`].includes(normalized.font_weight) ? `` : normalized.font_weight,
-    normalized.font_stretch === `normal` ? `` : normalized.font_stretch,
+    font_stretch === `normal` ? `` : font_stretch,
   ].filter(Boolean)
   return [...qualifiers, `${normalized.font_size}px`, normalized.font_family].join(` `)
 }
