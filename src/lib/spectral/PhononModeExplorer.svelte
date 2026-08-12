@@ -10,7 +10,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import IrRamanSpectrum from './IrRamanSpectrum.svelte'
-  import { acoustic_mode_indices } from './ir-raman'
+  import { acoustic_mode_indices, is_gamma_point } from './ir-raman'
   import { parse_phonon_modes } from './parse-phonon-modes'
   import {
     DEFAULT_PHONON_AMPLITUDE,
@@ -28,12 +28,9 @@
     VibrationalSpectrum,
   } from './types'
 
-  export type PhononModeExplorerHandlerData = {
+  export type PhononModeExplorerHandlerData = io.FileLoadData & {
     mode_data?: PhononModeData
     selection?: PhononModeSelection
-    filename?: string
-    source_filename?: string
-    file?: File
     error_msg?: string
   }
 
@@ -81,6 +78,8 @@
   let current_step_idx = $state(0)
   let source_filename = $state<string>()
   const data_url_loader = io.create_data_url_loader<PhononModeData>()
+  const allows_file_drop = (): boolean =>
+    allow_file_drop && yaml === undefined && data_url === undefined
 
   const report_error = (error: unknown, filename?: string): void => {
     const prefix = filename ? `${filename}: ` : ``
@@ -97,9 +96,7 @@
       throw new Error(`expected a .yaml or .yml phonopy mode file, got '${filename}'`)
     }
     const parsed = parse_phonon_modes(io.as_text(content))
-    loaded_data = parsed
-    source_filename = filename
-    error_msg = undefined
+    ;[loaded_data, source_filename, error_msg] = [parsed, filename, undefined]
     on_file_load?.({ mode_data: parsed, filename, ...metadata })
     return parsed
   }
@@ -115,9 +112,7 @@
       return
     }
     if (mode_data) {
-      loaded_data = mode_data
-      source_filename = undefined
-      error_msg = undefined
+      ;[loaded_data, source_filename, error_msg] = [mode_data, undefined, undefined]
     } else if (yaml !== undefined) {
       try {
         parse_source(yaml)
@@ -126,8 +121,7 @@
         report_error(error)
       }
     } else if (!data_url) {
-      loaded_data = undefined
-      source_filename = undefined
+      ;[loaded_data, source_filename] = [undefined, undefined]
     }
   })
 
@@ -138,12 +132,11 @@
       skip: mode_data !== undefined || yaml !== undefined,
       set_loading: (value) => (loading = value),
       clear_error: () => (error_msg = undefined),
-      on_load: ({ content, filename, metadata, is_current, mark_owned }) => {
+      on_load: ({ content, filename, metadata, mark_owned }) => {
         try {
-          const parsed = parse_source(content, filename, metadata)
-          if (is_current()) mark_owned(parsed)
+          mark_owned(parse_source(content, filename, metadata))
         } catch (error) {
-          if (is_current()) report_error(error, filename)
+          report_error(error, filename)
         }
       },
       on_error: report_error,
@@ -151,11 +144,10 @@
   )
 
   const handle_file_drop = io.create_file_drop_handler({
-    allow: () => allow_file_drop && yaml === undefined && data_url === undefined,
+    allow: allows_file_drop,
     max_files: 1,
     on_drop: (content, filename, metadata) => {
-      const parsed = parse_source(content, filename, metadata)
-      mode_data = parsed
+      mode_data = parse_source(content, filename, metadata)
     },
     on_error: (message) => report_error(message),
     set_loading: (value) => {
@@ -165,16 +157,9 @@
   })
 
   const first_selectable_mode = (data: PhononModeData): PhononModeSelection | undefined => {
-    const gamma_idx = data.qpoints.findIndex(({ q_position }) =>
-      q_position.every((coordinate) => Math.abs(coordinate - Math.round(coordinate)) < 0.01),
-    )
-    const qpoint_order = [
-      gamma_idx,
-      ...data.qpoints.map((_, qpoint_idx) => qpoint_idx),
-    ].filter(
-      (qpoint_idx, order_idx, values) =>
-        qpoint_idx >= 0 && values.indexOf(qpoint_idx) === order_idx,
-    )
+    const gamma_idx = data.qpoints.findIndex(({ q_position }) => is_gamma_point(q_position))
+    const qpoint_order = data.qpoints.map((_, qpoint_idx) => qpoint_idx)
+    if (gamma_idx > 0) qpoint_order.unshift(...qpoint_order.splice(gamma_idx, 1))
     for (const qpoint_idx of qpoint_order) {
       const qpoint = data.qpoints[qpoint_idx]
       const acoustic = acoustic_mode_indices(qpoint.modes, qpoint.q_position)
@@ -187,11 +172,11 @@
     }
   }
 
-  let selected_data = $state<PhononModeData>()
+  let initialized_data: PhononModeData | undefined
   $effect(() => {
     const data = loaded_data
-    if (!data || data === selected_data) return
-    selected_data = data
+    if (!data || data === initialized_data) return
+    initialized_data = data
     const current_mode =
       selection && data.qpoints[selection.qpoint_idx]?.modes[selection.mode_idx]
     if (!current_mode?.eigenvector) selection = first_selectable_mode(data)
@@ -227,10 +212,8 @@
       return { value: null, error: to_error(error).message }
     }
   })
-  let selected_qpoint = $derived(
-    selection === undefined ? undefined : loaded_data?.qpoints[selection.qpoint_idx],
-  )
-  let selected_mode = $derived(selected_qpoint?.modes[selection?.mode_idx ?? -1])
+  let selected_qpoint = $derived(selection && loaded_data?.qpoints[selection.qpoint_idx])
+  let selected_mode = $derived(selection && selected_qpoint?.modes[selection.mode_idx])
   let commensurate = $derived(trajectory_result.value?.metadata?.is_commensurate !== false)
 
   let reported_generation_error: string | null = null
@@ -282,18 +265,19 @@
 
   const select_spectrum_mode = (mode_idx: number): void => {
     if (!loaded_data || !spectrum) return
-    const matches = loaded_data.qpoints
-      .map((qpoint, qpoint_idx) => ({ qpoint, qpoint_idx }))
-      .filter(({ qpoint }) =>
-        qpoint.q_position.every((coordinate, axis) => {
-          const delta = coordinate - spectrum.q_position[axis]
-          return Math.abs(delta - Math.round(delta)) < 1e-6
-        }),
-      )
-    const current_match = matches.find(
-      ({ qpoint_idx }) => qpoint_idx === selection?.qpoint_idx,
+    const matches = loaded_data.qpoints.flatMap(({ q_position }, qpoint_idx) =>
+      q_position.every((coordinate, axis) => {
+        const delta = coordinate - spectrum.q_position[axis]
+        return Math.abs(delta - Math.round(delta)) < 1e-6
+      })
+        ? [qpoint_idx]
+        : [],
     )
-    const qpoint_idx = current_match?.qpoint_idx ?? matches[0]?.qpoint_idx
+    const current_qpoint_idx = selection?.qpoint_idx
+    const qpoint_idx =
+      current_qpoint_idx !== undefined && matches.includes(current_qpoint_idx)
+        ? current_qpoint_idx
+        : matches[0]
     if (qpoint_idx === undefined) {
       report_error(
         `Spectrum q-point [${spectrum.q_position.join(`, `)}] is absent from mode data`,
@@ -316,7 +300,7 @@
   class={[`phonon-mode-explorer`, { dragover }, rest.class]}
   ondrop={handle_file_drop}
   {...io.drag_over_handlers({
-    allow: () => allow_file_drop && yaml === undefined && data_url === undefined,
+    allow: allows_file_drop,
     set_dragover: (value) => (dragover = value),
   })}
 >

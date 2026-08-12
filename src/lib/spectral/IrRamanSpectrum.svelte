@@ -79,6 +79,12 @@
   )
   let has_signal = $derived(sticks.x.length > 0 && sticks.y.some((val) => val > 0))
 
+  const select_mode = (mode_idx: number | undefined): void => {
+    if (mode_idx === undefined) return
+    selected_mode_idx = mode_idx
+    on_mode_select?.(mode_idx)
+  }
+
   // Pad the grid well beyond the outermost peak so tails are not clipped, and keep the
   // low-frequency edge at zero, as vibrational spectra are conventionally drawn.
   let plot_range = $derived.by((): Vec2 => {
@@ -282,16 +288,11 @@
               aria-label={mode
                 ? `Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${units}`
                 : `Select vibrational mode`}
-              onclick={() => {
-                if (!mode) return
-                selected_mode_idx = mode.mode_idx
-                on_mode_select?.(mode.mode_idx)
-              }}
+              onclick={() => select_mode(mode?.mode_idx)}
               onkeydown={(event) => {
                 if (!mode || (event.key !== `Enter` && event.key !== ` `)) return
                 event.preventDefault()
-                selected_mode_idx = mode.mode_idx
-                on_mode_select?.(mode.mode_idx)
+                select_mode(mode.mode_idx)
               }}
             />
           {/if}

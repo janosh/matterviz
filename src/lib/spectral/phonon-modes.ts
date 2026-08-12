@@ -28,6 +28,8 @@ export const DEFAULT_PHONON_AMPLITUDE = 0.3
 export const DEFAULT_PHONON_SUPERCELL: Vec3 = [2, 2, 2]
 export const DEFAULT_PHONON_FRAMES = 48
 export const PHONON_VECTOR_KEY = `phonon_displacement`
+// Every frame clones complete site objects, so reject requests likely to freeze the browser.
+const MAX_PHONON_TRAJECTORY_SITE_FRAMES = 500_000
 
 // Convert parsed band.yaml modes to the structure consumed by Bands.
 export function phonon_band_structure_from_modes(data: PhononModeData): PhononBandStructure {
@@ -42,11 +44,14 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
   if (!reciprocal_lattice) {
     throw new Error(`Phonon band data needs a real or reciprocal lattice`)
   }
-  if (data.qpoints.some(({ distance }) => distance === null)) {
-    throw new Error(`Phonon band path contains a q-point without a distance`)
-  }
+  const distances = data.qpoints.map(({ distance: qpoint_distance }) => {
+    if (qpoint_distance === null) {
+      throw new Error(`Phonon band path contains a q-point without a distance`)
+    }
+    return qpoint_distance
+  })
 
-  const labels_by_index = new Map<number, string>()
+  const labels_by_index: Record<number, string> = {}
   const labels_dict: Record<string, Vec3> = {}
   const branches = data.path_segments.map((segment, segment_idx) => {
     const { start_index, end_index, start_label, end_label } = segment
@@ -55,32 +60,23 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
         `Phonon path segment ${segment_idx} has invalid bounds ${start_index}–${end_index} for ${data.qpoints.length} q-points`,
       )
     }
-    if (start_label) {
-      labels_by_index.set(start_index, start_label)
-      labels_dict[start_label] = data.qpoints[start_index].q_position
+    for (const [qpoint_idx, label] of [
+      [start_index, start_label],
+      [end_index, end_label],
+    ] as const) {
+      if (!label) continue
+      labels_by_index[qpoint_idx] = label
+      labels_dict[label] = data.qpoints[qpoint_idx].q_position
     }
-    if (end_label) {
-      labels_by_index.set(end_index, end_label)
-      labels_dict[end_label] = data.qpoints[end_index].q_position
-    }
-    return {
-      start_index,
-      end_index,
-      name:
-        start_label && end_label
-          ? `${start_label}-${end_label}`
-          : `segment-${segment_idx + 1}`,
-    }
+    const name =
+      start_label && end_label ? `${start_label}-${end_label}` : `segment-${segment_idx + 1}`
+    return { start_index, end_index, name, is_discontinuity: false }
   })
-  const qpoints: QPoint[] = data.qpoints.map(({ q_position, distance }, qpoint_idx) => ({
-    label: labels_by_index.get(qpoint_idx) ?? null,
+  const qpoints: QPoint[] = data.qpoints.map(({ q_position }, qpoint_idx) => ({
+    label: labels_by_index[qpoint_idx] ?? null,
     frac_coords: q_position,
-    distance: distance ?? undefined,
+    distance: distances[qpoint_idx],
   }))
-  const distance = data.qpoints.map(({ distance: qpoint_distance }) => {
-    if (qpoint_distance === null) throw new Error(`Phonon band path contains a null distance`)
-    return qpoint_distance
-  })
   const bands = Array.from({ length: data.qpoints[0]?.modes.length ?? 0 }, (_, mode_idx) =>
     data.qpoints.map(({ modes }, qpoint_idx) => {
       const mode = modes[mode_idx]
@@ -94,7 +90,7 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     qpoints,
     branches,
     labels_dict,
-    distance,
+    distance: distances,
     nb_bands: bands.length,
     bands,
     has_imaginary_modes: bands.some((band) => band.some((frequency) => frequency < 0)),
@@ -125,7 +121,7 @@ function complex_vector_max_norm(vector: Complex[]): number {
 function validate_selection(
   data: PhononModeData,
   selection: PhononModeSelection,
-): NonNullable<(typeof data.qpoints)[number][`modes`][number][`eigenvector`]> {
+): Complex[][] {
   const qpoint = data.qpoints[selection.qpoint_idx]
   if (!qpoint) {
     throw new Error(
@@ -185,14 +181,27 @@ export function phonon_mode_trajectory(
     )
   }
   const scaling = parse_supercell_scaling(supercell)
+  const n_cells = scaling[0] * scaling[1] * scaling[2]
+  const n_supercell_sites = data.n_atoms * n_cells
+  const n_site_frames = n_supercell_sites * n_frames
+  if (
+    !Number.isSafeInteger(n_site_frames) ||
+    n_site_frames > MAX_PHONON_TRAJECTORY_SITE_FRAMES
+  ) {
+    throw new Error(
+      `Phonon trajectory would generate ${n_supercell_sites} sites × ${n_frames} frames ` +
+        `(${n_site_frames} site-frames), exceeding the ${MAX_PHONON_TRAJECTORY_SITE_FRAMES} limit. ` +
+        `Reduce the supercell or frame count.`,
+    )
+  }
   const eigenvector = validate_selection(data, selection)
   if (eigenvector.length !== data.n_atoms) {
     throw new Error(
       `Phonon eigenvector has ${eigenvector.length} atom blocks but mode data declares ${data.n_atoms}`,
     )
   }
-  const qpoint = data.qpoints[selection.qpoint_idx]
-  const mode = qpoint.modes[selection.mode_idx]
+  const { q_position, modes } = data.qpoints[selection.qpoint_idx]
+  const { frequency } = modes[selection.mode_idx]
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
   const sites = data.atoms.map((atom, atom_idx) => {
     if (!is_elem_symbol(atom.symbol)) {
@@ -213,14 +222,13 @@ export function phonon_mode_trajectory(
       ...math.calc_lattice_params(data.lattice),
     },
     properties: {
-      phonon_q_position: qpoint.q_position,
-      phonon_frequency: mode.frequency,
+      phonon_q_position: q_position,
+      phonon_frequency: frequency,
       phonon_mode_idx: selection.mode_idx,
     },
   }
   const equilibrium = make_supercell(unit_cell, scaling, false)
   const supercell_cart_to_frac = math.create_cart_to_frac(equilibrium.lattice.matrix)
-  const n_cells = scaling[0] * scaling[1] * scaling[2]
 
   let anchor: Complex = [1, 0]
   let anchor_magnitude = -1
@@ -234,34 +242,33 @@ export function phonon_mode_trajectory(
     }
   }
   if (!(anchor_magnitude > 0)) throw new Error(`Phonon eigenvector has zero displacement`)
-  const mass_scaled = eigenvector.map((atom_vector, atom_idx) => {
+  const anchor_rotation = complex_phase(-Math.atan2(anchor[1], anchor[0]))
+  const phase_anchored = eigenvector.map((atom_vector, atom_idx) => {
     const { mass } = data.atoms[atom_idx]
     if (!Number.isFinite(mass) || mass <= 0) {
       throw new Error(`Phonon atom ${atom_idx} has invalid mass ${mass}`)
     }
     const mass_scale = 1 / Math.sqrt(mass * n_cells)
-    return atom_vector.map(
-      ([real_part, imag_part]): Complex => [real_part * mass_scale, imag_part * mass_scale],
+    return atom_vector.map(([real_part, imag_part]) =>
+      multiply_complex([real_part * mass_scale, imag_part * mass_scale], anchor_rotation),
     )
   })
-  const anchor_rotation = complex_phase(-Math.atan2(anchor[1], anchor[0]))
-  const phase_anchored = mass_scaled.map((atom_vector) =>
-    atom_vector.map((component) => multiply_complex(component, anchor_rotation)),
-  )
 
-  const cell_points = generate_lattice_points(scaling)
   const complex_displacements: Complex[][] = []
-  for (const cell_point of cell_points) {
+  for (const cell_point of generate_lattice_points(scaling)) {
     for (const [atom_idx, atom_vector] of phase_anchored.entries()) {
       const atom_position = math.add(cell_point, data.atoms[atom_idx].coordinates)
-      const spatial_angle = 2 * Math.PI * math.dot(qpoint.q_position, atom_position)
+      const spatial_angle = 2 * Math.PI * math.dot(q_position, atom_position)
       const spatial_phase = complex_phase(spatial_angle)
       complex_displacements.push(
         atom_vector.map((component) => multiply_complex(component, spatial_phase)),
       )
     }
   }
-  const max_excursion = Math.max(...complex_displacements.map(complex_vector_max_norm))
+  let max_excursion = 0
+  for (const displacement of complex_displacements) {
+    max_excursion = Math.max(max_excursion, complex_vector_max_norm(displacement))
+  }
   if (!(max_excursion > 0)) throw new Error(`Phonon eigenvector has zero maximum excursion`)
   const amplitude_scale = amplitude / max_excursion
 
@@ -285,7 +292,7 @@ export function phonon_mode_trajectory(
     return {
       structure: { ...equilibrium, sites: frame_sites },
       step: frame_idx,
-      metadata: { phase, frequency: mode.frequency, q_position: qpoint.q_position },
+      metadata: { phase, frequency, q_position },
     }
   })
 
@@ -293,12 +300,12 @@ export function phonon_mode_trajectory(
     frames,
     metadata: {
       amplitude,
-      frequency: mode.frequency,
+      frequency,
       mode_idx: selection.mode_idx,
       qpoint_idx: selection.qpoint_idx,
-      q_position: qpoint.q_position,
+      q_position,
       supercell: scaling,
-      is_commensurate: is_commensurate_phonon_supercell(qpoint.q_position, scaling),
+      is_commensurate: is_commensurate_phonon_supercell(q_position, scaling),
     },
   }
 }

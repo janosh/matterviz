@@ -13,6 +13,7 @@
     BandsSpinMode,
     BandStructureType,
     BaseBandStructure,
+    Branch,
     FrequencyUnit,
     LineKwargs,
     PathMode,
@@ -236,14 +237,12 @@
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
-    const collected_segments: Record<string, [string, BaseBandStructure][]> = {}
+    const collected_segments: Record<string, [string, BaseBandStructure, Branch][]> = {}
     for (const [label, bs] of Object.entries(band_structs_dict)) {
       for (const branch of bs.branches) {
-        const start_label = bs.qpoints[branch.start_index]?.label ?? undefined
-        const end_label = bs.qpoints[branch.end_index]?.label ?? undefined
-        const segment_key = helpers.get_segment_key(start_label, end_label)
+        const segment_key = helpers.get_branch_segment_key(bs, branch)
         collected_segments[segment_key] ??= []
-        collected_segments[segment_key].push([label, bs])
+        collected_segments[segment_key].push([label, bs, branch])
       }
     }
     return collected_segments
@@ -306,32 +305,16 @@
     for (const segment_key of ordered_segments) {
       if (positions[segment_key]) continue
 
-      const [start_label, end_label] = segment_key.split(`_`)
-
-      // Find the first band structure that has this segment
-      for (const bs of Object.values(band_structs_dict)) {
-        const matching_branch = bs.branches.find((branch) => {
-          const branch_start = bs.qpoints[branch.start_index]?.label || `null`
-          const branch_end = bs.qpoints[branch.end_index]?.label || `null`
-          return branch_start === start_label && branch_end === end_label
-        })
-
-        if (matching_branch) {
-          // Check if this is a discontinuity: consecutive indices mean no path between points
-          const is_discontinuity =
-            matching_branch.end_index - matching_branch.start_index === 1
-
-          if (is_discontinuity) {
-            // Place at same x position as current, no advancement
-            positions[segment_key] = [current_x, current_x]
-          } else {
-            const segment_len =
-              bs.distance[matching_branch.end_index] - bs.distance[matching_branch.start_index]
-            positions[segment_key] = [current_x, current_x + segment_len]
-            current_x += segment_len
-          }
-          break
-        }
+      const segment = all_segments[segment_key]?.[0]
+      if (!segment) continue
+      const [, bs, branch] = segment
+      if (helpers.is_discontinuity_branch(branch)) {
+        // Place discontinuities at the current x position without advancing the path.
+        positions[segment_key] = [current_x, current_x]
+      } else {
+        const segment_len = bs.distance[branch.end_index] - bs.distance[branch.start_index]
+        positions[segment_key] = [current_x, current_x + segment_len]
+        current_x += segment_len
       }
     }
 
@@ -353,15 +336,11 @@
     const segments: PlotSegment[] = []
     for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
       for (const branch of bs.branches) {
-        // Skip discontinuous segments (consecutive labeled points)
-        if (branch.end_index - branch.start_index === 1) continue
+        if (helpers.is_discontinuity_branch(branch)) continue
 
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1
-        const segment_key = helpers.get_segment_key(
-          bs.qpoints[start_idx]?.label ?? undefined,
-          bs.qpoints[end_idx - 1]?.label ?? undefined,
-        )
+        const segment_key = helpers.get_branch_segment_key(bs, branch)
         if (!segments_to_plot.has(segment_key)) continue
 
         const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
@@ -541,9 +520,13 @@
     Object.entries(x_positions ?? {})
       .toSorted(([, [a]], [, [b]]) => a - b)
       .forEach(([segment_key, [x_start, x_end]]) => {
-        const [start_lbl, end_lbl] = segment_key.split(`_`)
-        const pretty_start = start_lbl !== `null` ? helpers.pretty_sym_point(start_lbl) : ``
-        const pretty_end = end_lbl !== `null` ? helpers.pretty_sym_point(end_lbl) : ``
+        const segment = all_segments[segment_key]?.[0]
+        if (!segment) return
+        const [, bs, branch] = segment
+        const start_label = bs.qpoints[branch.start_index]?.label
+        const end_label = bs.qpoints[branch.end_index]?.label
+        const pretty_start = start_label ? helpers.pretty_sym_point(start_label) : ``
+        const pretty_end = end_label ? helpers.pretty_sym_point(end_label) : ``
 
         // Check if this is a discontinuity (zero-length segment)
         const is_discontinuity = Math.abs(x_end - x_start) < 1e-6

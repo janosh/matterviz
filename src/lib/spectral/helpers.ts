@@ -77,6 +77,36 @@ export function pretty_sym_point(symbol: string): string {
 export const get_segment_key = (start_label?: string, end_label?: string) =>
   `${start_label ?? `null`}_${end_label ?? `null`}`
 
+// Labels identify the same path across structures. Occurrence indices distinguish repeated
+// labeled paths and identify unlabeled paths independently of producer-specific branch names.
+export const get_branch_segment_key = (
+  band_struct: types.BaseBandStructure,
+  branch: types.Branch,
+): string => {
+  const start_label = band_struct.qpoints[branch.start_index]?.label
+  const end_label = band_struct.qpoints[branch.end_index]?.label
+  const branch_idx = band_struct.branches.indexOf(branch)
+  if (!start_label && !end_label) {
+    return `branch:${branch_idx === -1 ? branch.name : branch_idx}`
+  }
+
+  const segment_key = get_segment_key(start_label ?? undefined, end_label ?? undefined)
+  if (branch_idx <= 0) return segment_key
+  const occurrence_idx = band_struct.branches
+    .slice(0, branch_idx)
+    .filter((previous_branch) => {
+      const previous_start = band_struct.qpoints[previous_branch.start_index]?.label
+      const previous_end = band_struct.qpoints[previous_branch.end_index]?.label
+      return (
+        get_segment_key(previous_start ?? undefined, previous_end ?? undefined) === segment_key
+      )
+    }).length
+  return occurrence_idx === 0 ? segment_key : `${segment_key}#${occurrence_idx + 1}`
+}
+
+export const is_discontinuity_branch = (branch: types.Branch): boolean =>
+  branch.is_discontinuity ?? branch.end_index - branch.start_index === 1
+
 // Get ordered segment keys from a band structure, preserving physical path order.
 export const get_ordered_segments = (
   band_struct: types.BaseBandStructure | null,
@@ -85,10 +115,7 @@ export const get_ordered_segments = (
   if (!band_struct) return Array.from(segments)
 
   const ordered = band_struct.branches.map((branch) =>
-    get_segment_key(
-      band_struct.qpoints[branch.start_index]?.label ?? undefined,
-      band_struct.qpoints[branch.end_index]?.label ?? undefined,
-    ),
+    get_branch_segment_key(band_struct, branch),
   )
   const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
   return [...ordered, ...remaining]
@@ -789,13 +816,7 @@ const branch_x_range = (
   bs: types.BaseBandStructure,
   branch: types.Branch,
   x_positions: Record<string, Vec2>,
-): Vec2 | undefined =>
-  x_positions[
-    get_segment_key(
-      bs.qpoints[branch.start_index]?.label ?? undefined,
-      bs.qpoints[branch.end_index]?.label ?? undefined,
-    )
-  ]
+): Vec2 | undefined => x_positions[get_branch_segment_key(bs, branch)]
 
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.

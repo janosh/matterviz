@@ -63,7 +63,9 @@ function parse_path_segments(
 ): PhononPathSegment[] {
   const raw_lengths = data.segment_nqpoint
   const raw_labels = data.labels
-  if (raw_lengths === undefined && raw_labels === undefined) return []
+  const raw_npath = data.npath
+  if (raw_lengths === undefined && raw_labels === undefined && raw_npath === undefined)
+    return []
   if (!Array.isArray(raw_lengths) || raw_lengths.length === 0) {
     throw new Error(`phonopy YAML 'segment_nqpoint' must be a non-empty list`)
   }
@@ -75,6 +77,18 @@ function parse_path_segments(
     }
     return length
   })
+  if (raw_npath !== undefined) {
+    if (!is_finite_number(raw_npath) || !Number.isInteger(raw_npath) || raw_npath <= 0) {
+      throw new Error(
+        `phonopy YAML 'npath' must be a positive integer, got ${JSON.stringify(raw_npath)}`,
+      )
+    }
+    if (raw_npath !== lengths.length) {
+      throw new Error(
+        `phonopy YAML declares npath=${raw_npath} but segment_nqpoint lists ${lengths.length} path segments`,
+      )
+    }
+  }
   const declared_total = lengths.reduce((sum, length) => sum + length, 0)
   if (declared_total !== n_qpoints) {
     throw new Error(
@@ -268,10 +282,7 @@ export function parse_phonon_modes(content: string): PhononModeData {
     `phonopy YAML 'reciprocal_lattice'`,
   )
   const path_segments = parse_path_segments(parsed, qpoints.length)
-  if (
-    path_segments.length > 0 &&
-    qpoints.some(({ distance }) => distance === null || !Number.isFinite(distance))
-  ) {
+  if (path_segments.length > 0 && qpoints.some(({ distance }) => distance === null)) {
     throw new Error(`phonopy band path contains a q-point without a finite 'distance'`)
   }
 

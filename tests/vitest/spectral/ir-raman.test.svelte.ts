@@ -777,6 +777,16 @@ phonon:
   it.each([
     [`q-point count`, `nqpoint: 2\n`, /declares nqpoint=2 but lists 1 q-points/],
     [`invalid q-point count`, `nqpoint: many\n`, /'nqpoint' must be an integer/],
+    [
+      `invalid path count`,
+      `npath: many\nsegment_nqpoint: [1]\n`,
+      /'npath' must be a positive integer/,
+    ],
+    [
+      `path count mismatch`,
+      `npath: 2\nsegment_nqpoint: [1]\n`,
+      /declares npath=2 but segment_nqpoint lists 1 path segments/,
+    ],
     [`segment total`, `segment_nqpoint: [2]\n`, /sums to 2 but phonon lists 1/],
     [
       `label count`,

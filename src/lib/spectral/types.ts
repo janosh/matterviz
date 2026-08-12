@@ -21,6 +21,8 @@ export interface Branch {
   start_index: number
   end_index: number
   name: string
+  // Override the legacy two-point discontinuity heuristic when branch provenance is known.
+  is_discontinuity?: boolean
 }
 
 // Base band structure interface

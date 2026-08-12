@@ -163,6 +163,11 @@ describe(`phonon_mode_trajectory`, () => {
     [`zero amplitude`, { amplitude: 0 }, /amplitude must be a positive/],
     [`one frame`, { n_frames: 1 }, /at least 2 integer frames/],
     [`invalid supercell`, { supercell: [1, 0, 1] as Vec3 }, /positive integers/],
+    [
+      `oversized trajectory`,
+      { supercell: [400, 400, 1] as Vec3 },
+      /would generate 160000 sites × 48 frames.*exceeding the 500000 limit/,
+    ],
   ])(`rejects $name`, (_name, options, error) => {
     expect(() =>
       phonon_mode_trajectory(make_mode_data(), { qpoint_idx: 0, mode_idx: 0 }, options),
@@ -255,7 +260,9 @@ describe(`phonon band and commensurability helpers`, () => {
     ]
     const bands = phonon_band_structure_from_modes(data)
     expect(bands.bands).toEqual([[1, 2]])
-    expect(bands.branches).toEqual([{ start_index: 0, end_index: 1, name: `GAMMA-X` }])
+    expect(bands.branches).toEqual([
+      { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+    ])
     expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
     expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
   })

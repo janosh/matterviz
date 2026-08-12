@@ -82,6 +82,24 @@ test(`reports missing real-space lattice errors through the UI and callback`, as
   })
 })
 
+test(`rejects oversized trajectories through the UI and callback`, async () => {
+  const on_error = vi.fn()
+  const target = render({
+    mode_data: parse_phonon_modes(band_yaml),
+    supercell: [400, 400, 1],
+    on_error,
+  })
+  await vi.waitFor(() => {
+    expect(target.querySelector(`[role="alert"]`)?.textContent).toContain(
+      `exceeding the 500000 limit`,
+    )
+    expect(on_error).toHaveBeenCalledWith({
+      error_msg: expect.stringContaining(`Reduce the supercell or frame count`),
+      filename: undefined,
+    })
+  })
+})
+
 test(`loads one gzip-compressed YAML drop and reports stable file identity`, async () => {
   const on_file_load = vi.fn()
   const on_error = vi.fn()
