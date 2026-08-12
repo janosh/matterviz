@@ -1,7 +1,10 @@
 import JsonBrowser from '$lib/file-viewer/JsonBrowser.svelte'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+
+const table_rows = (start: number, count: number) =>
+  Array.from({ length: count }, (_, idx) => ({ x: start + idx, y: start + idx + 1 }))
 
 const drag_event = (type: `dragover` | `drop`, payload = ``): DragEvent => {
   const event = new DragEvent(type, {
@@ -16,31 +19,23 @@ const drag_event = (type: `dragover` | `drop`, payload = ``): DragEvent => {
   return event
 }
 
+const mouse_down = (element: Element): void => {
+  element.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: 5 }))
+  flushSync()
+}
+
 test(`replacing a drag finalizes the previous drag without clearing the new one`, async () => {
-  vi.stubGlobal(`requestIdleCallback`, (callback: IdleRequestCallback) => {
-    return setTimeout(
-      () => callback({ didTimeout: false, timeRemaining: () => 50 }),
-      0,
-    ) as unknown as number
-  })
-  vi.stubGlobal(`cancelIdleCallback`, (handle: number) => clearTimeout(handle))
+  vi.stubGlobal(`requestIdleCallback`, (callback: IdleRequestCallback) =>
+    window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0),
+  )
+  vi.stubGlobal(`cancelIdleCallback`, window.clearTimeout)
   vi.stubGlobal(`requestAnimationFrame`, () => 1)
-  vi.stubGlobal(`cancelAnimationFrame`, vi.fn())
   const component = mount(JsonBrowser, {
     target: document.body,
     props: {
       value: {
-        first: [
-          { x: 1, y: 2 },
-          { x: 2, y: 3 },
-          { x: 3, y: 4 },
-        ],
-        second: [
-          { x: 4, y: 5 },
-          { x: 5, y: 6 },
-          { x: 6, y: 7 },
-          { x: 7, y: 8 },
-        ],
+        first: table_rows(1, 3),
+        second: table_rows(4, 4),
       },
     },
   })
@@ -49,15 +44,8 @@ test(`replacing a drag finalizes the previous drag without clearing the new one`
     vi.unstubAllGlobals()
   })
 
-  const first_chip = await vi.waitFor(() => {
-    const chip = [...document.querySelectorAll<HTMLButtonElement>(`.renderable-chip`)].find(
-      (node) => node.textContent?.includes(`Table`) && node.textContent.includes(`first`),
-    )
-    expect(chip).toBeDefined()
-    return chip as HTMLButtonElement
-  })
+  const first_chip = await vi.waitFor(() => doc_query(`.renderable-chip`))
   first_chip.click()
-  await tick()
 
   const panel = await vi.waitFor(() => doc_query(`.viz-panel`))
   vi.spyOn(panel, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 100, 100))
@@ -66,21 +54,17 @@ test(`replacing a drag finalizes the previous drag without clearing the new one`
   canvas.dispatchEvent(
     drag_event(`drop`, JSON.stringify({ data_path: `second`, detected_type: `table` })),
   )
-  await tick()
 
   const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
-  split_divider.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: 5 }))
-  flushSync()
+  mouse_down(split_divider)
   expect(split_divider.classList.contains(`active`)).toBe(true)
 
-  doc_query(`.sidebar-divider`).dispatchEvent(
-    new MouseEvent(`mousedown`, { bubbles: true, clientX: 5 }),
-  )
-  flushSync()
+  mouse_down(doc_query(`.sidebar-divider`))
   expect(split_divider.classList.contains(`active`)).toBe(false)
-  expect(doc_query(`.json-browser`).classList.contains(`dragging`)).toBe(true)
+  const browser = doc_query(`.json-browser`)
+  expect(browser.classList.contains(`dragging`)).toBe(true)
 
   globalThis.dispatchEvent(new MouseEvent(`mouseup`))
   flushSync()
-  expect(doc_query(`.json-browser`).classList.contains(`dragging`)).toBe(false)
+  expect(browser.classList.contains(`dragging`)).toBe(false)
 })

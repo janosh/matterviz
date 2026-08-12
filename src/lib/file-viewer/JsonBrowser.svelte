@@ -107,24 +107,24 @@
   // === Draggable sidebar divider ===
   let sidebar_width = $state(320)
   let is_sidebar_dragging = $state(false)
-  let drag_cleanup: (() => void) | undefined
+  let finish_drag: (() => void) | undefined
 
-  onDestroy(() => drag_cleanup?.())
+  onDestroy(() => finish_drag?.())
 
   // Generic drag cleanup helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
   // the drag always terminates.
   function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
-    drag_cleanup?.()
+    finish_drag?.()
     const controller = new AbortController()
     const { signal } = controller
     function cleanup(): void {
       if (signal.aborted) return
       controller.abort()
-      drag_cleanup = undefined
+      finish_drag = undefined
       on_done()
     }
-    drag_cleanup = cleanup
+    finish_drag = cleanup
     globalThis.addEventListener(`mousemove`, on_move, { signal })
     globalThis.addEventListener(`mouseup`, cleanup, { signal })
     globalThis.addEventListener(`blur`, cleanup, { signal })
