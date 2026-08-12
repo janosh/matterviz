@@ -107,23 +107,24 @@
   // === Draggable sidebar divider ===
   let sidebar_width = $state(320)
   let is_sidebar_dragging = $state(false)
-  let drag_controller: AbortController | undefined
+  let drag_cleanup: (() => void) | undefined
 
-  onDestroy(() => drag_controller?.abort())
+  onDestroy(() => drag_cleanup?.())
 
   // Generic drag cleanup helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
   // the drag always terminates.
   function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
-    drag_controller?.abort()
-    drag_controller = new AbortController()
-    const { signal } = drag_controller
+    drag_cleanup?.()
+    const controller = new AbortController()
+    const { signal } = controller
     function cleanup(): void {
       if (signal.aborted) return
-      drag_controller?.abort()
-      drag_controller = undefined
+      controller.abort()
+      drag_cleanup = undefined
       on_done()
     }
+    drag_cleanup = cleanup
     globalThis.addEventListener(`mousemove`, on_move, { signal })
     globalThis.addEventListener(`mouseup`, cleanup, { signal })
     globalThis.addEventListener(`blur`, cleanup, { signal })
@@ -132,7 +133,6 @@
 
   function on_sidebar_divider_mousedown(event: MouseEvent): void {
     event.preventDefault()
-    is_sidebar_dragging = true
     const start_x = event.clientX
     const start_width = sidebar_width
     start_drag(
@@ -144,6 +144,7 @@
         is_sidebar_dragging = false
       },
     )
+    is_sidebar_dragging = true
   }
 
   // === Drag-and-drop from tree ===
@@ -659,7 +660,6 @@
 
   function on_split_divider_mousedown(event: MouseEvent, split_idx: number): void {
     event.preventDefault()
-    split_dragging_idx = split_idx
     const direction = split_directions[split_idx]
     if (!direction) return
     const panel_container = canvas_element?.querySelector(
@@ -693,6 +693,7 @@
         split_dragging_idx = -1
       },
     )
+    split_dragging_idx = split_idx
   }
 
   // === Helpers ===
