@@ -59,7 +59,7 @@
   pane_props={{
     ...rest,
     ...pane_props,
-    class: `export-pane ${rest.class ?? ``} ${pane_props?.class ?? ``}`.trim(),
+    class: [`export-pane`, rest.class, pane_props?.class],
   }}
   {toggle_props}
   open_icon={Cross}

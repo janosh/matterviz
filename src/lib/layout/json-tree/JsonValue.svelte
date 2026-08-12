@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { getContext, tick } from 'svelte'
-  import type { JsonTreeContext, JsonValueType } from './types'
-  import { JSON_TREE_CONTEXT_KEY } from './types'
+  import { tick } from 'svelte'
+  import { get_json_tree_context, type JsonValueType } from './types'
   import {
     format_preview,
     is_css_color,
@@ -20,7 +19,7 @@
     path: string
   } = $props()
 
-  const ctx = getContext<JsonTreeContext>(JSON_TREE_CONTEXT_KEY)
+  const ctx = get_json_tree_context()
 
   // Track if value just changed for animation
   let just_changed = $state(false)
@@ -28,12 +27,12 @@
 
   // Expanded state for long strings
   let is_expanded = $state(false)
-  let max_len = $derived(ctx?.settings.max_string_length ?? 200)
+  let max_len = $derived(ctx.settings.max_string_length ?? 200)
   let is_long_string = $derived(value_type === `string` && (value as string).length > max_len)
 
   // Check for changes on mount and when value changes
   $effect(() => {
-    if (!ctx?.settings.highlight_changes) return
+    if (!ctx.settings.highlight_changes) return
 
     const prev = ctx.prev_values.get(path)
     if (prev !== undefined && !values_equal(prev, value)) {
@@ -100,7 +99,7 @@
   let edit_input = $state<HTMLInputElement | null>(null)
 
   function start_edit(event: MouseEvent) {
-    if (!ctx?.settings.editable || !ctx.onchange) return
+    if (!ctx.settings.editable || !ctx.onchange) return
     event.stopPropagation()
     // Cancel pending click-to-copy
     if (click_timer) clearTimeout(click_timer)
@@ -115,7 +114,7 @@
     editing = false
     const new_value = parse_edited_value(edit_text)
     if (!values_equal(new_value, value)) {
-      ctx?.onchange?.(path, new_value, value)
+      ctx.onchange?.(path, new_value, value)
     }
   }
 
@@ -135,7 +134,7 @@
   <input
     bind:this={edit_input}
     type="text"
-    class="edit-input {value_type}"
+    class={[`edit-input`, value_type]}
     bind:value={edit_text}
     onkeydown={handle_edit_keydown}
     onblur={commit_edit}
@@ -146,21 +145,21 @@
   <span
     class="json-value {value_type}"
     class:changed={just_changed}
-    class:editable={ctx?.settings.editable}
+    class:editable={ctx.settings.editable}
     onclick={handle_click}
     ondblclick={start_edit}
     oncontextmenu={(event) => {
-      ctx?.show_context_menu(event, path, value, false, false)
+      ctx.show_context_menu(event, path, value, false, false)
     }}
     onkeydown={(event) => {
       if (event.key === `Enter` || event.key === ` `) {
         event.preventDefault()
-        ctx?.copy_value(path, value)
+        ctx.copy_value(path, value)
       }
     }}
     role="button"
     tabindex="-1"
-    title={ctx?.settings.editable ? `Double-click to edit` : undefined}
+    title={ctx.settings.editable ? `Double-click to edit` : undefined}
   >
     {#if color_detected}
       <span class="color-swatch" style:background={color_detected}></span>
@@ -189,7 +188,7 @@
         {is_expanded ? `▲` : `...`}
       </button>
     {/if}
-    {#if ctx?.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
+    {#if ctx.settings.show_data_types && value_type !== `null` && value_type !== `undefined`}
       <span class="type-annotation">{value_type}</span>
     {/if}
   </span>

@@ -29,7 +29,6 @@
     dos_props?: Partial<ComponentProps<typeof Dos>>
     shared_y_axis?: boolean
     sync_y_zoom?: boolean
-    class?: string
     children?: Snippet<[HoveredData]>
   } = $props()
 

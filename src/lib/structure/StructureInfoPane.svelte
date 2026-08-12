@@ -401,7 +401,7 @@
   }}
   pane_props={{
     ...pane_props,
-    class: `structure-info-pane ${pane_props?.class ?? ``}`,
+    class: [`structure-info-pane`, pane_props?.class],
     style: `--pane-padding: 4pt; --pane-gap: 2pt; ${pane_props?.style ?? ``}`,
   }}
   open_icon={Cross}
@@ -517,9 +517,7 @@
                 highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx}
               {@const is_selected = selected_sites.includes(card.idx)}
               <div
-                class="site-card"
-                class:highlighted={is_highlighted}
-                class:selected={is_selected}
+                class={['site-card', { highlighted: is_highlighted, selected: is_selected }]}
                 data-site-idx={card.idx}
                 style:--site-color={colors.element?.[card.element as ElementSymbol] ?? `#888`}
                 title="Click to select {card.title}. Press c to copy."

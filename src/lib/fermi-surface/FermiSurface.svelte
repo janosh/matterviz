@@ -352,8 +352,6 @@
 <svelte:window onkeydown={handle_keydown} />
 
 <div
-  class:dragover
-  class:active={controls_open}
   role="region"
   aria-label="Fermi surface viewer"
   bind:this={wrapper}
@@ -367,7 +365,7 @@
     set_dragover: (over) => (dragover = over),
   })}
   {...rest}
-  class={[`fermi-surface`, rest.class]}
+  class={[`fermi-surface`, rest.class, { dragover, active: controls_open }]}
 >
   {@render children?.({ fermi_data, bz_data })}
   {#if loading}

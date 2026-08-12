@@ -349,7 +349,7 @@
   let legend_element = $state<HTMLDivElement | undefined>()
   // Only nodes that survive the layout (orphans with no links are dropped, see
   // compute_sankey_layout) - keeps the legend in sync with what's drawn.
-  let legend_data = $derived.by<LegendItem[]>(() =>
+  let legend_data = $derived(
     layout.nodes.map(({ node_idx: idx, id, label }) => ({
       series_idx: idx,
       label: label ?? `${id}`,
@@ -416,8 +416,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class={[`sankey`, rest.class]}
-  class:fullscreen
+  class={[`sankey`, rest.class, { fullscreen }]}
 >
   {#if width && height}
     <div class="header-controls">

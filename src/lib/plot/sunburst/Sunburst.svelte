@@ -326,9 +326,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class={[`sunburst`, rest.class]}
-  class:fullscreen
-  class:icicle={shape === `icicle`}
+  class={[`sunburst`, rest.class, { fullscreen, icicle: shape === `icicle` }]}
 >
   <HierarchyShell
     {chart_state}

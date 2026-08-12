@@ -300,9 +300,9 @@
     title: pane_open ? `` : `Trajectory info`,
     'aria-label': pane_open ? `Close trajectory info` : `Open trajectory info`,
     ...toggle_props,
-    class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-info-toggle`, toggle_props?.class],
   }}
-  pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
+  pane_props={{ ...pane_props, class: [`trajectory-info-pane`, pane_props?.class] }}
   open_icon={Cross}
   closed_icon={Info}
   {...rest}

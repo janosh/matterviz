@@ -79,9 +79,8 @@
         {@const row_key = get_row_key(wyckoff_pos, row_idx)}
         {@const is_selected = selected_key === row_key}
         <tr
-          class="wyckoff-row"
+          class={['wyckoff-row', { selected: is_selected }]}
           tabindex="0"
-          class:selected={is_selected}
           style="--active-color: {active_color}; --hover-color: #6cf0ff"
           onmouseenter={() => on_hover?.(site_indices ?? null)}
           onmouseleave={() => on_hover?.(null)}

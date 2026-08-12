@@ -446,8 +446,7 @@
     {#if is_horizontal && items.length > page_size}
       <nav
         aria-label="Structure pages"
-        class="structure-carousel-pager"
-        class:portaled={Boolean(pager_target)}
+        class={['structure-carousel-pager', { portaled: Boolean(pager_target) }]}
         {@attach portal(pager_target)}
       >
         <button
@@ -479,7 +478,7 @@
           : Math.max(card_width, carousel_width),
       )}
       aria-valuenow={Math.round(is_horizontal ? effective_height : card_width)}
-      class={`structure-carousel-resize-handle ${layout}`}
+      class={[`structure-carousel-resize-handle`, layout]}
       onkeydown={on_resize_keydown}
       onpointerdown={start_resize}
       role="separator"

@@ -52,8 +52,7 @@
       disabled={count <= 1}
       title={play_title ?? (playback.is_playing ? `Pause` : `Play`)}
       aria-label={playback.is_playing ? `Pause` : `Play`}
-      class="play-button"
-      class:playing={playback.is_playing}
+      class={['play-button', { playing: playback.is_playing }]}
     >
       {playback.is_playing ? `⏸` : `▶`}
     </button>

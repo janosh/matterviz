@@ -89,7 +89,7 @@
   {:else if style.is_highlighted && style.highlight_effect?.match(/pulse|glow/)}
     <circle
       r={(style.radius ?? 4) * 2}
-      class="effect-ring {style.highlight_effect}"
+      class={[`effect-ring`, style.highlight_effect]}
       fill={style.highlight_color ?? `#ff4444`}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"

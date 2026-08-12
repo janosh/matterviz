@@ -1282,11 +1282,10 @@
   $effect(() => {
     const element = canvas_clip
     if (!element) return
-    const opts = { capture: true, passive: true } as const
+    const controller = new AbortController()
+    const opts = { capture: true, passive: true, signal: controller.signal } as const
     for (const type of input_events) element.addEventListener(type, mark_input, opts)
-    return () => {
-      for (const type of input_events) element.removeEventListener(type, mark_input, opts)
-    }
+    return () => controller.abort()
   })
 
   // Drop the pinned view and hand framing back to the derived defaults.
@@ -1587,8 +1586,7 @@
   bind:this={wrapper}
   bind:clientWidth={container_width}
   bind:clientHeight={container_height}
-  class="chempot-diagram-3d"
-  class:fullscreen
+  class={['chempot-diagram-3d', { fullscreen }]}
   style="width: {fullscreen ? `100vw` : `100%`}; height: {fullscreen
     ? `100vh`
     : `${render_height}px`}"

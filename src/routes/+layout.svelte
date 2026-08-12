@@ -48,13 +48,8 @@
       // Set initial value
       update_system_mode()
 
-      // Listen for changes
       media_query.addEventListener(`change`, update_system_mode)
-
-      // Cleanup
-      return () => {
-        media_query.removeEventListener(`change`, update_system_mode)
-      }
+      return () => media_query.removeEventListener(`change`, update_system_mode)
     }
   })
 

@@ -111,7 +111,7 @@
   <DraggablePane
     bind:open={pane_open}
     toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
-    pane_props={{ ...pane_props, class: `bz-info-pane ${pane_props?.class ?? ``}` }}
+    pane_props={{ ...pane_props, class: [`bz-info-pane`, pane_props?.class] }}
     open_icon={Cross}
     closed_icon={Info}
   >

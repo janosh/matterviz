@@ -13,13 +13,18 @@
   import { download } from '$lib/io/fetch'
   import { parse_path } from '$lib/json-path'
   import { make_change_detector } from '$lib/utils'
-  import { setContext, tick } from 'svelte'
+  import { tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'
-  import type { CopyEventPosition, DiffEntry, JsonTreeContext, JsonTreeProps } from './types'
-  import { JSON_TREE_CONTEXT_KEY } from './types'
+  import {
+    set_json_tree_context,
+    type CopyEventPosition,
+    type DiffEntry,
+    type JsonTreeContext,
+    type JsonTreeProps,
+  } from './types'
   import {
     build_ghost_map,
     collect_all_paths,
@@ -489,7 +494,7 @@
     },
   }
 
-  setContext(JSON_TREE_CONTEXT_KEY, context)
+  set_json_tree_context(context)
 
   // Keyboard navigation at tree level
   function handle_tree_keydown(event: KeyboardEvent) {
@@ -769,8 +774,7 @@
 
   {#if copy_feedback_path !== null}
     <div
-      class="copy-feedback"
-      class:error={copy_feedback_error}
+      class={['copy-feedback', { error: copy_feedback_error }]}
       style={copy_feedback_pos
         ? `left: ${copy_feedback_pos.x}px; top: ${copy_feedback_pos.y - 24}px`
         : `right: 8px; top: 8px`}

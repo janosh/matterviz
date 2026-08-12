@@ -11,6 +11,7 @@ import { get_scale_type_name } from '$lib/plot/core/types'
 import { gaussian_kde } from '$lib/plot/box/kde'
 import { bin } from 'd3-array'
 import type { Snippet } from 'svelte'
+import type { ClassValue } from 'svelte/elements'
 
 // Which side of the plot a marginal strip sits on
 export type MarginalSide = `top` | `bottom` | `left` | `right`
@@ -73,7 +74,7 @@ export interface MarginalConfig {
   snippet?: Snippet<[MarginalRenderContext]>
   hover?: boolean // show a hover tooltip over this strip (default true)
   tooltip?: Snippet<[MarginalHover]> // custom tooltip content (overrides built-in per-kind content)
-  class?: string
+  class?: ClassValue
   style?: string
 }
 

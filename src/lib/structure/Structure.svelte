@@ -1843,8 +1843,7 @@
         >
           <button
             type="button"
-            class="view-mode-button"
-            class:active={view_layout_menu_open}
+            class={['view-mode-button', { active: view_layout_menu_open }]}
             onclick={() => (view_layout_menu_open = !view_layout_menu_open)}
             title="View layout: {current_layout.label}"
             aria-label="View layout: {current_layout.label}"
@@ -1860,8 +1859,7 @@
                 {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
                   <button
                     type="button"
-                    class="view-mode-option"
-                    class:selected={current_layout.mode === mode}
+                    class={['view-mode-option', { selected: current_layout.mode === mode }]}
                     title={mode === `multi` ? `${label} (Cmd/Ctrl+G)` : label}
                     aria-keyshortcuts={mode === `multi` ? `Control+G Meta+G` : undefined}
                     aria-pressed={current_layout.mode === mode}
@@ -1901,8 +1899,7 @@
             onclick={() => (measure_menu_open = !measure_menu_open)}
             title="Measure / Edit"
             aria-label="Measure / Edit"
-            class="view-mode-button"
-            class:active={measure_menu_open}
+            class={['view-mode-button', { active: measure_menu_open }]}
             aria-expanded={measure_menu_open}
             {@attach tooltip()}
           >
@@ -1933,8 +1930,7 @@
             <div class="view-mode-dropdown">
               {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
                 <button
-                  class="view-mode-option"
-                  class:selected={measure_mode === mode}
+                  class={['view-mode-option', { selected: measure_mode === mode }]}
                   disabled={mode === `edit-bonds` && !bond_edits_enabled}
                   title={mode === `edit-bonds` && !bond_edits_enabled
                     ? `Bond editing is only available for the original 1x1x1 cell`

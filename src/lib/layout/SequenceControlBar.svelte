@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShowControlsState } from '$lib/controls'
   import type { Snippet } from 'svelte'
+  import type { ClassValue } from 'svelte/elements'
 
   let {
     controls_config,
@@ -10,7 +11,7 @@
   }: {
     controls_config: ShowControlsState
     height?: number
-    class?: string
+    class?: ClassValue
     children: Snippet
   } = $props()
 </script>

@@ -245,11 +245,11 @@
   toggle_props={{
     title: pane_open ? `` : `Data inspector`,
     ...toggle_props,
-    class: `trajectory-data-inspector-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-data-inspector-toggle`, toggle_props?.class],
   }}
   pane_props={{
     ...pane_props,
-    class: `trajectory-data-inspector-pane ${pane_props?.class ?? ``}`,
+    class: [`trajectory-data-inspector-pane`, pane_props?.class],
   }}
   open_icon={Cross}
   closed_icon={HeatmapTableIcon}

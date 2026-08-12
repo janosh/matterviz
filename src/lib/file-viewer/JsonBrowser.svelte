@@ -29,7 +29,7 @@
   import Structure from '$lib/structure/Structure.svelte'
   import type { XrdPattern } from '$lib/xrd'
   import XrdPlot from '$lib/xrd/XrdPlot.svelte'
-  import { mount, unmount } from 'svelte'
+  import { mount, onDestroy, unmount } from 'svelte'
   import {
     detect_view_type,
     resolve_path,
@@ -107,25 +107,27 @@
   // === Draggable sidebar divider ===
   let sidebar_width = $state(320)
   let is_sidebar_dragging = $state(false)
+  let drag_controller: AbortController | undefined
+
+  onDestroy(() => drag_controller?.abort())
 
   // Generic drag cleanup helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
   // the drag always terminates.
   function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
-    let cleaned_up = false
+    drag_controller?.abort()
+    drag_controller = new AbortController()
+    const { signal } = drag_controller
     function cleanup(): void {
-      if (cleaned_up) return
-      cleaned_up = true
+      if (signal.aborted) return
+      drag_controller?.abort()
+      drag_controller = undefined
       on_done()
-      globalThis.removeEventListener(`mousemove`, on_move)
-      globalThis.removeEventListener(`mouseup`, cleanup)
-      globalThis.removeEventListener(`blur`, cleanup)
-      document.documentElement.removeEventListener(`mouseleave`, cleanup)
     }
-    globalThis.addEventListener(`mousemove`, on_move)
-    globalThis.addEventListener(`mouseup`, cleanup)
-    globalThis.addEventListener(`blur`, cleanup)
-    document.documentElement.addEventListener(`mouseleave`, cleanup)
+    globalThis.addEventListener(`mousemove`, on_move, { signal })
+    globalThis.addEventListener(`mouseup`, cleanup, { signal })
+    globalThis.addEventListener(`blur`, cleanup, { signal })
+    document.documentElement.addEventListener(`mouseleave`, cleanup, { signal })
   }
 
   function on_sidebar_divider_mousedown(event: MouseEvent): void {
@@ -835,7 +837,7 @@
 
     <!-- Drop zone overlay -->
     {#if drop_zone && drop_zone !== `center`}
-      <div class="drop-indicator {drop_zone}"></div>
+      <div class={[`drop-indicator`, drop_zone]}></div>
     {/if}
   </div>
 </div>

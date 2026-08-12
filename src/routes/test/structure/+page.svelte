@@ -162,19 +162,15 @@
       bonds = detail.bonds as StructureBond[] | undefined
     }
 
-    window.addEventListener(`set-lattice-props`, handle_lattice_props)
-    window.addEventListener(`set-show-buttons`, handle_show_controls)
-    window.addEventListener(`set-scene-props`, handle_scene_props)
-    window.addEventListener(`set-structure`, handle_set_structure)
-    window.addEventListener(`set-bonds`, handle_set_bonds)
+    const controller = new AbortController()
+    const { signal } = controller
+    window.addEventListener(`set-lattice-props`, handle_lattice_props, { signal })
+    window.addEventListener(`set-show-buttons`, handle_show_controls, { signal })
+    window.addEventListener(`set-scene-props`, handle_scene_props, { signal })
+    window.addEventListener(`set-structure`, handle_set_structure, { signal })
+    window.addEventListener(`set-bonds`, handle_set_bonds, { signal })
 
-    return () => {
-      window.removeEventListener(`set-lattice-props`, handle_lattice_props)
-      window.removeEventListener(`set-show-buttons`, handle_show_controls)
-      window.removeEventListener(`set-scene-props`, handle_scene_props)
-      window.removeEventListener(`set-structure`, handle_set_structure)
-      window.removeEventListener(`set-bonds`, handle_set_bonds)
-    }
+    return () => controller.abort()
   })
 
   $effect(() => {

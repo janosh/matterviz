@@ -441,9 +441,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="viewport-cell"
-  class:active
-  class:multi={in_grid}
+  class={['viewport-cell', { active, multi: in_grid }]}
   style:--canvas-cursor={cursor}
   bind:clientWidth={width}
   bind:clientHeight={height}

@@ -169,8 +169,7 @@
         x={segment.label_x}
         y={above_labels_y}
         text-anchor="middle"
-        class="external-label"
-        class:hovered={hovered_element === segment.element}
+        class={['external-label', { hovered: hovered_element === segment.element }]}
         style:fill={segment.color}
       >
         {@render label_content(segment)}
@@ -202,9 +201,7 @@
         fill={segment.color}
         stroke="white"
         stroke-width={hovered_element === segment.element ? 1.5 : 1}
-        class="bar-segment"
-        class:interactive
-        class:hovered={hovered_element === segment.element}
+        class={['bar-segment', { interactive, hovered: hovered_element === segment.element }]}
         onmouseenter={() => interactive && (hovered_element = segment.element)}
         onmouseleave={() => interactive && (hovered_element = null)}
         {...interactive && {
@@ -249,8 +246,7 @@
         x={segment.label_x}
         y={below_labels_y}
         text-anchor="middle"
-        class="external-label"
-        class:hovered={hovered_element === segment.element}
+        class={['external-label', { hovered: hovered_element === segment.element }]}
         style:fill={segment.color}
       >
         {@render label_content(segment)}

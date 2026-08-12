@@ -91,8 +91,7 @@
         {cy}
         r={radius}
         {opacity}
-        class="spot"
-        class:higher-zone={spot.laue_zone > 0}
+        class={['spot', { 'higher-zone': spot.laue_zone > 0 }]}
       >
         <title
           >{format_hkl(spot.hkl, `full`)} · {laue_zone_label(spot.laue_zone)}

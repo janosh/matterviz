@@ -159,7 +159,7 @@
   toggle_props={{
     title: export_pane_open ? `` : enable_3d_export ? `Export Structure` : `Export Slice`,
     ...toggle_props,
-    class: `structure-export-toggle ${toggle_props?.class ?? ``}`,
+    class: [`structure-export-toggle`, toggle_props?.class],
   }}
   {...rest}
 />

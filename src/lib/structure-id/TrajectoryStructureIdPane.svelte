@@ -106,11 +106,11 @@
   toggle_props={{
     title: pane_open ? `` : `Structure type identification`,
     ...toggle_props,
-    class: `trajectory-structure-id-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-structure-id-toggle`, toggle_props?.class],
   }}
   pane_props={{
     ...pane_props,
-    class: `trajectory-structure-id-pane ${pane_props?.class ?? ``}`,
+    class: [`trajectory-structure-id-pane`, pane_props?.class],
   }}
   open_icon={Cross}
   closed_icon={Lattice}

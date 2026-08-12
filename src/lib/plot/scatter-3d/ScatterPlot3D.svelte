@@ -277,8 +277,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class={[`scatter-3d`, rest.class]}
-  class:fullscreen
+  class={[`scatter-3d`, rest.class, { fullscreen }]}
 >
   {#if width && height}
     <div class="header-controls">

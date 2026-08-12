@@ -135,7 +135,7 @@
 {#if series.length === 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="empty-drop {dragging ? `dragging` : ``}"
+    class={[`empty-drop`, dragging && `dragging`]}
     ondragover={enable_drop ? handle_dragover : undefined}
     ondragleave={enable_drop ? () => (dragging = false) : undefined}
     ondrop={enable_drop ? handle_drop : undefined}

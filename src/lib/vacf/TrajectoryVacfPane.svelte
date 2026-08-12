@@ -157,9 +157,9 @@
   toggle_props={{
     title: pane_open ? `` : `Velocity autocorrelation and vibrational DOS`,
     ...toggle_props,
-    class: `trajectory-vacf-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-vacf-toggle`, toggle_props?.class],
   }}
-  pane_props={{ ...pane_props, class: `trajectory-vacf-pane ${pane_props?.class ?? ``}` }}
+  pane_props={{ ...pane_props, class: [`trajectory-vacf-pane`, pane_props?.class] }}
   open_icon={Cross}
   closed_icon={Graph}
   {...rest}

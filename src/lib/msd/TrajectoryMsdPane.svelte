@@ -149,9 +149,9 @@
   toggle_props={{
     title: pane_open ? `` : `Mean squared displacement`,
     ...toggle_props,
-    class: `trajectory-msd-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-msd-toggle`, toggle_props?.class],
   }}
-  pane_props={{ ...pane_props, class: `trajectory-msd-pane ${pane_props?.class ?? ``}` }}
+  pane_props={{ ...pane_props, class: [`trajectory-msd-pane`, pane_props?.class] }}
   open_icon={Cross}
   closed_icon={Graph}
   {...rest}

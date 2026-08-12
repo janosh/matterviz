@@ -3,6 +3,7 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { DraggablePane } from 'svelte-widgets'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { ClassValue } from 'svelte/elements'
   import { Cross, Settings } from 'svelte-widgets/icons'
 
   let {
@@ -21,8 +22,8 @@
   }: Omit<ComponentProps<typeof DraggablePane>, `children` | `open`> & {
     controls_open?: boolean
     controls_class?: string
-    pane_class?: string
-    toggle_class?: string
+    pane_class?: ClassValue
+    toggle_class?: ClassValue
     toggle_title?: string
     // Empty style opts out when ViewerChrome owns toggle layout.
     toggle_style?: string

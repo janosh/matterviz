@@ -205,7 +205,7 @@
       tick_labels={5}
       orientation={colorbar_orientation}
       title_side={colorbar_orientation === `vertical` ? `right` : undefined}
-      class="slice-colorbar {colorbar_orientation}"
+      class={[`slice-colorbar`, colorbar_orientation]}
       --cbar-font-size="0.75em"
       --cbar-tick-label-font-weight="normal"
     />

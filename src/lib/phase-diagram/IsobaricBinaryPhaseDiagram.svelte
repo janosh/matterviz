@@ -517,8 +517,7 @@
 
 <div
   {...rest}
-  class={[`binary-phase-diagram`, rest.class]}
-  class:fullscreen
+  class={[`binary-phase-diagram`, rest.class, { fullscreen }]}
   bind:this={wrapper}
   bind:clientWidth={width}
   bind:clientHeight={height}
@@ -868,8 +867,7 @@
     {#if effective_hover_info && tooltip !== false}
       <div
         bind:this={tooltip_el}
-        class="tooltip-container"
-        class:locked={locked_hover_info}
+        class={['tooltip-container', { locked: locked_hover_info }]}
         style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
       >
         {#if locked_hover_info}

@@ -111,7 +111,7 @@
   }}
   pane_props={{
     ...pane_props,
-    class: `convex-hull-info-pane ${pane_props?.class ?? ``}`,
+    class: [`convex-hull-info-pane`, pane_props?.class],
   }}
   open_icon={Cross}
   closed_icon={Info}

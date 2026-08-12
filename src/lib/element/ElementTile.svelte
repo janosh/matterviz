@@ -172,7 +172,7 @@
       {#each rendered_segments as segment, idx (idx)}
         {#if segment.value !== undefined}
           <span
-            class="value multi-value {layout_config.positions[idx]}"
+            class={[`value multi-value`, layout_config.positions[idx]]}
             style:color={text_color ?? auto_text_color(segment_colors[idx])}
           >
             {format_value(segment.value)}
@@ -191,7 +191,10 @@
   <!-- Split backgrounds, one div per segment -->
   {#if layout_config && has_split_background}
     {#each segment_colors as color, idx (idx)}
-      <div class="segment {layout_config.segments[idx]}" style:background-color={color}></div>
+      <div
+        class={[`segment`, layout_config.segments[idx]]}
+        style:background-color={color}
+      ></div>
     {/each}
   {/if}
 </svelte:element>

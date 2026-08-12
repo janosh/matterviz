@@ -41,7 +41,7 @@
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { onMount, untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -452,22 +452,19 @@
       metadata: { ...trajectory?.metadata, plot_metadata_loading: false },
     })
 
-  onMount(() => {
-    const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
-      // Global listener: other code posts arbitrary messages (including null data)
-      if (typeof event.data !== `object` || event.data === null) return
-      const { command, file_path, is_complete, plot_metadata } = event.data
-      if (command !== `plot_metadata_stream` || file_path !== streaming_file_path) return
-      if (Array.isArray(plot_metadata)) merge_plot_metadata(plot_metadata)
-      if (is_complete) finish_plot_metadata_loading()
-    }
-    globalThis.addEventListener(`message`, handle_plot_metadata_stream)
-    return () => {
-      globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
-      if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
-      if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
-      active_frame_loader?.dispose?.()
-    }
+  const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
+    // Global listener: other code posts arbitrary messages (including null data)
+    if (typeof event.data !== `object` || event.data === null) return
+    const { command, file_path, is_complete, plot_metadata } = event.data
+    if (command !== `plot_metadata_stream` || file_path !== streaming_file_path) return
+    if (Array.isArray(plot_metadata)) merge_plot_metadata(plot_metadata)
+    if (is_complete) finish_plot_metadata_loading()
+  }
+
+  onDestroy(() => {
+    if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    active_frame_loader?.dispose?.()
   })
 
   // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
@@ -1278,6 +1275,8 @@
   })
 </script>
 
+<svelte:window onmessage={handle_plot_metadata_stream} />
+
 <div
   class:dragover
   class:active={playback.is_playing ||
@@ -1429,8 +1428,7 @@
                   {#each visible_analyses as entry (entry.control_name)}
                     <button
                       type="button"
-                      class="view-mode-option"
-                      class:selected={entry.is_open}
+                      class={['view-mode-option', { selected: entry.is_open }]}
                       title={entry.label}
                       aria-pressed={entry.is_open}
                       onclick={() => {
@@ -1490,8 +1488,7 @@
                   analysis_menu_open = false
                 }}
                 title={current_display_mode.label}
-                class="view-mode-button"
-                class:active={view_mode_dropdown_open}
+                class={['view-mode-button', { active: view_mode_dropdown_open }]}
                 style="background-color: transparent; padding: 0"
               >
                 <Icon icon={current_display_mode.icon} />
@@ -1501,8 +1498,7 @@
                 <div class="view-mode-dropdown">
                   {#each DISPLAY_MODES as option (option.mode)}
                     <button
-                      class="view-mode-option"
-                      class:selected={display_mode === option.mode}
+                      class={['view-mode-option', { selected: display_mode === option.mode }]}
                       onclick={() => {
                         display_mode = option.mode
                         on_display_mode_change?.({ trajectory, mode: option.mode })

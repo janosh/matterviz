@@ -118,9 +118,7 @@
       fill={bubble.color}
       stroke="white"
       stroke-width={hovered_element === bubble.element ? 1.5 : 1}
-      class="bubble"
-      class:interactive
-      class:hovered={hovered_element === bubble.element}
+      class={['bubble', { interactive, hovered: hovered_element === bubble.element }]}
       onmouseenter={() => interactive && (hovered_element = bubble.element)}
       onmouseleave={() => interactive && (hovered_element = null)}
       {...interactive && {
@@ -149,8 +147,7 @@
         y={bubble.y - (size * 0.075 * bubble.font_scale) / 2}
         width={size * 0.15 * bubble.font_scale}
         height={size * 0.075 * bubble.font_scale}
-        class="bubble-label-container"
-        class:hovered={hovered_element === bubble.element}
+        class={['bubble-label-container', { hovered: hovered_element === bubble.element }]}
       >
         <div class="bubble-label" style:color={bubble.text_color}>
           <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px"
