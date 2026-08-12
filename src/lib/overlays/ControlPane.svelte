@@ -9,10 +9,10 @@
   let {
     controls_open = $bindable(false),
     pane = $bindable(null),
-    controls_class = `plot`,
-    pane_class = `${controls_class}-controls-pane`,
-    toggle_class = `${controls_class}-controls-toggle`,
-    toggle_title = controls_class,
+    controls_name = `plot`,
+    pane_class = `${controls_name}-controls-pane`,
+    toggle_class = `${controls_name}-controls-toggle`,
+    toggle_title = controls_name,
     toggle_style = `position: absolute; top: var(--ctrl-btn-top, 5pt); right: var(--ctrl-btn-right, 1ex);`,
     pane_style = `--pane-padding: 12px; --pane-gap: 4px;`,
     toggle_props = {},
@@ -21,7 +21,7 @@
     ...rest
   }: Omit<ComponentProps<typeof DraggablePane>, `children` | `open`> & {
     controls_open?: boolean
-    controls_class?: string
+    controls_name?: string
     pane_class?: ClassValue
     toggle_class?: ClassValue
     toggle_title?: string

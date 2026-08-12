@@ -103,7 +103,7 @@
       <option {value}>{label}</option>
     {/each}
   {/snippet}
-  <ControlPane bind:controls_open controls_class={chart} {toggle_props} {pane_props}>
+  <ControlPane bind:controls_open controls_name={chart} {toggle_props} {pane_props}>
     {@render children?.()}
     <SettingsSection
       title={chart === `sunburst` ? `Sunburst` : `Treemap`}

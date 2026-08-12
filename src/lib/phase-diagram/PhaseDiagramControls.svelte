@@ -108,7 +108,7 @@
 
 <ControlPane
   bind:controls_open
-  controls_class="phase-diagram"
+  controls_name="phase-diagram"
   pane_style=""
   toggle_style=""
   toggle_title="Phase diagram"

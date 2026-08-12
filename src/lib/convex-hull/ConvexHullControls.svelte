@@ -216,7 +216,7 @@
 
 <ControlPane
   bind:controls_open
-  controls_class="convex-hull"
+  controls_name="convex-hull"
   pane_style=""
   toggle_style=""
   toggle_props={{ title: controls_open ? `` : `Convex hull controls`, ...toggle_props }}

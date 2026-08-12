@@ -685,7 +685,7 @@ export interface PlotControlsProps extends PlotConfig {
   show_ticks?: boolean
   // Component props
   controls_title?: string
-  controls_class?: string
+  controls_name?: string
   toggle_props?: PaneToggleProps
   pane_props?: PaneProps
 }
