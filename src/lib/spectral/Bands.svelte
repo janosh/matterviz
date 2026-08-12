@@ -444,7 +444,7 @@
             all_series.push({
               x: scaled_distances,
               y: frequencies,
-              markers: `line`,
+              markers: rest.on_point_click ? `line+points` : `line`,
               label: has_spin_down_channel ? `${structure_label} (↑)` : structure_label,
               line_style: line_style_up,
               metadata: meta,
@@ -468,7 +468,7 @@
             all_series.push({
               x: scaled_distances,
               y: spin_down_frequencies,
-              markers: `line`,
+              markers: rest.on_point_click ? `line+points` : `line`,
               label: `${structure_label} (↓)`,
               line_style: {
                 ...line_style_up,

@@ -8,6 +8,7 @@ import type { FileLoadCallback } from './types'
 export interface FileDropOptions {
   allow: () => boolean
   on_drop: FileLoadCallback
+  max_files?: number
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
 }
@@ -43,6 +44,13 @@ export const create_file_drop_handler = (
       const failures: string[] = []
       // rejects on a symlink cycle or an oversized tree, which the catch below reports
       const files = await read
+      const source_count = files.length + (url ? 1 : 0)
+      if (opts.max_files !== undefined && source_count > opts.max_files) {
+        opts.on_error?.(
+          `Drop at most ${opts.max_files} file${opts.max_files === 1 ? `` : `s`} at a time (received ${source_count})`,
+        )
+        return
+      }
       if (url) {
         try {
           await load_from_url(url, opts.on_drop)

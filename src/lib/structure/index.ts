@@ -221,6 +221,7 @@ export const VECTOR_KEY_PREFIXES = [
   `spins`,
   `velocity`,
   `velocities`,
+  `phonon`,
 ] as const
 
 export const is_vector_key = (key: string): boolean =>

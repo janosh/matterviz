@@ -2035,6 +2035,7 @@ describe(`build_point_metadata`, () => {
       spin: `down`,
       is_acoustic: false,
       nb_bands: 2,
+      qpoint_idx: 0,
     })
   })
 
@@ -2052,8 +2053,12 @@ describe(`build_point_metadata`, () => {
       is_acoustic: null,
       start_idx: 1,
     })
-    expect(result[0]).toMatchObject({ frac_coords: [0.25, 0, 0], is_acoustic: null })
-    expect(result[1]).toMatchObject({ qpoint_label: `X` })
+    expect(result[0]).toMatchObject({
+      frac_coords: [0.25, 0, 0],
+      is_acoustic: null,
+      qpoint_idx: 1,
+    })
+    expect(result[1]).toMatchObject({ qpoint_label: `X`, qpoint_idx: 2 })
   })
 
   it(`band_width is null when absent, populated when present`, () => {

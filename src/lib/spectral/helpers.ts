@@ -1251,6 +1251,7 @@ export function calculate_sigma_step(range: Vec2): number {
 // Per-point metadata for band tooltip display
 export interface BandPointMeta extends Record<string, unknown> {
   band_idx: number
+  qpoint_idx: number
   spin: `up` | `down`
   is_acoustic: boolean | null
   nb_bands: number
@@ -1318,6 +1319,7 @@ export function build_point_metadata(opts: {
     const qpoint = bs.qpoints[global_idx]
     return {
       band_idx,
+      qpoint_idx: global_idx,
       spin,
       is_acoustic,
       nb_bands: bs.nb_bands,

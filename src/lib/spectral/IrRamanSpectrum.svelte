@@ -35,6 +35,8 @@
     x_axis = {},
     y_axis = $bindable({}),
     hovered_frequency = $bindable(null),
+    selected_mode_idx = $bindable(null),
+    on_mode_select,
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     ...rest
@@ -50,6 +52,8 @@
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     hovered_frequency?: number | null
+    selected_mode_idx?: number | null
+    on_mode_select?: (mode_idx: number) => void
   } = $props()
 
   // FWHM is quoted in the displayed unit, so rescale it when the user switches units;
@@ -69,6 +73,9 @@
     !spectrum?.modes?.length || raman_unavailable
       ? { x: [], y: [] }
       : spectrum_sticks(spectrum, kind, { unit: units }),
+  )
+  let stick_modes = $derived(
+    spectrum?.modes?.filter((mode) => !mode.is_acoustic && !mode.is_imaginary) ?? [],
   )
   let has_signal = $derived(sticks.x.length > 0 && sticks.y.some((val) => val > 0))
 
@@ -262,7 +269,31 @@
           {#if height > 0}
             {@const x_px = x_scale_fn(position)}
             {@const tip = y_scale_fn(is_transmittance ? 1 - height : height)}
-            <line class="mode-stick" x1={x_px} x2={x_px} y1={baseline} y2={tip} />
+            {@const mode = stick_modes[stick_idx]}
+            <line
+              class="mode-stick"
+              class:selected={mode?.mode_idx === selected_mode_idx}
+              x1={x_px}
+              x2={x_px}
+              y1={baseline}
+              y2={tip}
+              role="button"
+              tabindex="0"
+              aria-label={mode
+                ? `Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${units}`
+                : `Select vibrational mode`}
+              onclick={() => {
+                if (!mode) return
+                selected_mode_idx = mode.mode_idx
+                on_mode_select?.(mode.mode_idx)
+              }}
+              onkeydown={(event) => {
+                if (!mode || (event.key !== `Enter` && event.key !== ` `)) return
+                event.preventDefault()
+                selected_mode_idx = mode.mode_idx
+                on_mode_select?.(mode.mode_idx)
+              }}
+            />
           {/if}
         {/each}
       {/if}
@@ -277,6 +308,11 @@
     stroke: var(--ir-raman-stick-color, light-dark(#c44e52, #e07b7e));
     stroke-width: var(--ir-raman-stick-width, 1.2);
     opacity: var(--ir-raman-stick-opacity, 0.85);
+    cursor: pointer;
+  }
+  .mode-stick.selected {
+    stroke: var(--ir-raman-selected-stick-color, light-dark(#e66101, #fdb863));
+    stroke-width: var(--ir-raman-selected-stick-width, 2.5);
   }
   .pane-row {
     display: flex;
