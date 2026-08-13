@@ -76,7 +76,7 @@
   )
 
   let start_frame = $state(0)
-  let end_frame = $state(0)
+  let end_frame = $derived(Math.max(0, total_frames_available - 1))
 
   let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
 
@@ -86,13 +86,6 @@
     const pixels = canvas.width * canvas.height * resolution_multiplier ** 2
     const bitrate = estimate_video_bitrate(pixels, video_fps)
     return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
-  })
-
-  // Initialize end_frame when trajectory changes
-  $effect(() => {
-    if (total_frames_available > 0) {
-      end_frame = total_frames_available - 1
-    }
   })
 
   // Validate and constrain frame range

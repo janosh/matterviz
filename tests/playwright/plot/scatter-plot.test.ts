@@ -1356,8 +1356,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Capture initial tick text for Y-axis comparison
     const initial_y_tick = await y_tick_text.textContent()
 
-    const tick_format_heading = control_pane.locator(`h4:has-text("Tick Format")`)
-    const tick_format_section = tick_format_heading.locator(`+ section`)
+    const tick_format_section = control_pane.getByTestId(`tick-format-section`)
     const x_format_input = tick_format_section.locator(
       `label:has(span:text-is("X-axis")) input[type="text"]`,
     )

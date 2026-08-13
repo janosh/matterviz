@@ -177,6 +177,7 @@
     line-height: 1.5;
     span:first-child {
       color: var(--info-row-label-color);
+      text-align: left;
     }
     span:nth-child(2) {
       overflow: hidden;

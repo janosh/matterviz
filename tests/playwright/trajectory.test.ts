@@ -250,10 +250,12 @@ test.describe(`Trajectory Component`, () => {
       await expect(
         trajectory_controls.locator(`button[title^="Previous step"]`),
       ).toHaveAttribute(`title`, /^Previous step/)
-      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
-        `aria-label`,
-        /trajectory info/,
-      )
+      const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
+      await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
+      await info_toggle.click()
+      await expect(
+        trajectory.locator(`.trajectory-info-pane .info-row > span:first-child`).first(),
+      ).toHaveCSS(`text-align`, `left`)
       await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
         `aria-label`,
         /fullscreen/,
