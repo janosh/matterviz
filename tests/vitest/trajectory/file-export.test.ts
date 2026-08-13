@@ -21,6 +21,7 @@ import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { unzipSync } from 'fflate'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
@@ -450,16 +451,11 @@ describe(`TrajectoryExportPane property export`, () => {
     const reset_selector = `button[aria-label="Reset frame range to defaults"]`
     expect(document.querySelector(reset_selector)).toBeNull()
 
-    const start_input = document.querySelector<HTMLInputElement>(
-      `.settings-section input[type="number"]`,
-    )
-    if (!start_input) throw new Error(`Missing start frame input`)
+    const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
     start_input.value = `1`
     start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
     await tick()
-    const reset_button = document.querySelector<HTMLButtonElement>(reset_selector)
-    expect(reset_button).toBeInstanceOf(HTMLButtonElement)
-    reset_button?.click()
+    doc_query<HTMLButtonElement>(reset_selector).click()
     await tick()
     expect(document.querySelector(reset_selector)).toBeNull()
 

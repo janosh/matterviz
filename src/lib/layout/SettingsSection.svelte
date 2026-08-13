@@ -10,8 +10,16 @@
     reset_values?: Record<string, unknown>
   } = $props()
 
-  // Seed the shared component with an explicit reset baseline, then feed it live values.
-  let compared_values = $state(untrack(() => reset_values ?? current_values))
+  // Seed the shared component with this section's reset baseline, then feed it live values.
+  let compared_values = $derived(
+    untrack(() =>
+      reset_values
+        ? Object.fromEntries(
+            Object.entries(reset_values).filter(([key]) => Object.hasOwn(current_values, key)),
+          )
+        : current_values,
+    ),
+  )
   $effect(() => {
     compared_values = current_values
   })

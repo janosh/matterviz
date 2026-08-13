@@ -94,7 +94,6 @@
     `--info-card-bg: var(--pane-bg, white)`,
     `--info-card-heading-gap: 6px`,
     `--info-row-padding: 1pt`,
-    `--row-label-max: 1fr`,
     `--info-row-label-color: var(--text-color-muted, #666)`,
   ].join(`; `)
 </script>
@@ -125,7 +124,6 @@
     filter_placeholder="Filter hull info"
     empty_label="hull info"
     heading_level={5}
-    row_label_min="7em"
     style={info_card_style}
   />
 </ViewerPane>

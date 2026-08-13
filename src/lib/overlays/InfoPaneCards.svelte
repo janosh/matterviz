@@ -26,7 +26,6 @@
     show_filter = true,
     show_copy = true,
     heading_level = 4,
-    row_label_min = `5em`,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     cards: InfoPaneCard[]
@@ -37,7 +36,6 @@
     show_filter?: boolean
     show_copy?: boolean
     heading_level?: 4 | 5
-    row_label_min?: string
   } = $props()
 
   let filter = $state(``)
@@ -95,7 +93,7 @@
 {#if filtered_cards.length === 0}
   <p class="empty-filter">No {empty_label} matches "{filter}".</p>
 {:else}
-  <div {...rest} class={[`info-cards`, rest.class]} style:--row-label-min={row_label_min}>
+  <div {...rest} class={[`info-cards`, rest.class]}>
     {#each filtered_cards as card (card.title)}
       <section class="info-card">
         <svelte:element this={`h${heading_level}`}>{card.title}</svelte:element>
@@ -168,9 +166,7 @@
   }
   .info-row {
     display: grid;
-    grid-template-columns:
-      minmax(var(--row-label-min), var(--row-label-max, 0.8fr)) minmax(0, 1fr)
-      auto;
+    grid-template-columns: fit-content(40%) minmax(0, 1fr) auto;
     align-items: center;
     gap: 5pt;
     padding: var(--info-row-padding, 1pt 0);
