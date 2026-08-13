@@ -521,7 +521,6 @@
 <style>
   .viewport-cell {
     position: relative;
-    overflow: hidden;
     box-sizing: border-box;
     height: 100%;
     width: 100%;
@@ -532,12 +531,9 @@
   .viewport-cell.multi {
     border: 1px solid var(--struct-viewport-border, rgba(128, 128, 128, 0.35));
   }
-  /* Let the active pane's hover tooltip overflow into neighboring panes instead of
-    being clipped, and raise it above sibling panes so it paints on top. The WebGL
-    canvas is sized to the cell by JS, so only HTML overlays (the tooltip) overflow. */
+  /* Raise the active pane's portaled tooltip above sibling panes. */
   .viewport-cell.multi.active {
     border-color: var(--struct-viewport-active-border, var(--accent-color, #4a9eff));
-    overflow: visible;
     z-index: 1;
   }
   .viewport-label {

@@ -2,7 +2,7 @@ import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
@@ -256,6 +256,29 @@ describe(`Bands component`, () => {
     })
     const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
     expect(fill_region_paths).toHaveLength(1)
+  })
+
+  it(`emphasizes the selection and extends clickable marker hit areas`, async () => {
+    const on_point_click = vi.fn()
+    await mount_bands({
+      band_structs: base_band_structure,
+      highlighted_band_index: 2,
+      highlighted_qpoint_index: 1,
+      on_point_click,
+    })
+    expect(
+      document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-selected-color"]`),
+    ).toHaveLength(1)
+    expect(
+      document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-muted-color"]`),
+    ).toHaveLength(3)
+    expect(document.querySelectorAll(`.effect-ring.selected`)).toHaveLength(1)
+
+    const hit_target = document.querySelector<SVGCircleElement>(`.marker-hit-target`)
+    expect(hit_target).not.toBeNull()
+    expect(Number(hit_target?.getAttribute(`r`))).toBeGreaterThan(3)
+    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_point_click).toHaveBeenCalledOnce()
   })
 
   it(`shows band-gap annotation when electronic gap exists`, async () => {

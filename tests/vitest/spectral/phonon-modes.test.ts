@@ -1,5 +1,5 @@
 import type { Vec3 } from '$lib/math'
-import { create_frac_to_cart } from '$lib/math'
+import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
 import {
   is_commensurate_phonon_supercell,
   phonon_band_structure_from_modes,
@@ -8,6 +8,8 @@ import {
   type Complex,
   type PhononModeData,
 } from '$lib/spectral'
+import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../setup'
@@ -60,6 +62,22 @@ const displacement_at = (data: PhononModeData, frame_idx: number, site_idx: numb
 }
 
 describe(`phonon_mode_trajectory`, () => {
+  it(`defaults to a 3x3x2 supercell with a 0.6 A excursion`, () => {
+    const trajectory = phonon_mode_trajectory(make_mode_data(), {
+      qpoint_idx: 0,
+      mode_idx: 0,
+    })
+    const displacement = trajectory.frames[0].structure.sites[0].properties
+      .phonon_displacement as Vec3
+    expect(trajectory.metadata).toMatchObject({ amplitude: 0.6, supercell: [3, 3, 2] })
+    expect(
+      trajectory.frames[0].structure.sites.filter(
+        ({ properties }) => properties.orig_site_idx === undefined,
+      ),
+    ).toHaveLength(18)
+    expect(Math.hypot(...displacement)).toBeCloseTo(0.6, 14)
+  })
+
   it(`undoes mass weighting while preserving relative eigenvector amplitudes`, () => {
     const component = 1 / Math.sqrt(2)
     const data = make_mode_data(
@@ -82,7 +100,7 @@ describe(`phonon_mode_trajectory`, () => {
     expect(displacement_at(data, 0, 1)).toEqual([0.5, 0, 0])
   })
 
-  it(`turns complex quadrature components into a circular phase cycle`, () => {
+  it(`turns complex quadrature components into orthogonal phase motion`, () => {
     const component = 1 / Math.sqrt(2)
     const data = make_mode_data([
       [
@@ -106,6 +124,26 @@ describe(`phonon_mode_trajectory`, () => {
     const sites = trajectory.frames[0].structure.sites
     expect(sites[0].properties.phonon_displacement).toEqual([1, 0, 0])
     expect(sites[1].properties.phonon_displacement).toEqual([-1, 0, 0])
+  })
+
+  it(`applies Bloch phase to positive-face copies in noncommensurate cells`, () => {
+    const trajectory = phonon_mode_trajectory(
+      make_mode_data(real_x, [0.375, 0, 0]),
+      { qpoint_idx: 0, mode_idx: 0 },
+      { amplitude: 1, supercell: [3, 1, 1], n_frames: 4 },
+    )
+    const positive_x_image = trajectory.frames[0].structure.sites.find(({ properties }) => {
+      const cell_shift = properties.phonon_cell_shift
+      return (
+        Array.isArray(cell_shift) &&
+        cell_shift.length === 3 &&
+        cell_shift.every((value, axis) => value === [3, 0, 0][axis])
+      )
+    })
+    if (!positive_x_image) throw new Error(`Expected a positive x-face image atom`)
+    const displacement = positive_x_image.properties.phonon_displacement as Vec3
+    expect(displacement[0]).toBeCloseTo(Math.SQRT1_2, 14)
+    expect(displacement.slice(1)).toEqual([0, 0])
   })
 
   it(`removes arbitrary global complex phase`, () => {
@@ -148,8 +186,14 @@ describe(`phonon_mode_trajectory`, () => {
     const last_displacement = trajectory.frames.at(-1)?.structure.sites[0].properties
       .phonon_displacement as Vec3
     expect(last_displacement).not.toEqual(first_displacement)
+    expect(
+      trajectory.frames.some(({ structure }) =>
+        structure.sites.some(({ abc }) => abc.some((coord) => coord < 0 || coord >= 1)),
+      ),
+    ).toBe(true)
     for (const { structure } of trajectory.frames) {
       if (!(`lattice` in structure)) throw new Error(`Expected a crystal trajectory frame`)
+      expect(structure.lattice.pbc).toEqual([false, false, false])
       const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
       for (const site of structure.sites) {
         site.xyz.forEach((value, axis) =>
@@ -157,6 +201,77 @@ describe(`phonon_mode_trajectory`, () => {
         )
       }
     }
+    const cyclic_steps = trajectory.frames.map(({ structure }, frame_idx) => {
+      const next_structure =
+        trajectory.frames[(frame_idx + 1) % trajectory.frames.length].structure
+      return Math.max(
+        ...structure.sites.flatMap((site, site_idx) =>
+          site.xyz.map((coordinate, axis) =>
+            Math.abs(coordinate - next_structure.sites[site_idx].xyz[axis]),
+          ),
+        ),
+      )
+    })
+    expect(cyclic_steps.at(-1)).toBeLessThanOrEqual(Math.max(...cyclic_steps.slice(0, -1)))
+  })
+
+  it(`keeps base-structure bond topology fixed while atoms vibrate`, () => {
+    const trajectory = phonon_mode_trajectory(
+      parse_phonon_modes(nacl_band_yaml),
+      { qpoint_idx: 0, mode_idx: 3 },
+      { amplitude: 0.6, supercell: [3, 3, 2], n_frames: 12 },
+    )
+    const frame_bonds = trajectory.frames.map(({ structure }) =>
+      compute_bonds(structure, `explicit_only`),
+    )
+    const first_structure = trajectory.frames[0].structure
+    if (!(`lattice` in first_structure)) throw new Error(`Expected a crystal frame`)
+    const bonded_site_indices = new SvelteSet(
+      frame_bonds[0].flatMap(({ site_idx_1, site_idx_2 }) => [site_idx_1, site_idx_2]),
+    )
+    const cart_to_frac = create_cart_to_frac(first_structure.lattice.matrix)
+    const equilibrium_abc = (site: (typeof first_structure.sites)[number]): Vec3 => {
+      const displacement = site.properties.phonon_displacement as Vec3
+      return cart_to_frac(
+        site.xyz.map((coordinate, axis) => coordinate - displacement[axis]) as Vec3,
+      )
+    }
+    const unbonded_sites = first_structure.sites.filter(
+      (_, site_idx) => !bonded_site_indices.has(site_idx),
+    )
+    expect(unbonded_sites).toHaveLength(2)
+    for (const site of unbonded_sites) {
+      expect(
+        equilibrium_abc(site).every(
+          (coordinate) => Math.abs(coordinate) < 1e-12 || Math.abs(coordinate - 1) < 1e-12,
+        ),
+      ).toBe(true)
+    }
+    expect(bonded_site_indices.size / first_structure.sites.length).toBeGreaterThan(0.95)
+    const image_sites = first_structure.sites.filter(
+      ({ properties }) => typeof properties.orig_site_idx === `number`,
+    )
+    expect(image_sites.length).toBeGreaterThan(0)
+    for (const site of image_sites) {
+      const abc = equilibrium_abc(site)
+      expect(abc.every((coordinate) => coordinate >= -1e-12 && coordinate <= 1 + 1e-12)).toBe(
+        true,
+      )
+      expect(abc.some((coordinate) => Math.abs(coordinate - 1) < 1e-12)).toBe(true)
+    }
+    const bond_keys = frame_bonds.map((bonds) =>
+      bonds.map(({ site_idx_1, site_idx_2, cell_shift }) =>
+        get_bond_key(site_idx_1, site_idx_2, cell_shift),
+      ),
+    )
+    expect(bond_keys).toEqual(trajectory.frames.map(() => bond_keys[0]))
+    expect(frame_bonds.flat().every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
+    expect(Math.max(...frame_bonds.flat().map(({ bond_length }) => bond_length))).toBeLessThan(
+      4,
+    )
+    expect(frame_bonds[1].map(({ bond_length }) => bond_length)).not.toEqual(
+      frame_bonds[0].map(({ bond_length }) => bond_length),
+    )
   })
 
   it.each([
@@ -167,6 +282,11 @@ describe(`phonon_mode_trajectory`, () => {
       `oversized trajectory`,
       { supercell: [400, 400, 1] as Vec3 },
       /would generate 160000 sites × 48 frames.*exceeding the 500000 limit/,
+    ],
+    [
+      `oversized face-closed trajectory`,
+      { supercell: [2, 2, 2] as Vec3, n_frames: 62_500 },
+      /would generate 27 sites × 62500 frames.*exceeding the 500000 limit/,
     ],
   ])(`rejects $name`, (_name, options, error) => {
     expect(() =>
@@ -180,6 +300,17 @@ describe(`phonon_mode_trajectory`, () => {
   ])(`rejects an invalid selection`, (selection, error) => {
     expect(() => phonon_mode_trajectory(make_mode_data(), selection)).toThrow(error)
   })
+
+  it.each([
+    [[0.5, 0, 0], [2, 1, 1], true],
+    [[0.5, 0, 0], [3, 1, 1], false],
+    [[1 / 3, 0.25, 0], [3, 4, 1], true],
+  ] as [Vec3, Vec3, boolean][])(
+    `detects q-point/supercell commensurability`,
+    (q_position, supercell, expected) => {
+      expect(is_commensurate_phonon_supercell(q_position, supercell)).toBe(expected)
+    },
+  )
 
   it(`rejects missing eigenvectors and invalid typed masses`, () => {
     const missing_eigenvector = make_mode_data()
@@ -196,7 +327,7 @@ describe(`phonon_mode_trajectory`, () => {
   })
 })
 
-describe(`phonon band and commensurability helpers`, () => {
+describe(`phonon band helpers`, () => {
   it(`parses the real NaCl Gamma-X demo with complex eigenvectors`, () => {
     const data = parse_phonon_modes(nacl_band_yaml)
     expect(data.qpoints).toHaveLength(5)
@@ -231,9 +362,9 @@ describe(`phonon band and commensurability helpers`, () => {
       [7.612926876151339e-16, 1, -2.520799638457289e-16],
       [-3.7333168018089856e-16, 0.7797043412834651, -2.203338894676433e-16],
     ]
-    const actual = trajectory.frames[0].structure.sites.map(
-      (site) => site.properties.phonon_displacement as Vec3,
-    )
+    const actual = trajectory.frames[0].structure.sites
+      .filter(({ properties }) => properties.orig_site_idx === undefined)
+      .map((site) => site.properties.phonon_displacement as Vec3)
     const absolute_errors = actual.flatMap((vector, site_idx) =>
       vector.map((value, axis) => Math.abs(value - expected[site_idx][axis])),
     )
@@ -278,17 +409,6 @@ describe(`phonon band and commensurability helpers`, () => {
       IDENTITY_MATRIX3,
     )
   })
-
-  it.each([
-    [[0.5, 0, 0], [2, 1, 1], true],
-    [[0.5, 0, 0], [3, 1, 1], false],
-    [[1 / 3, 0.25, 0], [3, 4, 1], true],
-  ] as [Vec3, Vec3, boolean][])(
-    `detects q-point/supercell commensurability`,
-    (q_position, supercell, expected) => {
-      expect(is_commensurate_phonon_supercell(q_position, supercell)).toBe(expected)
-    },
-  )
 
   it(`rejects band conversion without path metadata`, () => {
     expect(() => phonon_band_structure_from_modes(make_mode_data())).toThrow(

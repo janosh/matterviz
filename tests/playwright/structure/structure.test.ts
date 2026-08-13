@@ -152,6 +152,38 @@ test.describe(`Structure Component Tests`, () => {
     await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(`500`)
   })
 
+  test(`settings pane reflows inside a narrow two-column comparison`, async ({ page }) => {
+    await goto_structure_test(page, `/test/structure?comparison=true&show_controls=always`)
+    const comparison = page.locator(`.structure-test-layout.comparison`)
+    await expect(comparison.locator(`.structure`)).toHaveCount(2)
+
+    const structure = comparison.locator(`#test-structure`)
+    await structure.getByRole(`button`, { name: `Structure controls` }).click()
+    const pane = structure.locator(`.controls-pane`)
+    await expect(pane).toBeVisible()
+
+    await expect
+      .poll(() =>
+        pane.evaluate((pane_element) => {
+          const viewer = pane_element.closest(`.structure`)
+          const content = pane_element.querySelector(`.pane-content`)
+          const control_tab = pane_element.querySelector(`.control-tab`)
+          if (!viewer || !content || !control_tab) throw new Error(`Incomplete pane geometry`)
+          const viewer_rect = viewer.getBoundingClientRect()
+          const pane_rect = pane_element.getBoundingClientRect()
+          const tab_rect = control_tab.getBoundingClientRect()
+          return {
+            narrow: viewer_rect.width < 420,
+            contained:
+              pane_rect.left >= viewer_rect.left - 1 &&
+              Math.max(pane_rect.right, tab_rect.right) <= viewer_rect.right + 1,
+            reflowed: content.scrollWidth <= content.clientWidth,
+          }
+        }),
+      )
+      .toEqual({ narrow: true, contained: true, reflowed: true })
+  })
+
   test(`measure mode controls visible by default and hide when disabled`, async ({ page }) => {
     const measure_dropdown = page.locator(`#test-structure .measure-mode-dropdown`)
     await expect(measure_dropdown).toBeVisible()
@@ -1976,31 +2008,21 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div.locator(`.viewport-cell`)).toHaveCount(1)
   })
 
-  // Regression: the hover tooltip must be able to overflow its own pane into
-  // neighboring panes instead of being clipped/occluded by them. Only the active
-  // pane is allowed to overflow (and is raised above siblings); inactive panes clip.
-  test(`active pane allows tooltip overflow, inactive panes clip`, async ({ page }) => {
+  test(`active pane raises overlays while its canvas stays clipped`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     await select_structure_layout(structure_div, `3D 2×2 grid`)
     const cells = structure_div.locator(`.viewport-cell`)
     await expect(cells).toHaveCount(4)
 
-    const overflow_of = (idx: number) =>
-      cells.nth(idx).evaluate((node) => getComputedStyle(node).overflow)
-
-    // Activate pane 0 explicitly: selecting the dropdown option may leave the pointer
-    // over another pane when the menu closes.
     await cells.nth(0).hover({ position: { x: 20, y: 20 } })
     await expect(cells.nth(0)).toHaveClass(/active/)
-    expect(await overflow_of(0)).toBe(`visible`)
-    expect(await cells.nth(0).evaluate((node) => getComputedStyle(node).zIndex)).toBe(`1`)
-    expect(await overflow_of(1)).toBe(`hidden`)
+    await expect(cells.nth(0)).toHaveCSS(`overflow`, `visible`)
+    await expect(cells.nth(0)).toHaveCSS(`z-index`, `1`)
+    await expect(cells.nth(0).locator(`canvas`).locator(`..`)).toHaveCSS(`overflow`, `hidden`)
 
-    // Activating another pane moves the overflow allowance to it
     await cells.nth(2).hover({ position: { x: 20, y: 20 } })
     await expect(cells.nth(2)).toHaveClass(/active/)
-    expect(await overflow_of(2)).toBe(`visible`)
-    expect(await overflow_of(0)).toBe(`hidden`)
+    await expect(cells.nth(2)).toHaveCSS(`z-index`, `1`)
   })
 
   test(`repeated toggling settles on the right canvas count without leaking contexts`, async ({

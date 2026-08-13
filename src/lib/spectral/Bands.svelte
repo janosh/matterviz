@@ -35,6 +35,7 @@
     x_positions = $bindable(),
     reference_frequency = null,
     highlighted_qpoint_index = null,
+    highlighted_band_index = null,
     ribbon_config = {},
     fermi_level = undefined,
     units = $bindable(`THz`),
@@ -50,6 +51,7 @@
     show_annotation_controls = true,
     id = undefined,
     'data-testid': data_testid = undefined,
+    point_hit_padding = 3,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -63,6 +65,8 @@
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
+    // Band index to emphasize together with the selected q-point marker
+    highlighted_band_index?: number | null
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
@@ -120,6 +124,22 @@
     }
 
     return defaults
+  }
+
+  const emphasize_band = (
+    line_style: { stroke: string; stroke_width: number },
+    band_idx: number,
+  ): { stroke: string; stroke_width: number } => {
+    if (highlighted_band_index === null) return line_style
+    const selected = highlighted_band_index === band_idx
+    return {
+      stroke: selected
+        ? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`
+        : `var(--bands-muted-color, light-dark(#b9c2d0, #48566c))`,
+      stroke_width: selected
+        ? Math.max(3, line_style.stroke_width * 2)
+        : Math.min(1, line_style.stroke_width),
+    }
   }
 
   // Ribbon data structure for rendering
@@ -388,10 +408,8 @@
           const frequencies = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
           const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
 
-          const line_style_up = get_line_style(
-            color,
-            is_acoustic === true,
-            frequencies,
+          const line_style_up = emphasize_band(
+            get_line_style(color, is_acoustic === true, frequencies, band_idx),
             band_idx,
           )
 
@@ -636,6 +654,21 @@
 
   let fill_regions = $derived([...imaginary_mode_region, ...custom_highlight_regions])
 
+  // Reuse ScatterPlot's selected-point ring instead of maintaining a second marker style path.
+  let selected_point = $derived.by(() => {
+    if (highlighted_band_index === null || highlighted_qpoint_index === null) return null
+    for (const [series_idx, series] of series_data.entries()) {
+      if (!Array.isArray(series.metadata)) continue
+      const point_idx = series.metadata.findIndex(
+        (metadata) =>
+          metadata.band_idx === highlighted_band_index &&
+          metadata.qpoint_idx === highlighted_qpoint_index,
+      )
+      if (point_idx !== -1) return { series_idx, point_idx }
+    }
+    return null
+  })
+
   let electronic_gap_annotation = $derived.by(() => {
     if (
       !show_gap_annotation ||
@@ -686,6 +719,7 @@
     {id}
     data-testid={data_testid}
     series={series_data}
+    {point_hit_padding}
     {fill_regions}
     x_axis={{
       label: `Wave Vector`,
@@ -699,6 +733,7 @@
     {show_legend}
     legend={Object.keys(band_structs_dict).length > 1 ? {} : null}
     hover_config={{ threshold_px: 50 }}
+    {selected_point}
     {...rest}
     bind:show_controls
     bind:controls_open

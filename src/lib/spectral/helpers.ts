@@ -23,6 +23,23 @@ export {
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
   key in SUBSCRIPT_MAP
 
+// Fractional reciprocal coordinates are equivalent when they differ by a lattice vector.
+export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e-6): boolean =>
+  first.every((coordinate, axis) => {
+    const delta = coordinate - second[axis]
+    return Math.abs(delta - Math.round(delta)) < tolerance
+  })
+
+export const phonon_explorer_views = (
+  data: types.PhononModeData,
+  spectrum?: types.VibrationalSpectrum,
+): types.PhononExplorerView[] => [
+  ...(data.path_segments.length ? ([`bands`] as const) : []),
+  ...(spectrum ? ([`ir`] as const) : []),
+  ...(spectrum?.has_raman ? ([`raman`] as const) : []),
+  `modes`,
+]
+
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
 export const detect_zoom_change = (
@@ -1271,6 +1288,7 @@ export function calculate_sigma_step(range: Vec2): number {
 
 // Per-point metadata for band tooltip display
 export interface BandPointMeta extends Record<string, unknown> {
+  aria_label: string
   band_idx: number
   qpoint_idx: number
   spin: `up` | `down`
@@ -1339,6 +1357,7 @@ export function build_point_metadata(opts: {
     const global_idx = start_idx + pt_idx
     const qpoint = bs.qpoints[global_idx]
     return {
+      aria_label: `Select band ${band_idx + 1}, q-point ${global_idx + 1}`,
       band_idx,
       qpoint_idx: global_idx,
       spin,

@@ -1,14 +1,12 @@
 <script lang="ts">
-  import { Cross, Info } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
-  import type { PaneProps } from '$lib/overlays'
+  import { Info } from 'svelte-widgets/icons'
+  import { ViewerPane, type PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import type { ComponentProps } from 'svelte'
   import type { BrillouinZoneData } from './types'
 
   let {
@@ -108,18 +106,16 @@
 </script>
 
 {#if structure && bz_data}
-  <DraggablePane
+  <ViewerPane
     bind:open={pane_open}
-    toggle_props={{ class: `bz-info-toggle`, title: `Brillouin zone info` }}
-    pane_props={{ ...pane_props, class: [`bz-info-pane`, pane_props?.class] }}
-    open_icon={Cross}
+    pane_name="Brillouin zone info"
+    class_prefix="bz-info"
+    {pane_props}
     closed_icon={Info}
   >
     <InfoPaneCards
       cards={pane_data.map(({ title, items }) => ({ title, rows: items }))}
-      show_filter={false}
-      filter_placeholder="Filter Brillouin zone info"
       empty_label="Brillouin zone info"
     />
-  </DraggablePane>
+  </ViewerPane>
 {/if}

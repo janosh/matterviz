@@ -127,6 +127,7 @@
     allow_file_drop = true,
     layout = `auto`,
     structure_props = {},
+    supercell_scaling = $bindable(structure_props.supercell_scaling ?? `1x1x1`),
     scatter_props = {},
     histogram_props = {},
     spinner_props = {},
@@ -183,6 +184,8 @@
       layout?: `auto` | Orientation
       // structure viewer props (passed to Structure component)
       structure_props?: ComponentProps<typeof Structure>
+      // bindable supercell selector state forwarded to the structure viewer
+      supercell_scaling?: string
       // plot props (passed to ScatterPlot component)
       scatter_props?: ComponentProps<typeof ScatterPlot>
       // histogram props (passed to Histogram component, excluding series which is handled separately)
@@ -1217,14 +1220,14 @@
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
       else if (analysis_menu_open) analysis_menu_open = false
-      // Escape key for info pane handled by DraggablePane
+      // Escape key for info pane handled by ViewerPane
     } else if (event.key >= `0` && event.key <= `9`) {
       playback.go_to(Math.floor((Number(event.key) / 10) * (total_frames - 1)))
     } else handled = false
     return handled
   }
 
-  // Shared by every analysis pane: each keeps its DraggablePane toggle for layout anchoring
+  // Shared by every analysis pane: each keeps its ViewerPane toggle for layout anchoring
   // but hides it, since the analysis menu owns the clicks.
   let analysis_pane_props = $derived({
     trajectory,
@@ -1573,6 +1576,7 @@
             scene_props: trail_scene_props,
           }}
           bind:show_trajectory_lines
+          bind:supercell_scaling
           bind:controls_open
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements
@@ -1841,7 +1845,7 @@
   .analysis-button.active {
     color: var(--accent-color, #4a9eff);
   }
-  /* Keep DraggablePane's toggle for layout anchoring; the analysis menu owns clicks. */
+  /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. */
   .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
     position: absolute;
     inset: 0;

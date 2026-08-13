@@ -399,6 +399,35 @@ describe(`Trajectory`, () => {
     expect(events.at(-1)).toBe(`pause:0`)
   })
 
+  test(`pauses auto-play before committing a dragged frame`, async () => {
+    const { performance_now, run_frame } = stub_animation_frames()
+    performance_now.mockReturnValue(1000)
+    const on_pause = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3, -4),
+      current_step_idx: 0,
+      fps: 10,
+      auto_play: true,
+      show_controls: `always` as const,
+      on_pause,
+    })
+    mount_traj(props)
+    await flush_render()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.dispatchEvent(new Event(`pointerdown`, { bubbles: true }))
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+
+    expect(props.current_step_idx).toBe(2)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(on_pause).toHaveBeenCalledOnce()
+    run_frame(1100)
+    expect(props.current_step_idx).toBe(2)
+  })
+
   test(`stops frame catch-up when an end callback makes playback unplayable`, async () => {
     const on_end = vi.fn()
     const on_loop = vi.fn()

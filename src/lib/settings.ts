@@ -1512,7 +1512,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       color: { value: `#4A9EFF`, description: `Default color for scatter plot points` },
       opacity: opacity_setting(1, `Opacity of scatter plot points`),
       stroke_width: {
-        value: 1,
+        value: 0.5,
         description: `Stroke width for scatter plot points`,
         minimum: 0,
         maximum: 5,
@@ -1521,7 +1521,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `#000000`,
         description: `Stroke color for scatter plot points`,
       },
-      stroke_opacity: opacity_setting(1, `Stroke opacity for scatter plot points`),
+      stroke_opacity: opacity_setting(0.45, `Stroke opacity for scatter plot points`),
     },
     line: {
       width: {

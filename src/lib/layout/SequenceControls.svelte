@@ -92,7 +92,11 @@
         min="0"
         max={max_index}
         value={index}
-        oninput={(event) => on_index_input(event.currentTarget.valueAsNumber)}
+        onpointerdown={playback.pause}
+        oninput={(event) => {
+          playback.pause()
+          on_index_input(event.currentTarget.valueAsNumber)
+        }}
         onchange={(event) => playback.go_to(event.currentTarget.valueAsNumber)}
         class="step-slider"
         title={`Drag to navigate ${item_name}s`}

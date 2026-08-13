@@ -79,8 +79,7 @@
   )
   let has_signal = $derived(sticks.x.length > 0 && sticks.y.some((val) => val > 0))
 
-  const select_mode = (mode_idx: number | undefined): void => {
-    if (mode_idx === undefined) return
+  const select_mode = (mode_idx: number): void => {
     selected_mode_idx = mode_idx
     on_mode_select?.(mode_idx)
   }
@@ -278,19 +277,17 @@
             {@const mode = stick_modes[stick_idx]}
             <line
               class="mode-stick"
-              class:selected={mode?.mode_idx === selected_mode_idx}
+              class:selected={mode.mode_idx === selected_mode_idx}
               x1={x_px}
               x2={x_px}
               y1={baseline}
               y2={tip}
               role="button"
               tabindex="0"
-              aria-label={mode
-                ? `Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${units}`
-                : `Select vibrational mode`}
-              onclick={() => select_mode(mode?.mode_idx)}
+              aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${units}`}
+              onclick={() => select_mode(mode.mode_idx)}
               onkeydown={(event) => {
-                if (!mode || (event.key !== `Enter` && event.key !== ` `)) return
+                if (event.key !== `Enter` && event.key !== ` `) return
                 event.preventDefault()
                 select_mode(mode.mode_idx)
               }}

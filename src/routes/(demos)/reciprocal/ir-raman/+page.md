@@ -22,7 +22,9 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 
 ## Explore bands, peaks, and atomic motion together
 
-`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. Away from Γ it applies the Bloch phase across a configurable diagonal supercell; the warning above the viewer tells you when the chosen box is not commensurate with the selected q-point. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
+`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. Away from Γ it applies the Bloch phase across a configurable diagonal supercell and renders the resulting coordinates without periodic wrapping. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
+
+For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer). The embedded example below exposes the same public component alongside its source.
 
 This compact NaCl Γ→X path was generated from the same published PhononDB force constants as the Γ-only example below. Click a band, an IR stick, or a row in the mode list to change the animation.
 
@@ -37,14 +39,14 @@ This compact NaCl Γ→X path was generated from the same published PhononDB for
   import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
   import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 
-  const mode_data = parse_phonon_modes(band_yaml)
-  const spectrum = spectrum_from_phonon_data(mode_data, parse_born(born_file))
+  const modes = parse_phonon_modes(band_yaml)
+  const dataset = { modes, spectrum: spectrum_from_phonon_data(modes, parse_born(born_file)) }
 </script>
 
-<PhononModeExplorer {mode_data} {spectrum} style="height: 680px" />
+<PhononModeExplorer {dataset} style="height: 680px" />
 ```
 
-For a browser-side file workflow, omit all source props and drop one `band.yaml`, `qpoints.yaml`, `mesh.yaml`, or gzip-compressed equivalent onto the explorer. For programmatic loading, provide exactly one of `mode_data`, raw `yaml`, or `data_url`; conflicting sources fail visibly instead of using an implicit precedence.
+`PhononModeExplorer` is a typed renderer. Parse or fetch files at the application boundary, then pass the resulting modes and optional spectrum together as one dataset.
 
 ## Infrared spectrum of NaCl
 

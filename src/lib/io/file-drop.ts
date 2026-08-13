@@ -37,11 +37,9 @@ export const drag_over_handlers = (opts: {
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
-  if (
-    opts.max_files !== undefined &&
-    (!Number.isSafeInteger(opts.max_files) || opts.max_files < 0)
-  ) {
-    throw new TypeError(`max_files must be a non-negative integer, got ${opts.max_files}`)
+  const { max_files } = opts
+  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0)) {
+    throw new TypeError(`max_files must be a non-negative integer, got ${max_files}`)
   }
 
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
@@ -52,9 +50,9 @@ export const create_file_drop_handler = (
       // rejects on a symlink cycle or an oversized tree, which the catch below reports
       const files = await read
       const source_count = files.length + (url ? 1 : 0)
-      if (opts.max_files !== undefined && source_count > opts.max_files) {
+      if (max_files !== undefined && source_count > max_files) {
         opts.on_error?.(
-          `Drop at most ${opts.max_files} file${opts.max_files === 1 ? `` : `s`} at a time (received ${source_count})`,
+          `Drop at most ${max_files} file${max_files === 1 ? `` : `s`} at a time (received ${source_count})`,
         )
         return
       }

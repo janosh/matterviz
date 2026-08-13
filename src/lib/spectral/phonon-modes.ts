@@ -8,7 +8,9 @@ import {
   parse_supercell_scaling,
   type Crystal,
 } from '$lib/structure'
+import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
 import type { TrajectoryType } from '$lib/trajectory'
+import { acoustic_mode_indices, is_gamma_point } from './ir-raman'
 import type {
   Complex,
   PhononBandStructure,
@@ -24,12 +26,79 @@ export interface PhononModeTrajectoryOptions {
   vector_key?: string
 }
 
-export const DEFAULT_PHONON_AMPLITUDE = 0.3
-export const DEFAULT_PHONON_SUPERCELL: Vec3 = [2, 2, 2]
+export const DEFAULT_PHONON_AMPLITUDE = 0.6
+export const DEFAULT_PHONON_SUPERCELL: Vec3 = [3, 3, 2]
 export const DEFAULT_PHONON_FRAMES = 48
+export const DEFAULT_PHONON_FPS = 12
 export const PHONON_VECTOR_KEY = `phonon_displacement`
 // Every frame clones complete site objects, so reject requests likely to freeze the browser.
 const MAX_PHONON_TRAJECTORY_SITE_FRAMES = 500_000
+const CELL_FACE_TOLERANCE = 1e-10
+
+const validate_trajectory_size = (n_sites: number, n_frames: number): void => {
+  const n_site_frames = n_sites * n_frames
+  if (
+    Number.isSafeInteger(n_site_frames) &&
+    n_site_frames <= MAX_PHONON_TRAJECTORY_SITE_FRAMES
+  ) {
+    return
+  }
+  throw new Error(
+    `Phonon trajectory would generate ${n_sites} sites × ${n_frames} frames ` +
+      `(${n_site_frames} site-frames), exceeding the ${MAX_PHONON_TRAJECTORY_SITE_FRAMES} limit. ` +
+      `Reduce the supercell or frame count.`,
+  )
+}
+
+// Close the half-open supercell [0, 1) with copies on its missing positive faces. These
+// are the only image atoms the phonon player needs: they fill the displayed cell without
+// asking the generic PBC renderer to add whole translated coordination shells outside it.
+const close_supercell_faces = (structure: Crystal, scaling: Vec3): Crystal => {
+  const sites = [...structure.sites]
+  const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
+
+  for (const [site_idx, site] of structure.sites.entries()) {
+    const face_axes = site.abc.flatMap((coordinate, axis) =>
+      Math.abs(coordinate) <= CELL_FACE_TOLERANCE ? [axis] : [],
+    )
+    for (let face_mask = 1; face_mask < 1 << face_axes.length; face_mask++) {
+      const abc = [...site.abc] as Vec3
+      const phonon_cell_shift: Vec3 = [0, 0, 0]
+      for (const [mask_idx, axis] of face_axes.entries()) {
+        if (face_mask & (1 << mask_idx)) {
+          abc[axis] = 1
+          phonon_cell_shift[axis] = scaling[axis]
+        }
+      }
+      sites.push({
+        ...site,
+        abc,
+        xyz: frac_to_cart(abc),
+        properties: { ...site.properties, orig_site_idx: site_idx, phonon_cell_shift },
+      })
+    }
+  }
+  return { ...structure, sites }
+}
+
+export function default_phonon_mode_selection(
+  data: PhononModeData,
+): PhononModeSelection | undefined {
+  const gamma_idx = data.qpoints.findIndex(({ q_position }) => is_gamma_point(q_position))
+  const qpoint_order = [...data.qpoints.keys()]
+  if (gamma_idx > 0) qpoint_order.unshift(...qpoint_order.splice(gamma_idx, 1))
+  for (const qpoint_idx of qpoint_order) {
+    const qpoint = data.qpoints[qpoint_idx]
+    const acoustic = acoustic_mode_indices(qpoint.modes, qpoint.q_position)
+    const optical_idx = qpoint.modes.findIndex(
+      (mode, mode_idx) => mode.eigenvector !== null && !acoustic.has(mode_idx),
+    )
+    const mode_idx =
+      optical_idx !== -1 ? optical_idx : qpoint.modes.findIndex((mode) => mode.eigenvector)
+    if (mode_idx !== -1) return { qpoint_idx, mode_idx }
+  }
+  return undefined
+}
 
 // Convert parsed band.yaml modes to the structure consumed by Bands.
 export function phonon_band_structure_from_modes(data: PhononModeData): PhononBandStructure {
@@ -121,7 +190,7 @@ function complex_vector_max_norm(vector: Complex[]): number {
 function validate_selection(
   data: PhononModeData,
   selection: PhononModeSelection,
-): Complex[][] {
+): { eigenvector: Complex[][]; frequency: number; q_position: Vec3 } {
   const qpoint = data.qpoints[selection.qpoint_idx]
   if (!qpoint) {
     throw new Error(
@@ -139,7 +208,11 @@ function validate_selection(
       `Phonon mode ${selection.mode_idx} at q-point ${selection.qpoint_idx} has no eigenvector`,
     )
   }
-  return mode.eigenvector
+  return {
+    eigenvector: mode.eigenvector,
+    frequency: mode.frequency,
+    q_position: qpoint.q_position,
+  }
 }
 
 // Whether the selected Bloch phase repeats across every diagonal supercell boundary.
@@ -182,26 +255,13 @@ export function phonon_mode_trajectory(
   }
   const scaling = parse_supercell_scaling(supercell)
   const n_cells = scaling[0] * scaling[1] * scaling[2]
-  const n_supercell_sites = data.n_atoms * n_cells
-  const n_site_frames = n_supercell_sites * n_frames
-  if (
-    !Number.isSafeInteger(n_site_frames) ||
-    n_site_frames > MAX_PHONON_TRAJECTORY_SITE_FRAMES
-  ) {
-    throw new Error(
-      `Phonon trajectory would generate ${n_supercell_sites} sites × ${n_frames} frames ` +
-        `(${n_site_frames} site-frames), exceeding the ${MAX_PHONON_TRAJECTORY_SITE_FRAMES} limit. ` +
-        `Reduce the supercell or frame count.`,
-    )
-  }
-  const eigenvector = validate_selection(data, selection)
+  validate_trajectory_size(data.n_atoms * n_cells, n_frames)
+  const { eigenvector, frequency, q_position } = validate_selection(data, selection)
   if (eigenvector.length !== data.n_atoms) {
     throw new Error(
       `Phonon eigenvector has ${eigenvector.length} atom blocks but mode data declares ${data.n_atoms}`,
     )
   }
-  const { q_position, modes } = data.qpoints[selection.qpoint_idx]
-  const { frequency } = modes[selection.mode_idx]
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
   const sites = data.atoms.map((atom, atom_idx) => {
     if (!is_elem_symbol(atom.symbol)) {
@@ -218,7 +278,7 @@ export function phonon_mode_trajectory(
     sites,
     lattice: {
       matrix: data.lattice,
-      pbc: [true, true, true],
+      pbc: [false, false, false],
       ...math.calc_lattice_params(data.lattice),
     },
     properties: {
@@ -227,11 +287,23 @@ export function phonon_mode_trajectory(
       phonon_mode_idx: selection.mode_idx,
     },
   }
-  const equilibrium = make_supercell(unit_cell, scaling, false)
+  const expanded_cell = make_supercell(unit_cell, scaling, false)
+  const closed_cell = close_supercell_faces(expanded_cell, scaling)
+  validate_trajectory_size(closed_cell.sites.length, n_frames)
+  const equilibrium: Crystal = {
+    ...closed_cell,
+    properties: {
+      ...closed_cell.properties,
+      bonds: compute_bonds(closed_cell, `electroneg_ratio`).map(
+        ({ site_idx_1, site_idx_2, bond_order }) =>
+          normalize_structure_bond(site_idx_1, site_idx_2, bond_order ?? 1),
+      ),
+    },
+  }
   const supercell_cart_to_frac = math.create_cart_to_frac(equilibrium.lattice.matrix)
 
   let anchor: Complex = [1, 0]
-  let anchor_magnitude = -1
+  let anchor_magnitude = 0
   for (const atom_vector of eigenvector) {
     for (const component of atom_vector) {
       const magnitude = Math.hypot(...component)
@@ -277,10 +349,18 @@ export function phonon_mode_trajectory(
     const cos_phase = Math.cos(phase)
     const sin_phase = Math.sin(phase)
     const frame_sites = equilibrium.sites.map((site, site_idx) => {
-      const displacement = complex_displacements[site_idx].map(
-        ([real_part, imag_part]) =>
-          amplitude_scale * (real_part * cos_phase + imag_part * sin_phase),
-      ) as Vec3
+      const source_site_idx =
+        typeof site.properties.orig_site_idx === `number`
+          ? site.properties.orig_site_idx
+          : site_idx
+      const phonon_cell_shift = site.properties.phonon_cell_shift as Vec3 | undefined
+      const image_phase = phonon_cell_shift
+        ? complex_phase(2 * Math.PI * math.dot(q_position, phonon_cell_shift))
+        : ([1, 0] as Complex)
+      const displacement = complex_displacements[source_site_idx].map((component) => {
+        const [real_part, imag_part] = multiply_complex(component, image_phase)
+        return amplitude_scale * (real_part * cos_phase + imag_part * sin_phase)
+      }) as Vec3
       const xyz = math.add(site.xyz, displacement)
       return {
         ...site,

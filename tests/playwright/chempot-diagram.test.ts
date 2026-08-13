@@ -184,7 +184,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(colorbar).toContainText(`Entry count`)
   })
 
-  test(`3D projection controls and formula picker actions work in multinary mode`, async ({
+  test(`3D projection controls and formula pane layering work in multinary mode`, async ({
     page,
   }) => {
     const diagram = await get_diagram_by_heading(
@@ -192,7 +192,11 @@ test.describe(`ChemPot Diagram interactions`, () => {
       /YTOS Quaternary.*Ti-S-Y Projection/,
       `.chempot-diagram-3d`,
     )
-
+    await expect(diagram).toHaveCSS(`overflow`, `visible`)
+    await expect(diagram.locator(`canvas`).first().locator(`..`)).toHaveCSS(
+      `overflow`,
+      `hidden`,
+    )
     const { toggle: controls_toggle, pane: controls_pane } = get_pane(
       diagram,
       `controls`,
@@ -218,10 +222,11 @@ test.describe(`ChemPot Diagram interactions`, () => {
       .first()
     const preset_text = ((await alternate_preset.textContent()) ?? ``).trim()
     expect(preset_text).toMatch(/^[A-Za-z]+-[A-Za-z]+-[A-Za-z]+$/)
-    await alternate_preset.click()
     const expected_projection = preset_text.split(`-`)
-    const projection_after_click = await get_projection_values(x_select, y_select, z_select)
-    expect(projection_after_click).toEqual(expected_projection)
+    await alternate_preset.click()
+    await expect
+      .poll(() => get_projection_values(x_select, y_select, z_select))
+      .toEqual(expected_projection)
 
     const formula_toggle = diagram.locator(`button.chempot-formula-toggle`).first()
     const formula_pane = diagram

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state'
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
   import type { BondEditMode, BondOrder, MeasureMode, StructureBond } from '$lib/structure'
@@ -27,6 +28,7 @@
   let show_image_atoms = $state(true)
   let fullscreen = $state(false)
   let bonds = $state<StructureBond[] | undefined>()
+  let comparison_mode = $derived(page.url.searchParams.get(`comparison`) === `true`)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -252,39 +254,51 @@
   </div>
 </section>
 
-<Structure
-  id="test-structure"
-  {structure}
-  data_url={typeof window !== `undefined`
-    ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
-    : undefined}
-  bind:controls_open
-  bind:info_pane_open
-  bind:width={canvas.width}
-  bind:height={canvas.height}
-  {background_color}
-  {show_controls}
-  persist_settings={typeof window !== `undefined` &&
-    new URLSearchParams(window.location.search).get(`persist_settings`) === `true`}
-  bind:scene_props
-  bind:lattice_props
-  {performance_mode}
-  on_file_load={create_event_handler(`on_file_load`)}
-  on_error={create_event_handler(`on_error`)}
-  on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
-  on_camera_move={create_event_handler(`on_camera_move`)}
-  on_camera_reset={create_event_handler(`on_camera_reset`)}
-  bind:selected_sites
-  bind:measured_sites
-  {enable_measure_mode}
-  bind:measure_mode
-  bind:bond_edit_mode
-  bind:bond_edit_order
-  bind:supercell_scaling
-  bind:show_image_atoms
-  bind:fullscreen
-  bind:bonds
-/>
+<div class:comparison={comparison_mode} class="structure-test-layout">
+  <Structure
+    id="test-structure"
+    {structure}
+    data_url={typeof window !== `undefined`
+      ? new URLSearchParams(window.location.search).get(`data_url`) || undefined
+      : undefined}
+    bind:controls_open
+    bind:info_pane_open
+    bind:width={canvas.width}
+    bind:height={canvas.height}
+    {background_color}
+    {show_controls}
+    persist_settings={typeof window !== `undefined` &&
+      new URLSearchParams(window.location.search).get(`persist_settings`) === `true`}
+    bind:scene_props
+    bind:lattice_props
+    {performance_mode}
+    on_file_load={create_event_handler(`on_file_load`)}
+    on_error={create_event_handler(`on_error`)}
+    on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
+    on_camera_move={create_event_handler(`on_camera_move`)}
+    on_camera_reset={create_event_handler(`on_camera_reset`)}
+    bind:selected_sites
+    bind:measured_sites
+    {enable_measure_mode}
+    bind:measure_mode
+    bind:bond_edit_mode
+    bind:bond_edit_order
+    bind:supercell_scaling
+    bind:show_image_atoms
+    bind:fullscreen
+    bind:bonds
+  />
+  {#if comparison_mode}
+    <Structure
+      id="comparison-structure"
+      {structure}
+      show_controls="always"
+      allow_file_drop={false}
+      performance_mode="speed"
+      style="--struct-min-width: 0"
+    />
+  {/if}
+</div>
 
 <div data-testid="pane-open-status" style="margin-top: 10px">
   Info Pane Open Status: {info_pane_open}
@@ -325,3 +339,14 @@
   <h3>Event Calls ({event_calls.length})</h3>
   <pre>{JSON.stringify(event_calls, null, 2)}</pre>
 </div>
+
+<style>
+  .structure-test-layout {
+    display: contents;
+    &.comparison {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+  }
+</style>

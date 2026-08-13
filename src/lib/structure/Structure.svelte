@@ -12,6 +12,7 @@
     ArrowDown,
     ArrowUp,
     BrillouinZone,
+    Cross,
     Edit,
     Grid2x2,
     HeatmapMatrix,
@@ -195,9 +196,11 @@
     dragover = $bindable(false),
     allow_file_drop = true,
     enable_info_pane = true,
+    analyze_symmetry = true,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     show_image_atoms = $bindable(true),
     supercell_scaling = $bindable(`1x1x1`),
+    apply_supercell_scaling = true,
     fullscreen_toggle = DEFAULTS.structure.fullscreen_toggle,
     bottom_left,
     data_url,
@@ -289,6 +292,8 @@
     dragover?: boolean
     allow_file_drop?: boolean
     enable_info_pane?: boolean
+    // Disable for rapidly changing structures whose consumers do not use symmetry data.
+    analyze_symmetry?: boolean
     enable_measure_mode?: boolean
     measure_mode?: MeasureMode
     bond_edit_mode?: BondEditMode
@@ -333,6 +338,8 @@
     // use. Output-only: the scene renders from an internal raw copy for performance,
     // so external writes to this prop are ignored (overwritten on the next pipeline run)
     displayed_structure?: AnyStructure
+    // Set false when `structure` is already expanded to `supercell_scaling`.
+    apply_supercell_scaling?: boolean
     // Track which elements are hidden (bindable across frames in trajectories)
     hidden_elements?: Set<ElementSymbol>
     // Track which property values are hidden (e.g. Wyckoff positions, coordination numbers)
@@ -562,7 +569,7 @@
   // and WASM analysis on every drag frame causes severe frame drops.
   $effect(() => {
     if (dragging_atoms) return
-    if (!structure || !(`lattice` in structure)) {
+    if (!analyze_symmetry || !structure || !(`lattice` in structure)) {
       untrack(() => {
         sym_data = null
         symmetry_error = undefined
@@ -1037,14 +1044,16 @@
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
 
-  // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
-  // This ensures atoms are rendered inside the unit cell regardless of data source.
+  // Normalize periodic fractional coordinates and recompute Cartesian positions.
+  // Non-periodic axes retain out-of-cell coordinates (e.g. unwrapped trajectories).
   // ensure_lattice_params covers structures that bypass parse_any_structure (direct
   // props, trajectory JSON frames) with matrix-only pymatgen lattices, which would
   // otherwise NaN the camera auto-fit and render blank.
   let normalized_structure = $derived.by(() => {
     if (!structure || !(`lattice` in structure)) return structure
-    return ensure_lattice_params(normalize_fractional_coords(structure)) as AnyStructure
+    return ensure_lattice_params(
+      normalize_fractional_coords(structure, structure.lattice.pbc),
+    ) as AnyStructure
   })
 
   let structure_with_bonds = $derived.by(() => {
@@ -1089,9 +1098,13 @@
       return undefined
     }
   })
-  let has_supercell = $derived(supercell_factors?.some((factor) => factor !== 1) ?? false)
+  let has_scaled_cell = $derived(supercell_factors?.some((factor) => factor !== 1) ?? false)
+  let has_supercell = $derived(apply_supercell_scaling && has_scaled_cell)
+  let scaled_cell_displayed = $derived(
+    has_scaled_cell && (!apply_supercell_scaling || supercell_applied),
+  )
   let bond_edits_enabled = $derived(
-    cell_type === `original` && !(has_supercell && supercell_applied) && !supercell_loading,
+    cell_type === `original` && !scaled_cell_displayed && !supercell_loading,
   )
 
   $effect(() => {
@@ -2275,13 +2288,15 @@
       <div class="edit-toast">{toast_msg}</div>
     {/if}
 
-    {#if symmetry_error}
+    {#if analyze_symmetry && symmetry_error}
       <div class="symmetry-error">
         {symmetry_error}
         <button
           onclick={() => (symmetry_error = undefined)}
-          aria-label="Dismiss symmetry warning">×</button
+          aria-label="Dismiss symmetry warning"
         >
+          <Icon icon={Cross} style="display: block; width: 0.65rem; height: 0.65rem" />
+        </button>
       </div>
     {/if}
   {:else if structure}
@@ -2461,8 +2476,9 @@
   }
   .symmetry-error button {
     position: absolute;
-    top: 0.2rem;
+    top: 50%;
     right: 0.2rem;
+    transform: translateY(-50%);
     display: grid;
     place-items: center;
     width: 1rem;

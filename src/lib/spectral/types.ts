@@ -156,6 +156,12 @@ export interface PhononModeData {
   path_segments: PhononPathSegment[]
 }
 
+export interface PhononModeDataset {
+  modes: PhononModeData
+  spectrum?: VibrationalSpectrum
+  filename?: string
+}
+
 export interface PhononModeSelection {
   qpoint_idx: number
   mode_idx: number

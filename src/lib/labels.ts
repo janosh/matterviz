@@ -6,6 +6,24 @@ import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
 import { timeFormat } from 'd3-time-format'
 
+export { ELEM_SYMBOLS } from '$lib/element/types'
+
+// Mutable so callers can change the adaptive defaults globally.
+export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
+
+// d3 scientific formats render 0 as "0e+0" / "0.00e+0"; collapse to a plain 0.
+const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
+  num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
+
+// fmt as number allows [].map(format_num) without a type error.
+export const format_num = (num: number, fmt?: string | number): string => {
+  if (!fmt || typeof fmt !== `string`) {
+    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
+    fmt = Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt
+  }
+  return strip_scientific_zero(format(fmt)(num), fmt, num)
+}
+
 // Symbol types and formatting utilities from d3-shape
 export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
 export type D3SymbolName = Exclude<D3Symbol extends `symbol${infer Name}` ? Name : never, ``>
@@ -49,10 +67,6 @@ export const format_power_ten = (text: string): string =>
         `${base}×10<sup>${exponent.replace(/^\+/, ``).replace(`−`, `-`)}</sup>`,
     )
     .replaceAll(/(?<![\d.])1×10(?=<sup>)/g, `10`)
-
-// d3 scientific formats render 0 as "0e+0" / "0.00e+0"; collapse to a plain 0
-const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
-  num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
 
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
@@ -146,10 +160,6 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
     }),
   )
 
-// Allow users to import DEFAULT_FMT and change its items in place to
-// set the default number format globally
-export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
-
 // Unicode glyphs for common fractions used by format_fractional()
 export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
   [0, `0`],
@@ -176,16 +186,6 @@ export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
 export const format_value_or_num = (value: number, fmt?: string): string =>
   fmt ? format_value(value, fmt) : format_num(value)
 
-// fmt as number only allowed to support [].map(format_num) without type error
-export const format_num = (num: number, fmt?: string | number) => {
-  if (num === null) return ``
-  if (!fmt || typeof fmt !== `string`) {
-    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
-    fmt = Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt
-  }
-  return strip_scientific_zero(format(fmt)(num), fmt, num)
-}
-
 // Format a 3D vector as "(x, y, z)" with configurable precision
 export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
   `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${format_num(
@@ -195,16 +195,14 @@ export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
 
 const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 
-// Format file sizes using IEC binary units (1024 factor).
 export const format_bytes = (bytes?: number): string => {
   if (bytes === undefined || !Number.isFinite(bytes)) return `Unknown`
-
-  let [val, idx] = [bytes, 0]
-  while (Math.abs(val) >= 1024 && idx < BYTE_UNITS.length - 1) {
-    val /= 1024
-    idx++
+  let [value, unit_idx] = [bytes, 0]
+  while (Math.abs(value) >= 1024 && unit_idx < BYTE_UNITS.length - 1) {
+    value /= 1024
+    unit_idx++
   }
-  return idx === 0 ? `${val} B` : `${val.toFixed(2)} ${BYTE_UNITS[idx]}`
+  return unit_idx === 0 ? `${value} B` : `${format_num(value, `.2f`)} ${BYTE_UNITS[unit_idx]}`
 }
 
 // Replace common fractional values with unicode glyphs (e.g. 1/2 → ½)
@@ -280,9 +278,6 @@ export const ELEMENT_CATEGORIES = [
   `post-transition metal`,
   `transition metal`,
 ] as const
-
-// oxfmt-ignore
-export const ELEM_SYMBOLS = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
 export const SUPERSCRIPT_MAP = {
   '0': `⁰`,

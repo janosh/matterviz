@@ -323,6 +323,7 @@
           bind:scene
           bind:camera
           bind:orbit_controls
+          tooltip_portal={wrapper}
           {tooltip}
           {width}
           {height}
@@ -410,7 +411,6 @@
     flex-direction: column;
     background: var(--scatter3d-bg, var(--plot-bg));
     border-radius: var(--scatter3d-border-radius, var(--border-radius, 3pt));
-    overflow: hidden;
   }
   div.scatter-3d.fullscreen {
     position: fixed;
@@ -429,20 +429,8 @@
       var(--scatter3d-bg, var(--plot-bg, transparent));
     box-sizing: border-box;
   }
-  /* Threlte Canvas container needs flex: 1 to fill available space in flex layout
-     Fallback for browsers without :has() - targets any direct child div */
-  div.scatter-3d > :global(div) {
+  div.scatter-3d > :global(div:has(> canvas)) {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  /* Modern browsers: more specific selector using :has() */
-  @supports selector(:has(> canvas)) {
-    div.scatter-3d > :global(div:not(:has(> canvas))) {
-      flex: initial;
-      display: initial;
-      flex-direction: initial;
-    }
   }
   div.scatter-3d :global(canvas) {
     width: 100% !important;

@@ -1,9 +1,8 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { Cross, Export } from 'svelte-widgets/icons'
+  import { Export } from 'svelte-widgets/icons'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import { create_clipboard_feedback } from '$lib/overlays'
-  import { DraggablePane } from 'svelte-widgets'
+  import { ViewerPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
@@ -54,15 +53,16 @@
   }
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={export_pane_open}
+  pane_name="export options"
+  class_prefix="export"
   pane_props={{
     ...rest,
     ...pane_props,
-    class: [`export-pane`, rest.class, pane_props?.class],
+    class: [rest.class, pane_props?.class],
   }}
   {toggle_props}
-  open_icon={Cross}
   closed_icon={Export}
   {icon_style}
 >
@@ -127,7 +127,7 @@
     </div>
   {/each}
   {@render children?.()}
-</DraggablePane>
+</ViewerPane>
 
 <style>
   h4 {

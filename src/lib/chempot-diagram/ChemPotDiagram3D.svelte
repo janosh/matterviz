@@ -1,6 +1,6 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { Cross, Filter } from 'svelte-widgets/icons'
+  import { Filter } from 'svelte-widgets/icons'
   import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
   import type { FormulaLabelSegment } from '$lib/composition/format'
@@ -14,7 +14,7 @@
   import type { FullscreenToggleProp } from '$lib/layout'
   import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { sync_fullscreen } from 'svelte-widgets/fullscreen'
-  import { DraggablePane } from 'svelte-widgets'
+  import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
@@ -1272,21 +1272,11 @@
   // enough to pin the framing for good. Intent has to come from the input itself. Capture
   // phase on the wrapper, because OrbitControls dispatches start/change/end synchronously
   // inside the wheel event and a listener on the canvas would land after all three.
-  let canvas_clip: HTMLDivElement | undefined = $state()
   let gesture_had_input = false
-  const input_events = [`pointermove`, `wheel`] as const
   // a wheel always counts; a pointer only with a button held, since hovering is not a gesture
   const mark_input = (event: Event): void => {
     if (!(event instanceof PointerEvent) || event.buttons > 0) gesture_had_input = true
   }
-  $effect(() => {
-    const element = canvas_clip
-    if (!element) return
-    const controller = new AbortController()
-    const opts = { capture: true, passive: true, signal: controller.signal } as const
-    for (const type of input_events) element.addEventListener(type, mark_input, opts)
-    return () => controller.abort()
-  })
 
   // Drop the pinned view and hand framing back to the derived defaults.
   function reset_camera_view(): void {
@@ -1389,9 +1379,8 @@
     reset_camera_view()
   }
 
-  // .canvas-clip also holds overlay chrome. Controls and panes own their own double-click, but
-  // passive overlays (hover tooltip, color bar) sit over the canvas and must not swallow the
-  // reset. `closest` because a click on a button's label reports the child as the target.
+  // Controls and panes own their own double-click, but passive render overlays must not
+  // swallow reset. `closest` handles clicks reported by a control's child.
   const handle_dblclick = ({ target }: MouseEvent): void => {
     const on_chrome =
       target instanceof Element && target.closest(`button, input, select, .draggable-pane`)
@@ -1605,6 +1594,9 @@
       clear_hover_lock()
     }
   }}
+  onpointermovecapture={mark_input}
+  onwheelcapture={mark_input}
+  ondblclick={handle_dblclick}
 >
   <section>
     <ExportPane
@@ -1617,14 +1609,10 @@
         title: `Export chemical potential diagram`,
       }}
     />
-    <DraggablePane
+    <ViewerPane
       bind:open={formula_picker_open}
-      pane_props={{ class: `chempot-formula-pane` }}
-      toggle_props={{
-        class: `chempot-formula-toggle`,
-        title: `Formula overlays`,
-      }}
-      open_icon={Cross}
+      pane_name="formula overlays"
+      class_prefix="chempot-formula"
       closed_icon={Filter}
     >
       <h4>Formula Overlays</h4>
@@ -1663,7 +1651,7 @@
           {/each}
         {/if}
       </div>
-    </DraggablePane>
+    </ViewerPane>
 
     <ScatterPlot3DControls
       bind:controls_open
@@ -1846,140 +1834,123 @@
   {#if show_temperature_slider && temperature !== undefined}
     <TemperatureSlider class="chempot-temp-slider" {available_temperatures} bind:temperature />
   {/if}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="canvas-clip" bind:this={canvas_clip} ondblclick={handle_dblclick}>
-    {#if diagram_computing}
-      <Spinner
-        text="Computing chemical potential domains..."
-        style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
+  {#if diagram_computing}
+    <Spinner
+      text="Computing chemical potential domains..."
+      style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
+    />
+  {:else if !diagram_data}
+    <div class="error-state" role="alert" aria-live="polite">
+      <p>Cannot compute chemical potential diagram.</p>
+      <p>Need at least 2 elements with elemental reference entries.</p>
+    </div>
+  {:else if mounted && webgpu_available()}
+    <Canvas createRenderer={create_renderer}>
+      <ChemPotScene3D
+        bind:orbit_controls={orbit_controls_ref}
+        {render_domains}
+        {render_axis_scale}
+        {plot_elements}
+        {formal_chempots}
+        {x_axis}
+        {y_axis}
+        {z_axis}
+        {display}
+        {data_center}
+        {data_extent}
+        {camera_position}
+        {camera_target}
+        {camera_projection}
+        {orthographic_zoom}
+        {auto_rotate}
+        hull_geometry={colored_hull_geometry}
+        {hull_opacity}
+        {edge_geometry}
+        hover_meshes={hover_mesh_data}
+        on_domain_hover={handle_phase_hover}
+        on_domain_press={toggle_phase_lock}
+        on_domain_leave={handle_phase_leave}
+        formula_meshes={formula_mesh_data}
+        formula_edges={formula_edge_data}
+        domain_labels={scene_domain_labels}
+        label_scale={zoom_scale}
       />
-    {:else if !diagram_data}
-      <div class="error-state" role="alert" aria-live="polite">
-        <p>Cannot compute chemical potential diagram.</p>
-        <p>Need at least 2 elements with elemental reference entries.</p>
+    </Canvas>
+    <!-- Color bar for continuous modes -->
+    {#if color_range}
+      <ColorBar
+        title={color_range.label}
+        range={[color_range.min, color_range.max]}
+        scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
+        wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
+        bar_style="height: 12px;"
+        title_style="margin-bottom: 4px;"
+      />
+    {/if}
+    <!-- Categorical legend for arity mode -->
+    {#if color_mode === `arity`}
+      <div class="arity-legend">
+        {#each arity_legend_labels as label, idx (label)}
+          <span>
+            <span style:background={ARITY_COLORS[idx]}></span>
+            {label}
+          </span>
+        {/each}
       </div>
-    {:else if mounted && webgpu_available()}
-      <Canvas createRenderer={create_renderer}>
-        <ChemPotScene3D
-          bind:orbit_controls={orbit_controls_ref}
-          {render_domains}
-          {render_axis_scale}
-          {plot_elements}
-          {formal_chempots}
-          {x_axis}
-          {y_axis}
-          {z_axis}
-          {display}
-          {data_center}
-          {data_extent}
-          {camera_position}
-          {camera_target}
-          {camera_projection}
-          {orthographic_zoom}
-          {auto_rotate}
-          hull_geometry={colored_hull_geometry}
-          {hull_opacity}
-          {edge_geometry}
-          hover_meshes={hover_mesh_data}
-          on_domain_hover={handle_phase_hover}
-          on_domain_press={toggle_phase_lock}
-          on_domain_leave={handle_phase_leave}
-          formula_meshes={formula_mesh_data}
-          formula_edges={formula_edge_data}
-          domain_labels={scene_domain_labels}
-          label_scale={zoom_scale}
-          portal={wrapper}
-        />
-      </Canvas>
-      <!-- Color bar for continuous modes -->
-      {#if color_range}
-        <ColorBar
-          title={color_range.label}
-          range={[color_range.min, color_range.max]}
-          scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
-          wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
-          bar_style="height: 12px;"
-          title_style="margin-bottom: 4px;"
-        />
-      {/if}
-      <!-- Categorical legend for arity mode -->
-      {#if color_mode === `arity`}
-        <div class="arity-legend">
-          {#each arity_legend_labels as label, idx (label)}
-            <span>
-              <span style:background={ARITY_COLORS[idx]}></span>
-              {label}
-            </span>
-          {/each}
-        </div>
-      {/if}
     {/if}
-    {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
-      <aside
-        bind:this={tooltip_el}
-        class="phase-tooltip"
-        style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
-      >
-        <h4>
-          {#each formula_label_segments(hover_info.formula) as segment}
-            <span class:formula-subscript={segment.subscript}>{segment.text}</span>
-          {/each}
-        </h4>
-        {#if locked_hover_formula === hover_info.formula}
-          <p>Pinned · Press Esc to unlock</p>
+  {/if}
+  {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
+    <aside
+      bind:this={tooltip_el}
+      class="phase-tooltip"
+      style="left: {tooltip_pos.x}px; top: {tooltip_pos.y}px"
+    >
+      <h4>
+        {#each formula_label_segments(hover_info.formula) as segment}
+          <span class:formula-subscript={segment.subscript}>{segment.text}</span>
+        {/each}
+      </h4>
+      {#if locked_hover_formula === hover_info.formula}
+        <p>Pinned · Press Esc to unlock</p>
+      {/if}
+      <p>
+        Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
+        {hover_info.n_points}
+      </p>
+      <p>
+        Entries: {hover_info.matching_entry_count}
+        {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
+          · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
+          to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
         {/if}
-        <p>
-          Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
-          {hover_info.n_points}
-        </p>
-        <p>
-          Entries: {hover_info.matching_entry_count}
-          {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
-            · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
-            to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
-          {/if}
-        </p>
-        {#if tooltip_detail_level === `detailed`}
-          <h5>Axis ranges</h5>
-          {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-            <p>
-              {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
-              {format_num(axis_range.max_val, `.4~g`)} eV
-            </p>
-          {/each}
+      </p>
+      {#if tooltip_detail_level === `detailed`}
+        <h5>Axis ranges</h5>
+        {#each hover_info.axis_ranges as axis_range (axis_range.element)}
           <p>
-            Centroid: ({hover_info.ann_loc
-              .map((value) => format_num(value, `.3~g`))
-              .join(`, `)})
+            {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
+            {format_num(axis_range.max_val, `.4~g`)} eV
           </p>
-          {#if hover_info.touches_limits.length > 0}
-            <h5>Touches bounds</h5>
-            <p>{hover_info.touches_limits.join(`, `)}</p>
-          {/if}
+        {/each}
+        <p>
+          Centroid: ({hover_info.ann_loc.map((value) => format_num(value, `.3~g`)).join(`, `)})
+        </p>
+        {#if hover_info.touches_limits.length > 0}
+          <h5>Touches bounds</h5>
+          <p>{hover_info.touches_limits.join(`, `)}</p>
         {/if}
-      </aside>
-    {/if}
-  </div>
+      {/if}
+    </aside>
+  {/if}
 </div>
 
 <style>
   .chempot-diagram-3d {
     position: relative;
-    overflow: clip;
-  }
-  .canvas-clip {
-    position: relative;
-    overflow: clip;
-    width: 100%;
-    height: 100%;
+    container-type: size;
   }
   .chempot-diagram-3d:fullscreen {
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
-  }
-  /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned overlay divs
-     for 3D labels. pointer-events: none prevents them from blocking raycasting. */
-  .chempot-diagram-3d > :global(div[style*='position: absolute'][style*='top: 0']) {
-    pointer-events: none !important;
   }
   .chempot-diagram-3d > section {
     position: absolute;

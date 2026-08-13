@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { Cross, Lattice } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
+  import { Lattice } from 'svelte-widgets/icons'
+  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
-  import { type ComponentProps, untrack } from 'svelte'
+  import { untrack } from 'svelte'
   import type { StructureIdSweep } from './collect'
   import {
     collect_structure_id_sweep,
@@ -21,18 +20,14 @@
     raw_data = null,
     pane_open = $bindable(false),
     result = $bindable(),
-    toggle_props,
-    pane_props,
-    ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    ...pane_options
+  }: ViewerPaneOptions & {
     trajectory?: TrajectoryType
     // Raw file bytes from Trajectory.svelte's orig_data. Required for indexed
     // trajectories, whose `frames` array holds only the first few frames.
     raw_data?: string | ArrayBuffer | null
     pane_open?: boolean
     result?: StructureIdSweep
-    toggle_props?: PaneToggleProps
-    pane_props?: PaneProps
   } = $props()
 
   // null, not 0, is what <input type="number"> writes back when cleared
@@ -100,21 +95,13 @@
   }
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="structure type identification"
+  class_prefix="trajectory-structure-id"
   max_width="34em"
-  toggle_props={{
-    title: pane_open ? `` : `Structure type identification`,
-    ...toggle_props,
-    class: [`trajectory-structure-id-toggle`, toggle_props?.class],
-  }}
-  pane_props={{
-    ...pane_props,
-    class: [`trajectory-structure-id-pane`, pane_props?.class],
-  }}
-  open_icon={Cross}
   closed_icon={Lattice}
-  {...rest}
+  {...pane_options}
 >
   <h4 style="margin-top: 0">Structure Type Identification</h4>
 
@@ -166,7 +153,7 @@
       {error_msg}
     />
   {/if}
-</DraggablePane>
+</ViewerPane>
 
 <style>
   .structure-id-controls {

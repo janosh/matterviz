@@ -1,9 +1,11 @@
 import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { VolumetricData } from '$lib/isosurface'
+import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import * as symmetry from '$lib/symmetry'
 import type { StructureBond, StructureHandlerData } from '$lib/structure'
 import { get_element_counts } from '$lib/structure'
+import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -33,6 +35,15 @@ const structure = structures[0]
 // Mount Structure into document.body (queries are left to each test via doc_query)
 const mount_structure = (props: ComponentProps<typeof Structure>): void => {
   mount(Structure, { target: document.body, props })
+}
+const mount_bound_structure = (
+  props: ComponentProps<typeof Structure>,
+): { displayed_structure?: AnyStructure } => {
+  const state = $state<{ displayed_structure?: AnyStructure }>({
+    displayed_structure: undefined,
+  })
+  mount_structure(bind_props(props, state))
+  return state
 }
 
 const select_structure_layout = async (label: string): Promise<void> => {
@@ -157,14 +168,36 @@ describe(`Structure`, () => {
       expect(dismiss.getAttribute(`aria-label`)).toBe(`Dismiss symmetry warning`)
       const dismiss_style = getComputedStyle(dismiss)
       expect(dismiss_style.position).toBe(`absolute`)
+      expect(dismiss_style.top).toBe(`50%`)
+      expect(dismiss_style.transform).toBe(`translateY(-50%)`)
       expect(dismiss_style.display).toBe(`grid`)
       expect(dismiss_style.placeItems).toBe(`center`)
       expect(dismiss_style.borderRadius).toBe(`50%`)
       expect(dismiss_style.width).toBe(`16px`)
       expect(dismiss_style.height).toBe(`16px`)
+      const dismiss_icon = dismiss.querySelector(`svg`)
+      expect(dismiss_icon).toBeInstanceOf(SVGElement)
+      expect(getComputedStyle(dismiss_icon as SVGElement).display).toBe(`block`)
 
       dismiss.click()
       flushSync()
+      expect(document.querySelector(`.symmetry-error`)).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+      vi.restoreAllMocks()
+    }
+  })
+
+  test(`skips symmetry analysis when disabled`, async () => {
+    vi.stubEnv(`VITEST`, ``)
+    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
+    const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
+    try {
+      mount_structure({ structure, analyze_symmetry: false })
+      flushSync()
+      await tick()
+      expect(ready_spy).not.toHaveBeenCalled()
+      expect(analyze_spy).not.toHaveBeenCalled()
       expect(document.querySelector(`.symmetry-error`)).toBeNull()
     } finally {
       vi.unstubAllEnvs()
@@ -400,6 +433,7 @@ describe(`Structure`, () => {
 
   test.each([
     [{ supercell_scaling: `2x1x1` }, true],
+    [{ supercell_scaling: `2x1x1`, apply_supercell_scaling: false }, true],
     [{ supercell_scaling: `invalid` }, false],
     [{ supercell_scaling: `1×1×1` }, false],
     [{ cell_type: `conventional` }, true],
@@ -423,6 +457,56 @@ describe(`Structure`, () => {
       edit_bonds_button?.click()
       await tick()
       expect(state.measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
+    },
+  )
+
+  test(`shows an already-materialized supercell without expanding it again`, async () => {
+    vi.mocked(make_supercell).mockClear()
+    const state = mount_bound_structure({
+      structure,
+      supercell_scaling: `3x3x3`,
+      apply_supercell_scaling: false,
+      show_image_atoms: false,
+    })
+
+    await vi.waitFor(() =>
+      expect(state.displayed_structure?.sites).toHaveLength(structure.sites.length),
+    )
+    expect(vi.mocked(make_supercell)).not.toHaveBeenCalled()
+    expect(doc_query(`.cell-select .toggle-btn`).textContent?.replaceAll(/\s/g, ``)).toBe(
+      `3x3x3`,
+    )
+  })
+
+  test.each([
+    [`aperiodic`, [false, false, false], [-0.1, 1.2, 2.1]],
+    [`partially periodic`, [true, false, true], [0.9, 1.2, 0.1]],
+  ] satisfies [string, Pbc, Vec3][])(
+    `wraps displayed coordinates only on %s axes`,
+    async (_name, pbc, expected) => {
+      if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
+      const abc: Vec3 = [-0.1, 1.2, 2.1]
+      const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
+      const out_of_cell = {
+        ...structure,
+        lattice: { ...structure.lattice, pbc },
+        sites: [
+          {
+            ...structure.sites[0],
+            abc,
+            xyz: frac_to_cart(abc),
+          },
+        ],
+      }
+      const state = mount_bound_structure({
+        structure: out_of_cell,
+        show_image_atoms: false,
+      })
+
+      await vi.waitFor(() => expect(state.displayed_structure).toBeDefined())
+      const displayed_site = state.displayed_structure?.sites[0]
+      expect(displayed_site?.abc).toEqual(expected)
+      expect(displayed_site?.xyz).toEqual(frac_to_cart(expected))
     },
   )
 

@@ -56,6 +56,19 @@ describe(`ScatterPoint`, () => {
     expect(path.getAttribute(`stroke-opacity`)).toBe(String(style.stroke_opacity))
   })
 
+  test(`extends the transparent hit radius without changing the visible marker`, () => {
+    mount(ScatterPoint, {
+      target: doc_query(`div`),
+      props: { x: 100, y: 100, style: { radius: 5 }, hit_padding: 3 },
+    })
+
+    const hit_target = doc_query(`circle.marker-hit-target`)
+    expect(hit_target.getAttribute(`r`)).toBe(`8`)
+    expect(hit_target.getAttribute(`fill`)).toBe(`transparent`)
+    expect(hit_target.getAttribute(`pointer-events`)).toBe(`all`)
+    expect(doc_query(`path.marker`).getAttribute(`d`)).not.toBeNull()
+  })
+
   test.each(symbol_names)(`renders $symbol_type marker correctly`, (symbol_type) => {
     const style: PointStyle = {
       fill: `purple`,

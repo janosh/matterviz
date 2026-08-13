@@ -533,6 +533,12 @@
     background: var(--structure-carousel-card-bg, light-dark(#e9edf2, #343941));
     contain: layout paint style;
   }
+  /* Lift paint containment only while a structure tooltip exists. */
+  .structure-card:has(:global([role='tooltip'])) {
+    overflow: visible;
+    contain: layout style;
+    z-index: 1;
+  }
   /* element color chips stay visible at all times; the legend's extra chrome
      is already hover-gated elsewhere (mode chevron via Structure hovered,
      cell-select via .structure:hover, chip × toggles via .legend-item:hover) */

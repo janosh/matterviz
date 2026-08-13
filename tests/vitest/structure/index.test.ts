@@ -114,6 +114,17 @@ describe.each(structures)(`structure-utils`, (structure) => {
   })
 })
 
+test(`element counts exclude periodic image sites`, () => {
+  const structure = structures[0]
+  const image_site = {
+    ...structure.sites[0],
+    properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
+  }
+  expect(
+    struct_utils.get_element_counts({ ...structure, sites: [...structure.sites, image_site] }),
+  ).toEqual(struct_utils.get_element_counts(structure))
+})
+
 describe(`get_center_of_mass`, () => {
   const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
     sites: sites.map((site, idx) => ({

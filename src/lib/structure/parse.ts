@@ -958,20 +958,27 @@ export function ensure_lattice_params(structure: ParsedStructure): ParsedStructu
   }
 }
 
-// Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
-// Only normalizes when lattice matrix is available to ensure abc/xyz stay consistent
-export function normalize_fractional_coords(structure: ParsedStructure): ParsedStructure {
+// Normalize selected periodic fractional coordinates to [0,1) and recompute Cartesian
+// positions. Callers that omit periodic_axes retain the historical fully-periodic behavior.
+export function normalize_fractional_coords(
+  structure: ParsedStructure,
+  periodic_axes: Pbc = [true, true, true],
+): ParsedStructure {
   // A lattice is required to keep abc and xyz consistent after wrapping
   const matrix = structure.lattice?.matrix
   const needs_wrapping =
     matrix &&
-    structure.sites?.some((site) => site.abc?.some((coord) => coord < 0 || coord >= 1))
+    structure.sites?.some((site) =>
+      site.abc?.some((coord, axis) => periodic_axes[axis] && (coord < 0 || coord >= 1)),
+    )
   if (!needs_wrapping) return structure
 
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const sites = structure.sites.map((site) => {
     if (!site.abc) return site
-    const abc = wrap_to_unit_cell(site.abc)
+    const abc = site.abc.map((coord, axis) =>
+      periodic_axes[axis] ? wrap_frac_coord(coord) : coord,
+    ) as Vec3
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
   return { ...structure, sites }

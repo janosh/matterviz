@@ -23,7 +23,8 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ActionMenu, DraggablePane, Icon, type IconData } from 'svelte-widgets'
+  import { ControlPane } from '$lib/overlays'
+  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -33,7 +34,6 @@
     Export,
     Filter,
     Search as SearchIcon,
-    Settings,
   } from 'svelte-widgets/icons'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
@@ -2310,15 +2310,12 @@
     {/if}
 
     {#if show_controls}
-      <DraggablePane
-        bind:open={controls_open}
-        toggle_props={{ title: `${controls_open ? `Close` : `Open`} table controls` }}
+      <ControlPane
+        bind:controls_open
+        controls_name="table"
         position="fixed"
-        pane_props={{
-          style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
-        }}
-        open_icon={Cross}
-        closed_icon={Settings}
+        toggle_style=""
+        pane_style="--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em"
       >
         <SettingsSection
           title="Heatmap"
@@ -2392,7 +2389,7 @@
             {/each}
           </SettingsSection>
         {/if}
-      </DraggablePane>
+      </ControlPane>
     {/if}
 
     {#if controls}

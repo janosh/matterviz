@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { Cross, Edit } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
-  import type { PaneToggleProps } from '$lib/overlays'
+  import { Edit } from 'svelte-widgets/icons'
+  import { ViewerPane, type PaneToggleProps } from '$lib/overlays'
   import { JsonTree } from '$lib/layout/json-tree'
   import { set_at_path } from '$lib/layout/json-tree/utils'
   import type { ComponentProps } from 'svelte'
@@ -68,17 +67,13 @@
   }
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={editor_open}
+  pane_name="diagram data editor"
+  class_prefix="pd-editor"
   persistent
-  pane_props={{ class: `pd-editor-pane` }}
-  toggle_props={{
-    class: `pd-editor-toggle`,
-    title: editor_open ? `` : `Edit diagram data`,
-    ...caller_toggle_props,
-  }}
+  toggle_props={caller_toggle_props}
   max_width="600px"
-  open_icon={Cross}
   closed_icon={Edit}
   {icon_style}
 >
@@ -99,7 +94,7 @@
       No diagram data loaded. Drop an SVG or JSON file onto the diagram.
     </p>
   {/if}
-</DraggablePane>
+</ViewerPane>
 
 <style>
   .rejection-flash {

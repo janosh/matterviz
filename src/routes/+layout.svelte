@@ -128,6 +128,7 @@
     '/reciprocal/bands-and-dos': `Bands + DOS`,
     '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
     '/reciprocal/ir-raman': `IR + Raman`,
+    '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
   }}
   menu_props={{
     style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,

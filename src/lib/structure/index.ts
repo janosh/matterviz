@@ -135,6 +135,8 @@ export {
 export function get_element_counts(structure: AnyStructure) {
   const elements: CompositionType = {}
   for (const site of structure.sites) {
+    // Periodic image sites are display-only copies, not additional composition.
+    if (typeof site.properties?.orig_site_idx === `number`) continue
     for (const species of site.species) {
       const { element: elem, occu } = species
       elements[elem] = (elements[elem] ?? 0) + occu
