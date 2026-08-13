@@ -50,6 +50,7 @@
     FrameLoader,
     ParseProgress,
     TrajectoryDataExtractor,
+    TrajectoryController,
     TrajectoryFrame,
     TrajectoryMetadata,
     TrajectoryPositionStream,
@@ -96,6 +97,7 @@
     on_fullscreen_change?: (data: TrajHandlerData) => void
     on_file_load?: (data: TrajHandlerData) => void
     on_error?: (data: TrajHandlerData) => void
+    on_controller?: (controller: TrajectoryController | null) => void
   }
   type ControlsProps = {
     trajectory: TrajectoryType
@@ -148,6 +150,7 @@
     on_fullscreen_change,
     on_file_load,
     on_error,
+    on_controller,
     fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
@@ -908,6 +911,25 @@
     pending_scrub_step = undefined
     if (idx !== undefined) commit_step(idx)
   }
+
+  const controller: TrajectoryController = {
+    set_step: (step_idx) => {
+      if (!Number.isFinite(step_idx))
+        throw new Error(`Step index must be finite, got ${step_idx}`)
+      const bounded_step_idx = Math.min(
+        Math.max(Math.floor(step_idx), 0),
+        Math.max(total_frames - 1, 0),
+      )
+      playback.go_to(bounded_step_idx)
+      return bounded_step_idx
+    },
+    state: () => ({ current_step_idx, total_frames }),
+  }
+
+  $effect(() => {
+    on_controller?.(controller)
+    return () => on_controller?.(null)
+  })
 
   // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
   // time), so it has to be mapped back before it can index a frame.

@@ -1,5 +1,6 @@
 import {
   Trajectory,
+  type TrajectoryController,
   type FrameLoader,
   type TrajectoryType,
   type TrajectoryXQuantity,
@@ -585,6 +586,31 @@ describe(`Trajectory`, () => {
 
     const style = getComputedStyle(doc_query(`.trajectory-controls`))
     expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
+  })
+
+  test(`controller navigates without mounted controls`, async () => {
+    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
+    const on_step_change = vi.fn()
+    const on_pause = vi.fn()
+    const target = mount_traj({
+      trajectory: energy_traj(-1.5, -2.5, -3.5),
+      show_controls: false,
+      auto_play: true,
+      on_pause,
+      on_step_change,
+      on_controller,
+    })
+    await flush_render()
+
+    const controller = on_controller.mock.calls[0]?.[0]
+    if (!controller) throw new Error(`Trajectory controller was not registered`)
+    expect(target.querySelector(`.trajectory-controls`)).toBeNull()
+    expect(controller.set_step(2)).toBe(2)
+    expect(controller.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
+    expect(on_step_change).toHaveBeenCalledWith(
+      expect.objectContaining({ step_idx: 2, frame_count: 3 }),
+    )
+    expect(on_pause).toHaveBeenCalledOnce()
   })
 
   test(`view mode menu is layered and selectable`, async () => {

@@ -5,6 +5,9 @@ export interface NdjsonParseResult {
   skipped_lines: number
 }
 
+export const is_ndjson_filename = (filename: string): boolean =>
+  /\.(?:jsonl|ndjson)$/i.test(filename.trim())
+
 // Parse newline-delimited JSON. Blank lines are ignored; lines that fail to
 // parse or don't hold a plain object (bare numbers, torn tails from files a
 // running job is still writing) are counted in skipped_lines instead of

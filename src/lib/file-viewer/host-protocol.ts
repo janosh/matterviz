@@ -1,4 +1,4 @@
-import type { DefaultSettings } from '$lib/settings'
+import type { PartialSettings } from '$lib/settings'
 import type { ThemeName } from '$lib/theme'
 
 export interface FileData {
@@ -10,7 +10,7 @@ export interface FileData {
 export interface WebviewBootstrapData {
   data: FileData
   theme: ThemeName
-  defaults?: DefaultSettings
+  defaults?: PartialSettings
   moyo_wasm_url?: string
 }
 

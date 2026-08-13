@@ -17,7 +17,7 @@ import {
   is_browser_decompressible_format,
 } from '$lib/io/decompress'
 import { is_structure_file } from '$lib/structure/format-detect'
-import { is_trajectory_file } from '$lib/trajectory/format-detect'
+import { is_trajectory_filename } from '$lib/trajectory/filename'
 
 // Return the browser-visible filename after removing one supported compression
 // wrapper. Nested and unsupported wrappers are deliberately rejected because the
@@ -53,7 +53,7 @@ export const is_matterviz_filename = (filename: unknown): boolean => {
   return (
     is_fermi_or_volumetric(normalized) ||
     is_structure_file(normalized) ||
-    is_trajectory_file(normalized)
+    is_trajectory_filename(normalized)
   )
 }
 
