@@ -115,7 +115,7 @@
     violin_width = DEFAULTS.box.violin_width,
     violin_style = {},
     kde_points = 100,
-    kde_cut = 2,
+    kde_cut = 0,
     kde_max_samples = 5000,
     kde_clip = undefined,
     tooltip,
@@ -165,7 +165,7 @@
       violin_width?: number
       violin_style?: ViolinStyle
       kde_points?: number
-      kde_cut?: number
+      kde_cut?: number // bandwidths to extend support beyond observed extrema (default 0)
       kde_max_samples?: number
       kde_clip?: [number | null, number | null]
       tooltip?: Snippet<[BoxHandlerProps<Metadata>]>
@@ -219,6 +219,7 @@
     auto_ranges: () => auto_ranges,
     has_x2: () => show_x2,
     has_y2: () => show_y2,
+    tick_counts: { x: 5, x2: 5 },
     padding: () => padding,
     title: () => title,
     obstacles: () => obstacles_norm,

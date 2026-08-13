@@ -178,9 +178,8 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
     if (clip[0] != null) lo = Math.max(lo, clip[0])
     if (clip[1] != null) hi = Math.min(hi, clip[1])
   }
-  // An inverted/collapsed range (e.g. clip [10, 5], or a clip bound outside the data) leaves
-  // no valid grid -> degrade to an empty density rather than a corrupted descending grid.
-  if (hi <= lo) return { grid: [], density: [], bandwidth: band }
+  // A collapsed range renders constant samples; only inverted bounds leave no valid grid.
+  if (hi < lo) return { grid: [], density: [], bandwidth: band }
 
   const points = Math.max(2, Math.floor(n_points))
   const grid = Array.from({ length: points }, () => 0)

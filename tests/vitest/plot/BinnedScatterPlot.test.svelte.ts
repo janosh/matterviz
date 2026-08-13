@@ -232,6 +232,16 @@ describe(`BinnedScatterPlot`, () => {
     expect(error_spy).not.toHaveBeenCalled()
   })
 
+  test(`keeps default y-axis ticks sparse`, async () => {
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1600] }],
+      y_axis: { range: [-200, 1600] },
+      ...hidden_colorbar,
+    })
+    await settle()
+    expect(document.querySelectorAll(`.y-axis .tick text`)).toHaveLength(4)
+  })
+
   test(`auto-ranges finite pairs on logarithmic axes`, async () => {
     const plotted_x: number[] = []
     const arc = vi.fn((x: number, y: number) => {

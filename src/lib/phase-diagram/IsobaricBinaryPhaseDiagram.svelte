@@ -211,12 +211,10 @@
     scaleLinear().domain(display_temp_range).range([bottom, top]),
   )
 
-  // Generate tick values using d3 scale's built-in ticks method
-  const x_ticks = $derived(x_scale.ticks(typeof x_axis.ticks === `number` ? x_axis.ticks : 5))
-  // Use display scale for y ticks so they show converted temperatures
-  const y_ticks = $derived(
-    y_scale_display.ticks(typeof y_axis.ticks === `number` ? y_axis.ticks : 6),
-  )
+  const tick_count = (axis: AxisConfig): number =>
+    typeof axis.ticks === `number` ? axis.ticks : 5
+  const x_ticks = $derived(x_scale.ticks(tick_count(x_axis)))
+  const y_ticks = $derived(y_scale_display.ticks(tick_count(y_axis)))
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(

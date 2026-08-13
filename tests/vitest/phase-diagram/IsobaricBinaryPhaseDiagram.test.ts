@@ -174,6 +174,13 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(y_axis).toContain(`600`)
   })
 
+  test(`keeps default temperature ticks sparse`, async () => {
+    const wrapper = await mount_diagram({
+      data: { ...eutectic, temperature_range: [-200, 1600] },
+    })
+    expect(wrapper.querySelectorAll(`.y-axis > g`)).toHaveLength(4)
+  })
+
   // gradient ids derive from user region ids - two diagrams on one page would
   // otherwise cross-reference each other's gradients (first id wins, with that
   // instance's userSpaceOnUse pixel coords)

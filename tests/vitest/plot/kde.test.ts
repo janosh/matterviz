@@ -104,8 +104,12 @@ describe(`gaussian_kde`, () => {
   })
 
   test(`all-equal samples produce a finite positive-bandwidth density`, () => {
-    const { density, bandwidth } = gaussian_kde([5, 5, 5, 5], { n_points: 11 })
+    const { grid, density, bandwidth } = gaussian_kde([5, 5, 5, 5], {
+      n_points: 11,
+      cut: 0,
+    })
     expect(bandwidth).toBeGreaterThan(0)
+    expect(grid).toEqual(Array.from({ length: 11 }, () => 5))
     expect(density.every(Number.isFinite)).toBe(true)
   })
 
