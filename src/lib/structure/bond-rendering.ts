@@ -35,8 +35,10 @@ export function write_bond_transform(
   matrix_buffer[matrix_offset + 15] = 1
   if (height < 1e-10) {
     matrix_buffer[matrix_offset] = 1
-    matrix_buffer[matrix_offset + 5] = 1
     matrix_buffer[matrix_offset + 10] = 1
+    matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
+    matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
+    matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
     return
   }
 

@@ -171,10 +171,12 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     // Open info pane and controls
     await dom_click(pd2d.locator(`.info-btn`))
     const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
-    const [label_width, value_width] = await info
+    const widths = await info
       .getByTestId(`tip-drag`)
       .locator(`span`)
       .evaluateAll((spans) => spans.map((span) => span.getBoundingClientRect().width))
+    expect(widths).toHaveLength(2)
+    const [label_width, value_width] = widths
     expect(value_width).toBeGreaterThan(label_width)
     await dom_click(pd2d.locator(`.legend-controls-btn`))
     const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)

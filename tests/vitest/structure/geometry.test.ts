@@ -101,6 +101,12 @@ describe(`cylinder_between`, () => {
 // The direct buffer writer is a separate, three.js-object-free "+Y → direction"
 // implementation for the instanced-bond hot loop. Guard against convention drift.
 describe(`write_bond_transform vs quaternion_from_direction`, () => {
+  test(`collapses coincident bonds at their shared position`, () => {
+    const matrix_buffer = new Float32Array(16)
+    write_bond_transform(matrix_buffer, 0, [1, 2, 3], [1, 2, 3])
+    expect(Array.from(matrix_buffer)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1])
+  })
+
   test.each([
     [
       [0, 0, 0],

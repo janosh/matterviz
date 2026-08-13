@@ -72,7 +72,7 @@
       orientation === `horizontal` ? horizontal_keys : [`ArrowUp`, `ArrowDown`]
     if (event.key !== decrease_key && event.key !== increase_key) return
     event.preventDefault()
-    apply_ratio(ratio + (event.key === decrease_key ? -0.05 : 0.05))
+    apply_ratio(safe_ratio + (event.key === decrease_key ? -0.05 : 0.05))
   }
 </script>
 

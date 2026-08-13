@@ -11,6 +11,7 @@ const pointer_event = (
 const mount_divider = (
   orientation: `horizontal` | `vertical`,
   direction: `ltr` | `rtl` = `ltr`,
+  ratio?: number,
 ) => {
   const parent = document.createElement(`div`)
   parent.dir = direction
@@ -18,7 +19,7 @@ const mount_divider = (
   document.body.append(parent)
   parent.getBoundingClientRect = () =>
     DOMRect.fromRect({ x: 100, y: 50, width: 400, height: 200 })
-  const component = mount(PaneDivider, { target: parent, props: { orientation } })
+  const component = mount(PaneDivider, { target: parent, props: { orientation, ratio } })
   onTestFinished(() => unmount(component))
   flushSync()
   const divider = parent.querySelector<HTMLElement>(`[role="separator"]`)
@@ -60,6 +61,16 @@ test.each([
   flushSync()
   expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`85%`)
   expect(divider.getAttribute(`aria-valuenow`)).toBe(`85`)
+})
+
+test(`keyboard resizing starts from the safe ratio for non-finite input`, () => {
+  const { divider, parent } = mount_divider(`horizontal`, `ltr`, Number.NaN)
+  divider.dispatchEvent(
+    new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true, cancelable: true }),
+  )
+  flushSync()
+  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${0.55 * 100}%`)
+  expect(divider.getAttribute(`aria-valuenow`)).toBe(`55`)
 })
 
 test(`an active drag ignores other pointers and ends on lost capture`, () => {
