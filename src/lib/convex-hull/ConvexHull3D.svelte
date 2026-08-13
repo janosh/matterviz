@@ -978,8 +978,7 @@
 
 <div
   {...rest}
-  class={[`convex-hull-3d`, rest.class]}
-  class:dragover={interactions.drag_over}
+  class={[`convex-hull-3d`, rest.class, { dragover: interactions.drag_over }]}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
   data-has-hover={interactions.hover_data !== null}
@@ -1082,7 +1081,7 @@
 
   <!-- Orientation gizmo (configurable placement, default top-right) -->
   {#if gizmo && webgpu_available()}
-    <div class="gizmo-wrapper {controls_config.class}" data-placement={gizmo_placement}>
+    <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
       <Canvas createRenderer={create_renderer}>
         <T.PerspectiveCamera
           makeDefault

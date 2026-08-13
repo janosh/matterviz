@@ -133,8 +133,7 @@
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <g
-    class="reference-line"
-    class:hovered={is_hovered}
+    class={['reference-line', { hovered: is_hovered }]}
     role={is_clickable ? `button` : `img`}
     aria-label={ref_line.label ?? ref_line.annotation?.text ?? `Reference line ${line_idx}`}
     tabindex={is_clickable ? 0 : -1}

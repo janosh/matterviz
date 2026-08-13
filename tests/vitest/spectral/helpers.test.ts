@@ -2,6 +2,7 @@ import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
+  are_qpoints_equivalent,
   apply_gaussian_smearing,
   axis_with_range,
   build_point_metadata,
@@ -61,6 +62,17 @@ describe(`is_valid_range`, () => {
     expect(is_valid_range(input)).toBe(expected)
   })
 })
+
+it.each([
+  [[0, 0, 0], [1, -1, 2], true],
+  [[0.25, 0, 0.5], [1.25, -1, 0.5], true],
+  [[0.25, 0, 0.5], [0.250002, 0, 0.5], false],
+] as [Vec3, Vec3, boolean][])(
+  `compares periodic q-points %j and %j`,
+  (first, second, expected) => {
+    expect(are_qpoints_equivalent(first, second)).toBe(expected)
+  },
+)
 
 describe(`ranges_equal`, () => {
   it.each([
@@ -2031,10 +2043,12 @@ describe(`build_point_metadata`, () => {
     })
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
+      aria_label: `Select band 2, q-point 1`,
       band_idx: 1,
       spin: `down`,
       is_acoustic: false,
       nb_bands: 2,
+      qpoint_idx: 0,
     })
   })
 
@@ -2052,8 +2066,12 @@ describe(`build_point_metadata`, () => {
       is_acoustic: null,
       start_idx: 1,
     })
-    expect(result[0]).toMatchObject({ frac_coords: [0.25, 0, 0], is_acoustic: null })
-    expect(result[1]).toMatchObject({ qpoint_label: `X` })
+    expect(result[0]).toMatchObject({
+      frac_coords: [0.25, 0, 0],
+      is_acoustic: null,
+      qpoint_idx: 1,
+    })
+    expect(result[1]).toMatchObject({ qpoint_label: `X`, qpoint_idx: 2 })
   })
 
   it(`band_width is null when absent, populated when present`, () => {

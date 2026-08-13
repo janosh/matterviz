@@ -21,6 +21,8 @@ export interface Branch {
   start_index: number
   end_index: number
   name: string
+  // Override the legacy two-point discontinuity heuristic when branch provenance is known.
+  is_discontinuity?: boolean
 }
 
 // Base band structure interface
@@ -137,12 +139,35 @@ export interface PhononQPointModes {
   modes: PhononMode[]
 }
 
+// One contiguous q-point path emitted by phonopy band.yaml. Endpoints are inclusive.
+export interface PhononPathSegment {
+  start_index: number
+  end_index: number
+  start_label: string | null
+  end_label: string | null
+}
+
 export interface PhononModeData {
   n_atoms: number
   atoms: PhononModeAtom[]
   lattice: Matrix3x3 | null
+  reciprocal_lattice: Matrix3x3 | null
   qpoints: PhononQPointModes[]
+  path_segments: PhononPathSegment[]
 }
+
+export interface PhononModeDataset {
+  modes: PhononModeData
+  spectrum?: VibrationalSpectrum
+  filename?: string
+}
+
+export interface PhononModeSelection {
+  qpoint_idx: number
+  mode_idx: number
+}
+
+export type PhononExplorerView = `bands` | `ir` | `raman` | `modes`
 
 // Born effective charges and high-frequency dielectric tensor from a phonopy BORN file.
 export interface BornChargeData {

@@ -544,7 +544,7 @@
   class={[`colorbar`, rest.class]}
 >
   {#if title || has_any_select}
-    <div class="title-row {actual_title_side} {orientation}" style={actual_title_style}>
+    <div class={[`title-row`, actual_title_side, orientation]} style={actual_title_style}>
       {#if has_property_select && property_options}
         <PortalSelect
           options={property_options}
@@ -579,7 +579,7 @@
         // Use derived scale's mapping function to get position percent
         scale_for_ticks(tick_label)}
       <span
-        class="tick-label {orientation} tick-{tick_side}"
+        class={[`tick-label`, orientation, `tick-${tick_side}`]}
         style:left={orientation === `horizontal` ? `${position_percent}%` : undefined}
         style:top={orientation === `vertical` ? `${position_percent}%` : undefined}
         style:color={tick_side === `inside` ? inside_tick_color(tick_label) : `inherit`}

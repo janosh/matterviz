@@ -553,6 +553,7 @@
 <style>
   .chempot-diagram-2d {
     position: relative;
+    container-type: inline-size;
     width: 100%;
   }
   .chempot-diagram-2d > :global(.pane-toggle) {

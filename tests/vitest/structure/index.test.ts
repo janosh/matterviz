@@ -16,7 +16,8 @@ import {
   structure_fit_frame,
   VECTOR_PALETTE,
 } from '$lib/structure'
-import { glob_text, structure_files, structures } from '$site/structures'
+import { glob_default, glob_text } from '$site/imports'
+import { structure_files, structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 
 const ref_data: Record<
@@ -112,6 +113,17 @@ describe.each(structures)(`structure-utils`, (structure) => {
       `${id} formula_by_electronegativity`,
     ).toEqual(expected.formula_by_electronegativity)
   })
+})
+
+test(`element counts exclude periodic image sites`, () => {
+  const structure = structures[0]
+  const image_site = {
+    ...structure.sites[0],
+    properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
+  }
+  expect(
+    struct_utils.get_element_counts({ ...structure, sites: [...structure.sites, image_site] }),
+  ).toEqual(struct_utils.get_element_counts(structure))
 })
 
 describe(`get_center_of_mass`, () => {
@@ -358,6 +370,8 @@ describe(`get_all_site_vectors`, () => {
     // LAMMPS vx/vy/vz and extXYZ velocities land here with no further wiring
     [`velocity`, [1.5, -2, 0]],
     [`velocities`, [0, 3, 0]],
+    [`phonon`, [0.2, -0.1, 0.3]],
+    [`phonon_displacement`, [-1, 2, 0]],
   ] as const)(`accepts 3D vector in %s`, (key, vec) => {
     const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
     expect(result[0]).toEqual({ key, vec: [...vec] })
@@ -392,6 +406,8 @@ describe(`get_all_site_vectors`, () => {
     [`nested array`, { force: [[1, 0, 0]] }],
     [`NaN scalar`, { spin: NaN }],
     [`Infinity scalar`, { magmom: Infinity }],
+    [`invalid phonon vector`, { phonon: [1, 2] }],
+    [`invalid prefixed phonon vector`, { phonon_displacement: [1, 2, Infinity] }],
   ])(`rejects invalid vector: %s`, (_label, properties) => {
     expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
   })
@@ -565,6 +581,13 @@ test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic view
 // glob_text unwraps the module-namespace shape the Rolldown prod build returns
 // (vitest runs the dev transform, so this is the only place that path is tested)
 const parsed = { lattice: { a: 5 }, sites: [] }
+test.each([
+  [`dev value`, parsed, parsed],
+  [`prod module namespace`, { default: parsed }, parsed],
+])(`glob_default %s`, (_desc, input, expected) => {
+  expect(glob_default(input)).toBe(expected)
+})
+
 test.each([
   [`dev raw string`, `data_test`, `data_test`],
   [`prod string default`, { default: `data_test` }, `data_test`],

@@ -23,6 +23,23 @@ export {
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
   key in SUBSCRIPT_MAP
 
+// Fractional reciprocal coordinates are equivalent when they differ by a lattice vector.
+export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e-6): boolean =>
+  first.every((coordinate, axis) => {
+    const delta = coordinate - second[axis]
+    return Math.abs(delta - Math.round(delta)) < tolerance
+  })
+
+export const phonon_explorer_views = (
+  data: types.PhononModeData,
+  spectrum?: types.VibrationalSpectrum,
+): types.PhononExplorerView[] => [
+  ...(data.path_segments.length ? ([`bands`] as const) : []),
+  ...(spectrum ? ([`ir`] as const) : []),
+  ...(spectrum?.has_raman ? ([`raman`] as const) : []),
+  `modes`,
+]
+
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
 export const detect_zoom_change = (
@@ -77,6 +94,36 @@ export function pretty_sym_point(symbol: string): string {
 export const get_segment_key = (start_label?: string, end_label?: string) =>
   `${start_label ?? `null`}_${end_label ?? `null`}`
 
+// Labels identify the same path across structures. Occurrence indices distinguish repeated
+// labeled paths and identify unlabeled paths independently of producer-specific branch names.
+export const get_branch_segment_key = (
+  band_struct: types.BaseBandStructure,
+  branch: types.Branch,
+): string => {
+  const start_label = band_struct.qpoints[branch.start_index]?.label
+  const end_label = band_struct.qpoints[branch.end_index]?.label
+  const branch_idx = band_struct.branches.indexOf(branch)
+  if (!start_label && !end_label) {
+    return `branch:${branch_idx === -1 ? branch.name : branch_idx}`
+  }
+
+  const segment_key = get_segment_key(start_label ?? undefined, end_label ?? undefined)
+  if (branch_idx <= 0) return segment_key
+  const occurrence_idx = band_struct.branches
+    .slice(0, branch_idx)
+    .filter((previous_branch) => {
+      const previous_start = band_struct.qpoints[previous_branch.start_index]?.label
+      const previous_end = band_struct.qpoints[previous_branch.end_index]?.label
+      return (
+        get_segment_key(previous_start ?? undefined, previous_end ?? undefined) === segment_key
+      )
+    }).length
+  return occurrence_idx === 0 ? segment_key : `${segment_key}#${occurrence_idx + 1}`
+}
+
+export const is_discontinuity_branch = (branch: types.Branch): boolean =>
+  branch.is_discontinuity ?? branch.end_index - branch.start_index === 1
+
 // Get ordered segment keys from a band structure, preserving physical path order.
 export const get_ordered_segments = (
   band_struct: types.BaseBandStructure | null,
@@ -85,10 +132,7 @@ export const get_ordered_segments = (
   if (!band_struct) return Array.from(segments)
 
   const ordered = band_struct.branches.map((branch) =>
-    get_segment_key(
-      band_struct.qpoints[branch.start_index]?.label ?? undefined,
-      band_struct.qpoints[branch.end_index]?.label ?? undefined,
-    ),
+    get_branch_segment_key(band_struct, branch),
   )
   const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
   return [...ordered, ...remaining]
@@ -789,13 +833,7 @@ const branch_x_range = (
   bs: types.BaseBandStructure,
   branch: types.Branch,
   x_positions: Record<string, Vec2>,
-): Vec2 | undefined =>
-  x_positions[
-    get_segment_key(
-      bs.qpoints[branch.start_index]?.label ?? undefined,
-      bs.qpoints[branch.end_index]?.label ?? undefined,
-    )
-  ]
+): Vec2 | undefined => x_positions[get_branch_segment_key(bs, branch)]
 
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
@@ -1250,7 +1288,9 @@ export function calculate_sigma_step(range: Vec2): number {
 
 // Per-point metadata for band tooltip display
 export interface BandPointMeta extends Record<string, unknown> {
+  aria_label: string
   band_idx: number
+  qpoint_idx: number
   spin: `up` | `down`
   is_acoustic: boolean | null
   nb_bands: number
@@ -1317,7 +1357,9 @@ export function build_point_metadata(opts: {
     const global_idx = start_idx + pt_idx
     const qpoint = bs.qpoints[global_idx]
     return {
+      aria_label: `Select band ${band_idx + 1}, q-point ${global_idx + 1}`,
       band_idx,
+      qpoint_idx: global_idx,
       spin,
       is_acoustic,
       nb_bands: bs.nb_bands,

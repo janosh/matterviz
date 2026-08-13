@@ -281,8 +281,7 @@
 </details>
 
 <div
-  class="diagram-container"
-  class:loading
+  class={['diagram-container', { loading }]}
   ondrop={handle_file_drop}
   ondragover={handle_drag_over}
   role="region"

@@ -3,12 +3,14 @@ import { quantile_unordered } from '$lib/math'
 import { max, min } from 'd3-array'
 import { scaleLog, scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
+import type { ClassValue } from 'svelte/elements'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
 export { default as ToggleMenu } from './ToggleMenu.svelte'
 
 // Cell value types for table data
 export type CellVal =
+  | ClassValue
   | string
   | number
   | boolean
@@ -19,7 +21,7 @@ export type CellVal =
   | Record<string, string | number | null | undefined | boolean>[]
 
 // Row data for table entries
-export type RowData = { style?: string; class?: string; [key: string]: CellVal }
+export type RowData = { style?: string; class?: ClassValue; [key: string]: CellVal }
 
 export type DateTimeFormatMode = `date` | `time` | `datetime` | `iso` | `relative`
 
@@ -120,7 +122,7 @@ export type SortHint =
       position?: `top` | `bottom`
       permanent?: boolean
       style?: string
-      class?: string
+      class?: ClassValue
     }
 
 // Initial sort configuration (string for column name, object for full control)

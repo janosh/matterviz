@@ -2,7 +2,7 @@ import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 
 const base_band_structure: BaseBandStructure = {
@@ -49,6 +49,20 @@ const path_mismatch_structure: BaseBandStructure = {
     [2.5, 3.1, 3.6],
   ],
 }
+
+const make_unlabeled_band_structure = (
+  branch_names = [`segment-1`, `segment-2`],
+): BaseBandStructure => ({
+  ...base_band_structure,
+  qpoints: base_band_structure.qpoints.map((qpoint) => ({ ...qpoint, label: null })),
+  branches: branch_names.map((name, branch_idx) => ({
+    start_index: branch_idx * 2,
+    end_index: branch_idx * 2 + 1,
+    name,
+    is_discontinuity: false,
+  })),
+  labels_dict: {},
+})
 
 const spin_polarized_electronic = {
   ...base_band_structure,
@@ -116,6 +130,57 @@ describe(`Bands component`, () => {
   ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
     await mount_bands(props)
     expect(line_count()).toBe(expected_line_count)
+  })
+
+  it.each([
+    {
+      name: `explicit physical two-point branch`,
+      band_struct: {
+        ...base_band_structure,
+        qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
+        branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false }],
+        distance: [0, 3],
+        bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
+      },
+      expected_line_count: 4,
+    },
+    {
+      name: `multiple unlabeled branches`,
+      band_struct: make_unlabeled_band_structure(),
+      expected_line_count: 8,
+    },
+  ] satisfies {
+    name: string
+    band_struct: BaseBandStructure
+    expected_line_count: number
+  }[])(`renders $name`, async ({ band_struct, expected_line_count }) => {
+    await mount_bands({ band_structs: band_struct })
+    expect(line_count()).toBe(expected_line_count)
+  })
+
+  it(`matches unlabeled segments by occurrence rather than producer-specific names`, async () => {
+    const unlabeled = make_unlabeled_band_structure([`first-a`, `first-b`])
+    const renamed = make_unlabeled_band_structure([`renamed-a`, `renamed-b`])
+    await mount_bands({ band_structs: { unlabeled, renamed }, path_mode: `strict` })
+    expect(line_count()).toBe(16)
+  })
+
+  it(`renders repeated labeled segments as distinct path occurrences`, async () => {
+    const repeated: BaseBandStructure = {
+      ...base_band_structure,
+      qpoints: [
+        { ...base_band_structure.qpoints[0], label: `GAMMA` },
+        { ...base_band_structure.qpoints[1], label: `X` },
+        { ...base_band_structure.qpoints[2], label: `GAMMA` },
+        { ...base_band_structure.qpoints[3], label: `X` },
+      ],
+      branches: [
+        { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
+        { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
+      ],
+    }
+    await mount_bands({ band_structs: repeated })
+    expect(line_count()).toBe(8)
   })
 
   it(`renders strict-mode mismatch as EmptyState with message`, async () => {
@@ -191,6 +256,29 @@ describe(`Bands component`, () => {
     })
     const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
     expect(fill_region_paths).toHaveLength(1)
+  })
+
+  it(`emphasizes the selection and extends clickable marker hit areas`, async () => {
+    const on_point_click = vi.fn()
+    await mount_bands({
+      band_structs: base_band_structure,
+      highlighted_band_index: 2,
+      highlighted_qpoint_index: 1,
+      on_point_click,
+    })
+    expect(
+      document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-selected-color"]`),
+    ).toHaveLength(1)
+    expect(
+      document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-muted-color"]`),
+    ).toHaveLength(3)
+    expect(document.querySelectorAll(`.effect-ring.selected`)).toHaveLength(1)
+
+    const hit_target = document.querySelector<SVGCircleElement>(`.marker-hit-target`)
+    expect(hit_target).not.toBeNull()
+    expect(Number(hit_target?.getAttribute(`r`))).toBeGreaterThan(3)
+    hit_target?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_point_click).toHaveBeenCalledOnce()
   })
 
   it(`shows band-gap annotation when electronic gap exists`, async () => {

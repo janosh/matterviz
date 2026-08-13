@@ -23,7 +23,8 @@
   import { download } from '$lib/io/fetch'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { ActionMenu, DraggablePane, Icon, type IconData } from 'svelte-widgets'
+  import { ControlPane } from '$lib/overlays'
+  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
   import {
     Calendar,
     Columns,
@@ -33,7 +34,6 @@
     Export,
     Filter,
     Search as SearchIcon,
-    Settings,
   } from 'svelte-widgets/icons'
   import { portal, tooltip } from 'svelte-widgets/attachments'
   import type {
@@ -73,8 +73,8 @@
   import { sanitize_html } from '$lib/sanitize'
   import ToggleMenu from './ToggleMenu.svelte'
   import { escape_csv_field, normalize_unicode_minus } from '$lib/utils'
-  import { type Snippet, tick, untrack } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import { onDestroy, type Snippet, tick, untrack } from 'svelte'
+  import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Helper to check if value is invalid (null, undefined, NaN)
@@ -218,7 +218,7 @@
     fixed_header?: boolean
     default_num_format?: string
     show_heatmap?: boolean
-    heatmap_class?: string
+    heatmap_class?: ClassValue
     onrowpointerdown?: (event: PointerEvent, row: RowData) => void
     onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
@@ -2002,6 +2002,9 @@
   )
 
   // Column resize handlers
+  let resize_controller: AbortController | undefined
+  onDestroy(() => resize_controller?.abort())
+
   function start_resize(event: MouseEvent, col: Label) {
     event.preventDefault()
     event.stopPropagation()
@@ -2010,8 +2013,11 @@
     const th = event.target instanceof Element ? event.target.parentElement : null
     resize_start_width = th?.offsetWidth ?? 100
 
-    document.addEventListener(`mousemove`, handle_resize)
-    document.addEventListener(`mouseup`, stop_resize)
+    resize_controller?.abort()
+    resize_controller = new AbortController()
+    const { signal } = resize_controller
+    document.addEventListener(`mousemove`, handle_resize, { signal })
+    document.addEventListener(`mouseup`, stop_resize, { signal })
   }
 
   function handle_resize(event: MouseEvent) {
@@ -2023,8 +2029,8 @@
 
   function stop_resize() {
     resize_col_id = null
-    document.removeEventListener(`mousemove`, handle_resize)
-    document.removeEventListener(`mouseup`, stop_resize)
+    resize_controller?.abort()
+    resize_controller = undefined
   }
 
   // Double-click the handle to fit the column to its widest rendered cell. Cells clip with
@@ -2070,8 +2076,7 @@
 
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
   <button
-    class="icon-btn"
-    class:active
+    class={['icon-btn', { active }]}
     onclick={on_click}
     {@attach tooltip({ content: tip, placement: `top` })}
   >
@@ -2128,8 +2133,7 @@
   <span class="column-filter">
     <button
       type="button"
-      class="column-filter-trigger"
-      class:active={Boolean(active)}
+      class={['column-filter-trigger', { active: Boolean(active) }]}
       aria-label="Filter {strip_html(col.label)}"
       aria-expanded={filter_panel_col_id === col_id}
       onkeydown={stop_event}
@@ -2212,8 +2216,7 @@
 {#snippet sort_hint_element(pos: `top` | `bottom`)}
   {#if hint_config?.position === pos}
     <div
-      class={[`sort-hint`, hint_config.class]}
-      class:permanent={hint_config.permanent}
+      class={[`sort-hint`, hint_config.class, { permanent: hint_config.permanent }]}
       style={hint_config.style}
     >
       {hint_config.text}
@@ -2226,8 +2229,7 @@
   {@attach table_tooltips}
   {...rest_props}
   bind:this={container_el}
-  class={[`table-container`, rest_props.class]}
-  class:cell-dragging={cell_drag_active}
+  class={[`table-container`, rest_props.class, { 'cell-dragging': cell_drag_active }]}
   data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onclickcapture={suppress_click_after_cell_drag}
@@ -2274,8 +2276,7 @@
       >
         {#snippet trigger({ open })}
           <span
-            class="icon-btn"
-            class:active={open}
+            class={['icon-btn', { active: open }]}
             {@attach tooltip({ content: `Columns`, placement: `top` })}
             ><Icon icon={Columns} /></span
           >
@@ -2309,15 +2310,12 @@
     {/if}
 
     {#if show_controls}
-      <DraggablePane
-        bind:open={controls_open}
-        toggle_props={{ title: `${controls_open ? `Close` : `Open`} table controls` }}
+      <ControlPane
+        bind:controls_open
+        controls_name="table"
         position="fixed"
-        pane_props={{
-          style: `--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em`,
-        }}
-        open_icon={Cross}
-        closed_icon={Settings}
+        toggle_style=""
+        pane_style="--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em"
       >
         <SettingsSection
           title="Heatmap"
@@ -2391,7 +2389,7 @@
             {/each}
           </SettingsSection>
         {/if}
-      </DraggablePane>
+      </ControlPane>
     {/if}
 
     {#if controls}
@@ -2402,9 +2400,8 @@
   {@render sort_hint_element(`top`)}
 
   <div
-    class="table-scroll"
+    class={['table-scroll', { 'has-scroll': scroll_style }]}
     style={scroll_style}
-    class:has-scroll={scroll_style}
     bind:this={scroll_el}
     onscroll={virtual_config || virtual_cols_config ? () => sync_viewport() : undefined}
   >
@@ -2416,8 +2413,7 @@
       </div>
     {/if}
     <table
-      class:fixed-header={fixed_header}
-      class={heatmap_class}
+      class={[heatmap_class, { 'fixed-header': fixed_header }]}
       style:--group-header-height="{has_group_header ? group_header_height : 0}px"
       aria-colcount={virtual_cols_config ? body_colspan : undefined}
     >
@@ -2639,8 +2635,7 @@
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
             style={row.style}
-            class={row.class}
-            class:selected={row_selected}
+            class={[row.class, { selected: row_selected }]}
             data-title={row_title?.(row) || undefined}
             tabindex={onrowclick ? 0 : undefined}
             onpointerdown={onrowpointerdown

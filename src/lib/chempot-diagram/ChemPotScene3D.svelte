@@ -56,7 +56,6 @@
     formula_edges,
     domain_labels,
     label_scale,
-    portal,
   }: {
     render_domains: RenderDomain[]
     render_axis_scale: Vec3
@@ -88,7 +87,6 @@
     formula_edges: OverlayGeometry[]
     domain_labels: DomainLabel[]
     label_scale: number
-    portal?: HTMLElement
   } = $props()
 
   extras.interactivity()
@@ -467,18 +465,18 @@
   {/each}
   {#if display.show_axis_labels}
     {#each gc.tick_labels as tick, tick_idx (tick_idx)}
-      <extras.HTML position={tick.pos} center {portal} zIndexRange={[1, 0]}>
+      <extras.HTML position={tick.pos} center zIndexRange={[1, 0]}>
         <span class="tick-label axis-tick-label">{tick.text}</span>
       </extras.HTML>
     {/each}
-    <extras.HTML position={gc.label_pos} center {portal} zIndexRange={[1, 0]}>
+    <extras.HTML position={gc.label_pos} center zIndexRange={[1, 0]}>
       <span class="axis-label" style:color={gc.color}>{@html sanitize_html(gc.label)}</span>
     </extras.HTML>
   {/if}
 {/each}
 
 {#each domain_labels as domain (domain.formula)}
-  <extras.HTML position={domain.position} center {portal} zIndexRange={[5, 5]}>
+  <extras.HTML position={domain.position} center zIndexRange={[5, 5]}>
     <span
       class="domain-label"
       style:font-size="{(domain.label_font_size * label_scale).toFixed(1)}px"

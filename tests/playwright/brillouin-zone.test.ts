@@ -16,8 +16,12 @@ test.describe(`BrillouinZone Component Tests`, () => {
   })
 
   test(`renders canvas with dimensions`, async ({ page }) => {
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+    const viewer = page.locator(BZ_SELECTOR)
+    const canvas = viewer.locator(`canvas`)
+    const canvas_host = canvas.locator(`..`)
     await expect(canvas).toBeVisible()
+    await expect(viewer).toHaveCSS(`overflow`, `visible`)
+    await expect(canvas_host).toHaveCSS(`overflow`, `hidden`)
     expect(await canvas.getAttribute(`width`)).toBeTruthy()
     expect(await canvas.getAttribute(`height`)).toBeTruthy()
   })

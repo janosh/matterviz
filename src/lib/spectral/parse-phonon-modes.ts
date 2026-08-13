@@ -16,6 +16,7 @@ import type {
   PhononMode,
   PhononModeAtom,
   PhononModeData,
+  PhononPathSegment,
   PhononQPointModes,
 } from './types'
 
@@ -46,6 +47,90 @@ function to_number_tuple(val: unknown, len: number, context: string): number[] {
 
 const to_vec3 = (val: unknown, context: string): Vec3 =>
   to_number_tuple(val, 3, context) as Vec3
+
+function parse_matrix3x3(val: unknown, context: string): Matrix3x3 | null {
+  if (val === undefined) return null
+  if (!Array.isArray(val) || val.length !== 3) {
+    const rows = Array.isArray(val) ? val.length : typeof val
+    throw new Error(`${context}: expected 3 rows, got ${rows}`)
+  }
+  return val.map((row, row_idx) => to_vec3(row, `${context} row ${row_idx}`)) as Matrix3x3
+}
+
+function parse_path_segments(
+  data: Record<string, unknown>,
+  n_qpoints: number,
+): PhononPathSegment[] {
+  const raw_lengths = data.segment_nqpoint
+  const raw_labels = data.labels
+  const raw_npath = data.npath
+  if (raw_lengths === undefined && raw_labels === undefined && raw_npath === undefined)
+    return []
+  if (!Array.isArray(raw_lengths) || raw_lengths.length === 0) {
+    throw new Error(`phonopy YAML 'segment_nqpoint' must be a non-empty list`)
+  }
+  const lengths = raw_lengths.map((length, segment_idx) => {
+    if (!is_finite_number(length) || !Number.isInteger(length) || length <= 0) {
+      throw new Error(
+        `phonopy YAML segment_nqpoint[${segment_idx}] must be a positive integer, got ${String(length)}`,
+      )
+    }
+    return length
+  })
+  if (raw_npath !== undefined) {
+    if (!is_finite_number(raw_npath) || !Number.isInteger(raw_npath) || raw_npath <= 0) {
+      throw new Error(
+        `phonopy YAML 'npath' must be a positive integer, got ${JSON.stringify(raw_npath)}`,
+      )
+    }
+    if (raw_npath !== lengths.length) {
+      throw new Error(
+        `phonopy YAML declares npath=${raw_npath} but segment_nqpoint lists ${lengths.length} path segments`,
+      )
+    }
+  }
+  const declared_total = lengths.reduce((sum, length) => sum + length, 0)
+  if (declared_total !== n_qpoints) {
+    throw new Error(
+      `phonopy YAML segment_nqpoint sums to ${declared_total} but phonon lists ${n_qpoints} q-points`,
+    )
+  }
+
+  let labels: [string | null, string | null][] = lengths.map(() => [null, null])
+  if (raw_labels !== undefined) {
+    if (!Array.isArray(raw_labels) || raw_labels.length !== lengths.length) {
+      const count = Array.isArray(raw_labels) ? raw_labels.length : typeof raw_labels
+      throw new Error(
+        `phonopy YAML 'labels' must contain one pair for each of ${lengths.length} path segments, got ${count}`,
+      )
+    }
+    labels = raw_labels.map((pair, segment_idx) => {
+      if (
+        !Array.isArray(pair) ||
+        pair.length !== 2 ||
+        pair.some((label) => typeof label !== `string` || label.length === 0)
+      ) {
+        throw new Error(
+          `phonopy YAML labels[${segment_idx}] must contain two non-empty strings`,
+        )
+      }
+      return pair as [string, string]
+    })
+  }
+
+  let start_index = 0
+  return lengths.map((length, segment_idx) => {
+    const [start_label, end_label] = labels[segment_idx]
+    const segment = {
+      start_index,
+      end_index: start_index + length - 1,
+      start_label,
+      end_label,
+    }
+    start_index += length
+    return segment
+  })
+}
 
 // One [real, imaginary] pair as written by phonopy. A bare number is accepted for the
 // real-only shorthand some post-processing tools emit.
@@ -178,16 +263,30 @@ export function parse_phonon_modes(content: string): PhononModeData {
     )
   }
 
-  const to_lattice_row = (row: unknown, row_idx: number) =>
-    to_vec3(row, `phonopy YAML lattice row ${row_idx}`)
-  if (Array.isArray(parsed.lattice) && parsed.lattice.length !== 3) {
-    throw new Error(`phonopy YAML 'lattice' has ${parsed.lattice.length} rows, expected 3`)
+  if (parsed.nqpoint !== undefined) {
+    if (!is_finite_number(parsed.nqpoint) || !Number.isInteger(parsed.nqpoint)) {
+      throw new Error(
+        `phonopy YAML 'nqpoint' must be an integer, got ${JSON.stringify(parsed.nqpoint)}`,
+      )
+    }
+    if (parsed.nqpoint !== qpoints.length) {
+      throw new Error(
+        `phonopy YAML declares nqpoint=${parsed.nqpoint} but lists ${qpoints.length} q-points`,
+      )
+    }
   }
-  const lattice = Array.isArray(parsed.lattice)
-    ? (parsed.lattice.map(to_lattice_row) as Matrix3x3)
-    : null
 
-  return { n_atoms, atoms, lattice, qpoints }
+  const lattice = parse_matrix3x3(parsed.lattice, `phonopy YAML 'lattice'`)
+  const reciprocal_lattice = parse_matrix3x3(
+    parsed.reciprocal_lattice,
+    `phonopy YAML 'reciprocal_lattice'`,
+  )
+  const path_segments = parse_path_segments(parsed, qpoints.length)
+  if (path_segments.length > 0 && qpoints.some(({ distance }) => distance === null)) {
+    throw new Error(`phonopy band path contains a q-point without a finite 'distance'`)
+  }
+
+  return { n_atoms, atoms, lattice, reciprocal_lattice, qpoints, path_segments }
 }
 
 // Strip phonopy BORN comments (everything from '#') and blank lines, then tokenise.

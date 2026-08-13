@@ -2,15 +2,17 @@
 
 import * as math from '$lib/math'
 import type { Branch, PhononBandStructure, PhononDos, QPoint } from '$lib/spectral'
+import type { Crystal } from '$lib/structure'
+import { SvelteMap } from 'svelte/reactivity'
 
 interface RawPhononBandStructure {
   recip_lattice: { matrix: math.Matrix3x3 }
+  structure?: Crystal
   qpoints: math.Vec3[]
   bands: number[][]
   labels_dict: Record<string, math.Vec3>
   has_nac?: boolean
   has_imaginary_modes?: boolean
-  [key: string]: unknown
 }
 
 // Calculate distance between two points in reciprocal space
@@ -128,8 +130,25 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
 type PhononData = {
   phonon_bandstructure?: RawPhononBandStructure
   phonon_dos?: PhononDos
-  primitive?: unknown
-  [key: string]: unknown
+  primitive?: Crystal
+  structure?: Crystal
+}
+
+const METHOD_SUFFIX = /-(?:pbe|m3gnet|chgnet-v[\d.]+|mace-[\w-]+)$/
+
+type PhononFixtureGroup = {
+  material: string
+  label: string
+  keys: string[]
+}
+
+export const phonon_method_label = (material: string, key: string): string => {
+  const method = key.slice(material.length + 1)
+  if (method === `pbe`) return `DFT (PBE)`
+  if (method === `m3gnet`) return `M3GNet`
+  if (method.startsWith(`chgnet`)) return `CHGNet`
+  if (method.startsWith(`mace`)) return `MACE`
+  return method
 }
 
 // Import all phonon data files (uncompressed for dev, gzipped in git)
@@ -146,10 +165,34 @@ export const phonon_dos: Record<string, PhononDos> = {}
 for (const [path, data] of Object.entries(raw_imports)) {
   const id = /\/(?<id>[^/]+)\.json(?:\.gz)?$/.exec(path)?.[1] ?? path
   phonon_data[id] = data
-  if (data?.phonon_bandstructure) {
+  if (data.phonon_bandstructure) {
     phonon_bands[id] = transform_band_structure(data.phonon_bandstructure)
   }
-  if (data?.phonon_dos) {
+  if (data.phonon_dos) {
     phonon_dos[id] = data.phonon_dos
   }
 }
+
+// Group fixtures by material while preserving each calculation method as a selectable key.
+export const phonon_fixture_groups: PhononFixtureGroup[] = (() => {
+  const by_material = new SvelteMap<string, string[]>()
+  for (const key of Object.keys(phonon_bands)) {
+    const material = key.replace(METHOD_SUFFIX, ``)
+    by_material.set(material, [...(by_material.get(material) ?? []), key])
+  }
+  return [...by_material.entries()]
+    .map(([material, keys]) => {
+      const [, mp_id = ``, formula = material] =
+        /^(?<mp_id>mp-\d+)-(?<formula>.+)$/.exec(material) ?? []
+      return {
+        material,
+        keys: keys.toSorted((key_a, key_b) =>
+          phonon_method_label(material, key_a).localeCompare(
+            phonon_method_label(material, key_b),
+          ),
+        ),
+        label: mp_id ? `${formula} (${mp_id})` : material,
+      }
+    })
+    .toSorted((group_a, group_b) => group_a.label.localeCompare(group_b.label))
+})()

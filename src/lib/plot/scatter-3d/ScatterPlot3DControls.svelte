@@ -1,7 +1,5 @@
 <script lang="ts">
-  import { Cross, Settings } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -112,16 +110,17 @@
 </script>
 
 {#if show_controls}
-  <DraggablePane
-    bind:open={controls_open}
+  <ControlPane
+    bind:controls_open
+    controls_name="scatter-3d"
+    toggle_title="3D plot"
+    toggle_style=""
+    pane_style="--pane-max-height: 80cqh"
     {toggle_props}
     pane_props={{
       title: `3D plot settings`,
       ...pane_props,
-      style: `--pane-max-height: 80cqh; ${pane_props?.style ?? ``}`,
     }}
-    open_icon={Cross}
-    closed_icon={Settings}
   >
     <!-- Camera Controls -->
     <SettingsSection
@@ -284,7 +283,7 @@
 
     <!-- User-provided children -->
     {@render children?.()}
-  </DraggablePane>
+  </ControlPane>
 {/if}
 
 <style>

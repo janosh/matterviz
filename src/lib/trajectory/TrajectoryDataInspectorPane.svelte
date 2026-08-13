@@ -1,12 +1,11 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_num, trajectory_property_config, type TrajPropertyConfig } from '$lib/labels'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { type CellVal, HeatmapTable, type Label, type RowData } from '$lib/table'
-  import type { ComponentProps } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { DraggablePane, Tabs } from 'svelte-widgets'
-  import { Cross, HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
+  import { Tabs } from 'svelte-widgets'
+  import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import { full_data_extractor } from './extract'
   import type {
     TrajectoryDataExtractor,
@@ -26,10 +25,8 @@
     on_site_select,
     active_tab = $bindable(`frames`),
     pane_open = $bindable(false),
-    toggle_props,
-    pane_props,
-    ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    ...pane_options
+  }: ViewerPaneOptions & {
     trajectory?: TrajectoryType
     current_step_idx?: number
     // Resolved frame for the atom tab. Indexed trajectories load frames on demand, so
@@ -41,8 +38,6 @@
     on_site_select?: (site_idx: number) => void
     active_tab?: TrajectoryInspectorTab
     pane_open?: boolean
-    toggle_props?: PaneToggleProps
-    pane_props?: PaneProps
   } = $props()
 
   const VEC3_AXES = [`x`, `y`, `z`] as const
@@ -239,24 +234,16 @@
   } as const
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="data inspector"
+  class_prefix="trajectory-data-inspector"
   max_width="min(56em, 92vw)"
-  toggle_props={{
-    title: pane_open ? `` : `Data inspector`,
-    ...toggle_props,
-    class: `trajectory-data-inspector-toggle ${toggle_props?.class ?? ``}`,
-  }}
-  pane_props={{
-    ...pane_props,
-    class: `trajectory-data-inspector-pane ${pane_props?.class ?? ``}`,
-  }}
-  open_icon={Cross}
   closed_icon={HeatmapTableIcon}
-  {...rest}
+  {...pane_options}
 >
   <h4 style="margin: 0 0 4pt">Data Inspector</h4>
-  <!-- DraggablePane keeps its children mounted and merely hides them, so without the
+  <!-- ViewerPane keeps its children mounted and merely hides them, so without the
   pane_open gate a closed pane would still rebuild a 100k-row atom table on every frame -->
   {#if !trajectory}
     <StatusMessage message="No trajectory loaded" style="border: none" />
@@ -307,7 +294,7 @@
       {/snippet}
     </Tabs>
   {/if}
-</DraggablePane>
+</ViewerPane>
 
 <style>
   :global(.inspector-tabs .tabs-list) {

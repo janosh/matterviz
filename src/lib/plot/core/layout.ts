@@ -331,6 +331,17 @@ export const full_footprint_or = (
     ? measure_full_footprint(el)
     : { ...fallback, offset_x: 0, offset_y: 0 }
 
+export const element_position_for_footprint = (
+  placement: { x: number; y: number } | null | undefined,
+  footprint: Pick<ElementFootprint, `offset_x` | `offset_y`>,
+): { x: number; y: number } | null =>
+  placement
+    ? {
+        x: placement.x - footprint.offset_x,
+        y: placement.y - footprint.offset_y,
+      }
+    : null
+
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {

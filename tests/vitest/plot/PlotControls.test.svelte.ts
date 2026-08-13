@@ -196,7 +196,7 @@ describe(`PlotControls`, () => {
     expect(document.querySelector(`.plot-controls-pane`)).toBeNull()
 
     // When shown, toggle + pane use the `plot-controls-*` prefix (regression guard:
-    // an empty controls_class default produced leading-hyphen `-controls-*` names).
+    // an empty controls_name default produced leading-hyphen `-controls-*` names).
     document.body.innerHTML = ``
     mount_controls()
     expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()

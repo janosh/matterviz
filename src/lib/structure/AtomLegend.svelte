@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { contrast_text_color, default_element_colors } from '$lib/colors'
+  import {
+    contrast_text_color,
+    default_element_colors,
+    perceived_brightness,
+  } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
@@ -142,6 +146,11 @@
     return color
   }
 
+  // The legend filter darkens saturated swatches, so their perceived brightness is a
+  // better text-color signal than maximum contrast against the unfiltered CSS color.
+  const element_text_color = (background?: string): string =>
+    background ? (perceived_brightness(background) < 0.5 ? `white` : `black`) : `currentColor`
+
   // Continuous integer properties (e.g. coordination numbers) render as a discrete
   // segmented bar with one labeled block per integer value instead of a smooth gradient.
   // Cap segment count so high-cardinality numeric properties keep the gradient bar.
@@ -254,8 +263,7 @@
     {@attach click_outside({ callback: () => (mode_menu_open = false) })}
   >
     <button
-      class="mode-toggle"
-      class:visible={mode_toggle_visible}
+      class={['mode-toggle', { visible: mode_toggle_visible }]}
       onclick={() => (mode_menu_open = !mode_menu_open)}
       title="Change atom coloring mode"
       aria-expanded={mode_menu_open}
@@ -272,9 +280,7 @@
             (value === `wyckoff` && !sym_data) ||
             (value === `property` && colorable_property_keys.length === 0)}
           <button
-            class="mode-option"
-            class:selected={atom_color_config.mode === value}
-            class:disabled
+            class={['mode-option', { selected: atom_color_config.mode === value, disabled }]}
             {disabled}
             title={value === `property` && disabled
               ? `No per-atom properties on this structure`
@@ -349,7 +355,7 @@
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
-          style:color={contrast_text_color({ background: colors.element[displayed_elem] })}
+          style:color={element_text_color(colors.element[displayed_elem])}
           class:hidden={is_hidden}
           class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
@@ -377,8 +383,7 @@
           />
         </label>
         <button
-          class="toggle-visibility"
-          class:element-hidden={is_hidden}
+          class={['toggle-visibility', { 'element-hidden': is_hidden }]}
           onclick={(event) =>
             (hidden_elements = toggle_visibility(
               hidden_elements,
@@ -466,13 +471,10 @@
               {#each filtered_elements as target_elem (target_elem)}
                 {@const elem_info = element_by_symbol.get(target_elem)}
                 <button
-                  class="remap-option"
-                  class:selected={displayed_elem === target_elem}
+                  class={['remap-option', { selected: displayed_elem === target_elem }]}
                   onclick={() => remap_element(elem as ElementSymbol, target_elem)}
                   style:background-color={colors.element[target_elem]}
-                  style:color={contrast_text_color({
-                    background: colors.element[target_elem],
-                  })}
+                  style:color={element_text_color(colors.element[target_elem])}
                 >
                   <small style="opacity: 0.6">{elem_info?.number}</small>
                   <b>{target_elem}</b>
@@ -505,8 +507,7 @@
           {@const is_hidden = hidden_prop_vals.has(value)}
           <button
             type="button"
-            class="discrete-segment"
-            class:hidden={is_hidden}
+            class={['discrete-segment', { hidden: is_hidden }]}
             style:background-color={color}
             aria-pressed={is_hidden}
             onclick={(event) =>
@@ -543,16 +544,14 @@
         {@const is_hidden = hidden_prop_vals.has(value)}
         <div class="legend-item">
           <span
-            class="category-label color-swatch"
-            class:hidden={is_hidden}
+            class={['category-label color-swatch', { hidden: is_hidden }]}
             style:background-color={color}
             style:color={contrast_text_color({ background: color })}
           >
             {format_value(value)}
           </span>
           <button
-            class="toggle-visibility"
-            class:element-hidden={is_hidden}
+            class={['toggle-visibility', { 'element-hidden': is_hidden }]}
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
             title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}

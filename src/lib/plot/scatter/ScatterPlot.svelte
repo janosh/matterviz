@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { D3InterpolateName } from '$lib/colors'
+  import { type D3InterpolateName, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import type { Point2D, Vec2 } from '$lib/math'
@@ -53,11 +53,7 @@
   import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import {
-    build_obstacles_norm,
-    has_explicit_position,
-    measured_footprint,
-  } from '$lib/plot/core/auto-place'
+  import { build_obstacles_norm, has_explicit_position } from '$lib/plot/core/auto-place'
   import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
   import { create_axis_loader, AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import type { AxisChangeState } from '$lib/plot/core/axis-utils'
@@ -102,6 +98,8 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     AXIS_TITLE_OFFSET,
+    element_position_for_footprint,
+    full_footprint_or,
     stride_sample,
     y_axis_label_x,
     y2_axis_label_x,
@@ -175,6 +173,7 @@
     marginals = false,
     facet_layout,
     marker_renderer = `auto`,
+    point_hit_padding = 0,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     Omit<BasePlotProps, `change`> &
@@ -198,7 +197,7 @@
             margin?: number | Sides
             tween?: TweenOptions<Point2D>
             responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
-            axis_clearance?: number // Min distance kept from plot edges/axes (default: 15)
+            axis_clearance?: number // Min distance kept from plot edges/axes (default: 8)
           })
         | null
       label_placement_config?: Partial<LabelPlacementConfig>
@@ -237,7 +236,11 @@
       // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
       // Canvas keeps labelled, hovered, and selected points in an SVG overlay.
       marker_renderer?: `auto` | `svg` | `canvas`
+      // Extra invisible SVG radius around interactive markers, in screen pixels.
+      point_hit_padding?: number
     } = $props()
+
+  const plot_color = resolve_computed_color(() => wrapper, `color`, { fallback: `#000` })
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
   // Dimensionless series retain the historical y1 default. Re-running this derived after a
@@ -491,9 +494,23 @@
   let colorbar_size_revision = $state(0)
   const colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return measured_footprint(colorbar_element, colorbar_fallback_size)
+    return full_footprint_or(colorbar_element, colorbar_fallback_size)
   })
   const legend_footprint = $derived(frame.legend_footprint)
+  const constrain_legend_position = (
+    position: Point2D,
+    footprint: { width: number; height: number },
+  ): Point2D => ({
+    x: Math.max(0, Math.min(width - footprint.width, position.x)),
+    y: Math.max(0, Math.min(height - footprint.height, position.y)),
+  })
+  $effect(() => {
+    if (!legend_manual_position || legend_is_dragging) return
+    const { x, y } = legend_manual_position
+    const constrained = constrain_legend_position(legend_manual_position, legend_footprint)
+    if (constrained.x === x && constrained.y === y) return
+    legend_manual_position = constrained
+  })
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
@@ -544,8 +561,8 @@
     }
     if (colorbar_element && color_bar?.wrapper_style) {
       rects.push({
-        x: colorbar_element.offsetLeft,
-        y: colorbar_element.offsetTop,
+        x: colorbar_element.offsetLeft + colorbar_footprint.offset_x,
+        y: colorbar_element.offsetTop + colorbar_footprint.offset_y,
         ...colorbar_footprint,
       })
     }
@@ -639,7 +656,7 @@
             kind: `colorbar`,
             footprint: colorbar_footprint,
             horizontal: colorbar_is_horizontal,
-            clearance: color_bar.axis_clearance,
+            clearance: color_bar.axis_clearance ?? COLOR_BAR_DEFAULTS.axis_clearance,
           },
         ]
       : [],
@@ -720,6 +737,7 @@
     const ctrl = <T>(key: string, value: T | null | undefined): T | null =>
       control_touched?.has(key) ? (value ?? null) : null
     const series_idx = series_data.orig_series_idx ?? 0
+    const stroke = ctrl(`point.stroke_color`, styles.point?.stroke_color) ?? pt?.stroke
     return {
       radius:
         point.size_value != null
@@ -736,11 +754,15 @@
             pt?.fill ??
             get_series_color(series_idx)),
       fill_opacity: ctrl(`point.opacity`, styles.point?.opacity) ?? pt?.fill_opacity ?? 1,
-      stroke: ctrl(`point.stroke_color`, styles.point?.stroke_color) ?? pt?.stroke ?? `#000`,
+      stroke: stroke ?? plot_color.current,
       stroke_width:
-        ctrl(`point.stroke_width`, styles.point?.stroke_width) ?? pt?.stroke_width ?? 1,
+        ctrl(`point.stroke_width`, styles.point?.stroke_width) ??
+        pt?.stroke_width ??
+        DEFAULTS.scatter.point.stroke_width,
       stroke_opacity:
-        ctrl(`point.stroke_opacity`, styles.point?.stroke_opacity) ?? pt?.stroke_opacity ?? 1,
+        ctrl(`point.stroke_opacity`, styles.point?.stroke_opacity) ??
+        pt?.stroke_opacity ??
+        (stroke == null ? DEFAULTS.scatter.point.stroke_opacity : 1),
     }
   }
 
@@ -1014,7 +1036,7 @@
     get_decoration_placement(frame.decoration_solution, `colorbar`),
   )
   const colorbar_tween = create_placed_tween({
-    placement: () => colorbar_placement ?? null,
+    placement: () => element_position_for_footprint(colorbar_placement, colorbar_footprint),
     dims: () => ({ width, height }),
     responsive: () => color_bar?.responsive ?? false,
     element: () => colorbar_element,
@@ -1185,15 +1207,10 @@
     const new_x = event.clientX - svg_rect.left - legend_drag_offset.x
     const new_y = event.clientY - svg_rect.top - legend_drag_offset.y
 
-    // Get actual legend dimensions for accurate bounds checking using the bound element reference
-    const { width: legend_width, height: legend_height } =
-      legend_element.getBoundingClientRect()
-
-    // Constrain to plot bounds using measured legend size
-    const constrained_x = Math.max(0, Math.min(width - legend_width, new_x))
-    const constrained_y = Math.max(0, Math.min(height - legend_height, new_y))
-
-    legend_manual_position = { x: constrained_x, y: constrained_y }
+    legend_manual_position = constrain_legend_position(
+      { x: new_x, y: new_y },
+      legend_element.getBoundingClientRect(),
+    )
   }
 
   function get_screen_coords(point: Point, data_series?: DataSeries): Vec2 {
@@ -1259,6 +1276,20 @@
     }
   }
 
+  function point_accessible_label(point: InternalPoint<Metadata>): string {
+    const metadata_label = point.metadata?.[`aria_label`]
+    if (typeof metadata_label === `string`) return metadata_label
+    const series_label = series_with_ids[point.series_idx]?.label
+    return `Select ${series_label ?? `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
+  }
+
+  function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
+    point_events?.onclick?.({ point, event })
+    const props = construct_handler_props(point)
+    tooltip_point = point
+    if (props) on_point_click?.({ ...props, event, point })
+  }
+
   // Derive handler props from hovered point for both tooltip and event handlers
   let handler_props = $derived.by((): ScatterHandlerProps<Metadata> | null => {
     if (!tooltip_point) return null
@@ -1270,8 +1301,11 @@
   // Precompute non-click event names from point_events so we don't rebuild
   // the entries array on every point render.
   let point_event_names = $derived(
-    point_events ? Object.keys(point_events).filter((name) => name !== `onclick`) : [],
+    point_events
+      ? Object.keys(point_events).filter((name) => name !== `onclick` && name !== `onkeydown`)
+      : [],
   )
+  let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
 
   // State accessors for shared axis change handler
   // Spread into existing state in each setter to preserve merged type structure
@@ -1631,12 +1665,16 @@
                   stroke: appearance.stroke,
                   stroke_opacity: appearance.stroke_opacity,
                   fill_opacity: appearance.fill_opacity,
-                  cursor: on_point_click || point_events?.onclick ? `pointer` : undefined,
+                  cursor: points_interactive ? `pointer` : undefined,
                 }}
                 hover={point.point_hover ?? {}}
                 label={final_label}
                 offset={point.point_offset ?? { x: 0, y: 0 }}
                 point_tween={effective_point_tween}
+                hit_padding={points_interactive ? point_hit_padding : 0}
+                role={points_interactive ? `button` : undefined}
+                tabindex={points_interactive ? 0 : undefined}
+                aria-label={points_interactive ? point_accessible_label(point) : undefined}
                 --point-fill-color={appearance.fill}
                 {...point_events &&
                   Object.fromEntries(
@@ -1645,14 +1683,16 @@
                       (event: Event) => point_events?.[name]?.({ point, event }),
                     ]),
                   )}
-                onclick={(event: MouseEvent) => {
-                  // Call user-provided onclick handler first if it exists
-                  point_events?.onclick?.({ point, event })
-                  // then handle internal logic
-                  const props = construct_handler_props(point)
-                  tooltip_point = point
-                  if (props) on_point_click?.({ ...props, event, point })
+                onkeydown={(event: KeyboardEvent) => {
+                  point_events?.onkeydown?.({ point, event })
+                  if (!points_interactive || (event.key !== `Enter` && event.key !== ` `))
+                    return
+                  event.preventDefault()
+                  event.currentTarget?.dispatchEvent(
+                    new MouseEvent(`click`, { bubbles: true }),
+                  )
                 }}
+                onclick={(event: MouseEvent) => activate_point(point, event)}
               />
             {/each}
           {/if}

@@ -1,4 +1,5 @@
 // JSON Tree component types
+import { createContext } from 'svelte'
 import type { GhostEntry } from './utils'
 
 // Value type classification for rendering and styling
@@ -111,8 +112,7 @@ export interface JsonTreeContext {
 // Minimal position info for copy feedback (avoids partial MouseEvent mocks)
 export type CopyEventPosition = { clientX: number; clientY: number }
 
-// Context key for Svelte's setContext/getContext
-export const JSON_TREE_CONTEXT_KEY = Symbol(`json-tree-context`)
+export const [get_json_tree_context, set_json_tree_context] = createContext<JsonTreeContext>()
 
 // Diff status for comparing two JSON values
 export type DiffStatus = `added` | `removed` | `changed`

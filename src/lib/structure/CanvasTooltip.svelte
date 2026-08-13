@@ -1,5 +1,6 @@
 <script lang="ts">
   import { HTML } from '@threlte/extras'
+  import { useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Vec3 } from '$lib/math'
@@ -12,6 +13,12 @@
     position: Vec3
     children: Snippet<[{ position: Vec3 }]>
   } = $props()
+
+  // Threlte's Canvas host clips 3D rendering. Portal HTML overlays one level up so
+  // tooltips can cross viewport/card boundaries without also unclipping the canvas.
+  const { dom } = useThrelte()
+  const portal = dom.parentElement
+  if (!portal) throw new Error(`CanvasTooltip requires a mounted Canvas host`)
 </script>
 
 <!-- Constant zIndexRange: threlte's default [16777271, 0] maps camera distance
@@ -19,7 +26,7 @@
   camera.far (common in zoomed-out carousel cards) — painting the tooltip
   behind the canvas. A degenerate range pins z-index at 1000, always above the
   canvas and sibling overlays. -->
-<HTML {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
+<HTML {portal} {position} pointerEvents="none" zIndexRange={[1000, 1000]}>
   <div {...rest} role="tooltip">
     {@render children({ position })}
   </div>

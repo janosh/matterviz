@@ -52,7 +52,7 @@
 <g transform={rotate ? `rotate(-90, ${x}, ${y})` : undefined}>
   {#if use_svg_text}
     <text
-      class="axis-label {axis_type}-label"
+      class={[`axis-label`, `${axis_type}-label`]}
       dominant-baseline="central"
       fill={color ?? `currentColor`}
       pointer-events="none"
@@ -91,7 +91,7 @@
         {color}
         {on_select}
         line_segments={title_layout.lines.map(({ segments }) => segments)}
-        class="axis-label {axis_type}-label"
+        class={[`axis-label`, `${axis_type}-label`]}
       />
     </foreignObject>
   {/if}

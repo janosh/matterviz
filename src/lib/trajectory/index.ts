@@ -148,6 +148,11 @@ export interface TrajHandlerData extends FileLoadData {
   fullscreen?: boolean
 }
 
+export interface TrajectoryController {
+  set_step: (step_idx: number) => number
+  state: () => { current_step_idx: number; total_frames: number }
+}
+
 // Function interfaces for extensibility
 export type TrajectoryDataExtractor = (
   frame: TrajectoryFrame,

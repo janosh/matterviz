@@ -13,6 +13,7 @@
     BandsSpinMode,
     BandStructureType,
     BaseBandStructure,
+    Branch,
     FrequencyUnit,
     LineKwargs,
     PathMode,
@@ -34,6 +35,7 @@
     x_positions = $bindable(),
     reference_frequency = null,
     highlighted_qpoint_index = null,
+    highlighted_band_index = null,
     ribbon_config = {},
     fermi_level = undefined,
     units = $bindable(`THz`),
@@ -49,6 +51,7 @@
     show_annotation_controls = true,
     id = undefined,
     'data-testid': data_testid = undefined,
+    point_hit_padding = 3,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -62,6 +65,8 @@
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
+    // Band index to emphasize together with the selected q-point marker
+    highlighted_band_index?: number | null
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
@@ -119,6 +124,22 @@
     }
 
     return defaults
+  }
+
+  const emphasize_band = (
+    line_style: { stroke: string; stroke_width: number },
+    band_idx: number,
+  ): { stroke: string; stroke_width: number } => {
+    if (highlighted_band_index === null) return line_style
+    const selected = highlighted_band_index === band_idx
+    return {
+      stroke: selected
+        ? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`
+        : `var(--bands-muted-color, light-dark(#b9c2d0, #48566c))`,
+      stroke_width: selected
+        ? Math.max(3, line_style.stroke_width * 2)
+        : Math.min(1, line_style.stroke_width),
+    }
   }
 
   // Ribbon data structure for rendering
@@ -236,14 +257,12 @@
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
-    const collected_segments: Record<string, [string, BaseBandStructure][]> = {}
+    const collected_segments: Record<string, [string, BaseBandStructure, Branch][]> = {}
     for (const [label, bs] of Object.entries(band_structs_dict)) {
       for (const branch of bs.branches) {
-        const start_label = bs.qpoints[branch.start_index]?.label ?? undefined
-        const end_label = bs.qpoints[branch.end_index]?.label ?? undefined
-        const segment_key = helpers.get_segment_key(start_label, end_label)
+        const segment_key = helpers.get_branch_segment_key(bs, branch)
         collected_segments[segment_key] ??= []
-        collected_segments[segment_key].push([label, bs])
+        collected_segments[segment_key].push([label, bs, branch])
       }
     }
     return collected_segments
@@ -306,32 +325,16 @@
     for (const segment_key of ordered_segments) {
       if (positions[segment_key]) continue
 
-      const [start_label, end_label] = segment_key.split(`_`)
-
-      // Find the first band structure that has this segment
-      for (const bs of Object.values(band_structs_dict)) {
-        const matching_branch = bs.branches.find((branch) => {
-          const branch_start = bs.qpoints[branch.start_index]?.label || `null`
-          const branch_end = bs.qpoints[branch.end_index]?.label || `null`
-          return branch_start === start_label && branch_end === end_label
-        })
-
-        if (matching_branch) {
-          // Check if this is a discontinuity: consecutive indices mean no path between points
-          const is_discontinuity =
-            matching_branch.end_index - matching_branch.start_index === 1
-
-          if (is_discontinuity) {
-            // Place at same x position as current, no advancement
-            positions[segment_key] = [current_x, current_x]
-          } else {
-            const segment_len =
-              bs.distance[matching_branch.end_index] - bs.distance[matching_branch.start_index]
-            positions[segment_key] = [current_x, current_x + segment_len]
-            current_x += segment_len
-          }
-          break
-        }
+      const segment = all_segments[segment_key]?.[0]
+      if (!segment) continue
+      const [, bs, branch] = segment
+      if (helpers.is_discontinuity_branch(branch)) {
+        // Place discontinuities at the current x position without advancing the path.
+        positions[segment_key] = [current_x, current_x]
+      } else {
+        const segment_len = bs.distance[branch.end_index] - bs.distance[branch.start_index]
+        positions[segment_key] = [current_x, current_x + segment_len]
+        current_x += segment_len
       }
     }
 
@@ -353,15 +356,11 @@
     const segments: PlotSegment[] = []
     for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
       for (const branch of bs.branches) {
-        // Skip discontinuous segments (consecutive labeled points)
-        if (branch.end_index - branch.start_index === 1) continue
+        if (helpers.is_discontinuity_branch(branch)) continue
 
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1
-        const segment_key = helpers.get_segment_key(
-          bs.qpoints[start_idx]?.label ?? undefined,
-          bs.qpoints[end_idx - 1]?.label ?? undefined,
-        )
+        const segment_key = helpers.get_branch_segment_key(bs, branch)
         if (!segments_to_plot.has(segment_key)) continue
 
         const [x_start, x_end] = x_positions?.[segment_key] || [0, 1]
@@ -409,10 +408,8 @@
           const frequencies = convert_band_values(bs.bands[band_idx].slice(start_idx, end_idx))
           const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
 
-          const line_style_up = get_line_style(
-            color,
-            is_acoustic === true,
-            frequencies,
+          const line_style_up = emphasize_band(
+            get_line_style(color, is_acoustic === true, frequencies, band_idx),
             band_idx,
           )
 
@@ -444,7 +441,7 @@
             all_series.push({
               x: scaled_distances,
               y: frequencies,
-              markers: `line`,
+              markers: rest.on_point_click ? `line+points` : `line`,
               label: has_spin_down_channel ? `${structure_label} (↑)` : structure_label,
               line_style: line_style_up,
               metadata: meta,
@@ -468,7 +465,7 @@
             all_series.push({
               x: scaled_distances,
               y: spin_down_frequencies,
-              markers: `line`,
+              markers: rest.on_point_click ? `line+points` : `line`,
               label: `${structure_label} (↓)`,
               line_style: {
                 ...line_style_up,
@@ -541,9 +538,13 @@
     Object.entries(x_positions ?? {})
       .toSorted(([, [a]], [, [b]]) => a - b)
       .forEach(([segment_key, [x_start, x_end]]) => {
-        const [start_lbl, end_lbl] = segment_key.split(`_`)
-        const pretty_start = start_lbl !== `null` ? helpers.pretty_sym_point(start_lbl) : ``
-        const pretty_end = end_lbl !== `null` ? helpers.pretty_sym_point(end_lbl) : ``
+        const segment = all_segments[segment_key]?.[0]
+        if (!segment) return
+        const [, bs, branch] = segment
+        const start_label = bs.qpoints[branch.start_index]?.label
+        const end_label = bs.qpoints[branch.end_index]?.label
+        const pretty_start = start_label ? helpers.pretty_sym_point(start_label) : ``
+        const pretty_end = end_label ? helpers.pretty_sym_point(end_label) : ``
 
         // Check if this is a discontinuity (zero-length segment)
         const is_discontinuity = Math.abs(x_end - x_start) < 1e-6
@@ -653,6 +654,21 @@
 
   let fill_regions = $derived([...imaginary_mode_region, ...custom_highlight_regions])
 
+  // Reuse ScatterPlot's selected-point ring instead of maintaining a second marker style path.
+  let selected_point = $derived.by(() => {
+    if (highlighted_band_index === null || highlighted_qpoint_index === null) return null
+    for (const [series_idx, series] of series_data.entries()) {
+      if (!Array.isArray(series.metadata)) continue
+      const point_idx = series.metadata.findIndex(
+        (metadata) =>
+          metadata.band_idx === highlighted_band_index &&
+          metadata.qpoint_idx === highlighted_qpoint_index,
+      )
+      if (point_idx !== -1) return { series_idx, point_idx }
+    }
+    return null
+  })
+
   let electronic_gap_annotation = $derived.by(() => {
     if (
       !show_gap_annotation ||
@@ -703,6 +719,7 @@
     {id}
     data-testid={data_testid}
     series={series_data}
+    {point_hit_padding}
     {fill_regions}
     x_axis={{
       label: `Wave Vector`,
@@ -716,6 +733,7 @@
     {show_legend}
     legend={Object.keys(band_structs_dict).length > 1 ? {} : null}
     hover_config={{ threshold_px: 50 }}
+    {selected_point}
     {...rest}
     bind:show_controls
     bind:controls_open

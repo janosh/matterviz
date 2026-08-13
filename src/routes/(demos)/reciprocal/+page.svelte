@@ -46,6 +46,12 @@
       description: `3D Fermi surface visualization with isosurface extraction, Brillouin zone overlay, and spin channels.`,
       icon: FermiSurface,
     },
+    {
+      href: `/reciprocal/phonon-mode-explorer`,
+      title: `Phonon Mode Explorer`,
+      description: `Click phonon-band points to animate their atomic eigenvectors in a configurable 3D supercell.`,
+      icon: BandStructure,
+    },
   ]
 </script>
 

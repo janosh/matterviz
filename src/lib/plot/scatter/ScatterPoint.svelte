@@ -28,6 +28,7 @@
     is_dimmed = false,
     overlay_only = false,
     leader_line_threshold = 15,
+    hit_padding = 0,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `transform`> & {
     x: number
@@ -43,6 +44,7 @@
     // Canvas mode already paints the base marker; SVG overlays only add hover/selection effects.
     overlay_only?: boolean
     leader_line_threshold?: number
+    hit_padding?: number
   } = $props()
 
   // get the SVG path data as 'd' attribute
@@ -78,6 +80,15 @@
     0}px; --hover-brightness: {hover.brightness ?? 1.2}"
   {...rest}
 >
+  {#if hit_padding > 0}
+    <circle
+      r={(style.radius ?? 2) + hit_padding}
+      class="marker-hit-target"
+      fill="transparent"
+      stroke="none"
+      pointer-events="all"
+    />
+  {/if}
   {#if is_selected}
     <circle
       r={(style.radius ?? 4) * 2.5}
@@ -89,7 +100,7 @@
   {:else if style.is_highlighted && style.highlight_effect?.match(/pulse|glow/)}
     <circle
       r={(style.radius ?? 4) * 2}
-      class="effect-ring {style.highlight_effect}"
+      class={[`effect-ring`, style.highlight_effect]}
       fill={style.highlight_color ?? `#ff4444`}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"

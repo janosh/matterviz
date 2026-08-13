@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { Cross, Info } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { Info } from 'svelte-widgets/icons'
+  import { ViewerPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
-  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import { visible_entries as filter_visible } from './helpers'
@@ -101,19 +99,13 @@
   ].join(`; `)
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="convex hull info"
+  class_prefix="convex-hull-info"
   max_width="24em"
-  toggle_props={{
-    title: pane_open ? `` : `Convex hull info`,
-    class: `convex-hull-info-toggle`,
-    ...toggle_props,
-  }}
-  pane_props={{
-    ...pane_props,
-    class: `convex-hull-info-pane ${pane_props?.class ?? ``}`,
-  }}
-  open_icon={Cross}
+  {toggle_props}
+  {pane_props}
   closed_icon={Info}
   {...rest}
 >
@@ -136,4 +128,4 @@
     row_label_min="7em"
     style={info_card_style}
   />
-</DraggablePane>
+</ViewerPane>

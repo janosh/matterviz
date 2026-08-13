@@ -373,8 +373,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   {...rest}
-  class={[`treemap`, rest.class]}
-  class:fullscreen
+  class={[`treemap`, rest.class, { fullscreen }]}
 >
   <HierarchyShell
     {chart_state}
@@ -480,8 +479,7 @@
               rotated text rotates the clipping region and crops the wrong area. -->
               <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
                 <text
-                  class="cell-label"
-                  class:header={lbl.header}
+                  class={['cell-label', { header: lbl.header }]}
                   data-treemap-node-idx={idx}
                   x={lbl.x}
                   y={lbl.lines[0].y}

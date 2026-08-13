@@ -34,7 +34,7 @@
 </script>
 
 {#if show_controls}
-  <ControlPane bind:controls_open controls_class="sankey" {toggle_props} {pane_props}>
+  <ControlPane bind:controls_open controls_name="sankey" {toggle_props} {pane_props}>
     {@render children?.()}
     <SettingsSection
       title="Sankey"

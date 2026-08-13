@@ -2,12 +2,11 @@
   import { Icon } from 'svelte-widgets'
   import { Copy } from 'svelte-widgets/icons'
   import { build_path } from '$lib/json-path'
-  import { getContext, onMount } from 'svelte'
+  import { onMount } from 'svelte'
   // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'
-  import type { JsonTreeContext } from './types'
-  import { JSON_TREE_CONTEXT_KEY } from './types'
+  import { get_json_tree_context } from './types'
   import {
     estimate_byte_size,
     format_byte_size,
@@ -31,7 +30,7 @@
     is_last?: boolean
   } = $props()
 
-  const ctx = getContext<JsonTreeContext>(JSON_TREE_CONTEXT_KEY)
+  const ctx = get_json_tree_context()
 
   onMount(() => {
     // Register this path with context for keyboard navigation
@@ -50,22 +49,22 @@
     if (!expandable) return false
 
     // Check if explicitly collapsed
-    if (ctx?.collapsed.has(path)) return true
+    if (ctx.collapsed.has(path)) return true
 
     // Check if explicitly force-expanded (overrides auto-fold)
-    if (ctx?.force_expanded.has(path)) return false
+    if (ctx.force_expanded.has(path)) return false
 
     // If depth >= default_fold_level, default to collapsed
-    const fold_level = ctx?.settings.default_fold_level ?? 2
+    const fold_level = ctx.settings.default_fold_level ?? 2
     if (depth >= fold_level) return true
 
     // Check auto-fold thresholds
     if (value_type === `array`) {
-      const threshold = ctx?.settings.auto_fold_arrays ?? 10
+      const threshold = ctx.settings.auto_fold_arrays ?? 10
       if (child_count > threshold) return true
     }
     if (value_type === `object`) {
-      const threshold = ctx?.settings.auto_fold_objects ?? 20
+      const threshold = ctx.settings.auto_fold_objects ?? 20
       if (child_count > threshold) return true
     }
 
@@ -73,13 +72,13 @@
   })
 
   // Note: Search highlighting is handled by CSS Highlight API in JsonTree.svelte
-  let is_focused = $derived(ctx?.focused_path === path)
+  let is_focused = $derived(ctx.focused_path === path)
   // Current search match being navigated
-  let is_current_match = $derived(ctx?.current_match_path === path)
-  let is_selected = $derived(ctx?.selected_paths.has(path) ?? false)
+  let is_current_match = $derived(ctx.current_match_path === path)
+  let is_selected = $derived(ctx.selected_paths.has(path))
 
   // Diff status for this node (null if no diff or unchanged)
-  let diff_status = $derived(ctx?.diff_map?.get(path)?.status ?? null)
+  let diff_status = $derived(ctx.diff_map?.get(path)?.status ?? null)
 
   // Estimated byte size for collapsed preview (only compute when collapsed)
   let byte_size = $derived(
@@ -108,7 +107,7 @@
     }
     if (value_type === `object`) {
       const keys = Object.keys(value as Record<string, unknown>)
-      if (ctx?.settings.sort_keys) keys.sort()
+      if (ctx.settings.sort_keys) keys.sort()
       return keys.map((key) => ({ key, value: (value as Record<string, unknown>)[key] }))
     }
     if (value_type === `map`) {
@@ -126,7 +125,7 @@
   // Ghost children: removed entries from diff (pre-computed in JsonTree for O(1) lookup)
   let ghost_children = $derived.by(() => {
     if (!expandable || is_collapsed) return []
-    const all_ghosts = ctx?.ghost_map.get(path) ?? []
+    const all_ghosts = ctx.ghost_map.get(path) ?? []
     if (all_ghosts.length === 0) return []
     // Filter out ghosts whose keys already exist in current children
     const existing_keys = new Set(children.map((child) => String(child.key)))
@@ -146,7 +145,7 @@
       if (expandable) {
         toggle_collapse()
       } else {
-        ctx?.copy_value(path, value)
+        ctx.copy_value(path, value)
       }
     } else if (event.key === `ArrowRight`) {
       event.preventDefault()
@@ -160,10 +159,10 @@
       }
     } else if ((event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)) {
       // When nodes are selected, let the tree-level handler do bulk copy
-      if (ctx?.selected_paths.size) return
+      if (ctx.selected_paths.size) return
       event.preventDefault()
       event.stopPropagation()
-      ctx?.copy_value(path, value)
+      ctx.copy_value(path, value)
     }
   }
 
@@ -198,19 +197,19 @@
   onclick={(event) => {
     if (event.ctrlKey || event.metaKey) {
       event.stopPropagation()
-      ctx?.toggle_select(path, event.shiftKey)
+      ctx.toggle_select(path, event.shiftKey)
     } else {
-      ctx?.set_focused(path)
+      ctx.set_focused(path)
     }
   }}
   onauxclick={(event) => {
     if (event.button === 1) {
       event.preventDefault()
-      ctx?.copy_path(path, event)
+      ctx.copy_path(path, event)
     }
   }}
   oncontextmenu={(event) => {
-    ctx?.show_context_menu(event, path, value, expandable, is_collapsed)
+    ctx.show_context_menu(event, path, value, expandable, is_collapsed)
   }}
   ondblclick={toggle_collapse_recursive}
   onkeydown={handle_keydown}
@@ -232,30 +231,29 @@
     {#if node_key !== null}
       <button
         type="button"
-        class="node-key"
-        class:array-index={typeof node_key === `number`}
+        class={['node-key', { 'array-index': typeof node_key === `number` }]}
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
           if (event.ctrlKey || event.metaKey) {
-            ctx?.toggle_select(path, event.shiftKey)
+            ctx.toggle_select(path, event.shiftKey)
           } else if (event.shiftKey) {
-            ctx?.copy_path(path, event)
+            ctx.copy_path(path, event)
           } else if (expandable && is_collapsed) {
-            ctx?.toggle_collapse(path, true)
+            ctx.toggle_collapse(path, true)
           } else {
-            ctx?.copy_value(path, value, event)
+            ctx.copy_value(path, value, event)
           }
         }}
         onauxclick={(event) => {
           if (event.button === 1) {
             event.preventDefault()
             event.stopPropagation()
-            ctx?.copy_path(path, event)
+            ctx.copy_path(path, event)
           }
         }}
       >
-        {#if typeof node_key === `number` && ctx?.settings.show_array_indices}
+        {#if typeof node_key === `number` && ctx.settings.show_array_indices}
           <span class="index">{node_key}</span>
         {:else if typeof node_key === `string`}
           "{node_key}"
@@ -292,7 +290,7 @@
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
-          ctx?.collapse_children_only(path)
+          ctx.collapse_children_only(path)
         }}
       >
         ⊟

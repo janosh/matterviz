@@ -554,7 +554,7 @@
   })
 
   // Legend data and handlers
-  let legend_data = $derived.by<LegendItem[]>(() =>
+  let legend_data = $derived(
     series.map((srs: BarSeries<Metadata>, idx: number) => {
       const is_line = srs.render_mode === `line`
       const series_markers = srs.markers ?? DEFAULT_MARKERS

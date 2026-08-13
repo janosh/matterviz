@@ -25,7 +25,7 @@ import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/theme/themes.mjs'
-import type { TrajectoryType, TrajHandlerData } from '$lib/trajectory'
+import type { TrajectoryController, TrajectoryType, TrajHandlerData } from '$lib/trajectory'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
@@ -45,10 +45,7 @@ export type { VSCodeAPI } from './host-bridge'
 
 export type MatterVizData = WebviewBootstrapData
 
-export interface MatterVizApp {
-  $on?(type: string, callback: (event: Event) => void): () => void
-  $set?(props: Partial<Record<string, unknown>>): void
-}
+export type MatterVizApp = ReturnType<typeof mount>
 
 // Host-provided options for create_display. Only the trajectory branch consumes
 // them (viewer position restore across reloads); other result types ignore them.
@@ -58,6 +55,8 @@ export interface DisplayOptions {
   initial_step_idx?: number
   // Reports every step change with the new index and the trajectory's frame count.
   on_step_change?: (step_idx: number, total_frames: number) => void
+  // Exposes stable imperative navigation without reaching into component DOM.
+  on_trajectory_controller?: (controller: TrajectoryController | null) => void
 }
 
 // Extend globalThis interface for MatterViz data
@@ -287,7 +286,8 @@ export const create_display = (
       }
     }
 
-    const { initial_step_idx, on_step_change } = display_options ?? {}
+    const { initial_step_idx, on_step_change, on_trajectory_controller } =
+      display_options ?? {}
     const trajectory_mount_props = {
       trajectory: final_trajectory,
       ...trajectory_props(defaults),
@@ -297,6 +297,7 @@ export const create_display = (
         on_step_change: (data: TrajHandlerData) =>
           on_step_change(data.step_idx ?? 0, data.frame_count ?? 0),
       }),
+      on_controller: on_trajectory_controller,
     }
     // vaspout.h5 files carrying results/electron_dos get a DOS panel below the trajectory
     const traj_electronic = final_trajectory.metadata?.electronic as

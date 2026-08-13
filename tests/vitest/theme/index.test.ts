@@ -1,4 +1,6 @@
 import type { ThemeMode, ThemeName } from '$lib/theme'
+// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- initializes theme globals
+import '$lib/theme/themes.mjs'
 import {
   apply_theme_to_dom,
   COLOR_THEMES,
@@ -11,6 +13,8 @@ import {
   THEME_TYPE,
 } from '$lib/theme'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+const bundled_themes = globalThis.MATTERVIZ_THEMES
 
 describe(`Theme System`, () => {
   beforeEach(() => {
@@ -153,6 +157,14 @@ describe(`Theme System`, () => {
         )
       },
     )
+
+    test.each([`dark`, `black`] as const)(`%s uses the dark button palette`, (theme) => {
+      expect(bundled_themes?.[theme]).toMatchObject({
+        'btn-bg': `rgba(255, 255, 255, 0.09)`,
+        'btn-bg-hover': `rgba(255, 255, 255, 0.17)`,
+        'btn-disabled-bg': `rgba(255, 255, 255, 0.04)`,
+      })
+    })
 
     test.each([
       [true, `dark`],

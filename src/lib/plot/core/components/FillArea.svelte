@@ -153,8 +153,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <g
-  class="fill-region"
-  class:hovered={is_hovered}
+  class={['fill-region', { hovered: is_hovered }]}
   clip-path={`url(#${clip_path_id})`}
   style="cursor: {cursor_style}; pointer-events: all"
   onmouseenter={handle_mouse_enter}

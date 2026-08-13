@@ -325,12 +325,13 @@ test.describe(`Legend Placement Stability`, () => {
 
     // Legend has 8px padding - click inside padding area to initiate drag (not on legend items)
     const padding_offset = 4 // Half of 8px padding, ensures we're in empty space
-    const drag_distance = { x: 80, y: 60 } // Distance to drag the legend
+    const plot_bbox = await plot.boundingBox()
+    if (!plot_bbox) throw new Error(`Plot bounding box not found`)
 
-    // Click in top-left padding area (avoids legend items), then drag
+    // Click in top-left padding area (avoids legend items), then drag to the plot edge
     await page.mouse.move(initial_bbox.x + padding_offset, initial_bbox.y + padding_offset)
     await page.mouse.down()
-    await page.mouse.move(initial_bbox.x + drag_distance.x, initial_bbox.y + drag_distance.y, {
+    await page.mouse.move(plot_bbox.x + plot_bbox.width, plot_bbox.y + plot_bbox.height, {
       steps: 10,
     })
     await page.mouse.up()
@@ -360,6 +361,21 @@ test.describe(`Legend Placement Stability`, () => {
     await expect(first_item).toHaveClass(/hidden/)
     await first_item.click()
     await expect(first_item).not.toHaveClass(/hidden/)
+
+    await page.setViewportSize({ width: 600, height: 400 })
+    await expect
+      .poll(async () => {
+        const resized_plot = await plot.boundingBox()
+        const resized_legend = await legend.boundingBox()
+        if (!resized_plot || !resized_legend) return -Infinity
+        return Math.min(
+          resized_legend.x - resized_plot.x,
+          resized_legend.y - resized_plot.y,
+          resized_plot.x + resized_plot.width - resized_legend.x - resized_legend.width,
+          resized_plot.y + resized_plot.height - resized_legend.y - resized_legend.height,
+        )
+      })
+      .toBeGreaterThanOrEqual(-1)
   })
 
   test(`legend and colorbar do not overlap`, async ({ page }) => {
@@ -387,7 +403,9 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
-  test(`colorbar placement matches its natural CSS box across resize`, async ({ page }) => {
+  test(`colorbar placement matches its full visual footprint across resize`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#color-scale #color-scale-toggle .scatter`)
     const colorbar = plot.locator(`.colorbar-wrapper`)
     await expect(colorbar).toBeVisible()
@@ -400,13 +418,18 @@ test.describe(`Legend Placement Stability`, () => {
         if (!colorbar_element) throw new Error(`missing colorbar geometry`)
         const plot_box = plot_element.getBoundingClientRect()
         const colorbar_box = colorbar_element.getBoundingClientRect()
+        const boxes = [
+          colorbar_box,
+          ...[...colorbar_element.querySelectorAll<HTMLElement>(`*`)]
+            .map((element) => element.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 || rect.height > 0),
+        ]
+        const left = Math.min(...boxes.map((rect) => rect.left))
+        const top = Math.min(...boxes.map((rect) => rect.top))
+        const right = Math.max(...boxes.map((rect) => rect.right))
+        const bottom = Math.max(...boxes.map((rect) => rect.bottom))
         return {
-          actual: [
-            colorbar_box.x - plot_box.x,
-            colorbar_box.y - plot_box.y,
-            colorbar_box.width,
-            colorbar_box.height,
-          ],
+          actual: [left - plot_box.left, top - plot_box.top, right - left, bottom - top],
           solved: dimension_names.map((dimension) =>
             Number(colorbar_element.getAttribute(`data-decoration-${dimension}`)),
           ),

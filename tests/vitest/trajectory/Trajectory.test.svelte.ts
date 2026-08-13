@@ -1,5 +1,6 @@
 import {
   Trajectory,
+  type TrajectoryController,
   type FrameLoader,
   type TrajectoryType,
   type TrajectoryXQuantity,
@@ -398,6 +399,35 @@ describe(`Trajectory`, () => {
     expect(events.at(-1)).toBe(`pause:0`)
   })
 
+  test(`pauses auto-play before committing a dragged frame`, async () => {
+    const { performance_now, run_frame } = stub_animation_frames()
+    performance_now.mockReturnValue(1000)
+    const on_pause = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3, -4),
+      current_step_idx: 0,
+      fps: 10,
+      auto_play: true,
+      show_controls: `always` as const,
+      on_pause,
+    })
+    mount_traj(props)
+    await flush_render()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.dispatchEvent(new Event(`pointerdown`, { bubbles: true }))
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+    flushSync()
+
+    expect(props.current_step_idx).toBe(2)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(on_pause).toHaveBeenCalledOnce()
+    run_frame(1100)
+    expect(props.current_step_idx).toBe(2)
+  })
+
   test(`stops frame catch-up when an end callback makes playback unplayable`, async () => {
     const on_end = vi.fn()
     const on_loop = vi.fn()
@@ -585,6 +615,31 @@ describe(`Trajectory`, () => {
 
     const style = getComputedStyle(doc_query(`.trajectory-controls`))
     expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
+  })
+
+  test(`controller navigates without mounted controls`, async () => {
+    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
+    const on_step_change = vi.fn()
+    const on_pause = vi.fn()
+    const target = mount_traj({
+      trajectory: energy_traj(-1.5, -2.5, -3.5),
+      show_controls: false,
+      auto_play: true,
+      on_pause,
+      on_step_change,
+      on_controller,
+    })
+    await flush_render()
+
+    const controller = on_controller.mock.calls[0]?.[0]
+    if (!controller) throw new Error(`Trajectory controller was not registered`)
+    expect(target.querySelector(`.trajectory-controls`)).toBeNull()
+    expect(controller.set_step(2)).toBe(2)
+    expect(controller.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
+    expect(on_step_change).toHaveBeenCalledWith(
+      expect.objectContaining({ step_idx: 2, frame_count: 3 }),
+    )
+    expect(on_pause).toHaveBeenCalledOnce()
   })
 
   test(`view mode menu is layered and selectable`, async () => {

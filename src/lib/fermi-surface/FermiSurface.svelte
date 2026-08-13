@@ -352,8 +352,6 @@
 <svelte:window onkeydown={handle_keydown} />
 
 <div
-  class:dragover
-  class:active={controls_open}
   role="region"
   aria-label="Fermi surface viewer"
   bind:this={wrapper}
@@ -367,7 +365,7 @@
     set_dragover: (over) => (dragover = over),
   })}
   {...rest}
-  class={[`fermi-surface`, rest.class]}
+  class={[`fermi-surface`, rest.class, { dragover, active: controls_open }]}
 >
   {@render children?.({ fermi_data, bz_data })}
   {#if loading}
@@ -484,19 +482,6 @@
     border-radius: var(--fermi-border-radius, 0);
     background: var(--fermi-bg, var(--surface-bg));
     color: var(--fermi-text-color, var(--text-color));
-  }
-  /* Clip threlte HTML overlays (b₁/b₂/b₃ labels) when they fall outside canvas bounds.
-  Targets threlte-generated container (parent of canvas), not main wrapper
-  so control pane can still be dragged outside component bounds.
-  Fallback for browsers without :has() - targets any direct child div */
-  .fermi-surface :global(> div) {
-    overflow: hidden;
-  }
-  /* Modern browsers: reset overflow for non-canvas containers */
-  @supports selector(:has(> canvas)) {
-    .fermi-surface :global(> div:not(:has(> canvas))) {
-      overflow: visible;
-    }
   }
   .fermi-surface.active {
     z-index: var(--fermi-active-z-index, 2);
