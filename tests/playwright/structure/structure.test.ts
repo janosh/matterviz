@@ -19,9 +19,8 @@ import {
 
 const is_mac = process.platform === `darwin`
 
-// each h4 section title in the controls pane is followed by the element holding its controls
-const section_body = (heading: Locator): Locator =>
-  heading.locator(`xpath=following-sibling::*[1]`)
+const section_body = (pane: Locator, title: string): Locator =>
+  pane.getByRole(`region`, { name: title, exact: true })
 const fill_axis_values = async (inputs: Locator, values: string[]): Promise<void> => {
   for (const [axis_idx, value] of values.entries()) await inputs.nth(axis_idx).fill(value)
 }
@@ -425,7 +424,7 @@ test.describe(`Structure Component Tests`, () => {
     await pane_div.locator(`label:has-text("Site Labels") input[type="checkbox"]`).check()
     const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
     await expect(labels_heading).toBeVisible()
-    const labels_container = section_body(labels_heading)
+    const labels_container = section_body(pane_div, `Labels`)
     const offset_row = labels_container.locator(`.setting`).filter({ hasText: `Offset` })
 
     // Color pickers echo filled values
@@ -523,8 +522,7 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.check()
 
     // Set some values
-    const labels_heading = pane_div.locator(`h4:has-text("Labels")`)
-    const labels_container_for_persist = section_body(labels_heading)
+    const labels_container_for_persist = section_body(pane_div, `Labels`)
     const text_color_input = labels_container_for_persist
       .locator(`label:has-text("Color") input[type="color"]`)
       .first()
@@ -702,9 +700,8 @@ test.describe(`Structure Component Tests`, () => {
         act: (input) => input.fill(`0.6`),
       },
       {
-        // color input in the Background section (h4 title followed by section)
         name: `background color`,
-        input: control_pane.locator(`h4:has-text("Background") + section input[type="color"]`),
+        input: section_body(control_pane, `Background`).locator(`input[type="color"]`),
         act: (input) => input.fill(`#00ff00`),
       },
     ]
@@ -737,8 +734,7 @@ test.describe(`Structure Component Tests`, () => {
     const after_radius_change = await canvas.screenshot()
 
     // Test show atoms checkbox
-    const visibility_heading = control_pane.locator(`h4:has-text("Visibility")`)
-    const show_atoms_checkbox = section_body(visibility_heading)
+    const show_atoms_checkbox = section_body(control_pane, `Visibility`)
       .locator(`input[type="checkbox"]`)
       .first()
     await show_atoms_checkbox.uncheck()

@@ -5,7 +5,7 @@
   import * as io from '$lib/io'
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type {
     AxisConfig,

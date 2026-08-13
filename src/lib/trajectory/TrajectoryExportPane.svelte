@@ -10,7 +10,7 @@
   import { download } from '$lib/io/fetch'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import { SettingsSection } from '$lib/layout'
   import type { TrajectoryType } from '$lib/trajectory'
   import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
   import {

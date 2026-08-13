@@ -207,7 +207,10 @@ test.describe(`Multi-Vector Site Vectors`, () => {
     await expect(pane_div.locator(`label`).filter({ hasText: `Global Scale` })).toBeVisible()
     await expect(pane_div.locator(`label`).filter({ hasText: `Origin Gap` })).toBeVisible()
     // No standalone "Color" label in multi-vector mode
-    const site_vectors_section = site_vectors_heading.locator(`xpath=following-sibling::*[1]`)
+    const site_vectors_section = pane_div.getByRole(`region`, {
+      name: `Site Vectors`,
+      exact: true,
+    })
     await expect(
       site_vectors_section.locator(`label`).filter({ hasText: /^Color$/ }),
     ).toHaveCount(0)
