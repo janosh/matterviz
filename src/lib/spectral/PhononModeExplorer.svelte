@@ -108,7 +108,7 @@
   })
   let selected_qpoint = $derived(selection && mode_data.qpoints[selection.qpoint_idx])
   let selected_mode = $derived(selection && selected_qpoint?.modes[selection.mode_idx])
-  let commensurate = $derived(trajectory_result.value?.metadata?.is_commensurate !== false)
+  let commensurate = $derived(trajectory_result.value?.metadata?.is_commensurate ?? true)
 
   let reset_key = ``
   $effect(() => {
@@ -147,13 +147,12 @@
 
   const select_spectrum_mode = (mode_idx: number): void => {
     if (!active_spectrum) return
-    const selected_qpoint_idx = selection?.qpoint_idx
-    const current_qpoint =
-      selected_qpoint_idx === undefined ? undefined : mode_data.qpoints[selected_qpoint_idx]
+    const selected_qpoint_idx = selection?.qpoint_idx ?? -1
+    const current_qpoint = mode_data.qpoints[selected_qpoint_idx]
     const qpoint_idx =
       current_qpoint &&
       are_qpoints_equivalent(current_qpoint.q_position, active_spectrum.q_position)
-        ? (selected_qpoint_idx ?? -1)
+        ? selected_qpoint_idx
         : mode_data.qpoints.findIndex(({ q_position }) =>
             are_qpoints_equivalent(q_position, active_spectrum.q_position),
           )

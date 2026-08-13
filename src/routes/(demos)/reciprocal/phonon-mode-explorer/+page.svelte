@@ -27,27 +27,14 @@
     sync_url_params,
     type UrlParamEntry,
   } from '$lib/url-params'
-  import { to_error } from '$lib/utils'
   import { untrack } from 'svelte'
 
-  type FixtureBase = {
+  type ModeFixture = {
     filename: string
     label: string
     detail: string
-  }
-  type ModeFixture = FixtureBase & {
     dataset: PhononModeDataset
   }
-  const explorer_query_keys = [
-    `qpoint`,
-    `mode`,
-    `view`,
-    `amplitude`,
-    `supercell`,
-    `fps`,
-    `vectors`,
-  ] as const
-
   const mode_modules = import.meta.glob<string>(
     [`$site/phonons/ir-raman/*.yaml`, `$site/phonons/ir-raman/*.yaml.gz`],
     { eager: true, query: `?raw`, import: `default` },
@@ -65,7 +52,7 @@
     { eager: true, import: `default` },
   )
 
-  const mode_fixtures: ModeFixture[] = Object.entries(mode_modules)
+  const fixtures: ModeFixture[] = Object.entries(mode_modules)
     .map(([path, yaml]): ModeFixture => {
       const filename = path.split(`/`).at(-1) ?? path
       const stem = filename.replace(/\.yaml(?:\.gz)?$/, ``)
@@ -105,9 +92,8 @@
       return band_difference || fixture_a.label.localeCompare(fixture_b.label)
     })
 
-  const fixtures = mode_fixtures
   const default_fixture =
-    mode_fixtures.find(({ filename }) => filename === `NaCl-Gamma-X-band.yaml`) ?? fixtures[0]
+    fixtures.find(({ filename }) => filename === `NaCl-Gamma-X-band.yaml`) ?? fixtures[0]
   if (!default_fixture) throw new Error(`No phonon demo fixtures found`)
 
   type ExplorerState = {
@@ -140,7 +126,6 @@
   let upload_loading = $state(false)
   let dragover = $state(false)
   let url_initialized = $state(false)
-  let active_dataset = $derived(uploaded_dataset ?? selected_fixture.dataset)
   let uploaded_detail = $derived.by(() => {
     if (!uploaded_dataset) return undefined
     const has_band_path = uploaded_dataset.modes.path_segments.length > 0
@@ -226,7 +211,7 @@
       apply_explorer_state(initial_state(uploaded_dataset))
       upload_error = undefined
     },
-    on_error: (error) => (upload_error = to_error(error).message),
+    on_error: (error) => (upload_error = error),
     set_loading: (value) => {
       upload_loading = value
       if (value) [dragover, upload_error] = [false, undefined]
@@ -256,9 +241,9 @@
 
   $effect(() => {
     if (!url_initialized) return
-    const explorer_entries: UrlParamEntry[] = !uploaded_dataset
-      ? mode_fixture_url_entries(selected_fixture)
-      : explorer_query_keys.map((key): UrlParamEntry => [key, ``])
+    const explorer_entries = mode_fixture_url_entries(selected_fixture).map(
+      (entry): UrlParamEntry => (uploaded_dataset ? [entry[0], ``] : entry),
+    )
     sync_url_params(
       [[`file`, uploaded_dataset ? `` : selected_fixture.filename], ...explorer_entries],
       globalThis.location,
@@ -320,7 +305,7 @@
   {#if upload_error}<StatusMessage bind:message={upload_error} type="error" dismissible />{/if}
   <PhononModeExplorer
     id="phonon-mode-explorer"
-    dataset={active_dataset}
+    dataset={uploaded_dataset ?? selected_fixture.dataset}
     bind:selection
     bind:view
     bind:amplitude

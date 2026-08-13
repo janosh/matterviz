@@ -2,7 +2,6 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
-  generate_lattice_points,
   make_site,
   make_supercell,
   parse_supercell_scaling,
@@ -53,7 +52,7 @@ const validate_trajectory_size = (n_sites: number, n_frames: number): void => {
 // Close the half-open supercell [0, 1) with copies on its missing positive faces. These
 // are the only image atoms the phonon player needs: they fill the displayed cell without
 // asking the generic PBC renderer to add whole translated coordination shells outside it.
-const close_supercell_faces = (structure: Crystal, scaling: Vec3): Crystal => {
+const close_supercell_faces = (structure: Crystal): Crystal => {
   const sites = [...structure.sites]
   const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
 
@@ -63,18 +62,14 @@ const close_supercell_faces = (structure: Crystal, scaling: Vec3): Crystal => {
     )
     for (let face_mask = 1; face_mask < 1 << face_axes.length; face_mask++) {
       const abc = [...site.abc] as Vec3
-      const phonon_cell_shift: Vec3 = [0, 0, 0]
       for (const [mask_idx, axis] of face_axes.entries()) {
-        if (face_mask & (1 << mask_idx)) {
-          abc[axis] = 1
-          phonon_cell_shift[axis] = scaling[axis]
-        }
+        if (face_mask & (1 << mask_idx)) abc[axis] = 1
       }
       sites.push({
         ...site,
         abc,
         xyz: frac_to_cart(abc),
-        properties: { ...site.properties, orig_site_idx: site_idx, phonon_cell_shift },
+        properties: { ...site.properties, orig_site_idx: site_idx },
       })
     }
   }
@@ -288,7 +283,7 @@ export function phonon_mode_trajectory(
     },
   }
   const expanded_cell = make_supercell(unit_cell, scaling, false)
-  const closed_cell = close_supercell_faces(expanded_cell, scaling)
+  const closed_cell = close_supercell_faces(expanded_cell)
   validate_trajectory_size(closed_cell.sites.length, n_frames)
   const equilibrium: Crystal = {
     ...closed_cell,
@@ -326,17 +321,19 @@ export function phonon_mode_trajectory(
     )
   })
 
-  const complex_displacements: Complex[][] = []
-  for (const cell_point of generate_lattice_points(scaling)) {
-    for (const [atom_idx, atom_vector] of phase_anchored.entries()) {
-      const atom_position = math.add(cell_point, data.atoms[atom_idx].coordinates)
-      const spatial_angle = 2 * Math.PI * math.dot(q_position, atom_position)
-      const spatial_phase = complex_phase(spatial_angle)
-      complex_displacements.push(
-        atom_vector.map((component) => multiply_complex(component, spatial_phase)),
-      )
-    }
-  }
+  const complex_displacements = equilibrium.sites.map((site, site_idx) => {
+    const source_site_idx =
+      typeof site.properties.orig_site_idx === `number`
+        ? site.properties.orig_site_idx
+        : site_idx
+    const atom_position = site.abc.map(
+      (coordinate, axis) => coordinate * scaling[axis],
+    ) as Vec3
+    const spatial_phase = complex_phase(2 * Math.PI * math.dot(q_position, atom_position))
+    return phase_anchored[source_site_idx % data.n_atoms].map((component) =>
+      multiply_complex(component, spatial_phase),
+    )
+  })
   let max_excursion = 0
   for (const displacement of complex_displacements) {
     max_excursion = Math.max(max_excursion, complex_vector_max_norm(displacement))
@@ -349,18 +346,10 @@ export function phonon_mode_trajectory(
     const cos_phase = Math.cos(phase)
     const sin_phase = Math.sin(phase)
     const frame_sites = equilibrium.sites.map((site, site_idx) => {
-      const source_site_idx =
-        typeof site.properties.orig_site_idx === `number`
-          ? site.properties.orig_site_idx
-          : site_idx
-      const phonon_cell_shift = site.properties.phonon_cell_shift as Vec3 | undefined
-      const image_phase = phonon_cell_shift
-        ? complex_phase(2 * Math.PI * math.dot(q_position, phonon_cell_shift))
-        : ([1, 0] as Complex)
-      const displacement = complex_displacements[source_site_idx].map((component) => {
-        const [real_part, imag_part] = multiply_complex(component, image_phase)
-        return amplitude_scale * (real_part * cos_phase + imag_part * sin_phase)
-      }) as Vec3
+      const displacement = complex_displacements[site_idx].map(
+        ([real_part, imag_part]) =>
+          amplitude_scale * (real_part * cos_phase + imag_part * sin_phase),
+      ) as Vec3
       const xyz = math.add(site.xyz, displacement)
       return {
         ...site,

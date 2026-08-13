@@ -2,12 +2,14 @@ import type { Vec3 } from '$lib/math'
 import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
 import {
   is_commensurate_phonon_supercell,
+  PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
   phonon_mode_trajectory,
   parse_phonon_modes,
   type Complex,
   type PhononModeData,
 } from '$lib/spectral'
+import { get_structure_vector_keys } from '$lib/structure'
 import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
@@ -132,18 +134,19 @@ describe(`phonon_mode_trajectory`, () => {
       { qpoint_idx: 0, mode_idx: 0 },
       { amplitude: 1, supercell: [3, 1, 1], n_frames: 4 },
     )
-    const positive_x_image = trajectory.frames[0].structure.sites.find(({ properties }) => {
-      const cell_shift = properties.phonon_cell_shift
-      return (
-        Array.isArray(cell_shift) &&
-        cell_shift.length === 3 &&
-        cell_shift.every((value, axis) => value === [3, 0, 0][axis])
-      )
-    })
+    const positive_x_image = trajectory.frames[0].structure.sites.find(
+      ({ abc, properties }) =>
+        typeof properties.orig_site_idx === `number` &&
+        abc[0] > 1 &&
+        abc.slice(1).every((coordinate) => coordinate === 0),
+    )
     if (!positive_x_image) throw new Error(`Expected a positive x-face image atom`)
     const displacement = positive_x_image.properties.phonon_displacement as Vec3
     expect(displacement[0]).toBeCloseTo(Math.SQRT1_2, 14)
     expect(displacement.slice(1)).toEqual([0, 0])
+    expect(get_structure_vector_keys(trajectory.frames[0].structure)).toEqual([
+      PHONON_VECTOR_KEY,
+    ])
   })
 
   it(`removes arbitrary global complex phase`, () => {
