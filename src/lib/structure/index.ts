@@ -15,7 +15,6 @@ import type StructureSceneComponent from './StructureScene.svelte'
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
 export { default as AtomLegend } from './AtomLegend.svelte'
-export { default as Bond } from './Bond.svelte'
 export * as bonding_strategies from './bonding'
 export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export { default as Cylinder } from './Cylinder.svelte'
@@ -112,8 +111,7 @@ export type StructureBond = {
 
 export type StructureProperties = Record<string, unknown> & { bonds?: StructureBond[] }
 
-// Bond pair with position vectors, site indices, bond length, strength score,
-// optional explicit bond order, and transformation matrix.
+// Chemistry/topology bond data shared by rendering, analysis, and editing consumers.
 export type BondPair = {
   pos_1: Vec3
   pos_2: Vec3
@@ -123,7 +121,6 @@ export type BondPair = {
   strength: number
   bond_order?: BondOrder
   cell_shift?: Vec3
-  transform_matrix: Float32Array
 }
 
 export type { PerceivedBond, PerceptionOptions } from '$lib/structure/bond-order-perception'
@@ -329,17 +326,4 @@ export interface StructureHandlerData extends FileLoadData {
   slice_settings?: Partial<VolumeSliceSettings>
   scene_props?: ComponentProps<typeof StructureSceneComponent>
   lattice_props?: ComponentProps<typeof LatticeComponent>
-}
-
-export interface BondInstance {
-  matrix: Float32Array
-  color_start: string
-  color_end: string
-}
-
-export interface BondGroupWithGradients {
-  thickness: number
-  instances: BondInstance[]
-  ambient_light?: number
-  directional_light?: number
 }

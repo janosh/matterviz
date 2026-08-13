@@ -2,7 +2,7 @@
 
 import element_data, { element_by_symbol } from '../element/data'
 import type { ElementSymbol } from '$lib/element'
-import type { Vec2, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
@@ -450,7 +450,6 @@ export function structure_bond_to_bond_pair(
     strength: 1,
     bond_order: order,
     cell_shift,
-    transform_matrix: compute_bond_transform(pos_1, pos_2),
   }
 }
 
@@ -579,63 +578,6 @@ export const explicit_only = (structure: AnyStructure, _options = {}): BondPair[
     structure_bond_to_bond_pair(structure, bond),
   )
 
-export function scale_and_offset_bond_matrix(
-  transform_matrix: Float32Array,
-  offset: number,
-  radius_scale: number,
-): Float32Array {
-  const matrix = new Float32Array(transform_matrix)
-  // Column-major 4x4 layout: 0-2 are the right vector, 8-10 are the forward
-  // vector. Scale orientation columns for cylinder radius, not translation.
-  for (const matrix_idx of [0, 1, 2, 8, 9, 10]) {
-    matrix[matrix_idx] *= radius_scale
-  }
-
-  const right_len = Math.hypot(matrix[0], matrix[1], matrix[2]) || 1
-  const offset_dir: Vec3 = [
-    matrix[0] / right_len,
-    matrix[1] / right_len,
-    matrix[2] / right_len,
-  ]
-  matrix[12] += offset_dir[0] * offset
-  matrix[13] += offset_dir[1] * offset
-  matrix[14] += offset_dir[2] * offset
-  return matrix
-}
-
-export function get_bond_render_matrices(
-  bond: BondPair,
-  bond_thickness: number,
-): Float32Array[] {
-  const order = bond.bond_order ?? 1
-  const gap = bond_thickness * 1.8
-  // Parallel cylinder [offset, radius_scale] pairs per bond order; empty → a single
-  // full-width bond (handled by the fallback below)
-  let offsets_and_scales: Vec2[] = []
-  if (order === 2)
-    offsets_and_scales = [
-      [-gap / 2, 0.65],
-      [gap / 2, 0.65],
-    ]
-  else if (order === 3)
-    offsets_and_scales = [
-      [-gap, 0.55],
-      [0, 0.55],
-      [gap, 0.55],
-    ]
-  else if (order === 1.5 || order === `aromatic`) {
-    offsets_and_scales = [
-      [-gap / 2, 0.75],
-      [gap / 2, 0.4],
-    ]
-  }
-  return offsets_and_scales.length === 0
-    ? [bond.transform_matrix]
-    : offsets_and_scales.map(([offset, radius_scale]) =>
-        scale_and_offset_bond_matrix(bond.transform_matrix, offset, radius_scale),
-      )
-}
-
 // Helper to extract numeric index from site properties
 function get_orig_idx(site: Site, fallback: number): number {
   const props = site.properties
@@ -646,67 +588,6 @@ function get_orig_idx(site: Site, fallback: number): number {
 
   const num = Number(raw)
   return Number.isFinite(num) ? num : fallback
-}
-
-// Compute 4x4 transformation matrix for bond cylinder between two positions.
-// Uses Y-up, right-handed coordinate system convention for Three.js compatibility.
-export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
-  // Written out in scalars with indexed stores rather than array destructuring and a
-  // Float32Array(array literal): a 8000-site supercell builds ~23k of these, and the
-  // temporaries dominated.
-  //
-  // Math.sqrt over Math.hypot for the same reason: hypot guards against intermediate
-  // overflow, which needs coordinates above ~1e154 to matter and costs 13x here (57ms vs
-  // 4ms per 5M calls). Output is unaffected - both forms agree bit for bit across 20k
-  // random and degenerate position pairs, since the result is rounded to f32 regardless.
-  const dx = pos_2[0] - pos_1[0]
-  const dy = pos_2[1] - pos_1[1]
-  const dz = pos_2[2] - pos_1[2]
-  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
-  const height = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-  const matrix = new Float32Array(16)
-  matrix[15] = 1
-  if (height < 1e-10) {
-    matrix[0] = 1
-    matrix[5] = 1
-    matrix[10] = 1
-    return matrix
-  }
-
-  const dir_x = dx / height
-  const dir_y = dy / height
-  const dir_z = dz / height
-
-  // Orthonormal basis (right, dir, up) as the rotation columns. Straight up/down need the
-  // special case because the right vector is derived in the XZ plane, which degenerates.
-  let [right_x, right_z] = [1, 0]
-  let [up_x, up_y, up_z] = [0, 0, 1]
-  if (Math.abs(dir_y - 1) >= 1e-10 && Math.abs(dir_y + 1) >= 1e-10) {
-    const rx = -dir_z
-    const rz = dir_x
-    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
-    const r_len = Math.sqrt(rx * rx + rz * rz)
-    right_x = rx / r_len
-    right_z = rz / r_len
-    up_x = dir_y * right_z
-    up_y = dir_z * right_x - dir_x * right_z
-    up_z = -dir_y * right_x
-  }
-
-  // Column-major 4x4 for Three.js: right, dir*height, up, then the midpoint translation
-  matrix[0] = right_x
-  matrix[2] = right_z
-  matrix[4] = dir_x * height
-  matrix[5] = dir_y * height
-  matrix[6] = dir_z * height
-  matrix[8] = up_x
-  matrix[9] = up_y
-  matrix[10] = up_z
-  matrix[12] = (pos_1[0] + pos_2[0]) / 2
-  matrix[13] = (pos_1[1] + pos_2[1]) / 2
-  matrix[14] = (pos_1[2] + pos_2[2]) / 2
-  return matrix
 }
 
 // Build a BondPair between two sites
@@ -723,7 +604,6 @@ const make_bond = (
   site_idx_2: idx_2,
   bond_length,
   strength,
-  transform_matrix: compute_bond_transform(sites[idx_1].xyz, sites[idx_2].xyz),
 })
 
 // Pack quantized cell coordinates into one integer key (exact for cell coords in

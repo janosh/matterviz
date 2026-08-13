@@ -36,16 +36,45 @@ describe(`InstancedMesh limits`, () => {
     expect(source.match(/<ArrowInstances\b/g)).toHaveLength(2)
   })
 
-  it(`keeps scrub deferral wired through geometry and replacement-mesh colors`, () => {
+  it(`keeps bond recomputation immediate during scrub geometry deferral`, () => {
     const scene_source = readFileSync(`src/lib/structure/StructureScene.svelte`, `utf8`)
     const atoms_source = readFileSync(`src/lib/structure/InstancedAtoms.svelte`, `utf8`)
+    const bond_pairs_start = scene_source.indexOf(`let bond_pairs`)
+    const bond_pairs_end = scene_source.indexOf(`// Compute property-based colors`)
+    const bond_pairs_source = scene_source.slice(bond_pairs_start, bond_pairs_end)
 
-    expect(scene_source).toContain(`if (dragging_atoms || defer_expensive_geometry)`)
+    expect(scene_source).not.toContain(`last_bond_pairs`)
+    expect(bond_pairs_source).toContain(`compute_bonds(`)
+    expect(bond_pairs_source).not.toMatch(/defer|dragging/)
     expect(scene_source).toContain(`if (defer_expensive_geometry) return last_polyhedra`)
     expect(scene_source.match(/positions_only=\{defer_expensive_geometry\}/g)).toHaveLength(2)
     expect(atoms_source).toContain(`positions_only && current === colored_mesh`)
     expect(atoms_source.indexOf(`colored_mesh = current`)).toBeGreaterThan(
       atoms_source.indexOf(`current.setColorAt`),
     )
+  })
+
+  it(`streams bond topology directly into persistent GPU-facing buffers`, () => {
+    const bond_source = readFileSync(`src/lib/structure/Bond.svelte`, `utf8`)
+    const rendering_source = readFileSync(`src/lib/structure/bond-rendering.ts`, `utf8`)
+    const scene_source = readFileSync(`src/lib/structure/StructureScene.svelte`, `utf8`)
+    const bonding_source = readFileSync(`src/lib/structure/bonding.ts`, `utf8`)
+    const index_source = readFileSync(`src/lib/structure/index.ts`, `utf8`)
+
+    expect(scene_source).not.toContain(`instanced_bond_groups`)
+    expect(scene_source).not.toContain(`get_bond_render_matrices`)
+    expect(bonding_source).not.toContain(`transform_matrix`)
+    expect(index_source).not.toContain(`default as Bond`)
+    expect(index_source).not.toContain(`BondGroupWithGradients`)
+    expect(bond_source).not.toContain(`mesh.setMatrixAt(`)
+    expect(bond_source).toContain(`write_bond_instance_matrices(`)
+    expect(bond_source).toContain(`matrix_buffer.length < instance_count * 16`)
+    expect(bond_source.indexOf(`mesh.count = 0`)).toBeLessThan(
+      bond_source.indexOf(`write_bond_instance_matrices(`),
+    )
+    expect(rendering_source).toContain(`matrix_buffer.copyWithin(`)
+    expect(bond_source).toContain(`mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16)`)
+    expect(bond_source).toContain(`if (last_changed_idx >= 0)`)
+    expect(bond_source).toContain(`existing.addUpdateRange(`)
   })
 })

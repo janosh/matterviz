@@ -76,10 +76,9 @@ describe(`Bonding Algorithms`, () => {
       expect(bond.bond_length).toBeGreaterThan(0)
       expect(bond.strength).toBeGreaterThanOrEqual(0)
       expect(bond.strength).toBeLessThanOrEqual(2.0)
-      // positions correspond to their site indices and a 4x4 transform is emitted
+      // positions correspond to their site indices
       expect(bond.pos_1).toEqual(structure.sites[bond.site_idx_1].xyz)
       expect(bond.pos_2).toEqual(structure.sites[bond.site_idx_2].xyz)
-      expect(bond.transform_matrix).toHaveLength(16)
     }
   })
 
@@ -575,36 +574,6 @@ describe(`Explicit Bond Metadata`, () => {
       warn_spy.mockRestore()
     }
   })
-
-  test.each([
-    { order: undefined, expected_count: 1 },
-    { order: 1 as const, expected_count: 1 },
-    { order: 2 as const, expected_count: 2 },
-    { order: 3 as const, expected_count: 3 },
-    { order: 1.5 as const, expected_count: 2 },
-    { order: `aromatic` as const, expected_count: 2 },
-  ])(
-    `renders $order bond order as $expected_count cylinder matrices`,
-    ({ order, expected_count }: { order?: BondOrder; expected_count: number }) => {
-      const bond: BondPair = {
-        pos_1: [0, 0, 0],
-        pos_2: [1, 0, 0],
-        site_idx_1: 0,
-        site_idx_2: 1,
-        bond_length: 1,
-        strength: 1,
-        ...(order === undefined ? {} : { bond_order: order }),
-        transform_matrix: bonding.compute_bond_transform([0, 0, 0], [1, 0, 0]),
-      }
-
-      const matrices = bonding.get_bond_render_matrices(bond, 0.1)
-      expect(matrices).toHaveLength(expected_count)
-      if (expected_count > 1) {
-        const offsets = matrices.map((matrix) => `${matrix[12]},${matrix[13]},${matrix[14]}`)
-        expect(new Set(offsets).size).toBeGreaterThan(1)
-      }
-    },
-  )
 })
 
 describe(`explicit_only strategy`, () => {
@@ -657,7 +626,6 @@ describe(`explicit_only strategy`, () => {
       expect(bond.bond_length).toBeCloseTo(
         Math.hypot(...bond.pos_2.map((coord, idx) => coord - bond.pos_1[idx])),
       )
-      expect(bond.transform_matrix).toHaveLength(16)
     }
   })
 
