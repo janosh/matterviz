@@ -8,7 +8,7 @@ import {
 } from '$lib/structure/atom-properties'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
@@ -183,19 +183,18 @@ describe(`AtomLegend Component`, () => {
 
   test(`uses white text for oxygen red and reacts to light color updates`, async () => {
     const original_oxygen_color = colors.element.O
-    try {
-      colors.element.O = default_element_colors.O
-      mount_legend({ elements: { O: 1 } })
-      const label = doc_query(`label`)
-      expect(label.style.color).toBe(`white`)
-
-      colors.element.O = `#ffff00`
-      await tick()
-
-      expect(label.style.color).toBe(`black`)
-    } finally {
+    onTestFinished(() => {
       colors.element.O = original_oxygen_color
-    }
+    })
+    colors.element.O = default_element_colors.O
+    mount_legend({ elements: { O: 1 } })
+    const label = doc_query(`label`)
+    expect(label.style.color).toBe(`white`)
+
+    colors.element.O = `#ffff00`
+    await tick()
+
+    expect(label.style.color).toBe(`black`)
   })
 
   test(`element visibility toggle`, async () => {

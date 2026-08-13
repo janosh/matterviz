@@ -68,6 +68,11 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
     expect(
       target.querySelector<HTMLInputElement>(`[data-key="show_image_atoms"] input`)?.checked,
     ).toBe(false)
+    expect(
+      target.querySelector<HTMLInputElement>(
+        `[data-key="vector_config:phonon_displacement"] input`,
+      )?.checked,
+    ).toBe(false)
     expect(normalize_label()).toBe(`3x3x3`)
     expect(displayed_site_count()).toBe(54)
   })

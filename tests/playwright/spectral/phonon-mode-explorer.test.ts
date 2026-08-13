@@ -110,11 +110,15 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(step_input).toHaveValue(`12`)
 
     await step_input.fill(`46`)
-    await explorer.getByRole(`button`, { name: `Play` }).click()
     const visited_frames = await step_input.evaluate(async (input: HTMLInputElement) => {
+      const play_button = input
+        .closest(`.trajectory-controls`)
+        ?.querySelector<HTMLButtonElement>(`.play-button`)
+      if (!play_button) throw new Error(`Missing trajectory play button`)
       const frames = [Number(input.value)]
+      play_button.click()
       const start = performance.now()
-      while (performance.now() - start < 350) {
+      while (frames.length < 3 && performance.now() - start < 1000) {
         await new Promise(requestAnimationFrame)
         const frame = Number(input.value)
         if (frame !== frames.at(-1)) frames.push(frame)
@@ -166,15 +170,6 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(summary).toContainText(`Mode 5`)
     await expect(stick).toHaveClass(/selected/)
     expect(symmetry_errors).toEqual([])
-
-    await expect(explorer.getByLabel(`Eigenvectors`)).not.toBeChecked()
-    await trajectory_viewer.hover()
-    await explorer.getByRole(`button`, { name: `Structure controls` }).click()
-    await expect(
-      explorer.locator(
-        `label[data-key="vector_config:phonon_displacement"] input[type="checkbox"]`,
-      ),
-    ).not.toBeChecked()
   })
 
   test(`picker swaps mode datasets and accepts local phonopy output`, async ({ page }) => {
