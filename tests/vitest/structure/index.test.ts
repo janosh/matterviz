@@ -358,6 +358,8 @@ describe(`get_all_site_vectors`, () => {
     // LAMMPS vx/vy/vz and extXYZ velocities land here with no further wiring
     [`velocity`, [1.5, -2, 0]],
     [`velocities`, [0, 3, 0]],
+    [`phonon`, [0.2, -0.1, 0.3]],
+    [`phonon_displacement`, [-1, 2, 0]],
   ] as const)(`accepts 3D vector in %s`, (key, vec) => {
     const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
     expect(result[0]).toEqual({ key, vec: [...vec] })
@@ -392,6 +394,8 @@ describe(`get_all_site_vectors`, () => {
     [`nested array`, { force: [[1, 0, 0]] }],
     [`NaN scalar`, { spin: NaN }],
     [`Infinity scalar`, { magmom: Infinity }],
+    [`invalid phonon vector`, { phonon: [1, 2] }],
+    [`invalid prefixed phonon vector`, { phonon_displacement: [1, 2, Infinity] }],
   ])(`rejects invalid vector: %s`, (_label, properties) => {
     expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
   })

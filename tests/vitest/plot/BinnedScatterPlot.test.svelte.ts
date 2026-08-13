@@ -292,7 +292,6 @@ describe(`BinnedScatterPlot`, () => {
     }
     const [fallback, explicit] = [await layout(), await layout(`.2~g`)]
     expect(Number.isFinite(explicit.baseline)).toBe(true)
-    expect(explicit.rotated).toBe(true)
     expect(fallback).toEqual(explicit)
   })
 

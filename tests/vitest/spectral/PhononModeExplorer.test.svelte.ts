@@ -1,4 +1,10 @@
-import { PhononModeExplorer, parse_phonon_modes } from '$lib/spectral'
+import {
+  parse_born,
+  PhononModeExplorer,
+  parse_phonon_modes,
+  spectrum_from_phonon_data,
+} from '$lib/spectral'
+import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { mount, type ComponentProps, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -32,6 +38,29 @@ test.each([
       `Mode 4`,
     ),
   )
+})
+
+test(`exposes the selected plot view to assistive technology`, async () => {
+  const mode_data = parse_phonon_modes(band_yaml)
+  const spectrum = {
+    ...spectrum_from_phonon_data(mode_data, parse_born(born_file)),
+    has_raman: true,
+  }
+  const target = render({ mode_data, spectrum, view: `ir` })
+  await vi.waitFor(() => {
+    expect(target.querySelector(`.tabs`)?.getAttribute(`role`)).toBe(`group`)
+    expect(
+      [...target.querySelectorAll<HTMLButtonElement>(`.tabs button`)].map((button) => [
+        button.textContent,
+        button.getAttribute(`aria-pressed`),
+      ]),
+    ).toEqual([
+      [`Bands`, `false`],
+      [`IR`, `true`],
+      [`Raman`, `false`],
+      [`Modes`, `false`],
+    ])
+  })
 })
 
 test(`rejects conflicting direct sources`, async () => {

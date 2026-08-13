@@ -329,19 +329,27 @@
       />
     {/if}
     <div class="toolbar">
-      <div class="tabs" aria-label="Phonon explorer plot">
+      <div class="tabs" role="group" aria-label="Phonon explorer plot">
         {#if band_result.value}<button
+            aria-pressed={view === `bands`}
             class:active={view === `bands`}
             onclick={() => (view = `bands`)}>Bands</button
           >{/if}
-        {#if spectrum}<button class:active={view === `ir`} onclick={() => (view = `ir`)}
-            >IR</button
+        {#if spectrum}<button
+            aria-pressed={view === `ir`}
+            class:active={view === `ir`}
+            onclick={() => (view = `ir`)}>IR</button
           >{/if}
         {#if spectrum?.has_raman}<button
+            aria-pressed={view === `raman`}
             class:active={view === `raman`}
             onclick={() => (view = `raman`)}>Raman</button
           >{/if}
-        <button class:active={view === `modes`} onclick={() => (view = `modes`)}>Modes</button>
+        <button
+          aria-pressed={view === `modes`}
+          class:active={view === `modes`}
+          onclick={() => (view = `modes`)}>Modes</button
+        >
       </div>
       <label
         >q-point

@@ -37,6 +37,13 @@ export const drag_over_handlers = (opts: {
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
+  if (
+    opts.max_files !== undefined &&
+    (!Number.isSafeInteger(opts.max_files) || opts.max_files < 0)
+  ) {
+    throw new TypeError(`max_files must be a non-negative integer, got ${opts.max_files}`)
+  }
+
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
     try {

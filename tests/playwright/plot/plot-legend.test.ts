@@ -387,7 +387,9 @@ test.describe(`Legend Placement Stability`, () => {
     }
   })
 
-  test(`colorbar placement matches its natural CSS box across resize`, async ({ page }) => {
+  test(`colorbar placement matches its full visual footprint across resize`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#color-scale #color-scale-toggle .scatter`)
     const colorbar = plot.locator(`.colorbar-wrapper`)
     await expect(colorbar).toBeVisible()
@@ -400,12 +402,29 @@ test.describe(`Legend Placement Stability`, () => {
         if (!colorbar_element) throw new Error(`missing colorbar geometry`)
         const plot_box = plot_element.getBoundingClientRect()
         const colorbar_box = colorbar_element.getBoundingClientRect()
+        const descendant_boxes = [...colorbar_element.querySelectorAll<HTMLElement>(`*`)]
+          .map((element) => element.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 || rect.height > 0)
+        const footprint = descendant_boxes.reduce(
+          (bounds, rect) => ({
+            left: Math.min(bounds.left, rect.left),
+            top: Math.min(bounds.top, rect.top),
+            right: Math.max(bounds.right, rect.right),
+            bottom: Math.max(bounds.bottom, rect.bottom),
+          }),
+          {
+            left: colorbar_box.left,
+            top: colorbar_box.top,
+            right: colorbar_box.right,
+            bottom: colorbar_box.bottom,
+          },
+        )
         return {
           actual: [
-            colorbar_box.x - plot_box.x,
-            colorbar_box.y - plot_box.y,
-            colorbar_box.width,
-            colorbar_box.height,
+            footprint.left - plot_box.left,
+            footprint.top - plot_box.top,
+            footprint.right - footprint.left,
+            footprint.bottom - footprint.top,
           ],
           solved: dimension_names.map((dimension) =>
             Number(colorbar_element.getAttribute(`data-decoration-${dimension}`)),

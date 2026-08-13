@@ -177,12 +177,31 @@ describe(`create_file_drop_handler`, () => {
     ])
   })
 
-  test(`rejects a batch larger than max_files before reading any file`, async () => {
-    await run({ max_files: 1 }, [new File([`x`], `a.yaml`), new File([`y`], `b.yaml`)])
-    expect(decompress_file).not.toHaveBeenCalled()
-    expect(on_drop).not.toHaveBeenCalled()
-    expect(on_error).toHaveBeenCalledWith(`Drop at most 1 file at a time (received 2)`)
-  })
+  test.each([
+    [0, [new File([`x`], `a.yaml`)], `Drop at most 0 files at a time (received 1)`],
+    [
+      1,
+      [new File([`x`], `a.yaml`), new File([`y`], `b.yaml`)],
+      `Drop at most 1 file at a time (received 2)`,
+    ],
+  ] as const)(
+    `rejects a batch larger than max_files=$max_files`,
+    async (max_files, files, error) => {
+      await run({ max_files }, [...files])
+      expect(decompress_file).not.toHaveBeenCalled()
+      expect(on_drop).not.toHaveBeenCalled()
+      expect(on_error).toHaveBeenCalledWith(error)
+    },
+  )
+
+  test.each([-1, 1.5, NaN, Infinity])(
+    `rejects invalid max_files=%s when creating the handler`,
+    (max_files) => {
+      expect(() =>
+        create_file_drop_handler({ allow: () => true, on_drop, max_files }),
+      ).toThrow(`max_files must be a non-negative integer`)
+    },
+  )
 
   test(`one failing file does not abort the rest of the batch`, async () => {
     vi.mocked(decompress_file)
