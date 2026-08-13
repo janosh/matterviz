@@ -185,12 +185,13 @@ describe(`StructureCarousel`, () => {
   })
 
   // happy-dom's WheelEvent silently drops MouseEventInit modifier flags, so the
-  // shift/ctrl branches need them defined on the instance to be reachable.
+  // shift/meta/ctrl branches need them defined on the instance to be reachable.
   const wheel_event = (init: WheelEventInit): WheelEvent => {
-    const { shiftKey = false, ctrlKey = false, ...deltas } = init
+    const { shiftKey = false, metaKey = false, ctrlKey = false, ...deltas } = init
     const event = new WheelEvent(`wheel`, { bubbles: true, cancelable: true, ...deltas })
     Object.defineProperties(event, {
       shiftKey: { value: shiftKey },
+      metaKey: { value: metaKey },
       ctrlKey: { value: ctrlKey },
     })
     return event
@@ -238,6 +239,57 @@ describe(`StructureCarousel`, () => {
     // Left un-prevented means the viewer's orbit controls still get to zoom.
     expect(wheel.defaultPrevented).toBe(taken)
     expect(track.scrollLeft).toBe(scrolled)
+  })
+
+  test.each([
+    {
+      name: `plain wheel scrolls the carousel`,
+      init: { deltaY: 80 },
+      scrolled: 80,
+      reaches_viewer: false,
+    },
+    {
+      name: `Command+wheel zooms the structure`,
+      init: { deltaY: 80, metaKey: true },
+      scrolled: 0,
+      reaches_viewer: true,
+    },
+    {
+      name: `Ctrl+wheel zooms the structure`,
+      init: { deltaY: 80, ctrlKey: true },
+      scrolled: 0,
+      reaches_viewer: true,
+    },
+  ])(`vertical $name`, ({ init, scrolled, reaches_viewer }) => {
+    mount_carousel({ items, layout: `vertical` })
+
+    const track = doc_query(`.structure-carousel-track`)
+    const structure = doc_query(`.structure-card .structure`)
+    const viewer_wheel = vi.fn()
+    structure.addEventListener(`wheel`, viewer_wheel)
+    const wheel = wheel_event(init)
+    structure.dispatchEvent(wheel)
+
+    expect(wheel.defaultPrevented).toBe(!reaches_viewer)
+    expect(track.scrollTop).toBe(scrolled)
+    expect(viewer_wheel).toHaveBeenCalledTimes(reaches_viewer ? 1 : 0)
+  })
+
+  test(`plain vertical wheel never reaches the viewer at a scroll boundary`, () => {
+    mount_carousel({ items: many_items, layout: `vertical` })
+
+    const track = doc_query(`.structure-carousel-track`)
+    mock_track_size(track, false)
+    track.scrollTop = 1500
+    const viewer_wheel = vi.fn()
+    const structure = doc_query(`.structure-card .structure`)
+    structure.addEventListener(`wheel`, viewer_wheel)
+    const wheel = wheel_event({ deltaY: 80 })
+    structure.dispatchEvent(wheel)
+
+    expect(wheel.defaultPrevented).toBe(false)
+    expect(track.scrollTop).toBe(1500)
+    expect(viewer_wheel).not.toHaveBeenCalled()
   })
 
   test(`leaves wheel events for parent scrollers at scroll boundaries`, () => {
@@ -575,7 +627,7 @@ describe(`StructureCarousel`, () => {
       // vertical card width initializes async from the measured host width
       await vi.waitFor(() => {
         expect(doc_query(`.structure-carousel-spacer`).getAttribute(`style`)).toContain(
-          `inline-size: 800px`,
+          `inline-size: 790px`,
         )
       })
     }
@@ -607,14 +659,14 @@ describe(`StructureCarousel`, () => {
       { layout: `vertical` },
       false, // mount unflushed so the async width measurement is exercised
       [800, 680],
-      [`inline-size: 680px`],
+      [`inline-size: min(100%, 680px)`],
     ],
     [
       `respects min_card_width when shrinking vertical card width`,
       { layout: `vertical`, min_card_width: 320 },
       true,
       [800, 100],
-      [`inline-size: 320px`],
+      [`inline-size: min(100%, 330px)`],
     ],
   ] as const)(`%s`, async (_desc, extra_props, flush, [from, to], style_fragments) => {
     mount_carousel({ items, resizable: true, ...extra_props }, flush)

@@ -4,6 +4,7 @@ import {
   is_optimade_json,
   parse_optimade_json,
 } from '$lib/structure/parse'
+import { glob_text } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
@@ -34,15 +35,6 @@ export const structures = Object.entries(
   )
 
 export const structure_map = new SvelteMap(structures.map((struct) => [struct.id, struct]))
-
-// dev yields strings; the Rolldown prod build yields the module namespace (text
-// under `.default`, JSON parsed) — unwrap and re-stringify objects back to text
-export const glob_text = (value: unknown): string => {
-  const raw = typeof value === `string` ? value : (value as { default?: unknown })?.default
-  if (typeof raw === `string`) return raw
-  // JSON.stringify(undefined) would return undefined, breaking the string contract
-  return raw == null ? `` : JSON.stringify(raw)
-}
 
 const raw_structure_modules = import.meta.glob(`$site/structures/*`, {
   eager: true,

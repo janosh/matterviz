@@ -16,7 +16,8 @@ import {
   structure_fit_frame,
   VECTOR_PALETTE,
 } from '$lib/structure'
-import { glob_text, structure_files, structures } from '$site/structures'
+import { glob_default, glob_text } from '$site/imports'
+import { structure_files, structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 
 const ref_data: Record<
@@ -580,6 +581,13 @@ test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic view
 // glob_text unwraps the module-namespace shape the Rolldown prod build returns
 // (vitest runs the dev transform, so this is the only place that path is tested)
 const parsed = { lattice: { a: 5 }, sites: [] }
+test.each([
+  [`dev value`, parsed, parsed],
+  [`prod module namespace`, { default: parsed }, parsed],
+])(`glob_default %s`, (_desc, input, expected) => {
+  expect(glob_default(input)).toBe(expected)
+})
+
 test.each([
   [`dev raw string`, `data_test`, `data_test`],
   [`prod string default`, { default: `data_test` }, `data_test`],

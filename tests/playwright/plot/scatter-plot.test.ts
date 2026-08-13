@@ -1867,7 +1867,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     await reset_button.click()
     // Wait for stroke-width to reset to default
-    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `1`, { timeout: 5000 })
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `0.5`, { timeout: 5000 })
   })
 
   // AUTO-CYCLING COLORS AND SYMBOLS TESTS

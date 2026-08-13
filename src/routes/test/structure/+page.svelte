@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { page } from '$app/state'
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
@@ -28,7 +29,7 @@
   let show_image_atoms = $state(true)
   let fullscreen = $state(false)
   let bonds = $state<StructureBond[] | undefined>()
-  let comparison_mode = $derived(page.url.searchParams.get(`comparison`) === `true`)
+  let comparison_mode = $derived(browser && page.url.searchParams.get(`comparison`) === `true`)
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])

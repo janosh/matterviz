@@ -68,6 +68,7 @@
 
   const gap = 8
   const min_resize_size = 150
+  const vertical_resize_lane_px = 10
   // wheel delta for deltaMode=DOM_DELTA_LINE, in px per line (Firefox)
   const wheel_line_height_px = 16
   // px per arrow-key press when resizing via keyboard
@@ -84,7 +85,10 @@
   )
   const effective_width = $derived(
     !is_horizontal && resizable
-      ? (resized_width ?? (carousel_width > 0 ? carousel_width : safe_min_card_width))
+      ? (resized_width ??
+          (carousel_width > vertical_resize_lane_px
+            ? carousel_width - vertical_resize_lane_px
+            : safe_min_card_width))
       : safe_min_card_width,
   )
   // Viewer height and horizontal card width are independent. Fit as many
@@ -156,7 +160,12 @@
       // shrink to the cards when they don't fill the host; an empty carousel
       // keeps one card's width so its message has somewhere to sit
       is_horizontal ? `inline-size: min(100%, ${Math.max(card_width, scroll_extent)}px)` : ``,
-      !is_horizontal && resized_width ? `inline-size: ${resized_width}px` : ``,
+      !is_horizontal && resizable
+        ? `--structure-carousel-resize-lane: ${vertical_resize_lane_px}px`
+        : ``,
+      !is_horizontal && resized_width
+        ? `inline-size: min(100%, ${resized_width + vertical_resize_lane_px}px)`
+        : ``,
       resizable ? `max-inline-size: 100%; min-block-size: ${min_resize_size}px` : ``,
     ]
       .filter(Boolean)
@@ -241,31 +250,37 @@
     return true
   }
 
-  // A plain vertical wheel belongs to whatever the pointer is over — the nested
-  // structure viewer zooms with it — so only horizontal intent may scroll the
-  // carousel: a trackpad swipe, where deltaX dominates, or shift+wheel, which
-  // Chrome and Safari already report as deltaX but Firefox leaves on deltaY.
+  // In a horizontal track, plain vertical wheels belong to the nested structure
+  // viewer, so only horizontal intent may scroll the carousel: a trackpad swipe,
+  // where deltaX dominates, or shift+wheel, which Chrome and Safari already
+  // report as deltaX but Firefox leaves on deltaY.
   const horizontal_wheel_delta = (event: WheelEvent): number => {
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return event.deltaX
     return event.shiftKey ? event.deltaY : 0
   }
 
   const on_wheel = (event: WheelEvent): void => {
-    if (!track || !is_horizontal || event.ctrlKey || items.length <= page_size) return
-    const dominant_delta = horizontal_wheel_delta(event)
-    if (dominant_delta === 0) return
+    if (!track || event.metaKey || event.ctrlKey) return
+    // Never let an ordinary vertical wheel reach OrbitControls. Even at a
+    // boundary, leave the default unprevented so scroll chaining can continue.
+    if (!is_horizontal) event.stopPropagation()
+    if (items.length <= page_size) return
+    const wheel_delta = is_horizontal ? horizontal_wheel_delta(event) : event.deltaY
+    if (wheel_delta === 0) return
+    const current_scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
+    const wheel_page_size = is_horizontal ? track.clientWidth : track.clientHeight
     const delta_scale =
       event.deltaMode === WheelEvent.DOM_DELTA_LINE
         ? wheel_line_height_px
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? track.clientWidth
+          ? wheel_page_size
           : 1
     // unclamped while the track is unmeasured (max 0); the browser clamps anyway
     const limit = max_scroll() || Infinity
-    const next = Math.min(limit, Math.max(0, track.scrollLeft + dominant_delta * delta_scale))
+    const next = Math.min(limit, Math.max(0, current_scroll_pos + wheel_delta * delta_scale))
     if (!scroll_to(next)) return
     event.preventDefault()
-    event.stopPropagation()
+    if (is_horizontal) event.stopPropagation()
   }
 
   // Pager and arrow keys land on a definite target with no momentum behind them,
@@ -326,7 +341,11 @@
     } else {
       const clamped = Math.max(safe_min_card_width, next_size)
       const parent_width = carousel?.parentElement?.clientWidth ?? Number.POSITIVE_INFINITY
-      resized_width = Math.min(clamped, parent_width > 0 ? parent_width : clamped)
+      const max_card_width =
+        parent_width > vertical_resize_lane_px
+          ? parent_width - vertical_resize_lane_px
+          : clamped
+      resized_width = Math.min(clamped, max_card_width)
     }
   }
 
@@ -363,13 +382,12 @@
     window.addEventListener(`pointercancel`, stop_resize)
   }
 
-  // Capture before the nested Structure canvas sees the wheel: orbit controls
-  // consume the whole event, so a bubble listener would never see a trackpad
-  // swipe over a card. Vertical wheels are handed straight back (see
-  // horizontal_wheel_delta) so those same controls can still zoom.
+  // Capture before the nested Structure canvas sees the wheel: horizontal
+  // tracks take horizontal intent, while vertical tracks take ordinary wheels
+  // and reserve Command/Ctrl + wheel for structure zoom.
   $effect(() => {
     const node = track
-    if (!node || !is_horizontal) return
+    if (!node) return
     node.addEventListener(`wheel`, on_wheel, { capture: true, passive: false })
     return () => node.removeEventListener(`wheel`, on_wheel, true)
   })
@@ -505,13 +523,17 @@
     block-size: calc(var(--structure-carousel-height) + 8px);
   }
   .structure-carousel.vertical.resizable {
-    padding-inline-end: 10px;
+    box-sizing: border-box;
+    padding-inline-end: var(--structure-carousel-resize-lane);
   }
   .structure-carousel-track {
     position: relative;
     min-inline-size: 0;
     scrollbar-width: thin;
     overscroll-behavior: contain;
+  }
+  .structure-carousel.vertical .structure-carousel-track {
+    overscroll-behavior-y: auto;
   }
   /* inset ring so it isn't clipped by the carousel's overflow: hidden */
   .structure-carousel-track:focus-visible {
@@ -524,6 +546,7 @@
   }
   .structure-card {
     position: absolute;
+    box-sizing: border-box;
     inset-block-start: 0;
     inset-inline-start: 0;
     min-inline-size: 0;

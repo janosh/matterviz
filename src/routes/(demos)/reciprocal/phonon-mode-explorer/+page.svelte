@@ -27,6 +27,7 @@
     sync_url_params,
     type UrlParamEntry,
   } from '$lib/url-params'
+  import { glob_default } from '$site/imports'
   import { untrack } from 'svelte'
 
   type ModeFixture = {
@@ -35,16 +36,19 @@
     detail: string
     dataset: PhononModeDataset
   }
-  const mode_modules = import.meta.glob<string>(
+  const mode_modules = import.meta.glob<string | { default: string }>(
     [`$site/phonons/ir-raman/*.yaml`, `$site/phonons/ir-raman/*.yaml.gz`],
     { eager: true, query: `?raw`, import: `default` },
   )
-  const born_modules = import.meta.glob<string>(`$site/phonons/ir-raman/*.BORN`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  })
-  const raman_modules = import.meta.glob<IrRamanOptions>(
+  const born_modules = import.meta.glob<string | { default: string }>(
+    `$site/phonons/ir-raman/*.BORN`,
+    {
+      eager: true,
+      query: `?raw`,
+      import: `default`,
+    },
+  )
+  const raman_modules = import.meta.glob<IrRamanOptions | { default: IrRamanOptions }>(
     [
       `$site/phonons/ir-raman/*-raman-tensors.json`,
       `$site/phonons/ir-raman/*-raman-tensors.json.gz`,
@@ -53,17 +57,21 @@
   )
 
   const fixtures: ModeFixture[] = Object.entries(mode_modules)
-    .map(([path, yaml]): ModeFixture => {
+    .map(([path, yaml_module]): ModeFixture => {
       const filename = path.split(`/`).at(-1) ?? path
       const stem = filename.replace(/\.yaml(?:\.gz)?$/, ``)
       const material = /^(?<material>.+?)-gamma/i.exec(stem)?.groups?.material ?? stem
-      const mode_data = parse_phonon_modes(yaml)
-      const born = Object.entries(born_modules).find(([born_path]) =>
-        born_path.endsWith(`/${material}.BORN`),
-      )?.[1]
-      const raman_data = Object.entries(raman_modules).find(([raman_path]) =>
-        raman_path.includes(`/${material}-raman-tensors.json`),
-      )?.[1]
+      const mode_data = parse_phonon_modes(glob_default(yaml_module))
+      const born = glob_default(
+        Object.entries(born_modules).find(([born_path]) =>
+          born_path.endsWith(`/${material}.BORN`),
+        )?.[1],
+      )
+      const raman_data = glob_default(
+        Object.entries(raman_modules).find(([raman_path]) =>
+          raman_path.includes(`/${material}-raman-tensors.json`),
+        )?.[1],
+      )
       const spectrum = born
         ? spectrum_from_phonon_data(mode_data, parse_born(born), raman_data)
         : undefined

@@ -1300,7 +1300,15 @@ test.describe(`Structure Event Handler Tests`, () => {
     test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
       page,
     }) => {
-      const { box } = await canvas_box(page)
+      const { canvas, box } = await canvas_box(page)
+      const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
+        canvas.dispatchEvent(`wheel`, {
+          bubbles: true,
+          cancelable: true,
+          clientX: box.x + box.width * x_ratio,
+          clientY: box.y + box.height * y_ratio,
+          deltaY: delta_y,
+        })
       await page.evaluate(() => {
         window.dispatchEvent(
           new CustomEvent(`set-scene-props`, { detail: { auto_rotate: 1 } }),
@@ -1308,15 +1316,13 @@ test.describe(`Structure Event Handler Tests`, () => {
       })
 
       await clear_events(page)
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      await page.mouse.wheel(0, -120)
+      await wheel(0.5, 0.5, -120)
       const { camera_target: target_before, camera_zoom: zoom_before } =
         await wait_for_camera_move(page)
 
       // zoom in and back out far off-center, where cursor zoom would drag the target along
       await clear_events(page)
-      await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8)
-      for (const delta of [-120, -120, -120, 120, 120]) await page.mouse.wheel(0, delta)
+      for (const delta of [-120, -120, -120, 120, 120]) await wheel(0.8, 0.8, delta)
 
       const { camera_target: target_after, camera_zoom: zoom_after } =
         await wait_for_camera_move(page)

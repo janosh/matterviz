@@ -1,23 +1,71 @@
 import { expect, test } from '@playwright/test'
 
-test(`active carousel card lets structure tooltips cross into its neighbor`, async ({
+test(`carousel scrolls and fits vertical cards while tooltips cross horizontal cards`, async ({
   page,
 }) => {
   await page.goto(`/structure/carousel`, { waitUntil: `networkidle` })
+  const carousel = page.locator(`.structure-carousel.vertical`)
+  const track = carousel.locator(`.structure-carousel-track`)
+  const first_card = carousel.locator(`.structure-card`).first()
+  const canvas = first_card.locator(`canvas`)
+  await expect(canvas).toBeVisible()
+
+  const right_edges = await carousel.evaluate((root) => {
+    const track_element = root.querySelector(`.structure-carousel-track`)
+    const card = root.querySelector(`.structure-card`)
+    const structure = card?.querySelector(`.structure`)
+    const canvas_element = card?.querySelector(`canvas`)
+    if (!track_element || !card || !structure || !canvas_element) {
+      throw new Error(`Missing carousel layers`)
+    }
+    return {
+      track: track_element.getBoundingClientRect().right,
+      card: card.getBoundingClientRect().right,
+      structure: structure.getBoundingClientRect().right,
+      canvas: canvas_element.getBoundingClientRect().right,
+    }
+  })
+  expect(right_edges.card).toBeCloseTo(right_edges.track, 5)
+  expect(right_edges.structure).toBeLessThan(right_edges.card)
+  expect(right_edges.canvas).toBeLessThan(right_edges.card)
+
+  await canvas.hover({ position: { x: 100, y: 100 } })
+  await page.mouse.wheel(0, 160)
+  await expect.poll(() => track.evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
+
+  await canvas.evaluate((node) => {
+    node.addEventListener(
+      `wheel`,
+      (event) =>
+        node.setAttribute(
+          `data-command-wheel`,
+          String(event instanceof WheelEvent && event.metaKey),
+        ),
+      { once: true },
+    )
+  })
+  await canvas.hover({ position: { x: 100, y: 100 } })
+  const command_scroll_start = await track.evaluate((node) => node.scrollTop)
+  await page.keyboard.down(`Meta`)
+  await page.mouse.wheel(0, -160)
+  await page.keyboard.up(`Meta`)
+  await expect(canvas).toHaveAttribute(`data-command-wheel`, `true`)
+  await expect.poll(() => track.evaluate((node) => node.scrollTop)).toBe(command_scroll_start)
+
   const cards = page.locator(`.structure-carousel`).first().locator(`.structure-card`)
   await expect(cards.nth(2)).toBeAttached()
 
   const active_card = cards.nth(1)
-  const canvas = active_card.locator(`canvas`)
-  await expect(canvas).toBeVisible()
+  const active_canvas = active_card.locator(`canvas`)
+  await expect(active_canvas).toBeVisible()
   await page.addStyleTag({
     content: `[role='tooltip'] { min-width: 240px; pointer-events: auto !important }`,
   })
 
   const tooltip = active_card.locator(`[role='tooltip']:has(.coordinates)`)
-  const box = await canvas.boundingBox()
+  const box = await active_canvas.boundingBox()
   if (!box) throw new Error(`Carousel canvas has no bounding box`)
-  await canvas.hover({
+  await active_canvas.hover({
     force: true,
     position: { x: box.width * 0.7, y: box.height * 0.4 },
   })
