@@ -26,6 +26,8 @@ class Structure(MatterViz):
         id=None,
         active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
+        analyze_symmetry: bool | None = None,
+        apply_supercell_scaling: bool | None = None,
         atom_color_config: Any | None = None,
         bond_edit_mode: Any | None = None,
         bond_edit_order: Any | None = None,
@@ -93,6 +95,10 @@ class Structure(MatterViz):
             mv_props["active_volume_idx"] = active_volume_idx
         if allow_file_drop is not None:
             mv_props["allow_file_drop"] = allow_file_drop
+        if analyze_symmetry is not None:
+            mv_props["analyze_symmetry"] = analyze_symmetry
+        if apply_supercell_scaling is not None:
+            mv_props["apply_supercell_scaling"] = apply_supercell_scaling
         if atom_color_config is not None:
             mv_props["atom_color_config"] = atom_color_config
         if bond_edit_mode is not None:
@@ -402,6 +408,7 @@ class Trajectory(MatterViz):
         step_labels: list[float] | None = None,
         structure_id_pane_open: bool | None = None,
         structure_props: dict | None = None,
+        supercell_scaling: str | None = None,
         trajectory: Any | None = None,
         vacf_pane_open: bool | None = None,
         visible_properties: list[str] | None = None,
@@ -471,6 +478,8 @@ class Trajectory(MatterViz):
             mv_props["structure_id_pane_open"] = structure_id_pane_open
         if structure_props is not None:
             mv_props["structure_props"] = structure_props
+        if supercell_scaling is not None:
+            mv_props["supercell_scaling"] = supercell_scaling
         if trajectory is not None:
             mv_props["trajectory"] = trajectory
         if vacf_pane_open is not None:
@@ -1327,6 +1336,7 @@ class Bands(MatterViz):
         error_bands: list | None = None,
         fermi_level: float | None = None,
         fill_regions: list | None = None,
+        highlighted_band_index: int | None = None,
         highlighted_qpoint_index: int | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
@@ -1337,6 +1347,7 @@ class Bands(MatterViz):
         marker_renderer: Any | None = None,
         pan: Any | None = None,
         path_mode: Any | None = None,
+        point_hit_padding: float | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
         reference_frequency: float | None = None,
@@ -1390,6 +1401,8 @@ class Bands(MatterViz):
             mv_props["fermi_level"] = fermi_level
         if fill_regions is not None:
             mv_props["fill_regions"] = fill_regions
+        if highlighted_band_index is not None:
+            mv_props["highlighted_band_index"] = highlighted_band_index
         if highlighted_qpoint_index is not None:
             mv_props["highlighted_qpoint_index"] = highlighted_qpoint_index
         if hover_config is not None:
@@ -1410,6 +1423,8 @@ class Bands(MatterViz):
             mv_props["pan"] = pan
         if path_mode is not None:
             mv_props["path_mode"] = path_mode
+        if point_hit_padding is not None:
+            mv_props["point_hit_padding"] = point_hit_padding
         if point_tween is not None:
             mv_props["point_tween"] = point_tween
         if ref_lines is not None:
@@ -1504,6 +1519,7 @@ class Dos(MatterViz):
         pan: Any | None = None,
         pdos_filter: list[str] | None = None,
         pdos_type: Any | None = None,
+        point_hit_padding: float | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
         reference_frequency: float | None = None,
@@ -1576,6 +1592,8 @@ class Dos(MatterViz):
             mv_props["pdos_filter"] = pdos_filter
         if pdos_type is not None:
             mv_props["pdos_type"] = pdos_type
+        if point_hit_padding is not None:
+            mv_props["point_hit_padding"] = point_hit_padding
         if point_tween is not None:
             mv_props["point_tween"] = point_tween
         if ref_lines is not None:
@@ -1661,6 +1679,7 @@ class ScatterPlot(MatterViz):
         marginals: Any | None = None,
         marker_renderer: Any | None = None,
         pan: Any | None = None,
+        point_hit_padding: float | None = None,
         point_tween: Any | None = None,
         ref_lines: list | None = None,
         selected_series_idx: int | None = None,
@@ -1712,6 +1731,8 @@ class ScatterPlot(MatterViz):
             mv_props["marker_renderer"] = marker_renderer
         if pan is not None:
             mv_props["pan"] = pan
+        if point_hit_padding is not None:
+            mv_props["point_hit_padding"] = point_hit_padding
         if point_tween is not None:
             mv_props["point_tween"] = point_tween
         if ref_lines is not None:
