@@ -41,6 +41,12 @@ test(`renders a typed phonon dataset`, async () => {
       `IR`,
     )
     expect(target.querySelector<HTMLInputElement>(`.checkbox input`)?.checked).toBe(false)
+    expect(
+      target.querySelector(`[aria-label="Resize atomic motion and phonon plot panes"]`),
+    ).not.toBeNull()
+    expect(
+      target.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
+    ).toBe(`${(1.15 / 2.1) * 100}%`)
   })
 })
 

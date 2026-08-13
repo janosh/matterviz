@@ -8,6 +8,7 @@
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
+  import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
@@ -74,6 +75,7 @@
   let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
   let dragover = $state(false)
   let controls_height = $state(0)
+  let pane_ratio = $state(0.6)
   let controls_config = $derived(normalize_show_controls(show_controls))
 
   const merged: ReactionPathInput = $derived({
@@ -271,6 +273,11 @@
         bind:active_image_idx
         style={plot_style}
       />
+      <PaneDivider
+        orientation="horizontal"
+        bind:ratio={pane_ratio}
+        aria-label="Resize reaction plot and structure panes"
+      />
       <div class="structure-pane">
         {#if current_image}
           <Structure structure={current_image.structure} style={structure_style} />
@@ -358,10 +365,14 @@
   }
   .panes {
     display: grid;
-    grid-template-columns: 3fr 2fr;
-    gap: 8pt;
+    position: relative;
+    grid-template-columns: minmax(0, var(--split-pane-size, 60%)) minmax(0, 1fr);
     @media (max-width: 900px) {
       grid-template-columns: 1fr;
+      gap: 8pt;
+      > :global(.pane-divider) {
+        display: none;
+      }
     }
   }
   .structure-pane {

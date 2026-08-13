@@ -25,6 +25,7 @@
   import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
@@ -283,6 +284,7 @@
   let file_object = $state<File | null>(null)
   let parsing_progress = $state<ParseProgress | null>(null)
   let content_size = $state({ width: 0, height: 0 })
+  let pane_ratio = $state(0.5)
   // Cap panes to .content-area (controls bar is a flex sibling above it).
   let pane_max_height = $derived(
     content_size.height > 0 ? `max-height: ${content_size.height}px` : undefined,
@@ -1583,6 +1585,14 @@
         />
       {/if}
 
+      {#if show_structure && show_plot}
+        <PaneDivider
+          orientation={actual_layout}
+          bind:ratio={pane_ratio}
+          aria-label="Resize structure and plot panes"
+        />
+      {/if}
+
       {#if show_plot}
         {#if plot_metadata_loading}
           <Spinner
@@ -1677,7 +1687,6 @@
 <style>
   .trajectory {
     --min-height: 500px;
-    --traj-pane-divider: color-mix(in srgb, currentColor 15%, transparent);
     display: flex;
     flex-direction: column;
     height: var(--traj-height, 100%);
@@ -1706,22 +1715,13 @@
       background: var(--traj-bg-fullscreen, var(--traj-surface-bg));
       overflow: hidden;
     }
-    /* Equal tracks, plus a hairline between them drawn as a shadow so the 1px
-       cannot nudge either pane's layout. The structure paints above the plot
-       (z-index 3), so its shadow lands on top of the plot's background. */
     &.horizontal .content-area {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr);
-      &.show-both:not(.hide-plot):not(.hide-structure) > :global(.structure) {
-        box-shadow: 1px 0 0 var(--traj-pane-divider);
-      }
     }
     &.vertical .content-area {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-      &.show-both:not(.hide-plot):not(.hide-structure) > :global(.structure) {
-        box-shadow: 0 1px 0 var(--traj-pane-divider);
-      }
+      grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
     }
     /* Display mode specific layouts */
     &:is(.horizontal, .vertical) .content-area:is(.show-structure-only, .show-plot-only) {
@@ -1733,12 +1733,13 @@
       border: var(--traj-dragover-border, var(--dragover-border));
     }
   }
-  /* Content area - grid container for equal sizing */
+  /* Content area - resizable pane grid */
   .content-area {
     display: grid;
+    position: relative;
     flex: 1;
     min-height: 0; /* important for tall structure viewers not to overflow */
-    /* The panes split this box evenly, so a plot's own floor (350px for scatter,
+    /* The panes share this box, so a plot's own floor (350px for scatter,
        300px for histogram) must not bid for track space: in a fixed-height card
        it wins the row and leaves the structure with the remainder. minmax(0, 1fr)
        above caps the track; without this the plot would just overflow it. */
@@ -1816,9 +1817,9 @@
           min-height: calc(var(--min-height) * 2);
         }
       }
-      .content-area.show-both:not(.hide-plot):not(.hide-structure) {
+      &.vertical .content-area.show-both:not(.hide-plot):not(.hide-structure) {
         grid-template-columns: minmax(0, 1fr) !important;
-        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important;
+        grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr) !important;
       }
     }
   }

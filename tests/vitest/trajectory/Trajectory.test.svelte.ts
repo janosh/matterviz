@@ -651,6 +651,14 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
+    expect(
+      target.querySelector(`[aria-label="Resize structure and plot panes"]`),
+    ).not.toBeNull()
+    expect(
+      target
+        .querySelector<HTMLElement>(`.content-area`)
+        ?.style.getPropertyValue(`--split-pane-size`),
+    ).toBe(`50%`)
     const view_mode_button = doc_query(`.view-mode-button`)
     view_mode_button.click()
     await tick()
@@ -667,6 +675,7 @@ describe(`Trajectory`, () => {
 
     expect(props.display_mode).toBe(`scatter`)
     expect(view_mode_button.title).toBe(`Scatter-only`)
+    expect(target.querySelector(`[aria-label="Resize structure and plot panes"]`)).toBeNull()
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 
