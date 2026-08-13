@@ -367,7 +367,7 @@ class Trajectory(MatterViz):
 
     Component key: ``trajectory/Trajectory``
 
-    Events: on_display_mode_change, on_end, on_error, on_file_load, on_frame_rate_change, on_fullscreen_change, on_loop, on_pause, on_play, on_step_change
+    Events: on_controller, on_display_mode_change, on_end, on_error, on_file_load, on_frame_rate_change, on_fullscreen_change, on_loop, on_pause, on_play, on_step_change
 
     Unsupported snippets: trajectory_controls
     """
