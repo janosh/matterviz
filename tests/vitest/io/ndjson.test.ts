@@ -1,5 +1,17 @@
-import { flatten_row, parse_ndjson } from '$lib/io/ndjson'
+import { flatten_row, is_ndjson_filename, parse_ndjson } from '$lib/io/ndjson'
 import { describe, expect, test } from 'vitest'
+
+test.each([
+  [`pair_manifest.jsonl`, true],
+  [`data.ndjson`, true],
+  [`PAIR_MANIFEST.JSONL`, true],
+  [`/abs/path/rows.jsonl`, true],
+  [`data.json`, false],
+  [`data.jsonl.gz`, false],
+  [`jsonl`, false],
+])(`is_ndjson_filename(%s) = %s`, (filename, expected) => {
+  expect(is_ndjson_filename(filename)).toBe(expected)
+})
 
 const manifest_row = {
   key: {

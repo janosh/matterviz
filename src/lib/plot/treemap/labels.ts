@@ -1,5 +1,6 @@
 import type { Rect } from '$lib/plot/core/layout'
 import type { TreemapArc } from '$lib/plot/treemap/treemap'
+import type { ClassValue } from 'svelte/elements'
 
 export type TreemapLabelFit = `hide` | `shrink` | `clip`
 
@@ -9,7 +10,7 @@ export interface TreemapLabelLine {
   // font-family, font-weight, letter-spacing): fitting measures only the base
   // font plus font_scale/font_weight below, so metric-altering classes cause
   // mis-fit and (in hide mode, which renders unclipped) overflow.
-  class?: string
+  class?: ClassValue
   font_scale?: number // per-line multiplier on the fitted base font size
   font_weight?: string | number
   opacity?: number

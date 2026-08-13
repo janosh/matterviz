@@ -204,7 +204,7 @@
     <span class="control-label">{label}</span>
     {#each options as [text, tip, active, select] (text)}
       <button
-        class="toggle-btn {active ? `active` : ``}"
+        class={[`toggle-btn`, active && `active`]}
         onclick={select}
         {@attach tooltip({ allow_html: true, content: tip })}
       >
@@ -216,7 +216,7 @@
 
 <ControlPane
   bind:controls_open
-  controls_class="convex-hull"
+  controls_name="convex-hull"
   pane_style=""
   toggle_style=""
   toggle_props={{ title: controls_open ? `` : `Convex hull controls`, ...toggle_props }}
@@ -294,7 +294,7 @@
         <div class="legend-items-container">
           {#each point_toggles as { active, marker, label, tip, toggle } (marker)}
             <div
-              class="legend-item {active ? `active` : `inactive`}"
+              class={[`legend-item`, active ? `active` : `inactive`]}
               onclick={toggle}
               onkeydown={legend_keydown(toggle)}
               role="button"
@@ -302,7 +302,7 @@
               aria-pressed={active}
               {@attach tooltip({ content: tip })}
             >
-              <div class="marker {marker}"></div>
+              <div class={[`marker`, marker]}></div>
               <span>{label}</span>
             </div>
           {/each}
@@ -341,7 +341,7 @@
             {@const count = category_counts[value] ?? 0}
             {@const long_name = entry_category.labels?.[value]}
             <div
-              class="legend-item {hidden ? `inactive` : `active`}"
+              class={[`legend-item`, hidden ? `inactive` : `active`]}
               onclick={() => toggle_category(value)}
               onkeydown={legend_keydown(() => toggle_category(value))}
               role="button"
@@ -451,7 +451,7 @@
         <div class="face-color-mode-buttons">
           {#each HULL_FACE_COLOR_MODES as mode (mode)}
             <button
-              class="toggle-btn {hull_face_color_mode === mode ? `active` : ``}"
+              class={[`toggle-btn`, hull_face_color_mode === mode && `active`]}
               style="min-width: auto; flex: 0 1 auto"
               onclick={() => on_hull_face_color_mode_change?.(mode)}
               {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}

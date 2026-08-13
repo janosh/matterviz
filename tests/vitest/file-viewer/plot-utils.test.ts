@@ -188,6 +188,7 @@ describe(`build_scatter_series`, () => {
     const series = build_scatter_series(cols, { x: `x`, y: `y` })
     expect(series.x).toEqual([1, 2, 3])
     expect(series.y).toEqual([4, 5, 6])
+    expect(series.point_style).toEqual({ fill: `#4c6ef5` })
   })
 
   test.each([

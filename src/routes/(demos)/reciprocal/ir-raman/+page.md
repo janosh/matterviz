@@ -20,6 +20,34 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 >
 > Every fixture rendered on this page is first-principles output. A synthetic CO₂ fixture remains in the test suite as an analytic oracle (a linear symmetric triatomic is the one case with a closed-form IR intensity check), but it is not shown here.
 
+## Explore bands, peaks, and atomic motion together
+
+`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. Away from Γ it applies the Bloch phase across a configurable diagonal supercell and renders the resulting coordinates without periodic wrapping. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
+
+For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer). The embedded example below exposes the same public component alongside its source.
+
+This compact NaCl Γ→X path was generated from the same published PhononDB force constants as the Γ-only example below. Click a band, an IR stick, or a row in the mode list to change the animation.
+
+```svelte example
+<script lang="ts">
+  import {
+    PhononModeExplorer,
+    parse_born,
+    parse_phonon_modes,
+    spectrum_from_phonon_data,
+  } from '$lib/spectral'
+  import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
+  import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
+
+  const modes = parse_phonon_modes(band_yaml)
+  const dataset = { modes, spectrum: spectrum_from_phonon_data(modes, parse_born(born_file)) }
+</script>
+
+<PhononModeExplorer {dataset} style="height: 680px" />
+```
+
+`PhononModeExplorer` is a typed renderer. Parse or fetch files at the application boundary, then pass the resulting modes and optional spectrum together as one dataset.
+
 ## Infrared spectrum of NaCl
 
 Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is analytic, `Z*²/μ` with μ the reduced mass, which makes it a good end-to-end check of the pipeline.

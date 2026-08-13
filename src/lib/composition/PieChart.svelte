@@ -221,9 +221,7 @@
         : hovered_element === segment.element
           ? stroke_width + 1
           : stroke_width}
-      class="pie-segment"
-      class:interactive
-      class:hovered={hovered_element === segment.element}
+      class={['pie-segment', { interactive, hovered: hovered_element === segment.element }]}
       onmouseenter={() => interactive && (hovered_element = segment.element)}
       onmouseleave={() => interactive && (hovered_element = null)}
       {...interactive && {

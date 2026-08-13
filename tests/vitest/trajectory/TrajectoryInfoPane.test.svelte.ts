@@ -2,6 +2,7 @@ import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
 import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryType } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -75,6 +76,39 @@ test(`replaces indexed loading details with the resolved frame`, async () => {
   expect(text).toContain(`2`)
   expect(text).toContain(`Si`)
   expect(text).not.toContain(`On-demand`)
+})
+
+test(`uses a compact filter trigger and omits copy buttons`, async () => {
+  const frames = [-1, -2].map((energy, frame_idx) => ({
+    ...frame,
+    step: frame_idx,
+    metadata: { energy, force_max: 0.2 + frame_idx * 0.1 },
+  }))
+  const props = await mount_pane({ frames }, 0)
+
+  expect(document.querySelector(`.info-filter`)).toBeNull()
+  expect(document.querySelectorAll(`.copy-button`)).toHaveLength(0)
+
+  const filter_toggle = document.querySelector<HTMLButtonElement>(
+    `button[aria-label="Filter trajectory info"]`,
+  )
+  expect(filter_toggle?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+  filter_toggle?.click()
+  await tick()
+
+  const filter_input = doc_query<HTMLInputElement>(`.info-filter`)
+  expect(document.activeElement).toBe(filter_input)
+  filter_input.value = `energy`
+  filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  await tick()
+  expect(document.querySelectorAll(`.info-card`)).toHaveLength(1)
+  expect(pane_text()).toContain(`Energy Range`)
+  expect(pane_text()).not.toContain(`Structure`)
+
+  props.trajectory = { frames: [{ ...frame, metadata: {} }] }
+  await tick()
+  expect(document.querySelector<HTMLInputElement>(`.info-filter`)?.value).toBe(`energy`)
+  expect(document.querySelectorAll(`.info-card`)).toHaveLength(0)
 })
 
 // The large-file case is exactly where a summary is most useful, and `frames` there holds

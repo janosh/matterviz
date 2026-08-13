@@ -58,16 +58,14 @@
   {#each filtered_icons as [icon_name, glyph] (icon_name)}
     <div class="icon-card">
       <button
-        class="svg-btn"
-        class:copied={copied_text === icon_svg(glyph)}
+        class={['svg-btn', { copied: copied_text === icon_svg(glyph) }]}
         onclick={() => copy(icon_svg(glyph))}
         title="Click to copy SVG path"
       >
         <Icon icon={glyph} style="font-size: 2em" />
       </button>
       <button
-        class="name-btn"
-        class:copied={copied_text === icon_name}
+        class={['name-btn', { copied: copied_text === icon_name }]}
         onclick={() => copy(icon_name)}
         title="Click to copy icon name"
       >

@@ -24,4 +24,5 @@ test(`renders duplicate unkeyed rows`, () => {
   })
 
   expect(document.querySelectorAll(`.info-row`)).toHaveLength(2)
+  expect(document.querySelectorAll(`.copy-button`)).toHaveLength(2)
 })

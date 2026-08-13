@@ -66,6 +66,7 @@
     on_point_click,
     on_point_hover,
     tooltip,
+    tooltip_portal,
     scene = $bindable(),
     camera = $bindable(),
     orbit_controls = $bindable(),
@@ -103,6 +104,7 @@
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
     tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
+    tooltip_portal?: HTMLElement
     scene?: Scene
     camera?: Camera
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
@@ -862,7 +864,7 @@
   {@const hp = hovered_point}
   {@const data = make_event_data(hp)}
   {#if data}
-    <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center>
+    <extras.HTML position={[hp.x, hp.y + 0.3, hp.z]} center portal={tooltip_portal}>
       {#if tooltip}
         {@render tooltip(data)}
       {:else}

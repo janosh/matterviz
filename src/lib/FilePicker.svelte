@@ -137,8 +137,7 @@
     {#each show_category_filters ? uniq_categories : [] as category (category)}
       {@const is_active = active_category_filter === category}
       <span
-        class="legend-item"
-        class:active={is_active}
+        class={['legend-item', { active: is_active }]}
         onclick={() => toggle_filter(`category`, category)}
         onkeydown={(event) => is_activation_key(event) && toggle_filter(`category`, category)}
         role="button"
@@ -156,8 +155,7 @@
     {#each uniq_formats as format (format)}
       {@const is_active = active_type_filter === format}
       <span
-        class="legend-item format-item"
-        class:active={is_active}
+        class={['legend-item format-item', { active: is_active }]}
         onclick={() => toggle_filter(`type`, format)}
         onkeydown={(event) => is_activation_key(event) && toggle_filter(`type`, format)}
         role="button"
@@ -184,8 +182,7 @@
     {@const base_type = get_base_file_type(file)}
     {@const paint = paint_for(base_type)}
     <div
-      class="file-item"
-      class:active={active_files.includes(file.name)}
+      class={['file-item', { active: active_files.includes(file.name) }]}
       style:background-color={paint.item}
       draggable="true"
       ondragstart={handle_drag_start(file)}

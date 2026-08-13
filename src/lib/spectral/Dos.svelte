@@ -471,8 +471,7 @@
             {#each SPIN_MODES as mode (mode.value)}
               <button
                 type="button"
-                class="spin-mode-btn"
-                class:active={spin_mode === mode.value}
+                class={['spin-mode-btn', { active: spin_mode === mode.value }]}
                 onclick={() => (spin_mode = mode.value)}
                 aria-label={mode.title}
                 aria-pressed={spin_mode === mode.value}

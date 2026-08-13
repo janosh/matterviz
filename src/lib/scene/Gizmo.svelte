@@ -291,7 +291,8 @@
   $effect(() => {
     const container = dom
     if (!container) return
-    const opts = { capture: true } as const
+    const controller = new AbortController()
+    const opts = { capture: true, signal: controller.signal } as const
     const listeners = [
       [`pointermove`, handle_pointer_move],
       [`pointerdown`, handle_pointer_down],
@@ -299,9 +300,7 @@
       [`pointerleave`, handle_pointer_leave],
     ] as const
     for (const [type, fn] of listeners) container.addEventListener(type, fn, opts)
-    return () => {
-      for (const [type, fn] of listeners) container.removeEventListener(type, fn, opts)
-    }
+    return () => controller.abort()
   })
 
   const prev_viewport = new THREE.Vector4()

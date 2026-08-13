@@ -1,14 +1,12 @@
 <script lang="ts">
-  import { Cross, Graph } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
+  import { Graph } from 'svelte-widgets/icons'
+  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { StatusMessage } from '$lib/feedback'
   import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import { format_bytes, format_num } from '$lib/labels'
   import { analysis_pane_setup } from '$lib/trajectory/analysis'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
-  import type { ComponentProps } from 'svelte'
   import { collect_vacf_input, suggest_vacf_frame_stride } from './collect'
   import { thz_per_inverse_time, TIME_UNIT_TO_THZ, VACF_FREQUENCY_UNITS } from './index'
   import type { VacfFrequencyUnit, VacfInput, VacfOptions, VacfResult } from './index'
@@ -21,10 +19,8 @@
     result = $bindable(),
     default_dt = null,
     default_time_unit,
-    toggle_props,
-    pane_props,
-    ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    ...pane_options
+  }: ViewerPaneOptions & {
     trajectory?: TrajectoryType
     // Raw file bytes from Trajectory.svelte's orig_data. Required for indexed
     // trajectories, whose `frames` array holds only the first few frames.
@@ -35,8 +31,6 @@
     // only be labelled in inverse frames, so a file that knows its timestep should say so.
     default_dt?: number | null
     default_time_unit?: string
-    toggle_props?: PaneToggleProps
-    pane_props?: PaneProps
   } = $props()
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
@@ -151,18 +145,13 @@
   }
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="velocity autocorrelation and vibrational DOS"
+  class_prefix="trajectory-vacf"
   max_width="34em"
-  toggle_props={{
-    title: pane_open ? `` : `Velocity autocorrelation and vibrational DOS`,
-    ...toggle_props,
-    class: `trajectory-vacf-toggle ${toggle_props?.class ?? ``}`,
-  }}
-  pane_props={{ ...pane_props, class: `trajectory-vacf-pane ${pane_props?.class ?? ``}` }}
-  open_icon={Cross}
   closed_icon={Graph}
-  {...rest}
+  {...pane_options}
 >
   <h4 style="margin-top: 0">Velocity Autocorrelation &amp; Vibrational DOS</h4>
 
@@ -261,7 +250,7 @@
       bind:error_msg
     />
   {/if}
-</DraggablePane>
+</ViewerPane>
 
 <style>
   .vacf-controls {

@@ -159,10 +159,11 @@
   const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
     on_group_toggle?.(group_name, group_indices(items))
 
+  let drag_controller: AbortController | undefined
   function cleanup_drag_listeners() {
-    if (!is_dragging) return
-    window.removeEventListener(`mousemove`, handle_window_mouse_move)
-    window.removeEventListener(`mouseup`, handle_window_mouse_up)
+    if (!drag_controller) return
+    drag_controller.abort()
+    drag_controller = undefined
     document.body.style.cursor = `default`
     document.body.style.userSelect = `auto`
   }
@@ -186,8 +187,11 @@
 
     on_drag_start(event)
 
-    window.addEventListener(`mousemove`, handle_window_mouse_move)
-    window.addEventListener(`mouseup`, handle_window_mouse_up)
+    drag_controller?.abort()
+    drag_controller = new AbortController()
+    const { signal } = drag_controller
+    window.addEventListener(`mousemove`, handle_window_mouse_move, { signal })
+    window.addEventListener(`mouseup`, handle_window_mouse_up, { signal })
   }
 
   function handle_window_mouse_move(event: MouseEvent) {
@@ -204,8 +208,7 @@
 
     on_drag_end(event)
 
-    window.removeEventListener(`mousemove`, handle_window_mouse_move)
-    window.removeEventListener(`mouseup`, handle_window_mouse_up)
+    cleanup_drag_listeners()
   }
 
   let div_style = $derived(
@@ -403,8 +406,7 @@
       {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
       <div
-        class="legend-group-header"
-        class:hidden={!group_visible}
+        class={['legend-group-header', { hidden: !group_visible }]}
         onclick={(event) =>
           stop_and_run(event, () => handle_group_click(cell.group, group_items))}
         ondblclick={(event) =>
@@ -419,8 +421,7 @@
         aria-label="Toggle group {strip_html(cell.group)}"
       >
         <span
-          class="group-chevron"
-          class:collapsed={is_collapsed}
+          class={['group-chevron', { collapsed: is_collapsed }]}
           onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
           onkeydown={(event) =>
             keyboard_activate(event, () => toggle_group_collapse(cell.group), true)}

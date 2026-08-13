@@ -1592,8 +1592,7 @@ a disabled state, a non-scene_props target) stay written out in full. -->
     </div>
     {#if settings_import_status}
       <small
-        class="settings-import-status"
-        class:error={settings_import_status.error}
+        class={['settings-import-status', { error: settings_import_status.error }]}
         role={settings_import_status.error ? `alert` : `status`}
       >
         {settings_import_status.message}

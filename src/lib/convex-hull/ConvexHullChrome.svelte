@@ -104,7 +104,7 @@
 
 <!-- Control buttons (top-right corner) -->
 {#if controls_config.mode !== `never`}
-  <section class="control-buttons {controls_config.class}">
+  <section class={[`control-buttons`, controls_config.class]}>
     {#if controls_config.visible(`reset`)}
       <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
         <Icon icon={Reset} />

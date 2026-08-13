@@ -53,7 +53,10 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     if (next_index !== inputs.index()) setter(next_index)
   }
 
-  const go_to = (index: number) => set_valid_index(index, inputs.set_index)
+  const go_to = (index: number) => {
+    set_playing(false)
+    set_valid_index(index, inputs.set_index)
+  }
   const set_step_index = inputs.set_step_index ?? inputs.set_index
   const previous = () => set_valid_index(inputs.index() - 1, set_step_index)
   const next = () => set_valid_index(inputs.index() + 1, set_step_index)
@@ -82,7 +85,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   function advance(): void {
     if (inputs.index() < inputs.count() - 1) return next()
     inputs.on_end?.()
-    go_to(0)
+    set_valid_index(0, inputs.set_index)
     inputs.on_loop?.()
   }
 
@@ -130,6 +133,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     },
     fps_step: FPS_STEP,
     go_to,
+    pause: () => set_playing(false),
     previous,
     next,
     toggle,

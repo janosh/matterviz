@@ -220,14 +220,17 @@ describe(`create_display trajectory display options`, () => {
     expect(container.style.color).not.toContain(`#d4d4d4`)
   })
 
-  test(`initial_step_idx and on_step_change reach the mounted Trajectory component`, () => {
+  test(`trajectory display options reach the mounted Trajectory component`, () => {
     const on_step_change = vi.fn()
+    const on_trajectory_controller = vi.fn()
     create_display(make_container(), trajectory_result(), {
       initial_step_idx: 42,
       on_step_change,
+      on_trajectory_controller,
     })
     const mount_props = last_mount_props()
     expect(mount_props.current_step_idx).toBe(42)
+    expect(mount_props.on_controller).toBe(on_trajectory_controller)
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
     ;(mount_props.on_step_change as (data: unknown) => void)({
       step_idx: 7,

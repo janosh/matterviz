@@ -15,7 +15,7 @@
   import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { ClassValue, HTMLAttributes } from 'svelte/elements'
 
   // Public CSS knobs every Cartesian chart exposes, mapped onto the frame's own
   // variables so the shell can be styled per chart (`--histogram-bg`, `--barplot-bg`, …)
@@ -45,7 +45,7 @@
   interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> {
     frame: CartesianFrame
     // Wrapper class the chart is selected by (`histogram`, `bar-plot`, `box-plot`)
-    plot_class: string
+    plot_class: ClassValue
     // Prefix of this chart's public CSS variables (`histogram`, `barplot`, `boxplot`)
     css_prefix: string
     // Per-chart fallbacks for CSS_VAR_DEFAULTS entries whose default differs
@@ -146,8 +146,7 @@
   bind:clientWidth={frame.width}
   bind:clientHeight={frame.height}
   {...rest}
-  class={[plot_class, `plot-frame`, rest.class]}
-  class:fullscreen
+  class={[plot_class, `plot-frame`, rest.class, { fullscreen }]}
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if measured}

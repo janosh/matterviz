@@ -48,13 +48,8 @@
       // Set initial value
       update_system_mode()
 
-      // Listen for changes
       media_query.addEventListener(`change`, update_system_mode)
-
-      // Cleanup
-      return () => {
-        media_query.removeEventListener(`change`, update_system_mode)
-      }
+      return () => media_query.removeEventListener(`change`, update_system_mode)
     }
   })
 
@@ -133,6 +128,7 @@
     '/reciprocal/bands-and-dos': `Bands + DOS`,
     '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
     '/reciprocal/ir-raman': `IR + Raman`,
+    '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
   }}
   menu_props={{
     style: `display: flex; flex-wrap: wrap; max-width: 80vw; margin: auto;`,

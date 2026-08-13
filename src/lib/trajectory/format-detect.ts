@@ -1,17 +1,11 @@
 // Format detection for trajectory files
-import {
-  CONFIG_DIRS_REGEX,
-  MD_SIM_EXCLUDE_REGEX,
-  TRAJ_EXTENSIONS_REGEX,
-  TRAJ_FALLBACK_EXTENSIONS_REGEX,
-  TRAJ_KEYWORDS_REGEX,
-  XDATCAR_REGEX,
-} from '$lib/constants'
+import { CONFIG_DIRS_REGEX } from '$lib/constants'
 import { strip_compression_extensions } from '$lib/io/decompress'
 import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binary'
 import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
 import { count_xyz_frames } from './helpers'
+import { is_trajectory_filename } from './filename'
 
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content
@@ -79,32 +73,15 @@ export const FORMAT_PATTERNS = {
 
 // Check if file is a trajectory (supports both filename-only and content-based detection)
 export function is_trajectory_file(filename: string, content?: string): boolean {
+  if (content === undefined) return is_trajectory_filename(filename)
   if (CONFIG_DIRS_REGEX.test(filename)) return false
   const base_name = strip_compression_extensions(filename)
 
-  // For xyz/extxyz files, use content-based detection if available
-  if (/\.(?:xyz|extxyz)$/i.test(base_name)) {
-    if (content) return count_xyz_frames(content) >= 2
-    return TRAJ_KEYWORDS_REGEX.test(base_name)
-  }
-
-  // Always detect these specific trajectory formats
-  if (TRAJ_EXTENSIONS_REGEX.test(base_name) || XDATCAR_REGEX.test(base_name)) return true
-
-  // Special exclusion for generic md_simulation pattern with certain extensions
-  if (MD_SIM_EXCLUDE_REGEX.test(base_name)) return false
-
-  // For .h5/.hdf5 files, require trajectory keywords. vaspout.h5 (VASP's
-  // HDF5 output) is always trajectory-shaped regardless of keywords.
-  if (/\.(?:h5|hdf5)$/i.test(base_name)) {
-    return /vaspout/i.test(base_name) || TRAJ_KEYWORDS_REGEX.test(base_name)
-  }
+  if (/\.(?:xyz|extxyz)$/i.test(base_name)) return count_xyz_frames(content) >= 2
 
   // `.data` is a fallback trajectory extension but also the LAMMPS structure extension,
   // and md.data/nvt.data/nve.data are among the most common LAMMPS names — so a real
   // data file must not be claimed here just because its name carries a trajectory keyword
-  if (content && /\.data$/i.test(base_name) && is_lammps_data_content(content)) return false
-
-  // For other extensions, require both keywords and specific extensions
-  return TRAJ_KEYWORDS_REGEX.test(base_name) && TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
+  if (/\.data$/i.test(base_name) && is_lammps_data_content(content)) return false
+  return is_trajectory_filename(filename)
 }

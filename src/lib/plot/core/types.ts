@@ -297,6 +297,7 @@ export const COLOR_BAR_DEFAULTS = {
   binned_bar_height: 10,
   horizontal_footprint: { width: COLOR_BAR_WIDTH, height: 56 },
   vertical_footprint: { width: 56, height: 100 },
+  axis_clearance: 8,
 } as const
 // Shared color/size scale defaults for scatter, scatter-3d, binned-scatter, bar, …
 const VIRIDIS: D3InterpolateName = `interpolateViridis`
@@ -685,7 +686,7 @@ export interface PlotControlsProps extends PlotConfig {
   show_ticks?: boolean
   // Component props
   controls_title?: string
-  controls_class?: string
+  controls_name?: string
   toggle_props?: PaneToggleProps
   pane_props?: PaneProps
 }

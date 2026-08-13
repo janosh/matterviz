@@ -349,8 +349,7 @@
   {#each scenarios as scenario (scenario.id)}
     <button
       type="button"
-      class="scenario-card"
-      class:active={active_scenario === scenario.id}
+      class={['scenario-card', { active: active_scenario === scenario.id }]}
       onclick={() => load_scenario(scenario)}
     >
       <strong>{scenario.title}</strong>

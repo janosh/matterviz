@@ -15,7 +15,7 @@
 
 {#if message}
   <div
-    class="status-message {type}"
+    class={[`status-message`, type]}
     role={type === `error` ? `alert` : `status`}
     aria-live={type === `error` ? `assertive` : `polite`}
     {...rest}

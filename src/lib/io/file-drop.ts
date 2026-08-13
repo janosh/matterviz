@@ -8,6 +8,7 @@ import type { FileLoadCallback } from './types'
 export interface FileDropOptions {
   allow: () => boolean
   on_drop: FileLoadCallback
+  max_files?: number
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
 }
@@ -36,6 +37,11 @@ export const drag_over_handlers = (opts: {
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
+  const { max_files } = opts
+  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0)) {
+    throw new TypeError(`max_files must be a non-negative integer, got ${max_files}`)
+  }
+
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
     try {
@@ -43,6 +49,13 @@ export const create_file_drop_handler = (
       const failures: string[] = []
       // rejects on a symlink cycle or an oversized tree, which the catch below reports
       const files = await read
+      const source_count = files.length + (url ? 1 : 0)
+      if (max_files !== undefined && source_count > max_files) {
+        opts.on_error?.(
+          `Drop at most ${max_files} file${max_files === 1 ? `` : `s`} at a time (received ${source_count})`,
+        )
+        return
+      }
       if (url) {
         try {
           await load_from_url(url, opts.on_drop)

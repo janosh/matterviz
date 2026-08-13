@@ -255,7 +255,7 @@
   toggle_props={{
     title: export_pane_open ? `` : `Export Trajectory`,
     ...toggle_props,
-    class: `trajectory-export-toggle ${toggle_props?.class ?? ``}`,
+    class: [`trajectory-export-toggle`, toggle_props?.class],
   }}
   {...rest}
 >

@@ -36,7 +36,7 @@
     has_y2_points = false,
     show_ticks = false,
     controls_title = `plot`,
-    controls_class = `plot`,
+    controls_name = `plot`,
     toggle_props = {},
     pane_props = {},
   }: PlotControlsProps = $props()
@@ -220,7 +220,7 @@
 {#if show_controls}
   <ControlPane
     bind:controls_open
-    {controls_class}
+    {controls_name}
     toggle_title={controls_title}
     {toggle_props}
     {pane_props}

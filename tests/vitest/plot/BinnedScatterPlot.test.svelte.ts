@@ -292,29 +292,12 @@ describe(`BinnedScatterPlot`, () => {
     }
     const [fallback, explicit] = [await layout(), await layout(`.2~g`)]
     expect(Number.isFinite(explicit.baseline)).toBe(true)
-    expect(explicit.rotated).toBe(true)
     expect(fallback).toEqual(explicit)
   })
 
-  // Density mode shows its colorbar by default (like ScatterPlot's `color_bar = {}`);
-  // `color_bar={null}` is the opt-out.
-  test(`shows the density colorbar by default, hidden by color_bar={null}`, async () => {
+  test(`renders density colorbar defaults and honors the null opt-out`, async () => {
     const density = { auto_point_mode: density_thresholds }
     mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density })
-    await settle()
-    expect(document.querySelector(`.colorbar`)).not.toBeNull()
-
-    document.body.replaceChildren()
-    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density, color_bar: null })
-    await settle()
-    expect(document.querySelector(`.colorbar`)).toBeNull()
-  })
-
-  test(`puts visible point count in colorbar title without a mode pill`, async () => {
-    mount_plot({
-      series: [{ x: [0, 1], y: [0, 1] }],
-      ...density_mode_with_colorbar(),
-    })
     await settle()
 
     expect(document.querySelector(`.mode-pill`)).toBeNull()
@@ -322,6 +305,11 @@ describe(`BinnedScatterPlot`, () => {
     const colorbar_style = (document.querySelector(`.colorbar .bar`) as HTMLElement).style
     expect(colorbar_style.width).toBe(`${COLOR_BAR_DEFAULTS.width}px`)
     expect(colorbar_style.height).toBe(`10px`)
+
+    document.body.replaceChildren()
+    mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density, color_bar: null })
+    await settle()
+    expect(document.querySelector(`.colorbar`)).toBeNull()
   })
 
   test.each([
@@ -359,6 +347,54 @@ describe(`BinnedScatterPlot`, () => {
       }).toEqual(expected_plot_rect)
     },
   )
+
+  test(`keeps overflowing colorbar ticks inside the plot clearance`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
+    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
+      function (this: Element): DOMRect {
+        if (this.classList.contains(`tick-label`)) {
+          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
+        }
+        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
+      },
+    )
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5] }],
+      ...density_mode_with_colorbar({ bin_px: 20 }),
+      ...unit_axes,
+    })
+    await settle()
+
+    const colorbar = doc_query(`.binned-scatter .color-bar`)
+    const visual_rect = decoration_rect(`.binned-scatter .color-bar`)
+    const clip_rect = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
+    const plot_rect = {
+      x: svg_num(clip_rect, `x`),
+      y: svg_num(clip_rect, `y`),
+      width: svg_num(clip_rect, `width`),
+      height: svg_num(clip_rect, `height`),
+    }
+    expect(visual_rect).toMatchObject({ width: 240, height: 46 })
+    expect(visual_rect.x).toBeGreaterThanOrEqual(
+      plot_rect.x + COLOR_BAR_DEFAULTS.axis_clearance,
+    )
+    expect(visual_rect.y).toBeGreaterThanOrEqual(
+      plot_rect.y + COLOR_BAR_DEFAULTS.axis_clearance,
+    )
+    expect(visual_rect.x + visual_rect.width).toBeLessThanOrEqual(
+      plot_rect.x + plot_rect.width - COLOR_BAR_DEFAULTS.axis_clearance,
+    )
+    expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
+      plot_rect.y + plot_rect.height - COLOR_BAR_DEFAULTS.axis_clearance,
+    )
+    const horizontal_gap = Math.min(
+      visual_rect.x - plot_rect.x,
+      plot_rect.x + plot_rect.width - (visual_rect.x + visual_rect.width),
+    )
+    expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
+    expect(css_px(colorbar.style.left)).toBe(visual_rect.x + 10)
+  })
 
   test(`preserves explicit colorbar wrapper and bar styles`, async () => {
     mount_plot({

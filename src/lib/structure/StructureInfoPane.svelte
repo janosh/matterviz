@@ -1,9 +1,14 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import {
+    ViewerPane,
+    create_clipboard_feedback,
+    type PaneProps,
+    type PaneToggleProps,
+  } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { DraggablePane, Icon } from 'svelte-widgets'
-  import { Check, Cross, Info } from 'svelte-widgets/icons'
+  import { Icon } from 'svelte-widgets'
+  import { Check, Info } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -13,9 +18,7 @@
   import { get_density } from '$lib/structure'
   import { wyckoff_positions_from_moyo, WyckoffTable } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
-  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { create_clipboard_feedback } from '$lib/overlays'
 
   type SiteDetail = {
     label: string
@@ -195,7 +198,7 @@
   }
 
   let pane_data = $derived.by(() => {
-    // Skip while closed — DraggablePane keeps children mounted (display:none).
+    // Skip while closed — ViewerPane keeps children mounted (display:none).
     if (!pane_open || !structure) return []
     const sections: { title: string; items: InfoItem[] }[] = []
 
@@ -391,20 +394,18 @@
   let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="structure info"
+  class_prefix="structure-info"
   max_width="24em"
-  toggle_props={{
-    class: `structure-info-toggle`,
-    title: `${pane_open ? `Close` : `Open`} structure info`,
-    ...toggle_props,
-  }}
+  {toggle_props}
   pane_props={{
     ...pane_props,
-    class: `structure-info-pane ${pane_props?.class ?? ``}`,
-    style: `--pane-padding: 4pt; --pane-gap: 2pt; ${pane_props?.style ?? ``}`,
+    style: [`--pane-padding: 4pt; --pane-gap: 2pt`, pane_props?.style]
+      .filter(Boolean)
+      .join(`; `),
   }}
-  open_icon={Cross}
   closed_icon={Info}
   {...rest}
 >
@@ -517,9 +518,7 @@
                 highlighted_sites.includes(card.idx) || hovered_site_idx === card.idx}
               {@const is_selected = selected_sites.includes(card.idx)}
               <div
-                class="site-card"
-                class:highlighted={is_highlighted}
-                class:selected={is_selected}
+                class={['site-card', { highlighted: is_highlighted, selected: is_selected }]}
                 data-site-idx={card.idx}
                 style:--site-color={colors.element?.[card.element as ElementSymbol] ?? `#888`}
                 title="Click to select {card.title}. Press c to copy."
@@ -565,7 +564,7 @@
       </div>
     {/each}
   </section>
-</DraggablePane>
+</ViewerPane>
 
 <style>
   h4 {

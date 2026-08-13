@@ -1590,7 +1590,7 @@
         },
         "matterviz.scatter.point.stroke_width": {
           "type": "number",
-          "default": 1,
+          "default": 0.5,
           "description": "Stroke width for scatter plot points",
           "minimum": 0,
           "maximum": 5
@@ -1602,7 +1602,7 @@
         },
         "matterviz.scatter.point.stroke_opacity": {
           "type": "number",
-          "default": 1,
+          "default": 0.45,
           "description": "Stroke opacity for scatter plot points",
           "minimum": 0,
           "maximum": 1

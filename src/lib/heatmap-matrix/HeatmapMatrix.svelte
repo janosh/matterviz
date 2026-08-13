@@ -1103,7 +1103,6 @@
         tooltip_mode !== `hover`),
   )
   let cell_tag_name = $derived(has_interaction_handlers ? `button` : `div`)
-  let cell_class_name = $derived(has_interaction_handlers ? `cell interactive` : `cell`)
 
   // Tooltip state: only used for custom tooltip snippets (function tooltips)
   let tooltip_cell: CellContext | null = $state(null)
@@ -1132,11 +1131,7 @@
     tooltip_div?.classList.remove(`visible`)
   })
 
-  onMount(() => {
-    update_viewport_state()
-    globalThis.addEventListener(`mouseup`, handle_mouseup)
-    return () => globalThis.removeEventListener(`mouseup`, handle_mouseup)
-  })
+  onMount(update_viewport_state)
 
   onDestroy(() => {
     cancel_raf(active_cell_raf)
@@ -1144,8 +1139,10 @@
   })
 </script>
 
+<svelte:window onmouseup={handle_mouseup} />
+
 <div
-  class="heatmap legend-{legend_position}"
+  class={[`heatmap`, `legend-${legend_position}`]}
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
   {#if show_controls}
@@ -1257,7 +1254,7 @@
           )}
           <svelte:element
             this={cell_tag_name}
-            class={cell_class_name}
+            class={[`cell`, has_interaction_handlers && `interactive`]}
             class:selected={is_selected_cell(x_idx, y_idx)}
             class:gridlines={show_gridlines}
             class:animated={animate_updates}
@@ -1331,7 +1328,7 @@
 
   {#if show_legend}
     <ColorBar
-      class="legend legend-{legend_position}"
+      class={[`legend`, `legend-${legend_position}`]}
       title={legend_label}
       orientation={legend_orientation}
       tick_labels={legend_ticks}

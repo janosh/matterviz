@@ -208,7 +208,7 @@ export function build_scatter_series(
     markers: `points`,
     color_values,
     size_values,
-    point_style: { radius: 4, fill: `#4c6ef5`, stroke: `white`, stroke_width: 1 },
+    point_style: { fill: `#4c6ef5` },
   }
 }
 

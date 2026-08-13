@@ -19,7 +19,7 @@
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index}</strong>
       {#if hover_data.spin}
-        <span class="spin-badge spin-{hover_data.spin}">{hover_data.spin}</span>
+        <span class={[`spin-badge`, `spin-${hover_data.spin}`]}>{hover_data.spin}</span>
       {/if}
     </div>
 

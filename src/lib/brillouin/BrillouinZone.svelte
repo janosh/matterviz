@@ -456,17 +456,6 @@
     background: var(--bz-bg, var(--surface-bg));
     color: var(--bz-text-color, var(--text-color));
   }
-  /* Clip threlte HTML overlays (b₁/b₂/b₃ labels) when they fall outside canvas bounds.
-     Targets threlte-generated container (parent of canvas), not main wrapper so control
-     panes can still be dragged outside component bounds. */
-  .brillouin-zone :global(> div) {
-    overflow: hidden;
-  }
-  @supports selector(:has(> canvas)) {
-    .brillouin-zone :global(> div:not(:has(> canvas))) {
-      overflow: visible;
-    }
-  }
   .brillouin-zone.active {
     z-index: var(--bz-active-z-index, 2);
   }

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { Cross, Info } from 'svelte-widgets/icons'
-  import { DraggablePane } from 'svelte-widgets'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { Info } from 'svelte-widgets/icons'
+  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
@@ -9,7 +8,6 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
-  import type { ComponentProps } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryFrame, TrajectoryType } from './index'
 
@@ -23,9 +21,8 @@
     file_object,
     pane_open = $bindable(false),
     toggle_props,
-    pane_props,
-    ...rest
-  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    ...pane_options
+  }: ViewerPaneOptions & {
     trajectory: TrajectoryType
     current_step_idx: number
     current_frame?: TrajectoryFrame | null
@@ -34,8 +31,6 @@
     file_size?: number | null
     file_object?: File | null
     pane_open?: boolean
-    toggle_props?: PaneToggleProps
-    pane_props?: PaneProps
   } = $props()
 
   const is_valid_number = (val: unknown): val is number =>
@@ -44,13 +39,11 @@
   const extract_numeric_array = (frames: typeof trajectory.frames, prop: string) =>
     frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
 
-  const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
+  const format_range = (values: number[], unit: string): string | null => {
     if (values.length === 0) return null
-    if (values.length === 1) {
-      return `${format_num(values[0], decimals)} ${unit}`.trim()
-    }
+    if (values.length === 1) return `${format_num(values[0], `.3~s`)} ${unit}`.trim()
     const [min, max] = array_extent(values)
-    return `${format_num(min, decimals)} - ${format_num(max, decimals)} ${unit}`.trim()
+    return `${format_num(min, `.3~s`)} - ${format_num(max, `.3~s`)} ${unit}`.trim()
   }
 
   const safe_item = (
@@ -221,7 +214,7 @@
         : extract_numeric_array(trajectory.frames, prop)
 
     const range_item = (label: string, values: number[], unit: string, key: string) => {
-      const range = format_range(values, unit, `.3~s`)
+      const range = format_range(values, unit)
       if (!range) return null
       const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
       return safe_item(label, `${range}${suffix}`, key, sampled_note)
@@ -293,25 +286,26 @@
   )
 </script>
 
-<DraggablePane
+<ViewerPane
   bind:open={pane_open}
+  pane_name="trajectory info"
+  class_prefix="trajectory-info"
   max_width="24em"
   toggle_props={{
-    title: pane_open ? `` : `Trajectory info`,
     'aria-label': pane_open ? `Close trajectory info` : `Open trajectory info`,
     ...toggle_props,
-    class: `trajectory-info-toggle ${toggle_props?.class ?? ``}`,
   }}
-  pane_props={{ ...pane_props, class: `trajectory-info-pane ${pane_props?.class ?? ``}` }}
-  open_icon={Cross}
   closed_icon={Info}
-  {...rest}
+  {...pane_options}
 >
-  <h4 style="margin-top: 0">Trajectory Info</h4>
   <InfoPaneCards
+    title="Trajectory Info"
     cards={info_cards}
     filter_placeholder="Filter trajectory info"
     empty_label="trajectory info"
+    collapsible_filter
     show_filter={n_info_items > 5}
+    show_copy={false}
+    style="--info-card-accent: 0"
   />
-</DraggablePane>
+</ViewerPane>

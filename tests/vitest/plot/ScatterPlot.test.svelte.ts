@@ -1,6 +1,6 @@
 import { ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
-import type { DataSeries, FillRegion } from '$lib/plot'
+import { COLOR_BAR_DEFAULTS, type DataSeries, type FillRegion } from '$lib/plot'
 import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -254,6 +254,7 @@ describe(`ScatterPlot`, () => {
 
     test(`keeps SVG markers when point handlers require DOM events`, async () => {
       const on_point_click = vi.fn()
+      const on_keydown = vi.fn()
       let plot = await mount_canvas({ on_point_click })
       expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
@@ -261,10 +262,25 @@ describe(`ScatterPlot`, () => {
         .querySelector(`path.marker`)
         ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       expect(on_point_click).toHaveBeenCalledOnce()
+      const interactive_point = plot.querySelector<SVGGElement>(`[role="button"]`)
+      expect(interactive_point?.getAttribute(`tabindex`)).toBe(`0`)
+      expect(interactive_point?.getAttribute(`aria-label`)).toBe(`Select series 1 point 1`)
+      interactive_point?.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+      )
+      expect(on_point_click).toHaveBeenCalledTimes(2)
 
       const on_context_menu = vi.fn()
-      plot = await mount_canvas({ point_events: { oncontextmenu: on_context_menu } })
+      plot = await mount_canvas({
+        point_events: { oncontextmenu: on_context_menu, onkeydown: on_keydown },
+      })
       expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
+      plot
+        .querySelector(`path.marker`)
+        ?.parentElement?.dispatchEvent(
+          new KeyboardEvent(`keydown`, { key: `a`, bubbles: true }),
+        )
+      expect(on_keydown).toHaveBeenCalledOnce()
       plot
         .querySelector(`path.marker`)
         ?.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
@@ -407,6 +423,21 @@ describe(`ScatterPlot`, () => {
       )
     },
   )
+
+  test(`uses a thin border that follows the plot color`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1], y: [2], markers: `points` }],
+      legend: null,
+      style: `color: rgb(120, 130, 140)`,
+    })
+    const marker = plot.querySelector(`.marker`)
+    expect(marker?.getAttribute(`stroke`)).toBe(`rgb(120, 130, 140)`)
+    expect(marker?.getAttribute(`stroke-width`)).toBe(`0.5`)
+    expect(marker?.getAttribute(`stroke-opacity`)).toBe(`0.45`)
+
+    plot.style.color = `rgb(40, 50, 60)`
+    await vi.waitFor(() => expect(marker?.getAttribute(`stroke`)).toBe(`rgb(40, 50, 60)`))
+  })
 
   // guards the line_style.curve -> <Line> wiring (the Line unit test alone wouldn't catch
   // ScatterPlot dropping `curve={ls?.curve}`). cubic `C` commands appear only for splines.
@@ -1041,18 +1072,39 @@ describe(`ScatterPlot`, () => {
     { ...basic, label: `B` },
   ]
 
-  test(`solves legend and colorbar together without overlap`, async () => {
-    mock_decoration_measurements()
-    await mount_sized_scatter_plot({
-      series: decorated_series(),
-      legend: {},
+  test(`keeps overflowing colorbar ticks clear of the plot axes`, async () => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
+    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
+      function (this: Element): DOMRect {
+        if (this.classList.contains(`tick-label`)) {
+          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
+        }
+        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
+      },
+    )
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 100], y: [90, 90], color_values: [1, 2] }],
+      x_axis: { range: [0, 100] },
+      y_axis: { range: [0, 100] },
+      legend: null,
       color_bar: {},
     })
 
     await vi.waitFor(() => {
-      const legend_rect = solved_decoration_rect(doc_query(`.legend`))
-      const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
-      expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
+      const colorbar = doc_query(`.colorbar-wrapper`)
+      const visual_rect = solved_decoration_rect(colorbar)
+      const plot_rect = scatter_clip_rect(plot)
+      expect(visual_rect).toMatchObject({ width: 240, height: 46 })
+      const horizontal_gap = Math.min(
+        visual_rect.x - plot_rect.x,
+        plot_rect.x + plot_rect.width - (visual_rect.x + visual_rect.width),
+      )
+      expect(horizontal_gap).toBe(COLOR_BAR_DEFAULTS.axis_clearance)
+      expect(visual_rect.y + visual_rect.height).toBeLessThanOrEqual(
+        plot_rect.y + plot_rect.height - COLOR_BAR_DEFAULTS.axis_clearance,
+      )
+      expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(visual_rect.x + 10)
     })
   })
 
@@ -1103,16 +1155,19 @@ describe(`ScatterPlot`, () => {
     )
   })
 
-  test(`keeps the unified decoration solution disjoint across resize`, async () => {
+  test(`keeps the unified decoration solution disjoint initially and across resize`, async () => {
     mock_decoration_measurements()
     const plot = await mount_sized_scatter_plot({
       series: decorated_series(),
       legend: { responsive: true },
       color_bar: { responsive: true },
     })
-    const initial_colorbar_rect = await vi.waitFor(() =>
-      solved_decoration_rect(doc_query(`.colorbar-wrapper`)),
-    )
+    const initial_colorbar_rect = await vi.waitFor(() => {
+      const legend_rect = solved_decoration_rect(doc_query(`.legend`))
+      const colorbar_rect = solved_decoration_rect(doc_query(`.colorbar-wrapper`))
+      expect(rects_overlap(legend_rect, colorbar_rect)).toBe(false)
+      return colorbar_rect
+    })
 
     await resize_element(plot, 650, 360)
     flushSync()

@@ -24,6 +24,26 @@ async function open_controls_pane(page: Page): Promise<Locator> {
   return pane
 }
 
+test(`portalled tooltip can escape while the canvas stays clipped`, async ({ page }) => {
+  await page.goto(TEST_URL, { waitUntil: `networkidle` })
+  const container = page.locator(CONTAINER_SELECTOR)
+  expect(
+    await container.evaluate((element) => {
+      const canvas_host = element.querySelector(`canvas`)?.parentElement
+      if (!(canvas_host instanceof HTMLElement)) throw new Error(`Missing canvas host`)
+      const probe = document.createElement(`span`)
+      probe.style.cssText = `position:absolute;right:-40px;top:100px;width:80px;height:40px;z-index:1000`
+      element.append(probe)
+      const rect = probe.getBoundingClientRect()
+      return {
+        canvas_clipped: getComputedStyle(canvas_host).overflow === `hidden`,
+        tooltip_visible:
+          document.elementFromPoint(rect.right - 10, rect.top + rect.height / 2) === probe,
+      }
+    }),
+  ).toEqual({ canvas_clipped: true, tooltip_visible: true })
+})
+
 test.describe(`ScatterPlot3D`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)

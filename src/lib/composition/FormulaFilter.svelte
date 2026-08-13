@@ -820,8 +820,7 @@
   {#if input_value}
     <button
       type="button"
-      class="mode-hint clickable"
-      class:locked={mode_locked}
+      class={['mode-hint clickable', { locked: mode_locked }]}
       onclick={cycle_mode}
       title={mode_locked
         ? `Mode is locked`
@@ -835,8 +834,7 @@
   {#if show_mode_lock && !disabled}
     <button
       type="button"
-      class="icon-btn lock-btn"
-      class:active={mode_locked}
+      class={['icon-btn lock-btn', { active: mode_locked }]}
       onclick={toggle_mode_lock}
       title={mode_locked ? `Unlock mode inference` : `Lock current mode`}
       {@attach tooltip()}
@@ -861,8 +859,7 @@
     <div bind:this={examples_wrapper} style="position: relative">
       <button
         type="button"
-        class="icon-btn help-btn"
-        class:active={examples_open}
+        class={['icon-btn help-btn', { active: examples_open }]}
         onclick={toggle_examples}
         title="Show search examples"
         aria-label="Show search examples"
@@ -873,8 +870,7 @@
       </button>
       {#if examples_open}
         <div
-          class="examples-dropdown"
-          class:anchor-left={anchor_left}
+          class={['examples-dropdown', { 'anchor-left': anchor_left }]}
           role="menu"
           tabindex="-1"
           onkeydown={handle_menu_keydown}

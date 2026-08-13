@@ -41,7 +41,7 @@
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { onMount, untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -50,6 +50,7 @@
     FrameLoader,
     ParseProgress,
     TrajectoryDataExtractor,
+    TrajectoryController,
     TrajectoryFrame,
     TrajectoryMetadata,
     TrajectoryPositionStream,
@@ -96,6 +97,7 @@
     on_fullscreen_change?: (data: TrajHandlerData) => void
     on_file_load?: (data: TrajHandlerData) => void
     on_error?: (data: TrajHandlerData) => void
+    on_controller?: (controller: TrajectoryController | null) => void
   }
   type ControlsProps = {
     trajectory: TrajectoryType
@@ -125,6 +127,7 @@
     allow_file_drop = true,
     layout = `auto`,
     structure_props = {},
+    supercell_scaling = $bindable(structure_props.supercell_scaling ?? `1x1x1`),
     scatter_props = {},
     histogram_props = {},
     spinner_props = {},
@@ -148,6 +151,7 @@
     on_fullscreen_change,
     on_file_load,
     on_error,
+    on_controller,
     fps_range = DEFAULTS.trajectory.fps_range,
     fps = $bindable(5),
     loading_options = {},
@@ -180,6 +184,8 @@
       layout?: `auto` | Orientation
       // structure viewer props (passed to Structure component)
       structure_props?: ComponentProps<typeof Structure>
+      // bindable supercell selector state forwarded to the structure viewer
+      supercell_scaling?: string
       // plot props (passed to ScatterPlot component)
       scatter_props?: ComponentProps<typeof ScatterPlot>
       // histogram props (passed to Histogram component, excluding series which is handled separately)
@@ -452,22 +458,19 @@
       metadata: { ...trajectory?.metadata, plot_metadata_loading: false },
     })
 
-  onMount(() => {
-    const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
-      // Global listener: other code posts arbitrary messages (including null data)
-      if (typeof event.data !== `object` || event.data === null) return
-      const { command, file_path, is_complete, plot_metadata } = event.data
-      if (command !== `plot_metadata_stream` || file_path !== streaming_file_path) return
-      if (Array.isArray(plot_metadata)) merge_plot_metadata(plot_metadata)
-      if (is_complete) finish_plot_metadata_loading()
-    }
-    globalThis.addEventListener(`message`, handle_plot_metadata_stream)
-    return () => {
-      globalThis.removeEventListener(`message`, handle_plot_metadata_stream)
-      if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
-      if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
-      active_frame_loader?.dispose?.()
-    }
+  const handle_plot_metadata_stream = (event: MessageEvent<PlotMetadataStreamMessage>) => {
+    // Global listener: other code posts arbitrary messages (including null data)
+    if (typeof event.data !== `object` || event.data === null) return
+    const { command, file_path, is_complete, plot_metadata } = event.data
+    if (command !== `plot_metadata_stream` || file_path !== streaming_file_path) return
+    if (Array.isArray(plot_metadata)) merge_plot_metadata(plot_metadata)
+    if (is_complete) finish_plot_metadata_loading()
+  }
+
+  onDestroy(() => {
+    if (scrub_animation_frame !== undefined) cancelAnimationFrame(scrub_animation_frame)
+    if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
+    active_frame_loader?.dispose?.()
   })
 
   // Reset per-trajectory caches when the trajectory changes (frames belong to the old one)
@@ -912,6 +915,25 @@
     if (idx !== undefined) commit_step(idx)
   }
 
+  const controller: TrajectoryController = {
+    set_step: (step_idx) => {
+      if (!Number.isFinite(step_idx))
+        throw new Error(`Step index must be finite, got ${step_idx}`)
+      const bounded_step_idx = Math.min(
+        Math.max(Math.floor(step_idx), 0),
+        Math.max(total_frames - 1, 0),
+      )
+      playback.go_to(bounded_step_idx)
+      return bounded_step_idx
+    },
+    state: () => ({ current_step_idx, total_frames }),
+  }
+
+  $effect(() => {
+    on_controller?.(controller)
+    return () => on_controller?.(null)
+  })
+
   // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
   // time), so it has to be mapped back before it can index a frame.
   function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
@@ -1198,14 +1220,14 @@
       if (document.fullscreenElement) document.exitFullscreen()
       else if (view_mode_dropdown_open) view_mode_dropdown_open = false
       else if (analysis_menu_open) analysis_menu_open = false
-      // Escape key for info pane handled by DraggablePane
+      // Escape key for info pane handled by ViewerPane
     } else if (event.key >= `0` && event.key <= `9`) {
       playback.go_to(Math.floor((Number(event.key) / 10) * (total_frames - 1)))
     } else handled = false
     return handled
   }
 
-  // Shared by every analysis pane: each keeps its DraggablePane toggle for layout anchoring
+  // Shared by every analysis pane: each keeps its ViewerPane toggle for layout anchoring
   // but hides it, since the analysis menu owns the clicks.
   let analysis_pane_props = $derived({
     trajectory,
@@ -1277,6 +1299,8 @@
     on_change: (val) => on_fullscreen_change?.({ trajectory, fullscreen: val }),
   })
 </script>
+
+<svelte:window onmessage={handle_plot_metadata_stream} />
 
 <div
   class:dragover
@@ -1429,8 +1453,7 @@
                   {#each visible_analyses as entry (entry.control_name)}
                     <button
                       type="button"
-                      class="view-mode-option"
-                      class:selected={entry.is_open}
+                      class={['view-mode-option', { selected: entry.is_open }]}
                       title={entry.label}
                       aria-pressed={entry.is_open}
                       onclick={() => {
@@ -1490,8 +1513,7 @@
                   analysis_menu_open = false
                 }}
                 title={current_display_mode.label}
-                class="view-mode-button"
-                class:active={view_mode_dropdown_open}
+                class={['view-mode-button', { active: view_mode_dropdown_open }]}
                 style="background-color: transparent; padding: 0"
               >
                 <Icon icon={current_display_mode.icon} />
@@ -1501,8 +1523,7 @@
                 <div class="view-mode-dropdown">
                   {#each DISPLAY_MODES as option (option.mode)}
                     <button
-                      class="view-mode-option"
-                      class:selected={display_mode === option.mode}
+                      class={['view-mode-option', { selected: display_mode === option.mode }]}
                       onclick={() => {
                         display_mode = option.mode
                         on_display_mode_change?.({ trajectory, mode: option.mode })
@@ -1555,6 +1576,7 @@
             scene_props: trail_scene_props,
           }}
           bind:show_trajectory_lines
+          bind:supercell_scaling
           bind:controls_open
           bind:info_pane_open={structure_info_open}
           bind:hidden_elements
@@ -1823,7 +1845,7 @@
   .analysis-button.active {
     color: var(--accent-color, #4a9eff);
   }
-  /* Keep DraggablePane's toggle for layout anchoring; the analysis menu owns clicks. */
+  /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. */
   .analysis-dropdown-wrapper :global(.analysis-toggle-anchor) {
     position: absolute;
     inset: 0;

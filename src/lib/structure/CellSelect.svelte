@@ -128,8 +128,7 @@
       menu_open = !suppress_hover && !menu_open
     }}
     onkeydown={handle_key_down}
-    class="toggle-btn"
-    class:active={menu_open}
+    class={['toggle-btn', { active: menu_open }]}
     aria-expanded={menu_open}
     {@attach tooltip({ content: `Cell type & supercell` })}
   >
@@ -146,9 +145,7 @@
 
   {#if menu_open}
     <div
-      class="dropdown"
-      class:open-up={direction === `up`}
-      class:align-left={align === `left`}
+      class={['dropdown', { 'open-up': direction === `up`, 'align-left': align === `left` }]}
       transition:fade={{ duration: 100 }}
     >
       <div class="cell-type-row">
@@ -159,9 +156,7 @@
             ? `${cell_tooltips[type]} - requires symmetry data`
             : cell_tooltips[type]}
           <button
-            class="cell-type-btn"
-            class:selected={cell_type === type}
-            class:disabled
+            class={['cell-type-btn', { selected: cell_type === type, disabled }]}
             {disabled}
             onclick={() => (cell_type = type)}
             title={tooltip_text}
@@ -176,8 +171,7 @@
       <div class="supercell-grid">
         {#each supercell_presets as preset (preset)}
           <button
-            class="preset-btn"
-            class:selected={supercell_scaling === preset}
+            class={['preset-btn', { selected: supercell_scaling === preset }]}
             onclick={() => apply_preset(preset)}
           >
             {format_supercell_label(preset)}

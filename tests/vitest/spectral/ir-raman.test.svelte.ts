@@ -39,7 +39,7 @@ import sio2_born from '$site/phonons/ir-raman/SiO2.BORN?raw'
 import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_plot_controls } from '../setup'
 
 const co2_data = parse_phonon_modes(co2_yaml)
@@ -741,6 +741,69 @@ phonon:
     expect(qpoints[0].modes[2].eigenvector?.[0][2]).toEqual([0, -1])
   })
 
+  it(`retains reciprocal lattice and normalizes band path segments`, () => {
+    const yaml = `natom: 1
+nqpoint: 2
+segment_nqpoint: [2]
+labels: [[GAMMA, X]]
+lattice: [[1,0,0],[0,1,0],[0,0,1]]
+reciprocal_lattice: [[6.283,0,0],[0,6.283,0],[0,0,6.283]]
+points: [{symbol: H, coordinates: [0,0,0], mass: 1.008}]
+phonon:
+- q-position: [0,0,0]
+  distance: 0
+  band:
+  - {frequency: 1, eigenvector: [[[1,0],[0,0],[0,0]]]}
+  - {frequency: 2, eigenvector: [[[0,0],[1,0],[0,0]]]}
+  - {frequency: 3, eigenvector: [[[0,0],[0,0],[1,0]]]}
+- q-position: [0.5,0,0]
+  distance: 1
+  band:
+  - {frequency: 2, eigenvector: [[[1,0],[0,0],[0,0]]]}
+  - {frequency: 3, eigenvector: [[[0,0],[1,0],[0,0]]]}
+  - {frequency: 4, eigenvector: [[[0,0],[0,0],[1,0]]]}
+`
+    const parsed = parse_phonon_modes(yaml)
+    expect(parsed.reciprocal_lattice).toEqual([
+      [6.283, 0, 0],
+      [0, 6.283, 0],
+      [0, 0, 6.283],
+    ])
+    expect(parsed.path_segments).toEqual([
+      { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
+    ])
+  })
+
+  it.each([
+    [`q-point count`, `nqpoint: 2\n`, /declares nqpoint=2 but lists 1 q-points/],
+    [`invalid q-point count`, `nqpoint: many\n`, /'nqpoint' must be an integer/],
+    [
+      `invalid path count`,
+      `npath: many\nsegment_nqpoint: [1]\n`,
+      /'npath' must be a positive integer/,
+    ],
+    [
+      `path count mismatch`,
+      `npath: 2\nsegment_nqpoint: [1]\n`,
+      /declares npath=2 but segment_nqpoint lists 1 path segments/,
+    ],
+    [`segment total`, `segment_nqpoint: [2]\n`, /sums to 2 but phonon lists 1/],
+    [
+      `label count`,
+      `segment_nqpoint: [1]\nlabels: [[GAMMA, X], [X, L]]\n`,
+      /one pair for each/,
+    ],
+    [
+      `missing distance`,
+      `segment_nqpoint: [1]\nlabels: [[GAMMA, X]]\n`,
+      /without a finite 'distance'/,
+    ],
+  ])(`rejects malformed band metadata: %s`, (_name, metadata, pattern) => {
+    expect(() => parse_phonon_modes(`${metadata}${H_BAND}${eig_x()}${MORE_FREQS}`)).toThrow(
+      pattern,
+    )
+  })
+
   it.each([
     [`no phonon list`, h_cell(), /no non-empty 'phonon' list/],
     [`no atom masses`, Q_BAND, /no 'points'\/'atoms' list with per-atom masses/],
@@ -754,7 +817,7 @@ phonon:
     [
       `2-row lattice`,
       `lattice:\n- [1,0,0]\n- [0,1,0]\n${H_BAND}${eig_x()}${MORE_FREQS}`,
-      /'lattice' has 2 rows, expected 3/,
+      /'lattice': expected 3 rows, got 2/,
     ],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_phonon_modes(content)).toThrow(pattern)
@@ -876,6 +939,21 @@ describe(`IrRamanSpectrum component`, () => {
     render({ fwhm: 25, show_sticks: false })
     await tick()
     expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(0)
+  })
+
+  it(`selects a mode from a stick by pointer or keyboard`, async () => {
+    const on_mode_select = vi.fn()
+    render({ fwhm: 25, on_mode_select })
+    await tick()
+    const stick = document.querySelector(`line.mode-stick`)
+    expect(stick).toBeInstanceOf(SVGElement)
+    stick?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(on_mode_select).toHaveBeenCalledOnce()
+    expect(stick?.classList.contains(`selected`)).toBe(true)
+
+    stick?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    expect(on_mode_select).toHaveBeenCalledTimes(2)
   })
 
   it(`shows an empty state when Raman is requested without polarizability data`, () => {

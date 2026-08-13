@@ -69,6 +69,23 @@ describe(`text metrics`, () => {
   })
 
   it.each([
+    [`50%`, `ultra-condensed`],
+    [`62.5%`, `extra-condensed`],
+    [`75%`, `condensed`],
+    [`87.5%`, `semi-condensed`],
+    [`100%`, `normal`],
+    [`112.5%`, `semi-expanded`],
+    [`125%`, `expanded`],
+    [`150%`, `extra-expanded`],
+    [`200%`, `ultra-expanded`],
+  ])(`normalizes browser font stretch %s to %s`, (percentage, keyword) => {
+    const prefix = keyword === `normal` ? `` : `${keyword} `
+    expect(font_spec_to_css({ ...DEFAULT_FONT_SPEC, font_stretch: percentage })).toBe(
+      `${prefix}12px sans-serif`,
+    )
+  })
+
+  it.each([
     [`12px`, 16, 12],
     [`12`, 16, 12],
     [`1.5em`, 20, 30],
@@ -80,7 +97,7 @@ describe(`text metrics`, () => {
     expect(resolve_font_size_css(value, parent)).toBe(expected)
   })
 
-  it(`resolves normal and unitless line heights deterministically`, () => {
+  it(`preserves browser font stretch and resolves unitless line heights`, () => {
     const element = document.createElement(`span`)
     const computed_style = {
       fontFamily: ``,
@@ -88,7 +105,7 @@ describe(`text metrics`, () => {
       fontStyle: ``,
       fontVariant: ``,
       fontWeight: ``,
-      fontStretch: ``,
+      fontStretch: `100%`,
       lineHeight: `normal`,
     } as CSSStyleDeclaration
     vi.spyOn(window, `getComputedStyle`).mockReturnValue(computed_style)
@@ -96,6 +113,7 @@ describe(`text metrics`, () => {
     expect(resolve_font_spec(element)).toEqual({
       ...DEFAULT_FONT_SPEC,
       font_size: 20,
+      font_stretch: `100%`,
       line_height: 20 * (DEFAULT_FONT_SPEC.line_height / DEFAULT_FONT_SPEC.font_size),
     })
 

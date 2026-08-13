@@ -25,7 +25,6 @@
     solve_decorations,
     type DecorationItem,
   } from '$lib/plot/core/decorations'
-  import { measured_footprint } from '$lib/plot/core/auto-place'
   import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import { sorted_range, vec2_equal } from '$lib/plot/core/interactions'
@@ -34,6 +33,7 @@
     AXIS_TITLE_OFFSET,
     calc_auto_padding,
     DEFAULT_PLOT_PADDING,
+    element_position_for_footprint,
     filter_padding,
     full_footprint_or,
     measured_axis,
@@ -457,7 +457,7 @@
   const annotation_fallback_size = { width: 120, height: 50 }
   let colorbar_footprint = $derived.by(() => {
     void colorbar_size_revision
-    return measured_footprint(colorbar_element, colorbar_fallback_size)
+    return full_footprint_or(colorbar_element, colorbar_fallback_size)
   })
   let annotation_footprint = $derived.by(() => {
     void annotation_size_revision
@@ -477,7 +477,7 @@
         kind: `colorbar`,
         footprint: colorbar_footprint,
         horizontal: color_bar_props.orientation !== `vertical`,
-        clearance: 12,
+        clearance: COLOR_BAR_DEFAULTS.axis_clearance,
       })
     }
     if (annotation && width > 0 && height > 0) {
@@ -521,15 +521,8 @@
   )
   let decoration_exclusion_rects = $derived(decoration_placement_rects(decoration_solution))
 
-  const get_annotation_placement = () =>
-    annotation_placement
-      ? {
-          x: annotation_placement.x - annotation_footprint.offset_x,
-          y: annotation_placement.y - annotation_footprint.offset_y,
-        }
-      : null
   const colorbar_tween = create_placed_tween({
-    placement: () => colorbar_placement ?? null,
+    placement: () => element_position_for_footprint(colorbar_placement, colorbar_footprint),
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => colorbar_element,
@@ -539,7 +532,8 @@
       `${colorbar_placement.location}:${colorbar_placement.x}:${colorbar_placement.y}`,
   })
   const annotation_tween = create_placed_tween({
-    placement: get_annotation_placement,
+    placement: () =>
+      element_position_for_footprint(annotation_placement, annotation_footprint),
     dims: () => ({ width, height }),
     responsive: () => false,
     element: () => annotation_element,
@@ -1116,8 +1110,7 @@
 <div
   {...rest}
   bind:this={wrapper}
-  class={[`binned-scatter`, rest.class]}
-  class:fullscreen
+  class={[`binned-scatter`, rest.class, { fullscreen }]}
   data-render-mode={render_mode}
   style:--binned-scatter-label-font-size={point_labels_settings.font_size}
   onpointermove={on_pointer_drag}

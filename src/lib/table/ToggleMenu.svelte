@@ -211,8 +211,7 @@
 
 {#snippet toggle_item(col: Label)}
   <label
-    class="toggle-label"
-    class:disabled={col.disabled}
+    class={['toggle-label', { disabled: col.disabled }]}
     {@attach tooltip({ allow_html: true, content: sanitize_html(col.description ?? ``) })}
   >
     <input

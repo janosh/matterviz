@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
-  import { rotation_from_direction } from './geometry'
+  import { arrow_axis_geometry } from './geometry'
 
   let {
     position,
@@ -25,33 +24,24 @@
     arrow_head_length?: number
   } = $props()
 
-  const mag = $derived(Math.hypot(...vector))
-  const dir = $derived(mag > math.EPS ? math.scale(vector, 1 / mag) : ([0, 1, 0] as Vec3))
-  const vec_len = $derived(mag * scale)
-
-  const head_len = $derived(
-    arrow_head_length < 0 ? vec_len * -arrow_head_length : arrow_head_length,
+  const geometry = $derived(arrow_axis_geometry(vector, scale, arrow_head_length))
+  const shaft_r = $derived(
+    shaft_radius < 0 ? geometry.shaft_length * -shaft_radius : shaft_radius,
   )
-  const shaft_len = $derived(Math.max(0, vec_len - head_len * 0.5))
-  const shaft_r = $derived(shaft_radius < 0 ? shaft_len * -shaft_radius : shaft_radius)
   const head_r = $derived(
-    arrow_head_radius < 0 ? shaft_len * -arrow_head_radius : arrow_head_radius,
+    arrow_head_radius < 0 ? geometry.shaft_length * -arrow_head_radius : arrow_head_radius,
   )
-
-  const shaft_pos = $derived(math.add(position, math.scale(dir, shaft_len * 0.5)))
-  const head_pos = $derived(math.add(position, math.scale(dir, shaft_len + head_len * 0.5)))
-
-  const rotation = $derived(rotation_from_direction(vector))
 </script>
 
-{#if shaft_len > 0.01}
-  <T.Mesh {...rest} position={shaft_pos} {rotation}>
-    <T.CylinderGeometry args={[shaft_r, shaft_r, shaft_len, 12]} />
+<T.Group {position} rotation={geometry.rotation}>
+  {#if geometry.shaft_length > 0.01}
+    <T.Mesh {...rest} position={[0, geometry.shaft_center, 0]}>
+      <T.CylinderGeometry args={[shaft_r, shaft_r, geometry.shaft_length, 12]} />
+      <T.MeshStandardMaterial {color} />
+    </T.Mesh>
+  {/if}
+  <T.Mesh {...rest} position={[0, geometry.head_center, 0]}>
+    <T.ConeGeometry args={[head_r, geometry.head_length, 12]} />
     <T.MeshStandardMaterial {color} />
   </T.Mesh>
-{/if}
-
-<T.Mesh {...rest} position={head_pos} {rotation}>
-  <T.ConeGeometry args={[head_r, head_len, 12]} />
-  <T.MeshStandardMaterial {color} />
-</T.Mesh>
+</T.Group>
