@@ -181,20 +181,20 @@ describe(`AtomLegend Component`, () => {
     },
   )
 
-  test(`updates label text color when background changes`, async () => {
-    const orig_fe_color = colors.element.Fe
+  test(`uses white text for oxygen red and reacts to light color updates`, async () => {
+    const original_oxygen_color = colors.element.O
     try {
-      colors.element.Fe = `#000000`
-      mount_legend({ elements: { Fe: 1 } })
+      colors.element.O = default_element_colors.O
+      mount_legend({ elements: { O: 1 } })
       const label = doc_query(`label`)
-      const initial_color = getComputedStyle(label).color
+      expect(label.style.color).toBe(`white`)
 
-      colors.element.Fe = `#ffffff`
+      colors.element.O = `#ffff00`
       await tick()
 
-      expect(getComputedStyle(label).color).not.toBe(initial_color)
+      expect(label.style.color).toBe(`black`)
     } finally {
-      colors.element.Fe = orig_fe_color
+      colors.element.O = original_oxygen_color
     }
   })
 

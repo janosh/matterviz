@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { contrast_text_color, default_element_colors } from '$lib/colors'
+  import {
+    contrast_text_color,
+    default_element_colors,
+    perceived_brightness,
+  } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
@@ -141,6 +145,11 @@
       throw new Error(`Missing legend color for property value ${value}`)
     return color
   }
+
+  // The legend filter darkens saturated swatches, so their perceived brightness is a
+  // better text-color signal than maximum contrast against the unfiltered CSS color.
+  const element_text_color = (background?: string): string =>
+    background ? (perceived_brightness(background) < 0.5 ? `white` : `black`) : `currentColor`
 
   // Continuous integer properties (e.g. coordination numbers) render as a discrete
   // segmented bar with one labeled block per integer value instead of a smooth gradient.
@@ -346,7 +355,7 @@
             ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
           {@attach tooltip()}
           style:background-color={colors.element[displayed_elem]}
-          style:color={contrast_text_color({ background: colors.element[displayed_elem] })}
+          style:color={element_text_color(colors.element[displayed_elem])}
           class:hidden={is_hidden}
           class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
@@ -465,9 +474,7 @@
                   class={['remap-option', { selected: displayed_elem === target_elem }]}
                   onclick={() => remap_element(elem as ElementSymbol, target_elem)}
                   style:background-color={colors.element[target_elem]}
-                  style:color={contrast_text_color({
-                    background: colors.element[target_elem],
-                  })}
+                  style:color={element_text_color(colors.element[target_elem])}
                 >
                   <small style="opacity: 0.6">{elem_info?.number}</small>
                   <b>{target_elem}</b>
