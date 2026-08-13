@@ -19,6 +19,24 @@ export function rotation_from_direction(direction: Vec3): Vec3 {
   return [x, y, z]
 }
 
+export function arrow_axis_geometry(
+  vector: Vec3,
+  vector_scale: number,
+  arrow_head_length: number,
+) {
+  const vector_length = Math.hypot(...vector) * vector_scale
+  const head_length =
+    arrow_head_length < 0 ? vector_length * -arrow_head_length : arrow_head_length
+  const shaft_length = Math.max(0, vector_length - head_length * 0.5)
+  return {
+    head_length,
+    shaft_length,
+    shaft_center: shaft_length * 0.5,
+    head_center: shaft_length + head_length * 0.5,
+    rotation: rotation_from_direction(vector),
+  }
+}
+
 // Transform placing a +Y-aligned cylinder so it spans start→end: midpoint position,
 // orientation, and length (coincident points → length 0, identity rotation).
 export function cylinder_between(

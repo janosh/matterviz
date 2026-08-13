@@ -340,14 +340,6 @@
     gap: 0.4em;
     min-height: 560px;
   }
-  .phonon-mode-explorer :global(.status-message) {
-    padding: 0.3em 0.5em;
-    border: 0;
-    border-left: 2px solid currentColor;
-    border-radius: 0;
-    backdrop-filter: none;
-    font-size: 0.78em;
-  }
   .explorer-header {
     display: flex;
     align-items: center;
@@ -359,42 +351,26 @@
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 0.1em 0.6em;
+    gap: 0.6em;
     min-width: 0;
-    strong {
-      font-size: 1.05em;
-    }
     .frequency {
       color: var(--accent-color, #2878c8);
-      font-size: 0.95em;
-      font-weight: 650;
-    }
-    .qpoint,
-    .source {
-      color: var(--text-color-muted, #687386);
-      font-size: 0.82em;
     }
     .unstable {
       color: var(--warning-color, #b45309);
-      font-size: 0.82em;
-      font-weight: 650;
     }
   }
   .tabs {
     display: inline-flex;
-    align-items: center;
     button {
       padding: 0.25em 0.55em;
       border: 0;
       border-bottom: 2px solid transparent;
       border-radius: 0;
       background: transparent;
-      font: inherit;
-      font-size: 0.82em;
       &.active {
         color: var(--accent-color, #2678b2);
         border-bottom-color: currentColor;
-        font-weight: 700;
       }
     }
   }
@@ -421,6 +397,10 @@
     --traj-border-radius: 0;
     --struct-border-radius: 0;
   }
+  .panes:has(.plot-pane:hover) :global(.trajectory-controls.hover-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
   .plot-pane > :global(*),
   .trajectory-pane > :global(*) {
     width: 100%;
@@ -437,16 +417,9 @@
     label {
       display: grid;
       gap: 0.2em;
-      color: var(--text-color-muted, #687386);
-      font-size: 0.75em;
-      font-weight: 600;
     }
     select {
       max-width: 18em;
-    }
-    input,
-    select {
-      font: inherit;
     }
     .checkbox {
       display: flex;
@@ -461,10 +434,6 @@
       display: flex;
       justify-content: space-between;
       gap: 1em;
-    }
-    output {
-      color: var(--text-color, currentColor);
-      font-variant-numeric: tabular-nums;
     }
   }
   .mode-list {

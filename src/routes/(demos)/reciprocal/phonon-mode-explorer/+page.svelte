@@ -278,7 +278,7 @@
   />
 </svelte:head>
 
-<header class="hero">
+<header style="margin-block: 1.5em; text-align: center">
   <span>Interactive lattice dynamics</span>
   <h1>Phonon Mode Explorer</h1>
   <p>
@@ -349,7 +349,7 @@
   </div>
 </section>
 
-<p class="attribution">
+<p style="margin: 2em auto; text-align: center">
   Animated NaCl data: PhononDB PBEsol,
   <a href="https://doi.org/10.48505/nims.4197">DOI 10.48505/nims.4197</a>. α-quartz data:
   Phonopy-Spectroscopy. Read the
@@ -357,59 +357,19 @@
 </p>
 
 <style>
-  .hero {
-    display: grid;
-    justify-items: center;
-    gap: 0.45em;
-    max-width: 860px;
-    margin: clamp(0.8em, 2vw, 1.5em) auto clamp(0.8em, 1.5vw, 1.2em);
-    text-align: center;
-    h1 {
-      margin: 0;
-      font-size: clamp(2.3rem, 5vw, 4rem);
-      line-height: 0.98;
-      letter-spacing: -0.045em;
-    }
-    p {
-      max-width: 760px;
-      margin: 0.2em 0 0;
-      color: var(--text-color-muted, #5f6878);
-      font-size: clamp(1rem, 1.7vw, 1.12rem);
-      line-height: 1.45;
-    }
-  }
-  .hero > span,
-  .about span {
-    color: var(--accent-color, #2878c8);
-    font-size: 0.76em;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
   .fixture-picker {
     margin-block: 0.6em 1em;
-    :global(.file-picker) {
-      gap: 0.35em;
-    }
-    :global(.file-item.active) {
-      border-color: var(--accent-color, #2878c8);
-      background: color-mix(in srgb, var(--accent-color, #2878c8) 10%, transparent);
-      box-shadow: none;
-    }
     p {
       display: flex;
       justify-content: space-between;
       gap: 0.5em 1em;
       margin: 0.5em 0 0;
-      color: var(--text-color-muted, #657083);
-      font-size: 0.78em;
       small {
         white-space: nowrap;
       }
     }
   }
   .explorer-shell {
-    position: relative;
     margin-block: 0 2.5em;
     &.dragover {
       outline: 2px dashed var(--accent-color, #4c78a8);
@@ -420,22 +380,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: clamp(1.5em, 5vw, 4em);
-    margin: 3em auto 1.5em;
-    h2 {
-      margin: 0.25em 0 0.45em;
-      text-align: left;
-    }
-    p {
-      margin: 0;
-      color: var(--text-color-muted, #5f6878);
-      line-height: 1.65;
-    }
-  }
-  .attribution {
-    margin: 2.5em auto 4em;
-    color: var(--text-color-muted, #5f6878);
-    font-size: 0.85em;
-    text-align: center;
+    margin: 2em auto;
   }
   @media (max-width: 900px) {
     :global(.phonon-mode-explorer) {

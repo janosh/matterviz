@@ -93,10 +93,14 @@ test.describe(`PhononModeExplorer`, () => {
 
     const trajectory_viewer = explorer.locator(`.trajectory-pane .trajectory`)
     const trajectory_controls = trajectory_viewer.locator(`.trajectory-controls`)
+    const step_input = explorer.locator(`.trajectory-controls .step-input`)
     await expect(trajectory_controls).toHaveCSS(`opacity`, `0`)
     await trajectory_viewer.hover()
     await expect(trajectory_controls).toHaveCSS(`opacity`, `1`)
-    const step_input = explorer.locator(`.trajectory-controls .step-input`)
+    await step_input.focus()
+    await explorer.locator(`.plot-pane`).hover()
+    await expect(trajectory_controls).toHaveCSS(`opacity`, `0`)
+    await trajectory_viewer.hover()
     const step_slider = explorer.locator(`.trajectory-controls .step-slider`)
     await step_slider.evaluate((slider: HTMLInputElement) => {
       slider.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))

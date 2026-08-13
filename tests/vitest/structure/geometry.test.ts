@@ -6,6 +6,7 @@ import {
   write_bond_transform,
 } from '$lib/structure/bond-rendering'
 import {
+  arrow_axis_geometry,
   cylinder_between,
   quaternion_from_direction,
   rotation_from_direction,
@@ -47,6 +48,21 @@ describe(`rotation_from_direction`, () => {
   })
 })
 
+test.each([
+  [[1, 1, 1], 0.5, 0.8],
+  [[0, 3, 4], 2, -0.1],
+] as [Vec3, number, number][])(
+  `arrow shaft and head meet for vector $0`,
+  (vector, scale, arrow_head_length) => {
+    const { head_center, head_length, shaft_length } = arrow_axis_geometry(
+      vector,
+      scale,
+      arrow_head_length,
+    )
+    expect(head_center - head_length * 0.5).toBe(shaft_length)
+  },
+)
+
 describe(`cylinder_between`, () => {
   test.each([
     [[0, 0, 0], [0, 4, 0], [0, 2, 0], 4],
@@ -55,9 +71,23 @@ describe(`cylinder_between`, () => {
   ] as [Vec3, Vec3, Vec3, number][])(
     `%j → %j: midpoint %j, length %d`,
     (from, to, mid, len) => {
-      const { position, length } = cylinder_between(from, to)
+      const { position, rotation, length } = cylinder_between(from, to)
       position.forEach((val, idx) => expect(val).toBeCloseTo(mid[idx], 10))
       expect(length).toBeCloseTo(len, 10)
+      const half = new Vector3(0, length / 2, 0).applyEuler(new Euler(...rotation))
+      const center = new Vector3(...position)
+      expect(
+        center
+          .clone()
+          .sub(half)
+          .distanceTo(new Vector3(...from)),
+      ).toBeCloseTo(0, 10)
+      expect(
+        center
+          .clone()
+          .add(half)
+          .distanceTo(new Vector3(...to)),
+      ).toBeCloseTo(0, 10)
     },
   )
 
@@ -65,23 +95,6 @@ describe(`cylinder_between`, () => {
     cylinder_between([1, 2, 3], [1, 2, 3]).rotation.forEach((val) =>
       expect(val).toBeCloseTo(0, 12),
     )
-  })
-
-  test(`full transform places a +Y cylinder spanning from→to`, () => {
-    const [from, to]: [Vec3, Vec3] = [
-      [2, 0, 1],
-      [2, 3, 5],
-    ]
-    const { position, rotation, length } = cylinder_between(from, to)
-    // a unit +Y segment scaled to `length`, euler-rotated, then centered at `position`
-    const half = new Vector3(0, length / 2, 0).applyEuler(new Euler(...rotation))
-    const center = new Vector3(...position)
-    const [end_a, end_b] = [center.clone().sub(half), center.clone().add(half)]
-    const [from_v, to_v] = [new Vector3(...from), new Vector3(...to)]
-    const spans =
-      (end_a.distanceTo(from_v) < 1e-9 && end_b.distanceTo(to_v) < 1e-9) ||
-      (end_a.distanceTo(to_v) < 1e-9 && end_b.distanceTo(from_v) < 1e-9)
-    expect(spans).toBe(true)
   })
 })
 
