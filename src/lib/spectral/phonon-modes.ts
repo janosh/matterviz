@@ -25,10 +25,11 @@ export interface PhononModeTrajectoryOptions {
   vector_key?: string
 }
 
-export const DEFAULT_PHONON_AMPLITUDE = 0.6
+export const DEFAULT_PHONON_AMPLITUDE = 0.3
 export const DEFAULT_PHONON_SUPERCELL: Vec3 = [3, 3, 2]
 export const DEFAULT_PHONON_FRAMES = 48
 export const DEFAULT_PHONON_FPS = 12
+export const DEFAULT_PHONON_SHOW_VECTORS = false
 export const PHONON_VECTOR_KEY = `phonon_displacement`
 // Every frame clones complete site objects, so reject requests likely to freeze the browser.
 const MAX_PHONON_TRAJECTORY_SITE_FRAMES = 500_000

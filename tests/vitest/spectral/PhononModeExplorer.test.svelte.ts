@@ -40,6 +40,7 @@ test(`renders a typed phonon dataset`, async () => {
     expect(target.querySelector(`[aria-label="Phonon explorer plot"]`)?.textContent).toContain(
       `IR`,
     )
+    expect(target.querySelector<HTMLInputElement>(`.checkbox input`)?.checked).toBe(false)
   })
 })
 

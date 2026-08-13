@@ -166,6 +166,15 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(summary).toContainText(`Mode 5`)
     await expect(stick).toHaveClass(/selected/)
     expect(symmetry_errors).toEqual([])
+
+    await expect(explorer.getByLabel(`Eigenvectors`)).not.toBeChecked()
+    await trajectory_viewer.hover()
+    await explorer.getByRole(`button`, { name: `Structure controls` }).click()
+    await expect(
+      explorer.locator(
+        `label[data-key="vector_config:phonon_displacement"] input[type="checkbox"]`,
+      ),
+    ).not.toBeChecked()
   })
 
   test(`picker swaps mode datasets and accepts local phonopy output`, async ({ page }) => {
@@ -222,7 +231,7 @@ test.describe(`PhononModeExplorer`, () => {
     await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     await explorer.locator(`.amplitude-control input`).fill(`0.42`)
     await explorer.locator(`.fps-section input`).fill(`18`)
-    await explorer.getByLabel(`Eigenvectors`).uncheck()
+    await explorer.getByLabel(`Eigenvectors`).check()
     await select_supercell(explorer, 2)
 
     await expect
@@ -235,7 +244,7 @@ test.describe(`PhononModeExplorer`, () => {
         amplitude: `0.42`,
         supercell: `2x2x2`,
         fps: `18`,
-        vectors: `0`,
+        vectors: `1`,
       })
 
     await page.reload({ waitUntil: `networkidle` })
@@ -250,7 +259,7 @@ test.describe(`PhononModeExplorer`, () => {
     )
     await expect(restored.locator(`.amplitude-control input`)).toHaveValue(`0.42`)
     await expect(restored.locator(`.fps-section input`)).toHaveValue(`18`)
-    await expect(restored.getByLabel(`Eigenvectors`)).not.toBeChecked()
+    await expect(restored.getByLabel(`Eigenvectors`)).toBeChecked()
     await expect(restored.locator(`.cell-select .toggle-btn`)).toContainText(`2`)
   })
 })

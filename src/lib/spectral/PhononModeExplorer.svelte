@@ -14,6 +14,7 @@
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
     DEFAULT_PHONON_FRAMES,
+    DEFAULT_PHONON_SHOW_VECTORS,
     DEFAULT_PHONON_SUPERCELL,
     PHONON_VECTOR_KEY,
     default_phonon_mode_selection,
@@ -41,7 +42,7 @@
     supercell = $bindable([...DEFAULT_PHONON_SUPERCELL] as Vec3),
     n_frames = $bindable(DEFAULT_PHONON_FRAMES),
     fps = $bindable(DEFAULT_PHONON_FPS),
-    show_vectors = $bindable(true),
+    show_vectors = $bindable(DEFAULT_PHONON_SHOW_VECTORS),
     auto_play = true,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {

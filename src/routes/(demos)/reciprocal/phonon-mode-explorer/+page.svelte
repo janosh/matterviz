@@ -8,6 +8,7 @@
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
+    DEFAULT_PHONON_SHOW_VECTORS,
     DEFAULT_PHONON_SUPERCELL,
     PhononModeExplorer,
     default_phonon_mode_selection,
@@ -118,7 +119,7 @@
     amplitude: DEFAULT_PHONON_AMPLITUDE,
     supercell: [...DEFAULT_PHONON_SUPERCELL],
     fps: DEFAULT_PHONON_FPS,
-    show_vectors: true,
+    show_vectors: DEFAULT_PHONON_SHOW_VECTORS,
   })
 
   const default_explorer_state = initial_state(default_fixture.dataset)
@@ -195,7 +196,7 @@
       }
     }
     next_state.fps = number_param(params, `fps`, DEFAULT_PHONON_FPS, 0, 300)
-    next_state.show_vectors = bool_from_param(params, `vectors`, true)
+    next_state.show_vectors = bool_from_param(params, `vectors`, DEFAULT_PHONON_SHOW_VECTORS)
     apply_explorer_state(next_state)
   }
 
@@ -243,7 +244,7 @@
       [`amplitude`, String(amplitude), String(DEFAULT_PHONON_AMPLITUDE)],
       [`supercell`, supercell.join(`x`), DEFAULT_PHONON_SUPERCELL.join(`x`)],
       [`fps`, String(fps), String(DEFAULT_PHONON_FPS)],
-      bool_url_entry(`vectors`, show_vectors, true),
+      bool_url_entry(`vectors`, show_vectors, DEFAULT_PHONON_SHOW_VECTORS),
     ]
   }
 

@@ -64,20 +64,20 @@ const displacement_at = (data: PhononModeData, frame_idx: number, site_idx: numb
 }
 
 describe(`phonon_mode_trajectory`, () => {
-  it(`defaults to a 3x3x2 supercell with a 0.6 A excursion`, () => {
+  it(`defaults to a 3x3x2 supercell with a 0.3 A excursion`, () => {
     const trajectory = phonon_mode_trajectory(make_mode_data(), {
       qpoint_idx: 0,
       mode_idx: 0,
     })
     const displacement = trajectory.frames[0].structure.sites[0].properties
       .phonon_displacement as Vec3
-    expect(trajectory.metadata).toMatchObject({ amplitude: 0.6, supercell: [3, 3, 2] })
+    expect(trajectory.metadata).toMatchObject({ amplitude: 0.3, supercell: [3, 3, 2] })
     expect(
       trajectory.frames[0].structure.sites.filter(
         ({ properties }) => properties.orig_site_idx === undefined,
       ),
     ).toHaveLength(18)
-    expect(Math.hypot(...displacement)).toBeCloseTo(0.6, 14)
+    expect(Math.hypot(...displacement)).toBeCloseTo(0.3, 14)
   })
 
   it(`undoes mass weighting while preserving relative eigenvector amplitudes`, () => {
