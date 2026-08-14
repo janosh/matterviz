@@ -157,10 +157,8 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
     const delta: Vec3 = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
     const helper_dir = new Vector3(0, 1, 0).applyQuaternion(quaternion_from_direction(delta))
     expect(bond_dir.distanceTo(helper_dir)).toBeCloseTo(0, 10)
-    const determinant = mat.determinant()
     const expected_determinant = Math.hypot(...delta)
-    expect(determinant).toBeGreaterThan(0)
-    expect(Math.abs(determinant / expected_determinant - 1)).toBeLessThan(4 * 2 ** -23)
+    expect(Math.abs(mat.determinant() / expected_determinant - 1)).toBeLessThan(4 * 2 ** -23)
   })
 
   test.each([
@@ -185,20 +183,17 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       const matrix_buffer = new Float32Array(3 * 16)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
-      expect(write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)).toBe(
-        expected_count,
-      )
+      write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)
       expect(Math.hypot(matrix_buffer[0], matrix_buffer[1], matrix_buffer[2])).toBeCloseTo(
         expected_radius,
         7,
       )
       if (expected_count > 1) {
-        const offsets = Array.from({ length: expected_count }, (_, instance_idx) =>
-          [12, 13, 14]
-            .map((component_idx) => matrix_buffer[instance_idx * 16 + component_idx])
-            .join(`,`),
+        const offsets = Array.from(
+          { length: expected_count },
+          (_, instance_idx) => matrix_buffer[instance_idx * 16 + 14],
         )
-        expect(new SvelteSet(offsets).size).toBeGreaterThan(1)
+        expect(new SvelteSet(offsets).size).toBe(expected_count)
       }
     },
   )

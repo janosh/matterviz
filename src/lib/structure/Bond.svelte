@@ -32,8 +32,8 @@
   // Reusable buffers to avoid reallocation on every update
   let colors_start = new Float32Array(0)
   let colors_end = new Float32Array(0)
-  let previous_colors_start: string[] = []
-  let previous_colors_end: string[] = []
+  const previous_colors_start: string[] = []
+  const previous_colors_end: string[] = []
 
   // Grow-only: three caches TSL materials by mesh uuid, so recreating on shrink is expensive.
   // Derived, not state+effect: an effect would first render at capacity 0 and build twice.
@@ -75,7 +75,8 @@
       invalidate()
       return
     }
-    mesh.count = write_bond_instance_matrices(matrix_buffer, bonds, thickness, instance_count)
+    write_bond_instance_matrices(matrix_buffer, bonds, thickness, instance_count)
+    mesh.count = instance_count
     mesh.instanceMatrix.clearUpdateRanges()
     mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16)
     mesh.instanceMatrix.needsUpdate = true
@@ -86,11 +87,10 @@
     if (!mesh || mesh.instanceMatrix.array.length < instance_count * 16) return
 
     // Grow color buffers with mesh capacity; shrinking only lowers mesh.count.
-    let colors_reallocated = false
-    if (colors_start.length < capacity * 3) {
+    const colors_reallocated = colors_start.length < capacity * 3
+    if (colors_reallocated) {
       colors_start = new Float32Array(capacity * 3)
       colors_end = new Float32Array(capacity * 3)
-      colors_reallocated = true
     }
 
     let first_changed_idx = instance_count

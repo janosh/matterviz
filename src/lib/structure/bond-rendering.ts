@@ -11,7 +11,7 @@ export function count_bond_instances(bonds: readonly BondPair[]): number {
   return count
 }
 
-const RADIAL_MATRIX_COMPONENTS = [0, 1, 2, 8, 9, 10] as const
+const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
 
 // Write one Y-up unit-cylinder transform directly into an InstancedMesh matrix buffer.
 // Keeping the renderer transform out of BondPair means topology-only consumers no longer
@@ -33,13 +33,13 @@ export function write_bond_transform(
 
   // The mesh buffer is persistent, so every slot must be reset before sparse matrix writes.
   matrix_buffer.fill(0, matrix_offset, matrix_offset + 16)
+  matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
+  matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
+  matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
   matrix_buffer[matrix_offset + 15] = 1
   if (height < 1e-10) {
     matrix_buffer[matrix_offset] = radius_scale
     matrix_buffer[matrix_offset + 10] = radius_scale
-    matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
-    matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
-    matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
     return
   }
 
@@ -50,31 +50,26 @@ export function write_bond_transform(
   let right_z = 0
   let up_x = 0
   let up_y = 0
-  let up_z = 1
-  if (Math.abs(dir_y - 1) >= 1e-10 && Math.abs(dir_y + 1) >= 1e-10) {
-    const right_raw_x = -dir_z
-    const right_raw_z = dir_x
+  let up_z = dir_y < 0 ? -1 : 1
+  if (Math.abs(dir_y) <= 1 - 1e-10) {
     // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- see above
-    const right_length = Math.sqrt(right_raw_x * right_raw_x + right_raw_z * right_raw_z)
-    right_x = right_raw_x / right_length
-    right_z = right_raw_z / right_length
+    const right_length = Math.sqrt(dir_x * dir_x + dir_z * dir_z)
+    right_x = -dir_z / right_length
+    right_z = dir_x / right_length
     up_x = -dir_y * right_z
     up_y = dir_x * right_z - dir_z * right_x
     up_z = dir_y * right_x
-  } else if (dir_y < 0) up_z = -1
+  }
 
-  // Column-major Three.js matrix: scaled right, direction * length, scaled up, midpoint.
+  // Column-major Three.js matrix: scaled right, bond delta, scaled up, midpoint.
   matrix_buffer[matrix_offset] = right_x * radius_scale
   matrix_buffer[matrix_offset + 2] = right_z * radius_scale
-  matrix_buffer[matrix_offset + 4] = dir_x * height
-  matrix_buffer[matrix_offset + 5] = dir_y * height
-  matrix_buffer[matrix_offset + 6] = dir_z * height
+  matrix_buffer[matrix_offset + 4] = dx
+  matrix_buffer[matrix_offset + 5] = dy
+  matrix_buffer[matrix_offset + 6] = dz
   matrix_buffer[matrix_offset + 8] = up_x * radius_scale
   matrix_buffer[matrix_offset + 9] = up_y * radius_scale
   matrix_buffer[matrix_offset + 10] = up_z * radius_scale
-  matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
-  matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
-  matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
 }
 
 const scale_and_offset_matrix = (
@@ -88,17 +83,11 @@ const scale_and_offset_matrix = (
     matrix_buffer[matrix_offset + component_idx] *= radius_scale
   }
 
-  const right_length =
-    Math.hypot(
-      matrix_buffer[matrix_offset],
-      matrix_buffer[matrix_offset + 1],
-      matrix_buffer[matrix_offset + 2],
-    ) || 1
-  matrix_buffer[matrix_offset + 12] += (matrix_buffer[matrix_offset] / right_length) * offset
-  matrix_buffer[matrix_offset + 13] +=
-    (matrix_buffer[matrix_offset + 1] / right_length) * offset
-  matrix_buffer[matrix_offset + 14] +=
-    (matrix_buffer[matrix_offset + 2] / right_length) * offset
+  const right_x = matrix_buffer[matrix_offset]
+  const right_z = matrix_buffer[matrix_offset + 2]
+  const right_length = Math.hypot(right_x, right_z) || 1
+  matrix_buffer[matrix_offset + 12] += (right_x / right_length) * offset
+  matrix_buffer[matrix_offset + 14] += (right_z / right_length) * offset
 }
 
 // Pack every rendered cylinder into the persistent GPU-facing matrix buffer. Multiple bond
@@ -108,7 +97,7 @@ export function write_bond_instance_matrices(
   bonds: readonly BondPair[],
   bond_thickness: number,
   required_count: number,
-): number {
+): void {
   if (matrix_buffer.length < required_count * 16) {
     throw new RangeError(
       `Bond matrix buffer has ${matrix_buffer.length} floats, needs ${required_count * 16}`,
@@ -142,7 +131,6 @@ export function write_bond_instance_matrices(
     }
     instance_idx += instance_count
   }
-  return instance_idx
 }
 
 export const get_bond_instance_count = (bond: BondPair): number =>
