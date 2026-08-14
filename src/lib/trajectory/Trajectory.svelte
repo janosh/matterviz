@@ -302,8 +302,7 @@
   let actual_layout = $derived.by(() => {
     if (layout === `horizontal` || layout === `vertical`) return layout
     const { width, height } = content_size
-    if (width > 0 && height > 0) return pick_pane_orientation(width, height)
-    return `horizontal` // Fallback to horizontal if dimensions not available yet
+    return width > 0 && height > 0 ? pick_pane_orientation(width, height) : `horizontal`
   })
 
   // Get total frame count (supports both regular and indexed trajectories)

@@ -13,8 +13,14 @@ describe(`StructureInfoPane`, () => {
   const mount_info_pane = (props: ComponentProps<typeof StructureInfoPane>) =>
     mount(StructureInfoPane, { target: document.body, props })
 
-  const make_sym_data = (): MoyoDataset =>
-    ({
+  const make_sym_data = (position_count = 1): MoyoDataset => {
+    const positions = Array.from({ length: position_count }, (_, idx) => [
+      idx / position_count,
+      0,
+      0,
+    ])
+    const numbers = Array<number>(position_count).fill(1)
+    return {
       number: 227,
       hm_symbol: `F d -3 m`,
       hall_number: 523,
@@ -27,11 +33,15 @@ describe(`StructureInfoPane`, () => {
       ],
       std_cell: {
         lattice: { basis: [5, 0, 0, 0, 5, 0, 0, 0, 5] },
-        positions: [[0, 0, 0]],
-        numbers: [1],
+        positions,
+        numbers,
       },
-      wyckoffs: [`a`],
-    }) as unknown as MoyoDataset
+      input_cell: { positions, numbers },
+      orbits: Array.from({ length: position_count }, (_, idx) => idx),
+      wyckoffs: Array<string>(position_count).fill(`a`),
+      std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    } as unknown as MoyoDataset
+  }
 
   test.each([
     [`small`, 2, true],
@@ -109,6 +119,7 @@ describe(`StructureInfoPane`, () => {
       const site_cards = () =>
         Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
       expect(site_cards()).toHaveLength(3)
+      expect(document.querySelector(`.site-color`)).toBeNull()
 
       const site_row = site_cards()[1]
       expect(site_row).toBeInstanceOf(HTMLDivElement)
@@ -194,6 +205,29 @@ describe(`StructureInfoPane`, () => {
     expect(with_sym_content).toContain(`Symmetry Ops`)
     expect(with_sym_content).toContain(`1 (0 trans, 1 rot, 0 roto-trans)`)
   })
+
+  test.each([
+    [1, true],
+    [2, false],
+  ])(
+    `%i-position symmetry table defaults expanded=%s and toggles`,
+    async (count, expanded) => {
+      mount_info_pane({
+        structure: get_dummy_structure(`H`, count, true),
+        pane_open: true,
+        sym_data: make_sym_data(count),
+        atom_count_thresholds: [2, 500],
+      })
+
+      const toggle = document.querySelector(`.symmetry-table-toggle`) as HTMLButtonElement
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(String(expanded))
+      expect(document.querySelectorAll(`.wyckoff-row`)).toHaveLength(expanded ? count : 0)
+
+      toggle.click()
+      await tick()
+      expect(document.querySelectorAll(`.wyckoff-row`)).toHaveLength(expanded ? 0 : count)
+    },
+  )
 
   test(`places symmetry section between Cell and Sites content`, () => {
     const structure = get_dummy_structure(`H`, 2, true)

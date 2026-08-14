@@ -83,8 +83,7 @@
   })
 
   $effect(() => {
-    if (!mesh) return
-    if (mesh.instanceMatrix.array.length < instance_count * 16) return
+    if (!mesh || mesh.instanceMatrix.array.length < instance_count * 16) return
 
     // Grow color buffers with mesh capacity; shrinking only lowers mesh.count.
     let colors_reallocated = false
@@ -135,16 +134,17 @@
       [`instanceColorEnd`, colors_end],
     ] as const) {
       const existing = geometry.getAttribute(name)
-      if (existing instanceof InstancedBufferAttribute && existing.array === buffer) {
-        if (last_changed_idx >= 0) {
-          existing.clearUpdateRanges()
-          existing.addUpdateRange(
-            first_changed_idx * 3,
-            (last_changed_idx - first_changed_idx + 1) * 3,
-          )
-          existing.needsUpdate = true
-        }
-      } else geometry.setAttribute(name, new InstancedBufferAttribute(buffer, 3))
+      if (!(existing instanceof InstancedBufferAttribute) || existing.array !== buffer) {
+        geometry.setAttribute(name, new InstancedBufferAttribute(buffer, 3))
+        continue
+      }
+      if (last_changed_idx < 0) continue
+      existing.clearUpdateRanges()
+      existing.addUpdateRange(
+        first_changed_idx * 3,
+        (last_changed_idx - first_changed_idx + 1) * 3,
+      )
+      existing.needsUpdate = true
     }
     if (colors_reallocated || last_changed_idx >= 0) invalidate()
   })

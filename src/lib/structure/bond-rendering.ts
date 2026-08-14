@@ -101,15 +101,6 @@ const scale_and_offset_matrix = (
     (matrix_buffer[matrix_offset + 2] / right_length) * offset
 }
 
-const copy_matrix = (
-  matrix_buffer: TypedArray,
-  source_idx: number,
-  target_idx: number,
-): void => {
-  const source_offset = source_idx * 16
-  matrix_buffer.copyWithin(target_idx * 16, source_offset, source_offset + 16)
-}
-
 // Pack every rendered cylinder into the persistent GPU-facing matrix buffer. Multiple bond
 // orders copy one base transform inside that buffer, avoiding per-cylinder arrays and objects.
 export function write_bond_instance_matrices(
@@ -129,8 +120,13 @@ export function write_bond_instance_matrices(
   for (const { pos_1, pos_2, bond_order } of bonds) {
     write_bond_transform(matrix_buffer, instance_idx, pos_1, pos_2, bond_thickness)
     const instance_count = instance_count_for_order(bond_order)
+    const source_offset = instance_idx * 16
     for (let copy_idx = 1; copy_idx < instance_count; copy_idx++) {
-      copy_matrix(matrix_buffer, instance_idx, instance_idx + copy_idx)
+      matrix_buffer.copyWithin(
+        (instance_idx + copy_idx) * 16,
+        source_offset,
+        source_offset + 16,
+      )
     }
 
     if (bond_order === 2) {

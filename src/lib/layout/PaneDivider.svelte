@@ -40,14 +40,15 @@
   const resize_from_pointer = (event: PointerEvent): void => {
     if (active_pointer !== event.pointerId || !divider?.parentElement) return
     const bounds = divider.parentElement.getBoundingClientRect()
-    const [position, size] =
-      orientation === `horizontal`
-        ? [
-            drag_from_right ? bounds.right - event.clientX : event.clientX - bounds.left,
-            bounds.width,
-          ]
-        : [event.clientY - bounds.top, bounds.height]
-    if (size > 0) apply_ratio(position / size)
+    const horizontal = orientation === `horizontal`
+    const size = horizontal ? bounds.width : bounds.height
+    if (size <= 0) return
+    const position = horizontal
+      ? drag_from_right
+        ? bounds.right - event.clientX
+        : event.clientX - bounds.left
+      : event.clientY - bounds.top
+    apply_ratio(position / size)
   }
 
   const start_resize = (event: PointerEvent): void => {

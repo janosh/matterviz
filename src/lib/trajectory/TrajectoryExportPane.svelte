@@ -101,7 +101,7 @@
     is_exporting || is_exporting_data || !trajectory || export_frame_count === 0,
   )
 
-  async function handle_video_export(format: `webm` | `mp4` = `webm`) {
+  async function handle_video_export(format: `webm` | `mp4`) {
     export_error = null
 
     // Validate
@@ -124,7 +124,7 @@
         total_frames: export_frame_count,
         resolution_multiplier,
         on_progress: (progress) => (export_progress = progress),
-        on_step: async (idx) => await on_step_change(start_frame + idx),
+        on_step: (idx) => on_step_change(start_frame + idx),
       })
 
       if (format === `mp4`) {
@@ -227,8 +227,7 @@
     })
 
   let is_video_supported = $derived(
-    typeof globalThis !== `undefined` &&
-      typeof MediaRecorder !== `undefined` &&
+    typeof MediaRecorder !== `undefined` &&
       MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
   )
 

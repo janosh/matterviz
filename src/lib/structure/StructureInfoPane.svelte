@@ -392,6 +392,7 @@
   })
 
   let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
+  let symmetry_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
 </script>
 
 <ViewerPane
@@ -444,12 +445,25 @@
       {/each}
 
       {#if section.title === `Symmetry` && wyckoff_positions.length > 0}
-        <WyckoffTable
-          {wyckoff_positions}
-          on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
-          on_click={(site_indices) => (selected_sites = site_indices ?? [])}
-          style="width: 100%; margin-top: 2pt; font-size: 0.8em"
-        />
+        <button
+          type="button"
+          class="symmetry-table-toggle"
+          aria-expanded={symmetry_table_expanded}
+          onclick={() => (symmetry_table_expanded = !symmetry_table_expanded)}
+          style="display: block; margin: 2pt 0 0 auto"
+        >
+          {symmetry_table_expanded ? `Hide` : `Show`}
+          {wyckoff_positions.length} Wyckoff
+          {wyckoff_positions.length === 1 ? `position` : `positions`}
+        </button>
+        {#if symmetry_table_expanded}
+          <WyckoffTable
+            {wyckoff_positions}
+            on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
+            on_click={(site_indices) => (selected_sites = site_indices ?? [])}
+            style="width: 100%; margin-top: 2pt; font-size: 0.8em"
+          />
+        {/if}
       {/if}
     </section>
   {/each}
@@ -532,9 +546,8 @@
                 onkeydown={(event) => handle_site_keydown(event, card)}
               >
                 <span class="site-title">
-                  <span class="site-color" aria-hidden="true"></span>
                   <strong>{card.title}</strong>
-                  <span>{card.element_name}</span>
+                  <span style="opacity: 0.75">{card.element_name}</span>
                 </span>
                 <div class="site-card-details">
                   {#each card.details as detail (`site-${card.idx}-${detail.key}`)}
@@ -595,7 +608,7 @@
     justify-content: space-between;
     gap: 4pt;
   }
-  .sites-toggle,
+  :is(.sites-toggle, .symmetry-table-toggle),
   .site-window-controls button {
     border: 0;
     border-radius: var(--border-radius, 3pt);
@@ -603,7 +616,7 @@
     color: inherit;
     cursor: pointer;
   }
-  .sites-toggle {
+  :is(.sites-toggle, .symmetry-table-toggle) {
     padding: 2pt 5pt;
     font-size: 0.8em;
   }
@@ -660,19 +673,6 @@
     display: flex;
     align-items: center;
     gap: 5pt;
-  }
-  .site-title {
-    min-width: 0;
-    span:last-child {
-      opacity: 0.75;
-    }
-  }
-  .site-color {
-    width: 0.75em;
-    height: 0.75em;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    background: var(--site-color, #888);
   }
   .site-card-details {
     display: flex;
