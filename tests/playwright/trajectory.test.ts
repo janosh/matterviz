@@ -258,9 +258,11 @@ test.describe(`Trajectory Component`, () => {
       const info_pane = trajectory.locator(`.trajectory-info-pane`)
       const info_row = info_pane.locator(`.info-row`).first()
       await expect(info_row.locator(`span`).first()).toHaveCSS(`text-align`, `left`)
-      const [label_width, value_width] = await info_row
+      const widths = await info_row
         .locator(`span`)
         .evaluateAll((spans) => spans.map((span) => span.getBoundingClientRect().width))
+      expect(widths).toHaveLength(2)
+      const [label_width, value_width] = widths
       expect(value_width).toBeGreaterThan(label_width)
       await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
         `aria-label`,

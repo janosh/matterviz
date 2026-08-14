@@ -485,6 +485,13 @@ describe(`Trajectory`, () => {
       expect(props.fps).toBe(expected_fps)
     }
     expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
+
+    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
+    await flush_render()
+    props.fps = Number.NaN
+    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `+`, bubbles: true }))
+    await flush_render()
+    expect(props.fps).toBe(0.1)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range

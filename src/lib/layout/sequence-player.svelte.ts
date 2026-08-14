@@ -126,7 +126,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
       return fps_limits
     },
     get fps() {
-      return inputs.fps()
+      return playback_fps
     },
     set fps(value: number) {
       inputs.set_fps(normalize_fps(value))

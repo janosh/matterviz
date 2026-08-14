@@ -63,6 +63,21 @@ test.each([
   },
 )
 
+test.each([
+  [`zero vector`, [0, 0, 0], 1],
+  [`zero scale`, [1, 2, 3], 0],
+  [`non-finite vector`, [Number.NaN, 0, 0], 1],
+  [`non-finite scale`, [1, 2, 3], Number.NaN],
+] as [string, Vec3, number][])(`collapses arrow geometry for %s`, (_name, vector, scale) => {
+  expect(arrow_axis_geometry(vector, scale, 0.8)).toEqual({
+    head_length: 0,
+    shaft_length: 0,
+    shaft_center: 0,
+    head_center: 0,
+    rotation: [0, 0, 0],
+  })
+})
+
 describe(`cylinder_between`, () => {
   test.each([
     [[0, 0, 0], [0, 4, 0], [0, 2, 0], 4],
