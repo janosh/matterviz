@@ -68,7 +68,7 @@ describe(`InstancedMesh limits`, () => {
     )
     expect(rendering_source).toContain(`matrix_buffer.copyWithin(`)
     expect(bond_source).toContain(`mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16)`)
-    expect(bond_source).toContain(`if (last_changed_idx >= 0)`)
+    expect(bond_source).toContain(`if (last_changed_idx < 0) continue`)
     expect(bond_source).toContain(`existing.addUpdateRange(`)
     expect(bond_source).toContain(`<T.CylinderGeometry args={[1, 1, 1, 8]} />`)
   })

@@ -181,7 +181,9 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       const matrix_buffer = new Float32Array(3 * 16)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
-      expect(write_bond_instance_matrices(matrix_buffer, [bond], 0.1)).toBe(expected_count)
+      expect(write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)).toBe(
+        expected_count,
+      )
       expect(Math.hypot(matrix_buffer[0], matrix_buffer[1], matrix_buffer[2])).toBeCloseTo(
         expected_radius,
         7,
@@ -207,7 +209,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       strength: 1,
       bond_order: 3,
     }
-    expect(() => write_bond_instance_matrices(new Float32Array(32), [bond], 0.1)).toThrow(
+    expect(() => write_bond_instance_matrices(new Float32Array(32), [bond], 0.1, 3)).toThrow(
       `Bond matrix buffer has 32 floats, needs 48`,
     )
   })

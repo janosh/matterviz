@@ -9,8 +9,6 @@
   import { Icon, type IconData } from 'svelte-widgets'
   import {
     Angle,
-    ArrowDown,
-    ArrowUp,
     BrillouinZone,
     Cross,
     Edit,
@@ -1846,6 +1844,7 @@
       {controls_config}
       {fullscreen}
       {fullscreen_toggle}
+      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1.2em)"
       {wrapper}
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
@@ -1864,7 +1863,6 @@
             {@attach tooltip()}
           >
             <Icon icon={current_layout.icon} />
-            <Icon class="view-mode-caret" icon={view_layout_menu_open ? ArrowUp : ArrowDown} />
           </button>
           {#if view_layout_menu_open}
             <div class="view-mode-dropdown">
@@ -1925,7 +1923,6 @@
                 icon={MEASURE_MODES.find(({ mode }) => mode === measure_mode)?.icon ?? Ruler}
               />
             {/if}
-            <Icon class="view-mode-caret" icon={measure_menu_open ? ArrowUp : ArrowDown} />
           </button>
           {#if show_selection_reset}
             <button
@@ -2431,21 +2428,11 @@
   }
   .view-mode-control > button {
     display: flex;
-    position: relative;
     align-items: center;
     justify-content: center;
     background: transparent;
     padding: 1px 2px;
     font-size: var(--ctrl-btn-icon-size);
-  }
-  .view-mode-button :global(.view-mode-caret) {
-    position: absolute;
-    right: -1em;
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .view-mode-button:is(:hover, :focus-visible) :global(.view-mode-caret) {
-    visibility: visible;
   }
   .selection-limit-text {
     font-weight: bold;

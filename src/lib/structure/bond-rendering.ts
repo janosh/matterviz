@@ -107,8 +107,8 @@ export function write_bond_instance_matrices(
   matrix_buffer: TypedArray,
   bonds: readonly BondPair[],
   bond_thickness: number,
+  required_count: number,
 ): number {
-  const required_count = count_bond_instances(bonds)
   if (matrix_buffer.length < required_count * 16) {
     throw new RangeError(
       `Bond matrix buffer has ${matrix_buffer.length} floats, needs ${required_count * 16}`,

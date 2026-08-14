@@ -1,6 +1,10 @@
 <script lang="ts">
-  import { Info } from 'svelte-widgets/icons'
-  import { ViewerPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import {
+    ViewerPane,
+    info_pane_icon,
+    type PaneProps,
+    type PaneToggleProps,
+  } from '$lib/overlays'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -105,7 +109,7 @@
   max_width="24em"
   {toggle_props}
   {pane_props}
-  closed_icon={Info}
+  closed_icon={info_pane_icon}
   {...rest}
 >
   <ConvexHullStats

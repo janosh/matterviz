@@ -2,13 +2,14 @@
   import {
     ViewerPane,
     create_clipboard_feedback,
+    info_pane_icon,
     type PaneProps,
     type PaneToggleProps,
   } from '$lib/overlays'
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
-  import { Check, Info } from 'svelte-widgets/icons'
+  import { Check } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
@@ -392,7 +393,7 @@
   })
 
   let wyckoff_positions = $derived(pane_open ? wyckoff_positions_from_moyo(sym_data) : [])
-  let symmetry_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
+  let wyckoff_table_expanded = $derived(wyckoff_positions.length < atom_count_thresholds[0])
 </script>
 
 <ViewerPane
@@ -407,7 +408,7 @@
       .filter(Boolean)
       .join(`; `),
   }}
-  closed_icon={Info}
+  closed_icon={info_pane_icon}
   {...rest}
 >
   <h4 style="margin-top: 0">Structure Info</h4>
@@ -447,16 +448,14 @@
       {#if section.title === `Symmetry` && wyckoff_positions.length > 0}
         <button
           type="button"
-          class="symmetry-table-toggle"
-          aria-expanded={symmetry_table_expanded}
-          onclick={() => (symmetry_table_expanded = !symmetry_table_expanded)}
+          class="section-toggle"
+          aria-expanded={wyckoff_table_expanded}
+          onclick={() => (wyckoff_table_expanded = !wyckoff_table_expanded)}
           style="display: block; margin: 2pt 0 0 auto"
         >
-          {symmetry_table_expanded ? `Hide` : `Show`}
-          {wyckoff_positions.length} Wyckoff
-          {wyckoff_positions.length === 1 ? `position` : `positions`}
+          {wyckoff_table_expanded ? `Hide` : `Show`} Wyckoff table ({wyckoff_positions.length})
         </button>
-        {#if symmetry_table_expanded}
+        {#if wyckoff_table_expanded}
           <WyckoffTable
             {wyckoff_positions}
             on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
@@ -476,7 +475,7 @@
         {#if sites_need_toggle}
           <button
             type="button"
-            class="sites-toggle"
+            class="section-toggle"
             onclick={() => (sites_expanded = !sites_expanded)}
             title="{sites_expanded ? `Hide` : `Show`} all site information"
           >
@@ -608,7 +607,7 @@
     justify-content: space-between;
     gap: 4pt;
   }
-  :is(.sites-toggle, .symmetry-table-toggle),
+  .section-toggle,
   .site-window-controls button {
     border: 0;
     border-radius: var(--border-radius, 3pt);
@@ -616,7 +615,7 @@
     color: inherit;
     cursor: pointer;
   }
-  :is(.sites-toggle, .symmetry-table-toggle) {
+  .section-toggle {
     padding: 2pt 5pt;
     font-size: 0.8em;
   }

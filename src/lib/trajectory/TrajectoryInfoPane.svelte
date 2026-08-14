@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { Info } from 'svelte-widgets/icons'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
+  import { ViewerPane, info_pane_icon, type ViewerPaneOptions } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
@@ -291,7 +290,7 @@
     'aria-label': pane_open ? `Close trajectory info` : `Open trajectory info`,
     ...toggle_props,
   }}
-  closed_icon={Info}
+  closed_icon={info_pane_icon}
   {...pane_options}
 >
   <InfoPaneCards

@@ -62,7 +62,6 @@
   const stop_resize = (event: PointerEvent): void => {
     if (active_pointer !== event.pointerId) return
     active_pointer = undefined
-    drag_from_right = false
   }
 
   const resize_from_keyboard = (event: KeyboardEvent): void => {

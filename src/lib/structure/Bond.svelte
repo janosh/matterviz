@@ -75,7 +75,7 @@
       invalidate()
       return
     }
-    mesh.count = write_bond_instance_matrices(matrix_buffer, bonds, thickness)
+    mesh.count = write_bond_instance_matrices(matrix_buffer, bonds, thickness, instance_count)
     mesh.instanceMatrix.clearUpdateRanges()
     mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16)
     mesh.instanceMatrix.needsUpdate = true
