@@ -20,10 +20,7 @@ const mount_divider = (
   parent.getBoundingClientRect = () =>
     DOMRect.fromRect({ x: 100, y: 50, width: 400, height: 200 })
   const component = mount(PaneDivider, { target: parent, props: { orientation, ratio } })
-  onTestFinished(async () => {
-    await unmount(component)
-    parent.remove()
-  })
+  onTestFinished(() => unmount(component).finally(() => parent.remove()))
   flushSync()
   const divider = parent.querySelector<HTMLElement>(`[role="separator"]`)
   if (!divider) throw new Error(`Pane divider not found`)

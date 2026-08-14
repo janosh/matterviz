@@ -62,7 +62,7 @@ const mount_traj = (props: Record<string, unknown>) => {
   const target = document.createElement(`div`)
   document.body.append(target)
   const component = mount(Trajectory, { target, props })
-  onTestFinished(() => unmount(component))
+  onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
 const selected_x_quantity = (target: ParentNode) =>
