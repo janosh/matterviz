@@ -212,7 +212,11 @@ export const parse_composition = (
         // Fall through to formula parsing
       }
     }
-    return normalize_composition(parse_formula(input))
+    const composition = normalize_composition(parse_formula(input))
+    if (input.trim() && Object.keys(composition).length === 0) {
+      throw new Error(`No valid elements in composition: ${input}`)
+    }
+    return composition
   }
   return normalize_composition(input)
 }

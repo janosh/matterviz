@@ -1,7 +1,7 @@
 import type { CompositionType } from '$lib/composition'
 import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol, element_data } from '$lib/element'
+import { element_data } from '$lib/element'
 import type { FileLoadData } from '$lib/io/types'
 import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
 import type { Vec3 } from '$lib/math'
@@ -140,32 +140,6 @@ export function get_element_counts(structure: AnyStructure) {
     }
   }
   return elements
-}
-
-export function format_chemical_formula(
-  structure: AnyStructure,
-  sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
-): string {
-  // concatenate elements in a structure followed by their amount
-  const elements = get_element_counts(structure)
-  const formula = sort_fn(Object.keys(elements) as ElementSymbol[]).map((element) => {
-    const amount = elements[element] ?? 0
-    return amount === 1 ? element : `${element}<sub>${amount}</sub>`
-  })
-  return formula.join(` `)
-}
-
-export function format_formula_by_electronegativity(structure: AnyStructure): string {
-  // concatenate elements in a structure followed by their amount sorted by electronegativity
-  return format_chemical_formula(structure, (symbols) =>
-    symbols.sort((el1, el2) => {
-      const elec_neg1 = element_by_symbol.get(el1)?.electronegativity ?? 0
-      const elec_neg2 = element_by_symbol.get(el2)?.electronegativity ?? 0
-      // Sort by electronegativity (ascending), then alphabetically for ties
-      if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
-      return el1.localeCompare(el2)
-    }),
-  )
 }
 
 // Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)

@@ -11,7 +11,6 @@
     Graph,
     ScatterPlot,
   } from 'svelte-widgets/icons'
-  import { untrack } from 'svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import type { SVGAttributes } from 'svelte/elements'
   import { get_electro_neg_formula } from './format'
@@ -21,35 +20,23 @@
   type CompositionChartMode = `pie` | `bubble` | `bar`
   let {
     composition,
-    mode = `pie`,
-    on_composition_change,
-    color_scheme = `Vesta`,
+    mode = $bindable(`pie`),
+    on_parse,
+    color_scheme = $bindable(`Vesta`),
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: string | CompositionType
     mode?: CompositionChartMode
-    on_composition_change?: (composition: CompositionType) => void
+    on_parse?: (composition: CompositionType) => void
     color_scheme?: ColorSchemeName
     size?: number
-    interactive?: boolean
   } = $props()
 
-  // Using $state with untrack() - initialized from props but mutated by context menu
-  let current_color_scheme = $state(untrack(() => color_scheme as ColorSchemeName))
-  let current_mode = $state(untrack(() => mode))
   let svg_node = $state<SVGSVGElement | null>(null)
 
-  let Component = $derived({ pie: PieChart, bubble: BubbleChart, bar: BarChart }[current_mode])
-  let parsed: CompositionType = $derived.by(() => {
-    try {
-      return parse_composition(composition)
-    } catch (error) {
-      console.error(`Failed to parse composition:`, error)
-      return {}
-    }
-  })
-  // Call the composition change callback in an effect, not in the derived
-  $effect(() => on_composition_change?.(parsed))
+  let Component = $derived({ pie: PieChart, bubble: BubbleChart, bar: BarChart }[mode])
+  let parsed = $derived(parse_composition(composition))
+  $effect(() => on_parse?.(parsed))
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
 
@@ -66,7 +53,7 @@
     id,
     icon,
     label,
-    action: () => (current_mode = id),
+    action: () => (mode = id),
   }))
 
   const color_scheme_actions = (
@@ -75,7 +62,7 @@
     id,
     icon: ColorPalette,
     label: id,
-    action: () => (current_color_scheme = id),
+    action: () => (color_scheme = id),
   }))
 
   const export_actions = (
@@ -88,8 +75,8 @@
   ).map(([id, icon, label]) => ({ id, icon, label, action: () => handle_export(id) }))
 
   const context_menu_actions = $derived([
-    { title: `Display Mode`, selected: current_mode, actions: mode_actions },
-    { title: `Color Scheme`, selected: current_color_scheme, actions: color_scheme_actions },
+    { title: `Display Mode`, selected: mode, actions: mode_actions },
+    { title: `Color Scheme`, selected: color_scheme, actions: color_scheme_actions },
     { title: `Export`, actions: export_actions },
   ])
 
@@ -121,7 +108,7 @@ path below, which has no pointer position to read -->
 <ActionMenu bind:at={context_menu_at} actions={context_menu_actions}>
   <Component
     composition={parsed}
-    color_scheme={current_color_scheme}
+    {color_scheme}
     bind:svg_node
     role="button"
     tabindex={0}
