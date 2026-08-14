@@ -108,6 +108,24 @@ describe(`BoxPlot`, () => {
     },
   )
 
+  test.each([
+    [`vertical`, `y`, { y_axis: { range: [-200, 1600] as Vec2 } }],
+    [`horizontal`, `x`, { x_axis: { range: [-200, 1600] as Vec2 } }],
+  ] as const)(
+    `keeps default %s value-axis ticks sparse`,
+    async (orientation, axis, axis_prop) => {
+      const plot = await with_measured_text(() =>
+        mount_sized_box_plot({ series: [basic], orientation, ...axis_prop }, { height: 245 }),
+      )
+      const labels = [...plot.querySelectorAll(`g.${axis}-axis g.tick text`)]
+      expect(labels).toHaveLength(4)
+      if (axis === `y`) {
+        const label_x = labels[0]?.getAttribute(`x`)
+        expect(labels.every((label) => label.getAttribute(`x`) === label_x)).toBe(true)
+      }
+    },
+  )
+
   // 2 whiskers + 2 caps + 1 median render as <line>s inside .box-series (tukey, cap_fraction
   // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
   const theme_stroke = `var(--text-color, black)`

@@ -1,9 +1,10 @@
 import { StructureInfoPane } from '$lib'
+import { info_pane_icon } from '$lib/overlays'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, get_dummy_structure } from '../setup'
+import { bind_props, get_dummy_structure, make_wyckoff_dataset } from '../setup'
 
 describe(`StructureInfoPane`, () => {
   beforeEach(() => {
@@ -13,8 +14,13 @@ describe(`StructureInfoPane`, () => {
   const mount_info_pane = (props: ComponentProps<typeof StructureInfoPane>) =>
     mount(StructureInfoPane, { target: document.body, props })
 
-  const make_sym_data = (): MoyoDataset =>
-    ({
+  const make_sym_data = (position_count = 1): MoyoDataset => {
+    const positions = Array.from({ length: position_count }, (): [number, number, number] => [
+      0, 0, 0,
+    ])
+    const numbers = Array<number>(position_count).fill(1)
+    return {
+      ...make_wyckoff_dataset(positions, numbers, Array<null>(position_count).fill(null)),
       number: 227,
       hm_symbol: `F d -3 m`,
       hall_number: 523,
@@ -27,36 +33,44 @@ describe(`StructureInfoPane`, () => {
       ],
       std_cell: {
         lattice: { basis: [5, 0, 0, 0, 5, 0, 0, 0, 5] },
-        positions: [[0, 0, 0]],
-        numbers: [1],
+        positions,
+        numbers,
       },
-      wyckoffs: [`a`],
-    }) as unknown as MoyoDataset
+    }
+  }
 
   test.each([
-    [`small`, 2, true],
-    [`collapsed_with_toggle`, 50, false],
-    [`upper_bound_collapsed`, 500, false],
+    [`small`, 1, true],
+    [`collapsed_with_toggle`, 2, false],
+    [`upper_bound_collapsed`, 3, false],
   ] as const)(
-    `sites visibility behavior: %s`,
-    (_scenario_name, atom_count, shows_site_details) => {
+    `site list and symmetry table threshold behavior: %s`,
+    async (_scenario_name, atom_count, expanded_by_default) => {
       const structure = get_dummy_structure(`H`, atom_count, true)
       mount_info_pane({
         structure,
         pane_open: true,
-        atom_count_thresholds: [50, 500],
+        sym_data: make_sym_data(atom_count),
+        atom_count_thresholds: [2, 3],
       })
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
-      if (atom_count >= 50) expect(content).toContain(`Show ${atom_count} sites`)
-      if (shows_site_details) {
-        expect(content).toContain(`Frac.`)
-        expect(content).toContain(`Cart.`)
-      } else {
-        expect(content).not.toContain(`Frac.`)
-        expect(content).not.toContain(`Cart.`)
-      }
+      if (!expanded_by_default) expect(content).toContain(`Show ${atom_count} sites`)
+      const default_row_count = expanded_by_default ? atom_count : 0
+      expect(document.querySelectorAll(`.site-card`)).toHaveLength(default_row_count)
+
+      const [symmetry_toggle] = document.querySelectorAll<HTMLButtonElement>(
+        `section > .section-toggle`,
+      )
+      expect(symmetry_toggle).toBeInstanceOf(HTMLButtonElement)
+      expect(symmetry_toggle.getAttribute(`aria-expanded`)).toBe(String(expanded_by_default))
+      const wyckoff_rows = () => document.querySelectorAll(`.wyckoff-row`)
+      expect(wyckoff_rows()).toHaveLength(default_row_count)
+
+      symmetry_toggle.click()
+      await tick()
+      expect(wyckoff_rows()).toHaveLength(atom_count - default_row_count)
     },
   )
 
@@ -74,6 +88,9 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure: get_dummy_structure(`H`, 1, true), pane_open: false })
     expect(document.body.textContent).toContain(
       `Press Ctrl/Cmd+f for fullscreen, Ctrl/Cmd+i to toggle this pane, r to reset the view`,
+    )
+    expect(document.querySelector(`.structure-info-toggle path`)?.getAttribute(`d`)).toBe(
+      info_pane_icon.d,
     )
   })
 
@@ -109,6 +126,9 @@ describe(`StructureInfoPane`, () => {
       const site_cards = () =>
         Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
       expect(site_cards()).toHaveLength(3)
+      expect(site_cards()[0].textContent).toContain(`Frac.`)
+      expect(site_cards()[0].textContent).toContain(`Cart.`)
+      expect(document.querySelector(`.site-color`)).toBeNull()
 
       const site_row = site_cards()[1]
       expect(site_row).toBeInstanceOf(HTMLDivElement)
@@ -152,7 +172,9 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane({ structure, pane_open: true, atom_count_thresholds: [50, 500] })
 
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
-    const toggle = document.querySelector(`button.sites-toggle`) as HTMLButtonElement
+    const [toggle] = document.querySelectorAll<HTMLButtonElement>(
+      `.sites-header .section-toggle`,
+    )
     toggle.click()
     await tick()
 

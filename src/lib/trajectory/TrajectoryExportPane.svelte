@@ -10,7 +10,7 @@
   import { download } from '$lib/io/fetch'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import type { TrajectoryType } from '$lib/trajectory'
   import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
   import {
@@ -74,9 +74,10 @@
   let total_frames_available = $derived(
     trajectory?.total_frames || trajectory?.frames?.length || 0,
   )
+  let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
 
   let start_frame = $state(0)
-  let end_frame = $state(0)
+  let end_frame = $derived(last_frame_idx)
 
   let canvas = $derived(wrapper?.querySelector(`canvas`) as HTMLCanvasElement)
 
@@ -88,23 +89,10 @@
     return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
-  // Initialize end_frame when trajectory changes
-  $effect(() => {
-    if (total_frames_available > 0) {
-      end_frame = total_frames_available - 1
-    }
-  })
-
   // Validate and constrain frame range
   $effect(() => {
-    if (start_frame < 0) start_frame = 0
-    if (start_frame >= total_frames_available) {
-      start_frame = Math.max(0, total_frames_available - 1)
-    }
-    if (end_frame < start_frame) end_frame = start_frame
-    if (end_frame >= total_frames_available) {
-      end_frame = Math.max(0, total_frames_available - 1)
-    }
+    start_frame = Math.min(Math.max(0, start_frame), last_frame_idx)
+    end_frame = Math.min(Math.max(start_frame, end_frame), last_frame_idx)
   })
 
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
@@ -113,7 +101,7 @@
     is_exporting || is_exporting_data || !trajectory || export_frame_count === 0,
   )
 
-  async function handle_video_export(format: `webm` | `mp4` = `webm`) {
+  async function handle_video_export(format: `webm` | `mp4`) {
     export_error = null
 
     // Validate
@@ -136,7 +124,7 @@
         total_frames: export_frame_count,
         resolution_multiplier,
         on_progress: (progress) => (export_progress = progress),
-        on_step: async (idx) => await on_step_change(start_frame + idx),
+        on_step: (idx) => on_step_change(start_frame + idx),
       })
 
       if (format === `mp4`) {
@@ -239,8 +227,7 @@
     })
 
   let is_video_supported = $derived(
-    typeof globalThis !== `undefined` &&
-      typeof MediaRecorder !== `undefined` &&
+    typeof MediaRecorder !== `undefined` &&
       MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
   )
 
@@ -265,40 +252,15 @@
     current_values={{ start_frame, end_frame }}
     on_reset={() => {
       start_frame = 0
-      end_frame = total_frames_available - 1
+      end_frame = last_frame_idx
     }}
   >
-    <label>
-      Start Frame
-      <input
-        type="number"
-        min={0}
-        max={Math.max(0, total_frames_available - 1)}
-        bind:value={start_frame}
-      />
-      <input
-        type="range"
-        min={0}
-        max={Math.max(0, total_frames_available - 1)}
-        bind:value={start_frame}
-      />
-    </label>
-
-    <label>
-      End Frame
-      <input
-        type="number"
-        min={start_frame}
-        max={Math.max(0, total_frames_available - 1)}
-        bind:value={end_frame}
-      />
-      <input
-        type="range"
-        min={start_frame}
-        max={Math.max(0, total_frames_available - 1)}
-        bind:value={end_frame}
-      />
-    </label>
+    <NumberRangeInput min={0} max={last_frame_idx} step={1} bind:value={start_frame}
+      >Start Frame</NumberRangeInput
+    >
+    <NumberRangeInput min={start_frame} max={last_frame_idx} step={1} bind:value={end_frame}
+      >End Frame</NumberRangeInput
+    >
   </SettingsSection>
 
   {#if export_error}
@@ -368,11 +330,9 @@
         resolution_multiplier = 1
       }}
     >
-      <label>
-        Frame Rate (FPS)
-        <input type="number" min={10} max={60} bind:value={video_fps} />
-        <input type="range" min={10} max={60} bind:value={video_fps} />
-      </label>
+      <NumberRangeInput min={10} max={60} step={1} bind:value={video_fps}
+        >Frame Rate (FPS)</NumberRangeInput
+      >
 
       <span class="field-label">
         Resolution

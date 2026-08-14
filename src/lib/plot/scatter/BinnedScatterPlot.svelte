@@ -128,6 +128,7 @@
   }
   type OverlayContext = { height: number; width: number; fullscreen: boolean }
   const default_density_auto_point_mode = { max_points: 25_000, max_points_per_px: 0.12 }
+  const default_tick_counts = { x: 7, y: 5 }
   const max_placement_bins = 500
 
   let {
@@ -322,12 +323,12 @@
   let y_scale_fn = $derived(create_scale(y_scale_type, ranges.y, [height - pad.b, pad.t]))
   let x_ticks = $derived(
     generate_ticks(ranges.x, x_scale_type, x_axis.ticks, x_scale_fn, {
-      default_count: 7,
+      default_count: default_tick_counts.x,
     }),
   )
   let y_ticks = $derived(
     generate_ticks(ranges.y, y_scale_type, y_axis.ticks, y_scale_fn, {
-      default_count: 6,
+      default_count: default_tick_counts.y,
     }),
   )
   let tick_font = $state<Readonly<FontSpec> | undefined>()
@@ -378,8 +379,8 @@
             default_padding: DEFAULT_PLOT_PADDING,
             width,
             height,
-            x_axis: measure_axis(x_axis, padding_ranges.x, x_extent, 7),
-            y_axis: measure_axis(y_axis, padding_ranges.y, y_extent, 6),
+            x_axis: measure_axis(x_axis, padding_ranges.x, x_extent, default_tick_counts.x),
+            y_axis: measure_axis(y_axis, padding_ranges.y, y_extent, default_tick_counts.y),
           })
         : filter_padding(padding_config, DEFAULT_PLOT_PADDING)
     const new_pad = pad_for_plot_title(axis_pad, title_config, width, height)

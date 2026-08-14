@@ -95,15 +95,27 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`layout and configuration options`, () => {
-    test(`step labels work correctly`, async ({ page }) => {
+    test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
       await expect(step_labels).toHaveText([`0`, `1`, `2`])
 
-      const first_tick = loaded_trajectory.locator(`.step-tick`).first()
-      await expect(first_tick).toHaveCSS(`top`, `5px`)
-      await expect(first_tick).toHaveCSS(`height`, `3px`)
-      await expect(step_labels.first()).toHaveCSS(`top`, `9px`)
+      const { controls_bottom, label_bottoms, tick_label_gaps } = await loaded_trajectory
+        .locator(`.trajectory-controls`)
+        .evaluate((control_bar) => {
+          const labels = Array.from(control_bar.querySelectorAll(`.step-label`))
+          return {
+            controls_bottom: control_bar.getBoundingClientRect().bottom,
+            label_bottoms: labels.map((label) => label.getBoundingClientRect().bottom),
+            tick_label_gaps: labels.map((label) => {
+              const tick = label.previousElementSibling
+              if (!(tick instanceof HTMLElement)) throw new Error(`step tick not found`)
+              return label.getBoundingClientRect().top - tick.getBoundingClientRect().bottom
+            }),
+          }
+        })
+      expect(Math.max(...label_bottoms)).toBeLessThanOrEqual(controls_bottom)
+      expect(Math.min(...tick_label_gaps)).toBeGreaterThanOrEqual(1)
 
       await expect(page.locator(`#negative-step-labels .step-label`)).toHaveText([
         `0`,
@@ -250,10 +262,18 @@ test.describe(`Trajectory Component`, () => {
       await expect(
         trajectory_controls.locator(`button[title^="Previous step"]`),
       ).toHaveAttribute(`title`, /^Previous step/)
-      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
-        `aria-label`,
-        /trajectory info/,
-      )
+      const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
+      await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
+      await info_toggle.click()
+      const info_pane = trajectory.locator(`.trajectory-info-pane`)
+      const info_row = info_pane.locator(`.info-row`).first()
+      await expect(info_row.locator(`span`).first()).toHaveCSS(`text-align`, `left`)
+      const widths = await info_row
+        .locator(`span`)
+        .evaluateAll((spans) => spans.map((span) => span.getBoundingClientRect().width))
+      expect(widths).toHaveLength(2)
+      const [label_width, value_width] = widths
+      expect(value_width).toBeGreaterThan(label_width)
       await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
         `aria-label`,
         /fullscreen/,
@@ -363,8 +383,6 @@ test.describe(`Trajectory Component`, () => {
       // The class comes from a ResizeObserver, which a page full of software-WebGPU
       // canvases can leave waiting well past the default 5s expect timeout.
       const resize_timeout = { timeout: 20_000 }
-      const pane_divider = () =>
-        trajectory.locator(`.structure`).evaluate((el) => getComputedStyle(el).boxShadow)
 
       await set_size(480)
       await expect(trajectory).toHaveClass(/vertical/, resize_timeout)
@@ -381,13 +399,11 @@ test.describe(`Trajectory Component`, () => {
       if (!panes.structure || !panes.plot) throw new Error(`panes not found`)
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
-      expect(await pane_divider()).toMatch(/ 0px 1px 0px 0px$/) // hairline below
 
       // Widening the sidebar puts them back side by side without a remount
       await set_size(900)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)
-      expect(await pane_divider()).toMatch(/ 1px 0px 0px 0px$/) // hairline to the right
 
       // This viewer's controls bar takes ~32px the panes never get. At 380px tall
       // that leaves 174px rows, under the readable minimum, so it stays side by
@@ -396,7 +412,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
     })
 
-    test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({
+    test(`plot and structure start equal and resize live in both layouts`, async ({
       page,
     }) => {
       const check_viewer = async (
@@ -408,22 +424,59 @@ test.describe(`Trajectory Component`, () => {
         await expect(viewer).toHaveClass(new RegExp(orientation))
         await expect(viewer.locator(`.structure`)).toBeVisible({ timeout: LOAD_TIMEOUT })
         await expect(viewer.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
-        const dimensions = await viewer.locator(`.content-area`).evaluate((element) => {
-          const structure = element.querySelector(`.structure`)
-          const plot = element.querySelector(`.scatter`)
-          if (!(structure instanceof HTMLElement) || !(plot instanceof HTMLElement)) {
-            throw new Error(`trajectory panes not found`)
-          }
-          return {
-            structure: structure.getBoundingClientRect(),
-            plot: plot.getBoundingClientRect(),
-          }
-        })
+        const pane_dimensions = () =>
+          viewer.locator(`.content-area`).evaluate((element) => {
+            const structure = element.querySelector(`.structure`)
+            const plot = element.querySelector(`.scatter`)
+            if (!(structure instanceof HTMLElement) || !(plot instanceof HTMLElement)) {
+              throw new Error(`trajectory panes not found`)
+            }
+            return {
+              structure: structure.getBoundingClientRect(),
+              plot: plot.getBoundingClientRect(),
+            }
+          })
+        const dimensions = await pane_dimensions()
         for (const dimension of [`width`, `height`] as const) {
           expect(dimensions.structure[dimension] / dimensions.plot[dimension]).toBeCloseTo(
             1,
             1,
           )
+        }
+
+        const divider = viewer.getByRole(`separator`, {
+          name: `Resize structure and plot panes`,
+        })
+        const drag_divider = async (delta_x: number, delta_y: number) => {
+          await divider.scrollIntoViewIfNeeded()
+          const bounds = await divider.boundingBox()
+          if (!bounds) throw new Error(`pane divider bounds not found`)
+          const start = {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          }
+          await page.mouse.move(start.x, start.y)
+          await page.mouse.down()
+          await page.mouse.move(start.x + delta_x, start.y + delta_y)
+          const resized = await pane_dimensions()
+          await page.mouse.up()
+          return { bounds, resized }
+        }
+        const { resized } = await drag_divider(
+          orientation === `horizontal` ? 40 : 0,
+          orientation === `vertical` ? 40 : 0,
+        )
+        const dimension = orientation === `horizontal` ? `width` : `height`
+        expect(resized.structure[dimension]).toBeGreaterThan(dimensions.structure[dimension])
+        expect(resized.plot[dimension]).toBeLessThan(dimensions.plot[dimension])
+
+        if (orientation === `horizontal`) {
+          await viewer.evaluate((element) => element.setAttribute(`dir`, `rtl`))
+          const rtl_dimensions = await pane_dimensions()
+          const { bounds, resized: rtl_resized } = await drag_divider(-40, 0)
+          expect(bounds.x + bounds.width / 2).toBeCloseTo(rtl_dimensions.structure.x, 0)
+          expect(rtl_resized.structure.width).toBeGreaterThan(rtl_dimensions.structure.width)
+          expect(rtl_resized.plot.width).toBeLessThan(rtl_dimensions.plot.width)
         }
       }
 

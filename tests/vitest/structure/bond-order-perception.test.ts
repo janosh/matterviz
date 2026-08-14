@@ -30,7 +30,6 @@ function make_input(
       coords[idx_1][2] - coords[idx_2][2],
     ),
     strength: 1,
-    transform_matrix: new Float32Array(16),
   }))
   return { sites, bonds }
 }
@@ -460,7 +459,6 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     site_idx_2: idx_2,
     bond_length: 1,
     strength: 1,
-    transform_matrix: new Float32Array(16),
     bond_order: order,
     perceived: true,
     ...(kekule === undefined ? {} : { kekule_order: kekule }),

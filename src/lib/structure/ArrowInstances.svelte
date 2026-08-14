@@ -110,14 +110,18 @@
     for (let idx = 0; idx < limit; idx++) {
       const { position, vector, scale, color } = arrows[idx]
       const mag = Math.hypot(vector[0], vector[1], vector[2])
-      if (mag > EPS) {
-        scratch_dir.set(vector[0] / mag, vector[1] / mag, vector[2] / mag)
-        scratch_quat.setFromUnitVectors(up_axis, scratch_dir)
-      } else {
-        scratch_dir.set(0, 1, 0)
-        scratch_quat.identity()
-      }
       const vec_len = mag * scale
+      set_linear_css_color(color, scratch_color)
+      shafts.setColorAt(idx, scratch_color)
+      heads.setColorAt(idx, scratch_color)
+      if (!Number.isFinite(vec_len) || vec_len <= EPS) {
+        scratch_matrix.makeScale(0, 0, 0).setPosition(...position)
+        shafts.setMatrixAt(idx, scratch_matrix)
+        heads.setMatrixAt(idx, scratch_matrix)
+        continue
+      }
+      scratch_dir.set(vector[0] / mag, vector[1] / mag, vector[2] / mag)
+      scratch_quat.setFromUnitVectors(up_axis, scratch_dir)
       const head_len = arrow_head_length < 0 ? vec_len * -arrow_head_length : arrow_head_length
       const shaft_len = Math.max(0, vec_len - head_len * 0.5)
       const shaft_r = shaft_radius < 0 ? shaft_len * -shaft_radius : shaft_radius
@@ -143,12 +147,8 @@
         position[1] + scratch_dir.y * head_offset,
         position[2] + scratch_dir.z * head_offset,
       )
-      scratch_scale.set(head_r, head_len, head_r)
+      scratch_scale.set(head_len > 0 ? head_r : 0, head_len, head_len > 0 ? head_r : 0)
       heads.setMatrixAt(idx, scratch_matrix.compose(scratch_pos, scratch_quat, scratch_scale))
-
-      set_linear_css_color(color, scratch_color)
-      shafts.setColorAt(idx, scratch_color)
-      heads.setColorAt(idx, scratch_color)
     }
     for (const mesh of [shafts, heads]) {
       mesh.instanceMatrix.needsUpdate = true

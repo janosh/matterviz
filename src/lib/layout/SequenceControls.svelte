@@ -187,6 +187,9 @@
     position: relative;
     flex: 1;
     min-width: var(--sequence-slider-min-width, 100px);
+    &:has(.step-labels) {
+      inset-block-start: -4px;
+    }
   }
   .step-slider {
     position: relative;
@@ -200,7 +203,7 @@
   }
   .step-tick {
     position: absolute;
-    top: var(--sequence-step-tick-offset, 5px);
+    top: var(--sequence-step-tick-offset, 3px);
     width: var(--sequence-step-tick-width, 1px);
     height: var(--sequence-step-tick-height, 3px);
     transform: translateX(-50%);
@@ -209,11 +212,12 @@
   .step-label {
     position: absolute;
     top: calc(
-      var(--sequence-step-tick-offset, 5px) + var(--sequence-step-tick-height, 3px) + 1px
+      var(--sequence-step-tick-offset, 3px) + var(--sequence-step-tick-height, 3px) + 2px
     );
     transform: translateX(-50%);
     color: var(--text-color-muted);
     font-size: clamp(0.5em, 1.2cqw, 0.65em);
+    line-height: 1;
     text-align: center;
     white-space: nowrap;
   }

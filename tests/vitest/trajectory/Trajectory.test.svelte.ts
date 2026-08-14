@@ -62,7 +62,7 @@ const mount_traj = (props: Record<string, unknown>) => {
   const target = document.createElement(`div`)
   document.body.append(target)
   const component = mount(Trajectory, { target, props })
-  onTestFinished(() => unmount(component))
+  onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
 const selected_x_quantity = (target: ParentNode) =>
@@ -485,6 +485,13 @@ describe(`Trajectory`, () => {
       expect(props.fps).toBe(expected_fps)
     }
     expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
+
+    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
+    await flush_render()
+    props.fps = Number.NaN
+    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `+`, bubbles: true }))
+    await flush_render()
+    expect(props.fps).toBe(0.1)
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -651,6 +658,14 @@ describe(`Trajectory`, () => {
     const target = mount_traj(props)
     await flush_render()
 
+    expect(
+      target.querySelector(`[aria-label="Resize structure and plot panes"]`),
+    ).not.toBeNull()
+    expect(
+      target
+        .querySelector<HTMLElement>(`.content-area`)
+        ?.style.getPropertyValue(`--split-pane-size`),
+    ).toBe(`50%`)
     const view_mode_button = doc_query(`.view-mode-button`)
     view_mode_button.click()
     await tick()
@@ -667,6 +682,7 @@ describe(`Trajectory`, () => {
 
     expect(props.display_mode).toBe(`scatter`)
     expect(view_mode_button.title).toBe(`Scatter-only`)
+    expect(target.querySelector(`[aria-label="Resize structure and plot panes"]`)).toBeNull()
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
   })
 

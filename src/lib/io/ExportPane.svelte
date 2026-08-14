@@ -1,6 +1,5 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { Export } from 'svelte-widgets/icons'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { ViewerPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ExportItem, ExportSection } from './types'
@@ -8,6 +7,12 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+
+  // mdi:export-variant is not included in svelte-widgets' generated icon set.
+  const export_variant = {
+    viewBox: `0 0 24 24`,
+    d: `M12,1L8,5H11V14H13V5H16M18,23H6C4.89,23 4,22.1 4,21V9A2,2 0 0,1 6,7H9V9H6V21H18V9H15V7H18A2,2 0 0,1 20,9V21A2,2 0 0,1 18,23Z`,
+  }
 
   let {
     export_pane_open = $bindable(false),
@@ -63,7 +68,7 @@
     class: [rest.class, pane_props?.class],
   }}
   {toggle_props}
-  closed_icon={Export}
+  closed_icon={export_variant}
   {icon_style}
 >
   {#each sections as section, sec_idx (section.title ?? sec_idx)}

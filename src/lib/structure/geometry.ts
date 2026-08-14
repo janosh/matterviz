@@ -24,16 +24,23 @@ export function arrow_axis_geometry(
   vector_scale: number,
   arrow_head_length: number,
 ) {
-  const vector_length = Math.hypot(...vector) * vector_scale
+  const scaled_length = Math.hypot(...vector) * vector_scale
+  const vector_length =
+    Number.isFinite(scaled_length) && scaled_length > EPS ? scaled_length : 0
   const head_length =
-    arrow_head_length < 0 ? vector_length * -arrow_head_length : arrow_head_length
+    vector_length === 0
+      ? 0
+      : arrow_head_length < 0
+        ? vector_length * -arrow_head_length
+        : arrow_head_length
   const shaft_length = Math.max(0, vector_length - head_length * 0.5)
+  const rotation: Vec3 = vector_length === 0 ? [0, 0, 0] : rotation_from_direction(vector)
   return {
     head_length,
     shaft_length,
     shaft_center: shaft_length * 0.5,
     head_center: shaft_length + head_length * 0.5,
-    rotation: rotation_from_direction(vector),
+    rotation,
   }
 }
 

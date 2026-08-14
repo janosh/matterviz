@@ -83,6 +83,7 @@
   } from 'three/webgpu'
   import type { Mesh, Object3D } from 'three/webgpu'
   import Bond from './Bond.svelte'
+  import { write_bond_transform } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
@@ -91,7 +92,6 @@
     compute_bonds,
     delete_bond as apply_delete_bond,
     get_bond_key,
-    get_bond_render_matrices,
     get_explicit_bond_metadata,
     get_majority_element,
     set_bond_order as apply_set_bond_order,
@@ -636,9 +636,11 @@
   // Outer translucent shell around hover/selection. Atom meshes use the same
   // SphereGeometry(0.5) × radius scale, so this is a pure radial margin (1.2 was a bulky 20%).
   const HIGHLIGHT_SHELL_SCALE = 1.08
+  const editable_bond_matrix = new Float32Array(16)
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
-    mesh.matrix.fromArray(bond.transform_matrix)
+    write_bond_transform(editable_bond_matrix, 0, bond.pos_1, bond.pos_2)
+    mesh.matrix.fromArray(editable_bond_matrix)
     mesh.matrixWorldNeedsUpdate = true
   }
 
@@ -1201,24 +1203,19 @@
 
   // Derived (not effect + state) so downstream consumers (filtering, polyhedra,
   // instanced bond buffers) recompute exactly once per structure change instead
-  // of once with stale bonds and again after an effect flush. The mutable cache
-  // lets atom drags freeze the last computed value (recompute happens on release).
+  // of once with stale bonds and again after an effect flush.
   // Bonds are computed when either bond rendering or polyhedra need them. The
   // raw/effective mix is deliberate: RAW show_bonds keeps bond_pairs available
   // during symmetry declutter (cylinders hide via effective_show_bonds in
   // bonds_to_render, but tooltips + manually added bonds still need the data),
   // while EFFECTIVE show_polyhedra skips computing bonds whose only consumer —
   // the polyhedra $derived below, gated on the same effective value — won't run.
-  let last_bond_pairs: BondPair[] = []
   let bond_pairs: BondPair[] = $derived.by(() => {
-    if (dragging_atoms || defer_expensive_geometry) return last_bond_pairs
     const want_bonds = applies_to_structure(show_bonds)
     const want_polyhedra = applies_to_structure(effective_show_polyhedra)
-    last_bond_pairs =
-      structure && (want_bonds || want_polyhedra)
-        ? compute_bonds(structure, bonding_strategy, bonding_options)
-        : []
-    return last_bond_pairs
+    return structure && (want_bonds || want_polyhedra)
+      ? compute_bonds(structure, bonding_strategy, bonding_options)
+      : []
   })
 
   // Compute property-based colors when not using element coloring
@@ -1548,43 +1545,16 @@
     return offsets
   })
 
-  let instanced_bond_groups = $derived.by(() => {
+  let bond_site_colors = $derived.by(() => {
     if (!structure?.sites || bonds_to_render.length === 0) return []
 
-    const group = {
-      thickness: bond_thickness,
-      ambient_light,
-      directional_light,
-      instances: [] as {
-        matrix: Float32Array
-        color_start: string
-        color_end: string
-      }[],
-    }
-
-    // Hoisted out of the per-bond loop (`colors` is a $state object every bond would
-    // otherwise read twice) and memoized per site, since a site anchors several bonds.
+    // Resolve once per site, not once per bond endpoint. Bond writes these values directly
+    // into its persistent instance-color buffers without allocating per-cylinder objects.
     const element_colors = colors.element
-    const sites = structure.sites
-    const color_cache: (string | undefined)[] = Array.from({ length: sites.length })
-    const get_majority_color = (site_idx: number): string => {
-      const cached = color_cache[site_idx]
-      if (cached !== undefined) return cached
-      const element = get_majority_element(sites[site_idx])
-      const color = (element && element_colors?.[element]) || bond_color
-      color_cache[site_idx] = color
-      return color
-    }
-
-    for (const bond_data of bonds_to_render) {
-      const color_start = get_majority_color(bond_data.site_idx_1)
-      const color_end = get_majority_color(bond_data.site_idx_2)
-      for (const matrix of get_bond_render_matrices(bond_data, bond_thickness)) {
-        group.instances.push({ matrix, color_start, color_end })
-      }
-    }
-
-    return group.instances.length > 0 ? [group] : []
+    return structure.sites.map((site) => {
+      const element = get_majority_element(site)
+      return (element && element_colors?.[element]) || bond_color
+    })
   })
 
   let radius_by_site_idx = $derived.by(() => {
@@ -2162,10 +2132,15 @@
         />
       {/if}
 
-      <!-- Single group today; Bond grows capacity — remount rebuilds TSL. -->
-      {#each instanced_bond_groups as group (`bonds`)}
-        <Bond {group} />
-      {/each}
+      {#if bonds_to_render.length > 0}
+        <Bond
+          bonds={bonds_to_render}
+          site_colors={bond_site_colors}
+          thickness={bond_thickness}
+          {ambient_light}
+          {directional_light}
+        />
+      {/if}
 
       <!-- Per-atom trajectory trails: every atom's whole path in one indexed
         LineSegments (1 draw call no matter how many atoms or frames) -->

@@ -69,6 +69,7 @@ describe(`PeriodicTable`, () => {
       target: document.body,
       props: { tile_border_radius: 2, hover_border_width: 2 },
     })
+    expect(document.querySelector(`[aria-label="Reset font sizes to defaults"]`)).toBeNull()
     const number_input = (key: string) =>
       doc_query<HTMLInputElement>(`[data-key="${key}"] input[type="number"]`)
     const set_input = (input: HTMLInputElement, value: string | number): void => {

@@ -422,7 +422,6 @@
     range_sync: `expand`,
     has_x2: () => has_x2_points,
     has_y2: () => has_y2_points,
-    tick_counts: { y: 5, y2: 5 },
     padding: () => padding,
     title: () => title,
     obstacles: () => obstacles_norm,

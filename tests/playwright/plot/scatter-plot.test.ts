@@ -1356,8 +1356,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Capture initial tick text for Y-axis comparison
     const initial_y_tick = await y_tick_text.textContent()
 
-    const tick_format_heading = control_pane.locator(`h4:has-text("Tick Format")`)
-    const tick_format_section = tick_format_heading.locator(`+ section`)
+    const tick_format_section = control_pane.getByTestId(`tick-format-section`)
     const x_format_input = tick_format_section.locator(
       `label:has(span:text-is("X-axis")) input[type="text"]`,
     )
@@ -1456,7 +1455,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }).toPass({ timeout: 5000 })
 
     // Test reset button restores all scales to linear
-    await pane.locator(`h4:has-text("Scale type") button.reset-button`).click()
+    await pane.getByRole(`button`, { name: `Reset scale type to defaults` }).click()
     await expect(x_scale_select).toHaveValue(`linear`)
     await expect(y_scale_select).toHaveValue(`linear`)
 
@@ -1785,8 +1784,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     const { pane: control_pane } = await open_control_pane(plot)
 
-    // Check that data-key attributes are present on rows (using SettingsSection structure)
-    // SettingsSection renders h4 + section siblings, so we look for data-key directly in the pane
+    // Check that settings rows expose data-key attributes.
     const size_row = control_pane.locator(`[data-key="point.size"]`)
     const color_row = control_pane.locator(`[data-key="point.color"]`)
     const stroke_width_row = control_pane.locator(`[data-key="point.stroke_width"]`)

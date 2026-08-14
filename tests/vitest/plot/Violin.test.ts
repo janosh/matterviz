@@ -36,9 +36,20 @@ describe(`Violin`, () => {
   })
 
   test(`forwards kind override to draw inner boxes`, async () => {
-    const plot = await mount_violin({ series, kind: `violin+box` })
+    const plot = await mount_violin({ series, kind: `violin+box`, whisker_mode: `minmax` })
     expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
     expect(plot.querySelectorAll(`.box-series rect.iqr-box`)).toHaveLength(2)
+    const first_series = plot.querySelector(`.box-series`)
+    const violin_y = path_coords(
+      first_series?.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``,
+    ).ys
+    const horizontal_lines = [...(first_series?.querySelectorAll(`line`) ?? [])]
+      .filter((line) => line.getAttribute(`y1`) === line.getAttribute(`y2`))
+      .map((line) => Number(line.getAttribute(`y1`)))
+    expect([Math.min(...violin_y), Math.max(...violin_y)]).toEqual([
+      Math.min(...horizontal_lines),
+      Math.max(...horizontal_lines),
+    ])
   })
 
   test(`forwards orientation and axis props`, async () => {

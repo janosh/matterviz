@@ -19,8 +19,9 @@ import {
 } from '$lib/trajectory/file-export'
 import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { unzipSync } from 'fflate'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
@@ -446,6 +447,18 @@ describe(`TrajectoryExportPane property export`, () => {
 
   test(`downloads the whole frame range as CSV`, async () => {
     open_pane({ trajectory })
+    await tick()
+    const reset_selector = `button[aria-label="Reset frame range to defaults"]`
+    expect(document.querySelector(reset_selector)).toBeNull()
+
+    const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
+    start_input.value = `1`
+    start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    doc_query<HTMLButtonElement>(reset_selector).click()
+    await tick()
+    expect(document.querySelector(reset_selector)).toBeNull()
+
     await click(`Download CSV`)
     await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
     const [, name, mime] = vi.mocked(download).mock.calls[0]

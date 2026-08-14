@@ -61,10 +61,11 @@ const indexed_trajectory = (extra: Partial<TrajectoryType> = {}) =>
     ...extra,
   }) as TrajectoryType
 
-test(`replaces indexed loading details with the resolved frame`, async () => {
+test(`shows trajectory timing and replaces indexed loading details with the resolved frame`, async () => {
   // oxfmt-ignore
   const trajectory = {
     frames: Array.from({ length: 10 }, () => frame), total_frames: 11, is_indexed: true,
+    plot_metadata: make_plot_metadata(11, () => ({})), time_step: 2, time_unit: `fs`,
   } as TrajectoryType
   const props = await mount_pane(trajectory, 10)
   expect(pane_text()).toContain(`On-demand`)
@@ -72,10 +73,15 @@ test(`replaces indexed loading details with the resolved frame`, async () => {
   props.current_frame = frame
   await tick()
   const text = pane_text()
-  expect(text).toContain(`Atoms`)
-  expect(text).toContain(`2`)
-  expect(text).toContain(`Si`)
+  expect(text).toContain(`Current Step 10`)
+  expect(text).toContain(`Step Span 0 - 10`)
+  expect(text).toContain(`Time Step 2 fs`)
+  expect(text).toContain(`Current Time 20 fs`)
+  expect(text).toContain(`Duration 20 fs`)
   expect(text).not.toContain(`On-demand`)
+  for (const duplicate of [`Structure`, `Atoms`, `Formula`]) {
+    expect(text).not.toContain(duplicate)
+  }
 })
 
 test(`uses a compact filter trigger and omits copy buttons`, async () => {
@@ -129,7 +135,7 @@ test(`derives ranges from plot_metadata for an indexed trajectory, marked as sam
   expect(range_title).toBe(
     `Min/max over 3 sampled frames of 1k total, so the true extremum may lie outside this range`,
   )
-  // composes with the on-demand structure placeholder rather than replacing it
+  // composes with the on-demand frame-loading row rather than replacing it
   expect(text).toContain(`On-demand`)
 })
 

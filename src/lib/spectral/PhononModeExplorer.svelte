@@ -1,6 +1,7 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
+  import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import type { Vec3 } from '$lib/math'
   import type { ScatterHandlerEvent } from '$lib/plot/core/types'
   import { parse_supercell_scaling } from '$lib/structure'
@@ -56,6 +57,8 @@
     show_vectors?: boolean
     auto_play?: boolean
   } = $props()
+
+  let pane_ratio = $state(1.15 / 2.1)
 
   let error_msg = $state<string>()
   let current_step_idx = $state(0)
@@ -248,6 +251,11 @@
         />
       {/if}
     </section>
+    <PaneDivider
+      orientation="horizontal"
+      bind:ratio={pane_ratio}
+      aria-label="Resize atomic motion and phonon plot panes"
+    />
     <section class="plot-pane" aria-label="Phonon mode plot">
       {#if view === `bands` && band_result.value}
         <Bands
@@ -368,7 +376,8 @@
   }
   .panes {
     display: grid;
-    grid-template-columns: minmax(360px, 1.15fr) minmax(340px, 0.95fr);
+    position: relative;
+    grid-template-columns: minmax(0, var(--split-pane-size, 54.7619%)) minmax(0, 1fr);
     flex: 1;
     min-height: 0;
     border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
@@ -385,7 +394,6 @@
     --scatter-min-height: 0;
   }
   .trajectory-pane {
-    border-right: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
     --traj-border-radius: 0;
     --struct-border-radius: 0;
   }
@@ -455,13 +463,13 @@
       grid-template-columns: 1fr;
       grid-template-rows: minmax(340px, 1fr) minmax(340px, 1fr);
       border-block: 0;
+      > :global(.pane-divider) {
+        display: none;
+      }
     }
     .plot-pane,
     .trajectory-pane {
       border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
-    }
-    .trajectory-pane {
-      border-right: 0;
     }
   }
   @media (max-width: 560px) {

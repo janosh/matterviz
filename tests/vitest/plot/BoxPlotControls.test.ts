@@ -30,10 +30,9 @@ describe(`BoxPlotControls`, () => {
     await tick()
     expect([mean.checked, outliers.checked]).toEqual([true, false])
 
-    const heading = [...container.querySelectorAll(`h4`)].find((el) =>
-      el.textContent?.includes(`Box / violin`),
+    const reset_btn = container.querySelector<HTMLButtonElement>(
+      `button[aria-label="Reset box / violin to defaults"]`,
     )
-    const reset_btn = heading?.querySelector<HTMLButtonElement>(`button.reset-button`)
     // a missing/no-op reset (the original bug) would leave the flipped values in place
     if (!reset_btn) throw new Error(`reset button not rendered`)
     reset_btn.click()

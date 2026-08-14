@@ -638,6 +638,9 @@ describe(`Structure`, () => {
     expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
 
     const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
+    expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
+      `var(--struct-fullscreen-icon-size, 1.2em)`,
+    )
 
     fullscreen_button.click()
     await tick()
@@ -1109,6 +1112,7 @@ describe(`Multi-side view`, () => {
     const layout_button = doc_query<HTMLButtonElement>(
       `button[aria-label="View layout: 3D single view"]`,
     )
+    expect(document.querySelector(`.view-mode-caret`)).toBeNull()
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
 
     layout_button.click()

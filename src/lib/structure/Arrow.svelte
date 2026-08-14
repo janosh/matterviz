@@ -40,8 +40,10 @@
       <T.MeshStandardMaterial {color} />
     </T.Mesh>
   {/if}
-  <T.Mesh {...rest} position={[0, geometry.head_center, 0]}>
-    <T.ConeGeometry args={[head_r, geometry.head_length, 12]} />
-    <T.MeshStandardMaterial {color} />
-  </T.Mesh>
+  {#if geometry.head_length > 0}
+    <T.Mesh {...rest} position={[0, geometry.head_center, 0]}>
+      <T.ConeGeometry args={[head_r, geometry.head_length, 12]} />
+      <T.MeshStandardMaterial {color} />
+    </T.Mesh>
+  {/if}
 </T.Group>

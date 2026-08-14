@@ -1,5 +1,10 @@
 import type { Vec3 } from '$lib/math'
-import { compute_bond_transform } from '$lib/structure/bonding'
+import type { BondOrder, BondPair } from '$lib/structure'
+import {
+  count_bond_instances,
+  write_bond_instance_matrices,
+  write_bond_transform,
+} from '$lib/structure/bond-rendering'
 import {
   arrow_axis_geometry,
   cylinder_between,
@@ -7,6 +12,7 @@ import {
   rotation_from_direction,
 } from '$lib/structure/geometry'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 describe(`quaternion_from_direction`, () => {
@@ -58,6 +64,21 @@ test.each([
   },
 )
 
+test.each([
+  [`zero vector`, [0, 0, 0], 1],
+  [`zero scale`, [1, 2, 3], 0],
+  [`non-finite vector`, [Number.NaN, 0, 0], 1],
+  [`non-finite scale`, [1, 2, 3], Number.NaN],
+] as [string, Vec3, number][])(`collapses arrow geometry for %s`, (_name, vector, scale) => {
+  expect(arrow_axis_geometry(vector, scale, 0.8)).toEqual({
+    head_length: 0,
+    shaft_length: 0,
+    shaft_center: 0,
+    head_center: 0,
+    rotation: [0, 0, 0],
+  })
+})
+
 describe(`cylinder_between`, () => {
   test.each([
     [[0, 0, 0], [0, 4, 0], [0, 2, 0], 4],
@@ -93,10 +114,15 @@ describe(`cylinder_between`, () => {
   })
 })
 
-// compute_bond_transform (bonding.ts) is a separate, three.js-object-free "+Y → direction"
-// implementation for the instanced-bond hot loop. Guard against convention drift: its
-// transform must orient a +Y unit vector the same way as quaternion_from_direction(b − a).
-describe(`compute_bond_transform vs quaternion_from_direction`, () => {
+// The direct buffer writer is a separate, three.js-object-free "+Y → direction"
+// implementation for the instanced-bond hot loop. Guard against convention drift.
+describe(`write_bond_transform vs quaternion_from_direction`, () => {
+  test(`collapses coincident bonds at their shared position`, () => {
+    const matrix_buffer = new Float32Array(16)
+    write_bond_transform(matrix_buffer, 0, [1, 2, 3], [1, 2, 3])
+    expect(Array.from(matrix_buffer)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1])
+  })
+
   test.each([
     [
       [0, 0, 0],
@@ -122,12 +148,68 @@ describe(`compute_bond_transform vs quaternion_from_direction`, () => {
       [-2, 0, 3],
       [-5, -4, 1],
     ],
-  ] as [Vec3, Vec3][])(`orients +Y identically for %j → %j`, (start, end) => {
+  ] as [Vec3, Vec3][])(`uses a right-handed +Y orientation for %j → %j`, (start, end) => {
     // image of +Y under the bond transform (transformDirection strips translation + scale)
-    const mat = new Matrix4().fromArray(compute_bond_transform(start, end))
+    const matrix_buffer = new Float32Array(16)
+    write_bond_transform(matrix_buffer, 0, start, end)
+    const mat = new Matrix4().fromArray(matrix_buffer)
     const bond_dir = new Vector3(0, 1, 0).transformDirection(mat)
     const delta: Vec3 = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
     const helper_dir = new Vector3(0, 1, 0).applyQuaternion(quaternion_from_direction(delta))
     expect(bond_dir.distanceTo(helper_dir)).toBeCloseTo(0, 10)
+    const expected_determinant = Math.hypot(...delta)
+    expect(Math.abs(mat.determinant() / expected_determinant - 1)).toBeLessThan(4 * 2 ** -23)
+  })
+
+  test.each([
+    { order: undefined, expected_count: 1, expected_radius: 0.1 },
+    { order: 1, expected_count: 1, expected_radius: 0.1 },
+    { order: 2, expected_count: 2, expected_radius: 0.065 },
+    { order: 3, expected_count: 3, expected_radius: 0.055 },
+    { order: 1.5, expected_count: 2, expected_radius: 0.075 },
+    { order: `aromatic`, expected_count: 2, expected_radius: 0.075 },
+  ] satisfies { order?: BondOrder; expected_count: number; expected_radius: number }[])(
+    `packs $order bond order as $expected_count cylinder matrices`,
+    ({ order, expected_count, expected_radius }) => {
+      const bond: BondPair = {
+        pos_1: [0, 0, 0],
+        pos_2: [1, 0, 0],
+        site_idx_1: 0,
+        site_idx_2: 1,
+        bond_length: 1,
+        strength: 1,
+        ...(order === undefined ? {} : { bond_order: order }),
+      }
+      const matrix_buffer = new Float32Array(3 * 16)
+
+      expect(count_bond_instances([bond])).toBe(expected_count)
+      write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)
+      expect(Math.hypot(matrix_buffer[0], matrix_buffer[1], matrix_buffer[2])).toBeCloseTo(
+        expected_radius,
+        7,
+      )
+      if (expected_count > 1) {
+        const offsets = Array.from(
+          { length: expected_count },
+          (_, instance_idx) => matrix_buffer[instance_idx * 16 + 14],
+        )
+        expect(new SvelteSet(offsets).size).toBe(expected_count)
+      }
+    },
+  )
+
+  test(`fails before writing when the instance buffer is undersized`, () => {
+    const bond: BondPair = {
+      pos_1: [0, 0, 0],
+      pos_2: [1, 0, 0],
+      site_idx_1: 0,
+      site_idx_2: 1,
+      bond_length: 1,
+      strength: 1,
+      bond_order: 3,
+    }
+    expect(() => write_bond_instance_matrices(new Float32Array(32), [bond], 0.1, 3)).toThrow(
+      `Bond matrix buffer has 32 floats, needs 48`,
+    )
   })
 })

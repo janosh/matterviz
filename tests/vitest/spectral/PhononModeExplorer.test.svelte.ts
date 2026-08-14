@@ -25,7 +25,7 @@ const mount_explorer = (props: ExplorerProps): HTMLElement => {
   const target = document.createElement(`div`)
   document.body.append(target)
   const component = mount(PhononModeExplorer, { target, props })
-  onTestFinished(() => unmount(component))
+  onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
 const render = (props: Partial<ExplorerProps> = {}): HTMLElement =>
@@ -41,6 +41,12 @@ test(`renders a typed phonon dataset`, async () => {
       `IR`,
     )
     expect(target.querySelector<HTMLInputElement>(`.checkbox input`)?.checked).toBe(false)
+    expect(
+      target.querySelector(`[aria-label="Resize atomic motion and phonon plot panes"]`),
+    ).not.toBeNull()
+    expect(
+      target.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
+    ).toBe(`${(1.15 / 2.1) * 100}%`)
   })
 })
 

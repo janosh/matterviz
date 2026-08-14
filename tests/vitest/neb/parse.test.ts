@@ -384,6 +384,12 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer({ paths: reaction_paths })
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
+    expect(
+      viewer.querySelector(`[aria-label="Resize reaction plot and structure panes"]`),
+    ).not.toBeNull()
+    expect(
+      viewer.querySelector<HTMLElement>(`.panes`)?.style.getPropertyValue(`--split-pane-size`),
+    ).toBe(`60%`)
     expect(viewer.querySelector(`.neb-controls.sequence-control-bar`)).not.toBeNull()
     const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
     expect(summary).toContain(`Forward barrier`)

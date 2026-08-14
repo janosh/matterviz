@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { Info } from 'svelte-widgets/icons'
-  import { ViewerPane, type PaneProps } from '$lib/overlays'
+  import { ViewerPane, info_pane_icon, type PaneProps } from '$lib/overlays'
   import type { InfoItem } from '$lib/layout'
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
@@ -111,7 +110,7 @@
     pane_name="Brillouin zone info"
     class_prefix="bz-info"
     {pane_props}
-    closed_icon={Info}
+    closed_icon={info_pane_icon}
   >
     <InfoPaneCards
       cards={pane_data.map(({ title, items }) => ({ title, rows: items }))}
