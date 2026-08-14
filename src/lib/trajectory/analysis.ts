@@ -27,19 +27,32 @@ export function analysis_pane_setup(
   trajectory: TrajectoryType | undefined,
   // Omit for a pane that reads frames one at a time and so has no buffer to budget
   suggest_stride?: (trajectory: TrajectoryType) => number | null,
-): {
-  total_frames: number
-  is_lazy: boolean
-  suggested_stride: number | null
-  setup_error?: string
-} {
-  const blank = { total_frames: 0, is_lazy: false, suggested_stride: null }
+  frame_stride: number | null = 1,
+) {
+  const loaded_frames = trajectory?.frames.length ?? 0
+  const n_atoms = trajectory?.frames[0]?.structure.sites.length ?? 0
+  const safe_stride =
+    frame_stride !== null && Number.isFinite(frame_stride) && frame_stride >= 1
+      ? Math.floor(frame_stride)
+      : 1
+  const blank = {
+    total_frames: 0,
+    loaded_frames,
+    n_atoms,
+    safe_stride,
+    collected_frames: 0,
+    is_lazy: false,
+    suggested_stride: null as number | null,
+    setup_error: undefined as string | undefined,
+  }
   if (!trajectory) return blank
   try {
     const total_frames = trajectory_total_frames(trajectory)
     return {
+      ...blank,
       total_frames,
-      is_lazy: total_frames <= 0 || trajectory.frames.length < total_frames,
+      collected_frames: Math.ceil(total_frames / safe_stride),
+      is_lazy: total_frames <= 0 || loaded_frames < total_frames,
       suggested_stride: suggest_stride?.(trajectory) ?? null,
     }
   } catch (exc) {

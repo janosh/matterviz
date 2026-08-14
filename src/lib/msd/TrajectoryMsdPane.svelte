@@ -49,19 +49,16 @@
   let error_msg = $state<string | undefined>(undefined)
   let progress = $state<ParseProgress | null>(null)
 
-  let { total_frames, is_lazy, suggested_stride, setup_error } = $derived(
-    analysis_pane_setup(trajectory, suggest_msd_frame_stride),
-  )
-  let loaded_frames = $derived(trajectory?.frames.length ?? 0)
-  let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
-  // accumulate_positions rejects a non-integer stride outright, so normalise once here.
-  // Number.isFinite also catches the Infinity a `1e999` entry produces.
-  let safe_stride = $derived(
-    frame_stride !== null && Number.isFinite(frame_stride) && frame_stride >= 1
-      ? Math.floor(frame_stride)
-      : 1,
-  )
-  let collected_frames = $derived(Math.ceil(total_frames / safe_stride))
+  let {
+    total_frames,
+    loaded_frames,
+    n_atoms,
+    safe_stride,
+    collected_frames,
+    is_lazy,
+    suggested_stride,
+    setup_error,
+  } = $derived(analysis_pane_setup(trajectory, suggest_msd_frame_stride, frame_stride))
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
 
   // Drop stale positions/curves whenever the underlying trajectory is swapped out, and
@@ -162,7 +159,7 @@
       />
     {/if}
 
-    <div class="msd-controls">
+    <div class="analysis-controls msd-controls">
       <label>
         Max lag
         <input type="number" min="0.05" max="1" step="0.05" bind:value={max_lag_fraction} />
@@ -208,31 +205,3 @@
     <MsdPlot {positions} {msd_options} bind:result bind:loading={plotting} bind:error_msg />
   {/if}
 </ViewerPane>
-
-<style>
-  .msd-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 4pt;
-    font-size: 0.85em;
-    label {
-      display: flex;
-      align-items: center;
-      gap: 4pt;
-    }
-    input[type='number'],
-    input[type='text'] {
-      width: 5em;
-      text-align: center;
-    }
-    button {
-      align-self: flex-start;
-      padding: 2pt 8pt;
-    }
-  }
-  .hint {
-    opacity: 0.7;
-    font-size: 0.9em;
-    margin: 0;
-  }
-</style>
