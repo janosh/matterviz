@@ -58,10 +58,10 @@ export function write_bond_transform(
     const right_length = Math.sqrt(right_raw_x * right_raw_x + right_raw_z * right_raw_z)
     right_x = right_raw_x / right_length
     right_z = right_raw_z / right_length
-    up_x = dir_y * right_z
-    up_y = dir_z * right_x - dir_x * right_z
-    up_z = -dir_y * right_x
-  }
+    up_x = -dir_y * right_z
+    up_y = dir_x * right_z - dir_z * right_x
+    up_z = dir_y * right_x
+  } else if (dir_y < 0) up_z = -1
 
   // Column-major Three.js matrix: scaled right, direction * length, scaled up, midpoint.
   matrix_buffer[matrix_offset] = right_x * radius_scale

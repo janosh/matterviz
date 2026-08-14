@@ -148,7 +148,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       [-2, 0, 3],
       [-5, -4, 1],
     ],
-  ] as [Vec3, Vec3][])(`orients +Y identically for %j → %j`, (start, end) => {
+  ] as [Vec3, Vec3][])(`uses a right-handed +Y orientation for %j → %j`, (start, end) => {
     // image of +Y under the bond transform (transformDirection strips translation + scale)
     const matrix_buffer = new Float32Array(16)
     write_bond_transform(matrix_buffer, 0, start, end)
@@ -157,6 +157,10 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
     const delta: Vec3 = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
     const helper_dir = new Vector3(0, 1, 0).applyQuaternion(quaternion_from_direction(delta))
     expect(bond_dir.distanceTo(helper_dir)).toBeCloseTo(0, 10)
+    const determinant = mat.determinant()
+    const expected_determinant = Math.hypot(...delta)
+    expect(determinant).toBeGreaterThan(0)
+    expect(Math.abs(determinant / expected_determinant - 1)).toBeLessThan(4 * 2 ** -23)
   })
 
   test.each([
