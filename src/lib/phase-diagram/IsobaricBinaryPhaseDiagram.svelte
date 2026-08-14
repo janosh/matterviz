@@ -2,7 +2,7 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { create_file_drop_handler } from '$lib/io/file-drop'
   import { format_num } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
@@ -415,12 +415,6 @@
     }
   }
 
-  // Fullscreen handling
-  $effect(() => {
-    setup_fullscreen_effect(fullscreen, wrapper)
-    set_fullscreen_bg(wrapper, fullscreen, `--phase-diagram-bg-fullscreen`)
-  })
-
   // Cleanup timeout on unmount to prevent memory leaks
   $effect(() => {
     return () => {
@@ -506,12 +500,7 @@
   </g>
 {/snippet}
 
-<svelte:document
-  onfullscreenchange={() => {
-    fullscreen = Boolean(document.fullscreenElement)
-  }}
-  onkeydown={handle_doc_keydown}
-/>
+<svelte:document onkeydown={handle_doc_keydown} />
 
 <div
   {...rest}
@@ -567,7 +556,11 @@
         toggle_props={pane_toggle_props}
       />
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton
+          bind:fullscreen
+          {wrapper}
+          bg_css_var="--phase-diagram-bg-fullscreen"
+        />
       {/if}
     </div>
 
@@ -932,11 +925,8 @@
     z-index: 10;
   }
   /* Override absolute positioning since container handles it */
-  .header-controls :global(:is(.fullscreen-toggle, .phase-diagram-controls-toggle)) {
+  .header-controls :global(.phase-diagram-controls-toggle) {
     position: static;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    opacity: 1; /* Always visible when inside header-controls */
   }
   /* Hide controls and fullscreen toggles by default, show on hover/focus */
   .binary-phase-diagram :global(:is(.pane-toggle, .header-controls)) {

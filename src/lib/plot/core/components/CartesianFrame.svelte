@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetAxis } from '$lib/plot/core/facets'
   import {
@@ -124,17 +124,11 @@
     y2: get_marginal_axis(`y2`, `y2`),
   })
 
-  // Theme-aware background when entering fullscreen
-  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--${css_prefix}-fullscreen-bg`))
   onDestroy(() => pan_zoom.destroy())
 </script>
 
 <svelte:window
   onkeydown={(evt) => {
-    if (evt.key === `Escape` && fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
     pan_zoom.on_window_key_down(evt)
   }}
   onkeyup={pan_zoom.on_window_key_up}
@@ -153,7 +147,11 @@
     <div class="header-controls">
       {@render header_controls?.(dims)}
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton
+          bind:fullscreen
+          {wrapper}
+          bg_css_var="--{css_prefix}-fullscreen-bg"
+        />
       {/if}
     </div>
   {/if}
@@ -266,10 +264,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static; /* Override absolute positioning since container handles it */
-    opacity: 1; /* Always visible when inside header-controls, container controls visibility */
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .plot-frame :global(.pane-toggle),

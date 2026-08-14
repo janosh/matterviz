@@ -23,7 +23,7 @@
     cutoff = 15,
     n_bins = 75,
     pbc,
-    enable_drop = false,
+    allow_file_drop = false,
     on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(),
@@ -41,7 +41,7 @@
     cutoff?: number
     n_bins?: number
     pbc?: Pbc
-    enable_drop?: boolean
+    allow_file_drop?: boolean
     on_file_drop?: FileLoadCallback
     loading?: boolean
     error_msg?: string
@@ -59,7 +59,7 @@
   } & ComponentProps<typeof ScatterPlot> = $props()
 
   const handle_drop = create_structure_drop_handler({
-    allow: () => enable_drop,
+    allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
     // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected here
     // rather than in the shared handler, which only insists on sites
@@ -125,7 +125,7 @@
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
 
-{#if enable_drop && drag_dropped.length > 0}
+{#if allow_file_drop && drag_dropped.length > 0}
   <div class="dropped-info">
     {drag_dropped.length} structure{drag_dropped.length > 1 ? `s` : ``} loaded
     <button onclick={() => (drag_dropped = [])}>Clear</button>
@@ -136,12 +136,12 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class={[`empty-drop`, dragging && `dragging`]}
-    ondragover={enable_drop ? handle_dragover : undefined}
-    ondragleave={enable_drop ? () => (dragging = false) : undefined}
-    ondrop={enable_drop ? handle_drop : undefined}
+    ondragover={allow_file_drop ? handle_dragover : undefined}
+    ondragleave={allow_file_drop ? () => (dragging = false) : undefined}
+    ondrop={allow_file_drop ? handle_drop : undefined}
   >
     <StatusMessage
-      message={enable_drop
+      message={allow_file_drop
         ? `Drag and drop structure files here to visualize RDFs`
         : `No RDF data to display`}
       style="border: none"
@@ -158,9 +158,9 @@
     styles={{ show_lines: true, show_points: false }}
     class={[rest.class, dragging && `dragging`]}
     style={rest.style ?? `height: 400px;`}
-    ondragover={enable_drop ? handle_dragover : undefined}
-    ondragleave={enable_drop ? () => (dragging = false) : undefined}
-    ondrop={enable_drop ? handle_drop : undefined}
+    ondragover={allow_file_drop ? handle_dragover : undefined}
+    ondragleave={allow_file_drop ? () => (dragging = false) : undefined}
+    ondrop={allow_file_drop ? handle_drop : undefined}
   >
     {#snippet user_content({ width, y_scale_fn, pad })}
       {#if show_reference_line}

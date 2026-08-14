@@ -9,7 +9,7 @@
   import { Reset } from 'svelte-widgets/icons'
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
-  import { FullscreenButton, set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import { array_extent, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -65,6 +65,7 @@
     ),
     show_stable_labels = $bindable(DEFAULTS.convex_hull.binary.show_stable_labels),
     show_unstable_labels = $bindable(DEFAULTS.convex_hull.binary.show_unstable_labels),
+    allow_file_drop = true,
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -379,25 +380,6 @@
     reset_counter += 1
   }
 
-  // Track whether any settings differ from defaults (to show/hide reset button)
-  // Must match all properties that reset_all() resets
-  // Use auto_default_threshold for comparison since that's the effective default
-  const has_changes_to_reset = $derived(
-    fullscreen !== DEFAULTS.convex_hull.binary.fullscreen ||
-      info_pane_open !== DEFAULTS.convex_hull.binary.info_pane_open ||
-      controls_open !== DEFAULTS.convex_hull.binary.legend_pane_open ||
-      color_mode !== DEFAULTS.convex_hull.binary.color_mode ||
-      color_scale !== DEFAULTS.convex_hull.binary.color_scale ||
-      show_stable !== DEFAULTS.convex_hull.binary.show_stable ||
-      show_unstable !== DEFAULTS.convex_hull.binary.show_unstable ||
-      hidden_categories.length > 0 ||
-      show_stable_labels !== DEFAULTS.convex_hull.binary.show_stable_labels ||
-      show_unstable_labels !== DEFAULTS.convex_hull.binary.show_unstable_labels ||
-      // Compare with auto-computed threshold, with small tolerance for floating point
-      Math.abs(max_hull_dist_show_phases - auto_default_threshold) > 0.001 ||
-      max_hull_dist_show_labels !== DEFAULTS.convex_hull.binary.max_hull_dist_show_labels,
-  )
-
   // Custom hover tooltip state used with ScatterPlot events
   let hover_data = $state.raw<HoverData3D<ConvexHullEntry> | null>(null)
   $effect(() => {
@@ -434,11 +416,13 @@
       s: () => (show_stable = !show_stable),
       u: () => (show_unstable = !show_unstable),
       l: () => (show_stable_labels = !show_stable_labels),
+      r: reset_all,
     }
     actions[event.key.toLowerCase()]?.()
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
+    if (!allow_file_drop) return
     drag_over = false
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) on_file_drop?.(data)
@@ -502,21 +486,8 @@
     }
   }
 
-  // Fullscreen handling
-  $effect(() => {
-    setup_fullscreen_effect(fullscreen, wrapper)
-    set_fullscreen_bg(wrapper, fullscreen, `--hull-2d-bg-fullscreen`)
-  })
-
   let style = $derived(helpers.hull_style_css(merged_config.colors))
 </script>
-
-<svelte:document
-  onfullscreenchange={() => {
-    // tie fullscreen state to this component's own wrapper, not any fullscreen element
-    fullscreen = document.fullscreenElement === wrapper
-  }}
-/>
 
 <!-- Hover tooltip matching 3D/4D style (content only; container handled by ScatterPlot) -->
 {#snippet tooltip(point: ScatterHandlerProps<ConvexHullEntry>)}
@@ -536,7 +507,7 @@
 
 {#snippet pd_header_controls()}
   {#if controls_config.mode !== `never` && !structure_popup.open}
-    {#if has_changes_to_reset && controls_config.visible(`reset`)}
+    {#if controls_config.visible(`reset`)}
       <button
         type="button"
         onclick={reset_all}
@@ -565,10 +536,7 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <FullscreenButton
-        bind:fullscreen
-        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-      />
+      <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--hull-2d-bg-fullscreen" />
     {/if}
 
     {#if controls_config.visible(`controls`)}
@@ -629,12 +597,14 @@
     role="application"
     tabindex={-1}
     onkeydown={handle_keydown}
-    ondrop={handle_file_drop}
+    ondrop={allow_file_drop ? handle_file_drop : undefined}
     ondragover={(event: DragEvent) => {
+      if (!allow_file_drop) return
       event.preventDefault()
       drag_over = true
     }}
     ondragleave={(event: DragEvent) => {
+      if (!allow_file_drop) return
       event.preventDefault()
       drag_over = false
     }}

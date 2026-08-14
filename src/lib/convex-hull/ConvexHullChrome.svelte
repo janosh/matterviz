@@ -6,7 +6,7 @@
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
@@ -22,6 +22,8 @@
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
 
+  let chrome = $state<HTMLElement>()
+
   let {
     interactions, // canvas-interactions scaffold: hover/drag/popup/copy-feedback state
     hull_data, // hull-state pipeline: energy-mode flags, polymorph stats, thresholds
@@ -31,9 +33,10 @@
     enable_info_pane = true,
     phase_stats,
     label_threshold,
-    fullscreen = false,
+    fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    wrapper = undefined,
+    fullscreen_bg_css_var = `--fullscreen-bg`,
+    on_fullscreen_change,
     camera,
     merged_controls,
     stable_entries,
@@ -91,8 +94,9 @@
       reset_title: string
       enable_info_pane?: boolean
       fullscreen?: boolean
-      fullscreen_toggle?: FullscreenToggleProp
-      wrapper?: HTMLDivElement
+      fullscreen_toggle?: boolean
+      fullscreen_bg_css_var?: string
+      on_fullscreen_change?: (fullscreen: boolean) => void
       get_point_color: (entry: ConvexHullEntry) => string
       merged_highlight_style: HighlightStyle
       is_highlighted: (entry: ConvexHullEntry) => boolean
@@ -104,7 +108,7 @@
 
 <!-- Control buttons (top-right corner) -->
 {#if controls_config.mode !== `never`}
-  <section class={[`control-buttons`, controls_config.class]}>
+  <section bind:this={chrome} class={[`control-buttons`, controls_config.class]}>
     {#if controls_config.visible(`reset`)}
       <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
         <Icon icon={Reset} />
@@ -130,8 +134,10 @@
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
       <FullscreenButton
-        bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
-        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+        bind:fullscreen
+        wrapper={chrome?.parentElement ?? undefined}
+        bg_css_var={fullscreen_bg_css_var}
+        on_change={on_fullscreen_change}
       />
     {/if}
 

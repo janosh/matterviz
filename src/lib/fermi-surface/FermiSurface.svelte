@@ -7,8 +7,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import * as io from '$lib/io'
-  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
+  import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
   import type { CameraProjection } from '$lib/settings'
@@ -22,6 +21,7 @@
   import { detect_irreducible_bz, extract_fermi_surface } from './compute'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
+
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { parse_fermi_file } from './parse'
   import { to_error } from '$lib/utils'
@@ -35,6 +35,8 @@
     FermiTooltipConfig,
     RepresentationMode,
   } from './types'
+
+  type FermiSurfaceControlName = `filename` | `fullscreen` | `controls`
 
   type FermiFullscreenData = {
     fermi_data?: FermiSurfaceData
@@ -113,14 +115,7 @@
     clip_flip?: boolean
     interpolation_factor?: number
     camera_projection?: CameraProjection
-    // Controls visibility configuration.
-    // - 'always': controls always visible
-    // - 'hover': controls visible on component hover (default)
-    // - 'never': controls never visible
-    // - object: { mode, hidden, style } for fine-grained control
-    //
-    // Control names: 'filename', 'fullscreen', 'controls'
-    show_controls?: ShowControlsProp
+    show_controls?: ShowControlsProp<FermiSurfaceControlName>
     fullscreen?: boolean
     width?: number
     height?: number
@@ -128,7 +123,7 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    fullscreen_toggle?: FullscreenToggleProp
+    fullscreen_toggle?: boolean
     data_url?: string
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
@@ -335,18 +330,9 @@
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 
-    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     else if (event.key === `Escape`) controls_open = false
   }
-
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (val) => (fullscreen = val),
-    get_bg_css_var: () => `--fermi-bg-fullscreen`,
-    on_request_error: () => (fullscreen = false),
-    on_change: (val) => on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: val }),
-  })
 </script>
 
 <svelte:window onkeydown={handle_keydown} />
@@ -385,9 +371,12 @@
     <ViewerChrome
       {controls_config}
       filename={current_filename}
-      {fullscreen}
+      bind:fullscreen
       {fullscreen_toggle}
       {wrapper}
+      fullscreen_bg_css_var="--fermi-bg-fullscreen"
+      on_fullscreen_change={(value) =>
+        on_fullscreen_change?.({ fermi_data, bz_data, fullscreen: value })}
     >
       {#if controls_config.visible(`controls`)}
         <FermiSurfaceControls

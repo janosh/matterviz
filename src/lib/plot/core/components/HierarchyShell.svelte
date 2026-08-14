@@ -9,7 +9,7 @@
   // put - and renders its geometry into the `body` snippet. All shared state
   // lives on the HierarchyChartState the chart passes in.
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import HierarchyColorBar from '$lib/plot/core/components/HierarchyColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
@@ -76,14 +76,6 @@
     untrack(() => chart_state.reset_for_layout(arcs))
   })
 
-  $effect(() =>
-    set_fullscreen_bg(
-      chart_state.wrapper,
-      chart_state.fullscreen,
-      `--${chart_state.chart}-fullscreen-bg`,
-    ),
-  )
-
   let slot_args = $derived({
     height: chart_state.height,
     width: chart_state.width,
@@ -98,7 +90,11 @@
     {@render header_controls?.(slot_args)}
     {@render controls()}
     {#if fullscreen_toggle}
-      <FullscreenToggle bind:fullscreen={chart_state.fullscreen} />
+      <FullscreenButton
+        bind:fullscreen={chart_state.fullscreen}
+        wrapper={chart_state.wrapper}
+        bg_css_var="--{chart_state.chart}-fullscreen-bg"
+      />
     {/if}
   </div>
   {#if show_breadcrumbs && chart_state.breadcrumb_arcs.length > 0}
@@ -228,10 +224,6 @@
   :global(:is(.sunburst, .treemap):hover) .header-controls,
   .header-controls:has(:global([aria-expanded='true'])),
   .header-controls:focus-within {
-    opacity: 1;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static;
     opacity: 1;
   }
 </style>

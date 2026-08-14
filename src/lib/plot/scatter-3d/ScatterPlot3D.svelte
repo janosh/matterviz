@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import type { D3InterpolateName } from '$lib/colors'
-  import { FullscreenToggle } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
@@ -32,7 +32,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
-  import { calculate_domain, create_color_scale } from '$lib/plot/core/scales'
+  import { accumulate_extent, create_color_scale, empty_extent } from '$lib/plot/core/scales'
   import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
   import { create_renderer, type GizmoOptions, webgpu_available } from '$lib/scene'
   import ScatterPlot3DControls from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
@@ -44,16 +44,14 @@
     surfaces = [],
     ref_lines = [],
     ref_planes = [],
-    // Axis configuration (initial values)
-    x_axis: x_axis_init = {},
-    y_axis: y_axis_init = {},
-    z_axis: z_axis_init = {},
-    // Display settings (initial value)
-    display: display_init = {
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    z_axis = $bindable({}),
+    display = $bindable({
       show_axes: true,
       show_grid: true,
       show_axis_labels: true,
-    },
+    }),
     styles = {},
     // Color and size scaling
     color_scale = SCALE_DEFAULTS.color,
@@ -64,8 +62,8 @@
     show_legend,
     // Camera settings
     camera_position = $bindable([8, 8, 8]),
-    camera_projection: camera_projection_init = `perspective` as CameraProjection3D,
-    auto_rotate: auto_rotate_init = 0,
+    camera_projection = $bindable(`perspective` as CameraProjection3D),
+    auto_rotate = $bindable(0),
     rotation_damping = 0,
     fov = 50,
     min_zoom = 0.1,
@@ -159,7 +157,7 @@
   onMount(() => (mounted = true))
 
   const series_visibility_keys = $derived.by((): string[] => {
-    const id_counts = new Map<string | number, number>()
+    const id_counts = new SvelteMap<string | number, number>()
     for (const srs of series) {
       if (srs?.id !== undefined && srs.id !== ``) {
         id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
@@ -192,19 +190,16 @@
     ),
   )
 
-  // Local state for controls (initialized from props, owned by this component)
   const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
-  let x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis_init })
-  let y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis_init })
-  let z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis_init })
-  let display = $derived({
+  let resolved_x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis })
+  let resolved_y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis })
+  let resolved_z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis })
+  let resolved_display = $derived({
     show_axes: true,
     show_grid: true,
     show_axis_labels: true,
-    ...display_init,
+    ...display,
   })
-  let camera_projection = $derived(camera_projection_init)
-  let auto_rotate = $derived(auto_rotate_init)
   // Normalize color_scale to always be an object
   let normalized_color_scale = $derived(
     typeof color_scale === `string`
@@ -212,14 +207,12 @@
       : color_scale,
   )
 
-  // Collect all color values for color bar
-  let all_color_values = $derived(
-    series
-      .filter(Boolean)
-      .flatMap((srs) => srs.color_values?.filter((val): val is number => val != null) ?? []),
-  )
-
-  let auto_color_range = $derived(calculate_domain(all_color_values))
+  let color_extent = $derived.by(() => {
+    const extent = empty_extent()
+    for (const srs of series) accumulate_extent(extent, srs?.color_values ?? [])
+    return extent
+  })
+  let auto_color_range = $derived([color_extent.min ?? 0, color_extent.max ?? 1] as Vec2)
 
   let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
 
@@ -240,7 +233,7 @@
     ),
   )
   // Compute gizmo props - move up when color bar is shown
-  let has_color_bar = $derived(color_bar && all_color_values.length > 0)
+  let has_color_bar = $derived(color_bar && color_extent.n_finite > 0)
   let computed_gizmo = $derived.by(() => {
     if (gizmo === false) return false
     const base_offset = { left: 5, bottom: has_color_bar ? 70 : 5 }
@@ -263,15 +256,6 @@
   }
 </script>
 
-<svelte:window
-  onkeydown={(event) => {
-    if (event.key === `Escape` && fullscreen) {
-      event.preventDefault()
-      fullscreen = false
-    }
-  }}
-/>
-
 <div
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -283,7 +267,7 @@
     <div class="header-controls">
       {@render header_controls?.({ height, width, fullscreen })}
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--scatter3d-bg-fullscreen" />
       {/if}
     </div>
 
@@ -296,10 +280,10 @@
           {surfaces}
           {ref_lines}
           {ref_planes}
-          {x_axis}
-          {y_axis}
-          {z_axis}
-          {display}
+          x_axis={resolved_x_axis}
+          y_axis={resolved_y_axis}
+          z_axis={resolved_z_axis}
+          display={resolved_display}
           {styles}
           {color_scale_fn}
           {size_scale}
@@ -349,10 +333,10 @@
             controls_pane_props?.style ?? ``
           }`,
         }}
-        bind:x_axis
-        bind:y_axis
-        bind:z_axis
-        bind:display
+        bind:x_axis={() => resolved_x_axis, (value) => (x_axis = value)}
+        bind:y_axis={() => resolved_y_axis, (value) => (y_axis = value)}
+        bind:z_axis={() => resolved_z_axis, (value) => (z_axis = value)}
+        bind:display={() => resolved_display, (value) => (display = value)}
         bind:camera_projection
         bind:auto_rotate
         {series}
@@ -362,7 +346,7 @@
     {/if}
 
     <!-- Color Bar -->
-    {#if color_bar && all_color_values.length > 0}
+    {#if color_bar && color_extent.n_finite > 0}
       {@const color_domain = [
         normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
         normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
@@ -446,10 +430,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static;
-    opacity: 1;
   }
   /* Position the pane toggle in top right, next to fullscreen button */
   div.scatter-3d :global(.pane-toggle) {

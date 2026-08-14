@@ -1,20 +1,21 @@
 <script lang="ts">
-  import { toggle_fullscreen, type FullscreenToggleProp } from './fullscreen'
   import type { ShowControlsState } from '$lib/controls'
   // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) for BrillouinZone/FermiSurface/Structure viewers; themed via neutral --viewer-* CSS vars
   // Full-width sequence viewers use SequenceControlBar instead.
   import type { Snippet } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { FullscreenButton } from 'svelte-widgets'
+  import FullscreenButton from './FullscreenButton.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
     controls_config,
     filename = undefined,
-    fullscreen = false,
+    fullscreen = $bindable(false),
     fullscreen_toggle = true,
     fullscreen_btn_style = undefined,
+    fullscreen_bg_css_var = `--fullscreen-bg`,
+    on_fullscreen_change,
     wrapper = undefined,
     before = undefined,
     children = undefined,
@@ -23,8 +24,10 @@
     controls_config: ShowControlsState
     filename?: string
     fullscreen?: boolean
-    fullscreen_toggle?: FullscreenToggleProp
+    fullscreen_toggle?: boolean
     fullscreen_btn_style?: string
+    fullscreen_bg_css_var?: string
+    on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
     style?: string // extra styles/CSS vars for the section (user config style wins)
     before?: Snippet // rendered before filename/fullscreen
@@ -48,11 +51,11 @@
     {/if}
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
-      <!-- Treat button writes as requests; fullscreenchange owns confirmed state. -->
       <FullscreenButton
-        bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
-        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-        class="fullscreen-toggle"
+        bind:fullscreen
+        {wrapper}
+        bg_css_var={fullscreen_bg_css_var}
+        on_change={on_fullscreen_change}
         style={fullscreen_btn_style}
         {...tooltip_attachment}
       />

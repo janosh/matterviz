@@ -7,16 +7,16 @@
   import { StatusMessage } from '$lib/feedback'
   import { as_text, create_file_drop_handler, drag_over_handlers } from '$lib/io'
   import { format_num } from '$lib/labels'
-  import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
   import { Structure } from '$lib/structure'
   import { to_error } from '$lib/utils'
+  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
   import type {
     EnergyReference,
     PathMetric,
@@ -28,6 +28,17 @@
   import { type DroppedFile, parse_dropped_paths } from './parse'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
 
+  type NebControlName =
+    | `path`
+    | `nav`
+    | `step`
+    | `fps`
+    | `coord`
+    | `energy-reference`
+    | `spline`
+    | `energy`
+    | `fullscreen`
+
   let {
     paths,
     coord_mode = $bindable(`arc_length`),
@@ -36,17 +47,18 @@
     show_spline = $bindable(true),
     active_path_key = $bindable(``),
     active_image_idx = $bindable(0),
-    enable_drop = true,
+    allow_file_drop = true,
     fps = $bindable(4),
     fps_range = DEFAULT_FPS_RANGE,
     auto_play = false,
-    show_controls = `always`,
+    show_controls,
+    pane_ratio = $bindable(0.6),
     fullscreen_toggle = true,
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     error_msg = $bindable(undefined),
-    plot_style = `height: 460px`,
-    structure_style = `height: 460px`,
+    plot_props = { style: `height: 460px` },
+    structure_props = { style: `height: 460px` },
     on_fullscreen_change,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -57,25 +69,25 @@
     show_spline?: boolean
     active_path_key?: string
     active_image_idx?: number
-    enable_drop?: boolean
+    allow_file_drop?: boolean
     fps?: number
     fps_range?: readonly [number, number]
     auto_play?: boolean
     // Names: path, nav, step, fps, coord, energy-reference, spline, energy, fullscreen
-    show_controls?: ShowControlsProp
-    fullscreen_toggle?: FullscreenToggleProp
+    show_controls?: ShowControlsProp<NebControlName>
+    pane_ratio?: number
+    fullscreen_toggle?: boolean
     fullscreen?: boolean
     wrapper?: HTMLDivElement
     error_msg?: string
-    plot_style?: string
-    structure_style?: string
+    plot_props?: Partial<ComponentProps<typeof NebPlot>>
+    structure_props?: Partial<ComponentProps<typeof Structure>>
     on_fullscreen_change?: (fullscreen: boolean) => void
   } = $props()
 
   let dropped_paths = $state(new SvelteMap<string, ReactionPath>())
   let dragover = $state(false)
   let controls_height = $state(0)
-  let pane_ratio = $state(0.6)
   let controls_config = $derived(normalize_show_controls(show_controls))
 
   const merged: ReactionPathInput = $derived({
@@ -116,7 +128,7 @@
   })
 
   const handle_drop = create_file_drop_handler({
-    allow: () => enable_drop,
+    allow: () => allow_file_drop,
     on_drop: (content, filename) => {
       try {
         const parsed = parse_dropped_paths([{ content: as_text(content), filename }])
@@ -139,7 +151,7 @@
 
   const set_dragover = (over: boolean) => (dragover = over)
   const drop_zone = $derived(
-    enable_drop ? { ondrop: handle_drop, ...drag_over_handlers({ set_dragover }) } : {},
+    allow_file_drop ? { ondrop: handle_drop, ...drag_over_handlers({ set_dragover }) } : {},
   )
 
   // Energy of the shown image on the same reference as the plot's y axis
@@ -164,14 +176,6 @@
       [`Fitted saddle (${spline.method})`, `+${excess} ${energy_unit} above image #${ts_idx}`],
     ]
   })
-
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (value) => (fullscreen = value),
-    get_bg_css_var: () => `--neb-bg-fullscreen`,
-    on_change: (value) => on_fullscreen_change?.(value),
-  })
 </script>
 
 <div
@@ -185,7 +189,7 @@
   {#if !active || !profile}
     <div class="empty">
       <StatusMessage
-        message={enable_drop
+        message={allow_file_drop
           ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
           : `No reaction path to display`}
         style="border: none"
@@ -250,8 +254,10 @@
         {/if}
         {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
           <FullscreenButton
-            bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
-            children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+            bind:fullscreen
+            {wrapper}
+            bg_css_var="--neb-bg-fullscreen"
+            on_change={on_fullscreen_change}
             class="fullscreen-button"
           />
         {/if}
@@ -265,13 +271,14 @@
         : undefined}
     >
       <NebPlot
+        {...plot_props}
         paths={merged}
         {coord_options}
         {energy_reference}
         {show_spline}
         bind:active_path_key
         bind:active_image_idx
-        style={plot_style}
+        show_controls={controls_config.mode !== `never` && plot_props.show_controls !== false}
       />
       <PaneDivider
         orientation="horizontal"
@@ -280,7 +287,14 @@
       />
       <div class="structure-pane">
         {#if current_image}
-          <Structure structure={current_image.structure} style={structure_style} />
+          <Structure
+            {...structure_props}
+            structure={current_image.structure}
+            allow_file_drop={structure_props.allow_file_drop ?? false}
+            show_controls={controls_config.mode === `never`
+              ? false
+              : structure_props.show_controls}
+          />
         {/if}
       </div>
     </div>

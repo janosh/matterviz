@@ -637,7 +637,9 @@ describe(`Structure`, () => {
 
     expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
 
-    const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
+    const fullscreen_button = doc_query<HTMLButtonElement>(
+      `.structure > section.control-buttons > .fullscreen-btn`,
+    )
     expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
       `var(--struct-fullscreen-icon-size, 1.2em)`,
     )
@@ -648,7 +650,7 @@ describe(`Structure`, () => {
     expect(on_fullscreen_change).not.toHaveBeenCalled()
 
     fullscreen_button.click()
-    expect(requestFullscreenMock).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(requestFullscreenMock).toHaveBeenCalledTimes(2))
 
     await set_fullscreen_element(wrapper)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)

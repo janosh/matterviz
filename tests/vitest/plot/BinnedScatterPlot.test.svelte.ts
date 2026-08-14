@@ -192,7 +192,7 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
 
     const plot = binned_plot()
-    const toggle = doc_query<HTMLButtonElement>(`.fullscreen-toggle`)
+    const toggle = doc_query<HTMLButtonElement>(`.fullscreen-btn`)
     expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
     expect(document.querySelector(`.custom-header-controls`)?.textContent).toBe(
       `800x600:false`,
@@ -204,7 +204,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(plot.classList.contains(`fullscreen`)).toBe(true)
     expect(toggle.getAttribute(`aria-label`)).toBe(`Exit fullscreen`)
 
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+    await document.exitFullscreen()
     await tick()
     expect(plot.classList.contains(`fullscreen`)).toBe(false)
     expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
@@ -216,7 +216,7 @@ describe(`BinnedScatterPlot`, () => {
       fullscreen_toggle: false,
     })
     await settle()
-    expect(document.querySelector(`.fullscreen-toggle`)).toBeNull()
+    expect(document.querySelector(`.fullscreen-btn`)).toBeNull()
   })
 
   // a NaN bound in a partially-set axis range would otherwise loop the auto-range

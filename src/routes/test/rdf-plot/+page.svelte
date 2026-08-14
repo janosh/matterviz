@@ -133,4 +133,10 @@
 />
 
 <h2>Drag & Drop Enabled</h2>
-<RdfPlot id="drag-drop" mode="element_pairs" enable_drop cutoff={7} style="height: 360px" />
+<RdfPlot
+  id="drag-drop"
+  mode="element_pairs"
+  allow_file_drop
+  cutoff={7}
+  style="height: 360px"
+/>

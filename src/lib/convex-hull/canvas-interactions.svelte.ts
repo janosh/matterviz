@@ -1,5 +1,4 @@
 // Shared canvas-interaction scaffold (runes-in-closure factory) for ConvexHull3D/4D.
-import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
 import type { AnyStructure } from '$lib/structure'
 import * as helpers from './helpers'
 import type { ConvexHullEntry, EntryCategoryConfig, HoverData3D, PhaseData } from './types'
@@ -7,7 +6,6 @@ import type { ConvexHullEntry, EntryCategoryConfig, HoverData3D, PhaseData } fro
 export interface CanvasInteractionInputs {
   // Static config
   wheel_clamp: [min: number, max: number] // zoom clamp range
-  fullscreen_bg_var: string // e.g. `--hull-3d-bg-fullscreen`
   // Reactive getters / element refs
   canvas: () => HTMLCanvasElement | undefined
   // Transparent layer over `canvas` holding only the pulsing rings, so ticks skip the hull
@@ -21,9 +19,9 @@ export interface CanvasInteractionInputs {
   plot_entries: () => ConvexHullEntry[]
   selected_entry: () => ConvexHullEntry | null
   set_selected_entry: (entry: ConvexHullEntry | null) => void
-  fullscreen: () => boolean
   enable_click_selection: () => boolean
   enable_structure_preview: () => boolean
+  allow_file_drop: () => boolean
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
   on_file_drop: () => ((entries: PhaseData[]) => void) | undefined
@@ -43,7 +41,6 @@ export interface CanvasInteractionInputs {
   hull_point_opts: () => helpers.HullPointOpts<ConvexHullEntry>
   pulse: () => { time: number; opacity: number }
   on_drag: (dx: number, dy: number, panning: boolean) => void
-  on_fullscreen_change: () => void // e.g. reset camera pan center
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
 }
 
@@ -140,12 +137,14 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
+    if (!inputs.allow_file_drop()) return
     drag_over = false
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) inputs.on_file_drop()?.(data)
   }
 
   const set_drag_over = (over: boolean) => (event: DragEvent) => {
+    if (!inputs.allow_file_drop()) return
     event.preventDefault()
     drag_over = over
   }
@@ -317,18 +316,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       if (frame_id) cancelAnimationFrame(frame_id)
       resize_observer.disconnect() // Cleanup on unmount
     }
-  })
-
-  // Fullscreen handling with camera reset
-  let was_fullscreen = $state(inputs.fullscreen())
-  $effect(() => {
-    setup_fullscreen_effect(inputs.fullscreen(), inputs.wrapper(), (entering) => {
-      if (entering !== was_fullscreen) {
-        inputs.on_fullscreen_change()
-        was_fullscreen = entering
-      }
-    })
-    set_fullscreen_bg(inputs.wrapper(), inputs.fullscreen(), inputs.fullscreen_bg_var)
   })
 
   // Performance: Pre-compute and cache all point projections + depth sorting

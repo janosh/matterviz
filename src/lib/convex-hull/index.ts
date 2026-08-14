@@ -1,4 +1,3 @@
-import type { FullscreenToggleProp } from '$lib/layout'
 import type { D3InterpolateName } from '$lib/colors'
 import type { ShowControlsProp } from '$lib/controls'
 import type { TooltipConfig } from '$lib/tooltip'
@@ -27,7 +26,6 @@ export { default as ConvexHullInfoPane } from './ConvexHullInfoPane.svelte'
 export { default as ConvexHullStats } from './ConvexHullStats.svelte'
 export { default as ConvexHullTooltip } from './ConvexHullTooltip.svelte'
 export { default as StructurePopup } from './StructurePopup.svelte'
-export * from './demo-temperature'
 export * from './gas-thermodynamics'
 export { default as GasPressureControls } from './GasPressureControls.svelte'
 export * from './helpers'
@@ -55,6 +53,8 @@ export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
   | ConvexHullTooltipConfig<AnyDimEntry>
 
+export type ConvexHullControlName = `reset` | `info-pane` | `fullscreen` | `controls`
+
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   HTMLAttributes<HTMLDivElement>,
@@ -70,12 +70,12 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   // - object: { mode, hidden, style } for fine-grained control
   //
   // Control names: 'info-pane', 'fullscreen', 'controls'
-  show_controls?: ShowControlsProp
+  show_controls?: ShowControlsProp<ConvexHullControlName>
   on_point_click?: (entry: AnyDimEntry) => void
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
   // show/hide the fullscreen button (or custom snippet to render it)
-  fullscreen_toggle?: FullscreenToggleProp
+  fullscreen_toggle?: boolean
   enable_info_pane?: boolean
   wrapper?: HTMLDivElement
   // Smart label defaults - hide labels if more than this many entries
@@ -101,6 +101,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   show_stable_labels?: boolean
   show_unstable_labels?: boolean
   // Callback for when JSON files are dropped
+  allow_file_drop?: boolean
   on_file_drop?: (entries: PhaseData[]) => void
   // Enable click selection/highlighting of entries (default: true)
   // When false, clicking entries won't set selected_entry

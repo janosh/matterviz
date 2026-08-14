@@ -3,7 +3,7 @@ import { ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls, press_window_key } from '../setup'
+import { bind_props, expect_plot_controls } from '../setup'
 import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'
 
 // Smoke tests to ensure component mounts without errors.
@@ -143,13 +143,13 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(on_series_visibility_change).toHaveBeenCalledWith(0, false)
   })
 
-  test(`Escape exits fullscreen through the bindable prop`, async () => {
+  test(`browser exit updates the fullscreen binding`, async () => {
     const state = { fullscreen: true }
     await mount_plot(bind_props({ series: [basic_series] }, state))
     expect(container.querySelector(`.scatter-3d.fullscreen`)).not.toBeNull()
-    const event = press_window_key({ key: `Escape` })
+    await document.exitFullscreen()
+    flushSync()
     expect(state.fullscreen).toBe(false)
-    expect(event.defaultPrevented).toBe(true)
   })
 
   test.each([

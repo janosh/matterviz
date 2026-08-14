@@ -1092,7 +1092,9 @@ test.describe(`Show Buttons Tests`, () => {
     await expect(control_buttons).not.toHaveClass(/always-visible|hover-visible/)
     await page.locator(`#test-structure`).hover()
     await expect(page.locator(`.structure-info-toggle`)).toBeHidden()
-    await expect(page.locator(`.fullscreen-toggle`)).toBeHidden()
+    await expect(
+      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
+    ).toBeHidden()
   })
 
   test(`show_controls=hover reveals buttons on hover`, async ({ page }) => {
@@ -1109,7 +1111,9 @@ test.describe(`Show Buttons Tests`, () => {
     await expect(control_buttons).toHaveClass(/always-visible/)
     await expect(control_buttons).toHaveCSS(`opacity`, `1`)
     await expect(page.locator(`.structure-info-toggle`)).toBeVisible()
-    await expect(page.locator(`.fullscreen-toggle`)).toBeVisible()
+    await expect(
+      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
+    ).toBeVisible()
   })
 })
 
@@ -1160,7 +1164,9 @@ test.describe(`Structure Event Handler Tests`, () => {
     test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
       page,
     }) => {
-      const fullscreen_button = page.locator(`#test-structure .fullscreen-toggle`)
+      const fullscreen_button = page.locator(
+        `#test-structure > section.control-buttons > .fullscreen-btn`,
+      )
       await clear_events(page)
       await fullscreen_button.click()
 

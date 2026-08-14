@@ -38,13 +38,13 @@
     merge_imported_volumes,
     normalize_active_volume_idx,
   } from '$lib/isosurface/types'
-  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
+  import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import StructureViewport from './StructureViewport.svelte'
+
   import type {
     AnyStructure,
     BondEditMode,
@@ -98,6 +98,16 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
+
+  type StructureControlName =
+    | `reset-camera`
+    | `fullscreen`
+    | `view-mode`
+    | `multi-view`
+    | `measure-mode`
+    | `info-pane`
+    | `export-pane`
+    | `controls`
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -268,14 +278,7 @@
     bonds?: StructureBond[]
     scene_props?: ComponentProps<typeof StructureScene>
     show_trajectory_lines?: boolean
-    // Controls visibility configuration.
-    // - 'always': controls always visible
-    // - 'hover': controls visible on component hover (default)
-    // - 'never': controls never visible
-    // - object: { mode, hidden, style } for fine-grained control
-    //
-    // Control names: 'reset-camera', 'fullscreen', 'view-mode', 'multi-view', 'measure-mode', 'info-pane', 'export-pane', 'controls'
-    show_controls?: ShowControlsProp
+    show_controls?: ShowControlsProp<StructureControlName>
     fullscreen?: boolean
     // bindable width of the canvas
     width?: number
@@ -310,7 +313,7 @@
     // The 4 (or more) view definitions used by multi_view. Defaults to an
     // Ovito-like set: one perspective + three orthographic axis views.
     views?: StructureView[]
-    fullscreen_toggle?: FullscreenToggleProp
+    fullscreen_toggle?: boolean
     bottom_left?: Snippet<[{ structure?: AnyStructure }]>
     top_right_controls?: Snippet // Additional controls to render at the end of the control buttons row
     data_url?: string // URL to load structure from (alternative to providing structure directly)
@@ -1617,7 +1620,7 @@
 
     // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
-      toggle_fullscreen(wrapper)
+      fullscreen = !fullscreen
       return true
     } else if (
       event.key === `i` &&
@@ -1790,14 +1793,6 @@
       .padStart(2, `0`)
     wrapper.style.setProperty(`--struct-bg-override`, `${background_color}${alpha_hex}`)
   })
-
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (val) => (fullscreen = val),
-    get_bg_css_var: () => `--struct-bg-fullscreen`,
-    on_change: (val) => on_fullscreen_change?.({ structure, fullscreen: val }),
-  })
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1842,10 +1837,13 @@
   {:else if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
     <ViewerChrome
       {controls_config}
-      {fullscreen}
+      bind:fullscreen
       {fullscreen_toggle}
-      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1.2em)"
       {wrapper}
+      fullscreen_bg_css_var="--struct-bg-fullscreen"
+      on_fullscreen_change={(value) =>
+        on_fullscreen_change?.({ structure, fullscreen: value })}
+      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1.2em)"
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}

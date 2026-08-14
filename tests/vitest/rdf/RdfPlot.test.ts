@@ -121,7 +121,7 @@ describe(`RdfPlot`, () => {
       y_axis: { label: `Custom Y` },
       style: `height: 500px;`,
       class: `custom-class`,
-      enable_drop: true,
+      allow_file_drop: true,
     })
     expect(plot.classList.contains(`custom-class`)).toBe(true)
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)

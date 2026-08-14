@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import type {
     BasePlotProps,
     LegendConfig,
@@ -380,8 +380,6 @@
     else muted_nodes.add(id)
   }
 
-  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sankey-fullscreen-bg`))
-
   // Node label placement: horizontal -> beside node; vertical -> above node
   function label_attrs(node: PositionedNode) {
     if (orientation === `vertical`) {
@@ -402,15 +400,6 @@
   }
 </script>
 
-<svelte:window
-  onkeydown={(evt) => {
-    if (evt.key === `Escape` && fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-  }}
-/>
-
 <div
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -422,7 +411,7 @@
     <div class="header-controls">
       {@render header_controls?.({ height, width, fullscreen })}
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--sankey-fullscreen-bg" />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -664,10 +653,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static;
-    opacity: 1;
   }
   .sankey :global(.pane-toggle),
   .sankey .header-controls {
