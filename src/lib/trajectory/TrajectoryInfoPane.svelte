@@ -5,11 +5,10 @@
   import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_bytes, format_num } from '$lib/labels'
   import { array_extent } from '$lib/math'
-  import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import type { AnyStructure } from '$lib/structure'
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryFrame, TrajectoryType } from './index'
+  import { get_frame_step_samples, get_frame_time_step } from './plotting'
 
   let {
     trajectory,
@@ -56,14 +55,6 @@
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
   const is_info_item = (item: unknown): item is InfoItem => Boolean(item)
 
-  const safe_formula = (structure: AnyStructure) => {
-    try {
-      return get_electro_neg_formula(structure)
-    } catch {
-      return null
-    }
-  }
-
   // Get trajectory info organized by sections
   let info_pane_data = $derived.by(() => {
     if (
@@ -76,6 +67,28 @@
     // For indexed trajectories, the resolved frame may live outside sparse frame arrays.
     const displayed_frame = current_frame ?? trajectory.frames?.[current_step_idx]
     const total_frames = trajectory.total_frames ?? trajectory.frames?.length ?? 0
+    const step_samples = get_frame_step_samples(trajectory)
+    const { frame_numbers, steps } = step_samples
+    const first_step = steps[0]
+    const last_step = steps.at(-1)
+    const step_span =
+      total_frames > 1 &&
+      frame_numbers[0] === 0 &&
+      frame_numbers.at(-1) === total_frames - 1 &&
+      is_valid_number(first_step) &&
+      is_valid_number(last_step)
+        ? format_range([first_step, last_step], ``)
+        : null
+    const simulation_time_step =
+      trajectory.time_unit && is_valid_number(trajectory.time_step) && trajectory.time_step > 0
+        ? trajectory.time_step
+        : null
+    const frame_time_step =
+      simulation_time_step && get_frame_time_step(step_samples, simulation_time_step)
+    const current_time =
+      displayed_frame && simulation_time_step
+        ? displayed_frame.step * simulation_time_step
+        : null
 
     const sections: { title: string; items: InfoItem[] }[] = []
     // Append a section unless every item filtered out as falsy
@@ -109,6 +122,34 @@
         )})`,
         `total-frames`,
       ),
+      displayed_frame &&
+        safe_item(
+          `Current Step`,
+          format_num(displayed_frame.step, `.3~s`),
+          `current-step`,
+          `Simulation or ionic step recorded in the source file`,
+        ),
+      safe_item(`Step Span`, step_span, `step-span`),
+      simulation_time_step &&
+        safe_item(
+          `Time Step`,
+          `${format_num(simulation_time_step, `.3~s`)} ${trajectory.time_unit}`,
+          `time-step`,
+          `Simulation time per recorded MD step`,
+        ),
+      is_valid_number(current_time) &&
+        safe_item(
+          `Current Time`,
+          `${format_num(current_time, `.3~s`)} ${trajectory.time_unit}`,
+          `current-time`,
+        ),
+      is_valid_number(frame_time_step) &&
+        total_frames > 1 &&
+        safe_item(
+          `Duration`,
+          `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${trajectory.time_unit}`,
+          `duration`,
+        ),
       trajectory.is_indexed &&
         safe_item(
           `Indexed`,
@@ -130,59 +171,15 @@
           `plot-metadata`,
           `Pre-extracted metadata for plotting`,
         ),
-    ])
-
-    // Structure info section (only if we have the current frame)
-    if (displayed_frame?.structure?.sites) {
-      const { structure } = displayed_frame
-      const lattice = `lattice` in structure ? structure.lattice : null
-      const { volume, a, b, c, alpha, beta, gamma } = lattice || {}
-      const formula = safe_formula(structure)
-
-      push_section(`Structure`, [
-        safe_item(`Atoms`, `${structure.sites.length}`, `atoms`),
-        formula && safe_item(`Formula`, String(formula), `formula`),
-        is_valid_number(volume) &&
-          volume > 0 &&
-          safe_item(`Volume`, `${format_num(volume, `.3~s`)} Å³`, `volume`),
-        is_valid_number(volume) &&
-          volume > 0 &&
-          structure.sites.length > 0 &&
-          safe_item(
-            `Density`,
-            `${format_num(structure.sites.length / volume, `.3~s`)} atoms/Å³`,
-            `density`,
-          ),
-        [a, b, c].every(is_valid_number) &&
-          safe_item(
-            `Cell Lengths`,
-            `${format_num(a as number, `.3~f`)}, ${format_num(b as number, `.3~f`)}, ${format_num(
-              c as number,
-              `.3~f`,
-            )} Å`,
-            `cell-lengths`,
-          ),
-        [alpha, beta, gamma].every(is_valid_number) &&
-          safe_item(
-            `Cell Angles`,
-            `${format_num(alpha as number, `.2~f`)}°, ${format_num(
-              beta as number,
-              `.2~f`,
-            )}°, ${format_num(gamma as number, `.2~f`)}°`,
-            `cell-angles`,
-          ),
-      ])
-    } else if (trajectory.is_indexed) {
-      // For indexed trajectories, show a note that frame data is loaded on demand
-      push_section(`Structure`, [
+      trajectory.is_indexed &&
+        !displayed_frame &&
         safe_item(
           `Frame Loading`,
           `On-demand`,
           `frame-loading`,
-          `Structure data loaded when frame is accessed`,
+          `Frame data loads when accessed`,
         ),
-      ])
-    }
+    ])
 
     // Aggregates over the run. An indexed trajectory keeps only a handful of frames in memory,
     // so a min/max over `frames` there would describe the start of the run as the whole run.
@@ -266,9 +263,8 @@
 
       if (volumes.length > 1) {
         const [min_volume, max_volume] = array_extent(volumes)
-        // A fixed cell would otherwise render `125 - 125 Å³` directly under the Structure
-        // section's own Volume row. volumes is already filtered to finite positives, so the
-        // ratio is finite and non-negative.
+        // A fixed cell would otherwise render a zero-width `125 - 125 Å³` range. volumes is
+        // already filtered to finite positives, so the ratio is finite and non-negative.
         const vol_change = (max_volume - min_volume) / min_volume
         push_section(`Volume`, [
           min_volume < max_volume && range_item(`Volume Range`, volumes, `Å³`, `volume-range`),

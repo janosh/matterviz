@@ -21,6 +21,7 @@ export function write_bond_transform(
   instance_idx: number,
   pos_1: Vec3,
   pos_2: Vec3,
+  radius_scale = 1,
 ): void {
   const matrix_offset = instance_idx * 16
   const dx = pos_2[0] - pos_1[0]
@@ -34,8 +35,8 @@ export function write_bond_transform(
   matrix_buffer.fill(0, matrix_offset, matrix_offset + 16)
   matrix_buffer[matrix_offset + 15] = 1
   if (height < 1e-10) {
-    matrix_buffer[matrix_offset] = 1
-    matrix_buffer[matrix_offset + 10] = 1
+    matrix_buffer[matrix_offset] = radius_scale
+    matrix_buffer[matrix_offset + 10] = radius_scale
     matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
     matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
     matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
@@ -62,15 +63,15 @@ export function write_bond_transform(
     up_z = -dir_y * right_x
   }
 
-  // Column-major Three.js matrix: right, direction * length, up, midpoint translation.
-  matrix_buffer[matrix_offset] = right_x
-  matrix_buffer[matrix_offset + 2] = right_z
+  // Column-major Three.js matrix: scaled right, direction * length, scaled up, midpoint.
+  matrix_buffer[matrix_offset] = right_x * radius_scale
+  matrix_buffer[matrix_offset + 2] = right_z * radius_scale
   matrix_buffer[matrix_offset + 4] = dir_x * height
   matrix_buffer[matrix_offset + 5] = dir_y * height
   matrix_buffer[matrix_offset + 6] = dir_z * height
-  matrix_buffer[matrix_offset + 8] = up_x
-  matrix_buffer[matrix_offset + 9] = up_y
-  matrix_buffer[matrix_offset + 10] = up_z
+  matrix_buffer[matrix_offset + 8] = up_x * radius_scale
+  matrix_buffer[matrix_offset + 9] = up_y * radius_scale
+  matrix_buffer[matrix_offset + 10] = up_z * radius_scale
   matrix_buffer[matrix_offset + 12] = (pos_1[0] + pos_2[0]) / 2
   matrix_buffer[matrix_offset + 13] = (pos_1[1] + pos_2[1]) / 2
   matrix_buffer[matrix_offset + 14] = (pos_1[2] + pos_2[2]) / 2
@@ -126,7 +127,7 @@ export function write_bond_instance_matrices(
   let instance_idx = 0
   const gap = bond_thickness * 1.8
   for (const { pos_1, pos_2, bond_order } of bonds) {
-    write_bond_transform(matrix_buffer, instance_idx, pos_1, pos_2)
+    write_bond_transform(matrix_buffer, instance_idx, pos_1, pos_2, bond_thickness)
     const instance_count = instance_count_for_order(bond_order)
     for (let copy_idx = 1; copy_idx < instance_count; copy_idx++) {
       copy_matrix(matrix_buffer, instance_idx, instance_idx + copy_idx)

@@ -48,30 +48,26 @@ test.each([
 )
 
 test.each([
-  [`horizontal`, `ltr`, `ArrowRight`],
-  [`horizontal`, `rtl`, `ArrowLeft`],
-  [`vertical`, `ltr`, `ArrowDown`],
-] as const)(`%s %s keyboard resizing clamps with %s`, (orientation, direction, key) => {
-  const { divider, parent } = mount_divider(orientation, direction)
-  for (let repeat = 0; repeat < 10; repeat++) {
-    divider.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true }),
-    )
-  }
-  flushSync()
-  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`85%`)
-  expect(divider.getAttribute(`aria-valuenow`)).toBe(`85`)
-})
-
-test(`keyboard resizing starts from the safe ratio for non-finite input`, () => {
-  const { divider, parent } = mount_divider(`horizontal`, `ltr`, Number.NaN)
-  divider.dispatchEvent(
-    new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true, cancelable: true }),
-  )
-  flushSync()
-  expect(parent.style.getPropertyValue(`--split-pane-size`)).toBe(`${0.55 * 100}%`)
-  expect(divider.getAttribute(`aria-valuenow`)).toBe(`55`)
-})
+  [`horizontal LTR`, `horizontal`, `ltr`, `ArrowRight`, undefined, 10, 85],
+  [`horizontal RTL`, `horizontal`, `rtl`, `ArrowLeft`, undefined, 10, 85],
+  [`vertical`, `vertical`, `ltr`, `ArrowDown`, undefined, 10, 85],
+  [`non-finite start`, `horizontal`, `ltr`, `ArrowRight`, Number.NaN, 1, 55],
+] as const)(
+  `%s keyboard resizing clamps`,
+  (_name, orientation, direction, key, ratio, repeats, expected) => {
+    const { divider, parent } = mount_divider(orientation, direction, ratio)
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      divider.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true }),
+      )
+    }
+    flushSync()
+    const split_percentage = parent.style.getPropertyValue(`--split-pane-size`)
+    expect(split_percentage.endsWith(`%`)).toBe(true)
+    expect(Number(split_percentage.slice(0, -1))).toBeCloseTo(expected, 12)
+    expect(divider.getAttribute(`aria-valuenow`)).toBe(`${expected}`)
+  },
+)
 
 test(`an active drag ignores other pointers and ends on lost capture`, () => {
   const { divider, parent } = mount_divider(`horizontal`)

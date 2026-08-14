@@ -211,7 +211,9 @@
   }
   .step-label {
     position: absolute;
-    top: calc(var(--sequence-step-tick-offset, 3px) + var(--sequence-step-tick-height, 3px));
+    top: calc(
+      var(--sequence-step-tick-offset, 3px) + var(--sequence-step-tick-height, 3px) + 2px
+    );
     transform: translateX(-50%);
     color: var(--text-color-muted);
     font-size: clamp(0.5em, 1.2cqw, 0.65em);

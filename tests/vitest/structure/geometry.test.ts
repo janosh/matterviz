@@ -12,6 +12,7 @@ import {
   rotation_from_direction,
 } from '$lib/structure/geometry'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 
 describe(`quaternion_from_direction`, () => {
@@ -159,15 +160,15 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
   })
 
   test.each([
-    { order: undefined, expected_count: 1 },
-    { order: 1 as const, expected_count: 1 },
-    { order: 2 as const, expected_count: 2 },
-    { order: 3 as const, expected_count: 3 },
-    { order: 1.5 as const, expected_count: 2 },
-    { order: `aromatic` as const, expected_count: 2 },
-  ])(
+    { order: undefined, expected_count: 1, expected_radius: 0.1 },
+    { order: 1, expected_count: 1, expected_radius: 0.1 },
+    { order: 2, expected_count: 2, expected_radius: 0.065 },
+    { order: 3, expected_count: 3, expected_radius: 0.055 },
+    { order: 1.5, expected_count: 2, expected_radius: 0.075 },
+    { order: `aromatic`, expected_count: 2, expected_radius: 0.075 },
+  ] satisfies { order?: BondOrder; expected_count: number; expected_radius: number }[])(
     `packs $order bond order as $expected_count cylinder matrices`,
-    ({ order, expected_count }: { order?: BondOrder; expected_count: number }) => {
+    ({ order, expected_count, expected_radius }) => {
       const bond: BondPair = {
         pos_1: [0, 0, 0],
         pos_2: [1, 0, 0],
@@ -181,13 +182,17 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
 
       expect(count_bond_instances([bond])).toBe(expected_count)
       expect(write_bond_instance_matrices(matrix_buffer, [bond], 0.1)).toBe(expected_count)
+      expect(Math.hypot(matrix_buffer[0], matrix_buffer[1], matrix_buffer[2])).toBeCloseTo(
+        expected_radius,
+        7,
+      )
       if (expected_count > 1) {
         const offsets = Array.from({ length: expected_count }, (_, instance_idx) =>
           [12, 13, 14]
             .map((component_idx) => matrix_buffer[instance_idx * 16 + component_idx])
             .join(`,`),
         )
-        expect(new Set(offsets).size).toBeGreaterThan(1)
+        expect(new SvelteSet(offsets).size).toBeGreaterThan(1)
       }
     },
   )

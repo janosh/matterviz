@@ -169,5 +169,5 @@
   bind:ref={mesh}
   frustumCulled={false}
 >
-  <T.CylinderGeometry args={[thickness, thickness, 1, 8]} />
+  <T.CylinderGeometry args={[1, 1, 1, 8]} />
 </T.InstancedMesh>

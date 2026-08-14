@@ -95,17 +95,27 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`layout and configuration options`, () => {
-    test(`step labels stay within the control bar`, async ({ page }) => {
+    test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
       await expect(step_labels).toHaveText([`0`, `1`, `2`])
 
-      const [controls_bottom, ...label_bottoms] = await loaded_trajectory
-        .locator(`.trajectory-controls, .step-label`)
-        .evaluateAll((elements) =>
-          elements.map((element) => element.getBoundingClientRect().bottom),
-        )
+      const { controls_bottom, label_bottoms, tick_label_gaps } = await loaded_trajectory
+        .locator(`.trajectory-controls`)
+        .evaluate((control_bar) => {
+          const labels = Array.from(control_bar.querySelectorAll(`.step-label`))
+          return {
+            controls_bottom: control_bar.getBoundingClientRect().bottom,
+            label_bottoms: labels.map((label) => label.getBoundingClientRect().bottom),
+            tick_label_gaps: labels.map((label) => {
+              const tick = label.previousElementSibling
+              if (!(tick instanceof HTMLElement)) throw new Error(`step tick not found`)
+              return label.getBoundingClientRect().top - tick.getBoundingClientRect().bottom
+            }),
+          }
+        })
       expect(Math.max(...label_bottoms)).toBeLessThanOrEqual(controls_bottom)
+      expect(Math.min(...tick_label_gaps)).toBeGreaterThanOrEqual(1)
 
       await expect(page.locator(`#negative-step-labels .step-label`)).toHaveText([
         `0`,
