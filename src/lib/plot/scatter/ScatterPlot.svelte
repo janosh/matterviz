@@ -138,7 +138,6 @@
     hovered = $bindable(false),
     tooltip,
     user_content,
-    change = () => {},
     color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
     size_scale = SCALE_DEFAULTS.size,
@@ -176,7 +175,7 @@
     point_hit_padding = 0,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
-    Omit<BasePlotProps, `change`> &
+    BasePlotProps &
     PlotConfig & {
       series?: DataSeries<Metadata>[]
       styles?: StyleOverrides
@@ -189,7 +188,6 @@
       controls_extra?: Snippet<
         [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
       >
-      change?: (data: (Point<Metadata> & { series: DataSeries<Metadata> }) | null) => void
       color_scale?: ColorScaleConfig | D3InterpolateName
       size_scale?: SizeScaleConfig
       color_bar?:
@@ -1078,20 +1076,16 @@
     const nearest = query_nearest(hover_index, { x: x_rel, y: y_rel })
 
     if (nearest) {
-      const { point: closest_point, series: closest_series } = nearest
+      const { point: closest_point } = nearest
       // Construct handler props synchronously to avoid stale derived reads
       const props = construct_handler_props(closest_point)
       tooltip_point = closest_point
-      // Construct object matching change signature
-      const { x, y, metadata } = closest_point
-      change({ x, y, metadata, series: closest_series })
       // Call hover handler with synchronously constructed props
       if (evt && props) {
         on_point_hover?.({ ...props, event: evt, point: closest_point })
       }
     } else {
       tooltip_point = null
-      change(null)
       on_point_hover?.(null)
     }
   }
@@ -1307,13 +1301,12 @@
   let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
 
   // State accessors for shared axis change handler
-  // Spread into existing state in each setter to preserve merged type structure
   const axis_state: AxisChangeState<DataSeries<Metadata>> = {
     axes: {
-      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
-      x2: { get: () => x2_axis, set: (config) => (x2_axis = { ...x2_axis, ...config }) },
-      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
-      y2: { get: () => y2_axis, set: (config) => (y2_axis = { ...y2_axis, ...config }) },
+      x: { get: () => x_axis, set: (config) => (x_axis = config) },
+      x2: { get: () => x2_axis, set: (config) => (x2_axis = config) },
+      y: { get: () => y_axis, set: (config) => (y_axis = config) },
+      y2: { get: () => y2_axis, set: (config) => (y2_axis = config) },
     },
     series: { get: () => series, set: (next) => (series = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
@@ -1389,7 +1382,6 @@
     end_queued_mouse_move(false)
     hovered = false
     tooltip_point = null
-    change(null)
     on_point_hover?.(null)
     on_pointer_leave?.()
   }}

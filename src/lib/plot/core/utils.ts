@@ -1,4 +1,4 @@
-import { array_extent, type Vec2 } from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import type { TweenOptions } from 'svelte/motion'
 
 // Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
@@ -22,10 +22,18 @@ export const resolve_line_tween = (
     ? { duration: 0 }
     : undefined)
 
-export function calc_auto_range(values: number[]): Vec2 {
-  const finite_values = values.filter(Number.isFinite)
-  if (finite_values.length === 0) return [0, 1]
-  const [min_value, max_value] = array_extent(finite_values)
+export function calc_auto_range<Item>(
+  items: Iterable<Item>,
+  get_values: (item: Item) => Iterable<number>,
+): Vec2 {
+  let [min_value, max_value] = [Infinity, -Infinity]
+  for (const item of items)
+    for (const value of get_values(item)) {
+      if (!Number.isFinite(value)) continue
+      min_value = Math.min(min_value, value)
+      max_value = Math.max(max_value, value)
+    }
+  if (min_value === Infinity) return [0, 1]
   const padding = (max_value - min_value) * 0.05 || 0.5
   return [min_value - padding, max_value + padding]
 }

@@ -56,10 +56,10 @@
     children?: Snippet
   } = $props()
 
-  // Auto ranges for the reset buttons (5% padding, 0.5 when all values coincide)
-  let auto_x_range = $derived(calc_auto_range(series.flatMap((srs) => srs.x)))
-  let auto_y_range = $derived(calc_auto_range(series.flatMap((srs) => srs.y)))
-  let auto_z_range = $derived(calc_auto_range(series.flatMap((srs) => srs.z)))
+  // Auto ranges for reset buttons without allocating flattened coordinate arrays.
+  let auto_x_range = $derived(calc_auto_range(series, (series_data) => series_data.x))
+  let auto_y_range = $derived(calc_auto_range(series, (series_data) => series_data.y))
+  let auto_z_range = $derived(calc_auto_range(series, (series_data) => series_data.z))
 
   const set_display = (key: `projection_opacity` | `projection_scale`) => (val?: number) => {
     // Guard against cleared/invalid input - preserve existing value

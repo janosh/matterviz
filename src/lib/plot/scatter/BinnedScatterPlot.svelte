@@ -162,7 +162,7 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
     // Share the BasePlotProps members that apply rather than redeclaring them. The ones left
     // out are genuinely absent here: this component has no controls pane and reports hover via
-    // on_point_click / the tooltip snippet rather than a generic `change`. `range_padding`
+    // on_point_click / the tooltip snippet. `range_padding`
     // defaults to 0.05 (the historical density-bin framing pad) rather than ScatterPlot's 0.
     Pick<
       BasePlotProps,

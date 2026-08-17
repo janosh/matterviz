@@ -99,7 +99,6 @@
     tooltip,
     user_content,
     hovered = $bindable(false),
-    change = () => {},
     on_bar_click,
     on_bar_hover,
     // Line marker props (matching ScatterPlot)
@@ -144,7 +143,6 @@
       controls_extra?: Snippet<
         [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
       >
-      change?: (data: BarHandlerProps<Metadata> | null) => void
       on_bar_click?: (
         data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -669,18 +667,15 @@
     (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
       hovered = true
       hover_info = get_bar_data(series_idx, bar_idx, color)
-      change(hover_info)
       on_bar_hover?.({ ...hover_info, event })
     }
 
   const clear_hover = () => {
     hover_info = null
-    change(null)
     on_bar_hover?.(null)
   }
   const clear_point_hover = () => {
     hover_info = null
-    change(null)
     on_point_hover?.(null)
   }
 
@@ -705,16 +700,10 @@
   // (x2_axis_prop/y2_axis_prop) so library defaults aren't pushed into the parent's bound state
   const axis_state: AxisChangeState<BarSeries<Metadata>> = {
     axes: {
-      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
-      x2: {
-        get: () => x2_axis,
-        set: (config) => (x2_axis_prop = { ...x2_axis_prop, ...config }),
-      },
-      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
-      y2: {
-        get: () => y2_axis,
-        set: (config) => (y2_axis_prop = { ...y2_axis_prop, ...config }),
-      },
+      x: { get: () => x_axis, set: (config) => (x_axis = config) },
+      x2: { get: () => x2_axis, set: (config) => (x2_axis_prop = config) },
+      y: { get: () => y_axis, set: (config) => (y_axis = config) },
+      y2: { get: () => y2_axis, set: (config) => (y2_axis_prop = config) },
     },
     series: { get: () => series, set: (next) => (series = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
@@ -861,7 +850,6 @@
                 hovered = true
                 const fill = line_point_fill(pt, color)
                 hover_info = get_bar_data(series_idx, pt.idx, fill)
-                change(hover_info)
                 on_point_hover?.({ ...hover_info, event: evt, point: pt })
               }}
               {@const do_click = (pt: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {

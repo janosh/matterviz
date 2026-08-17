@@ -29,7 +29,7 @@
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import type { DataSeries, Orientation, Point } from '$lib/plot'
+  import type { DataSeries, Orientation } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -949,13 +949,9 @@
     return () => on_controller?.(null)
   })
 
-  // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
-  // time), so it has to be mapped back before it can index a frame.
-  function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
-    if (data?.x !== undefined && typeof data.x === `number`) {
-      queue_scrub_step(x_map.to_frame(data.x))
-    }
-  }
+  // Map plot hover coordinates back to trajectory frames while skimming.
+  const handle_plot_hover = (data: { x: number } | null) =>
+    data && queue_scrub_step(x_map.to_frame(data.x))
 
   const emit_playback = (
     handler: ((data: TrajHandlerData) => void) | undefined,
@@ -1612,7 +1608,7 @@
             {y2_axis}
             bind:controls_open={scatter_controls_open}
             current_x_value={x_map.to_x(current_step_idx)}
-            change={plot_skimming ? handle_plot_change : undefined}
+            on_point_hover={plot_skimming ? handle_plot_hover : undefined}
             padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"

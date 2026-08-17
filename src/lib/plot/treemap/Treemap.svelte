@@ -73,7 +73,6 @@
     tooltip,
     cell_content,
     hovered = $bindable(false),
-    change = () => {},
     on_node_click,
     on_node_hover,
     on_zoom,
@@ -90,7 +89,7 @@
   }: HTMLAttributes<HTMLDivElement> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `change` | `range_padding` | `title`> &
+    Omit<BasePlotProps, `range_padding` | `title`> &
     // data/value semantics, coloring, legend, export and node handlers are
     // shared verbatim with Sunburst
     HierarchyChartProps<Metadata> & {
@@ -146,7 +145,6 @@
     set_hovered: (value) => (hovered = value),
     fullscreen: () => fullscreen,
     set_fullscreen: (value) => (fullscreen = value),
-    change: (info) => change(info),
     on_node_click: (payload) => on_node_click?.(payload),
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),

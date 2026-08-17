@@ -10,6 +10,7 @@
   import type { D3SymbolName } from '$lib/labels'
   import { symbol_map } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
+  import { drag_over_handlers } from '$lib/io'
   import { array_extent, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -231,7 +232,13 @@
 
   let reset_counter = $state(0)
   // Drag and drop state (to match 3D/4D components)
-  let drag_over = $state(false)
+  let dragover = $state(false)
+  const set_dragover = (over: boolean) => (dragover = over)
+  const active_drop_zone = {
+    ondrop: handle_file_drop,
+    ...drag_over_handlers({ set_dragover }),
+  }
+  const drop_zone = $derived(allow_file_drop ? active_drop_zone : {})
   // Copy feedback state
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
@@ -423,7 +430,7 @@
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     if (!allow_file_drop) return
-    drag_over = false
+    dragover = false
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }
@@ -588,7 +595,7 @@
 {#key reset_counter}
   <ScatterPlot
     {...rest}
-    class={[`convex-hull-2d`, rest.class, drag_over && `dragover`]}
+    class={[`convex-hull-2d`, rest.class, dragover && `dragover`]}
     style={`${style}; ${rest.style ?? ``}`}
     title={title ?? undefined}
     data-has-selection={selected_entry !== null}
@@ -597,17 +604,7 @@
     role="application"
     tabindex={-1}
     onkeydown={handle_keydown}
-    ondrop={allow_file_drop ? handle_file_drop : undefined}
-    ondragover={(event: DragEvent) => {
-      if (!allow_file_drop) return
-      event.preventDefault()
-      drag_over = true
-    }}
-    ondragleave={(event: DragEvent) => {
-      if (!allow_file_drop) return
-      event.preventDefault()
-      drag_over = false
-    }}
+    {...drop_zone}
     aria-label="Binary convex hull visualization"
     series={scatter_series}
     bind:display
@@ -659,7 +656,7 @@
     </h3>
 
     <ClickFeedback bind:visible={copy_feedback.visible} position={copy_feedback.position} />
-    <DragOverlay visible={drag_over} message="Drop JSON file to load phase diagram data" />
+    <DragOverlay visible={dragover} message="Drop JSON file to load phase diagram data" />
 
     {#if hull_data.has_temp_data && temperature !== undefined}
       <TemperatureSlider

@@ -691,7 +691,7 @@
 
 <div
   {...rest}
-  class={[`convex-hull-4d`, rest.class, { dragover: interactions.drag_over }]}
+  class={[`convex-hull-4d`, rest.class, { dragover: interactions.dragover }]}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
   data-has-hover={interactions.hover_data !== null}

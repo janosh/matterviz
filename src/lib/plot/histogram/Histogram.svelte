@@ -54,19 +54,18 @@
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Point2D, Vec2 } from '$lib/math'
+  import type { Vec2 } from '$lib/math'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
 
   let {
     series = $bindable([]),
-    x_axis: x_axis_init = {},
-    x2_axis: x2_axis_init = {},
-    y_axis: y_axis_init = {},
-    y2_axis: y2_axis_init = {},
-    display: display_init = DEFAULTS.histogram.display,
+    x_axis = $bindable({}),
+    x2_axis = $bindable({}),
+    y_axis = $bindable({}),
+    y2_axis = $bindable({}),
+    display = $bindable({ ...DEFAULTS.histogram.display }),
     range_padding = 0,
     padding = {},
     title,
@@ -77,14 +76,13 @@
       legend_mode_to_prop(DEFAULTS.histogram.show_legend),
     ),
     legend = {},
-    bar: bar_init = {},
+    bar = $bindable({}),
     selected_property = $bindable(``),
     // Defaults come from settings so the component and its controls pane agree; the pane
     // read DEFAULTS.histogram.mode ('overlay') while the component hard-coded 'single'
     mode = $bindable(DEFAULTS.histogram.mode),
     tooltip,
     hovered = $bindable(false),
-    change = () => {},
     on_bar_click,
     on_bar_hover,
     ref_lines = $bindable([]),
@@ -121,7 +119,6 @@
       tooltip?: Snippet<[HistogramHandlerProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[Required<PlotConfig>]>
-      change?: (data: { value: number; count: number; property: string } | null) => void
       on_bar_click?: (data: {
         value: number
         count: number
@@ -148,33 +145,25 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Local state for controls (initialized from props, owned by this component)
-  // Include key AXIS_DEFAULTS props (range, ticks, scale_type) that PlotControls needs
-  // Using $state because these have bindings in HistogramControls/PlotControls
-  // untrack() explicitly captures initial prop values (intentional - props provide initial config)
-  const { format: _, ...axis_state_defaults } = AXIS_DEFAULTS // Exclude format (has component-specific default)
-  const init_axis = (get_initial: () => AxisConfig, label_shift?: Point2D): AxisConfig =>
-    untrack(() => ({
-      ...axis_state_defaults,
-      ...(label_shift ? { label_shift } : {}),
-      ...get_initial(),
-    }))
-  let bar = $state(untrack(() => ({ ...DEFAULTS.histogram.bar, ...bar_init })))
-  let x_axis = $state(init_axis(() => x_axis_init))
-  // x2-axis needs different default label_shift for top-side positioning
-  let x2_axis = $state(init_axis(() => x2_axis_init, { x: 0, y: AXIS_TITLE_OFFSET }))
-  let y_axis = $state(init_axis(() => y_axis_init))
-  // y2 title stays vertically centered; its x position is computed by y2_axis_label_x
-  let y2_axis = $state(init_axis(() => y2_axis_init, { x: 0, y: 0 }))
-  let display = $state(untrack(() => ({ ...DEFAULTS.histogram.display, ...display_init })))
-
-  // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
+  const { format: _default_format, ...axis_defaults } = AXIS_DEFAULTS
+  const resolve_axis = (axis: AxisConfig, defaults: AxisConfig): AxisConfig => ({
+    ...axis_defaults,
+    ...defaults,
+    ...axis,
+  })
+  // Merge defaults without writing library-owned values into the caller's bound state.
   // No default tick format: PlotAxis falls back to format_num, which uses SI
   // prefixes above 1 but plain decimals below (0.2 must not render as 200m)
-  const final_x_axis = $derived({ label: `Value`, ...x_axis })
-  const final_x2_axis = $derived({ label: `Value`, ...x2_axis })
-  const final_y_axis = $derived({ label: `Count`, format: `d`, ...y_axis })
-  const final_y2_axis = $derived({ label: `Count`, format: `d`, ...y2_axis })
+  const final_x_axis = $derived(resolve_axis(x_axis, { label: `Value` }))
+  const final_x2_axis = $derived(
+    resolve_axis(x2_axis, { label: `Value`, label_shift: { x: 0, y: AXIS_TITLE_OFFSET } }),
+  )
+  const final_y_axis = $derived(resolve_axis(y_axis, { label: `Count`, format: `d` }))
+  const final_y2_axis = $derived(
+    resolve_axis(y2_axis, { label: `Count`, format: `d`, label_shift: { x: 0, y: 0 } }),
+  )
+  const resolved_display = $derived({ ...DEFAULTS.histogram.display, ...display })
+  const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
   let hover_info = $state<HistogramHandlerProps | null>(null)
 
@@ -355,7 +344,7 @@
 
   // a lone series uses the configured bar color; with multiple, each gets its own
   const series_color = (series_data: DataSeries) =>
-    selected_series.length === 1 ? bar.color : extract_series_color(series_data)
+    selected_series.length === 1 ? resolved_bar.color : extract_series_color(series_data)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data }) => ({
       x: series_data.y ?? [],
@@ -410,12 +399,11 @@
       series_idx,
       metadata: null,
       label: property,
-      x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
-      x2_axis,
-      y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
-      y2_axis,
+      x_axis: active_x_axis === `x2` ? final_x2_axis : final_x_axis,
+      x2_axis: final_x2_axis,
+      y_axis: active_y_axis === `y2` ? final_y2_axis : final_y_axis,
+      y2_axis: final_y2_axis,
     }
-    change({ value, count, property })
     on_bar_hover?.({ value, count, property, event: evt })
   }
 
@@ -425,13 +413,12 @@
   )
 
   // State accessors for shared axis change handler
-  // Spread into existing state in each setter to preserve merged type structure
   const axis_state: AxisChangeState<DataSeries> = {
     axes: {
-      x: { get: () => x_axis, set: (config) => (x_axis = { ...x_axis, ...config }) },
-      x2: { get: () => x2_axis, set: (config) => (x2_axis = { ...x2_axis, ...config }) },
-      y: { get: () => y_axis, set: (config) => (y_axis = { ...y_axis, ...config }) },
-      y2: { get: () => y2_axis, set: (config) => (y2_axis = { ...y2_axis, ...config }) },
+      x: { get: () => final_x_axis, set: (config) => (x_axis = config) },
+      x2: { get: () => final_x2_axis, set: (config) => (x2_axis = config) },
+      y: { get: () => final_y_axis, set: (config) => (y_axis = config) },
+      y2: { get: () => final_y2_axis, set: (config) => (y2_axis = config) },
     },
     series: { get: () => series, set: (next) => (series = next) },
     loading: { get: () => axis_loading, set: (axis) => (axis_loading = axis) },
@@ -486,7 +473,7 @@
     <!-- Reference lines: below grid (must render first to appear behind grid) -->
     {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-    <ZeroLines {frame} {display} />
+    <ZeroLines {frame} display={resolved_display} />
 
     <!-- Reference lines: below lines -->
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}
@@ -494,7 +481,12 @@
     <!-- Reference lines: below points -->
     {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
-    <PlotAxes {frame} {display} {axis_loading} on_axis_change={handle_axis_change} />
+    <PlotAxes
+      {frame}
+      display={resolved_display}
+      {axis_loading}
+      on_axis_change={handle_axis_change}
+    />
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
     {#each histogram_data as { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx }, idx (id ?? idx)}
@@ -519,13 +511,13 @@
                 bar_y,
                 bar_width,
                 bar_height,
-                Math.min(bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
+                Math.min(resolved_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
               )}
               fill={color}
-              opacity={bar.opacity}
-              stroke={bar.stroke_color}
-              stroke-opacity={bar.stroke_opacity}
-              stroke-width={bar.stroke_width}
+              opacity={resolved_bar.opacity}
+              stroke={resolved_bar.stroke_color}
+              stroke-opacity={resolved_bar.stroke_opacity}
+              stroke-width={resolved_bar.stroke_width}
               role="button"
               tabindex="0"
               onmousemove={(evt) =>
@@ -540,7 +532,6 @@
                 )}
               onmouseleave={() => {
                 hover_info = null
-                change(null)
                 on_bar_hover?.(null)
               }}
               onclick={(event) =>
@@ -602,12 +593,12 @@
         bind:show_legend
         resolved_show_legend={should_show_legend}
         bind:selected_property
-        bind:display
+        bind:display={() => resolved_display, (value) => (display = value)}
         bind:bar
-        bind:x_axis
-        bind:x2_axis
-        bind:y_axis
-        bind:y2_axis
+        bind:x_axis={() => final_x_axis, (value) => (x_axis = value)}
+        bind:x2_axis={() => final_x2_axis, (value) => (x2_axis = value)}
+        bind:y_axis={() => final_y_axis, (value) => (y_axis = value)}
+        bind:y2_axis={() => final_y2_axis, (value) => (y2_axis = value)}
         auto_x_range={auto_ranges.x}
         auto_x2_range={auto_ranges.x2}
         auto_y_range={auto_ranges.y}

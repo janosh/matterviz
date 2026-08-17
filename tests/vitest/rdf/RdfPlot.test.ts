@@ -60,16 +60,22 @@ describe(`RdfPlot`, () => {
     [{ structures: [nacl_structure, pd_structure] }],
     [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }],
     [{ structures: make_crystal(5, [[`Si`, [0, 0, 0]]]), mode: `full` as const }],
-    [{ structures: [], patterns: [] }],
   ])(`renders %s`, async (props) => {
     const plot = await mount_sized_rdf_plot(props)
-    if (`patterns` in props && Array.isArray(props.patterns) && props.patterns.length === 0) {
-      expect(plot.textContent).toContain(`No RDF data to display`)
-    } else {
-      expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-      expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`r (Å)`)
-      expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`g(r)`)
-    }
+    expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
+    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`r (Å)`)
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`g(r)`)
+  })
+
+  test.each([
+    [{}, `Drag and drop structure files here to visualize RDFs`, true],
+    [{ allow_file_drop: false }, `No RDF data to display`, false],
+  ] as const)(`empty state %#`, async (props, message, accepts_drag) => {
+    const plot = await mount_sized_rdf_plot(props)
+    expect(plot.textContent).toContain(message)
+    plot.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    await tick()
+    expect(plot.classList.contains(`dragover`)).toBe(accepts_drag)
   })
 
   test.each([

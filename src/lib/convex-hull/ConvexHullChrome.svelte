@@ -17,7 +17,7 @@
   import type { ConvexHullTooltipProp } from './index'
   import { CONVEX_HULL_STYLE } from './index'
   import StructurePopup from './StructurePopup.svelte'
-  import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode } from './types'
+  import type { ConvexHullEntry, HighlightStyle } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
@@ -161,15 +161,10 @@
         {camera}
         {merged_controls}
         toggle_props={{ class: `legend-controls-btn` }}
-        {show_hull_faces}
-        on_hull_faces_change={(value: boolean) => (show_hull_faces = value)}
-        {hull_face_color}
-        on_hull_face_color_change={(value: string) => (hull_face_color = value)}
-        {hull_face_opacity}
-        on_hull_face_opacity_change={(value: number) => (hull_face_opacity = value)}
-        {hull_face_color_mode}
-        on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
-          (hull_face_color_mode = value)}
+        bind:show_hull_faces
+        bind:hull_face_color
+        bind:hull_face_opacity
+        bind:hull_face_color_mode
         bind:energy_source_mode
         has_precomputed_e_form={hull_data.has_precomputed_e_form}
         can_compute_e_form={hull_data.can_compute_e_form}
@@ -212,7 +207,7 @@
 
 <!-- z-index 1: above auto-stacked siblings after the chrome (3D gizmo, gas controls), below z-2 sliders -->
 <DragOverlay
-  visible={interactions.drag_over}
+  visible={interactions.dragover}
   message="Drop JSON file to load phase diagram data"
   style="z-index: 1"
 />

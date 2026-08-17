@@ -121,7 +121,6 @@
     tooltip,
     user_content,
     hovered = $bindable(false),
-    change = () => {},
     on_box_click,
     on_box_hover,
     ref_lines = $bindable([]),
@@ -172,7 +171,6 @@
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
-      change?: (data: BoxHandlerProps<Metadata> | null) => void
       on_box_click?: (
         data: BoxHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -611,13 +609,11 @@
       data.cy = event.clientY - rect.top
     }
     hover_info = data
-    change(hover_info)
     on_box_hover?.({ ...hover_info, event })
   }
 
   const clear_hover = () => {
     hover_info = null
-    change(null)
     on_box_hover?.(null)
   }
 

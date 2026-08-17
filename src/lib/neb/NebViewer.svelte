@@ -150,9 +150,8 @@
   })
 
   const set_dragover = (over: boolean) => (dragover = over)
-  const drop_zone = $derived(
-    allow_file_drop ? { ondrop: handle_drop, ...drag_over_handlers({ set_dragover }) } : {},
-  )
+  const active_drop_zone = { ondrop: handle_drop, ...drag_over_handlers({ set_dragover }) }
+  const drop_zone = $derived(allow_file_drop ? active_drop_zone : {})
 
   // Energy of the shown image on the same reference as the plot's y axis
   const shown_energy = $derived(
@@ -182,7 +181,7 @@
   {...drop_zone}
   {...rest}
   bind:this={wrapper}
-  class={[`neb-viewer sequence-viewer`, dragover && `dragging`, rest.class]}
+  class={[`neb-viewer sequence-viewer`, dragover && `dragover`, rest.class]}
 >
   <StatusMessage bind:message={error_msg} type="error" dismissible />
 
@@ -337,7 +336,7 @@
     height: 100% !important;
     min-height: 0 !important;
   }
-  .neb-viewer.dragging {
+  .neb-viewer.dragover {
     outline: 2px dashed var(--accent-color, #4e79a7);
     outline-offset: 4px;
   }

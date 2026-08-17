@@ -145,10 +145,7 @@
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     controls_extra?: Snippet
-  } & Omit<
-      BasePlotProps,
-      `range_padding` | `padding` | `title` | `change` | `children`
-    > = $props()
+  } & Omit<BasePlotProps, `range_padding` | `padding` | `title` | `children`> = $props()
 
   let [width, height] = $state([0, 0])
 

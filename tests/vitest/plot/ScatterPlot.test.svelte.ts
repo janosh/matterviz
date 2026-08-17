@@ -838,7 +838,6 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`coalesces pointer hover to the latest point and clears it on leave`, async () => {
-    const changes = vi.fn()
     const on_point_hover = vi.fn()
     const on_pointer_leave = vi.fn()
     const plot = await mount_sized_scatter_plot({
@@ -846,7 +845,6 @@ describe(`ScatterPlot`, () => {
       x_axis: { range: [0, 1] },
       y_axis: { range: [0, 1] },
       point_tween: { duration: 0 },
-      change: changes,
       on_point_hover,
       on_pointer_leave,
       legend: null,
@@ -867,39 +865,35 @@ describe(`ScatterPlot`, () => {
     for (const { x, y } of marker_coords) {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
-    expect(changes).not.toHaveBeenCalled()
+    expect(on_point_hover).not.toHaveBeenCalled()
     await next_animation_frame()
-    expect(changes).toHaveBeenCalledTimes(1)
-    expect(changes.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+    expect(on_point_hover).toHaveBeenCalledTimes(1)
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
 
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(changes).toHaveBeenLastCalledWith(null)
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
     expect(on_pointer_leave).toHaveBeenCalledOnce()
 
-    changes.mockClear()
     on_point_hover.mockClear()
     on_pointer_leave.mockClear()
     for (const { x, y } of marker_coords) {
       svg.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true, clientX: x, clientY: y }))
     }
     svg.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(changes).toHaveBeenCalledOnce()
-    expect(changes).toHaveBeenLastCalledWith(null)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     expect(on_pointer_leave).toHaveBeenCalledOnce()
     await next_animation_frame()
-    expect(changes).toHaveBeenCalledOnce()
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
   test(`cancels queued pointer hover when destroyed`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(400)
     vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)
-    const change = vi.fn()
+    const on_point_hover = vi.fn()
     const component = mount(ScatterPlot, {
       target: document.body,
-      props: { series: [{ x: [0], y: [0] }], change },
+      props: { series: [{ x: [0], y: [0] }], on_point_hover },
     })
     flushSync()
     document
@@ -908,7 +902,7 @@ describe(`ScatterPlot`, () => {
     await unmount(component)
     await next_animation_frame()
 
-    expect(change).not.toHaveBeenCalled()
+    expect(on_point_hover).not.toHaveBeenCalled()
   })
 
   // Remaining cursor-style behavior lives in Playwright because happy-dom lacks

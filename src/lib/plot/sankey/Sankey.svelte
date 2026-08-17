@@ -54,7 +54,6 @@
     node_content,
     link_content,
     hovered = $bindable(false),
-    change = () => {},
     on_node_click,
     on_node_hover,
     on_link_click,
@@ -72,7 +71,7 @@
   }: HTMLAttributes<HTMLDivElement> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
+    Omit<BasePlotProps, `range_padding` | `title`> & {
       data?: SankeyData<Metadata>
       orientation?: Orientation
       node_width?: number
@@ -93,7 +92,6 @@
       // you need inside the snippet.
       node_content?: Snippet<[{ node: PositionedNode; color: string }]>
       link_content?: Snippet<[{ link: PositionedLink; color: string }]>
-      change?: (data: SankeyHandlerProps<Metadata> | null) => void
       on_node_click?: (
         data: SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -275,13 +273,11 @@
       hovered_link = null
       hover_info = make_node_props(node)
       hover_pos = event_pos(event) ?? node_center(node)
-      change(hover_info)
       if (event)
         on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
     } else {
       hovered_node = null
       hover_info = null
-      change(null)
       on_node_hover?.(null)
     }
   }
@@ -293,13 +289,11 @@
       hovered_node = null
       hover_info = make_link_props(link)
       hover_pos = event_pos(event) ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
-      change(hover_info)
       if (event)
         on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
     } else {
       hovered_link = null
       hover_info = null
-      change(null)
       on_link_hover?.(null)
     }
   }

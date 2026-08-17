@@ -1,5 +1,6 @@
 // Shared canvas-interaction scaffold (runes-in-closure factory) for ConvexHull3D/4D.
 import type { AnyStructure } from '$lib/structure'
+import { drag_over_handlers } from '$lib/io'
 import * as helpers from './helpers'
 import type { ConvexHullEntry, EntryCategoryConfig, HoverData3D, PhaseData } from './types'
 
@@ -61,7 +62,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
   // Drag and drop state
-  let drag_over = $state(false)
+  let dragover = $state(false)
 
   // Structure popup state
   let modal_open = $state(false)
@@ -138,18 +139,10 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
     if (!inputs.allow_file_drop()) return
-    drag_over = false
+    dragover = false
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) inputs.on_file_drop()?.(data)
   }
-
-  const set_drag_over = (over: boolean) => (event: DragEvent) => {
-    if (!inputs.allow_file_drop()) return
-    event.preventDefault()
-    drag_over = over
-  }
-  const handle_drag_over = set_drag_over(true)
-  const handle_drag_leave = set_drag_over(false)
 
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
     await helpers.copy_entry_to_clipboard(
@@ -337,8 +330,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     get hover_data() {
       return hover_data
     },
-    get drag_over() {
-      return drag_over
+    get dragover() {
+      return dragover
     },
     get modal_open() {
       return modal_open
@@ -365,8 +358,10 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     wrapper_handlers: {
       onkeydown: handle_keydown,
       ondrop: handle_file_drop,
-      ondragover: handle_drag_over,
-      ondragleave: handle_drag_leave,
+      ...drag_over_handlers({
+        allow: inputs.allow_file_drop,
+        set_dragover: (over) => (dragover = over),
+      }),
     },
     // document-level so drags continue outside the canvas; attached individually
     // since <svelte:document> rejects spread attributes
