@@ -23,8 +23,7 @@ export const drag_over_handlers = (opts: {
   // has no default action to cancel, so it only clears the visual state
   ondragover: (event: DragEvent) => {
     event.preventDefault()
-    if (opts.allow && !opts.allow()) return
-    opts.set_dragover(true)
+    opts.set_dragover(opts.allow?.() ?? true)
   },
   ondragleave: () => opts.set_dragover(false),
 })

@@ -289,11 +289,10 @@
   const is_horizontal = $derived(orientation === `horizontal`)
 
   const set_dragover = (over: boolean) => (dragover = over)
-  const active_drop_zone = {
+  const drop_zone = {
     ondrop: handle_file_drop,
-    ...io.drag_over_handlers({ set_dragover }),
+    ...io.drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
   }
-  const drop_zone = $derived(allow_file_drop ? active_drop_zone : {})
 
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]

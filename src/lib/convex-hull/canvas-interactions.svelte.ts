@@ -138,8 +138,9 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
-    if (!inputs.allow_file_drop()) return
+    event.preventDefault()
     dragover = false
+    if (!inputs.allow_file_drop()) return
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) inputs.on_file_drop()?.(data)
   }

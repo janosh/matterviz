@@ -404,6 +404,7 @@
     border-radius: 0;
     max-height: none !important;
     overflow: hidden;
+    background: var(--scatter3d-bg-fullscreen, var(--scatter3d-bg, var(--plot-bg)));
     /* border-top (not padding-top): bind:clientHeight includes padding but excludes
     borders - padding made the chart overflow + clip its bottom 2em (x-axis title) */
     border-top: var(--plot-fullscreen-padding-top, 2em) solid

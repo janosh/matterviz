@@ -234,11 +234,10 @@
   // Drag and drop state (to match 3D/4D components)
   let dragover = $state(false)
   const set_dragover = (over: boolean) => (dragover = over)
-  const active_drop_zone = {
+  const drop_zone = {
     ondrop: handle_file_drop,
-    ...drag_over_handlers({ set_dragover }),
+    ...drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
   }
-  const drop_zone = $derived(allow_file_drop ? active_drop_zone : {})
   // Copy feedback state
   let copy_feedback = $state({ visible: false, position: { x: 0, y: 0 } })
 
@@ -429,8 +428,9 @@
   }
 
   async function handle_file_drop(event: DragEvent): Promise<void> {
-    if (!allow_file_drop) return
+    event.preventDefault()
     dragover = false
+    if (!allow_file_drop) return
     const data = await helpers.parse_hull_entries_from_drop(event)
     if (data) on_file_drop?.(data)
   }

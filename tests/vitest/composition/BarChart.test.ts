@@ -25,7 +25,7 @@ describe(`BarChart component`, () => {
     expect(document.querySelectorAll(`rect.bar-segment`)).toHaveLength(3)
   })
 
-  test(`highlights on hover without fake button semantics`, () => {
+  test(`does not expose segments as buttons`, () => {
     mount(BarChart, {
       target: document.body,
       props: { composition: { H: 2, O: 1 } },

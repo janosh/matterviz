@@ -77,8 +77,10 @@
   })
 
   const set_dragover = (over: boolean) => (dragover = over)
-  const active_drop_zone = { ondrop: handle_drop, ...drag_over_handlers({ set_dragover }) }
-  const drop_zone = $derived(allow_file_drop ? active_drop_zone : {})
+  const drop_zone = {
+    ondrop: handle_drop,
+    ...drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
+  }
 
   const entries = $derived.by(() => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list

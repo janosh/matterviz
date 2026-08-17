@@ -1,6 +1,7 @@
 import { ScatterPlot3D } from '$lib'
 import { ScatterPlot3DControls } from '$lib/plot'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import scatter_plot_3d_source from '$lib/plot/scatter-3d/ScatterPlot3D.svelte?raw'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls } from '../setup'
@@ -130,6 +131,12 @@ describe(`ScatterPlot3D smoke tests`, () => {
   ])(`color bar with %s`, async (_desc, props, expected) => {
     await mount_plot(props)
     expect(Boolean(container.querySelector(`.colorbar`))).toBe(expected)
+  })
+
+  test(`uses the configured fullscreen background`, () => {
+    expect(scatter_plot_3d_source).toMatch(
+      /div\.scatter-3d\.fullscreen[\s\S]+background: var\(--scatter3d-bg-fullscreen/,
+    )
   })
 
   test(`legend toggles series visibility and reports the change`, async () => {

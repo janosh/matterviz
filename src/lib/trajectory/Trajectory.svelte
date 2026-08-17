@@ -217,7 +217,7 @@
       // - 'hover': controls visible on component hover (default)
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'x-axis', 'view-mode', 'fullscreen'
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'vacf-pane', 'structure-id-pane', 'data-inspector-pane', 'x-axis', 'view-mode', 'fullscreen'
       show_controls?: ShowControlsProp<TrajectoryControlName>
       // show/hide the fullscreen button
       fullscreen_toggle?: boolean

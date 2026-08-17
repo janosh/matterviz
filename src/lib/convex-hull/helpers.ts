@@ -210,7 +210,6 @@ export function get_point_color_for_entry(
 export async function parse_hull_entries_from_drop(
   event: DragEvent,
 ): Promise<PhaseData[] | null> {
-  event.preventDefault()
   const file = event.dataTransfer?.files?.[0]
   if (!file?.name.endsWith(`.json`)) return null
   try {

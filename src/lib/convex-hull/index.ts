@@ -69,7 +69,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   // - 'never': controls never visible
   // - object: { mode, hidden, style } for fine-grained control
   //
-  // Control names: 'info-pane', 'fullscreen', 'controls'
+  // Control names: 'reset', 'info-pane', 'fullscreen', 'controls'
   show_controls?: ShowControlsProp<ConvexHullControlName>
   on_point_click?: (entry: AnyDimEntry) => void
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void

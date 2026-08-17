@@ -298,7 +298,7 @@ describe(`create_file_drop_handler`, () => {
 describe(`drag_over_handlers`, () => {
   test.each([
     { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },
-    { desc: `respects allow guard`, allow: () => false, expected: [] },
+    { desc: `clears dragover when disallowed`, allow: () => false, expected: [false] },
     { desc: `defaults to allowed when no guard given`, allow: undefined, expected: [true] },
   ])(`ondragover $desc`, ({ allow, expected }) => {
     const set_dragover = vi.fn()
