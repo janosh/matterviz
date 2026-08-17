@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { ShowControlsProp } from '$lib/controls'
   import type { StructureCarouselItem } from '$lib/structure'
   import GlassChip from '$lib/overlays/GlassChip.svelte'
   import { portal } from 'svelte-widgets/attachments'
-  import { untrack } from 'svelte'
+  import { untrack, type ComponentProps } from 'svelte'
   import Structure from './Structure.svelte'
 
   type Layout = `horizontal` | `vertical`
@@ -21,7 +20,7 @@
     // this reveals structures that are already rendered.
     overscan?: number
     resizable?: boolean
-    show_controls?: ShowControlsProp
+    show_controls?: ComponentProps<typeof Structure>[`show_controls`]
     empty_message?: string
     on_prefetch_more?: () => void
     on_item_activate?: (item: StructureCarouselItem) => void

@@ -112,17 +112,29 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
-  test(`fullscreen button waits for confirmed browser state`, async () => {
+  test(`fullscreen button requests browser fullscreen`, async () => {
     await mount_harness({ dim: `3d` })
     const wrapper = doc_query<HTMLDivElement>(`.convex-hull-3d`)
     wrapper.requestFullscreen = vi.fn(() => Promise.withResolvers<undefined>().promise)
-    const fullscreen_button = doc_query<HTMLButtonElement>(`.fullscreen-btn`)
+    const fullscreen_button = wrapper.querySelector<HTMLButtonElement>(
+      `:scope > .control-buttons > .fullscreen-btn`,
+    )
+    if (!fullscreen_button) throw new Error(`Convex hull fullscreen button not found`)
 
     fullscreen_button.click()
-
-    expect(wrapper.requestFullscreen).toHaveBeenCalledOnce()
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
+    await vi.waitFor(() => expect(wrapper.requestFullscreen).toHaveBeenCalledOnce())
   })
+
+  test.each([`2d`, `3d`, `4d`] as const)(
+    `disabled %s drops still prevent browser navigation`,
+    async (dim) => {
+      await mount_harness({ dim, allow_file_drop: false })
+      const event = new DragEvent(`drop`, { bubbles: true, cancelable: true })
+      doc_query(`.convex-hull-${dim}`).dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    },
+  )
 
   // Regression: hovering a point stored hover_data in a deeply-proxied $state, so
   // current_entry() returned the raw plot entry while hover_data.entry was its proxy.

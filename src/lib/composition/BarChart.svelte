@@ -4,7 +4,6 @@
   import type { CompositionType } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
   import type { ChartSegmentData } from './index'
@@ -34,10 +33,7 @@
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
-    segment_content,
-    interactive = true,
     svg_node = $bindable(null),
-    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -53,10 +49,7 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
-    segment_content?: Snippet<[BarSegmentData]>
-    interactive?: boolean
     svg_node?: SVGSVGElement | null
-    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -128,7 +121,6 @@
     })
   })
 
-  let hovered_element: ElementSymbol | null = $state(null)
   // Generate unique ID for clipPath to avoid collisions across BarCharts
   const component_id = $props.id()
   const clip_path_id = `bar-clip-${component_id}`
@@ -169,7 +161,7 @@
         x={segment.label_x}
         y={above_labels_y}
         text-anchor="middle"
-        class={['external-label', { hovered: hovered_element === segment.element }]}
+        class="external-label"
         style:fill={segment.color}
       >
         {@render label_content(segment)}
@@ -200,26 +192,18 @@
         height={bar_height}
         fill={segment.color}
         stroke="white"
-        stroke-width={hovered_element === segment.element ? 1.5 : 1}
-        class={['bar-segment', { interactive, hovered: hovered_element === segment.element }]}
-        onmouseenter={() => interactive && (hovered_element = segment.element)}
-        onmouseleave={() => interactive && (hovered_element = null)}
-        {...interactive && {
-          role: `button`,
-          tabindex: 0,
-          'aria-label': `${segment.element}: ${segment.amount} ${
-            segment.amount === 1 ? `atom` : `atoms`
-          } (${format_num(segment.fraction, `.1~%`)})`,
-        }}
+        role="img"
+        aria-label="{segment.element}: {segment.amount} {segment.amount === 1
+          ? `atom`
+          : `atoms`} ({format_num(segment.fraction, `.1~%`)})"
+        stroke-width="1"
+        class="bar-segment"
       >
         <title>
           {segment.element}: {segment.amount}
           {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
         </title>
       </rect>
-      {#if segment_content}
-        {@render segment_content(segment)}
-      {/if}
     {/each}
   </g>
 
@@ -246,15 +230,13 @@
         x={segment.label_x}
         y={below_labels_y}
         text-anchor="middle"
-        class={['external-label', { hovered: hovered_element === segment.element }]}
+        class="external-label"
         style:fill={segment.color}
       >
         {@render label_content(segment)}
       </text>
     {/if}
   {/each}
-
-  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
@@ -265,25 +247,13 @@
   .bar-segment {
     transition: all 0.2s ease;
   }
-  .bar-segment.interactive {
-    cursor: pointer;
-  }
-  .bar-segment.interactive:hover,
-  .bar-segment.hovered {
+  .bar-segment:hover {
     filter: brightness(1.1);
-  }
-  .bar-segment.interactive:focus {
-    outline: 2px solid var(--focus-color, #0066cc);
-    outline-offset: 2px;
   }
   .external-label,
   .bar-label {
     transition: all 0.2s ease;
     pointer-events: none;
-  }
-  .external-label.hovered,
-  .bar-label.hovered {
-    font-weight: 700;
   }
   .element-symbol {
     font-weight: 700;

@@ -38,9 +38,9 @@
   let progress = $state<{ done: number; total: number } | null>(null)
 
   // No stride to suggest: the sweep loads one frame at a time, so there is no buffer budget
-  let { total_frames, is_lazy, setup_error } = $derived(analysis_pane_setup(trajectory))
-  let loaded_frames = $derived(trajectory?.frames.length ?? 0)
-  let n_atoms = $derived(trajectory?.frames[0]?.structure.sites.length ?? 0)
+  let { total_frames, loaded_frames, n_atoms, is_lazy, setup_error } = $derived(
+    analysis_pane_setup(trajectory),
+  )
   // sweep_frame_plan rejects a non-integer or sub-1 cap outright, so normalise once here.
   // Number.isFinite also catches the Infinity a `1e999` entry produces.
   let safe_max_frames = $derived(
@@ -120,7 +120,7 @@
       />
     {/if}
 
-    <div class="structure-id-controls">
+    <div class="analysis-controls structure-id-controls">
       <label>
         Max frames
         <input type="number" min="1" step="1" bind:value={max_frames} />
@@ -154,30 +154,3 @@
     />
   {/if}
 </ViewerPane>
-
-<style>
-  .structure-id-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 4pt;
-    font-size: 0.85em;
-    label {
-      display: flex;
-      align-items: center;
-      gap: 4pt;
-    }
-    input[type='number'] {
-      width: 5em;
-      text-align: center;
-    }
-    button {
-      align-self: flex-start;
-      padding: 2pt 8pt;
-    }
-  }
-  .hint {
-    opacity: 0.7;
-    font-size: 0.9em;
-    margin: 0;
-  }
-</style>

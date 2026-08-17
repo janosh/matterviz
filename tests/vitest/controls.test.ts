@@ -36,7 +36,7 @@ describe(`normalize_show_controls`, () => {
       style: `top: 10px;`,
     })
     expect(config.style).toBe(`top: 10px;`)
-    expect(config.hidden).toEqual(new Set([`controls`, `fullscreen`]))
+    expect([...config.hidden]).toEqual([`controls`, `fullscreen`])
   })
 
   it.each([

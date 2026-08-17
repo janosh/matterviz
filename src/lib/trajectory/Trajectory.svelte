@@ -24,13 +24,12 @@
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import { has_all_frames_in_memory } from '$lib/trajectory/analysis'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton, type FullscreenToggleProp, toggle_fullscreen } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import PaneDivider from '$lib/layout/PaneDivider.svelte'
   import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
-  import type { DataSeries, Orientation, Point } from '$lib/plot'
+  import type { DataSeries, Orientation } from '$lib/plot'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/core/utils/series-visibility'
@@ -119,6 +118,20 @@
     { mode: `scatter`, icon: ScatterPlotIcon, label: `Scatter-only` },
     { mode: `histogram`, icon: HistogramIcon, label: `Histogram-only` },
   ] as const
+  type TrajectoryControlName =
+    | `filename`
+    | `nav`
+    | `step`
+    | `fps`
+    | `info-pane`
+    | `export-pane`
+    | `msd-pane`
+    | `vacf-pane`
+    | `structure-id-pane`
+    | `data-inspector-pane`
+    | `x-axis`
+    | `view-mode`
+    | `fullscreen`
 
   let {
     trajectory = $bindable(),
@@ -127,6 +140,7 @@
     data_extractor = full_data_extractor,
     allow_file_drop = true,
     layout = `auto`,
+    pane_ratio = $bindable(0.5),
     structure_props = {},
     supercell_scaling = $bindable(structure_props.supercell_scaling ?? `1x1x1`),
     scatter_props = {},
@@ -183,6 +197,7 @@
       allow_file_drop?: boolean
       // layout configuration - 'auto' (default) adapts to element size, 'horizontal'/'vertical' forces layout
       layout?: `auto` | Orientation
+      pane_ratio?: number
       // structure viewer props (passed to Structure component)
       structure_props?: ComponentProps<typeof Structure>
       // bindable supercell selector state forwarded to the structure viewer
@@ -202,10 +217,10 @@
       // - 'hover': controls visible on component hover (default)
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
-      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'x-axis', 'view-mode', 'fullscreen'
-      show_controls?: ShowControlsProp
+      // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'vacf-pane', 'structure-id-pane', 'data-inspector-pane', 'x-axis', 'view-mode', 'fullscreen'
+      show_controls?: ShowControlsProp<TrajectoryControlName>
       // show/hide the fullscreen button
-      fullscreen_toggle?: FullscreenToggleProp
+      fullscreen_toggle?: boolean
       // automatically start playing when trajectory data is loaded
       auto_play?: boolean
       // display mode: 'structure+scatter' (default), 'structure' (only structure), 'scatter' (only scatter), 'histogram' (only histogram), 'structure+histogram' (structure with histogram)
@@ -284,7 +299,6 @@
   let file_object = $state<File | null>(null)
   let parsing_progress = $state<ParseProgress | null>(null)
   let content_size = $state({ width: 0, height: 0 })
-  let pane_ratio = $state(0.5)
   // Cap panes to .content-area (controls bar is a flex sibling above it).
   let pane_max_height = $derived(
     content_size.height > 0 ? `max-height: ${content_size.height}px` : undefined,
@@ -935,13 +949,9 @@
     return () => on_controller?.(null)
   })
 
-  // Handle plot point clicks to jump to that step. x is in axis units (frame, step or
-  // time), so it has to be mapped back before it can index a frame.
-  function handle_plot_change(data: (Point & { series: DataSeries }) | null) {
-    if (data?.x !== undefined && typeof data.x === `number`) {
-      queue_scrub_step(x_map.to_frame(data.x))
-    }
-  }
+  // Map plot hover coordinates back to trajectory frames while skimming.
+  const handle_plot_hover = (data: { x: number } | null) =>
+    data && queue_scrub_step(x_map.to_frame(data.x))
 
   const emit_playback = (
     handler: ((data: TrajHandlerData) => void) | undefined,
@@ -1213,7 +1223,7 @@
     else if (event.key === `l`) playback.go_to(current_step_idx + 10)
     else if (event.key === `PageUp`) playback.go_to(current_step_idx - 25)
     else if (event.key === `PageDown`) playback.go_to(current_step_idx + 25)
-    else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    else if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
     else if (playback.is_playing && [`=`, `+`, `-`].includes(event.key)) {
       playback.fps += event.key === `-` ? -playback.fps_step : playback.fps_step
@@ -1291,14 +1301,6 @@
     analysis_entries.filter((entry) => controls_config.visible(entry.control_name)),
   )
   let any_analysis_open = $derived(analysis_entries.some((entry) => entry.is_open))
-
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (val) => (fullscreen = val),
-    get_bg_css_var: () => `--traj-bg-fullscreen`,
-    on_change: (val) => on_fullscreen_change?.({ trajectory, fullscreen: val }),
-  })
 </script>
 
 <svelte:window onmessage={handle_plot_metadata_stream} />
@@ -1542,10 +1544,10 @@
           <!-- Fullscreen button - rightmost position -->
           {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
             <FullscreenButton
-              bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
-              children={typeof fullscreen_toggle === `function`
-                ? fullscreen_toggle
-                : undefined}
+              bind:fullscreen
+              {wrapper}
+              bg_css_var="--traj-bg-fullscreen"
+              on_change={(value) => on_fullscreen_change?.({ trajectory, fullscreen: value })}
               class="fullscreen-button"
             />
           {/if}
@@ -1606,7 +1608,7 @@
             {y2_axis}
             bind:controls_open={scatter_controls_open}
             current_x_value={x_map.to_x(current_step_idx)}
-            change={plot_skimming ? handle_plot_change : undefined}
+            on_point_hover={plot_skimming ? handle_plot_hover : undefined}
             padding={{ t: 20, b: 60, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"

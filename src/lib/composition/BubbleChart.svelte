@@ -3,10 +3,15 @@
   import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
+  import { format_num } from '$lib/labels'
   import { hierarchy, pack } from 'd3-hierarchy'
-  import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
-  import { type ChartSegmentData, get_chart_font_scale } from './index'
+  import {
+    chart_segment_label,
+    chart_segment_suffix,
+    type ChartSegmentData,
+    get_chart_font_scale,
+  } from './index'
   import { count_atoms_in_composition } from './parse'
 
   type BubbleSegmentData = ChartSegmentData & { radius: number; x: number; y: number }
@@ -17,11 +22,9 @@
     padding = 0,
     show_labels = true,
     show_amounts = true,
+    show_percentages = false,
     color_scheme = `Vesta`,
-    bubble_content,
-    interactive = true,
     svg_node = $bindable(null),
-    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -29,11 +32,9 @@
     padding?: number
     show_labels?: boolean
     show_amounts?: boolean
+    show_percentages?: boolean
     color_scheme?: ColorSchemeName
-    bubble_content?: Snippet<[BubbleSegmentData]>
-    interactive?: boolean
     svg_node?: SVGSVGElement | null
-    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -82,14 +83,21 @@
       const [min_font_scale, max_font_scale] = [0.6, 2] as const
       const scale_factor = radius / max_radius
       const base_scale = min_font_scale + scale_factor * (max_font_scale - min_font_scale)
-      const label_text = data.element + (show_amounts ? data.amount.toString() : ``)
+      const fraction = total_atoms > 0 ? data.amount / total_atoms : 0
+      const label_text = chart_segment_label(
+        data.element,
+        data.amount,
+        fraction,
+        show_amounts,
+        show_percentages,
+      )
       const available_space = radius * 2 * 0.8 // 80% of bubble diameter for text
       const font_scale = get_chart_font_scale(base_scale, label_text, available_space)
 
       return {
         element: data.element as ElementSymbol,
         amount: data.amount,
-        fraction: total_atoms > 0 ? data.amount / total_atoms : 0,
+        fraction,
         radius,
         x: (node.x || 0) + padding, // Offset by padding
         y: (node.y || 0) + padding,
@@ -99,8 +107,6 @@
       }
     })
   })
-
-  let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
 <svg
@@ -117,27 +123,18 @@
       r={bubble.radius}
       fill={bubble.color}
       stroke="white"
-      stroke-width={hovered_element === bubble.element ? 1.5 : 1}
-      class={['bubble', { interactive, hovered: hovered_element === bubble.element }]}
-      onmouseenter={() => interactive && (hovered_element = bubble.element)}
-      onmouseleave={() => interactive && (hovered_element = null)}
-      {...interactive && {
-        role: `button`,
-        tabindex: 0,
-        'aria-label': `${bubble.element}: ${bubble.amount} ${
-          bubble.amount === 1 ? `atom` : `atoms`
-        }`,
-      }}
+      role="img"
+      aria-label="{bubble.element}: {bubble.amount} {bubble.amount === 1
+        ? `atom`
+        : `atoms`} ({format_num(bubble.fraction, `.1~%`)})"
+      stroke-width="1"
+      class="bubble"
     >
       <title>
         {bubble.element}: {bubble.amount}
-        {bubble.amount === 1 ? `atom` : `atoms`}
+        {bubble.amount === 1 ? `atom` : `atoms`} ({format_num(bubble.fraction, `.1~%`)})
       </title>
     </circle>
-
-    {#if bubble_content}
-      {@render bubble_content(bubble)}
-    {/if}
   {/each}
 
   {#if show_labels}
@@ -147,45 +144,38 @@
         y={bubble.y - (size * 0.075 * bubble.font_scale) / 2}
         width={size * 0.15 * bubble.font_scale}
         height={size * 0.075 * bubble.font_scale}
-        class={['bubble-label-container', { hovered: hovered_element === bubble.element }]}
+        class="bubble-label-container"
       >
         <div class="bubble-label" style:color={bubble.text_color}>
           <span class="element-symbol" style:font-size="{14 * bubble.font_scale}px"
             >{bubble.element}</span
           >
-          {#if show_amounts}
+          {#if show_amounts || show_percentages}
             <sub class="amount" style:font-size="{8 * bubble.font_scale}px"
-              >{bubble.amount}</sub
+              >{chart_segment_suffix(
+                bubble.amount,
+                bubble.fraction,
+                show_amounts,
+                show_percentages,
+              )}</sub
             >
           {/if}
         </div>
       </foreignObject>
     {/each}
   {/if}
-
-  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
   .bubble {
     transition: all 0.2s ease;
   }
-  .bubble.interactive {
-    cursor: pointer;
-  }
-  .bubble.interactive:hover,
-  .bubble.hovered {
+  .bubble:hover {
     filter: brightness(1.1);
-  }
-  .bubble.interactive:focus {
-    outline: none;
   }
   .bubble-label-container {
     pointer-events: none;
     transition: all 0.2s ease;
-  }
-  .bubble-label-container.hovered {
-    font-weight: 700;
   }
   .bubble-label {
     display: flex;
@@ -200,9 +190,6 @@
   }
   foreignobject {
     overflow: visible;
-  }
-  .bubble-label.hovered {
-    font-weight: 700;
   }
   .element-symbol {
     font-weight: 700;

@@ -5,8 +5,7 @@
   import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import * as io from '$lib/io'
-  import { type FullscreenToggleProp, toggle_fullscreen, ViewerChrome } from '$lib/layout'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
+  import { ViewerChrome } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
   import { PlotTooltip } from '$lib/plot'
   import { create_renderer, webgpu_available } from '$lib/scene'
@@ -23,6 +22,7 @@
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
+
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import {
     compute_brillouin_zone,
@@ -37,6 +37,13 @@
     BZTooltipProp,
     IrreducibleBZData,
   } from './types'
+
+  type BrillouinControlName =
+    | `filename`
+    | `fullscreen`
+    | `info-pane`
+    | `export-pane`
+    | `controls`
 
   type BZHandlerData = io.FileLoadData & {
     structure?: Crystal
@@ -112,14 +119,7 @@
     ibz_color?: string
     ibz_opacity?: number
     ibz_data?: IrreducibleBZData | null
-    // Controls visibility configuration.
-    // - 'always': controls always visible
-    // - 'hover': controls visible on component hover (default)
-    // - 'never': controls never visible
-    // - object: { mode, hidden, style } for fine-grained control
-    //
-    // Control names: 'filename', 'fullscreen', 'info-pane', 'export-pane', 'controls'
-    show_controls?: ShowControlsProp
+    show_controls?: ShowControlsProp<BrillouinControlName>
     fullscreen?: boolean
     width?: number
     height?: number
@@ -130,7 +130,7 @@
     hovered?: boolean
     dragover?: boolean
     allow_file_drop?: boolean
-    fullscreen_toggle?: FullscreenToggleProp
+    fullscreen_toggle?: boolean
     data_url?: string
     on_file_drop?: (
       content: string | ArrayBuffer,
@@ -310,22 +310,13 @@
     )
       return
 
-    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
     else if (event.key === `i`) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
       if (info_pane_open) info_pane_open = false
       else controls_open = false
     }
   }
-
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (val) => (fullscreen = val),
-    get_bg_css_var: () => `--bz-bg-fullscreen`,
-    on_change: (val) =>
-      on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen: val }),
-  })
 </script>
 
 <div
@@ -356,9 +347,12 @@
     <ViewerChrome
       {controls_config}
       filename={current_filename}
-      {fullscreen}
+      bind:fullscreen
       {fullscreen_toggle}
       {wrapper}
+      fullscreen_bg_css_var="--bz-bg-fullscreen"
+      on_fullscreen_change={(value) =>
+        on_fullscreen_change?.({ structure, bz_data, bz_order, fullscreen: value })}
     >
       {#if controls_config.visible(`info-pane`)}
         <BrillouinZoneInfoPane {structure} {bz_data} bind:pane_open={info_pane_open} />

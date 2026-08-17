@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import type {
     BasePlotProps,
     LegendConfig,
@@ -54,7 +54,6 @@
     node_content,
     link_content,
     hovered = $bindable(false),
-    change = () => {},
     on_node_click,
     on_node_hover,
     on_link_click,
@@ -72,7 +71,7 @@
   }: HTMLAttributes<HTMLDivElement> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
-    Omit<BasePlotProps, `change` | `range_padding` | `title`> & {
+    Omit<BasePlotProps, `range_padding` | `title`> & {
       data?: SankeyData<Metadata>
       orientation?: Orientation
       node_width?: number
@@ -93,7 +92,6 @@
       // you need inside the snippet.
       node_content?: Snippet<[{ node: PositionedNode; color: string }]>
       link_content?: Snippet<[{ link: PositionedLink; color: string }]>
-      change?: (data: SankeyHandlerProps<Metadata> | null) => void
       on_node_click?: (
         data: SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -275,13 +273,11 @@
       hovered_link = null
       hover_info = make_node_props(node)
       hover_pos = event_pos(event) ?? node_center(node)
-      change(hover_info)
       if (event)
         on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
     } else {
       hovered_node = null
       hover_info = null
-      change(null)
       on_node_hover?.(null)
     }
   }
@@ -293,13 +289,11 @@
       hovered_node = null
       hover_info = make_link_props(link)
       hover_pos = event_pos(event) ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
-      change(hover_info)
       if (event)
         on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
     } else {
       hovered_link = null
       hover_info = null
-      change(null)
       on_link_hover?.(null)
     }
   }
@@ -380,8 +374,6 @@
     else muted_nodes.add(id)
   }
 
-  $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--sankey-fullscreen-bg`))
-
   // Node label placement: horizontal -> beside node; vertical -> above node
   function label_attrs(node: PositionedNode) {
     if (orientation === `vertical`) {
@@ -402,15 +394,6 @@
   }
 </script>
 
-<svelte:window
-  onkeydown={(evt) => {
-    if (evt.key === `Escape` && fullscreen) {
-      evt.preventDefault()
-      fullscreen = false
-    }
-  }}
-/>
-
 <div
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -422,7 +405,7 @@
     <div class="header-controls">
       {@render header_controls?.({ height, width, fullscreen })}
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--sankey-fullscreen-bg" />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -664,10 +647,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    position: static;
-    opacity: 1;
   }
   .sankey :global(.pane-toggle),
   .sankey .header-controls {

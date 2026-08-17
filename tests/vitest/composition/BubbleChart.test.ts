@@ -1,5 +1,5 @@
 import { BubbleChart } from '$lib/composition'
-import { createRawSnippet, mount } from 'svelte'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`BubbleChart component`, () => {
@@ -23,27 +23,13 @@ describe(`BubbleChart component`, () => {
     expect(document.querySelectorAll(`circle`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, () => {
+  test(`does not expose non-actions as buttons`, () => {
     mount(BubbleChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, size: 200, interactive: true },
+      props: { composition: { H: 2, O: 1 }, size: 200 },
     })
 
     const n_buttons = document.querySelectorAll(`circle[role="button"]`).length
-    expect(n_buttons).toBeGreaterThan(0)
-  })
-
-  test(`renders children content`, () => {
-    mount(BubbleChart, {
-      target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-child"></div>`,
-        })),
-      },
-    })
-
-    expect(document.querySelector(`.custom-child`)).toBeInstanceOf(HTMLElement)
+    expect(n_buttons).toBe(0)
   })
 })

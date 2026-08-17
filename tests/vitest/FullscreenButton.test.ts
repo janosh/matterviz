@@ -1,6 +1,6 @@
 import { FullscreenButton } from '$lib/layout'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`FullscreenButton`, () => {
@@ -30,4 +30,14 @@ describe(`FullscreenButton`, () => {
       expect(custom.getAttribute(`aria-label`)).toBe(`Custom label`)
     },
   )
+
+  test(`drives the supplied wrapper`, async () => {
+    const wrapper = document.createElement(`div`)
+    document.body.append(wrapper)
+    wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    mount(FullscreenButton, { target: wrapper, props: { wrapper } })
+
+    doc_query<HTMLButtonElement>(`.fullscreen-btn`).click()
+    await vi.waitFor(() => expect(wrapper.requestFullscreen).toHaveBeenCalledOnce())
+  })
 })

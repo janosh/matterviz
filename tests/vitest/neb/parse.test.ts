@@ -558,9 +558,9 @@ describe(`NebViewer`, () => {
     rejected_viewer.requestFullscreen = vi
       .fn()
       .mockRejectedValue(new Error(`fullscreen denied`))
-    vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     rejected_viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)?.click()
-    await flush_render()
+    await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
     expect(rejected_state.fullscreen).toBe(false)
     expect(rejected_callback).not.toHaveBeenCalled()
 
@@ -581,8 +581,7 @@ describe(`NebViewer`, () => {
       document.dispatchEvent(new Event(`fullscreenchange`))
     })
     button.click()
-    await flush_render()
-    expect(state.fullscreen).toBe(true)
+    await vi.waitFor(() => expect(state.fullscreen).toBe(true))
     expect(on_fullscreen_change).toHaveBeenCalledExactlyOnceWith(true)
   })
 

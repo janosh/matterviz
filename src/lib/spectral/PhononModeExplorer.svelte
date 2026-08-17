@@ -7,6 +7,7 @@
   import { parse_supercell_scaling } from '$lib/structure'
   import Trajectory from '$lib/trajectory/Trajectory.svelte'
   import { to_error } from '$lib/utils'
+  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import { are_qpoints_equivalent, phonon_explorer_views } from './helpers'
@@ -45,6 +46,8 @@
     fps = $bindable(DEFAULT_PHONON_FPS),
     show_vectors = $bindable(DEFAULT_PHONON_SHOW_VECTORS),
     auto_play = true,
+    pane_ratio = $bindable(1.15 / 2.1),
+    trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     dataset: PhononModeDataset
@@ -56,9 +59,9 @@
     fps?: number
     show_vectors?: boolean
     auto_play?: boolean
+    pane_ratio?: number
+    trajectory_props?: Partial<ComponentProps<typeof Trajectory>>
   } = $props()
-
-  let pane_ratio = $state(1.15 / 2.1)
 
   let error_msg = $state<string>()
   let current_step_idx = $state(0)
@@ -209,6 +212,7 @@
     <section class="trajectory-pane" aria-label="Atomic motion">
       {#if trajectory_result.value}
         <Trajectory
+          {...trajectory_props}
           trajectory={trajectory_result.value}
           bind:current_step_idx
           bind:fps

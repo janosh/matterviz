@@ -1,7 +1,7 @@
 <script lang="ts">
   import { extract_formula_elements } from '$lib/composition/parse'
   import type { AxisConfig } from '$lib/plot'
-  import { DEFAULTS } from '$lib/settings'
+  import { get_convex_hull_defaults } from '$lib/settings'
   import type { Component } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import ConvexHull2D from './ConvexHull2D.svelte'
@@ -32,7 +32,9 @@
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
     controls_open = $bindable(false),
-    max_hull_dist_show_phases = $bindable(0.1),
+    max_hull_dist_show_phases: max_hull_dist_show_phases_prop = $bindable(
+      undefined as number | undefined,
+    ),
     max_hull_dist_show_labels = $bindable(0.1),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
@@ -69,18 +71,23 @@
   const elements = $derived(extract_unique_elements(entries))
   const element_count = $derived(elements.length)
 
-  // Resolve hull face opacity: use caller's value if provided,
-  // otherwise pick the right default for the dimensionality (ternary=30%, quaternary=3%).
-  // Use writable derived so child bind updates can sync back to parent.
-  const default_opacity = $derived(
-    element_count === 4
-      ? DEFAULTS.convex_hull.quaternary.hull_face_opacity
-      : DEFAULTS.convex_hull.ternary.hull_face_opacity,
+  const hull_defaults = $derived(
+    get_convex_hull_defaults(element_count === 2 ? 2 : element_count === 3 ? 3 : 4),
   )
-  let hull_face_opacity = $derived(hull_face_opacity_prop ?? default_opacity)
+  let hull_face_opacity = $derived(
+    hull_face_opacity_prop ??
+      (`hull_face_opacity` in hull_defaults ? hull_defaults.hull_face_opacity : 1),
+  )
+  let max_hull_dist_show_phases = $derived(
+    max_hull_dist_show_phases_prop ?? hull_defaults.max_hull_dist_show_phases,
+  )
   $effect(() => {
-    if (hull_face_opacity_prop === hull_face_opacity) return
-    hull_face_opacity_prop = hull_face_opacity
+    if (element_count < 2 || element_count > 4) return
+    if (hull_face_opacity_prop !== hull_face_opacity)
+      hull_face_opacity_prop = hull_face_opacity
+    if (max_hull_dist_show_phases_prop !== max_hull_dist_show_phases) {
+      max_hull_dist_show_phases_prop = max_hull_dist_show_phases
+    }
   })
 
   // Map element count to component. Deliberate cast: the wrapper passes the prop superset

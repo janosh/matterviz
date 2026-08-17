@@ -11,21 +11,23 @@ import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
+  bind_props,
   expect_custom_x_ticks_grow_bottom_pad,
   resize_element,
 } from '../setup'
 
 function mount_histogram(props: Record<string, unknown>) {
   document.body.innerHTML = ``
+  const mount_props = {
+    series: [],
+    show_controls: false,
+    show_legend: false,
+    style: `width: 400px; height: 300px;`,
+  }
+  Object.defineProperties(mount_props, Object.getOwnPropertyDescriptors(props))
   mount(Histogram, {
     target: document.body,
-    props: {
-      series: [],
-      show_controls: false,
-      show_legend: false,
-      style: `width: 400px; height: 300px;`,
-      ...props,
-    },
+    props: mount_props,
   })
 }
 
@@ -325,6 +327,26 @@ describe(`Histogram`, () => {
       (option) => option.textContent,
     )
     expect(option_labels).toEqual([`All`, `Repeated`, `Repeated`, `Series`, `Series`])
+  })
+
+  test(`binds style controls to the public bar config`, async () => {
+    const state = { bar: { color: `#112233` } }
+    mount_histogram(
+      bind_props(
+        {
+          series: [series_of([1], { label: `Only` })],
+          show_controls: true,
+          controls_open: true,
+        },
+        state,
+      ),
+    )
+    await tick()
+    const fill_input = document.querySelector<HTMLInputElement>(`input[type="color"]`)
+    if (!fill_input) throw new Error(`Histogram fill control not found`)
+    fill_input.value = `#abcdef`
+    fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    expect(state.bar).toEqual({ color: `#abcdef` })
   })
 
   test(`touch gestures keep finite axis ranges`, async () => {

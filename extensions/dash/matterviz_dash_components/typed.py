@@ -44,7 +44,7 @@ class Structure(MatterViz):
         enable_measure_mode: bool | None = None,
         error_msg: str | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         height: float | None = None,
         hidden_elements: list | None = None,
         hidden_prop_vals: list | None = None,
@@ -322,7 +322,7 @@ class Composition(MatterViz):
 
     Component key: ``composition/Composition``
 
-    Events: on_composition_change
+    Events: on_parse
     """
 
     def __init__(
@@ -330,7 +330,6 @@ class Composition(MatterViz):
         id=None,
         color_scheme: Any | None = None,
         composition: str | None = None,
-        interactive: bool | None = None,
         mode: Any | None = None,
         size: float | None = None,
         mv_props: dict | None = None,
@@ -348,8 +347,6 @@ class Composition(MatterViz):
             mv_props["color_scheme"] = color_scheme
         if composition is not None:
             mv_props["composition"] = composition
-        if interactive is not None:
-            mv_props["interactive"] = interactive
         if mode is not None:
             mv_props["mode"] = mode
         if size is not None:
@@ -393,13 +390,14 @@ class Trajectory(MatterViz):
         fps: float | None = None,
         fps_range: tuple[float, float] | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         histogram_props: dict | None = None,
         hovered: bool | None = None,
         info_pane_open: bool | None = None,
         layout: Any | None = None,
         loading_options: Any | None = None,
         msd_pane_open: bool | None = None,
+        pane_ratio: float | None = None,
         plot_skimming: bool | None = None,
         property_labels: dict | None = None,
         scatter_props: dict | None = None,
@@ -462,6 +460,8 @@ class Trajectory(MatterViz):
             mv_props["loading_options"] = loading_options
         if msd_pane_open is not None:
             mv_props["msd_pane_open"] = msd_pane_open
+        if pane_ratio is not None:
+            mv_props["pane_ratio"] = pane_ratio
         if plot_skimming is not None:
             mv_props["plot_skimming"] = plot_skimming
         if property_labels is not None:
@@ -525,7 +525,7 @@ class BrillouinZone(MatterViz):
         edge_width: float | None = None,
         error_msg: str | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         height: float | None = None,
         hovered: bool | None = None,
         hovered_k_point: list[float] | None = None,
@@ -669,7 +669,7 @@ class ConvexHull2D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -684,6 +684,7 @@ class ConvexHull2D(MatterViz):
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
         show_unstable_labels: bool | None = None,
+        allow_file_drop: bool | None = None,
         enable_click_selection: bool | None = None,
         enable_structure_preview: bool | None = None,
         energy_source_mode: Any | None = None,
@@ -755,6 +756,8 @@ class ConvexHull2D(MatterViz):
             mv_props["show_stable_labels"] = show_stable_labels
         if show_unstable_labels is not None:
             mv_props["show_unstable_labels"] = show_unstable_labels
+        if allow_file_drop is not None:
+            mv_props["allow_file_drop"] = allow_file_drop
         if enable_click_selection is not None:
             mv_props["enable_click_selection"] = enable_click_selection
         if enable_structure_preview is not None:
@@ -818,7 +821,7 @@ class ConvexHull3D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -833,6 +836,7 @@ class ConvexHull3D(MatterViz):
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
         show_unstable_labels: bool | None = None,
+        allow_file_drop: bool | None = None,
         enable_click_selection: bool | None = None,
         enable_structure_preview: bool | None = None,
         energy_source_mode: Any | None = None,
@@ -905,6 +909,8 @@ class ConvexHull3D(MatterViz):
             mv_props["show_stable_labels"] = show_stable_labels
         if show_unstable_labels is not None:
             mv_props["show_unstable_labels"] = show_unstable_labels
+        if allow_file_drop is not None:
+            mv_props["allow_file_drop"] = allow_file_drop
         if enable_click_selection is not None:
             mv_props["enable_click_selection"] = enable_click_selection
         if enable_structure_preview is not None:
@@ -978,7 +984,7 @@ class ConvexHull4D(MatterViz):
         config: dict | None = None,
         show_controls: Any | None = None,
         fullscreen: bool | None = None,
-        fullscreen_toggle: Any | None = None,
+        fullscreen_toggle: bool | None = None,
         enable_info_pane: bool | None = None,
         label_threshold: float | None = None,
         show_stable: bool | None = None,
@@ -993,6 +999,7 @@ class ConvexHull4D(MatterViz):
         max_hull_dist_show_labels: float | None = None,
         show_stable_labels: bool | None = None,
         show_unstable_labels: bool | None = None,
+        allow_file_drop: bool | None = None,
         enable_click_selection: bool | None = None,
         enable_structure_preview: bool | None = None,
         energy_source_mode: Any | None = None,
@@ -1065,6 +1072,8 @@ class ConvexHull4D(MatterViz):
             mv_props["show_stable_labels"] = show_stable_labels
         if show_unstable_labels is not None:
             mv_props["show_unstable_labels"] = show_unstable_labels
+        if allow_file_drop is not None:
+            mv_props["allow_file_drop"] = allow_file_drop
         if enable_click_selection is not None:
             mv_props["enable_click_selection"] = enable_click_selection
         if enable_structure_preview is not None:
@@ -1871,13 +1880,13 @@ class RdfPlot(MatterViz):
     def __init__(
         self,
         id=None,
+        allow_file_drop: bool | None = None,
         controls_open: bool | None = None,
         controls_pane_props: dict | None = None,
         controls_toggle_props: dict | None = None,
         cutoff: float | None = None,
         drag_dropped: list | None = None,
-        dragging: bool | None = None,
-        enable_drop: bool | None = None,
+        dragover: bool | None = None,
         error_msg: str | None = None,
         loading: bool | None = None,
         mode: Any | None = None,
@@ -1901,6 +1910,8 @@ class RdfPlot(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if allow_file_drop is not None:
+            mv_props["allow_file_drop"] = allow_file_drop
         if controls_open is not None:
             mv_props["controls_open"] = controls_open
         if controls_pane_props is not None:
@@ -1911,10 +1922,8 @@ class RdfPlot(MatterViz):
             mv_props["cutoff"] = cutoff
         if drag_dropped is not None:
             mv_props["drag_dropped"] = drag_dropped
-        if dragging is not None:
-            mv_props["dragging"] = dragging
-        if enable_drop is not None:
-            mv_props["enable_drop"] = enable_drop
+        if dragover is not None:
+            mv_props["dragover"] = dragover
         if error_msg is not None:
             mv_props["error_msg"] = error_msg
         if loading is not None:

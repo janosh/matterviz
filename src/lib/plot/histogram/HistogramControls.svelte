@@ -51,11 +51,12 @@
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
-  bar = { ...DEFAULTS.histogram.bar, ...bar } // Initialize bar styles with defaults (runs once)
-
   let has_multiple_series = $derived(series.filter(Boolean).length > 1)
   let visible_series = $derived(series.filter((srs) => srs && (srs.visible ?? true)))
   let series_options = $derived(visible_series.map((srs) => srs.label || `Series`))
+  const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
+  const set_bar = (key: keyof typeof DEFAULTS.histogram.bar) => (value: string | number) =>
+    (bar = { ...bar, [key]: value })
 </script>
 
 <PlotControls
@@ -124,26 +125,45 @@
     layout="grid"
   >
     {#if visible_series.length === 1}
-      <label><span>Fill</span><input type="color" bind:value={bar.color} /></label>
+      <label>
+        <span>Fill</span>
+        <input type="color" bind:value={() => resolved_bar.color, set_bar(`color`)} />
+      </label>
     {/if}
-    <NumberRangeInput min={0} max={1} step={0.05} bind:value={bar.opacity}
-      >Opacity</NumberRangeInput
+    <NumberRangeInput
+      min={0}
+      max={1}
+      step={0.05}
+      bind:value={() => resolved_bar.opacity, set_bar(`opacity`)}>Opacity</NumberRangeInput
     >
-    <NumberRangeInput min={0} max={5} step={0.1} bind:value={bar.stroke_width}
+    <NumberRangeInput
+      min={0}
+      max={5}
+      step={0.1}
+      bind:value={() => resolved_bar.stroke_width, set_bar(`stroke_width`)}
       >Stroke width</NumberRangeInput
     >
     <label>
       <span>Stroke color</span>
       <span class="stroke-value">
-        <input type="color" bind:value={bar.stroke_color} />
-        <input type="number" min="0" max="1" step="0.05" bind:value={bar.stroke_opacity} />
+        <input
+          type="color"
+          bind:value={() => resolved_bar.stroke_color, set_bar(`stroke_color`)}
+        />
+        <input
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          bind:value={() => resolved_bar.stroke_opacity, set_bar(`stroke_opacity`)}
+        />
       </span>
       <input
         type="range"
         min="0"
         max="1"
         step="0.05"
-        bind:value={bar.stroke_opacity}
+        bind:value={() => resolved_bar.stroke_opacity, set_bar(`stroke_opacity`)}
         title="Opacity"
       />
     </label>

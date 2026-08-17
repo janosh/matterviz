@@ -237,7 +237,7 @@
 
   <h2>Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
-  <RdfPlot mode="element_pairs" enable_drop cutoff={7} style="height: 500px" />
+  <RdfPlot mode="element_pairs" allow_file_drop cutoff={7} style="height: 500px" />
 </div>
 
 <style>

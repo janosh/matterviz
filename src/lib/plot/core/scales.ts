@@ -413,13 +413,13 @@ export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
 // exceed values.length so paired x/y axes retain the same point count.
 export function accumulate_extent(
   acc: RunningExtent,
-  values: ArrayLike<number>,
+  values: ArrayLike<number | null | undefined>,
   count = values.length,
 ): RunningExtent {
   const n_values = Math.max(0, count)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
-    if (!Number.isFinite(val)) continue
+    if (typeof val !== `number` || !Number.isFinite(val)) continue
     acc.n_finite++
     if (acc.min === undefined || val < acc.min) acc.min = val
     if (acc.max === undefined || val > acc.max) acc.max = val

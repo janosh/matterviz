@@ -2,7 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
-  import type { FileLoadCallback } from '$lib/io'
+  import { drag_over_handlers, type FileLoadCallback } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import { create_structure_drop_handler } from '$lib/plot/core/structure-input'
@@ -23,13 +23,13 @@
     cutoff = 15,
     n_bins = 75,
     pbc,
-    enable_drop = false,
+    allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
-    dragging = $bindable(false),
+    dragover = $bindable(false),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
     ...rest
@@ -41,13 +41,13 @@
     cutoff?: number
     n_bins?: number
     pbc?: Pbc
-    enable_drop?: boolean
+    allow_file_drop?: boolean
     on_file_drop?: FileLoadCallback
     loading?: boolean
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
-    dragging?: boolean
+    dragover?: boolean
     // Redundant for TS (the intersection below already supplies them) but load-bearing for
     // the Dash wrapper generator, which reads this literal and drops anything not in it
     x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
@@ -59,7 +59,7 @@
   } & ComponentProps<typeof ScatterPlot> = $props()
 
   const handle_drop = create_structure_drop_handler({
-    allow: () => enable_drop,
+    allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
     // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected here
     // rather than in the shared handler, which only insists on sites
@@ -72,14 +72,14 @@
     },
     set_loading: (val) => {
       loading = val
-      if (val) [error_msg, dragging] = [undefined, false]
+      if (val) [error_msg, dragover] = [undefined, false]
     },
   })
 
-  function handle_dragover(event: DragEvent) {
-    event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = `copy`
-    dragging = true
+  const set_dragover = (over: boolean) => (dragover = over)
+  const drop_zone = {
+    ondrop: handle_drop,
+    ...drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
   }
 
   const entries = $derived.by(() => {
@@ -125,7 +125,7 @@
 
 <StatusMessage bind:message={error_msg} type="error" dismissible />
 
-{#if enable_drop && drag_dropped.length > 0}
+{#if allow_file_drop && drag_dropped.length > 0}
   <div class="dropped-info">
     {drag_dropped.length} structure{drag_dropped.length > 1 ? `s` : ``} loaded
     <button onclick={() => (drag_dropped = [])}>Clear</button>
@@ -134,14 +134,9 @@
 
 {#if series.length === 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class={[`empty-drop`, dragging && `dragging`]}
-    ondragover={enable_drop ? handle_dragover : undefined}
-    ondragleave={enable_drop ? () => (dragging = false) : undefined}
-    ondrop={enable_drop ? handle_drop : undefined}
-  >
+  <div class={[`empty-drop`, dragover && `dragover`]} {...drop_zone}>
     <StatusMessage
-      message={enable_drop
+      message={allow_file_drop
         ? `Drag and drop structure files here to visualize RDFs`
         : `No RDF data to display`}
       style="border: none"
@@ -156,11 +151,9 @@
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
-    class={[rest.class, dragging && `dragging`]}
+    class={[rest.class, dragover && `dragover`]}
     style={rest.style ?? `height: 400px;`}
-    ondragover={enable_drop ? handle_dragover : undefined}
-    ondragleave={enable_drop ? () => (dragging = false) : undefined}
-    ondrop={enable_drop ? handle_drop : undefined}
+    {...drop_zone}
   >
     {#snippet user_content({ width, y_scale_fn, pad })}
       {#if show_reference_line}
@@ -173,7 +166,7 @@
 {/if}
 
 <style>
-  :global(.dragging) {
+  :global(.dragover) {
     outline: 2px dashed #4e79a7;
     outline-offset: 4px;
   }

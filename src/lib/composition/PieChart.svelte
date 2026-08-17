@@ -4,7 +4,6 @@
   import type { CompositionType } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { chart_segment_label, chart_segment_suffix, get_chart_font_scale } from './index'
   import type { ChartSegmentData } from './index'
@@ -15,14 +14,6 @@
   const MEDIUM_SLICE_THRESHOLD = 90 // degrees - increased to move more slices toward outer edge
   const MAX_ANGLE_FOR_FULL_SCALE = 120 // degrees
 
-  type PieSegmentData = ChartSegmentData & {
-    start_angle: number
-    end_angle: number
-    path: string
-    label_x: number
-    label_y: number
-    is_outside_slice: boolean
-  }
   let {
     composition,
     size = 200,
@@ -32,11 +23,7 @@
     show_percentages = false,
     show_amounts = true,
     color_scheme = `Vesta`,
-    center_content,
-    segment_content,
-    interactive = true,
     svg_node = $bindable(null),
-    children,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
     composition: CompositionType
@@ -47,11 +34,7 @@
     show_percentages?: boolean
     show_amounts?: boolean
     color_scheme?: ColorSchemeName
-    center_content?: Snippet<[{ composition: CompositionType; total_atoms: number }]>
-    segment_content?: Snippet<[PieSegmentData]>
-    interactive?: boolean
     svg_node?: SVGSVGElement | null
-    children?: Snippet<[{ hovered_element: ElementSymbol | null }]>
   } = $props()
 
   let element_colors = $derived(
@@ -200,8 +183,6 @@
         }
       })
   })
-
-  let hovered_element: ElementSymbol | null = $state(null)
 </script>
 
 <svg
@@ -216,31 +197,18 @@
       d={segment.path}
       fill={segment.color}
       stroke="white"
-      stroke-width={segments.length === 1
-        ? 0
-        : hovered_element === segment.element
-          ? stroke_width + 1
-          : stroke_width}
-      class={['pie-segment', { interactive, hovered: hovered_element === segment.element }]}
-      onmouseenter={() => interactive && (hovered_element = segment.element)}
-      onmouseleave={() => interactive && (hovered_element = null)}
-      {...interactive && {
-        role: `button`,
-        tabindex: 0,
-        'aria-label': `${segment.element}: ${segment.amount} ${
-          segment.amount === 1 ? `atom` : `atoms`
-        } (${format_num(segment.fraction, `.1~%`)})`,
-      }}
+      role="img"
+      aria-label="{segment.element}: {segment.amount} {segment.amount === 1
+        ? `atom`
+        : `atoms`} ({format_num(segment.fraction, `.1~%`)})"
+      stroke-width={segments.length === 1 ? 0 : stroke_width}
+      class="pie-segment"
     >
       <title>
         {segment.element}: {segment.amount}
         {segment.amount === 1 ? `atom` : `atoms`} ({format_num(segment.fraction, `.1~%`)})
       </title>
     </path>
-
-    {#if segment_content}
-      {@render segment_content(segment)}
-    {/if}
   {/each}
 
   {#if show_labels}
@@ -250,7 +218,6 @@
         y={segment.label_y - (size * 0.075 * segment.font_scale) / 2}
         width={size * 0.15 * segment.font_scale}
         height={size * 0.075 * segment.font_scale}
-        class:hovered={hovered_element === segment.element}
       >
         <div
           class="pie-label"
@@ -275,29 +242,14 @@
       </foreignObject>
     {/each}
   {/if}
-
-  {#if center_content}
-    <g>
-      {@render center_content({ composition, total_atoms })}
-    </g>
-  {/if}
-
-  {@render children?.({ hovered_element })}
 </svg>
 
 <style>
   .pie-segment {
     transition: all 0.2s ease;
   }
-  .pie-segment.interactive {
-    cursor: pointer;
-  }
-  .pie-segment.interactive:hover,
-  .pie-segment.hovered {
+  .pie-segment:hover {
     filter: brightness(1.1);
-  }
-  .pie-segment.interactive:focus {
-    outline: none;
   }
   svg {
     /* very thin slices place their labels outside the pie at 1.2x the outer radius,
@@ -308,9 +260,6 @@
     pointer-events: none;
     transition: all 0.2s ease;
     overflow: visible;
-  }
-  foreignobject.hovered {
-    font-weight: 700;
   }
   .pie-label {
     display: flex;

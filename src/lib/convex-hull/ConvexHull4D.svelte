@@ -63,6 +63,7 @@
     ),
     show_stable_labels = $bindable(DEFAULTS.convex_hull.quaternary.show_stable_labels),
     show_unstable_labels = $bindable(DEFAULTS.convex_hull.quaternary.show_unstable_labels),
+    allow_file_drop = true,
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -142,13 +143,21 @@
       : null
   }
 
+  const coords_4d = $derived.by(() => {
+    if (elements.length !== 4) return []
+    try {
+      return compute_4d_coords(pd_data.entries, elements)
+    } catch (error) {
+      console.error(`Error computing quaternary coordinates:`, error)
+      return []
+    }
+  })
+
   // Compute 4D hull for visualization (always compute when we have formation energies)
   const hull_4d = $derived.by(() => {
-    if (elements.length !== 4) return []
-
     try {
       // Excluded entries don't participate in hull construction
-      const points_4d = compute_4d_coords(pd_data.entries, elements)
+      const points_4d = coords_4d
         .filter((ent) => !ent.exclude_from_hull)
         .map(to_point_4d)
         .filter((point): point is Point4D => point !== null)
@@ -165,13 +174,11 @@
   // Enrich coords with e_above_hull (before filtering)
   // Explicit return type breaks circular type inference with the hull_data pipeline
   const all_enriched_entries = $derived.by((): ConvexHullEntry[] => {
-    if (elements.length !== 4) return []
     try {
-      const coords = compute_4d_coords(pd_data.entries, elements)
-      if (hull_data.energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords
+      if (hull_data.energy_mode !== `on-the-fly` || hull_4d.length === 0) return coords_4d
 
       // Build 4D points, tracking original indices for mapping hull distances back
-      const valid = coords.flatMap((entry, idx) => {
+      const valid = coords_4d.flatMap((entry, idx) => {
         const pt = to_point_4d(entry)
         return pt ? [{ idx, pt }] : []
       })
@@ -181,12 +188,12 @@
       )
       const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
       // missing/non-finite distance (no energy or point outside hull projection) -> unknown
-      return coords.map((entry, idx) => ({
+      return coords_4d.map((entry, idx) => ({
         ...entry,
         ...compute_hull_stability(hull_map.get(idx), entry.exclude_from_hull),
       }))
     } catch (err) {
-      console.error(`Error computing quaternary coordinates:`, err)
+      console.error(`Error computing quaternary hull distances:`, err)
       return []
     }
   })
@@ -217,7 +224,6 @@
   // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
   const interactions = create_canvas_interactions({
     wheel_clamp: [1.0, 15],
-    fullscreen_bg_var: `--hull-4d-bg-fullscreen`,
     canvas: () => canvas,
     overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
@@ -228,9 +234,9 @@
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
     set_selected_entry: (entry) => (selected_entry = entry),
-    fullscreen: () => fullscreen,
     enable_click_selection: () => enable_click_selection,
     enable_structure_preview: () => enable_structure_preview,
+    allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
@@ -257,11 +263,6 @@
           Math.min(Math.PI / 3, camera.rotation_x - dy * 0.005),
         )
       }
-    },
-    // Reset pan center when entering/exiting fullscreen
-    on_fullscreen_change: () => {
-      camera.center_x = 0
-      camera.center_y = 20
     },
     actions: () => ({
       r: reset_camera,
@@ -684,17 +685,13 @@
 </script>
 
 <svelte:document
-  onfullscreenchange={() => {
-    // tie fullscreen state to this component's own wrapper, not any fullscreen element
-    fullscreen = document.fullscreenElement === wrapper
-  }}
   onmousemove={interactions.handle_mouse_move}
   onmouseup={interactions.handle_mouse_up}
 />
 
 <div
   {...rest}
-  class={[`convex-hull-4d`, rest.class, { dragover: interactions.drag_over }]}
+  class={[`convex-hull-4d`, rest.class, { dragover: interactions.dragover }]}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
   data-has-hover={interactions.hover_data !== null}
@@ -754,9 +751,13 @@
     {enable_info_pane}
     {phase_stats}
     {label_threshold}
-    {fullscreen}
+    bind:fullscreen
     {fullscreen_toggle}
-    {wrapper}
+    fullscreen_bg_css_var="--hull-4d-bg-fullscreen"
+    on_fullscreen_change={() => {
+      camera.center_x = 0
+      camera.center_y = 20
+    }}
     {camera}
     {merged_controls}
     {stable_entries}

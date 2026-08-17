@@ -82,7 +82,6 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   legend?: LegendConfig | null
   show_legend?: boolean
   tooltip?: Snippet<[NodeProps<Metadata>]>
-  change?: (data: NodeProps<Metadata> | null) => void
   on_node_click?: (data: NodeProps<Metadata> & { event: MouseEvent | KeyboardEvent }) => void
   on_node_hover?: (
     data: (NodeProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
@@ -130,14 +129,9 @@ export interface HierarchyChartOptions<Metadata extends Record<string, unknown>>
   readonly fullscreen: () => boolean
   readonly set_fullscreen: (value: boolean) => void
 
-  readonly change: (data: NodeProps<Metadata> | null) => void
-  readonly on_node_click: (
-    data: NodeProps<Metadata> & { event: MouseEvent | KeyboardEvent },
-  ) => void
-  readonly on_node_hover: (
-    data: (NodeProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
-  ) => void
-  readonly on_zoom: (data: { root: NodeProps<Metadata> | null }) => void
+  readonly on_node_click: NonNullable<HierarchyChartProps<Metadata>[`on_node_click`]>
+  readonly on_node_hover: NonNullable<HierarchyChartProps<Metadata>[`on_node_hover`]>
+  readonly on_zoom: NonNullable<HierarchyChartProps<Metadata>[`on_zoom`]>
 
   // Geometry hooks supplied by the chart
   readonly visible: (idx: number) => boolean // is this node currently rendered?
@@ -281,12 +275,11 @@ export class HierarchyChartState<
       this.#opts.set_hovered(false)
       this.hovered_idx = null
       this.hover_info = null
-      this.#opts.change(null)
       this.#opts.on_node_hover(null)
       return
     }
     // Same node as before: only the cursor anchor moves - skip rebuilding the
-    // handler payload and re-firing change/on_node_hover on every mousemove
+    // handler payload and re-firing on_node_hover on every mousemove
     // within a node. Requires hover_info: legend item hover sets hovered_idx
     // alone (for dimming), and skipping then would leave the node's own tooltip
     // permanently suppressed.
@@ -299,7 +292,6 @@ export class HierarchyChartState<
     this.hover_info = this.#node_props(this.arcs[idx])
     this.hover_pos =
       pointer_pos(event, this.svg_element) ?? this.#opts.node_center(idx) ?? this.hover_pos
-    this.#opts.change(this.hover_info)
     if (event) this.#opts.on_node_hover({ ...this.hover_info, event })
   }
 

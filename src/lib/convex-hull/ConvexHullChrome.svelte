@@ -6,7 +6,7 @@
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import { FullscreenButton, toggle_fullscreen, type FullscreenToggleProp } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
@@ -17,10 +17,12 @@
   import type { ConvexHullTooltipProp } from './index'
   import { CONVEX_HULL_STYLE } from './index'
   import StructurePopup from './StructurePopup.svelte'
-  import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode } from './types'
+  import type { ConvexHullEntry, HighlightStyle } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
   type ControlsProps = ComponentProps<typeof ConvexHullControls>
+
+  let chrome = $state<HTMLElement>()
 
   let {
     interactions, // canvas-interactions scaffold: hover/drag/popup/copy-feedback state
@@ -31,9 +33,10 @@
     enable_info_pane = true,
     phase_stats,
     label_threshold,
-    fullscreen = false,
+    fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    wrapper = undefined,
+    fullscreen_bg_css_var = `--fullscreen-bg`,
+    on_fullscreen_change,
     camera,
     merged_controls,
     stable_entries,
@@ -91,8 +94,9 @@
       reset_title: string
       enable_info_pane?: boolean
       fullscreen?: boolean
-      fullscreen_toggle?: FullscreenToggleProp
-      wrapper?: HTMLDivElement
+      fullscreen_toggle?: boolean
+      fullscreen_bg_css_var?: string
+      on_fullscreen_change?: (fullscreen: boolean) => void
       get_point_color: (entry: ConvexHullEntry) => string
       merged_highlight_style: HighlightStyle
       is_highlighted: (entry: ConvexHullEntry) => boolean
@@ -104,7 +108,7 @@
 
 <!-- Control buttons (top-right corner) -->
 {#if controls_config.mode !== `never`}
-  <section class={[`control-buttons`, controls_config.class]}>
+  <section bind:this={chrome} class={[`control-buttons`, controls_config.class]}>
     {#if controls_config.visible(`reset`)}
       <button type="button" onclick={reset_all} title={reset_title} class="reset-camera-btn">
         <Icon icon={Reset} />
@@ -130,8 +134,10 @@
 
     {#if fullscreen_toggle && controls_config.visible(`fullscreen`)}
       <FullscreenButton
-        bind:fullscreen={() => fullscreen, () => void toggle_fullscreen(wrapper)}
-        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
+        bind:fullscreen
+        wrapper={chrome?.parentElement ?? undefined}
+        bg_css_var={fullscreen_bg_css_var}
+        on_change={on_fullscreen_change}
       />
     {/if}
 
@@ -155,15 +161,10 @@
         {camera}
         {merged_controls}
         toggle_props={{ class: `legend-controls-btn` }}
-        {show_hull_faces}
-        on_hull_faces_change={(value: boolean) => (show_hull_faces = value)}
-        {hull_face_color}
-        on_hull_face_color_change={(value: string) => (hull_face_color = value)}
-        {hull_face_opacity}
-        on_hull_face_opacity_change={(value: number) => (hull_face_opacity = value)}
-        {hull_face_color_mode}
-        on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
-          (hull_face_color_mode = value)}
+        bind:show_hull_faces
+        bind:hull_face_color
+        bind:hull_face_opacity
+        bind:hull_face_color_mode
         bind:energy_source_mode
         has_precomputed_e_form={hull_data.has_precomputed_e_form}
         can_compute_e_form={hull_data.can_compute_e_form}
@@ -206,7 +207,7 @@
 
 <!-- z-index 1: above auto-stacked siblings after the chrome (3D gizmo, gas controls), below z-2 sliders -->
 <DragOverlay
-  visible={interactions.drag_over}
+  visible={interactions.dragover}
   message="Drop JSON file to load phase diagram data"
   style="z-index: 1"
 />

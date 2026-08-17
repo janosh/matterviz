@@ -126,7 +126,7 @@
     opacity: 0.55,
   }
 
-  const handle_change = (data: { x: number; metadata?: PlotPointMeta | null } | null) => {
+  const select_point = (data: { x: number; metadata?: PlotPointMeta | null } | null) => {
     if (!data) return
     const { path_key, image_idx } = data.metadata ?? {}
     if (path_key !== undefined && image_idx !== undefined) {
@@ -145,8 +145,8 @@
   x_axis={{ label: x_label, ...x_axis }}
   y_axis={{ label: y_label, ...y_axis }}
   current_x_value={current_coord}
-  change={handle_change}
-  on_point_click={(event) => handle_change({ x: event.x, metadata: event.metadata })}
+  on_point_hover={select_point}
+  on_point_click={select_point}
 >
   {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad })}
     {@const left = pad.l}

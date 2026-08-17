@@ -42,35 +42,10 @@ describe(`get_alphabetical_formula`, () => {
     // SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
     [`Li0.5FeO2`, true, ``, undefined, `FeLi0.5O2`],
     [{ Li: 0.001, Fe: 1, O: 2 }, true, ``, `.3~s`, `FeLi0.001O2`],
-    // Invalid / malformed inputs
-    [`invalid`, undefined, undefined, undefined, ``],
-    [`123`, undefined, undefined, undefined, ``],
-    [{ lattice: {} }, undefined, undefined, undefined, ``],
-    [{ sites: null }, undefined, undefined, undefined, ``],
-    [{ sites: `not-array` }, undefined, undefined, undefined, ``],
-    [
-      {
-        sites: [
-          { species: `Fe`, abc: [0, 0, 0], xyz: [0, 0, 0], label: `Fe`, properties: {} },
-        ],
-      },
-      undefined,
-      undefined,
-      undefined,
-      ``,
-    ],
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
-      expect(
-        get_alphabetical_formula(
-          // malformed fixtures intentionally violate AnyStructure
-          input as Parameters<typeof get_alphabetical_formula>[0],
-          plain_text,
-          delim,
-          amount_format,
-        ),
-      ).toBe(expected)
+      expect(get_alphabetical_formula(input, plain_text, delim, amount_format)).toBe(expected)
     },
   )
 })
@@ -90,7 +65,6 @@ describe(`get_electro_neg_formula`, () => {
     [{ Fe: 2, O: 3 }, true, `-`, undefined, `Fe2-O3`],
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
-    [`invalid`, undefined, undefined, undefined, ``],
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
@@ -135,6 +109,11 @@ describe(`formula functions handle structure objects`, () => {
       site(`O`, [0.5, 0, 0], `O3`),
     ],
   } as AnyStructure
+
+  structure.sites.push({
+    ...structure.sites[0],
+    properties: { orig_site_idx: 0 },
+  })
 
   test.each([
     [`alphabetical`, get_alphabetical_formula],

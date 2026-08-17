@@ -1,5 +1,5 @@
 import { PieChart } from '$lib/composition'
-import { createRawSnippet, mount } from 'svelte'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`PieChart component`, () => {
@@ -23,26 +23,12 @@ describe(`PieChart component`, () => {
     expect(document.querySelectorAll(`path`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, () => {
+  test(`does not expose non-actions as buttons`, () => {
     mount(PieChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, size: 200, interactive: true },
+      props: { composition: { H: 2, O: 1 }, size: 200 },
     })
 
-    expect(document.querySelectorAll(`path[role="button"]`).length).toBeGreaterThan(0)
-  })
-
-  test(`renders children snippet`, () => {
-    mount(PieChart, {
-      target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-child"></div>`,
-        })),
-      },
-    })
-
-    expect(document.querySelector(`.custom-child`)).not.toBeNull()
+    expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(0)
   })
 })

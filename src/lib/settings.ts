@@ -1658,6 +1658,11 @@ const extract_values = <Config extends object>(config: Config): SettingsValues<C
 // Runtime defaults - extracted values for use in components
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
+export const get_convex_hull_defaults = (element_count: 2 | 3 | 4) =>
+  DEFAULTS.convex_hull[
+    element_count === 2 ? `binary` : element_count === 3 ? `ternary` : `quaternary`
+  ]
+
 // Partial settings where nested groups (structure, trajectory, ...) may also
 // be partial; merge() fills gaps from DEFAULTS at both levels.
 export type PartialSettings = {

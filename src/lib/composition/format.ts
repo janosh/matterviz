@@ -1,25 +1,9 @@
 import type { ElementSymbol } from '$lib/element'
-import type { AnyStructure } from '$lib/structure'
+import { get_element_counts, type AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
 import { format_num } from '$lib/labels'
 import { is_elem_symbol } from '$lib/element'
 import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
-
-// Extract composition from structure object
-const structure_to_composition = (structure: AnyStructure): CompositionType => {
-  if (!Array.isArray(structure.sites)) {
-    throw new TypeError(`Invalid structure object`)
-  }
-
-  const composition: CompositionType = {}
-  for (const site of structure.sites) {
-    if (!Array.isArray(site.species)) continue
-    for (const species of site.species) {
-      composition[species.element] = (composition[species.element] ?? 0) + (species.occu ?? 1)
-    }
-  }
-  return composition
-}
 
 const is_structure_like = (input: CompositionType | AnyStructure): input is AnyStructure =>
   `sites` in input || `lattice` in input
@@ -47,7 +31,6 @@ export const format_composition_formula = (
     .join(delim)
 }
 
-// Generic formula formatter with error handling
 const format_formula_generic = (
   input: string | CompositionType | AnyStructure,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
@@ -55,17 +38,13 @@ const format_formula_generic = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string => {
-  try {
-    let composition: CompositionType
-
-    if (typeof input === `string`) composition = parse_composition(input)
-    else if (is_structure_like(input)) composition = structure_to_composition(input)
-    else composition = input
-
-    return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
-  } catch {
-    return ``
-  }
+  const composition =
+    typeof input === `string`
+      ? parse_composition(input)
+      : is_structure_like(input)
+        ? get_element_counts(input)
+        : input
+  return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
 }
 
 // Create alphabetical formula

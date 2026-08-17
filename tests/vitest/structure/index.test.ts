@@ -26,50 +26,42 @@ const ref_data: Record<
     amounts: Record<string, number>
     density: number
     center_of_mass: Vec3
-    formula_by_electronegativity: string
   }
 > = {
   'mp-1': {
     amounts: { Cs: 2 },
     density: 1.8019302505603234,
     center_of_mass: [1.564, 1.564, 1.564],
-    formula_by_electronegativity: `Cs<sub>2</sub>`,
   },
   'mp-2': {
     amounts: { Pd: 4 },
     density: 11.759135742447171,
     center_of_mass: [0.979, 0.979, 0.979],
-    formula_by_electronegativity: `Pd<sub>4</sub>`,
   },
   'mp-1234': {
     amounts: { Lu: 8, Al: 16 },
     density: 6.63,
     center_of_mass: [3.119, 3.119, 3.119],
-    formula_by_electronegativity: `Lu<sub>8</sub> Al<sub>16</sub>`,
   },
   'mp-30855': {
     amounts: { U: 2, Pt: 6 },
     density: 19.14,
     center_of_mass: [3.535, 3.535, 3.535],
-    formula_by_electronegativity: `U<sub>2</sub> Pt<sub>6</sub>`,
   },
   'mp-756175': {
     amounts: { Zr: 16, Bi: 16, O: 56 },
     density: 7.457890165317997,
     center_of_mass: [5.261, 5.261, 5.261],
-    formula_by_electronegativity: `Zr<sub>16</sub> Bi<sub>16</sub> O<sub>56</sub>`,
   },
   'mp-1229155': {
     amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
     density: 6.107930572082895,
     center_of_mass: [2.216, 3.594, 6.502],
-    formula_by_electronegativity: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
     density: 3.6567149052096903,
     center_of_mass: [1.802, 2.991, 12.542],
-    formula_by_electronegativity: `Al<sub>54</sub> Fe<sub>4</sub> Ni<sub>8</sub>`,
   },
 }
 
@@ -108,10 +100,6 @@ describe.each(structures)(`structure-utils`, (structure) => {
       com.map((val) => Math.round(val * 1e3) / 1e3),
       `${id} center_of_mass`,
     ).toEqual(expected.center_of_mass)
-    expect(
-      struct_utils.format_formula_by_electronegativity(structure),
-      `${id} formula_by_electronegativity`,
-    ).toEqual(expected.formula_by_electronegativity)
   })
 })
 

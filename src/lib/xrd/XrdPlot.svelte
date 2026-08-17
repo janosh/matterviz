@@ -288,10 +288,11 @@
   // In the horizontal layout the 2θ and intensity axes trade places
   const is_horizontal = $derived(orientation === `horizontal`)
 
-  const drop_handlers = io.drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })
+  const set_dragover = (over: boolean) => (dragover = over)
+  const drop_zone = {
+    ondrop: handle_file_drop,
+    ...io.drag_over_handlers({ allow: () => allow_file_drop, set_dragover }),
+  }
 
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
@@ -369,10 +370,9 @@
 
 {#if pattern_entries.length === 0}
   <EmptyState
-    class="xrd-empty-state"
+    class={[`xrd-empty-state`, dragover && `dragover`]}
     style={rest.style}
-    ondrop={allow_file_drop ? handle_file_drop : undefined}
-    ondragover={allow_file_drop ? (evt) => evt.preventDefault() : undefined}
+    {...drop_zone}
     role="region"
     aria-label="XRD drop zone"
   >
@@ -416,8 +416,7 @@
           range: intensity_range,
         }}
         {tooltip}
-        ondrop={handle_file_drop}
-        {...drop_handlers}
+        {...drop_zone}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
@@ -450,8 +449,7 @@
           range: is_horizontal ? angle_range : intensity_range,
         }}
         {tooltip}
-        ondrop={handle_file_drop}
-        {...drop_handlers}
+        {...drop_zone}
         class={[rest.class, dragover && `dragover`]}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}

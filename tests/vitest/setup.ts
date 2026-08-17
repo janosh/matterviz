@@ -53,6 +53,20 @@ console.warn = (...args: unknown[]) => {
 beforeEach(() => {
   document.body.innerHTML = ``
   localStorage.clear()
+  Object.defineProperty(document, `fullscreenElement`, {
+    configurable: true,
+    value: null,
+  })
+  HTMLElement.prototype.requestFullscreen = function () {
+    Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: this })
+    document.dispatchEvent(new Event(`fullscreenchange`))
+    return Promise.resolve()
+  }
+  document.exitFullscreen = () => {
+    Object.defineProperty(document, `fullscreenElement`, { configurable: true, value: null })
+    document.dispatchEvent(new Event(`fullscreenchange`))
+    return Promise.resolve()
+  }
   // Tick measurement is memoised across calls, so cases stubbing canvas text metrics
   // differently (or not at all) would otherwise read each other's widths.
   clear_tick_metrics_cache()

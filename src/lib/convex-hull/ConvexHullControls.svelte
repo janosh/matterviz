@@ -49,14 +49,10 @@
     hidden_categories = $bindable([]),
     show_stable_labels = $bindable(true),
     show_unstable_labels = $bindable(false),
-    show_hull_faces = undefined,
-    on_hull_faces_change,
-    hull_face_color = `#0072B2`,
-    on_hull_face_color_change,
+    show_hull_faces = $bindable(),
+    hull_face_color = $bindable(`#0072B2`),
     hull_face_opacity = $bindable(0.03),
-    on_hull_face_opacity_change,
-    hull_face_color_mode = `uniform` as HullFaceColorMode,
-    on_hull_face_color_mode_change,
+    hull_face_color_mode = $bindable(`uniform` as HullFaceColorMode),
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     max_hull_dist_in_data = 0.5,
@@ -86,13 +82,9 @@
     show_unstable_labels?: boolean
     // 3D specific controls
     show_hull_faces?: boolean
-    on_hull_faces_change?: (value: boolean) => void
     hull_face_color?: string
-    on_hull_face_color_change?: (value: string) => void
     hull_face_opacity?: number
-    on_hull_face_opacity_change?: (value: number) => void
     hull_face_color_mode?: HullFaceColorMode
-    on_hull_face_color_mode_change?: (value: HullFaceColorMode) => void
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
     has_precomputed_hull?: boolean
     can_compute_hull?: boolean
@@ -411,19 +403,14 @@
       <div class="setting">
         <span class="control-label">Hull faces</span>
         <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
-          <input
-            type="checkbox"
-            checked={show_hull_faces}
-            oninput={(event) => on_hull_faces_change?.(event.currentTarget.checked)}
-          />
+          <input type="checkbox" bind:checked={show_hull_faces} />
           <span>Show</span>
         </label>
         <div style="display: flex; gap: 6px; align-items: center; flex: 1">
           {#if hull_face_color_mode === `uniform`}
             <input
               type="color"
-              value={hull_face_color}
-              oninput={(event) => on_hull_face_color_change?.(event.currentTarget.value)}
+              bind:value={hull_face_color}
               {@attach tooltip({ content: `Set hull face color` })}
               style="width: 40px; height: 20px"
             />
@@ -435,7 +422,6 @@
             step="0.01"
             aria-label="Hull face opacity"
             bind:value={hull_face_opacity}
-            oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
             {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
             style="flex: 1; min-width: 80px"
           />
@@ -453,7 +439,7 @@
             <button
               class={[`toggle-btn`, hull_face_color_mode === mode && `active`]}
               style="min-width: auto; flex: 0 1 auto"
-              onclick={() => on_hull_face_color_mode_change?.(mode)}
+              onclick={() => (hull_face_color_mode = mode)}
               {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
             >
               {FACE_COLOR_MODES[mode].label}

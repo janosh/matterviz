@@ -280,6 +280,9 @@ describe(`parse_composition`, () => {
   test.each([
     [`Xx2`, `Invalid element symbol: Xx`],
     [`{Xx: 70, Yy: 18}`, `Invalid element symbol: Xx`],
+    [`invalid`, `No valid elements`],
+    [`{"Xx":1}`, `No valid elements`],
+    [`{"H":-1}`, `No valid elements`],
   ])(`throws for invalid input %s`, (input, error) => {
     expect(() => parse_composition(input)).toThrow(error)
   })

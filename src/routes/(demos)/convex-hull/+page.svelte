@@ -15,12 +15,14 @@
     ConvexHull3D,
     ConvexHull4D,
     ConvexHullStats,
-    create_temp_ternary_entries_li_fe_o,
-    demo_temperatures,
     GAS_SPECIES,
-    make_demo_phase,
     process_hull_for_stats,
   } from '$lib/convex-hull'
+  import {
+    create_temp_ternary_entries_li_fe_o,
+    demo_temperatures,
+    make_demo_phase,
+  } from '$lib/convex-hull/demo-temperature'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 

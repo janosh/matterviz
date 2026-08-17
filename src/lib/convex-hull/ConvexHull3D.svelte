@@ -87,6 +87,7 @@
     ),
     show_stable_labels = $bindable(DEFAULTS.convex_hull.ternary.show_stable_labels),
     show_unstable_labels = $bindable(DEFAULTS.convex_hull.ternary.show_unstable_labels),
+    allow_file_drop = true,
     on_file_drop,
     enable_click_selection = true,
     enable_structure_preview = true,
@@ -301,7 +302,6 @@
   // state, canvas sizing, render scheduler). Rotation math + keydown actions stay local.
   const interactions = create_canvas_interactions({
     wheel_clamp: [0.5, 10],
-    fullscreen_bg_var: `--hull-3d-bg-fullscreen`,
     canvas: () => canvas,
     overlay_canvas: () => overlay_canvas,
     wrapper: () => wrapper,
@@ -312,9 +312,9 @@
     plot_entries: () => plot_entries,
     selected_entry: () => selected_entry,
     set_selected_entry: (entry) => (selected_entry = entry),
-    fullscreen: () => fullscreen,
     enable_click_selection: () => enable_click_selection,
     enable_structure_preview: () => enable_structure_preview,
+    allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
     on_file_drop: () => on_file_drop,
@@ -340,11 +340,6 @@
         // Vertical drag -> elevation angle (full range)
         camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
       }
-    },
-    // Reset pan center when entering/exiting fullscreen
-    on_fullscreen_change: () => {
-      camera.center_x = 0
-      camera.center_y = -50
     },
     actions: () => ({
       r: reset_camera,
@@ -968,17 +963,13 @@
 </script>
 
 <svelte:document
-  onfullscreenchange={() => {
-    // tie fullscreen state to this component's own wrapper, not any fullscreen element
-    fullscreen = document.fullscreenElement === wrapper
-  }}
   onmousemove={interactions.handle_mouse_move}
   onmouseup={interactions.handle_mouse_up}
 />
 
 <div
   {...rest}
-  class={[`convex-hull-3d`, rest.class, { dragover: interactions.drag_over }]}
+  class={[`convex-hull-3d`, rest.class, { dragover: interactions.dragover }]}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
   data-has-hover={interactions.hover_data !== null}
@@ -1048,9 +1039,13 @@
     {enable_info_pane}
     {phase_stats}
     {label_threshold}
-    {fullscreen}
+    bind:fullscreen
     {fullscreen_toggle}
-    {wrapper}
+    fullscreen_bg_css_var="--hull-3d-bg-fullscreen"
+    on_fullscreen_change={() => {
+      camera.center_x = 0
+      camera.center_y = -50
+    }}
     {camera}
     {merged_controls}
     {stable_entries}

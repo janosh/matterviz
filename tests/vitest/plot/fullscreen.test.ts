@@ -1,4 +1,4 @@
-import { BarPlot, FullscreenToggle } from '$lib'
+import { BarPlot } from '$lib'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 
@@ -37,7 +37,7 @@ describe(`Plot Fullscreen Toggle`, () => {
     expect(plot_div).toBeInstanceOf(HTMLElement)
     expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
 
-    const toggle_btn = document.querySelector(`button.fullscreen-toggle`) as HTMLButtonElement
+    const toggle_btn = document.querySelector(`button.fullscreen-btn`) as HTMLButtonElement
     expect(toggle_btn).toBeInstanceOf(HTMLElement)
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
 
@@ -54,18 +54,5 @@ describe(`Plot Fullscreen Toggle`, () => {
 
     expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
-  })
-
-  test(`FullscreenToggle forwards custom classes`, async () => {
-    mount(FullscreenToggle, {
-      target: document.body,
-      props: { class: `custom-toggle` },
-    })
-    await tick()
-
-    const toggle_btn = document.querySelector(`button.fullscreen-toggle`) as HTMLButtonElement
-    expect(toggle_btn).toBeInstanceOf(HTMLElement)
-    expect(toggle_btn.classList.contains(`fullscreen-toggle`)).toBe(true)
-    expect(toggle_btn.classList.contains(`custom-toggle`)).toBe(true)
   })
 })

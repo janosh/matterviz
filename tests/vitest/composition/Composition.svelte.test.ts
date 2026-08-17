@@ -22,19 +22,20 @@ describe(`Composition component`, () => {
     expect(doc_query(`.pie-chart`).getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
-  test(`calls composition change callback on mount`, async () => {
-    const on_composition_change = vi.fn()
+  test(`reports parsed composition`, async () => {
+    const on_parse = vi.fn()
     mount(Composition, {
       target: document.body,
-      props: { composition: `H2O`, on_composition_change },
+      props: { composition: `H2O`, on_parse },
     })
     await tick()
-    expect(on_composition_change).toHaveBeenCalledWith({ H: 2, O: 1 })
+    expect(on_parse).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
 
-  test(`handles invalid input gracefully`, () => {
-    mount(Composition, { target: document.body, props: { composition: `invalid` } })
-    expect(doc_query(`.composition`)).toBeInstanceOf(SVGSVGElement)
+  test(`rejects invalid input`, () => {
+    expect(() =>
+      mount(Composition, { target: document.body, props: { composition: `invalid` } }),
+    ).toThrow(`No valid elements`)
   })
 
   test(`applies custom styling`, () => {

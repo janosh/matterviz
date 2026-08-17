@@ -9,7 +9,7 @@
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
   import { format_value } from '$lib/labels'
-  import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import { FullscreenButton } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
@@ -162,7 +162,7 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
     // Share the BasePlotProps members that apply rather than redeclaring them. The ones left
     // out are genuinely absent here: this component has no controls pane and reports hover via
-    // on_point_click / the tooltip snippet rather than a generic `change`. `range_padding`
+    // on_point_click / the tooltip snippet. `range_padding`
     // defaults to 0.05 (the historical density-bin framing pad) rather than ScatterPlot's 0.
     Pick<
       BasePlotProps,
@@ -254,10 +254,6 @@
     },
     render: point_labels.render,
     measure_text: point_labels.measure_text,
-  })
-
-  $effect(() => {
-    set_fullscreen_bg(wrapper, fullscreen, `--binned-scatter-fullscreen-bg`)
   })
 
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>
@@ -1099,15 +1095,6 @@
   })
 </script>
 
-<svelte:window
-  onkeydown={(event) => {
-    if (event.key === `Escape` && fullscreen) {
-      event.preventDefault()
-      fullscreen = false
-    }
-  }}
-/>
-
 <div
   {...rest}
   bind:this={wrapper}
@@ -1143,7 +1130,11 @@
         </button>
       {/if}
       {#if fullscreen_toggle}
-        <FullscreenToggle bind:fullscreen />
+        <FullscreenButton
+          bind:fullscreen
+          {wrapper}
+          bg_css_var="--binned-scatter-fullscreen-bg"
+        />
       {/if}
     </div>
   {/if}
@@ -1407,10 +1398,6 @@
       opacity 0.2s,
       background-color 0.2s;
     z-index: var(--fullscreen-btn-z-index, 10);
-  }
-  .header-controls :global(.fullscreen-toggle) {
-    opacity: 1;
-    position: static;
   }
   .reset-view {
     align-items: center;

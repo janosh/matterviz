@@ -11,9 +11,7 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { format_num } from '$lib/labels'
-  import type { FullscreenToggleProp } from '$lib/layout'
-  import { FullscreenButton, SettingsSection, toggle_fullscreen } from '$lib/layout'
-  import { sync_fullscreen } from 'svelte-widgets/fullscreen'
+  import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ViewerPane } from '$lib/overlays'
   import type { Vec2, Vec3 } from '$lib/math'
   import { convex_hull_2d, cross_3d, merge_coplanar_triangles, normalize_vec } from '$lib/math'
@@ -117,8 +115,8 @@
     wrapper?: HTMLDivElement
     // bindable: fullscreen state
     fullscreen?: boolean
-    // show/hide the fullscreen button (or custom snippet to render it)
-    fullscreen_toggle?: FullscreenToggleProp
+    // show/hide the fullscreen button
+    fullscreen_toggle?: boolean
     // bindable: whether the controls pane is currently open
     controls_open?: boolean
     // bindable: whether the export pane is currently open
@@ -1364,14 +1362,6 @@
     schedule_label_occlusion_update()
   })
 
-  // Drive the browser Fullscreen API from the bindable `fullscreen` prop (parent-controllable), keep it in sync with Esc/external exits
-  sync_fullscreen({
-    get_wrapper: () => wrapper,
-    get_fullscreen: () => fullscreen,
-    set_fullscreen: (val) => (fullscreen = val),
-    get_bg_css_var: () => `--chempot-3d-bg-fullscreen`,
-  })
-
   function reset_controls(): void {
     overrides.reset()
     projection_elements_override = null
@@ -1586,7 +1576,7 @@
       return
     if (event.key === `Escape`) clear_hover_lock()
     else if (event.key === `c`) cycle_color_mode()
-    else if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
+    else if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
   }}
   onpointerdown={(event) => {
     const target = event.target
@@ -1825,10 +1815,7 @@
     </ScatterPlot3DControls>
 
     {#if fullscreen_toggle}
-      <FullscreenButton
-        bind:fullscreen
-        children={typeof fullscreen_toggle === `function` ? fullscreen_toggle : undefined}
-      />
+      <FullscreenButton bind:fullscreen {wrapper} bg_css_var="--chempot-3d-bg-fullscreen" />
     {/if}
   </section>
   {#if show_temperature_slider && temperature !== undefined}

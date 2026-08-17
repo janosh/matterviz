@@ -1,6 +1,7 @@
 import {
   build_structure_props_from_settings,
   DEFAULTS,
+  get_convex_hull_defaults,
   merge,
   SETTINGS_CONFIG,
 } from '$lib/settings'
@@ -22,6 +23,18 @@ import { describe, expect, test } from 'vitest'
 const settings_module = join(`src`, `lib`, `settings.ts`)
 
 describe(`Settings`, () => {
+  test.each([
+    [2, 0.1],
+    [3, 0.5],
+    [4, 0.1],
+  ] as const)(
+    `%dD convex hull defaults to a %s eV/atom visibility threshold`,
+    (element_count, threshold) =>
+      expect(get_convex_hull_defaults(element_count).max_hull_dist_show_phases).toBe(
+        threshold,
+      ),
+  )
+
   describe(`merge function`, () => {
     test(`returns DEFAULTS for empty inputs`, () => {
       expect(merge()).toEqual(DEFAULTS)

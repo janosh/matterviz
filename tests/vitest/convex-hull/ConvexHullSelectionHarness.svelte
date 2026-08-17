@@ -12,9 +12,11 @@
   let {
     dim,
     include_element_refs = true,
+    allow_file_drop = true,
   }: {
     dim: keyof typeof elements_by_dim
     include_element_refs?: boolean
+    allow_file_drop?: boolean
   } = $props()
   let Hull = $derived(components[dim])
 
@@ -79,4 +81,11 @@
   Toggle Labels
 </button>
 
-<Hull {entries} {config} bind:selected_entry bind:stable_entries bind:unstable_entries />
+<Hull
+  {entries}
+  {config}
+  {allow_file_drop}
+  bind:selected_entry
+  bind:stable_entries
+  bind:unstable_entries
+/>

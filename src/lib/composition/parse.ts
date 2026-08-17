@@ -205,14 +205,18 @@ export const parse_composition = (
   input: string | CompositionType | Record<number, number> | Record<string | number, number>,
 ): CompositionType => {
   if (typeof input === `string`) {
+    let composition: CompositionType
     if (input.trim().startsWith(`{`) && input.trim().endsWith(`}`)) {
       try {
-        return normalize_composition(JSON.parse(input))
+        composition = normalize_composition(JSON.parse(input))
       } catch {
-        // Fall through to formula parsing
+        composition = normalize_composition(parse_formula(input))
       }
+    } else composition = normalize_composition(parse_formula(input))
+    if (input.trim() && Object.keys(composition).length === 0) {
+      throw new Error(`No valid elements in composition: ${input}`)
     }
-    return normalize_composition(parse_formula(input))
+    return composition
   }
   return normalize_composition(input)
 }

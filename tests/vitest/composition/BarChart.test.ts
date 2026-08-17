@@ -1,5 +1,5 @@
 import { BarChart } from '$lib/composition'
-import { createRawSnippet, mount } from 'svelte'
+import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -25,15 +25,13 @@ describe(`BarChart component`, () => {
     expect(document.querySelectorAll(`rect.bar-segment`)).toHaveLength(3)
   })
 
-  test(`handles interactive mode`, () => {
+  test(`does not expose segments as buttons`, () => {
     mount(BarChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, interactive: true },
+      props: { composition: { H: 2, O: 1 } },
     })
 
-    expect(
-      document.querySelectorAll(`rect.bar-segment[role="button"]`).length,
-    ).toBeGreaterThan(0)
+    expect(document.querySelectorAll(`rect.bar-segment[role="button"]`)).toHaveLength(0)
   })
 
   test.each([
@@ -141,19 +139,5 @@ describe(`BarChart component`, () => {
 
     // Should find combined amount+percentage elements
     expect(document.querySelector(`.amount`)).toBeInstanceOf(SVGTSpanElement)
-  })
-
-  test(`renders children content`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: {
-        composition: { H: 2, O: 1 },
-        children: createRawSnippet(() => ({
-          render: () => `<div class="custom-child"></div>`,
-        })),
-      },
-    })
-
-    expect(document.querySelector(`.custom-child`)).toBeInstanceOf(HTMLElement)
   })
 })

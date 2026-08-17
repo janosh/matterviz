@@ -269,9 +269,11 @@ describe(`scales`, () => {
         [NaN, Infinity, -Infinity],
         [42],
         [0, 0, 0],
-      ] as unknown as number[][]) {
+      ]) {
         const acc = accumulate_extent(empty_extent(), values)
-        const finite_values = values.filter(Number.isFinite)
+        const finite_values = values.filter(
+          (value): value is number => typeof value === `number` && Number.isFinite(value),
+        )
         expect(acc).toEqual({
           ...(finite_values.length > 0
             ? { min: Math.min(...finite_values), max: Math.max(...finite_values) }
