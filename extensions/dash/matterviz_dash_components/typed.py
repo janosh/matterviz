@@ -1886,7 +1886,7 @@ class RdfPlot(MatterViz):
         controls_toggle_props: dict | None = None,
         cutoff: float | None = None,
         drag_dropped: list | None = None,
-        dragging: bool | None = None,
+        dragover: bool | None = None,
         error_msg: str | None = None,
         loading: bool | None = None,
         mode: Any | None = None,
@@ -1922,8 +1922,8 @@ class RdfPlot(MatterViz):
             mv_props["cutoff"] = cutoff
         if drag_dropped is not None:
             mv_props["drag_dropped"] = drag_dropped
-        if dragging is not None:
-            mv_props["dragging"] = dragging
+        if dragover is not None:
+            mv_props["dragover"] = dragover
         if error_msg is not None:
             mv_props["error_msg"] = error_msg
         if loading is not None:
