@@ -433,7 +433,7 @@ describe(`ConvexHullStats`, () => {
       },
     ])(`E_raw column $desc`, ({ energy_per_atom, expected }) => {
       mount_stats_table({
-        stable_entries: [mock_entry({ energy_per_atom, reduced_formula: `X` })],
+        stable_entries: [mock_entry({ energy_per_atom, reduced_formula: `LiFeO2` })],
         unstable_entries: [],
       })
       expect(get_headers().some((header) => header?.includes(`raw`))).toBe(expected)
@@ -441,7 +441,7 @@ describe(`ConvexHullStats`, () => {
 
     test(`ID column and value shown when entry_id available`, () => {
       mount_stats_table({
-        stable_entries: [mock_entry({ entry_id: `mp-1234`, reduced_formula: `X` })],
+        stable_entries: [mock_entry({ entry_id: `mp-1234`, reduced_formula: `LiFeO2` })],
         unstable_entries: [],
       })
       expect(get_headers()).toContain(`ID`)
@@ -658,7 +658,7 @@ describe(`ConvexHullStats`, () => {
     const make_entry_with_id = (entry_id: string, data?: Record<string, unknown>) =>
       mock_entry({
         entry_id,
-        reduced_formula: entry_id,
+        reduced_formula: `LiFeO2`,
         data: data as Record<string, unknown>,
       })
 
