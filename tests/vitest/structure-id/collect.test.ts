@@ -171,4 +171,17 @@ describe(`indexed trajectories`, () => {
     expect([sweep.frame_numbers, sweep.frame_stride]).toEqual([[0, 10, 20, 30, 40], 10])
     expect(sweep.frame_numbers).toEqual(loader.requested)
   })
+
+  it(`loads through a source-independent loader without raw file bytes`, async () => {
+    const loader = counting_loader()
+    loader.requires_source = false
+
+    const sweep = await collect_structure_id_sweep(indexed(50, loader), {
+      max_frames: 5,
+      options: { skip_csp: true },
+    })
+
+    expect(sweep.frame_numbers).toEqual([0, 10, 20, 30, 40])
+    expect(loader.requested).toEqual(sweep.frame_numbers)
+  })
 })

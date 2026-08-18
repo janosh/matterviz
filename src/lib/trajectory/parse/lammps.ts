@@ -20,7 +20,7 @@ const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`
 // fractional and need the cell to become Cartesian. `unwrapped` means LAMMPS already
 // removed the periodic images, so consumers (e.g. unwrap_flat_positions) must not
 // re-apply the minimum image convention. x/y/z and xs/ys/zs are wrapped into the box.
-export const POS_COL_VARIANTS = [
+const POS_COL_VARIANTS = [
   { keys: [`xu`, `yu`, `zu`], scaled: false, unwrapped: true },
   { keys: [`xsu`, `ysu`, `zsu`], scaled: true, unwrapped: true },
   { keys: [`xs`, `ys`, `zs`], scaled: true, unwrapped: false },
@@ -45,40 +45,61 @@ const NON_SCALAR_COLS: ReadonlySet<string> = new Set([
 // to the dump command that produced them.
 const LAMMPS_COLUMN_ALIASES: Record<string, string> = { q: `charge` }
 
-// Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
+type LammpsBoxKind = `orthogonal` | `restricted_triclinic` | `general_triclinic`
+
+// Parse LAMMPS box bounds into the lattice and its Cartesian origin. MatterViz lattices
+// start at zero, so absolute x/y/z and xu/yu/zu coordinates must later subtract origin.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
 // Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
-function parse_lammps_box(box_lines: string[], is_triclinic: boolean): math.Matrix3x3 | null {
+function parse_lammps_box(
+  box_lines: string[],
+  box_kind: LammpsBoxKind,
+): { lattice_matrix: math.Matrix3x3; origin: Vec3 } | null {
   if (box_lines.length !== 3) return null
   const bounds = box_lines.map((line) => line.split(/\s+/).map(Number))
-  const min_cols = is_triclinic ? 3 : 2
+  const min_cols = box_kind === `orthogonal` ? 2 : box_kind === `restricted_triclinic` ? 3 : 4
   if (bounds.some((row) => row.length < min_cols || row.slice(0, min_cols).some(isNaN))) {
     return null
   }
 
-  if (!is_triclinic) {
+  if (box_kind === `orthogonal`) {
     // Orthogonal: bounds = [lo, hi] per dimension
     const [[lo_x, hi_x], [lo_y, hi_y], [lo_z, hi_z]] = bounds
-    return [
-      [hi_x - lo_x, 0, 0],
-      [0, hi_y - lo_y, 0],
-      [0, 0, hi_z - lo_z],
-    ]
+    return {
+      lattice_matrix: [
+        [hi_x - lo_x, 0, 0],
+        [0, hi_y - lo_y, 0],
+        [0, 0, hi_z - lo_z],
+      ],
+      origin: [lo_x, lo_y, lo_z],
+    }
+  }
+  if (box_kind === `general_triclinic`) {
+    return {
+      lattice_matrix: bounds.map((row) => row.slice(0, 3)) as math.Matrix3x3,
+      origin: [bounds[0][3], bounds[1][3], bounds[2][3]],
+    }
   }
   // Triclinic: bounds = [lo_bound, hi_bound, tilt] with tilts xy, xz, yz
   const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
-  const lx = xhi_b - Math.max(0, xy, xz, xy + xz) - (xlo_b - Math.min(0, xy, xz, xy + xz))
-  const ly = yhi_b - Math.max(0, yz) - (ylo_b - Math.min(0, yz))
+  const xlo = xlo_b - Math.min(0, xy, xz, xy + xz)
+  const xhi = xhi_b - Math.max(0, xy, xz, xy + xz)
+  const ylo = ylo_b - Math.min(0, yz)
+  const yhi = yhi_b - Math.max(0, yz)
   const lz = zhi_b - zlo_b
-  return [
-    [lx, 0, 0],
-    [xy, ly, 0],
-    [xz, yz, lz],
-  ]
+  return {
+    lattice_matrix: [
+      [xhi - xlo, 0, 0],
+      [xy, yhi - ylo, 0],
+      [xz, yz, lz],
+    ],
+    origin: [xlo, ylo, zlo_b],
+  }
 }
 
 // Parse LAMMPS trajectory (.lammpstrj). Atom types mapped to elements via atom_type_mapping
-// or by default: 1→H, 2→He, etc. Supports orthogonal and triclinic simulation boxes.
+// or by default: 1→H, 2→He, etc. Supports orthogonal, restricted triclinic, and
+// general triclinic simulation boxes.
 export function parse_lammps_trajectory(
   content: string,
   filename?: string,
@@ -89,6 +110,8 @@ export function parse_lammps_trajectory(
   // Absolute simulation time per kept frame, or null when omitted
   const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
+  let reference_atom_ids: number[] | undefined
+  let identity_uses_ids: boolean | undefined
   let idx = 0
 
   const read_line = (): string => lines[idx++]?.trim() ?? ``
@@ -115,28 +138,36 @@ export function parse_lammps_trajectory(
       if (!skip_to(`ITEM: TIMESTEP`)) break
     }
     idx++
-    const timestep = Math.trunc(Number(read_line())) || 0
+    const timestep_text = read_line()
+    const timestep = Number(timestep_text)
+    if (!Number.isInteger(timestep)) {
+      traj_warn(`Skipping LAMMPS frame with invalid timestep "${timestep_text}"`)
+      continue
+    }
 
     if (!skip_to(`ITEM: NUMBER OF ATOMS`)) break
     idx++
     const num_atoms = Math.trunc(Number(read_line()))
     if (!num_atoms || num_atoms <= 0) continue
 
-    // BOX BOUNDS: orthogonal="pp pp pp", triclinic="xy xz yz pp pp pp"
+    // BOX BOUNDS: orthogonal="pp pp pp", restricted triclinic="xy xz yz pp pp pp",
+    // general triclinic="abc origin pp pp pp"
     if (!skip_to(`ITEM: BOX BOUNDS`)) break
     const box_header = read_line()
-    const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
+    const box_kind: LammpsBoxKind = /BOX BOUNDS\s+abc\s+origin/i.test(box_header)
+      ? `general_triclinic`
+      : /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
+        ? `restricted_triclinic`
+        : `orthogonal`
     const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(-3)
     const pbc: Pbc =
       tokens.length === 3
         ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
         : [true, true, true]
 
-    const lattice_matrix = parse_lammps_box(
-      [read_line(), read_line(), read_line()],
-      is_triclinic,
-    )
-    if (!lattice_matrix) continue
+    const parsed_box = parse_lammps_box([read_line(), read_line(), read_line()], box_kind)
+    if (!parsed_box) continue
+    const { lattice_matrix, origin: box_origin } = parsed_box
 
     // Find ITEM: ATOMS and parse column headers
     if (!skip_to(`ITEM: ATOMS`)) break
@@ -149,7 +180,8 @@ export function parse_lammps_trajectory(
     // Atom identity comes from numeric type or an explicit element symbol.
     const type_col = col.type
     const element_col = col.element
-    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1)
+    const id_col = col.id
+    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
 
     if (type_col === undefined && element_col === undefined) {
       traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`)
@@ -172,9 +204,9 @@ export function parse_lammps_trajectory(
     )
 
     // Parse atom data
-    const positions: number[][] = []
-    const elements: ElementSymbol[] = []
-    const site_properties: Record<string, unknown>[] = []
+    let positions: number[][] = []
+    let elements: ElementSymbol[] = []
+    let site_properties: Record<string, unknown>[] = []
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
@@ -182,13 +214,24 @@ export function parse_lammps_trajectory(
       const coords = pos_cols.map((col_idx) => Number(parts[col_idx]))
       if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
-      // Convert scaled coordinates to Cartesian if needed
-      const xyz = frac_to_cart ? frac_to_cart(coords as Vec3) : coords
+      // Scaled coordinates are already relative to the cell origin. Absolute LAMMPS
+      // coordinates use the simulation-box origin, which MatterViz's zero-origin lattice
+      // cannot represent separately, so translate them into the displayed cell.
+      const xyz: Vec3 = frac_to_cart
+        ? frac_to_cart(coords as Vec3)
+        : math.subtract(coords as Vec3, box_origin)
       let element_symbol: ElementSymbol | undefined
 
       if (type_col !== undefined) {
         // Map atom type to element using custom mapping or default (type 1 -> H, etc.)
-        const atom_type = Math.trunc(Number(parts[type_col])) || 1
+        const raw_atom_type = parts[type_col]
+        const atom_type = Number(raw_atom_type)
+        if (!Number.isInteger(atom_type) || atom_type <= 0) {
+          traj_warn(
+            `Skipping LAMMPS atom with invalid type "${raw_atom_type}" at timestep ${timestep}`,
+          )
+          continue
+        }
         atom_types_found.add(atom_type)
         element_symbol = get_element(atom_type)
       } else if (element_col !== undefined) {
@@ -224,6 +267,51 @@ export function parse_lammps_trajectory(
     }
 
     if (positions.length === num_atoms) {
+      const frame_uses_ids = id_col !== undefined
+      if (identity_uses_ids !== undefined && frame_uses_ids !== identity_uses_ids) {
+        traj_warn(
+          `Skipping LAMMPS frame at timestep ${timestep}: atom ID column presence changed`,
+        )
+        continue
+      }
+      if (frame_uses_ids) {
+        const atom_ids = site_properties.map(({ id }) => id)
+        if (
+          atom_ids.some(
+            (atom_id) =>
+              typeof atom_id !== `number` || !Number.isInteger(atom_id) || atom_id <= 0,
+          )
+        ) {
+          traj_warn(
+            `Skipping LAMMPS frame at timestep ${timestep}: atom IDs must be positive integers`,
+          )
+          continue
+        }
+        const numeric_atom_ids = atom_ids as number[]
+        if (new Set(numeric_atom_ids).size !== numeric_atom_ids.length) {
+          traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: duplicate atom IDs`)
+          continue
+        }
+        const order = Array.from(
+          { length: num_atoms },
+          (_unused, atom_idx) => atom_idx,
+        ).toSorted(
+          (left_idx, right_idx) => numeric_atom_ids[left_idx] - numeric_atom_ids[right_idx],
+        )
+        const sorted_atom_ids = order.map((atom_idx) => numeric_atom_ids[atom_idx])
+        const expected_atom_ids = reference_atom_ids
+        if (
+          expected_atom_ids &&
+          sorted_atom_ids.some((atom_id, atom_idx) => atom_id !== expected_atom_ids[atom_idx])
+        ) {
+          traj_warn(`Skipping LAMMPS frame at timestep ${timestep}: atom ID set changed`)
+          continue
+        }
+        reference_atom_ids ??= sorted_atom_ids
+        positions = order.map((atom_idx) => positions[atom_idx])
+        elements = order.map((atom_idx) => elements[atom_idx])
+        site_properties = order.map((atom_idx) => site_properties[atom_idx])
+      }
       const { volume } = math.calc_lattice_params(lattice_matrix)
       const frame = create_trajectory_frame(
         positions,
@@ -235,6 +323,7 @@ export function parse_lammps_trajectory(
           volume,
           timestep,
           coords_unwrapped: pos_variant.unwrapped,
+          box_origin,
           ...(time === null ? {} : { time }),
         },
       )
@@ -243,11 +332,25 @@ export function parse_lammps_trajectory(
       }
       frames.push(frame)
       frame_times.push(time)
+      identity_uses_ids ??= frame_uses_ids
     }
   }
 
   if (frames.length === 0) {
     throw new Error(`No valid frames found in LAMMPS trajectory`)
+  }
+  if (frames.length > 1 && identity_uses_ids === false) {
+    throw new Error(
+      `Multi-frame LAMMPS trajectories must include an atom ID column so atom identity can be verified across frames`,
+    )
+  }
+  for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {
+    if (!(frames[frame_idx].step > frames[frame_idx - 1].step)) {
+      throw new Error(
+        `LAMMPS timestep ${frames[frame_idx].step} at frame ${frame_idx} must be greater than ` +
+          `${frames[frame_idx - 1].step} at frame ${frame_idx - 1}`,
+      )
+    }
   }
 
   const first_frame = frames[0]

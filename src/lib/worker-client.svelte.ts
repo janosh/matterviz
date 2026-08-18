@@ -21,9 +21,14 @@ export interface WorkerClientConfig<Input, Options, Result> {
   dedupe_by_payload?: `unordered`
 }
 
+export type WorkerClient<Input, Options, Result> = {
+  (input: Input, options: Options): Promise<Result>
+  cancel: (reason?: string) => void
+}
+
 export function create_worker_client<Input extends object, Options, Result>(
   config: WorkerClientConfig<Input, Options, Result>,
-): (input: Input, options: Options) => Promise<Result> {
+): WorkerClient<Input, Options, Result> {
   const {
     label,
     create_worker,
@@ -39,6 +44,15 @@ export function create_worker_client<Input extends object, Options, Result>(
     { resolve: (data: Result) => void; reject: (err: Error) => void }
   >()
   const pending_by_key = new Map<string, Promise<Result>>()
+
+  const cancel = (reason = `${label} worker request cancelled`): void => {
+    const error = new Error(reason)
+    for (const request of pending.values()) request.reject(error)
+    pending.clear()
+    pending_by_key.clear()
+    worker?.terminate()
+    worker = null
+  }
 
   const make_tokenizer = () => {
     let next_token = 0
@@ -125,7 +139,9 @@ export function create_worker_client<Input extends object, Options, Result>(
     pending_by_key.set(request_key, promise)
     // .then(onOk, onErr) rather than .finally: the latter forwards the rejection into a
     // derived promise nobody awaits, which surfaces as an unhandled rejection
-    const forget = () => pending_by_key.delete(request_key)
+    const forget = () => {
+      if (pending_by_key.get(request_key) === promise) pending_by_key.delete(request_key)
+    }
     promise.then(forget, forget)
     return promise
   }
@@ -201,11 +217,13 @@ export function create_worker_client<Input extends object, Options, Result>(
 
   // Never throw synchronously: callers handle errors via .catch() only, so key construction
   // or Worker instantiation failures (e.g. CSP) must reject instead
-  return (input: Input, options: Options): Promise<Result> => {
+  const client = (input: Input, options: Options): Promise<Result> => {
     try {
       return compute_unsafe(input, options)
     } catch (err) {
       return Promise.reject(to_error(err))
     }
   }
+  client.cancel = cancel
+  return client
 }

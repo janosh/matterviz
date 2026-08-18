@@ -7,10 +7,28 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import type { TrajectoryFrame } from './index'
+import type {
+  FrameLoader,
+  ParseProgress,
+  PositionStreamOptions,
+  TrajectoryFrame,
+  TrajectoryFrameStore,
+  TrajectoryPositionStream,
+  TrajectorySignal,
+} from './index'
 
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
   Array.isArray(coords) && math.is_finite_vec3_like(coords)
+
+export const is_supported_trajectory_signal_shape = (
+  sample_shape: number[],
+  n_atoms: number,
+): boolean =>
+  sample_shape.length === 0 ||
+  (sample_shape.length === 1 && (sample_shape[0] === 3 || sample_shape[0] === n_atoms)) ||
+  (sample_shape.length === 2 &&
+    ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
+      (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
 // Validate that data is a proper 3x3 matrix
 // Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
@@ -102,6 +120,311 @@ export const create_trajectory_frame = (
   metadata,
 })
 
+const packed_frame_indices = (n_frames: number, frame_stride = 1): number[] => {
+  if (!Number.isInteger(frame_stride) || frame_stride < 1) {
+    throw new Error(
+      `Packed trajectory frame_stride must be a positive integer, got ${frame_stride}`,
+    )
+  }
+  return Array.from(
+    { length: Math.ceil(n_frames / frame_stride) },
+    (_unused, sample_idx) => sample_idx * frame_stride,
+  )
+}
+
+const copy_packed_samples = (
+  source: Float64Array,
+  frame_indices: number[],
+  values_per_frame: number,
+): Float64Array => {
+  const output = new Float64Array(frame_indices.length * values_per_frame)
+  for (const [sample_idx, frame_idx] of frame_indices.entries()) {
+    const source_offset = frame_idx * values_per_frame
+    output.set(
+      source.subarray(source_offset, source_offset + values_per_frame),
+      sample_idx * values_per_frame,
+    )
+  }
+  return output
+}
+
+const required_packed_channel = <Value>(
+  channels: Record<string, Value> | undefined,
+  key: string,
+  kind: string,
+): Value => {
+  const channel = channels?.[key]
+  if (!channel) throw new Error(`Packed trajectory has no ${kind} channel ${key}`)
+  return channel
+}
+
+const validate_packed_channels = (
+  channels: Record<string, Float64Array> | undefined,
+  expected_length: number,
+  kind: `scalar` | `vector`,
+): void => {
+  for (const [key, values] of Object.entries(channels ?? {})) {
+    if (values.length !== expected_length) {
+      throw new Error(
+        `Packed trajectory ${kind} ${key} has ${values.length} values, expected ${expected_length}`,
+      )
+    }
+  }
+}
+
+const packed_signal_samples = (
+  signal: TrajectorySignal,
+  store: TrajectoryFrameStore,
+  frame_indices: number[],
+): TrajectorySignal => {
+  if (
+    signal.steps.length !== store.steps.length ||
+    signal.steps.some((step, frame_idx) => step !== store.steps[frame_idx])
+  ) {
+    throw new Error(
+      `Packed trajectory signals requested with positions must share frame steps`,
+    )
+  }
+  const values_per_frame = signal.sample_shape.reduce((product, size) => product * size, 1)
+  return {
+    ...signal,
+    values: copy_packed_samples(signal.values, frame_indices, values_per_frame),
+    steps: frame_indices.map((frame_idx) => store.steps[frame_idx]),
+  }
+}
+
+// Recreate an on-demand loader from a cloneable packed store. This keeps random frame access on
+// the UI thread after a parser worker transfers the typed arrays, eliminating one request/response
+// round-trip from every slider or plot-hover update.
+export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLoader => {
+  const n_frames = store.steps.length
+  const n_atoms = store.elements.length
+  const position_values_per_frame = n_atoms * 3
+  if (n_frames < 1 || n_atoms < 1) {
+    throw new Error(`Packed trajectory requires at least one frame and atom`)
+  }
+  if (store.positions.length !== n_frames * position_values_per_frame) {
+    throw new Error(
+      `Packed trajectory positions length ${store.positions.length} does not match ` +
+        `${n_frames} frames x ${n_atoms} atoms x 3`,
+    )
+  }
+  if (store.lattice_matrix && store.lattice_matrices) {
+    throw new Error(`Packed trajectory cannot define both static and per-frame lattices`)
+  }
+  if (
+    store.lattice_matrices?.length !== undefined &&
+    store.lattice_matrices.length !== n_frames * 9
+  ) {
+    throw new Error(
+      `Packed trajectory lattices have ${store.lattice_matrices.length} values, expected ${n_frames * 9}`,
+    )
+  }
+  if (store.pbc_frames && store.pbc_frames.length !== n_frames) {
+    throw new Error(
+      `Packed trajectory PBC has ${store.pbc_frames.length} frames, expected ${n_frames}`,
+    )
+  }
+  if (store.metadata.length !== n_frames || store.plot_metadata.length !== n_frames) {
+    throw new Error(
+      `Packed trajectory metadata lengths must match ${n_frames} frames, got ` +
+        `${store.metadata.length} and ${store.plot_metadata.length}`,
+    )
+  }
+  validate_packed_channels(store.scalars, n_frames * n_atoms, `scalar`)
+  validate_packed_channels(store.vectors, n_frames * position_values_per_frame, `vector`)
+
+  const lattice_for_frame = (frame_number: number): math.Matrix3x3 | undefined => {
+    if (!store.lattice_matrices) return store.lattice_matrix
+    const offset = frame_number * 9
+    return [
+      Array.from(store.lattice_matrices.subarray(offset, offset + 3)),
+      Array.from(store.lattice_matrices.subarray(offset + 3, offset + 6)),
+      Array.from(store.lattice_matrices.subarray(offset + 6, offset + 9)),
+    ] as math.Matrix3x3
+  }
+  const pbc_for_frame = (frame_number: number): Pbc | undefined =>
+    store.pbc_frames?.[frame_number] ?? store.pbc
+
+  const load_frame_sync = (frame_number: number): TrajectoryFrame | null => {
+    if (!Number.isInteger(frame_number) || frame_number < 0 || frame_number >= n_frames) {
+      return null
+    }
+    const source_offset = frame_number * position_values_per_frame
+    const positions = Array.from({ length: n_atoms }, (_unused, atom_idx) => {
+      const atom_offset = source_offset + atom_idx * 3
+      return [
+        store.positions[atom_offset],
+        store.positions[atom_offset + 1],
+        store.positions[atom_offset + 2],
+      ]
+    })
+    const frame = create_trajectory_frame(
+      positions,
+      store.elements,
+      lattice_for_frame(frame_number),
+      pbc_for_frame(frame_number),
+      store.steps[frame_number],
+      store.metadata[frame_number],
+    )
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      const properties = frame.structure.sites[atom_idx].properties
+      for (const [key, values] of Object.entries(store.scalars ?? {})) {
+        properties[key] = values[frame_number * n_atoms + atom_idx]
+      }
+      for (const [key, values] of Object.entries(store.vectors ?? {})) {
+        const offset = (frame_number * n_atoms + atom_idx) * 3
+        properties[key] = [values[offset], values[offset + 1], values[offset + 2]]
+      }
+    }
+    return frame
+  }
+
+  return {
+    requires_source: false,
+    get_total_frames: async () => n_frames,
+    build_frame_index: async (_raw_data, sample_rate, on_progress) => {
+      const frame_indices = packed_frame_indices(n_frames, sample_rate)
+      on_progress?.({ current: 100, total: 100, stage: `Indexed packed trajectory frames` })
+      return frame_indices.map((frame_number) => ({
+        frame_number,
+        byte_offset: frame_number * position_values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+        estimated_size: position_values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+      }))
+    },
+    load_frame: async (_raw_data, frame_number) => load_frame_sync(frame_number),
+    load_frame_sync,
+    extract_plot_metadata: async (_raw_data, options, on_progress) => {
+      const frame_indices = packed_frame_indices(n_frames, options?.sample_rate)
+      on_progress?.({ current: 100, total: 100, stage: `Read packed trajectory metadata` })
+      return frame_indices.map((frame_idx) => store.plot_metadata[frame_idx])
+    },
+    stream_positions: async (
+      _raw_data: string | ArrayBuffer,
+      options: PositionStreamOptions = {},
+      on_progress?: (progress: ParseProgress) => void,
+    ): Promise<TrajectoryPositionStream> => {
+      const frame_indices = packed_frame_indices(n_frames, options.frame_stride)
+      const scalar_keys = [...new Set(options.scalar_keys)]
+      const vector_keys = [...new Set(options.vector_keys)]
+      const signal_keys = [...new Set(options.signal_keys)]
+      const missing_channels = [
+        ...scalar_keys.filter((key) => !store.scalars?.[key]),
+        ...vector_keys.filter((key) => !store.vectors?.[key]),
+        ...signal_keys.filter((key) => !store.signals?.[key]),
+      ]
+      if (missing_channels.length > 0) {
+        throw new Error(
+          `Packed trajectory has no channels named ${missing_channels.join(`, `)}`,
+        )
+      }
+      const signal_values_per_frame = signal_keys.reduce((total, key) => {
+        const signal = store.signals?.[key]
+        return total + (signal?.sample_shape.reduce((product, size) => product * size, 1) ?? 0)
+      }, 0)
+      const values_per_frame =
+        position_values_per_frame +
+        scalar_keys.length * n_atoms +
+        vector_keys.length * position_values_per_frame +
+        signal_values_per_frame
+      const needed_bytes =
+        frame_indices.length * values_per_frame * Float64Array.BYTES_PER_ELEMENT
+      const max_bytes = options.max_bytes ?? Number.POSITIVE_INFINITY
+      if (!(max_bytes > 0) || Number.isNaN(max_bytes)) {
+        throw new Error(`Packed trajectory max_bytes must be positive, got ${max_bytes}`)
+      }
+      if (needed_bytes > max_bytes) {
+        const frame_bytes = values_per_frame * Float64Array.BYTES_PER_ELEMENT
+        const affordable_frames = Math.floor(max_bytes / frame_bytes)
+        if (affordable_frames < 1) {
+          throw new Error(
+            `A packed trajectory frame needs ${frame_bytes} bytes, over the ${max_bytes} byte budget.`,
+          )
+        }
+        const minimum_stride = Math.ceil(n_frames / affordable_frames)
+        throw new Error(
+          `Collecting ${frame_indices.length} packed trajectory frames needs ${needed_bytes} ` +
+            `bytes, over the ${max_bytes} byte budget. Use frame_stride >= ${minimum_stride}.`,
+        )
+      }
+      const scalars = Object.fromEntries(
+        scalar_keys.map((key) => [
+          key,
+          copy_packed_samples(
+            required_packed_channel(store.scalars, key, `scalar`),
+            frame_indices,
+            n_atoms,
+          ),
+        ]),
+      )
+      const vectors = Object.fromEntries(
+        vector_keys.map((key) => [
+          key,
+          copy_packed_samples(
+            required_packed_channel(store.vectors, key, `vector`),
+            frame_indices,
+            position_values_per_frame,
+          ),
+        ]),
+      )
+      const signals = Object.fromEntries(
+        signal_keys.map((key) => [
+          key,
+          packed_signal_samples(
+            required_packed_channel(store.signals, key, `signal`),
+            store,
+            frame_indices,
+          ),
+        ]),
+      )
+      on_progress?.({ current: 100, total: 100, stage: `Collected packed trajectory data` })
+      return {
+        positions: copy_packed_samples(
+          store.positions,
+          frame_indices,
+          position_values_per_frame,
+        ),
+        n_frames: frame_indices.length,
+        n_atoms,
+        elements: [...store.elements],
+        lattice_matrices:
+          store.lattice_matrix || store.lattice_matrices
+            ? frame_indices.map((frame_idx) => lattice_for_frame(frame_idx) ?? null)
+            : null,
+        pbc: store.pbc_frames
+          ? store.pbc_frames.every((pbc) =>
+              pbc.every((value, axis) => value === store.pbc_frames?.[0]?.[axis]),
+            )
+            ? store.pbc_frames[0]
+            : null
+          : (store.pbc ?? null),
+        coords_unwrapped: store.coords_unwrapped,
+        frame_stride: options.frame_stride ?? 1,
+        steps: frame_indices.map((frame_idx) => store.steps[frame_idx]),
+        ...(scalar_keys.length > 0 ? { scalars } : {}),
+        ...(vector_keys.length > 0 ? { vectors } : {}),
+        ...(signal_keys.length > 0 ? { signals } : {}),
+      }
+    },
+  }
+}
+
+// Unique buffers owned by a packed store. The same velocity array can appear in both `vectors`
+// and `signals`, so deduplication is required before passing them to postMessage's transfer list.
+export const packed_frame_transferables = (store: TrajectoryFrameStore): ArrayBuffer[] => {
+  const buffers: ArrayBuffer[] = []
+  const add = (values: Float64Array) => {
+    const buffer = values.buffer as ArrayBuffer
+    if (!buffers.includes(buffer)) buffers.push(buffer)
+  }
+  add(store.positions)
+  if (store.lattice_matrices) add(store.lattice_matrices)
+  for (const values of Object.values(store.scalars ?? {})) add(values)
+  for (const values of Object.values(store.vectors ?? {})) add(values)
+  for (const signal of Object.values(store.signals ?? {})) add(signal.values)
+  return buffers
+}
+
 // Shared utility to read ndarray data from binary format.
 // `base_offset` is the absolute file position of `view`'s first byte: ULM stores
 // array positions as absolute file offsets, so reading from a slice of the file
@@ -138,15 +461,13 @@ export const read_ndarray_from_view = (
     data.push(reader.read(array_offset + idx * reader.bytes))
   }
 
-  return shape.length === 1
-    ? [data]
-    : shape.length === 2
-      ? Array.from({ length: shape[0] }, (_, idx) =>
-          data.slice(idx * shape[1], (idx + 1) * shape[1]),
-        )
-      : (() => {
-          throw new Error(`Unsupported shape`)
-        })()
+  if (shape.length === 1) return [data]
+  if (shape.length === 2) {
+    return Array.from({ length: shape[0] }, (_, idx) =>
+      data.slice(idx * shape[1], (idx + 1) * shape[1]),
+    )
+  }
+  throw new Error(`Unsupported shape`)
 }
 
 // Copy listed fields from source to target when they hold numbers
@@ -156,7 +477,7 @@ export const copy_numeric_fields = (
   fields: readonly string[],
 ): void => {
   for (const field of fields) {
-    if (field in source && typeof source[field] === `number`) target[field] = source[field]
+    if (typeof source[field] === `number`) target[field] = source[field]
   }
 }
 

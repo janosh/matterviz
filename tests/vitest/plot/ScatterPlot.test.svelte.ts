@@ -887,6 +887,52 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
+  test.each([
+    { label: `ascending`, x_values: [0, 1, 2], target_idx: 1 },
+    { label: `descending`, x_values: [2, 1, 0], target_idx: 1 },
+    { label: `unordered`, x_values: [0, 2, 1], target_idx: 2 },
+  ])(
+    `x hover finds the nearest $label point without vertical proximity`,
+    async ({ x_values, target_idx }) => {
+      const on_point_hover = vi.fn()
+      const y_values = [0, 1, 0]
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: x_values, y: y_values, markers: `points` }],
+        x_axis: { range: [0, 2] },
+        y_axis: { range: [0, 1] },
+        hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+        point_tween: { duration: 0 },
+        on_point_hover,
+        legend: null,
+      })
+      const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+      const target_marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(target_idx)
+      const transform = target_marker.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+      if (!svg || !match?.groups) throw new Error(`expected the middle scatter marker`)
+      Object.defineProperty(svg, `getBoundingClientRect`, {
+        value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+      })
+
+      const far_y = Number(match.groups.y) < 150 ? 290 : 10
+      svg.dispatchEvent(
+        new MouseEvent(`mousemove`, {
+          bubbles: true,
+          clientX: Number(match.groups.x),
+          clientY: far_y,
+        }),
+      )
+      await next_animation_frame()
+
+      expect(on_point_hover).toHaveBeenCalledOnce()
+      expect(on_point_hover.mock.calls[0][0]).toMatchObject({
+        x: x_values[target_idx],
+        y: y_values[target_idx],
+      })
+      expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    },
+  )
+
   test(`cancels queued pointer hover when destroyed`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(400)
     vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)

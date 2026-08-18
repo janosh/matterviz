@@ -205,6 +205,32 @@ export function parse_xyz_comment_metadata(comment: string): {
   return { step: step ? Math.trunc(Number(step)) : undefined, properties }
 }
 
+// Parse quoted frame-level numerical vectors/tensors without interpreting unrelated
+// extXYZ strings such as Properties, Lattice, or pbc. Three values become a vec3 and nine
+// values a row-major 3x3 tensor, matching trajectory spectroscopy signal shapes.
+export function parse_xyz_comment_signals(
+  comment: string,
+): Record<string, number[] | number[][]> {
+  const signals: Record<string, number[] | number[][]> = {}
+  const pattern =
+    /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/gu
+  for (const match of comment.matchAll(pattern)) {
+    const key = match.groups?.key
+    if (!key || [`properties`, `lattice`, `pbc`].includes(key.toLowerCase())) continue
+    const raw = match.groups?.double ?? match.groups?.single ?? ``
+    const values = raw
+      .trim()
+      .split(/[\s,]+/u)
+      .map(Number)
+    if (!values.every(Number.isFinite)) continue
+    if (values.length === 3) signals[key] = values
+    else if (values.length === 9) {
+      signals[key] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
+    }
+  }
+  return signals
+}
+
 type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
 
 // Parse num_atoms atom lines starting at lines[start], reading species/pos/forces from
@@ -305,7 +331,11 @@ export function build_xyz_frame(
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
   const { elements, positions, force_stats, move_flags, site_properties } =
     parse_xyz_atom_lines(lines, start + 2, num_atoms, comment, opts.frame_label)
-  const metadata: Record<string, unknown> = { ...properties, ...force_stats }
+  const metadata: Record<string, unknown> = {
+    ...properties,
+    ...parse_xyz_comment_signals(comment),
+    ...force_stats,
+  }
   if (lattice_matrix) metadata.volume = math.calc_lattice_params(lattice_matrix).volume
   const built = create_trajectory_frame(
     positions,

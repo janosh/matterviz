@@ -188,7 +188,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(first_item).toHaveClass(/hidden/)
     })
 
-    test(`plot skimming can be disabled via plot_skimming prop`, async ({ page }) => {
+    test(`plot navigation can be disabled via plot_skimming prop`, async ({ page }) => {
       const trajectory = page.locator(`#no-plot-skimming`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
@@ -197,11 +197,11 @@ test.describe(`Trajectory Component`, () => {
       const initial_step = await step_input.inputValue()
       const plot_points = scatter_plot.locator(`.marker`)
       expect(await plot_points.count()).toBeGreaterThan(1)
-      await plot_points.nth(1).hover()
+      await plot_points.nth(1).click()
       await expect(step_input).toHaveValue(initial_step)
     })
 
-    test(`plot skimming is enabled by default`, async ({ page }) => {
+    test(`plot navigation requires a click by default`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
@@ -211,6 +211,8 @@ test.describe(`Trajectory Component`, () => {
       expect(await plot_points.count()).toBeGreaterThan(1)
       const before = await step_input.inputValue()
       await plot_points.nth(1).hover()
+      await expect(step_input).toHaveValue(before)
+      await plot_points.nth(1).click()
       await expect(step_input).not.toHaveValue(before)
     })
 

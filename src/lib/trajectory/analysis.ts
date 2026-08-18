@@ -1,6 +1,6 @@
 // Frame accounting shared by trajectory analyses. Indexed trajectories keep only a small
 // frame window in memory, so treating `frames.length` as the total silently truncates them.
-import type { TrajectoryType } from '$lib/trajectory'
+import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
 import { to_error } from '$lib/utils'
 
 export function trajectory_total_frames(trajectory: TrajectoryType): number {
@@ -20,6 +20,26 @@ export const has_all_frames_in_memory = (trajectory: TrajectoryType): boolean =>
   const total_frames = trajectory_total_frames(trajectory)
   return total_frames > 0 && trajectory.frames.length >= total_frames
 }
+
+// Resolve the opaque source argument expected by a frame loader. Packed and worker-owned
+// loaders carry their own backing data and deliberately accept an empty placeholder; file/text
+// readers still require the original non-empty payload.
+export const frame_loader_data = (
+  loader: FrameLoader,
+  raw_data: string | ArrayBuffer | null,
+): string | ArrayBuffer | null => {
+  if (loader.requires_source === false) return raw_data ?? ``
+  if (raw_data === null || raw_data === ``) return null
+  return raw_data instanceof ArrayBuffer && raw_data.byteLength === 0 ? null : raw_data
+}
+
+export const has_frame_loader_data = (
+  trajectory: TrajectoryType | undefined,
+  raw_data: string | ArrayBuffer | null,
+): boolean =>
+  Boolean(
+    trajectory?.frame_loader && frame_loader_data(trajectory.frame_loader, raw_data) !== null,
+  )
 
 // Frame counts and stride advice for trajectory analysis panes. Setup errors are returned
 // so a pane can render them without taking down the viewer.

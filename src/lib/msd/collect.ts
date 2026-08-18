@@ -2,7 +2,11 @@
 // either drives a full streaming pass or throws with instructions, so an indexed
 // trajectory can never be silently analysed over its 10-frame in-memory window.
 import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
+import {
+  frame_loader_data,
+  has_all_frames_in_memory,
+  trajectory_total_frames,
+} from '$lib/trajectory/analysis'
 import {
   accumulate_positions,
   DEFAULT_POSITION_STREAM_MAX_BYTES,
@@ -11,8 +15,8 @@ import {
 import type { MsdPositions } from './index'
 
 export interface MsdCollectOptions {
-  // Raw file bytes. Only Trajectory.svelte holds these (component-local `orig_data`
-  // state, not a field of TrajectoryType), so a caller outside it must pass them in.
+  // Raw file bytes for source-dependent indexed loaders. Packed and worker-owned loaders carry
+  // their own backing data and do not require this.
   raw_data?: string | ArrayBuffer | null
   // Collect every Nth frame; use `suggest_msd_frame_stride` to stay inside the budget
   frame_stride?: number
@@ -65,13 +69,14 @@ export async function collect_msd_positions(
           `is impossible. MSD would otherwise be computed over just ${loaded} frames.`,
       )
     }
-    if (!raw_data || (raw_data instanceof ArrayBuffer && raw_data.byteLength === 0)) {
+    const loader_data = frame_loader_data(loader, raw_data)
+    if (loader_data === null) {
       throw new Error(
         `${indexed} so MSD needs the raw file bytes to stream the remaining frames, but ` +
           `raw_data was missing or empty. Pass the payload Trajectory.svelte keeps in orig_data.`,
       )
     }
-    return loader.stream_positions(raw_data, { frame_stride, max_bytes }, on_progress)
+    return loader.stream_positions(loader_data, { frame_stride, max_bytes }, on_progress)
   }
 
   const { frames } = trajectory

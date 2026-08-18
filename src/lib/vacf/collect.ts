@@ -7,7 +7,11 @@
 // generate_plot_series notices. So every entry point here either drives a full streaming
 // pass or throws with instructions.
 import type { Vec3 } from '$lib/math'
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
+import {
+  frame_loader_data,
+  has_all_frames_in_memory,
+  trajectory_total_frames,
+} from '$lib/trajectory/analysis'
 import type {
   ParseProgress,
   TrajectoryFrame,
@@ -28,8 +32,8 @@ import type { VacfInput } from './index'
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 export interface VacfCollectOptions {
-  // Raw file bytes. Only Trajectory.svelte holds these (component-local `orig_data` state,
-  // not a field of TrajectoryType), so a caller outside it must pass them in.
+  // Raw file bytes for source-dependent indexed loaders. Packed and worker-owned loaders carry
+  // their own backing data and do not require this.
   raw_data?: string | ArrayBuffer | null
   // Collect every Nth frame; use `suggest_vacf_frame_stride` to stay inside the budget.
   // Note that striding coarsens the velocity sampling and so lowers the VDOS Nyquist
@@ -179,7 +183,8 @@ export async function collect_vacf_input(
           `is impossible. VACF would otherwise be computed over just ${loaded} frames.`,
       )
     }
-    if (raw_data === null) {
+    const loader_data = frame_loader_data(loader, raw_data)
+    if (loader_data === null) {
       throw new Error(
         `${indexed} so VACF needs the raw file bytes to stream the remaining frames, but ` +
           `raw_data was not provided. Pass the payload Trajectory.svelte keeps in orig_data.`,
@@ -189,7 +194,7 @@ export async function collect_vacf_input(
     // accumulate_positions throws on a frame that lacks a requested key, and a run without
     // stored velocities is meant to fall through to differentiating the positions.
     const stream = await loader.stream_positions(
-      raw_data,
+      loader_data,
       {
         frame_stride,
         max_bytes,

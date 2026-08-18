@@ -3,7 +3,7 @@
   import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { analysis_pane_setup } from '$lib/trajectory/analysis'
+  import { analysis_pane_setup, has_frame_loader_data } from '$lib/trajectory/analysis'
   import type { TrajectoryType } from '$lib/trajectory'
   import { to_error } from '$lib/utils'
   import { untrack } from 'svelte'
@@ -23,8 +23,7 @@
     ...pane_options
   }: ViewerPaneOptions & {
     trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data. Required for indexed
-    // trajectories, whose `frames` array holds only the first few frames.
+    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
     raw_data?: string | ArrayBuffer | null
     pane_open?: boolean
     result?: StructureIdSweep
@@ -41,6 +40,7 @@
   let { total_frames, loaded_frames, n_atoms, is_lazy, setup_error } = $derived(
     analysis_pane_setup(trajectory),
   )
+  let loader_data_available = $derived(has_frame_loader_data(trajectory, raw_data))
   // sweep_frame_plan rejects a non-integer or sub-1 cap outright, so normalise once here.
   // Number.isFinite also catches the Infinity a `1e999` entry produces.
   let safe_max_frames = $derived(
@@ -113,7 +113,7 @@
     {:else if is_lazy}
       <StatusMessage
         type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. Sampled frames are loaded on demand{raw_data
+        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. Sampled frames are loaded on demand{loader_data_available
           ? ``
           : `, but the raw file bytes are unavailable here`}."
         style="font-size: 0.8em"

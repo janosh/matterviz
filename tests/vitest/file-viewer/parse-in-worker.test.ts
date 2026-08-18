@@ -3,6 +3,7 @@ import {
   MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
   MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES,
   parse_in_worker,
+  parse_trajectory_in_worker,
   reset_parse_worker,
   should_index_worker_xyz,
 } from '$lib/file-viewer/parse-in-worker'
@@ -11,9 +12,10 @@ import type {
   FrameWorkerResponse,
   ParseWorkerRequest,
   ParseWorkerResponse,
+  TrajectoryParseWorkerRequest,
   WorkerLike,
 } from '$lib/file-viewer/parse-in-worker'
-import type { TrajectoryType } from '$lib/trajectory'
+import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const structure_result: ParseResult = {
@@ -82,6 +84,124 @@ afterEach(() => {
 })
 
 describe(`parse_in_worker`, () => {
+  it(`parses an ArrayBuffer trajectory on a dedicated worker without detaching the source`, async () => {
+    const source = new Uint8Array([1, 2, 3, 4]).buffer
+    let posted_request: TrajectoryParseWorkerRequest | undefined
+    let posted_transfer: readonly Transferable[] = []
+    const listeners = new Map<string, EventListener>()
+    const worker: WorkerLike = {
+      postMessage: (
+        message: unknown,
+        options?: StructuredSerializeOptions | Transferable[],
+      ) => {
+        posted_request = message as TrajectoryParseWorkerRequest
+        posted_transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
+        queueMicrotask(() =>
+          listeners.get(`message`)?.(
+            new MessageEvent(`message`, {
+              data: {
+                id: posted_request?.id,
+                result: {
+                  type: `trajectory`,
+                  filename: `large.h5`,
+                  data: {
+                    frames: [{ structure: { sites: [] }, step: 0 }],
+                    total_frames: 1,
+                  },
+                },
+              },
+            }),
+          ),
+        )
+      },
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) =>
+        listeners.set(type, listener as EventListener),
+      terminate: vi.fn(),
+    }
+
+    const trajectory = await parse_trajectory_in_worker(
+      source,
+      `large.h5`,
+      undefined,
+      { use_indexing: true },
+      { worker_factory: () => worker },
+    )
+
+    expect(source.byteLength).toBe(4)
+    expect(posted_request).toMatchObject({
+      kind: `trajectory`,
+      filename: `large.h5`,
+      options: { use_indexing: true },
+    })
+    expect(posted_request?.data).not.toBe(source)
+    expect(posted_transfer).toEqual([posted_request?.data])
+    expect(trajectory.total_frames).toBe(1)
+    expect(worker.terminate).toHaveBeenCalledOnce()
+  })
+
+  it(`transfers a large File-backed trajectory source without cloning it`, async () => {
+    const source = new Uint8Array([1, 2, 3, 4]).buffer
+    let posted_data: ArrayBuffer | undefined
+    const listeners = new Map<string, EventListener>()
+    const worker: WorkerLike = {
+      postMessage: (message, options) => {
+        const request = message as TrajectoryParseWorkerRequest
+        posted_data = request.data as ArrayBuffer
+        const transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
+        structuredClone(message, { transfer })
+        queueMicrotask(() =>
+          listeners.get(`message`)?.(
+            new MessageEvent(`message`, {
+              data: {
+                id: request.id,
+                result: {
+                  type: `trajectory`,
+                  filename: `large.h5`,
+                  data: { frames: [{ structure: { sites: [] }, step: 0 }] },
+                },
+              },
+            }),
+          ),
+        )
+      },
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) =>
+        listeners.set(type, listener as EventListener),
+      terminate: vi.fn(),
+    }
+
+    await parse_trajectory_in_worker(
+      source,
+      `large.h5`,
+      undefined,
+      { use_indexing: true },
+      { worker_factory: () => worker, transfer_source: true },
+    )
+
+    expect(posted_data).toBe(source)
+    expect(source.byteLength).toBe(0)
+  })
+
+  it(`preserves HDF5 group-selection errors from the trajectory worker`, async () => {
+    const worker = make_fake_worker((request) => ({
+      id: request.id,
+      error: `choose a run`,
+      hdf5_group_paths: [`/run_a`, `/run_b`],
+    }))
+    await expect(
+      parse_trajectory_in_worker(
+        new ArrayBuffer(8),
+        `ambiguous.h5`,
+        undefined,
+        {},
+        { worker_factory: () => worker },
+      ),
+    ).rejects.toMatchObject({
+      name: `Hdf5TrajectoryGroupSelectionError`,
+      message: `choose a run`,
+      group_paths: [`/run_a`, `/run_b`],
+    })
+  })
+
   it(`reuses one worker with distinct request ids and no fallback`, async () => {
     const seen_requests: ParseWorkerRequest[] = []
     const worker = make_fake_worker((request) => {
@@ -107,6 +227,46 @@ describe(`parse_in_worker`, () => {
     expect(new Set(seen_requests.map(({ id }) => id)).size).toBe(requests.length)
     expect(seen_requests.map(({ id: _request_id, ...request }) => request)).toEqual(requests)
     expect(fallback_parse).not.toHaveBeenCalled()
+  })
+
+  it(`materializes packed worker frames locally without a frame RPC port`, async () => {
+    const packed_result: ParseResult = {
+      type: `trajectory`,
+      filename: `packed.h5`,
+      data: {
+        frames: [{ structure: { sites: [] }, step: 0 }],
+        total_frames: 2,
+        is_indexed: true,
+        frame_store: {
+          positions: new Float64Array([0, 0, 0, 1, 2, 3]),
+          elements: [`H`],
+          coords_unwrapped: true,
+          steps: [0, 1],
+          metadata: [{}, { energy: -1 }],
+          plot_metadata: [0, 1].map((frame_number) => ({
+            frame_number,
+            step: frame_number,
+            properties: {},
+          })),
+        },
+      } satisfies TrajectoryType,
+    }
+    const worker = make_fake_worker((request) => ({ id: request.id, result: packed_result }))
+    const result = await parse_in_worker(`payload`, `packed.h5`, true, {
+      worker_factory: () => worker,
+    })
+    const trajectory = result.data as TrajectoryType
+
+    expect(trajectory.frame_loader).toBeDefined()
+    expect(trajectory.frame_loader?.load_frame_sync?.(1)).toMatchObject({
+      step: 1,
+      structure: { sites: [{ xyz: [1, 2, 3] }] },
+    })
+    await expect(trajectory.frame_loader?.load_frame(``, 1)).resolves.toMatchObject({
+      step: 1,
+      metadata: { energy: -1 },
+      structure: { sites: [{ xyz: [1, 2, 3], species: [{ element: `H` }] }] },
+    })
   })
 
   const indexed_xyz = `1\nstep=0\nH 0 0 0\n1\nstep=1\nHe 1 0 0\n`
@@ -149,10 +309,13 @@ describe(`parse_in_worker`, () => {
     }))
   }
 
-  it(`keeps an indexed loader alive and disposes the late port after an abort`, async () => {
+  it(`retires an indexed loader worker so later parses can abort independently`, async () => {
     const worker = make_indexed_frame_worker()
+    const stalled_worker = make_fake_worker(() => null)
+    const replacement_worker = make_successful_worker()
+    const worker_factory = make_worker_factory(worker, stalled_worker, replacement_worker)
     const result = await parse_in_worker(indexed_xyz, `movie.xyz`, false, {
-      worker_factory: () => worker,
+      worker_factory,
     })
     const frame_loader = (result.data as TrajectoryType).frame_loader
     if (!frame_loader?.dispose) throw new Error(`expected indexed frame loader`)
@@ -161,54 +324,28 @@ describe(`parse_in_worker`, () => {
       structure: { sites: [{ species: [{ element: `He` }] }] },
     })
 
-    // Hang the next parse on this shared worker, then abort once it is active.
-    const pending_requests: ParseWorkerRequest[] = []
-    worker.postMessage = (message) => {
-      pending_requests.push(message as ParseWorkerRequest)
-    }
+    // A new parse gets a separate worker. Aborting it cannot kill the loader-backed worker.
     const controller = new AbortController()
     const cancelled = parse_in_worker(`large`, `slow.h5`, true, {
-      worker_factory: () => worker,
+      worker_factory,
       signal: controller.signal,
       fallback_parse: vi.fn(),
     })
-    await vi.waitFor(() => expect(pending_requests).toHaveLength(1))
+    await vi.waitFor(() => expect(worker_factory).toHaveBeenCalledTimes(2))
     controller.abort()
     await expect(cancelled).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).not.toHaveBeenCalled()
+    expect(stalled_worker.terminate).toHaveBeenCalledOnce()
 
-    // The next parse goes out right away instead of waiting on the abandoned request. A
-    // worker hung mid-parse would otherwise stall the queue with no timeout to break it.
     const queued = parse_in_worker(`data_si`, `queued.cif`, false, {
-      worker_factory: () => worker,
-    })
-    await vi.waitFor(() => expect(pending_requests).toHaveLength(2))
-
-    const [hung_request] = pending_requests
-    const late_frame_channel = new MessageChannel()
-    const late_dispose = new Promise<FrameWorkerRequest>((resolve) => {
-      late_frame_channel.port1.addEventListener(
-        `message`,
-        (event: MessageEvent<FrameWorkerRequest>) => resolve(event.data),
-        { once: true },
-      )
-      late_frame_channel.port1.start()
-    })
-    emit_worker_message(worker, {
-      id: hung_request.id,
-      result: structure_result,
-      frame_port: late_frame_channel.port2,
-    })
-    await expect(late_dispose).resolves.toMatchObject({ method: `dispose` })
-    late_frame_channel.port1.close()
-    emit_worker_message(worker, {
-      id: pending_requests[1].id,
-      result: structure_result,
+      worker_factory,
     })
     await expect(queued).resolves.toEqual(structure_result)
+    expect(worker_factory).toHaveBeenCalledTimes(3)
 
     await expect(frame_loader.load_frame(``, 1)).resolves.toMatchObject({ step: 1 })
     frame_loader.dispose()
+    expect(worker.terminate).toHaveBeenCalledOnce()
     await expect(frame_loader.load_frame(``, 1)).rejects.toThrow(
       `Indexed frame loader was disposed`,
     )
@@ -520,9 +657,119 @@ describe(`parse_in_worker`, () => {
   it(`returns cloneable indexed worker results with live frame RPC`, async () => {
     const { TrajFrameReader } = await import(`$lib/trajectory/parse`)
     const dispose_spy = vi.spyOn(TrajFrameReader.prototype, `dispose`)
-    const { handle_parse_worker_request } = await import(`$lib/file-viewer/parse-worker`)
+    const { handle_parse_worker_request, prepare_parse_result } = await import(
+      `$lib/file-viewer/parse-worker`
+    )
+    const stream_values = new Float64Array([1, 2, 3, 4, 5, 6])
+    const stream_scalars = new Float64Array([0.5, 1.5])
+    const compact_loader: FrameLoader = {
+      get_total_frames: async () => 2,
+      build_frame_index: async () => [],
+      load_frame: async () => ({ structure: { sites: [] }, step: 0 }),
+      extract_plot_metadata: async () => [],
+      stream_positions: async () => ({
+        positions: stream_values,
+        scalars: { charge: stream_scalars },
+        vectors: { velocity: stream_values },
+        signals: {
+          dipole: { values: stream_values, sample_shape: [3], steps: [0, 1] },
+        },
+        n_frames: 2,
+        n_atoms: 1,
+        elements: [`H`],
+        lattice_matrices: null,
+        pbc: null,
+        coords_unwrapped: false,
+        frame_stride: 1,
+        steps: [0, 1],
+      }),
+    }
+    const compact = prepare_parse_result(
+      6,
+      {
+        type: `trajectory`,
+        data: {
+          frames: [{ structure: { sites: [] }, step: 0 }],
+          total_frames: 2,
+          is_indexed: true,
+          frame_loader: compact_loader,
+        },
+        filename: `compact.h5`,
+      },
+      `binary payload`,
+    )
+    const cloned_compact = structuredClone(compact.response, { transfer: compact.transfer })
+    const compact_trajectory = cloned_compact.result?.data as TrajectoryType
+    expect(compact.transfer).toHaveLength(1)
+    expect(compact_trajectory.is_indexed).toBe(true)
+    expect(compact_trajectory.frame_loader).toBeUndefined()
+    const compact_frame_port = cloned_compact.frame_port
+    if (!compact_frame_port) throw new Error(`compact worker response has no frame port`)
+    const stream_response = new Promise<FrameWorkerResponse>((resolve) => {
+      compact_frame_port.addEventListener(
+        `message`,
+        (event: MessageEvent<FrameWorkerResponse>) => resolve(event.data),
+        { once: true },
+      )
+      compact_frame_port.start()
+    })
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    compact_frame_port.postMessage({ id: 7, method: `stream_positions`, args: [{}] })
+    const streamed = (await stream_response).result
+    expect(streamed).toMatchObject({
+      positions: new Float64Array([1, 2, 3, 4, 5, 6]),
+      scalars: { charge: new Float64Array([0.5, 1.5]) },
+      vectors: { velocity: new Float64Array([1, 2, 3, 4, 5, 6]) },
+      signals: { dipole: { values: new Float64Array([1, 2, 3, 4, 5, 6]) } },
+    })
+    expect(stream_values.byteLength).toBe(0)
+    expect(stream_scalars.byteLength).toBe(0)
+    cloned_compact.frame_port?.close()
+
+    const packed_positions = new Float64Array([0, 0, 0, 1, 2, 3])
+    const packed_velocity = new Float64Array([1, 0, 0, 0, 1, 0])
+    const packed = prepare_parse_result(
+      7,
+      {
+        type: `trajectory`,
+        data: {
+          frames: [{ structure: { sites: [] }, step: 0 }],
+          total_frames: 2,
+          is_indexed: true,
+          frame_loader: compact_loader,
+          frame_store: {
+            positions: packed_positions,
+            elements: [`H`],
+            coords_unwrapped: true,
+            steps: [0, 1],
+            metadata: [{}, {}],
+            plot_metadata: [0, 1].map((frame_number) => ({
+              frame_number,
+              step: frame_number,
+              properties: {},
+            })),
+            vectors: { velocity: packed_velocity },
+            signals: {
+              velocity: {
+                values: packed_velocity,
+                sample_shape: [1, 3],
+                steps: [0, 1],
+              },
+            },
+          },
+        },
+        filename: `packed.h5`,
+      },
+      `binary payload`,
+    )
+    expect(packed.response.frame_port).toBeUndefined()
+    expect(packed.transfer).toEqual([packed_positions.buffer, packed_velocity.buffer])
+    const packed_result = packed.response.result
+    if (!packed_result) throw new Error(`packed parse result missing`)
+    expect((packed_result.data as TrajectoryType).frame_loader).toBeUndefined()
+
     const { response, transfer } = await handle_parse_worker_request({
-      id: 7,
+      id: 8,
       content: `1\nframe\nH 0 0 0\n`.repeat(64),
       filename: `movie.xyz`,
       is_base64: false,
@@ -540,7 +787,7 @@ describe(`parse_in_worker`, () => {
       frame_port.start()
     })
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
-    frame_port.postMessage({ id: 8, method: `load_frame`, args: [63] })
+    frame_port.postMessage({ id: 9, method: `load_frame`, args: [63] })
 
     expect(cloned.result).toMatchObject({
       type: `trajectory`,
@@ -551,14 +798,14 @@ describe(`parse_in_worker`, () => {
       structure: { sites: [{ species: [{ element: `H` }] }] },
     })
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
-    frame_port.postMessage({ id: 9, method: `dispose`, args: [] })
+    frame_port.postMessage({ id: 10, method: `dispose`, args: [] })
     await vi.waitFor(() => expect(dispose_spy).toHaveBeenCalledOnce())
     let follow_up_response: FrameWorkerResponse | undefined
     frame_port.addEventListener(`message`, (event: MessageEvent<FrameWorkerResponse>) => {
       follow_up_response = event.data
     })
     // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
-    frame_port.postMessage({ id: 10, method: `load_frame`, args: [0] })
+    frame_port.postMessage({ id: 11, method: `load_frame`, args: [0] })
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(follow_up_response).toBeUndefined()
     dispose_spy.mockRestore()

@@ -398,6 +398,12 @@ describe(`NebViewer`, () => {
     expect(summary).toContain(`Fitted saddle (force-hermite)`)
   })
 
+  test(`aligns plot controls with the hover sequence bar`, async () => {
+    await mount_viewer({ paths: reaction_paths, show_controls: `hover` })
+    const panes = doc_query(`.panes`)
+    expect(panes.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
+  })
+
   test(`offers a path selector only when several paths are present`, async () => {
     const multi = await mount_viewer({ paths: reaction_paths })
     // path picker + x-axis mode + energy reference

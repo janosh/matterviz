@@ -13,6 +13,7 @@ import {
   should_hide_plot,
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
+import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
 
@@ -70,13 +71,25 @@ const find_series_by_label = (series: DataSeries[], search_term: string) =>
 const plot_options = (options: PlotSeriesOptions): PlotSeriesOptions => options
 
 describe(`generate_plot_series`, () => {
+  it(`omits frame, step, and time coordinates from eager trajectory series`, () => {
+    const series = generate_plot_series(
+      create_trajectory([
+        { energy: -10, frame_id: 0, production_step: 0, [`Time (ps)`]: 0 },
+        { energy: -11, frame_id: 1, production_step: 10, [`Time (ps)`]: 0.25 },
+      ]),
+      test_extractor,
+      { property_config: DEFAULT_PROPERTY_CONFIG },
+    )
+    expect(series.map(({ label }) => label)).toEqual([`Energy`])
+  })
+
   it(`groups energy and force series by unit`, () => {
     const series = generate_plot_series(
       create_trajectory(COMMON_TRAJECTORIES.multi_property),
       test_extractor,
       {
         property_config: DEFAULT_PROPERTY_CONFIG,
-        default_visible_properties: new Set([`energy`, `force_max`]),
+        default_visible_properties: new SvelteSet([`energy`, `force_max`]),
       },
     )
     expect(series).toHaveLength(3)
@@ -119,7 +132,7 @@ describe(`generate_plot_series`, () => {
           same_group: { label: `Same group`, unit: `shared` },
           hidden_group: { label: `Hidden group`, unit: `other` },
         },
-        default_visible_properties: new Set([`selected`]),
+        default_visible_properties: new SvelteSet([`selected`]),
       }),
       expected: {
         Selected: { visible: true, y_axis: `y1` },
@@ -139,7 +152,7 @@ describe(`generate_plot_series`, () => {
           force: { label: `Force`, unit: `eV/Å` },
           energy: { label: `Energy`, unit: `eV` },
         },
-        default_visible_properties: new Set([`temperature`, `force`, `energy`]),
+        default_visible_properties: new SvelteSet([`temperature`, `force`, `energy`]),
       }),
       expected: {
         Energy: { visible: true, y_axis: `y1` },
@@ -158,7 +171,7 @@ describe(`generate_plot_series`, () => {
           temperature: { label: `Temperature`, unit: `K` },
           energy: { label: `Energy`, unit: `eV` },
         },
-        default_visible_properties: new Set(),
+        default_visible_properties: new SvelteSet(),
       }),
       expected: {
         Energy: { visible: true, y_axis: `y1` },
@@ -363,7 +376,7 @@ describe(`streaming visibility characterization`, () => {
     volume: { label: `Volume`, unit: `Å³` },
     energy: { label: `Energy`, unit: `eV` },
   }
-  const metadata = property_frames.map((properties, frame_number) => ({
+  const plot_metadata = property_frames.map((properties, frame_number) => ({
     frame_number,
     step: frame_number,
     properties,
@@ -381,12 +394,12 @@ describe(`streaming visibility characterization`, () => {
       .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
 
   it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
-    const default_visible_properties = new Set(Object.keys(property_config))
+    const default_visible_properties = new SvelteSet(Object.keys(property_config))
     const eager = generate_plot_series(create_trajectory(property_frames), test_extractor, {
       property_config,
       default_visible_properties,
     })
-    const streaming = generate_streaming_plot_series(metadata, {
+    const streaming = generate_streaming_plot_series(plot_metadata, {
       property_config,
       default_visible_properties,
     })
@@ -394,9 +407,9 @@ describe(`streaming visibility characterization`, () => {
   })
 
   it(`limits default visibility to two prioritized axis groups`, () => {
-    const series = generate_streaming_plot_series(metadata, {
+    const series = generate_streaming_plot_series(plot_metadata, {
       property_config,
-      default_visible_properties: new Set([`energy`]),
+      default_visible_properties: new SvelteSet([`energy`]),
     })
     const axis_assignments = series
       .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))
@@ -408,6 +421,54 @@ describe(`streaming visibility characterization`, () => {
       { label: `Volume`, visible: false, y_axis: `y1` },
     ])
   })
+
+  it(`omits navigation coordinates instead of plotting time against time`, () => {
+    const coordinate_metadata = [0, 1, 2].map((frame_number) => ({
+      frame_number,
+      step: 10 * frame_number,
+      properties: {
+        time_ps: frame_number * 0.25,
+        production_step: 10 * frame_number,
+        energy: -10 - frame_number,
+        temperature: 300 + frame_number,
+      },
+    }))
+
+    const series = generate_streaming_plot_series(coordinate_metadata, {
+      property_config,
+    })
+    expect(
+      series
+        .map(({ label }) => label)
+        .toSorted((left, right) => (left ?? ``).localeCompare(right ?? ``)),
+    ).toEqual([`Energy`, `Temperature`])
+    expect(series.every(({ visible }) => visible)).toBe(true)
+  })
+
+  it.each([`energy`, `total_energy`, `potential_energy`])(
+    `bucket-averages long noisy %s series instead of drawing an extrema wall`,
+    (energy_key) => {
+      const energy_metadata = Array.from({ length: 24_001 }, (_unused, frame_number) => ({
+        frame_number,
+        step: frame_number,
+        properties: {
+          [energy_key]: frame_number === 12_000 ? 100 : Math.sin(frame_number),
+        },
+      }))
+
+      const [energy] = generate_streaming_plot_series(energy_metadata, {
+        property_config,
+        max_points: 64,
+      })
+      expect(energy.x).toHaveLength(64)
+      expect([energy.x[0], energy.x.at(-1)]).toEqual([0, 24_000])
+      expect(Math.max(...energy.y)).toBeLessThan(2)
+      expect(energy.y.slice(1, -1).reduce((sum, value) => sum + value, 0) / 62).toBeCloseTo(
+        0,
+        1,
+      )
+    },
+  )
 })
 
 describe(`SCF convergence series axis grouping and log scale`, () => {

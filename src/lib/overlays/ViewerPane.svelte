@@ -14,6 +14,7 @@
     closed_icon,
     max_width,
     position = `absolute`,
+    resize = `both`,
     children,
     ...rest
   }: Omit<
@@ -92,6 +93,7 @@
     ? max_width
     : `min(${max_width ?? `450px`}, 100cqw - ${container_width_reserve_px}px)`}
   {position}
+  {resize}
   {...rest}
 >
   {@render children?.()}

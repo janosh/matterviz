@@ -2433,6 +2433,36 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.25, 0.5, 0.75], 8)
   })
 
+  test(`LAMMPS data normalizes a general triclinic box origin`, () => {
+    const content = [
+      `# general triclinic box`,
+      ``,
+      `1 atoms`,
+      `1 atom types`,
+      `4 0 0 avec`,
+      `1 5 0 bvec`,
+      `0.5 0.25 6 cvec`,
+      `-2 -3 -4 abc origin`,
+      ``,
+      `Masses`,
+      ``,
+      `1 12.011 # C`,
+      ``,
+      `Atoms # atomic`,
+      ``,
+      `1 1 0.75 -0.375 -1.0`,
+    ].join(`\n`)
+    const result = parse_structure_file(content, `general.lmp`)
+
+    expect(result.lattice?.matrix).toEqual([
+      [4, 0, 0],
+      [1, 5, 0],
+      [0.5, 0.25, 6],
+    ])
+    expect_vec3_close(result.sites[0].xyz, [2.75, 2.625, 3], 8)
+    expect_vec3_close(result.sites[0].abc, [0.5, 0.5, 0.5], 8)
+  })
+
   // Undeclared atom styles are inferred from the column count; counts shared by two
   // styles (6: charge/molecular, 7: full/sphere) are decided by which reading has a
   // declared atom type in its type column on every row

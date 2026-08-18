@@ -10,9 +10,11 @@ import {
   TrajFrameReader,
 } from '$lib/trajectory/parse'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
+import { accumulate_positions } from '$lib/trajectory/frame-reader'
 import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
+import { make_trajectory_frame } from '../setup'
 
 const settle_frame_load = async (): Promise<void> => {
   await Promise.resolve()
@@ -185,6 +187,8 @@ describe(`Trajectory Streaming`, () => {
       load_events.push({ frame_idx, inflight })
     })
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
+    await settle_frame_load()
+    await new Promise((resolve) => setTimeout(resolve, 50))
     await settle_frame_load()
 
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
@@ -396,6 +400,85 @@ describe(`Trajectory Streaming`, () => {
           vector_keys: [`velocity`],
         }),
       ).rejects.toThrow(/needs 224 bytes, over the 128 byte budget/)
+    })
+
+    it.each([
+      [`scalar`, `scalar_energy`, 4, 7, 1],
+      [`vec3`, `dipole`, 2, [1, 2, 3], 3],
+      [
+        `tensor`,
+        `polarizability`,
+        4,
+        [
+          [1, 2, 3],
+          [4, 5, 6],
+          [7, 8, 9],
+        ],
+        9,
+      ],
+      [`per-atom scalar`, `atomic_charge`, 4, [1, 2, 3, 4], 4],
+      [
+        `per-atom vector`,
+        `atomic_force`,
+        4,
+        [
+          [1, 2, 3],
+          [4, 5, 6],
+          [7, 8, 9],
+          [10, 11, 12],
+        ],
+        12,
+      ],
+    ])(
+      `budgets an exact %s frame signal without a temporary number array`,
+      async (_kind, key, n_atoms, value, sample_size) => {
+        const frames = [0, 1].map((step) => {
+          const frame = make_trajectory_frame(step, n_atoms)
+          frame.metadata = { [key]: value }
+          return frame
+        })
+        const exact_bytes = 2 * (n_atoms * 3 + sample_size) * Float64Array.BYTES_PER_ELEMENT
+        const load_frame = (frame_idx: number) => frames[frame_idx] ?? null
+        await expect(
+          accumulate_positions(2, load_frame, {
+            signal_keys: [key, key],
+            max_bytes: exact_bytes,
+          }),
+        ).resolves.toMatchObject({ n_frames: 2, signals: { [key]: {} } })
+        await expect(
+          accumulate_positions(2, load_frame, {
+            signal_keys: [key],
+            max_bytes: exact_bytes - 1,
+          }),
+        ).rejects.toThrow(`over the ${exact_bytes - 1} byte budget`)
+      },
+    )
+
+    it(`does not double-charge duplicate per-site channel keys`, async () => {
+      const data = create_channel_xyz(2, 2)
+      await expect(
+        new TrajFrameReader(`channels.extxyz`).stream_positions(data, {
+          scalar_keys: [`charge`, `charge`],
+          vector_keys: [`velocity`, `velocity`],
+          max_bytes: 224,
+        }),
+      ).resolves.toMatchObject({ n_frames: 2 })
+    })
+
+    it(`validates later frame-signal shapes against the allocation shape`, async () => {
+      const frames = [make_trajectory_frame(0, 2), make_trajectory_frame(1, 2)]
+      frames[0].metadata = { dipole: [1, 2, 3] }
+      frames[1].metadata = {
+        dipole: [
+          [1, 2, 3],
+          [4, 5, 6],
+        ],
+      }
+      await expect(
+        accumulate_positions(2, (frame_idx) => frames[frame_idx] ?? null, {
+          signal_keys: [`dipole`],
+        }),
+      ).rejects.toThrow(`signal "dipole" changed shape from [3] to [2, 3]`)
     })
 
     // Filling NaN would leave a channel that silently goes flat mid-trajectory

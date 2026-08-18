@@ -9,6 +9,11 @@ import {
 } from '$lib/structure'
 import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
 import type { TrajectoryType } from '$lib/trajectory'
+import {
+  complex_mode_displacement_frames,
+  complex_phase,
+  multiply_complex,
+} from './complex-mode'
 import { acoustic_mode_indices, is_gamma_point } from './ir-raman'
 import type {
   Complex,
@@ -160,27 +165,6 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     bands,
     has_imaginary_modes: bands.some((band) => band.some((frequency) => frequency < 0)),
   }
-}
-
-const multiply_complex = (left: Complex, right: Complex): Complex => [
-  left[0] * right[0] - left[1] * right[1],
-  left[0] * right[1] + left[1] * right[0],
-]
-
-const complex_phase = (angle: number): Complex => [Math.cos(angle), Math.sin(angle)]
-
-// Maximum norm attained by Re(vector * exp(-i phase)) over one phase cycle.
-function complex_vector_max_norm(vector: Complex[]): number {
-  let real_norm_sq = 0
-  let imag_norm_sq = 0
-  let real_imag_dot = 0
-  for (const [real_part, imag_part] of vector) {
-    real_norm_sq += real_part ** 2
-    imag_norm_sq += imag_part ** 2
-    real_imag_dot += real_part * imag_part
-  }
-  const discriminant = Math.hypot(real_norm_sq - imag_norm_sq, 2 * real_imag_dot)
-  return Math.sqrt(Math.max(0, (real_norm_sq + imag_norm_sq + discriminant) / 2))
 }
 
 function validate_selection(
@@ -335,22 +319,14 @@ export function phonon_mode_trajectory(
       multiply_complex(component, spatial_phase),
     )
   })
-  let max_excursion = 0
-  for (const displacement of complex_displacements) {
-    max_excursion = Math.max(max_excursion, complex_vector_max_norm(displacement))
-  }
-  if (!(max_excursion > 0)) throw new Error(`Phonon eigenvector has zero maximum excursion`)
-  const amplitude_scale = amplitude / max_excursion
-
-  const frames = Array.from({ length: n_frames }, (_, frame_idx) => {
-    const phase = (2 * Math.PI * frame_idx) / n_frames
-    const cos_phase = Math.cos(phase)
-    const sin_phase = Math.sin(phase)
+  const displacement_frames = complex_mode_displacement_frames(complex_displacements, {
+    amplitude,
+    n_frames,
+    label: `Phonon eigenvector`,
+  })
+  const frames = displacement_frames.map(({ phase, displacements }, frame_idx) => {
     const frame_sites = equilibrium.sites.map((site, site_idx) => {
-      const displacement = complex_displacements[site_idx].map(
-        ([real_part, imag_part]) =>
-          amplitude_scale * (real_part * cos_phase + imag_part * sin_phase),
-      ) as Vec3
+      const displacement = displacements[site_idx]
       const xyz = math.add(site.xyz, displacement)
       return {
         ...site,

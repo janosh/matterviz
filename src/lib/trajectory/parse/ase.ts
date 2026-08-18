@@ -29,22 +29,39 @@ export interface AseFrameOptions {
   base_offset?: number
 }
 
+const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
+
 // A frame's calculator results, under either spelling ASE writes. ULM suffixes a key
 // with `.` when its value is a nested item, and ASE always nests the calculator —
 // checked against ase 3.28 down to a calculator holding nothing but a scalar energy,
 // so this is not about forces or ndarrays. Reading only the undotted name silently
 // dropped the energy of every relaxation ASE has ever written. ndarray entries are
-// left out: they are file pointers, not values.
+// file pointers unless `read_ndarray` is supplied for spectroscopy-sized payloads.
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
+  read_ndarray?: (ref: { ndarray: unknown[] }) => number[][],
 ): Record<string, unknown> => {
   const calculator = frame_data[`calculator.`] ?? frame_data.calculator
   if (!calculator || typeof calculator !== `object`) return {}
-  return Object.fromEntries(
-    Object.entries(calculator).filter(
-      ([, value]) => !(value && typeof value === `object` && `ndarray` in value),
-    ),
-  )
+  const results: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(calculator as Record<string, unknown>)) {
+    if (!(value && typeof value === `object` && `ndarray` in value)) {
+      results[key] = value
+      continue
+    }
+    if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
+    const reference = value as { ndarray: unknown[] }
+    const shape = reference.ndarray[0] as number[]
+    const size = shape.reduce((total, dimension) => total * dimension, 1)
+    if (![3, 9].includes(size)) continue
+    const result_key = key.endsWith(`.`) ? key.slice(0, -1) : key
+    if (result_key in results) {
+      throw new Error(`ASE calculator contains duplicate result key ${result_key}`)
+    }
+    const array = read_ndarray(reference)
+    results[result_key] = shape.length === 1 ? array[0] : array
+  }
+  return results
 }
 
 // Decode a single ASE/ULM frame (JSON header + optional ndarray payloads) into a
@@ -93,7 +110,7 @@ export function decode_ase_frame(
   const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
   const metadata: Record<string, unknown> = {
     step,
-    ...ase_calculator_data(frame_data),
+    ...ase_calculator_data(frame_data, read_ndarray),
     ...frame_data.info,
   }
   if (cell) {
@@ -154,12 +171,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
 
   const first_struct = frames[0]?.structure
   const periodic_boundary_conditions =
-    first_struct !== null &&
-    first_struct !== undefined &&
-    typeof first_struct === `object` &&
-    `lattice` in first_struct
-      ? first_struct.lattice.pbc
-      : [true, true, true]
+    first_struct && `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true]
 
   const metadata = {
     filename,

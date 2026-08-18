@@ -96,6 +96,52 @@ export function doc_query<T extends Element = HTMLElement>(
   return node as T
 }
 
+export const hdf5_group_option = (
+  target: ParentNode,
+  group_path: string,
+): HTMLButtonElement => {
+  const option = [
+    ...target.querySelectorAll<HTMLButtonElement>(`button[data-hdf5-group]`),
+  ].find((button) => button.dataset.hdf5Group === group_path)
+  if (!option) throw new Error(`HDF5 group option ${group_path} not found`)
+  return option
+}
+
+export const delay_file_read = async (
+  file: File,
+): Promise<{ release: () => void; restore: () => void }> => {
+  const content = await file.arrayBuffer()
+  const delayed_read = Promise.withResolvers<ArrayBuffer>()
+  const array_buffer_spy = vi.spyOn(file, `arrayBuffer`).mockReturnValue(delayed_read.promise)
+  return {
+    release: () => delayed_read.resolve(content),
+    restore: () => array_buffer_spy.mockRestore(),
+  }
+}
+
+export const make_ambiguous_hdf5 = async (): Promise<ArrayBuffer> => {
+  const h5wasm = await import(`h5wasm`)
+  const { FS } = await h5wasm.ready
+  const filename = `ambiguous-${Math.random().toString(36).slice(2)}.h5`
+  const file = new h5wasm.File(filename, `w`)
+  const molecules = file.create_group(`molecules`)
+  for (const [name, atomic_number, x_position] of [
+    [`h2o`, 79, 1],
+    [`nh3`, 1, 9],
+  ] satisfies [string, number, number][]) {
+    const replicas = molecules.create_group(name).create_group(`replicas`)
+    for (const replica_idx of [0, 1, 2, 10]) {
+      const group = replicas.create_group(`${replica_idx}`)
+      group.create_dataset({ name: `positions`, data: [x_position, 0, 0], shape: [1, 1, 3] })
+      group.create_dataset({ name: `atomic_numbers`, data: [atomic_number], shape: [1] })
+    }
+  }
+  file.close()
+  const bytes = FS.readFile(filename)
+  FS.unlink(filename)
+  return Uint8Array.from(bytes).buffer
+}
+
 export const deferred_fetch_responses = () => {
   const responses = new Map<
     string,

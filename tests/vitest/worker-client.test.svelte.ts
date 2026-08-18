@@ -86,6 +86,24 @@ describe(`worker teardown`, () => {
       void retry.catch(() => {})
     },
   )
+
+  test(`explicit cancellation rejects pending work and starts the replacement immediately`, async () => {
+    const run = make_client()
+    const input = { tag: `same` }
+    const first = run(input, {})
+    const first_worker = FakeWorker.instances[0]
+
+    run.cancel(`superseded`)
+    const second = run(input, {})
+    await expect(first).rejects.toThrow(`superseded`)
+    expect(first_worker.terminated).toBe(1)
+
+    expect(FakeWorker.instances).toHaveLength(2)
+    expect(FakeWorker.instances[1].posted[0].input).toEqual(input)
+    expect(run(input, {})).toBe(second)
+    expect(FakeWorker.instances[1].posted).toHaveLength(1)
+    void second.catch(() => {})
+  })
 })
 
 describe(`request dedupe`, () => {

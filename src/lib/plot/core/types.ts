@@ -380,6 +380,13 @@ export interface LabelPlacementConfig {
 }
 export type HoverConfig = {
   threshold_px: number // Max screen distance (pixels) to trigger hover
+  // `x` ignores vertical distance and binary-searches monotonic series. This is useful for
+  // time-series scrubbers where the horizontal coordinate selects a frame and avoids building
+  // a full 2D spatial index for tens of thousands of samples.
+  mode?: `nearest` | `x`
+  // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
+  // this to keep pointer frames free of tooltip DOM work while another pane updates live.
+  show_tooltip?: boolean
 }
 
 // Type for PlotLegend props forwarded from ScatterPlot props

@@ -6,16 +6,41 @@ import {
   type TrajectoryXQuantity,
   type TrajHandlerData,
 } from '$lib/trajectory'
+import type { TrajectorySpectroscopyResult } from '$lib/spectral'
 import * as trajectory_parse from '$lib/trajectory/parse'
+import * as parse_worker from '$lib/file-viewer/parse-in-worker'
+import * as symmetry from '$lib/symmetry'
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { Info } from 'svelte-widgets/icons'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   deferred_fetch_responses,
+  create_drop_event,
+  delay_file_read,
   doc_query,
   flush_render,
+  hdf5_group_option,
+  make_ambiguous_hdf5,
   make_trajectory_frame,
   resize_element,
 } from '../setup'
+
+const spectroscopy_mocks = vi.hoisted(() => ({
+  collect: vi.fn(),
+  compute: vi.fn(),
+  cancel: vi.fn(),
+}))
+
+vi.mock(`$lib/spectral/spectroscopy-collect`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  collect_trajectory_spectroscopy_input: spectroscopy_mocks.collect,
+}))
+vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
+  create_trajectory_spectroscopy_async_runner: () => ({
+    compute: spectroscopy_mocks.compute,
+    cancel: spectroscopy_mocks.cancel,
+  }),
+}))
 
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
@@ -23,6 +48,54 @@ const make_traj = (metadatas: Record<string, number>[]) => ({
 })
 const energy_traj = (...energies: number[]) =>
   make_traj(energies.map((energy) => ({ energy })))
+const spectroscopy_result: TrajectorySpectroscopyResult = {
+  vdos: {
+    frequencies: [0, 1],
+    power: [0, 1],
+    normalized_power: [0, 1],
+    frequency_unit: `THz`,
+    n_fft: 2,
+    n_samples: 2,
+    sample_interval: 1,
+    frequency_spacing: 1,
+    rayleigh_resolution: 1,
+    nyquist: 1,
+    window: `hann`,
+  },
+  ir: null,
+  raman: null,
+  peaks: [
+    {
+      frequency: 1,
+      ir_activity: `unknown`,
+      raman_activity: `unknown`,
+      ir_score: null,
+      raman_score: null,
+      vdos_prominence: 1,
+      ir_prominence: 0,
+      raman_prominence: 0,
+      potentially_mixed: false,
+      displacement: [
+        [
+          [1, 0],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+    },
+  ],
+  frequency_unit: `THz`,
+  preprocessing: `raw`,
+  velocity_source: `stored`,
+  reference_positions: [[0, 0, 0]],
+  elements: [`H`],
+  masses: [1],
+  pbc: [false, false, false],
+  reference_lattice: null,
+  n_trajectories: 1,
+  n_segments: 1,
+  metadata: {},
+}
 const make_stepped_traj = (time_step?: number) => ({
   frames: [0, 500, 1000].map((step, frame_idx) =>
     make_trajectory_frame(step, 1, { energy: -frame_idx }),
@@ -47,6 +120,7 @@ const make_indexed_traj = (frame_count: number, metadata: TrajectoryType[`metada
     extract_plot_metadata: vi.fn(async () => []),
   }
   return {
+    frames,
     frame_loader,
     trajectory: {
       frames: [frames[0]],
@@ -101,16 +175,48 @@ const stub_animation_frames = () => {
 }
 
 describe(`Trajectory`, () => {
+  test(`does not schedule crystal symmetry analysis while scrubbing trajectory frames`, async () => {
+    vi.stubEnv(`VITEST`, ``)
+    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
+    const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
+    onTestFinished(() => {
+      vi.unstubAllEnvs()
+      vi.restoreAllMocks()
+    })
+    const props = $state({
+      trajectory: {
+        frames: [0, 1, 2].map((step) =>
+          make_trajectory_frame(step, 3, {}, { a: 20, b: 20, c: 20 }),
+        ),
+      },
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
+    await flush_render()
+
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await flush_render()
+
+    expect(ready_spy).not.toHaveBeenCalled()
+    expect(analyze_spy).not.toHaveBeenCalled()
+  })
+
   // StructureControls owns trail-chrome visibility; this only guards Trajectory's
   // lazy collect_msd_positions gate (Trail length appears once the stream lands).
   test(`collects trail positions lazily when trails are enabled`, async () => {
-    mount_traj({
+    const props = $state({
       trajectory: make_traj([{}, {}, {}]),
       display_mode: `structure`,
       show_controls: false,
       controls_open: true,
+      spectroscopy_pane_open: false,
       structure_props: { show_controls: `always` },
     })
+    mount_traj(props)
     await flush_render()
 
     const trail_toggle = Array.from(document.querySelectorAll(`label`))
@@ -121,6 +227,10 @@ describe(`Trajectory`, () => {
 
     trail_toggle.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
+
+    props.spectroscopy_pane_open = true
+    await flush_render()
+    expect(document.body.textContent).not.toContain(`Trail length`)
   })
 
   test(`forwards the initial scatter controls-open state`, async () => {
@@ -134,6 +244,74 @@ describe(`Trajectory`, () => {
     const plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
+  })
+
+  test.each([
+    [`scatter`, `.scatter`],
+    [`histogram`, `.histogram`],
+  ] as const)(
+    `aligns %s controls with the sequence bar`,
+    async (display_mode, plot_selector) => {
+      const target = mount_traj({
+        trajectory: energy_traj(-1, -2),
+        display_mode,
+        show_controls: `hover`,
+      })
+      await flush_render()
+
+      const content = doc_query(`.content-area`)
+      expect(content.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
+      expect(content.style.getPropertyValue(`--ctrl-btn-top`)).toBe(``)
+      const plot = target.querySelector<HTMLElement>(plot_selector)
+      if (!plot) throw new Error(`Trajectory ${display_mode} plot not found`)
+      expect(plot.style.getPropertyValue(`--ctrl-btn-top`)).toBe(``)
+    },
+  )
+
+  test(`plot navigation updates the active frame only after an x-only click`, async () => {
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3),
+      current_step_idx: 0,
+      display_mode: `scatter` as const,
+      show_controls: false,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    const plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`Trajectory scatter plot not found`)
+    await resize_element(plot, 600, 400)
+    const last_marker = plot
+      .querySelectorAll<SVGPathElement>(`g[data-series-id] path.marker`)
+      .item(2)
+    const transform = last_marker.parentElement?.getAttribute(`transform`)
+    const match = transform?.match(/translate\((?<marker_x>[-\d.]+) (?<marker_y>[-\d.]+)\)/)
+    if (!match)
+      throw new Error(`Could not read final trajectory marker position: ${transform}`)
+    const marker_x = Number(match.groups?.marker_x)
+    const marker_y = Number(match.groups?.marker_y)
+    if (!Number.isFinite(marker_x) || !Number.isFinite(marker_y)) {
+      throw new TypeError(`Could not read final trajectory marker position: ${transform}`)
+    }
+
+    const far_y = marker_y < 150 ? 290 : 10
+    const plot_svg = plot.querySelector(`svg[role="application"]`)
+    const request_animation_frame = vi.spyOn(globalThis, `requestAnimationFrame`)
+    onTestFinished(() => request_animation_frame.mockRestore())
+    const dispatch_plot_event = (type: `click` | `mousemove`) =>
+      plot_svg?.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          clientX: marker_x,
+          clientY: far_y,
+        }),
+      )
+    dispatch_plot_event(`mousemove`)
+    expect(props.current_step_idx).toBe(0)
+    expect(request_animation_frame).not.toHaveBeenCalled()
+
+    dispatch_plot_event(`click`)
+    flushSync()
+    expect(props.current_step_idx).toBe(2)
   })
 
   test(`does not reserve y2 padding for a streamed series without finite values`, async () => {
@@ -206,6 +384,60 @@ describe(`Trajectory`, () => {
     ])
     expect(props.x_quantity).toBe(`step`)
     expect(frame_loader.load_frame).toHaveBeenCalledOnce()
+  })
+
+  test(`active scrubbing cancels speculative indexed-frame prefetch`, async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => void vi.useRealTimers())
+    const { frame_loader, trajectory } = make_indexed_traj(6)
+    const props = $state({
+      trajectory,
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
+    await tick()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.value = `4`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    vi.advanceTimersToNextFrame()
+    await Promise.resolve()
+    flushSync()
+
+    expect(props.current_step_idx).toBe(4)
+    expect(frame_loader.load_frame).toHaveBeenCalledTimes(1)
+    expect(frame_loader.load_frame).toHaveBeenLastCalledWith(``, 4)
+
+    vi.advanceTimersByTime(79)
+    await Promise.resolve()
+    expect(frame_loader.load_frame).toHaveBeenCalledTimes(1)
+  })
+
+  test(`packed indexed frames materialize in the scrub commit frame`, async () => {
+    const { frame_loader, frames, trajectory } = make_indexed_traj(6)
+    frame_loader.load_frame_sync = vi.fn((frame_idx) => frames[frame_idx] ?? null)
+    const props = $state({
+      trajectory,
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
+    await flush_render()
+    vi.mocked(frame_loader.load_frame).mockClear()
+    vi.mocked(frame_loader.load_frame_sync).mockClear()
+    const { run_frame } = stub_animation_frames()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.value = `4`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    run_frame(16)
+
+    expect(props.current_step_idx).toBe(4)
+    expect(frame_loader.load_frame_sync).toHaveBeenCalledWith(4)
+    expect(frame_loader.load_frame).not.toHaveBeenCalled()
   })
 
   // Regression: the series-regeneration effect must survive the visible_properties
@@ -500,13 +732,13 @@ describe(`Trajectory`, () => {
   // commit only their latest event-target value on the next animation frame.
   test(`clamps steps, coalesces slider input, and settles after callback errors`, async () => {
     let throw_on_change = false
-    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count`>[] = []
+    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count` | `frame`>[] = []
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
-      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) => {
-        step_events.push({ step_idx, frame_count })
+      on_step_change: ({ step_idx, frame_count, frame }: TrajHandlerData) => {
+        step_events.push({ step_idx, frame_count, frame })
         if (throw_on_change) throw new Error(`host callback failed`)
       },
     })
@@ -514,7 +746,7 @@ describe(`Trajectory`, () => {
     await flush_render()
 
     expect(props.current_step_idx).toBe(2)
-    expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({ step_idx: 2, frame_count: 3 })
 
     const step_input = doc_query(`.step-input`, HTMLInputElement)
     for (const rejected_value of [``, `99`]) {
@@ -540,7 +772,11 @@ describe(`Trajectory`, () => {
     flushSync()
     expect(step_events).toHaveLength(events_before_scrub)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({
+      step_idx: 1,
+      frame_count: 3,
+      frame: { metadata: { energy: -2 } },
+    })
     expect(step_events).toHaveLength(events_before_scrub + 1)
     expect(commit_events).toEqual([1])
 
@@ -549,7 +785,11 @@ describe(`Trajectory`, () => {
     slider.value = `0`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
     slider.dispatchEvent(new Event(`change`, { bubbles: true }))
-    expect(step_events.at(-1)).toEqual({ step_idx: 0, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({
+      step_idx: 0,
+      frame_count: 3,
+      frame: { metadata: { energy: -1 } },
+    })
     expect(step_events).toHaveLength(events_before_scrub + 2)
     expect(commit_events).toEqual([1, 0])
 
@@ -574,6 +814,7 @@ describe(`Trajectory`, () => {
     const options = [
       [`Mean squared displacement`, `msd_pane_open`],
       [`Velocity autocorrelation & VDOS`, `vacf_pane_open`],
+      [`Trajectory IR/Raman & VDOS`, `spectroscopy_pane_open`],
       [`Structure identification`, `structure_id_pane_open`],
       [`Data inspector`, `data_inspector_open`],
     ] as const
@@ -582,6 +823,7 @@ describe(`Trajectory`, () => {
       show_controls: `always` as const,
       msd_pane_open: false,
       vacf_pane_open: false,
+      spectroscopy_pane_open: false,
       structure_id_pane_open: false,
       data_inspector_open: false,
     })
@@ -599,7 +841,89 @@ describe(`Trajectory`, () => {
       await tick()
       expect(props[open_prop]).toBe(true)
       expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+      if (open_prop === `spectroscopy_pane_open`) {
+        const settings_pane = doc_query(`.spectroscopy-analysis-controls-pane`)
+        expect(settings_pane.classList).not.toContain(`pane-open`)
+        const settings_toggle = doc_query<HTMLButtonElement>(
+          `.spectroscopy-analysis-controls-toggle`,
+        )
+        settings_toggle.click()
+        await tick()
+        expect(settings_pane.classList).toContain(`pane-open`)
+        expect(target.textContent).toContain(`IR response`)
+        expect(target.textContent).toContain(`Raman geometry`)
+        expect(target.textContent).toContain(`Reference catalog`)
+        settings_toggle.click()
+        await tick()
+      }
     }
+  })
+
+  test(`spectroscopy replaces the plot and stays mounted while closed`, async () => {
+    const props: Record<string, unknown> = $state({
+      trajectory: energy_traj(-1.5, -2.5),
+      show_controls: `always` as const,
+      spectroscopy_pane_open: false,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+
+    const spectroscopy = target.querySelector<HTMLElement>(`.trajectory-spectroscopy-inline`)
+    expect(spectroscopy).toBeInstanceOf(HTMLElement)
+    expect(spectroscopy?.hidden).toBe(true)
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+
+    doc_query(`.analysis-button`).click()
+    await tick()
+    menu_option(target, `Trajectory IR/Raman & VDOS`).click()
+    await flush_render()
+
+    expect(props.spectroscopy_pane_open).toBe(true)
+    expect(spectroscopy?.hidden).toBe(false)
+    expect(target.querySelector(`.scatter`)).toBeNull()
+    expect(target.querySelector(`.content-area.show-both`)).not.toBeNull()
+    expect(target.querySelector(`.pane-divider`)).not.toBeNull()
+    expect(target.querySelectorAll(`.trajectory`)).toHaveLength(1)
+    expect(target.querySelector(`.explorer-controls`)).toBeNull()
+    expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull()
+    expect(target.querySelector(`.trajectory.show-both-views`)).toBeNull()
+
+    doc_query(`.analysis-button`).click()
+    await tick()
+    menu_option(target, `Trajectory IR/Raman & VDOS`).click()
+    await flush_render()
+
+    expect(target.querySelector(`.trajectory-spectroscopy-inline`)).toBe(spectroscopy)
+    expect(spectroscopy?.hidden).toBe(true)
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+  })
+
+  test(`keeps computed spectroscopy modes paused when auto-play is disabled`, async () => {
+    spectroscopy_mocks.collect.mockReset()
+    spectroscopy_mocks.compute.mockReset()
+    spectroscopy_mocks.cancel.mockReset()
+    onTestFinished(() => {
+      spectroscopy_mocks.collect.mockReset()
+      spectroscopy_mocks.compute.mockReset()
+      spectroscopy_mocks.cancel.mockReset()
+    })
+    spectroscopy_mocks.collect.mockResolvedValue({})
+    spectroscopy_mocks.compute.mockResolvedValue(spectroscopy_result)
+    const { callbacks } = stub_animation_frames()
+    const target = mount_traj({
+      trajectory: energy_traj(-1.5, -2.5),
+      auto_play: false,
+      fps: 10,
+      show_controls: `always`,
+      spectroscopy_pane_open: true,
+    })
+
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull(),
+    )
+
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(callbacks).toHaveLength(0)
   })
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
@@ -610,7 +934,13 @@ describe(`Trajectory`, () => {
       info_pane_open: true,
     })
     await flush_render()
-    expect(doc_query(`.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
+    const info_pane = doc_query(`.trajectory-info-pane`)
+    expect(info_pane.style.maxHeight).toBe(`600px`)
+    expect(info_pane.dataset.resize).toBe(`both`)
+    expect(info_pane.querySelector(`.resize-grip`)).not.toBeNull()
+    doc_query<HTMLButtonElement>(`.trajectory-info-toggle`).click()
+    await tick()
+    expect(doc_query(`.trajectory-info-toggle path`).getAttribute(`d`)).toBe(Info.d)
   })
 
   test(`show_controls.style overrides control bar styles`, async () => {
@@ -713,6 +1043,72 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 
+  test(`reloads a URL after choosing its HDF5 trajectory group`, async () => {
+    const content = await make_ambiguous_hdf5()
+    const fetch_mock = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(request_url(url).includes(`replacement.xyz`) ? xyz(`He`) : content),
+    )
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/ambiguous.h5`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+    })
+    stub_fetch(fetch_mock)
+    const target = mount_traj(props)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`Au`))
+
+    props.data_url = `/replacement.xyz`
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`He`))
+    expect(fetch_mock).toHaveBeenCalledTimes(2)
+  })
+
+  const utf8_trajectory = `1\n${`é`.repeat(16)}\nH 0 0 0\n`
+  test.each([
+    {
+      label: `binary byte`,
+      file: new File([new Uint8Array(8)], `large.h5`),
+      loading_options: { bin_file_threshold: 1 },
+    },
+    {
+      label: `UTF-8 byte`,
+      file: new File([utf8_trajectory], `large.xyz`),
+      loading_options: { text_file_threshold: utf8_trajectory.length + 1 },
+    },
+  ])(
+    `routes files exceeding the $label threshold through the parse worker`,
+    async ({ file, loading_options }) => {
+      const { trajectory: indexed_trajectory } = make_indexed_traj(3)
+      const worker_spy = vi
+        .spyOn(parse_worker, `parse_trajectory_in_worker`)
+        .mockResolvedValue(indexed_trajectory)
+      onTestFinished(() => worker_spy.mockRestore())
+      const direct_parse_spy = vi.spyOn(trajectory_parse, `parse_trajectory_async`)
+      onTestFinished(() => direct_parse_spy.mockRestore())
+      const on_file_load = vi.fn()
+      const target = mount_traj({
+        display_mode: `structure`,
+        show_controls: `never`,
+        loading_options,
+        on_file_load,
+      })
+      const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+      if (!viewer) throw new Error(`Trajectory root not found`)
+
+      viewer.dispatchEvent(create_drop_event(file))
+
+      await vi.waitFor(() => expect(worker_spy).toHaveBeenCalledOnce())
+      expect(direct_parse_spy).not.toHaveBeenCalled()
+      expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
+    },
+  )
+
   test(`ignores a stale trajectory URL completion`, async () => {
     const responses = deferred_fetch_responses()
     const on_file_load = vi.fn()
@@ -738,6 +1134,50 @@ describe(`Trajectory`, () => {
     expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
   })
 
+  test(`does not replace a newer data URL when a chosen HDF5 group finishes late`, async () => {
+    const on_file_load = vi.fn()
+    const on_error = vi.fn()
+    const props = $state({
+      data_url: undefined as string | undefined,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+      on_error,
+    })
+    const target = mount_traj(props)
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+
+    const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+
+    const delayed_read = await delay_file_read(file)
+    const parse_spy = vi.spyOn(trajectory_parse, `parse_trajectory_async`)
+    try {
+      hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+      stub_fetch(vi.fn(async () => new Response(`2\nreplacement\nH 0 0 0\nHe 1 0 0\n`)))
+      props.data_url = `https://example.test/replacement.xyz`
+      await vi.waitFor(() =>
+        expect(on_file_load).toHaveBeenCalledWith(
+          expect.objectContaining({ filename: `replacement.xyz`, frame_count: 1 }),
+        ),
+      )
+      delayed_read.release()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(on_file_load).toHaveBeenCalledOnce()
+      expect(on_error).not.toHaveBeenCalled()
+      expect(parse_spy.mock.calls.map(([, filename]) => filename)).toEqual([`replacement.xyz`])
+    } finally {
+      delayed_read.restore()
+      parse_spy.mockRestore()
+    }
+  })
+
   test(`keeps indexed source bytes when a later URL parse becomes stale`, async () => {
     const responses = deferred_fetch_responses()
     const { frame_loader, trajectory: indexed_trajectory } = make_indexed_traj(3)
@@ -750,11 +1190,13 @@ describe(`Trajectory`, () => {
         if (filename === `stale.xyz`) return stale_parse.promise
         return original_parse(data, filename, on_progress, options)
       })
+    const on_file_load = vi.fn()
     const props = $state({
       data_url: `/indexed.xyz`,
       current_step_idx: 0,
       display_mode: `structure` as const,
       show_controls: `never` as const,
+      on_file_load,
     })
     // resolve the pending parse so nothing is left hanging, whatever the test does
     onTestFinished(() => {
@@ -766,6 +1208,7 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(responses.has(`/indexed.xyz`)).toBe(true))
     responses.get(`/indexed.xyz`)?.shift()?.resolve(new Response(`indexed source bytes`))
     await vi.waitFor(() => expect(frame_loader.load_frame).toHaveBeenCalled())
+    expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
     vi.mocked(frame_loader.load_frame).mockClear()
 
     props.data_url = `/stale.xyz`

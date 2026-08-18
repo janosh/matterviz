@@ -220,6 +220,11 @@ describe(`FilePicker`, () => {
         expect(element.getAttribute(attr)).toBe(expected_value)
       },
     )
+
+    it(`allows picker text to be selected for copying`, () => {
+      mount(FilePicker, { target: document.body, props: { files: mock_files } })
+      expect(getComputedStyle(doc_query(`.file-picker`)).userSelect).toBe(`text`)
+    })
   })
 
   describe(`edge cases and configuration`, () => {

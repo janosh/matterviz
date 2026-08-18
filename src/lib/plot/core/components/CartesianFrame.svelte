@@ -63,6 +63,7 @@
     on_mouse_enter?: () => void
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
+    on_mouse_click?: (event: MouseEvent) => void
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
@@ -88,6 +89,7 @@
     on_mouse_enter,
     on_mouse_leave,
     on_mouse_move,
+    on_mouse_click,
     header_controls,
     layers,
     overlays,
@@ -171,6 +173,7 @@
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
+      onclick={on_mouse_click}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
       ontouchmove={pan_zoom.on_touch_move}
@@ -258,7 +261,7 @@
   }
   .header-controls {
     position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
+    top: var(--viewer-buttons-top, var(--ctrl-btn-top, 5pt));
     right: var(--fullscreen-btn-right, 4px);
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;

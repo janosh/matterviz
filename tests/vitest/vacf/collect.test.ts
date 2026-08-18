@@ -211,6 +211,16 @@ describe(`indexed trajectories`, () => {
     expect(collected.velocities).toBeNull()
   })
 
+  it(`streams from a source-independent loader without raw file bytes`, async () => {
+    const loader = streaming_loader(null)
+    loader.requires_source = false
+
+    const collected = await collect_vacf_input(lazy_trajectory(loader))
+
+    expect(collected.n_frames).toBe(40)
+    expect(collected.velocities).toBeNull()
+  })
+
   it.each([
     {
       label: `not a Float64Array`,

@@ -13,6 +13,31 @@ export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
 export const is_hdf5_group = (entity: Entity | null): entity is Group =>
   entity !== null && `keys` in entity
 
+export class Hdf5TrajectoryGroupSelectionError extends Error {
+  constructor(
+    readonly group_paths: string[],
+    message = `Ambiguous HDF5 trajectory: positions and atomic numbers occur together in ${group_paths.join(`, `)}`,
+  ) {
+    super(message)
+    this.name = 'Hdf5TrajectoryGroupSelectionError'
+  }
+}
+
+export const attribute_value = (entity: Dataset | Group, names: string[]): unknown => {
+  for (const name of names) {
+    const attribute = entity.attrs[name]
+    if (attribute) return attribute.to_array()
+  }
+  return undefined
+}
+
+export const string_value = (value: unknown): string | undefined => {
+  if (typeof value === `string`) return value.trim() || undefined
+  if (value instanceof Uint8Array) return new TextDecoder().decode(value).trim() || undefined
+  if (Array.isArray(value) && value.length === 1) return string_value(value[0])
+  return undefined
+}
+
 // Torn mid-chunk datasets throw from to_array — treat like missing.
 export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {
   try {
@@ -44,7 +69,11 @@ export const to_number_array = (data: unknown): number[] | null => {
       ? Array.from(data as unknown as ArrayLike<unknown>)
       : null
   if (!values) return null
-  const numbers = values.map((item) => (typeof item === `bigint` ? Number(item) : item))
+  const numbers = values.map((item) => {
+    if (typeof item !== `bigint`) return item
+    const number = Number(item)
+    return Number.isSafeInteger(number) ? number : Number.NaN
+  })
   return numbers.every(
     (item): item is number => typeof item === `number` && Number.isFinite(item),
   )
@@ -54,9 +83,14 @@ export const to_number_array = (data: unknown): number[] | null => {
 
 // Scalar as number, 1-element array, or BigInt → finite number | null.
 export const to_scalar_number = (data: unknown): number | null => {
+  if (Array.isArray(data) && data.length !== 1) return null
   const value = Array.isArray(data) ? data[0] : data
-  if (typeof value === `bigint`) return Number(value)
-  return typeof value === `number` && Number.isFinite(value) ? value : null
+  if (typeof value === `bigint`) {
+    const number = Number(value)
+    return Number.isSafeInteger(number) ? number : null
+  }
+  const number = value
+  return typeof number === `number` && Number.isFinite(number) ? number : null
 }
 
 // VASP POSCAR-style universal scaling on lattice vectors.

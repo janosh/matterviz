@@ -20,6 +20,12 @@
 
 <h1>Trajectory</h1>
 
+<p>
+  <a href="/trajectory/spectroscopy"
+    >Open the finite-temperature IR, Raman, VDOS, and mode-explorer demonstration</a
+  >.
+</p>
+
 <h2>Mean Squared Displacement</h2>
 <p>
   Every viewer below carries an MSD / diffusion pane (the orbit icon in the controls bar). It

@@ -5,6 +5,7 @@ import type { FileLoadData } from '$lib/io/types'
 import type { Matrix3x3 } from '$lib/math'
 import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type Trajectory from './Trajectory.svelte'
+import { is_supported_trajectory_signal_shape } from './helpers'
 
 export * from './analysis'
 export { default as Trajectory } from './Trajectory.svelte'
@@ -114,6 +115,38 @@ export interface TrajectoryMetadata {
   properties: Record<string, number>
 }
 
+// Compact sampled property with an independent MD-step axis. The first dimension is
+// represented by `steps`; `sample_shape` describes one sample (for example [3] for a
+// dipole or [n_atoms, 3] for velocities) and `values` stores samples contiguously.
+export interface TrajectorySignal {
+  values: Float64Array
+  sample_shape: number[]
+  steps: number[]
+  unit?: string
+}
+
+// Cloneable packed backing store for trajectories whose complete coordinates fit comfortably
+// in memory but whose per-frame object trees do not. Parse workers transfer these buffers once;
+// the UI then materializes only the selected frame without a MessagePort round-trip.
+export interface TrajectoryFrameStore {
+  positions: Float64Array
+  elements: ElementSymbol[]
+  // Exactly one of lattice_matrix/lattice_matrices is normally present. The packed form stores
+  // one flattened 3x3 matrix per frame for variable-cell trajectories without retaining frame
+  // object trees.
+  lattice_matrix?: Matrix3x3
+  lattice_matrices?: Float64Array
+  pbc?: Pbc
+  pbc_frames?: Pbc[]
+  coords_unwrapped: boolean
+  steps: number[]
+  metadata: Record<string, unknown>[]
+  plot_metadata: TrajectoryMetadata[]
+  scalars?: Record<string, Float64Array>
+  vectors?: Record<string, Float64Array>
+  signals?: Record<string, TrajectorySignal>
+}
+
 // Trajectory type with streaming support
 export interface TrajectoryType {
   frames: TrajectoryFrame[]
@@ -125,6 +158,11 @@ export interface TrajectoryType {
   // Unit `time_step` is expressed in, e.g. `fs` or `ps`. Required alongside time_step:
   // a bare number would put an unlabelled axis on the screen.
   time_unit?: string
+  // Static per-atom masses in atomic mass units, when recorded by the source.
+  atom_masses?: number[]
+  // Time-dependent scalar, vector, tensor, and per-atom numerical properties. Signals
+  // keep their own step axes because TorchSim can record properties at different rates.
+  signals?: Record<string, TrajectorySignal>
   // Large file streaming properties
   total_frames?: number
   indexed_frames?: FrameIndex[]
@@ -132,6 +170,8 @@ export interface TrajectoryType {
   is_indexed?: boolean
   // On-demand frame loading for large/indexed trajectories.
   frame_loader?: FrameLoader // When present, enables lazy loading of frames instead of loading all frames into memory.
+  // Optional transferable backing store used to recreate frame_loader on the main thread.
+  frame_store?: TrajectoryFrameStore
 }
 
 // Unified handler data interface
@@ -185,6 +225,8 @@ export interface TrajectoryPositionStream {
   // vectors[key][(frame * n_atoms + atom) * 3 + axis]. Undefined when none were requested.
   scalars?: Record<string, Float64Array>
   vectors?: Record<string, Float64Array>
+  // Requested frame-level signals sampled on the same collected steps as positions.
+  signals?: Record<string, TrajectorySignal>
 }
 
 export interface PositionStreamOptions {
@@ -199,9 +241,14 @@ export interface PositionStreamOptions {
   // Both count against `max_bytes`.
   scalar_keys?: string[]
   vector_keys?: string[]
+  // Frame metadata keys to collect as scalar, vec3, or 3x3 signals.
+  signal_keys?: string[]
 }
 
 export interface FrameLoader {
+  // False when the loader owns its backing data (packed arrays or a worker-side source). Such
+  // loaders accept an empty data argument, allowing the UI to release very large raw payloads.
+  requires_source?: boolean
   get_total_frames: (data: string | ArrayBuffer) => Promise<number>
   // Release worker ports, file handles, or other external resources owned by the loader.
   dispose?: () => void
@@ -222,6 +269,9 @@ export interface FrameLoader {
     data: string | ArrayBuffer,
     frame_number: number,
   ) => Promise<TrajectoryFrame | null>
+  // Packed in-memory stores can materialize the selected frame in the interaction's current
+  // animation frame. External/indexed readers omit this and use load_frame asynchronously.
+  load_frame_sync?: (frame_number: number) => TrajectoryFrame | null
   extract_plot_metadata: (
     data: string | ArrayBuffer,
     options?: { sample_rate?: number; properties?: string[] },
@@ -231,18 +281,120 @@ export interface FrameLoader {
 
 export function validate_trajectory(trajectory: TrajectoryType): string[] {
   const errors: string[] = []
-  const { frames, total_frames, indexed_frames, plot_metadata, is_indexed } = trajectory
+  const { frames, total_frames, indexed_frames, plot_metadata, is_indexed, frame_store } =
+    trajectory
 
   if (!frames?.length) return [`Trajectory must have at least one frame`]
 
-  frames.forEach((frame, idx) => {
-    if (!frame.structure?.sites?.length) {
-      errors.push(`Frame ${idx} missing structure or sites`)
+  let first_symbols: string[] | null = null
+  for (const [frame_idx, frame] of frames.entries()) {
+    const sites = frame.structure?.sites
+    if (!sites?.length) {
+      errors.push(`Frame ${frame_idx} missing structure or sites`)
     }
-    if (typeof frame.step !== `number`) {
-      errors.push(`Frame ${idx} missing or invalid step number`)
+    if (!Number.isFinite(frame.step)) {
+      errors.push(`Frame ${frame_idx} missing or invalid step number`)
+    } else if (frame_idx > 0 && !(frame.step > frames[frame_idx - 1].step)) {
+      errors.push(`Frame ${frame_idx} step (${frame.step}) must be strictly increasing`)
     }
-  })
+    if (!sites?.length) continue
+    const symbols = sites.map(({ species }) => species[0]?.element ?? `unknown`)
+    const reference_symbols = (first_symbols ??= symbols)
+    if (
+      symbols.length !== reference_symbols.length ||
+      symbols.some((symbol, atom_idx) => symbol !== reference_symbols[atom_idx])
+    ) {
+      errors.push(`Frame ${frame_idx} changes atom count or ordering`)
+    }
+  }
+
+  const atom_masses: unknown = trajectory.atom_masses
+  if (atom_masses !== undefined) {
+    if (!Array.isArray(atom_masses)) {
+      errors.push(`atom_masses must be an array`)
+    } else {
+      if (first_symbols && atom_masses.length !== first_symbols.length) {
+        errors.push(
+          `atom_masses has ${atom_masses.length} entries for ${first_symbols.length} atoms`,
+        )
+      }
+      atom_masses.forEach((mass: unknown, atom_idx) => {
+        if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0) {
+          errors.push(`atom_masses[${atom_idx}] must be finite and > 0, got ${mass}`)
+        }
+      })
+    }
+  }
+
+  const signals: unknown = trajectory.signals
+  if (
+    signals !== undefined &&
+    (signals === null ||
+      typeof signals !== `object` ||
+      Array.isArray(signals) ||
+      ArrayBuffer.isView(signals))
+  ) {
+    errors.push(`signals must be an object`)
+  } else if (signals !== undefined) {
+    for (const [key, signal] of Object.entries(signals)) {
+      if (signal === null || typeof signal !== `object` || Array.isArray(signal)) {
+        errors.push(`signals.${key} must be an object`)
+        continue
+      }
+      const signal_record = signal as Record<string, unknown>
+      const { sample_shape, values, steps, unit } = signal_record
+      const numeric_sample_shape = Array.isArray(sample_shape)
+        ? sample_shape.filter(
+            (size: unknown): size is number =>
+              typeof size === `number` && Number.isInteger(size) && size >= 1,
+          )
+        : []
+      const valid_sample_shape =
+        Array.isArray(sample_shape) &&
+        numeric_sample_shape.length === sample_shape.length &&
+        is_supported_trajectory_signal_shape(numeric_sample_shape, first_symbols?.length ?? 0)
+      if (!valid_sample_shape) {
+        errors.push(
+          `signals.${key}.sample_shape must be scalar, [3], [3, 3], [n_atoms], or ` +
+            `[n_atoms, 3], got ${JSON.stringify(sample_shape)}`,
+        )
+      }
+      if (!(values instanceof Float64Array)) {
+        errors.push(`signals.${key}.values must be a Float64Array`)
+      }
+      if (!Array.isArray(steps)) {
+        errors.push(`signals.${key}.steps must be an array`)
+      }
+      if (unit !== undefined && (typeof unit !== `string` || !unit.trim())) {
+        errors.push(`signals.${key}.unit must be a non-empty string when supplied`)
+      }
+      if (!valid_sample_shape || !(values instanceof Float64Array) || !Array.isArray(steps)) {
+        continue
+      }
+      const sample_size = numeric_sample_shape.reduce(
+        (total: number, value: number) => total * value,
+        1,
+      )
+      if (values.length !== steps.length * sample_size) {
+        errors.push(
+          `signals.${key} has ${values.length} values for ${steps.length} samples ` +
+            `of shape [${numeric_sample_shape.join(`, `)}]`,
+        )
+      }
+      values.forEach((value, value_idx) => {
+        if (!Number.isFinite(value)) {
+          errors.push(`signals.${key}.values[${value_idx}] is not finite`)
+        }
+      })
+      steps.forEach((step: unknown, step_idx) => {
+        if (typeof step !== `number` || !Number.isFinite(step)) {
+          errors.push(`signals.${key}.steps[${step_idx}] is not finite`)
+        } else if (step_idx > 0 && !(step > steps[step_idx - 1])) {
+          errors.push(`signals.${key}.steps must be strictly increasing`)
+        }
+      })
+    }
+  }
 
   // Validate streaming-related properties
   if (total_frames !== undefined) {
@@ -256,8 +408,10 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
     }
   }
 
-  if (is_indexed === true && !indexed_frames?.length) {
-    errors.push(`is_indexed is true but indexed_frames is missing or empty`)
+  if (is_indexed === true && !indexed_frames?.length && !frame_store) {
+    errors.push(
+      `is_indexed is true but indexed_frames is missing or empty and frame_store is absent`,
+    )
   }
 
   if (indexed_frames) {

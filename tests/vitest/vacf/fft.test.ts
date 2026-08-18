@@ -4,6 +4,8 @@ import {
   even_cosine_spectrum,
   fft_in_place,
   next_power_of_two,
+  one_sided_periodogram,
+  time_series_window,
 } from '$lib/fft'
 import { describe, expect, it } from 'vitest'
 import { make_rng, max_abs_error } from './helpers'
@@ -94,6 +96,139 @@ describe(`next_power_of_two`, () => {
   })
 })
 
+describe(`one_sided_periodogram`, () => {
+  it.each([15, 16])(`matches an independent direct DFT oracle for %i samples`, (n_samples) => {
+    const n_components = 2
+    const values = Float64Array.from(
+      { length: n_samples * n_components },
+      (_unused, value_idx) => Math.sin(0.73 * value_idx) + 0.2 * Math.cos(0.17 * value_idx),
+    )
+    const sample_interval = 0.25
+    const result = one_sided_periodogram(values, n_components, sample_interval)
+    const window = Array.from(
+      { length: n_samples },
+      (_unused, sample_idx) =>
+        0.5 - 0.5 * Math.cos((2 * Math.PI * sample_idx) / (n_samples - 1)),
+    )
+    const window_energy = window.reduce((total, value) => total + value * value, 0)
+    const expected = Array(result.power.length).fill(0)
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+      const mean =
+        Array.from(
+          { length: n_samples },
+          (_unused, sample_idx) => values[sample_idx * n_components + component_idx],
+        ).reduce((total, value) => total + value, 0) / n_samples
+      for (let frequency_idx = 0; frequency_idx < expected.length; frequency_idx++) {
+        let real = 0
+        let imaginary = 0
+        for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+          const angle =
+            (-2 * Math.PI * ((frequency_idx * sample_idx) % result.n_fft)) / result.n_fft
+          const value =
+            (values[sample_idx * n_components + component_idx] - mean) * window[sample_idx]
+          real += value * Math.cos(angle)
+          imaginary += value * Math.sin(angle)
+        }
+        const one_sided_factor =
+          frequency_idx === 0 || frequency_idx === result.n_fft / 2 ? 1 : 2
+        expected[frequency_idx] +=
+          (one_sided_factor * (real * real + imaginary * imaginary) * sample_interval) /
+          window_energy
+      }
+    }
+    const absolute_error = max_abs_error([...result.power], expected)
+    const scale = Math.max(...expected)
+    const relative_error = Math.max(
+      ...expected.map((value, frequency_idx) =>
+        Math.abs(value) > 1e-6 * scale
+          ? Math.abs(result.power[frequency_idx] - value) / Math.abs(value)
+          : 0,
+      ),
+    )
+    const bound = 200 * Number.EPSILON * Math.log2(result.n_fft)
+    expect(absolute_error).toBeLessThan(bound * scale)
+    expect(relative_error).toBeLessThan(bound)
+  })
+
+  it(`preserves amplitude squared and mass-component scaling`, () => {
+    const values = Float64Array.from({ length: 64 * 2 }, (_unused, value_idx) =>
+      Math.sin((2 * Math.PI * 7 * Math.floor(value_idx / 2)) / 64),
+    )
+    const base = one_sided_periodogram(values, 2, 1, {
+      window: `none`,
+      zero_pad_factor: 1,
+      component_weights: [1, 0],
+    })
+    const scaled = one_sided_periodogram(
+      Float64Array.from(values, (value) => 3 * value),
+      2,
+      1,
+      { window: `none`, zero_pad_factor: 1, component_weights: [2, 0] },
+    )
+    expect(scaled.power[7]).toBe(base.power[7] * 18)
+  })
+
+  it.each([15, 16])(`conserves integrated one-sided power for %i samples`, (n_samples) => {
+    const sample_interval = 0.2
+    const values = Float64Array.from(
+      { length: n_samples },
+      (_unused, sample_idx) => Math.sin(0.61 * sample_idx) + 0.3 * Math.cos(1.17 * sample_idx),
+    )
+    const result = one_sided_periodogram(values, 1, sample_interval, {
+      window: `none`,
+      zero_pad_factor: 4,
+    })
+    const mean = values.reduce((total, value) => total + value, 0) / n_samples
+    const expected_power =
+      values.reduce((total, value) => total + (value - mean) ** 2, 0) / n_samples
+    const integrated_power =
+      result.power.reduce((total, value) => total + value, 0) * result.frequency_spacing
+    const absolute_error = Math.abs(integrated_power - expected_power)
+    expect(absolute_error).toBeLessThan(50 * Number.EPSILON * expected_power)
+  })
+
+  it(`locates a sinusoidal peak within one unpadded Rayleigh resolution`, () => {
+    const n_samples = 100
+    const sample_interval = 0.2
+    const target_frequency = 0.37
+    const values = Float64Array.from({ length: n_samples }, (_unused, sample_idx) =>
+      Math.sin(2 * Math.PI * target_frequency * sample_idx * sample_interval),
+    )
+    const result = one_sided_periodogram(values, 1, sample_interval)
+    const peak_idx = result.power.indexOf(Math.max(...result.power))
+    expect(Math.abs(result.frequencies[peak_idx] - target_frequency)).toBeLessThanOrEqual(
+      result.rayleigh_resolution,
+    )
+  })
+
+  it(`zero padding changes grid density but not Rayleigh resolution or Nyquist`, () => {
+    const values = Float64Array.from({ length: 31 }, (_unused, idx) => Math.sin(idx))
+    const unpadded = one_sided_periodogram(values, 1, 0.5, { zero_pad_factor: 1 })
+    const padded = one_sided_periodogram(values, 1, 0.5, { zero_pad_factor: 4 })
+    expect(padded.frequency_spacing).toBeLessThan(unpadded.frequency_spacing)
+    expect(padded.rayleigh_resolution).toBe(unpadded.rayleigh_resolution)
+    expect(padded.nyquist).toBe(unpadded.nyquist)
+  })
+
+  it.each([
+    [`DC signal`, Float64Array.from({ length: 16 }, () => 4), 1, 0],
+    [`zero signal`, new Float64Array(16), 1, 0],
+    [
+      `Nyquist signal`,
+      Float64Array.from({ length: 16 }, (_unused, idx) => (idx % 2 === 0 ? 1 : -1)),
+      1,
+      8,
+    ],
+  ] as const)(`handles a %s`, (_label, values, interval, peak_idx) => {
+    const result = one_sided_periodogram(values, 1, interval, {
+      window: `none`,
+      zero_pad_factor: 1,
+    })
+    const maximum_idx = result.power.indexOf(Math.max(...result.power))
+    expect(maximum_idx).toBe(peak_idx)
+  })
+})
+
 describe(`correlation_window`, () => {
   it.each([
     [`hann`, 1, 0],
@@ -115,6 +250,13 @@ describe(`correlation_window`, () => {
     expect(() => correlation_window(4, `blackman`)).toThrow(
       /unknown window blackman, expected one of hann, gaussian, none/,
     )
+  })
+
+  it.each([
+    [`time-series`, () => time_series_window(4, `gaussian`, { gaussian_alpha: Infinity })],
+    [`correlation`, () => correlation_window(4, `gaussian`, { gaussian_alpha: Infinity })],
+  ])(`rejects a non-finite %s Gaussian width`, (_label, calculate_window) => {
+    expect(calculate_window).toThrow(/gaussian_alpha must be finite and > 0/)
   })
 })
 

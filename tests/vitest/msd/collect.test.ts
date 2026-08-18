@@ -254,6 +254,27 @@ describe(`indexed trajectories never silently compute over the loaded window`, (
     expect(max_rel_error(result.curves[0].msd, expected)).toBeLessThan(1e-9)
   })
 
+  it(`streams from a source-independent loader without raw file bytes`, async () => {
+    const stream_positions = vi.fn(async (_data: string | ArrayBuffer) =>
+      collect_msd_positions(make_drift_trajectory(50)),
+    )
+    const trajectory: TrajectoryType = {
+      ...make_drift_trajectory(10),
+      total_frames: 50,
+      is_indexed: true,
+      frame_loader: {
+        ...loader_stub,
+        requires_source: false,
+        stream_positions,
+      },
+    }
+
+    const collected = await collect_msd_positions(trajectory)
+
+    expect(collected.n_frames).toBe(50)
+    expect(stream_positions).toHaveBeenCalledWith(``, expect.any(Object), undefined)
+  })
+
   it(`matches a fully-parsed run frame for frame`, async () => {
     const xyz = synthetic_drift_xyz(30, 3)
     const [streamed_positions, memory_positions] = await Promise.all([
@@ -528,6 +549,23 @@ describe(`TrajectoryMsdPane`, () => {
     document.querySelector<HTMLButtonElement>(`.msd-controls button`)?.click()
     await settle()
     expect(document.body.textContent).toContain(`no frame_loader`)
+  })
+
+  it(`does not claim raw bytes are unavailable for a source-independent loader`, async () => {
+    const text = await mount_pane({
+      ...lazy,
+      frame_loader: {
+        requires_source: false,
+        get_total_frames: async () => 500,
+        build_frame_index: async () => [],
+        load_frame: async () => null,
+        extract_plot_metadata: async () => [],
+        stream_positions: async () => collect_msd_positions(make_drift_trajectory(500)),
+      },
+    })
+
+    expect(text).toContain(`MSD streams the full payload`)
+    expect(text).not.toContain(`raw file bytes are unavailable`)
   })
 
   // trajectory_total_frames throws here, and is_lazy/the stride suggestion both route

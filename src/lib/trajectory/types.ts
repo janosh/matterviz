@@ -4,6 +4,7 @@ export type AtomTypeMapping = Record<number, ElementSymbol>
 
 export interface LoadingOptions {
   use_indexing?: boolean
+  hdf5_group_path?: string
   buffer_size?: number
   index_sample_rate?: number
   extract_plot_metadata?: boolean

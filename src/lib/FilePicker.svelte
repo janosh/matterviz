@@ -233,6 +233,8 @@
     gap: 0.5em;
     flex: 1;
     align-content: start;
+    -webkit-user-select: text;
+    user-select: text;
   }
   .file-picker.vertical {
     flex-direction: column;

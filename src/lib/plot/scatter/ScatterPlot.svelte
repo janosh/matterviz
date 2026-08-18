@@ -150,6 +150,7 @@
     point_events,
     on_point_click,
     on_point_hover,
+    on_plot_click,
     on_pointer_leave,
     fill_regions = $bindable([]),
     error_bands = [],
@@ -210,6 +211,7 @@
       >
       on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+      on_plot_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_pointer_leave?: () => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
       error_bands?: ErrorBand[]
@@ -1069,17 +1071,85 @@
     return build_spatial_index(entries(), hover_config.threshold_px ?? 20)
   })
 
+  // X-only hover is the fast path for ordered time series. It reuses filtered_data and probes
+  // at most two points per series instead of allocating/indexing one screen-space entry per
+  // point. Unordered series remain correct through a linear fallback.
+  const x_hover_series = $derived(
+    filtered_series.map((series_data) => {
+      let direction: -1 | 0 | 1 = 0
+      const { filtered_data: points } = series_data
+      for (let point_idx = 1; point_idx < points.length; point_idx++) {
+        const delta = points[point_idx].x - points[point_idx - 1].x
+        if (delta === 0) continue
+        const next_direction = delta > 0 ? 1 : -1
+        if (direction !== 0 && direction !== next_direction) {
+          direction = 0
+          return { series_data, direction }
+        }
+        direction = next_direction
+      }
+      return { series_data, direction }
+    }),
+  )
+
+  const x_hover_candidate = (x_rel: number, y_rel: number): InternalPoint<Metadata> | null => {
+    let best_point: InternalPoint<Metadata> | null = null
+    let best_x_distance = Number.POSITIVE_INFINITY
+    let best_y_distance = Number.POSITIVE_INFINITY
+    for (const { series_data, direction } of x_hover_series) {
+      const { filtered_data: points } = series_data
+      if (points.length === 0) continue
+      const scales = series_screen_scales(series_data)
+      const target_x = Number(scales.x_scale.invert(x_rel))
+      let candidate_start = 0
+      let candidate_end = points.length
+      if (direction !== 0) {
+        let lower_idx = 0
+        let upper_idx = points.length
+        while (lower_idx < upper_idx) {
+          const middle_idx = Math.floor((lower_idx + upper_idx) / 2)
+          const comes_before =
+            direction > 0 ? points[middle_idx].x < target_x : points[middle_idx].x > target_x
+          if (comes_before) lower_idx = middle_idx + 1
+          else upper_idx = middle_idx
+        }
+        candidate_start = Math.max(0, lower_idx - 1)
+        candidate_end = Math.min(points.length, lower_idx + 1)
+      }
+      for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
+        const point = points[point_idx]
+        const { cx, cy } = point_screen_xy(point, scales)
+        const x_distance = Math.abs(cx - x_rel)
+        const y_distance = Math.abs(cy - y_rel)
+        if (
+          x_distance < best_x_distance ||
+          (x_distance === best_x_distance && y_distance < best_y_distance)
+        ) {
+          best_point = point
+          best_x_distance = x_distance
+          best_y_distance = y_distance
+        }
+      }
+    }
+    return best_x_distance <= (hover_config.threshold_px ?? 20) ? best_point : null
+  }
+
+  const closest_point_at = (x_rel: number, y_rel: number) =>
+    hover_config.mode === `x`
+      ? x_hover_candidate(x_rel, y_rel)
+      : query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
+  let tracks_pointer = $derived(hover_config.show_tooltip !== false || Boolean(on_point_hover))
+
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    const nearest = query_nearest(hover_index, { x: x_rel, y: y_rel })
+    const closest_point = closest_point_at(x_rel, y_rel)
 
-    if (nearest) {
-      const { point: closest_point } = nearest
+    if (closest_point) {
       // Construct handler props synchronously to avoid stale derived reads
       const props = construct_handler_props(closest_point)
-      tooltip_point = closest_point
+      tooltip_point = hover_config.show_tooltip === false ? null : closest_point
       // Call hover handler with synchronously constructed props
       if (evt && props) {
         on_point_hover?.({ ...props, event: evt, point: closest_point })
@@ -1111,6 +1181,15 @@
       hover_animation_frame = undefined
       flush_pending_hover()
     })
+  }
+
+  function handle_plot_click(evt: MouseEvent) {
+    if (!on_plot_click || pan_zoom.is_panning) return
+    const coords = get_relative_coords(evt)
+    if (!coords) return
+    const point = closest_point_at(coords.x, coords.y)
+    const props = point && construct_handler_props(point)
+    if (point && props) on_plot_click({ ...props, event: evt, point })
   }
 
   function end_queued_mouse_move(apply_pending: boolean) {
@@ -1374,10 +1453,13 @@
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
-  on_mouse_move={(evt) => {
-    // Only find the closest point when not actively dragging
-    if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
-  }}
+  on_mouse_move={tracks_pointer
+    ? (evt) => {
+        // Only find the closest point when not actively dragging
+        if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
+      }
+    : undefined}
+  on_mouse_click={handle_plot_click}
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
     hovered = false
@@ -1441,6 +1523,7 @@
         {#if current_pos >= pad.l && current_pos <= width - pad.r}
           {@const active_tick_height = 7}
           <rect
+            class="current-frame-indicator"
             x={current_pos - 1.5}
             y={height - pad.b - active_tick_height / 2}
             width="3"
@@ -1448,7 +1531,6 @@
             fill="var(--scatter-current-frame-color, #ff6b35)"
             stroke="white"
             stroke-width="1"
-            class="current-frame-indicator"
           />
         {/if}
       {/if}
@@ -1738,7 +1820,7 @@
       <ScatterPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--ctrl-btn-top, 5pt); ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--viewer-buttons-top, var(--ctrl-btn-top, 5pt)); ${
             controls_toggle_props?.style ?? ``
           }`,
         }}

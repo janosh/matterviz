@@ -206,9 +206,9 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     const structural_data = structural_data_extractor(first_frame, trajectory)
     const full_data = full_data_extractor(first_frame, trajectory)
 
-    expect(energy_data.Step).toBe(0)
-    expect(structural_data.Step).toBe(0)
-    expect(full_data.Step).toBe(0)
+    expect(energy_data.Step).toBe(first_frame.step)
+    expect(structural_data.Step).toBe(first_frame.step)
+    expect(full_data.Step).toBe(first_frame.step)
     expect(typeof structural_data.volume).toBe(`number`)
     expect(structural_data.volume).toBeGreaterThan(0)
 
@@ -220,14 +220,19 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
   })
 
   it(`should handle all frames and lattice consistency`, () => {
-    const all_frame_data = trajectory.frames.map((frame: TrajectoryFrame) =>
-      full_data_extractor(frame, trajectory),
-    )
+    const frame_count = trajectory.total_frames ?? trajectory.frames.length
+    const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => {
+      const frame =
+        trajectory.frames[frame_idx] ?? trajectory.frame_loader?.load_frame_sync?.(frame_idx)
+      if (!frame) throw new Error(`Missing HDF5 frame ${frame_idx}`)
+      return frame
+    })
+    const all_frame_data = frames.map((frame) => full_data_extractor(frame, trajectory))
 
     expect(all_frame_data).toHaveLength(20)
 
-    all_frame_data.forEach((data: Record<string, unknown>, idx: number) => {
-      expect(data.Step).toBe(idx)
+    all_frame_data.forEach((data: Record<string, unknown>, frame_idx: number) => {
+      expect(data.Step).toBe(frames[frame_idx].step)
       expect(typeof data.volume).toBe(`number`)
       expect(data.volume).toBeGreaterThan(0)
     })

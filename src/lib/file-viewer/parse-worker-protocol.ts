@@ -7,6 +7,7 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ParseProgress } from '$lib/trajectory'
+import type { LoadingOptions } from '$lib/trajectory/parse'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type { ParseResult } from './parse'
 
@@ -17,10 +18,22 @@ export interface ParseWorkerRequest {
   is_base64: boolean
 }
 
+export interface TrajectoryParseWorkerRequest {
+  kind: `trajectory`
+  id: number
+  data: string | ArrayBuffer
+  filename: string
+  options: LoadingOptions
+}
+
+export type AnyParseWorkerRequest = ParseWorkerRequest | TrajectoryParseWorkerRequest
+
 export interface ParseWorkerResponse {
   id: number
   result?: ParseResult
   error?: string
+  progress?: ParseProgress
+  hdf5_group_paths?: string[]
   frame_port?: MessagePort
 }
 

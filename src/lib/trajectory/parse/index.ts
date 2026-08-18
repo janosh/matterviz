@@ -62,15 +62,60 @@ export {
 } from '$lib/trajectory/helpers'
 export { TrajFrameReader } from '$lib/trajectory/frame-reader'
 
-export async function parse_trajectory_data(
+const assert_parsed_trajectory_consistency = (
+  trajectory: TrajectoryType,
+  filename?: string,
+): TrajectoryType => {
+  const context = filename ? ` in ${filename}` : ``
+  if (trajectory.frames.length === 0) {
+    if (trajectory.metadata?.vaspout_electronic_only === true) return trajectory
+    throw new Error(`Parsed trajectory${context} has no frames`)
+  }
+  const reference_atom_count = trajectory.frames[0].structure.sites.length
+  for (const [frame_idx, frame] of trajectory.frames.entries()) {
+    if (!Number.isFinite(frame.step)) {
+      throw new TypeError(
+        `Parsed trajectory${context} frame ${frame_idx} has invalid step ${frame.step}`,
+      )
+    }
+    const { sites } = frame.structure
+    if (sites.length !== reference_atom_count) {
+      throw new Error(
+        `Parsed trajectory${context} frame ${frame_idx} has ${sites.length} atoms, expected ${reference_atom_count}`,
+      )
+    }
+    for (const [atom_idx, site] of sites.entries()) {
+      if (
+        site.xyz.length !== 3 ||
+        site.xyz.some((coordinate) => !Number.isFinite(coordinate))
+      ) {
+        throw new Error(
+          `Parsed trajectory${context} frame ${frame_idx} atom ${atom_idx} has invalid Cartesian coordinates`,
+        )
+      }
+    }
+    if (
+      `lattice` in frame.structure &&
+      frame.structure.lattice.matrix.flat().some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error(`Parsed trajectory${context} frame ${frame_idx} has an invalid lattice`)
+    }
+  }
+  return trajectory
+}
+
+async function parse_trajectory_data_unchecked(
   data: unknown,
   filename?: string,
   atom_type_mapping?: AtomTypeMapping,
+  hdf5_group_path?: string,
 ): Promise<TrajectoryType> {
   reset_traj_parse_warnings()
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
-    if (FORMAT_PATTERNS.hdf5(data, filename)) return parse_hdf5_trajectory(data, filename)
+    if (FORMAT_PATTERNS.hdf5(data, filename)) {
+      return parse_hdf5_trajectory(data, filename, hdf5_group_path)
+    }
     throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
   }
 
@@ -147,6 +192,18 @@ export async function parse_trajectory_data(
   throw new Error(`Unrecognized trajectory format`)
 }
 
+export async function parse_trajectory_data(
+  data: unknown,
+  filename?: string,
+  atom_type_mapping?: AtomTypeMapping,
+  hdf5_group_path?: string,
+): Promise<TrajectoryType> {
+  return assert_parsed_trajectory_consistency(
+    await parse_trajectory_data_unchecked(data, filename, atom_type_mapping, hdf5_group_path),
+    filename,
+  )
+}
+
 export function get_unsupported_format_message(
   filename: string,
   content: string,
@@ -204,6 +261,7 @@ export async function parse_trajectory_async(
     index_sample_rate = INDEX_SAMPLE_RATE,
     extract_plot_metadata = true,
     atom_type_mapping,
+    hdf5_group_path,
   } = options
 
   const update_progress = (current: number, stage: string) =>
@@ -232,18 +290,26 @@ export async function parse_trajectory_async(
         count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
     if (should_use_indexing && can_index) {
       return attach_parse_warnings(
-        await parse_with_unified_loader(
-          data,
+        assert_parsed_trajectory_consistency(
+          await parse_with_unified_loader(
+            data,
+            filename,
+            { index_sample_rate, extract_plot_metadata },
+            on_progress,
+          ),
           filename,
-          { index_sample_rate, extract_plot_metadata },
-          on_progress,
         ),
       )
     }
 
     // Fallback to direct parsing
     update_progress(10, `Parsing trajectory...`)
-    const result = await parse_trajectory_data(data, filename, atom_type_mapping)
+    const result = await parse_trajectory_data(
+      data,
+      filename,
+      atom_type_mapping,
+      hdf5_group_path,
+    )
 
     update_progress(100, `Complete`)
     return attach_parse_warnings(result)
