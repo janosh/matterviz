@@ -14,7 +14,7 @@ export const replace_url = (url: string | URL): Promise<void> =>
   })
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))
-  .filter((filename) => !filename.includes(`/(tmi)/`) && !filename.includes(`/(hide)/`))
+  .filter((filename) => !filename.includes(`/(hide)/`))
   .map((filename) => {
     const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments
     return { route: `/${parts.slice(2, -1).join(`/`)}`, filename }
