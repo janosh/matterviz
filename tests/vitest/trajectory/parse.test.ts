@@ -1727,7 +1727,11 @@ describe(`HDF5 Format`, () => {
   // torn tail. Same per-step resiliency contract as the vaspout.h5 parser.
   it(`keeps parsed frames and reports dropped_steps for a torn trailing frame`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      {
+        name: `positions`,
+        data: [...frame_positions, ...frame_positions, 0, 0, 0, 0, 0, 0],
+        shape: [3, 2, 3],
+      },
       {
         name: `atomic_numbers`,
         data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
@@ -1740,6 +1744,44 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.metadata?.dropped_steps).toBe(1)
     expect(trajectory.metadata?.frame_count).toBe(2)
   })
+
+  it.each([
+    [`non-zero positions`, frame_positions, [0, 0], undefined],
+    [`non-finite positions`, [Number.NaN, 0, 0, 0, 0, 0], [0, 0], undefined],
+    [
+      `non-zero atomic numbers`,
+      [0, 0, 0, 0, 0, 0],
+      two_gold_atoms,
+      [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ],
+    [`non-zero cells`, [0, 0, 0, 0, 0, 0], [0, 0], [10, 0, 0, 0, 10, 0, 0, 0, 10]],
+  ])(
+    `rejects a torn HDF5 tail with %s`,
+    async (_label, tail_positions, tail_atoms, tail_cell) => {
+      const datasets = [
+        {
+          name: `positions`,
+          data: [...frame_positions, ...tail_positions],
+          shape: [2, 2, 3],
+        },
+        {
+          name: `atomic_numbers`,
+          data: [...two_gold_atoms, ...tail_atoms],
+          shape: [2, 2],
+        },
+      ]
+      if (tail_cell) {
+        datasets.push({
+          name: `cell`,
+          data: [10, 0, 0, 0, 10, 0, 0, 0, 10, ...tail_cell],
+          shape: [2, 3, 3],
+        })
+      }
+      await expect(
+        parse_trajectory_data(await make_h5_buffer(datasets), `invalid-tail.h5`),
+      ).rejects.toThrow(/Invalid HDF5 trajectory frame 1/)
+    },
+  )
 
   it(`rejects corrupt interior frames instead of truncating valid later data`, async () => {
     const buffer = await make_h5_buffer([

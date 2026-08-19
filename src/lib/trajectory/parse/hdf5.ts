@@ -472,11 +472,12 @@ function parse_torch_sim_h5_file(
       valid_frame_count++
     } catch (error) {
       // Interrupted writes leave zero-filled trailing chunks; interior corruption still fails.
-      const remaining_is_zero_filled = positions.slice(idx).every((_position, tail_idx) => {
+      const remaining_is_zero_filled = positions.slice(idx).every((position, tail_idx) => {
         const frame_idx = idx + tail_idx
         return (
-          (atomic_numbers_are_frames && is_zero_filled(atomic_numbers[frame_idx])) ||
-          (cells_are_frames && is_zero_filled(cells?.[frame_idx]))
+          is_zero_filled(position) &&
+          (!atomic_numbers_are_frames || is_zero_filled(atomic_numbers[frame_idx])) &&
+          (!cells_are_frames || is_zero_filled(cells?.[frame_idx]))
         )
       })
       if (valid_frame_count === 0 || !remaining_is_zero_filled) {
