@@ -360,6 +360,7 @@
             type="button"
             onclick={() => handle_video_export(format)}
             disabled={is_exporting || is_exporting_data || !trajectory || !has_canvas}
+            aria-label="Download {label}"
             {@attach tooltip({ content: hint })}
           >
             {#if is_exporting && export_format === format}

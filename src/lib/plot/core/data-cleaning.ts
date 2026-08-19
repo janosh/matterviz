@@ -367,13 +367,18 @@ export function clean_xyz(
   const invalid_mode = config.invalid_values ?? `remove`
   const length = Math.min(x_values.length, y_values.length, z_values.length)
 
-  const all_arrays = [x_values, y_values, z_values] as const
   const { bounds, smooth } = config
 
-  const finite_indices = finite_aligned_indices(all_arrays, length)
-
-  // Find indices where ALL values are valid (remove mode filters)
-  const kept_indices = invalid_mode === `remove` ? finite_indices : index_range(length)
+  const kept_indices: number[] = []
+  let invalid_count = 0
+  for (let idx = 0; idx < length; idx++) {
+    const is_valid =
+      Number.isFinite(x_values[idx]) &&
+      Number.isFinite(y_values[idx]) &&
+      Number.isFinite(z_values[idx])
+    if (!is_valid) invalid_count++
+    if (is_valid || invalid_mode !== `remove`) kept_indices.push(idx)
+  }
 
   let filtered = {
     x: kept_indices.map((idx) => x_values[idx]),
@@ -381,10 +386,7 @@ export function clean_xyz(
     z: kept_indices.map((idx) => z_values[idx]),
   }
 
-  const quality = create_cleaning_quality(
-    length - kept_indices.length,
-    length - finite_indices.length,
-  )
+  const quality = create_cleaning_quality(length - kept_indices.length, invalid_count)
 
   if (invalid_mode === `interpolate`) {
     filtered.x = handle_invalid_values(filtered.x, `interpolate`).cleaned

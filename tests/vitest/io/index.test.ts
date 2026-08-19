@@ -47,15 +47,6 @@ describe(`load_trajectory_from_url`, () => {
       source_filename: `download`,
       fetch_count: 1,
     },
-    {
-      source: `generic binary URL with an HDF5 response filename`,
-      url: `https://example.com/download.bin`,
-      headers: new Headers({
-        'content-disposition': `attachment; filename="run.h5"`,
-      }),
-      source_filename: `run.h5`,
-      fetch_count: 2,
-    },
   ])(`loads HDF5 from a $source as one Blob`, async (test_case) => {
     const { url, headers, source_filename, fetch_count } = test_case
     const source_blob = new Blob([new Uint8Array([1, 2, 3])])
@@ -78,6 +69,40 @@ describe(`load_trajectory_from_url`, () => {
       source_filename,
       source_url: url,
     })
+  })
+
+  test(`range-sniffs HDF5 from a generic URL before fetching the full Blob`, async () => {
+    const hdf5_bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(hdf5_bytes, {
+          status: 206,
+          headers: { 'content-range': `bytes 0-7/8` },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(hdf5_bytes, {
+          headers: { 'content-disposition': `attachment; filename="run.h5"` },
+        }),
+      )
+    const callback = vi.fn()
+    const url = `https://example.com/download.bin`
+
+    await load_trajectory_from_url(url, callback)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenNthCalledWith(1, url, {
+      headers: { Range: `bytes=0-15` },
+    })
+    expect(fetch).toHaveBeenNthCalledWith(2, url)
+    expect(callback).toHaveBeenCalledOnce()
+    const [content, filename, metadata] = callback.mock.calls[0]
+    expect(content).toBeInstanceOf(Blob)
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(hdf5_bytes)
+    expect([filename, metadata]).toEqual([
+      `run.h5`,
+      { source_filename: `run.h5`, source_url: url },
+    ])
   })
 
   test(`recognizes HDF5 after decompressing a generically named gzip URL`, async () => {
