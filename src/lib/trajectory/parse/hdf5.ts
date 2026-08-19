@@ -1,4 +1,9 @@
-import { calc_lattice_params, transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
+import {
+  calc_lattice_params,
+  partition_point,
+  transpose_3x3_matrix,
+  type Matrix3x3,
+} from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
@@ -151,11 +156,14 @@ const flatten_numeric = (value: unknown): number[] | null => {
 
 const product = (values: number[]): number => values.reduce((total, value) => total * value, 1)
 
-const lattice_from_values = (values: number[]): Matrix3x3 =>
+const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matrix3x3 =>
   transpose_3x3_matrix(
     validate_3x3_matrix(
       Array.from({ length: 3 }, (_unused, row_idx) =>
-        values.slice(row_idx * 3, row_idx * 3 + 3),
+        Array.from(
+          { length: 3 },
+          (_unused_2, column_idx) => values[offset + row_idx * 3 + column_idx],
+        ),
       ),
     ),
   )
@@ -520,6 +528,15 @@ const parse_torch_sim_datasets = (
         continue
       }
       try {
+        if (
+          position_steps_dataset &&
+          frame_idx > 0 &&
+          steps[frame_idx] === 0 &&
+          steps[frame_idx] <= steps[frame_idx - 1] &&
+          frame_positions.every((value) => value === 0)
+        ) {
+          throw new Error(`positions and steps begin a zero-filled torn tail`)
+        }
         const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
         if (frame_elements.some((element, atom_idx) => element !== elements[atom_idx])) {
           throw new Error(`frame changes atom ordering`)
@@ -655,8 +672,9 @@ const parse_torch_sim_datasets = (
       },
     )
     for (const [key, signal] of Object.entries(signal_manifest)) {
-      const signal_idx = signal.steps.indexOf(steps[frame_idx])
-      if (!is_per_atom_vector(signal) || signal_idx === -1) continue
+      if (!is_per_atom_vector(signal)) continue
+      const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
+      if (signal.steps[signal_idx] !== steps[frame_idx]) continue
       const signal_values = read_numeric_hyperslab(signal.dataset, signal.path, [
         [signal_idx, signal_idx + 1],
       ])
@@ -685,9 +703,7 @@ const parse_torch_sim_datasets = (
         : null
     return frame_indices.map((frame_number, sample_idx) => {
       const lattice = sampled_cells
-        ? lattice_from_values(
-            Array.from(sampled_cells.subarray(sample_idx * 9, (sample_idx + 1) * 9)),
-          )
+        ? lattice_from_values(sampled_cells, sample_idx * 9)
         : static_lattice
       return {
         frame_number,
@@ -871,14 +887,21 @@ const parse_torch_sim_datasets = (
               ),
             }
           : {}
+      const sampled_cells =
+        cells_dataset && cell_path && dynamic_cells
+          ? read_numeric_samples(cells_dataset, cell_path, valid_frame_count, 9, frame_stride)
+          : null
       return {
         positions,
         n_frames: frame_indices.length,
         n_atoms,
         elements: [...elements],
-        lattice_matrices:
-          static_lattice || dynamic_cells
-            ? frame_indices.map((frame_idx) => lattice_for_frame(frame_idx) ?? null)
+        lattice_matrices: static_lattice
+          ? frame_indices.map(() => static_lattice)
+          : sampled_cells
+            ? frame_indices.map((_frame_idx, sample_idx) =>
+                lattice_from_values(sampled_cells, sample_idx * 9),
+              )
             : null,
         pbc: streamed_pbc,
         coords_unwrapped: false,

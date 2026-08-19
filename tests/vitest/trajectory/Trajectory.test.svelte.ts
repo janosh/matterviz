@@ -1159,6 +1159,58 @@ describe(`Trajectory`, () => {
     expect(fetch_mock).toHaveBeenCalledTimes(2)
   })
 
+  test(`does not render the previous structure while an HDF5 group frame loads`, async () => {
+    const old_frame = make_trajectory_frame(0, 2)
+    const next_frame = make_trajectory_frame(0, 1)
+    next_frame.structure.sites[0].species[0].element = `Au`
+    next_frame.structure.sites[0].label = `Au1`
+    let resolve_frame: ((frame: typeof next_frame) => void) | undefined
+    const frame_ready = new Promise<typeof next_frame>((resolve) => (resolve_frame = resolve))
+    const next_trajectory: TrajectoryType = {
+      frames: [],
+      total_frames: 1,
+      is_indexed: true,
+      frame_loader: {
+        requires_source: false,
+        get_total_frames: async () => 1,
+        build_frame_index: async () => [],
+        load_frame: async () => frame_ready,
+        extract_plot_metadata: async () => [],
+      },
+    }
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`])
+        }
+        return next_trajectory
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const target = mount_traj({
+      trajectory: { frames: [old_frame] },
+      display_mode: `structure`,
+      show_controls: `always`,
+    })
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`H`),
+    )
+
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(target.querySelector(`.element-legend`)).toBeNull())
+
+    if (!resolve_frame) throw new Error(`Selected HDF5 frame was not requested`)
+    resolve_frame(next_frame)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`Au`),
+    )
+  })
+
   test(`disposes the selected HDF5 loader before opening another group`, async () => {
     const first_dispose = vi.fn()
     const second_dispose = vi.fn()
@@ -1379,6 +1431,51 @@ describe(`Trajectory`, () => {
       expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
     },
   )
+
+  test(`keeps internal HDF5 content URLs Blob-backed`, async () => {
+    const array_buffer_spy = vi.fn()
+    const response = {
+      ok: true,
+      status: 200,
+      blob: vi.fn(async () => new Blob([new Uint8Array(8)])),
+      arrayBuffer: array_buffer_spy,
+    } as unknown as Response
+    const fetch_mock = vi.fn(async () => response)
+    stub_fetch(fetch_mock)
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockResolvedValue(energy_traj(-1))
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `never`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+    const event = new DragEvent(`drop`, { bubbles: true })
+    Object.defineProperty(event, `dataTransfer`, {
+      value: {
+        files: [],
+        items: [],
+        getData: (type: string) =>
+          type === `application/x-matterviz-file`
+            ? JSON.stringify({
+                name: `large.h5`,
+                is_binary: true,
+                content_url: `blob:large-hdf5`,
+              })
+            : ``,
+      },
+    })
+
+    viewer.dispatchEvent(event)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(fetch_mock).toHaveBeenCalledOnce()
+    expect(array_buffer_spy).not.toHaveBeenCalled()
+    expect(worker_spy.mock.calls[0][0]).toBeInstanceOf(Blob)
+  })
 
   test(`ignores a stale trajectory URL completion`, async () => {
     const responses = deferred_fetch_responses()

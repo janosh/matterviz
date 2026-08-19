@@ -13,6 +13,7 @@ import type { Pbc } from '$lib/structure'
 import {
   dot,
   mat3x3_vec3_multiply,
+  partition_point,
   transpose_3x3_matrix,
   type Matrix3x3,
   type Vec3,
@@ -1194,17 +1195,6 @@ const curve_activity_stats = (
   }
 }
 
-const lower_bound = (values: number[], target: number): number => {
-  let lower = 0
-  let upper = values.length
-  while (lower < upper) {
-    const midpoint = Math.floor((lower + upper) / 2)
-    if (values[midpoint] < target) lower = midpoint + 1
-    else upper = midpoint
-  }
-  return lower
-}
-
 const curve_score = (
   curve: TrajectorySpectrumCurve | null,
   frequency: number,
@@ -1216,7 +1206,7 @@ const curve_score = (
   }
   const radius = 2 * curve.rayleigh_resolution
   let score = 0
-  const start_idx = lower_bound(curve.frequencies, frequency - radius)
+  const start_idx = partition_point(curve.frequencies, (value) => value < frequency - radius)
   for (
     let frequency_idx = start_idx;
     frequency_idx < curve.frequencies.length;

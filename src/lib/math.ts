@@ -56,6 +56,21 @@ const MAX_MIN_IMAGE_CANDIDATES = 100_000
 export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 
+// Index of the first value for which an initial-prefix predicate is false.
+export const partition_point = <Value>(
+  values: readonly Value[],
+  comes_before: (value: Value) => boolean,
+): number => {
+  let lower_idx = 0
+  let upper_idx = values.length
+  while (lower_idx < upper_idx) {
+    const middle_idx = Math.floor((lower_idx + upper_idx) / 2)
+    if (comes_before(values[middle_idx])) lower_idx = middle_idx + 1
+    else upper_idx = middle_idx
+  }
+  return lower_idx
+}
+
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix

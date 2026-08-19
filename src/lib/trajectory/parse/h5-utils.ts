@@ -78,11 +78,25 @@ const requested_hyperslab_values = (
   }, 1)
 }
 
-export const read_numeric_hyperslab = (
+const numeric_values = (data: unknown): ArrayLike<unknown> | null =>
+  Array.isArray(data)
+    ? data
+    : ArrayBuffer.isView(data)
+      ? (data as unknown as ArrayLike<unknown>)
+      : null
+
+const to_finite_number = (value: unknown): number | null => {
+  const number = typeof value === `bigint` ? Number(value) : value
+  const valid_bigint =
+    typeof value !== `bigint` || (typeof number === `number` && Number.isSafeInteger(number))
+  return typeof number === `number` && Number.isFinite(number) && valid_bigint ? number : null
+}
+
+const validated_numeric_hyperslab = (
   dataset: Dataset,
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
-): number[] => {
+): ArrayLike<unknown> => {
   const requested_bytes =
     requested_hyperslab_values(dataset, path, ranges) * Float64Array.BYTES_PER_ELEMENT
   if (requested_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
@@ -91,7 +105,7 @@ export const read_numeric_hyperslab = (
         `${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
   }
-  const values = to_number_array(dataset.slice(ranges))
+  const values = numeric_values(dataset.slice(ranges))
   if (!values) throw new Error(`HDF5 dataset ${path} hyperslab must contain finite numbers`)
   const logical_bytes = values.length * Float64Array.BYTES_PER_ELEMENT
   if (logical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES) {
@@ -101,6 +115,44 @@ export const read_numeric_hyperslab = (
     )
   }
   return values
+}
+
+export const read_numeric_hyperslab = (
+  dataset: Dataset,
+  path: string,
+  ranges: Parameters<Dataset[`slice`]>[0],
+): number[] => {
+  const values = Array.from(validated_numeric_hyperslab(dataset, path, ranges), (value) =>
+    to_finite_number(value),
+  )
+  if (!values.every((value): value is number => value !== null)) {
+    throw new Error(`HDF5 dataset ${path} hyperslab must contain finite numbers`)
+  }
+  return values
+}
+
+const copy_numeric_hyperslab = (
+  dataset: Dataset,
+  path: string,
+  ranges: Parameters<Dataset[`slice`]>[0],
+  destination: Float64Array,
+  destination_offset: number,
+): number => {
+  const values = validated_numeric_hyperslab(dataset, path, ranges)
+  if (destination_offset + values.length > destination.length) {
+    throw new Error(
+      `HDF5 dataset ${path} returned ${values.length} values beyond its ` +
+        `${destination.length}-value destination`,
+    )
+  }
+  for (let value_idx = 0; value_idx < values.length; value_idx++) {
+    const value = to_finite_number(values[value_idx])
+    if (value === null) {
+      throw new Error(`HDF5 dataset ${path} hyperslab must contain finite numbers`)
+    }
+    destination[destination_offset + value_idx] = value
+  }
+  return values.length
 }
 
 export const hdf5_frames_per_slice = (...values_per_frame: number[]): number => {
@@ -134,21 +186,10 @@ export const to_string_array = (data: unknown): string[] | null => {
   return strings
 }
 
-const to_finite_number = (value: unknown): number | null => {
-  const number = typeof value === `bigint` ? Number(value) : value
-  const valid_bigint =
-    typeof value !== `bigint` || (typeof number === `number` && Number.isSafeInteger(number))
-  return typeof number === `number` && Number.isFinite(number) && valid_bigint ? number : null
-}
-
 export const to_number_array = (data: unknown): number[] | null => {
-  const values: unknown[] | null = Array.isArray(data)
-    ? data
-    : ArrayBuffer.isView(data)
-      ? Array.from(data as unknown as ArrayLike<unknown>)
-      : null
+  const values = numeric_values(data)
   if (!values) return null
-  const numbers = values.map(to_finite_number)
+  const numbers = Array.from(values, to_finite_number)
   return numbers.every((item): item is number => item !== null) ? numbers : null
 }
 
@@ -205,15 +246,20 @@ export const read_numeric_samples = (
   let output_offset = 0
   for (let start = 0; start < sample_count; start += samples_per_slice * stride) {
     const end = Math.min(start + samples_per_slice * stride, sample_count)
-    const chunk = read_numeric_hyperslab(dataset, path, ranges_for_samples(start, end, stride))
     const expected_count = Math.ceil((end - start) / stride) * sample_size
-    if (chunk.length !== expected_count) {
+    const copied_count = copy_numeric_hyperslab(
+      dataset,
+      path,
+      ranges_for_samples(start, end, stride),
+      values,
+      output_offset,
+    )
+    if (copied_count !== expected_count) {
       throw new Error(
-        `HDF5 dataset ${path} returned ${chunk.length} values for ${expected_count} requested entries`,
+        `HDF5 dataset ${path} returned ${copied_count} values for ${expected_count} requested entries`,
       )
     }
-    values.set(chunk, output_offset)
-    output_offset += chunk.length
+    output_offset += copied_count
   }
   return values
 }

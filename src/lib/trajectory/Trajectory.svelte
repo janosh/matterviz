@@ -1225,6 +1225,7 @@
     try {
       const file_info = JSON.parse(internal_data)
       const source = { source_filename: file_info.name }
+      let filename = file_info.name
 
       // Check if this is a binary file
       let content = file_info.content
@@ -1234,9 +1235,15 @@
           return true
         }
         const response = await fetch(file_info.content_url, { signal })
-        content = await response.arrayBuffer()
+        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`)
+        const loaded = await io.decompress_trajectory_file(
+          new File([await response.blob()], filename),
+          signal,
+        )
+        content = loaded.content
+        filename = loaded.filename
       }
-      await load_trajectory_data(content, file_info.name, { ...source, should_commit })
+      await load_trajectory_data(content, filename, { ...source, should_commit })
       return true
     } catch (error) {
       console.warn(`Failed to parse internal file data:`, error)
@@ -1441,6 +1448,11 @@
         parsed_trajectory.frame_loader?.dispose?.()
         return
       }
+      // A newly parsed trajectory is a different viewing context. Keeping the previous
+      // structure for this render lets StructureScene fit its camera to stale coordinates
+      // before the selected trajectory's preview frame arrives.
+      set_current_frame(null)
+      current_structure = undefined
       trajectory = parsed_trajectory
       load_owned_trajectory = trajectory
       on_trajectory_loaded?.(trajectory)
@@ -2219,9 +2231,17 @@
       margin-inline: auto;
     }
   }
-  :global(.hdf5-group-picker) {
-    max-height: 100cqh;
+  .trajectory :global(.hdf5-group-picker) {
+    align-self: center;
+    flex: 0 1 auto;
+    width: min(calc(100% - 2rem), 72rem);
+    height: auto;
+    max-height: calc(100% - 2rem);
     min-height: 0;
+    margin: auto;
+    padding: clamp(1rem, 2cqi, 2rem);
+    border-radius: var(--border-radius, 3pt);
+    background: var(--dropzone-bg);
     overflow: hidden;
   }
   .hdf5-group-options {

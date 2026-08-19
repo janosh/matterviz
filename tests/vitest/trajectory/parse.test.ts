@@ -27,8 +27,9 @@ import { get_trajectory_type } from '$site/trajectories'
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import type { Dataset as H5Dataset, File as H5File } from 'h5wasm'
-import { describe, expect, it, test, vi } from 'vitest'
+import { Dataset as H5Dataset } from 'h5wasm'
+import type { File as H5File } from 'h5wasm'
+import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import {
   get_dummy_structure,
   make_crystal,
@@ -106,6 +107,18 @@ it(`copies large HDF5 axis chunks without spreading them into the call stack`, (
   const values = read_numeric_first_axis(dataset, `/steps/positions`, entry_count, 1, `HDF5`)
   expect(values).toHaveLength(entry_count)
   expect(values.at(-1)).toBe(entry_count - 1)
+})
+
+it(`copies sampled numeric hyperslabs directly into typed output`, () => {
+  const array_from_spy = vi.spyOn(Array, `from`)
+  onTestFinished(() => array_from_spy.mockRestore())
+  const dataset = {
+    shape: [3, 2],
+    slice: () => Float64Array.from([1, 2, 3, 4, 5, 6]),
+  } as unknown as H5Dataset
+  const values = read_numeric_samples(dataset, `/direct-copy`, 3, 2)
+  expect(values).toEqual(Float64Array.from([1, 2, 3, 4, 5, 6]))
+  expect(array_from_spy).not.toHaveBeenCalled()
 })
 
 it(`rejects overlong HDF5 step axes before hyperslab reads can truncate them`, () => {
@@ -1367,6 +1380,11 @@ describe(`HDF5 Format`, () => {
       dipole: { sample_shape: [3], sample_count: 2 },
       polarizability: { sample_shape: [3, 3], sample_count: 3 },
     })
+    const frame = await trajectory.frame_loader?.load_frame(``, 3)
+    expect(frame?.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
+      [1.8, 1.9, 2],
+      [2.1, 2.2, 2.3],
+    ])
     const signal_stream = await trajectory.frame_loader?.stream_positions?.(``, {
       signal_keys: [`velocity`, `dipole`, `polarizability`],
     })
@@ -1423,7 +1441,7 @@ describe(`HDF5 Format`, () => {
   })
 
   it(`recovers zero-filled step tails after structural validation`, async () => {
-    const make_buffer = (position_steps: number[]) =>
+    const make_buffer = (position_steps: number[], dynamic_topology = true) =>
       h5_bytes(`torn-steps`, (file) => {
         const data = file.create_group(`data`)
         const steps = file.create_group(`steps`)
@@ -1434,8 +1452,10 @@ describe(`HDF5 Format`, () => {
         })
         data.create_dataset({
           name: `atomic_numbers`,
-          data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
-          shape: [3, 2],
+          data: dynamic_topology
+            ? [...two_gold_atoms, ...two_gold_atoms, 0, 0]
+            : two_gold_atoms,
+          shape: dynamic_topology ? [3, 2] : [2],
         })
         data.create_dataset({
           name: `pbc`,
@@ -1456,6 +1476,13 @@ describe(`HDF5 Format`, () => {
       pbc: [true, true, true],
     })
     trajectory.frame_loader?.dispose?.()
+    const static_topology = await parse_hdf5_trajectory(
+      await make_buffer([0, 1, 0], false),
+      `torn-static-steps.h5`,
+    )
+    expect(static_topology.frames.map(({ step }) => step)).toEqual([0, 1])
+    expect(static_topology.metadata?.dropped_steps).toBe(1)
+    static_topology.frame_loader?.dispose?.()
     const corrupt = await make_buffer([0, 0, 0])
     await expect(parse_hdf5_trajectory(corrupt, `corrupt-steps.h5`)).rejects.toThrow(
       `must increase strictly`,
@@ -1609,6 +1636,8 @@ describe(`HDF5 Format`, () => {
       })
     })
 
+    const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
+    onTestFinished(() => slice_spy.mockRestore())
     const trajectory = await parse_trajectory_data(content, `long-generic.h5`)
 
     expect(trajectory).toMatchObject({
@@ -1630,6 +1659,16 @@ describe(`HDF5 Format`, () => {
         },
       },
     })
+    slice_spy.mockClear()
+    const stream = await trajectory.frame_loader?.stream_positions?.(``)
+    expect(slice_spy).toHaveBeenCalledTimes(2)
+    expect(stream?.lattice_matrices?.at(-1)).toEqual([
+      [21, 0, 0],
+      [0, 10, 0],
+      [0, 0, 10],
+    ])
+    slice_spy.mockRestore()
+    trajectory.frame_loader?.dispose?.()
   })
 
   it(`reconstructs a selected replica trajectory from reference MD velocities`, async () => {

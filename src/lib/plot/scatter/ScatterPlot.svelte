@@ -5,7 +5,7 @@
   import { type D3InterpolateName, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Point2D, Vec2 } from '$lib/math'
+  import { partition_point, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
     BasePlotProps,
@@ -1105,15 +1105,9 @@
       const target_x = Number(scales.x_scale.invert(x_rel))
       let [candidate_start, candidate_end] = [0, points.length]
       if (direction !== 0) {
-        let lower_idx = 0
-        let upper_idx = points.length
-        while (lower_idx < upper_idx) {
-          const middle_idx = Math.floor((lower_idx + upper_idx) / 2)
-          const comes_before =
-            direction > 0 ? points[middle_idx].x < target_x : points[middle_idx].x > target_x
-          if (comes_before) lower_idx = middle_idx + 1
-          else upper_idx = middle_idx
-        }
+        const lower_idx = partition_point(points, (point) =>
+          direction > 0 ? point.x < target_x : point.x > target_x,
+        )
         candidate_start = Math.max(0, lower_idx - 1)
         candidate_end = Math.min(points.length, lower_idx + 1)
         while (
