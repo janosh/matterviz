@@ -291,6 +291,7 @@
           <Structure
             {...structure_props}
             structure={current_image.structure}
+            structure_series_key={active?.path}
             allow_file_drop={structure_props.allow_file_drop ?? false}
             show_controls={controls_config.mode === `never`
               ? false

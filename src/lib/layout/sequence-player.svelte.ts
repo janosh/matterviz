@@ -53,9 +53,10 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     if (next_index !== inputs.index()) setter(next_index)
   }
 
+  const seek = (index: number) => set_valid_index(index, inputs.set_index)
   const go_to = (index: number) => {
     set_playing(false)
-    set_valid_index(index, inputs.set_index)
+    seek(index)
   }
   const set_step_index = inputs.set_step_index ?? inputs.set_index
   const previous = () => set_valid_index(inputs.index() - 1, set_step_index)
@@ -133,7 +134,9 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     },
     fps_step: FPS_STEP,
     go_to,
+    play: () => set_playing(true),
     pause: () => set_playing(false),
+    seek,
     previous,
     next,
     toggle,

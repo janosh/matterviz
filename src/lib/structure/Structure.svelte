@@ -1349,15 +1349,27 @@
     }
   })
 
-  // Reset moved-pane tracking only when the viewing context changes
+  // Reset viewing state when the structure series changes. Coordinate-only updates keep a
+  // stable series key, while an explicitly supplied camera remains authoritative.
+  let previous_structure_series_key: unknown
+  let is_initial_structure_series = true
   $effect(() => {
-    // untrack: clearing must not add moved_panes as a dependency, else a pane move
-    // (which adds to moved_panes) would immediately re-run this and clear it again.
-    if (effective_structure_series_key !== undefined) untrack(() => moved_panes.clear())
+    const next_series_key = effective_structure_series_key
+    const series_changed =
+      !is_initial_structure_series && next_series_key !== previous_structure_series_key
+    previous_structure_series_key = next_series_key
+    is_initial_structure_series = false
+    // untrack: clearing must not make pane moves a dependency.
+    if (next_series_key !== undefined) untrack(() => moved_panes.clear())
+    if (
+      series_changed &&
+      scene_props_in?.camera_target === undefined &&
+      !scene_props_in?.camera_position?.some((coordinate) => coordinate !== 0)
+    )
+      untrack(clear_camera_state)
   })
 
-  // Clear stale camera target and position so StructureScene uses the new
-  // structure's rotation_target (unit cell center) and auto-positions the camera.
+  // Clear stale camera state so StructureScene auto-positions for the new structure.
   function clear_camera_state() {
     // Reset to a fresh [0,0,0] so the primary viewport re-frames the new structure.
     // Side panes reset their local camera state in StructureViewport's structure effect.

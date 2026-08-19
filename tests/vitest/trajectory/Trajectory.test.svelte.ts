@@ -190,6 +190,32 @@ const lazy_trajectory = (dispose: () => void): TrajectoryType => ({
   },
 })
 
+const make_pending_au_trajectory = () => {
+  const next_frame = make_trajectory_frame(0, 1)
+  next_frame.structure.sites[0].species[0].element = `Au`
+  next_frame.structure.sites[0].label = `Au1`
+  let resolve_frame: ((frame: typeof next_frame) => void) | undefined
+  const frame_ready = new Promise<typeof next_frame>((resolve) => (resolve_frame = resolve))
+  return {
+    trajectory: {
+      frames: [],
+      total_frames: 1,
+      is_indexed: true,
+      frame_loader: {
+        requires_source: false,
+        get_total_frames: async () => 1,
+        build_frame_index: async () => [],
+        load_frame: async () => frame_ready,
+        extract_plot_metadata: async () => [],
+      },
+    } satisfies TrajectoryType,
+    resolve: () => {
+      if (!resolve_frame) throw new Error(`Replacement frame was not requested`)
+      resolve_frame(next_frame)
+    },
+  }
+}
+
 const stub_animation_frames = () => {
   const callbacks: FrameRequestCallback[] = []
   const request_raf = vi
@@ -691,9 +717,10 @@ describe(`Trajectory`, () => {
     expect(events.at(-1)).toBe(`pause:0`)
   })
 
-  test(`pauses auto-play before committing a dragged frame`, async () => {
-    const { performance_now, run_frame } = stub_animation_frames()
+  test(`resumes auto-play after committing a dragged frame`, async () => {
+    const { callbacks, performance_now, run_frame } = stub_animation_frames()
     performance_now.mockReturnValue(1000)
+    const on_play = vi.fn()
     const on_pause = vi.fn()
     const props = $state({
       trajectory: energy_traj(-1, -2, -3, -4),
@@ -701,23 +728,28 @@ describe(`Trajectory`, () => {
       fps: 10,
       auto_play: true,
       show_controls: `always` as const,
+      on_play,
       on_pause,
     })
     mount_traj(props)
     await flush_render()
     const slider = doc_query(`.step-slider`, HTMLInputElement)
+    on_play.mockClear()
 
     slider.dispatchEvent(new Event(`pointerdown`, { bubbles: true }))
     slider.value = `2`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    callbacks.length = 0
+    slider.dispatchEvent(new Event(`pointerup`, { bubbles: true }))
     slider.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
 
     expect(props.current_step_idx).toBe(2)
-    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
     expect(on_pause).toHaveBeenCalledOnce()
+    expect(on_play).toHaveBeenCalledOnce()
     run_frame(1100)
-    expect(props.current_step_idx).toBe(2)
+    expect(props.current_step_idx).toBe(3)
   })
 
   test(`stops frame catch-up when an end callback makes playback unplayable`, async () => {
@@ -1161,23 +1193,7 @@ describe(`Trajectory`, () => {
 
   test(`does not render the previous structure while an HDF5 group frame loads`, async () => {
     const old_frame = make_trajectory_frame(0, 2)
-    const next_frame = make_trajectory_frame(0, 1)
-    next_frame.structure.sites[0].species[0].element = `Au`
-    next_frame.structure.sites[0].label = `Au1`
-    let resolve_frame: ((frame: typeof next_frame) => void) | undefined
-    const frame_ready = new Promise<typeof next_frame>((resolve) => (resolve_frame = resolve))
-    const next_trajectory: TrajectoryType = {
-      frames: [],
-      total_frames: 1,
-      is_indexed: true,
-      frame_loader: {
-        requires_source: false,
-        get_total_frames: async () => 1,
-        build_frame_index: async () => [],
-        load_frame: async () => frame_ready,
-        extract_plot_metadata: async () => [],
-      },
-    }
+    const { trajectory: next_trajectory, resolve } = make_pending_au_trajectory()
     const worker_spy = vi
       .spyOn(parse_worker, `parse_trajectory_in_worker`)
       .mockImplementation(async (_data, _filename, _on_progress, options) => {
@@ -1204,8 +1220,29 @@ describe(`Trajectory`, () => {
     hdf5_group_option(target, `/run/0`).click()
     await vi.waitFor(() => expect(target.querySelector(`.element-legend`)).toBeNull())
 
-    if (!resolve_frame) throw new Error(`Selected HDF5 frame was not requested`)
-    resolve_frame(next_frame)
+    resolve()
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`Au`),
+    )
+  })
+
+  test(`clears the displayed frame when a caller replaces a trajectory`, async () => {
+    const old_frame = make_trajectory_frame(0, 2)
+    const { trajectory: next_trajectory, resolve } = make_pending_au_trajectory()
+    const props = $state({
+      trajectory: { frames: [old_frame] },
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`H`),
+    )
+
+    props.trajectory = next_trajectory
+    await vi.waitFor(() => expect(target.querySelector(`.element-legend`)).toBeNull())
+
+    resolve()
     await vi.waitFor(() =>
       expect(target.querySelector(`.element-legend`)?.textContent).toContain(`Au`),
     )

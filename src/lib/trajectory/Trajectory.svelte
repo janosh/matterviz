@@ -368,6 +368,7 @@
 
   $effect(() => {
     if (trajectory === load_owned_trajectory) return
+    clear_displayed_frame()
     load_id += 1
     active_source_controller?.abort()
     active_source_controller = null
@@ -800,6 +801,10 @@
   // view doesn't blank while an uncached frame loads on demand (current_frame is nulled
   // during loads to keep the info pane from showing the previous frame's data).
   let current_structure = $state.raw<AnyStructure | undefined>(undefined)
+  const clear_displayed_frame = (): void => {
+    set_current_frame(null)
+    current_structure = undefined
+  }
   $effect(() => {
     if (current_frame?.structure) current_structure = current_frame.structure
     else if (!trajectory) current_structure = undefined
@@ -1451,8 +1456,7 @@
       // A newly parsed trajectory is a different viewing context. Keeping the previous
       // structure for this render lets StructureScene fit its camera to stale coordinates
       // before the selected trajectory's preview frame arrives.
-      set_current_frame(null)
-      current_structure = undefined
+      clear_displayed_frame()
       trajectory = parsed_trajectory
       load_owned_trajectory = trajectory
       on_trajectory_loaded?.(trajectory)
