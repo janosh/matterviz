@@ -7,6 +7,7 @@
   import { Icon } from 'svelte-widgets'
   import {
     ArrowDown,
+    ArrowLeft,
     ArrowUp,
     Atom,
     Check,
@@ -122,7 +123,6 @@
     filename: string
     source: Partial<io.FileLoadMeta>
     on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
-    should_commit: () => boolean
     data?: ArrayBuffer
   }
   type Hdf5PathGroup = { trunk: string; paths: string[] }
@@ -336,7 +336,8 @@
   let current_file_path = $state<string | null>(null)
   let file_size = $state<number | undefined>(undefined)
   let file_object = $state<File | null>(null)
-  let hdf5_group_selection = $state<PendingHdf5GroupSelection | undefined>(undefined)
+  let hdf5_group_selection = $state.raw<PendingHdf5GroupSelection | undefined>(undefined)
+  let hdf5_group_picker_open = $state(false)
   let hdf5_path_groups = $derived(
     hdf5_group_selection ? group_hdf5_paths(hdf5_group_selection.group_paths) : [],
   )
@@ -361,7 +362,7 @@
     load_id += 1
     active_parse_controller?.abort()
     active_parse_controller = null
-    hdf5_group_selection = undefined
+    clear_hdf5_group_picker()
     loading = false
   })
 
@@ -1159,8 +1160,9 @@
 
   async function select_hdf5_group(path: string): Promise<void> {
     const selection = hdf5_group_selection
-    if (!selection || !selection.should_commit()) return
-    hdf5_group_selection = undefined
+    if (!selection || !hdf5_group_picker_open) return
+    const should_commit = () => hdf5_group_selection === selection
+    hdf5_group_picker_open = false
     loading = true
     try {
       let data = selection.data
@@ -1179,10 +1181,10 @@
         ...selection.source,
         on_trajectory_loaded: selection.on_trajectory_loaded,
         hdf5_group_path: path,
-        should_commit: selection.should_commit,
+        should_commit,
       })
     } catch (error) {
-      if (!selection.should_commit()) return
+      if (!should_commit()) return
       const load_error_msg = `Failed to load HDF5 group: ${to_error(error).message}`
       on_error?.({
         error_msg: load_error_msg,
@@ -1191,9 +1193,27 @@
         file_size: selection.source.file?.size,
       })
       error_msg = load_error_msg
+      hdf5_group_picker_open = true
     } finally {
-      if (selection.should_commit()) loading = false
+      if (should_commit()) loading = false
     }
+  }
+
+  const reopen_hdf5_group_picker = (): void => {
+    if (!hdf5_group_selection) return
+    playback.pause()
+    hdf5_group_picker_open = true
+  }
+
+  const clear_hdf5_group_picker = (): void => {
+    hdf5_group_selection = undefined
+    hdf5_group_picker_open = false
+  }
+
+  const close_hdf5_group_picker = (): void => {
+    if (!trajectory) return clear_hdf5_group_picker()
+    hdf5_group_picker_open = false
+    error_msg = null
   }
 
   // Handle internal file format drops
@@ -1232,7 +1252,7 @@
     const drop_id = ++load_id
     active_parse_controller?.abort()
     const should_commit = () => drop_id === load_id
-    hdf5_group_selection = undefined
+    clear_hdf5_group_picker()
     loading = true
     let dropped_file: File | undefined
 
@@ -1297,7 +1317,7 @@
       previous_data_url = data_url
       data_url_load_id = ++load_id
       active_parse_controller?.abort()
-      hdf5_group_selection = undefined
+      clear_hdf5_group_picker()
     }
     const should_commit = () => data_url_load_id === load_id
     return data_url_loader.request({
@@ -1349,7 +1369,7 @@
     } = options
     if (!should_commit()) return
     loading = true
-    hdf5_group_selection = undefined
+    if (hdf5_group_path === undefined) clear_hdf5_group_picker()
     error_msg = null
     parsing_progress = null
     active_parse_controller?.abort()
@@ -1388,7 +1408,10 @@
       if (!should_commit()) return
       trajectory = parsed_trajectory
       load_owned_trajectory = trajectory
-      if (trajectory) on_trajectory_loaded?.(trajectory)
+      if (trajectory) {
+        on_trajectory_loaded?.(trajectory)
+        if (source.source_url === data_url) data_url_loader.claim(trajectory)
+      }
       // Keep original data only when parsing attached a frame_loader for on-demand loads.
       // Direct-parse fallbacks load all frames upfront, so retaining a duplicate wastes memory.
       orig_data =
@@ -1422,9 +1445,9 @@
           filename,
           source,
           on_trajectory_loaded,
-          should_commit,
           data: source.file ? undefined : data,
         }
+        hdf5_group_picker_open = true
         return
       }
       const unsupported_message = get_unsupported_format_message(
@@ -1435,6 +1458,9 @@
       on_error?.({ error_msg, filename, ...source, file_size: file_size_bytes })
       current_filename = undefined
       file_size = undefined
+      if (hdf5_group_path !== undefined && hdf5_group_selection) {
+        hdf5_group_picker_open = true
+      }
     } finally {
       if (active_parse_controller === parse_controller) active_parse_controller = null
       if (should_commit()) {
@@ -1468,10 +1494,11 @@
   // Handle keyboard shortcuts. Returns true if the key was handled, so the caller
   // (handle_and_prevent / forward_window_keydown) can suppress the browser default.
   function onkeydown(event: KeyboardEvent): boolean {
-    if (hdf5_group_selection && event.key === `Escape`) {
-      hdf5_group_selection = undefined
+    if (hdf5_group_picker_open && event.key === `Escape`) {
+      close_hdf5_group_picker()
       return true
     }
+    if (hdf5_group_picker_open) return false
     if (!trajectory) return false
 
     // Don't handle shortcuts while the user is editing form or rich-text content.
@@ -1623,7 +1650,7 @@
   class:spectroscopy-mode={spectroscopy_pane_open}
   {@attach forward_window_keydown({ handle: onkeydown })}
 >
-  {#if hdf5_group_selection}
+  {#if hdf5_group_selection && hdf5_group_picker_open}
     <EmptyState
       class="hdf5-group-picker"
       role="dialog"
@@ -1636,6 +1663,9 @@
         <code>{hdf5_group_selection.filename}</code> contains multiple trajectories; choose one to
         load.
       </p>
+      {#if error_msg}
+        <StatusMessage bind:message={error_msg} type="error" dismissible />
+      {/if}
       <div
         class="hdf5-group-options"
         class:flat={hdf5_path_groups.length === 1}
@@ -1666,9 +1696,7 @@
           </div>
         {/each}
       </div>
-      <button style="margin-top: 0.5rem" onclick={() => (hdf5_group_selection = undefined)}>
-        Cancel
-      </button>
+      <button style="margin-top: 0.5rem" onclick={close_hdf5_group_picker}> Cancel </button>
     </EmptyState>
   {:else if loading}
     {@const text = parsing_progress
@@ -1696,6 +1724,18 @@
       {controls_config}
       bind:height={controls_height}
     >
+      {#if hdf5_group_selection}
+        <button
+          type="button"
+          data-hdf5-group-picker-back
+          title="Choose a different trajectory from this HDF5 file"
+          aria-label="Choose a different trajectory from this HDF5 file"
+          style="background: var(--btn-bg); line-height: 1"
+          onclick={reopen_hdf5_group_picker}
+        >
+          <Icon icon={ArrowLeft} />
+        </button>
+      {/if}
       {#if trajectory_controls}
         {@render trajectory_controls({
           trajectory,

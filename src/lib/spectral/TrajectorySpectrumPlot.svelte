@@ -38,12 +38,15 @@
   > = $props()
 
   interface SpectrumPanelDatum {
-    kind: string
+    kind: `ir` | `raman` | `vdos`
     response: TrajectorySpectrumCurve
   }
 
   const SPECTRUM_POWER_FLOOR = 0.01
-  const frequency_unit_label = (unit: string): string => (unit === `cm^-1` ? `cm⁻¹` : unit)
+  const make_spectrum_panel = (
+    kind: SpectrumPanelDatum[`kind`],
+    response: TrajectorySpectrumCurve,
+  ): FacetPanel<SpectrumPanelDatum> => ({ key: kind, data: { kind, response } })
   const significant_frequency_range = (
     curves: readonly TrajectorySpectrumCurve[],
   ): [number, number] | undefined => {
@@ -115,24 +118,9 @@
   let selected_raman_curve = $derived(result.raman?.[raman_channel] ?? null)
   let response_panels = $derived.by(() => {
     const panels: FacetPanel<SpectrumPanelDatum>[] = []
-    if (result.ir) {
-      panels.push({
-        key: `ir`,
-        data: { kind: `ir`, response: result.ir },
-      })
-    }
-    if (selected_raman_curve) {
-      panels.push({
-        key: `raman`,
-        data: {
-          kind: `raman`,
-          response: selected_raman_curve,
-        },
-      })
-    }
-    return panels.length
-      ? panels
-      : [{ key: `vdos`, data: { kind: `vdos`, response: result.vdos } }]
+    if (result.ir) panels.push(make_spectrum_panel(`ir`, result.ir))
+    if (selected_raman_curve) panels.push(make_spectrum_panel(`raman`, selected_raman_curve))
+    return panels.length ? panels : [make_spectrum_panel(`vdos`, result.vdos)]
   })
   let visible_frequency_range = $derived(
     frequency_range ??
@@ -190,7 +178,7 @@
     header_controls={facet_layout.index === 0 ? header_controls : undefined}
     controls_extra={facet_layout.index === 0 ? controls_extra : undefined}
     x_axis={{
-      label: `Frequency (${frequency_unit_label(result.frequency_unit)})`,
+      label: `Frequency (${result.frequency_unit === `cm^-1` ? `cm⁻¹` : result.frequency_unit})`,
       range: visible_frequency_range,
     }}
     y_axis={{

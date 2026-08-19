@@ -137,6 +137,14 @@ const mount_traj = (props: Record<string, unknown>) => {
 }
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
+const reopen_hdf5_picker = async (target: ParentNode): Promise<void> => {
+  const picker_back = target.querySelector<HTMLButtonElement>(`[data-hdf5-group-picker-back]`)
+  if (!picker_back) throw new Error(`missing HDF5 trajectory picker back button`)
+  picker_back.click()
+  await vi.waitFor(() =>
+    expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+  )
+}
 
 const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement => {
   const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
@@ -1093,7 +1101,7 @@ describe(`Trajectory`, () => {
     const props = $state({
       data_url: `/ambiguous.h5`,
       display_mode: `structure` as const,
-      show_controls: `never` as const,
+      show_controls: `always` as const,
       on_file_load,
     })
     stub_fetch(fetch_mock)
@@ -1103,10 +1111,70 @@ describe(`Trajectory`, () => {
     )
     hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
     await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`Au`))
+    await reopen_hdf5_picker(target)
+    const next_group = hdf5_group_option(target, `/molecules/nh3/replicas/0`)
+    expect(
+      next_group.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: ` `, bubbles: true, cancelable: true }),
+      ),
+    ).toBe(true)
+    next_group.click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`H`))
+    expect(fetch_mock).toHaveBeenCalledOnce()
 
     props.data_url = `/replacement.xyz`
-    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`He`))
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[2][0])).toBe(`He`))
     expect(fetch_mock).toHaveBeenCalledTimes(2)
+  })
+
+  test(`keeps the local HDF5 picker available after a group fails`, async () => {
+    const original_parse = trajectory_parse.parse_trajectory_async
+    const failing_groups = [`/molecules/h2o/replicas/0`, `/molecules/nh3/replicas/0`]
+    const parse_spy = vi
+      .spyOn(trajectory_parse, `parse_trajectory_async`)
+      .mockImplementation((data, filename, on_progress, options) => {
+        const group_path = options?.hdf5_group_path
+        const failing_idx = group_path ? failing_groups.indexOf(group_path) : -1
+        if (group_path && failing_idx >= 0) {
+          failing_groups.splice(failing_idx, 1)
+          return Promise.reject(new Error(`broken group ${group_path}`))
+        }
+        return original_parse(data, filename, on_progress, options)
+      })
+    onTestFinished(() => parse_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /molecules/h2o`))
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`Au`))
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/molecules/nh3/replicas/0`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /molecules/nh3`))
+    const cancel_button = [...target.querySelectorAll<HTMLButtonElement>(`button`)].find(
+      (button) => button.textContent?.trim() === `Cancel`,
+    )
+    if (!cancel_button) throw new Error(`missing HDF5 picker cancel button`)
+    cancel_button.click()
+    await vi.waitFor(() =>
+      expect(target.querySelector(`[data-hdf5-group-picker-back]`)).not.toBeNull(),
+    )
+    expect(target.textContent).not.toContain(`broken group`)
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/molecules/nh3/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`H`))
   })
 
   const utf8_trajectory = `1\n${`é`.repeat(16)}\nH 0 0 0\n`

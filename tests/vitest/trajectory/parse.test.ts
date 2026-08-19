@@ -1646,6 +1646,9 @@ describe(`HDF5 Format`, () => {
 
   const two_gold_atoms = [79, 79]
   const frame_positions = [0, 0, 0, 1, 1, 1]
+  const zero_positions = [0, 0, 0, 0, 0, 0]
+  const cubic_cell = [10, 0, 0, 0, 10, 0, 0, 0, 10]
+  const zero_cell = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
   it(`honors an explicit non-periodic PBC dataset even when cells are present`, async () => {
     const buffer = await make_h5_buffer([
@@ -1653,7 +1656,7 @@ describe(`HDF5 Format`, () => {
       { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
       {
         name: `cell`,
-        data: [10, 0, 0, 0, 10, 0, 0, 0, 10],
+        data: cubic_cell,
         shape: [3, 3],
       },
       { name: `pbc`, data: [0, 0, 0], shape: [3] },
@@ -1682,7 +1685,7 @@ describe(`HDF5 Format`, () => {
       { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
       {
         name: `cell`,
-        data: [10, 0, 0, 0, 10, 0, 0, 0, 10],
+        data: cubic_cell,
         shape: [1, 3, 3],
       },
     ])
@@ -1707,7 +1710,7 @@ describe(`HDF5 Format`, () => {
       { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
       {
         name: `cell`,
-        data: [1, 2].flatMap(() => [10, 0, 0, 0, 10, 0, 0, 0, 10]),
+        data: [1, 2].flatMap(() => cubic_cell),
         shape: [2, 3, 3],
       },
       /cells have 2 frames for 3 position frames/,
@@ -1729,7 +1732,7 @@ describe(`HDF5 Format`, () => {
     const buffer = await make_h5_buffer([
       {
         name: `positions`,
-        data: [...frame_positions, ...frame_positions, 0, 0, 0, 0, 0, 0],
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
         shape: [3, 2, 3],
       },
       {
@@ -1748,13 +1751,8 @@ describe(`HDF5 Format`, () => {
   it.each([
     [`non-zero positions`, frame_positions, [0, 0], undefined],
     [`non-finite positions`, [Number.NaN, 0, 0, 0, 0, 0], [0, 0], undefined],
-    [
-      `non-zero atomic numbers`,
-      [0, 0, 0, 0, 0, 0],
-      two_gold_atoms,
-      [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    ],
-    [`non-zero cells`, [0, 0, 0, 0, 0, 0], [0, 0], [10, 0, 0, 0, 10, 0, 0, 0, 10]],
+    [`non-zero atomic numbers`, zero_positions, two_gold_atoms, zero_cell],
+    [`non-zero cells`, zero_positions, [0, 0], cubic_cell],
   ])(
     `rejects a torn HDF5 tail with %s`,
     async (_label, tail_positions, tail_atoms, tail_cell) => {
@@ -1773,7 +1771,7 @@ describe(`HDF5 Format`, () => {
       if (tail_cell) {
         datasets.push({
           name: `cell`,
-          data: [10, 0, 0, 0, 10, 0, 0, 0, 10, ...tail_cell],
+          data: [...cubic_cell, ...tail_cell],
           shape: [2, 3, 3],
         })
       }
