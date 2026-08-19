@@ -15,7 +15,7 @@ import type {
   TrajectoryParseWorkerRequest,
   WorkerLike,
 } from '$lib/file-viewer/parse-in-worker'
-import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
+import type { AtomTypeMapping, FrameLoader, TrajectoryType } from '$lib/trajectory'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const structure_result: ParseResult = {
@@ -40,9 +40,9 @@ interface FakeWorker extends WorkerLike {
 const make_fake_worker = (
   respond: (request: ParseWorkerRequest) => ParseWorkerResponse | null,
 ): FakeWorker => {
-  const listeners = new Map<string, EventListener>()
+  const listeners = new Map<string, EventListener[]>()
   const emit = (type: string, event: Event): void => {
-    listeners.get(type)?.(event)
+    for (const listener of listeners.get(type) ?? []) listener(event)
   }
   return {
     postMessage: (message: unknown) => {
@@ -56,7 +56,7 @@ const make_fake_worker = (
       )
     },
     addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-      listeners.set(type, listener as EventListener)
+      listeners.set(type, [...(listeners.get(type) ?? []), listener as EventListener])
     },
     emit,
     terminate: vi.fn(),
@@ -92,7 +92,7 @@ afterEach(() => {
 })
 
 describe(`parse_in_worker`, () => {
-  it(`parses an ArrayBuffer trajectory on a dedicated worker without detaching the source`, async () => {
+  it(`parses an ArrayBuffer trajectory with reactive options without detaching the source`, async () => {
     const source = new Uint8Array([1, 2, 3, 4]).buffer
     let posted_request: TrajectoryParseWorkerRequest | undefined
     let posted_transfer: readonly Transferable[] = []
@@ -102,9 +102,11 @@ describe(`parse_in_worker`, () => {
         message: unknown,
         options?: StructuredSerializeOptions | Transferable[],
       ) => {
-        const request = message as TrajectoryParseWorkerRequest
-        posted_request = request
         posted_transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
+        const request = structuredClone(message, {
+          transfer: [...posted_transfer],
+        }) as TrajectoryParseWorkerRequest
+        posted_request = request
         queueMicrotask(() =>
           listeners.get(`message`)?.(
             new MessageEvent(`message`, {
@@ -125,7 +127,7 @@ describe(`parse_in_worker`, () => {
       source,
       `large.h5`,
       undefined,
-      { use_indexing: true },
+      { use_indexing: true, atom_type_mapping: new Proxy<AtomTypeMapping>({ 1: `H` }, {}) },
       { worker_factory: () => worker },
     )
 
@@ -133,10 +135,10 @@ describe(`parse_in_worker`, () => {
     expect(posted_request).toMatchObject({
       kind: `trajectory`,
       filename: `large.h5`,
-      options: { use_indexing: true },
+      options: { use_indexing: true, atom_type_mapping: { 1: `H` } },
     })
     expect(posted_request?.data).not.toBe(source)
-    expect(posted_transfer).toEqual([posted_request?.data])
+    expect(posted_transfer).toHaveLength(1)
     expect(trajectory.total_frames).toBe(1)
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
@@ -267,14 +269,14 @@ describe(`parse_in_worker`, () => {
   })
 
   const indexed_xyz = `1\nstep=0\nH 0 0 0\n1\nstep=1\nHe 1 0 0\n`
-  const make_indexed_frame_worker = (): FakeWorker => {
+  const make_indexed_frame_worker = (respond_to_frame_reads = true): FakeWorker => {
     const frame_channel = new MessageChannel()
     frame_channel.port1.addEventListener(
       `message`,
       (event: MessageEvent<FrameWorkerRequest>) => {
         const { id, method, args } = event.data
         if (method === `dispose`) frame_channel.port1.close()
-        else if (method === `load_frame`) {
+        else if (method === `load_frame` && respond_to_frame_reads) {
           frame_channel.port1.postMessage({
             id,
             result: {
@@ -305,6 +307,22 @@ describe(`parse_in_worker`, () => {
       },
     }))
   }
+
+  it(`rejects pending frame reads when their worker crashes`, async () => {
+    const worker = make_indexed_frame_worker(false)
+    const result = await parse_in_worker(indexed_xyz, `movie.xyz`, false, {
+      worker_factory: () => worker,
+    })
+    const frame_loader = (result.data as TrajectoryType).frame_loader
+    if (!frame_loader) throw new Error(`expected indexed frame loader`)
+
+    const pending = frame_loader.load_frame(``, 1)
+    worker.emit(`error`, new ErrorEvent(`error`, { message: `worker crashed` }))
+
+    await expect(pending).rejects.toThrow(`worker crashed`)
+    await expect(frame_loader.load_frame(``, 0)).rejects.toThrow(`worker crashed`)
+    expect(worker.terminate).toHaveBeenCalledOnce()
+  })
 
   it(`retires an indexed loader worker so later parses can abort independently`, async () => {
     const worker = make_indexed_frame_worker()

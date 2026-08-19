@@ -85,6 +85,8 @@ const queued_jobs: ParseJob[] = []
 const active_frame_loader_disposers = new SvelteSet<(error?: Error) => void>()
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
+const worker_error = (event: Event, fallback: string): Error =>
+  new Error(event instanceof ErrorEvent && event.message ? event.message : fallback)
 
 type ParseOutcome = { result: ParseResult } | { error: Error }
 
@@ -103,7 +105,7 @@ interface ParseJob {
 const bind_indexed_frame_loader = (
   result: ParseResult,
   frame_port: MessagePort | undefined,
-  on_dispose?: () => void,
+  owning_worker?: WorkerLike,
 ): ParseResult => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
   if (!trajectory?.is_indexed) {
@@ -152,7 +154,18 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
-    on_dispose?.()
+    owning_worker?.terminate()
+  }
+  frame_port.addEventListener(`messageerror`, () =>
+    dispose(new Error(`Indexed frame loader response failed to deserialize`)),
+  )
+  if (owning_worker) {
+    owning_worker.addEventListener(`error`, (event) =>
+      dispose(worker_error(event, `Parse worker failed while serving indexed frames`)),
+    )
+    owning_worker.addEventListener(`messageerror`, () =>
+      dispose(new Error(`Parse worker response failed to deserialize`)),
+    )
   }
   frame_port.start()
 
@@ -312,7 +325,7 @@ const handle_worker_message = (
       result: bind_indexed_frame_loader(
         result,
         frame_port,
-        worker_owns_loader ? () => worker.terminate() : undefined,
+        worker_owns_loader ? worker : undefined,
       ),
     })
   } catch (bind_error) {
@@ -325,11 +338,7 @@ const handle_worker_message = (
 // wasm instantiation at import time, CSP), stop using the worker entirely.
 const handle_worker_error = (worker: WorkerLike, event: Event): void => {
   if (shared_worker !== worker) return
-  const message =
-    event instanceof ErrorEvent && event.message
-      ? event.message
-      : `Parse worker failed to load`
-  fail_active_worker_job(new Error(message), true)
+  fail_active_worker_job(worker_error(event, `Parse worker failed to load`), true)
 }
 
 // A response deserialize failure invalidates this worker instance, but a fresh
@@ -539,7 +548,7 @@ export const parse_trajectory_in_worker = (
         const bound = bind_indexed_frame_loader(
           result,
           frame_port,
-          keep_worker ? () => worker?.terminate() : undefined,
+          keep_worker ? worker : undefined,
         )
         if (!finish(!keep_worker)) return
         if (bound.type !== `trajectory`)
@@ -549,13 +558,9 @@ export const parse_trajectory_in_worker = (
         fail(to_error(bind_error))
       }
     }) as EventListener)
-    worker.addEventListener(`error`, (event) => {
-      const message =
-        event instanceof ErrorEvent && event.message
-          ? event.message
-          : `Trajectory parse worker failed to load`
-      fallback(new Error(message))
-    })
+    worker.addEventListener(`error`, (event) =>
+      fallback(worker_error(event, `Trajectory parse worker failed to load`)),
+    )
     worker.addEventListener(`messageerror`, () =>
       fallback(new Error(`Trajectory parse worker response failed to deserialize`)),
     )
@@ -577,7 +582,12 @@ export const parse_trajectory_in_worker = (
       id: request_id,
       data: request_data,
       filename,
-      options: loading_options,
+      options: {
+        ...loading_options,
+        ...(loading_options.atom_type_mapping && {
+          atom_type_mapping: { ...loading_options.atom_type_mapping },
+        }),
+      },
     }
     try {
       worker.postMessage(

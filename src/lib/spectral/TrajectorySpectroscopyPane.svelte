@@ -73,7 +73,6 @@
   let calculation_busy = $derived(calculation_phase !== `idle`)
   let progress = $state<ParseProgress | null>(null)
   let error_msg = $state<string>()
-  let completed_settings_key = $state<string>()
 
   const spectroscopy_runner = create_trajectory_spectroscopy_async_runner()
 
@@ -99,15 +98,20 @@
     time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
     options: $state.snapshot(options),
   })
-  const settings_key = (settings: ReturnType<typeof settings_snapshot>): string =>
-    JSON.stringify({
-      ...settings,
-      raw_data: settings.raw_data === null ? null : typeof settings.raw_data,
-    })
+  let completed_settings = $state.raw<ReturnType<typeof settings_snapshot> | undefined>(
+    undefined,
+  )
+  const settings_key = ({
+    raw_data: _raw_data,
+    ...settings
+  }: ReturnType<typeof settings_snapshot>): string => JSON.stringify(settings)
   let current_settings_key = $derived(settings_key(settings_snapshot()))
   let settings_dirty = $derived(
     Boolean(
-      result && completed_settings_key && completed_settings_key !== current_settings_key,
+      result &&
+      completed_settings &&
+      (settings_key(completed_settings) !== current_settings_key ||
+        completed_settings.raw_data !== raw_data),
     ),
   )
 
@@ -123,7 +127,7 @@
     mode_trajectory = null
     auto_calculation_owner = undefined
     error_msg = undefined
-    completed_settings_key = undefined
+    completed_settings = undefined
     calculation_phase = `idle`
     progress = null
     const default_ir =
@@ -154,7 +158,6 @@
     const generation = ++request_generation
     const request_trajectory = trajectory
     const request_settings = settings_snapshot()
-    const request_settings_key = settings_key(request_settings)
     const request_is_current = () => generation === request_generation
     spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a newer request`)
     calculation_phase = `collecting`
@@ -184,7 +187,7 @@
       )
       if (request_is_current()) {
         result = calculation_result
-        completed_settings_key = request_settings_key
+        completed_settings = request_settings
       }
     } catch (error) {
       if (request_is_current()) {

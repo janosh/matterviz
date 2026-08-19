@@ -99,6 +99,7 @@ const make_result = (name: string): TrajectorySpectroscopyResult => {
 const render_pane = (props: {
   trajectory: TrajectoryType
   result?: TrajectorySpectroscopyResult
+  raw_data?: string | ArrayBuffer | null
 }): HTMLElement => {
   const target = document.createElement(`div`)
   document.body.append(target)
@@ -143,6 +144,22 @@ test(`snapshots settings before collection and marks a changed result as stale`,
   await vi.waitFor(() => expect(fieldset?.disabled).toBe(false))
   expect(target.textContent).toContain(
     `Spectroscopy settings changed. Recompute to update the displayed result.`,
+  )
+})
+
+test(`marks spectra stale when the indexed source changes`, async () => {
+  mocks.collect.mockResolvedValue(make_input())
+  mocks.compute.mockResolvedValue(make_result(`first`))
+  const props = $state({ trajectory: make_trajectory(), raw_data: `first source` })
+  const target = render_pane(props)
+
+  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  props.raw_data = `replacement source`
+
+  await vi.waitFor(() =>
+    expect(target.textContent).toContain(
+      `Spectroscopy settings changed. Recompute to update the displayed result.`,
+    ),
   )
 })
 

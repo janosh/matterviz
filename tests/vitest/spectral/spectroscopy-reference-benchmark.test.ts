@@ -249,6 +249,11 @@ describe(`benchmark_spectroscopy`, () => {
   it.each([
     [`unmatched_penalty_cm1`, -1, /unmatched_penalty_cm1 must be finite and >= 0/],
     [`unmatched_penalty_cm1`, Number.NaN, /unmatched_penalty_cm1 must be finite and >= 0/],
+    [
+      `unmatched_penalty_cm1`,
+      Number.POSITIVE_INFINITY,
+      /unmatched_penalty_cm1 must be finite and >= 0/,
+    ],
     [`activity_mismatch_penalty_cm1`, -1, /activity_mismatch_penalty_cm1 must be >= 0/],
     [
       `activity_mismatch_penalty_cm1`,

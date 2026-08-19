@@ -2,6 +2,7 @@ import {
   Trajectory,
   type TrajectoryController,
   type FrameLoader,
+  type TrajectoryPositionStream,
   type TrajectoryType,
   type TrajectoryXQuantity,
   type TrajHandlerData,
@@ -204,31 +205,56 @@ describe(`Trajectory`, () => {
 
   // StructureControls owns trail-chrome visibility; this only guards Trajectory's
   // lazy collect_msd_positions gate (Trail length appears once the stream lands).
-  test(`collects trail positions lazily when trails are enabled`, async () => {
-    const props = $state({
-      trajectory: make_traj([{}, {}, {}]),
-      display_mode: `structure`,
-      show_controls: false,
-      controls_open: true,
-      spectroscopy_pane_open: false,
-      structure_props: { show_controls: `always` },
-    })
-    mount_traj(props)
-    await flush_render()
+  test.each([
+    [`in-memory`, () => make_traj([{}, {}, {}])],
+    [
+      `source-free packed`,
+      () => {
+        const { frame_loader, trajectory } = make_indexed_traj(3)
+        const position_stream: TrajectoryPositionStream = {
+          positions: new Float64Array([0, 0, 0, 1, 0, 0, 2, 0, 0]),
+          n_frames: 3,
+          n_atoms: 1,
+          elements: [`H`],
+          lattice_matrices: null,
+          pbc: [false, false, false],
+          coords_unwrapped: false,
+          frame_stride: 1,
+          steps: [0, 1, 2],
+        }
+        frame_loader.requires_source = false
+        frame_loader.stream_positions = vi.fn(async () => position_stream)
+        return trajectory
+      },
+    ],
+  ])(
+    `collects trail positions lazily for %s trajectories`,
+    async (_kind, create_trajectory) => {
+      const props = $state({
+        trajectory: create_trajectory(),
+        display_mode: `structure`,
+        show_controls: false,
+        controls_open: true,
+        spectroscopy_pane_open: false,
+        structure_props: { show_controls: `always` },
+      })
+      mount_traj(props)
+      await flush_render()
 
-    const trail_toggle = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Show trajectory trails`))
-      ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-    if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
-    expect(document.body.textContent).not.toContain(`Trail length`)
+      const trail_toggle = Array.from(document.querySelectorAll(`label`))
+        .find((label) => label.textContent?.includes(`Show trajectory trails`))
+        ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+      if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
+      expect(document.body.textContent).not.toContain(`Trail length`)
 
-    trail_toggle.click()
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
+      trail_toggle.click()
+      await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
 
-    props.spectroscopy_pane_open = true
-    await flush_render()
-    expect(document.body.textContent).not.toContain(`Trail length`)
-  })
+      props.spectroscopy_pane_open = true
+      await flush_render()
+      expect(document.body.textContent).not.toContain(`Trail length`)
+    },
+  )
 
   test(`forwards the initial scatter controls-open state`, async () => {
     mount_traj({

@@ -414,10 +414,16 @@
     if (configured !== undefined) show_trajectory_lines = configured
   })
   let trajectory_lines_available = $derived(
-    Boolean(trajectory && total_frames >= 2 && has_all_frames_in_memory(trajectory)),
+    Boolean(
+      trajectory &&
+      total_frames >= 2 &&
+      (has_all_frames_in_memory(trajectory) ||
+        (trajectory.frame_loader?.requires_source === false &&
+          trajectory.frame_loader.stream_positions)),
+    ),
   )
-  // Indexed trajectories would require a second full parse for an optional overlay. In-memory
-  // trajectories are collected only when trails are enabled, so the default path pays nothing.
+  // Source-dependent indexed trajectories need a second full parse for an optional overlay.
+  // In-memory and source-free streaming trajectories are collected only when trails are enabled.
   $effect(() => {
     const owner = trajectory
     const enabled = show_trajectory_lines
