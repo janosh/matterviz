@@ -410,12 +410,12 @@ describe(`normalize_atom_color_config`, () => {
   const as_serialized = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
   test(`preserves valid JSON-safe configurations and serialized payloads`, () => {
-    const config: ap.SerializableAtomColorConfig = {
+    const config = {
       mode: `property`,
       property_key: `charge`,
       scale: `interpolatePlasma`,
       scale_type: `categorical`,
-    }
+    } as const satisfies ap.AtomColorConfig
     expect(ap.normalize_atom_color_config(config)).toBe(config)
     expect(ap.normalize_atom_color_config(as_serialized(config))).toEqual(config)
   })

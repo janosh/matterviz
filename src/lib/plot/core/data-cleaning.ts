@@ -180,18 +180,14 @@ export function apply_bounds(
   return { y: result, violations, filtered_indices }
 }
 
-export function sync_metadata<M>(
-  metadata: M[] | M | undefined,
-  kept_indices: number[],
-): M[] | M | undefined {
-  if (metadata === undefined) return undefined
-  if (!Array.isArray(metadata)) return metadata // Scalar metadata unchanged
-
-  return kept_indices.map((idx) => metadata[idx])
-}
-
 const filter_by_indices = <T>(arr: readonly T[], kept_indices: number[]): T[] =>
   kept_indices.map((idx) => arr[idx])
+
+export const sync_metadata = <M>(
+  metadata: M[] | M | undefined,
+  kept_indices: number[],
+): M[] | M | undefined =>
+  Array.isArray(metadata) ? filter_by_indices(metadata, kept_indices) : metadata
 
 const index_range = (length: number): number[] => Array.from({ length }, (_, idx) => idx)
 
@@ -249,7 +245,7 @@ export function clean_series<T extends DataSeries>(
   const apply_filter = (kept: number[], removed_count: number) => {
     x_arr = filter_by_indices(x_arr, kept)
     y_arr = filter_by_indices(y_arr, kept)
-    if (Array.isArray(metadata)) metadata = filter_by_indices(metadata, kept)
+    metadata = sync_metadata(metadata, kept)
     if (color_values) color_values = filter_by_indices(color_values, kept)
     if (size_values) size_values = filter_by_indices(size_values, kept)
     quality.points_removed += removed_count

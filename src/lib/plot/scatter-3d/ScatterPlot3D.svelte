@@ -375,6 +375,7 @@
 
 <style>
   div.scatter-3d {
+    --ctrl-btn-top: 5pt;
     --ctrl-btn-default-right: 32px;
     position: relative;
     width: var(--scatter3d-width, 100%);
@@ -425,14 +426,7 @@
     align-items: center;
     gap: 8px;
   }
-  /* Position the pane toggle in top right, next to fullscreen button */
   div.scatter-3d :global(.pane-toggle) {
-    position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
-    right: var(
-      --ctrl-btn-right,
-      var(--fullscreen-btn-offset, var(--ctrl-btn-default-right, 36px))
-    );
     z-index: var(--pane-toggle-z-index, 10);
   }
   /* Hide controls on default, show on hover */

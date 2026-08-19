@@ -211,15 +211,15 @@ async function load_url_content(
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch_url(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-    const { source_filename, wrapper: response_hdf5_wrapper } = response_file_info(resp)
-    if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && response_hdf5_wrapper === `gzip`) {
+    const { source_filename, wrapper } = response_file_info(resp)
+    if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && wrapper === `gzip`) {
       const blob = await resp.blob()
       const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
       const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
       return emit_decompressed_blob(content, source_filename, true)
     }
     if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && is_hdf5_filename(source_filename)) {
-      return emit_hdf5(await resp.blob(), source_filename, response_hdf5_wrapper)
+      return emit_hdf5(await resp.blob(), source_filename, wrapper)
     }
 
     // Decide by the bytes, not the Content-Encoding header. A host serving a stored .gz with
@@ -231,11 +231,7 @@ async function load_url_content(
         const blob = await resp.blob()
         const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
         const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
-        return emit_decompressed_blob(
-          content,
-          source_filename,
-          response_hdf5_wrapper === `gzip`,
-        )
+        return emit_decompressed_blob(content, source_filename, wrapper === `gzip`)
       }
       const buffer = await resp.arrayBuffer()
       if (has_gzip_magic(magic_head(buffer, 2))) {
@@ -258,7 +254,7 @@ async function load_url_content(
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
     if (ext === `h5` || ext === `hdf5`) {
       if (hdf5_as_blob) {
-        return emit_hdf5(await resp.blob(), source_filename, response_hdf5_wrapper)
+        return emit_hdf5(await resp.blob(), source_filename, wrapper)
       }
       const result = await load_binary_traj(resp, `H5`, true)
 
@@ -315,18 +311,14 @@ async function load_url_content(
     if (sniffed) {
       const resp = full_response ?? (await fetch_url(url))
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-      const { source_filename, wrapper: response_hdf5_wrapper } = response_file_info(resp)
+      const { source_filename, wrapper } = response_file_info(resp)
       if (
         hdf5_as_blob &&
         (sniffed === `hdf5` ||
           is_hdf5_filename(source_filename) ||
-          (response_hdf5_wrapper === `gzip` && sniffed !== `gzip`))
+          (wrapper === `gzip` && sniffed !== `gzip`))
       ) {
-        return emit_hdf5(
-          full_blob ?? (await resp.blob()),
-          source_filename,
-          response_hdf5_wrapper,
-        )
+        return emit_hdf5(full_blob ?? (await resp.blob()), source_filename, wrapper)
       }
       if (hdf5_as_blob && sniffed === `gzip`) {
         const compressed_blob = full_blob ?? (await resp.blob())
@@ -346,13 +338,9 @@ async function load_url_content(
       return emit_loaded(buffer, source_filename)
     }
     if (full_response && full_blob) {
-      const { source_filename, wrapper: response_hdf5_wrapper } =
-        response_file_info(full_response)
-      if (
-        hdf5_as_blob &&
-        (response_hdf5_wrapper === `gzip` || is_hdf5_filename(source_filename))
-      ) {
-        return emit_hdf5(full_blob, source_filename, response_hdf5_wrapper)
+      const { source_filename, wrapper } = response_file_info(full_response)
+      if (hdf5_as_blob && (wrapper === `gzip` || is_hdf5_filename(source_filename))) {
+        return emit_hdf5(full_blob, source_filename, wrapper)
       }
       return emit_loaded(await full_blob.text(), source_filename)
     }
@@ -360,27 +348,18 @@ async function load_url_content(
 
   const resp = await fetch_url(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-  const source_filename = extract_filename(resp.headers, url_basename)
   if (hdf5_as_blob && !is_known_text_file(url_basename)) {
-    const { wrapper: response_hdf5_wrapper } = response_file_info(resp)
+    const { source_filename, wrapper } = response_file_info(resp)
     const blob = await resp.blob()
     const blob_head = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
     if (has_gzip_magic(blob_head)) {
       const decompressed = await decompress_blob(blob)
-      return emit_decompressed_blob(
-        decompressed,
-        source_filename,
-        response_hdf5_wrapper === `gzip`,
-      )
+      return emit_decompressed_blob(decompressed, source_filename, wrapper === `gzip`)
     }
-    if (
-      response_hdf5_wrapper === `gzip` ||
-      is_hdf5_filename(source_filename) ||
-      has_hdf5_magic(blob_head)
-    ) {
-      return emit_hdf5(blob, source_filename, response_hdf5_wrapper)
+    if (wrapper === `gzip` || is_hdf5_filename(source_filename) || has_hdf5_magic(blob_head)) {
+      return emit_hdf5(blob, source_filename, wrapper)
     }
     return emit_loaded(await blob.text(), source_filename)
   }
-  return emit_loaded(await resp.text(), source_filename)
+  return emit_loaded(await resp.text(), extract_filename(resp.headers, url_basename))
 }

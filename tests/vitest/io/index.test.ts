@@ -30,69 +30,53 @@ vi.mock(`$lib/io/decompress`, async (import_original) => {
 describe(`load_trajectory_from_url`, () => {
   beforeEach(() => vi.mocked(fetch).mockReset())
 
-  test(`loads recognized HDF5 URLs as one Blob without materializing an ArrayBuffer`, async () => {
-    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
-    const blob = vi.fn().mockResolvedValue(source_blob)
-    const array_buffer = vi.fn()
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
+  test.each([
+    {
+      source: `direct URL`,
+      url: `https://example.com/run.h5`,
       headers: new Headers(),
-      blob,
-      arrayBuffer: array_buffer,
-    } as unknown as Response)
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/run.h5`, callback)
-
-    expect(fetch).toHaveBeenCalledOnce()
-    expect(blob).toHaveBeenCalledOnce()
-    expect(array_buffer).not.toHaveBeenCalled()
-    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
       source_filename: `run.h5`,
-      source_url: `https://example.com/run.h5`,
-    })
-  })
-
-  test(`preserves a response filename without an extension for direct HDF5 URLs`, async () => {
-    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
+      fetch_count: 1,
+    },
+    {
+      source: `direct URL with a generic response filename`,
+      url: `https://example.com/run.h5`,
       headers: new Headers({
         'content-disposition': `attachment; filename="download"`,
       }),
-      blob: vi.fn().mockResolvedValue(source_blob),
-    } as unknown as Response)
-    const callback = vi.fn()
-
-    await load_trajectory_from_url(`https://example.com/run.h5`, callback)
-
-    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
       source_filename: `download`,
-      source_url: `https://example.com/run.h5`,
-    })
-  })
-
-  test(`honors an HDF5 Content-Disposition name on a generic binary URL`, async () => {
+      fetch_count: 1,
+    },
+    {
+      source: `generic binary URL with an HDF5 response filename`,
+      url: `https://example.com/download.bin`,
+      headers: new Headers({
+        'content-disposition': `attachment; filename="run.h5"`,
+      }),
+      source_filename: `run.h5`,
+      fetch_count: 2,
+    },
+  ])(`loads HDF5 from a $source as one Blob`, async (test_case) => {
+    const { url, headers, source_filename, fetch_count } = test_case
     const source_blob = new Blob([new Uint8Array([1, 2, 3])])
     const blob = vi.fn().mockResolvedValue(source_blob)
     const array_buffer = vi.fn()
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
-      headers: new Headers({
-        'content-disposition': `attachment; filename="run.h5"`,
-      }),
+      headers,
       blob,
       arrayBuffer: array_buffer,
     } as unknown as Response)
     const callback = vi.fn()
 
-    await load_trajectory_from_url(`https://example.com/download.bin`, callback)
+    await load_trajectory_from_url(url, callback)
 
+    expect(fetch).toHaveBeenCalledTimes(fetch_count)
     expect(blob).toHaveBeenCalledOnce()
     expect(array_buffer).not.toHaveBeenCalled()
     expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
-      source_filename: `run.h5`,
-      source_url: `https://example.com/download.bin`,
+      source_filename,
+      source_url: url,
     })
   })
 

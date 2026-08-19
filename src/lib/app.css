@@ -188,8 +188,7 @@ body.fullscreen .draggable-pane {
 
 /* App-shell styles: page layout, typography, headings, navigation.
    These are only needed by the standalone matterviz demo site.
-   When embedded in a host framework (Mantine, React, etc.),
-   the host's unlayered CSS automatically takes precedence. */
+   When embedded in a host framework, its unlayered CSS takes precedence. */
 @layer matterviz-shell {
   /* Targeted theme transitions for performance */
   :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),

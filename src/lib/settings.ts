@@ -123,9 +123,12 @@ type DisplayConfigType = {
   y_zero_line: SettingType<boolean>
 }
 
-type ColorStrokeStyleType = {
+type FillStyleType = {
   color: SettingType<string>
   opacity: SettingType<number>
+}
+
+type ColorStrokeStyleType = FillStyleType & {
   stroke_width: SettingType<number>
   stroke_color: SettingType<string>
 }
@@ -133,39 +136,27 @@ type ColorStrokeStyleType = {
 type MarkStyleType = ColorStrokeStyleType & { stroke_opacity: SettingType<number> }
 type PointStyleType = MarkStyleType & { size: SettingType<number> }
 
-type LineStyleType = {
-  width: SettingType<number>
-  color: SettingType<string>
+type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+
+type LineStyleType = SimpleLineStyleType & {
   opacity: SettingType<number>
   dash: SettingType<string>
 }
 
-type SimpleBarStyleType = {
-  color: SettingType<string>
-  opacity: SettingType<number>
+type SimpleBarStyleType = FillStyleType & {
   border_radius: SettingType<number>
 }
 
-type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
-
 type BoxStyleType = ColorStrokeStyleType & { border_radius: SettingType<number> }
 
-type BoxWhiskerStyleType = {
-  width: SettingType<number>
-  color: SettingType<string>
-  cap_fraction: SettingType<number>
-}
-
-type BoxOutlierStyleType = {
-  radius: SettingType<number>
-  opacity: SettingType<number>
-  stroke_width: SettingType<number>
-}
+type BoxWhiskerStyleType = SimpleLineStyleType & { cap_fraction: SettingType<number> }
 
 type BoxViolinStyleType = {
   opacity: SettingType<number>
   stroke_width: SettingType<number>
 }
+
+type BoxOutlierStyleType = BoxViolinStyleType & { radius: SettingType<number> }
 
 type ConvexHullCommonType = {
   camera_zoom: SettingType<number>
