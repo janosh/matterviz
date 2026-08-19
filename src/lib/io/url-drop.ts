@@ -4,6 +4,7 @@ import {
   decompress_data_blob,
   hdf5_compression_format,
   is_hdf5_filename,
+  type CompressionFormat,
 } from './decompress'
 import {
   BINARY_EXTENSIONS,
@@ -32,6 +33,27 @@ export const basename_from_url = (url: string): string => {
 
 const hdf5_filename = (filename: string, url_basename: string): string =>
   [filename, url_basename].find(is_hdf5_filename) ?? `${filename || url_basename}.h5`
+
+const assert_supported_hdf5_wrapper = (
+  wrapper: CompressionFormat | null,
+  hdf5_as_blob: boolean,
+): void => {
+  if (hdf5_as_blob && wrapper && wrapper !== `gzip`) {
+    throw new Error(
+      `Compressed HDF5 ${wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+    )
+  }
+}
+
+const hdf5_output_filename = (
+  wrapper: CompressionFormat | null,
+  source_filename: string,
+  url_basename: string,
+): string =>
+  hdf5_filename(
+    wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
+    wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
+  )
 
 const sniff_binary_kind = (bytes: Uint8Array): `gzip` | `hdf5` | `binary` | null =>
   has_gzip_magic(bytes)
@@ -152,11 +174,7 @@ async function load_url_content(
   const url_basename = basename_from_url(url)
   const ext = ext_of(url_basename)
   const hdf5_wrapper = hdf5_compression_format(url_basename)
-  if (hdf5_as_blob && hdf5_wrapper && hdf5_wrapper !== `gzip`) {
-    throw new Error(
-      `Compressed HDF5 ${hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-    )
-  }
+  assert_supported_hdf5_wrapper(hdf5_wrapper, hdf5_as_blob)
   const emit_loaded = (
     content: string | ArrayBuffer | Blob,
     filename: string,
@@ -166,27 +184,45 @@ async function load_url_content(
       source_filename,
       source_url: url,
     } satisfies FileLoadMeta)
+  const response_file_info = (response: Response) => {
+    const source_filename = extract_filename(response.headers, url_basename)
+    const wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
+    assert_supported_hdf5_wrapper(wrapper, hdf5_as_blob)
+    return { source_filename, wrapper }
+  }
+  const emit_decompressed_blob = async (
+    content: Blob,
+    source_filename: string,
+    wrapper_identifies_hdf5: boolean,
+  ): Promise<void> => {
+    if (
+      wrapper_identifies_hdf5 ||
+      has_hdf5_magic(new Uint8Array(await content.slice(0, 8).arrayBuffer()))
+    ) {
+      return emit_loaded(
+        content,
+        hdf5_output_filename(`gzip`, source_filename, url_basename),
+        source_filename,
+      )
+    }
+    const buffer = await content.arrayBuffer()
+    return emit_loaded(
+      has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
+      strip_gz_ext(source_filename),
+      source_filename,
+    )
+  }
 
   if (BINARY_EXTENSIONS.has(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
     const resp = await fetch_url(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-    const source_filename = extract_filename(resp.headers, url_basename)
-    const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
-    if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
-      throw new Error(
-        `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-      )
-    }
+    const { source_filename, wrapper: response_hdf5_wrapper } = response_file_info(resp)
     if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && response_hdf5_wrapper === `gzip`) {
       const blob = await resp.blob()
       const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
       const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
-      return emit_loaded(
-        content,
-        hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
-        source_filename,
-      )
+      return emit_decompressed_blob(content, source_filename, true)
     }
     if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && is_hdf5_filename(source_filename)) {
       return emit_loaded(await resp.blob(), hdf5_filename(source_filename, url_basename))
@@ -201,20 +237,10 @@ async function load_url_content(
         const blob = await resp.blob()
         const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
         const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
-        const content_head = new Uint8Array(await content.slice(0, 8).arrayBuffer())
-        if (response_hdf5_wrapper === `gzip` || has_hdf5_magic(content_head)) {
-          return emit_loaded(
-            content,
-            hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
-            source_filename,
-          )
-        }
-        const filename = strip_gz_ext(source_filename)
-        const buffer = await content.arrayBuffer()
-        return emit_loaded(
-          has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
-          filename,
+        return emit_decompressed_blob(
+          content,
           source_filename,
+          response_hdf5_wrapper === `gzip`,
         )
       }
       const buffer = await resp.arrayBuffer()
@@ -295,13 +321,7 @@ async function load_url_content(
     if (sniffed) {
       const resp = full_response ?? (await fetch_url(url))
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-      const source_filename = extract_filename(resp.headers, url_basename)
-      const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
-      if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
-        throw new Error(
-          `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-        )
-      }
+      const { source_filename, wrapper: response_hdf5_wrapper } = response_file_info(resp)
       if (
         hdf5_as_blob &&
         (sniffed === `hdf5` ||
@@ -310,33 +330,14 @@ async function load_url_content(
       ) {
         return emit_loaded(
           full_blob ?? (await resp.blob()),
-          hdf5_filename(
-            response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
-            response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
-          ),
+          hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
           source_filename,
         )
       }
       if (hdf5_as_blob && sniffed === `gzip`) {
         const compressed_blob = full_blob ?? (await resp.blob())
         const decompressed_blob = await decompress_blob(compressed_blob)
-        const decompressed_head = new Uint8Array(
-          await decompressed_blob.slice(0, 8).arrayBuffer(),
-        )
-        if (has_hdf5_magic(decompressed_head)) {
-          return emit_loaded(
-            decompressed_blob,
-            hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
-            source_filename,
-          )
-        }
-        const filename = strip_gz_ext(source_filename)
-        const buffer = await decompressed_blob.arrayBuffer()
-        return emit_loaded(
-          has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
-          filename,
-          source_filename,
-        )
+        return emit_decompressed_blob(decompressed_blob, source_filename, false)
       }
       const buffer = full_blob ? await full_blob.arrayBuffer() : await resp.arrayBuffer()
       // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
@@ -351,23 +352,15 @@ async function load_url_content(
       return emit_loaded(buffer, source_filename)
     }
     if (full_response && full_blob) {
-      const source_filename = extract_filename(full_response.headers, url_basename)
-      const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
-      if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
-        throw new Error(
-          `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-        )
-      }
+      const { source_filename, wrapper: response_hdf5_wrapper } =
+        response_file_info(full_response)
       if (
         hdf5_as_blob &&
         (response_hdf5_wrapper === `gzip` || is_hdf5_filename(source_filename))
       ) {
         return emit_loaded(
           full_blob,
-          hdf5_filename(
-            response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
-            response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
-          ),
+          hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
           source_filename,
         )
       }
@@ -379,29 +372,15 @@ async function load_url_content(
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
   const source_filename = extract_filename(resp.headers, url_basename)
   if (hdf5_as_blob && !is_known_text_file(url_basename)) {
-    const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
-    if (response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
-      throw new Error(
-        `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-      )
-    }
+    const { wrapper: response_hdf5_wrapper } = response_file_info(resp)
     const blob = await resp.blob()
     const blob_head = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
     if (has_gzip_magic(blob_head)) {
       const decompressed = await decompress_blob(blob)
-      const decompressed_head = new Uint8Array(await decompressed.slice(0, 8).arrayBuffer())
-      if (response_hdf5_wrapper === `gzip` || has_hdf5_magic(decompressed_head)) {
-        return emit_loaded(
-          decompressed,
-          hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
-          source_filename,
-        )
-      }
-      const buffer = await decompressed.arrayBuffer()
-      return emit_loaded(
-        has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
-        strip_gz_ext(source_filename),
+      return emit_decompressed_blob(
+        decompressed,
         source_filename,
+        response_hdf5_wrapper === `gzip`,
       )
     }
     if (
@@ -411,10 +390,7 @@ async function load_url_content(
     ) {
       return emit_loaded(
         blob,
-        hdf5_filename(
-          response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
-          response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
-        ),
+        hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
         source_filename,
       )
     }
