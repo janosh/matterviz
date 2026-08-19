@@ -7,7 +7,7 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
-  import { controls_toggle_with_offset, type Sides } from '$lib/plot/core/layout'
+  import type { Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -317,7 +317,7 @@
       <ScatterPlot3DControls
         bind:show_controls
         bind:controls_open
-        toggle_props={controls_toggle_with_offset(controls_toggle_props, 32)}
+        toggle_props={controls_toggle_props}
         pane_props={{
           ...controls_pane_props,
           // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
@@ -375,6 +375,7 @@
 
 <style>
   div.scatter-3d {
+    --ctrl-btn-default-right: 32px;
     position: relative;
     width: var(--scatter3d-width, 100%);
     height: var(--scatter3d-height, auto);
@@ -428,7 +429,10 @@
   div.scatter-3d :global(.pane-toggle) {
     position: absolute;
     top: var(--ctrl-btn-top, 5pt);
-    right: var(--ctrl-btn-right, 36px);
+    right: var(
+      --ctrl-btn-right,
+      var(--fullscreen-btn-offset, var(--ctrl-btn-default-right, 36px))
+    );
     z-index: var(--pane-toggle-z-index, 10);
   }
   /* Hide controls on default, show on hover */

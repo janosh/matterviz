@@ -50,14 +50,9 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 const SHOW_BONDS_ENUM = Object.fromEntries(
   SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
 ) as Readonly<Record<ShowBonds, string>>
-const color_scheme_enum = () => ({
-  Vesta: `Vesta`,
-  Jmol: `Jmol`,
-  Alloy: `Alloy`,
-  Pastel: `Pastel`,
-  Muted: `Muted`,
-  'Dark Mode': `Dark Mode`,
-})
+const self_labeled_enum = (values: readonly string[]): Readonly<Record<string, string>> =>
+  Object.fromEntries(values.map((value) => [value, value]))
+const COLOR_SCHEME_NAMES = [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
 
 // Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
 // resolve_legend_visibility rule so single-entry plots don't grow a pointless legend.
@@ -136,7 +131,6 @@ type ColorStrokeStyleType = {
 }
 
 type MarkStyleType = ColorStrokeStyleType & { stroke_opacity: SettingType<number> }
-type BarStyleType = MarkStyleType
 type PointStyleType = MarkStyleType & { size: SettingType<number> }
 
 type LineStyleType = {
@@ -161,8 +155,6 @@ type BoxWhiskerStyleType = {
   color: SettingType<string>
   cap_fraction: SettingType<number>
 }
-
-type BoxLineStyleType = SimpleLineStyleType
 
 type BoxOutlierStyleType = {
   radius: SettingType<number>
@@ -403,7 +395,7 @@ export interface SettingsConfig {
     mode: SettingType<`overlay` | `single`>
     show_legend: SettingType<LegendVisibilityMode>
     bin_count: SettingType<number>
-    bar: BarStyleType
+    bar: MarkStyleType
     display: DisplayConfigType
   }
 
@@ -427,7 +419,7 @@ export interface SettingsConfig {
     violin_box_width: SettingType<number>
     box: BoxStyleType
     whisker: BoxWhiskerStyleType
-    median: BoxLineStyleType
+    median: SimpleLineStyleType
     outlier: BoxOutlierStyleType
     violin: BoxViolinStyleType
     display: DisplayConfigType
@@ -633,7 +625,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   color_scheme: {
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
-    enum: color_scheme_enum(),
+    enum: self_labeled_enum(COLOR_SCHEME_NAMES),
   },
   background_color: {
     value: `#000000`,
@@ -1467,7 +1459,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     color_scheme: {
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
-      enum: color_scheme_enum(),
+      enum: self_labeled_enum(COLOR_SCHEME_NAMES),
     },
   },
 
@@ -1476,9 +1468,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     symbol_type: {
       value: `Circle`,
       description: `Default symbol type for scatter plots`,
-      enum: Object.fromEntries(symbol_names.map((name) => [name, name])) as Readonly<
-        Record<D3SymbolName, string>
-      >,
+      enum: self_labeled_enum(symbol_names),
     },
     show_legend: legend_visibility_setting(`scatter`),
     show_points: { value: true, description: `Show points in scatter plots` },

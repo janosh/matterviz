@@ -58,7 +58,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
   import { resolve_plot_display, sync_category_zero_display } from '$lib/plot/core/display'
-  import { AXIS_TITLE_OFFSET, controls_toggle_with_offset } from '$lib/plot/core/layout'
+  import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '$lib/plot/core/svg'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -1122,7 +1122,7 @@
 
     {#if show_controls}
       <BarPlotControls
-        toggle_props={controls_toggle_with_offset(controls_toggle_props)}
+        toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open

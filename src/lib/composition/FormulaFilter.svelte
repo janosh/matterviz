@@ -988,9 +988,7 @@
       }
     }
   }
-  .icon-btn,
-  .history-remove,
-  .history-pin {
+  :is(.icon-btn, .history-remove, .history-pin) {
     display: flex;
     align-items: center;
     justify-content: center;

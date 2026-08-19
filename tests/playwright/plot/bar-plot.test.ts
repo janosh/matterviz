@@ -225,6 +225,9 @@ test.describe(`BarPlot Component Tests`, () => {
     // Open controls via toggle button rendered by DraggablePane
     const toggle = section.locator(`.pane-toggle`)
     await expect(toggle).toBeVisible()
+    await expect(toggle).toHaveCSS(`right`, `77px`)
+    await toggle.evaluate((element) => element.style.setProperty(`--ctrl-btn-right`, `79px`))
+    await expect(toggle).toHaveCSS(`right`, `79px`)
     await toggle.click()
 
     const pane = section.locator(`.draggable-pane`)

@@ -225,6 +225,7 @@
 
 <style>
   .plot-frame {
+    --ctrl-btn-default-right: 30px;
     position: relative;
     width: var(--plot-frame-width);
     height: var(--plot-frame-height);

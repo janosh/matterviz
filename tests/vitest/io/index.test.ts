@@ -53,6 +53,25 @@ describe(`load_trajectory_from_url`, () => {
     })
   })
 
+  test(`preserves a response filename without an extension for direct HDF5 URLs`, async () => {
+    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers({
+        'content-disposition': `attachment; filename="download"`,
+      }),
+      blob: vi.fn().mockResolvedValue(source_blob),
+    } as unknown as Response)
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/run.h5`, callback)
+
+    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
+      source_filename: `download`,
+      source_url: `https://example.com/run.h5`,
+    })
+  })
+
   test(`honors an HDF5 Content-Disposition name on a generic binary URL`, async () => {
     const source_blob = new Blob([new Uint8Array([1, 2, 3])])
     const blob = vi.fn().mockResolvedValue(source_blob)

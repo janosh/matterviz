@@ -34,27 +34,6 @@ export const basename_from_url = (url: string): string => {
 const hdf5_filename = (filename: string, url_basename: string): string =>
   [filename, url_basename].find(is_hdf5_filename) ?? `${filename || url_basename}.h5`
 
-const assert_supported_hdf5_wrapper = (
-  wrapper: CompressionFormat | null,
-  hdf5_as_blob: boolean,
-): void => {
-  if (hdf5_as_blob && wrapper && wrapper !== `gzip`) {
-    throw new Error(
-      `Compressed HDF5 ${wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
-    )
-  }
-}
-
-const hdf5_output_filename = (
-  wrapper: CompressionFormat | null,
-  source_filename: string,
-  url_basename: string,
-): string =>
-  hdf5_filename(
-    wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
-    wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
-  )
-
 const sniff_binary_kind = (bytes: Uint8Array): `gzip` | `hdf5` | `binary` | null =>
   has_gzip_magic(bytes)
     ? `gzip`
@@ -174,7 +153,13 @@ async function load_url_content(
   const url_basename = basename_from_url(url)
   const ext = ext_of(url_basename)
   const hdf5_wrapper = hdf5_compression_format(url_basename)
-  assert_supported_hdf5_wrapper(hdf5_wrapper, hdf5_as_blob)
+  const assert_supported_hdf5_wrapper = (wrapper: CompressionFormat | null): void => {
+    if (!hdf5_as_blob || !wrapper || wrapper === `gzip`) return
+    throw new Error(
+      `Compressed HDF5 ${wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+    )
+  }
+  assert_supported_hdf5_wrapper(hdf5_wrapper)
   const emit_loaded = (
     content: string | ArrayBuffer | Blob,
     filename: string,
@@ -184,10 +169,23 @@ async function load_url_content(
       source_filename,
       source_url: url,
     } satisfies FileLoadMeta)
+  const emit_hdf5 = (
+    content: string | ArrayBuffer | Blob,
+    source_filename: string,
+    wrapper: CompressionFormat | null,
+  ) =>
+    emit_loaded(
+      content,
+      hdf5_filename(
+        wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
+        wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
+      ),
+      source_filename,
+    )
   const response_file_info = (response: Response) => {
     const source_filename = extract_filename(response.headers, url_basename)
     const wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
-    assert_supported_hdf5_wrapper(wrapper, hdf5_as_blob)
+    assert_supported_hdf5_wrapper(wrapper)
     return { source_filename, wrapper }
   }
   const emit_decompressed_blob = async (
@@ -199,11 +197,7 @@ async function load_url_content(
       wrapper_identifies_hdf5 ||
       has_hdf5_magic(new Uint8Array(await content.slice(0, 8).arrayBuffer()))
     ) {
-      return emit_loaded(
-        content,
-        hdf5_output_filename(`gzip`, source_filename, url_basename),
-        source_filename,
-      )
+      return emit_hdf5(content, source_filename, `gzip`)
     }
     const buffer = await content.arrayBuffer()
     return emit_loaded(
@@ -225,7 +219,7 @@ async function load_url_content(
       return emit_decompressed_blob(content, source_filename, true)
     }
     if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && is_hdf5_filename(source_filename)) {
-      return emit_loaded(await resp.blob(), hdf5_filename(source_filename, url_basename))
+      return emit_hdf5(await resp.blob(), source_filename, response_hdf5_wrapper)
     }
 
     // Decide by the bytes, not the Content-Encoding header. A host serving a stored .gz with
@@ -264,7 +258,7 @@ async function load_url_content(
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
     if (ext === `h5` || ext === `hdf5`) {
       if (hdf5_as_blob) {
-        return emit_loaded(await resp.blob(), hdf5_filename(source_filename, url_basename))
+        return emit_hdf5(await resp.blob(), source_filename, response_hdf5_wrapper)
       }
       const result = await load_binary_traj(resp, `H5`, true)
 
@@ -328,10 +322,10 @@ async function load_url_content(
           is_hdf5_filename(source_filename) ||
           (response_hdf5_wrapper === `gzip` && sniffed !== `gzip`))
       ) {
-        return emit_loaded(
+        return emit_hdf5(
           full_blob ?? (await resp.blob()),
-          hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
           source_filename,
+          response_hdf5_wrapper,
         )
       }
       if (hdf5_as_blob && sniffed === `gzip`) {
@@ -358,11 +352,7 @@ async function load_url_content(
         hdf5_as_blob &&
         (response_hdf5_wrapper === `gzip` || is_hdf5_filename(source_filename))
       ) {
-        return emit_loaded(
-          full_blob,
-          hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
-          source_filename,
-        )
+        return emit_hdf5(full_blob, source_filename, response_hdf5_wrapper)
       }
       return emit_loaded(await full_blob.text(), source_filename)
     }
@@ -388,11 +378,7 @@ async function load_url_content(
       is_hdf5_filename(source_filename) ||
       has_hdf5_magic(blob_head)
     ) {
-      return emit_loaded(
-        blob,
-        hdf5_output_filename(response_hdf5_wrapper, source_filename, url_basename),
-        source_filename,
-      )
+      return emit_hdf5(blob, source_filename, response_hdf5_wrapper)
     }
     return emit_loaded(await blob.text(), source_filename)
   }

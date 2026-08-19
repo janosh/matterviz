@@ -7,7 +7,6 @@ import {
 } from '$lib/plot/core/text-metrics'
 import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
-import type { PaneToggleProps } from '$lib/overlays'
 
 export {
   clear_tick_metrics_cache,
@@ -23,16 +22,6 @@ export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 export const sides_equal = (left: Required<Sides>, right: Required<Sides>): boolean =>
   left.t === right.t && left.b === right.b && left.l === right.l && left.r === right.r
-
-export const controls_toggle_with_offset = (
-  toggle_props: PaneToggleProps,
-  offset_px = 30,
-): NonNullable<PaneToggleProps> => ({
-  ...toggle_props,
-  style: `--ctrl-btn-right: var(--fullscreen-btn-offset, ${offset_px}px); ${
-    toggle_props?.style ?? ``
-  }`,
-})
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20

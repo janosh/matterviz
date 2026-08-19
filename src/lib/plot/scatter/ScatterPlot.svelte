@@ -98,7 +98,6 @@
   import type { Rect, Sides } from '$lib/plot/core/layout'
   import {
     AXIS_TITLE_OFFSET,
-    controls_toggle_with_offset,
     element_position_for_footprint,
     full_footprint_or,
     stride_sample,
@@ -1840,7 +1839,7 @@
     <!-- Control Pane -->
     {#if show_controls}
       <ScatterPlotControls
-        toggle_props={controls_toggle_with_offset(controls_toggle_props)}
+        toggle_props={controls_toggle_props}
         pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open

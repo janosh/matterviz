@@ -236,16 +236,12 @@
   $effect(() => observe_canvas_presence(wrapper, (val) => (has_canvas = val)))
 </script>
 
-{#snippet download_button(
-  format: StructureFormat | TableFormat,
-  hint: string,
-  aria_label: string,
-)}
+{#snippet download_button(format: StructureFormat | TableFormat, hint: string, label: string)}
   <button
     type="button"
     onclick={() => export_data(format)}
     disabled={data_export_disabled}
-    aria-label={aria_label}
+    aria-label="Download {label}"
     {@attach tooltip({ content: hint })}
   >
     {#if data_export_format === format && data_export_progress > 0}
@@ -291,7 +287,7 @@
     {#each [{ label: `extXYZ`, format: `extxyz`, hint: `All frames ${start_frame}–${end_frame} as one extended XYZ file` }, { label: `POSCAR ZIP`, format: `poscar`, hint: `One numbered POSCAR per frame, zipped` }] as const as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
         {label}
-        {@render download_button(format, hint, `Download ${label}`)}
+        {@render download_button(format, hint, label)}
       </div>
     {/each}
   </div>
@@ -302,7 +298,7 @@
     {#each [{ label: `CSV`, format: `csv`, hint: `One row per frame over ${start_frame}–${end_frame}: frame index, MD step, then every extracted property with its unit in the header` }, { label: `JSON`, format: `json`, hint: `Same per-frame numbers as the CSV, with a separate units map` }] as const as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
         {label}
-        {@render download_button(format, hint, `Download ${label}`)}
+        {@render download_button(format, hint, label)}
         <button
           type="button"
           onclick={() => copy_table(format)}
