@@ -372,8 +372,7 @@
           ]
         },
         "ignore": [
-          "extensions/anywidget/**",
-          "extensions/dash/**"
+          "extensions/anywidget/**"
         ]
       },
       "extensions/vscode": {

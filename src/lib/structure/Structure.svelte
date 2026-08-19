@@ -412,7 +412,7 @@
       : ``,
   )
 
-  // Dash and other JavaScript callers can bypass the TypeScript union with partial JSON.
+  // JavaScript callers can bypass the TypeScript union with partial JSON.
   // Normalize once before the first render and again before later prop updates are applied.
   atom_color_config = normalize_atom_color_config(atom_color_config)
   $effect.pre(() => {

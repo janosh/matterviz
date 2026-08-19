@@ -48,14 +48,6 @@
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
     dragover?: boolean
-    // Redundant for TS (the intersection below already supplies them) but load-bearing for
-    // the Dash wrapper generator, which reads this literal and drops anything not in it
-    x_axis?: ComponentProps<typeof ScatterPlot>[`x_axis`]
-    y_axis?: ComponentProps<typeof ScatterPlot>[`y_axis`]
-    show_controls?: ComponentProps<typeof ScatterPlot>[`show_controls`]
-    controls_open?: ComponentProps<typeof ScatterPlot>[`controls_open`]
-    controls_toggle_props?: ComponentProps<typeof ScatterPlot>[`controls_toggle_props`]
-    controls_pane_props?: ComponentProps<typeof ScatterPlot>[`controls_pane_props`]
   } & ComponentProps<typeof ScatterPlot> = $props()
 
   const handle_drop = create_structure_drop_handler({

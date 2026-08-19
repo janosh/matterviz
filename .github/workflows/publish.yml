@@ -77,11 +77,6 @@ jobs:
           assert_version extensions/jupyterlab/pyproject.toml \
             "$(py_version extensions/jupyterlab/pyproject.toml)" "$version"
 
-          # Dash ships separately, but its npm and PyPI halves must stay aligned.
-          assert_version "extensions/dash package.json vs pyproject.toml" \
-            "$(node -p "require('./extensions/dash/package.json').version")" \
-            "$(py_version extensions/dash/pyproject.toml)"
-
           tag_ref="refs/tags/v$version"
           tag_sha=$(git rev-list -n 1 "$tag_ref" 2>/dev/null || true)
           if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
