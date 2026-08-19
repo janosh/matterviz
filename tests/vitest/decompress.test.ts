@@ -1,9 +1,10 @@
 import {
   decompress_data,
   decompress_file,
+  decompress_trajectory_file,
   detect_compression_format,
 } from '$lib/io/decompress'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // Compress bytes with the platform CompressionStream for round-trip tests
 const compress = async (
@@ -18,6 +19,8 @@ const compress = async (
   })
   return new Response(stream.pipeThrough(new CompressionStream(format))).arrayBuffer()
 }
+
+const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
 
 describe(`decompress utility functions`, () => {
   describe(`detect_compression_format`, () => {
@@ -83,6 +86,46 @@ describe(`decompress utility functions`, () => {
   // decompress_file returns string | ArrayBuffer: text decodes to a string, binary payloads
   // (by extension or magic bytes) stay ArrayBuffer so a lossy UTF-8 decode can't corrupt them
   describe(`decompress_file`, () => {
+    test.each([
+      [`named`, `trajectory.h5`, `trajectory.h5`],
+      [`extensionless`, `download`, `download.h5`],
+    ])(`keeps a %s HDF5 File Blob-backed`, async (_label, filename, expected_filename) => {
+      const file = new File([hdf5_signature], filename)
+      const array_buffer = vi.spyOn(file, `arrayBuffer`)
+      expect(await decompress_trajectory_file(file)).toEqual({
+        content: file,
+        filename: expected_filename,
+      })
+      expect(array_buffer).not.toHaveBeenCalled()
+    })
+
+    test.each([
+      [`named`, `trajectory.h5.gz`, `trajectory.h5`],
+      [`generically named`, `download.gz`, `download.h5`],
+    ])(
+      `decompresses a %s HDF5 gzip File into one Blob`,
+      async (_label, filename, expected_filename) => {
+        const bytes = new Uint8Array([...hdf5_signature, 1, 2])
+        const file = new File([await compress(bytes)], filename)
+        const array_buffer = vi.spyOn(file, `arrayBuffer`)
+        const result = await decompress_trajectory_file(file)
+
+        expect(result.filename).toBe(expected_filename)
+        expect(result.content).toBeInstanceOf(Blob)
+        expect(new Uint8Array(await (result.content as Blob).arrayBuffer())).toEqual(bytes)
+        expect(array_buffer).not.toHaveBeenCalled()
+      },
+    )
+
+    test.each([
+      [`zip`, `ZIP`],
+      [`deflate`, `DEFLATE`],
+    ])(`rejects HDF5 %s wrappers`, async (extension, format) => {
+      await expect(
+        decompress_trajectory_file(new File([`bytes`], `trajectory.h5.${extension}`)),
+      ).rejects.toThrow(`Compressed HDF5 ${format} files are not supported`)
+    })
+
     test.each([`structure.xyz`, `config.json`, `POSCAR`, `notes.md`, `greeting.txt`])(
       `decodes text file %s to a string`,
       async (filename) => {

@@ -1,10 +1,10 @@
 import { to_error } from '$lib/utils'
-import type { FileLoadMeta } from './types'
+import type { FileLoadMeta, FileLoadCallback } from './types'
 import { basename_from_url, load_from_url } from './url-drop'
 
 // Everything an `on_load` callback needs to commit a fetched payload safely.
-export interface DataUrlLoadContext<Value> {
-  content: string | ArrayBuffer
+export interface DataUrlLoadContext<Value, Content = string | ArrayBuffer> {
+  content: Content
   filename: string
   metadata: FileLoadMeta
   // False once a newer request (or the effect teardown) has superseded this one. Must be
@@ -17,7 +17,7 @@ export interface DataUrlLoadContext<Value> {
   mark_owned: (value?: Value) => void
 }
 
-export interface DataUrlRequest<Value> {
+export interface DataUrlRequest<Value, Content = string | ArrayBuffer> {
   url: string | undefined
   // The value the component currently holds, whatever its source. When it is not the one
   // this loader produced, the caller owns it and the URL is left alone. Omit to skip the
@@ -28,16 +28,16 @@ export interface DataUrlRequest<Value> {
   set_loading: (loading: boolean) => void
   clear_error: () => void
   // Awaited before loading is cleared, so a streaming parse keeps the spinner up
-  on_load: (ctx: DataUrlLoadContext<Value>) => unknown
+  on_load: (ctx: DataUrlLoadContext<Value, Content>) => unknown
   // Transport failures only. Parse failures belong to on_load, which owns their wording
   // and decides whether to mark_owned.
   on_error: (error: Error, filename: string) => void
 }
 
-export interface DataUrlLoader<Value> {
+export interface DataUrlLoader<Value, Content = string | ArrayBuffer> {
   // Run inside an $effect and return its result as the teardown, so a URL change,
   // an incoming caller value or unmount invalidates whatever is in flight.
-  request: (req: DataUrlRequest<Value>) => () => void
+  request: (req: DataUrlRequest<Value, Content>) => () => void
   // URL whose payload is currently loaded, if any. Plain state, not reactive.
   readonly loaded_url: string | undefined
   // Value this loader produced from `loaded_url`, if any. Plain state, not reactive.
@@ -52,12 +52,32 @@ const noop = () => {}
 // Race-safe loader for a `data_url` prop, shared by the structure, trajectory, Brillouin
 // zone and Fermi surface viewers. A monotonic id makes stale completions no-ops, and the
 // value last produced from a URL is remembered so a caller-supplied one takes precedence.
-export function create_data_url_loader<Value>(): DataUrlLoader<Value> {
+type UrlLoader<Content> = (
+  url: string,
+  callback: (
+    content: Content,
+    filename: string,
+    metadata: FileLoadMeta,
+  ) => Promise<void> | void,
+  signal?: AbortSignal,
+) => Promise<void>
+
+export function create_data_url_loader<Value>(): DataUrlLoader<Value>
+export function create_data_url_loader<Value, Content>(
+  source_loader: UrlLoader<Content>,
+): DataUrlLoader<Value, Content>
+export function create_data_url_loader<Value, Content = string | ArrayBuffer>(
+  source_loader?: UrlLoader<Content>,
+): DataUrlLoader<Value, Content> {
+  const load =
+    source_loader ??
+    ((source_url, callback, signal) =>
+      load_from_url(source_url, callback as FileLoadCallback, signal))
   let load_id = 0
   let loaded_url: string | undefined
   let url_owned_value: Value | undefined
 
-  const request = (req: DataUrlRequest<Value>): (() => void) => {
+  const request = (req: DataUrlRequest<Value, Content>): (() => void) => {
     const { url, current_value, skip, set_loading, clear_error, on_load, on_error } = req
     if (!url || skip || (current_value !== undefined && current_value !== url_owned_value)) {
       loaded_url = undefined
@@ -75,17 +95,22 @@ export function create_data_url_loader<Value>(): DataUrlLoader<Value> {
     }
     set_loading(true)
     clear_error()
+    const load_controller = new AbortController()
 
-    load_from_url(url, async (content, filename, metadata) => {
-      if (!is_current()) return
-      try {
-        await on_load({ content, filename, metadata, is_current, mark_owned })
-      } catch (error) {
-        // Keep parse/consumer failures out of the transport-only on_error callback.
-        if (is_current())
-          console.error(`Failed to process loaded URL '${filename}':`, to_error(error))
-      }
-    })
+    load(
+      url,
+      async (content, filename, metadata) => {
+        if (!is_current()) return
+        try {
+          await on_load({ content, filename, metadata, is_current, mark_owned })
+        } catch (error) {
+          // Keep parse/consumer failures out of the transport-only on_error callback.
+          if (is_current())
+            console.error(`Failed to process loaded URL '${filename}':`, to_error(error))
+        }
+      },
+      load_controller.signal,
+    )
       .catch((error: unknown) => {
         if (is_current()) on_error(to_error(error), basename_from_url(url))
       })
@@ -96,6 +121,7 @@ export function create_data_url_loader<Value>(): DataUrlLoader<Value> {
     return () => {
       if (!is_current()) return
       load_id += 1 // invalidate the in-flight load
+      load_controller.abort()
       set_loading(false)
     }
   }

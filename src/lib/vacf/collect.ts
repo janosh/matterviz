@@ -7,7 +7,11 @@
 // generate_plot_series notices. So every entry point here either drives a full streaming
 // pass or throws with instructions.
 import type { Vec3 } from '$lib/math'
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
+import {
+  collect_trajectory_positions,
+  has_all_frames_in_memory,
+  trajectory_total_frames,
+} from '$lib/trajectory/analysis'
 import type {
   ParseProgress,
   TrajectoryFrame,
@@ -15,7 +19,6 @@ import type {
   TrajectoryType,
 } from '$lib/trajectory'
 import {
-  accumulate_positions,
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   suggest_frame_stride,
 } from '$lib/trajectory/frame-reader'
@@ -28,8 +31,8 @@ import type { VacfInput } from './index'
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 export interface VacfCollectOptions {
-  // Raw file bytes. Only Trajectory.svelte holds these (component-local `orig_data` state,
-  // not a field of TrajectoryType), so a caller outside it must pass them in.
+  // Raw file bytes for source-dependent indexed loaders. Packed and worker-owned loaders carry
+  // their own backing data and do not require this.
   raw_data?: string | ArrayBuffer | null
   // Collect every Nth frame; use `suggest_vacf_frame_stride` to stay inside the budget.
   // Note that striding coarsens the velocity sampling and so lowers the VDOS Nyquist
@@ -162,55 +165,24 @@ export async function collect_vacf_input(
     )
   }
 
-  if (!has_all_frames_in_memory(trajectory)) {
-    const loader = trajectory.frame_loader
-    const loaded = trajectory.frames.length
-    const indexed = `Trajectory is indexed (${loaded} of ${total} frames in memory)`
-    if (!loader) {
-      throw new Error(
-        `Trajectory reports ${total} frames but only ${loaded} are in memory and it has no ` +
-          `frame_loader. VACF needs every frame; re-load the file without indexing ` +
-          `(loading_options.use_indexing = false) to analyse it.`,
-      )
-    }
-    if (!loader.stream_positions) {
-      throw new Error(
-        `${indexed} and its frame_loader does not implement stream_positions, so a full pass ` +
-          `is impossible. VACF would otherwise be computed over just ${loaded} frames.`,
-      )
-    }
-    if (raw_data === null) {
-      throw new Error(
-        `${indexed} so VACF needs the raw file bytes to stream the remaining frames, but ` +
-          `raw_data was not provided. Pass the payload Trajectory.svelte keeps in orig_data.`,
-      )
-    }
-    // Only ask for the velocity channel when the frames already in memory carry one:
-    // accumulate_positions throws on a frame that lacks a requested key, and a run without
-    // stored velocities is meant to fall through to differentiating the positions.
-    const stream = await loader.stream_positions(
-      raw_data,
-      {
-        frame_stride,
-        max_bytes,
-        ...(has_velocities(trajectory.frames[0])
-          ? { vector_keys: [VELOCITY_SITE_PROPERTY] }
-          : {}),
-      },
-      on_progress,
-    )
-    return { ...stream, velocities: stream_velocities(stream) }
-  }
-
-  const { frames } = trajectory
-  const stream = await accumulate_positions(
-    frames.length,
-    (frame_number) => frames[frame_number] ?? null,
-    { frame_stride, max_bytes },
+  const all_frames_in_memory = has_all_frames_in_memory(trajectory)
+  const stream = await collect_trajectory_positions(
+    trajectory,
+    raw_data,
+    {
+      frame_stride,
+      max_bytes,
+      ...(!all_frames_in_memory && has_velocities(trajectory.frames[0])
+        ? { vector_keys: [VELOCITY_SITE_PROPERTY] }
+        : {}),
+    },
     on_progress,
+    `VACF`,
   )
   return {
     ...stream,
-    velocities: collect_frame_velocities(frames, stream),
+    velocities: all_frames_in_memory
+      ? collect_frame_velocities(trajectory.frames, stream)
+      : stream_velocities(stream),
   }
 }

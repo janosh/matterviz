@@ -210,6 +210,20 @@ export const VECTOR_PALETTE = [
   `#1abc9c`,
 ] as const
 
+const is_velocity_vector_key = (key: string): boolean => {
+  const normalized_key = key.toLowerCase()
+  return [`velocity`, `velocities`].some(
+    (prefix) => normalized_key === prefix || normalized_key.startsWith(`${prefix}_`),
+  )
+}
+
+// MD velocities are much larger than typical force-vector values in supported file units.
+// Shorter, thinner defaults keep velocity arrows from overwhelming the structure or cell.
+export const vector_display_defaults = (key: string) =>
+  is_velocity_vector_key(key)
+    ? { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 }
+    : { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }
+
 // Single key → null color (semantic coloring); multiple keys → palette colors.
 export const default_vector_configs = (keys: string[]) =>
   Object.fromEntries(
@@ -218,7 +232,7 @@ export const default_vector_configs = (keys: string[]) =>
       {
         visible: true,
         color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
-        scale: null,
+        scale: vector_display_defaults(key).scale,
       },
     ]),
   )

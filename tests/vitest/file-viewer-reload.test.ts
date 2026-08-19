@@ -1,6 +1,7 @@
 import { create_display } from '$lib/file-viewer/main'
 import type * as ParseModule from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
+import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -13,6 +14,7 @@ const test_mocks = vi.hoisted(() => {
   return {
     mount: vi.fn((_component: unknown, _options: { props: Record<string, unknown> }) => ({})),
     parse_file_content: vi.fn(),
+    parse_in_worker: vi.fn(),
     post_message,
     unmount: vi.fn(async () => {}),
   }
@@ -22,12 +24,20 @@ vi.mock(`$lib/file-viewer/parse`, async (import_original) => ({
   ...(await import_original<typeof ParseModule>()),
   parse_file_content: test_mocks.parse_file_content,
 }))
+vi.mock(`$lib/file-viewer/parse-in-worker`, async (import_original) => ({
+  ...(await import_original<typeof ParseWorkerModule>()),
+  parse_in_worker: test_mocks.parse_in_worker,
+}))
 vi.mock(`svelte`, async (import_original) => ({
   ...(await import_original<typeof SvelteModule>()),
   mount: test_mocks.mount,
   unmount: test_mocks.unmount,
 }))
-const { mount, parse_file_content, post_message, unmount } = test_mocks
+const { mount, parse_file_content, parse_in_worker, post_message, unmount } = test_mocks
+
+parse_in_worker.mockImplementation((content, filename, is_base64) =>
+  parse_file_content(content, filename, is_base64),
+)
 
 afterEach(async () => {
   await window.cleanupMatterViz?.()
@@ -67,6 +77,12 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   set_file_data(`initial`)
   document.body.innerHTML = `<div id="matterviz-app"></div>`
   await window.initializeMatterViz?.()
+  expect(parse_in_worker).toHaveBeenCalledWith(
+    `initial`,
+    `initial.json`,
+    false,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   update_file(`stale`)
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(2))

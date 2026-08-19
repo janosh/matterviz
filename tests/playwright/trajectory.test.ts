@@ -1,5 +1,9 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import type * as ElementModule from '$lib/element/types'
+import type * as Hdf5Module from '$lib/trajectory/parse/hdf5'
+import type * as H5UtilsModule from '$lib/trajectory/parse/h5-utils'
+import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
 import { IS_CI } from './helpers'
 
@@ -69,6 +73,290 @@ test.describe(`Trajectory Component`, () => {
       `aria-label`,
       `Drop trajectory file here to load`,
     )
+  })
+
+  test(`loads and scrubs a local HDF5 File through the lazy worker loader`, async ({
+    page,
+  }) => {
+    const empty_trajectory = page.locator(`#empty-state`)
+    await empty_trajectory.evaluate(async (target) => {
+      const response = await fetch(`/trajectories/flame-gold-cluster-55-atoms.h5`)
+      const source = await response.blob()
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([source], `gold.h5`))
+      target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+    })
+
+    await expect(empty_trajectory.locator(`button.filename`)).toContainText(`gold.h5`, {
+      timeout: LOAD_TIMEOUT,
+    })
+    const step_input = empty_trajectory.locator(`.step-input`)
+    await expect(step_input).toHaveValue(`0`)
+    await step_input.fill(`19`)
+    await step_input.press(`Enter`)
+    await expect(step_input).toHaveValue(`19`)
+  })
+
+  test(`loads a remote HDF5 Blob once through the lazy worker loader`, async ({ page }) => {
+    const empty_trajectory = page.locator(`#empty-state`)
+    const source_url = `/trajectories/flame-gold-cluster-55-atoms.h5`
+    let source_requests = 0
+    page.on(`request`, (request) => {
+      if (new URL(request.url()).pathname === source_url) source_requests++
+    })
+    await empty_trajectory.evaluate((target, url) => {
+      const transfer = new DataTransfer()
+      transfer.setData(`application/json`, JSON.stringify({ url }))
+      target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+    }, source_url)
+
+    await expect(empty_trajectory.locator(`button.filename`)).toContainText(
+      `flame-gold-cluster-55-atoms.h5`,
+      { timeout: LOAD_TIMEOUT },
+    )
+    expect(source_requests).toBe(1)
+    await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
+  })
+
+  test(`MEMFS and WORKERFS HDF5 loaders stream exactly matching data`, async ({ page }) => {
+    const source_url = `/trajectories/gold-nanoparticle-md.h5`
+    const comparison = await page.evaluate(async (url) => {
+      const worker_module_path = `/src/lib/file-viewer/parse-in-worker.ts`
+      const hdf5_module_path = `/src/lib/trajectory/parse/hdf5.ts`
+      const h5_utils_module_path = `/src/lib/trajectory/parse/h5-utils.ts`
+      const element_module_path = `/src/lib/element/types.ts`
+      const [
+        { parse_trajectory_in_worker },
+        { parse_hdf5_trajectory },
+        { with_h5_file },
+        { ELEM_SYMBOLS },
+      ] = await Promise.all([
+        import(worker_module_path) as Promise<typeof ParseWorkerModule>,
+        import(hdf5_module_path) as Promise<typeof Hdf5Module>,
+        import(h5_utils_module_path) as Promise<typeof H5UtilsModule>,
+        import(element_module_path) as Promise<typeof ElementModule>,
+      ])
+      const source = await (await fetch(url)).blob()
+      const source_buffer = await source.arrayBuffer()
+      const raw = await with_h5_file(source_buffer, `oracle.h5`, (h5_file) => {
+        const numeric = (path: string): number[] => {
+          const dataset = h5_file.get(path)
+          if (!dataset || !(`to_array` in dataset)) {
+            throw new Error(`missing oracle dataset ${path}`)
+          }
+          const values = dataset.to_array()
+          if (!Array.isArray(values) && !ArrayBuffer.isView(values)) {
+            throw new TypeError(`oracle dataset ${path} is not numeric`)
+          }
+          return Array.from(values as ArrayLike<number | bigint>)
+            .flat(Infinity)
+            .map(Number)
+        }
+        return {
+          positions: numeric(`/data/positions`),
+          atomic_numbers: numeric(`/data/atomic_numbers`),
+          cell: numeric(`/data/cell`),
+          pbc: numeric(`/data/pbc`),
+          velocity: numeric(`/data/velocities`),
+          velocity_steps: numeric(`/steps/velocities`),
+          forces: numeric(`/data/forces`),
+          force_steps: numeric(`/steps/forces`),
+          position_steps: numeric(`/steps/positions`),
+        }
+      })
+      const memfs = await parse_hdf5_trajectory(source_buffer, `gold.h5`)
+      const workerfs = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
+      const request = { signal_keys: [`velocity`, `forces`] }
+      const memfs_stream = await memfs.frame_loader?.stream_positions?.(``, request)
+      const workerfs_stream = await workerfs.frame_loader?.stream_positions?.(``, request)
+      if (!memfs_stream || !workerfs_stream) throw new Error(`missing HDF5 position stream`)
+      const memfs_loader = memfs.frame_loader
+      const workerfs_loader = workerfs.frame_loader
+      if (!memfs_loader || !workerfs_loader) throw new Error(`missing HDF5 frame loader`)
+      const serialize_frame = (frame: (typeof memfs.frames)[number] | null | undefined) =>
+        frame
+          ? {
+              step: frame.step,
+              sites: frame.structure.sites.map(({ xyz, species }) => ({
+                xyz,
+                elements: species.map(({ element }) => element),
+              })),
+              lattice:
+                `lattice` in frame.structure
+                  ? {
+                      matrix: frame.structure.lattice.matrix,
+                      pbc: frame.structure.lattice.pbc,
+                    }
+                  : null,
+            }
+          : null
+      const frame_indices = [
+        0,
+        Math.floor((memfs.total_frames ?? 1) / 2),
+        (memfs.total_frames ?? 1) - 1,
+      ]
+      const [memfs_frames, workerfs_frames] = await Promise.all(
+        [memfs_loader, workerfs_loader].map((loader) =>
+          Promise.all(
+            frame_indices.map((frame_idx) =>
+              loader.load_frame(``, frame_idx).then(serialize_frame),
+            ),
+          ),
+        ),
+      )
+      const stream_values = (stream: typeof memfs_stream) => [
+        ...stream.positions,
+        ...[`velocity`, `forces`].flatMap((key) => [...(stream.signals?.[key]?.values ?? [])]),
+      ]
+      const expected = [...raw.positions, ...raw.velocity, ...raw.forces]
+      const streams = [memfs_stream, workerfs_stream]
+      const stream_value_counts = streams.map((stream) => stream_values(stream).length)
+      const errors = streams.flatMap((stream) =>
+        stream_values(stream).map((value, value_idx) => Math.abs(value - expected[value_idx])),
+      )
+      const relative_errors = errors.map((error, value_idx) => {
+        const expected_value = expected[value_idx % expected.length]
+        return expected_value === 0 ? error : error / Math.abs(expected_value)
+      })
+      const stream_metadata = (stream: typeof memfs_stream) => ({
+        n_frames: stream.n_frames,
+        n_atoms: stream.n_atoms,
+        elements: stream.elements,
+        steps: stream.steps,
+        pbc: stream.pbc,
+        lattice_matrices: stream.lattice_matrices,
+        signals: Object.fromEntries(
+          Object.entries(stream.signals ?? {}).map(([key, signal]) => [
+            key,
+            {
+              sample_shape: signal.sample_shape,
+              steps: signal.steps,
+              unit: signal.unit,
+            },
+          ]),
+        ),
+      })
+      const exact = (left: unknown, right: unknown) =>
+        JSON.stringify(left) === JSON.stringify(right)
+      const n_atoms = raw.atomic_numbers.length
+      const elements = raw.atomic_numbers.map(
+        (atomic_number) => ELEM_SYMBOLS[atomic_number - 1],
+      )
+      if (elements.some((element) => !element)) {
+        throw new Error(`oracle fixture contains invalid atomic numbers`)
+      }
+      const pbc = Array.from({ length: 3 }, () => Boolean(raw.pbc[0]))
+      const lattice = Array.from({ length: 3 }, (_unused, row_idx) =>
+        Array.from(
+          { length: 3 },
+          (_unused_2, column_idx) => raw.cell[column_idx * 3 + row_idx],
+        ),
+      )
+      const volume = Math.abs(
+        lattice[0][0] * (lattice[1][1] * lattice[2][2] - lattice[1][2] * lattice[2][1]) -
+          lattice[0][1] * (lattice[1][0] * lattice[2][2] - lattice[1][2] * lattice[2][0]) +
+          lattice[0][2] * (lattice[1][0] * lattice[2][1] - lattice[1][1] * lattice[2][0]),
+      )
+      const oracle_frame = (frame_idx: number) => ({
+        step: raw.position_steps[frame_idx],
+        sites: Array.from({ length: n_atoms }, (_unused, atom_idx) => ({
+          xyz: raw.positions.slice(
+            (frame_idx * n_atoms + atom_idx) * 3,
+            (frame_idx * n_atoms + atom_idx + 1) * 3,
+          ),
+          elements: [elements[atom_idx]],
+        })),
+        lattice: {
+          matrix: lattice,
+          pbc,
+        },
+      })
+      const oracle_frames = frame_indices.map(oracle_frame)
+      const oracle_metadata = {
+        n_frames: raw.position_steps.length,
+        n_atoms,
+        elements,
+        steps: raw.position_steps,
+        pbc,
+        lattice_matrices: raw.position_steps.map(() => lattice),
+        signals: {
+          velocity: {
+            sample_shape: [n_atoms, 3],
+            steps: raw.velocity_steps,
+          },
+          forces: {
+            sample_shape: [n_atoms, 3],
+            steps: raw.force_steps,
+          },
+        },
+      }
+      const oracle_plot_metadata = raw.position_steps.map((step, frame_number) => ({
+        frame_number,
+        step,
+        properties: { volume },
+      }))
+      const preview_equal = exact(
+        memfs.frames.map(serialize_frame),
+        workerfs.frames.map(serialize_frame),
+      )
+      const plot_metadata_equal = exact(memfs.plot_metadata, workerfs.plot_metadata)
+      const stream_metadata_equal = exact(
+        stream_metadata(memfs_stream),
+        stream_metadata(workerfs_stream),
+      )
+      const random_frames_equal = exact(memfs_frames, workerfs_frames)
+      const descriptors_equal = exact(memfs.signal_descriptors, workerfs.signal_descriptors)
+      const oracle_frames_equal = exact(memfs_frames, oracle_frames)
+      const oracle_metadata_equal = exact(stream_metadata(memfs_stream), oracle_metadata)
+      const oracle_plot_metadata_equal = exact(memfs.plot_metadata, oracle_plot_metadata)
+      workerfs_loader.dispose?.()
+      memfs_loader.dispose?.()
+      const disposed_error = await workerfs_loader
+        .load_frame(``, 0)
+        .then(() => `missing error`, String)
+      return {
+        max_absolute_error: errors.reduce((maximum, error) => Math.max(maximum, error), 0),
+        max_relative_error: relative_errors.reduce(
+          (maximum, error) => Math.max(maximum, error),
+          0,
+        ),
+        stream_value_counts_equal: stream_value_counts.every(
+          (value_count) => value_count === expected.length,
+        ),
+        memfs_frame_store: Boolean(memfs.frame_store),
+        workerfs_frame_store: Boolean(workerfs.frame_store),
+        loaded_signals: Boolean(memfs.signals ?? workerfs.signals),
+        descriptors: Object.keys(workerfs.signal_descriptors ?? {}).toSorted(),
+        descriptors_equal,
+        oracle_frames_equal,
+        oracle_metadata_equal,
+        oracle_plot_metadata_equal,
+        disposed: disposed_error.includes(`disposed`),
+        plot_metadata_equal,
+        preview_equal,
+        random_frames_equal,
+        stream_metadata_equal,
+      }
+    }, source_url)
+
+    expect(comparison).toEqual({
+      max_absolute_error: 0,
+      max_relative_error: 0,
+      stream_value_counts_equal: true,
+      memfs_frame_store: false,
+      workerfs_frame_store: false,
+      loaded_signals: false,
+      descriptors: [`forces`, `velocity`],
+      descriptors_equal: true,
+      oracle_frames_equal: true,
+      oracle_metadata_equal: true,
+      oracle_plot_metadata_equal: true,
+      disposed: true,
+      plot_metadata_equal: true,
+      preview_equal: true,
+      random_frames_equal: true,
+      stream_metadata_equal: true,
+    })
   })
 
   test(`basic controls and navigation work`, async () => {
@@ -188,7 +476,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(first_item).toHaveClass(/hidden/)
     })
 
-    test(`plot skimming can be disabled via plot_skimming prop`, async ({ page }) => {
+    test(`plot navigation can be disabled via plot_skimming prop`, async ({ page }) => {
       const trajectory = page.locator(`#no-plot-skimming`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
@@ -197,11 +485,11 @@ test.describe(`Trajectory Component`, () => {
       const initial_step = await step_input.inputValue()
       const plot_points = scatter_plot.locator(`.marker`)
       expect(await plot_points.count()).toBeGreaterThan(1)
-      await plot_points.nth(1).hover()
+      await plot_points.nth(1).click()
       await expect(step_input).toHaveValue(initial_step)
     })
 
-    test(`plot skimming is enabled by default`, async ({ page }) => {
+    test(`plot navigation requires a click by default`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const scatter_plot = trajectory.locator(`.scatter`)
       const step_input = trajectory.locator(`.step-input`)
@@ -211,6 +499,8 @@ test.describe(`Trajectory Component`, () => {
       expect(await plot_points.count()).toBeGreaterThan(1)
       const before = await step_input.inputValue()
       await plot_points.nth(1).hover()
+      await expect(step_input).toHaveValue(before)
+      await plot_points.nth(1).click()
       await expect(step_input).not.toHaveValue(before)
     })
 
@@ -368,7 +658,9 @@ test.describe(`Trajectory Component`, () => {
       // Wait for the plot, not the controls: controls render as soon as the
       // trajectory loads, but the scatter only appears once plot metadata is
       // sampled, and both panes have to exist before either can be measured.
-      await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30000 })
+      await expect(trajectory.locator(`.scatter`)).toBeVisible({
+        timeout: 30000,
+      })
 
       // 500px tall is what a chat sidebar card really measures, and minHeight has
       // to go for any height below that to stick: .trajectory's own 500px floor
@@ -422,8 +714,12 @@ test.describe(`Trajectory Component`, () => {
         const viewer = page.locator(selector)
         await expect(viewer).toBeVisible()
         await expect(viewer).toHaveClass(new RegExp(orientation))
-        await expect(viewer.locator(`.structure`)).toBeVisible({ timeout: LOAD_TIMEOUT })
-        await expect(viewer.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+        await expect(viewer.locator(`.structure`)).toBeVisible({
+          timeout: LOAD_TIMEOUT,
+        })
+        await expect(viewer.locator(`.scatter`)).toBeVisible({
+          timeout: LOAD_TIMEOUT,
+        })
         const pane_dimensions = () =>
           viewer.locator(`.content-area`).evaluate((element) => {
             const structure = element.querySelector(`.structure`)

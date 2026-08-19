@@ -126,6 +126,22 @@ describe(`ScatterPlot`, () => {
     }
   })
 
+  test(`draws a current-frame guide through the plot area`, async () => {
+    const plot = await mount_sized_scatter_plot({ series: [basic], current_x_value: 3 })
+    const clip = scatter_clip_rect(plot)
+    const guide = plot.querySelector(`.current-frame-guide`)
+    expect(guide).not.toBeNull()
+    expect(guide?.getAttribute(`x1`)).toBe(guide?.getAttribute(`x2`))
+    expect(Number(guide?.getAttribute(`x1`))).toBeGreaterThan(clip.x)
+    expect(Number(guide?.getAttribute(`x1`))).toBeLessThan(clip.x + clip.width)
+    expect([guide?.getAttribute(`y1`), guide?.getAttribute(`y2`)]).toEqual([
+      String(clip.y),
+      String(clip.y + clip.height),
+    ])
+    expect(guide?.getAttribute(`stroke-dasharray`)).toBe(`8 4`)
+    expect(plot.querySelector(`.current-frame-indicator`)).not.toBeNull()
+  })
+
   describe(`marker_renderer`, () => {
     const dense = {
       x: Array.from({ length: 40 }, (_, idx) => idx),
@@ -254,14 +270,16 @@ describe(`ScatterPlot`, () => {
 
     test(`keeps SVG markers when point handlers require DOM events`, async () => {
       const on_point_click = vi.fn()
+      const on_plot_click = vi.fn()
       const on_keydown = vi.fn()
-      let plot = await mount_canvas({ on_point_click })
+      let plot = await mount_canvas({ on_point_click, on_plot_click })
       expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
       plot
         .querySelector(`path.marker`)
         ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       expect(on_point_click).toHaveBeenCalledOnce()
+      expect(on_plot_click).not.toHaveBeenCalled()
       const interactive_point = plot.querySelector<SVGGElement>(`[role="button"]`)
       expect(interactive_point?.getAttribute(`tabindex`)).toBe(`0`)
       expect(interactive_point?.getAttribute(`aria-label`)).toBe(`Select series 1 point 1`)
@@ -384,6 +402,90 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(expected_entries)
     },
   )
+
+  test(`x hover resolves duplicate x-values by vertical distance`, async () => {
+    const on_point_hover = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 1, 1], y: [0, 0.5, 1], markers: `points` }],
+      x_axis: { range: [0, 2] },
+      y_axis: { range: [0, 1] },
+      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+      point_tween: { duration: 0 },
+      on_point_hover,
+      legend: null,
+    })
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(2)
+    const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+    const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+    if (!svg || !match?.groups) throw new Error(`expected the last duplicate-x marker`)
+    Object.defineProperty(svg, `getBoundingClientRect`, {
+      value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+    })
+    svg.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        bubbles: true,
+        clientX: Number(match.groups.x),
+        clientY: Number(match.groups.y),
+      }),
+    )
+    await next_animation_frame()
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+  })
+
+  test(`child marks and rectangle zoom do not trigger plot clicks`, async () => {
+    const on_plot_click = vi.fn()
+    const on_fill_click = vi.fn()
+    const on_ref_line_click = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      fill_regions: [{ lower: 0, upper: 4, on_click: on_fill_click }],
+      ref_lines: [{ type: `vertical`, x: 2, on_click: on_ref_line_click }],
+      on_plot_click,
+      point_tween: { duration: 0 },
+    })
+    plot
+      .querySelector(`.fill-region`)
+      ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    plot
+      .querySelector(`.reference-line`)
+      ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_fill_click).toHaveBeenCalledOnce()
+    expect(on_ref_line_click).toHaveBeenCalledOnce()
+    expect(on_plot_click).not.toHaveBeenCalled()
+
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const clip = scatter_clip_rect(plot)
+    if (!svg) throw new Error(`scatter SVG not found`)
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, {
+        bubbles: true,
+        button: 0,
+        clientX: clip.x + 10,
+        clientY: clip.y + 10,
+      }),
+    )
+    window.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        buttons: 1,
+        clientX: clip.x + 80,
+        clientY: clip.y + 80,
+      }),
+    )
+    window.dispatchEvent(
+      new MouseEvent(`mouseup`, { clientX: clip.x + 80, clientY: clip.y + 80 }),
+    )
+    svg.dispatchEvent(
+      new MouseEvent(`click`, {
+        bubbles: true,
+        detail: 1,
+        clientX: clip.x + 80,
+        clientY: clip.y + 80,
+      }),
+    )
+    expect(on_plot_click).not.toHaveBeenCalled()
+  })
 
   test(`does not render a colorbar in a zero-sized plot`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)
@@ -631,6 +733,18 @@ describe(`ScatterPlot`, () => {
       expect(x_tick_labels.every((label) => /^\w{3} \d{4}$/.test(label ?? ``))).toBe(true)
     } else expect(x_tick_labels).toEqual([`0`, `10`, `20`, `30`, `40`, `50`])
     expect(plot.querySelectorAll(`.y-axis .tick text`).length).toBeGreaterThan(1)
+  })
+
+  test(`increases automatic tick precision when compact labels would collide`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [-1539, -1537] }],
+      y_axis: { ticks: [-1539, -1538, -1537] },
+    })
+    expect(
+      [...plot.querySelectorAll(`.y-axis .tick text`)].map(
+        (tick_element) => tick_element.textContent,
+      ),
+    ).toEqual([`−1539`, `−1538`, `−1537`])
   })
 
   describe(`default tooltip content`, () => {
@@ -886,6 +1000,52 @@ describe(`ScatterPlot`, () => {
     await next_animation_frame()
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
+
+  test.each([
+    { label: `ascending`, x_values: [0, 1, 2], target_idx: 1 },
+    { label: `descending`, x_values: [2, 1, 0], target_idx: 1 },
+    { label: `unordered`, x_values: [0, 2, 1], target_idx: 2 },
+  ])(
+    `x hover finds the nearest $label point without vertical proximity`,
+    async ({ x_values, target_idx }) => {
+      const on_point_hover = vi.fn()
+      const y_values = [0, 1, 0]
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: x_values, y: y_values, markers: `points` }],
+        x_axis: { range: [0, 2] },
+        y_axis: { range: [0, 1] },
+        hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+        point_tween: { duration: 0 },
+        on_point_hover,
+        legend: null,
+      })
+      const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+      const target_marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(target_idx)
+      const transform = target_marker.parentElement?.getAttribute(`transform`) ?? ``
+      const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+      if (!svg || !match?.groups) throw new Error(`expected the middle scatter marker`)
+      Object.defineProperty(svg, `getBoundingClientRect`, {
+        value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+      })
+
+      const far_y = Number(match.groups.y) < 150 ? 290 : 10
+      svg.dispatchEvent(
+        new MouseEvent(`mousemove`, {
+          bubbles: true,
+          clientX: Number(match.groups.x),
+          clientY: far_y,
+        }),
+      )
+      await next_animation_frame()
+
+      expect(on_point_hover).toHaveBeenCalledOnce()
+      expect(on_point_hover.mock.calls[0][0]).toMatchObject({
+        x: x_values[target_idx],
+        y: y_values[target_idx],
+      })
+      expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    },
+  )
 
   test(`cancels queued pointer hover when destroyed`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(400)

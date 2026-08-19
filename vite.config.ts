@@ -105,6 +105,12 @@ export default defineConfig({
   },
   lint: {
     ...config.lint,
+    rules: {
+      ...config.lint.rules,
+      // Timer/animation callbacks return opaque handles that Promise ignores. The rule added in
+      // vite-plus 0.2.9 mistakes those conventional executors for meaningful Promise returns.
+      'no-promise-executor-return': `off`,
+    },
     // src/scripts/** are standalone utility scripts excluded from tsconfig (so
     // type-aware rules can't resolve $lib/Deno-style imports there) — keep them unlinted.
     // extensions/** are separate packages with dependencies and test mocks that

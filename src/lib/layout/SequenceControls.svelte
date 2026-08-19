@@ -33,6 +33,17 @@
     disable_step_while_playing?: boolean
     on_index_input?: (index: number) => void
   } = $props()
+
+  let resume_after_slider_scrub = false
+  const begin_slider_scrub = (): void => {
+    resume_after_slider_scrub = playback.is_playing
+    playback.pause()
+  }
+  const finish_slider_scrub = (next_index: number): void => {
+    playback.seek(next_index)
+    if (resume_after_slider_scrub) playback.play()
+    resume_after_slider_scrub = false
+  }
 </script>
 
 {#if controls_config.visible(`nav`)}
@@ -92,12 +103,19 @@
         min="0"
         max={max_index}
         value={index}
-        onpointerdown={playback.pause}
+        onpointerdown={begin_slider_scrub}
+        onpointerup={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
+        onpointercancel={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
         oninput={(event) => {
           playback.pause()
           on_index_input(event.currentTarget.valueAsNumber)
         }}
-        onchange={(event) => playback.go_to(event.currentTarget.valueAsNumber)}
+        onchange={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
+        onkeydown={(event) => {
+          if (!playback.handle_keydown(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+        }}
         class="step-slider"
         title={`Drag to navigate ${item_name}s`}
         aria-label={aria_label ?? item_name}

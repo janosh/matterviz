@@ -45,6 +45,7 @@
     ortho_zoom_for_extent,
     perspective_distance_for_extent,
     structure_fit_frame,
+    vector_display_defaults,
     VECTOR_PALETTE,
   } from '$lib/structure'
   import ArrowInstances from './ArrowInstances.svelte'
@@ -1750,6 +1751,7 @@
 
     return active_keys.map((key, layer_idx) => {
       const layer_cfg = vector_configs[key]
+      const display_defaults = vector_display_defaults(key)
       const layer_scale = effective_global_scale * (layer_cfg?.scale ?? 1.0)
       const layer_color = layer_cfg?.color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
 
@@ -1806,7 +1808,13 @@
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
 
-      return { key, arrows }
+      return {
+        key,
+        arrows,
+        shaft_radius: eff_shaft_radius * display_defaults.shaft_radius,
+        arrow_head_radius: eff_head_radius * display_defaults.arrow_head_radius,
+        arrow_head_length: eff_head_length * display_defaults.arrow_head_length,
+      }
     })
   })
 
@@ -2115,9 +2123,9 @@
       {#each vector_layers as layer (layer.key)}
         <ArrowInstances
           arrows={layer.arrows}
-          shaft_radius={eff_shaft_radius}
-          arrow_head_radius={eff_head_radius}
-          arrow_head_length={eff_head_length}
+          shaft_radius={layer.shaft_radius}
+          arrow_head_radius={layer.arrow_head_radius}
+          arrow_head_length={layer.arrow_head_length}
         />
       {/each}
 

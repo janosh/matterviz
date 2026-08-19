@@ -63,6 +63,7 @@
     on_mouse_enter?: () => void
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
+    on_mouse_click?: (event: MouseEvent) => void
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
@@ -88,6 +89,7 @@
     on_mouse_enter,
     on_mouse_leave,
     on_mouse_move,
+    on_mouse_click,
     header_controls,
     layers,
     overlays,
@@ -171,6 +173,7 @@
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
+      onclick={(event) => event.detail <= 1 && on_mouse_click?.(event)}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
       ontouchmove={pan_zoom.on_touch_move}
@@ -258,12 +261,13 @@
   }
   .header-controls {
     position: absolute;
-    top: var(--ctrl-btn-top, 5pt);
+    top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--fullscreen-btn-right, 4px);
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .plot-frame :global(.pane-toggle),
@@ -272,6 +276,9 @@
     transition:
       opacity 0.2s,
       background-color 0.2s;
+  }
+  .plot-frame :global(.pane-toggle) {
+    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   .plot-frame:hover :global(.pane-toggle),
   .plot-frame:hover .header-controls,

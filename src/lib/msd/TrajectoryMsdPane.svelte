@@ -4,7 +4,7 @@
   import { StatusMessage } from '$lib/feedback'
   import { format_bytes, format_num } from '$lib/labels'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
-  import { analysis_pane_setup } from '$lib/trajectory/analysis'
+  import { analysis_pane_setup, has_frame_loader_data } from '$lib/trajectory/analysis'
   import { to_error } from '$lib/utils'
   import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
   import type { MsdOptions, MsdPositions, MsdResult } from './index'
@@ -20,8 +20,7 @@
     ...pane_options
   }: ViewerPaneOptions & {
     trajectory?: TrajectoryType
-    // Raw file bytes from Trajectory.svelte's orig_data. Required for indexed
-    // trajectories, whose `frames` array holds only the first few frames.
+    // Raw file bytes from Trajectory.svelte's orig_data for source-dependent loaders.
     raw_data?: string | ArrayBuffer | null
     pane_open?: boolean
     result?: MsdResult
@@ -59,6 +58,7 @@
     suggested_stride,
     setup_error,
   } = $derived(analysis_pane_setup(trajectory, suggest_msd_frame_stride, frame_stride))
+  let loader_data_available = $derived(has_frame_loader_data(trajectory, raw_data))
   let estimated_bytes = $derived(collected_frames * n_atoms * 3 * 8)
 
   // Drop stale positions/curves whenever the underlying trajectory is swapped out, and
@@ -152,7 +152,7 @@
     {:else if is_lazy}
       <StatusMessage
         type="warning"
-        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. MSD streams the full payload{raw_data
+        message="Indexed trajectory: {loaded_frames} of {total_frames} frames are in memory. MSD streams the full payload{loader_data_available
           ? ``
           : `, but the raw file bytes are unavailable here`}."
         style="font-size: 0.8em"

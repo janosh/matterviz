@@ -53,9 +53,10 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     if (next_index !== inputs.index()) setter(next_index)
   }
 
+  const seek = (index: number) => set_valid_index(index, inputs.set_index)
   const go_to = (index: number) => {
     set_playing(false)
-    set_valid_index(index, inputs.set_index)
+    seek(index)
   }
   const set_step_index = inputs.set_step_index ?? inputs.set_index
   const previous = () => set_valid_index(inputs.index() - 1, set_step_index)
@@ -87,6 +88,33 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     inputs.on_end?.()
     set_valid_index(0, inputs.set_index)
     inputs.on_loop?.()
+  }
+
+  function handle_keydown(event: KeyboardEvent): boolean {
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+    const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
+    if (is_cmd_or_ctrl && key !== `ArrowLeft` && key !== `ArrowRight`) return false
+
+    if (key === ` `) {
+      if (!event.repeat) toggle()
+    } else if (key === `ArrowLeft`) {
+      if (is_cmd_or_ctrl) seek(0)
+      else previous()
+    } else if (key === `ArrowRight`) {
+      if (is_cmd_or_ctrl) seek(inputs.count() - 1)
+      else next()
+    } else if (key === `Home`) seek(0)
+    else if (key === `End`) seek(inputs.count() - 1)
+    else if (key === `j`) seek(inputs.index() - 10)
+    else if (key === `l`) seek(inputs.index() + 10)
+    else if (key === `PageUp`) seek(inputs.index() - 25)
+    else if (key === `PageDown`) seek(inputs.index() + 25)
+    else if ([`=`, `+`, `-`].includes(key)) {
+      inputs.set_fps(normalize_fps(playback_fps + (key === `-` ? -FPS_STEP : FPS_STEP)))
+    } else if (key >= `0` && key <= `9`) {
+      seek(Math.floor((Number(key) / 10) * (inputs.count() - 1)))
+    } else return false
+    return true
   }
 
   // rAF avoids background-tab queueing while reading FPS and index live without restarting.
@@ -133,9 +161,12 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     },
     fps_step: FPS_STEP,
     go_to,
+    play: () => set_playing(true),
     pause: () => set_playing(false),
+    seek,
     previous,
     next,
     toggle,
+    handle_keydown,
   }
 }

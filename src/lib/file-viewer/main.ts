@@ -35,7 +35,7 @@ import { get_vscode_api, VSCodeFrameLoader } from './host-bridge'
 import type { FileChangeMessage, FileData, WebviewBootstrapData } from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
 import type { ParseResult } from './parse'
-import { parse_file_content } from './parse'
+import { parse_in_worker } from './parse-in-worker'
 import { escape_html, to_error } from '$lib/utils'
 
 // host-bridge has no export map subpath of its own, so this module (published as
@@ -81,6 +81,11 @@ let file_change_generation = 0
 let file_change_queue: Promise<void> = Promise.resolve()
 let viewer_disposed = false
 let viewer_lifecycle_generation = 0
+let active_parse_controller: AbortController | null = null
+const replace_parse_controller = (): AbortController => {
+  active_parse_controller?.abort()
+  return (active_parse_controller = new AbortController())
+}
 const global_window = globalThis as unknown as Window
 const is_current_file_change = (generation: number): boolean =>
   !viewer_disposed && generation === file_change_generation
@@ -141,6 +146,7 @@ async function unmount_current_app(): Promise<void> {
 const handle_file_change = async (
   message: FileChangeMessage,
   generation: number,
+  signal: AbortSignal,
 ): Promise<void> => {
   if (!is_current_file_change(generation)) return
   if (message.command === `fileDeleted`) {
@@ -164,7 +170,7 @@ const handle_file_change = async (
       apply_theme_to_dom(message.theme)
     }
 
-    const result = await parse_file_data(message.data)
+    const result = await parse_file_data(message.data, signal)
     if (!is_current_file_change(generation)) return
 
     const container = document.querySelector<HTMLElement>(`#matterviz-app`)
@@ -188,8 +194,9 @@ const handle_file_change = async (
 const process_file_change = (message: FileChangeMessage): void => {
   if (viewer_disposed) return
   const generation = ++file_change_generation
+  const controller = replace_parse_controller()
   file_change_queue = file_change_queue
-    .then(() => handle_file_change(message, generation))
+    .then(() => handle_file_change(message, generation, controller.signal))
     .catch((error: unknown) => {
       if (!is_current_file_change(generation)) return
       console.error(`Failed to process file change:`, error)
@@ -200,8 +207,10 @@ const process_file_change = (message: FileChangeMessage): void => {
     })
 }
 
-const parse_file_data = ({ content, filename, is_base64 }: FileData): Promise<ParseResult> =>
-  parse_file_content(content, filename, is_base64)
+const parse_file_data = (
+  { content, filename, is_base64 }: FileData,
+  signal: AbortSignal,
+): Promise<ParseResult> => parse_in_worker(content, filename, is_base64, { signal })
 
 // Create error display in container
 const create_error_display = (
@@ -442,7 +451,8 @@ async function initialize(lifecycle_generation: number): Promise<MatterVizApp | 
   const container = document.querySelector<HTMLElement>(`#matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
-  const result = await parse_file_data(file_data)
+  const controller = replace_parse_controller()
+  const result = await parse_file_data(file_data, controller.signal)
   if (!is_current_lifecycle(lifecycle_generation)) return null
   const app = create_display(container, result)
 
@@ -465,6 +475,8 @@ async function initialize(lifecycle_generation: number): Promise<MatterVizApp | 
 // Cleanup function to properly dispose of components
 async function cleanup_matterviz(): Promise<void> {
   viewer_disposed = true
+  active_parse_controller?.abort()
+  active_parse_controller = null
   file_change_generation++
   viewer_lifecycle_generation++
   file_change_queue = Promise.resolve()

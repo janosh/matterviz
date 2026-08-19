@@ -21,27 +21,24 @@ export type ShowControlsProp<ControlName extends string = string> =
 // Normalized result of a ShowControlsProp, passed to viewer chrome components
 export type ShowControlsState = ReturnType<typeof normalize_show_controls>
 
-export function normalize_show_controls(prop: ShowControlsProp | undefined) {
-  // Extract mode, hidden, style from various prop forms
-  let mode: ControlsVisibility = `hover`
-  let hidden_arr: string[] | undefined
-  let style: string | undefined
-
-  if (typeof prop === `boolean`) {
-    mode = prop ? `always` : `never`
-  } else if (typeof prop === `string`) {
-    mode = prop
-  } else if (prop) {
-    mode = prop.mode ?? `hover`
-    hidden_arr = prop.hidden
-    style = prop.style
-  }
-
-  const hidden = new SvelteSet(hidden_arr)
+export function normalize_show_controls(
+  prop: ShowControlsProp | undefined,
+  default_mode: ControlsVisibility = `hover`,
+) {
+  const config = typeof prop === `object` && prop ? prop : undefined
+  const mode =
+    typeof prop === `boolean`
+      ? prop
+        ? `always`
+        : `never`
+      : typeof prop === `string`
+        ? prop
+        : (config?.mode ?? default_mode)
+  const hidden = new SvelteSet(config?.hidden)
   return {
     mode,
     hidden,
-    style,
+    style: config?.style,
     // Helper: check if a control should be visible
     visible: (name: string) => !hidden.has(name),
     // CSS class for visibility mode

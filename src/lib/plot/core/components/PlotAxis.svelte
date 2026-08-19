@@ -20,7 +20,7 @@
 </script>
 
 <script lang="ts">
-  import { format_value_or_num } from '$lib/labels'
+  import { format_tick_values } from '$lib/labels'
   import type { Vec2 } from '$lib/math'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
@@ -79,12 +79,12 @@
     on_tick_font?: (font: Readonly<FontSpec>) => void
   } = $props()
 
-  const tick_text = (tick: number): string =>
-    tick_label?.(tick) ?? format_value_or_num(tick, axis.format)
-
   const is_x = $derived(side === `x` || side === `x2`)
   const inside = $derived(axis.tick?.label?.inside ?? false)
-  const tick_texts = $derived(ticks.map(tick_text))
+  const tick_texts = $derived.by(() => {
+    const formatted_ticks = format_tick_values(ticks, axis.format)
+    return ticks.map((tick, tick_idx) => tick_label?.(tick) ?? formatted_ticks[tick_idx] ?? ``)
+  })
   const tick_positions = $derived(ticks.map(place))
   const plot_w = $derived(Math.max(0, width - pad.l - pad.r))
   const plot_h = $derived(Math.max(0, height - pad.b - pad.t))

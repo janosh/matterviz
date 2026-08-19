@@ -5,7 +5,11 @@
 // min(10, total_frames)) while `total_frames` can be six digits, so looping over `frames`
 // would silently analyse ten of them and label the plot with the whole run. Frames outside
 // that window are pulled through `frame_loader.load_frame`, or the sweep throws.
-import { has_all_frames_in_memory, trajectory_total_frames } from '$lib/trajectory/analysis'
+import {
+  frame_loader_data,
+  has_all_frames_in_memory,
+  trajectory_total_frames,
+} from '$lib/trajectory/analysis'
 import type { AnyStructure } from '$lib/structure'
 import { normalize_fractional_coords } from '$lib/structure/parse'
 import type { TrajectoryType } from '$lib/trajectory'
@@ -18,9 +22,8 @@ import type { StructureIdOptions, StructureIdResult } from './index'
 export const DEFAULT_MAX_SWEEP_FRAMES = 100
 
 export interface StructureIdSweepOptions {
-  // Raw file bytes. Only Trajectory.svelte holds these (component-local `orig_data` state,
-  // not a field of TrajectoryType), so a caller outside it must pass them in. Required for
-  // an indexed trajectory, whose frames are loaded on demand.
+  // Raw file bytes for source-dependent indexed loaders. Packed and worker-owned loaders carry
+  // their own backing data and do not require this.
   raw_data?: string | ArrayBuffer | null
   // Upper bound on how many frames are actually analysed; see DEFAULT_MAX_SWEEP_FRAMES
   max_frames?: number
@@ -103,7 +106,8 @@ function make_frame_resolver(
         `analyse it.`,
     )
   }
-  if (!raw_data || (raw_data instanceof ArrayBuffer && raw_data.byteLength === 0)) {
+  const loader_data = frame_loader_data(loader, raw_data)
+  if (loader_data === null) {
     throw new Error(
       `${indexed} so structure identification needs the raw file bytes to load the sampled ` +
         `frames, but raw_data was missing or empty. Pass the payload Trajectory.svelte keeps ` +
@@ -111,7 +115,7 @@ function make_frame_resolver(
     )
   }
   return async (frame_number) => {
-    const frame = await loader.load_frame(raw_data, frame_number)
+    const frame = await loader.load_frame(loader_data, frame_number)
     if (!frame) {
       throw new Error(
         `${indexed} and its frame_loader returned no frame for frame ${frame_number}`,

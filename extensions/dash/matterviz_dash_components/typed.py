@@ -73,6 +73,7 @@ class Structure(MatterViz):
         slice_settings: dict | None = None,
         spinner_props: dict | None = None,
         structure: Any | None = None,
+        structure_series_key: Any | None = None,
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
@@ -189,6 +190,8 @@ class Structure(MatterViz):
             mv_props["spinner_props"] = spinner_props
         if structure is not None:
             mv_props["structure"] = structure
+        if structure_series_key is not None:
+            mv_props["structure_series_key"] = structure_series_key
         if structure_string is not None:
             mv_props["structure_string"] = structure_string
         if sym_data is not None:
@@ -402,6 +405,7 @@ class Trajectory(MatterViz):
         property_labels: dict | None = None,
         scatter_props: dict | None = None,
         show_controls: Any | None = None,
+        spectroscopy_pane_open: bool | None = None,
         spinner_props: dict | None = None,
         step_labels: list[float] | None = None,
         structure_id_pane_open: bool | None = None,
@@ -470,6 +474,8 @@ class Trajectory(MatterViz):
             mv_props["scatter_props"] = scatter_props
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
+        if spectroscopy_pane_open is not None:
+            mv_props["spectroscopy_pane_open"] = spectroscopy_pane_open
         if spinner_props is not None:
             mv_props["spinner_props"] = spinner_props
         if step_labels is not None:
@@ -1328,7 +1334,7 @@ class Bands(MatterViz):
 
     Component key: ``spectral/Bands``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_plot_click, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1501,7 +1507,7 @@ class Dos(MatterViz):
 
     Component key: ``spectral/Dos``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_plot_click, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """
@@ -1668,7 +1674,7 @@ class ScatterPlot(MatterViz):
 
     Component key: ``plot/scatter/ScatterPlot``
 
-    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
+    Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_plot_click, on_point_click, on_point_hover, on_pointer_leave, on_ref_line_click, on_ref_line_hover
 
     Unsupported snippets: tooltip, user_content
     """

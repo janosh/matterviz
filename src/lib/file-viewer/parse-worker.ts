@@ -7,37 +7,68 @@
 // Worker postMessage takes no targetOrigin argument (that's window.postMessage),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import type { FrameLoader, ParseProgress } from '$lib/trajectory'
-import { parse_trajectory_async } from '$lib/trajectory/parse'
-import { parse_file_content } from './parse'
 import type {
+  FrameLoader,
+  ParseProgress,
+  TrajectorySource,
+  TrajectoryType,
+} from '$lib/trajectory'
+import { trajectory_data_transferables } from '$lib/trajectory/helpers'
+import { parse_trajectory_async } from '$lib/trajectory/parse'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
+import { parse_file_content, type ParseResult } from './parse'
+import type {
+  AnyParseWorkerRequest,
   FrameWorkerRequest,
   ParseWorkerRequest,
   ParseWorkerResponse,
+  TrajectoryParseWorkerRequest,
 } from './parse-worker-protocol'
 import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
 
 const error_message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-const create_frame_loader_port = (frame_loader: FrameLoader, content: string): MessagePort => {
+const is_trajectory_request = (
+  request: AnyParseWorkerRequest,
+): request is TrajectoryParseWorkerRequest =>
+  `kind` in request && request.kind === `trajectory`
+
+const create_frame_loader_port = (
+  frame_loader: FrameLoader,
+  content: TrajectorySource,
+): MessagePort => {
   const channel = new MessageChannel()
   // Dropped on dispose so a closed viewer stops pinning the source string (100+ MB for the
   // trajectories worth indexing) and the loader's frame index for the worker's whole life.
-  let state: { loader: FrameLoader; data: string } | null = {
+  if (content instanceof Blob && frame_loader.requires_source !== false) {
+    throw new Error(`Blob-backed frame loaders must own their HDF5 source`)
+  }
+  let state: { loader: FrameLoader; data: string | ArrayBuffer } | null = {
     loader: frame_loader,
-    data: content,
+    data: content instanceof Blob ? `` : content,
   }
+  let request_queue = Promise.resolve()
   const dispose = (): void => {
-    state?.loader.dispose?.()
-    state = null
-    channel.port1.close()
+    try {
+      state?.loader.dispose?.()
+    } finally {
+      state = null
+      channel.port1.close()
+    }
   }
-  const post_response = (response: unknown): void => {
+  const post_response = (response: unknown, transfer: Transferable[] = []): void => {
     if (!state) return
     try {
-      channel.port1.postMessage(response)
-    } catch {
+      channel.port1.postMessage(response, { transfer })
+    } catch (error) {
+      if (response && typeof response === `object` && `id` in response) {
+        try {
+          channel.port1.postMessage({ id: response.id, error: error_message(error) })
+        } catch {
+          // The port itself is unusable; disposal below releases the retained source.
+        }
+      }
       dispose()
     }
   }
@@ -47,11 +78,13 @@ const create_frame_loader_port = (frame_loader: FrameLoader, content: string): M
       dispose()
       return
     }
-    const { loader, data } = state
-    void (async () => {
+    request_queue = request_queue.then(async () => {
+      if (!state) return
+      const { loader, data } = state
       const on_progress = (progress: ParseProgress): void => post_response({ id, progress })
       try {
         let result: unknown
+        let transfer: Transferable[] = []
         if (method === `get_total_frames`) {
           result = await loader.get_total_frames(data)
         } else if (method === `build_frame_index`) {
@@ -65,22 +98,45 @@ const create_frame_loader_port = (frame_loader: FrameLoader, content: string): M
             on_progress,
           )
         } else if (method === `stream_positions` && loader.stream_positions) {
-          result = await loader.stream_positions(
+          const stream = await loader.stream_positions(
             data,
             args[0] as Parameters<NonNullable<FrameLoader[`stream_positions`]>>[1],
             on_progress,
           )
+          result = stream
+          transfer = trajectory_data_transferables(stream)
         } else {
           throw new Error(`Unsupported indexed frame worker method: ${method}`)
         }
-        post_response({ id, result })
+        post_response({ id, result }, transfer)
       } catch (error) {
         post_response({ id, error: error_message(error) })
       }
-    })()
+    })
   })
   channel.port1.start()
   return channel.port2
+}
+
+export const prepare_parse_result = (
+  id: number,
+  result: ParseResult,
+  content: TrajectorySource,
+): { response: ParseWorkerResponse; transfer: Transferable[] } => {
+  const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
+  if (trajectory?.is_indexed !== true || !trajectory.frame_loader) {
+    return { response: { id, result }, transfer: [] }
+  }
+  const { frame_loader, frame_store } = trajectory
+  trajectory.frame_loader = undefined
+  if (frame_store) {
+    return {
+      response: { id, result },
+      transfer: trajectory_data_transferables(frame_store),
+    }
+  }
+  const frame_port = create_frame_loader_port(frame_loader, content)
+  return { response: { id, result, frame_port }, transfer: [frame_port] }
 }
 
 export const handle_parse_worker_request = async (
@@ -88,33 +144,56 @@ export const handle_parse_worker_request = async (
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
   const { id, content, filename, is_base64 } = request
   try {
-    if (!should_index_worker_xyz(content, filename, is_base64)) {
-      return {
-        response: { id, result: await parse_file_content(content, filename, is_base64) },
-        transfer: [],
-      }
-    }
-    const indexed = await parse_trajectory_async(content, filename, undefined, {
-      use_indexing: true,
-      extract_plot_metadata: true,
-    })
-    const frame_loader = indexed.frame_loader
-    if (!frame_loader) throw new Error(`Indexed trajectory has no frame loader`)
-    const frame_port = create_frame_loader_port(frame_loader, content)
-    indexed.frame_loader = undefined
-    return {
-      response: { id, result: { type: `trajectory`, data: indexed, filename }, frame_port },
-      transfer: [frame_port],
-    }
+    const result: ParseResult = should_index_worker_xyz(content, filename, is_base64)
+      ? {
+          type: `trajectory`,
+          data: await parse_trajectory_async(content, filename, undefined, {
+            use_indexing: true,
+            extract_plot_metadata: true,
+          }),
+          filename,
+        }
+      : await parse_file_content(content, filename, is_base64)
+    return prepare_parse_result(id, result, content)
   } catch (error) {
     return { response: { id, error: error_message(error) }, transfer: [] }
   }
 }
 
-self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
+export const handle_any_parse_worker_request = async (
+  request: AnyParseWorkerRequest,
+  on_progress?: (progress: ParseProgress) => void,
+): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
+  if (!is_trajectory_request(request)) {
+    return handle_parse_worker_request(request)
+  }
+  const { id, data, filename, options } = request
+  try {
+    const trajectory = await parse_trajectory_async(data, filename, on_progress, options)
+    return prepare_parse_result(id, { type: `trajectory`, data: trajectory, filename }, data)
+  } catch (error) {
+    return {
+      response: {
+        id,
+        error: error_message(error),
+        ...(error instanceof Hdf5TrajectoryGroupSelectionError
+          ? { hdf5_group_paths: error.group_paths }
+          : {}),
+      },
+      transfer: [],
+    }
+  }
+}
+
+self.addEventListener(`message`, (event: MessageEvent<AnyParseWorkerRequest>) => {
   const { id } = event.data
   void (async () => {
-    const { response, transfer } = await handle_parse_worker_request(event.data)
+    const on_progress = (progress: ParseProgress): void =>
+      self.postMessage({ id, progress } satisfies ParseWorkerResponse)
+    const { response, transfer } = await handle_any_parse_worker_request(
+      event.data,
+      on_progress,
+    )
     try {
       self.postMessage(response, { transfer })
     } catch (error) {

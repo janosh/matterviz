@@ -1,18 +1,35 @@
 import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
 import { parse_xyz } from '$lib/structure/parse'
-import type { TrajectoryFrame } from '$lib/trajectory'
+import { validate_trajectory, type TrajectoryFrame } from '$lib/trajectory'
 import {
   get_unsupported_format_message,
   is_trajectory_file,
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
 import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
+import {
+  Hdf5TrajectoryGroupSelectionError,
+  parse_hdf5_trajectory,
+} from '$lib/trajectory/parse/hdf5'
+import {
+  HDF5_MAX_LOGICAL_SLICE_BYTES,
+  hdf5_frames_per_slice,
+  read_numeric_first_axis,
+  read_numeric_hyperslab,
+  read_numeric_samples,
+  to_number_array,
+  to_scalar_number,
+} from '$lib/trajectory/parse/h5-utils'
+import { ase_calculator_data } from '$lib/trajectory/parse/ase'
+import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
 import { get_trajectory_type } from '$site/trajectories'
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import { describe, expect, it, test, vi } from 'vitest'
+import { Dataset as H5Dataset } from 'h5wasm'
+import type { File as H5File } from 'h5wasm'
+import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import {
   get_dummy_structure,
   make_crystal,
@@ -25,6 +42,115 @@ const TRAJECTORY_DIR = `src/site/trajectories`
 // Helper to read text trajectory files (auto-decompresses .gz)
 const read_test_file = (filename: string): string =>
   read_maybe_gz(join(process.cwd(), TRAJECTORY_DIR, filename))
+
+it.each([
+  { label: `finite`, value: 12n, expected: 12 },
+  { label: `unsafe`, value: 2n ** 60n, expected: null },
+  { label: `overflowing`, value: 10n ** 400n, expected: null },
+  { label: `multi-value`, value: [1, 2], expected: null },
+])(`validates $label scalar input without admitting lossy numbers`, ({ value, expected }) => {
+  expect(to_scalar_number(value)).toBe(expected)
+})
+
+it(`rejects BigInt arrays that cannot be represented exactly`, () => {
+  expect(to_number_array([1n, 2n])).toEqual([1, 2])
+  expect(to_number_array([2n ** 60n])).toBeNull()
+})
+
+it.each([1, 3, 9, 3000])(
+  `caps a %i-value HDF5 frame slice at 8 MiB of logical Float64 output`,
+  (values_per_frame) => {
+    const frame_count = hdf5_frames_per_slice(values_per_frame)
+    expect(
+      frame_count * values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+    ).toBeLessThanOrEqual(HDF5_MAX_LOGICAL_SLICE_BYTES)
+    expect(
+      (frame_count + 1) * values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+    ).toBeGreaterThan(HDF5_MAX_LOGICAL_SLICE_BYTES)
+  },
+)
+
+it(`caps a shared HDF5 frame slice by its widest per-frame dataset`, () => {
+  const frame_count = hdf5_frames_per_slice(3, 1, 9)
+  expect(frame_count * 9 * Float64Array.BYTES_PER_ELEMENT).toBeLessThanOrEqual(
+    HDF5_MAX_LOGICAL_SLICE_BYTES,
+  )
+  expect((frame_count + 1) * 9 * Float64Array.BYTES_PER_ELEMENT).toBeGreaterThan(
+    HDF5_MAX_LOGICAL_SLICE_BYTES,
+  )
+})
+
+it(`rejects one HDF5 sample larger than the logical hyperslab limit`, () => {
+  expect(() =>
+    hdf5_frames_per_slice(HDF5_MAX_LOGICAL_SLICE_BYTES / Float64Array.BYTES_PER_ELEMENT + 1),
+  ).toThrow(`above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application slice limit`)
+})
+
+it(`rejects an oversized logical HDF5 hyperslab before reading it`, () => {
+  const slice = vi.fn()
+  const dataset = {
+    shape: [HDF5_MAX_LOGICAL_SLICE_BYTES / Float64Array.BYTES_PER_ELEMENT + 1],
+    slice,
+  } as unknown as H5Dataset
+  expect(() => read_numeric_hyperslab(dataset, `/large`, [[]])).toThrow(
+    `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+  )
+  expect(slice).not.toHaveBeenCalled()
+})
+
+it(`copies large HDF5 axis chunks without spreading them into the call stack`, () => {
+  const entry_count = 130_000
+  const dataset = {
+    shape: [entry_count],
+    slice: () => Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
+  } as unknown as H5Dataset
+  const values = read_numeric_first_axis(dataset, `/steps/positions`, entry_count, 1, `HDF5`)
+  expect(values).toHaveLength(entry_count)
+  expect(values.at(-1)).toBe(entry_count - 1)
+})
+
+it(`copies sampled numeric hyperslabs directly into typed output`, () => {
+  const array_from_spy = vi.spyOn(Array, `from`)
+  onTestFinished(() => array_from_spy.mockRestore())
+  const dataset = {
+    shape: [3, 2],
+    slice: () => Float64Array.from([1, 2, 3, 4, 5, 6]),
+  } as unknown as H5Dataset
+  const values = read_numeric_samples(dataset, `/direct-copy`, 3, 2)
+  expect(values).toEqual(Float64Array.from([1, 2, 3, 4, 5, 6]))
+  expect(array_from_spy).not.toHaveBeenCalled()
+})
+
+it(`rejects overlong HDF5 step axes before hyperslab reads can truncate them`, () => {
+  const dataset = { shape: [3] } as H5Dataset
+  expect(() =>
+    read_numeric_first_axis(dataset, `/steps/positions`, 2, 1, `TorchSim HDF5 steps`),
+  ).toThrow(`steps /steps/positions has 3 entries, expected 2`)
+})
+
+it(`fills response arrays with capped HDF5 hyperslabs`, () => {
+  const sample_size = 3
+  const sample_count = hdf5_frames_per_slice(sample_size) + 1
+  const slice = vi.fn((ranges: [number, number, number][]) => {
+    const [start, end, stride] = ranges[0]
+    const count = Math.ceil((end - start) / stride)
+    return Float64Array.from(
+      { length: count * sample_size },
+      (_unused, value_idx) => start + Math.floor(value_idx / sample_size) * stride,
+    )
+  })
+  const dataset = { shape: [sample_count, sample_size], slice } as unknown as H5Dataset
+  const values = read_numeric_samples(
+    dataset,
+    `/observables/dipole`,
+    sample_count,
+    sample_size,
+  )
+
+  expect(slice).toHaveBeenCalledTimes(2)
+  expect(values).toHaveLength(sample_count * sample_size)
+  expect(values.at(-1)).toBe(sample_count - 1)
+})
 
 test.each([
   [`movie.H5.gz`, `hdf5`],
@@ -211,6 +337,34 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
   })
 })
 
+test(`production parsing rejects inconsistent atom counts and coordinates`, async () => {
+  const hydrogen = parse_xyz(`1\nframe\nH 0 0 0`)
+  const helium = parse_xyz(`1\nframe\nHe 0 0 0`)
+  if (!hydrogen || !helium) throw new Error(`test structures failed to parse`)
+
+  await expect(
+    parse_trajectory_data({
+      frames: [
+        { structure: hydrogen, step: 0 },
+        { structure: { ...helium, sites: [...helium.sites, ...helium.sites] }, step: 1 },
+      ],
+    }),
+  ).rejects.toThrow(`frame 1 has 2 atoms, expected 1`)
+  await expect(
+    parse_trajectory_data({
+      frames: [
+        {
+          structure: {
+            ...hydrogen,
+            sites: [{ ...hydrogen.sites[0], xyz: [Number.NaN, 0, 0] }],
+          },
+          step: 0,
+        },
+      ],
+    }),
+  ).rejects.toThrow(`atom 0 has invalid Cartesian coordinates`)
+})
+
 describe(`VASP XDATCAR Parser`, () => {
   it(`should parse the MD fixture: frames, elements, volumes, metadata`, async () => {
     const content = read_test_file(`vasp-XDATCAR.MD.gz`)
@@ -388,11 +542,25 @@ describe(`LAMMPS Trajectory Format`, () => {
   it(`parses element identity and extra columns from the MDAnalysis fixture`, async () => {
     const filename = `mdanalysis-additional-columns.lammpstrj`
     const trajectory = await parse_trajectory_data(read_test_file(filename), filename)
-    const sites = trajectory.frames[0].structure.sites
+    const { structure, metadata } = trajectory.frames[0]
+    const sites = structure.sites
 
     // oxfmt-ignore
     expect(sites.map((site) => site.species[0].element)).toEqual([`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`])
     expect(sites[0].properties).toMatchObject({ id: 1, charge: 0.00258855, p: 1.1 })
+    expect(metadata?.box_origin).toEqual([0, 0, -25.1])
+    for (const [coord_idx, expected] of [2.84, 8.17, 0.1].entries()) {
+      expect(sites[0].xyz[coord_idx]).toBeCloseTo(expected, 12)
+    }
+    for (const [coord_idx, expected] of [2.84 / 42.6, 8.17 / 44.2712, 0.1 / 50.2].entries()) {
+      expect(sites[0].abc[coord_idx]).toBeCloseTo(expected, 12)
+    }
+    for (const site of sites) {
+      for (const coordinate of site.abc) {
+        expect(coordinate).toBeGreaterThanOrEqual(0)
+        expect(coordinate).toBeLessThanOrEqual(1)
+      }
+    }
   })
 
   it(`rejects a LAMMPS file without type or element columns`, async () => {
@@ -405,6 +573,19 @@ describe(`LAMMPS Trajectory Format`, () => {
     )
   })
 
+  it.each([`0`, `1.5`, `bad`])(
+    `rejects invalid LAMMPS atom type %s instead of coercing it to type 1`,
+    async (atom_type) => {
+      const content = lammps_frame(`id type x y z`, [`1 ${atom_type} 0 0 0`])
+      await expect(parse_trajectory_data(content, `invalid-type.lammpstrj`)).rejects.toThrow(
+        `No valid frames found in LAMMPS trajectory`,
+      )
+      expect(get_traj_parse_warnings()).toContain(
+        `Skipping LAMMPS atom with invalid type "${atom_type}" at timestep 0`,
+      )
+    },
+  )
+
   it(`should parse inline LAMMPS content`, async () => {
     const content = lammps_frames([1, 1, 2], { n_frames: 2 })
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
@@ -413,6 +594,72 @@ describe(`LAMMPS Trajectory Format`, () => {
     expect(trajectory.frames).toHaveLength(2)
     expect(trajectory.frames.map((frame) => frame.step)).toEqual([0, 100])
     expect(trajectory.frames[0].structure.sites).toHaveLength(3)
+  })
+
+  it(`sorts every LAMMPS frame by atom ID before comparing or analyzing it`, async () => {
+    const content = [
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], 0),
+      lammps_frame(`id type x y z`, [`2 1 7.5 0 0`, `1 1 1.5 0 0`], 1),
+    ].join(`\n`)
+    const trajectory = await parse_trajectory_data(content, `unsorted.lammpstrj`)
+    expect(
+      trajectory.frames.map((frame) =>
+        frame.structure.sites.map(({ properties, xyz }) => [properties.id, xyz[0]]),
+      ),
+    ).toEqual([
+      [
+        [1, 1],
+        [2, 8],
+      ],
+      [
+        [1, 1.5],
+        [2, 7.5],
+      ],
+    ])
+  })
+
+  it(`rejects unverifiable atom identity and non-increasing or invalid timesteps`, async () => {
+    const without_ids = [
+      lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], 0),
+      lammps_frame(`type x y z`, [`1 7.5 0 0`, `1 1.5 0 0`], 1),
+    ].join(`\n`)
+    await expect(parse_trajectory_data(without_ids, `no-ids.lammpstrj`)).rejects.toThrow(
+      `must include an atom ID column`,
+    )
+
+    const descending = [
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`], 1),
+      lammps_frame(`id type x y z`, [`1 1 2 0 0`], 0),
+    ].join(`\n`)
+    await expect(parse_trajectory_data(descending, `descending.lammpstrj`)).rejects.toThrow(
+      `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`,
+    )
+
+    const invalid = lammps_frame(`id type x y z`, [`1 1 1 0 0`]).replace(
+      `ITEM: TIMESTEP\n0`,
+      `ITEM: TIMESTEP\nnot-a-step`,
+    )
+    await expect(parse_trajectory_data(invalid, `invalid.lammpstrj`)).rejects.toThrow(
+      `No valid frames found`,
+    )
+    expect(get_traj_parse_warnings()).toContain(
+      `Skipping LAMMPS frame with invalid timestep "not-a-step"`,
+    )
+  })
+
+  it.each([
+    [`duplicate`, [`1 1 1.5 0 0`, `1 1 7.5 0 0`], `duplicate atom IDs`],
+    [`changed`, [`1 1 1.5 0 0`, `3 1 7.5 0 0`], `atom ID set changed`],
+  ])(`skips a LAMMPS frame with a %s atom ID set`, async (_label, atoms, warning) => {
+    const content = [
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], 0),
+      lammps_frame(`id type x y z`, atoms, 1),
+    ].join(`\n`)
+    const trajectory = await parse_trajectory_data(content, `bad-ids.lammpstrj`)
+    expect(trajectory.frames).toHaveLength(1)
+    expect(get_traj_parse_warnings()).toContain(
+      `Skipping LAMMPS frame at timestep 1: ${warning}`,
+    )
   })
 
   // Coordinate values are 0.25, 0.5, 0.75, ... in column order, so the expected Cartesian
@@ -588,6 +835,40 @@ ITEM: ATOMS id type x y z\n1 1 5.0 5.0 5.0`
       const content = triclinic_frame([`0.0 10.0 2.0`, `0.0 10.0 1.0`, `0.0 10.0 0.5`])
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
       expect(trajectory.frames[0].metadata?.volume).toBeCloseTo(665, 0)
+    })
+
+    it.each([
+      [`x y z`, `0.75 -0.375 -1.0`, false],
+      [`xu yu zu`, `0.75 -0.375 -1.0`, true],
+      [`xs ys zs`, `0.5 0.5 0.5`, false],
+      [`xsu ysu zsu`, `0.5 0.5 0.5`, true],
+    ])(`parses general triclinic %s coordinates`, async (columns, coordinates, unwrapped) => {
+      const content = `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS abc origin pp ff pp
+4 0 0 -2
+1 5 0 -3
+0.5 0.25 6 -4
+ITEM: ATOMS id type ${columns}
+1 1 ${coordinates}`
+      const trajectory = await parse_trajectory_data(content, `general.lammpstrj`)
+      const { structure, metadata } = trajectory.frames[0]
+      if (!(`lattice` in structure)) throw new Error(`missing lattice`)
+
+      expect(structure.lattice.matrix).toEqual([
+        [4, 0, 0],
+        [1, 5, 0],
+        [0.5, 0.25, 6],
+      ])
+      expect(structure.lattice.pbc).toEqual([true, false, true])
+      expect(structure.sites[0].xyz).toEqual([2.75, 2.625, 3])
+      expect(structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+      expect(metadata).toMatchObject({
+        box_origin: [-2, -3, -4],
+        coords_unwrapped: unwrapped,
+      })
     })
   })
 
@@ -814,6 +1095,18 @@ Si 0 0 0
     },
   )
 
+  it(`preserves quoted extXYZ dipoles and polarizability tensors`, async () => {
+    const frame = `1\nstep=4 lattice="10 0 0 0 10 0 0 0 10" dipole="1 2 3" polarizability="1 0 0 0 2 0 0 0 3"\nH 0 0 0`
+    const trajectory = await parse_trajectory_data(`${frame}\n${frame}`, `signals.extxyz`)
+    expect(trajectory.frames[0].metadata?.lattice).toBeUndefined()
+    expect(trajectory.frames[0].metadata?.dipole).toEqual([1, 2, 3])
+    expect(trajectory.frames[0].metadata?.polarizability).toEqual([
+      [1, 0, 0],
+      [0, 2, 0],
+      [0, 0, 3],
+    ])
+  })
+
   const valid_frame = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
   // oxfmt-ignore
   it.each([
@@ -834,7 +1127,9 @@ describe(`HDF5 Format`, () => {
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
-    expect(trajectory.frames).toHaveLength(20)
+    expect(trajectory.frames).toHaveLength(10)
+    expect(trajectory.total_frames).toBe(20)
+    expect((await trajectory.frame_loader?.load_frame(``, 19))?.step).toBe(500)
     expect(trajectory.metadata?.num_atoms).toBe(55)
     expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
     expect(trajectory.metadata?.element_counts).toEqual({ Au: 55 })
@@ -864,31 +1159,983 @@ describe(`HDF5 Format`, () => {
 
   // Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
   // return its bytes, for torn-file scenarios no checked-in fixture covers
-  const make_h5_buffer = async (
-    datasets: { name: string; data: number[]; shape: number[] }[],
+  const h5_bytes = async (
+    prefix: string,
+    write: (file: H5File) => void,
   ): Promise<ArrayBuffer> => {
     const h5wasm = await import(`h5wasm`)
     const { FS } = await h5wasm.ready
-    const temp_filename = `torn-tail-${Math.random().toString(36).slice(2)}.h5`
+    const temp_filename = `${prefix}-${Math.random().toString(36).slice(2)}.h5`
     const file = new h5wasm.File(temp_filename, `w`)
-    for (const { name, data, shape } of datasets) file.create_dataset({ name, data, shape })
-    file.close()
-    const bytes = FS.readFile(temp_filename)
-    FS.unlink(temp_filename)
-    // copy into a plain ArrayBuffer (bytes.buffer may be a SharedArrayBuffer view)
-    const buffer = new ArrayBuffer(bytes.byteLength)
-    new Uint8Array(buffer).set(bytes)
-    return buffer
+    let file_closed = false
+    try {
+      write(file)
+      file.close()
+      file_closed = true
+      return Uint8Array.from(FS.readFile(temp_filename)).buffer
+    } finally {
+      if (!file_closed) {
+        try {
+          file.close()
+        } catch {
+          // Preserve the writer error if cleanup also fails.
+        }
+      }
+      try {
+        FS.unlink(temp_filename)
+      } catch {
+        // The writer may fail before h5wasm creates a filesystem entry.
+      }
+    }
   }
+
+  const make_h5_buffer = (
+    datasets: { name: string; data: number[]; shape: number[] }[],
+  ): Promise<ArrayBuffer> =>
+    h5_bytes(`torn-tail`, (file) => {
+      for (const { name, data, shape } of datasets) file.create_dataset({ name, data, shape })
+    })
+
+  const make_grouped_h5_buffer = (
+    groups: { name: string; atomic_number: number; x_position: number }[],
+    include_unrelated_data_signals = false,
+  ): Promise<ArrayBuffer> =>
+    h5_bytes(`grouped`, (file) => {
+      for (const [group_idx, { name, atomic_number, x_position }] of groups.entries()) {
+        const group = file.create_group(name)
+        group.create_dataset({
+          name: `positions`,
+          data: [x_position, 0, 0],
+          shape: [1, 1, 3],
+        })
+        group.create_dataset({ name: `atomic_numbers`, data: [atomic_number], shape: [1] })
+        group.create_attribute(`temperature_kelvin`, 300 + group_idx)
+        group.create_attribute(`dt_fs`, 0.5)
+      }
+      if (include_unrelated_data_signals) {
+        const data = file.create_group(`data`)
+        data.create_dataset({ name: `masses`, data: [2], shape: [1] })
+        data.create_dataset({ name: `dipole`, data: [1, 0, 0, 0, 1, 0], shape: [2, 3] })
+        file.create_group(`steps`).create_dataset({ name: `dipole`, data: [0, 1], shape: [2] })
+      }
+    })
+
+  const make_torch_sim_signal_buffer = (
+    dipole_steps = [0, 2],
+    include_dipole_steps = true,
+  ): Promise<ArrayBuffer> =>
+    h5_bytes(`torch-sim-signals`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: Array.from({ length: 4 }, (_unused, frame_idx) => [
+          frame_idx * 0.01,
+          0,
+          0,
+          1 + frame_idx * 0.01,
+          0,
+          0,
+        ]).flat(),
+        shape: [4, 2, 3],
+      })
+      data.create_dataset({ name: `atomic_numbers`, data: [1, 8], shape: [2] })
+      data.create_dataset({ name: `masses`, data: [1.008, 15.999], shape: [2] })
+      const velocities = data.create_dataset({
+        name: `velocities`,
+        data: Array.from({ length: 24 }, (_unused, idx) => idx / 10),
+        shape: [4, 2, 3],
+      })
+      velocities.create_attribute(`unit`, `A/fs`)
+      data.create_dataset({ name: `dipole`, data: [1, 0, 0, 0, 1, 0], shape: [2, 3] })
+      data.create_dataset({
+        name: `polarizability`,
+        data: Array.from({ length: 3 }, (_unused, sample_idx) => [
+          1 + sample_idx,
+          0,
+          0,
+          0,
+          2 + sample_idx,
+          0,
+          0,
+          0,
+          3 + sample_idx,
+        ]).flat(),
+        shape: [3, 3, 3],
+      })
+      steps.create_dataset({ name: `positions`, data: [0, 1, 2, 3], shape: [4] })
+      steps.create_dataset({ name: `velocities`, data: [0, 1, 2, 3], shape: [4] })
+      if (include_dipole_steps) {
+        steps.create_dataset({ name: `dipole`, data: dipole_steps, shape: [2] })
+      }
+      steps.create_dataset({ name: `polarizability`, data: [0, 2, 4], shape: [3] })
+      file.create_attribute(`time_step`, 0.5)
+      file.create_attribute(`time_unit`, `fs`)
+      file.create_attribute(`temperature`, 300)
+      file.create_attribute(`model`, `mace-mpa-0`)
+      file.create_attribute(`thermostat`, `langevin`)
+      file.create_attribute(`random_seed`, 17)
+    })
+
+  const make_reference_md_h5_buffer = (
+    global_ids = [100, 101],
+    n_frames = 3,
+    cell_matrix = [10, 0, 0, 0, 10, 0, 0, 0, 10],
+  ): Promise<ArrayBuffer> =>
+    h5_bytes(`reference-md`, (file) => {
+      const frames = file.create_group(`frames`)
+      frames.create_dataset({
+        name: `production_step`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
+        shape: [n_frames],
+      })
+      frames.create_dataset({
+        name: `time_ps`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 0.5),
+        shape: [n_frames],
+      })
+      const simulation = file.create_group(`simulation`)
+      simulation.create_attribute(`integration_timestep_ps`, 0.25)
+      simulation.create_attribute(`sample_stride_steps`, 2)
+      simulation.create_attribute(`sample_interval_ps`, 0.5)
+      simulation.create_attribute(`ensemble`, `NVE`)
+      file
+        .create_group(`replicas`)
+        .create_dataset({ name: `global_ids`, data: global_ids, shape: [global_ids.length] })
+
+      const molecule = file.create_group(`molecules`).create_group(`h2o`)
+      const topology = molecule.create_group(`topology`)
+      topology.create_dataset({ name: `atomic_numbers`, data: [1, 8], shape: [2] })
+      topology.create_dataset({ name: `masses_amu`, data: [1.008, 15.999], shape: [2] })
+      topology.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
+      molecule
+        .create_group(`replicas`)
+        .create_dataset({ name: `member_seeds`, data: [7, 8], shape: [2] })
+
+      const initial_state = molecule.create_group(`production_initial_state`)
+      initial_state.create_dataset({
+        name: `positions_angstrom`,
+        data: [0, 0, 0, 0, 1, 0, 5, 0, 0, 5, 1, 0],
+        shape: [2, 2, 3],
+      })
+      initial_state.create_dataset({
+        name: `momenta_sqrt_ev_amu`,
+        data: Array(12).fill(0),
+        shape: [2, 2, 3],
+      })
+      initial_state.create_dataset({
+        name: `cells_angstrom`,
+        data: [...cell_matrix, ...cell_matrix],
+        shape: [2, 3, 3],
+      })
+
+      const observables = molecule.create_group(`observables`)
+      observables.create_dataset({
+        name: `atomic_velocity_angstrom_per_ps`,
+        data: Array.from({ length: n_frames }, () => [
+          0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0,
+        ]).flat(),
+        shape: [n_frames, 2, 2, 3],
+      })
+      observables.create_dataset({
+        name: `total_dipole_e_angstrom`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+          0,
+          0,
+          0,
+          10 + frame_idx,
+          0,
+          0,
+        ]).flat(),
+        shape: [n_frames, 2, 3],
+      })
+      observables.create_dataset({
+        name: `total_energy_ev`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+          1 + frame_idx,
+          10 + frame_idx,
+        ]).flat(),
+        shape: [n_frames, 2],
+      })
+      observables.create_dataset({
+        name: `vibrational_temperature_kelvin`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+          300 + frame_idx,
+          310 + frame_idx,
+        ]).flat(),
+        shape: [n_frames, 2],
+      })
+    })
+
+  it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
+    const trajectory = await parse_trajectory_data(
+      await make_torch_sim_signal_buffer(),
+      `torch-sim.h5`,
+    )
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 1, 2, 3])
+    expect(trajectory.atom_masses).toEqual([1.008, 15.999])
+    expect(trajectory.signals).toBeUndefined()
+    expect(trajectory.signal_descriptors).toEqual({
+      velocity: { sample_shape: [2, 3], sample_count: 4, unit: `A/fs` },
+      dipole: { sample_shape: [3], sample_count: 2 },
+      polarizability: { sample_shape: [3, 3], sample_count: 3 },
+    })
+    const frame = await trajectory.frame_loader?.load_frame(``, 3)
+    expect(frame?.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
+      [1.8, 1.9, 2],
+      [2.1, 2.2, 2.3],
+    ])
+    const signal_stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`velocity`, `dipole`, `polarizability`],
+    })
+    expect(signal_stream?.signals?.velocity).toMatchObject({
+      sample_shape: [2, 3],
+      steps: [0, 1, 2, 3],
+      unit: `A/fs`,
+    })
+    expect(signal_stream?.signals?.dipole.steps).toEqual([0, 2])
+    expect(signal_stream?.signals?.polarizability).toMatchObject({
+      sample_shape: [3, 3],
+      steps: [0, 2, 4],
+      values: Float64Array.from([
+        1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4, 3, 0, 0, 0, 4, 0, 0, 0, 5,
+      ]),
+    })
+    expect(trajectory.time_step).toBe(0.5)
+    expect(trajectory.time_unit).toBe(`fs`)
+    expect(trajectory.metadata).toMatchObject({
+      temperature: 300,
+      model: `mace-mpa-0`,
+      thermostat: `langevin`,
+      random_seed: 17,
+    })
+    expect(trajectory.metadata?.discovered_datasets).toMatchObject({
+      masses: `/data/masses`,
+      signals: {
+        velocity: `/data/velocities`,
+        dipole: `/data/dipole`,
+        polarizability: `/data/polarizability`,
+      },
+    })
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`materializes singleton TorchSim and Reference MD HDF5 inputs`, async () => {
+    const torch_buffer = await h5_bytes(`singleton-torch`, (file) => {
+      const data = file.create_group(`data`)
+      data.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 3] })
+      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+    })
+    const torch = await parse_hdf5_trajectory(torch_buffer, `singleton.h5`)
+    const reference = await parse_hdf5_trajectory(
+      await make_reference_md_h5_buffer([100, 101], 1),
+      `reference-singleton.h5`,
+      `/molecules/h2o/replicas/1`,
+    )
+
+    expect(torch).toMatchObject({ frames: [{ step: 0 }] })
+    expect(torch.frame_loader).toBeUndefined()
+    expect(reference.frames).toHaveLength(1)
+    expect(reference.frame_loader).toBeUndefined()
+    expect(reference.signals?.velocity.values).toEqual(Float64Array.from([1, 0, 0, 0, 2, 0]))
+  })
+
+  it(`recovers zero-filled step tails after structural validation`, async () => {
+    const make_buffer = (position_steps: number[], dynamic_topology = true) =>
+      h5_bytes(`torn-steps`, (file) => {
+        const data = file.create_group(`data`)
+        const steps = file.create_group(`steps`)
+        data.create_dataset({
+          name: `positions`,
+          data: [...frame_positions, ...frame_positions, ...zero_positions],
+          shape: [3, 2, 3],
+        })
+        data.create_dataset({
+          name: `atomic_numbers`,
+          data: dynamic_topology
+            ? [...two_gold_atoms, ...two_gold_atoms, 0, 0]
+            : two_gold_atoms,
+          shape: dynamic_topology ? [3, 2] : [2],
+        })
+        data.create_dataset({
+          name: `pbc`,
+          data: [1, 1, 1, 1, 1, 1, 0, 0, 0],
+          shape: [3, 3],
+        })
+        steps.create_dataset({
+          name: `positions`,
+          data: position_steps,
+          shape: [3],
+        })
+      })
+    const torn = await make_buffer([0, 1, 0])
+    const trajectory = await parse_hdf5_trajectory(torn, `torn-steps.h5`)
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 1])
+    expect(trajectory.metadata?.dropped_steps).toBe(1)
+    expect(await trajectory.frame_loader?.stream_positions?.(``)).toMatchObject({
+      pbc: [true, true, true],
+    })
+    trajectory.frame_loader?.dispose?.()
+    const static_topology = await parse_hdf5_trajectory(
+      await make_buffer([0, 1, 0], false),
+      `torn-static-steps.h5`,
+    )
+    expect(static_topology.frames.map(({ step }) => step)).toEqual([0, 1])
+    expect(static_topology.metadata?.dropped_steps).toBe(1)
+    static_topology.frame_loader?.dispose?.()
+    const corrupt = await make_buffer([0, 0, 0])
+    await expect(parse_hdf5_trajectory(corrupt, `corrupt-steps.h5`)).rejects.toThrow(
+      `must increase strictly`,
+    )
+  })
+
+  it(`trims zero-filled response and energy step tails with the geometry`, async () => {
+    const content = await h5_bytes(`torn-response-steps`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
+        shape: [3, 2, 3],
+      })
+      data.create_dataset({
+        name: `atomic_numbers`,
+        data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
+        shape: [3, 2],
+      })
+      data.create_dataset({
+        name: `velocities`,
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
+        shape: [3, 2, 3],
+      })
+      data.create_dataset({ name: `energy`, data: [-1, -2, 0], shape: [3] })
+      for (const name of [`positions`, `velocities`, `energy`]) {
+        steps.create_dataset({ name, data: [0, 1, 0], shape: [3] })
+      }
+    })
+
+    const trajectory = await parse_hdf5_trajectory(content, `torn-response-steps.h5`)
+    expect(trajectory.frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
+    expect(trajectory.signal_descriptors?.velocity).toMatchObject({
+      sample_count: 2,
+    })
+    const stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`velocity`],
+    })
+    expect(stream?.signals?.velocity.steps).toEqual([0, 1])
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`keeps non-aligned energy on its native signal cadence`, async () => {
+    const content = await h5_bytes(`native-energy`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: Array.from({ length: 4 }, (_unused, frame_idx) => [frame_idx, 0, 0]).flat(),
+        shape: [4, 1, 3],
+      })
+      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      data.create_dataset({ name: `energy`, data: [-1, -2, -3], shape: [3] })
+      steps.create_dataset({
+        name: `positions`,
+        data: [0, 1, 2, 3],
+        shape: [4],
+      })
+      steps.create_dataset({ name: `energy`, data: [0, 2, 4], shape: [3] })
+    })
+    const trajectory = await parse_hdf5_trajectory(content, `native-energy.h5`)
+    const stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`energy`],
+    })
+
+    expect(trajectory.frames.every(({ metadata }) => metadata?.energy === undefined)).toBe(
+      true,
+    )
+    expect(stream?.signals?.energy).toMatchObject({
+      steps: [0, 2, 4],
+      values: Float64Array.from([-1, -2, -3]),
+    })
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`streams uniform dynamic PBC and rejects genuinely varying flags`, async () => {
+    const make_buffer = (pbc: number[]) =>
+      h5_bytes(`dynamic-pbc`, (file) => {
+        const n_frames = pbc.length / 3
+        const data = file.create_group(`data`)
+        data.create_dataset({
+          name: `positions`,
+          data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+            frame_idx,
+            0,
+            0,
+          ]).flat(),
+          shape: [n_frames, 1, 3],
+        })
+        data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+        data.create_dataset({ name: `pbc`, data: pbc, shape: [n_frames, 3] })
+      })
+    const uniform = await parse_hdf5_trajectory(
+      await make_buffer(Array.from({ length: 12 }, () => [1, 0, 1]).flat()),
+      `uniform-pbc.h5`,
+    )
+    expect(await uniform.frame_loader?.stream_positions?.(``)).toMatchObject({
+      pbc: [true, false, true],
+    })
+    uniform.frame_loader?.dispose?.()
+
+    const varying = await parse_hdf5_trajectory(
+      await make_buffer(
+        Array.from({ length: 12 }, (_unused, frame_idx) =>
+          frame_idx === 6 ? [0, 0, 0] : [1, 1, 1],
+        ).flat(),
+      ),
+      `varying-pbc.h5`,
+    )
+    await expect(varying.frame_loader?.stream_positions?.(``)).rejects.toThrow(
+      `PBC flags that vary between frames`,
+    )
+    varying.frame_loader?.dispose?.()
+  })
+
+  it(`streams long generic HDF5 runs with variable cells without materializing every frame`, async () => {
+    const n_frames = 12
+    const content = await h5_bytes(`long-generic`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+          frame_idx,
+          0,
+          0,
+        ]).flat(),
+        shape: [n_frames, 1, 3],
+      })
+      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      data.create_dataset({
+        name: `cells`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+          10 + frame_idx,
+          0,
+          0,
+          0,
+          10,
+          0,
+          0,
+          0,
+          10,
+        ]).flat(),
+        shape: [n_frames, 3, 3],
+      })
+      steps.create_dataset({
+        name: `positions`,
+        data: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
+        shape: [n_frames],
+      })
+    })
+
+    const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
+    onTestFinished(() => slice_spy.mockRestore())
+    const trajectory = await parse_trajectory_data(content, `long-generic.h5`)
+
+    expect(trajectory).toMatchObject({
+      total_frames: n_frames,
+      is_indexed: true,
+    })
+    expect(trajectory.frames).toHaveLength(10)
+    expect(trajectory.frame_store).toBeUndefined()
+    expect(await trajectory.frame_loader?.load_frame(``, 11)).toMatchObject({
+      step: 22,
+      structure: {
+        sites: [{ xyz: [11, 0, 0] }],
+        lattice: {
+          matrix: [
+            [21, 0, 0],
+            [0, 10, 0],
+            [0, 0, 10],
+          ],
+        },
+      },
+    })
+    slice_spy.mockClear()
+    const stream = await trajectory.frame_loader?.stream_positions?.(``)
+    expect(slice_spy).toHaveBeenCalledTimes(2)
+    expect(stream?.lattice_matrices?.at(-1)).toEqual([
+      [21, 0, 0],
+      [0, 10, 0],
+      [0, 0, 10],
+    ])
+    slice_spy.mockRestore()
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`reconstructs a selected replica trajectory from reference MD velocities`, async () => {
+    const content = await make_reference_md_h5_buffer()
+    const error = await parse_trajectory_data(content, `reference-md.h5`).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    )
+    if (!(error instanceof Hdf5TrajectoryGroupSelectionError)) throw error
+    expect(error.group_paths).toEqual([
+      `/molecules/h2o/replicas/0`,
+      `/molecules/h2o/replicas/1`,
+    ])
+
+    const trajectory = await parse_trajectory_data(
+      content,
+      `reference-md.h5`,
+      undefined,
+      `/molecules/h2o/replicas/1`,
+    )
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 2, 4])
+    expect(
+      trajectory.frames.map((frame) => frame.structure.sites.map(({ xyz }) => xyz)),
+    ).toEqual([
+      [
+        [5, 0, 0],
+        [5, 1, 0],
+      ],
+      [
+        [5.5, 0, 0],
+        [5, 2, 0],
+      ],
+      [
+        [6, 0, 0],
+        [5, 3, 0],
+      ],
+    ])
+    expect(
+      trajectory.frames.map(({ metadata }) => [metadata?.energy, metadata?.temperature]),
+    ).toEqual([
+      [10, 310],
+      [11, 311],
+      [12, 312],
+    ])
+    expect(trajectory.time_step).toBe(0.25)
+    expect(trajectory.time_unit).toBe(`ps`)
+    expect(trajectory.atom_masses).toEqual([1.008, 15.999])
+    expect(trajectory.signals).toBeUndefined()
+    expect(trajectory.signal_descriptors?.velocity).toEqual({
+      sample_shape: [2, 3],
+      sample_count: 3,
+      unit: `A/ps`,
+    })
+    expect(trajectory.signal_descriptors?.dipole).toEqual({
+      sample_shape: [3],
+      sample_count: 3,
+      unit: `e*A`,
+    })
+    const signal_stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`velocity`, `dipole`],
+    })
+    expect(signal_stream?.signals?.velocity).toMatchObject({
+      sample_shape: [2, 3],
+      steps: [0, 2, 4],
+      unit: `A/ps`,
+      values: Float64Array.from([1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0]),
+    })
+    expect(signal_stream?.signals?.dipole.values).toEqual(
+      Float64Array.from([10, 0, 0, 11, 0, 0, 12, 0, 0]),
+    )
+    expect(trajectory.metadata).toMatchObject({
+      source_format: `reference_md_hdf5`,
+      molecule: `h2o`,
+      replica_idx: 1,
+      global_id: 101,
+      member_seed: 8,
+      ensemble: `NVE`,
+      reconstructed_positions: `trapezoidal integration of atomic_velocity_angstrom_per_ps`,
+    })
+  })
+
+  it(`keeps long reference MD trajectories compact while preserving random access`, async () => {
+    const content = await make_reference_md_h5_buffer([100, 101], 12)
+    const trajectory = await parse_trajectory_data(
+      content,
+      `reference-md-long.h5`,
+      undefined,
+      `/molecules/h2o/replicas/1`,
+    )
+
+    expect(trajectory.frames).toHaveLength(10)
+    expect(trajectory.total_frames).toBe(12)
+    expect(trajectory.is_indexed).toBe(true)
+    expect(trajectory.plot_metadata).toHaveLength(12)
+    expect(validate_trajectory(trajectory)).toEqual([])
+    expect(trajectory.frames[7].structure.sites.map(({ properties }) => properties)).toEqual([
+      { velocity: [1, 0, 0] },
+      { velocity: [0, 2, 0] },
+    ])
+    for (const frame_idx of [0, 5, 11]) {
+      const frame = await trajectory.frame_loader?.load_frame(content, frame_idx)
+      expect(frame?.structure.sites.map(({ xyz }) => xyz)).toEqual([
+        [5 + frame_idx * 0.5, 0, 0],
+        [5, 1 + frame_idx, 0],
+      ])
+    }
+    const frame_11 = await trajectory.frame_loader?.load_frame(content, 11)
+    expect(frame_11?.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
+      [1, 0, 0],
+      [0, 2, 0],
+    ])
+    const stream = await trajectory.frame_loader?.stream_positions?.(content, {
+      frame_stride: 2,
+      vector_keys: [`velocity`],
+    })
+    expect(stream).toMatchObject({
+      n_frames: 6,
+      n_atoms: 2,
+      frame_stride: 2,
+      steps: [0, 4, 8, 12, 16, 20],
+    })
+    expect(stream?.positions).toHaveLength(36)
+    expect(stream?.vectors?.velocity).toHaveLength(36)
+    const expected_positions = Float64Array.from(
+      [0, 2, 4, 6, 8, 10].flatMap((frame_idx) => [
+        5 + frame_idx * 0.5,
+        0,
+        0,
+        5,
+        1 + frame_idx,
+        0,
+      ]),
+    )
+    const absolute_errors = [...(stream?.positions ?? [])].map((value, value_idx) =>
+      Math.abs(value - expected_positions[value_idx]),
+    )
+    const relative_errors = absolute_errors.map((error, value_idx) =>
+      expected_positions[value_idx] === 0
+        ? 0
+        : error / Math.abs(expected_positions[value_idx]),
+    )
+    expect({
+      max_absolute_error: Math.max(...absolute_errors),
+      max_relative_error: Math.max(...relative_errors),
+    }).toEqual({ max_absolute_error: 0, max_relative_error: 0 })
+    await expect(
+      trajectory.frame_loader?.stream_positions?.(content, {
+        max_bytes: 64,
+        signal_keys: [`velocity`],
+      }),
+    ).rejects.toThrow(`native-cadence signals need`)
+  })
+
+  it(`bounds Reference MD checkpoints and replays exactly across a boundary`, async () => {
+    const checkpoint_bytes = 6 * 1024 * 1024
+    const budget_bytes = 32 * 1024 * 1024
+    const interval = reference_checkpoint_interval(1500, checkpoint_bytes, budget_bytes)
+    expect(interval).toBe(300)
+    expect(Math.ceil(1500 / interval) * checkpoint_bytes).toBeLessThanOrEqual(budget_bytes)
+
+    const trajectory = await parse_hdf5_trajectory(
+      await make_reference_md_h5_buffer([100, 101], 258),
+      `reference-checkpoint.h5`,
+      `/molecules/h2o/replicas/1`,
+    )
+    for (const frame_idx of [255, 256, 257]) {
+      const frame = await trajectory.frame_loader?.load_frame(``, frame_idx)
+      expect(frame?.structure.sites.map(({ xyz }) => xyz)).toEqual([
+        [5 + frame_idx * 0.5, 0, 0],
+        [5, 1 + frame_idx, 0],
+      ])
+    }
+    expect(Number(trajectory.metadata?.position_checkpoint_bytes)).toBeLessThanOrEqual(
+      budget_bytes,
+    )
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`does not mistake generic HDF5 runs for the reference MD layout`, async () => {
+    const content = await h5_bytes(`generic-with-reference-names`, (file) => {
+      file.create_group(`frames`)
+      file.create_group(`molecules`)
+      file.create_group(`simulation`)
+      for (const name of [`run_a`, `run_b`]) {
+        const group = file.create_group(name)
+        group.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
+        group.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      }
+    })
+    const error = await parse_trajectory_data(content, `generic-with-reference-names.h5`).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    )
+    if (!(error instanceof Hdf5TrajectoryGroupSelectionError)) throw error
+    expect(error.group_paths).toEqual([`/run_a`, `/run_b`])
+  })
+
+  it(`rejects a truncated Reference MD replica identifier array`, async () => {
+    await expect(
+      parse_trajectory_data(
+        await make_reference_md_h5_buffer([100]),
+        `reference-md-invalid-ids.h5`,
+        undefined,
+        `/molecules/h2o/replicas/1`,
+      ),
+    ).rejects.toThrow(/\/replicas\/global_ids.*expected \[2\]/)
+  })
+
+  it(`rejects a singular Reference MD cell`, async () => {
+    await expect(
+      parse_trajectory_data(
+        await make_reference_md_h5_buffer([100, 101], 3, [10, 0, 0, 0, 10, 0, 0, 0, 0]),
+        `reference-md-singular.h5`,
+        undefined,
+        `/molecules/h2o/replicas/0`,
+      ),
+    ).rejects.toThrow(`Reference MD HDF5 cell volume must be positive`)
+  })
+
+  it(`prefers the canonical TorchSim /data structure over unrelated complete groups`, async () => {
+    const trajectory = await parse_trajectory_data(
+      await make_grouped_h5_buffer([
+        { name: `data`, atomic_number: 79, x_position: 1 },
+        { name: `model`, atomic_number: 1, x_position: 9 },
+      ]),
+      `canonical-data.h5`,
+    )
+    expect(trajectory.frames[0].structure.sites[0]).toMatchObject({
+      xyz: [1, 0, 0],
+      species: [{ element: `Au` }],
+    })
+  })
+
+  it(`requires choosing an ambiguous HDF5 group and parses the selection`, async () => {
+    const content = await make_grouped_h5_buffer([
+      { name: `run_a`, atomic_number: 79, x_position: 1 },
+      { name: `run_b`, atomic_number: 1, x_position: 9 },
+    ])
+    const error = await parse_trajectory_data(content, `ambiguous-groups.h5`).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    )
+    if (!(error instanceof Hdf5TrajectoryGroupSelectionError)) throw error
+
+    expect(error.group_paths).toEqual([`/run_a`, `/run_b`])
+
+    const trajectory = await parse_trajectory_data(
+      content,
+      `ambiguous-groups.h5`,
+      undefined,
+      `/run_b`,
+    )
+    expect(trajectory.frames[0].structure.sites[0]).toMatchObject({ xyz: [9, 0, 0] })
+    expect(trajectory.time_step).toBe(0.5)
+    expect(trajectory.time_unit).toBe(`fs`)
+    expect(trajectory.metadata?.temperature).toBe(301)
+  })
+
+  it(`does not mix /data signals into an explicitly selected generic group`, async () => {
+    const trajectory = await parse_trajectory_data(
+      await make_grouped_h5_buffer(
+        [
+          { name: `run_a`, atomic_number: 79, x_position: 1 },
+          { name: `run_b`, atomic_number: 1, x_position: 9 },
+        ],
+        true,
+      ),
+      `mixed-groups.h5`,
+      undefined,
+      `/run_b`,
+    )
+    expect(trajectory.atom_masses).toBeUndefined()
+    expect(trajectory.signals).toBeUndefined()
+  })
+
+  it(`scopes nested TorchSim steps, signals, masses, and metadata to the selected run`, async () => {
+    const content = await h5_bytes(`nested-torch-sim`, (file) => {
+      for (const [run_name, atomic_number, offset] of [
+        [`run_a`, 79, 1],
+        [`run_b`, 1, 9],
+      ] as const) {
+        const run = file.create_group(run_name)
+        const data = run.create_group(`data`)
+        const steps = run.create_group(`steps`)
+        data.create_dataset({
+          name: `positions`,
+          data: [offset, 0, 0, offset + 0.1, 0, 0],
+          shape: [2, 1, 3],
+        })
+        data.create_dataset({
+          name: `atomic_numbers`,
+          data: [atomic_number],
+          shape: [1],
+        })
+        data.create_dataset({
+          name: `masses`,
+          data: [run_name === `run_a` ? 197 : 1],
+          shape: [1],
+        })
+        data.create_dataset({
+          name: `dipole`,
+          data: [offset, 0, 0, offset + 1, 0, 0],
+          shape: [2, 3],
+        })
+        steps.create_dataset({ name: `positions`, data: [0, 2], shape: [2] })
+        steps.create_dataset({ name: `dipole`, data: [0, 2], shape: [2] })
+        run.create_attribute(`temperature`, run_name === `run_a` ? 300 : 600)
+        run.create_attribute(`dt_fs`, run_name === `run_a` ? 0.5 : 1)
+      }
+      const data = file.create_group(`data`)
+      data.create_dataset({
+        name: `positions`,
+        data: [50, 0, 0],
+        shape: [1, 1, 3],
+      })
+      data.create_dataset({ name: `atomic_numbers`, data: [8], shape: [1] })
+      data.create_dataset({ name: `masses`, data: [16], shape: [1] })
+      data.create_dataset({
+        name: `dipole`,
+        data: [50, 0, 0, 51, 0, 0],
+        shape: [2, 3],
+      })
+      const steps = file.create_group(`steps`)
+      steps.create_dataset({ name: `positions`, data: [0], shape: [1] })
+      steps.create_dataset({ name: `dipole`, data: [0, 1], shape: [2] })
+    })
+    const trajectory = await parse_trajectory_data(
+      content,
+      `nested-runs.h5`,
+      undefined,
+      `/run_b/data`,
+    )
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 2])
+    expect(trajectory.frames[0].structure.sites[0]).toMatchObject({
+      xyz: [9, 0, 0],
+      species: [{ element: `H` }],
+    })
+    expect(trajectory.atom_masses).toEqual([1])
+    expect(trajectory.signal_descriptors?.dipole).toEqual({
+      sample_shape: [3],
+      sample_count: 2,
+    })
+    const stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`dipole`],
+    })
+    expect(stream?.signals?.dipole).toMatchObject({
+      steps: [0, 2],
+      values: Float64Array.from([9, 0, 0, 10, 0, 0]),
+    })
+    expect(trajectory.time_step).toBe(1)
+    expect(trajectory.time_unit).toBe(`fs`)
+    expect(trajectory.metadata).toMatchObject({
+      temperature: 600,
+      discovered_datasets: {
+        masses: `/run_b/data/masses`,
+        signals: { dipole: `/run_b/data/dipole` },
+      },
+    })
+    trajectory.frame_loader?.dispose?.()
+  })
+
+  it(`rejects non-increasing independent TorchSim signal steps with the dataset path`, async () => {
+    await expect(
+      parse_trajectory_data(await make_torch_sim_signal_buffer([2, 2]), `bad-steps.h5`),
+    ).rejects.toThrow(/\/steps\/dipole must increase strictly/)
+  })
+
+  it(`rejects a known TorchSim signal without its independent step axis`, async () => {
+    await expect(
+      parse_trajectory_data(
+        await make_torch_sim_signal_buffer([0, 2], false),
+        `missing-signal-steps.h5`,
+      ),
+    ).rejects.toThrow(/signal \/data\/dipole is missing \/steps\/dipole/)
+  })
+
+  const two_gold_atoms = [79, 79]
+  const frame_positions = [0, 0, 0, 1, 1, 1]
+  const zero_positions = [0, 0, 0, 0, 0, 0]
+  const cubic_cell = [10, 0, 0, 0, 10, 0, 0, 0, 10]
+  const zero_cell = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+  it(`honors an explicit non-periodic PBC dataset even when cells are present`, async () => {
+    const buffer = await make_h5_buffer([
+      { name: `positions`, data: frame_positions, shape: [1, 2, 3] },
+      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
+      {
+        name: `cell`,
+        data: cubic_cell,
+        shape: [3, 3],
+      },
+      { name: `pbc`, data: [0, 0, 0], shape: [3] },
+    ])
+    const trajectory = await parse_trajectory_data(buffer, `non-periodic-cell.h5`)
+    expect(trajectory.frames[0].structure).toMatchObject({
+      lattice: { pbc: [false, false, false] },
+    })
+    expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, false, false])
+  })
+
+  it(`identifies an inherited PBC attribute in validation errors`, async () => {
+    const content = await h5_bytes(`invalid-pbc-attribute`, (file) => {
+      file.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
+      file.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      file.create_attribute(`pbc`, [0, 2, 1])
+    })
+    await expect(parse_trajectory_data(content, `invalid-pbc.h5`)).rejects.toThrow(
+      `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`,
+    )
+  })
+
+  it(`reuses a singleton framed HDF5 cell across every position frame`, async () => {
+    const buffer = await make_h5_buffer([
+      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
+      {
+        name: `cell`,
+        data: cubic_cell,
+        shape: [1, 3, 3],
+      },
+    ])
+    const trajectory = await parse_trajectory_data(buffer, `singleton-cell.h5`)
+    expect(trajectory.frames).toHaveLength(3)
+    expect(
+      trajectory.frames.every(
+        ({ structure }) => `lattice` in structure && structure.lattice.volume === 1000,
+      ),
+    ).toBe(true)
+  })
+
+  it.each([
+    [
+      `atomic numbers`,
+      { name: `atomic_numbers`, data: [...two_gold_atoms, ...two_gold_atoms], shape: [2, 2] },
+      { name: `cell`, data: [], shape: [0] },
+      /atomic numbers have shape \[2, 2\].*\[3, 2\]/,
+    ],
+    [
+      `cells`,
+      { name: `atomic_numbers`, data: two_gold_atoms, shape: [2] },
+      {
+        name: `cell`,
+        data: [1, 2].flatMap(() => cubic_cell),
+        shape: [2, 3, 3],
+      },
+      /cells have shape \[2, 3, 3\].*\[3, 3, 3\]/,
+    ],
+  ])(`rejects partial per-frame HDF5 %s`, async (_label, numbers, cells, expected) => {
+    const datasets = [
+      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      numbers,
+    ]
+    if (cells.data.length > 0) datasets.push(cells)
+    await expect(
+      parse_trajectory_data(await make_h5_buffer(datasets), `partial.h5`),
+    ).rejects.toThrow(expected)
+  })
 
   // Interrupted writers zero-fill trailing chunks; atomic number 0 marks the
   // torn tail. Same per-step resiliency contract as the vaspout.h5 parser.
-  const two_gold_atoms = [79, 79]
-  const frame_positions = [0, 0, 0, 1, 1, 1]
-
   it(`keeps parsed frames and reports dropped_steps for a torn trailing frame`, async () => {
     const buffer = await make_h5_buffer([
-      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      {
+        name: `positions`,
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
+        shape: [3, 2, 3],
+      },
       {
         name: `atomic_numbers`,
         data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
@@ -900,6 +2147,57 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.frames).toHaveLength(2)
     expect(trajectory.metadata?.dropped_steps).toBe(1)
     expect(trajectory.metadata?.frame_count).toBe(2)
+  })
+
+  it.each([
+    [`non-zero positions`, frame_positions, [0, 0], undefined],
+    [`non-finite positions`, [Number.NaN, 0, 0, 0, 0, 0], [0, 0], undefined],
+    [`non-zero atomic numbers`, zero_positions, two_gold_atoms, zero_cell],
+    [`non-zero cells`, zero_positions, [0, 0], cubic_cell],
+  ])(
+    `rejects a torn HDF5 tail with %s`,
+    async (_label, tail_positions, tail_atoms, tail_cell) => {
+      const datasets = [
+        {
+          name: `positions`,
+          data: [...frame_positions, ...tail_positions],
+          shape: [2, 2, 3],
+        },
+        {
+          name: `atomic_numbers`,
+          data: [...two_gold_atoms, ...tail_atoms],
+          shape: [2, 2],
+        },
+      ]
+      if (tail_cell) {
+        datasets.push({
+          name: `cell`,
+          data: [...cubic_cell, ...tail_cell],
+          shape: [2, 3, 3],
+        })
+      }
+      await expect(
+        parse_trajectory_data(await make_h5_buffer(datasets), `invalid-tail.h5`),
+      ).rejects.toThrow(
+        _label === `non-finite positions`
+          ? /dataset \/positions hyperslab must contain finite numbers/
+          : /Invalid HDF5 trajectory frame 1/,
+      )
+    },
+  )
+
+  it(`rejects corrupt interior frames instead of truncating valid later data`, async () => {
+    const buffer = await make_h5_buffer([
+      { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
+      {
+        name: `atomic_numbers`,
+        data: [...two_gold_atoms, 0, 0, ...two_gold_atoms],
+        shape: [3, 2],
+      },
+    ])
+    await expect(parse_trajectory_data(buffer, `interior-corruption.h5`)).rejects.toThrow(
+      /Invalid HDF5 trajectory frame 1/,
+    )
   })
 
   it(`still throws when the very first frame is unparsable`, async () => {
@@ -921,6 +2219,45 @@ describe(`HDF5 Format`, () => {
 })
 
 describe(`ASE Trajectory Format`, () => {
+  it(`removes ULM trailing dots from dipole and polarizability result keys`, () => {
+    const calculator = {
+      [`dipole.`]: { ndarray: [[3], `float64`, 0] },
+      [`polarizability.`]: { ndarray: [[3, 3], `float64`, 0] },
+    }
+    const results = ase_calculator_data({ [`calculator.`]: calculator }, ({ ndarray }) =>
+      (ndarray[0] as number[]).length === 1
+        ? [[1, 2, 3]]
+        : [
+            [1, 0, 0],
+            [0, 2, 0],
+            [0, 0, 3],
+          ],
+    )
+    expect(results).toEqual({
+      dipole: [1, 2, 3],
+      polarizability: [
+        [1, 0, 0],
+        [0, 2, 0],
+        [0, 0, 3],
+      ],
+    })
+  })
+
+  it(`skips malformed ASE ndarray descriptors without dropping scalar results`, () => {
+    const results = ase_calculator_data(
+      {
+        [`calculator.`]: {
+          energy: -1.25,
+          [`dipole.`]: { ndarray: [`not-a-shape`, `float64`, 0] },
+        },
+      },
+      () => {
+        throw new Error(`malformed descriptors must not be read`)
+      },
+    )
+    expect(results).toEqual({ energy: -1.25 })
+  })
+
   it.each([
     [`invalid signature`, [0x12, 0x34, 0x56, 0x78], 24],
     // HDF5 magic bytes but truncated - rejects incomplete files with valid-looking headers

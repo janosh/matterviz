@@ -14,6 +14,7 @@ import {
   ortho_zoom_for_extent,
   perspective_distance_for_extent,
   structure_fit_frame,
+  vector_display_defaults,
   VECTOR_PALETTE,
 } from '$lib/structure'
 import { glob_default, glob_text } from '$site/imports'
@@ -529,6 +530,11 @@ describe(`default_vector_configs`, () => {
       expected: { force: { visible: true, color: null, scale: null } },
     },
     {
+      desc: `velocities use a smaller display scale`,
+      keys: [`velocity`],
+      expected: { velocity: { visible: true, color: null, scale: 0.05 } },
+    },
+    {
       desc: `multiple keys get distinct palette colors`,
       keys: [`force_DFT`, `force_MLFF`, `magmom`],
       expected: {
@@ -552,6 +558,24 @@ describe(`default_vector_configs`, () => {
     expect(configs.force_6.color).toBe(VECTOR_PALETTE[6 % VECTOR_PALETTE.length])
     expect(configs.force_7.color).toBe(VECTOR_PALETTE[7 % VECTOR_PALETTE.length])
   })
+})
+
+test.each([
+  [`force`, { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }],
+  [
+    `velocity`,
+    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
+  ],
+  [
+    `velocities_mace`,
+    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
+  ],
+  [
+    `VELOCITY`,
+    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
+  ],
+])(`vector display defaults for %s`, (key, expected) => {
+  expect(vector_display_defaults(key)).toEqual(expected)
 })
 
 test(`DEFAULT_STRUCTURE_VIEWS is a 2x2 grid: 1 perspective + 3 orthographic views with unique labels and non-zero directions`, () => {

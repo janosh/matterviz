@@ -8,6 +8,7 @@ import {
   format_fractional,
   format_num,
   format_power_ten,
+  format_tick_values,
   format_value,
   parse_si_float,
   superscript_digits,
@@ -64,6 +65,17 @@ test(`format_num uses defaults and respects overrides`, () => {
   expect(format_num(-1.1)).toBe(`−1.1`)
   expect(format_num(-1.14123)).toBe(`−1.14`)
   expect(format_num(-1.14123e-7, `.5~g`)).toBe(`−1.1412e-7`)
+})
+
+test(`format_tick_values increases default precision until distinct values have distinct labels`, () => {
+  expect(format_tick_values([-1539, -1538, -1537])).toEqual([`−1539`, `−1538`, `−1537`])
+  expect(format_tick_values([-1539.000001, -1539.000002])).toEqual([
+    `−1539.000001`,
+    `−1539.000002`,
+  ])
+  expect(format_tick_values([-1539, -1000, -1538])).toEqual([`−1.54k`, `−1k`, `−1.54k`])
+  expect(format_tick_values([1000, 1000])).toEqual([`1k`, `1k`])
+  expect(format_tick_values([-1539, -1538], `.3~s`)).toEqual([`-1.54k`, `-1.54k`])
 })
 
 test.each([

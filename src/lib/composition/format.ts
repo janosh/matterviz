@@ -54,10 +54,16 @@ export const get_alphabetical_formula = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string =>
-  format_formula_generic(input, (symbols) => symbols.sort(), plain_text, delim, amount_format)
+  format_formula_generic(
+    input,
+    (symbols) => symbols.toSorted(),
+    plain_text,
+    delim,
+    amount_format,
+  )
 
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
-  symbols.sort((el_1, el_2) => {
+  symbols.toSorted((el_1, el_2) => {
     const elec_neg_1 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_1) ?? 0
     const elec_neg_2 = ELEMENT_ELECTRONEGATIVITY_MAP.get(el_2) ?? 0
     return elec_neg_1 !== elec_neg_2 ? elec_neg_1 - elec_neg_2 : el_1.localeCompare(el_2)

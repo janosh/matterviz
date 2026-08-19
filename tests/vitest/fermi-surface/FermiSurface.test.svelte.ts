@@ -87,7 +87,14 @@ test(`a slow first data_url cannot overwrite a newer one`, async () => {
   const responses = new Map<string, (response: Response) => void>()
   vi.spyOn(globalThis, `fetch`).mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString()
-    if (init?.headers) return Promise.resolve(new Response(`text`))
+    if (init?.headers) {
+      return Promise.resolve(
+        new Response(`text`, {
+          status: 206,
+          headers: { 'content-range': `bytes 0-3/100` },
+        }),
+      )
+    }
     return new Promise((resolve) => responses.set(url, resolve))
   })
 

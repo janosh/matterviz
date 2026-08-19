@@ -1,9 +1,7 @@
 // Radix-2 Cooley-Tukey FFT plus the window functions that go with it.
 //
-// The repo had no transform before this: $lib/spectral reads spectra that a DFT code
-// already produced and $lib/lineshape convolves stick spectra onto a grid, neither
-// transforms a sampled time series. The vibrational DOS in $lib/vacf is the first
-// consumer, but nothing here knows about velocities or frequencies in physical units.
+// Consumers include VACF/VDOS and trajectory spectroscopy. Nothing here knows about
+// velocities or frequencies in physical units.
 
 // Smallest power of two >= `value`
 export function next_power_of_two(value: number): number {
@@ -42,8 +40,12 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
     for (; rev & bit; bit >>= 1) rev ^= bit
     rev ^= bit
     if (idx < rev) {
-      ;[re[idx], re[rev]] = [re[rev], re[idx]]
-      ;[im[idx], im[rev]] = [im[rev], im[idx]]
+      const re_value = re[idx]
+      re[idx] = re[rev]
+      re[rev] = re_value
+      const im_value = im[idx]
+      im[idx] = im[rev]
+      im[rev] = im_value
     }
   }
 
@@ -53,7 +55,8 @@ export function fft_in_place(re: Float64Array, im: Float64Array): void {
     for (let start = 0; start < n_points; start += span) {
       for (let offset = 0; offset < half; offset++) {
         const angle = step_angle * offset
-        const [twiddle_re, twiddle_im] = [Math.cos(angle), Math.sin(angle)]
+        const twiddle_re = Math.cos(angle)
+        const twiddle_im = Math.sin(angle)
         const even_idx = start + offset
         const odd_idx = even_idx + half
         const odd_re = re[odd_idx] * twiddle_re - im[odd_idx] * twiddle_im
@@ -79,6 +82,173 @@ export interface WindowOptions {
   gaussian_alpha?: number
 }
 
+export interface PeriodogramOptions extends WindowOptions {
+  window?: WindowType
+  zero_pad_factor?: number
+  component_weights?: ArrayLike<number>
+}
+
+export interface PeriodogramResult {
+  frequencies: Float64Array
+  power: Float64Array
+  n_fft: number
+  window: WindowType
+  window_energy: number
+  frequency_spacing: number
+  rayleigh_resolution: number
+  nyquist: number
+}
+
+const gaussian_width = (gaussian_alpha: number, label: string): number => {
+  if (!Number.isFinite(gaussian_alpha) || !(gaussian_alpha > 0)) {
+    throw new Error(`${label}: gaussian_alpha must be finite and > 0, got ${gaussian_alpha}`)
+  }
+  return gaussian_alpha
+}
+
+// Full window for a sampled time series. This is intentionally separate from
+// correlation_window, whose Hann definition is only the right half of a symmetric window.
+export function time_series_window(
+  n_samples: number,
+  type: WindowType,
+  options: WindowOptions = {},
+): Float64Array {
+  if (!Number.isInteger(n_samples) || n_samples < 1) {
+    throw new Error(
+      `time_series_window: n_samples must be a positive integer, got ${n_samples}`,
+    )
+  }
+  const weights = new Float64Array(n_samples)
+  if (type === `none` || n_samples === 1) return weights.fill(1)
+  if (type === `hann`) {
+    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+      weights[sample_idx] = 0.5 * (1 - Math.cos((2 * Math.PI * sample_idx) / (n_samples - 1)))
+    }
+    return weights
+  }
+  if (type === `gaussian`) {
+    const gaussian_alpha = gaussian_width(options.gaussian_alpha ?? 3, `time_series_window`)
+    const midpoint = (n_samples - 1) / 2
+    const scale = gaussian_alpha / midpoint
+    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+      const centered = scale * (sample_idx - midpoint)
+      weights[sample_idx] = Math.exp(-0.5 * centered * centered)
+    }
+    return weights
+  }
+  throw new Error(
+    `time_series_window: unknown window ${type}, expected one of ${WINDOW_TYPES.join(`, `)}`,
+  )
+}
+
+// Sum of one-sided component periodograms for a sample-major real signal:
+// values[sample * n_components + component]. Means are removed component-wise before
+// applying a full window. The normalization is density-like and preserves amplitude-squared
+// scaling; callers may independently normalize curves for display.
+export function one_sided_periodogram(
+  values: ArrayLike<number>,
+  n_components: number,
+  sample_interval: number,
+  options: PeriodogramOptions = {},
+): PeriodogramResult {
+  const { window = `hann`, zero_pad_factor = 4, gaussian_alpha, component_weights } = options
+  if (!Number.isInteger(n_components) || n_components < 1) {
+    throw new Error(
+      `one_sided_periodogram: n_components must be a positive integer, got ${n_components}`,
+    )
+  }
+  if (values.length % n_components !== 0) {
+    throw new Error(
+      `one_sided_periodogram: ${values.length} values do not divide into ${n_components} components`,
+    )
+  }
+  const n_samples = values.length / n_components
+  if (n_samples < 2) {
+    throw new Error(`one_sided_periodogram: need at least 2 samples, got ${n_samples}`)
+  }
+  if (!(sample_interval > 0) || !Number.isFinite(sample_interval)) {
+    throw new Error(
+      `one_sided_periodogram: sample_interval must be finite and > 0, got ${sample_interval}`,
+    )
+  }
+  if (!(zero_pad_factor >= 1) || !Number.isFinite(zero_pad_factor)) {
+    throw new Error(
+      `one_sided_periodogram: zero_pad_factor must be finite and >= 1, got ${zero_pad_factor}`,
+    )
+  }
+  if (component_weights && component_weights.length !== n_components) {
+    throw new Error(
+      `one_sided_periodogram: got ${component_weights.length} component weights for ` +
+        `${n_components} components`,
+    )
+  }
+  const weights = time_series_window(n_samples, window, { gaussian_alpha })
+  const window_energy = weights.reduce((total, value) => total + value * value, 0)
+  if (!(window_energy > 0)) {
+    throw new Error(`one_sided_periodogram: ${window} window has zero energy`)
+  }
+  const n_fft = next_power_of_two(Math.ceil(zero_pad_factor * n_samples))
+  const n_frequencies = n_fft / 2 + 1
+  const power = new Float64Array(n_frequencies)
+  const component_means = new Float64Array(n_components)
+  for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+    const base = sample_idx * n_components
+    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+      const value = values[base + component_idx]
+      if (!Number.isFinite(value)) {
+        throw new TypeError(
+          `one_sided_periodogram: value at sample ${sample_idx}, component ` +
+            `${component_idx} is ${value}, not finite`,
+        )
+      }
+      component_means[component_idx] += value
+    }
+  }
+  for (let component_idx = 0; component_idx < n_components; component_idx++) {
+    component_means[component_idx] /= n_samples
+    const component_weight = component_weights?.[component_idx] ?? 1
+    if (!(component_weight >= 0) || !Number.isFinite(component_weight)) {
+      throw new Error(
+        `one_sided_periodogram: component weight ${component_idx} must be finite and >= 0, ` +
+          `got ${component_weight}`,
+      )
+    }
+    if (component_weight === 0) continue
+    const real = new Float64Array(n_fft)
+    const imaginary = new Float64Array(n_fft)
+    for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
+      real[sample_idx] =
+        (values[sample_idx * n_components + component_idx] - component_means[component_idx]) *
+        weights[sample_idx]
+    }
+    fft_in_place(real, imaginary)
+    for (let frequency_idx = 0; frequency_idx < n_frequencies; frequency_idx++) {
+      const one_sided_factor = frequency_idx === 0 || frequency_idx === n_fft / 2 ? 1 : 2
+      power[frequency_idx] +=
+        (component_weight *
+          one_sided_factor *
+          (real[frequency_idx] ** 2 + imaginary[frequency_idx] ** 2) *
+          sample_interval) /
+        window_energy
+    }
+  }
+  const frequency_spacing = 1 / (n_fft * sample_interval)
+  const frequencies = Float64Array.from(
+    { length: n_frequencies },
+    (_, frequency_idx) => frequency_idx * frequency_spacing,
+  )
+  return {
+    frequencies,
+    power,
+    n_fft,
+    window,
+    window_energy,
+    frequency_spacing,
+    rayleigh_resolution: 1 / (n_samples * sample_interval),
+    nyquist: 1 / (2 * sample_interval),
+  }
+}
+
 export function correlation_window(
   n_lags: number,
   type: WindowType,
@@ -98,11 +268,9 @@ export function correlation_window(
     return weights
   }
   if (type === `gaussian`) {
-    if (!(gaussian_alpha > 0)) {
-      throw new Error(`correlation_window: gaussian_alpha must be > 0, got ${gaussian_alpha}`)
-    }
+    const width = gaussian_width(gaussian_alpha, `correlation_window`)
     for (let lag = 0; lag < n_lags; lag++) {
-      const scaled = (gaussian_alpha * lag) / (n_lags - 1)
+      const scaled = (width * lag) / (n_lags - 1)
       weights[lag] = Math.exp(-0.5 * scaled * scaled)
     }
     return weights

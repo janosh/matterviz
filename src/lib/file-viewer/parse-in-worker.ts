@@ -15,9 +15,13 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
+import type { LoadingOptions } from '$lib/trajectory/parse'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
+import { create_packed_frame_loader } from '$lib/trajectory/helpers'
 import { to_error } from '$lib/utils'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { ParseResult } from './parse'
@@ -27,6 +31,7 @@ import type {
   FrameWorkerResponse,
   ParseWorkerRequest,
   ParseWorkerResponse,
+  TrajectoryParseWorkerRequest,
 } from './parse-worker-protocol'
 import { dispose_frame_port, should_index_worker_xyz } from './parse-worker-protocol'
 
@@ -44,6 +49,16 @@ export interface ParseInWorkerOptions {
   fallback_on_worker_error?: boolean
   signal?: AbortSignal
   timeout_ms?: number // tests use small values; default WORKER_TIMEOUT_MS
+}
+
+export interface ParseTrajectoryInWorkerOptions {
+  worker_factory?: WorkerFactory
+  fallback_parse?: typeof parse_trajectory_async
+  signal?: AbortSignal
+  timeout_ms?: number
+  // Transfer ownership instead of cloning a binary source. Intended for large File-backed
+  // loads that can be read from the File again if group selection is required.
+  transfer_source?: boolean
 }
 
 // Generous ceiling: a 231 MB spike file parsed in ~5 s; a request past two
@@ -71,6 +86,8 @@ const queued_jobs: ParseJob[] = []
 const active_frame_loader_disposers = new SvelteSet<(error?: Error) => void>()
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
+const worker_error = (event: Event, fallback: string): Error =>
+  new Error(event instanceof ErrorEvent && event.message ? event.message : fallback)
 
 type ParseOutcome = { result: ParseResult } | { error: Error }
 
@@ -89,10 +106,16 @@ interface ParseJob {
 const bind_indexed_frame_loader = (
   result: ParseResult,
   frame_port: MessagePort | undefined,
+  owning_worker?: WorkerLike,
 ): ParseResult => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
-  if (trajectory?.is_indexed !== true) {
+  if (!trajectory?.is_indexed) {
     dispose_frame_port(frame_port)
+    return result
+  }
+  if (trajectory.frame_store) {
+    dispose_frame_port(frame_port)
+    trajectory.frame_loader = create_packed_frame_loader(trajectory.frame_store)
     return result
   }
   if (!frame_port) throw new Error(`Indexed parse worker result is missing its frame port`)
@@ -132,6 +155,18 @@ const bind_indexed_frame_loader = (
       // Port may already be closed after a hard worker terminate.
     }
     frame_port.close()
+    owning_worker?.terminate()
+  }
+  frame_port.addEventListener(`messageerror`, () =>
+    dispose(new Error(`Indexed frame loader response failed to deserialize`)),
+  )
+  if (owning_worker) {
+    owning_worker.addEventListener(`error`, (event) =>
+      dispose(worker_error(event, `Parse worker failed while serving indexed frames`)),
+    )
+    owning_worker.addEventListener(`messageerror`, () =>
+      dispose(new Error(`Parse worker response failed to deserialize`)),
+    )
   }
   frame_port.start()
 
@@ -156,6 +191,7 @@ const bind_indexed_frame_loader = (
   }
   active_frame_loader_disposers.add(dispose)
   trajectory.frame_loader = {
+    requires_source: false,
     dispose,
     get_total_frames: () => rpc<number>(`get_total_frames`),
     build_frame_index: (_data, sample_rate, on_progress) =>
@@ -215,18 +251,9 @@ const settle_job = (job: ParseJob, outcome: ParseOutcome): void => {
 }
 
 const terminate_worker = (): void => {
-  const error = new Error(`Parse worker terminated`)
   const worker = shared_worker
   shared_worker = null
-  for (const dispose of active_frame_loader_disposers) dispose(error)
   worker?.terminate()
-}
-
-// Soft abort/timeout: keep the worker alive while indexed frame ports still need it. Its
-// answer to the abandoned job is dropped on the id mismatch in handle_worker_message, and
-// the next job goes straight out rather than waiting on a worker that may never reply.
-const terminate_idle_worker = (): void => {
-  if (active_frame_loader_disposers.size === 0) terminate_worker()
 }
 
 const run_fallback = (job: ParseJob, error?: Error, warn = true): void => {
@@ -291,8 +318,19 @@ const handle_worker_message = (
     return
   }
   try {
-    settle_job(job, { result: bind_indexed_frame_loader(result, frame_port) })
+    // A worker serving a remote frame loader becomes trajectory-owned. Retire it from the
+    // parse pool immediately so later files parse concurrently; loader disposal terminates it.
+    const worker_owns_loader = Boolean(frame_port)
+    if (worker_owns_loader && shared_worker === worker) shared_worker = null
+    settle_job(job, {
+      result: bind_indexed_frame_loader(
+        result,
+        frame_port,
+        worker_owns_loader ? worker : undefined,
+      ),
+    })
   } catch (bind_error) {
+    if (frame_port) worker.terminate()
     run_fallback(job, to_error(bind_error))
   }
 }
@@ -301,11 +339,7 @@ const handle_worker_message = (
 // wasm instantiation at import time, CSP), stop using the worker entirely.
 const handle_worker_error = (worker: WorkerLike, event: Event): void => {
   if (shared_worker !== worker) return
-  const message =
-    event instanceof ErrorEvent && event.message
-      ? event.message
-      : `Parse worker failed to load`
-  fail_active_worker_job(new Error(message), true)
+  fail_active_worker_job(worker_error(event, `Parse worker failed to load`), true)
 }
 
 // A response deserialize failure invalidates this worker instance, but a fresh
@@ -339,7 +373,7 @@ const ensure_worker = (factory: WorkerFactory): WorkerLike | null => {
 
 const abort_job = (job: ParseJob): void => {
   if (queued_jobs.indexOf(job) === 0) {
-    if (job.phase === `worker`) terminate_idle_worker()
+    if (job.phase === `worker`) terminate_worker()
     // Release the queue now; the orphaned fallback promise settles into a removed job.
     else if (job.phase === `fallback`) fallback_task = null
   }
@@ -348,7 +382,7 @@ const abort_job = (job: ParseJob): void => {
 
 const time_out_active_job = (job: ParseJob, timeout_ms: number): void => {
   if (queued_jobs[0] !== job || job.phase !== `worker`) return
-  terminate_idle_worker()
+  terminate_worker()
   run_fallback(job, new Error(`Parse worker timed out after ${timeout_ms / 1000}s`))
 }
 
@@ -368,7 +402,7 @@ function drain_queue(): void {
     }
     const worker = ensure_worker(job.options.worker_factory ?? default_worker_factory)
     if (queued_jobs[0] !== job) {
-      if (shared_worker === worker) terminate_idle_worker()
+      if (shared_worker === worker) terminate_worker()
       return
     }
     if (!worker) {
@@ -392,6 +426,8 @@ function drain_queue(): void {
 // Release the shared worker and settle every active/queued job as cancelled. Tests call it
 // between cases; a host can call it to drop the worker's memory when no viewer is open.
 export const reset_parse_worker = (): void => {
+  const error = new Error(`Parse worker terminated`)
+  for (const dispose of active_frame_loader_disposers) dispose(error)
   terminate_worker()
   worker_unusable = false
   fallback_task = null
@@ -424,5 +460,152 @@ export const parse_in_worker = (
     options.signal?.addEventListener(`abort`, job.abort_request, { once: true })
     if (options.signal?.aborted) abort_job(job)
     else drain_queue()
+  })
+}
+
+// Trajectory component loads use a dedicated worker so aborting a superseded HDF5 parse can
+// terminate it immediately and an indexed frame loader cannot block later parse requests.
+export const parse_trajectory_in_worker = (
+  data: TrajectorySource,
+  filename: string,
+  on_progress: ((progress: ParseProgress) => void) | undefined,
+  loading_options: LoadingOptions,
+  client_options: ParseTrajectoryInWorkerOptions = {},
+): Promise<TrajectoryType> => {
+  if (client_options.signal?.aborted) return Promise.reject(parse_abort_error())
+
+  return new Promise<TrajectoryType>((resolve, reject) => {
+    let worker: WorkerLike | undefined
+    let source_transferred = false
+    let settled = false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const finish = (dispose_worker = true): boolean => {
+      if (settled) return false
+      settled = true
+      if (timeout !== undefined) clearTimeout(timeout)
+      client_options.signal?.removeEventListener(`abort`, abort)
+      if (dispose_worker) worker?.terminate()
+      return true
+    }
+    const fail = (error: Error): void => {
+      if (!finish()) return
+      reject(error)
+    }
+    const fallback = (error: Error): void => {
+      if (settled) return
+      if (data instanceof Blob) {
+        return fail(
+          new Error(
+            `Blob-backed HDF5 parsing failed for ${filename}; reload the file after checking browser Web Worker and WebAssembly support`,
+            { cause: error },
+          ),
+        )
+      }
+      if (source_transferred) {
+        return fail(
+          new Error(
+            `Trajectory parse worker failed after taking ownership of ${filename}; reload the source file to retry`,
+            { cause: error },
+          ),
+        )
+      }
+      const byte_size = data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
+      const max_bytes =
+        data instanceof ArrayBuffer
+          ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
+          : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
+      if (byte_size > max_bytes) {
+        return fail(
+          new Error(
+            `Trajectory parse worker failed for ${filename}; main-thread fallback is disabled for ${byte_size} bytes above the ${max_bytes}-byte limit`,
+            { cause: error },
+          ),
+        )
+      }
+      if (!finish()) return
+      const fallback_parse = client_options.fallback_parse ?? parse_trajectory_async
+      void fallback_parse(data, filename, on_progress, loading_options).then(resolve, reject)
+    }
+    const abort = (): void => fail(parse_abort_error())
+
+    try {
+      worker = (client_options.worker_factory ?? default_worker_factory)()
+    } catch (error) {
+      fallback(to_error(error))
+      return
+    }
+
+    const request_id = next_request_id++
+    worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
+      const { id, result, error, progress, frame_port, hdf5_group_paths } = event.data ?? {}
+      if (id !== request_id || settled) {
+        dispose_frame_port(frame_port)
+        return
+      }
+      if (progress) {
+        return on_progress?.(progress)
+      }
+      if (!result) {
+        return fail(
+          hdf5_group_paths
+            ? new Hdf5TrajectoryGroupSelectionError(hdf5_group_paths, error)
+            : new Error(error ?? `Trajectory parse worker returned no result`),
+        )
+      }
+      try {
+        const keep_worker = Boolean(frame_port)
+        const bound = bind_indexed_frame_loader(
+          result,
+          frame_port,
+          keep_worker ? worker : undefined,
+        )
+        if (!finish(!keep_worker)) return
+        if (bound.type !== `trajectory`)
+          return reject(new Error(`Trajectory parse worker returned ${bound.type}`))
+        resolve(bound.data as TrajectoryType)
+      } catch (bind_error) {
+        fail(to_error(bind_error))
+      }
+    }) as EventListener)
+    worker.addEventListener(`error`, (event) =>
+      fallback(worker_error(event, `Trajectory parse worker failed to load`)),
+    )
+    worker.addEventListener(`messageerror`, () =>
+      fallback(new Error(`Trajectory parse worker response failed to deserialize`)),
+    )
+    client_options.signal?.addEventListener(`abort`, abort, { once: true })
+    if (client_options.signal?.aborted) {
+      abort()
+      return
+    }
+    const timeout_ms = client_options.timeout_ms ?? WORKER_TIMEOUT_MS
+    timeout = setTimeout(
+      () =>
+        fallback(new Error(`Trajectory parse worker timed out after ${timeout_ms / 1000}s`)),
+      timeout_ms,
+    )
+    const request_data: TrajectorySource =
+      data instanceof ArrayBuffer && !client_options.transfer_source ? data.slice(0) : data
+    const request: TrajectoryParseWorkerRequest = {
+      kind: `trajectory`,
+      id: request_id,
+      data: request_data,
+      filename,
+      options: {
+        ...loading_options,
+        ...(loading_options.atom_type_mapping && {
+          atom_type_mapping: { ...loading_options.atom_type_mapping },
+        }),
+      },
+    }
+    try {
+      worker.postMessage(
+        request,
+        request_data instanceof ArrayBuffer ? { transfer: [request_data] } : undefined,
+      )
+      source_transferred = request_data === data && data instanceof ArrayBuffer
+    } catch (error) {
+      fallback(to_error(error))
+    }
   })
 }

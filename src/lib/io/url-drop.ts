@@ -1,5 +1,10 @@
 import { load_binary_traj } from '$lib/trajectory/parse'
-import { decompress_data_binary } from './decompress'
+import {
+  decompress_data_binary,
+  decompress_data_blob,
+  hdf5_compression_format,
+  is_hdf5_filename,
+} from './decompress'
 import {
   BINARY_EXTENSIONS,
   ext_of,
@@ -11,7 +16,12 @@ import {
   magic_head,
   strip_gz_ext,
 } from './is-binary'
-import type { FileInfo, FileLoadCallback } from './types'
+import type {
+  FileInfo,
+  FileLoadCallback,
+  FileLoadMeta,
+  TrajectoryFileLoadCallback,
+} from './types'
 
 // Strip query/hash; last path segment (same basename load_from_url uses).
 // Trailing-slash URLs yield an empty segment — fall back to the original URL.
@@ -19,6 +29,18 @@ export const basename_from_url = (url: string): string => {
   const basename = url.split(/[?#]/)[0].split(`/`).pop()
   return basename?.length ? basename : url
 }
+
+const hdf5_filename = (filename: string, url_basename: string): string =>
+  [filename, url_basename].find(is_hdf5_filename) ?? `${filename || url_basename}.h5`
+
+const sniff_binary_kind = (bytes: Uint8Array): `gzip` | `hdf5` | `binary` | null =>
+  has_gzip_magic(bytes)
+    ? `gzip`
+    : has_hdf5_magic(bytes)
+      ? `hdf5`
+      : has_binary_magic(bytes)
+        ? `binary`
+        : null
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers, fallback: string): string {
@@ -48,8 +70,11 @@ function extract_filename(headers: Headers, fallback: string): string {
 async function decompress_gz_payload(
   buffer: ArrayBuffer,
   filename: string,
+  signal?: AbortSignal,
 ): Promise<[content: string | ArrayBuffer, filename: string]> {
-  const decompressed = await decompress_data_binary(buffer, `gzip`)
+  const decompressed = signal
+    ? await decompress_data_binary(buffer, `gzip`, signal)
+    : await decompress_data_binary(buffer, `gzip`)
   const content = has_binary_inner_ext(filename)
     ? decompressed
     : new TextDecoder().decode(decompressed)
@@ -76,38 +101,129 @@ export function dropped_file_url(drag_event: DragEvent): string | undefined {
 export async function handle_url_drop(
   drag_event: DragEvent,
   callback: FileLoadCallback,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const url = dropped_file_url(drag_event)
   if (!url) return false
-  await load_from_url(url, callback)
+  await load_from_url(url, callback, signal)
   return true
 }
 
-export async function load_from_url(url: string, callback: FileLoadCallback): Promise<void> {
+export async function handle_trajectory_url_drop(
+  event: DragEvent,
+  callback: TrajectoryFileLoadCallback,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const url = dropped_file_url(event)
+  if (!url) return false
+  await load_trajectory_from_url(url, callback, signal)
+  return true
+}
+
+export const load_from_url = (
+  url: string,
+  callback: FileLoadCallback,
+  signal?: AbortSignal,
+): Promise<void> =>
+  load_url_content(url, callback as TrajectoryFileLoadCallback, false, signal)
+
+export const load_trajectory_from_url = (
+  url: string,
+  callback: TrajectoryFileLoadCallback,
+  signal?: AbortSignal,
+): Promise<void> => load_url_content(url, callback, true, signal)
+
+async function load_url_content(
+  url: string,
+  callback: TrajectoryFileLoadCallback,
+  hdf5_as_blob: boolean,
+  signal?: AbortSignal,
+): Promise<void> {
+  const fetch_url = (request_url: string, init?: RequestInit): Promise<Response> =>
+    signal
+      ? fetch(request_url, { ...init, signal })
+      : init
+        ? fetch(request_url, init)
+        : fetch(request_url)
+  const decompress_blob = (blob: Blob): Promise<Blob> =>
+    signal ? decompress_data_blob(blob, `gzip`, signal) : decompress_data_blob(blob, `gzip`)
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
   const url_basename = basename_from_url(url)
   const ext = ext_of(url_basename)
+  const hdf5_wrapper = hdf5_compression_format(url_basename)
+  if (hdf5_as_blob && hdf5_wrapper && hdf5_wrapper !== `gzip`) {
+    throw new Error(
+      `Compressed HDF5 ${hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+    )
+  }
   const emit_loaded = (
-    content: string | ArrayBuffer,
+    content: string | ArrayBuffer | Blob,
     filename: string,
     source_filename = filename,
-  ) => callback(content, filename, { source_filename, source_url: url })
+  ) =>
+    callback(content, filename, {
+      source_filename,
+      source_url: url,
+    } satisfies FileLoadMeta)
 
   if (BINARY_EXTENSIONS.has(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
-    const resp = await fetch(url)
+    const resp = await fetch_url(url)
     if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
     const source_filename = extract_filename(resp.headers, url_basename)
+    const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
+    if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
+      throw new Error(
+        `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+      )
+    }
+    if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && response_hdf5_wrapper === `gzip`) {
+      const blob = await resp.blob()
+      const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
+      const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
+      return emit_loaded(
+        content,
+        hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
+        source_filename,
+      )
+    }
+    if (hdf5_as_blob && ext !== `gz` && ext !== `gzip` && is_hdf5_filename(source_filename)) {
+      return emit_loaded(await resp.blob(), hdf5_filename(source_filename, url_basename))
+    }
 
     // Decide by the bytes, not the Content-Encoding header. A host serving a stored .gz with
     // `Content-Encoding: gzip` has already been un-gzipped by fetch (GitHub Pages-style), but
     // one that also applies transport gzip to that same file leaves a second layer behind and
     // sends the identical header. The magic bytes tell the two apart; the header cannot.
     if (ext === `gz` || ext === `gzip`) {
+      if (hdf5_as_blob) {
+        const blob = await resp.blob()
+        const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
+        const content = has_gzip_magic(head) ? await decompress_blob(blob) : blob
+        const content_head = new Uint8Array(await content.slice(0, 8).arrayBuffer())
+        if (response_hdf5_wrapper === `gzip` || has_hdf5_magic(content_head)) {
+          return emit_loaded(
+            content,
+            hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
+            source_filename,
+          )
+        }
+        const filename = strip_gz_ext(source_filename)
+        const buffer = await content.arrayBuffer()
+        return emit_loaded(
+          has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
+          filename,
+          source_filename,
+        )
+      }
       const buffer = await resp.arrayBuffer()
       if (has_gzip_magic(magic_head(buffer, 2))) {
-        const [content, filename] = await decompress_gz_payload(buffer, source_filename)
+        const [content, filename] = await decompress_gz_payload(
+          buffer,
+          source_filename,
+          signal,
+        )
         return emit_loaded(content, filename, source_filename)
       }
       // Already inflated: keep binary inner formats (.h5.gz, ...) as bytes
@@ -121,6 +237,9 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
     // For H5 files, always load as binary regardless of signature
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
     if (ext === `h5` || ext === `hdf5`) {
+      if (hdf5_as_blob) {
+        return emit_loaded(await resp.blob(), hdf5_filename(source_filename, url_basename))
+      }
       const result = await load_binary_traj(resp, `H5`, true)
 
       // Log warning if signature doesn't match (only for ArrayBuffer results)
@@ -153,36 +272,153 @@ export async function load_from_url(url: string, callback: FileLoadCallback): Pr
     // Only the Range sniff is guarded (failure → plain text fetch). Once magic bytes
     // commit to a binary format, download/decompress errors must propagate instead of
     // falling through to a text fetch that would parse the binary bytes as garbage.
-    let sniffed: `gzip` | `binary` | null = null
+    let sniffed: `gzip` | `hdf5` | `binary` | null = null
+    let full_response: Response | null = null
+    let full_blob: Blob | null = null
     try {
       // Check for magic bytes only for unknown formats (covers extensionless URLs
       // like blob: object URLs whose basenames are UUIDs)
-      const head = await fetch(url, { headers: { Range: `bytes=0-15` } })
-      if (head.ok) {
-        const buf = new Uint8Array(await head.arrayBuffer())
-        // gzip is gunzipped downstream; other binary magic (HDF5, ZIP, ASE Ulm) stays raw
-        sniffed = has_gzip_magic(buf) ? `gzip` : has_binary_magic(buf) ? `binary` : null
+      const head = await fetch_url(url, { headers: { Range: `bytes=0-15` } })
+      const valid_partial =
+        head.status === 206 && head.headers.get(`content-range`)?.startsWith(`bytes 0-`)
+      if (valid_partial) {
+        sniffed = sniff_binary_kind(new Uint8Array(await head.arrayBuffer()))
+      } else if (head.status === 200) {
+        full_response = head
+        full_blob = await head.blob()
+        sniffed = sniff_binary_kind(new Uint8Array(await full_blob.slice(0, 16).arrayBuffer()))
       }
     } catch {
       // Fall through to text fetch if the Range HEAD request fails
     }
 
     if (sniffed) {
-      const resp = await fetch(url)
+      const resp = full_response ?? (await fetch_url(url))
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
       const source_filename = extract_filename(resp.headers, url_basename)
-      const buffer = await resp.arrayBuffer()
+      const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
+      if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
+        throw new Error(
+          `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+        )
+      }
+      if (
+        hdf5_as_blob &&
+        (sniffed === `hdf5` ||
+          is_hdf5_filename(source_filename) ||
+          (response_hdf5_wrapper === `gzip` && sniffed !== `gzip`))
+      ) {
+        return emit_loaded(
+          full_blob ?? (await resp.blob()),
+          hdf5_filename(
+            response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
+            response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
+          ),
+          source_filename,
+        )
+      }
+      if (hdf5_as_blob && sniffed === `gzip`) {
+        const compressed_blob = full_blob ?? (await resp.blob())
+        const decompressed_blob = await decompress_blob(compressed_blob)
+        const decompressed_head = new Uint8Array(
+          await decompressed_blob.slice(0, 8).arrayBuffer(),
+        )
+        if (has_hdf5_magic(decompressed_head)) {
+          return emit_loaded(
+            decompressed_blob,
+            hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
+            source_filename,
+          )
+        }
+        const filename = strip_gz_ext(source_filename)
+        const buffer = await decompressed_blob.arrayBuffer()
+        return emit_loaded(
+          has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
+          filename,
+          source_filename,
+        )
+      }
+      const buffer = full_blob ? await full_blob.arrayBuffer() : await resp.arrayBuffer()
       // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
       if (sniffed === `gzip`) {
-        const [content, filename] = await decompress_gz_payload(buffer, source_filename)
+        const [content, filename] = await decompress_gz_payload(
+          buffer,
+          source_filename,
+          signal,
+        )
         return emit_loaded(content, filename, source_filename)
       }
       return emit_loaded(buffer, source_filename)
     }
+    if (full_response && full_blob) {
+      const source_filename = extract_filename(full_response.headers, url_basename)
+      const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
+      if (hdf5_as_blob && response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
+        throw new Error(
+          `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+        )
+      }
+      if (
+        hdf5_as_blob &&
+        (response_hdf5_wrapper === `gzip` || is_hdf5_filename(source_filename))
+      ) {
+        return emit_loaded(
+          full_blob,
+          hdf5_filename(
+            response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
+            response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
+          ),
+          source_filename,
+        )
+      }
+      return emit_loaded(await full_blob.text(), source_filename)
+    }
   }
 
-  const resp = await fetch(url)
+  const resp = await fetch_url(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
   const source_filename = extract_filename(resp.headers, url_basename)
+  if (hdf5_as_blob && !is_known_text_file(url_basename)) {
+    const response_hdf5_wrapper = hdf5_compression_format(source_filename) ?? hdf5_wrapper
+    if (response_hdf5_wrapper && response_hdf5_wrapper !== `gzip`) {
+      throw new Error(
+        `Compressed HDF5 ${response_hdf5_wrapper.toUpperCase()} URLs are not supported in the browser; use .h5 or .h5.gz`,
+      )
+    }
+    const blob = await resp.blob()
+    const blob_head = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
+    if (has_gzip_magic(blob_head)) {
+      const decompressed = await decompress_blob(blob)
+      const decompressed_head = new Uint8Array(await decompressed.slice(0, 8).arrayBuffer())
+      if (response_hdf5_wrapper === `gzip` || has_hdf5_magic(decompressed_head)) {
+        return emit_loaded(
+          decompressed,
+          hdf5_filename(strip_gz_ext(source_filename), strip_gz_ext(url_basename)),
+          source_filename,
+        )
+      }
+      const buffer = await decompressed.arrayBuffer()
+      return emit_loaded(
+        has_binary_inner_ext(source_filename) ? buffer : new TextDecoder().decode(buffer),
+        strip_gz_ext(source_filename),
+        source_filename,
+      )
+    }
+    if (
+      response_hdf5_wrapper === `gzip` ||
+      is_hdf5_filename(source_filename) ||
+      has_hdf5_magic(blob_head)
+    ) {
+      return emit_loaded(
+        blob,
+        hdf5_filename(
+          response_hdf5_wrapper === `gzip` ? strip_gz_ext(source_filename) : source_filename,
+          response_hdf5_wrapper === `gzip` ? strip_gz_ext(url_basename) : url_basename,
+        ),
+        source_filename,
+      )
+    }
+    return emit_loaded(await blob.text(), source_filename)
+  }
   return emit_loaded(await resp.text(), source_filename)
 }

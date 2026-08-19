@@ -99,16 +99,18 @@ describe(`Trajectory keyboard shortcuts`, () => {
     }
   })
 
-  // Kept standalone: needs a fresh mount with fullscreen off and NOT playing. Can't
-  // fold into the test above, whose Space case toggles play (which would make =/+/-
-  // handled), and whose default mount has fullscreen on (which would handle f).
-  test(`keeps browser default when a shortcut's inner condition fails`, async () => {
+  test(`only suppresses defaults for available viewer shortcuts`, async () => {
     const viewer = await mount_trajectory(undefined, { fullscreen_toggle: false })
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
 
-    for (const init of [{ key: `f` }, { key: `=` }, { key: `+` }, { key: `-` }]) {
-      expect(press_window_key(init).defaultPrevented, JSON.stringify(init)).toBe(false)
+    for (const [key, prevented] of [
+      [`f`, false],
+      [`=`, true],
+      [`+`, true],
+      [`-`, true],
+    ] as const) {
+      expect(press_window_key({ key }).defaultPrevented, key).toBe(prevented)
     }
   })
 

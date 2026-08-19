@@ -202,14 +202,20 @@ describe(`indexed trajectories`, () => {
     expect(calc_vacf(collected, { vdos: { skip: true } }).velocity_source).toBe(`stored`)
   })
 
-  it(`does not request velocities when the in-memory frames carry none`, async () => {
-    const loader = streaming_loader(null)
-    const collected = await collect_vacf_input(lazy_trajectory(loader), {
-      raw_data: `stub payload`,
-    })
-    expect(loader.requested_options?.vector_keys).toBeUndefined()
-    expect(collected.velocities).toBeNull()
-  })
+  it.each([
+    [`with raw bytes`, `stub payload`, undefined],
+    [`without raw bytes from a source-independent loader`, undefined, false],
+  ])(
+    `does not request velocities when the in-memory frames carry none %s`,
+    async (_label, raw_data, requires_source) => {
+      const loader = streaming_loader(null)
+      if (requires_source === false) loader.requires_source = false
+      const collected = await collect_vacf_input(lazy_trajectory(loader), { raw_data })
+      expect(collected.n_frames).toBe(40)
+      expect(loader.requested_options?.vector_keys).toBeUndefined()
+      expect(collected.velocities).toBeNull()
+    },
+  )
 
   it.each([
     {

@@ -9,6 +9,7 @@ import type { Pbc } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   assertHoverScopedShortcut,
@@ -611,6 +612,117 @@ describe(`Structure`, () => {
     },
   )
 
+  test(`keeps view selection across coordinate updates in one structure series`, async () => {
+    const props = $state<{
+      structure: AnyStructure
+      structure_series_key: unknown
+      selected_sites: number[]
+    }>({
+      structure,
+      structure_series_key: {},
+      selected_sites: [],
+    })
+    mount_structure(props)
+    await tick()
+    props.selected_sites = [0]
+
+    props.structure = {
+      ...structure,
+      sites: structure.sites.map((site, site_idx) =>
+        site_idx === 0
+          ? {
+              ...site,
+              xyz: [site.xyz[0] + 0.1, site.xyz[1], site.xyz[2]] as Vec3,
+            }
+          : site,
+      ),
+    }
+    await tick()
+    expect(props.selected_sites).toEqual([0])
+
+    props.structure_series_key = {}
+    await tick()
+    expect(props.selected_sites).toEqual([])
+  })
+
+  test(`invalidates site-indexed state on topology changes without changing series`, async () => {
+    const props = $state<{
+      structure: AnyStructure
+      structure_series_key: unknown
+      selected_sites: number[]
+      measured_sites: number[]
+      highlighted_sites: number[]
+      hovered_site_idx: number | null
+      site_radius_overrides: SvelteMap<number, number>
+    }>({
+      structure,
+      structure_series_key: {},
+      selected_sites: [],
+      measured_sites: [],
+      highlighted_sites: [],
+      hovered_site_idx: null,
+      site_radius_overrides: new SvelteMap(),
+    })
+    mount_structure(props)
+    await tick()
+    props.selected_sites = [0]
+    props.measured_sites = [0]
+    props.highlighted_sites = [0]
+    props.hovered_site_idx = 0
+    props.site_radius_overrides.set(0, 2)
+
+    props.structure = {
+      ...structure,
+      sites: structure.sites.map((site) => ({ ...site, xyz: [...site.xyz] as Vec3 })),
+    }
+    await tick()
+    expect(props.selected_sites).toEqual([0])
+    expect(props.site_radius_overrides.get(0)).toBe(2)
+
+    props.structure = { ...structure, sites: structure.sites.slice(1) }
+    await tick()
+    expect(props.selected_sites).toEqual([])
+    expect(props.measured_sites).toEqual([])
+    expect(props.highlighted_sites).toEqual([])
+    expect(props.hovered_site_idx).toBeNull()
+    expect(props.site_radius_overrides.size).toBe(0)
+  })
+
+  test(`discovers new vector keys within one structure series`, async () => {
+    const with_vectors = (include_magmom: boolean): AnyStructure => ({
+      ...structure,
+      sites: structure.sites.map((site, site_idx) => ({
+        ...site,
+        properties: {
+          ...site.properties,
+          ...(site_idx === 0
+            ? {
+                force: [1, 0, 0],
+                ...(include_magmom ? { magmom: [0, 1, 0] } : {}),
+              }
+            : {}),
+        },
+      })),
+    })
+    const props = $state({
+      structure: with_vectors(false),
+      structure_series_key: {},
+      controls_open: true,
+    })
+    mount_structure(props)
+    await tick()
+    expect(document.querySelector(`[aria-label="Reset force color to default"]`)).toBeNull()
+
+    props.structure = with_vectors(true)
+    await tick()
+    expect(
+      document.querySelector(`[aria-label="Reset force color to default"]`),
+    ).not.toBeNull()
+    expect(
+      document.querySelector(`[aria-label="Reset magmom color to default"]`),
+    ).not.toBeNull()
+  })
+
   test(`preserves control chrome overrides and toggles fullscreen`, async () => {
     const requestFullscreenMock = vi.fn().mockResolvedValue(undefined)
     const exitFullscreenMock = vi.fn().mockResolvedValue(undefined)
@@ -641,7 +753,7 @@ describe(`Structure`, () => {
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
     expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
-      `var(--struct-fullscreen-icon-size, 1.2em)`,
+      `var(--struct-fullscreen-icon-size, 1em)`,
     )
 
     fullscreen_button.click()
@@ -1016,7 +1128,11 @@ describe(`Structure string parsing`, () => {
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
 
     props.data_url = `/b.json`
-    await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
+    await vi.waitFor(() =>
+      expect(fetch_mock).toHaveBeenLastCalledWith(`/b.json`, {
+        signal: expect.any(AbortSignal),
+      }),
+    )
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 

@@ -67,13 +67,11 @@
   )
   const ternary_entries = $derived(filter_by_elements(quaternary_entries, ternary_elements))
 
-  const picker_files = systems.map(
-    (sys): FileInfo => ({
-      name: sys.name,
-      url: ``,
-      type: `json`,
-    }),
-  )
+  const picker_files = systems.map((sys): FileInfo => ({
+    name: sys.name,
+    url: ``,
+    type: `json`,
+  }))
   let active_files = $derived(active_name ? [active_name] : [])
 </script>
 

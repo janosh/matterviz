@@ -398,6 +398,12 @@ describe(`NebViewer`, () => {
     expect(summary).toContain(`Fitted saddle (force-hermite)`)
   })
 
+  test(`aligns plot controls with the hover sequence bar`, async () => {
+    await mount_viewer({ paths: reaction_paths, show_controls: `hover` })
+    const panes = doc_query(`.panes`)
+    expect(panes.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
+  })
+
   test(`offers a path selector only when several paths are present`, async () => {
     const multi = await mount_viewer({ paths: reaction_paths })
     // path picker + x-axis mode + energy reference
@@ -468,6 +474,21 @@ describe(`NebViewer`, () => {
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
     await flush_render()
     expect(state.active_image_idx).toBe(2)
+
+    for (const [key, expected_idx, expected_label] of [
+      [` `, 2, `Pause`],
+      [`ArrowRight`, 3, `Pause`],
+      [` `, 3, `Play`],
+    ] as const) {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+      slider.dispatchEvent(event)
+      await flush_render()
+      expect(event.defaultPrevented).toBe(true)
+      expect(state.active_image_idx).toBe(expected_idx)
+      expect(viewer.querySelector(`.play-button`)?.getAttribute(`aria-label`)).toBe(
+        expected_label,
+      )
+    }
 
     const path_select = viewer.querySelector<HTMLSelectElement>(`.path-control select`)
     if (!path_select) throw new Error(`NEB path selector not found`)

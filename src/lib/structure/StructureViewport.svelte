@@ -89,6 +89,7 @@
 
     // Shared scene inputs (one-way)
     structure = undefined,
+    view_reset_key = undefined,
     base_structure = undefined,
     reference_structure = undefined,
     scene_props = {},
@@ -152,6 +153,7 @@
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
     structure?: AnyStructure
+    view_reset_key?: unknown
     base_structure?: AnyStructure
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
@@ -406,11 +408,11 @@
     last_reset_token = token
   })
 
-  // Clear stale camera state on structure change so each pane re-frames the new cell
-  // along its configured direction.
+  // Clear stale camera state for a genuinely new viewing context. Trajectory frames pass a
+  // stable key so coordinate-only updates do not repeatedly reset/re-fit the camera.
   let viewport_first_run = true
   $effect(() => {
-    void structure
+    void view_reset_key
     if (viewport_first_run) {
       viewport_first_run = false
       return

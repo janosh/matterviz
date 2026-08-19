@@ -168,6 +168,7 @@
 
   let {
     structure = $bindable(),
+    structure_series_key = undefined,
     reference_structure = undefined,
     displacement_rmsd = $bindable(undefined),
     trajectory_lines_result = $bindable(null),
@@ -269,6 +270,9 @@
     ...rest
   }: {
     structure?: AnyStructure
+    // Stable identity for coordinate-only updates such as trajectory playback. Camera context
+    // resets only when this key changes. Vector and topology state track their own signatures.
+    structure_series_key?: unknown
     // Comparison overlay: draw per-atom displacement arrows from this geometry (e.g. the
     // unrelaxed cell) to `structure`. Same atom count and ordering required.
     reference_structure?: AnyStructure
@@ -387,6 +391,26 @@
     `children` | `onclose` | `multi_view_control_visible` | `multi_view_unavailable_reason`
   > &
     Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
+
+  let effective_structure_series_key = $derived(structure_series_key ?? structure)
+  let vector_keys = $derived(
+    Array.isArray(structure?.sites) ? get_structure_vector_keys(structure) : [],
+  )
+  let vector_keys_signature = $derived(vector_keys.join(`\0`))
+  let topology_signature = $derived(
+    Array.isArray(structure?.sites)
+      ? structure.sites
+          .map(
+            ({ label, species }) =>
+              `${label}\0${species
+                .map(({ element, occu, oxidation_state }) =>
+                  [element, occu, oxidation_state ?? ``].join(`:`),
+                )
+                .join(`,`)}`,
+          )
+          .join(`\u0001`)
+      : ``,
+  )
 
   // Dash and other JavaScript callers can bypass the TypeScript union with partial JSON.
   // Normalize once before the first render and again before later prop updates are applied.
@@ -516,24 +540,24 @@
 
   // Auto-populate vector_configs when structure has vector data (force, magmom, spin, etc.)
   // Skip if configs were externally provided. Clear auto-generated configs on structure change.
-  let vectors_auto_populated_for: AnyStructure | undefined = undefined
+  let vectors_auto_populated_for = ``
   let last_auto_configs: Record<string, unknown> | undefined = undefined
 
   $effect(() => {
-    if (!structure?.sites || structure === vectors_auto_populated_for) return
-    const keys = get_structure_vector_keys(structure)
+    const current_signature = vector_keys_signature
+    if (!structure?.sites || current_signature === vectors_auto_populated_for) return
     // Clear auto-generated configs from previous structure; preserve externally-modified ones
     const existing = scene_props.vector_configs
     if (last_auto_configs && existing === last_auto_configs) {
       scene_props.vector_configs = {}
       last_auto_configs = undefined
     } else if (existing && Object.keys(existing).length > 0) {
-      vectors_auto_populated_for = structure
+      vectors_auto_populated_for = current_signature
       return
     }
-    vectors_auto_populated_for = structure
-    if (keys.length === 0) return
-    const configs = default_vector_configs(keys)
+    vectors_auto_populated_for = current_signature
+    if (vector_keys.length === 0) return
+    const configs = default_vector_configs(vector_keys)
     scene_props.vector_configs = configs
     // Read back the proxied reference — Svelte 5 $state wraps objects in
     // proxies, so `scene_props.vector_configs !== configs`. Storing the proxy
@@ -1174,7 +1198,7 @@
   // change site indices (skip first run to preserve parent-provided selections)
   let first_run = true
   $effect(() => {
-    void [supercell_scaling, show_image_atoms, structure, cell_type] // track reactively
+    void [supercell_scaling, show_image_atoms, effective_structure_series_key, cell_type]
     if (first_run) {
       first_run = false
       return
@@ -1188,6 +1212,23 @@
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       // Clear stale camera target so orbit controls re-center on the new cell
       scene_props.camera_target = undefined
+    })
+  })
+
+  // A stable series key preserves the camera across trajectory frames, but site-indexed UI
+  // state is only valid while atom count, order, and species identity remain unchanged.
+  let topology_first_run = true
+  $effect(() => {
+    void topology_signature
+    if (topology_first_run) {
+      topology_first_run = false
+      return
+    }
+    untrack(() => {
+      if (has_selection()) clear_selection()
+      if (highlighted_sites.length > 0) highlighted_sites = []
+      hovered_site_idx = null
+      if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
     })
   })
 
@@ -1269,6 +1310,7 @@
 
   let shared_viewport_props = $derived({
     structure: internal_displayed_structure,
+    view_reset_key: effective_structure_series_key,
     base_structure: cell_transformed_structure,
     reference_structure,
     scene_props: { ...scene_props, show_trajectory_lines },
@@ -1307,15 +1349,27 @@
     }
   })
 
-  // Reset moved-pane tracking when structure changes
+  // Reset viewing state when the structure series changes. Coordinate-only updates keep a
+  // stable series key, while an explicitly supplied camera remains authoritative.
+  let previous_structure_series_key: unknown
+  let is_initial_structure_series = true
   $effect(() => {
-    // untrack: clearing must not add moved_panes as a dependency, else a pane move
-    // (which adds to moved_panes) would immediately re-run this and clear it again.
-    if (structure) untrack(() => moved_panes.clear())
+    const next_series_key = effective_structure_series_key
+    const series_changed =
+      !is_initial_structure_series && next_series_key !== previous_structure_series_key
+    previous_structure_series_key = next_series_key
+    is_initial_structure_series = false
+    // untrack: clearing must not make pane moves a dependency.
+    if (next_series_key !== undefined) untrack(() => moved_panes.clear())
+    if (
+      series_changed &&
+      scene_props_in?.camera_target === undefined &&
+      !scene_props_in?.camera_position?.some((coordinate) => coordinate !== 0)
+    )
+      untrack(clear_camera_state)
   })
 
-  // Clear stale camera target and position so StructureScene uses the new
-  // structure's rotation_target (unit cell center) and auto-positions the camera.
+  // Clear stale camera state so StructureScene auto-positions for the new structure.
   function clear_camera_state() {
     // Reset to a fresh [0,0,0] so the primary viewport re-frames the new structure.
     // Side panes reset their local camera state in StructureViewport's structure effect.
@@ -1843,7 +1897,7 @@
       fullscreen_bg_css_var="--struct-bg-fullscreen"
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, fullscreen: value })}
-      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1.2em)"
+      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1em)"
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
@@ -2305,7 +2359,7 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
-    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem));
+    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, var(--viewer-chrome-icon-size));
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);

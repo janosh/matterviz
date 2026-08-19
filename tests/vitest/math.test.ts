@@ -89,6 +89,19 @@ test.each([
   expect(math.to_radians(math.to_degrees(degrees))).toBeCloseTo(degrees, 3)
 })
 
+test.each([
+  [[], 2, 0],
+  [[1, 2, 2, 4], 0, 0],
+  [[1, 2, 2, 4], 2, 1],
+  [[1, 2, 2, 4], 3, 3],
+  [[1, 2, 2, 4], 5, 4],
+] as [number[], number, number][])(
+  `partition_point(%j, value < %d) = %d`,
+  (values, target, expected) => {
+    expect(math.partition_point(values, (value) => value < target)).toBe(expected)
+  },
+)
+
 // oxfmt-ignore
 test.each([
   [[0, 0, 0], [1, 0, 0], 1.0], // unit distance along one axis

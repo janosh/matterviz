@@ -35,9 +35,10 @@
       phonon_data[current?.keys[0] ?? ``]?.primitive,
   )
 
-  const picker_files = phonon_fixture_groups.map(
-    (group): FileInfo => ({ name: group.label, url: `` }),
-  )
+  const picker_files = phonon_fixture_groups.map((group): FileInfo => ({
+    name: group.label,
+    url: ``,
+  }))
 </script>
 
 {#if phonon_fixture_groups.length}

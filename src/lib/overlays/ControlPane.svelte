@@ -14,7 +14,7 @@
     toggle_class,
     toggle_title = controls_name,
     // Empty style opts out when ViewerChrome owns toggle layout.
-    toggle_style = `position: absolute; top: var(--ctrl-btn-top, 5pt); right: var(--ctrl-btn-right, 1ex);`,
+    toggle_style = `position: absolute; top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex)); right: var(--ctrl-btn-right, 1ex);`,
     pane_style = `--pane-padding: 12px; --pane-gap: 4px;`,
     toggle_props = {},
     pane_props = {},

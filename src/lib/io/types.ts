@@ -1,3 +1,5 @@
+import type { TrajectorySource } from '$lib/trajectory/index'
+
 export interface FileInfo {
   name: string
   url: string
@@ -20,6 +22,12 @@ export interface FileLoadMeta {
 // Receives parsed content, its logical filename, and stable source identity.
 export type FileLoadCallback = (
   content: string | ArrayBuffer,
+  filename: string,
+  metadata: FileLoadMeta,
+) => Promise<void> | void
+
+export type TrajectoryFileLoadCallback = (
+  content: TrajectorySource,
   filename: string,
   metadata: FileLoadMeta,
 ) => Promise<void> | void

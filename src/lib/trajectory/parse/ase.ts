@@ -1,4 +1,3 @@
-// ASE trajectory (.traj) parsing - binary format
 import * as math from '$lib/math'
 import {
   convert_atomic_numbers,
@@ -10,48 +9,52 @@ import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
 
-// ULM header: frame count lives at byte 32, frame-offsets table position at byte 40
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({
   n_items: Number(view.getBigInt64(32, true)),
   offsets_pos: Number(view.getBigInt64(40, true)),
 })
 
 export interface AseFrameOptions {
-  // Atomic numbers from an earlier frame. ASE writes `numbers` only once, so
-  // every frame after the first relies on this.
   fallback_numbers?: number[]
-  // Rejects a corrupt JSON length field before it becomes a huge allocation.
   max_json_length?: number
-  // Absolute file position of `buffer`'s first byte, for callers that read only
-  // one frame's byte range instead of the whole file (desktop streaming). ULM
-  // stores ndarray positions as absolute file offsets, so they need the slice
-  // origin subtracted before they can index into `buffer`.
   base_offset?: number
 }
 
-// A frame's calculator results, under either spelling ASE writes. ULM suffixes a key
-// with `.` when its value is a nested item, and ASE always nests the calculator —
-// checked against ase 3.28 down to a calculator holding nothing but a scalar energy,
-// so this is not about forces or ndarrays. Reading only the undotted name silently
-// dropped the energy of every relaxation ASE has ever written. ndarray entries are
-// left out: they are file pointers, not values.
+const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
+
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
+  read_ndarray?: (ref: { ndarray: unknown[] }) => number[][],
 ): Record<string, unknown> => {
   const calculator = frame_data[`calculator.`] ?? frame_data.calculator
   if (!calculator || typeof calculator !== `object`) return {}
-  return Object.fromEntries(
-    Object.entries(calculator).filter(
-      ([, value]) => !(value && typeof value === `object` && `ndarray` in value),
-    ),
-  )
+  const results: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(calculator as Record<string, unknown>)) {
+    if (!(value && typeof value === `object` && `ndarray` in value)) {
+      results[key] = value
+      continue
+    }
+    if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
+    const reference = value as { ndarray: unknown[] }
+    const shape = reference.ndarray[0]
+    if (
+      !Array.isArray(shape) ||
+      !shape.every((dimension) => Number.isInteger(dimension) && dimension > 0)
+    ) {
+      continue
+    }
+    const size = shape.reduce((total, dimension) => total * dimension, 1)
+    if (![3, 9].includes(size)) continue
+    const result_key = key.endsWith(`.`) ? key.slice(0, -1) : key
+    if (result_key in results) {
+      throw new Error(`ASE calculator contains duplicate result key ${result_key}`)
+    }
+    const array = read_ndarray(reference)
+    results[result_key] = shape.length === 1 ? array[0] : array
+  }
+  return results
 }
 
-// Decode a single ASE/ULM frame (JSON header + optional ndarray payloads) into a
-// TrajectoryFrame. Returns the atomic numbers actually used so callers can cache them
-// as fallback for later frames that omit `numbers` (ASE stores them only once).
-//
-// `frame_offset` is absolute like the ndarray offsets, so it is rebased the same way.
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,
@@ -93,7 +96,7 @@ export function decode_ase_frame(
   const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
   const metadata: Record<string, unknown> = {
     step,
-    ...ase_calculator_data(frame_data),
+    ...ase_calculator_data(frame_data, read_ndarray),
     ...frame_data.info,
   }
   if (cell) {
@@ -154,12 +157,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
 
   const first_struct = frames[0]?.structure
   const periodic_boundary_conditions =
-    first_struct !== null &&
-    first_struct !== undefined &&
-    typeof first_struct === `object` &&
-    `lattice` in first_struct
-      ? first_struct.lattice.pbc
-      : [true, true, true]
+    first_struct && `lattice` in first_struct ? first_struct.lattice.pbc : [true, true, true]
 
   const metadata = {
     filename,

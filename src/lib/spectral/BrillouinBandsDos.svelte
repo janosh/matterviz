@@ -134,7 +134,7 @@
     hovered_qpoint_index: active_qpoint_index,
   })}
   <Bands
-    style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
+    style="grid-area: bands; min-width: 0; min-height: 0; overflow: visible"
     {band_structs}
     {fermi_level}
     {...bands_props}
@@ -174,7 +174,7 @@
   />
 
   <Dos
-    style="grid-area: dos; min-width: 0; min-height: 0; overflow: hidden"
+    style="grid-area: dos; min-width: 0; min-height: 0; overflow: visible"
     {doses}
     {fermi_level}
     {...dos_props}

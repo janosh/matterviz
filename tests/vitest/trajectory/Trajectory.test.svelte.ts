@@ -2,20 +2,48 @@ import {
   Trajectory,
   type TrajectoryController,
   type FrameLoader,
+  type TrajectoryPositionStream,
   type TrajectoryType,
   type TrajectoryXQuantity,
   type TrajHandlerData,
 } from '$lib/trajectory'
+import type { TrajectorySpectroscopyResult } from '$lib/spectral'
 import * as trajectory_parse from '$lib/trajectory/parse'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
+import * as parse_worker from '$lib/file-viewer/parse-in-worker'
+import * as io from '$lib/io'
+import * as symmetry from '$lib/symmetry'
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { Info } from 'svelte-widgets/icons'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   deferred_fetch_responses,
+  create_drop_event,
+  delay_file_read,
   doc_query,
   flush_render,
+  hdf5_group_option,
+  make_ambiguous_hdf5,
   make_trajectory_frame,
   resize_element,
 } from '../setup'
+
+const spectroscopy_mocks = vi.hoisted(() => ({
+  collect: vi.fn(),
+  compute: vi.fn(),
+  cancel: vi.fn(),
+}))
+
+vi.mock(`$lib/spectral/spectroscopy-collect`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  collect_trajectory_spectroscopy_input: spectroscopy_mocks.collect,
+}))
+vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
+  create_trajectory_spectroscopy_async_runner: () => ({
+    compute: spectroscopy_mocks.compute,
+    cancel: spectroscopy_mocks.cancel,
+  }),
+}))
 
 const make_traj = (metadatas: Record<string, number>[]) => ({
   frames: metadatas.map((metadata, idx) => make_trajectory_frame(idx, 1, metadata)),
@@ -23,6 +51,49 @@ const make_traj = (metadatas: Record<string, number>[]) => ({
 })
 const energy_traj = (...energies: number[]) =>
   make_traj(energies.map((energy) => ({ energy })))
+const spectroscopy_result: TrajectorySpectroscopyResult = {
+  vdos: {
+    frequencies: [0, 1],
+    power: [0, 1],
+    normalized_power: [0, 1],
+    frequency_unit: `THz`,
+    sample_interval: 1,
+    frequency_spacing: 1,
+    rayleigh_resolution: 1,
+    nyquist: 1,
+  },
+  ir: null,
+  raman: null,
+  peaks: [
+    {
+      frequency: 1,
+      ir_activity: `unknown`,
+      raman_activity: `unknown`,
+      ir_score: null,
+      raman_score: null,
+      vdos_prominence: 1,
+      ir_prominence: 0,
+      raman_prominence: 0,
+      potentially_mixed: false,
+      displacement: [
+        [
+          [1, 0],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+    },
+  ],
+  frequency_unit: `THz`,
+  preprocessing: `raw`,
+  velocity_source: `stored`,
+  reference_positions: [[0, 0, 0]],
+  elements: [`H`],
+  masses: [1],
+  pbc: [false, false, false],
+  reference_lattice: null,
+  metadata: {},
+}
 const make_stepped_traj = (time_step?: number) => ({
   frames: [0, 500, 1000].map((step, frame_idx) =>
     make_trajectory_frame(step, 1, { energy: -frame_idx }),
@@ -47,6 +118,7 @@ const make_indexed_traj = (frame_count: number, metadata: TrajectoryType[`metada
     extract_plot_metadata: vi.fn(async () => []),
   }
   return {
+    frames,
     frame_loader,
     trajectory: {
       frames: [frames[0]],
@@ -65,8 +137,26 @@ const mount_traj = (props: Record<string, unknown>) => {
   onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
+const press_key = (target: Element, key: string, init: KeyboardEventInit = {}) => {
+  const event = new KeyboardEvent(`keydown`, {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  })
+  target.dispatchEvent(event)
+  return event
+}
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
+const reopen_hdf5_picker = async (target: ParentNode): Promise<void> => {
+  const picker_back = target.querySelector<HTMLButtonElement>(`[data-hdf5-group-picker-back]`)
+  if (!picker_back) throw new Error(`missing HDF5 trajectory picker back button`)
+  picker_back.click()
+  await vi.waitFor(() =>
+    expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+  )
+}
 
 const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement => {
   const option = [...target.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
@@ -79,6 +169,61 @@ const menu_option = (target: ParentNode, option_text: string): HTMLButtonElement
 const stub_fetch = (fetch_impl: unknown) => {
   vi.stubGlobal(`fetch`, fetch_impl)
   onTestFinished(() => void vi.unstubAllGlobals())
+}
+
+const stub_hdf5_parse_worker = () => {
+  const worker_spy = vi
+    .spyOn(parse_worker, `parse_trajectory_in_worker`)
+    .mockImplementation(async (data, filename, on_progress, options) =>
+      trajectory_parse.parse_trajectory_async(
+        data instanceof Blob ? await data.arrayBuffer() : data,
+        filename,
+        on_progress,
+        options,
+      ),
+    )
+  onTestFinished(() => worker_spy.mockRestore())
+  return worker_spy
+}
+
+const lazy_trajectory = (dispose: () => void): TrajectoryType => ({
+  frames: [make_trajectory_frame(0, 1)],
+  total_frames: 2,
+  is_indexed: true,
+  frame_loader: {
+    requires_source: false,
+    dispose,
+    get_total_frames: async () => 2,
+    build_frame_index: async () => [],
+    load_frame: async (_data, frame_idx) => make_trajectory_frame(frame_idx, 1),
+    extract_plot_metadata: async () => [],
+  },
+})
+
+const make_pending_au_trajectory = () => {
+  const next_frame = make_trajectory_frame(0, 1)
+  next_frame.structure.sites[0].species[0].element = `Au`
+  next_frame.structure.sites[0].label = `Au1`
+  let resolve_frame: ((frame: typeof next_frame) => void) | undefined
+  const frame_ready = new Promise<typeof next_frame>((resolve) => (resolve_frame = resolve))
+  return {
+    trajectory: {
+      frames: [],
+      total_frames: 1,
+      is_indexed: true,
+      frame_loader: {
+        requires_source: false,
+        get_total_frames: async () => 1,
+        build_frame_index: async () => [],
+        load_frame: async () => frame_ready,
+        extract_plot_metadata: async () => [],
+      },
+    } satisfies TrajectoryType,
+    resolve: () => {
+      if (!resolve_frame) throw new Error(`Replacement frame was not requested`)
+      resolve_frame(next_frame)
+    },
+  }
 }
 
 const stub_animation_frames = () => {
@@ -101,27 +246,88 @@ const stub_animation_frames = () => {
 }
 
 describe(`Trajectory`, () => {
-  // StructureControls owns trail-chrome visibility; this only guards Trajectory's
-  // lazy collect_msd_positions gate (Trail length appears once the stream lands).
-  test(`collects trail positions lazily when trails are enabled`, async () => {
-    mount_traj({
-      trajectory: make_traj([{}, {}, {}]),
-      display_mode: `structure`,
-      show_controls: false,
-      controls_open: true,
-      structure_props: { show_controls: `always` },
+  test(`does not schedule crystal symmetry analysis while scrubbing trajectory frames`, async () => {
+    vi.stubEnv(`VITEST`, ``)
+    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
+    const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
+    onTestFinished(() => {
+      vi.unstubAllEnvs()
+      vi.restoreAllMocks()
     })
+    const props = $state({
+      trajectory: {
+        frames: [0, 1, 2].map((step) =>
+          make_trajectory_frame(step, 3, {}, { a: 20, b: 20, c: 20 }),
+        ),
+      },
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
     await flush_render()
 
-    const trail_toggle = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Show trajectory trails`))
-      ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
-    if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
-    expect(document.body.textContent).not.toContain(`Trail length`)
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+    slider.value = `2`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await flush_render()
 
-    trail_toggle.click()
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
+    expect(ready_spy).not.toHaveBeenCalled()
+    expect(analyze_spy).not.toHaveBeenCalled()
   })
+
+  // StructureControls owns trail-chrome visibility; this only guards Trajectory's
+  // lazy collect_msd_positions gate (Trail length appears once the stream lands).
+  test.each([
+    [`in-memory`, () => make_traj([{}, {}, {}])],
+    [
+      `source-free packed`,
+      () => {
+        const { frame_loader, trajectory } = make_indexed_traj(3)
+        const position_stream: TrajectoryPositionStream = {
+          positions: new Float64Array([0, 0, 0, 1, 0, 0, 2, 0, 0]),
+          n_frames: 3,
+          n_atoms: 1,
+          elements: [`H`],
+          lattice_matrices: null,
+          pbc: [false, false, false],
+          coords_unwrapped: false,
+          frame_stride: 1,
+          steps: [0, 1, 2],
+        }
+        frame_loader.requires_source = false
+        frame_loader.stream_positions = vi.fn(async () => position_stream)
+        return trajectory
+      },
+    ],
+  ])(
+    `collects trail positions lazily for %s trajectories`,
+    async (_kind, create_trajectory) => {
+      const props = $state({
+        trajectory: create_trajectory(),
+        display_mode: `structure`,
+        show_controls: false,
+        controls_open: true,
+        spectroscopy_pane_open: false,
+        structure_props: { show_controls: `always` },
+      })
+      mount_traj(props)
+      await flush_render()
+
+      const trail_toggle = Array.from(document.querySelectorAll(`label`))
+        .find((label) => label.textContent?.includes(`Show trajectory trails`))
+        ?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+      if (!trail_toggle) throw new Error(`trajectory trail toggle not found`)
+      expect(document.body.textContent).not.toContain(`Trail length`)
+
+      trail_toggle.click()
+      await vi.waitFor(() => expect(document.body.textContent).toContain(`Trail length`))
+
+      props.spectroscopy_pane_open = true
+      await flush_render()
+      expect(document.body.textContent).not.toContain(`Trail length`)
+    },
+  )
 
   test(`forwards the initial scatter controls-open state`, async () => {
     mount_traj({
@@ -134,6 +340,74 @@ describe(`Trajectory`, () => {
     const plot = doc_query(`.scatter`)
     await resize_element(plot, 600, 400)
     expect(plot.querySelector(`.pane-open`)).not.toBeNull()
+  })
+
+  test.each([
+    [`scatter`, `.scatter`],
+    [`histogram`, `.histogram`],
+  ] as const)(
+    `aligns %s controls with the sequence bar`,
+    async (display_mode, plot_selector) => {
+      const target = mount_traj({
+        trajectory: energy_traj(-1, -2),
+        display_mode,
+        show_controls: `hover`,
+      })
+      await flush_render()
+
+      const content = doc_query(`.content-area`)
+      expect(content.style.getPropertyValue(`--viewer-buttons-top`)).toMatch(/^calc\(.+\)$/)
+      expect(content.style.getPropertyValue(`--ctrl-btn-top`)).toBe(``)
+      const plot = target.querySelector<HTMLElement>(plot_selector)
+      if (!plot) throw new Error(`Trajectory ${display_mode} plot not found`)
+      expect(plot.style.getPropertyValue(`--ctrl-btn-top`)).toBe(``)
+    },
+  )
+
+  test(`plot navigation updates the active frame only after an x-only click`, async () => {
+    const props = $state({
+      trajectory: energy_traj(-1, -2, -3),
+      current_step_idx: 0,
+      display_mode: `scatter` as const,
+      show_controls: false,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+    const plot = target.querySelector<HTMLElement>(`.scatter`)
+    if (!plot) throw new Error(`Trajectory scatter plot not found`)
+    await resize_element(plot, 600, 400)
+    const last_marker = plot
+      .querySelectorAll<SVGPathElement>(`g[data-series-id] path.marker`)
+      .item(2)
+    const transform = last_marker.parentElement?.getAttribute(`transform`)
+    const match = transform?.match(/translate\((?<marker_x>[-\d.]+) (?<marker_y>[-\d.]+)\)/)
+    if (!match)
+      throw new Error(`Could not read final trajectory marker position: ${transform}`)
+    const marker_x = Number(match.groups?.marker_x)
+    const marker_y = Number(match.groups?.marker_y)
+    if (!Number.isFinite(marker_x) || !Number.isFinite(marker_y)) {
+      throw new TypeError(`Could not read final trajectory marker position: ${transform}`)
+    }
+
+    const far_y = marker_y < 150 ? 290 : 10
+    const plot_svg = plot.querySelector(`svg[role="application"]`)
+    const dispatch_plot_event = (type: `click` | `mousemove`) =>
+      plot_svg?.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          clientX: marker_x,
+          clientY: far_y,
+        }),
+      )
+    dispatch_plot_event(`mousemove`)
+    expect(props.current_step_idx).toBe(0)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await tick()
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`Energy`)
+
+    dispatch_plot_event(`click`)
+    flushSync()
+    expect(props.current_step_idx).toBe(2)
   })
 
   test(`does not reserve y2 padding for a streamed series without finite values`, async () => {
@@ -206,6 +480,60 @@ describe(`Trajectory`, () => {
     ])
     expect(props.x_quantity).toBe(`step`)
     expect(frame_loader.load_frame).toHaveBeenCalledOnce()
+  })
+
+  test(`active scrubbing cancels speculative indexed-frame prefetch`, async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => void vi.useRealTimers())
+    const { frame_loader, trajectory } = make_indexed_traj(6)
+    const props = $state({
+      trajectory,
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
+    await tick()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.value = `4`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    vi.advanceTimersToNextFrame()
+    await Promise.resolve()
+    flushSync()
+
+    expect(props.current_step_idx).toBe(4)
+    expect(frame_loader.load_frame).toHaveBeenCalledTimes(1)
+    expect(frame_loader.load_frame).toHaveBeenLastCalledWith(``, 4)
+
+    vi.advanceTimersByTime(79)
+    await Promise.resolve()
+    expect(frame_loader.load_frame).toHaveBeenCalledTimes(1)
+  })
+
+  test(`packed indexed frames materialize in the scrub commit frame`, async () => {
+    const { frame_loader, frames, trajectory } = make_indexed_traj(6)
+    frame_loader.load_frame_sync = vi.fn((frame_idx) => frames[frame_idx] ?? null)
+    const props = $state({
+      trajectory,
+      current_step_idx: 0,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    mount_traj(props)
+    await flush_render()
+    vi.mocked(frame_loader.load_frame).mockClear()
+    vi.mocked(frame_loader.load_frame_sync).mockClear()
+    const { run_frame } = stub_animation_frames()
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
+
+    slider.value = `4`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    run_frame(16)
+
+    expect(props.current_step_idx).toBe(4)
+    expect(frame_loader.load_frame_sync).toHaveBeenCalledWith(4)
+    expect(frame_loader.load_frame).not.toHaveBeenCalled()
   })
 
   // Regression: the series-regeneration effect must survive the visible_properties
@@ -399,9 +727,10 @@ describe(`Trajectory`, () => {
     expect(events.at(-1)).toBe(`pause:0`)
   })
 
-  test(`pauses auto-play before committing a dragged frame`, async () => {
-    const { performance_now, run_frame } = stub_animation_frames()
+  test(`resumes auto-play after committing a dragged frame`, async () => {
+    const { callbacks, performance_now, run_frame } = stub_animation_frames()
     performance_now.mockReturnValue(1000)
+    const on_play = vi.fn()
     const on_pause = vi.fn()
     const props = $state({
       trajectory: energy_traj(-1, -2, -3, -4),
@@ -409,23 +738,28 @@ describe(`Trajectory`, () => {
       fps: 10,
       auto_play: true,
       show_controls: `always` as const,
+      on_play,
       on_pause,
     })
     mount_traj(props)
     await flush_render()
     const slider = doc_query(`.step-slider`, HTMLInputElement)
+    on_play.mockClear()
 
     slider.dispatchEvent(new Event(`pointerdown`, { bubbles: true }))
     slider.value = `2`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    callbacks.length = 0
+    slider.dispatchEvent(new Event(`pointerup`, { bubbles: true }))
     slider.dispatchEvent(new Event(`change`, { bubbles: true }))
     flushSync()
 
     expect(props.current_step_idx).toBe(2)
-    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
     expect(on_pause).toHaveBeenCalledOnce()
+    expect(on_play).toHaveBeenCalledOnce()
     run_frame(1100)
-    expect(props.current_step_idx).toBe(2)
+    expect(props.current_step_idx).toBe(3)
   })
 
   test(`stops frame catch-up when an end callback makes playback unplayable`, async () => {
@@ -460,7 +794,7 @@ describe(`Trajectory`, () => {
     expect(callbacks).toHaveLength(0)
   })
 
-  test(`updates frame rate from keyboard shortcuts`, async () => {
+  test(`handles playback and speed shortcuts from the viewer and focused slider`, async () => {
     const on_frame_rate_change = vi.fn()
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
@@ -470,28 +804,85 @@ describe(`Trajectory`, () => {
     })
     mount_traj(props)
     await flush_render()
-    const viewer = doc_query(`.trajectory`)
+    const viewer = doc_query(`.trajectory`, HTMLDivElement)
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
     expect(doc_query(`.fps-section input[type="number"]`, HTMLInputElement).value).toBe(`5`)
 
     on_frame_rate_change.mockClear()
     for (const [key, expected_fps] of [
-      [` `, 5],
       [`+`, 5.1],
       [`-`, 5],
-      [` `, 5],
     ] as const) {
-      viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      const event = press_key(viewer, key)
       await flush_render()
+      expect(event.defaultPrevented).toBe(true)
       expect(props.fps).toBe(expected_fps)
     }
     expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
 
-    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
+    const slider_play_event = press_key(slider, ` `)
     await flush_render()
+    expect(slider_play_event.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    const repeated_space = press_key(slider, ` `, { repeat: true })
+    await flush_render()
+    expect(repeated_space.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    const slider_pause_event = press_key(slider, ` `)
+    await flush_render()
+    expect(slider_pause_event.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+
     props.fps = Number.NaN
-    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `+`, bubbles: true }))
+    press_key(slider, `+`)
     await flush_render()
     expect(props.fps).toBe(0.1)
+
+    viewer.requestFullscreen = vi.fn(async () => undefined)
+    const fullscreen_event = press_key(slider, `F`)
+    await flush_render()
+    expect(fullscreen_event.defaultPrevented).toBe(true)
+    expect(viewer.requestFullscreen).toHaveBeenCalledOnce()
+
+    const idle_escape = press_key(viewer, `Escape`)
+    expect(idle_escape.defaultPrevented).toBe(false)
+  })
+
+  test.each([
+    { name: `ArrowLeft`, key: `ArrowLeft`, expected: 49 },
+    { name: `ArrowRight`, key: `ArrowRight`, expected: 51 },
+    { name: `Ctrl+ArrowLeft`, key: `ArrowLeft`, expected: 0, ctrlKey: true },
+    { name: `Meta+ArrowRight`, key: `ArrowRight`, expected: 100, metaKey: true },
+    { name: `Home`, key: `Home`, expected: 0 },
+    { name: `End`, key: `End`, expected: 100 },
+    { name: `uppercase J`, key: `J`, expected: 40 },
+    { name: `uppercase L`, key: `L`, expected: 60 },
+    { name: `PageUp`, key: `PageUp`, expected: 25 },
+    { name: `PageDown`, key: `PageDown`, expected: 75 },
+    { name: `0 percentage jump`, key: `0`, expected: 0 },
+    { name: `9 percentage jump`, key: `9`, expected: 90 },
+  ])(`applies $name from the focused frame slider without pausing`, async (shortcut) => {
+    const on_pause = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(...Array.from({ length: 101 }, (_, idx) => -idx)),
+      current_step_idx: 50,
+      fps: 0.1,
+      show_controls: `always` as const,
+      on_pause,
+    })
+    mount_traj(props)
+    await flush_render()
+    doc_query(`.play-button`, HTMLButtonElement).click()
+    await flush_render()
+    on_pause.mockClear()
+
+    const event = press_key(doc_query(`.step-slider`), shortcut.key, shortcut)
+    await flush_render()
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(props.current_step_idx).toBe(shortcut.expected)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    expect(on_pause).not.toHaveBeenCalled()
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
@@ -500,13 +891,13 @@ describe(`Trajectory`, () => {
   // commit only their latest event-target value on the next animation frame.
   test(`clamps steps, coalesces slider input, and settles after callback errors`, async () => {
     let throw_on_change = false
-    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count`>[] = []
+    const step_events: Pick<TrajHandlerData, `step_idx` | `frame_count` | `frame`>[] = []
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
       current_step_idx: Number.MAX_SAFE_INTEGER,
       show_controls: `always` as const,
-      on_step_change: ({ step_idx, frame_count }: TrajHandlerData) => {
-        step_events.push({ step_idx, frame_count })
+      on_step_change: ({ step_idx, frame_count, frame }: TrajHandlerData) => {
+        step_events.push({ step_idx, frame_count, frame })
         if (throw_on_change) throw new Error(`host callback failed`)
       },
     })
@@ -514,7 +905,7 @@ describe(`Trajectory`, () => {
     await flush_render()
 
     expect(props.current_step_idx).toBe(2)
-    expect(step_events.at(-1)).toEqual({ step_idx: 2, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({ step_idx: 2, frame_count: 3 })
 
     const step_input = doc_query(`.step-input`, HTMLInputElement)
     for (const rejected_value of [``, `99`]) {
@@ -540,7 +931,11 @@ describe(`Trajectory`, () => {
     flushSync()
     expect(step_events).toHaveLength(events_before_scrub)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    expect(step_events.at(-1)).toEqual({ step_idx: 1, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({
+      step_idx: 1,
+      frame_count: 3,
+      frame: { metadata: { energy: -2 } },
+    })
     expect(step_events).toHaveLength(events_before_scrub + 1)
     expect(commit_events).toEqual([1])
 
@@ -549,7 +944,11 @@ describe(`Trajectory`, () => {
     slider.value = `0`
     slider.dispatchEvent(new Event(`input`, { bubbles: true }))
     slider.dispatchEvent(new Event(`change`, { bubbles: true }))
-    expect(step_events.at(-1)).toEqual({ step_idx: 0, frame_count: 3 })
+    expect(step_events.at(-1)).toMatchObject({
+      step_idx: 0,
+      frame_count: 3,
+      frame: { metadata: { energy: -1 } },
+    })
     expect(step_events).toHaveLength(events_before_scrub + 2)
     expect(commit_events).toEqual([1, 0])
 
@@ -571,9 +970,16 @@ describe(`Trajectory`, () => {
   // its own bindable open flag rather than all of them sharing one. MSD also must not
   // reappear as a top-level toggle outside the menu.
   test(`analysis menu opens each pane`, async () => {
+    spectroscopy_mocks.collect.mockResolvedValue({})
+    spectroscopy_mocks.compute.mockResolvedValue(spectroscopy_result)
+    onTestFinished(() => {
+      spectroscopy_mocks.collect.mockReset()
+      spectroscopy_mocks.compute.mockReset()
+    })
     const options = [
       [`Mean squared displacement`, `msd_pane_open`],
       [`Velocity autocorrelation & VDOS`, `vacf_pane_open`],
+      [`Trajectory IR/Raman & VDOS`, `spectroscopy_pane_open`],
       [`Structure identification`, `structure_id_pane_open`],
       [`Data inspector`, `data_inspector_open`],
     ] as const
@@ -582,6 +988,7 @@ describe(`Trajectory`, () => {
       show_controls: `always` as const,
       msd_pane_open: false,
       vacf_pane_open: false,
+      spectroscopy_pane_open: false,
       structure_id_pane_open: false,
       data_inspector_open: false,
     })
@@ -599,7 +1006,92 @@ describe(`Trajectory`, () => {
       await tick()
       expect(props[open_prop]).toBe(true)
       expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+      if (open_prop === `spectroscopy_pane_open`) {
+        const spectroscopy = doc_query(`.trajectory-spectroscopy-inline`)
+        await vi.waitFor(() =>
+          expect(spectroscopy.querySelector(`.plot-controls-toggle`)).not.toBeNull(),
+        )
+        expect(spectroscopy.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()
+        const settings_pane = spectroscopy.querySelector<HTMLElement>(`.plot-controls-pane`)
+        if (!settings_pane) throw new Error(`missing spectroscopy plot controls`)
+        expect(settings_pane.classList).not.toContain(`pane-open`)
+        const settings_toggle =
+          spectroscopy.querySelector<HTMLButtonElement>(`.plot-controls-toggle`)
+        if (!settings_toggle) throw new Error(`missing spectroscopy settings toggle`)
+        settings_toggle.click()
+        await tick()
+        expect(settings_pane.classList).toContain(`pane-open`)
+        expect(settings_pane.textContent).toContain(`IR response`)
+        expect(settings_pane.textContent).toContain(`Raman tensor`)
+        expect(settings_pane.textContent).toContain(`Preprocessing`)
+      }
     }
+  })
+
+  test(`spectroscopy replaces the plot and stays mounted while closed`, async () => {
+    const props: Record<string, unknown> = $state({
+      trajectory: energy_traj(-1.5, -2.5),
+      show_controls: `always` as const,
+      spectroscopy_pane_open: false,
+    })
+    const target = mount_traj(props)
+    await flush_render()
+
+    const spectroscopy = target.querySelector<HTMLElement>(`.trajectory-spectroscopy-inline`)
+    expect(spectroscopy).toBeInstanceOf(HTMLElement)
+    expect(spectroscopy?.hidden).toBe(true)
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+
+    doc_query(`.analysis-button`).click()
+    await tick()
+    menu_option(target, `Trajectory IR/Raman & VDOS`).click()
+    await flush_render()
+
+    expect(props.spectroscopy_pane_open).toBe(true)
+    expect(spectroscopy?.hidden).toBe(false)
+    expect(target.querySelector(`.scatter`)).toBeNull()
+    expect(target.querySelector(`.content-area.show-both`)).not.toBeNull()
+    expect(target.querySelector(`.pane-divider`)).not.toBeNull()
+    expect(target.querySelectorAll(`.trajectory`)).toHaveLength(1)
+    expect(target.querySelector(`.explorer-controls`)).toBeNull()
+    expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull()
+    expect(target.querySelector(`.trajectory.show-both-views`)).toBeNull()
+
+    doc_query(`.analysis-button`).click()
+    await tick()
+    menu_option(target, `Trajectory IR/Raman & VDOS`).click()
+    await flush_render()
+
+    expect(target.querySelector(`.trajectory-spectroscopy-inline`)).toBe(spectroscopy)
+    expect(spectroscopy?.hidden).toBe(true)
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+  })
+
+  test(`keeps computed spectroscopy modes paused when auto-play is disabled`, async () => {
+    spectroscopy_mocks.collect.mockReset()
+    spectroscopy_mocks.compute.mockReset()
+    spectroscopy_mocks.cancel.mockReset()
+    onTestFinished(() => {
+      spectroscopy_mocks.collect.mockReset()
+      spectroscopy_mocks.compute.mockReset()
+      spectroscopy_mocks.cancel.mockReset()
+    })
+    spectroscopy_mocks.collect.mockResolvedValue({})
+    spectroscopy_mocks.compute.mockResolvedValue(spectroscopy_result)
+    const { callbacks } = stub_animation_frames()
+    const target = mount_traj({
+      trajectory: energy_traj(-1.5, -2.5),
+      auto_play: false,
+      show_controls: `always`,
+      spectroscopy_pane_open: true,
+    })
+
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.trajectory.spectroscopy-mode`)).not.toBeNull(),
+    )
+
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+    expect(callbacks).toHaveLength(0)
   })
 
   // setup.ts ResizeObserver reports 600; old code used calc(wrapper - 50px).
@@ -610,7 +1102,13 @@ describe(`Trajectory`, () => {
       info_pane_open: true,
     })
     await flush_render()
-    expect(doc_query(`.trajectory-info-pane`).style.maxHeight).toBe(`600px`)
+    const info_pane = doc_query(`.trajectory-info-pane`)
+    expect(info_pane.style.maxHeight).toBe(`600px`)
+    expect(info_pane.dataset.resize).toBe(`both`)
+    expect(info_pane.querySelector(`.resize-grip`)).not.toBeNull()
+    doc_query<HTMLButtonElement>(`.trajectory-info-toggle`).click()
+    await tick()
+    expect(doc_query(`.trajectory-info-toggle path`).getAttribute(`d`)).toBe(Info.d)
   })
 
   test(`show_controls.style overrides control bar styles`, async () => {
@@ -622,6 +1120,16 @@ describe(`Trajectory`, () => {
 
     const style = getComputedStyle(doc_query(`.trajectory-controls`))
     expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
+  })
+
+  test.each([
+    [`without a prop`, undefined],
+    [`with an object config`, { hidden: [] }],
+  ])(`shows the control bar by default %s`, async (_description, show_controls) => {
+    const target = mount_traj({ trajectory: energy_traj(-1.5), show_controls })
+    await flush_render()
+
+    expect(target.querySelector(`.trajectory-controls.always-visible`)).not.toBeNull()
   })
 
   test(`controller navigates without mounted controls`, async () => {
@@ -713,6 +1221,366 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 
+  test(`reuses one URL Blob across HDF5 trajectory group choices`, async () => {
+    stub_hdf5_parse_worker()
+    const content = await make_ambiguous_hdf5()
+    const fetch_mock = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response(request_url(url).includes(`replacement.xyz`) ? xyz(`He`) : content),
+    )
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/ambiguous.h5`,
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+      on_file_load,
+    })
+    stub_fetch(fetch_mock)
+    const target = mount_traj(props)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`Au`))
+    await reopen_hdf5_picker(target)
+    const next_group = hdf5_group_option(target, `/molecules/nh3/replicas/0`)
+    expect(
+      next_group.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: ` `, bubbles: true, cancelable: true }),
+      ),
+    ).toBe(true)
+    next_group.click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`H`))
+    expect(fetch_mock).toHaveBeenCalledOnce()
+
+    props.data_url = `/replacement.xyz`
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[2][0])).toBe(`He`))
+    expect(fetch_mock).toHaveBeenCalledTimes(2)
+  })
+
+  test(`does not render the previous structure while an HDF5 group frame loads`, async () => {
+    const old_frame = make_trajectory_frame(0, 2)
+    const { trajectory: next_trajectory, resolve } = make_pending_au_trajectory()
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`])
+        }
+        return next_trajectory
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const target = mount_traj({
+      trajectory: { frames: [old_frame] },
+      display_mode: `structure`,
+      show_controls: `always`,
+    })
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`H`),
+    )
+
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(target.querySelector(`.element-legend`)).toBeNull())
+
+    resolve()
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`Au`),
+    )
+  })
+
+  test(`clears the displayed frame when a caller replaces a trajectory`, async () => {
+    const old_frame = make_trajectory_frame(0, 2)
+    const { trajectory: next_trajectory, resolve } = make_pending_au_trajectory()
+    const props = $state({
+      trajectory: { frames: [old_frame] },
+      display_mode: `structure` as const,
+      show_controls: `always` as const,
+    })
+    const target = mount_traj(props)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`H`),
+    )
+
+    props.trajectory = next_trajectory
+    await vi.waitFor(() => expect(target.querySelector(`.element-legend`)).toBeNull())
+
+    resolve()
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.element-legend`)?.textContent).toContain(`Au`),
+    )
+  })
+
+  test(`disposes the selected HDF5 loader before opening another group`, async () => {
+    const first_dispose = vi.fn()
+    const second_dispose = vi.fn()
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`, `/run/1`])
+        }
+        return lazy_trajectory(
+          options.hdf5_group_path === `/run/0` ? first_dispose : second_dispose,
+        )
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(target.querySelector(`.filename`)?.textContent).toContain(`groups.h5`)
+
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/run/1`).click()
+    await vi.waitFor(() => expect(first_dispose).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+    expect(second_dispose).not.toHaveBeenCalled()
+  })
+
+  test(`keeps the current HDF5 loader live when another group fails to load`, async () => {
+    const dispose = vi.fn()
+    const current_trajectory = lazy_trajectory(dispose)
+    const frame_loader = current_trajectory.frame_loader
+    if (!frame_loader) throw new Error(`missing lazy frame loader`)
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`, `/run/1`])
+        }
+        if (options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
+        return current_trajectory
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/run/1`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /run/1`))
+    const cancel_button = [...target.querySelectorAll<HTMLButtonElement>(`button`)].find(
+      (button) => button.textContent?.trim() === `Cancel`,
+    )
+    if (!cancel_button) throw new Error(`missing HDF5 picker cancel button`)
+    cancel_button.click()
+    await vi.waitFor(() => expect(target.querySelector(`.filename`)).not.toBeNull())
+    expect(target.querySelector(`.filename`)?.textContent).toContain(`groups.h5`)
+    expect(dispose).not.toHaveBeenCalled()
+    await expect(frame_loader.load_frame(``, 1)).resolves.toEqual(make_trajectory_frame(1, 1))
+  })
+
+  test(`explains where compressed HDF5 is staged while decompressing`, async () => {
+    let finish_decompression:
+      | ((value: { content: string; filename: string }) => void)
+      | undefined
+    const pending = new Promise<{ content: string; filename: string }>((resolve) => {
+      finish_decompression = resolve
+    })
+    const decompress_spy = vi.spyOn(io, `decompress_trajectory_file`).mockReturnValue(pending)
+    onTestFinished(() => decompress_spy.mockRestore())
+    const target = mount_traj({ display_mode: `structure`, show_controls: `always` })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    viewer.dispatchEvent(create_drop_event(new File([`compressed`], `movie.h5.gz`)))
+
+    await vi.waitFor(() =>
+      expect(target.textContent).toContain(
+        `Decompressing HDF5 into temporary browser-managed storage`,
+      ),
+    )
+    finish_decompression?.({ content: xyz(`H`), filename: `movie.xyz` })
+    await vi.waitFor(() => expect(target.textContent).toContain(`movie.xyz`))
+  })
+
+  test(`reports unsupported remote HDF5 compression instead of silently ignoring it`, async () => {
+    const fetch_mock = vi.fn()
+    stub_fetch(fetch_mock)
+    const on_error = vi.fn()
+    const target = mount_traj({ display_mode: `structure`, show_controls: `always`, on_error })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const event = new DragEvent(`drop`, { bubbles: true })
+    Object.defineProperty(event, `dataTransfer`, {
+      value: {
+        files: [],
+        items: [],
+        getData: (type: string) =>
+          type === `application/json`
+            ? JSON.stringify({ url: `https://example.com/trajectory.h5.zip` })
+            : ``,
+      },
+    })
+    viewer.dispatchEvent(event)
+
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({ error_msg: expect.stringContaining(`Compressed HDF5 ZIP`) }),
+      ),
+    )
+    expect(fetch_mock).not.toHaveBeenCalled()
+  })
+
+  test(`keeps the local HDF5 picker available after a group fails`, async () => {
+    stub_hdf5_parse_worker()
+    const original_parse = trajectory_parse.parse_trajectory_async
+    const failing_groups = [`/molecules/h2o/replicas/0`, `/molecules/nh3/replicas/0`]
+    const parse_spy = vi
+      .spyOn(trajectory_parse, `parse_trajectory_async`)
+      .mockImplementation((data, filename, on_progress, options) => {
+        const group_path = options?.hdf5_group_path
+        const failing_idx = group_path ? failing_groups.indexOf(group_path) : -1
+        if (group_path && failing_idx >= 0) {
+          failing_groups.splice(failing_idx, 1)
+          return Promise.reject(new Error(`broken group ${group_path}`))
+        }
+        return original_parse(data, filename, on_progress, options)
+      })
+    onTestFinished(() => parse_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /molecules/h2o`))
+    hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`Au`))
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/molecules/nh3/replicas/0`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /molecules/nh3`))
+    const cancel_button = [...target.querySelectorAll<HTMLButtonElement>(`button`)].find(
+      (button) => button.textContent?.trim() === `Cancel`,
+    )
+    if (!cancel_button) throw new Error(`missing HDF5 picker cancel button`)
+    cancel_button.click()
+    await vi.waitFor(() =>
+      expect(target.querySelector(`[data-hdf5-group-picker-back]`)).not.toBeNull(),
+    )
+    expect(target.textContent).not.toContain(`broken group`)
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/molecules/nh3/replicas/0`).click()
+    await vi.waitFor(() => expect(loaded_element(on_file_load.mock.calls[1][0])).toBe(`H`))
+  })
+
+  const utf8_trajectory = `1\n${`é`.repeat(16)}\nH 0 0 0\n`
+  test.each([
+    {
+      label: `binary byte`,
+      file: new File([new Uint8Array(8)], `large.h5`),
+      loading_options: { bin_file_threshold: 1 },
+    },
+    {
+      label: `UTF-8 byte`,
+      file: new File([utf8_trajectory], `large.xyz`),
+      loading_options: { text_file_threshold: utf8_trajectory.length + 1 },
+    },
+  ])(
+    `routes files exceeding the $label threshold through the parse worker`,
+    async ({ file, loading_options }) => {
+      const { trajectory: indexed_trajectory } = make_indexed_traj(3)
+      const worker_spy = vi
+        .spyOn(parse_worker, `parse_trajectory_in_worker`)
+        .mockResolvedValue(indexed_trajectory)
+      onTestFinished(() => worker_spy.mockRestore())
+      const direct_parse_spy = vi.spyOn(trajectory_parse, `parse_trajectory_async`)
+      onTestFinished(() => direct_parse_spy.mockRestore())
+      const on_file_load = vi.fn()
+      const target = mount_traj({
+        display_mode: `structure`,
+        show_controls: `never`,
+        loading_options,
+        on_file_load,
+      })
+      const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+      if (!viewer) throw new Error(`Trajectory root not found`)
+
+      viewer.dispatchEvent(create_drop_event(file))
+
+      await vi.waitFor(() => expect(worker_spy).toHaveBeenCalledOnce())
+      expect(direct_parse_spy).not.toHaveBeenCalled()
+      expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
+    },
+  )
+
+  test(`keeps internal HDF5 content URLs Blob-backed`, async () => {
+    const array_buffer_spy = vi.fn()
+    const response = {
+      ok: true,
+      status: 200,
+      blob: vi.fn(async () => new Blob([new Uint8Array(8)])),
+      arrayBuffer: array_buffer_spy,
+    } as unknown as Response
+    const fetch_mock = vi.fn(async () => response)
+    stub_fetch(fetch_mock)
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockResolvedValue(energy_traj(-1))
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `never`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+    const event = new DragEvent(`drop`, { bubbles: true })
+    Object.defineProperty(event, `dataTransfer`, {
+      value: {
+        files: [],
+        items: [],
+        getData: (type: string) =>
+          type === `application/x-matterviz-file`
+            ? JSON.stringify({
+                name: `large.h5`,
+                is_binary: true,
+                content_url: `blob:large-hdf5`,
+              })
+            : ``,
+      },
+    })
+
+    viewer.dispatchEvent(event)
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(fetch_mock).toHaveBeenCalledOnce()
+    expect(array_buffer_spy).not.toHaveBeenCalled()
+    expect(worker_spy.mock.calls[0][0]).toBeInstanceOf(Blob)
+  })
+
   test(`ignores a stale trajectory URL completion`, async () => {
     const responses = deferred_fetch_responses()
     const on_file_load = vi.fn()
@@ -738,6 +1606,86 @@ describe(`Trajectory`, () => {
     expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
   })
 
+  test(`disposes a source-owning loader returned after its URL became stale`, async () => {
+    const stale_parse = Promise.withResolvers<TrajectoryType>()
+    const dispose = vi.fn()
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockReturnValue(stale_parse.promise)
+    onTestFinished(() => worker_spy.mockRestore())
+    stub_fetch(
+      vi.fn(async (url: string | URL | Request) =>
+        request_url(url).includes(`stale.h5`)
+          ? new Response(new Blob([new Uint8Array(8)]))
+          : new Response(xyz(`He`)),
+      ),
+    )
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/stale.h5`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(worker_spy).toHaveBeenCalledOnce())
+
+    props.data_url = `/current.xyz`
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    stale_parse.resolve(lazy_trajectory(dispose))
+
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+    expect(on_file_load).toHaveBeenCalledOnce()
+  })
+
+  test(`does not replace a newer data URL when a chosen HDF5 group finishes late`, async () => {
+    stub_hdf5_parse_worker()
+    const on_file_load = vi.fn()
+    const on_error = vi.fn()
+    const props = $state({
+      data_url: undefined as string | undefined,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+      on_error,
+    })
+    const target = mount_traj(props)
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Trajectory root not found`)
+
+    const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() =>
+      expect(target.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
+    )
+
+    const delayed_read = await delay_file_read(file)
+    const parse_spy = vi.spyOn(trajectory_parse, `parse_trajectory_async`)
+    try {
+      hdf5_group_option(target, `/molecules/h2o/replicas/0`).click()
+      stub_fetch(vi.fn(async () => new Response(`2\nreplacement\nH 0 0 0\nHe 1 0 0\n`)))
+      props.data_url = `https://example.test/replacement.xyz`
+      await vi.waitFor(() =>
+        expect(on_file_load).toHaveBeenCalledWith(
+          expect.objectContaining({ filename: `replacement.xyz`, frame_count: 1 }),
+        ),
+      )
+      delayed_read.release()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(on_file_load).toHaveBeenCalledOnce()
+      expect(on_error).not.toHaveBeenCalled()
+      expect(parse_spy.mock.calls.map(([, filename]) => filename)).toEqual([
+        `replacement.xyz`,
+        `ambiguous.h5`,
+      ])
+    } finally {
+      delayed_read.restore()
+      parse_spy.mockRestore()
+    }
+  })
+
   test(`keeps indexed source bytes when a later URL parse becomes stale`, async () => {
     const responses = deferred_fetch_responses()
     const { frame_loader, trajectory: indexed_trajectory } = make_indexed_traj(3)
@@ -750,11 +1698,13 @@ describe(`Trajectory`, () => {
         if (filename === `stale.xyz`) return stale_parse.promise
         return original_parse(data, filename, on_progress, options)
       })
+    const on_file_load = vi.fn()
     const props = $state({
       data_url: `/indexed.xyz`,
       current_step_idx: 0,
       display_mode: `structure` as const,
       show_controls: `never` as const,
+      on_file_load,
     })
     // resolve the pending parse so nothing is left hanging, whatever the test does
     onTestFinished(() => {
@@ -766,6 +1716,7 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(responses.has(`/indexed.xyz`)).toBe(true))
     responses.get(`/indexed.xyz`)?.shift()?.resolve(new Response(`indexed source bytes`))
     await vi.waitFor(() => expect(frame_loader.load_frame).toHaveBeenCalled())
+    expect(on_file_load).toHaveBeenCalledWith(expect.objectContaining({ frame_count: 3 }))
     vi.mocked(frame_loader.load_frame).mockClear()
 
     props.data_url = `/stale.xyz`

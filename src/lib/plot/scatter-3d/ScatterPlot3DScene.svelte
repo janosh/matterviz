@@ -275,14 +275,12 @@
   // Process points with normalized positions
   // Swap Y/Z for Three.js: user Z → Three.js Y (vertical), user Y → Three.js Z (depth)
   let processed_points = $derived(
-    all_points.map(
-      (pt): InternalPoint3D<Metadata> => ({
-        ...pt,
-        x: normalize_x(pt.x), // user X → Three.js X
-        y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
-        z: normalize_y(pt.y), // user Y → Three.js Z (depth)
-      }),
-    ),
+    all_points.map((pt): InternalPoint3D<Metadata> => ({
+      ...pt,
+      x: normalize_x(pt.x), // user X → Three.js X
+      y: normalize_z(pt.z), // user Z → Three.js Y (vertical)
+      z: normalize_y(pt.y), // user Y → Three.js Z (depth)
+    })),
   )
 
   // Group points by radius, with per-instance colors
@@ -324,17 +322,15 @@
   let projection_configs = $derived(
     ([`xy`, `xz`, `yz`] as const)
       .filter((key) => display.projections?.[key])
-      .map(
-        (key): ProjectionConfig => ({
-          key,
-          get_pos:
-            key === `xy`
-              ? (pt) => [pt.x, pos.y, pt.z]
-              : key === `xz`
-                ? (pt) => [pt.x, pt.y, pos.z]
-                : (pt) => [pos.x, pt.y, pt.z],
-        }),
-      ),
+      .map((key): ProjectionConfig => ({
+        key,
+        get_pos:
+          key === `xy`
+            ? (pt) => [pt.x, pos.y, pt.z]
+            : key === `xz`
+              ? (pt) => [pt.x, pt.y, pos.z]
+              : (pt) => [pos.x, pt.y, pt.z],
+      })),
   )
 
   // Series line data for connecting points

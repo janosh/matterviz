@@ -236,10 +236,10 @@ describe(`aromaticity`, () => {
         )
       },
     )
-    const ring_edges: Vec2[] = Array.from(
-      { length: 6 },
-      (_, ring_idx): Vec2 => [ring_idx, (ring_idx + 1) % 6],
-    )
+    const ring_edges: Vec2[] = Array.from({ length: 6 }, (_, ring_idx): Vec2 => [
+      ring_idx,
+      (ring_idx + 1) % 6,
+    ])
     const substituent_edges: Vec2[] = []
     let substituent_site_idx = 6
     for (const [ring_idx, substituent_count] of substituent_counts.entries()) {

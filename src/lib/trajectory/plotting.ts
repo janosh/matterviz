@@ -31,6 +31,31 @@ const DEFAULT_VISIBLE = new Set([
   `stress_frobenius`,
   `scf_energy_delta`,
 ])
+// Values already represented by the horizontal axis are navigation coordinates, not
+// observables. Plotting them again on y produces tautologies such as Time vs Time and can
+// consume one of the two default-visible axes before a scientific quantity does.
+const AXIS_COORDINATE_PROPERTIES = new Set([
+  `frame`,
+  `frame index`,
+  `frame id`,
+  `frame number`,
+  `step`,
+  `steps`,
+  `md step`,
+  `step index`,
+  `ionic step`,
+  `simulation step`,
+  `production step`,
+  `time`,
+  `time fs`,
+  `time ps`,
+  `time ns`,
+  `time s`,
+  `simulation time`,
+  `md time`,
+  `elapsed time`,
+  `timestamp`,
+])
 
 // Shared per-series line/point styling derived from a single color
 const series_color_styles = (color: string) => ({
@@ -237,8 +262,6 @@ type PropertyStats = Map<
   {
     values: number[]
     frame_indices: number[]
-    has_variation: boolean
-    is_energy: boolean
   }
 >
 
@@ -303,7 +326,11 @@ function extract_property_statistics(
     const data = data_extractor(frame, trajectory)
 
     Object.entries(data).forEach(([key, value]) => {
-      if (typeof value !== `number` || key === `Step` || key.startsWith(`constant_`)) {
+      if (
+        typeof value !== `number` ||
+        is_axis_coordinate_property(key) ||
+        key.startsWith(`constant_`)
+      ) {
         return
       }
 
@@ -320,13 +347,13 @@ function extract_property_statistics(
   for (const [key, stat] of property_stats) {
     if (stat.values.length <= 1) continue
 
-    const is_energy = key.toLowerCase() === `energy`
+    const is_energy = is_energy_property(key)
     const has_variation = get_coefficient_of_variation(stat.values) >= 1e-6
 
     // Skip constant properties except energy
     if (!has_variation && !is_energy) continue
 
-    result.set(key, { ...stat, has_variation, is_energy })
+    result.set(key, stat)
   }
 
   return result
@@ -428,11 +455,20 @@ const normalize_property_key = (key: string): string => {
   const normalized = key
     .toLowerCase()
     .replaceAll(/<[^>]*>/g, ``)
-    .replaceAll('_', ` `)
+    .replaceAll(/[_()[\]]/g, ` `)
+    .replaceAll(/\s+/g, ` `)
     .trim()
   // Map common force property aliases to canonical form
   return [`fmax`, `f`, `force maximum`].includes(normalized) ? `force max` : normalized
 }
+
+const is_energy_property = (key: string): boolean =>
+  ENERGY_PROPERTIES.some(
+    (property) => normalize_property_key(property) === normalize_property_key(key),
+  )
+
+const is_axis_coordinate_property = (key: string): boolean =>
+  AXIS_COORDINATE_PROPERTIES.has(normalize_property_key(key))
 
 const is_default_visible = (
   property_key: string,
@@ -513,7 +549,7 @@ export function generate_streaming_plot_series(
     property_config = trajectory_property_config,
     colors = PLOT_COLORS,
     default_visible_properties = DEFAULT_VISIBLE,
-    max_points = 10_000, // 10,000 plot points provides good visual fidelity while maintaining browser performance
+    max_points = 1000,
     x_map = FRAME_X_MAP,
   } = options
 
@@ -523,32 +559,32 @@ export function generate_streaming_plot_series(
       (metadata, idx, sorted_metadata) =>
         idx === 0 || metadata.frame_number !== sorted_metadata[idx - 1].frame_number,
     )
-  const sampled_metadata =
-    ordered_metadata.length > max_points
-      ? downsample_metadata(ordered_metadata, max_points)
-      : ordered_metadata
-
   const all_properties = new Set<string>()
-  sampled_metadata.forEach((metadata) => {
-    Object.keys(metadata.properties).forEach((prop) => all_properties.add(prop))
+  ordered_metadata.forEach((metadata) => {
+    Object.keys(metadata.properties).forEach((property_key) => {
+      if (!is_axis_coordinate_property(property_key)) all_properties.add(property_key)
+    })
   })
 
   const all_series: DataSeries[] = []
   let color_idx = 0
 
   for (const property_key of all_properties) {
-    const data_points = sampled_metadata
+    const full_data_points = ordered_metadata
       .filter((metadata) => property_key in metadata.properties)
       .map((metadata) => ({
         x: x_map.to_x(metadata.frame_number),
         y: metadata.properties[property_key],
       }))
 
-    if (data_points.length < 2) continue
+    if (full_data_points.length < 2) continue
 
-    const is_energy = property_key.toLowerCase() === `energy`
-    const values = data_points.map((point) => point.y)
+    const is_energy = is_energy_property(property_key)
+    const values = full_data_points.map((point) => point.y)
     if (!is_energy && get_coefficient_of_variation(values) < 1e-6) continue
+    const data_points = is_energy
+      ? downsample_mean_points(full_data_points, max_points)
+      : downsample_data_points(full_data_points, max_points)
 
     const { clean_label, unit, axis_group } = extract_label_and_unit(
       property_key,
@@ -566,10 +602,10 @@ export function generate_streaming_plot_series(
       ...(axis_group ? { axis_group } : {}),
       visible: is_visible,
       markers: data_points.length < 1000 ? `line+points` : `line`,
-      metadata: data_points.map(() => ({
+      metadata: {
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
         property_key, // Store original property key for robust lookups
-      })),
+      },
       ...series_color_styles(color),
     })
 
@@ -579,20 +615,93 @@ export function generate_streaming_plot_series(
   return assign_trajectory_axes(all_series, series_is_visible)
 }
 
-// Down-sample to at most target_points entries (callers guarantee the list is longer)
-function downsample_metadata(
-  metadata_list: TrajectoryMetadata[],
+type PlotDataPoint = { x: number; y: number }
+const point_limit = (target_points: number): number =>
+  Number.isFinite(target_points) ? Math.max(2, Math.floor(target_points)) : 1000
+
+// Thermal energies often alternate rapidly between nearby values. Connecting extrema chosen
+// by shape sampling turns that harmless high-frequency noise into a solid wall; plot one mean
+// per horizontal bucket instead while leaving the full metadata available to analyses.
+function downsample_mean_points(
+  data_points: PlotDataPoint[],
   target_points: number,
-): TrajectoryMetadata[] {
-  const total_count = metadata_list.length
-  const points = Math.max(2, target_points)
-  // Evenly spaced indices in [0, total_count-1], guaranteed to include first and last.
-  const sampled: TrajectoryMetadata[] = []
-  for (let idx = 0; idx < points; idx++) {
-    const source_idx = Math.floor((idx * (total_count - 1)) / (points - 1))
-    if (sampled.length === 0 || sampled.at(-1) !== metadata_list[source_idx]) {
-      sampled.push(metadata_list[source_idx])
+): PlotDataPoint[] {
+  const limit = point_limit(target_points)
+  if (data_points.length <= limit) return data_points
+  if (limit === 2) return [data_points[0], data_points[data_points.length - 1]]
+  const sampled = [data_points[0]]
+  const interior_count = data_points.length - 2
+  const bucket_count = limit - 2
+  for (let bucket_idx = 0; bucket_idx < bucket_count; bucket_idx++) {
+    const bucket_start = 1 + Math.floor((bucket_idx * interior_count) / bucket_count)
+    const bucket_end = 1 + Math.floor(((bucket_idx + 1) * interior_count) / bucket_count)
+    let x_sum = 0
+    let y_sum = 0
+    for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
+      x_sum += data_points[point_idx].x
+      y_sum += data_points[point_idx].y
     }
+    const bucket_size = bucket_end - bucket_start
+    sampled.push({ x: x_sum / bucket_size, y: y_sum / bucket_size })
   }
+  sampled.push(data_points[data_points.length - 1])
+  return sampled
+}
+
+// Largest-Triangle-Three-Buckets keeps endpoints and visually important extrema while
+// limiting long trajectories to roughly one point per plot pixel. Uniform decimation can
+// miss narrow energy spikes; drawing all 24k+ samples turns quantized thermal noise into a
+// solid wall and makes hover/layout work scale with the file instead of the viewport.
+function downsample_data_points(
+  data_points: PlotDataPoint[],
+  target_points: number,
+): PlotDataPoint[] {
+  const limit = point_limit(target_points)
+  if (data_points.length <= limit) return data_points
+  const last_point = data_points[data_points.length - 1]
+  if (limit === 2) return [data_points[0], last_point]
+
+  const sampled = [data_points[0]]
+  const bucket_width = (data_points.length - 2) / (limit - 2)
+  let anchor_idx = 0
+  for (let bucket_idx = 0; bucket_idx < limit - 2; bucket_idx++) {
+    const average_start = Math.floor((bucket_idx + 1) * bucket_width) + 1
+    const average_end = Math.min(
+      Math.floor((bucket_idx + 2) * bucket_width) + 1,
+      data_points.length,
+    )
+    let average_x = 0
+    let average_y = 0
+    const average_count = average_end - average_start
+    for (let point_idx = average_start; point_idx < average_end; point_idx++) {
+      average_x += data_points[point_idx].x
+      average_y += data_points[point_idx].y
+    }
+    average_x /= average_count
+    average_y /= average_count
+
+    const bucket_start = Math.floor(bucket_idx * bucket_width) + 1
+    const bucket_end = Math.min(
+      Math.floor((bucket_idx + 1) * bucket_width) + 1,
+      data_points.length - 1,
+    )
+    const anchor = data_points[anchor_idx]
+    let selected_idx = bucket_start
+    let max_area = -1
+    for (let point_idx = bucket_start; point_idx < bucket_end; point_idx++) {
+      const point = data_points[point_idx]
+      const area = Math.abs(
+        (anchor.x - average_x) * (point.y - anchor.y) -
+          (anchor.x - point.x) * (average_y - anchor.y),
+      )
+      if (area > max_area) {
+        max_area = area
+        selected_idx = point_idx
+      }
+    }
+    sampled.push(data_points[selected_idx])
+    anchor_idx = selected_idx
+  }
+  sampled.push(last_point)
   return sampled
 }

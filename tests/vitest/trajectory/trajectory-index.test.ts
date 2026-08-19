@@ -2,6 +2,7 @@ import type {
   FrameIndex,
   TrajectoryFrame,
   TrajectoryMetadata,
+  TrajectoryFrameStore,
   TrajectoryType,
 } from '$lib/trajectory'
 import {
@@ -9,7 +10,8 @@ import {
   pick_pane_orientation,
   validate_trajectory,
 } from '$lib/trajectory'
-import { validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { create_packed_frame_loader, validate_3x3_matrix } from '$lib/trajectory/helpers'
+import { frame_loader_data, has_frame_loader_data } from '$lib/trajectory/analysis'
 import { describe, expect, test } from 'vitest'
 import { make_trajectory_frame } from '../setup'
 
@@ -39,23 +41,19 @@ function make_trajectory(
   const trajectory: TrajectoryType = { frames }
   if (total_frames !== undefined) trajectory.total_frames = total_frames
   if (with_indexed_frames) {
-    trajectory.indexed_frames = frames.map(
-      (_, idx): FrameIndex => ({
-        frame_number: idx,
-        byte_offset: idx * 1000,
-        estimated_size: 1000,
-      }),
-    )
+    trajectory.indexed_frames = frames.map((_, idx): FrameIndex => ({
+      frame_number: idx,
+      byte_offset: idx * 1000,
+      estimated_size: 1000,
+    }))
     trajectory.is_indexed = true
   }
   if (with_plot_metadata) {
-    trajectory.plot_metadata = frames.map(
-      (frame, idx): TrajectoryMetadata => ({
-        frame_number: idx,
-        step: frame.step,
-        properties: { energy: -idx * 0.1, temperature: 300 + idx },
-      }),
-    )
+    trajectory.plot_metadata = frames.map((frame, idx): TrajectoryMetadata => ({
+      frame_number: idx,
+      step: frame.step,
+      properties: { energy: -idx * 0.1, temperature: 300 + idx },
+    }))
   }
   return trajectory
 }
@@ -85,6 +83,120 @@ describe(`validate_trajectory`, () => {
     )
   })
 
+  test.each([
+    [{ atom_masses: `invalid` }, `atom_masses must be an array`],
+    [{ signals: [] }, `signals must be an object`],
+    [{ signals: { dipole: null } }, `signals.dipole must be an object`],
+    [
+      {
+        signals: {
+          dipole: { sample_shape: `3`, values: new Float64Array(3), steps: [0] },
+        },
+      },
+      `signals.dipole.sample_shape must be scalar, [3], [3, 3], [n_atoms], or [n_atoms, 3], got "3"`,
+    ],
+    [
+      { signals: { dipole: { sample_shape: [3], values: [1, 2, 3], steps: [0] } } },
+      `signals.dipole.values must be a Float64Array`,
+    ],
+    [
+      {
+        signals: {
+          dipole: { sample_shape: [3], values: new Float64Array(3), steps: `0` },
+        },
+      },
+      `signals.dipole.steps must be an array`,
+    ],
+    [
+      {
+        signals: {
+          dipole: {
+            sample_shape: [3],
+            values: new Float64Array(3),
+            steps: [0],
+            unit: 4,
+          },
+        },
+      },
+      `signals.dipole.unit must be a non-empty string when supplied`,
+    ],
+  ])(`returns contextual errors for malformed runtime trajectory fields`, (invalid, error) => {
+    const trajectory = Object.assign(make_trajectory(1), invalid) as TrajectoryType
+    expect(validate_trajectory(trajectory)).toContain(error)
+  })
+
+  test.each<[number[], number]>([
+    [[], 4],
+    [[3], 4],
+    [[3, 3], 4],
+    [[4], 4],
+    [[4, 3], 4],
+  ])(`accepts supported trajectory signal shape %j`, (sample_shape, n_atoms) => {
+    const sample_size = sample_shape.reduce((total, size) => total * size, 1)
+    const trajectory = make_trajectory(1, { atoms_per_frame: n_atoms })
+    trajectory.signals = {
+      custom: { sample_shape, values: new Float64Array(sample_size), steps: [0] },
+    }
+    expect(validate_trajectory(trajectory)).toEqual([])
+  })
+
+  test(`reports only the first non-finite value in a malformed signal`, () => {
+    const trajectory = make_trajectory(1)
+    trajectory.signals = {
+      dipole: {
+        sample_shape: [3],
+        values: Float64Array.from([Number.NaN, Number.POSITIVE_INFINITY, 0]),
+        steps: [0],
+      },
+    }
+    expect(
+      validate_trajectory(trajectory).filter((error) => error.includes(`values[`)),
+    ).toEqual([`signals.dipole.values[0] is not finite`])
+  })
+
+  test(`requires descriptor-backed signals to have a streaming loader`, () => {
+    const trajectory = make_trajectory(1)
+    trajectory.signal_descriptors = {
+      dipole: { sample_shape: [3], sample_count: 2, unit: `e*A` },
+    }
+    expect(validate_trajectory(trajectory)).toContain(
+      `signal_descriptors require frame_loader.stream_positions`,
+    )
+    trajectory.frame_loader = {
+      get_total_frames: async () => 1,
+      build_frame_index: async () => [],
+      load_frame: async () => trajectory.frames[0],
+      extract_plot_metadata: async () => [],
+      stream_positions: async () => ({
+        positions: new Float64Array(9),
+        n_frames: 1,
+        n_atoms: 3,
+        elements: [`H`, `H`, `H`],
+        lattice_matrices: null,
+        pbc: null,
+        coords_unwrapped: false,
+        frame_stride: 1,
+        steps: [0],
+      }),
+    }
+    expect(validate_trajectory(trajectory)).toEqual([])
+  })
+
+  test.each([
+    { sample_shape: [2] },
+    { sample_shape: [2, 2] },
+    { sample_shape: [3, 2] },
+    { sample_shape: [3, 3, 1] },
+  ])(`rejects unsupported trajectory signal shape %j`, ({ sample_shape }) => {
+    const trajectory = make_trajectory(1)
+    trajectory.signals = {
+      custom: { sample_shape, values: new Float64Array(1), steps: [0] },
+    }
+    expect(validate_trajectory(trajectory)).toContainEqual(
+      expect.stringContaining(`signals.custom.sample_shape must be scalar`),
+    )
+  })
+
   describe(`streaming properties`, () => {
     test(`fully valid streaming trajectory returns no errors`, () => {
       const traj = make_trajectory(3, {
@@ -92,6 +204,25 @@ describe(`validate_trajectory`, () => {
         with_plot_metadata: true,
         total_frames: 3,
       })
+      expect(validate_trajectory(traj)).toEqual([])
+    })
+
+    test(`accepts a packed store as the indexed frame representation`, () => {
+      const traj = make_trajectory(1)
+      traj.total_frames = 2
+      traj.is_indexed = true
+      traj.frame_store = {
+        positions: new Float64Array(18),
+        elements: [`H`, `H`, `H`],
+        coords_unwrapped: false,
+        steps: [0, 1],
+        metadata: [{}, {}],
+        plot_metadata: [0, 1].map((frame_number) => ({
+          frame_number,
+          step: frame_number,
+          properties: {},
+        })),
+      }
       expect(validate_trajectory(traj)).toEqual([])
     })
 
@@ -230,6 +361,162 @@ describe(`validate_trajectory`, () => {
 
     // Assert exact error count to catch regressions
     expect(errors).toHaveLength(4)
+  })
+})
+
+describe(`create_packed_frame_loader`, () => {
+  const make_store = (n_frames = 3): TrajectoryFrameStore => ({
+    positions: Float64Array.from({ length: n_frames * 6 }, (_unused, value_idx) => value_idx),
+    elements: [`H`, `He`],
+    coords_unwrapped: true,
+    steps: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
+    metadata: Array.from({ length: n_frames }, (_unused, frame_idx) => ({ frame_idx })),
+    plot_metadata: Array.from({ length: n_frames }, (_unused, frame_number) => ({
+      frame_number,
+      step: frame_number * 2,
+      properties: {},
+    })),
+    scalars: {
+      charge: Float64Array.from(
+        { length: n_frames * 2 },
+        (_unused, value_idx) => value_idx + 0.5,
+      ),
+      spin: Float64Array.from({ length: n_frames * 2 }, (_unused, value_idx) => -value_idx),
+    },
+    vectors: {
+      velocity: Float64Array.from(
+        { length: n_frames * 6 },
+        (_unused, value_idx) => 100 + value_idx,
+      ),
+      force: Float64Array.from(
+        { length: n_frames * 6 },
+        (_unused, value_idx) => -100 - value_idx,
+      ),
+    },
+  })
+
+  test(`resolves loader data according to source ownership`, () => {
+    const packed_loader = create_packed_frame_loader(make_store())
+    const source_loader = { ...packed_loader, requires_source: undefined }
+
+    expect(frame_loader_data(packed_loader, null)).toBe(``)
+    expect(frame_loader_data(source_loader, null)).toBeNull()
+    expect(frame_loader_data(source_loader, ``)).toBeNull()
+    expect(frame_loader_data(source_loader, new ArrayBuffer(0))).toBeNull()
+    expect(frame_loader_data(source_loader, `trajectory bytes`)).toBe(`trajectory bytes`)
+    expect(has_frame_loader_data(undefined, null)).toBe(false)
+    expect(
+      has_frame_loader_data({ ...make_trajectory(1), frame_loader: packed_loader }, null),
+    ).toBe(true)
+    expect(
+      has_frame_loader_data({ ...make_trajectory(1), frame_loader: source_loader }, null),
+    ).toBe(false)
+  })
+
+  test(`reconstructs every scalar and vector site property in sync and async frames`, async () => {
+    const loader = create_packed_frame_loader(make_store())
+    const sync_frame = loader.load_frame_sync?.(1)
+    expect(sync_frame?.structure.sites.map(({ properties }) => properties)).toEqual([
+      { charge: 2.5, spin: -2, velocity: [106, 107, 108], force: [-106, -107, -108] },
+      { charge: 3.5, spin: -3, velocity: [109, 110, 111], force: [-109, -110, -111] },
+    ])
+    await expect(loader.load_frame(``, 2)).resolves.toMatchObject({
+      step: 4,
+      metadata: { frame_idx: 2 },
+      structure: {
+        sites: [
+          {
+            xyz: [12, 13, 14],
+            properties: {
+              charge: 4.5,
+              spin: -4,
+              velocity: [112, 113, 114],
+              force: [-112, -113, -114],
+            },
+          },
+          {
+            xyz: [15, 16, 17],
+            properties: {
+              charge: 5.5,
+              spin: -5,
+              velocity: [115, 116, 117],
+              force: [-115, -116, -117],
+            },
+          },
+        ],
+      },
+    })
+  })
+
+  test.each([0, Number.NaN, 1.5])(`rejects invalid packed stride %s`, async (frame_stride) => {
+    const loader = create_packed_frame_loader(make_store())
+    await expect(loader.stream_positions?.(``, { frame_stride })).rejects.toThrow(
+      `frame_stride must be a positive integer`,
+    )
+  })
+
+  test(`reports the exact affordable-frame stride and honors byte boundaries`, async () => {
+    const loader = create_packed_frame_loader({
+      ...make_store(10),
+      positions: new Float64Array(30),
+      elements: [`H`],
+      scalars: undefined,
+      vectors: undefined,
+    })
+    await expect(loader.stream_positions?.(``, { max_bytes: 95 })).rejects.toThrow(
+      `frame_stride >= 4`,
+    )
+    await expect(
+      loader.stream_positions?.(``, { frame_stride: 4, max_bytes: 72 }),
+    ).resolves.toMatchObject({ n_frames: 3, frame_stride: 4 })
+    await expect(
+      loader.stream_positions?.(``, { frame_stride: 4, max_bytes: 71 }),
+    ).rejects.toThrow(`frame_stride >= 5`)
+    await expect(loader.stream_positions?.(``, { max_bytes: Number.NaN })).rejects.toThrow(
+      `max_bytes must be positive`,
+    )
+  })
+
+  test(`preserves native signal cadence and rejects varying PBC during analysis`, async () => {
+    const signal = {
+      values: Float64Array.from([1, 2, 3, 4, 5, 6]),
+      sample_shape: [3],
+      steps: [0, 4],
+      unit: `e*A`,
+    }
+    const uniform_loader = create_packed_frame_loader({
+      ...make_store(4),
+      pbc_frames: Array.from(
+        { length: 4 },
+        () => [true, false, true] as [boolean, boolean, boolean],
+      ),
+      signals: { dipole: signal },
+    })
+    const stream = await uniform_loader.stream_positions?.(``, {
+      frame_stride: 2,
+      signal_keys: [`dipole`],
+    })
+    expect(stream).toMatchObject({ n_frames: 2, pbc: [true, false, true] })
+    expect(stream?.signals?.dipole).toEqual(signal)
+    expect(stream?.signals?.dipole).not.toBe(signal)
+    expect(stream?.signals?.dipole.values).not.toBe(signal.values)
+    await expect(
+      uniform_loader.stream_positions?.(``, {
+        signal_keys: [`dipole`],
+        max_bytes: 63,
+      }),
+    ).rejects.toThrow(`native-cadence signals need 64 bytes`)
+
+    const varying_loader = create_packed_frame_loader({
+      ...make_store(2),
+      pbc_frames: [
+        [true, true, true],
+        [false, false, false],
+      ],
+    })
+    await expect(varying_loader.stream_positions?.(``)).rejects.toThrow(
+      `PBC flags that vary between frames`,
+    )
   })
 })
 

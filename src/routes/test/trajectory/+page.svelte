@@ -198,6 +198,7 @@
   id="vertical-layout"
   trajectory={test_trajectory}
   layout="vertical"
+  show_controls="hover"
   step_labels={[-1]}
 />
 

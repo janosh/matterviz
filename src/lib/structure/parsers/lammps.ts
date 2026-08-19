@@ -6,11 +6,11 @@ import type { ElementSymbol } from '$lib/element'
 import { coerce_elem_symbol } from '$lib/element/helpers'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type * as math from '$lib/math'
+import * as math from '$lib/math'
 import type { Site } from '$lib/structure'
 import type { ParsedStructure } from '$lib/structure/parse'
 import { make_site } from '$lib/structure/site'
-import { parse_lammps_trajectory, POS_COL_VARIANTS } from '$lib/trajectory/parse/lammps'
+import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -157,32 +157,65 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
       return null
     }
 
-    const [xlo, xhi] = box_bounds(`x`)
-    const [ylo, yhi] = box_bounds(`y`)
-    const [zlo, zhi] = box_bounds(`z`)
-    if (![xlo, xhi, ylo, yhi, zlo, zhi].every(Number.isFinite)) {
-      diag_error(
-        `LAMMPS data file is missing or has invalid xlo/xhi, ylo/yhi or zlo/zhi box bounds`,
+    const general_box_keywords = [`avec`, `bvec`, `cvec`, `abc origin`] as const
+    const general_box = general_box_keywords.map((keyword) => {
+      const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
+      const groups = header_groups(
+        new RegExp(
+          `^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword_pattern}\\s*$`,
+          `i`,
+        ),
       )
-      return null
-    }
-    // Optional triclinic tilt factors: `xy xz yz` on one line
-    const tilt = header_groups(/^\s*(?<xy>\S+)\s+(?<xz>\S+)\s+(?<yz>\S+)\s+xy\s+xz\s+yz\s*$/i)
-    const [tilt_xy, tilt_xz, tilt_yz] = tilt
-      ? [Number(tilt.xy), Number(tilt.xz), Number(tilt.yz)]
-      : [0, 0, 0]
-    if (![tilt_xy, tilt_xz, tilt_yz].every(Number.isFinite)) {
-      diag_error(
-        `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.xy} ${tilt?.xz} ${tilt?.yz}'`,
+      return groups ? ([Number(groups.x), Number(groups.y), Number(groups.z)] as Vec3) : null
+    })
+    const has_general_box = general_box.some(Boolean)
+    let lattice_matrix: math.Matrix3x3
+    let box_origin: Vec3
+    if (has_general_box) {
+      if (
+        general_box.some(
+          (row) => row === null || !row.every((coordinate) => Number.isFinite(coordinate)),
+        )
+      ) {
+        diag_error(
+          `LAMMPS general triclinic data requires finite avec, bvec, cvec, and abc origin rows`,
+        )
+        return null
+      }
+      const [avec, bvec, cvec, origin] = general_box as [Vec3, Vec3, Vec3, Vec3]
+      lattice_matrix = [avec, bvec, cvec]
+      box_origin = origin
+    } else {
+      const [xlo, xhi] = box_bounds(`x`)
+      const [ylo, yhi] = box_bounds(`y`)
+      const [zlo, zhi] = box_bounds(`z`)
+      if (![xlo, xhi, ylo, yhi, zlo, zhi].every(Number.isFinite)) {
+        diag_error(
+          `LAMMPS data file is missing or has invalid xlo/xhi, ylo/yhi or zlo/zhi box bounds`,
+        )
+        return null
+      }
+      // Optional restricted-triclinic tilt factors: `xy xz yz` on one line
+      const tilt = header_groups(
+        /^\s*(?<xy>\S+)\s+(?<xz>\S+)\s+(?<yz>\S+)\s+xy\s+xz\s+yz\s*$/i,
       )
-      return null
+      const [tilt_xy, tilt_xz, tilt_yz] = tilt
+        ? [Number(tilt.xy), Number(tilt.xz), Number(tilt.yz)]
+        : [0, 0, 0]
+      if (![tilt_xy, tilt_xz, tilt_yz].every(Number.isFinite)) {
+        diag_error(
+          `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.xy} ${tilt?.xz} ${tilt?.yz}'`,
+        )
+        return null
+      }
+      // Restricted-triclinic lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
+      lattice_matrix = [
+        [xhi - xlo, 0, 0],
+        [tilt_xy, yhi - ylo, 0],
+        [tilt_xz, tilt_yz, zhi - zlo],
+      ]
+      box_origin = [xlo, ylo, zlo]
     }
-    // Lattice vectors follow the LAMMPS convention a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
-    const lattice_matrix: math.Matrix3x3 = [
-      [xhi - xlo, 0, 0],
-      [tilt_xy, yhi - ylo, 0],
-      [tilt_xz, tilt_yz, zhi - zlo],
-    ]
     const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, { context: `LAMMPS box` })
 
     // Masses map atom types to elements; without them types fall back to atomic number
@@ -262,7 +295,7 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
         tokens.slice(coord_col, coord_col + 3).map(parse_coordinate),
         `LAMMPS Atoms row ${row_idx + 1} coordinates`,
       )
-      const xyz: Vec3 = [absolute[0] - xlo, absolute[1] - ylo, absolute[2] - zlo]
+      const xyz = math.subtract(absolute, box_origin)
       sites.push(
         make_site(element, cart_to_frac.convert(xyz), xyz, `${element}${row_idx + 1}`),
       )
@@ -286,43 +319,6 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
 
     return parsed_result(sites, bonds, lattice_matrix)
   })
-
-// Lower corner of a dump's simulation box, or null when there is nothing to shift by:
-// an unreadable ITEM: BOX BOUNDS block (parse_lammps_trajectory reports that), a box that
-// already starts at the origin, or scaled columns (`xs ys zs`, `xsu ysu zsu`), which are
-// cell fractions that frac_to_cart has already placed relative to the origin. Triclinic
-// dumps write the axis-aligned bounding box, so the tilt overhang comes back off to
-// recover the origin (https://docs.lammps.org/Howto_triclinic.html).
-const dump_box_origin = (frame_lines: string[]): Vec3 | null => {
-  const box_idx = frame_lines.findIndex((line) => /^\s*ITEM:\s*BOX BOUNDS/i.test(line))
-  if (box_idx === -1) return null
-  const columns =
-    frame_lines
-      .find((line) => /^\s*ITEM:\s*ATOMS\b/i.test(line))
-      ?.toLowerCase()
-      .split(/\s+/) ?? []
-  // Which column set the trajectory parser actually read is decided by POS_COL_VARIANTS
-  // order, so ask it rather than testing for one name — a dump carrying only xsu/ysu/zsu
-  // would otherwise be shifted twice.
-  const pos_variant = POS_COL_VARIANTS.find(({ keys }) =>
-    keys.every((key) => columns.includes(key)),
-  )
-  if (pos_variant?.scaled) return null
-  const bounds = frame_lines
-    .slice(box_idx + 1, box_idx + 4)
-    .map((line) => line.trim().split(/\s+/).map(Number))
-  if (bounds.length < 3 || bounds.some((row) => !Number.isFinite(row[0]))) return null
-  const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(frame_lines[box_idx])
-  const [tilt_xy, tilt_xz, tilt_yz] = is_triclinic
-    ? bounds.map((row) => (Number.isFinite(row[2]) ? row[2] : 0))
-    : [0, 0, 0]
-  const origin: Vec3 = [
-    bounds[0][0] - Math.min(0, tilt_xy, tilt_xz, tilt_xy + tilt_xz),
-    bounds[1][0] - Math.min(0, tilt_yz),
-    bounds[2][0],
-  ]
-  return origin.every((coord) => coord === 0) ? null : origin
-}
 
 // @internal parser exported for tests; public entry points: parse_structure_file/parse_any_structure. Parse the first frame of a LAMMPS text dump.
 export const parse_lammps_dump = (content: string): ParsedStructure | null =>
@@ -352,22 +348,7 @@ export const parse_lammps_dump = (content: string): ParsedStructure | null =>
     }
     if (!(`lattice` in structure)) return { sites: structure.sites }
 
-    // Absolute dump coordinates are shifted so the box origin sits at the cell origin,
-    // exactly as the .lmp path does: without it a box spanning -2..2 yields negative
-    // fractional coordinates and PBC images and supercells come out wrong
-    const origin = dump_box_origin(frame_lines)
-    if (!origin) return { sites: structure.sites, lattice: structure.lattice }
-
-    const cart_to_frac = cart_to_frac_with_fallback(structure.lattice.matrix, {
-      context: `LAMMPS dump box`,
-    })
-    const sites = structure.sites.map((site) => {
-      const xyz: Vec3 = [
-        site.xyz[0] - origin[0],
-        site.xyz[1] - origin[1],
-        site.xyz[2] - origin[2],
-      ]
-      return { ...site, xyz, abc: cart_to_frac.convert(xyz) }
-    })
-    return { sites, lattice: structure.lattice }
+    // The shared trajectory parser has already translated absolute dump coordinates from
+    // the LAMMPS box origin into MatterViz's zero-origin lattice.
+    return { sites: structure.sites, lattice: structure.lattice }
   })

@@ -11,6 +11,7 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectorySignal,
 } from './index'
 import { copy_numeric_fields, iter_xyz_frames, validate_3x3_matrix } from './helpers'
 import { indexed_trajectory_format } from '$lib/trajectory/format-detect'
@@ -19,25 +20,42 @@ import { build_xyz_frame, parse_extxyz_lattice, parse_xyz_comment_metadata } fro
 
 const MAX_METADATA_SIZE = 50 * 1024 * 1024 // 50MB limit for metadata
 
-// Ceiling on a collected position buffer. 100k frames x 1k atoms x 3 x f64 is 2.4 TB,
-// so a whole-trajectory sweep must refuse (with a workable frame_stride) rather than
-// attempt the allocation.
 export const DEFAULT_POSITION_STREAM_MAX_BYTES = 512 * 1024 * 1024
 
-const BYTES_PER_FRAME_POSITION = 3 * Float64Array.BYTES_PER_ELEMENT
+type StreamChannels = {
+  scalar_keys: string[]
+  vector_keys: string[]
+  signal_keys: string[]
+}
+const NO_CHANNELS: StreamChannels = { scalar_keys: [], vector_keys: [], signal_keys: [] }
 
-// Requested per-atom channels, resolved once so the budget arithmetic and the accumulator
-// agree on what is being collected.
-type StreamChannels = { scalar_keys: string[]; vector_keys: string[] }
-const NO_CHANNELS: StreamChannels = { scalar_keys: [], vector_keys: [] }
+const bytes_per_frame = (
+  n_atoms: number,
+  channels: StreamChannels,
+  signal_values_per_frame = Math.max(9, 3 * n_atoms) * channels.signal_keys.length,
+): number =>
+  (n_atoms * (3 + channels.scalar_keys.length + 3 * channels.vector_keys.length) +
+    signal_values_per_frame) *
+  Float64Array.BYTES_PER_ELEMENT
 
-// Per-atom, per-frame bytes: the xyz triple plus one double per scalar channel and three
-// per vector channel. Channels are as real as positions, so leaving them out of the budget
-// would make max_bytes under-report by a factor of (1 + channels/3).
-const bytes_per_atom_frame = (channels: StreamChannels): number =>
-  BYTES_PER_FRAME_POSITION +
-  (channels.scalar_keys.length + 3 * channels.vector_keys.length) *
-    Float64Array.BYTES_PER_ELEMENT
+const suggested_stride = (
+  n_frames: number,
+  frame_bytes: number,
+  max_bytes: number,
+  frame_label = `a single frame`,
+): number => {
+  if (!(max_bytes > 0)) {
+    throw new Error(`max_bytes must be positive, got ${max_bytes}`)
+  }
+  if (max_bytes === Number.POSITIVE_INFINITY) return 1
+  const affordable_frames = Math.floor(max_bytes / frame_bytes)
+  if (affordable_frames < 1) {
+    throw new Error(
+      `${frame_label} needs ${frame_bytes} bytes, over the ${max_bytes} byte budget`,
+    )
+  }
+  return Math.max(1, Math.ceil(n_frames / affordable_frames))
+}
 
 const missing_channel = (
   frame: number,
@@ -58,8 +76,6 @@ const missing_channel = (
 const FAR_STEP_FRACTIONAL = 0.25
 const MAX_FAR_MOVING_FRACTION = 0.5
 
-// Smallest stride that keeps `n_frames` frames of `n_atoms` atoms inside `max_bytes`,
-// counting the extra per-atom channels the caller intends to collect
 export function suggest_frame_stride(
   n_frames: number,
   n_atoms: number,
@@ -67,22 +83,17 @@ export function suggest_frame_stride(
   channels: StreamChannels = NO_CHANNELS,
 ): number {
   if (n_frames < 1 || n_atoms < 1) return 1
-  const frame_bytes = n_atoms * bytes_per_atom_frame(channels)
-  const affordable_frames = Math.floor(max_bytes / frame_bytes)
-  if (affordable_frames < 1) {
-    throw new Error(
-      `suggest_frame_stride: a single frame of ${n_atoms} atoms needs ` +
-        `${frame_bytes} bytes, over the ${max_bytes} byte budget`,
-    )
-  }
-  return Math.max(1, Math.ceil(n_frames / affordable_frames))
+  return suggested_stride(
+    n_frames,
+    bytes_per_frame(n_atoms, channels),
+    max_bytes,
+    `suggest_frame_stride: a single frame of ${n_atoms} atoms`,
+  )
 }
 
 const frame_lattice = (frame: TrajectoryFrame): Matrix3x3 | null =>
   `lattice` in frame.structure ? frame.structure.lattice.matrix : null
 
-// Every sweep in this module reports progress as a percentage of a known frame count,
-// so each binds the callback and the total once and then just names the stage.
 const make_reporter =
   (on_progress: ((progress: ParseProgress) => void) | undefined, total: number) =>
   (done: number, stage: string): void =>
@@ -95,24 +106,18 @@ const utf8_byte_length = (value: string, encoder: TextEncoder): number => {
   return value.length
 }
 
-// Accumulates frames into one flat Float64Array, checking the invariants MSD-style
-// whole-trajectory analyses depend on: constant atom count and stable atom ordering.
-// Only one TrajectoryFrame is alive at a time, so a 100k-frame sweep stays bounded.
 class PositionAccumulator {
   private readonly positions: Float64Array
-  // Same frame-major layout as `positions`: one double per atom for scalars, three for
-  // vectors. Empty when the caller requested no channels.
   private readonly scalars: Record<string, Float64Array> = {}
   private readonly vectors: Record<string, Float64Array> = {}
+  private readonly signal_values: Record<string, Float64Array> = {}
   private readonly lattice_matrices: (Matrix3x3 | null)[] = []
   private readonly steps: number[] = []
-  private elements: ElementSymbol[] | null = null
+  private readonly elements: ElementSymbol[] = []
   private pbc: Pbc | null = null
-  private coords_unwrapped: boolean | null = null
+  private coords_unwrapped = false
   private frame_count = 0
 
-  // Frames already collected. Callers report progress against this rather than the source
-  // frame number, which advances by frame_stride and would couple the interval to it.
   get collected_frames(): number {
     return this.frame_count
   }
@@ -123,6 +128,7 @@ class PositionAccumulator {
     max_bytes: number = DEFAULT_POSITION_STREAM_MAX_BYTES,
     private readonly frame_stride = 1,
     private readonly channels: StreamChannels = NO_CHANNELS,
+    private readonly signal_shapes: Record<string, number[]> = {},
   ) {
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)
@@ -133,9 +139,15 @@ class PositionAccumulator {
           `vector channel; a site property is one or the other`,
       )
     }
-    const needed_bytes = n_frames * n_atoms * bytes_per_atom_frame(channels)
+    const signal_values_per_frame = Object.values(signal_shapes).reduce(
+      (total, sample_shape) =>
+        total + sample_shape.reduce((product, size) => product * size, 1),
+      0,
+    )
+    const frame_bytes = bytes_per_frame(n_atoms, channels, signal_values_per_frame)
+    const needed_bytes = n_frames * frame_bytes
     if (needed_bytes > max_bytes) {
-      const stride = suggest_frame_stride(n_frames, n_atoms, max_bytes, channels)
+      const stride = suggested_stride(n_frames, frame_bytes, max_bytes)
       throw new Error(
         `Collecting ${n_frames} frames x ${n_atoms} atoms needs ${needed_bytes} bytes, ` +
           `over the ${max_bytes} byte budget. Use frame_stride >= ${stride} ` +
@@ -148,6 +160,14 @@ class PositionAccumulator {
     }
     for (const key of channels.vector_keys) {
       this.vectors[key] = new Float64Array(n_frames * n_atoms * 3)
+    }
+    for (const key of channels.signal_keys) {
+      const sample_shape = signal_shapes[key]
+      if (!sample_shape) {
+        throw new Error(`PositionAccumulator: signal "${key}" has no initial shape`)
+      }
+      const sample_size = sample_shape.reduce((product, size) => product * size, 1)
+      this.signal_values[key] = new Float64Array(n_frames * sample_size)
     }
   }
 
@@ -166,11 +186,10 @@ class PositionAccumulator {
       )
     }
 
-    const first_pass = this.elements === null
-    if (first_pass) {
+    const is_first_frame = this.frame_count === 0
+    if (is_first_frame) {
       this.pbc = `lattice` in frame.structure ? frame.structure.lattice.pbc : null
     }
-    const elements = (this.elements ??= [])
 
     const base = this.frame_count * this.n_atoms * 3
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
@@ -181,11 +200,11 @@ class PositionAccumulator {
           `Frame ${source_frame_number} site ${atom_idx} has no species; cannot identify the atom`,
         )
       }
-      if (first_pass) elements.push(element)
-      else if (elements[atom_idx] !== element) {
+      if (is_first_frame) this.elements.push(element)
+      else if (this.elements[atom_idx] !== element) {
         throw new Error(
           `Atom ordering changed at frame ${source_frame_number}: site ${atom_idx} was ` +
-            `${elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
+            `${this.elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
             `analysis tracks atoms by index, so the ordering must be stable. LAMMPS dumps ` +
             `are unsorted unless the run used "dump_modify <id> sort id".`,
         )
@@ -196,11 +215,10 @@ class PositionAccumulator {
       this.positions[off + 2] = site.xyz[2]
       this.add_channels(site.properties, atom_idx, source_frame_number)
     }
+    this.add_signals(frame.metadata, source_frame_number)
 
-    // LAMMPS xu/yu/zu dumps are already unwrapped. A run that flips mid-way would make
-    // "unwrap or not" ambiguous for the whole series, so refuse instead of picking one.
     const frame_unwrapped = frame.metadata?.coords_unwrapped === true
-    if (this.coords_unwrapped === null) this.coords_unwrapped = frame_unwrapped
+    if (is_first_frame) this.coords_unwrapped = frame_unwrapped
     else if (this.coords_unwrapped !== frame_unwrapped) {
       throw new Error(
         `coords_unwrapped flipped to ${frame_unwrapped} at frame ${source_frame_number}; ` +
@@ -215,11 +233,29 @@ class PositionAccumulator {
     this.frame_count++
   }
 
-  // Write one site's requested channels. A frame that stops carrying a property mid-sweep
-  // throws rather than padding NaN or zero: a channel silently going flat halfway through a
-  // trajectory is indistinguishable from real data at the consumer, and this codebase
-  // fails early instead. The message names the frame, site and key so the caller can find
-  // the frame that dropped the column.
+  private add_signals(
+    metadata: Record<string, unknown> | undefined,
+    source_frame_number: number,
+  ): void {
+    for (const key of this.channels.signal_keys) {
+      const parsed = parse_frame_signal(metadata?.[key], key, this.n_atoms)
+      if (!parsed) {
+        throw new TypeError(
+          `Frame ${source_frame_number} has no supported finite numeric metadata ` +
+            `signal "${key}" (got ${JSON.stringify(metadata?.[key])})`,
+        )
+      }
+      const expected_shape = this.signal_shapes[key]
+      if (expected_shape.join(`,`) !== parsed.sample_shape.join(`,`)) {
+        throw new Error(
+          `Frame ${source_frame_number} signal "${key}" changed shape from ` +
+            `[${expected_shape.join(`, `)}] to [${parsed.sample_shape.join(`, `)}]`,
+        )
+      }
+      this.signal_values[key].set(parsed.values, this.frame_count * parsed.values.length)
+    }
+  }
+
   private add_channels(
     properties: Record<string, unknown> | undefined,
     atom_idx: number,
@@ -249,20 +285,13 @@ class PositionAccumulator {
     }
   }
 
-  // Element symbols cannot reveal same-species permutations, and this check does not compare
-  // preserved LAMMPS IDs. Large displacements still expose likely ordering changes.
   private check_step_plausibility(
     lattice: Matrix3x3 | null,
     source_frame_number: number,
   ): void {
-    // A lone atom cannot be permuted, and without a cell there is no scale to compare to
     if (!lattice || this.frame_count < 1 || this.n_atoms < 2) return
-    // Sub-sampled unwrapped coordinates carry no signal: their displacement is not folded
-    // into the cell, so it grows as sqrt(stride) without bound and a clean diffusive run
-    // trips the threshold on its own (a 20 A cell at stride 100 is enough). Nothing needs
-    // unwrapping here either, so MSD stays exact — the check just has nothing left to say.
+    // A stride weakens the displacement bound for already-unwrapped coordinates.
     if (this.coords_unwrapped && this.frame_stride > 1) return
-    // cart_to_frac is linear, so it maps a Cartesian step straight to a fractional one
     const cart_to_frac = math.create_cart_to_frac(lattice)
     const pbc = this.pbc ?? [true, true, true]
     const prev_base = (this.frame_count - 1) * this.n_atoms * 3
@@ -275,7 +304,6 @@ class PositionAccumulator {
         this.positions[off + 1] - this.positions[prev_off + 1],
         this.positions[off + 2] - this.positions[prev_off + 2],
       ])
-      // An aperiodic axis is never folded, and already-unwrapped steps are real as given
       const far = ([0, 1, 2] as const).some(
         (axis) =>
           pbc[axis] &&
@@ -297,14 +325,13 @@ class PositionAccumulator {
     )
   }
 
-  finish(frame_stride: number): TrajectoryPositionStream {
+  finish(): TrajectoryPositionStream {
     if (this.frame_count === 0) throw new Error(`PositionAccumulator: no frames collected`)
     const has_lattice = this.lattice_matrices.some((matrix) => matrix != null)
-    // Trim when fewer frames arrived than budgeted (e.g. a truncated payload)
-    const trim = (buffer: Float64Array, per_atom: number): Float64Array =>
+    const trim = (buffer: Float64Array, values_per_frame: number): Float64Array =>
       this.frame_count === this.n_frames
         ? buffer
-        : buffer.slice(0, this.frame_count * this.n_atoms * per_atom)
+        : buffer.slice(0, this.frame_count * values_per_frame)
     const trim_all = (
       buffers: Record<string, Float64Array>,
       per_atom: number,
@@ -312,27 +339,93 @@ class PositionAccumulator {
       Object.keys(buffers).length === 0
         ? undefined
         : Object.fromEntries(
-            Object.entries(buffers).map(([key, buffer]) => [key, trim(buffer, per_atom)]),
+            Object.entries(buffers).map(([key, buffer]) => [
+              key,
+              trim(buffer, this.n_atoms * per_atom),
+            ]),
           )
+    const signals = Object.fromEntries(
+      Object.entries(this.signal_values).map(([key, values]) => {
+        const sample_shape = this.signal_shapes[key]
+        const sample_size = sample_shape.reduce((product, size) => product * size, 1)
+        return [
+          key,
+          {
+            values: trim(values, sample_size),
+            sample_shape,
+            steps: [...this.steps],
+          } satisfies TrajectorySignal,
+        ]
+      }),
+    )
     return {
-      positions: trim(this.positions, 3),
+      positions: trim(this.positions, this.n_atoms * 3),
       scalars: trim_all(this.scalars, 1),
       vectors: trim_all(this.vectors, 3),
+      signals: Object.keys(signals).length > 0 ? signals : undefined,
       n_frames: this.frame_count,
       n_atoms: this.n_atoms,
-      elements: this.elements ?? [],
+      elements: this.elements,
       lattice_matrices: has_lattice ? this.lattice_matrices : null,
       pbc: this.pbc,
-      coords_unwrapped: this.coords_unwrapped ?? false,
-      frame_stride,
+      coords_unwrapped: this.coords_unwrapped,
+      frame_stride: this.frame_stride,
       steps: this.steps,
     }
   }
 }
 
-// One sweep over `total_frames` frames, pulling each in turn from `load_frame` and packing
-// it into a PositionAccumulator. Shared by the in-memory and streaming collect paths so
-// stride handling, budget enforcement and progress reporting have a single implementation.
+export const parse_frame_signal = (
+  value: unknown,
+  key: string,
+  n_atoms: number,
+): { values: number[]; sample_shape: number[] } | null => {
+  if (typeof value === `number` && Number.isFinite(value)) {
+    return { values: [value], sample_shape: [] }
+  }
+  const flat_values = ArrayBuffer.isView(value)
+    ? Array.from(value as unknown as ArrayLike<number>)
+    : Array.isArray(value) &&
+        value.every((entry) => typeof entry === `number` && Number.isFinite(entry))
+      ? value
+      : null
+  const tensor_key = /polarizability|tensor/i.test(key)
+  const response_key = /dipole|polarization|current/i.test(key)
+  const per_atom_key = /mass|charge|atom|site/i.test(key)
+  if (flat_values) {
+    const values = flat_values as number[]
+    if (!values.every(Number.isFinite)) return null
+    if (values.length === 9 && (n_atoms !== 3 || tensor_key)) {
+      return { values, sample_shape: [3, 3] }
+    }
+    if (values.length === n_atoms * 3 && !response_key) {
+      return { values, sample_shape: [n_atoms, 3] }
+    }
+    if (values.length === n_atoms && (values.length !== 3 || per_atom_key)) {
+      return { values, sample_shape: [n_atoms] }
+    }
+    return values.length === 3 ? { values, sample_shape: [3] } : null
+  }
+  if (!Array.isArray(value)) return null
+  const vector_rows = value.every(
+    (row) =>
+      Array.isArray(row) &&
+      row.length === 3 &&
+      row.every((entry) => typeof entry === `number` && Number.isFinite(entry)),
+  )
+  if (!vector_rows) return null
+  if (value.length === 3 && (n_atoms !== 3 || tensor_key)) {
+    return { values: (value as number[][]).flat(), sample_shape: [3, 3] }
+  }
+  if (value.length === n_atoms) {
+    return {
+      values: (value as number[][]).flat(),
+      sample_shape: [n_atoms, 3],
+    }
+  }
+  return null
+}
+
 export async function accumulate_positions(
   total_frames: number,
   load_frame: (
@@ -346,8 +439,13 @@ export async function accumulate_positions(
     max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
     scalar_keys = [],
     vector_keys = [],
+    signal_keys = [],
   } = options
-  const channels: StreamChannels = { scalar_keys, vector_keys }
+  const channels: StreamChannels = {
+    scalar_keys: [...new Set(scalar_keys)],
+    vector_keys: [...new Set(vector_keys)],
+    signal_keys: [...new Set(signal_keys)],
+  }
   if (!Number.isInteger(frame_stride) || frame_stride < 1) {
     throw new Error(
       `accumulate_positions: frame_stride must be a positive integer, got ${frame_stride}`,
@@ -360,12 +458,25 @@ export async function accumulate_positions(
   if (!first_frame) throw new Error(`accumulate_positions: could not read frame 0`)
   const collected = Math.ceil(total_frames / frame_stride)
   const n_atoms = first_frame.structure.sites.length
+  const signal_shapes = Object.fromEntries(
+    channels.signal_keys.map((key) => {
+      const parsed = parse_frame_signal(first_frame.metadata?.[key], key, n_atoms)
+      if (!parsed) {
+        throw new TypeError(
+          `Frame 0 has no supported finite numeric metadata signal "${key}" (got ` +
+            `${JSON.stringify(first_frame.metadata?.[key])})`,
+        )
+      }
+      return [key, parsed.sample_shape]
+    }),
+  )
   const accumulator = new PositionAccumulator(
     collected,
     n_atoms,
     max_bytes,
     frame_stride,
     channels,
+    signal_shapes,
   )
   accumulator.add_frame(first_frame, 0)
 
@@ -375,8 +486,6 @@ export async function accumulate_positions(
     frame_number += frame_stride
   ) {
     const frame = await load_frame(frame_number)
-    // A null frame means the payload disagrees with the frame count — fail rather than
-    // average over a silently shorter series.
     if (!frame) {
       throw new Error(
         `accumulate_positions: frame ${frame_number} of ${total_frames} could not be read`,
@@ -389,10 +498,9 @@ export async function accumulate_positions(
     }
   }
 
-  return accumulator.finish(frame_stride)
+  return accumulator.finish()
 }
 
-// Restrict frame metadata to the requested property keys (no-op when unset)
 const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]): void => {
   if (!properties) return
   metadata.properties = Object.fromEntries(
@@ -403,9 +511,11 @@ const filter_properties = (metadata: TrajectoryMetadata, properties?: string[]):
 export class TrajFrameReader implements FrameLoader {
   private readonly format: `xyz` | `ase`
   private global_numbers?: number[]
-  // Split lines + per-frame start indices for the last XYZ payload, so repeat seeks are
-  // O(1) lookup instead of re-splitting + rescanning from line 0 (was O(n²) over playback)
-  private xyz_cache?: { data: string; lines: string[]; frame_starts: number[] }
+  private xyz_cache?: {
+    data: string
+    lines: string[]
+    frames: { start: number; num_atoms: number; comment: string }[]
+  }
 
   constructor(filename: string) {
     this.format = indexed_trajectory_format(filename)
@@ -419,7 +529,7 @@ export class TrajFrameReader implements FrameLoader {
   async get_total_frames(data: string | ArrayBuffer): Promise<number> {
     if (this.format === `xyz`) {
       if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)
-      return this.get_xyz_cache(data).frame_starts.length
+      return this.get_xyz_cache(data).frames.length
     }
     if (!(data instanceof ArrayBuffer)) throw new Error(`ASE loader requires binary data`)
     return read_ase_header(new DataView(data)).n_items
@@ -436,36 +546,32 @@ export class TrajFrameReader implements FrameLoader {
 
     if (this.format === `xyz`) {
       const data_str = data as string
-      const { lines } = this.get_xyz_cache(data_str)
+      const { lines, frames } = this.get_xyz_cache(data_str)
       const encoder = new TextEncoder()
       const newline_sequence = data_str.includes(`\r\n`) ? `\r\n` : `\n`
       const newline_byte_len = newline_sequence.length
       const line_bytes = (idx: number): number =>
         utf8_byte_length(lines[idx], encoder) + newline_byte_len
 
-      // cursor = next line whose bytes haven't been added to byte_offset yet
-      let [current_frame, cursor, byte_offset] = [0, 0, 0]
+      let [cursor, byte_offset] = [0, 0]
 
-      for (const { start, num_atoms } of iter_xyz_frames(lines)) {
-        if (current_frame >= total_frames) break
-
-        // Accumulate bytes of blank/invalid lines skipped before this frame
+      for (const [frame_number, { start, num_atoms }] of frames.entries()) {
         for (; cursor < start; cursor++) byte_offset += line_bytes(cursor)
         let frame_size = 0
         for (; cursor < start + num_atoms + 2; cursor++) frame_size += line_bytes(cursor)
 
-        if (current_frame % sample_rate === 0) {
+        if (frame_number % sample_rate === 0) {
           frame_index.push({
-            frame_number: current_frame,
+            frame_number,
             byte_offset,
             estimated_size: frame_size,
           })
         }
 
         byte_offset += frame_size
-        current_frame++
-
-        if (current_frame % 1000 === 0) report(current_frame, `Indexing: ${current_frame}`)
+        if ((frame_number + 1) % 1000 === 0) {
+          report(frame_number + 1, `Indexing: ${frame_number + 1}`)
+        }
       }
     } else {
       const view = new DataView(data as ArrayBuffer)
@@ -519,13 +625,10 @@ export class TrajFrameReader implements FrameLoader {
     const report = make_reporter(on_progress, total_frames)
 
     if (this.format === `xyz`) {
-      const { lines } = this.get_xyz_cache(data as string)
-      let current_frame = 0
+      const { frames } = this.get_xyz_cache(data as string)
 
-      for (const { comment } of iter_xyz_frames(lines)) {
-        if (current_frame >= total_frames) break
-
-        if (current_frame % sample_rate === 0) {
+      for (const [frame_number, { comment }] of frames.entries()) {
+        if (frame_number % sample_rate === 0) {
           const { step, properties: props } = parse_xyz_comment_metadata(comment)
           if (props.volume === undefined) {
             try {
@@ -533,23 +636,23 @@ export class TrajFrameReader implements FrameLoader {
               if (lattice) props.volume = Math.abs(math.det_3x3(lattice))
             } catch (error) {
               console.warn(
-                `Skipping malformed EXTXYZ lattice volume for frame ${current_frame}:`,
+                `Skipping malformed EXTXYZ lattice volume for frame ${frame_number}:`,
                 error,
               )
             }
           }
           const frame_metadata: TrajectoryMetadata = {
-            frame_number: current_frame,
-            step: step ?? current_frame,
+            frame_number,
+            step: step ?? frame_number,
             properties: props,
           }
           filter_properties(frame_metadata, properties)
           metadata_list.push(frame_metadata)
         }
 
-        current_frame++
-
-        if (current_frame % 5000 === 0) report(current_frame, `Extracting: ${current_frame}`)
+        if ((frame_number + 1) % 5000 === 0) {
+          report(frame_number + 1, `Extracting: ${frame_number + 1}`)
+        }
       }
     } else if (this.format === `ase`) {
       const view = new DataView(data as ArrayBuffer)
@@ -588,10 +691,6 @@ export class TrajFrameReader implements FrameLoader {
     return metadata_list
   }
 
-  // Single sequential sweep of the payload emitting flat positions. Sequential XYZ seeks
-  // hit the memoised line/offset cache and ASE seeks go through the header offsets table,
-  // so a full pass is O(1) per frame. Frames are decoded one at a time and dropped, so
-  // memory is bounded by the position buffer rather than by n_frames frame objects.
   async stream_positions(
     data: string | ArrayBuffer,
     options?: PositionStreamOptions,
@@ -602,30 +701,21 @@ export class TrajFrameReader implements FrameLoader {
     return accumulate_positions(total_frames, load, options, on_progress)
   }
 
-  // Build + cache the line array and per-frame start indices once per payload
-  private get_xyz_cache(data: string): { lines: string[]; frame_starts: number[] } {
+  private get_xyz_cache(data: string): NonNullable<TrajFrameReader[`xyz_cache`]> {
     if (this.xyz_cache?.data === data) return this.xyz_cache
     const lines = data.trim().split(/\r?\n/)
-    const frame_starts = Array.from(iter_xyz_frames(lines), ({ start }) => start)
-    this.xyz_cache = { data, lines, frame_starts }
+    this.xyz_cache = { data, lines, frames: Array.from(iter_xyz_frames(lines)) }
     return this.xyz_cache
   }
 
   private load_xyz_frame(data: string, frame_number: number): TrajectoryFrame | null {
-    const { lines, frame_starts } = this.get_xyz_cache(data)
-    const start = frame_starts[frame_number]
-    if (start === undefined) return null // out-of-range frame
-
-    const num_atoms = Math.trunc(Number(lines[start]?.trim()))
-    const comment = lines[start + 1] ?? ``
-    return build_xyz_frame(
-      lines,
-      { start, num_atoms, comment },
-      {
-        frame_label: `indexed frame ${frame_number}`,
-        default_step: frame_number,
-      },
-    )
+    const { lines, frames } = this.get_xyz_cache(data)
+    const frame = frames[frame_number]
+    if (!frame) return null
+    return build_xyz_frame(lines, frame, {
+      frame_label: `indexed frame ${frame_number}`,
+      default_step: frame_number,
+    })
   }
 
   private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {

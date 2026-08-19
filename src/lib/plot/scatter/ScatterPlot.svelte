@@ -5,7 +5,7 @@
   import { type D3InterpolateName, resolve_computed_color } from '$lib/colors'
   import { format_value, format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
-  import type { Point2D, Vec2 } from '$lib/math'
+  import { partition_point, type Point2D, type Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
     BasePlotProps,
@@ -150,6 +150,7 @@
     point_events,
     on_point_click,
     on_point_hover,
+    on_plot_click,
     on_pointer_leave,
     fill_regions = $bindable([]),
     error_bands = [],
@@ -210,6 +211,7 @@
       >
       on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+      on_plot_click?: (data: ScatterHandlerEvent<Metadata>) => void
       on_pointer_leave?: () => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
       error_bands?: ErrorBand[]
@@ -1056,8 +1058,12 @@
     pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
   )
 
+  const hover_radius = $derived(hover_config.threshold_px ?? 20)
+
   // Lazily index screen-space markers so pointer moves probe nearby cells only.
   const hover_index = $derived.by(() => {
+    if (hover_config.mode === `x`) return null
+
     function* entries() {
       for (const series_data of filtered_series) {
         const scales = series_screen_scales(series_data)
@@ -1066,20 +1072,93 @@
         }
       }
     }
-    return build_spatial_index(entries(), hover_config.threshold_px ?? 20)
+    return build_spatial_index(entries(), hover_radius)
   })
+
+  // X-only hover binary-searches ordered series and scans unordered ones.
+  const x_hover_series = $derived(
+    filtered_series.map((series_data) => {
+      let direction: -1 | 0 | 1 = 0
+      const { filtered_data: points } = series_data
+      for (let point_idx = 1; point_idx < points.length; point_idx++) {
+        const delta = points[point_idx].x - points[point_idx - 1].x
+        if (delta === 0) continue
+        const next_direction = delta > 0 ? 1 : -1
+        if (direction !== 0 && direction !== next_direction) {
+          direction = 0
+          return { series_data, direction }
+        }
+        direction = next_direction
+      }
+      return { series_data, direction }
+    }),
+  )
+
+  const x_hover_candidate = (x_rel: number, y_rel: number): InternalPoint<Metadata> | null => {
+    let best_point: InternalPoint<Metadata> | null = null
+    let best_x_distance = Number.POSITIVE_INFINITY
+    let best_y_distance = Number.POSITIVE_INFINITY
+    for (const { series_data, direction } of x_hover_series) {
+      const { filtered_data: points } = series_data
+      if (points.length === 0) continue
+      const scales = series_screen_scales(series_data)
+      const target_x = Number(scales.x_scale.invert(x_rel))
+      let [candidate_start, candidate_end] = [0, points.length]
+      if (direction !== 0) {
+        const lower_idx = partition_point(points, (point) =>
+          direction > 0 ? point.x < target_x : point.x > target_x,
+        )
+        candidate_start = Math.max(0, lower_idx - 1)
+        candidate_end = Math.min(points.length, lower_idx + 1)
+        while (
+          candidate_start > 0 &&
+          points[candidate_start - 1].x === points[candidate_start].x
+        ) {
+          candidate_start--
+        }
+        while (
+          candidate_end < points.length &&
+          points[candidate_end].x === points[candidate_end - 1].x
+        ) {
+          candidate_end++
+        }
+      }
+      for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
+        const point = points[point_idx]
+        const { cx, cy } = point_screen_xy(point, scales)
+        const x_distance = Math.abs(cx - x_rel)
+        const y_distance = Math.abs(cy - y_rel)
+        if (
+          x_distance < best_x_distance ||
+          (x_distance === best_x_distance && y_distance < best_y_distance)
+        ) {
+          best_point = point
+          best_x_distance = x_distance
+          best_y_distance = y_distance
+        }
+      }
+    }
+    return best_x_distance <= hover_radius ? best_point : null
+  }
+
+  const closest_point_at = (x_rel: number, y_rel: number) =>
+    hover_config.mode === `x`
+      ? x_hover_candidate(x_rel, y_rel)
+      : hover_index
+        ? query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
+        : null
+  let tracks_pointer = $derived(hover_config.show_tooltip !== false || Boolean(on_point_hover))
 
   // tooltip logic: find closest point and update tooltip state
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
 
-    const nearest = query_nearest(hover_index, { x: x_rel, y: y_rel })
+    const closest_point = closest_point_at(x_rel, y_rel)
 
-    if (nearest) {
-      const { point: closest_point } = nearest
+    if (closest_point) {
       // Construct handler props synchronously to avoid stale derived reads
       const props = construct_handler_props(closest_point)
-      tooltip_point = closest_point
+      tooltip_point = hover_config.show_tooltip === false ? null : closest_point
       // Call hover handler with synchronously constructed props
       if (evt && props) {
         on_point_hover?.({ ...props, event: evt, point: closest_point })
@@ -1111,6 +1190,22 @@
       hover_animation_frame = undefined
       flush_pending_hover()
     })
+  }
+
+  function handle_plot_click(evt: MouseEvent) {
+    if (
+      !on_plot_click ||
+      pan_zoom.is_panning ||
+      pan_zoom.drag_start ||
+      pan_zoom.suppress_click
+    ) {
+      return
+    }
+    const coords = get_relative_coords(evt)
+    if (!coords) return
+    const point = closest_point_at(coords.x, coords.y)
+    const props = point && construct_handler_props(point)
+    if (point && props) on_plot_click({ ...props, event: evt, point })
   }
 
   function end_queued_mouse_move(apply_pending: boolean) {
@@ -1277,6 +1372,7 @@
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
+    event.stopPropagation()
     point_events?.onclick?.({ point, event })
     const props = construct_handler_props(point)
     tooltip_point = point
@@ -1333,13 +1429,9 @@
         {y_scale_fn}
         tween_options={effective_line_tween}
         is_hovered={hovered_fill_key === fill.hover_key}
-        on_click={(event: FillHandlerEvent) => {
-          fill.on_click?.(event)
-          on_fill_click?.(event)
-        }}
+        on_click={on_fill_click}
         on_hover={(event: FillHandlerEvent | null) => {
           hovered_fill_key = event ? fill.hover_key : null
-          fill.on_hover?.(event)
           on_fill_hover?.(event)
         }}
       />
@@ -1374,10 +1466,13 @@
   marginals={resolved_marginals}
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
-  on_mouse_move={(evt) => {
-    // Only find the closest point when not actively dragging
-    if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
-  }}
+  on_mouse_move={tracks_pointer
+    ? (evt) => {
+        // Only find the closest point when not actively dragging
+        if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
+      }
+    : undefined}
+  on_mouse_click={handle_plot_click}
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
     hovered = false
@@ -1433,24 +1528,32 @@
 
     <!-- Current frame indicator -->
     {#if current_x_value != null}
-      {@const current_pos_raw = is_time_x
+      {@const current_pos = is_time_x
         ? x_scale_fn(new Date(current_x_value))
         : x_scale_fn(current_x_value)}
-      {#if isFinite(current_pos_raw)}
-        {@const current_pos = current_pos_raw}
-        {#if current_pos >= pad.l && current_pos <= width - pad.r}
-          {@const active_tick_height = 7}
-          <rect
-            x={current_pos - 1.5}
-            y={height - pad.b - active_tick_height / 2}
-            width="3"
-            height={active_tick_height}
-            fill="var(--scatter-current-frame-color, #ff6b35)"
-            stroke="white"
-            stroke-width="1"
-            class="current-frame-indicator"
-          />
-        {/if}
+      {#if isFinite(current_pos) && current_pos >= pad.l && current_pos <= width - pad.r}
+        {@const active_tick_height = 7}
+        <line
+          class="current-frame-guide"
+          x1={current_pos}
+          x2={current_pos}
+          y1={pad.t}
+          y2={height - pad.b}
+          stroke="var(--scatter-current-frame-color, #ff6b35)"
+          stroke-opacity="0.45"
+          stroke-dasharray="8 4"
+          pointer-events="none"
+        />
+        <rect
+          class="current-frame-indicator"
+          x={current_pos - 1.5}
+          y={height - pad.b - active_tick_height / 2}
+          width="3"
+          height={active_tick_height}
+          fill="var(--scatter-current-frame-color, #ff6b35)"
+          stroke="white"
+          stroke-width="1"
+        />
       {/if}
     {/if}
 
@@ -1738,7 +1841,7 @@
       <ScatterPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--ctrl-btn-top, 5pt); ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
             controls_toggle_props?.style ?? ``
           }`,
         }}
