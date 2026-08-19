@@ -123,6 +123,14 @@ export interface TrajectorySignal {
   unit?: string
 }
 
+export interface TrajectorySignalDescriptor {
+  sample_shape: number[]
+  sample_count: number
+  unit?: string
+}
+
+export type TrajectorySource = string | ArrayBuffer | Blob
+
 // Transferable backing store for source-free, on-demand frames.
 export interface TrajectoryFrameStore {
   positions: Float64Array
@@ -153,6 +161,8 @@ export interface TrajectoryType {
   atom_masses?: number[]
   // Time-dependent properties with independent step axes.
   signals?: Record<string, TrajectorySignal>
+  // Source-owned signals available through frame_loader.stream_positions().
+  signal_descriptors?: Record<string, TrajectorySignalDescriptor>
   // Large file streaming properties
   total_frames?: number
   indexed_frames?: FrameIndex[]
@@ -202,7 +212,7 @@ export interface TrajectoryPositionStream {
   // Opt-in site properties, parallel to positions.
   scalars?: Record<string, Float64Array>
   vectors?: Record<string, Float64Array>
-  // Requested frame-level signals sampled on the same collected steps as positions.
+  // Requested frame-level signals on their native step axes.
   signals?: Record<string, TrajectorySignal>
 }
 
@@ -248,6 +258,24 @@ export interface FrameLoader {
     on_progress?: (progress: ParseProgress) => void,
   ) => Promise<TrajectoryMetadata[]>
 }
+
+const trajectory_signal_shape = (value: unknown, n_atoms: number): number[] | null =>
+  Array.isArray(value) &&
+  value.every(
+    (size): size is number => typeof size === `number` && Number.isInteger(size) && size >= 1,
+  ) &&
+  is_supported_trajectory_signal_shape(value, n_atoms)
+    ? value
+    : null
+
+const is_record = (value: unknown): value is Record<string, unknown> =>
+  value !== null &&
+  typeof value === `object` &&
+  !Array.isArray(value) &&
+  !ArrayBuffer.isView(value)
+
+const invalid_optional_unit = (unit: unknown): boolean =>
+  unit !== undefined && (typeof unit !== `string` || !unit.trim())
 
 export function validate_trajectory(trajectory: TrajectoryType): string[] {
   const errors: string[] = []
@@ -297,33 +325,20 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
   }
 
   const signals: unknown = trajectory.signals
-  if (
-    signals !== undefined &&
-    (signals === null ||
-      typeof signals !== `object` ||
-      Array.isArray(signals) ||
-      ArrayBuffer.isView(signals))
-  ) {
+  if (signals !== undefined && !is_record(signals)) {
     errors.push(`signals must be an object`)
   } else if (signals !== undefined) {
     for (const [key, signal] of Object.entries(signals)) {
-      if (signal === null || typeof signal !== `object` || Array.isArray(signal)) {
+      if (!is_record(signal)) {
         errors.push(`signals.${key} must be an object`)
         continue
       }
-      const signal_record = signal as Record<string, unknown>
-      const { sample_shape, values, steps, unit } = signal_record
-      const numeric_sample_shape = Array.isArray(sample_shape)
-        ? sample_shape.filter(
-            (size: unknown): size is number =>
-              typeof size === `number` && Number.isInteger(size) && size >= 1,
-          )
-        : []
-      const valid_sample_shape =
-        Array.isArray(sample_shape) &&
-        numeric_sample_shape.length === sample_shape.length &&
-        is_supported_trajectory_signal_shape(numeric_sample_shape, first_symbols?.length ?? 0)
-      if (!valid_sample_shape) {
+      const { sample_shape, values, steps, unit } = signal
+      const numeric_sample_shape = trajectory_signal_shape(
+        sample_shape,
+        first_symbols?.length ?? 0,
+      )
+      if (!numeric_sample_shape) {
         errors.push(
           `signals.${key}.sample_shape must be scalar, [3], [3, 3], [n_atoms], or ` +
             `[n_atoms, 3], got ${JSON.stringify(sample_shape)}`,
@@ -335,10 +350,14 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
       if (!Array.isArray(steps)) {
         errors.push(`signals.${key}.steps must be an array`)
       }
-      if (unit !== undefined && (typeof unit !== `string` || !unit.trim())) {
+      if (invalid_optional_unit(unit)) {
         errors.push(`signals.${key}.unit must be a non-empty string when supplied`)
       }
-      if (!valid_sample_shape || !(values instanceof Float64Array) || !Array.isArray(steps)) {
+      if (
+        !numeric_sample_shape ||
+        !(values instanceof Float64Array) ||
+        !Array.isArray(steps)
+      ) {
         continue
       }
       const sample_size = numeric_sample_shape.reduce(
@@ -365,6 +384,38 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
     }
   }
 
+  const signal_descriptors: unknown = trajectory.signal_descriptors
+  if (signal_descriptors !== undefined && !is_record(signal_descriptors)) {
+    errors.push(`signal_descriptors must be an object`)
+  } else if (signal_descriptors !== undefined) {
+    for (const [key, descriptor] of Object.entries(signal_descriptors)) {
+      if (!is_record(descriptor)) {
+        errors.push(`signal_descriptors.${key} must be an object`)
+        continue
+      }
+      const { sample_shape, sample_count, unit } = descriptor
+      if (!trajectory_signal_shape(sample_shape, first_symbols?.length ?? 0)) {
+        errors.push(`signal_descriptors.${key}.sample_shape is invalid`)
+      }
+      if (
+        typeof sample_count !== `number` ||
+        !Number.isInteger(sample_count) ||
+        sample_count < 1
+      ) {
+        errors.push(`signal_descriptors.${key}.sample_count must be a positive integer`)
+      }
+      if (invalid_optional_unit(unit)) {
+        errors.push(`signal_descriptors.${key}.unit must be a non-empty string when supplied`)
+      }
+    }
+    if (
+      Object.keys(signal_descriptors).length > 0 &&
+      !trajectory.frame_loader?.stream_positions
+    ) {
+      errors.push(`signal_descriptors require frame_loader.stream_positions`)
+    }
+  }
+
   // Validate streaming-related properties
   if (total_frames !== undefined) {
     if (typeof total_frames !== `number` || total_frames < 1) {
@@ -377,7 +428,12 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
     }
   }
 
-  if (is_indexed === true && !indexed_frames?.length && !frame_store) {
+  if (
+    is_indexed === true &&
+    !indexed_frames?.length &&
+    !frame_store &&
+    !trajectory.frame_loader
+  ) {
     errors.push(
       `is_indexed is true but indexed_frames is missing or empty and frame_store is absent`,
     )

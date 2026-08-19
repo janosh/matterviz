@@ -9,7 +9,9 @@ import {
 } from '$lib/trajectory'
 import type { TrajectorySpectroscopyResult } from '$lib/spectral'
 import * as trajectory_parse from '$lib/trajectory/parse'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
 import * as parse_worker from '$lib/file-viewer/parse-in-worker'
+import * as io from '$lib/io'
 import * as symmetry from '$lib/symmetry'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { Info } from 'svelte-widgets/icons'
@@ -158,6 +160,35 @@ const stub_fetch = (fetch_impl: unknown) => {
   vi.stubGlobal(`fetch`, fetch_impl)
   onTestFinished(() => void vi.unstubAllGlobals())
 }
+
+const stub_hdf5_parse_worker = () => {
+  const worker_spy = vi
+    .spyOn(parse_worker, `parse_trajectory_in_worker`)
+    .mockImplementation(async (data, filename, on_progress, options) =>
+      trajectory_parse.parse_trajectory_async(
+        data instanceof Blob ? await data.arrayBuffer() : data,
+        filename,
+        on_progress,
+        options,
+      ),
+    )
+  onTestFinished(() => worker_spy.mockRestore())
+  return worker_spy
+}
+
+const lazy_trajectory = (dispose: () => void): TrajectoryType => ({
+  frames: [make_trajectory_frame(0, 1)],
+  total_frames: 2,
+  is_indexed: true,
+  frame_loader: {
+    requires_source: false,
+    dispose,
+    get_total_frames: async () => 2,
+    build_frame_index: async () => [],
+    load_frame: async (_data, frame_idx) => make_trajectory_frame(frame_idx, 1),
+    extract_plot_metadata: async () => [],
+  },
+})
 
 const stub_animation_frames = () => {
   const callbacks: FrameRequestCallback[] = []
@@ -1091,7 +1122,8 @@ describe(`Trajectory`, () => {
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 
-  test(`reloads a URL after choosing its HDF5 trajectory group`, async () => {
+  test(`reuses one URL Blob across HDF5 trajectory group choices`, async () => {
+    stub_hdf5_parse_worker()
     const content = await make_ambiguous_hdf5()
     const fetch_mock = vi.fn(
       async (url: string | URL | Request) =>
@@ -1127,7 +1159,138 @@ describe(`Trajectory`, () => {
     expect(fetch_mock).toHaveBeenCalledTimes(2)
   })
 
+  test(`disposes the selected HDF5 loader before opening another group`, async () => {
+    const first_dispose = vi.fn()
+    const second_dispose = vi.fn()
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`, `/run/1`])
+        }
+        return lazy_trajectory(
+          options.hdf5_group_path === `/run/0` ? first_dispose : second_dispose,
+        )
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(target.querySelector(`.filename`)?.textContent).toContain(`groups.h5`)
+
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/run/1`).click()
+    await vi.waitFor(() => expect(first_dispose).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+    expect(second_dispose).not.toHaveBeenCalled()
+  })
+
+  test(`keeps the current HDF5 loader live when another group fails to load`, async () => {
+    const dispose = vi.fn()
+    const current_trajectory = lazy_trajectory(dispose)
+    const frame_loader = current_trajectory.frame_loader
+    if (!frame_loader) throw new Error(`missing lazy frame loader`)
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockImplementation(async (_data, _filename, _on_progress, options) => {
+        if (!options.hdf5_group_path) {
+          throw new Hdf5TrajectoryGroupSelectionError([`/run/0`, `/run/1`])
+        }
+        if (options.hdf5_group_path === `/run/1`) throw new Error(`broken group /run/1`)
+        return current_trajectory
+      })
+    onTestFinished(() => worker_spy.mockRestore())
+    const on_file_load = vi.fn()
+    const target = mount_traj({
+      display_mode: `structure`,
+      show_controls: `always`,
+      on_file_load,
+    })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const file = new File([new Uint8Array(8)], `groups.h5`)
+    viewer.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() => expect(hdf5_group_option(target, `/run/0`)).toBeDefined())
+    hdf5_group_option(target, `/run/0`).click()
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+
+    await reopen_hdf5_picker(target)
+    hdf5_group_option(target, `/run/1`).click()
+    await vi.waitFor(() => expect(target.textContent).toContain(`broken group /run/1`))
+    const cancel_button = [...target.querySelectorAll<HTMLButtonElement>(`button`)].find(
+      (button) => button.textContent?.trim() === `Cancel`,
+    )
+    if (!cancel_button) throw new Error(`missing HDF5 picker cancel button`)
+    cancel_button.click()
+    await vi.waitFor(() => expect(target.querySelector(`.filename`)).not.toBeNull())
+    expect(target.querySelector(`.filename`)?.textContent).toContain(`groups.h5`)
+    expect(dispose).not.toHaveBeenCalled()
+    await expect(frame_loader.load_frame(``, 1)).resolves.toEqual(make_trajectory_frame(1, 1))
+  })
+
+  test(`explains where compressed HDF5 is staged while decompressing`, async () => {
+    let finish_decompression:
+      | ((value: { content: string; filename: string }) => void)
+      | undefined
+    const pending = new Promise<{ content: string; filename: string }>((resolve) => {
+      finish_decompression = resolve
+    })
+    const decompress_spy = vi.spyOn(io, `decompress_trajectory_file`).mockReturnValue(pending)
+    onTestFinished(() => decompress_spy.mockRestore())
+    const target = mount_traj({ display_mode: `structure`, show_controls: `always` })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    viewer.dispatchEvent(create_drop_event(new File([`compressed`], `movie.h5.gz`)))
+
+    await vi.waitFor(() =>
+      expect(target.textContent).toContain(
+        `Decompressing HDF5 into temporary browser-managed storage`,
+      ),
+    )
+    finish_decompression?.({ content: xyz(`H`), filename: `movie.xyz` })
+    await vi.waitFor(() => expect(target.textContent).toContain(`movie.xyz`))
+  })
+
+  test(`reports unsupported remote HDF5 compression instead of silently ignoring it`, async () => {
+    const fetch_mock = vi.fn()
+    stub_fetch(fetch_mock)
+    const on_error = vi.fn()
+    const target = mount_traj({ display_mode: `structure`, show_controls: `always`, on_error })
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`missing trajectory viewer`)
+    const event = new DragEvent(`drop`, { bubbles: true })
+    Object.defineProperty(event, `dataTransfer`, {
+      value: {
+        files: [],
+        items: [],
+        getData: (type: string) =>
+          type === `application/json`
+            ? JSON.stringify({ url: `https://example.com/trajectory.h5.zip` })
+            : ``,
+      },
+    })
+    viewer.dispatchEvent(event)
+
+    await vi.waitFor(() =>
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({ error_msg: expect.stringContaining(`Compressed HDF5 ZIP`) }),
+      ),
+    )
+    expect(fetch_mock).not.toHaveBeenCalled()
+  })
+
   test(`keeps the local HDF5 picker available after a group fails`, async () => {
+    stub_hdf5_parse_worker()
     const original_parse = trajectory_parse.parse_trajectory_async
     const failing_groups = [`/molecules/h2o/replicas/0`, `/molecules/nh3/replicas/0`]
     const parse_spy = vi
@@ -1242,7 +1405,40 @@ describe(`Trajectory`, () => {
     expect(loaded_element(on_file_load.mock.calls[0][0])).toBe(`He`)
   })
 
+  test(`disposes a source-owning loader returned after its URL became stale`, async () => {
+    const stale_parse = Promise.withResolvers<TrajectoryType>()
+    const dispose = vi.fn()
+    const worker_spy = vi
+      .spyOn(parse_worker, `parse_trajectory_in_worker`)
+      .mockReturnValue(stale_parse.promise)
+    onTestFinished(() => worker_spy.mockRestore())
+    stub_fetch(
+      vi.fn(async (url: string | URL | Request) =>
+        request_url(url).includes(`stale.h5`)
+          ? new Response(new Blob([new Uint8Array(8)]))
+          : new Response(xyz(`He`)),
+      ),
+    )
+    const on_file_load = vi.fn()
+    const props = $state({
+      data_url: `/stale.h5`,
+      display_mode: `structure` as const,
+      show_controls: `never` as const,
+      on_file_load,
+    })
+    mount_traj(props)
+    await vi.waitFor(() => expect(worker_spy).toHaveBeenCalledOnce())
+
+    props.data_url = `/current.xyz`
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    stale_parse.resolve(lazy_trajectory(dispose))
+
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+    expect(on_file_load).toHaveBeenCalledOnce()
+  })
+
   test(`does not replace a newer data URL when a chosen HDF5 group finishes late`, async () => {
+    stub_hdf5_parse_worker()
     const on_file_load = vi.fn()
     const on_error = vi.fn()
     const props = $state({
@@ -1279,7 +1475,10 @@ describe(`Trajectory`, () => {
 
       expect(on_file_load).toHaveBeenCalledOnce()
       expect(on_error).not.toHaveBeenCalled()
-      expect(parse_spy.mock.calls.map(([, filename]) => filename)).toEqual([`replacement.xyz`])
+      expect(parse_spy.mock.calls.map(([, filename]) => filename)).toEqual([
+        `replacement.xyz`,
+        `ambiguous.h5`,
+      ])
     } finally {
       delayed_read.restore()
       parse_spy.mockRestore()

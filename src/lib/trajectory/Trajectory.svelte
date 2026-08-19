@@ -60,6 +60,7 @@
     TrajectoryFrame,
     TrajectoryMetadata,
     TrajectoryPositionStream,
+    TrajectorySource,
     TrajectoryType,
     TrajectoryXQuantity,
     TrajHandlerData,
@@ -123,9 +124,14 @@
     filename: string
     source: Partial<io.FileLoadMeta>
     on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
-    data?: ArrayBuffer
+    data: ArrayBuffer | Blob
   }
   type Hdf5PathGroup = { trunk: string; paths: string[] }
+  const hdf5_decompression_progress = (): ParseProgress => ({
+    current: 0,
+    total: 100,
+    stage: `Decompressing HDF5 into temporary browser-managed storage…`,
+  })
   const compare_hdf5_paths = (first_path: string, second_path: string): number =>
     first_path.localeCompare(second_path, undefined, { numeric: true })
   const group_hdf5_paths = (paths: string[]): Hdf5PathGroup[] =>
@@ -343,6 +349,7 @@
   )
   let load_id = 0
   let active_parse_controller: AbortController | null = null
+  let active_source_controller: AbortController | null = null
   let load_owned_trajectory: TrajectoryType | undefined
   let previous_data_url: string | undefined
   let data_url_load_id = 0
@@ -355,11 +362,15 @@
   let filename_copied = $state(false)
   let orig_data = $state<string | ArrayBuffer | null>(null)
   let trajectory_metadata_revision = $state(0)
-  const data_url_loader = io.create_data_url_loader<TrajectoryType>()
+  const data_url_loader = io.create_data_url_loader<TrajectoryType, TrajectorySource>(
+    io.load_trajectory_from_url,
+  )
 
   $effect(() => {
     if (trajectory === load_owned_trajectory) return
     load_id += 1
+    active_source_controller?.abort()
+    active_source_controller = null
     active_parse_controller?.abort()
     active_parse_controller = null
     clear_hdf5_group_picker()
@@ -563,6 +574,7 @@
     if (scrub_settle_timeout !== undefined) clearTimeout(scrub_settle_timeout)
     if (prefetch_timeout !== undefined) clearTimeout(prefetch_timeout)
     active_frame_loader?.dispose?.()
+    active_source_controller?.abort()
     active_parse_controller?.abort()
   })
 
@@ -1165,19 +1177,7 @@
     hdf5_group_picker_open = false
     loading = true
     try {
-      let data = selection.data
-      let filename = selection.filename
-      if (!data) {
-        const file = selection.source.file
-        if (!file) throw new Error(`HDF5 group selection is missing source data`)
-        const decompressed = await io.decompress_file(file)
-        if (!(decompressed.content instanceof ArrayBuffer)) {
-          throw new Error(`HDF5 group data must be binary`)
-        }
-        data = decompressed.content
-        filename = decompressed.filename
-      }
-      await load_trajectory_data(data, filename, {
+      await load_trajectory_data(selection.data, selection.filename, {
         ...selection.source,
         on_trajectory_loaded: selection.on_trajectory_loaded,
         hdf5_group_path: path,
@@ -1220,6 +1220,7 @@
   async function handle_internal_file_drop(
     internal_data: string,
     should_commit: () => boolean,
+    signal?: AbortSignal,
   ): Promise<boolean> {
     try {
       const file_info = JSON.parse(internal_data)
@@ -1232,7 +1233,7 @@
           console.warn(`Binary file without ArrayBuffer or blob URL:`, file_info.name)
           return true
         }
-        const response = await fetch(file_info.content_url)
+        const response = await fetch(file_info.content_url, { signal })
         content = await response.arrayBuffer()
       }
       await load_trajectory_data(content, file_info.name, { ...source, should_commit })
@@ -1250,26 +1251,41 @@
     if (!allow_file_drop) return
 
     const drop_id = ++load_id
+    active_source_controller?.abort()
+    const source_controller = new AbortController()
+    active_source_controller = source_controller
     active_parse_controller?.abort()
     const should_commit = () => drop_id === load_id
     clear_hdf5_group_picker()
     loading = true
+    parsing_progress = null
     let dropped_file: File | undefined
 
     try {
       // Check for our custom internal file format first
       const internal_data = event.dataTransfer?.getData(`application/x-matterviz-file`)
       if (internal_data) {
-        const handled = await handle_internal_file_drop(internal_data, should_commit)
+        const handled = await handle_internal_file_drop(
+          internal_data,
+          should_commit,
+          source_controller.signal,
+        )
         if (handled) return
       }
 
       // Handle URL-based files (e.g. from FilePicker)
-      const handled = await io
-        .handle_url_drop(event, (content, filename, metadata) =>
-          load_trajectory_data(content, filename, { ...metadata, should_commit }),
-        )
-        .catch(() => false)
+      const dropped_url = io.dropped_file_url(event)
+      if (dropped_url && io.hdf5_compression_format(dropped_url) === `gzip`) {
+        parsing_progress = hdf5_decompression_progress()
+      }
+      const handled = dropped_url
+        ? await io.handle_trajectory_url_drop(
+            event,
+            (content, filename, metadata) =>
+              load_trajectory_data(content, filename, { ...metadata, should_commit }),
+            source_controller.signal,
+          )
+        : false
 
       if (handled) return
 
@@ -1277,8 +1293,13 @@
       const file = event.dataTransfer?.files[0]
       if (file) {
         dropped_file = file
-
-        const { content, filename } = await io.decompress_file(file)
+        if (io.hdf5_compression_format(file.name) === `gzip`) {
+          parsing_progress = hdf5_decompression_progress()
+        }
+        const { content, filename } = await io.decompress_trajectory_file(
+          file,
+          source_controller.signal,
+        )
         await load_trajectory_data(content, filename, {
           source_filename: file.name,
           file,
@@ -1305,6 +1326,7 @@
         file_size: dropped_file?.size ?? file_size,
       })
     } finally {
+      if (active_source_controller === source_controller) active_source_controller = null
       if (should_commit()) loading = false
     }
   }
@@ -1316,6 +1338,8 @@
     if (data_url !== previous_data_url) {
       previous_data_url = data_url
       data_url_load_id = ++load_id
+      active_source_controller?.abort()
+      active_source_controller = null
       active_parse_controller?.abort()
       clear_hdf5_group_picker()
     }
@@ -1324,7 +1348,14 @@
       url: data_url,
       current_value: trajectory,
       set_loading: (value) => {
-        if (should_commit()) loading = value
+        if (!should_commit()) return
+        loading = value
+        if (value) {
+          parsing_progress =
+            data_url && io.hdf5_compression_format(data_url) === `gzip`
+              ? hdf5_decompression_progress()
+              : null
+        }
       },
       clear_error: () => {
         if (should_commit()) error_msg = null
@@ -1353,7 +1384,7 @@
   })
 
   async function load_trajectory_data(
-    data: string | ArrayBuffer,
+    data: TrajectorySource,
     filename: string,
     options: {
       on_trajectory_loaded?: (loaded_trajectory: TrajectoryType) => void
@@ -1383,8 +1414,9 @@
       const bin_file_threshold = loading_options.bin_file_threshold ?? MAX_BIN_FILE_SIZE
       const text_file_threshold = loading_options.text_file_threshold ?? MAX_TEXT_FILE_SIZE
       const is_large_file =
+        data instanceof Blob ||
         file_size_bytes >
-        (data instanceof ArrayBuffer ? bin_file_threshold : text_file_threshold)
+          (data instanceof ArrayBuffer ? bin_file_threshold : text_file_threshold)
 
       // Large files get indexed loading by default (loading_options can override)
       const on_progress = (progress: ParseProgress): void => {
@@ -1405,18 +1437,20 @@
               file_size_bytes > MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
           })
         : await parse_trajectory_async(data, filename, on_progress, parse_options)
-      if (!should_commit()) return
+      if (!should_commit()) {
+        parsed_trajectory.frame_loader?.dispose?.()
+        return
+      }
       trajectory = parsed_trajectory
       load_owned_trajectory = trajectory
-      if (trajectory) {
-        on_trajectory_loaded?.(trajectory)
-        if (source.source_url === data_url) data_url_loader.claim(trajectory)
-      }
+      on_trajectory_loaded?.(trajectory)
+      if (source.source_url === data_url) data_url_loader.claim(trajectory)
       // Keep original data only when parsing attached a frame_loader for on-demand loads.
       // Direct-parse fallbacks load all frames upfront, so retaining a duplicate wastes memory.
       orig_data =
         parsed_trajectory.frame_loader &&
-        parsed_trajectory.frame_loader.requires_source !== false
+        parsed_trajectory.frame_loader.requires_source !== false &&
+        !(data instanceof Blob)
           ? data
           : null
 
@@ -1439,13 +1473,16 @@
       })
     } catch (err) {
       if (!should_commit()) return
-      if (err instanceof Hdf5TrajectoryGroupSelectionError && data instanceof ArrayBuffer) {
+      if (
+        err instanceof Hdf5TrajectoryGroupSelectionError &&
+        (data instanceof ArrayBuffer || data instanceof Blob)
+      ) {
         hdf5_group_selection = {
           group_paths: err.group_paths,
           filename,
           source,
           on_trajectory_loaded,
-          data: source.file ? undefined : data,
+          data,
         }
         hdf5_group_picker_open = true
         return
@@ -1456,8 +1493,10 @@
       )
       error_msg = unsupported_message || `Failed to parse trajectory: ${err}`
       on_error?.({ error_msg, filename, ...source, file_size: file_size_bytes })
-      current_filename = undefined
-      file_size = undefined
+      if (hdf5_group_path === undefined || !trajectory) {
+        current_filename = undefined
+        file_size = undefined
+      }
       if (hdf5_group_path !== undefined && hdf5_group_selection) {
         hdf5_group_picker_open = true
       }

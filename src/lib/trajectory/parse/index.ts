@@ -15,6 +15,7 @@ import type {
   ParseProgress,
   TrajectoryFrame,
   TrajectoryMetadata,
+  TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory/index'
 import type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
@@ -105,6 +106,12 @@ async function parse_trajectory_data_unchecked(
   hdf5_group_path?: string,
 ): Promise<TrajectoryType> {
   reset_traj_parse_warnings()
+  if (data instanceof Blob) {
+    if (!/\.(?:h5|hdf5)$/i.test(filename ?? ``)) {
+      throw new Error(`Blob trajectory sources require an HDF5 filename, got ${filename}`)
+    }
+    return parse_hdf5_trajectory(data, filename, hdf5_group_path)
+  }
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
     if (FORMAT_PATTERNS.hdf5(data, filename))
@@ -229,7 +236,7 @@ function attach_parse_warnings(trajectory: TrajectoryType): TrajectoryType {
 }
 
 export async function parse_trajectory_async(
-  data: ArrayBuffer | string,
+  data: TrajectorySource,
   filename: string,
   on_progress?: (progress: ParseProgress) => void,
   options: LoadingOptions = {},
@@ -250,7 +257,11 @@ export async function parse_trajectory_async(
     update_progress(0, `Detecting format...`)
 
     const data_size =
-      data instanceof ArrayBuffer ? data.byteLength : new TextEncoder().encode(data).byteLength
+      data instanceof Blob
+        ? data.size
+        : data instanceof ArrayBuffer
+          ? data.byteLength
+          : new TextEncoder().encode(data).byteLength
     const is_large_file = data_size > LARGE_FILE_THRESHOLD
     const should_use_indexing = use_indexing ?? is_large_file
 
@@ -259,10 +270,11 @@ export async function parse_trajectory_async(
     }
 
     const can_index =
-      is_indexable_trajectory_filename(filename) ||
-      (typeof data === `string` &&
-        ext_hint(filename, /\.(?:xyz|extxyz)$/) === null &&
-        count_xyz_frames(data.slice(0, 2 ** 20)) >= 1)
+      !(data instanceof Blob) &&
+      (is_indexable_trajectory_filename(filename) ||
+        (typeof data === `string` &&
+          ext_hint(filename, /\.(?:xyz|extxyz)$/) === null &&
+          count_xyz_frames(data.slice(0, 2 ** 20)) >= 1))
     if (should_use_indexing && can_index) {
       return attach_parse_warnings(
         assert_parsed_trajectory_consistency(

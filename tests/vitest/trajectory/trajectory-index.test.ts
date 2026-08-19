@@ -41,23 +41,19 @@ function make_trajectory(
   const trajectory: TrajectoryType = { frames }
   if (total_frames !== undefined) trajectory.total_frames = total_frames
   if (with_indexed_frames) {
-    trajectory.indexed_frames = frames.map(
-      (_, idx): FrameIndex => ({
-        frame_number: idx,
-        byte_offset: idx * 1000,
-        estimated_size: 1000,
-      }),
-    )
+    trajectory.indexed_frames = frames.map((_, idx): FrameIndex => ({
+      frame_number: idx,
+      byte_offset: idx * 1000,
+      estimated_size: 1000,
+    }))
     trajectory.is_indexed = true
   }
   if (with_plot_metadata) {
-    trajectory.plot_metadata = frames.map(
-      (frame, idx): TrajectoryMetadata => ({
-        frame_number: idx,
-        step: frame.step,
-        properties: { energy: -idx * 0.1, temperature: 300 + idx },
-      }),
-    )
+    trajectory.plot_metadata = frames.map((frame, idx): TrajectoryMetadata => ({
+      frame_number: idx,
+      step: frame.step,
+      properties: { energy: -idx * 0.1, temperature: 300 + idx },
+    }))
   }
   return trajectory
 }
@@ -156,6 +152,34 @@ describe(`validate_trajectory`, () => {
     expect(
       validate_trajectory(trajectory).filter((error) => error.includes(`values[`)),
     ).toEqual([`signals.dipole.values[0] is not finite`])
+  })
+
+  test(`requires descriptor-backed signals to have a streaming loader`, () => {
+    const trajectory = make_trajectory(1)
+    trajectory.signal_descriptors = {
+      dipole: { sample_shape: [3], sample_count: 2, unit: `e*A` },
+    }
+    expect(validate_trajectory(trajectory)).toContain(
+      `signal_descriptors require frame_loader.stream_positions`,
+    )
+    trajectory.frame_loader = {
+      get_total_frames: async () => 1,
+      build_frame_index: async () => [],
+      load_frame: async () => trajectory.frames[0],
+      extract_plot_metadata: async () => [],
+      stream_positions: async () => ({
+        positions: new Float64Array(9),
+        n_frames: 1,
+        n_atoms: 3,
+        elements: [`H`, `H`, `H`],
+        lattice_matrices: null,
+        pbc: null,
+        coords_unwrapped: false,
+        frame_stride: 1,
+        steps: [0],
+      }),
+    }
+    expect(validate_trajectory(trajectory)).toEqual([])
   })
 
   test.each([
@@ -450,6 +474,48 @@ describe(`create_packed_frame_loader`, () => {
     ).rejects.toThrow(`frame_stride >= 5`)
     await expect(loader.stream_positions?.(``, { max_bytes: Number.NaN })).rejects.toThrow(
       `max_bytes must be positive`,
+    )
+  })
+
+  test(`preserves native signal cadence and rejects varying PBC during analysis`, async () => {
+    const signal = {
+      values: Float64Array.from([1, 2, 3, 4, 5, 6]),
+      sample_shape: [3],
+      steps: [0, 4],
+      unit: `e*A`,
+    }
+    const uniform_loader = create_packed_frame_loader({
+      ...make_store(4),
+      pbc_frames: Array.from(
+        { length: 4 },
+        () => [true, false, true] as [boolean, boolean, boolean],
+      ),
+      signals: { dipole: signal },
+    })
+    const stream = await uniform_loader.stream_positions?.(``, {
+      frame_stride: 2,
+      signal_keys: [`dipole`],
+    })
+    expect(stream).toMatchObject({ n_frames: 2, pbc: [true, false, true] })
+    expect(stream?.signals?.dipole).toEqual(signal)
+    expect(stream?.signals?.dipole).not.toBe(signal)
+    expect(stream?.signals?.dipole.values).not.toBe(signal.values)
+    await expect(
+      uniform_loader.stream_positions?.(``, {
+        signal_keys: [`dipole`],
+        max_bytes: 63,
+      }),
+    ).rejects.toThrow(`native-cadence signals need 64 bytes`)
+
+    const varying_loader = create_packed_frame_loader({
+      ...make_store(2),
+      pbc_frames: [
+        [true, true, true],
+        [false, false, false],
+      ],
+    })
+    await expect(varying_loader.stream_positions?.(``)).rejects.toThrow(
+      `PBC flags that vary between frames`,
     )
   })
 })

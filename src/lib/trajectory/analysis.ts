@@ -56,7 +56,14 @@ export const collect_trajectory_positions = async (
   analysis_name: string,
 ): Promise<TrajectoryPositionStream> => {
   const total_frames = trajectory_total_frames(trajectory)
-  if (total_frames > 0 && trajectory.frames.length >= total_frames) {
+  const needs_native_signal_stream = options.signal_keys?.some(
+    (key) => trajectory.signal_descriptors?.[key] !== undefined,
+  )
+  if (
+    !needs_native_signal_stream &&
+    total_frames > 0 &&
+    trajectory.frames.length >= total_frames
+  ) {
     return accumulate_positions(
       trajectory.frames.length,
       (frame_number) => trajectory.frames[frame_number] ?? null,
@@ -68,6 +75,12 @@ export const collect_trajectory_positions = async (
   const indexed = `Trajectory is indexed (${loaded_frames} of ${total_frames} frames in memory)`
   const loader = trajectory.frame_loader
   if (!loader) {
+    if (needs_native_signal_stream) {
+      throw new Error(
+        `Trajectory declares lazy signal descriptors but has no frame_loader. ${analysis_name} ` +
+          `cannot collect descriptor-backed signals without frame_loader.stream_positions.`,
+      )
+    }
     throw new Error(
       `Trajectory reports ${total_frames} frames but only ${loaded_frames} are in memory and it has no ` +
         `frame_loader. ${analysis_name} needs every frame; re-load the file without indexing ` +
@@ -75,6 +88,12 @@ export const collect_trajectory_positions = async (
     )
   }
   if (!loader.stream_positions) {
+    if (needs_native_signal_stream) {
+      throw new Error(
+        `Trajectory declares lazy signal descriptors but its frame_loader does not implement ` +
+          `stream_positions, so ${analysis_name} cannot collect them.`,
+      )
+    }
     throw new Error(
       `${indexed} and its frame_loader does not implement stream_positions, so a full pass is ` +
         `impossible. ${analysis_name} would otherwise be computed over just ${loaded_frames} frames.`,

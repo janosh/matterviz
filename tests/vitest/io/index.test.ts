@@ -1,4 +1,10 @@
-import { basename_from_url, handle_url_drop, load_from_url, type FileLoadMeta } from '$lib/io'
+import {
+  basename_from_url,
+  handle_url_drop,
+  load_from_url,
+  load_trajectory_from_url,
+  type FileLoadMeta,
+} from '$lib/io'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
@@ -6,9 +12,10 @@ globalThis.fetch = vi.fn()
 // decompress helpers are static imports in url-drop.ts, so the gzip tests below can't mock them
 // via a dynamic import. Mock them through the module registry (hoisted) instead, keeping the
 // other real exports so unrelated decompress paths are unaffected.
-const { mock_decompress, mock_decompress_binary } = vi.hoisted(() => ({
+const { mock_decompress, mock_decompress_binary, mock_decompress_blob } = vi.hoisted(() => ({
   mock_decompress: vi.fn(),
   mock_decompress_binary: vi.fn(),
+  mock_decompress_blob: vi.fn(),
 }))
 vi.mock(`$lib/io/decompress`, async (import_original) => {
   const actual = await import_original<Record<string, unknown>>()
@@ -16,7 +23,220 @@ vi.mock(`$lib/io/decompress`, async (import_original) => {
     ...actual,
     decompress_data: mock_decompress,
     decompress_data_binary: mock_decompress_binary,
+    decompress_data_blob: mock_decompress_blob,
   }
+})
+
+describe(`load_trajectory_from_url`, () => {
+  beforeEach(() => vi.mocked(fetch).mockReset())
+
+  test(`loads recognized HDF5 URLs as one Blob without materializing an ArrayBuffer`, async () => {
+    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
+    const blob = vi.fn().mockResolvedValue(source_blob)
+    const array_buffer = vi.fn()
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers(),
+      blob,
+      arrayBuffer: array_buffer,
+    } as unknown as Response)
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/run.h5`, callback)
+
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(blob).toHaveBeenCalledOnce()
+    expect(array_buffer).not.toHaveBeenCalled()
+    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
+      source_filename: `run.h5`,
+      source_url: `https://example.com/run.h5`,
+    })
+  })
+
+  test(`honors an HDF5 Content-Disposition name on a generic binary URL`, async () => {
+    const source_blob = new Blob([new Uint8Array([1, 2, 3])])
+    const blob = vi.fn().mockResolvedValue(source_blob)
+    const array_buffer = vi.fn()
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers({
+        'content-disposition': `attachment; filename="run.h5"`,
+      }),
+      blob,
+      arrayBuffer: array_buffer,
+    } as unknown as Response)
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/download.bin`, callback)
+
+    expect(blob).toHaveBeenCalledOnce()
+    expect(array_buffer).not.toHaveBeenCalled()
+    expect(callback).toHaveBeenCalledWith(source_blob, `run.h5`, {
+      source_filename: `run.h5`,
+      source_url: `https://example.com/download.bin`,
+    })
+  })
+
+  test(`recognizes HDF5 after decompressing a generically named gzip URL`, async () => {
+    const compressed_blob = new Blob([new Uint8Array([0x1f, 0x8b, 0, 0])])
+    const hdf5_blob = new Blob([
+      new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]),
+    ])
+    mock_decompress_blob.mockResolvedValueOnce(hdf5_blob)
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers(),
+      blob: vi.fn().mockResolvedValue(compressed_blob),
+    } as unknown as Response)
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/download.gz`, callback)
+
+    expect(callback).toHaveBeenCalledWith(hdf5_blob, `download.h5`, {
+      source_filename: `download.gz`,
+      source_url: `https://example.com/download.gz`,
+    })
+  })
+
+  test(`falls back from a rejected Range request without decoding HDF5 as text`, async () => {
+    const hdf5_bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 416 }))
+      .mockResolvedValueOnce(
+        new Response(hdf5_bytes, {
+          headers: { 'content-disposition': `attachment; filename="run.h5"` },
+        }),
+      )
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/download`, callback)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const [content, filename] = callback.mock.calls[0]
+    expect(content).toBeInstanceOf(Blob)
+    expect(filename).toBe(`run.h5`)
+  })
+
+  test(`rejects a header-named unsupported HDF5 wrapper`, async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(`bytes`, {
+        headers: { 'content-disposition': `attachment; filename="run.h5.zip"` },
+      }),
+    )
+    await expect(
+      load_trajectory_from_url(`https://example.com/download.bin`, vi.fn()),
+    ).rejects.toThrow(`Compressed HDF5 ZIP URLs are not supported`)
+  })
+
+  test(`keeps HDF5 gzip URLs Blob-backed when Content-Disposition has no extension`, async () => {
+    const compressed = new Blob([new Uint8Array([0x1f, 0x8b, 0, 0])])
+    const decompressed = new Blob([new Uint8Array([0x89, 0x48, 0x44, 0x46])])
+    const blob = vi.fn().mockResolvedValue(compressed)
+    const array_buffer = vi.fn()
+    mock_decompress_blob.mockResolvedValueOnce(decompressed)
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers({
+        'content-disposition': `attachment; filename="download"`,
+      }),
+      blob,
+      arrayBuffer: array_buffer,
+    } as unknown as Response)
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/run.h5.gz`, callback)
+
+    expect(blob).toHaveBeenCalledOnce()
+    expect(array_buffer).not.toHaveBeenCalled()
+    expect(mock_decompress_blob).toHaveBeenCalledWith(compressed, `gzip`)
+    expect(callback).toHaveBeenCalledWith(decompressed, `run.h5`, {
+      source_filename: `download`,
+      source_url: `https://example.com/run.h5.gz`,
+    })
+  })
+
+  test(`gives HDF5-magic URLs a parseable filename when headers omit one`, async () => {
+    const hdf5_bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(hdf5_bytes, {
+        headers: {
+          'content-type': `application/octet-stream`,
+          'content-disposition': `attachment; filename="download"`,
+        },
+      }),
+    )
+    const callback = vi.fn()
+
+    await load_trajectory_from_url(`https://example.com/download`, callback)
+
+    expect(fetch).toHaveBeenCalledOnce()
+    const [content, filename, metadata] = callback.mock.calls[0]
+    expect(content).toBeInstanceOf(Blob)
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(hdf5_bytes)
+    expect([filename, metadata]).toEqual([
+      `download.h5`,
+      {
+        source_filename: `download`,
+        source_url: `https://example.com/download`,
+      },
+    ])
+  })
+
+  test.each([
+    [`without a filename header`, {}, `download.h5`, `download`],
+    [
+      `with an HDF5 gzip filename header`,
+      { 'content-disposition': `attachment; filename="run.h5.gz"` },
+      `run.h5`,
+      `run.h5.gz`,
+    ],
+  ] as const)(
+    `keeps extensionless gzip HDF5 Blob-backed %s`,
+    async (_label, headers, expected_filename, expected_source_filename) => {
+      const compressed_blob = new Blob([new Uint8Array([0x1f, 0x8b, 0, 0])])
+      const hdf5_blob = new Blob([
+        new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]),
+      ])
+      const response_array_buffer = vi.fn()
+      const response_blob = vi.fn().mockResolvedValue(compressed_blob)
+      mock_decompress_blob.mockResolvedValueOnce(hdf5_blob)
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          new Response(new Uint8Array([0x1f, 0x8b]), {
+            status: 206,
+            headers: { 'content-range': `bytes 0-1/4` },
+          }),
+        )
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers(headers),
+          blob: response_blob,
+          arrayBuffer: response_array_buffer,
+        } as unknown as Response)
+      const callback = vi.fn()
+
+      await load_trajectory_from_url(`https://example.com/download`, callback)
+
+      expect(response_blob).toHaveBeenCalledOnce()
+      expect(response_array_buffer).not.toHaveBeenCalled()
+      expect(mock_decompress_blob).toHaveBeenCalledWith(compressed_blob, `gzip`)
+      expect(callback).toHaveBeenCalledWith(hdf5_blob, expected_filename, {
+        source_filename: expected_source_filename,
+        source_url: `https://example.com/download`,
+      })
+    },
+  )
+
+  test.each([`zip`, `bz2`, `xz`, `deflate`, `z`])(
+    `rejects remote HDF5 .%s wrappers before fetching`,
+    async (extension) => {
+      vi.mocked(fetch).mockClear()
+      await expect(
+        load_trajectory_from_url(`https://example.com/run.h5.${extension}`, vi.fn()),
+      ).rejects.toThrow(`Compressed HDF5`)
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe(`basename_from_url`, () => {
@@ -38,6 +258,7 @@ describe(`handle_url_drop`, () => {
   let drag_event: DragEvent
 
   beforeEach(() => {
+    vi.mocked(fetch).mockClear()
     callback = vi.fn()
     get_data = vi.fn()
     drag_event = { dataTransfer: { getData: get_data } } as unknown as DragEvent
@@ -82,8 +303,8 @@ describe(`handle_url_drop`, () => {
 })
 
 describe(`load_from_url`, () => {
-  const create_mock_response = (content: string | ArrayBuffer, headers = {}) => {
-    const response = new Response(content, { headers })
+  const create_mock_response = (content: string | ArrayBuffer, headers = {}, status = 200) => {
+    const response = new Response(content, { headers, status })
     if (content instanceof ArrayBuffer) {
       Object.defineProperty(response, `arrayBuffer`, {
         value: () => Promise.resolve(content),
@@ -237,7 +458,9 @@ describe(`load_from_url`, () => {
     const gzip_header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(create_mock_response(gzip_header, {}))
+      .mockResolvedValueOnce(
+        create_mock_response(gzip_header, { 'content-range': `bytes 0-15/100` }, 206),
+      )
       .mockResolvedValue(create_mock_response(new ArrayBuffer(8), {}))
 
     await expect(load_from_url(`https://example.com/blob-uuid`, () => {})).rejects.toThrow(
@@ -287,9 +510,14 @@ describe(`load_from_url`, () => {
         ...magic_bytes,
         ...Array(16 - magic_bytes.length).fill(0),
       ])
-      const mock_head_response = create_mock_response(header.buffer, {
-        'content-type': `application/octet-stream`,
-      })
+      const mock_head_response = create_mock_response(
+        header.buffer,
+        {
+          'content-type': `application/octet-stream`,
+          'content-range': `bytes 0-15/100`,
+        },
+        206,
+      )
       const mock_full_response = create_mock_response(
         expected_content ?? new ArrayBuffer(100),
         {
@@ -350,7 +578,9 @@ describe(`load_from_url`, () => {
     const full_body = new ArrayBuffer(100)
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(create_mock_response(gzip_header, {}))
+      .mockResolvedValueOnce(
+        create_mock_response(gzip_header, { 'content-range': `bytes 0-15/100` }, 206),
+      )
       .mockResolvedValueOnce(create_mock_response(full_body, headers))
 
     let received_content: string | ArrayBuffer | null = null

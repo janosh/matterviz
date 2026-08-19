@@ -47,9 +47,12 @@ export const trajectory_signal_keys = (
   expected_shape?: number[],
 ): string[] => {
   if (!trajectory) return []
-  const signal_keys = Object.entries(trajectory.signals ?? {}).flatMap(
-    ([key, { sample_shape }]) =>
-      !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
+  const declared_signals = {
+    ...trajectory.signal_descriptors,
+    ...trajectory.signals,
+  }
+  const declared_keys = Object.entries(declared_signals).flatMap(([key, { sample_shape }]) =>
+    !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
   )
   const metadata = trajectory.frames[0]?.metadata ?? {}
   const n_atoms = trajectory.frames[0]?.structure.sites.length ?? 0
@@ -59,7 +62,7 @@ export const trajectory_signal_keys = (
       ? [key]
       : [],
   )
-  return [...new SvelteSet([...signal_keys, ...metadata_keys])].toSorted()
+  return [...new SvelteSet([...declared_keys, ...metadata_keys])].toSorted()
 }
 
 const select_default_key = (keys: string[], preferred: string[]): string | null =>
@@ -109,13 +112,21 @@ export async function collect_trajectory_spectroscopy_input(
       ? select_default_key(available_keys, [`polarizability`])
       : options.raman_key
   const trajectory_velocity = velocity_key ? trajectory.signals?.[velocity_key] : null
-  const frame_signal_keys = [infrared_key, options.raman_signal ? null : raman_key].filter(
-    (key): key is string => Boolean(key && !trajectory.signals?.[key]),
-  )
+  const descriptor_velocity = velocity_key
+    ? trajectory.signal_descriptors?.[velocity_key]
+    : null
+  const frame_signal_keys = [
+    descriptor_velocity ? velocity_key : null,
+    infrared_key,
+    options.raman_signal ? null : raman_key,
+  ].filter((key): key is string => Boolean(key && !trajectory.signals?.[key]))
   const collect_options = {
     frame_stride,
     max_bytes,
-    ...(velocity_key && !trajectory_velocity && has_site_velocities(trajectory, velocity_key)
+    ...(velocity_key &&
+    !trajectory_velocity &&
+    !descriptor_velocity &&
+    has_site_velocities(trajectory, velocity_key)
       ? { vector_keys: [velocity_key] }
       : {}),
     ...(frame_signal_keys.length > 0 ? { signal_keys: frame_signal_keys } : {}),
@@ -129,8 +140,10 @@ export async function collect_trajectory_spectroscopy_input(
   )
 
   const streamed_velocities = velocity_key ? stream.vectors?.[velocity_key] : null
+  const streamed_velocity_signal = velocity_key ? stream.signals?.[velocity_key] : null
   const velocities =
     trajectory_velocity ??
+    streamed_velocity_signal ??
     (streamed_velocities
       ? {
           values: streamed_velocities,
@@ -138,6 +151,13 @@ export async function collect_trajectory_spectroscopy_input(
           steps: [...stream.steps],
         }
       : null)
+  const velocity_source = trajectory_velocity
+    ? velocity_key
+    : streamed_velocity_signal
+      ? `stream:${velocity_key}`
+      : streamed_velocities
+        ? `site:${velocity_key}`
+        : null
   const mass_values = mass_source === `standard` ? null : recorded_masses(trajectory)
   if (mass_source === `recorded` && !mass_values) {
     throw new Error(`Recorded masses were requested, but the trajectory carries none`)
@@ -185,11 +205,7 @@ export async function collect_trajectory_spectroscopy_input(
       ...trajectory.metadata,
       mass_source: mass_values ? `recorded` : `standard`,
       signal_sources: {
-        velocity: velocities
-          ? trajectory_velocity
-            ? velocity_key
-            : `site:${velocity_key}`
-          : null,
+        velocity: velocity_source,
         infrared: infrared_signal ? { key: infrared_key, kind: infrared_signal.kind } : null,
         raman: raman_signal
           ? {

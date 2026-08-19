@@ -180,6 +180,47 @@ describe(`parse_in_worker`, () => {
     expect(source.byteLength).toBe(0)
   })
 
+  it(`posts Blob-backed HDF5 without a transfer and never falls back on worker failure`, async () => {
+    const source = new File([new Uint8Array([1, 2, 3, 4])], `large.h5`)
+    const fallback_parse = vi.fn()
+    let posted_request: TrajectoryParseWorkerRequest | undefined
+    let posted_transfer: readonly Transferable[] = []
+    const listeners = new Map<string, EventListener>()
+    const worker: WorkerLike = {
+      postMessage: (message, options) => {
+        posted_request = message as TrajectoryParseWorkerRequest
+        posted_transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
+        queueMicrotask(() =>
+          listeners.get(`error`)?.(
+            new ErrorEvent(`error`, { message: `worker mount failed` }),
+          ),
+        )
+      },
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) =>
+        listeners.set(type, listener as EventListener),
+      terminate: vi.fn(),
+    }
+
+    await expect(
+      parse_trajectory_in_worker(
+        source,
+        source.name,
+        undefined,
+        {},
+        {
+          worker_factory: () => worker,
+          fallback_parse,
+        },
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/Blob-backed HDF5 parsing failed/),
+      cause: expect.objectContaining({ message: `worker mount failed` }),
+    })
+    expect(posted_request?.data).toBe(source)
+    expect(posted_transfer).toEqual([])
+    expect(fallback_parse).not.toHaveBeenCalled()
+  })
+
   it(`preserves HDF5 group-selection errors from the trajectory worker`, async () => {
     const worker = make_fake_worker((request) => ({
       id: request.id,
@@ -837,6 +878,107 @@ describe(`parse_in_worker`, () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(follow_up_response).toBeUndefined()
     dispose_spy.mockRestore()
+    frame_port.close()
+  })
+
+  it(`serves one live HDF5 frame request at a time`, async () => {
+    const { prepare_parse_result } = await import(`$lib/file-viewer/parse-worker`)
+    const call_order: string[] = []
+    let release_first: (() => void) | undefined
+    const first_pending = new Promise<void>((resolve) => {
+      release_first = resolve
+    })
+    const loader: FrameLoader = {
+      requires_source: false,
+      get_total_frames: async () => 2,
+      build_frame_index: async () => [],
+      extract_plot_metadata: async () => [],
+      load_frame: async (_data, frame_number) => {
+        call_order.push(`start:${frame_number}`)
+        if (frame_number === 0) await first_pending
+        call_order.push(`end:${frame_number}`)
+        return { structure: { sites: [] }, step: frame_number }
+      },
+    }
+    const prepared = prepare_parse_result(
+      1,
+      {
+        type: `trajectory`,
+        filename: `lazy.h5`,
+        data: {
+          frames: [{ structure: { sites: [] }, step: 0 }],
+          total_frames: 2,
+          is_indexed: true,
+          frame_loader: loader,
+        },
+      },
+      new Blob(),
+    )
+    const cloned = structuredClone(prepared.response, { transfer: prepared.transfer })
+    const frame_port = cloned.frame_port
+    if (!frame_port) throw new Error(`lazy worker response has no frame port`)
+    const responses: FrameWorkerResponse[] = []
+    frame_port.addEventListener(`message`, (event: MessageEvent<FrameWorkerResponse>) => {
+      responses.push(event.data)
+    })
+    frame_port.start()
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    frame_port.postMessage({ id: 1, method: `load_frame`, args: [0] })
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    frame_port.postMessage({ id: 2, method: `load_frame`, args: [1] })
+    await vi.waitFor(() => expect(call_order).toEqual([`start:0`]))
+    release_first?.()
+    await vi.waitFor(() => expect(responses).toHaveLength(2))
+    expect(call_order).toEqual([`start:0`, `end:0`, `start:1`, `end:1`])
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    frame_port.postMessage({ id: 3, method: `dispose`, args: [] })
+    frame_port.close()
+  })
+
+  it(`returns an RPC error when a non-transfer frame response cannot be cloned`, async () => {
+    const { prepare_parse_result } = await import(`$lib/file-viewer/parse-worker`)
+    const frame_loader: FrameLoader = {
+      requires_source: false,
+      get_total_frames: async () => 1,
+      build_frame_index: async () => [],
+      load_frame: async () => ({
+        structure: { sites: [] },
+        step: 0,
+        metadata: { unclonable: () => undefined },
+      }),
+      extract_plot_metadata: async () => [],
+    }
+    const prepared = prepare_parse_result(
+      1,
+      {
+        type: `trajectory`,
+        filename: `unclonable.h5`,
+        data: {
+          frames: [{ structure: { sites: [] }, step: 0 }],
+          is_indexed: true,
+          frame_loader,
+        },
+      },
+      new Blob(),
+    )
+    const cloned = structuredClone(prepared.response, { transfer: prepared.transfer })
+    const frame_port = cloned.frame_port
+    if (!frame_port) throw new Error(`lazy worker response has no frame port`)
+    const response = new Promise<FrameWorkerResponse>((resolve) => {
+      frame_port.addEventListener(
+        `message`,
+        (event: MessageEvent<FrameWorkerResponse>) => resolve(event.data),
+        { once: true },
+      )
+      frame_port.start()
+    })
+
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    frame_port.postMessage({ id: 7, method: `load_frame`, args: [0] })
+    await expect(response).resolves.toMatchObject({
+      id: 7,
+      error: expect.stringMatching(/clone|function/i),
+    })
     frame_port.close()
   })
 

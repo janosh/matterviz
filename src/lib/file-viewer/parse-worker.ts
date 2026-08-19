@@ -11,11 +11,15 @@ import type {
   FrameLoader,
   ParseProgress,
   TrajectoryPositionStream,
+  TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory'
 import { packed_frame_transferables } from '$lib/trajectory/helpers'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
-import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
+import {
+  Hdf5TrajectoryGroupSelectionError,
+  parse_hdf5_trajectory,
+} from '$lib/trajectory/parse/hdf5'
 import { parse_file_content, type ParseResult } from './parse'
 import type {
   AnyParseWorkerRequest,
@@ -48,31 +52,33 @@ const position_stream_transferables = (stream: TrajectoryPositionStream): ArrayB
 
 const create_frame_loader_port = (
   frame_loader: FrameLoader,
-  content: string | ArrayBuffer,
+  content: TrajectorySource,
 ): MessagePort => {
   const channel = new MessageChannel()
   // Dropped on dispose so a closed viewer stops pinning the source string (100+ MB for the
   // trajectories worth indexing) and the loader's frame index for the worker's whole life.
+  if (content instanceof Blob && frame_loader.requires_source !== false) {
+    throw new Error(`Blob-backed frame loaders must own their HDF5 source`)
+  }
   let state: { loader: FrameLoader; data: string | ArrayBuffer } | null = {
     loader: frame_loader,
-    data: content,
+    data: content instanceof Blob ? `` : content,
   }
+  let request_queue = Promise.resolve()
   const dispose = (): void => {
-    state?.loader.dispose?.()
-    state = null
-    channel.port1.close()
+    try {
+      state?.loader.dispose?.()
+    } finally {
+      state = null
+      channel.port1.close()
+    }
   }
   const post_response = (response: unknown, transfer: Transferable[] = []): void => {
     if (!state) return
     try {
       channel.port1.postMessage(response, { transfer })
     } catch (error) {
-      if (
-        transfer.length > 0 &&
-        response &&
-        typeof response === `object` &&
-        `id` in response
-      ) {
+      if (response && typeof response === `object` && `id` in response) {
         try {
           channel.port1.postMessage({ id: response.id, error: error_message(error) })
         } catch {
@@ -88,8 +94,9 @@ const create_frame_loader_port = (
       dispose()
       return
     }
-    const { loader, data } = state
-    void (async () => {
+    request_queue = request_queue.then(async () => {
+      if (!state) return
+      const { loader, data } = state
       const on_progress = (progress: ParseProgress): void => post_response({ id, progress })
       try {
         let result: unknown
@@ -121,7 +128,7 @@ const create_frame_loader_port = (
       } catch (error) {
         post_response({ id, error: error_message(error) })
       }
-    })()
+    })
   })
   channel.port1.start()
   return channel.port2
@@ -130,7 +137,7 @@ const create_frame_loader_port = (
 export const prepare_parse_result = (
   id: number,
   result: ParseResult,
-  content: string | ArrayBuffer,
+  content: TrajectorySource,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
   if (trajectory?.is_indexed !== true || !trajectory.frame_loader) {
@@ -175,7 +182,10 @@ export const handle_any_parse_worker_request = async (
   }
   const { id, data, filename, options } = request
   try {
-    const trajectory = await parse_trajectory_async(data, filename, on_progress, options)
+    const trajectory =
+      data instanceof Blob
+        ? await parse_hdf5_trajectory(data, filename, options.hdf5_group_path)
+        : await parse_trajectory_async(data, filename, on_progress, options)
     return prepare_parse_result(id, { type: `trajectory`, data: trajectory, filename }, data)
   } catch (error) {
     return {

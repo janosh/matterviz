@@ -429,17 +429,15 @@ const upright_layout = (
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC
   const label_side = effective_side(side, axis.tick?.label?.inside ?? false)
   const lines = full_texts.map(explicit_tick_lines)
-  const labels = full_texts.map(
-    (full_text, tick_index): ResolvedTickLabel => ({
-      tick_index,
-      full_text,
-      lines: lines[tick_index],
-      visible: true,
-      stagger_row: 0,
-      anchor: label_side === `y` ? `end` : label_side === `y2` ? `start` : `middle`,
-      rotation: 0,
-    }),
-  )
+  const labels = full_texts.map((full_text, tick_index): ResolvedTickLabel => ({
+    tick_index,
+    full_text,
+    lines: lines[tick_index],
+    visible: true,
+    stagger_row: 0,
+    anchor: label_side === `y` ? `end` : label_side === `y2` ? `start` : `middle`,
+    rotation: 0,
+  }))
   // Band is the reach away from the axis: line stack for x/x2, text width for y/y2.
   const is_horizontal = side === `x` || side === `x2`
   let band = 0
@@ -669,19 +667,17 @@ const finalize_layout = (
   side: TickLayoutSide,
 ): ResolvedTickLayout => {
   const geometry_by_idx = new Map(winner.labels.map((label) => [label.id, label]))
-  const labels = winner.candidate.labels.map(
-    (label): ResolvedTickLabel => ({
-      tick_index: label.tick_index,
-      full_text: label.full_text,
-      lines: label.display_lines,
-      visible: label.visible,
-      stagger_row: label.stagger_row,
-      anchor:
-        geometry_by_idx.get(label.tick_index)?.anchor ??
-        (side === `x` || side === `x2` ? `middle` : side === `y` ? `end` : `start`),
-      rotation: winner.candidate.rotation_deg,
-    }),
-  )
+  const labels = winner.candidate.labels.map((label): ResolvedTickLabel => ({
+    tick_index: label.tick_index,
+    full_text: label.full_text,
+    lines: label.display_lines,
+    visible: label.visible,
+    stagger_row: label.stagger_row,
+    anchor:
+      geometry_by_idx.get(label.tick_index)?.anchor ??
+      (side === `x` || side === `x2` ? `middle` : side === `y` ? `end` : `start`),
+    rotation: winner.candidate.rotation_deg,
+  }))
   const visible_tick_indices = labels
     .filter(({ visible }) => visible)
     .map(({ tick_index }) => tick_index)

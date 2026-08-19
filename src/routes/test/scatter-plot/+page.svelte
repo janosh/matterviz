@@ -275,12 +275,10 @@
         : series.point_label
           ? [series.point_label]
           : []
-      ).map(
-        (lbl): LabelStyle => ({
-          ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
-          auto_placement: enable_auto_placement,
-        }),
-      ),
+      ).map((lbl): LabelStyle => ({
+        ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+        auto_placement: enable_auto_placement,
+      })),
     })),
   )
 

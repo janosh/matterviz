@@ -186,26 +186,11 @@ const validate_packed_channels = (
   }
 }
 
-const packed_signal_samples = (
-  signal: TrajectorySignal,
-  store: TrajectoryFrameStore,
-  frame_indices: number[],
-): TrajectorySignal => {
-  if (
-    signal.steps.length !== store.steps.length ||
-    signal.steps.some((step, frame_idx) => step !== store.steps[frame_idx])
-  ) {
-    throw new Error(
-      `Packed trajectory signals requested with positions must share frame steps`,
-    )
-  }
-  const values_per_frame = signal.sample_shape.reduce((product, size) => product * size, 1)
-  return {
-    ...signal,
-    values: copy_packed_samples(signal.values, frame_indices, values_per_frame),
-    steps: frame_indices.map((frame_idx) => store.steps[frame_idx]),
-  }
-}
+const copy_packed_signal = (signal: TrajectorySignal): TrajectorySignal => ({
+  ...signal,
+  values: signal.values.slice(),
+  steps: [...signal.steps],
+})
 
 export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLoader => {
   const n_frames = store.steps.length
@@ -338,24 +323,42 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
           `Packed trajectory has no channels named ${missing_channels.join(`, `)}`,
         )
       }
-      const signal_values_per_frame = signal_keys.reduce((total, key) => {
-        const signal = store.signals?.[key]
-        return total + (signal?.sample_shape.reduce((product, size) => product * size, 1) ?? 0)
-      }, 0)
+      const stream_pbc = store.pbc_frames
+        ? store.pbc_frames.every((pbc) =>
+            pbc.every((value, axis) => value === store.pbc_frames?.[0]?.[axis]),
+          )
+          ? store.pbc_frames[0]
+          : null
+        : (store.pbc ?? null)
+      if (store.pbc_frames && !stream_pbc) {
+        throw new Error(
+          `Packed trajectory analysis does not support PBC flags that vary between frames`,
+        )
+      }
       const values_per_frame =
         position_values_per_frame +
         scalar_keys.length * n_atoms +
-        vector_keys.length * position_values_per_frame +
-        signal_values_per_frame
+        vector_keys.length * position_values_per_frame
+      const signal_value_count = signal_keys.reduce((total, key) => {
+        const signal = required_packed_channel(store.signals, key, `signal`)
+        return total + signal.values.length + signal.steps.length
+      }, 0)
       const needed_bytes =
-        frame_indices.length * values_per_frame * Float64Array.BYTES_PER_ELEMENT
+        (frame_indices.length * values_per_frame + signal_value_count) *
+        Float64Array.BYTES_PER_ELEMENT
       const max_bytes = options.max_bytes ?? Number.POSITIVE_INFINITY
       if (!(max_bytes > 0)) {
         throw new Error(`Packed trajectory max_bytes must be positive, got ${max_bytes}`)
       }
+      const signal_bytes = signal_value_count * Float64Array.BYTES_PER_ELEMENT
+      if (signal_bytes > max_bytes) {
+        throw new Error(
+          `Packed trajectory native-cadence signals need ${signal_bytes} bytes, over the ${max_bytes} byte budget.`,
+        )
+      }
       if (needed_bytes > max_bytes) {
         const frame_bytes = values_per_frame * Float64Array.BYTES_PER_ELEMENT
-        const affordable_frames = Math.floor(max_bytes / frame_bytes)
+        const affordable_frames = Math.floor((max_bytes - signal_bytes) / frame_bytes)
         if (affordable_frames < 1) {
           throw new Error(
             `A packed trajectory frame needs ${frame_bytes} bytes, over the ${max_bytes} byte budget.`,
@@ -384,11 +387,7 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
       const signals = Object.fromEntries(
         signal_keys.map((key) => [
           key,
-          packed_signal_samples(
-            required_packed_channel(store.signals, key, `signal`),
-            store,
-            frame_indices,
-          ),
+          copy_packed_signal(required_packed_channel(store.signals, key, `signal`)),
         ]),
       )
       on_progress?.({ current: 100, total: 100, stage: `Collected packed trajectory data` })
@@ -405,13 +404,7 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
           store.lattice_matrix || store.lattice_matrices
             ? frame_indices.map((frame_idx) => lattice_for_frame(frame_idx) ?? null)
             : null,
-        pbc: store.pbc_frames
-          ? store.pbc_frames.every((pbc) =>
-              pbc.every((value, axis) => value === store.pbc_frames?.[0]?.[axis]),
-            )
-            ? store.pbc_frames[0]
-            : null
-          : (store.pbc ?? null),
+        pbc: stream_pbc,
         coords_unwrapped: store.coords_unwrapped,
         frame_stride: options.frame_stride ?? 1,
         steps: frame_indices.map((frame_idx) => store.steps[frame_idx]),

@@ -677,7 +677,7 @@ O2   O   0.410  0.140  0.880  1.000`
     const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
       sites
         .map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
-        .sort((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
+        .toSorted((aa, bb) => aa[0] - bb[0] || aa[1] - bb[1] || aa[2] - bb[2])
 
     // expand a single origin atom to the full centered cell, checking the exact
     // images so a swapped/missing centering vector can't pass on count alone

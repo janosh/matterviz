@@ -260,7 +260,7 @@
       >
     </fieldset>
     <p class="provenance">
-      {trajectory.frames.length} loaded frames · timestep {has_physical_time
+      {trajectory.total_frames ?? trajectory.frames.length} total frames · timestep {has_physical_time
         ? `${format_num(analysis_time_step ?? 0, `.5~g`)} ${analysis_time_unit}`
         : `not recorded`} · raw spectra remain unsmoothed and independently normalized only for display
     </p>

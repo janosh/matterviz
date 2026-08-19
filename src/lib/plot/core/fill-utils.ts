@@ -210,7 +210,9 @@ const defines_own_x = (boundary: FillBoundary): boolean =>
 
 // Keep only finite points, sorted by x
 const clean_pts = (pts: Pt[]): Pt[] =>
-  pts.filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y)).sort((a, b) => a.x - b.x)
+  pts
+    .filter((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y))
+    .toSorted((a, b) => a.x - b.x)
 
 // Zip parallel x/y arrays into finite, x-sorted points
 const finite_points = (xs: readonly number[], ys: readonly number[]): Pt[] =>

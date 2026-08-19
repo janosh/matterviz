@@ -115,8 +115,11 @@ describe(`create_data_url_loader`, () => {
     const load = defer_next_load(`payload`)
     const teardown = loader.request(request({ url: `https://x.test/a.xyz` }))
     expect(state.loading).toBe(true)
+    const signal = vi.mocked(load_from_url).mock.calls[0][2]
+    expect(signal?.aborted).toBe(false)
 
     teardown()
+    expect(signal?.aborted).toBe(true)
     expect(state.loading).toBe(false)
     await load.resolve()
     expect(state.value).toBe(``)

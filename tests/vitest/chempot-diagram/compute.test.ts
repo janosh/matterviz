@@ -105,7 +105,7 @@ const reorder_cols = (pts: number[][]): number[][] =>
 const sort_rows = (pts: number[][]): number[][] =>
   [...pts]
     .map((row) => row.map((val) => Math.round(val * 1e6) / 1e6))
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       for (let idx = 0; idx < a.length; idx++) {
         if (a[idx] !== b[idx]) return a[idx] - b[idx]
       }

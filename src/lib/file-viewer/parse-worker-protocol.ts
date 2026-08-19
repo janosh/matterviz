@@ -6,7 +6,7 @@
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
-import type { ParseProgress } from '$lib/trajectory'
+import type { ParseProgress, TrajectorySource } from '$lib/trajectory'
 import type { LoadingOptions } from '$lib/trajectory/parse'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import type { ParseResult } from './parse'
@@ -21,7 +21,7 @@ export interface ParseWorkerRequest {
 export interface TrajectoryParseWorkerRequest {
   kind: `trajectory`
   id: number
-  data: string | ArrayBuffer
+  data: TrajectorySource
   filename: string
   options: LoadingOptions
 }

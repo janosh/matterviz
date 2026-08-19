@@ -1,5 +1,7 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import type * as Hdf5Module from '$lib/trajectory/parse/hdf5'
+import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
 import { IS_CI } from './helpers'
 
@@ -69,6 +71,190 @@ test.describe(`Trajectory Component`, () => {
       `aria-label`,
       `Drop trajectory file here to load`,
     )
+  })
+
+  test(`loads and scrubs a local HDF5 File through the lazy worker loader`, async ({
+    page,
+  }) => {
+    const empty_trajectory = page.locator(`#empty-state`)
+    await empty_trajectory.evaluate(async (target) => {
+      const response = await fetch(`/trajectories/flame-gold-cluster-55-atoms.h5`)
+      const source = await response.blob()
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([source], `gold.h5`))
+      target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+    })
+
+    await expect(empty_trajectory.locator(`button.filename`)).toContainText(`gold.h5`, {
+      timeout: LOAD_TIMEOUT,
+    })
+    const step_input = empty_trajectory.locator(`.step-input`)
+    await expect(step_input).toHaveValue(`0`)
+    await step_input.fill(`19`)
+    await step_input.press(`Enter`)
+    await expect(step_input).toHaveValue(`19`)
+  })
+
+  test(`loads a remote HDF5 Blob once through the lazy worker loader`, async ({ page }) => {
+    const empty_trajectory = page.locator(`#empty-state`)
+    const source_url = `/trajectories/flame-gold-cluster-55-atoms.h5`
+    let source_requests = 0
+    page.on(`request`, (request) => {
+      if (new URL(request.url()).pathname === source_url) source_requests++
+    })
+    await empty_trajectory.evaluate((target, url) => {
+      const transfer = new DataTransfer()
+      transfer.setData(`application/json`, JSON.stringify({ url }))
+      target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+    }, source_url)
+
+    await expect(empty_trajectory.locator(`button.filename`)).toContainText(
+      `flame-gold-cluster-55-atoms.h5`,
+      { timeout: LOAD_TIMEOUT },
+    )
+    expect(source_requests).toBe(1)
+    await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
+  })
+
+  test(`lazy HDF5 worker streams exactly match the eager parser`, async ({ page }) => {
+    const source_url = `/trajectories/gold-nanoparticle-md.h5`
+    const comparison = await page.evaluate(async (url) => {
+      const worker_module_path = `/src/lib/file-viewer/parse-in-worker.ts`
+      const hdf5_module_path = `/src/lib/trajectory/parse/hdf5.ts`
+      const [{ parse_trajectory_in_worker }, { parse_hdf5_trajectory }] = await Promise.all([
+        import(worker_module_path) as Promise<typeof ParseWorkerModule>,
+        import(hdf5_module_path) as Promise<typeof Hdf5Module>,
+      ])
+      const source = await (await fetch(url)).blob()
+      const eager = await parse_hdf5_trajectory(await source.arrayBuffer(), `gold.h5`)
+      const lazy = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
+      const request = { signal_keys: [`velocity`, `forces`] }
+      const eager_stream = await eager.frame_loader?.stream_positions?.(``, request)
+      const lazy_stream = await lazy.frame_loader?.stream_positions?.(``, request)
+      if (!eager_stream || !lazy_stream) throw new Error(`missing HDF5 position stream`)
+      const eager_loader = eager.frame_loader
+      const lazy_loader = lazy.frame_loader
+      if (!eager_loader || !lazy_loader) throw new Error(`missing HDF5 frame loader`)
+      const serialize_frame = (frame: (typeof eager.frames)[number] | null | undefined) =>
+        frame
+          ? {
+              step: frame.step,
+              sites: frame.structure.sites.map(({ xyz, species }) => ({ xyz, species })),
+              lattice:
+                `lattice` in frame.structure
+                  ? {
+                      matrix: frame.structure.lattice.matrix,
+                      pbc: frame.structure.lattice.pbc,
+                    }
+                  : null,
+              metadata: frame.metadata,
+            }
+          : null
+      const frame_indices = [
+        0,
+        Math.floor((eager.total_frames ?? 1) / 2),
+        (eager.total_frames ?? 1) - 1,
+      ]
+      const [eager_frames, lazy_frames] = await Promise.all(
+        [eager_loader, lazy_loader].map((loader) =>
+          Promise.all(
+            frame_indices.map((frame_idx) =>
+              loader.load_frame(``, frame_idx).then(serialize_frame),
+            ),
+          ),
+        ),
+      )
+      const errors = [
+        ...eager_stream.positions.map((value, value_idx) =>
+          Math.abs(value - lazy_stream.positions[value_idx]),
+        ),
+        ...Object.entries(eager_stream.signals ?? {}).flatMap(([key, signal]) =>
+          [...signal.values].map((value, value_idx) =>
+            Math.abs(value - (lazy_stream.signals?.[key]?.values[value_idx] ?? Number.NaN)),
+          ),
+        ),
+      ]
+      const expected = [
+        ...eager_stream.positions,
+        ...Object.values(eager_stream.signals ?? {}).flatMap(({ values }) => [...values]),
+      ]
+      const relative_errors = errors.map((error, value_idx) =>
+        expected[value_idx] === 0 ? error : error / Math.abs(expected[value_idx]),
+      )
+      const descriptor_oracle = Object.fromEntries(
+        Object.entries(eager.signals ?? {}).map(([key, signal]) => [
+          key,
+          {
+            sample_shape: signal.sample_shape,
+            sample_count: signal.steps.length,
+            ...(signal.unit ? { unit: signal.unit } : {}),
+          },
+        ]),
+      )
+      const stream_metadata = (stream: typeof eager_stream) => ({
+        n_frames: stream.n_frames,
+        n_atoms: stream.n_atoms,
+        elements: stream.elements,
+        steps: stream.steps,
+        pbc: stream.pbc,
+        lattice_matrices: stream.lattice_matrices,
+        signals: Object.fromEntries(
+          Object.entries(stream.signals ?? {}).map(([key, signal]) => [
+            key,
+            {
+              sample_shape: signal.sample_shape,
+              steps: signal.steps,
+              unit: signal.unit,
+            },
+          ]),
+        ),
+      })
+      const exact = (left: unknown, right: unknown) =>
+        JSON.stringify(left) === JSON.stringify(right)
+      const preview_equal = exact(
+        eager.frames.map(serialize_frame),
+        lazy.frames.map(serialize_frame),
+      )
+      const plot_metadata_equal = exact(eager.plot_metadata, lazy.plot_metadata)
+      const stream_metadata_equal = exact(
+        stream_metadata(eager_stream),
+        stream_metadata(lazy_stream),
+      )
+      const random_frames_equal = exact(eager_frames, lazy_frames)
+      const descriptors_equal = exact(descriptor_oracle, lazy.signal_descriptors)
+      lazy_loader.dispose?.()
+      eager_loader.dispose?.()
+      const disposed_error = await lazy_loader
+        .load_frame(``, 0)
+        .then(() => `missing error`, String)
+      return {
+        max_absolute_error: Math.max(...errors),
+        max_relative_error: Math.max(...relative_errors),
+        lazy_frame_store: Boolean(lazy.frame_store),
+        lazy_loaded_signals: Boolean(lazy.signals),
+        descriptors: Object.keys(lazy.signal_descriptors ?? {}).toSorted(),
+        descriptors_equal,
+        disposed: disposed_error.includes(`disposed`),
+        plot_metadata_equal,
+        preview_equal,
+        random_frames_equal,
+        stream_metadata_equal,
+      }
+    }, source_url)
+
+    expect(comparison).toEqual({
+      max_absolute_error: 0,
+      max_relative_error: 0,
+      lazy_frame_store: false,
+      lazy_loaded_signals: false,
+      descriptors: [`forces`, `velocity`],
+      descriptors_equal: true,
+      disposed: true,
+      plot_metadata_equal: true,
+      preview_equal: true,
+      random_frames_equal: true,
+      stream_metadata_equal: true,
+    })
   })
 
   test(`basic controls and navigation work`, async () => {

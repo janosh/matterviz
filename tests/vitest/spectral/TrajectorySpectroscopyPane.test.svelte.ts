@@ -121,9 +121,11 @@ test(`recomputes from changed settings and marks the prior result as stale`, asy
   mocks.compute
     .mockResolvedValueOnce(make_result(`first`))
     .mockReturnValueOnce(recomputation.promise)
-  const target = render_pane({ trajectory: make_trajectory() })
+  const trajectory = { ...make_trajectory(), total_frames: 24_001 }
+  const target = render_pane({ trajectory })
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  expect(target.textContent).toContain(`24001 total frames`)
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
   expect(fieldset?.disabled).toBe(false)
   const timestep = target.querySelector<HTMLInputElement>(

@@ -8,14 +8,26 @@ import {
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
 import { get_traj_parse_warnings } from '$lib/trajectory/parse/diagnostics'
-import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
-import { to_number_array, to_scalar_number } from '$lib/trajectory/parse/h5-utils'
+import {
+  Hdf5TrajectoryGroupSelectionError,
+  parse_hdf5_trajectory,
+} from '$lib/trajectory/parse/hdf5'
+import {
+  HDF5_MAX_LOGICAL_SLICE_BYTES,
+  hdf5_frames_per_slice,
+  read_numeric_first_axis,
+  read_numeric_hyperslab,
+  read_numeric_samples,
+  to_number_array,
+  to_scalar_number,
+} from '$lib/trajectory/parse/h5-utils'
 import { ase_calculator_data } from '$lib/trajectory/parse/ase'
+import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
 import { get_trajectory_type } from '$site/trajectories'
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import type { File as H5File } from 'h5wasm'
+import type { Dataset as H5Dataset, File as H5File } from 'h5wasm'
 import { describe, expect, it, test, vi } from 'vitest'
 import {
   get_dummy_structure,
@@ -42,6 +54,89 @@ it.each([
 it(`rejects BigInt arrays that cannot be represented exactly`, () => {
   expect(to_number_array([1n, 2n])).toEqual([1, 2])
   expect(to_number_array([2n ** 60n])).toBeNull()
+})
+
+it.each([1, 3, 9, 3000])(
+  `caps a %i-value HDF5 frame slice at 8 MiB of logical Float64 output`,
+  (values_per_frame) => {
+    const frame_count = hdf5_frames_per_slice(values_per_frame)
+    expect(
+      frame_count * values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+    ).toBeLessThanOrEqual(HDF5_MAX_LOGICAL_SLICE_BYTES)
+    expect(
+      (frame_count + 1) * values_per_frame * Float64Array.BYTES_PER_ELEMENT,
+    ).toBeGreaterThan(HDF5_MAX_LOGICAL_SLICE_BYTES)
+  },
+)
+
+it(`caps a shared HDF5 frame slice by its widest per-frame dataset`, () => {
+  const frame_count = hdf5_frames_per_slice(3, 1, 9)
+  expect(frame_count * 9 * Float64Array.BYTES_PER_ELEMENT).toBeLessThanOrEqual(
+    HDF5_MAX_LOGICAL_SLICE_BYTES,
+  )
+  expect((frame_count + 1) * 9 * Float64Array.BYTES_PER_ELEMENT).toBeGreaterThan(
+    HDF5_MAX_LOGICAL_SLICE_BYTES,
+  )
+})
+
+it(`rejects one HDF5 sample larger than the logical hyperslab limit`, () => {
+  expect(() =>
+    hdf5_frames_per_slice(HDF5_MAX_LOGICAL_SLICE_BYTES / Float64Array.BYTES_PER_ELEMENT + 1),
+  ).toThrow(`above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application slice limit`)
+})
+
+it(`rejects an oversized logical HDF5 hyperslab before reading it`, () => {
+  const slice = vi.fn()
+  const dataset = {
+    shape: [HDF5_MAX_LOGICAL_SLICE_BYTES / Float64Array.BYTES_PER_ELEMENT + 1],
+    slice,
+  } as unknown as H5Dataset
+  expect(() => read_numeric_hyperslab(dataset, `/large`, [[]])).toThrow(
+    `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+  )
+  expect(slice).not.toHaveBeenCalled()
+})
+
+it(`copies large HDF5 axis chunks without spreading them into the call stack`, () => {
+  const entry_count = 130_000
+  const dataset = {
+    shape: [entry_count],
+    slice: () => Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
+  } as unknown as H5Dataset
+  const values = read_numeric_first_axis(dataset, `/steps/positions`, entry_count, 1, `HDF5`)
+  expect(values).toHaveLength(entry_count)
+  expect(values.at(-1)).toBe(entry_count - 1)
+})
+
+it(`rejects overlong HDF5 step axes before a lazy parser can truncate them`, () => {
+  const dataset = { shape: [3] } as H5Dataset
+  expect(() =>
+    read_numeric_first_axis(dataset, `/steps/positions`, 2, 1, `TorchSim HDF5 steps`),
+  ).toThrow(`steps /steps/positions has 3 entries, expected 2`)
+})
+
+it(`fills response arrays with capped HDF5 hyperslabs`, () => {
+  const sample_size = 3
+  const sample_count = hdf5_frames_per_slice(sample_size) + 1
+  const slice = vi.fn((ranges: [number, number, number][]) => {
+    const [start, end, stride] = ranges[0]
+    const count = Math.ceil((end - start) / stride)
+    return Float64Array.from(
+      { length: count * sample_size },
+      (_unused, value_idx) => start + Math.floor(value_idx / sample_size) * stride,
+    )
+  })
+  const dataset = { shape: [sample_count, sample_size], slice } as unknown as H5Dataset
+  const values = read_numeric_samples(
+    dataset,
+    `/observables/dipole`,
+    sample_count,
+    sample_size,
+  )
+
+  expect(slice).toHaveBeenCalledTimes(2)
+  expect(values).toHaveLength(sample_count * sample_size)
+  expect(values.at(-1)).toBe(sample_count - 1)
 })
 
 test.each([
@@ -1290,6 +1385,198 @@ describe(`HDF5 Format`, () => {
     })
   })
 
+  it(`preserves native signal cadence in the lazy Blob parser`, async () => {
+    const buffer = await make_torch_sim_signal_buffer()
+    const eager = await parse_hdf5_trajectory(buffer, `torch-sim.h5`)
+    const lazy = await parse_hdf5_trajectory(buffer, `torch-sim.h5`, undefined, true)
+    const stream = await lazy.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`polarizability`],
+    })
+
+    expect(lazy.signal_descriptors?.polarizability).toEqual({
+      sample_shape: [3, 3],
+      sample_count: 3,
+    })
+    expect(stream?.signals?.polarizability).toMatchObject({
+      sample_shape: [3, 3],
+      steps: [0, 2, 4],
+      values: eager.signals?.polarizability.values,
+    })
+    lazy.frame_loader?.dispose?.()
+  })
+
+  it(`returns singleton TorchSim and Reference MD HDF5 inputs eagerly`, async () => {
+    const torch_buffer = await h5_bytes(`singleton-torch`, (file) => {
+      const data = file.create_group(`data`)
+      data.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
+      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+    })
+    const torch = await parse_hdf5_trajectory(torch_buffer, `singleton.h5`, undefined, true)
+    const reference = await parse_hdf5_trajectory(
+      await make_reference_md_h5_buffer([100, 101], 1),
+      `reference-singleton.h5`,
+      `/molecules/h2o/replicas/1`,
+    )
+
+    expect(torch).toMatchObject({ frames: [{ step: 0 }] })
+    expect(torch.frame_loader).toBeUndefined()
+    expect(reference.frames).toHaveLength(1)
+    expect(reference.frame_loader).toBeUndefined()
+    expect(reference.signals?.velocity.values).toEqual(Float64Array.from([1, 0, 0, 0, 2, 0]))
+  })
+
+  it(`recovers zero-filled step tails after structural validation`, async () => {
+    const make_buffer = (position_steps: number[]) =>
+      h5_bytes(`torn-steps`, (file) => {
+        const data = file.create_group(`data`)
+        const steps = file.create_group(`steps`)
+        data.create_dataset({
+          name: `positions`,
+          data: [...frame_positions, ...frame_positions, ...zero_positions],
+          shape: [3, 2, 3],
+        })
+        data.create_dataset({
+          name: `atomic_numbers`,
+          data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
+          shape: [3, 2],
+        })
+        steps.create_dataset({ name: `positions`, data: position_steps, shape: [3] })
+      })
+    const torn = await make_buffer([0, 1, 0])
+    for (const lazy of [false, true]) {
+      const trajectory = await parse_hdf5_trajectory(torn, `torn-steps.h5`, undefined, lazy)
+      expect(trajectory.frames.map(({ step }) => step)).toEqual([0, 1])
+      expect(trajectory.metadata?.dropped_steps).toBe(1)
+      trajectory.frame_loader?.dispose?.()
+    }
+    const corrupt = await make_buffer([0, 0, 0])
+    for (const lazy of [false, true]) {
+      await expect(
+        parse_hdf5_trajectory(corrupt, `corrupt-steps.h5`, undefined, lazy),
+      ).rejects.toThrow(`must increase strictly`)
+    }
+  })
+
+  it(`trims zero-filled response and energy step tails with the geometry`, async () => {
+    const content = await h5_bytes(`torn-response-steps`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
+        shape: [3, 2, 3],
+      })
+      data.create_dataset({
+        name: `atomic_numbers`,
+        data: [...two_gold_atoms, ...two_gold_atoms, 0, 0],
+        shape: [3, 2],
+      })
+      data.create_dataset({
+        name: `velocities`,
+        data: [...frame_positions, ...frame_positions, ...zero_positions],
+        shape: [3, 2, 3],
+      })
+      data.create_dataset({ name: `energy`, data: [-1, -2, 0], shape: [3] })
+      for (const name of [`positions`, `velocities`, `energy`]) {
+        steps.create_dataset({ name, data: [0, 1, 0], shape: [3] })
+      }
+    })
+
+    for (const lazy of [false, true]) {
+      const trajectory = await parse_hdf5_trajectory(
+        content,
+        `torn-response-steps.h5`,
+        undefined,
+        lazy,
+      )
+      expect(trajectory.frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
+      if (lazy) {
+        expect(trajectory.signal_descriptors?.velocity).toMatchObject({ sample_count: 2 })
+        const stream = await trajectory.frame_loader?.stream_positions?.(``, {
+          signal_keys: [`velocity`],
+        })
+        expect(stream?.signals?.velocity.steps).toEqual([0, 1])
+      } else {
+        expect(trajectory.signals?.velocity.steps).toEqual([0, 1])
+      }
+      trajectory.frame_loader?.dispose?.()
+    }
+  })
+
+  it(`keeps non-aligned energy on its native signal cadence`, async () => {
+    const content = await h5_bytes(`native-energy`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      data.create_dataset({
+        name: `positions`,
+        data: Array.from({ length: 4 }, (_unused, frame_idx) => [frame_idx, 0, 0]).flat(),
+        shape: [4, 1, 3],
+      })
+      data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      data.create_dataset({ name: `energy`, data: [-1, -2, -3], shape: [3] })
+      steps.create_dataset({ name: `positions`, data: [0, 1, 2, 3], shape: [4] })
+      steps.create_dataset({ name: `energy`, data: [0, 2, 4], shape: [3] })
+    })
+    const eager = await parse_hdf5_trajectory(content, `native-energy.h5`)
+    const lazy = await parse_hdf5_trajectory(content, `native-energy.h5`, undefined, true)
+    const stream = await lazy.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`energy`],
+    })
+
+    expect(eager.frames.every(({ metadata }) => metadata?.energy === undefined)).toBe(true)
+    expect(eager.signals?.energy).toMatchObject({ steps: [0, 2, 4] })
+    expect(lazy.frames.every(({ metadata }) => metadata?.energy === undefined)).toBe(true)
+    expect(stream?.signals?.energy).toMatchObject({
+      steps: [0, 2, 4],
+      values: eager.signals?.energy.values,
+    })
+    lazy.frame_loader?.dispose?.()
+  })
+
+  it(`streams uniform dynamic PBC and rejects genuinely varying flags`, async () => {
+    const make_buffer = (pbc: number[]) =>
+      h5_bytes(`dynamic-pbc`, (file) => {
+        const n_frames = pbc.length / 3
+        const data = file.create_group(`data`)
+        data.create_dataset({
+          name: `positions`,
+          data: Array.from({ length: n_frames }, (_unused, frame_idx) => [
+            frame_idx,
+            0,
+            0,
+          ]).flat(),
+          shape: [n_frames, 1, 3],
+        })
+        data.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+        data.create_dataset({ name: `pbc`, data: pbc, shape: [n_frames, 3] })
+      })
+    const uniform = await parse_hdf5_trajectory(
+      await make_buffer(Array.from({ length: 12 }, () => [1, 0, 1]).flat()),
+      `uniform-pbc.h5`,
+      undefined,
+      true,
+    )
+    expect(await uniform.frame_loader?.stream_positions?.(``)).toMatchObject({
+      pbc: [true, false, true],
+    })
+    uniform.frame_loader?.dispose?.()
+
+    const varying = await parse_hdf5_trajectory(
+      await make_buffer(
+        Array.from({ length: 12 }, (_unused, frame_idx) =>
+          frame_idx === 6 ? [0, 0, 0] : [1, 1, 1],
+        ).flat(),
+      ),
+      `varying-pbc.h5`,
+      undefined,
+      true,
+    )
+    await expect(varying.frame_loader?.stream_positions?.(``)).rejects.toThrow(
+      `PBC flags that vary between frames`,
+    )
+    varying.frame_loader?.dispose?.()
+  })
+
   it(`packs long generic HDF5 runs with variable cells instead of materializing every frame`, async () => {
     const n_frames = 12
     const content = await h5_bytes(`long-generic`, (file) => {
@@ -1396,18 +1683,29 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.time_step).toBe(0.25)
     expect(trajectory.time_unit).toBe(`ps`)
     expect(trajectory.atom_masses).toEqual([1.008, 15.999])
-    expect(trajectory.signals?.velocity).toMatchObject({
+    expect(trajectory.signals).toBeUndefined()
+    expect(trajectory.signal_descriptors?.velocity).toEqual({
+      sample_shape: [2, 3],
+      sample_count: 3,
+      unit: `A/ps`,
+    })
+    expect(trajectory.signal_descriptors?.dipole).toEqual({
+      sample_shape: [3],
+      sample_count: 3,
+      unit: `e*A`,
+    })
+    const signal_stream = await trajectory.frame_loader?.stream_positions?.(``, {
+      signal_keys: [`velocity`, `dipole`],
+    })
+    expect(signal_stream?.signals?.velocity).toMatchObject({
       sample_shape: [2, 3],
       steps: [0, 2, 4],
       unit: `A/ps`,
       values: Float64Array.from([1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0]),
     })
-    expect(trajectory.signals?.dipole).toMatchObject({
-      sample_shape: [3],
-      steps: [0, 2, 4],
-      unit: `e*A`,
-      values: Float64Array.from([10, 0, 0, 11, 0, 0, 12, 0, 0]),
-    })
+    expect(signal_stream?.signals?.dipole.values).toEqual(
+      Float64Array.from([10, 0, 0, 11, 0, 0, 12, 0, 0]),
+    )
     expect(trajectory.metadata).toMatchObject({
       source_format: `reference_md_hdf5`,
       molecule: `h2o`,
@@ -1437,19 +1735,14 @@ describe(`HDF5 Format`, () => {
       { velocity: [1, 0, 0] },
       { velocity: [0, 2, 0] },
     ])
-    expect(
-      trajectory.frame_loader
-        ?.load_frame_sync?.(11)
-        ?.structure.sites.map(({ properties }) => properties.velocity),
-    ).toEqual([
-      [1, 0, 0],
-      [0, 2, 0],
-    ])
+    for (const frame_idx of [0, 5, 11]) {
+      const frame = await trajectory.frame_loader?.load_frame(content, frame_idx)
+      expect(frame?.structure.sites.map(({ xyz }) => xyz)).toEqual([
+        [5 + frame_idx * 0.5, 0, 0],
+        [5, 1 + frame_idx, 0],
+      ])
+    }
     const frame_11 = await trajectory.frame_loader?.load_frame(content, 11)
-    expect(frame_11?.structure.sites.map(({ xyz }) => xyz)).toEqual([
-      [10.5, 0, 0],
-      [5, 12, 0],
-    ])
     expect(frame_11?.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
       [1, 0, 0],
       [0, 2, 0],
@@ -1466,6 +1759,59 @@ describe(`HDF5 Format`, () => {
     })
     expect(stream?.positions).toHaveLength(36)
     expect(stream?.vectors?.velocity).toHaveLength(36)
+    const expected_positions = Float64Array.from(
+      [0, 2, 4, 6, 8, 10].flatMap((frame_idx) => [
+        5 + frame_idx * 0.5,
+        0,
+        0,
+        5,
+        1 + frame_idx,
+        0,
+      ]),
+    )
+    const absolute_errors = [...(stream?.positions ?? [])].map((value, value_idx) =>
+      Math.abs(value - expected_positions[value_idx]),
+    )
+    const relative_errors = absolute_errors.map((error, value_idx) =>
+      expected_positions[value_idx] === 0
+        ? 0
+        : error / Math.abs(expected_positions[value_idx]),
+    )
+    expect({
+      max_absolute_error: Math.max(...absolute_errors),
+      max_relative_error: Math.max(...relative_errors),
+    }).toEqual({ max_absolute_error: 0, max_relative_error: 0 })
+    await expect(
+      trajectory.frame_loader?.stream_positions?.(content, {
+        max_bytes: 64,
+        signal_keys: [`velocity`],
+      }),
+    ).rejects.toThrow(`native-cadence signals need`)
+  })
+
+  it(`bounds Reference MD checkpoints and replays exactly across a boundary`, async () => {
+    const checkpoint_bytes = 6 * 1024 * 1024
+    const budget_bytes = 32 * 1024 * 1024
+    const interval = reference_checkpoint_interval(1500, checkpoint_bytes, budget_bytes)
+    expect(interval).toBe(300)
+    expect(Math.ceil(1500 / interval) * checkpoint_bytes).toBeLessThanOrEqual(budget_bytes)
+
+    const trajectory = await parse_hdf5_trajectory(
+      await make_reference_md_h5_buffer([100, 101], 258),
+      `reference-checkpoint.h5`,
+      `/molecules/h2o/replicas/1`,
+    )
+    for (const frame_idx of [255, 256, 257]) {
+      const frame = await trajectory.frame_loader?.load_frame(``, frame_idx)
+      expect(frame?.structure.sites.map(({ xyz }) => xyz)).toEqual([
+        [5 + frame_idx * 0.5, 0, 0],
+        [5, 1 + frame_idx, 0],
+      ])
+    }
+    expect(Number(trajectory.metadata?.position_checkpoint_bytes)).toBeLessThanOrEqual(
+      budget_bytes,
+    )
+    trajectory.frame_loader?.dispose?.()
   })
 
   it(`does not mistake generic HDF5 runs for the reference MD layout`, async () => {

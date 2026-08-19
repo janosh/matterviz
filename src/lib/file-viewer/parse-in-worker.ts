@@ -15,6 +15,7 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
@@ -465,7 +466,7 @@ export const parse_in_worker = (
 // Trajectory component loads use a dedicated worker so aborting a superseded HDF5 parse can
 // terminate it immediately and an indexed frame loader cannot block later parse requests.
 export const parse_trajectory_in_worker = (
-  data: string | ArrayBuffer,
+  data: TrajectorySource,
   filename: string,
   on_progress: ((progress: ParseProgress) => void) | undefined,
   loading_options: LoadingOptions,
@@ -492,6 +493,14 @@ export const parse_trajectory_in_worker = (
     }
     const fallback = (error: Error): void => {
       if (settled) return
+      if (data instanceof Blob) {
+        return fail(
+          new Error(
+            `Blob-backed HDF5 parsing failed for ${filename}; reload the file after checking browser Web Worker and WebAssembly support`,
+            { cause: error },
+          ),
+        )
+      }
       if (source_transferred) {
         return fail(
           new Error(
@@ -575,7 +584,7 @@ export const parse_trajectory_in_worker = (
         fallback(new Error(`Trajectory parse worker timed out after ${timeout_ms / 1000}s`)),
       timeout_ms,
     )
-    const request_data =
+    const request_data: TrajectorySource =
       data instanceof ArrayBuffer && !client_options.transfer_source ? data.slice(0) : data
     const request: TrajectoryParseWorkerRequest = {
       kind: `trajectory`,

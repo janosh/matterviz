@@ -278,6 +278,73 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     expect(input.infrared_signal?.series.steps).toHaveLength(50)
   })
 
+  it(`discovers descriptor-backed velocity and response signals at native cadence`, async () => {
+    const trajectory = make_trajectory()
+    for (const frame of trajectory.frames) {
+      frame.metadata = {}
+      frame.structure.sites[0].properties = { mass: 1.5 }
+    }
+    trajectory.total_frames = 8
+    trajectory.is_indexed = true
+    trajectory.signal_descriptors = {
+      velocity: { sample_shape: [1, 3], sample_count: 8, unit: `A/fs` },
+      dipole: { sample_shape: [3], sample_count: 4, unit: `e*A` },
+      polarizability: { sample_shape: [3, 3], sample_count: 3, unit: `A^3` },
+    }
+    let requested_options: PositionStreamOptions | undefined
+    trajectory.frame_loader = {
+      requires_source: false,
+      get_total_frames: async () => 8,
+      build_frame_index: async () => [],
+      load_frame: async () => null,
+      extract_plot_metadata: async () => [],
+      stream_positions: async (_raw_data, options) => {
+        requested_options = options
+        return {
+          positions: new Float64Array(24),
+          n_frames: 8,
+          n_atoms: 1,
+          elements: [`H`],
+          lattice_matrices: null,
+          pbc: null,
+          coords_unwrapped: false,
+          frame_stride: 1,
+          steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
+          signals: {
+            velocity: {
+              values: new Float64Array(24),
+              sample_shape: [1, 3],
+              steps: Array.from({ length: 8 }, (_unused, frame_idx) => frame_idx),
+              unit: `A/fs`,
+            },
+            dipole: {
+              values: new Float64Array(12),
+              sample_shape: [3],
+              steps: [0, 2, 4, 6],
+              unit: `e*A`,
+            },
+            polarizability: {
+              values: new Float64Array(27),
+              sample_shape: [3, 3],
+              steps: [0, 3, 6],
+              unit: `A^3`,
+            },
+          },
+        }
+      },
+    }
+
+    const input = await collect_trajectory_spectroscopy_input(trajectory)
+
+    expect(requested_options?.signal_keys).toEqual([`velocity`, `dipole`, `polarizability`])
+    expect(requested_options?.vector_keys).toBeUndefined()
+    expect(input.velocities?.steps).toHaveLength(8)
+    expect(input.infrared_signal?.series.steps).toEqual([0, 2, 4, 6])
+    if (input.raman_signal?.kind === `polarizability`) {
+      expect(input.raman_signal.series.steps).toEqual([0, 3, 6])
+    }
+  })
+
   it(`collects indexed packed trajectories without retaining the raw payload`, async () => {
     const trajectory = make_trajectory()
     trajectory.frames = trajectory.frames.slice(0, 1)
