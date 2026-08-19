@@ -1528,24 +1528,32 @@
 
     <!-- Current frame indicator -->
     {#if current_x_value != null}
-      {@const current_pos_raw = is_time_x
+      {@const current_pos = is_time_x
         ? x_scale_fn(new Date(current_x_value))
         : x_scale_fn(current_x_value)}
-      {#if isFinite(current_pos_raw)}
-        {@const current_pos = current_pos_raw}
-        {#if current_pos >= pad.l && current_pos <= width - pad.r}
-          {@const active_tick_height = 7}
-          <rect
-            class="current-frame-indicator"
-            x={current_pos - 1.5}
-            y={height - pad.b - active_tick_height / 2}
-            width="3"
-            height={active_tick_height}
-            fill="var(--scatter-current-frame-color, #ff6b35)"
-            stroke="white"
-            stroke-width="1"
-          />
-        {/if}
+      {#if isFinite(current_pos) && current_pos >= pad.l && current_pos <= width - pad.r}
+        {@const active_tick_height = 7}
+        <line
+          class="current-frame-guide"
+          x1={current_pos}
+          x2={current_pos}
+          y1={pad.t}
+          y2={height - pad.b}
+          stroke="var(--scatter-current-frame-color, #ff6b35)"
+          stroke-opacity="0.45"
+          stroke-dasharray="8 4"
+          pointer-events="none"
+        />
+        <rect
+          class="current-frame-indicator"
+          x={current_pos - 1.5}
+          y={height - pad.b - active_tick_height / 2}
+          width="3"
+          height={active_tick_height}
+          fill="var(--scatter-current-frame-color, #ff6b35)"
+          stroke="white"
+          stroke-width="1"
+        />
       {/if}
     {/if}
 

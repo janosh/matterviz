@@ -475,6 +475,21 @@ describe(`NebViewer`, () => {
     await flush_render()
     expect(state.active_image_idx).toBe(2)
 
+    for (const [key, expected_idx, expected_label] of [
+      [` `, 2, `Pause`],
+      [`ArrowRight`, 3, `Pause`],
+      [` `, 3, `Play`],
+    ] as const) {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+      slider.dispatchEvent(event)
+      await flush_render()
+      expect(event.defaultPrevented).toBe(true)
+      expect(state.active_image_idx).toBe(expected_idx)
+      expect(viewer.querySelector(`.play-button`)?.getAttribute(`aria-label`)).toBe(
+        expected_label,
+      )
+    }
+
     const path_select = viewer.querySelector<HTMLSelectElement>(`.path-control select`)
     if (!path_select) throw new Error(`NEB path selector not found`)
     path_select.value = `curved hop`

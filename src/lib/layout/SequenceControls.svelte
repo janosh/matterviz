@@ -111,6 +111,11 @@
           on_index_input(event.currentTarget.valueAsNumber)
         }}
         onchange={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
+        onkeydown={(event) => {
+          if (!playback.handle_keydown(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+        }}
         class="step-slider"
         title={`Drag to navigate ${item_name}s`}
         aria-label={aria_label ?? item_name}

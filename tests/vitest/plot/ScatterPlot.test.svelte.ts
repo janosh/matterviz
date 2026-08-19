@@ -126,6 +126,22 @@ describe(`ScatterPlot`, () => {
     }
   })
 
+  test(`draws a current-frame guide through the plot area`, async () => {
+    const plot = await mount_sized_scatter_plot({ series: [basic], current_x_value: 3 })
+    const clip = scatter_clip_rect(plot)
+    const guide = plot.querySelector(`.current-frame-guide`)
+    expect(guide).not.toBeNull()
+    expect(guide?.getAttribute(`x1`)).toBe(guide?.getAttribute(`x2`))
+    expect(Number(guide?.getAttribute(`x1`))).toBeGreaterThan(clip.x)
+    expect(Number(guide?.getAttribute(`x1`))).toBeLessThan(clip.x + clip.width)
+    expect([guide?.getAttribute(`y1`), guide?.getAttribute(`y2`)]).toEqual([
+      String(clip.y),
+      String(clip.y + clip.height),
+    ])
+    expect(guide?.getAttribute(`stroke-dasharray`)).toBe(`8 4`)
+    expect(plot.querySelector(`.current-frame-indicator`)).not.toBeNull()
+  })
+
   describe(`marker_renderer`, () => {
     const dense = {
       x: Array.from({ length: 40 }, (_, idx) => idx),

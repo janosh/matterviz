@@ -1163,14 +1163,6 @@
     },
     on_loop: () => emit_playback(on_loop),
   })
-  let active_sequence = $derived({
-    playback,
-    index: current_step_idx,
-    count: total_frames,
-    step_label_positions,
-    item_name: `step`,
-    on_index_input: queue_scrub_step,
-  })
   $effect(() => {
     if (spectroscopy_pane_open) playback.pause()
   })
@@ -1556,51 +1548,37 @@
     if (hdf5_group_picker_open) return false
     if (!trajectory) return false
 
-    // Don't handle shortcuts while the user is editing form or rich-text content.
+    // Don't handle shortcuts while the user is editing form or rich-text content. Sequence
+    // controls handle navigation locally; their unhandled viewer shortcuts still bubble here.
     const target = event.target instanceof HTMLElement ? event.target : null
-    if (target && (target.matches(`input, textarea, select`) || target.isContentEditable)) {
+    const is_sequence_slider = target?.classList.contains(`step-slider`)
+    if (
+      !is_sequence_slider &&
+      target &&
+      (target.matches(`input, textarea, select`) || target.isContentEditable)
+    ) {
       if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
         target.blur()
       }
       return false
     }
 
-    const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
-    if (is_cmd_or_ctrl && event.key !== `ArrowLeft` && event.key !== `ArrowRight`) return false
+    if (playback.handle_keydown(event)) return true
 
-    const {
-      index: sequence_index,
-      count: sequence_count,
-      playback: sequence_player,
-    } = active_sequence
-    let handled = true
-    if (event.key === ` `) sequence_player.toggle()
-    else if (event.key === `ArrowLeft`) {
-      if (is_cmd_or_ctrl) sequence_player.go_to(0)
-      else sequence_player.previous()
-    } else if (event.key === `ArrowRight`) {
-      if (is_cmd_or_ctrl) sequence_player.go_to(sequence_count - 1)
-      else sequence_player.next()
-    } else if (event.key === `Home`) sequence_player.go_to(0)
-    else if (event.key === `End`) sequence_player.go_to(sequence_count - 1)
-    else if (event.key === `j`) sequence_player.go_to(sequence_index - 10)
-    else if (event.key === `l`) sequence_player.go_to(sequence_index + 10)
-    else if (event.key === `PageUp`) sequence_player.go_to(sequence_index - 25)
-    else if (event.key === `PageDown`) sequence_player.go_to(sequence_index + 25)
-    else if (event.key === `f` && fullscreen_toggle) fullscreen = !fullscreen
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+    if (event.metaKey || event.ctrlKey) return false
+    if (key === `f` && fullscreen_toggle) {
+      if (!event.repeat) fullscreen = !fullscreen
+      return true
+    }
     // 'i' key handled by the TrajectoryInfoPane's built-in toggle
-    else if (sequence_player.is_playing && [`=`, `+`, `-`].includes(event.key)) {
-      sequence_player.fps +=
-        event.key === `-` ? -sequence_player.fps_step : sequence_player.fps_step
-    } else if (event.key === `Escape`) {
-      if (document.fullscreenElement) document.exitFullscreen()
-      else if (view_mode_dropdown_open) view_mode_dropdown_open = false
-      else if (analysis_menu_open) analysis_menu_open = false
-      // Escape key for info pane handled by ViewerPane
-    } else if (event.key >= `0` && event.key <= `9`) {
-      sequence_player.go_to(Math.floor((Number(event.key) / 10) * (sequence_count - 1)))
-    } else handled = false
-    return handled
+    if (key !== `Escape`) return false
+    if (document.fullscreenElement) document.exitFullscreen()
+    else if (view_mode_dropdown_open) view_mode_dropdown_open = false
+    else if (analysis_menu_open) analysis_menu_open = false
+    // Escape key for info pane handled by ViewerPane
+    else return false
+    return true
   }
 
   // Shared by floating analysis panes: each keeps its ViewerPane toggle for layout anchoring
@@ -1678,7 +1656,7 @@
 
 <div
   class:dragover
-  class:active={active_sequence.playback.is_playing ||
+  class:active={playback.is_playing ||
     structure_info_open ||
     controls_open ||
     scatter_controls_open ||
@@ -1824,15 +1802,15 @@
 
         <SequenceControls
           {controls_config}
-          index={active_sequence.index}
-          count={active_sequence.count}
-          playback={active_sequence.playback}
-          step_label_positions={active_sequence.step_label_positions}
-          item_name={active_sequence.item_name}
-          previous_title={`Previous ${active_sequence.item_name} (←) · Home: first · j: −10 · PageUp: −25`}
-          play_title={`${active_sequence.playback.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
-          next_title={`Next ${active_sequence.item_name} (→) · End: last · l: +10 · PageDown: +25`}
-          on_index_input={active_sequence.on_index_input}
+          index={current_step_idx}
+          count={total_frames}
+          {playback}
+          {step_label_positions}
+          item_name="step"
+          previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
+          play_title={`${playback.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
+          next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
+          on_index_input={queue_scrub_step}
         />
 
         <!-- Frame info section -->

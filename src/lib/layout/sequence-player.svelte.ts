@@ -90,6 +90,33 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     inputs.on_loop?.()
   }
 
+  function handle_keydown(event: KeyboardEvent): boolean {
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+    const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
+    if (is_cmd_or_ctrl && key !== `ArrowLeft` && key !== `ArrowRight`) return false
+
+    if (key === ` `) {
+      if (!event.repeat) toggle()
+    } else if (key === `ArrowLeft`) {
+      if (is_cmd_or_ctrl) seek(0)
+      else previous()
+    } else if (key === `ArrowRight`) {
+      if (is_cmd_or_ctrl) seek(inputs.count() - 1)
+      else next()
+    } else if (key === `Home`) seek(0)
+    else if (key === `End`) seek(inputs.count() - 1)
+    else if (key === `j`) seek(inputs.index() - 10)
+    else if (key === `l`) seek(inputs.index() + 10)
+    else if (key === `PageUp`) seek(inputs.index() - 25)
+    else if (key === `PageDown`) seek(inputs.index() + 25)
+    else if ([`=`, `+`, `-`].includes(key)) {
+      inputs.set_fps(normalize_fps(playback_fps + (key === `-` ? -FPS_STEP : FPS_STEP)))
+    } else if (key >= `0` && key <= `9`) {
+      seek(Math.floor((Number(key) / 10) * (inputs.count() - 1)))
+    } else return false
+    return true
+  }
+
   // rAF avoids background-tab queueing while reading FPS and index live without restarting.
   $effect(() => {
     if (!is_playing) return undefined
@@ -140,5 +167,6 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     previous,
     next,
     toggle,
+    handle_keydown,
   }
 }

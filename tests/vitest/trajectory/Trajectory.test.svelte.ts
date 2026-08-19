@@ -137,6 +137,16 @@ const mount_traj = (props: Record<string, unknown>) => {
   onTestFinished(() => unmount(component).finally(() => target.remove()))
   return target
 }
+const press_key = (target: Element, key: string, init: KeyboardEventInit = {}) => {
+  const event = new KeyboardEvent(`keydown`, {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  })
+  target.dispatchEvent(event)
+  return event
+}
 const selected_x_quantity = (target: ParentNode) =>
   target.querySelector<HTMLSelectElement>(`.x-quantity-select`)?.value
 const reopen_hdf5_picker = async (target: ParentNode): Promise<void> => {
@@ -784,7 +794,7 @@ describe(`Trajectory`, () => {
     expect(callbacks).toHaveLength(0)
   })
 
-  test(`updates frame rate from keyboard shortcuts`, async () => {
+  test(`handles playback and speed shortcuts from the viewer and focused slider`, async () => {
     const on_frame_rate_change = vi.fn()
     const props = $state({
       trajectory: energy_traj(-1, -2, -3),
@@ -794,28 +804,85 @@ describe(`Trajectory`, () => {
     })
     mount_traj(props)
     await flush_render()
-    const viewer = doc_query(`.trajectory`)
+    const viewer = doc_query(`.trajectory`, HTMLDivElement)
+    const slider = doc_query(`.step-slider`, HTMLInputElement)
     expect(doc_query(`.fps-section input[type="number"]`, HTMLInputElement).value).toBe(`5`)
 
     on_frame_rate_change.mockClear()
     for (const [key, expected_fps] of [
-      [` `, 5],
       [`+`, 5.1],
       [`-`, 5],
-      [` `, 5],
     ] as const) {
-      viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      const event = press_key(viewer, key)
       await flush_render()
+      expect(event.defaultPrevented).toBe(true)
       expect(props.fps).toBe(expected_fps)
     }
     expect(on_frame_rate_change).toHaveBeenCalledTimes(2)
 
-    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
+    const slider_play_event = press_key(slider, ` `)
     await flush_render()
+    expect(slider_play_event.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    const repeated_space = press_key(slider, ` `, { repeat: true })
+    await flush_render()
+    expect(repeated_space.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    const slider_pause_event = press_key(slider, ` `)
+    await flush_render()
+    expect(slider_pause_event.defaultPrevented).toBe(true)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Play`)
+
     props.fps = Number.NaN
-    viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `+`, bubbles: true }))
+    press_key(slider, `+`)
     await flush_render()
     expect(props.fps).toBe(0.1)
+
+    viewer.requestFullscreen = vi.fn(async () => undefined)
+    const fullscreen_event = press_key(slider, `F`)
+    await flush_render()
+    expect(fullscreen_event.defaultPrevented).toBe(true)
+    expect(viewer.requestFullscreen).toHaveBeenCalledOnce()
+
+    const idle_escape = press_key(viewer, `Escape`)
+    expect(idle_escape.defaultPrevented).toBe(false)
+  })
+
+  test.each([
+    { name: `ArrowLeft`, key: `ArrowLeft`, expected: 49 },
+    { name: `ArrowRight`, key: `ArrowRight`, expected: 51 },
+    { name: `Ctrl+ArrowLeft`, key: `ArrowLeft`, expected: 0, ctrlKey: true },
+    { name: `Meta+ArrowRight`, key: `ArrowRight`, expected: 100, metaKey: true },
+    { name: `Home`, key: `Home`, expected: 0 },
+    { name: `End`, key: `End`, expected: 100 },
+    { name: `uppercase J`, key: `J`, expected: 40 },
+    { name: `uppercase L`, key: `L`, expected: 60 },
+    { name: `PageUp`, key: `PageUp`, expected: 25 },
+    { name: `PageDown`, key: `PageDown`, expected: 75 },
+    { name: `0 percentage jump`, key: `0`, expected: 0 },
+    { name: `9 percentage jump`, key: `9`, expected: 90 },
+  ])(`applies $name from the focused frame slider without pausing`, async (shortcut) => {
+    const on_pause = vi.fn()
+    const props = $state({
+      trajectory: energy_traj(...Array.from({ length: 101 }, (_, idx) => -idx)),
+      current_step_idx: 50,
+      fps: 0.1,
+      show_controls: `always` as const,
+      on_pause,
+    })
+    mount_traj(props)
+    await flush_render()
+    doc_query(`.play-button`, HTMLButtonElement).click()
+    await flush_render()
+    on_pause.mockClear()
+
+    const event = press_key(doc_query(`.step-slider`), shortcut.key, shortcut)
+    await flush_render()
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(props.current_step_idx).toBe(shortcut.expected)
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    expect(on_pause).not.toHaveBeenCalled()
   })
 
   // Regression: hosts restore viewer position by passing an out-of-range
