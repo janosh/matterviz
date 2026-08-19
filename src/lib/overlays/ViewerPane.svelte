@@ -85,7 +85,7 @@
   }}
   pane_props={{
     ...pane_props,
-    class: [`${class_prefix}-pane`, pane_props.class],
+    class: [`${class_prefix}-pane`, pane_props.class, open && `viewer-pane-open`],
   }}
   {open_icon}
   {closed_icon}

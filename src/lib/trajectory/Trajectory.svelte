@@ -2041,6 +2041,7 @@
     --struct-bg: var(--traj-surface-bg);
     --plot-bg: var(--traj-surface-bg);
     border-radius: var(--traj-border-radius, 4px);
+    overflow: var(--traj-overflow, visible);
     background: var(--traj-surface-bg);
     color: var(--traj-color, var(--text-color, CanvasText));
     box-sizing: border-box;
@@ -2056,6 +2057,9 @@
       border-radius: 0 !important;
       background: var(--traj-bg-fullscreen, var(--traj-surface-bg));
       overflow: hidden;
+    }
+    &:has(:global(.viewer-pane-open)) {
+      overflow: visible;
     }
     &.horizontal .content-area {
       grid-template-columns: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);

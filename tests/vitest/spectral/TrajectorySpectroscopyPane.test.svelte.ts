@@ -182,9 +182,12 @@ test(`a trajectory switch cancels blocked work and starts the replacement`, asyn
     trajectory: make_trajectory(),
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
-  render_pane(props)
+  const target = render_pane(props)
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  const status = target.querySelector(`.analysis-status`)
+  expect(status?.textContent).toContain(`Computing spectra…`)
+  expect(status?.querySelector(`[role="status"]`)).not.toBeNull()
   props.trajectory = make_trajectory()
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
   expect(mocks.cancel.mock.invocationCallOrder.at(-1)).toBeLessThan(

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatusMessage } from '$lib/feedback'
+  import { Spinner, StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
@@ -44,6 +44,15 @@
   let calculation_phase = $state<`idle` | `collecting` | `computing`>(`idle`)
   let details_open = $state(false)
   let calculation_busy = $derived(calculation_phase !== `idle`)
+  let calculation_label = $derived(
+    calculation_phase === `collecting`
+      ? `Collecting trajectory signals…`
+      : calculation_phase === `computing`
+        ? `Computing spectra…`
+        : result
+          ? `Recompute spectroscopy`
+          : `Compute spectroscopy`,
+  )
   let progress = $state<ParseProgress | null>(null)
   let error_msg = $state<string>()
 
@@ -255,15 +264,7 @@
         ? `${format_num(analysis_time_step ?? 0, `.5~g`)} ${analysis_time_unit}`
         : `not recorded`} · raw spectra remain unsmoothed and independently normalized only for display
     </p>
-    <button onclick={calculate} disabled={calculation_busy}>
-      {calculation_phase === `collecting`
-        ? `Collecting trajectory signals…`
-        : calculation_phase === `computing`
-          ? `Computing spectra…`
-          : result
-            ? `Recompute spectroscopy`
-            : `Compute spectroscopy`}
-    </button>
+    <button onclick={calculate} disabled={calculation_busy}>{calculation_label}</button>
     {#if progress}<span class="progress">{progress.stage}</span>{/if}
     {#if error_msg}<StatusMessage type="error" message={error_msg} />{/if}
   {/if}
@@ -311,11 +312,9 @@
   {:else if error_msg}
     <StatusMessage type="error" message={error_msg} />
   {:else if trajectory && calculation_busy}
-    <p class="analysis-status">
-      {calculation_phase === `collecting`
-        ? `Collecting trajectory signals…`
-        : `Computing spectra…`}
-    </p>
+    <div class="analysis-status">
+      <Spinner text={calculation_label} style="--spinner-margin: 0" />
+    </div>
   {/if}
 {/snippet}
 
@@ -348,7 +347,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    padding: 0.5rem 1ex 0;
+    padding: 0.75rem 1ex 0;
     overflow: visible;
     container-type: inline-size;
     box-sizing: border-box;
@@ -406,6 +405,11 @@
     font-size: 1em;
   }
   .analysis-status {
-    place-self: center;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
   }
 </style>

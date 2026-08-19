@@ -50,14 +50,14 @@
       data_url={file}
       bind:visible_properties={visible_props_cantor_qha}
       class="full-bleed"
-      style="margin-top: 1em; max-height: 700px"
+      style="margin-top: 1em; max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0"
       on_file_load={handle_file_load}
     />
   {:else}
     <Trajectory
       data_url={file}
       class="full-bleed"
-      style="margin-top: 5em; max-height: 700px"
+      style="margin-top: 5em; max-height: 700px; --traj-border-radius: 6pt; --traj-overflow: clip; --sequence-controls-border-radius: 0"
       on_file_load={handle_file_load}
     />
   {/if}
