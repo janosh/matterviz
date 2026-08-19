@@ -791,8 +791,6 @@
     if (current_frame?.structure) current_structure = current_frame.structure
     else if (!trajectory) current_structure = undefined
   })
-  let displayed_structure = $derived(current_structure)
-
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
 
@@ -1021,7 +1019,6 @@
   let trajectory_hover_config = $derived({
     ...scatter_props.hover_config,
     mode: `x` as const,
-    show_tooltip: false,
   })
   // The structure tracks every scrub frame, but repainting the entire plot merely to move its
   // small active-frame tick competes with that 3D update. Hold the tick still during a pointer
@@ -1906,7 +1903,7 @@
     >
       {#if show_structure}
         <Structure
-          structure={displayed_structure}
+          structure={current_structure}
           structure_series_key={trajectory}
           allow_file_drop={false}
           style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"

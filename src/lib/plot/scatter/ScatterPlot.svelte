@@ -1839,7 +1839,7 @@
       <ScatterPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--viewer-buttons-top, var(--ctrl-btn-top, 5pt)); ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
             controls_toggle_props?.style ?? ``
           }`,
         }}

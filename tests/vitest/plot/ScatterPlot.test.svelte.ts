@@ -719,6 +719,18 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.y-axis .tick text`).length).toBeGreaterThan(1)
   })
 
+  test(`increases automatic tick precision when compact labels would collide`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [-1539, -1537] }],
+      y_axis: { ticks: [-1539, -1538, -1537] },
+    })
+    expect(
+      [...plot.querySelectorAll(`.y-axis .tick text`)].map(
+        (tick_element) => tick_element.textContent,
+      ),
+    ).toEqual([`−1539`, `−1538`, `−1537`])
+  })
+
   describe(`default tooltip content`, () => {
     const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
       document.body.replaceChildren()

@@ -261,12 +261,13 @@
   }
   .header-controls {
     position: absolute;
-    top: var(--viewer-buttons-top, var(--ctrl-btn-top, 5pt));
+    top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--fullscreen-btn-right, 4px);
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .plot-frame :global(.pane-toggle),
@@ -275,6 +276,9 @@
     transition:
       opacity 0.2s,
       background-color 0.2s;
+  }
+  .plot-frame :global(.pane-toggle) {
+    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
   }
   .plot-frame:hover :global(.pane-toggle),
   .plot-frame:hover .header-controls,

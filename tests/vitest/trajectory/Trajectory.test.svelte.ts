@@ -316,8 +316,6 @@ describe(`Trajectory`, () => {
 
     const far_y = marker_y < 150 ? 290 : 10
     const plot_svg = plot.querySelector(`svg[role="application"]`)
-    const request_animation_frame = vi.spyOn(globalThis, `requestAnimationFrame`)
-    onTestFinished(() => request_animation_frame.mockRestore())
     const dispatch_plot_event = (type: `click` | `mousemove`) =>
       plot_svg?.dispatchEvent(
         new MouseEvent(type, {
@@ -328,7 +326,9 @@ describe(`Trajectory`, () => {
       )
     dispatch_plot_event(`mousemove`)
     expect(props.current_step_idx).toBe(0)
-    expect(request_animation_frame).not.toHaveBeenCalled()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await tick()
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toContain(`Energy`)
 
     dispatch_plot_event(`click`)
     flushSync()

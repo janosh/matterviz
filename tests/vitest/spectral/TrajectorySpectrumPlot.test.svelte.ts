@@ -106,7 +106,10 @@ describe(`TrajectorySpectrumPlot`, () => {
       style: `height: 240px`,
     })
     await tick()
-    expect(target.querySelector(`.facet-grid`)).not.toBeNull()
+    const spectrum_plots = target.querySelector<HTMLElement>(`.trajectory-spectrum-plots`)
+    if (!spectrum_plots) throw new Error(`spectrum plot container not rendered`)
+    expect(spectrum_plots.style.height).toBe(`240px`)
+    expect(target.querySelector<HTMLElement>(`.facet-grid`)?.style.height).toBe(`100%`)
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(2)
     expect(target.textContent).toContain(`Relative IR intensity`)
     expect(target.textContent).toContain(`Raman unpolarized`)
@@ -157,6 +160,76 @@ describe(`TrajectorySpectrumPlot`, () => {
     expect(
       ir_plot.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
     ).toHaveLength(1)
+  })
+
+  it(`crops insignificant high-frequency tails while retaining an explicit range`, async () => {
+    const long_tail_result = result(false)
+    const long_tail_curve = {
+      ...curve,
+      frequencies: [0, 1000, 2000, 3000, 4000, 5000, 70_000],
+      power: [0, 0.9, 1, 0.2, 0, 0.001, 0.0001],
+      normalized_power: [0, 0.9, 1, 0.2, 0, 0.001, 0.0001],
+      frequency_unit: `cm^-1` as const,
+      frequency_spacing: 1000,
+      rayleigh_resolution: 100,
+      nyquist: 70_000,
+    }
+    long_tail_result.vdos = long_tail_curve
+    long_tail_result.frequency_unit = `cm^-1`
+    long_tail_result.peaks[0] = { ...long_tail_result.peaks[0], frequency: 2000 }
+    long_tail_result.peaks.push({ ...long_tail_result.peaks[0], frequency: 70_000 })
+
+    const cropped_target = render(TrajectorySpectrumPlot, {
+      result: long_tail_result,
+      style: `height: 240px`,
+    })
+    await tick()
+    const cropped_plot = cropped_target.querySelector(`.scatter`)
+    expect(cropped_plot?.querySelector(`.x-axis .axis-label`)?.textContent).toContain(
+      `Frequency (cm⁻¹)`,
+    )
+    expect(
+      cropped_plot?.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
+    ).toHaveLength(1)
+
+    const full_range_target = render(TrajectorySpectrumPlot, {
+      result: long_tail_result,
+      frequency_range: [0, 70_000],
+      style: `height: 240px`,
+    })
+    await tick()
+    expect(
+      full_range_target.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
+    ).toHaveLength(2)
+  })
+
+  it(`pads a response by its own spectral resolution`, async () => {
+    const divergent_resolution_result = result()
+    divergent_resolution_result.vdos = {
+      ...curve,
+      normalized_power: [0, 0, 0, 0, 0],
+      rayleigh_resolution: 0.125,
+    }
+    divergent_resolution_result.ir = {
+      ...curve,
+      normalized_power: [0, 0, 1, 0, 0],
+      rayleigh_resolution: 1,
+    }
+    divergent_resolution_result.raman = null
+    divergent_resolution_result.peaks = [
+      { ...divergent_resolution_result.peaks[0], frequency: 2 },
+    ]
+
+    const target = render(TrajectorySpectrumPlot, {
+      result: divergent_resolution_result,
+      style: `height: 240px`,
+    })
+    await tick()
+    const x_tick_values = [...target.querySelectorAll(`.x-axis .tick text`)].map(
+      (tick_element) => tick_element.textContent,
+    )
+    expect(x_tick_values).toContain(`1`)
+    expect(x_tick_values).toContain(`3`)
   })
 })
 
@@ -267,6 +340,11 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   expect(inline_target.querySelector(`.spectroscopy-details-pane`)?.textContent).toContain(
     `VDOS is derived from atomic velocities`,
   )
-  expect(inline_target.querySelector(`.trajectory-spectrum-plots`)).not.toBeNull()
+  const inline_spectrum_plots = inline_target.querySelector<HTMLElement>(
+    `.trajectory-spectrum-plots`,
+  )
+  if (!inline_spectrum_plots) throw new Error(`inline spectrum plot container not rendered`)
+  expect(inline_spectrum_plots.style.height).toBe(`100%`)
+  expect(inline_target.querySelector<HTMLElement>(`.facet-grid`)?.style.height).toBe(`100%`)
   expect(inline_target.querySelector(`.trajectory`)).toBeNull()
 })

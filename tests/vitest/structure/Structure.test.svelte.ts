@@ -753,7 +753,7 @@ describe(`Structure`, () => {
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
     expect(fullscreen_button.style.getPropertyValue(`--icon-size`)).toBe(
-      `var(--struct-fullscreen-icon-size, 1.2em)`,
+      `var(--struct-fullscreen-icon-size, 1em)`,
     )
 
     fullscreen_button.click()

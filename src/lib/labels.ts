@@ -186,6 +186,63 @@ export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
 export const format_value_or_num = (value: number, fmt?: string): string =>
   fmt ? format_value(value, fmt) : format_num(value)
 
+const DEFAULT_TICK_PRECISION = 3
+const MAX_TICK_PRECISION = 17
+
+const tick_format_with_precision = (formatter: string, precision: number): string =>
+  formatter.replace(/(?:\.\d+)?(?=~?[a-z%]$)/iu, `.${precision}`)
+
+const labels_collide = (values: readonly number[], labels: readonly string[]): boolean =>
+  labels.some(
+    (label, value_idx) =>
+      label === labels[value_idx - 1] && !Object.is(values[value_idx - 1], values[value_idx]),
+  )
+
+const formatter_precision = (formatter: string): number =>
+  Number(/\.(?<precision>\d+)/u.exec(formatter)?.groups?.precision ?? DEFAULT_TICK_PRECISION)
+
+const longest_label = (labels: readonly string[]): number =>
+  Math.max(...labels.map((label) => label.length))
+
+// Retain compact adaptive labels until two distinct tick values would render identically, then
+// add just enough precision to make every numeric label unambiguous. Explicit formats remain
+// authoritative: callers may intentionally request rounded or categorical-looking labels.
+export const format_tick_values = (
+  values: readonly number[],
+  formatter?: string,
+): string[] => {
+  if (formatter || values.length < 2)
+    return values.map((value) => format_value_or_num(value, formatter))
+
+  let labels = values.map(format_num)
+  if (!labels_collide(values, labels)) return labels
+
+  const labels_with_precision = (precision: number, fixed = false): string[] =>
+    values.map((value) =>
+      format_num(
+        value,
+        fixed
+          ? `.${precision}~f`
+          : tick_format_with_precision(DEFAULT_FMT[Math.abs(value) >= 1 ? 0 : 1], precision),
+      ),
+    )
+  const minimum_precision = Math.max(
+    DEFAULT_TICK_PRECISION,
+    ...DEFAULT_FMT.map(formatter_precision),
+  )
+  for (let precision = minimum_precision + 1; precision <= MAX_TICK_PRECISION; precision++) {
+    labels = labels_with_precision(precision)
+    if (!labels_collide(values, labels)) break
+  }
+  for (let precision = 0; precision <= MAX_TICK_PRECISION; precision++) {
+    const fixed_labels = labels_with_precision(precision, true)
+    if (!labels_collide(values, fixed_labels)) {
+      return longest_label(fixed_labels) < longest_label(labels) ? fixed_labels : labels
+    }
+  }
+  return labels
+}
+
 // Format a 3D vector as "(x, y, z)" with configurable precision
 export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
   `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${format_num(

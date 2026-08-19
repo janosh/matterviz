@@ -42,6 +42,40 @@
     response: TrajectorySpectrumCurve
   }
 
+  const SPECTRUM_POWER_FLOOR = 0.01
+  const frequency_unit_label = (unit: string): string => (unit === `cm^-1` ? `cm⁻¹` : unit)
+  const significant_frequency_range = (
+    curves: readonly TrajectorySpectrumCurve[],
+  ): [number, number] | undefined => {
+    let data_minimum = Infinity
+    let data_maximum = -Infinity
+    let significant_minimum = Infinity
+    let significant_maximum = -Infinity
+    let maximum_resolution = 0
+    for (const curve of curves) {
+      if (Number.isFinite(curve.rayleigh_resolution)) {
+        maximum_resolution = Math.max(maximum_resolution, curve.rayleigh_resolution)
+      }
+      for (const [frequency_idx, frequency] of curve.frequencies.entries()) {
+        if (!Number.isFinite(frequency)) continue
+        data_minimum = Math.min(data_minimum, frequency)
+        data_maximum = Math.max(data_maximum, frequency)
+        if ((curve.normalized_power[frequency_idx] ?? 0) < SPECTRUM_POWER_FLOOR) continue
+        significant_minimum = Math.min(significant_minimum, frequency)
+        significant_maximum = Math.max(significant_maximum, frequency)
+      }
+    }
+    if (!Number.isFinite(significant_minimum) || !Number.isFinite(data_minimum))
+      return undefined
+    const padding = Math.max(
+      (significant_maximum - significant_minimum) * 0.12,
+      maximum_resolution,
+    )
+    return [
+      Math.max(data_minimum, significant_minimum - padding),
+      Math.min(data_maximum, significant_maximum + padding),
+    ]
+  }
   const nearest_power = (curve: TrajectorySpectrumCurve, frequency: number): number => {
     const bin_idx = Math.max(
       0,
@@ -52,8 +86,6 @@
     )
     return curve.normalized_power[bin_idx] ?? 0
   }
-  const is_response_panel = (kind: string): kind is `ir` | `raman` =>
-    kind === `ir` || kind === `raman`
   const peak_series = (curve: TrajectorySpectrumCurve): DataSeries => {
     const min_frequency = curve.frequencies[0] ?? 0
     const max_frequency = curve.frequencies.at(-1) ?? min_frequency
@@ -102,7 +134,14 @@
       ? panels
       : [{ key: `vdos`, data: { kind: `vdos`, response: result.vdos } }]
   })
-  let grid_style = $derived(style ?? `height: ${Math.max(1, response_panels.length) * 290}px;`)
+  let visible_frequency_range = $derived(
+    frequency_range ??
+      significant_frequency_range(
+        [result.vdos, result.ir, selected_raman_curve].flatMap((curve) =>
+          curve ? [curve] : [],
+        ),
+      ),
+  )
   let spectroscopy_legend = $derived(
     rest.legend === null
       ? null
@@ -119,16 +158,15 @@
   response: TrajectorySpectrumCurve,
   facet_layout: FacetPanelContext<SpectrumPanelDatum>,
 )}
-  {@const response_label = kind === `ir` ? `Relative IR intensity` : `Raman ${raman_channel}`}
   {@const series = [
-    ...(!is_response_panel(kind)
+    ...(kind === `vdos`
       ? []
       : [
           {
             id: `${kind}-response`,
             x: response.frequencies,
             y: response.normalized_power,
-            label: response_label,
+            label: kind === `ir` ? `Relative IR intensity` : `Raman ${raman_channel}`,
             markers: `line` as const,
             line_style: { stroke: PLOT_COLORS[0], stroke_width: 2 },
           },
@@ -151,11 +189,12 @@
     on_point_click={handle_point_click}
     {header_controls}
     {controls_extra}
-    x_axis={{ label: `Frequency (${result.frequency_unit})`, range: frequency_range }}
+    x_axis={{
+      label: `Frequency (${frequency_unit_label(result.frequency_unit)})`,
+      range: visible_frequency_range,
+    }}
     y_axis={{
-      label: is_response_panel(kind)
-        ? `Independent normalized power`
-        : `Normalized vibrational power`,
+      label: kind !== `vdos` ? `Independent normalized power` : `Normalized vibrational power`,
     }}
     styles={{ show_lines: true, show_points: true }}
     {facet_layout}
@@ -164,14 +203,17 @@
   />
 {/snippet}
 
-<div class="trajectory-spectrum-plots">
+<div
+  class="trajectory-spectrum-plots"
+  style={style ?? `height: ${response_panels.length * 290}px;`}
+>
   <FacetGrid
     panels={response_panels}
     columns={1}
     gap={8}
     axis_modes={{ x: `shared`, y: `free` }}
     axis_visibility={{ x: `outer`, x2: `none`, y: `outer`, y2: `none` }}
-    style={grid_style}
+    style="height: 100%; min-height: 0"
   >
     {#snippet children(context)}
       {@render spectrum_panel(context.data.kind, context.data.response, context)}
@@ -185,7 +227,9 @@
 <style>
   .trajectory-spectrum-plots {
     display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     gap: 8pt;
+    min-height: 0;
   }
   p {
     margin: 0;

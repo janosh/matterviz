@@ -1885,7 +1885,7 @@
       fullscreen_bg_css_var="--struct-bg-fullscreen"
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, fullscreen: value })}
-      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1.2em)"
+      fullscreen_btn_style="--icon-size: var(--struct-fullscreen-icon-size, 1em)"
       style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
     >
       {#if layout_control_visible}
@@ -2347,7 +2347,7 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
-    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, clamp(0.91rem, 2cqmin, 1rem));
+    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, var(--viewer-chrome-icon-size));
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);

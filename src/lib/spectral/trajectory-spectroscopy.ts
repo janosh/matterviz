@@ -909,6 +909,7 @@ const field_response_geometry_deviation = (
   input: TrajectorySpectroscopyInput,
 ): number => {
   const position_by_step = step_index_map(input.positions.steps)
+  const geometry_size = input.positions.n_atoms * 3
   let maximum = 0
   for (const axis of CARTESIAN_AXES) {
     const plus = raman_signal.geometry.plus[axis]
@@ -931,14 +932,9 @@ const field_response_geometry_deviation = (
           `Raman finite-field geometry at step ${response_steps[sample_idx]} has no matching trajectory position`,
         )
       }
-      for (
-        let component_idx = 0;
-        component_idx < input.positions.n_atoms * 3;
-        component_idx++
-      ) {
-        const offset = sample_idx * input.positions.n_atoms * 3 + component_idx
-        const main_value =
-          input.positions.positions[frame_idx * input.positions.n_atoms * 3 + component_idx]
+      for (let component_idx = 0; component_idx < geometry_size; component_idx++) {
+        const offset = sample_idx * geometry_size + component_idx
+        const main_value = input.positions.positions[frame_idx * geometry_size + component_idx]
         maximum = Math.max(
           maximum,
           Math.abs(plus.values[offset] * plus_factor - minus.values[offset] * minus_factor),

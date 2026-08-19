@@ -113,9 +113,9 @@ class PositionAccumulator {
   private readonly signal_values: Record<string, Float64Array> = {}
   private readonly lattice_matrices: (Matrix3x3 | null)[] = []
   private readonly steps: number[] = []
-  private elements: ElementSymbol[] | null = null
+  private readonly elements: ElementSymbol[] = []
   private pbc: Pbc | null = null
-  private coords_unwrapped: boolean | null = null
+  private coords_unwrapped = false
   private frame_count = 0
 
   get collected_frames(): number {
@@ -186,11 +186,10 @@ class PositionAccumulator {
       )
     }
 
-    if (this.elements === null) {
-      this.elements = []
+    const is_first_frame = this.frame_count === 0
+    if (is_first_frame) {
       this.pbc = `lattice` in frame.structure ? frame.structure.lattice.pbc : null
     }
-    const elements = this.elements
 
     const base = this.frame_count * this.n_atoms * 3
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
@@ -201,11 +200,11 @@ class PositionAccumulator {
           `Frame ${source_frame_number} site ${atom_idx} has no species; cannot identify the atom`,
         )
       }
-      if (this.frame_count === 0) elements.push(element)
-      else if (elements[atom_idx] !== element) {
+      if (is_first_frame) this.elements.push(element)
+      else if (this.elements[atom_idx] !== element) {
         throw new Error(
           `Atom ordering changed at frame ${source_frame_number}: site ${atom_idx} was ` +
-            `${elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
+            `${this.elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
             `analysis tracks atoms by index, so the ordering must be stable. LAMMPS dumps ` +
             `are unsorted unless the run used "dump_modify <id> sort id".`,
         )
@@ -219,7 +218,7 @@ class PositionAccumulator {
     this.add_signals(frame.metadata, source_frame_number)
 
     const frame_unwrapped = frame.metadata?.coords_unwrapped === true
-    if (this.coords_unwrapped === null) this.coords_unwrapped = frame_unwrapped
+    if (is_first_frame) this.coords_unwrapped = frame_unwrapped
     else if (this.coords_unwrapped !== frame_unwrapped) {
       throw new Error(
         `coords_unwrapped flipped to ${frame_unwrapped} at frame ${source_frame_number}; ` +
@@ -366,10 +365,10 @@ class PositionAccumulator {
       signals: Object.keys(signals).length > 0 ? signals : undefined,
       n_frames: this.frame_count,
       n_atoms: this.n_atoms,
-      elements: this.elements ?? [],
+      elements: this.elements,
       lattice_matrices: has_lattice ? this.lattice_matrices : null,
       pbc: this.pbc,
-      coords_unwrapped: this.coords_unwrapped ?? false,
+      coords_unwrapped: this.coords_unwrapped,
       frame_stride: this.frame_stride,
       steps: this.steps,
     }

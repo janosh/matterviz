@@ -150,18 +150,17 @@ export const handle_parse_worker_request = async (
 ): Promise<{ response: ParseWorkerResponse; transfer: Transferable[] }> => {
   const { id, content, filename, is_base64 } = request
   try {
-    if (!should_index_worker_xyz(content, filename, is_base64)) {
-      return prepare_parse_result(
-        id,
-        await parse_file_content(content, filename, is_base64),
-        content,
-      )
-    }
-    const indexed = await parse_trajectory_async(content, filename, undefined, {
-      use_indexing: true,
-      extract_plot_metadata: true,
-    })
-    return prepare_parse_result(id, { type: `trajectory`, data: indexed, filename }, content)
+    const result: ParseResult = should_index_worker_xyz(content, filename, is_base64)
+      ? {
+          type: `trajectory`,
+          data: await parse_trajectory_async(content, filename, undefined, {
+            use_indexing: true,
+            extract_plot_metadata: true,
+          }),
+          filename,
+        }
+      : await parse_file_content(content, filename, is_base64)
+    return prepare_parse_result(id, result, content)
   } catch (error) {
     return { response: { id, error: error_message(error) }, transfer: [] }
   }

@@ -57,10 +57,9 @@ export const trajectory_signal_keys = (
       !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
   )
   const metadata = trajectory.frames[0]?.metadata ?? {}
-  if (!expected_shape)
-    return [...new SvelteSet([...signal_keys, ...Object.keys(metadata)])].toSorted()
   const n_atoms = trajectory.frames[0]?.structure.sites.length ?? 0
   const metadata_keys = Object.entries(metadata).flatMap(([key, value]) =>
+    !expected_shape ||
     matching_shape(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape)
       ? [key]
       : [],
@@ -215,7 +214,7 @@ export async function collect_trajectory_spectroscopy_input(
         infrared: infrared_signal ? { key: infrared_key, kind: infrared_signal.kind } : null,
         raman: raman_signal
           ? {
-              key: raman_signal.kind === `polarizability` ? raman_source_key : null,
+              key: raman_source_key,
               kind: raman_signal.kind,
             }
           : null,

@@ -1,4 +1,4 @@
-import { format_value_or_num } from '$lib/labels'
+import { format_tick_values } from '$lib/labels'
 import { get_tick_label } from '$lib/plot/core/scales'
 import { suggest_tick_count, thin_tick_indices } from '$lib/plot/core/tick-density'
 import { analyze_tick_label_geometry } from '$lib/plot/core/tick-geometry'
@@ -115,14 +115,22 @@ export const clear_tick_metrics_cache = (): void => {
   clear_text_metrics_cache()
 }
 
-const tick_text = (
-  tick: string | number,
+const tick_texts = (
+  ticks: readonly (string | number)[],
   format?: string,
   tick_labels?: AxisConfig[`ticks`],
-): string =>
-  typeof tick === `string`
-    ? tick
-    : (get_tick_label(tick, tick_labels) ?? format_value_or_num(tick, format))
+): string[] => {
+  const numeric_texts = format_tick_values(
+    ticks.filter((tick): tick is number => typeof tick === `number`),
+    format,
+  )
+  let numeric_idx = 0
+  return ticks.map((tick) => {
+    if (typeof tick === `string`) return tick
+    const text = numeric_texts[numeric_idx++]
+    return get_tick_label(tick, tick_labels) ?? text
+  })
+}
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
 export const measure_max_tick_width = (
@@ -132,8 +140,8 @@ export const measure_max_tick_width = (
   font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
 ): number => {
   let widest = 0
-  for (const tick of ticks) {
-    widest = Math.max(widest, measure_text_width(tick_text(tick, format, tick_labels), font))
+  for (const text of tick_texts(ticks, format, tick_labels)) {
+    widest = Math.max(widest, measure_text_width(text, font))
   }
   return widest
 }
@@ -696,7 +704,7 @@ export const resolve_tick_layout = (
 ): ResolvedTickLayout => {
   finite_nonnegative(axis_size, `axis_size`)
   const ticks = axis.tick_values ?? []
-  const full_texts = ticks.map((tick) => tick_text(tick, axis.format, axis.ticks))
+  const full_texts = tick_texts(ticks, axis.format, axis.ticks)
   const label = axis.tick?.label
   const auto_layout = label?.auto_layout
   const font = axis.tick_font ?? DEFAULT_FONT_SPEC

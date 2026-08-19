@@ -402,12 +402,12 @@ function parse_torch_sim_h5_file(
   const first_atomic_numbers = atomic_numbers[0]
   const first_frame_elements = convert_atomic_numbers(first_atomic_numbers)
   const n_atoms = first_frame_elements.length
-  const use_packed_store = positions.length > PACKED_PREVIEW_FRAME_COUNT
-  const packed_positions = use_packed_store
-    ? new Float64Array(positions.length * n_atoms * 3)
-    : null
+  const packed_positions =
+    positions.length > PACKED_PREVIEW_FRAME_COUNT
+      ? new Float64Array(positions.length * n_atoms * 3)
+      : null
   const packed_lattices =
-    use_packed_store && cells_are_frames && cells && cells.length > 1
+    packed_positions && cells_are_frames && cells && cells.length > 1
       ? new Float64Array(positions.length * 9)
       : null
   const frame_metadata: Record<string, unknown>[] = []
@@ -463,7 +463,7 @@ function parse_torch_sim_h5_file(
       })
       if (packed_positions) packed_positions.set(frame_pos.flat(), idx * n_atoms * 3)
       if (packed_lattices && lattice_mat) packed_lattices.set(lattice_mat.flat(), idx * 9)
-      if (!use_packed_store) {
+      if (!packed_positions) {
         frames.push(
           create_trajectory_frame(frame_pos, frame_elements, lattice_mat, pbc, step, metadata),
         )
@@ -551,7 +551,7 @@ function parse_torch_sim_h5_file(
 
   let frame_store: TrajectoryFrameStore | undefined
   let frame_loader: TrajectoryType[`frame_loader`]
-  if (use_packed_store && packed_positions && valid_frame_count > frames.length) {
+  if (packed_positions) {
     const retained_values = (values: Float64Array, values_per_frame: number) =>
       valid_frame_count === positions.length
         ? values

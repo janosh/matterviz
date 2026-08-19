@@ -348,7 +348,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    padding: var(--viewer-buttons-top, 1ex) 1ex 0;
+    padding: 0 1ex;
     overflow: visible;
     container-type: inline-size;
     box-sizing: border-box;

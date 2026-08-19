@@ -153,6 +153,12 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect_synced_y_ticks(bands_plot, dos_plot)
   })
 
+  test(`plot control panes can extend beyond their grid cells`, async ({ page }) => {
+    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
+    await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
+    await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
+  })
+
   test(`desktop y-axis zoom and reset propagate from either panel`, async ({ page }) => {
     const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
     const bands_area = await measure_plot_area(bands_plot)
