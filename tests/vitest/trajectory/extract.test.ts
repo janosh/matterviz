@@ -219,14 +219,17 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     }
   })
 
-  it(`should handle all frames and lattice consistency`, () => {
+  it(`should handle all frames and lattice consistency`, async () => {
     const frame_count = trajectory.total_frames ?? trajectory.frames.length
-    const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => {
-      const frame =
-        trajectory.frames[frame_idx] ?? trajectory.frame_loader?.load_frame_sync?.(frame_idx)
-      if (!frame) throw new Error(`Missing HDF5 frame ${frame_idx}`)
-      return frame
-    })
+    const frames = await Promise.all(
+      Array.from({ length: frame_count }, async (_unused, frame_idx) => {
+        const frame =
+          trajectory.frames[frame_idx] ??
+          (await trajectory.frame_loader?.load_frame(``, frame_idx))
+        if (!frame) throw new Error(`Missing HDF5 frame ${frame_idx}`)
+        return frame
+      }),
+    )
     const all_frame_data = frames.map((frame) => full_data_extractor(frame, trajectory))
 
     expect(all_frame_data).toHaveLength(20)

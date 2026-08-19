@@ -26,6 +26,16 @@ if (typeof localStorage === `undefined` || typeof localStorage.getItem !== `func
   })
 }
 
+// happy-dom does not implement the Popover API used by svelte-widgets 1.6.
+for (const method of [`showPopover`, `hidePopover`] as const) {
+  if (!(method in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, method, {
+      configurable: true,
+      value: () => undefined,
+    })
+  }
+}
+
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const current_dir = import.meta.dirname
 const MOYO_WASM_PATH = resolve(

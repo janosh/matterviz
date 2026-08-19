@@ -416,21 +416,6 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
   }
 }
 
-export const load_packed_frame_preview = (
-  frame_loader: FrameLoader,
-  total_frames: number,
-  max_frames: number,
-  label: string,
-): TrajectoryFrame[] => {
-  const load_frame_sync = frame_loader.load_frame_sync
-  if (!load_frame_sync) throw new Error(`${label} loader must support synchronous frames`)
-  return Array.from({ length: Math.min(total_frames, max_frames) }, (_unused, frame_idx) => {
-    const frame = load_frame_sync(frame_idx)
-    if (!frame) throw new Error(`${label} loader could not reconstruct frame ${frame_idx}`)
-    return frame
-  })
-}
-
 export const trajectory_data_transferables = (
   data: TrajectoryFrameStore | TrajectoryPositionStream,
 ): ArrayBuffer[] => {

@@ -108,10 +108,10 @@ test.describe(`PhononModeExplorer`, () => {
       slider.dispatchEvent(new Event(`input`, { bubbles: true }))
       slider.dispatchEvent(new Event(`change`, { bubbles: true }))
     })
-    await expect(explorer.getByRole(`button`, { name: `Play` })).toBeVisible()
-    await expect(step_input).toHaveValue(`12`)
-    await page.waitForTimeout(200)
-    await expect(step_input).toHaveValue(`12`)
+    const pause_button = explorer.getByRole(`button`, { name: `Pause` })
+    await expect(pause_button).toBeVisible()
+    await expect.poll(() => step_input.inputValue()).not.toBe(`12`)
+    await pause_button.click()
 
     await step_input.fill(`46`)
     const visited_frames = await step_input.evaluate(async (input: HTMLInputElement) => {

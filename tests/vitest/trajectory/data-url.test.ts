@@ -15,14 +15,7 @@ const BLOB_FILENAME = BLOB_URL.split(`/`).at(-1) ?? BLOB_URL
 // Fresh response per fetch call since load_from_url may fetch twice (magic-byte
 // sniff via Range request, then full body)
 const mock_fetch_text = (content: string, headers = new Headers()) =>
-  vi.fn().mockImplementation(() =>
-    Promise.resolve({
-      ok: true,
-      headers,
-      text: () => Promise.resolve(content),
-      arrayBuffer: () => Promise.resolve(new TextEncoder().encode(content).buffer),
-    }),
-  )
+  vi.fn().mockImplementation(() => Promise.resolve(new Response(content, { headers })))
 
 const mounted: ReturnType<typeof mount>[] = []
 afterEach(() => {

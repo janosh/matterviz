@@ -1128,7 +1128,11 @@ describe(`Structure string parsing`, () => {
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`]))
 
     props.data_url = `/b.json`
-    await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledWith(`/b.json`))
+    await vi.waitFor(() =>
+      expect(fetch_mock).toHaveBeenLastCalledWith(`/b.json`, {
+        signal: expect.any(AbortSignal),
+      }),
+    )
     await vi.waitFor(() => expect(loaded_elements).toEqual([`H`, `He`]))
   })
 

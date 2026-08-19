@@ -3,9 +3,10 @@ import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-function open_context_menu() {
+async function open_context_menu() {
   const wrapper = doc_query(`.composition`)
   wrapper.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe(`Composition component`, () => {
@@ -54,8 +55,7 @@ describe(`Composition component`, () => {
 
   test(`opens context menu on right click`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    open_context_menu()
-    await tick()
+    await open_context_menu()
     expect(doc_query(`.action-menu`)).toBeInstanceOf(HTMLElement)
     expect(doc_query(`.section-title`).textContent).toBe(`Display Mode`)
     // the active mode is a checked radio, so a screen reader announces the selection
@@ -68,8 +68,7 @@ describe(`Composition component`, () => {
 
   test(`context menu lists display modes, color schemes, and export options`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await open_context_menu()
 
     const menu_options = document.querySelectorAll(`.action-menu button`)
     expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
@@ -92,8 +91,7 @@ describe(`Composition component`, () => {
 
   test(`context menu changes propagate to chart components`, async () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    open_context_menu()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await open_context_menu()
 
     const bubble_option = Array.from(
       document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
@@ -101,8 +99,7 @@ describe(`Composition component`, () => {
     if (!bubble_option) throw new Error(`Bubble Chart option not found`)
     bubble_option.click()
 
-    open_context_menu()
-    await tick()
+    await open_context_menu()
     expect(doc_query(`.bubble-chart`)).toBeInstanceOf(SVGSVGElement)
   })
 })
