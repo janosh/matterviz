@@ -23,6 +23,21 @@
     const maximum = Math.max(0, ...values)
     return maximum > 0 ? values.map((value) => value / maximum) : values
   }
+  const spectrum = (
+    id: string,
+    label: string,
+    centers: { frequency: number; amplitude: number }[],
+    width: number,
+    color: string,
+    dashed = false,
+  ): DataSeries => ({
+    id,
+    x: frequencies,
+    y: normalized_curve(centers, width),
+    label,
+    markers: `line`,
+    line_style: { stroke: color, stroke_width: 2, ...(dashed && { line_dash: `7 4` }) },
+  })
   const panels = BUILTIN_VIBRATIONAL_REFERENCES.map((reference, reference_idx) => {
     const trajectory_centers = reference.modes.map((mode, mode_idx) => ({
       frequency: mode.wavenumber_cm1,
@@ -38,31 +53,29 @@
         ? [{ frequency: mode.wavenumber_cm1, amplitude: 0.6 + ((mode_idx + 2) % 3) * 0.2 }]
         : [],
     )
-    const series: DataSeries[] = [
-      {
-        id: `${reference.id}-raman`,
-        x: frequencies,
-        y: normalized_curve(raman_centers, 15),
-        label: `Relative Raman intensity`,
-        markers: `line`,
-        line_style: { stroke: PLOT_COLORS[2], stroke_width: 2 },
-      },
-      {
-        id: `${reference.id}-ir`,
-        x: frequencies,
-        y: normalized_curve(infrared_centers, 13),
-        label: `Relative IR intensity`,
-        markers: `line`,
-        line_style: { stroke: PLOT_COLORS[0], stroke_width: 2 },
-      },
-      {
-        id: `${reference.id}-vdos`,
-        x: frequencies,
-        y: normalized_curve(trajectory_centers, 17),
-        label: `Mass-weighted VDOS`,
-        markers: `line`,
-        line_style: { stroke: PLOT_COLORS[1], stroke_width: 2, line_dash: `7 4` },
-      },
+    const series = [
+      spectrum(
+        `${reference.id}-raman`,
+        `Relative Raman intensity`,
+        raman_centers,
+        15,
+        PLOT_COLORS[2],
+      ),
+      spectrum(
+        `${reference.id}-ir`,
+        `Relative IR intensity`,
+        infrared_centers,
+        13,
+        PLOT_COLORS[0],
+      ),
+      spectrum(
+        `${reference.id}-vdos`,
+        `Mass-weighted VDOS`,
+        trajectory_centers,
+        17,
+        PLOT_COLORS[1],
+        true,
+      ),
     ]
     const ref_lines: RefLine[] = reference.modes.map((mode) => ({
       type: `vertical`,
@@ -78,7 +91,7 @@
     }))
     return {
       key: reference.id,
-      data: { title: reference.formula, reference, series, ref_lines },
+      data: { title: reference.formula, series, ref_lines },
     }
   })
 </script>

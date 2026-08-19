@@ -1,5 +1,5 @@
 import type { SpectralActivity } from './trajectory-spectroscopy'
-import { SvelteSet } from 'svelte/reactivity'
+import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 export interface ReferenceCitation {
   id: string
@@ -85,15 +85,15 @@ export function parse_vibrational_reference_catalog(
     if (!Array.isArray(entry_value.citations) || entry_value.citations.length === 0) {
       throw new TypeError(`${path}.citations must be a non-empty array`)
     }
-    const citation_ids_seen = new SvelteSet<string>()
+    const citation_ids = new SvelteSet<string>()
     const citations = entry_value.citations.map((citation_value, citation_idx) => {
       const citation_path = `${path}.citations[${citation_idx}]`
       if (!is_record(citation_value)) throw new TypeError(`${citation_path} must be an object`)
       const citation_id = require_string(citation_value.id, `${citation_path}.id`)
-      if (citation_ids_seen.has(citation_id)) {
+      if (citation_ids.has(citation_id)) {
         throw new TypeError(`${citation_path}.id duplicates '${citation_id}'`)
       }
-      citation_ids_seen.add(citation_id)
+      citation_ids.add(citation_id)
       const access_date = require_string(
         citation_value.access_date,
         `${citation_path}.access_date`,
@@ -131,7 +131,6 @@ export function parse_vibrational_reference_catalog(
         ),
       }
     })
-    const citation_ids = new SvelteSet(citations.map(({ id: citation_id }) => citation_id))
     if (!Array.isArray(entry_value.modes) || entry_value.modes.length === 0) {
       throw new TypeError(`${path}.modes must be a non-empty array`)
     }
@@ -253,101 +252,143 @@ export function parse_experimental_spectrum(value: unknown): ExperimentalSpectru
   }
 }
 
-const benchmark_source: ReferenceCitation = {
-  id: `vibfreq1295`,
-  title: `VIBFREQ1295: A New Database for Vibrational Frequency Calculations`,
-  authors: `J. C. Zapata Trujillo and L. K. McKemmish`,
-  year: 2023,
-  url: `https://doi.org/10.1021/acs.jpca.2c01438`,
-  doi: `10.1021/acs.jpca.2c01438`,
-  locator: `VIBFREQ1295_Data worksheet; used to identify the original experimental papers, not as a substitute for their citations`,
-  access_date: `2026-08-17`,
-  redistribution_rationale: `Individual numerical facts are reproduced with attribution; no NIST WebBook table or spectrum is bundled`,
-}
-
-const experimental_citation = (
-  citation: Omit<ReferenceCitation, `access_date` | `redistribution_rationale` | `url`> & {
-    doi: string
-  },
+const citation = (
+  id: string,
+  title: string,
+  authors: string,
+  year: number,
+  doi: string,
+  locator: string,
 ): ReferenceCitation => ({
-  ...citation,
-  url: `https://doi.org/${citation.doi}`,
+  id,
+  title,
+  authors,
+  year,
+  doi,
+  locator,
+  url: `https://doi.org/${doi}`,
   access_date: `2026-08-17`,
-  redistribution_rationale: `Only a small number of reported band origins and bibliographic facts are reproduced with attribution`,
+  redistribution_rationale: `Reported band origins and bibliographic facts are reproduced with attribution`,
 })
 
-const h2o_bend = experimental_citation({
-  id: `h2o-bend-1976`,
-  title: `Line positions and intensities in the ν2 band of H2-16O`,
-  authors: `C. Camy-Peyret and J. M. Flaud`,
-  year: 1976,
-  doi: `10.1080/00268977600103261`,
-  locator: `Molecular Physics 32, 523–537; ν2 band origin`,
-})
-const h2o_stretch = experimental_citation({
-  id: `h2o-stretch-1956`,
-  title: `Rotation-vibration spectra of deuterated water vapor`,
-  authors: `W. S. Benedict, N. Gailar, and E. K. Plyler`,
-  year: 1956,
-  doi: `10.1063/1.1742731`,
-  locator: `Journal of Chemical Physics 24, 1139–1165; H2O comparison band origins`,
-})
-const nh3_umbrella = experimental_citation({
-  id: `nh3-umbrella-1981`,
-  title: `A simultaneous analysis of transitions between the ground and ν2 inversion-rotation levels of 14NH3`,
-  authors: `Š. Urban, V. Špirko, D. Papoušek, J. Kauppinen, S. P. Belov, L. I. Gershtein, and A. F. Krupnov`,
-  year: 1981,
-  doi: `10.1016/0022-2852(81)90179-X`,
-  locator: `Journal of Molecular Spectroscopy 88, 274–292; ν2 inversion-rotation analysis`,
-})
-const nh3_bend = experimental_citation({
-  id: `nh3-bend-2000`,
-  title: `Line positions and intensities in the 2ν2/ν4 vibrational system of 14NH3 near 5–7 μm`,
-  authors: `C. Cottaz et al.`,
-  year: 2000,
-  doi: `10.1006/jmsp.2000.8182`,
-  locator: `Journal of Molecular Spectroscopy 203, 285–309; ν4 band origins`,
-})
-const nh3_stretch = experimental_citation({
-  id: `nh3-stretch-1999`,
-  title: `Positions and intensities in the 2ν4/ν1/ν3 vibrational system of 14NH3 near 3 μm`,
-  authors: `I. Kleiner et al.`,
-  year: 1999,
-  doi: `10.1006/jmsp.1998.7728`,
-  locator: `Journal of Molecular Spectroscopy 193, 46–71; ν1 and ν3 band origins`,
-})
-const ch4_raman = experimental_citation({
-  id: `ch4-raman-1960`,
-  title: `The Raman spectrum of methane`,
-  authors: `M. A. Thomas and H. L. Welsh`,
-  year: 1960,
-  doi: `10.1139/p60-135`,
-  locator: `Canadian Journal of Physics 38, 1291–1303; reported ν1, ν2, and ν3 band origins`,
-})
-const ch4_nu4 = experimental_citation({
-  id: `ch4-nu4-1979`,
-  title: `High resolution spectroscopy of the ν4 band of methane`,
-  authors: `G. Restelli and F. Cappellani`,
-  year: 1979,
-  doi: `10.1016/0022-2852(79)90043-2`,
-  locator: `Journal of Molecular Spectroscopy 78, 161–169; ν4 fundamental-band analysis`,
-})
-const co2_bend = experimental_citation({
-  id: `co2-bend-1982`,
-  title: `New wave-number calibration tables for H2O, CO2, and OCS lines between 500 and 900 cm^-1`,
-  authors: `J. Kauppinen, K. Jolma, and V.-M. Horneman`,
-  year: 1982,
-  doi: `10.1364/AO.21.003332`,
-  locator: `Applied Optics 21, 3332; CO2 ν2 lines`,
-})
-const co2_stretch = experimental_citation({
-  id: `co2-stretch-2004`,
-  title: `Near infrared spectroscopy of carbon dioxide I. 16O12C16O line positions`,
-  authors: `C. E. Miller and L. R. Brown`,
-  year: 2004,
-  doi: `10.1016/j.jms.2003.11.001`,
-  locator: `Journal of Molecular Spectroscopy 228, 329–354; fitted vibrational-state origins`,
-})
+const citations = new SvelteMap<string, ReferenceCitation>([
+  [
+    `vibfreq1295`,
+    citation(
+      `vibfreq1295`,
+      `VIBFREQ1295: A New Database for Vibrational Frequency Calculations`,
+      `J. C. Zapata Trujillo and L. K. McKemmish`,
+      2023,
+      `10.1021/acs.jpca.2c01438`,
+      `VIBFREQ1295_Data worksheet; used to identify the original experimental papers, not as a substitute for their citations`,
+    ),
+  ],
+  [
+    `h2o-bend-1976`,
+    citation(
+      `h2o-bend-1976`,
+      `Line positions and intensities in the ν2 band of H2-16O`,
+      `C. Camy-Peyret and J. M. Flaud`,
+      1976,
+      `10.1080/00268977600103261`,
+      `Molecular Physics 32, 523–537; ν2 band origin`,
+    ),
+  ],
+  [
+    `h2o-stretch-1956`,
+    citation(
+      `h2o-stretch-1956`,
+      `Rotation-vibration spectra of deuterated water vapor`,
+      `W. S. Benedict, N. Gailar, and E. K. Plyler`,
+      1956,
+      `10.1063/1.1742731`,
+      `Journal of Chemical Physics 24, 1139–1165; H2O comparison band origins`,
+    ),
+  ],
+  [
+    `nh3-umbrella-1981`,
+    citation(
+      `nh3-umbrella-1981`,
+      `A simultaneous analysis of transitions between the ground and ν2 inversion-rotation levels of 14NH3`,
+      `Š. Urban, V. Špirko, D. Papoušek, J. Kauppinen, S. P. Belov, L. I. Gershtein, and A. F. Krupnov`,
+      1981,
+      `10.1016/0022-2852(81)90179-X`,
+      `Journal of Molecular Spectroscopy 88, 274–292; ν2 inversion-rotation analysis`,
+    ),
+  ],
+  [
+    `nh3-bend-2000`,
+    citation(
+      `nh3-bend-2000`,
+      `Line positions and intensities in the 2ν2/ν4 vibrational system of 14NH3 near 5–7 μm`,
+      `C. Cottaz et al.`,
+      2000,
+      `10.1006/jmsp.2000.8182`,
+      `Journal of Molecular Spectroscopy 203, 285–309; ν4 band origins`,
+    ),
+  ],
+  [
+    `nh3-stretch-1999`,
+    citation(
+      `nh3-stretch-1999`,
+      `Positions and intensities in the 2ν4/ν1/ν3 vibrational system of 14NH3 near 3 μm`,
+      `I. Kleiner et al.`,
+      1999,
+      `10.1006/jmsp.1998.7728`,
+      `Journal of Molecular Spectroscopy 193, 46–71; ν1 and ν3 band origins`,
+    ),
+  ],
+  [
+    `ch4-raman-1960`,
+    citation(
+      `ch4-raman-1960`,
+      `The Raman spectrum of methane`,
+      `M. A. Thomas and H. L. Welsh`,
+      1960,
+      `10.1139/p60-135`,
+      `Canadian Journal of Physics 38, 1291–1303; reported ν1, ν2, and ν3 band origins`,
+    ),
+  ],
+  [
+    `ch4-nu4-1979`,
+    citation(
+      `ch4-nu4-1979`,
+      `High resolution spectroscopy of the ν4 band of methane`,
+      `G. Restelli and F. Cappellani`,
+      1979,
+      `10.1016/0022-2852(79)90043-2`,
+      `Journal of Molecular Spectroscopy 78, 161–169; ν4 fundamental-band analysis`,
+    ),
+  ],
+  [
+    `co2-bend-1982`,
+    citation(
+      `co2-bend-1982`,
+      `New wave-number calibration tables for H2O, CO2, and OCS lines between 500 and 900 cm^-1`,
+      `J. Kauppinen, K. Jolma, and V.-M. Horneman`,
+      1982,
+      `10.1364/AO.21.003332`,
+      `Applied Optics 21, 3332; CO2 ν2 lines`,
+    ),
+  ],
+  [
+    `co2-stretch-2004`,
+    citation(
+      `co2-stretch-2004`,
+      `Near infrared spectroscopy of carbon dioxide I. 16O12C16O line positions`,
+      `C. E. Miller and L. R. Brown`,
+      2004,
+      `10.1016/j.jms.2003.11.001`,
+      `Journal of Molecular Spectroscopy 228, 329–354; fitted vibrational-state origins`,
+    ),
+  ],
+])
+
+const cited = (id: string): ReferenceCitation => {
+  const value = citations.get(id)
+  if (!value) throw new Error(`Unknown built-in citation '${id}'`)
+  return value
+}
 
 const vib_mode = (
   mode_id: string,
@@ -371,20 +412,43 @@ const vib_mode = (
   citation_id,
 })
 
+const gas_reference = (
+  id: string,
+  name: string,
+  formula: string,
+  isotopologue: string,
+  cas_number: string,
+  inchikey: string,
+  comparison_url: string,
+  citation_ids: string[],
+  modes: VibrationalReferenceMode[],
+): VibrationalReferenceEntry => ({
+  id,
+  name,
+  formula,
+  isotopologue,
+  phase: `gas`,
+  frequency_unit: `cm^-1`,
+  cas_number,
+  inchikey,
+  comparison_url,
+  citations: citation_ids.map(cited),
+  modes,
+})
+
 export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
   parse_vibrational_reference_catalog([
-    {
-      id: `h2o-gas-main`,
-      name: `Water`,
-      formula: `H2O`,
-      isotopologue: `1H2-16O`,
-      phase: `gas`,
-      frequency_unit: `cm^-1`,
-      cas_number: `7732-18-5`,
-      inchikey: `XLYOFNOQVPJJNP-UHFFFAOYSA-N`,
-      comparison_url: `https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=800`,
-      modes: [
-        vib_mode(`nu2`, `ν2`, `A1`, `bend`, 1, 1595, `active`, `active`, h2o_bend.id),
+    gas_reference(
+      `h2o-gas-main`,
+      `Water`,
+      `H2O`,
+      `1H2-16O`,
+      `7732-18-5`,
+      `XLYOFNOQVPJJNP-UHFFFAOYSA-N`,
+      `https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=800`,
+      [`vibfreq1295`, `h2o-bend-1976`, `h2o-stretch-1956`],
+      [
+        vib_mode(`nu2`, `ν2`, `A1`, `bend`, 1, 1595, `active`, `active`, `h2o-bend-1976`),
         vib_mode(
           `nu1`,
           `ν1`,
@@ -394,7 +458,7 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           3657,
           `active`,
           `active`,
-          h2o_stretch.id,
+          `h2o-stretch-1956`,
         ),
         vib_mode(
           `nu3`,
@@ -405,24 +469,32 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           3756,
           `active`,
           `active`,
-          h2o_stretch.id,
+          `h2o-stretch-1956`,
         ),
       ],
-      citations: [benchmark_source, h2o_bend, h2o_stretch],
-    },
-    {
-      id: `nh3-gas-main`,
-      name: `Ammonia`,
-      formula: `NH3`,
-      isotopologue: `14N-1H3`,
-      phase: `gas`,
-      frequency_unit: `cm^-1`,
-      cas_number: `7664-41-7`,
-      inchikey: `QGZKDVFQNNGYKY-UHFFFAOYSA-N`,
-      comparison_url: `https://webbook.nist.gov/cgi/cbook.cgi?ID=C7664417&Mask=800`,
-      modes: [
-        vib_mode(`nu2`, `ν2`, `A1`, `umbrella`, 1, 950, `active`, `active`, nh3_umbrella.id),
-        vib_mode(`nu4`, `ν4`, `E`, `bend`, 2, 1627, `active`, `active`, nh3_bend.id),
+    ),
+    gas_reference(
+      `nh3-gas-main`,
+      `Ammonia`,
+      `NH3`,
+      `14N-1H3`,
+      `7664-41-7`,
+      `QGZKDVFQNNGYKY-UHFFFAOYSA-N`,
+      `https://webbook.nist.gov/cgi/cbook.cgi?ID=C7664417&Mask=800`,
+      [`vibfreq1295`, `nh3-umbrella-1981`, `nh3-bend-2000`, `nh3-stretch-1999`],
+      [
+        vib_mode(
+          `nu2`,
+          `ν2`,
+          `A1`,
+          `umbrella`,
+          1,
+          950,
+          `active`,
+          `active`,
+          `nh3-umbrella-1981`,
+        ),
+        vib_mode(`nu4`, `ν4`, `E`, `bend`, 2, 1627, `active`, `active`, `nh3-bend-2000`),
         vib_mode(
           `nu1`,
           `ν1`,
@@ -432,7 +504,7 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           3337,
           `active`,
           `active`,
-          nh3_stretch.id,
+          `nh3-stretch-1999`,
         ),
         vib_mode(
           `nu3`,
@@ -443,24 +515,22 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           3444,
           `active`,
           `active`,
-          nh3_stretch.id,
+          `nh3-stretch-1999`,
         ),
       ],
-      citations: [benchmark_source, nh3_umbrella, nh3_bend, nh3_stretch],
-    },
-    {
-      id: `ch4-gas-main`,
-      name: `Methane`,
-      formula: `CH4`,
-      isotopologue: `12C-1H4`,
-      phase: `gas`,
-      frequency_unit: `cm^-1`,
-      cas_number: `74-82-8`,
-      inchikey: `VNWKTOKETHGBQD-UHFFFAOYSA-N`,
-      comparison_url: `https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Mask=800`,
-      modes: [
-        vib_mode(`nu4`, `ν4`, `F2`, `bend`, 3, 1306, `active`, `active`, ch4_nu4.id),
-        vib_mode(`nu2`, `ν2`, `E`, `bend`, 2, 1534, `inactive`, `active`, ch4_raman.id),
+    ),
+    gas_reference(
+      `ch4-gas-main`,
+      `Methane`,
+      `CH4`,
+      `12C-1H4`,
+      `74-82-8`,
+      `VNWKTOKETHGBQD-UHFFFAOYSA-N`,
+      `https://webbook.nist.gov/cgi/cbook.cgi?ID=C74828&Mask=800`,
+      [`vibfreq1295`, `ch4-raman-1960`, `ch4-nu4-1979`],
+      [
+        vib_mode(`nu4`, `ν4`, `F2`, `bend`, 3, 1306, `active`, `active`, `ch4-nu4-1979`),
+        vib_mode(`nu2`, `ν2`, `E`, `bend`, 2, 1534, `inactive`, `active`, `ch4-raman-1960`),
         vib_mode(
           `nu1`,
           `ν1`,
@@ -470,7 +540,7 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           2917,
           `inactive`,
           `active`,
-          ch4_raman.id,
+          `ch4-raman-1960`,
         ),
         vib_mode(
           `nu3`,
@@ -481,23 +551,21 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           3019,
           `active`,
           `active`,
-          ch4_raman.id,
+          `ch4-raman-1960`,
         ),
       ],
-      citations: [benchmark_source, ch4_raman, ch4_nu4],
-    },
-    {
-      id: `co2-gas-main`,
-      name: `Carbon dioxide`,
-      formula: `CO2`,
-      isotopologue: `12C-16O2`,
-      phase: `gas`,
-      frequency_unit: `cm^-1`,
-      cas_number: `124-38-9`,
-      inchikey: `CURLTUGMZLYLDI-UHFFFAOYSA-N`,
-      comparison_url: `https://webbook.nist.gov/cgi/cbook.cgi?ID=C124389&Mask=800`,
-      modes: [
-        vib_mode(`nu2`, `ν2`, `Πu`, `bend`, 2, 667, `active`, `inactive`, co2_bend.id),
+    ),
+    gas_reference(
+      `co2-gas-main`,
+      `Carbon dioxide`,
+      `CO2`,
+      `12C-16O2`,
+      `124-38-9`,
+      `CURLTUGMZLYLDI-UHFFFAOYSA-N`,
+      `https://webbook.nist.gov/cgi/cbook.cgi?ID=C124389&Mask=800`,
+      [`vibfreq1295`, `co2-bend-1982`, `co2-stretch-2004`],
+      [
+        vib_mode(`nu2`, `ν2`, `Πu`, `bend`, 2, 667, `active`, `inactive`, `co2-bend-1982`),
         vib_mode(
           `nu1`,
           `ν1`,
@@ -507,7 +575,7 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           1333,
           `inactive`,
           `active`,
-          co2_stretch.id,
+          `co2-stretch-2004`,
         ),
         vib_mode(
           `nu3`,
@@ -518,9 +586,8 @@ export const BUILTIN_VIBRATIONAL_REFERENCES: VibrationalReferenceEntry[] =
           2349,
           `active`,
           `inactive`,
-          co2_stretch.id,
+          `co2-stretch-2004`,
         ),
       ],
-      citations: [benchmark_source, co2_bend, co2_stretch],
-    },
+    ),
   ])

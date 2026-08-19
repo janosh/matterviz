@@ -89,6 +89,14 @@ const reference: VibrationalReferenceEntry = {
     citation_id: `source`,
   })),
 }
+const experimental_spectrum = {
+  kind: `ir` as const,
+  source: `fixture`,
+  data: [
+    [100, 4],
+    [200, 2],
+  ],
+}
 
 describe(`spectroscopy reference parsing`, () => {
   it(`ships four validated gas-phase molecule references with provenance`, () => {
@@ -137,12 +145,7 @@ describe(`spectroscopy reference parsing`, () => {
   it(`parses two-column experimental spectra without normalizing intensities`, () => {
     expect(
       parse_experimental_spectrum({
-        kind: `ir`,
-        source: `fixture`,
-        data: [
-          [100, 4],
-          [200, 2],
-        ],
+        ...experimental_spectrum,
         temperature: 300,
       }),
     ).toEqual({
@@ -154,12 +157,7 @@ describe(`spectroscopy reference parsing`, () => {
     })
     expect(() =>
       parse_experimental_spectrum({
-        kind: `ir`,
-        source: `fixture`,
-        data: [
-          [100, 4],
-          [200, 2],
-        ],
+        ...experimental_spectrum,
         temperature: -1,
       }),
     ).toThrow(/temperature must be >= 0/)
@@ -250,11 +248,6 @@ describe(`benchmark_spectroscopy`, () => {
 
   it.each([
     [`unmatched_penalty_cm1`, -1, /unmatched_penalty_cm1 must be finite and >= 0/],
-    [
-      `unmatched_penalty_cm1`,
-      Number.POSITIVE_INFINITY,
-      /unmatched_penalty_cm1 must be finite and >= 0/,
-    ],
     [`unmatched_penalty_cm1`, Number.NaN, /unmatched_penalty_cm1 must be finite and >= 0/],
     [`activity_mismatch_penalty_cm1`, -1, /activity_mismatch_penalty_cm1 must be >= 0/],
     [

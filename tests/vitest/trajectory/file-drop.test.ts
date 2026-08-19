@@ -33,6 +33,9 @@ const drop_file = (
   return viewer
 }
 
+const wait_for_hdf5_group_options = (): Promise<void> =>
+  vi.waitFor(() => expect(document.querySelector(`button[data-hdf5-group]`)).not.toBeNull())
+
 afterEach(async () => {
   for (const app of mounted.splice(0)) await unmount(app)
 })
@@ -118,9 +121,7 @@ test(`locks HDF5 group choices while reading the chosen local file`, async () =>
   const on_error = vi.fn()
   const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
   drop_file(file, { on_file_load, on_error })
-  await vi.waitFor(() =>
-    expect(document.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
-  )
+  await wait_for_hdf5_group_options()
 
   const delayed_read = await delay_file_read(file)
   try {
@@ -146,9 +147,7 @@ test(`does not replace a newer drop when a chosen HDF5 group finishes late`, asy
   const on_error = vi.fn()
   const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
   const viewer = drop_file(file, { on_file_load, on_error })
-  await vi.waitFor(() =>
-    expect(document.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
-  )
+  await wait_for_hdf5_group_options()
 
   const delayed_read = await delay_file_read(file)
   const parse_spy = vi.spyOn(trajectory_parse, `parse_trajectory_async`)
@@ -180,9 +179,7 @@ test(`replaces a pending HDF5 group selection with a new drop`, async () => {
     on_file_load,
     on_error,
   })
-  await vi.waitFor(() =>
-    expect(document.querySelector(`button[data-hdf5-group]`)).not.toBeNull(),
-  )
+  await wait_for_hdf5_group_options()
 
   viewer.dispatchEvent(create_drop_event(new File([MULTI_FRAME_XYZ], `replacement.xyz`)))
   await vi.waitFor(() =>

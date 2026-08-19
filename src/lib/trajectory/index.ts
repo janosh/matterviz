@@ -115,9 +115,7 @@ export interface TrajectoryMetadata {
   properties: Record<string, number>
 }
 
-// Compact sampled property with an independent MD-step axis. The first dimension is
-// represented by `steps`; `sample_shape` describes one sample (for example [3] for a
-// dipole or [n_atoms, 3] for velocities) and `values` stores samples contiguously.
+// Contiguous samples with an independent MD-step axis.
 export interface TrajectorySignal {
   values: Float64Array
   sample_shape: number[]
@@ -125,15 +123,11 @@ export interface TrajectorySignal {
   unit?: string
 }
 
-// Cloneable packed backing store for trajectories whose complete coordinates fit comfortably
-// in memory but whose per-frame object trees do not. Parse workers transfer these buffers once;
-// the UI then materializes only the selected frame without a MessagePort round-trip.
+// Transferable backing store for source-free, on-demand frames.
 export interface TrajectoryFrameStore {
   positions: Float64Array
   elements: ElementSymbol[]
-  // Exactly one of lattice_matrix/lattice_matrices is normally present. The packed form stores
-  // one flattened 3x3 matrix per frame for variable-cell trajectories without retaining frame
-  // object trees.
+  // One static cell or flattened per-frame cells.
   lattice_matrix?: Matrix3x3
   lattice_matrices?: Float64Array
   pbc?: Pbc
@@ -151,26 +145,20 @@ export interface TrajectoryFrameStore {
 export interface TrajectoryType {
   frames: TrajectoryFrame[]
   metadata?: Record<string, unknown>
-  // Simulation time per MD step (NOT per frame), so a frame's time is step * time_step.
-  // Only set when the source records it (e.g. VASP POTIM); without it there is no time
-  // axis and consumers must fall back to step or frame numbering rather than inventing one.
+  // Simulation time per MD step.
   time_step?: number
-  // Unit `time_step` is expressed in, e.g. `fs` or `ps`. Required alongside time_step:
-  // a bare number would put an unlabelled axis on the screen.
+  // Required unit for time_step.
   time_unit?: string
   // Static per-atom masses in atomic mass units, when recorded by the source.
   atom_masses?: number[]
-  // Time-dependent scalar, vector, tensor, and per-atom numerical properties. Signals
-  // keep their own step axes because TorchSim can record properties at different rates.
+  // Time-dependent properties with independent step axes.
   signals?: Record<string, TrajectorySignal>
   // Large file streaming properties
   total_frames?: number
   indexed_frames?: FrameIndex[]
   plot_metadata?: TrajectoryMetadata[]
   is_indexed?: boolean
-  // On-demand frame loading for large/indexed trajectories.
-  frame_loader?: FrameLoader // When present, enables lazy loading of frames instead of loading all frames into memory.
-  // Optional transferable backing store used to recreate frame_loader on the main thread.
+  frame_loader?: FrameLoader
   frame_store?: TrajectoryFrameStore
 }
 
@@ -199,30 +187,19 @@ export type TrajectoryDataExtractor = (
   trajectory: TrajectoryType,
 ) => Record<string, number>
 
-// Flat per-frame Cartesian positions for a whole trajectory, laid out as n_frames
-// blocks of n_atoms xyz triples: positions[(frame * n_atoms + atom) * 3 + axis].
-// Flat so the buffer can be transferred (not structured-cloned) into a Web Worker,
-// and so a whole-trajectory sweep never holds n_frames TrajectoryFrame objects at once.
+// Flat frame-major Cartesian positions.
 export interface TrajectoryPositionStream {
   positions: Float64Array
   n_frames: number
   n_atoms: number
-  // One entry per atom. Atom order is the atom identity and must be stable across frames.
   elements: ElementSymbol[]
-  // One cell per frame (NPT-safe); null entries mean that frame had no periodicity.
-  // Null overall when no frame carried a lattice.
+  // One cell per frame; null if none exist.
   lattice_matrices: (Matrix3x3 | null)[] | null
   pbc: Pbc | null
-  // True when the source format already stores unwrapped coordinates (LAMMPS xu/yu/zu),
-  // in which case consumers must NOT re-apply the minimum image convention.
   coords_unwrapped: boolean
-  // Every `frame_stride`-th source frame was collected (1 = every frame)
   frame_stride: number
-  // MD step number of each collected frame, in collection order
   steps: number[]
-  // Opt-in per-atom channels, laid out parallel to `positions` and keyed by site property
-  // name: scalars[key][frame * n_atoms + atom] and
-  // vectors[key][(frame * n_atoms + atom) * 3 + axis]. Undefined when none were requested.
+  // Opt-in site properties, parallel to positions.
   scalars?: Record<string, Float64Array>
   vectors?: Record<string, Float64Array>
   // Requested frame-level signals sampled on the same collected steps as positions.
@@ -235,10 +212,7 @@ export interface PositionStreamOptions {
   // Hard ceiling on the allocated position buffer; the sweep throws (with the stride
   // that would fit) rather than attempting a multi-GB allocation.
   max_bytes?: number
-  // Per-atom site properties to collect alongside positions: scalar_keys for numbers
-  // (`charge`, `c_pe`), vector_keys for vec3s (`velocity`, `force`). Every collected frame
-  // must carry them on every site — a frame that doesn't throws rather than padding NaN.
-  // Both count against `max_bytes`.
+  // Required per-atom scalar and vec3 properties.
   scalar_keys?: string[]
   vector_keys?: string[]
   // Frame metadata keys to collect as scalar, vec3, or 3x3 signals.
@@ -246,15 +220,12 @@ export interface PositionStreamOptions {
 }
 
 export interface FrameLoader {
-  // False when the loader owns its backing data (packed arrays or a worker-side source). Such
-  // loaders accept an empty data argument, allowing the UI to release very large raw payloads.
+  // False when the loader owns its data.
   requires_source?: boolean
   get_total_frames: (data: string | ArrayBuffer) => Promise<number>
   // Release worker ports, file handles, or other external resources owned by the loader.
   dispose?: () => void
-  // Optional single sequential pass over the payload emitting flat positions.
-  // Whole-trajectory analyses (e.g. MSD) need this for indexed trajectories, whose
-  // in-memory `frames` array holds only the first handful of frames.
+  // Optional sequential position pass.
   stream_positions?: (
     data: string | ArrayBuffer,
     options?: PositionStreamOptions,
@@ -269,8 +240,7 @@ export interface FrameLoader {
     data: string | ArrayBuffer,
     frame_number: number,
   ) => Promise<TrajectoryFrame | null>
-  // Packed in-memory stores can materialize the selected frame in the interaction's current
-  // animation frame. External/indexed readers omit this and use load_frame asynchronously.
+  // Source-free packed stores support synchronous access.
   load_frame_sync?: (frame_number: number) => TrajectoryFrame | null
   extract_plot_metadata: (
     data: string | ArrayBuffer,

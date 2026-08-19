@@ -1,4 +1,3 @@
-// Shared utilities for trajectory parsing
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
@@ -7,6 +6,7 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
+import { SvelteSet } from 'svelte/reactivity'
 import type {
   FrameLoader,
   ParseProgress,
@@ -30,8 +30,6 @@ export const is_supported_trajectory_signal_shape = (
     ((sample_shape[0] === 3 && sample_shape[1] === 3) ||
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
-// Validate that data is a proper 3x3 matrix
-// Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)
 export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
   if (!Array.isArray(data) || data.length !== 3) {
     throw new Error(
@@ -60,7 +58,6 @@ export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
     return symbol
   })
 
-// Tally per-element atom counts for trajectory metadata.element_counts
 export const count_elements = (elements: readonly string[]): Record<string, number> => {
   const counts: Record<string, number> = {}
   for (const element of elements) counts[element] = (counts[element] || 0) + 1
@@ -193,9 +190,6 @@ const packed_signal_samples = (
   }
 }
 
-// Recreate an on-demand loader from a cloneable packed store. This keeps random frame access on
-// the UI thread after a parser worker transfers the typed arrays, eliminating one request/response
-// round-trip from every slider or plot-hover update.
 export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLoader => {
   const n_frames = store.steps.length
   const n_atoms = store.elements.length
@@ -212,10 +206,7 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
   if (store.lattice_matrix && store.lattice_matrices) {
     throw new Error(`Packed trajectory cannot define both static and per-frame lattices`)
   }
-  if (
-    store.lattice_matrices?.length !== undefined &&
-    store.lattice_matrices.length !== n_frames * 9
-  ) {
+  if (store.lattice_matrices && store.lattice_matrices.length !== n_frames * 9) {
     throw new Error(
       `Packed trajectory lattices have ${store.lattice_matrices.length} values, expected ${n_frames * 9}`,
     )
@@ -305,9 +296,9 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
       on_progress?: (progress: ParseProgress) => void,
     ): Promise<TrajectoryPositionStream> => {
       const frame_indices = packed_frame_indices(n_frames, options.frame_stride)
-      const scalar_keys = [...new Set(options.scalar_keys)]
-      const vector_keys = [...new Set(options.vector_keys)]
-      const signal_keys = [...new Set(options.signal_keys)]
+      const scalar_keys = [...new SvelteSet(options.scalar_keys)]
+      const vector_keys = [...new SvelteSet(options.vector_keys)]
+      const signal_keys = [...new SvelteSet(options.signal_keys)]
       const missing_channels = [
         ...scalar_keys.filter((key) => !store.scalars?.[key]),
         ...vector_keys.filter((key) => !store.vectors?.[key]),
@@ -409,26 +400,17 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
   }
 }
 
-// Unique buffers owned by a packed store. The same velocity array can appear in both `vectors`
-// and `signals`, so deduplication is required before passing them to postMessage's transfer list.
 export const packed_frame_transferables = (store: TrajectoryFrameStore): ArrayBuffer[] => {
-  const buffers: ArrayBuffer[] = []
-  const add = (values: Float64Array) => {
-    const buffer = values.buffer as ArrayBuffer
-    if (!buffers.includes(buffer)) buffers.push(buffer)
-  }
+  const buffers = new SvelteSet<ArrayBuffer>()
+  const add = (values: Float64Array) => buffers.add(values.buffer as ArrayBuffer)
   add(store.positions)
   if (store.lattice_matrices) add(store.lattice_matrices)
   for (const values of Object.values(store.scalars ?? {})) add(values)
   for (const values of Object.values(store.vectors ?? {})) add(values)
   for (const signal of Object.values(store.signals ?? {})) add(signal.values)
-  return buffers
+  return [...buffers]
 }
 
-// Shared utility to read ndarray data from binary format.
-// `base_offset` is the absolute file position of `view`'s first byte: ULM stores
-// array positions as absolute file offsets, so reading from a slice of the file
-// (desktop frame streaming) needs the slice origin subtracted.
 export const read_ndarray_from_view = (
   view: DataView,
   ref: { ndarray: unknown[] },
@@ -470,7 +452,6 @@ export const read_ndarray_from_view = (
   throw new Error(`Unsupported shape`)
 }
 
-// Copy listed fields from source to target when they hold numbers
 export const copy_numeric_fields = (
   target: Record<string, number>,
   source: Record<string, unknown>,
@@ -481,8 +462,6 @@ export const copy_numeric_fields = (
   }
 }
 
-// Max and RMS of per-atom force magnitudes, or null when no forces present. Loop-based
-// rather than Math.max(...spread) to avoid call-stack overflow on very large frames.
 export function calc_force_stats(
   forces: number[][],
 ): { force_max: number; force_norm: number } | null {
@@ -497,19 +476,11 @@ export function calc_force_stats(
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
 }
 
-// Simulation time per MD step, from the absolute time each frame recorded.
-//
-// LAMMPS' `ITEM: TIME` and extXYZ's `Time=` say WHEN a snapshot was taken, not what the
-// integrator's dt was, so the step count has to be divided out — otherwise a run dumped
-// every 100 steps reports a dt 100x too large. Undefined unless every frame carries a time
-// and they all agree on one spacing, since a single dt over a non-uniform run misreports
-// every quantity derived from it.
 export function derive_time_step(
   times: readonly (number | null)[],
   steps: readonly number[],
 ): number | undefined {
   if (times.length !== steps.length || times.length < 2) return undefined
-  // All-or-nothing: partial times give no basis for a dt covering the whole run.
   const finite_times = times.filter(
     (time): time is number => time !== null && Number.isFinite(time),
   )
@@ -518,10 +489,6 @@ export function derive_time_step(
   const time_span = finite_times[1] - finite_times[0]
   if (!(step_span > 0) || !(time_span > 0)) return undefined
   const time_step = time_span / step_span
-  // Absolute times arrive as decimal text, so differences between them carry real rounding
-  // error and an exact comparison would reject uniform runs. 1e-6 relative sits far above
-  // the ~1e-15 a 16-digit round trip costs and far below the whole-factor disagreement a
-  // genuinely non-uniform run produces.
   const uniform = steps.every((step, idx) => {
     if (idx === 0) return true
     const expected = time_step * (step - steps[idx - 1])
@@ -531,9 +498,6 @@ export function derive_time_step(
   return uniform ? time_step : undefined
 }
 
-// True when a whitespace-split line looks like an XYZ atom line: a short
-// non-numeric element token followed by three numeric coordinates. Shared by
-// trajectory frame iteration and structure-format sniffing so both stay in sync.
 export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
   parts !== undefined &&
   parts.length >= 4 &&
@@ -541,12 +505,6 @@ export const is_xyz_atom_line = (parts: string[] | undefined): boolean =>
   parts[0].length <= 3 &&
   parts.slice(1, 4).every((coord) => coord !== `` && !isNaN(Number(coord)))
 
-// Walk concatenated (ext)XYZ frames in `lines`, yielding each frame's start line index,
-// parsed atom count, and comment line. A candidate frame is accepted only when its
-// first few atom lines look like "<element> <x> <y> <z>"; otherwise we advance one line and
-// rescan. That validation doubles as content sniffing so numeric-leading non-XYZ formats
-// (e.g. VASP XDATCAR) aren't misread as frames, and keeps count_xyz_frames consistent with
-// the actual parse/index walk (both go through this single source of truth).
 export function* iter_xyz_frames(
   lines: string[],
 ): Generator<{ start: number; num_atoms: number; comment: string }> {
@@ -554,7 +512,7 @@ export function* iter_xyz_frames(
   while (line_idx < lines.length) {
     const num_atoms = Math.trunc(Number(lines[line_idx]?.trim()))
     if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
-      line_idx++ // skip blank/invalid lines until the next frame's atom-count line
+      line_idx++
       continue
     }
     let valid_coords = 0
@@ -563,7 +521,7 @@ export function* iter_xyz_frames(
       if (is_xyz_atom_line(lines[line_idx + 2 + idx]?.trim().split(/\s+/))) valid_coords++
     }
     if (valid_coords < sample) {
-      line_idx++ // count line looks valid but atom lines don't — likely non-XYZ content
+      line_idx++
       continue
     }
     yield { start: line_idx, num_atoms, comment: lines[line_idx + 1] || `` }
@@ -571,7 +529,6 @@ export function* iter_xyz_frames(
   }
 }
 
-// Count XYZ frames via iter_xyz_frames so total_frames matches what gets indexed/loaded
 export function count_xyz_frames(data: string): number {
   if (!data) return 0
   const frames = iter_xyz_frames(data.trim().split(/\r?\n/))

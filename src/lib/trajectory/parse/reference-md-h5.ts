@@ -1,4 +1,3 @@
-// Reader for replica molecular-dynamics HDF5 files with initial coordinates and time-series velocities.
 import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import {
@@ -89,26 +88,14 @@ const is_pbc_value = (value: unknown): boolean =>
 
 const as_pbc = (dataset: Dataset, path: string): Pbc => {
   const raw_values = dataset.to_array()
-  const values = Array.isArray(raw_values)
-    ? raw_values
-    : ArrayBuffer.isView(raw_values)
-      ? Array.from(raw_values as unknown as ArrayLike<unknown>)
+  const values =
+    Array.isArray(raw_values) || ArrayBuffer.isView(raw_values)
+      ? Array.from(raw_values as ArrayLike<unknown>)
       : []
   if (values.length !== 3 || values.some((value) => !is_pbc_value(value))) {
     throw new Error(`Reference MD HDF5 PBC dataset ${path} must contain three boolean values`)
   }
   return [Boolean(values[0]), Boolean(values[1]), Boolean(values[2])]
-}
-
-const three_component_rows = (values: number[], n_rows: number, path: string): number[][] => {
-  if (values.length !== n_rows * 3) {
-    throw new Error(
-      `Reference MD HDF5 dataset ${path} has ${values.length} values, expected ${n_rows * 3}`,
-    )
-  }
-  return Array.from({ length: n_rows }, (_unused, row_idx) =>
-    values.slice(row_idx * 3, row_idx * 3 + 3),
-  )
 }
 
 const is_reference_md_molecule = (molecule: Group): boolean =>
@@ -283,8 +270,15 @@ export const parse_reference_md_h5_file = (
   const selected_cell_values = slice_values(cells_dataset, cells_path, [
     [replica_idx, replica_idx + 1],
   ])
+  if (selected_cell_values.length !== 9) {
+    throw new Error(`Reference MD HDF5 dataset ${cells_path} must contain 9 selected values`)
+  }
   const lattice_matrix = transpose_3x3_matrix(
-    validate_3x3_matrix(three_component_rows(selected_cell_values, 3, cells_path)),
+    validate_3x3_matrix(
+      Array.from({ length: 3 }, (_unused, row_idx) =>
+        selected_cell_values.slice(row_idx * 3, row_idx * 3 + 3),
+      ),
+    ),
   )
   const velocity_dataset = required_dataset(h5_file, velocity_path)
   const velocity_shape = [n_frames, replica_count, n_atoms, 3]
@@ -299,27 +293,15 @@ export const parse_reference_md_h5_file = (
       `Reference MD HDF5 dataset ${velocity_path} has ${velocity_values.length} selected values, expected ${n_frames * velocity_sample_size}`,
     )
   }
-  const dipole_values = optional_observable(
-    h5_file,
-    molecule_path,
-    `total_dipole_e_angstrom`,
-    replica_idx,
-    [n_frames, replica_count, 3],
-  )
-  const energy_values = optional_observable(
-    h5_file,
-    molecule_path,
-    `total_energy_ev`,
-    replica_idx,
-    [n_frames, replica_count],
-  )
-  const temperature_values = optional_observable(
-    h5_file,
-    molecule_path,
-    `vibrational_temperature_kelvin`,
-    replica_idx,
-    [n_frames, replica_count],
-  )
+  const observable = (name: string, sample_shape: number[]): number[] | undefined =>
+    optional_observable(h5_file, molecule_path, name, replica_idx, [
+      n_frames,
+      replica_count,
+      ...sample_shape,
+    ])
+  const dipole_values = observable(`total_dipole_e_angstrom`, [3])
+  const energy_values = observable(`total_energy_ev`, [])
+  const temperature_values = observable(`vibrational_temperature_kelvin`, [])
   const global_ids_path = `/replicas/global_ids`
   const member_seeds_path = `${molecule_path}/replicas/member_seeds`
   const global_id = replica_value(
@@ -406,10 +388,13 @@ export const parse_reference_md_h5_file = (
     signals,
   }
   const frame_loader = create_packed_frame_loader(frame_store)
+  const load_frame_sync = frame_loader.load_frame_sync
+  if (!load_frame_sync)
+    throw new Error(`Reference MD packed loader must support synchronous frames`)
   const frames = Array.from(
     { length: Math.min(n_frames, PREVIEW_FRAME_COUNT) },
     (_unused, frame_idx) => {
-      const frame = frame_loader.load_frame_sync?.(frame_idx)
+      const frame = load_frame_sync(frame_idx)
       if (!frame) {
         throw new Error(`Reference MD packed loader could not reconstruct frame ${frame_idx}`)
       }
@@ -441,21 +426,6 @@ export const parse_reference_md_h5_file = (
       periodic_boundary_conditions: pbc,
       element_counts: count_elements(elements),
       has_cell_info: true,
-      discovered_datasets: {
-        production_steps: production_steps_path,
-        times: times_path,
-        positions: positions_path,
-        cells: cells_path,
-        atomic_numbers: atomic_numbers_path,
-        masses: masses_path,
-        pbc: pbc_path,
-        signals: {
-          velocity: velocity_path,
-          ...(dipole_values
-            ? { dipole: `${molecule_path}/observables/total_dipole_e_angstrom` }
-            : {}),
-        },
-      },
     },
   }
 }

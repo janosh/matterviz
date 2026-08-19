@@ -69,6 +69,7 @@ export function complex_mode_displacement_frames(
   ) {
     throw new TypeError(`${label} has unsupported time dependence '${time_dependence}'`)
   }
+  let maximum = 0
   for (const [atom_idx, atom_vector] of complex_displacements.entries()) {
     if (atom_vector.length !== 3) {
       throw new Error(
@@ -82,11 +83,8 @@ export function complex_mode_displacement_frames(
         )
       }
     }
+    maximum = Math.max(maximum, complex_vector_max_norm(atom_vector))
   }
-  const maximum = complex_displacements.reduce(
-    (current, displacement) => Math.max(current, complex_vector_max_norm(displacement)),
-    0,
-  )
   if (!(maximum > 0)) throw new Error(`${label} has zero displacement`)
   const scale = amplitude / maximum
   const imaginary_sign = time_dependence === `exp_negative_i_phase` ? 1 : -1

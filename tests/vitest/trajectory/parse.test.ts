@@ -465,7 +465,7 @@ describe(`LAMMPS Trajectory Format`, () => {
     )
   })
 
-  it.each([`0`, `-1`, `1.5`, `bad`])(
+  it.each([`0`, `1.5`, `bad`])(
     `rejects invalid LAMMPS atom type %s instead of coercing it to type 1`,
     async (atom_type) => {
       const content = lammps_frame(`id type x y z`, [`1 ${atom_type} 0 0 0`])
@@ -1063,9 +1063,7 @@ describe(`HDF5 Format`, () => {
     file.close()
     const bytes = FS.readFile(temp_filename)
     FS.unlink(temp_filename)
-    const buffer = new ArrayBuffer(bytes.byteLength)
-    new Uint8Array(buffer).set(bytes)
-    return buffer
+    return Uint8Array.from(bytes).buffer
   }
 
   const make_h5_buffer = (

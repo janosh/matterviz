@@ -37,11 +37,8 @@ const has_site_velocities = (trajectory: TrajectoryType, key: string): boolean =
 
 export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   const normalized_key = key.toLowerCase()
-  return normalized_key.includes(`polarization`)
-    ? `polarization`
-    : normalized_key.includes(`current`)
-      ? `current`
-      : `dipole`
+  if (normalized_key.includes(`polarization`)) return `polarization`
+  return normalized_key.includes(`current`) ? `current` : `dipole`
 }
 
 const select_default_key = (
@@ -183,20 +180,6 @@ export async function collect_trajectory_spectroscopy_input(
     metadata: {
       ...trajectory.metadata,
       mass_source: mass_values ? `recorded` : `standard`,
-      signal_sources: {
-        velocity: velocities
-          ? trajectory_velocity
-            ? velocity_key
-            : `site:${velocity_key}`
-          : null,
-        infrared: infrared_signal ? { key: infrared_key, kind: infrared_signal.kind } : null,
-        raman: raman_signal
-          ? {
-              key: raman_signal.kind === `polarizability` ? raman_key : null,
-              kind: raman_signal.kind,
-            }
-          : null,
-      },
     },
   }
 }

@@ -29,30 +29,13 @@
   const raman_curve = (
     raman: RamanSpectrumResult | null | undefined,
     channel: RamanChannel,
-  ): TrajectorySpectrumCurve | undefined =>
-    channel === `polarized` ? raman?.polarized : raman?.[channel]
-  const result_frequency_bounds = (
-    spectroscopy_result: TrajectorySpectroscopyResult,
-    channel: RamanChannel,
-  ): [number, number] => {
-    const selected_raman = raman_curve(spectroscopy_result.raman, channel)
-    const { vdos } = spectroscopy_result
-    let minimum = vdos.frequencies[0] ?? 0
-    let maximum = vdos.frequencies.at(-1) ?? vdos.nyquist
-    for (const curve of [spectroscopy_result.ir, selected_raman]) {
-      if (!curve) continue
-      minimum = Math.min(minimum, curve.frequencies[0] ?? 0)
-      maximum = Math.max(maximum, curve.frequencies.at(-1) ?? curve.nyquist)
-    }
-    return [minimum, maximum]
-  }
+  ): TrajectorySpectrumCurve | undefined => raman?.[channel]
   const available_raman_channel = (
     spectroscopy_result: TrajectorySpectroscopyResult,
     channel: RamanChannel,
   ): RamanChannel => {
     const raman = spectroscopy_result.raman
-    if (!raman) return channel
-    if (raman_curve(raman, channel)) return channel
+    if (!raman || raman_curve(raman, channel)) return channel
     return raman.selected_channel === `polarized` ? `unpolarized` : raman.selected_channel
   }
 
@@ -64,14 +47,10 @@
     harmonic_options = {},
     mode_trajectory = $bindable(null),
     details_open = $bindable(false),
-    show_controls = true,
     selected_peak_idx = $bindable(0),
     raman_channel = $bindable(result.raman?.selected_channel ?? `unpolarized`),
     comparison = $bindable(`absolute`),
     scale_factor = $bindable(1),
-    frequency_range = $bindable(
-      result_frequency_bounds(result, result.raman?.selected_channel ?? `unpolarized`),
-    ),
   }: {
     result: TrajectorySpectroscopyResult
     reference?: VibrationalReferenceEntry
@@ -80,12 +59,10 @@
     harmonic_options?: HarmonicMatchOptions
     mode_trajectory?: TrajectoryType | null
     details_open?: boolean
-    show_controls?: boolean
     selected_peak_idx?: number
     raman_channel?: RamanChannel
     comparison?: FrequencyComparisonMode
     scale_factor?: number
-    frequency_range?: [number, number]
   } = $props()
 
   const attempt = <Value>(
@@ -193,10 +170,6 @@
   $effect(() => {
     mode_trajectory = selected_trajectory.value
   })
-  $effect(() => {
-    const bounds = result_frequency_bounds(display_result, display_raman_channel)
-    frequency_range = bounds
-  })
 </script>
 
 {#snippet details_content()}
@@ -269,7 +242,7 @@
     </tbody>
   </table>
   {#if benchmark.value}
-    <p class="metrics">
+    <p style="font-size: 0.82em">
       Raw MAE {benchmark.value.absolute
         ? `${format_num(benchmark.value.absolute.mae_cm1, `.4~g`)} cm⁻¹`
         : `unavailable`} · spacing MAE {benchmark.value.spacing_mae_cm1 === null
@@ -279,7 +252,7 @@
         ? `${format_num(benchmark.value.scaled.mae_cm1, `.4~g`)} cm⁻¹`
         : `unavailable`}
     </p>
-    <p class="metrics">
+    <p style="font-size: 0.82em">
       Scale {format_num(benchmark.value.scale.factor, `.6~g`)} · {benchmark.value.scale
         .source}{benchmark.value.scale_is_in_sample
         ? ` · in-sample calibration`
@@ -287,7 +260,7 @@
         ? ` · unmatched reference modes: ${benchmark.value.unmatched_reference_mode_ids.join(`, `)}`
         : ``}
     </p>
-    <p class="metrics">
+    <p style="font-size: 0.82em">
       Activity agreement · IR {benchmark.value.ir_activity.correct}/{benchmark.value
         .ir_activity.compared} · Raman {benchmark.value.raman_activity.correct}/{benchmark
         .value.raman_activity.compared}
@@ -312,59 +285,12 @@
   >
     {@render details_content()}
   </ViewerPane>
-  {#if show_controls}
-    <div class="explorer-controls">
-      {#if result.raman}
-        <label
-          >Raman channel
-          <select bind:value={raman_channel}>
-            {#each [`unpolarized`, `vv`, `vh`, `isotropic`, `anisotropic`, `polarized`] as channel (channel)}
-              {#if channel !== `polarized` || result.raman.polarized}<option value={channel}
-                  >{channel}</option
-                >{/if}
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if reference}
-        <label
-          >Comparison
-          <select bind:value={comparison}>
-            <option value="absolute">raw absolute</option>
-            <option value="spacing">shift-independent spacing</option>
-            <option value="scaled">explicitly scaled</option>
-          </select>
-        </label>
-        {#if comparison === `scaled`}
-          <label
-            >Scale <input
-              type="number"
-              min="0.01"
-              step="0.001"
-              bind:value={scale_factor}
-            /></label
-          >
-        {/if}
-      {/if}
-      <label
-        >Frequency range
-        <span class="range-inputs"
-          ><input type="number" bind:value={frequency_range[0]} />–<input
-            type="number"
-            bind:value={frequency_range[1]}
-          />
-          {result.frequency_unit}</span
-        >
-      </label>
-    </div>
-  {/if}
   <div class="spectrum-plot">
     <TrajectorySpectrumPlot
       result={display_result}
       {reference}
       {experimental_spectra}
       raman_channel={display_raman_channel}
-      {frequency_range}
       show_summary={false}
       style="height: 100%; min-height: 0"
       bind:selected_peak_idx
@@ -383,11 +309,6 @@
     min-height: 0;
     box-sizing: border-box;
   }
-  .explorer-controls {
-    display: grid;
-    gap: 8pt;
-    grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
-  }
   .spectrum-plot {
     flex: 1;
     min-height: 0;
@@ -395,19 +316,6 @@
   .spectrum-plot :global(.trajectory-spectrum-plots) {
     height: 100%;
     min-height: 0;
-  }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 5pt;
-  }
-  .range-inputs {
-    display: flex;
-    align-items: center;
-    gap: 3pt;
-  }
-  .range-inputs input {
-    width: 6.5em;
   }
   h4,
   p {
@@ -433,8 +341,5 @@
   }
   tbody tr.selected {
     background: color-mix(in srgb, var(--primary-color, #357abd) 16%, transparent);
-  }
-  .metrics {
-    font-size: 0.82em;
   }
 </style>

@@ -1,12 +1,9 @@
-// Shared h5wasm helpers for torch-sim / vaspout parsers. FS write is expensive, so
-// callers share one open handle via with_h5_file instead of re-opening per probe.
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 
-// Structural checks (not `instanceof`) so guards stay sync without loading h5wasm.
 export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
   entity !== null && `to_array` in entity
 
@@ -38,7 +35,6 @@ export const string_value = (value: unknown): string | undefined => {
   return undefined
 }
 
-// Torn mid-chunk datasets throw from to_array — treat like missing.
 export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {
   try {
     const entity = h5_file.get(path)
@@ -48,7 +44,6 @@ export const read_dataset = (h5_file: h5wasm.File, path: string): unknown => {
   }
 }
 
-// Variable-length UTF-8 → string; fixed-length (e.g. VASP |S2) → Uint8Array.
 export const to_string_array = (data: unknown): string[] | null => {
   if (!Array.isArray(data)) return null
   const decoder = new TextDecoder()
@@ -61,7 +56,13 @@ export const to_string_array = (data: unknown): string[] | null => {
   return strings
 }
 
-// int64 / typed-array datasets → finite numbers (BigInt coerced).
+const to_finite_number = (value: unknown): number | null => {
+  const number = typeof value === `bigint` ? Number(value) : value
+  const valid_bigint =
+    typeof value !== `bigint` || (typeof number === `number` && Number.isSafeInteger(number))
+  return typeof number === `number` && Number.isFinite(number) && valid_bigint ? number : null
+}
+
 export const to_number_array = (data: unknown): number[] | null => {
   const values: unknown[] | null = Array.isArray(data)
     ? data
@@ -69,35 +70,18 @@ export const to_number_array = (data: unknown): number[] | null => {
       ? Array.from(data as unknown as ArrayLike<unknown>)
       : null
   if (!values) return null
-  const numbers = values.map((item) => {
-    if (typeof item !== `bigint`) return item
-    const number = Number(item)
-    return Number.isSafeInteger(number) ? number : Number.NaN
-  })
-  return numbers.every(
-    (item): item is number => typeof item === `number` && Number.isFinite(item),
-  )
-    ? numbers
-    : null
+  const numbers = values.map(to_finite_number)
+  return numbers.every((item): item is number => item !== null) ? numbers : null
 }
 
-// Scalar as number, 1-element array, or BigInt → finite number | null.
 export const to_scalar_number = (data: unknown): number | null => {
   if (Array.isArray(data) && data.length !== 1) return null
-  const value = Array.isArray(data) ? data[0] : data
-  if (typeof value === `bigint`) {
-    const number = Number(value)
-    return Number.isSafeInteger(number) ? number : null
-  }
-  const number = value
-  return typeof number === `number` && Number.isFinite(number) ? number : null
+  return to_finite_number(Array.isArray(data) ? data[0] : data)
 }
 
-// VASP POSCAR-style universal scaling on lattice vectors.
 export const scale_matrix = (matrix: Matrix3x3, scale: number): Matrix3x3 =>
   scale === 1 ? matrix : (matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3)
 
-// ([Ga, Sb], [1, 1]) → [Ga, Sb]. Throws on bad symbols/counts (no silent drops).
 export const expand_ion_types = (
   ion_types: string[],
   ion_counts: number[],
@@ -121,13 +105,11 @@ export const expand_ion_types = (
   return elements
 }
 
-// Write buffer → in-memory FS → open → callback → always close + unlink.
 export async function with_h5_file<T>(
   buffer: ArrayBuffer,
   filename: string | undefined,
   callback: (h5_file: h5wasm.File) => T | Promise<T>,
 ): Promise<T> {
-  // ~4 MB base64 WASM — dynamic so it stays out of every entry chunk.
   const h5 = await import(`h5wasm`)
   const { FS } = await h5.ready
   const file_basename =
@@ -147,8 +129,6 @@ export async function with_h5_file<T>(
     h5_file?.close()
     try {
       FS.unlink(temp_filename)
-    } catch {
-      // best-effort
-    }
+    } catch {}
   }
 }

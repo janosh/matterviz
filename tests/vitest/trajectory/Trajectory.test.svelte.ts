@@ -54,13 +54,10 @@ const spectroscopy_result: TrajectorySpectroscopyResult = {
     power: [0, 1],
     normalized_power: [0, 1],
     frequency_unit: `THz`,
-    n_fft: 2,
-    n_samples: 2,
     sample_interval: 1,
     frequency_spacing: 1,
     rayleigh_resolution: 1,
     nyquist: 1,
-    window: `hann`,
   },
   ir: null,
   raman: null,
@@ -851,8 +848,8 @@ describe(`Trajectory`, () => {
         await tick()
         expect(settings_pane.classList).toContain(`pane-open`)
         expect(target.textContent).toContain(`IR response`)
-        expect(target.textContent).toContain(`Raman geometry`)
-        expect(target.textContent).toContain(`Reference catalog`)
+        expect(target.textContent).toContain(`Raman tensor`)
+        expect(target.textContent).toContain(`Preprocessing`)
         settings_toggle.click()
         await tick()
       }
@@ -913,7 +910,6 @@ describe(`Trajectory`, () => {
     const target = mount_traj({
       trajectory: energy_traj(-1.5, -2.5),
       auto_play: false,
-      fps: 10,
       show_controls: `always`,
       spectroscopy_pane_open: true,
     })

@@ -106,7 +106,7 @@ const bind_indexed_frame_loader = (
   on_dispose?: () => void,
 ): ParseResult => {
   const trajectory = result.type === `trajectory` ? (result.data as TrajectoryType) : null
-  if (trajectory?.is_indexed !== true) {
+  if (!trajectory?.is_indexed) {
     dispose_frame_port(frame_port)
     return result
   }
@@ -484,13 +484,12 @@ export const parse_trajectory_in_worker = (
     const fallback = (error: Error): void => {
       if (settled) return
       if (source_transferred) {
-        fail(
+        return fail(
           new Error(
             `Trajectory parse worker failed after taking ownership of ${filename}; reload the source file to retry`,
             { cause: error },
           ),
         )
-        return
       }
       const byte_size = data instanceof ArrayBuffer ? data.byteLength : new Blob([data]).size
       const max_bytes =
@@ -498,13 +497,12 @@ export const parse_trajectory_in_worker = (
           ? MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES
           : MAIN_THREAD_FALLBACK_TEXT_MAX_BYTES
       if (byte_size > max_bytes) {
-        fail(
+        return fail(
           new Error(
             `Trajectory parse worker failed for ${filename}; main-thread fallback is disabled for ${byte_size} bytes above the ${max_bytes}-byte limit`,
             { cause: error },
           ),
         )
-        return
       }
       if (!finish()) return
       const fallback_parse = client_options.fallback_parse ?? parse_trajectory_async
@@ -527,16 +525,14 @@ export const parse_trajectory_in_worker = (
         return
       }
       if (progress) {
-        on_progress?.(progress)
-        return
+        return on_progress?.(progress)
       }
       if (!result) {
-        if (hdf5_group_paths) {
-          fail(new Hdf5TrajectoryGroupSelectionError(hdf5_group_paths, error))
-        } else {
-          fail(new Error(error ?? `Trajectory parse worker returned no result`))
-        }
-        return
+        return fail(
+          hdf5_group_paths
+            ? new Hdf5TrajectoryGroupSelectionError(hdf5_group_paths, error)
+            : new Error(error ?? `Trajectory parse worker returned no result`),
+        )
       }
       try {
         const keep_worker = Boolean(frame_port)
@@ -546,10 +542,8 @@ export const parse_trajectory_in_worker = (
           keep_worker ? () => worker?.terminate() : undefined,
         )
         if (!finish(!keep_worker)) return
-        if (bound.type !== `trajectory`) {
-          reject(new Error(`Trajectory parse worker returned ${bound.type}`))
-          return
-        }
+        if (bound.type !== `trajectory`)
+          return reject(new Error(`Trajectory parse worker returned ${bound.type}`))
         resolve(bound.data as TrajectoryType)
       } catch (bind_error) {
         fail(to_error(bind_error))

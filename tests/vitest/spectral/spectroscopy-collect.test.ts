@@ -60,14 +60,7 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
       frames.length,
       (frame_idx) => frames[frame_idx],
       {
-        signal_keys: [
-          `scalar`,
-          `dipole`,
-          `dipole`,
-          `polarizability`,
-          `charges`,
-          `atom_vectors`,
-        ],
+        signal_keys: [`scalar`, `dipole`, `polarizability`, `charges`, `atom_vectors`],
       },
     )
     expect(stream.signals?.scalar.sample_shape).toEqual([])

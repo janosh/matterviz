@@ -613,14 +613,13 @@ describe(`Structure`, () => {
   )
 
   test(`keeps view selection across coordinate updates in one structure series`, async () => {
-    const series_key = {}
     const props = $state<{
       structure: AnyStructure
       structure_series_key: unknown
       selected_sites: number[]
     }>({
       structure,
-      structure_series_key: series_key,
+      structure_series_key: {},
       selected_sites: [],
     })
     mount_structure(props)

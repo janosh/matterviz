@@ -101,14 +101,10 @@ export interface TrajectorySpectrumCurve {
   normalized_power: number[]
   standard_error?: number[]
   frequency_unit: TrajectoryFrequencyUnit
-  n_fft: number
-  n_samples: number
   sample_interval: number
   frequency_spacing: number
   rayleigh_resolution: number
   nyquist: number
-  window: WindowType
-  source_unit?: string
 }
 
 export interface RamanSpectrumResult {
@@ -119,11 +115,7 @@ export interface RamanSpectrumResult {
   unpolarized: TrajectorySpectrumCurve
   polarized?: TrajectorySpectrumCurve
   selected_channel: RamanChannel
-  max_antisymmetric_residual: number
   field_response?: {
-    response: `dipole` | `polarization`
-    field_strength: number
-    field_unit: string
     max_geometry_deviation: number
   }
 }
@@ -295,33 +287,23 @@ const validate_position_stream = (stream: TrajectoryPositionStream): void => {
   }
 }
 
-const float64_scratch = new Float64Array(1)
-const uint64_scratch = new BigUint64Array(float64_scratch.buffer)
-
-const floating_point_spacing = (value: number): number => {
-  const magnitude = Math.abs(value)
-  if (magnitude === 0) return Number.MIN_VALUE
-  float64_scratch[0] = magnitude
-  uint64_scratch[0] += 1n
-  if (Number.isFinite(float64_scratch[0])) return float64_scratch[0] - magnitude
-  uint64_scratch[0] -= 2n
-  return magnitude - float64_scratch[0]
-}
-
 const uniform_step_delta = (steps: number[], label: string): number => {
   if (steps.length < 2) fail(`${label} needs at least 2 steps`)
   const delta = steps[1] - steps[0]
   for (let step_idx = 2; step_idx < steps.length; step_idx++) {
     const next_delta = steps[step_idx] - steps[step_idx - 1]
-    // Subtraction at a large absolute origin loses precision in proportion to the ULPs
-    // of the three participating steps, not their absolute magnitudes. The relative term
-    // covers arithmetic accumulated while constructing an otherwise origin-free grid.
-    const previous_step = steps[step_idx - 1]
+    // This second finite difference touches three recorded steps. Eight f64 epsilons at
+    // their largest magnitude cover its input and subtraction roundoff without admitting
+    // a physically meaningful cadence change.
     const tolerance =
-      floating_point_spacing(steps[step_idx]) +
-      2 * floating_point_spacing(previous_step) +
-      floating_point_spacing(steps[step_idx - 2]) +
-      200 * Number.EPSILON * Math.max(1, Math.abs(delta), Math.abs(next_delta))
+      8 *
+      Number.EPSILON *
+      Math.max(
+        1,
+        Math.abs(steps[step_idx]),
+        Math.abs(steps[step_idx - 1]),
+        Math.abs(steps[step_idx - 2]),
+      )
     if (Math.abs(next_delta - delta) > tolerance) {
       fail(
         `${label} is not uniformly sampled: first step delta is ${delta}, but steps ` +
@@ -372,11 +354,9 @@ const sample_interval = (
 
 const curve_from_periodogram = (
   periodogram: PeriodogramResult,
-  n_samples: number,
   interval: number,
   frequency_unit: TrajectoryFrequencyUnit,
   factor: number,
-  source_unit?: string,
 ): TrajectorySpectrumCurve => {
   const frequencies = Array.from(periodogram.frequencies, (value) => value * factor)
   // one_sided_periodogram returns a density per source-frequency unit. When the
@@ -388,14 +368,10 @@ const curve_from_periodogram = (
     power,
     normalized_power: normalize_power(power),
     frequency_unit,
-    n_fft: periodogram.n_fft,
-    n_samples,
     sample_interval: interval,
     frequency_spacing: periodogram.frequency_spacing * factor,
     rayleigh_resolution: periodogram.rayleigh_resolution * factor,
     nyquist: periodogram.nyquist * factor,
-    window: periodogram.window,
-    ...(source_unit ? { source_unit } : {}),
   }
 }
 
@@ -802,12 +778,8 @@ const rotate_vector_signal = (
   return rotated
 }
 
-const rotate_tensor_signal = (
-  values: Float64Array,
-  rotations: Matrix3x3[],
-): { values: Float64Array; max_antisymmetric_residual: number } => {
+const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Float64Array => {
   const rotated = new Float64Array(values.length)
-  let max_antisymmetric_residual = 0
   for (let sample_idx = 0; sample_idx < rotations.length; sample_idx++) {
     const base = sample_idx * 9
     const tensor = [
@@ -815,12 +787,6 @@ const rotate_tensor_signal = (
       [values[base + 3], values[base + 4], values[base + 5]],
       [values[base + 6], values[base + 7], values[base + 8]],
     ] as Matrix3x3
-    max_antisymmetric_residual = Math.max(
-      max_antisymmetric_residual,
-      Math.abs(tensor[0][1] - tensor[1][0]),
-      Math.abs(tensor[0][2] - tensor[2][0]),
-      Math.abs(tensor[1][2] - tensor[2][1]),
-    )
     const symmetric = [
       [tensor[0][0], (tensor[0][1] + tensor[1][0]) / 2, (tensor[0][2] + tensor[2][0]) / 2],
       [(tensor[1][0] + tensor[0][1]) / 2, tensor[1][1], (tensor[1][2] + tensor[2][1]) / 2],
@@ -832,7 +798,7 @@ const rotate_tensor_signal = (
     )
     rotated.set(transformed.flat(), base)
   }
-  return { values: rotated, max_antisymmetric_residual }
+  return rotated
 }
 
 const remove_rigid_velocity = (
@@ -927,7 +893,6 @@ const build_curve = (
   >,
   label: string,
   component_weights?: Float64Array,
-  source_unit?: string,
   frequency_squared = false,
 ): TrajectorySpectrumCurve => {
   const interval = sample_interval(steps, options.frequency_unit, input.time_step, label)
@@ -937,14 +902,7 @@ const build_curve = (
     zero_pad_factor: options.zero_pad_factor,
     component_weights,
   })
-  const curve = curve_from_periodogram(
-    periodogram,
-    steps.length,
-    interval,
-    options.frequency_unit,
-    factor,
-    source_unit,
-  )
+  const curve = curve_from_periodogram(periodogram, interval, options.frequency_unit, factor)
   if (!frequency_squared) return curve
   const physical_factor =
     options.frequency_unit === `1/frame` ? 1 : frequency_factor(`THz`, input.time_unit)
@@ -1108,7 +1066,7 @@ const calculate_raman = (
   const anisotropic_values = new Float64Array(n_samples * 6)
   for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
     const base = sample_idx * 9
-    const [xx, xy, xz, , yy, yz, , , zz] = rotated.values.subarray(base, base + 9)
+    const [xx, xy, xz, , yy, yz, , , zz] = rotated.subarray(base, base + 9)
     isotropic_values[sample_idx] = (xx + yy + zz) / 3
     anisotropic_values.set([xx - yy, yy - zz, zz - xx, xy, yz, xz], sample_idx * 6)
   }
@@ -1120,7 +1078,6 @@ const calculate_raman = (
     options,
     `Raman polarizability`,
     undefined,
-    polarizability.unit,
     true,
   )
   const anisotropic = build_curve(
@@ -1131,7 +1088,6 @@ const calculate_raman = (
     options,
     `Raman polarizability`,
     RAMAN_ANISOTROPIC_WEIGHTS,
-    polarizability.unit,
     true,
   )
   const vv = combine_curves(isotropic, anisotropic, 45, 4)
@@ -1148,9 +1104,7 @@ const calculate_raman = (
       for (let row_idx = 0; row_idx < 3; row_idx++) {
         for (let col_idx = 0; col_idx < 3; col_idx++) {
           projection +=
-            scattered[row_idx] *
-            rotated.values[base + row_idx * 3 + col_idx] *
-            incident[col_idx]
+            scattered[row_idx] * rotated[base + row_idx * 3 + col_idx] * incident[col_idx]
         }
       }
       projected[sample_idx] = projection
@@ -1163,7 +1117,6 @@ const calculate_raman = (
       options,
       `Raman polarized response`,
       undefined,
-      polarizability.unit,
       true,
     )
   }
@@ -1179,13 +1132,9 @@ const calculate_raman = (
     unpolarized,
     ...(polarized ? { polarized } : {}),
     selected_channel,
-    max_antisymmetric_residual: rotated.max_antisymmetric_residual,
     ...(signal.kind === `field_response`
       ? {
           field_response: {
-            response: signal.response,
-            field_strength: signal.field_strength,
-            field_unit: signal.field_unit,
             max_geometry_deviation: field_response?.max_geometry_deviation ?? 0,
           },
         }
@@ -1480,14 +1429,11 @@ const detect_peaks = (
 }
 
 export function standard_masses_for_elements(elements: string[]): Float64Array {
-  return Float64Array.from(
-    elements.map((element, atom_idx) => {
-      const mass = is_elem_symbol(element) ? ATOMIC_WEIGHTS.get(element) : undefined
-      if (!(mass && mass > 0))
-        fail(`no standard atomic mass for atom ${atom_idx} (${element})`)
-      return mass
-    }),
-  )
+  return Float64Array.from(elements, (element, atom_idx) => {
+    const mass = is_elem_symbol(element) ? ATOMIC_WEIGHTS.get(element) : undefined
+    if (mass && mass > 0) return mass
+    return fail(`no standard atomic mass for atom ${atom_idx} (${element})`)
+  })
 }
 
 const calc_trajectory_spectroscopy_impl = (
@@ -1666,11 +1612,6 @@ const calc_trajectory_spectroscopy_impl = (
     calculation_options,
     `velocities`,
     component_weights,
-    velocity_source === `stored`
-      ? input.velocities?.unit
-      : frequency_unit === `1/frame`
-        ? `A/frame`
-        : `A/${input.time_unit}`,
   )
 
   let ir: TrajectorySpectrumCurve | null = null
@@ -1695,7 +1636,6 @@ const calc_trajectory_spectroscopy_impl = (
       calculation_options,
       `IR ${input.infrared_signal.kind}`,
       undefined,
-      series.unit,
       input.infrared_signal.kind !== `current`,
     )
   }
@@ -1728,16 +1668,7 @@ const calc_trajectory_spectroscopy_impl = (
     reference_lattice: stream.lattice_matrices?.[0] ?? null,
     n_trajectories: 1,
     n_segments: 1,
-    metadata: {
-      ...input.metadata,
-      classical: true,
-      relative_intensity: true,
-      smoothing: false,
-      time_step: input.time_step ?? null,
-      time_unit: input.time_unit ?? null,
-      window: calculation_options.window,
-      zero_pad_factor: calculation_options.zero_pad_factor,
-    },
+    metadata: { ...input.metadata },
   }
 }
 
@@ -1752,10 +1683,6 @@ const average_curves = (curves: TrajectorySpectrumCurve[]): TrajectorySpectrumCu
     if (
       curve.frequency_unit !== first.frequency_unit ||
       curve.sample_interval !== first.sample_interval ||
-      curve.n_samples !== first.n_samples ||
-      curve.n_fft !== first.n_fft ||
-      curve.window !== first.window ||
-      curve.source_unit !== first.source_unit ||
       !arrays_equal(curve.frequencies, first.frequencies)
     ) {
       fail(`ensemble curve ${curve_idx} has a different frequency grid`)
@@ -2012,17 +1939,6 @@ export function calc_trajectory_spectroscopy_ensemble(
       `every ensemble Raman result must use the same response source`,
     )
     const first_field_response = field_responses[0]
-    if (
-      first_field_response &&
-      field_responses.some(
-        ({ response, field_strength, field_unit }) =>
-          response !== first_field_response.response ||
-          field_strength !== first_field_response.field_strength ||
-          field_unit !== first_field_response.field_unit,
-      )
-    ) {
-      fail(`every ensemble finite-field Raman result must use the same field metadata`)
-    }
     raman = {
       ...first_raman,
       isotropic: average_curves(raman_results.map(({ isotropic }) => isotropic)),
@@ -2031,13 +1947,9 @@ export function calc_trajectory_spectroscopy_ensemble(
       vh: average_curves(raman_results.map(({ vh }) => vh)),
       unpolarized: average_curves(raman_results.map(({ unpolarized }) => unpolarized)),
       ...(polarized_curves.length > 0 ? { polarized: average_curves(polarized_curves) } : {}),
-      max_antisymmetric_residual: Math.max(
-        ...raman_results.map(({ max_antisymmetric_residual }) => max_antisymmetric_residual),
-      ),
       ...(first_field_response
         ? {
             field_response: {
-              ...first_field_response,
               max_geometry_deviation: Math.max(
                 ...field_responses.map(({ max_geometry_deviation }) => max_geometry_deviation),
               ),

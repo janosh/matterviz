@@ -1,4 +1,3 @@
-// ASE trajectory (.traj) parsing - binary format
 import * as math from '$lib/math'
 import {
   convert_atomic_numbers,
@@ -10,33 +9,19 @@ import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 const MAX_SAFE_STRING_LENGTH = 0x1fffffe8 * 0.5 // 50% of JS max string length as safety
 
-// ULM header: frame count lives at byte 32, frame-offsets table position at byte 40
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({
   n_items: Number(view.getBigInt64(32, true)),
   offsets_pos: Number(view.getBigInt64(40, true)),
 })
 
 export interface AseFrameOptions {
-  // Atomic numbers from an earlier frame. ASE writes `numbers` only once, so
-  // every frame after the first relies on this.
   fallback_numbers?: number[]
-  // Rejects a corrupt JSON length field before it becomes a huge allocation.
   max_json_length?: number
-  // Absolute file position of `buffer`'s first byte, for callers that read only
-  // one frame's byte range instead of the whole file (desktop streaming). ULM
-  // stores ndarray positions as absolute file offsets, so they need the slice
-  // origin subtracted before they can index into `buffer`.
   base_offset?: number
 }
 
 const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
 
-// A frame's calculator results, under either spelling ASE writes. ULM suffixes a key
-// with `.` when its value is a nested item, and ASE always nests the calculator —
-// checked against ase 3.28 down to a calculator holding nothing but a scalar energy,
-// so this is not about forces or ndarrays. Reading only the undotted name silently
-// dropped the energy of every relaxation ASE has ever written. ndarray entries are
-// file pointers unless `read_ndarray` is supplied for spectroscopy-sized payloads.
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
   read_ndarray?: (ref: { ndarray: unknown[] }) => number[][],
@@ -64,11 +49,6 @@ export const ase_calculator_data = (
   return results
 }
 
-// Decode a single ASE/ULM frame (JSON header + optional ndarray payloads) into a
-// TrajectoryFrame. Returns the atomic numbers actually used so callers can cache them
-// as fallback for later frames that omit `numbers` (ASE stores them only once).
-//
-// `frame_offset` is absolute like the ndarray offsets, so it is rebased the same way.
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,

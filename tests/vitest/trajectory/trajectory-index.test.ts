@@ -328,9 +328,7 @@ describe(`validate_trajectory`, () => {
 
 describe(`create_packed_frame_loader`, () => {
   const make_store = (n_frames = 3): TrajectoryFrameStore => ({
-    positions: Float64Array.from(
-      Array.from({ length: n_frames * 6 }, (_unused, value_idx) => value_idx),
-    ),
+    positions: Float64Array.from({ length: n_frames * 6 }, (_unused, value_idx) => value_idx),
     elements: [`H`, `He`],
     coords_unwrapped: true,
     steps: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx * 2),
@@ -342,18 +340,19 @@ describe(`create_packed_frame_loader`, () => {
     })),
     scalars: {
       charge: Float64Array.from(
-        Array.from({ length: n_frames * 2 }, (_unused, value_idx) => value_idx + 0.5),
+        { length: n_frames * 2 },
+        (_unused, value_idx) => value_idx + 0.5,
       ),
-      spin: Float64Array.from(
-        Array.from({ length: n_frames * 2 }, (_unused, value_idx) => -value_idx),
-      ),
+      spin: Float64Array.from({ length: n_frames * 2 }, (_unused, value_idx) => -value_idx),
     },
     vectors: {
       velocity: Float64Array.from(
-        Array.from({ length: n_frames * 6 }, (_unused, value_idx) => 100 + value_idx),
+        { length: n_frames * 6 },
+        (_unused, value_idx) => 100 + value_idx,
       ),
       force: Float64Array.from(
-        Array.from({ length: n_frames * 6 }, (_unused, value_idx) => -100 - value_idx),
+        { length: n_frames * 6 },
+        (_unused, value_idx) => -100 - value_idx,
       ),
     },
   })

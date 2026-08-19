@@ -17,13 +17,10 @@ const curve = {
   normalized_power: [0, 1, 0, 0.5, 0],
   standard_error: [0, 0.1, 0, 0.05, 0],
   frequency_unit: `THz` as const,
-  n_fft: 8,
-  n_samples: 8,
   sample_interval: 1,
   frequency_spacing: 1,
   rayleigh_resolution: 0.125,
   nyquist: 4,
-  window: `hann` as const,
 }
 const result = (responses = true): TrajectorySpectroscopyResult => ({
   vdos: curve,
@@ -36,7 +33,6 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
         vh: { ...curve },
         unpolarized: { ...curve },
         selected_channel: `unpolarized`,
-        max_antisymmetric_residual: 0,
       }
     : null,
   peaks: [
@@ -147,7 +143,7 @@ const set_select = (select: HTMLSelectElement, value: string): void => {
 describe(`TrajectorySpectrumPlot`, () => {
   it(`renders synchronized IR/VDOS and Raman/VDOS panels with uncertainty bands`, async () => {
     const target = render(TrajectorySpectrumPlot, {
-      result: result(true),
+      result: result(),
       style: `height: 240px`,
     })
     await tick()
@@ -185,7 +181,7 @@ describe(`TrajectorySpectrumPlot`, () => {
   })
 
   it(`does not project VDOS peaks beyond a response curve's Nyquist range`, async () => {
-    const truncated_response = result(true)
+    const truncated_response = result()
     truncated_response.ir = {
       ...curve,
       frequencies: [0, 1, 2],
@@ -212,7 +208,7 @@ describe(`TrajectorySpectrumPlot`, () => {
 
 it(`explorer exposes the selected complex mode without mounting another trajectory viewer`, async () => {
   const props = $state({
-    result: result(true),
+    result: result(),
     mode_trajectory: null as TrajectoryType | null,
   })
   const target = render(TrajectorySpectroscopyExplorer, props)
@@ -242,7 +238,7 @@ it(`explorer exposes the selected complex mode without mounting another trajecto
 
 it(`keeps MD animation and benchmarking available when harmonic matching fails`, async () => {
   const props = $state({
-    result: result(true),
+    result: result(),
     reference: synthetic_reference,
     harmonic_modes: {
       n_atoms: 1,
@@ -281,7 +277,7 @@ it(`keeps MD animation and benchmarking available when harmonic matching fails`,
 
 it(`explorer normalizes stale peak and Raman-channel selections`, async () => {
   const target = render(TrajectorySpectroscopyExplorer, {
-    result: result(true),
+    result: result(),
     selected_peak_idx: 99,
     raman_channel: `polarized`,
   })
@@ -362,7 +358,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   set_select(kind_select, `dipole`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`dipole`)
-  pane_props.result = result(true)
+  pane_props.result = result()
   await tick()
   expect(target.querySelector(`.explorer-controls`)).toBeNull()
 
@@ -396,7 +392,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
 })
 
 it(`explorer exposes scaled x-axis comparison while retaining raw mode frequencies`, async () => {
-  const cm_result = result(true)
+  const cm_result = result()
   const to_cm = (value: TrajectorySpectrumCurve): TrajectorySpectrumCurve => ({
     ...value,
     frequency_unit: `cm^-1`,
@@ -405,13 +401,8 @@ it(`explorer exposes scaled x-axis comparison while retaining raw mode frequenci
   cm_result.vdos = to_cm(cm_result.vdos)
   cm_result.ir = cm_result.ir ? to_cm(cm_result.ir) : null
   if (cm_result.raman) {
-    cm_result.raman = {
-      ...cm_result.raman,
-      isotropic: to_cm(cm_result.raman.isotropic),
-      anisotropic: to_cm(cm_result.raman.anisotropic),
-      vv: to_cm(cm_result.raman.vv),
-      vh: to_cm(cm_result.raman.vh),
-      unpolarized: to_cm(cm_result.raman.unpolarized),
+    for (const channel of [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`] as const) {
+      cm_result.raman[channel] = to_cm(cm_result.raman[channel])
     }
   }
   const target = render(TrajectorySpectroscopyExplorer, {

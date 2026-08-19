@@ -36,6 +36,8 @@ export interface HarmonicMatchOptions {
 
 const mapping_key = ({ primitive_atom_idx, cell_translation }: HarmonicAtomMapping): string =>
   `${primitive_atom_idx}:${cell_translation.join(`,`)}`
+const cell_count = (scaling: Vec3): number =>
+  scaling.reduce((total, value) => total * value, 1)
 // Normal-mode eigenvectors from a Hermitian dynamical matrix should be orthogonal to
 // numerical precision. This leaves ample room above f64 solver noise without admitting
 // a material duplicate contribution to a reported subspace overlap.
@@ -76,13 +78,12 @@ export function trajectory_mode_trajectory(
         lattice: { matrix: lattice, pbc: result.pbc, ...math.calc_lattice_params(lattice) },
       } satisfies Crystal)
     : { sites }
-  const displacement_frames = complex_mode_displacement_frames(peak.displacement, {
+  const frames = complex_mode_displacement_frames(peak.displacement, {
     amplitude,
     n_frames,
     label: `Spectroscopy peak ${peak_idx}`,
     time_dependence: `exp_positive_i_phase`,
-  })
-  const frames = displacement_frames.map(({ phase, displacements }, frame_idx) => {
+  }).map(({ phase, displacements }, frame_idx) => {
     const frame_sites = equilibrium.sites.map((site, atom_idx) => {
       const displacement = displacements[atom_idx]
       const xyz = math.add(site.xyz, displacement)
@@ -135,7 +136,7 @@ const diagonal_supercell_scaling = (
   supercell_lattice: NonNullable<TrajectorySpectroscopyResult[`reference_lattice`]>,
   primitive_lattice: NonNullable<PhononModeData[`lattice`]>,
 ): Vec3 => {
-  const scaling = primitive_lattice.map((primitive_vector, axis) => {
+  return primitive_lattice.map((primitive_vector, axis) => {
     const denominator = math.dot(primitive_vector, primitive_vector)
     const ratio = math.dot(supercell_lattice[axis], primitive_vector) / denominator
     const integer_ratio = Math.round(ratio)
@@ -152,8 +153,7 @@ const diagonal_supercell_scaling = (
       )
     }
     return integer_ratio
-  })
-  return scaling as Vec3
+  }) as Vec3
 }
 
 const infer_diagonal_mapping = (
@@ -167,7 +167,7 @@ const infer_diagonal_mapping = (
     )
   }
   const scaling = diagonal_supercell_scaling(result.reference_lattice, harmonic.lattice)
-  const n_cells = scaling.reduce((total, value) => total * value, 1)
+  const n_cells = cell_count(scaling)
   if (result.elements.length !== harmonic.n_atoms * n_cells) {
     throw new Error(
       `Diagonal supercell scaling [${scaling.join(`, `)}] implies ` +
@@ -236,13 +236,11 @@ const infer_diagonal_mapping = (
   return [...unique_mappings.values()][0]
 }
 
-const supercell_scaling = (mapping: HarmonicAtomMapping[]): Vec3 => {
-  const values = ([0, 1, 2] as const).map((axis) => {
+const supercell_scaling = (mapping: HarmonicAtomMapping[]): Vec3 =>
+  ([0, 1, 2] as const).map((axis) => {
     const translations = mapping.map(({ cell_translation }) => cell_translation[axis])
     return math.array_max(translations) - math.array_min(translations) + 1
-  })
-  return values as Vec3
-}
+  }) as Vec3
 
 const validate_mapping = (
   result: TrajectorySpectroscopyResult,
@@ -288,7 +286,7 @@ const validate_mapping = (
     cells.add(cell_key)
   }
   const scaling = supercell_scaling(mapping)
-  const expected_cells = scaling.reduce((total, value) => total * value, 1)
+  const expected_cells = cell_count(scaling)
   if (cells.size !== expected_cells || mapping.length !== harmonic.n_atoms * expected_cells) {
     throw new Error(
       `atom_mapping must describe a complete diagonal supercell; scaling ` +
@@ -336,8 +334,10 @@ const harmonic_overlap = (
   mapping: HarmonicAtomMapping[],
   n_cells: number,
 ): number => {
-  const expanded: Complex[] = []
   let harmonic_norm_squared = 0
+  let overlap_real = 0
+  let overlap_imaginary = 0
+  let component_idx = 0
   const cell_scale = 1 / Math.sqrt(n_cells)
   for (const { primitive_atom_idx, cell_translation } of mapping) {
     const atom_vector = eigenvector[primitive_atom_idx]
@@ -347,20 +347,18 @@ const harmonic_overlap = (
     for (const component of atom_vector) {
       const [real, imaginary] = multiply_complex(component, phase)
       const phased: Complex = [real * cell_scale, imaginary * cell_scale]
-      expanded.push(phased)
       harmonic_norm_squared += phased[0] ** 2 + phased[1] ** 2
+      const md_component = md_mode[component_idx++]
+      if (md_component) {
+        const product = complex_conjugate_product(md_component, phased)
+        overlap_real += product[0]
+        overlap_imaginary += product[1]
+      }
     }
   }
-  if (expanded.length !== md_mode.length || !(harmonic_norm_squared > 0)) return 0
-  let overlap_real = 0
-  let overlap_imaginary = 0
+  if (component_idx !== md_mode.length || !(harmonic_norm_squared > 0)) return 0
   const harmonic_norm = Math.sqrt(harmonic_norm_squared)
-  for (let component_idx = 0; component_idx < md_mode.length; component_idx++) {
-    const product = complex_conjugate_product(md_mode[component_idx], expanded[component_idx])
-    overlap_real += product[0] / harmonic_norm
-    overlap_imaginary += product[1] / harmonic_norm
-  }
-  return overlap_real ** 2 + overlap_imaginary ** 2
+  return (overlap_real / harmonic_norm) ** 2 + (overlap_imaginary / harmonic_norm) ** 2
 }
 
 const eigenvector_overlap = (left: Complex[][], right: Complex[][]): number => {
@@ -443,7 +441,7 @@ export function match_trajectory_modes_to_harmonic(
     )
   }
   const scaling = validate_mapping(result, harmonic, mapping)
-  const n_cells = scaling.reduce((total, value) => total * value, 1)
+  const n_cells = cell_count(scaling)
   const minimum_overlap = options.minimum_overlap ?? 0.5
   const tolerance =
     options.degeneracy_tolerance_thz ??
@@ -487,20 +485,22 @@ export function match_trajectory_modes_to_harmonic(
       }
       for (const mode_indices of groups) {
         validate_degenerate_eigenvectors(mode_indices, qpoint.modes, qpoint_idx)
-        const overlap = mode_indices.reduce((total, mode_idx) => {
-          const eigenvector = qpoint.modes[mode_idx].eigenvector
-          return (
-            total +
-            (eigenvector
-              ? harmonic_overlap(md_mode, eigenvector, qpoint.q_position, mapping, n_cells)
-              : 0)
-          )
-        }, 0)
-        const frequency_thz =
-          mode_indices.reduce(
-            (total, mode_idx) => total + qpoint.modes[mode_idx].frequency,
-            0,
-          ) / mode_indices.length
+        let overlap = 0
+        let frequency_thz = 0
+        for (const mode_idx of mode_indices) {
+          const { eigenvector, frequency } = qpoint.modes[mode_idx]
+          frequency_thz += frequency
+          if (eigenvector) {
+            overlap += harmonic_overlap(
+              md_mode,
+              eigenvector,
+              qpoint.q_position,
+              mapping,
+              n_cells,
+            )
+          }
+        }
+        frequency_thz /= mode_indices.length
         const frequency = frequency_from_thz(frequency_thz, result.frequency_unit)
         matches.push({
           qpoint_idx,

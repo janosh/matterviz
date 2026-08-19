@@ -1,4 +1,3 @@
-// Parsing functions for trajectory data from various formats
 import { is_binary } from '$lib/io/is-binary'
 import { is_plain_object } from '$lib/utils'
 import { DEFAULTS } from '$lib/settings'
@@ -27,7 +26,6 @@ import { parse_pymatgen_trajectory } from './pymatgen'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
-// Throw on a trajectory frame whose structure isn't a valid parsed structure (non-empty sites with species + coords)
 const assert_frame_structure = (structure: unknown, label: string | number): void => {
   if (!is_parsed_structure(structure)) {
     const context = typeof label === `number` ? `trajectory frame ${label}` : label
@@ -37,12 +35,8 @@ const assert_frame_structure = (structure: unknown, label: string | number): voi
   }
 }
 
-// Constants for trajectory parsing and large file handling
 export const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
 const INDEX_SAMPLE_RATE = 100 // Default sample rate for frame indexing
-// Fallback thresholds for component usage without loading_options, derived from the
-// settings schema so settings-driven contexts (e.g. the VSCode extension) and direct
-// component use agree on when large-file/indexed loading kicks in.
 export const MAX_BIN_FILE_SIZE = DEFAULTS.trajectory.bin_file_threshold // 50MB
 export const MAX_TEXT_FILE_SIZE = DEFAULTS.trajectory.text_file_threshold // 25MB
 export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
@@ -113,9 +107,8 @@ async function parse_trajectory_data_unchecked(
   reset_traj_parse_warnings()
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
-    if (FORMAT_PATTERNS.hdf5(data, filename)) {
+    if (FORMAT_PATTERNS.hdf5(data, filename))
       return parse_hdf5_trajectory(data, filename, hdf5_group_path)
-    }
     throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
   }
 
@@ -129,11 +122,8 @@ async function parse_trajectory_data_unchecked(
       return parse_lammps_trajectory(content, filename, atom_type_mapping)
     }
 
-    // Single XYZ fallback (content-sniffed when the filename gives no format hint,
-    // e.g. blob: object URLs whose basenames are UUIDs)
     const xyz_hint = ext_hint(filename, /\.(?:xyz|extxyz)$/)
     if (xyz_hint || (xyz_hint === null && count_xyz_frames(content) === 1)) {
-      // parse_xyz never throws (it returns null); fall through to JSON parsing.
       const structure = parse_xyz(content)
       if (structure) {
         return {
@@ -150,7 +140,6 @@ async function parse_trajectory_data_unchecked(
     }
   }
 
-  // Handle JSON formats
   if (Array.isArray(data)) {
     const frames = data.map((frame_data, idx) => {
       const frame_obj = frame_data as Record<string, unknown>
@@ -168,12 +157,10 @@ async function parse_trajectory_data_unchecked(
 
   if (!is_plain_object(data)) throw new Error(`Invalid data format`)
 
-  // Pymatgen format
   if (data[`@class`] === `Trajectory` && data.species && data.coords && data.lattice) {
     return parse_pymatgen_trajectory(data, filename)
   }
 
-  // Object with frames
   if (Array.isArray(data.frames)) {
     const metadata = (data.metadata ?? {}) as Record<string, unknown>
     const frames = data.frames as TrajectoryFrame[]
@@ -181,7 +168,6 @@ async function parse_trajectory_data_unchecked(
     return { frames, metadata: { ...metadata, source_format: `object_with_frames` } }
   }
 
-  // Single structure (treated as a 1-frame trajectory)
   if (data.sites) {
     assert_frame_structure(data, `single structure`)
     const frames = [{ structure: data as AnyStructure, step: 0, metadata: {} }]
@@ -210,7 +196,6 @@ export function get_unsupported_format_message(
 ): string | null {
   const lower = filename.toLowerCase()
 
-  // Check for unsupported compression formats first
   for (const [ext, name] of [
     [`.bz2`, `BZ2`],
     [`.xz`, `XZ`],
@@ -221,9 +206,6 @@ export function get_unsupported_format_message(
     }
   }
 
-  // .dump is NOT listed here: text dumps parse fine (as a structure via
-  // parse_lammps_dump, as frames via parse_lammps_trajectory) and the is_binary check
-  // below already catches genuinely binary ones.
   const formats = [
     { extensions: [`.nc`, `.netcdf`], name: `NetCDF`, tool: `MDAnalysis` },
     { extensions: [`.dcd`], name: `DCD`, tool: `MDAnalysis` },
@@ -240,16 +222,12 @@ export function get_unsupported_format_message(
     : null
 }
 
-// Attach non-fatal parse warnings (skipped atoms, dropped frames, plot-metadata
-// extraction failures, ...) collected during parsing to the trajectory metadata so
-// the UI can surface them instead of leaving them in the console only.
 function attach_parse_warnings(trajectory: TrajectoryType): TrajectoryType {
   const parse_warnings = get_traj_parse_warnings()
   if (parse_warnings.length === 0) return trajectory
   return { ...trajectory, metadata: { ...trajectory.metadata, parse_warnings } }
 }
 
-// Unified async parser with streaming support
 export async function parse_trajectory_async(
   data: ArrayBuffer | string,
   filename: string,
@@ -280,9 +258,6 @@ export async function parse_trajectory_async(
       update_progress(5, `Large file detected (${Math.round(data_size / 1024 / 1024)}MB)`)
     }
 
-    // Use indexed loading for supported large files (including compressed names).
-    // When the filename gives no format hint (e.g. blob: URLs), sniff a content
-    // prefix for XYZ frames so large extensionless files still get indexed.
     const can_index =
       is_indexable_trajectory_filename(filename) ||
       (typeof data === `string` &&
@@ -302,7 +277,6 @@ export async function parse_trajectory_async(
       )
     }
 
-    // Fallback to direct parsing
     update_progress(10, `Parsing trajectory...`)
     const result = await parse_trajectory_data(
       data,
@@ -320,7 +294,6 @@ export async function parse_trajectory_async(
   }
 }
 
-// Unified frame loading using new TrajFrameReader
 async function parse_with_unified_loader(
   data: string | ArrayBuffer,
   filename: string,
@@ -398,7 +371,6 @@ export async function load_binary_traj(
   fallback = false,
 ): Promise<ArrayBuffer | string> {
   try {
-    // Read binary from a clone so the original can be used for text fallback
     return await resp.clone().arrayBuffer()
   } catch (binary_error) {
     if (fallback) {

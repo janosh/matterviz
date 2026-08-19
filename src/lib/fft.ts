@@ -127,7 +127,7 @@ export function time_series_window(
       )
     }
     const midpoint = (n_samples - 1) / 2
-    const scale = midpoint === 0 ? 0 : gaussian_alpha / midpoint
+    const scale = gaussian_alpha / midpoint
     for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
       const centered = scale * (sample_idx - midpoint)
       weights[sample_idx] = Math.exp(-0.5 * centered * centered)

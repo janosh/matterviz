@@ -1,4 +1,3 @@
-// HDF5 trajectory parsing: dispatches between VASP, reference MD, and generic layouts.
 import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import type { Dataset, Group } from 'h5wasm'
@@ -32,7 +31,6 @@ import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
 export { Hdf5TrajectoryGroupSelectionError } from './h5-utils'
 
-// Route a single opened HDF5 handle to its schema-specific reader with no fallback parse.
 export const parse_hdf5_trajectory = async (
   buffer: ArrayBuffer,
   filename?: string,
@@ -46,7 +44,6 @@ export const parse_hdf5_trajectory = async (
         : parse_torch_sim_h5_file(h5_file, hdf5_group_path),
   )
 
-// Dataset-name aliases searched (in order) across the whole group tree
 const POSITION_ALIASES = [`positions`, `coords`, `coordinates`]
 const ATOMIC_NUMBER_ALIASES = [`atomic_numbers`, `numbers`, `Z`, `species`]
 const CELL_ALIASES = [`cell`, `cells`, `lattice`]
@@ -96,8 +93,11 @@ const flatten_numeric = (value: unknown): number[] | null => {
     if (!child) return null
     flattened.push(...child)
   }
-  return flattened.every(Number.isFinite) ? flattened : null
+  return flattened
 }
+
+const is_zero_filled = (value: unknown): boolean =>
+  flatten_numeric(value)?.every((entry) => entry === 0) === true
 
 const product = (values: number[]): number => values.reduce((total, value) => total * value, 1)
 
@@ -338,9 +338,6 @@ function parse_torch_sim_h5_file(
       `HDF5 atomic numbers have ${atomic_numbers.length} frames for ${positions.length} position frames; expected 1 or ${positions.length}`,
     )
   }
-  // A constant cell may be stored as a single 3x3 matrix; normalize to a
-  // per-frame array so cells[idx] always yields a full lattice (indexing a bare
-  // 3x3 with a frame index would hand a single row to validate_3x3_matrix)
   const cells_are_frames = cells_data?.every(
     (entry) => Array.isArray(entry) && entry.every((row) => Array.isArray(row)),
   )
@@ -436,7 +433,6 @@ function parse_torch_sim_h5_file(
       ) {
         throw new Error(`positions must contain ${n_atoms} finite xyz rows`)
       }
-      // constant-cell files reuse the single normalized cell for every frame
       const cell = cells ? cells[cells.length === 1 ? 0 : idx] : undefined
       const lattice_mat = cell ? transpose_3x3_matrix(validate_3x3_matrix(cell)) : undefined
       const energy_entry = energies_data?.[idx]
@@ -454,17 +450,6 @@ function parse_torch_sim_h5_file(
         (lattice_mat ? [true, true, true] : [false, false, false])
 
       const step = position_steps_data?.[idx] ?? idx
-      const preview_frame =
-        !use_packed_store || idx < PACKED_PREVIEW_FRAME_COUNT
-          ? create_trajectory_frame(
-              frame_pos,
-              frame_elements,
-              lattice_mat,
-              pbc,
-              step,
-              metadata,
-            )
-          : null
       frame_metadata.push(metadata)
       plot_metadata.push({
         frame_number: idx,
@@ -477,26 +462,20 @@ function parse_torch_sim_h5_file(
       })
       if (packed_positions) packed_positions.set(frame_pos.flat(), idx * n_atoms * 3)
       if (packed_lattices && lattice_mat) packed_lattices.set(lattice_mat.flat(), idx * 9)
-      if (preview_frame) frames.push(preview_frame)
+      if (!use_packed_store) {
+        frames.push(
+          create_trajectory_frame(frame_pos, frame_elements, lattice_mat, pbc, step, metadata),
+        )
+      }
       valid_frame_count++
     } catch (error) {
-      // Same torn-tail resiliency as the vaspout parser: interrupted writers
-      // zero-fill trailing chunks (atomic number 0, degenerate cells), which
-      // fails validation — keep the frames parsed so far and report the rest
-      // as dropped. A file whose very first frame is unparsable still throws.
+      // Interrupted writes leave zero-filled trailing chunks; interior corruption still fails.
       const remaining_is_zero_filled = positions.slice(idx).every((_position, tail_idx) => {
         const frame_idx = idx + tail_idx
-        const frame_atomic_numbers = atomic_numbers_are_frames
-          ? atomic_numbers[frame_idx]
-          : null
-        const frame_cell = cells_are_frames ? cells?.[frame_idx] : null
-        const atomic_numbers_are_zero =
-          frame_atomic_numbers !== null &&
-          flatten_numeric(frame_atomic_numbers)?.every((value) => value === 0) === true
-        const cell_is_zero =
-          frame_cell !== null &&
-          flatten_numeric(frame_cell)?.every((value) => value === 0) === true
-        return atomic_numbers_are_zero || cell_is_zero
+        return (
+          (atomic_numbers_are_frames && is_zero_filled(atomic_numbers[frame_idx])) ||
+          (cells_are_frames && is_zero_filled(cells?.[frame_idx]))
+        )
       })
       if (valid_frame_count === 0 || !remaining_is_zero_filled) {
         throw new Error(

@@ -124,13 +124,12 @@ export const prepare_parse_result = (
   if (trajectory?.is_indexed !== true || !trajectory.frame_loader) {
     return { response: { id, result }, transfer: [] }
   }
-  if (trajectory.frame_store) {
-    const transfer = packed_frame_transferables(trajectory.frame_store)
-    trajectory.frame_loader = undefined
-    return { response: { id, result }, transfer }
-  }
-  const frame_port = create_frame_loader_port(trajectory.frame_loader, content)
+  const { frame_loader, frame_store } = trajectory
   trajectory.frame_loader = undefined
+  if (frame_store) {
+    return { response: { id, result }, transfer: packed_frame_transferables(frame_store) }
+  }
+  const frame_port = create_frame_loader_port(frame_loader, content)
   return { response: { id, result, frame_port }, transfer: [frame_port] }
 }
 

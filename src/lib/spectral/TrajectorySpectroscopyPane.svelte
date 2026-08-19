@@ -1,6 +1,5 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
-  import { WINDOW_TYPES, type WindowType } from '$lib/fft'
   import { format_num } from '$lib/labels'
   import { ControlPane, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
@@ -8,20 +7,14 @@
   import { to_error } from '$lib/utils'
   import { Graph } from 'svelte-widgets/icons'
   import { SvelteSet } from 'svelte/reactivity'
-  import { BUILTIN_VIBRATIONAL_REFERENCES } from './spectroscopy-reference'
-  import type { FrequencyComparisonMode } from './spectroscopy-benchmark'
   import {
     collect_trajectory_spectroscopy_input,
     infrared_kind_from_key,
-    type SpectroscopyCollectOptions,
   } from './spectroscopy-collect'
   import type { PhononModeData } from './types'
   import { create_trajectory_spectroscopy_async_runner } from './trajectory-spectroscopy-async.svelte'
   import type {
-    RamanChannel,
     SpectroscopyPreprocessing,
-    SpectroscopyVelocitySource,
-    TrajectoryFrequencyUnit,
     TrajectorySpectroscopyInput,
     TrajectorySpectroscopyOptions,
     TrajectorySpectroscopyResult,
@@ -72,25 +65,9 @@
   let infrared_kind = $state<`dipole` | `polarization` | `current`>(`dipole`)
   let polarization_branch_continuous = $state(false)
   let raman_key = $state(``)
-  let mass_source = $state<SpectroscopyCollectOptions[`mass_source`]>(`auto`)
   let preprocessing = $state<SpectroscopyPreprocessing>(`body_fixed`)
-  let velocity_source = $state<SpectroscopyVelocitySource>(`auto`)
-  let frequency_unit = $state<TrajectoryFrequencyUnit>(`cm^-1`)
-  let window = $state<WindowType>(`hann`)
-  let zero_pad_factor = $state(4)
-  let peak_prominence = $state(0.02)
-  let activity_relative_threshold = $state(0.01)
-  let activity_snr = $state(6)
-  let raman_channel = $state<RamanChannel>(`unpolarized`)
-  let raman_geometry_kind = $state<`powder` | `polarized`>(`powder`)
-  let incident_polarization = $state<[number, number, number]>([1, 0, 0])
-  let scattered_polarization = $state<[number, number, number]>([1, 0, 0])
   let analysis_time_step = $state<number>()
   let analysis_time_unit = $state(`fs`)
-  let reference_id = $state(``)
-  let comparison = $state<FrequencyComparisonMode>(`absolute`)
-  let scale_factor = $state(1)
-  let frequency_range = $state<[number, number]>([0, 0])
   let settings_open = $state(false)
   let calculation_phase = $state<`idle` | `collecting` | `computing`>(`idle`)
   let calculation_busy = $derived(calculation_phase !== `idle`)
@@ -105,29 +82,12 @@
   let has_physical_time = $derived(
     Boolean(analysis_time_step && analysis_time_step > 0 && analysis_time_unit.trim()),
   )
-  let reference = $derived(
-    BUILTIN_VIBRATIONAL_REFERENCES.find(({ id }) => id === reference_id),
-  )
   let options = $derived<TrajectorySpectroscopyOptions>({
-    frequency_unit: has_physical_time ? frequency_unit : `1/frame`,
+    frequency_unit: has_physical_time ? `cm^-1` : `1/frame`,
     preprocessing,
-    velocity_source,
-    window,
-    zero_pad_factor,
-    peak_prominence,
-    activity_relative_threshold,
-    activity_snr,
-    raman_geometry:
-      raman_geometry_kind === `polarized`
-        ? {
-            kind: `polarized`,
-            incident: [...incident_polarization],
-            scattered: [...scattered_polarization],
-          }
-        : {
-            kind: `powder`,
-            channel: raman_channel === `polarized` ? `unpolarized` : raman_channel,
-          },
+    // Raman requires an explicit geometry for periodic trajectories. Powder averaging is the
+    // only geometry the enclosing trajectory viewer can meaningfully configure.
+    raman_geometry: { kind: `powder` },
   })
   const settings_snapshot = () => ({
     raw_data,
@@ -135,7 +95,6 @@
     infrared_kind,
     polarization_branch_continuous,
     raman_key,
-    mass_source,
     time_step: has_physical_time ? analysis_time_step : undefined,
     time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
     options: $state.snapshot(options),
@@ -182,23 +141,12 @@
       first_structure.lattice.pbc.some(Boolean)
         ? `remove_com`
         : `body_fixed`
-    frequency_unit = trajectory?.time_step && trajectory.time_unit ? `cm^-1` : `1/frame`
-    reference_id = ``
-    comparison = `absolute`
-    scale_factor = 1
-    frequency_range = [0, 0]
     settings_open = false
   })
 
   $effect(() => {
     infrared_kind = infrared_key ? infrared_kind_from_key(infrared_key) : `dipole`
     polarization_branch_continuous = false
-  })
-
-  $effect(() => {
-    if (raman_geometry_kind !== `polarized` && raman_channel === `polarized`) {
-      raman_channel = `unpolarized`
-    }
   })
 
   async function calculate(): Promise<void> {
@@ -219,7 +167,6 @@
         infrared_kind: request_settings.infrared_kind,
         polarization_branch_continuous: request_settings.polarization_branch_continuous,
         raman_key: request_settings.raman_key || null,
-        mass_source: request_settings.mass_source,
         on_progress: (next_progress) => {
           if (request_is_current()) progress = next_progress
         },
@@ -231,9 +178,6 @@
         time_unit: request_settings.time_unit,
       }
       calculation_phase = `computing`
-      if (request_settings.options.raman_geometry?.kind === `polarized`) {
-        raman_channel = `polarized`
-      }
       const calculation_result = await spectroscopy_runner.compute(
         calculation_input,
         request_settings.options,
@@ -313,27 +257,11 @@
         </select>
       </label>
       <label
-        >Masses
-        <select bind:value={mass_source}
-          ><option value="auto">recorded, else standard</option><option value="recorded"
-            >recorded only</option
-          ><option value="standard">standard isotope average</option></select
-        >
-      </label>
-      <label
         >Preprocessing
         <select bind:value={preprocessing}
           ><option value="body_fixed">molecular body frame</option><option value="remove_com"
             >remove COM drift</option
           ><option value="raw">raw laboratory frame</option></select
-        >
-      </label>
-      <label
-        >Velocities
-        <select bind:value={velocity_source}
-          ><option value="auto">stored, else central difference</option><option value="stored"
-            >stored only</option
-          ><option value="central_difference">central difference</option></select
         >
       </label>
       <label
@@ -347,130 +275,6 @@
           /><input aria-label="Simulation time unit" bind:value={analysis_time_unit} /></span
         ></label
       >
-      <label
-        >Frequency
-        <select bind:value={frequency_unit} disabled={!has_physical_time}
-          ><option value="cm^-1">cm<sup>−1</sup></option><option value="THz">THz</option
-          ><option value="1/frame">1/frame</option></select
-        >
-      </label>
-      <label
-        >Window
-        <select bind:value={window}
-          >{#each WINDOW_TYPES as choice (choice)}<option value={choice}>{choice}</option
-            >{/each}</select
-        >
-      </label>
-      <label
-        >Zero padding <input
-          type="number"
-          min="1"
-          step="1"
-          bind:value={zero_pad_factor}
-        /></label
-      >
-      <label
-        >Peak prominence <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.01"
-          bind:value={peak_prominence}
-        /></label
-      >
-      <label
-        >Activity floor <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.005"
-          bind:value={activity_relative_threshold}
-        /></label
-      >
-      <label
-        >Activity MAD <input type="number" min="0" step="1" bind:value={activity_snr} /></label
-      >
-      <label
-        >Raman geometry
-        <select bind:value={raman_geometry_kind}
-          ><option value="powder">powder average</option><option value="polarized"
-            >polarized vectors</option
-          ></select
-        >
-      </label>
-      {#if raman_geometry_kind === `polarized`}
-        <label
-          >Incident polarization <span class="vector-inputs"
-            >{#each [0, 1, 2] as axis (axis)}<input
-                aria-label={`Incident polarization ${axis}`}
-                type="number"
-                step="any"
-                bind:value={incident_polarization[axis]}
-              />{/each}</span
-          ></label
-        >
-        <label
-          >Scattered polarization <span class="vector-inputs"
-            >{#each [0, 1, 2] as axis (axis)}<input
-                aria-label={`Scattered polarization ${axis}`}
-                type="number"
-                step="any"
-                bind:value={scattered_polarization[axis]}
-              />{/each}</span
-          ></label
-        >
-      {/if}
-      <label
-        >Raman view
-        <select bind:value={raman_channel}
-          ><option value="unpolarized">unpolarized</option><option value="vv">VV</option
-          ><option value="vh">VH</option><option value="isotropic">isotropic</option><option
-            value="anisotropic">anisotropic</option
-          >{#if raman_geometry_kind === `polarized`}<option value="polarized">polarized</option
-            >{/if}</select
-        >
-      </label>
-      <label
-        >Reference catalog
-        <select bind:value={reference_id}>
-          <option value="">none</option>
-          {#each BUILTIN_VIBRATIONAL_REFERENCES as entry (entry.id)}<option value={entry.id}
-              >{entry.formula} · {entry.isotopologue} · {entry.phase}</option
-            >{/each}
-        </select>
-      </label>
-      {#if result && reference}
-        <label
-          >Comparison
-          <select bind:value={comparison}>
-            <option value="absolute">raw absolute</option>
-            <option value="spacing">shift-independent spacing</option>
-            <option value="scaled">explicitly scaled</option>
-          </select>
-        </label>
-        {#if comparison === `scaled`}
-          <label
-            >Scale <input
-              type="number"
-              min="0.01"
-              step="0.001"
-              bind:value={scale_factor}
-            /></label
-          >
-        {/if}
-      {/if}
-      {#if result}
-        <label
-          >Frequency range
-          <span class="compact-inputs"
-            ><input type="number" bind:value={frequency_range[0]} />–<input
-              type="number"
-              bind:value={frequency_range[1]}
-            />
-            {result.frequency_unit}</span
-          >
-        </label>
-      {/if}
     </fieldset>
     <p class="provenance">
       {trajectory.frames.length} loaded frames · timestep {has_physical_time
@@ -500,17 +304,7 @@
         class="settings-dirty"
       />
     {/if}
-    <TrajectorySpectroscopyExplorer
-      {result}
-      {reference}
-      {harmonic_modes}
-      show_controls={false}
-      bind:mode_trajectory
-      bind:raman_channel
-      bind:comparison
-      bind:scale_factor
-      bind:frequency_range
-    />
+    <TrajectorySpectroscopyExplorer {result} {harmonic_modes} bind:mode_trajectory />
   {:else if error_msg}
     <StatusMessage type="error" message={error_msg} />
   {:else if trajectory && calculation_busy}
@@ -606,14 +400,12 @@
     max-width: none;
     font: inherit;
   }
-  .compact-inputs,
-  .vector-inputs {
+  .compact-inputs {
     display: flex;
     align-items: center;
     gap: 0.35em;
   }
-  .compact-inputs input,
-  .vector-inputs input {
+  .compact-inputs input {
     min-width: 0;
     width: 100%;
     font: inherit;

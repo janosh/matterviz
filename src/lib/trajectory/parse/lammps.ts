@@ -1,4 +1,3 @@
-// LAMMPS trajectory (.lammpstrj) parsing
 import type { ElementSymbol } from '$lib/element/types'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
@@ -16,10 +15,6 @@ import { traj_warn } from './diagnostics'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
-// Position column sets LAMMPS can dump, most to least informative. `scaled` coords are
-// fractional and need the cell to become Cartesian. `unwrapped` means LAMMPS already
-// removed the periodic images, so consumers (e.g. unwrap_flat_positions) must not
-// re-apply the minimum image convention. x/y/z and xs/ys/zs are wrapped into the box.
 const POS_COL_VARIANTS = [
   { keys: [`xu`, `yu`, `zu`], scaled: false, unwrapped: true },
   { keys: [`xsu`, `ysu`, `zsu`], scaled: true, unwrapped: true },
@@ -27,30 +22,20 @@ const POS_COL_VARIANTS = [
   { keys: [`x`, `y`, `z`], scaled: false, unwrapped: false },
 ] as const
 
-// Dump column triples that become a single vec3 site property. `force` and `velocity` are
-// the names the structure viewer's site-vector layers look for (see VECTOR_KEY_PREFIXES).
 const LAMMPS_VECTOR_GROUPS = [
   { key: `velocity`, col_names: [`vx`, `vy`, `vz`] },
   { key: `force`, col_names: [`fx`, `fy`, `fz`] },
 ] as const
 
-// Coordinates become positions and `element` becomes the species.
 const NON_SCALAR_COLS: ReadonlySet<string> = new Set([
   ...POS_COL_VARIANTS.flatMap(({ keys }) => keys),
   `element`,
 ])
 
-// Dump columns renamed on the way to site properties. Everything else keeps its dump name
-// (`c_pe`, `v_myvar`, `id`, `type`, `mass`, ...) so compute/variable outputs stay traceable
-// to the dump command that produced them.
 const LAMMPS_COLUMN_ALIASES: Record<string, string> = { q: `charge` }
 
 type LammpsBoxKind = `orthogonal` | `restricted_triclinic` | `general_triclinic`
 
-// Parse LAMMPS box bounds into the lattice and its Cartesian origin. MatterViz lattices
-// start at zero, so absolute x/y/z and xu/yu/zu coordinates must later subtract origin.
-// Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
-// Lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
 function parse_lammps_box(
   box_lines: string[],
   box_kind: LammpsBoxKind,
@@ -63,7 +48,6 @@ function parse_lammps_box(
   }
 
   if (box_kind === `orthogonal`) {
-    // Orthogonal: bounds = [lo, hi] per dimension
     const [[lo_x, hi_x], [lo_y, hi_y], [lo_z, hi_z]] = bounds
     return {
       lattice_matrix: [
@@ -80,7 +64,6 @@ function parse_lammps_box(
       origin: [bounds[0][3], bounds[1][3], bounds[2][3]],
     }
   }
-  // Triclinic: bounds = [lo_bound, hi_bound, tilt] with tilts xy, xz, yz
   const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
   const xlo = xlo_b - Math.min(0, xy, xz, xy + xz)
   const xhi = xhi_b - Math.max(0, xy, xz, xy + xz)
@@ -97,9 +80,6 @@ function parse_lammps_box(
   }
 }
 
-// Parse LAMMPS trajectory (.lammpstrj). Atom types mapped to elements via atom_type_mapping
-// or by default: 1→H, 2→He, etc. Supports orthogonal, restricted triclinic, and
-// general triclinic simulation boxes.
 export function parse_lammps_trajectory(
   content: string,
   filename?: string,
@@ -107,7 +87,6 @@ export function parse_lammps_trajectory(
 ): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
-  // Absolute simulation time per kept frame, or null when omitted
   const frame_times: (number | null)[] = []
   const atom_types_found = new Set<number>()
   let reference_atom_ids: number[] | undefined
@@ -121,14 +100,12 @@ export function parse_lammps_trajectory(
     return idx < lines.length
   }
 
-  // Helper to map atom type to element symbol
   const get_element = (atom_type: number): ElementSymbol => {
     if (atom_type_mapping?.[atom_type]) return atom_type_mapping[atom_type]
     return ELEM_SYMBOLS[Math.max(0, atom_type - 1) % ELEM_SYMBOLS.length]
   }
 
   while (idx < lines.length) {
-    // `ITEM: TIMESTEP` also starts with `ITEM: TIME`, so this finds either frame prefix.
     if (!skip_to(`ITEM: TIME`)) break
     let time: number | null = null
     if (peek_line() === `ITEM: TIME`) {
@@ -150,8 +127,6 @@ export function parse_lammps_trajectory(
     const num_atoms = Math.trunc(Number(read_line()))
     if (!num_atoms || num_atoms <= 0) continue
 
-    // BOX BOUNDS: orthogonal="pp pp pp", restricted triclinic="xy xz yz pp pp pp",
-    // general triclinic="abc origin pp pp pp"
     if (!skip_to(`ITEM: BOX BOUNDS`)) break
     const box_header = read_line()
     const box_kind: LammpsBoxKind = /BOX BOUNDS\s+abc\s+origin/i.test(box_header)
@@ -169,7 +144,6 @@ export function parse_lammps_trajectory(
     if (!parsed_box) continue
     const { lattice_matrix, origin: box_origin } = parsed_box
 
-    // Find ITEM: ATOMS and parse column headers
     if (!skip_to(`ITEM: ATOMS`)) break
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
     const col = Object.fromEntries(cols.map((name, col_idx) => [name, col_idx]))
@@ -177,7 +151,6 @@ export function parse_lammps_trajectory(
     const pos_variant = POS_COL_VARIANTS.find(({ keys }) => keys.every((key) => key in col))
     if (!pos_variant) continue
     const pos_cols = pos_variant.keys.map((key) => col[key])
-    // Atom identity comes from numeric type or an explicit element symbol.
     const type_col = col.type
     const element_col = col.element
     const id_col = col.id
@@ -188,11 +161,6 @@ export function parse_lammps_trajectory(
       continue
     }
 
-    // Columns not consumed as coordinates or as the element symbol become site properties:
-    // vx/vy/vz and fx/fy/fz grouped into vec3s, the rest as scalars under their dump name
-    // (aliased where LAMMPS' name is cryptic). `type` and `id` are kept as scalars too —
-    // they carry per-atom information (species grouping, atom identity) that is not
-    // recoverable from the element symbol alone.
     const vector_props = LAMMPS_VECTOR_GROUPS.filter(({ col_names }) =>
       col_names.every((name) => name in col),
     ).map(({ key, col_names }) => ({ key, indices: col_names.map((name) => col[name]) }))
@@ -203,7 +171,6 @@ export function parse_lammps_trajectory(
         : [{ key: LAMMPS_COLUMN_ALIASES[name] ?? name, col_idx }],
     )
 
-    // Parse atom data
     let positions: number[][] = []
     let elements: ElementSymbol[] = []
     let site_properties: Record<string, unknown>[] = []
@@ -214,16 +181,12 @@ export function parse_lammps_trajectory(
       const coords = pos_cols.map((col_idx) => Number(parts[col_idx]))
       if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
-      // Scaled coordinates are already relative to the cell origin. Absolute LAMMPS
-      // coordinates use the simulation-box origin, which MatterViz's zero-origin lattice
-      // cannot represent separately, so translate them into the displayed cell.
       const xyz: Vec3 = frac_to_cart
         ? frac_to_cart(coords as Vec3)
         : math.subtract(coords as Vec3, box_origin)
       let element_symbol: ElementSymbol | undefined
 
       if (type_col !== undefined) {
-        // Map atom type to element using custom mapping or default (type 1 -> H, etc.)
         const raw_atom_type = parts[type_col]
         const atom_type = Number(raw_atom_type)
         if (!Number.isInteger(atom_type) || atom_type <= 0) {
@@ -250,8 +213,6 @@ export function parse_lammps_trajectory(
       positions.push(xyz)
       elements.push(element_symbol)
 
-      // Non-numeric entries are dropped rather than stored as NaN, which would poison
-      // min/max color ranges and vector magnitudes downstream
       const props: Record<string, unknown> = {}
       for (const { key, indices } of vector_props) {
         const vec = indices.map((col_idx) => Number(parts[col_idx]))
@@ -358,7 +319,6 @@ export function parse_lammps_trajectory(
     first_frame.structure.sites.map((site) => site.species[0].element),
   )
 
-  // LAMMPS dumps omit the units setting, so do not guess time_unit.
   const time_step = derive_time_step(
     frame_times,
     frames.map((frame) => frame.step),

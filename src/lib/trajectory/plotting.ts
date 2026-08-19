@@ -263,8 +263,6 @@ type PropertyStats = Map<
   {
     values: number[]
     frame_indices: number[]
-    has_variation: boolean
-    is_energy: boolean
   }
 >
 
@@ -356,7 +354,7 @@ function extract_property_statistics(
     // Skip constant properties except energy
     if (!has_variation && !is_energy) continue
 
-    result.set(key, { ...stat, has_variation, is_energy })
+    result.set(key, stat)
   }
 
   return result

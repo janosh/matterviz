@@ -1058,8 +1058,12 @@
     pan_zoom.is_panning ? { duration: 0 } : resolve_line_tween(line_tween, line_tween_load),
   )
 
+  const hover_radius = $derived(hover_config.threshold_px ?? 20)
+
   // Lazily index screen-space markers so pointer moves probe nearby cells only.
   const hover_index = $derived.by(() => {
+    if (hover_config.mode === `x`) return null
+
     function* entries() {
       for (const series_data of filtered_series) {
         const scales = series_screen_scales(series_data)
@@ -1068,12 +1072,10 @@
         }
       }
     }
-    return build_spatial_index(entries(), hover_config.threshold_px ?? 20)
+    return build_spatial_index(entries(), hover_radius)
   })
 
-  // X-only hover is the fast path for ordered time series. It reuses filtered_data and probes
-  // at most two points per series instead of allocating/indexing one screen-space entry per
-  // point. Unordered series remain correct through a linear fallback.
+  // X-only hover binary-searches ordered series and scans unordered ones.
   const x_hover_series = $derived(
     filtered_series.map((series_data) => {
       let direction: -1 | 0 | 1 = 0
@@ -1101,8 +1103,7 @@
       if (points.length === 0) continue
       const scales = series_screen_scales(series_data)
       const target_x = Number(scales.x_scale.invert(x_rel))
-      let candidate_start = 0
-      let candidate_end = points.length
+      let [candidate_start, candidate_end] = [0, points.length]
       if (direction !== 0) {
         let lower_idx = 0
         let upper_idx = points.length
@@ -1131,13 +1132,15 @@
         }
       }
     }
-    return best_x_distance <= (hover_config.threshold_px ?? 20) ? best_point : null
+    return best_x_distance <= hover_radius ? best_point : null
   }
 
   const closest_point_at = (x_rel: number, y_rel: number) =>
     hover_config.mode === `x`
       ? x_hover_candidate(x_rel, y_rel)
-      : query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
+      : hover_index
+        ? query_nearest(hover_index, { x: x_rel, y: y_rel })?.point
+        : null
   let tracks_pointer = $derived(hover_config.show_tooltip !== false || Boolean(on_point_hover))
 
   // tooltip logic: find closest point and update tooltip state

@@ -22,9 +22,8 @@ vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
   }),
 }))
 
-const make_trajectory = (name: string, time_step = 1): TrajectoryType => ({
-  metadata: { name },
-  time_step,
+const make_trajectory = (): TrajectoryType => ({
+  time_step: 1,
   time_unit: `fs`,
   frames: Array.from({ length: 2 }, (_unused, frame_idx) => ({
     step: frame_idx,
@@ -42,7 +41,7 @@ const make_trajectory = (name: string, time_step = 1): TrajectoryType => ({
   })),
 })
 
-const make_input = (name: string): TrajectorySpectroscopyInput => ({
+const make_input = (): TrajectorySpectroscopyInput => ({
   positions: {
     positions: new Float64Array([0, 0, 0, 1, 0, 0]),
     n_frames: 2,
@@ -62,7 +61,6 @@ const make_input = (name: string): TrajectorySpectroscopyInput => ({
   },
   infrared_signal: null,
   raman_signal: null,
-  metadata: { name },
 })
 
 const make_result = (name: string): TrajectorySpectroscopyResult => {
@@ -122,7 +120,7 @@ test(`snapshots settings before collection and marks a changed result as stale`,
   const collection = Promise.withResolvers<TrajectorySpectroscopyInput>()
   mocks.collect.mockReturnValue(collection.promise)
   mocks.compute.mockResolvedValue(make_result(`first`))
-  const target = render_pane({ trajectory: make_trajectory(`first`) })
+  const target = render_pane({ trajectory: make_trajectory() })
 
   await vi.waitFor(() => expect(mocks.collect).toHaveBeenCalledOnce())
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
@@ -134,7 +132,7 @@ test(`snapshots settings before collection and marks a changed result as stale`,
   timestep.value = `2`
   timestep.dispatchEvent(new Event(`input`, { bubbles: true }))
 
-  collection.resolve(make_input(`first`))
+  collection.resolve(make_input())
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
   const [calculation_input, calculation_options] = mocks.compute.mock.calls[0]
   expect(calculation_input).toMatchObject({ time_step: 1, time_unit: `fs` })
@@ -151,21 +149,18 @@ test(`snapshots settings before collection and marks a changed result as stale`,
 test(`a trajectory switch cancels blocked work and starts the replacement`, async () => {
   const first_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
   const second_result = Promise.withResolvers<TrajectorySpectroscopyResult>()
-  mocks.collect.mockImplementation((trajectory: TrajectoryType) => {
-    const name = trajectory.metadata?.name
-    return Promise.resolve(make_input(typeof name === `string` ? name : `unknown`))
-  })
+  mocks.collect.mockResolvedValue(make_input())
   mocks.compute
     .mockReturnValueOnce(first_result.promise)
     .mockReturnValueOnce(second_result.promise)
   const props = $state({
-    trajectory: make_trajectory(`first`),
+    trajectory: make_trajectory(),
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
   render_pane(props)
 
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  props.trajectory = make_trajectory(`second`)
+  props.trajectory = make_trajectory()
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
   expect(mocks.cancel.mock.invocationCallOrder.at(-1)).toBeLessThan(
     mocks.compute.mock.invocationCallOrder[1],

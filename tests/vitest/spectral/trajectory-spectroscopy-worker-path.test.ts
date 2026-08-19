@@ -120,15 +120,15 @@ class StubWorker {
     const cloned = structuredClone(message)
     posted.push({ message: cloned, transfer })
     queueMicrotask(() => {
-      let data: { id: number; result: unknown; error: string | null }
-      if (force_error) data = { id: cloned.id, result: null, error: force_error }
-      else {
-        data = {
-          id: cloned.id,
-          result: structuredClone(calc_trajectory_spectroscopy(cloned.input, cloned.options)),
-          error: null,
-        }
-      }
+      const data = force_error
+        ? { id: cloned.id, result: null, error: force_error }
+        : {
+            id: cloned.id,
+            result: structuredClone(
+              calc_trajectory_spectroscopy(cloned.input, cloned.options),
+            ),
+            error: null,
+          }
       force_error = null
       for (const handler of this.listeners.get(`message`) ?? []) {
         handler({ data, preventDefault: () => {} })

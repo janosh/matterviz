@@ -24,6 +24,14 @@ const structure_result: ParseResult = {
   filename: `mp-1.cif`,
 }
 
+const trajectory_worker_response = (
+  id: number,
+  data: TrajectoryType,
+): ParseWorkerResponse => ({
+  id,
+  result: { type: `trajectory`, data, filename: `large.h5` },
+})
+
 interface FakeWorker extends WorkerLike {
   emit: (type: string, event: Event) => void
 }
@@ -94,22 +102,16 @@ describe(`parse_in_worker`, () => {
         message: unknown,
         options?: StructuredSerializeOptions | Transferable[],
       ) => {
-        posted_request = message as TrajectoryParseWorkerRequest
+        const request = message as TrajectoryParseWorkerRequest
+        posted_request = request
         posted_transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
         queueMicrotask(() =>
           listeners.get(`message`)?.(
             new MessageEvent(`message`, {
-              data: {
-                id: posted_request?.id,
-                result: {
-                  type: `trajectory`,
-                  filename: `large.h5`,
-                  data: {
-                    frames: [{ structure: { sites: [] }, step: 0 }],
-                    total_frames: 1,
-                  },
-                },
-              },
+              data: trajectory_worker_response(request.id, {
+                frames: [{ structure: { sites: [] }, step: 0 }],
+                total_frames: 1,
+              }),
             }),
           ),
         )
@@ -152,14 +154,9 @@ describe(`parse_in_worker`, () => {
         queueMicrotask(() =>
           listeners.get(`message`)?.(
             new MessageEvent(`message`, {
-              data: {
-                id: request.id,
-                result: {
-                  type: `trajectory`,
-                  filename: `large.h5`,
-                  data: { frames: [{ structure: { sites: [] }, step: 0 }] },
-                },
-              },
+              data: trajectory_worker_response(request.id, {
+                frames: [{ structure: { sites: [] }, step: 0 }],
+              }),
             }),
           ),
         )

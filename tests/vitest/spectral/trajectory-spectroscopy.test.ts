@@ -645,7 +645,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
           (row) => sign * field_strength * direct.values[sample_idx * 9 + row * 3 + axis],
         ),
       )
-    const axes = [0, 1, 2] as const
     const field_input = make_input()
     const geometry_signal = (): TrajectorySignal => clone_geometry(field_input)
     const field_signal: RamanSignal = {
@@ -653,8 +652,8 @@ describe(`calc_trajectory_spectroscopy`, () => {
       response: `dipole`,
       field_strength,
       field_unit: `V/A`,
-      plus: { x: response(axes[0], 1), y: response(axes[1], 1), z: response(axes[2], 1) },
-      minus: { x: response(axes[0], -1), y: response(axes[1], -1), z: response(axes[2], -1) },
+      plus: { x: response(0, 1), y: response(1, 1), z: response(2, 1) },
+      minus: { x: response(0, -1), y: response(1, -1), z: response(2, -1) },
       geometry: {
         plus: { x: geometry_signal(), y: geometry_signal(), z: geometry_signal() },
         minus: { x: geometry_signal(), y: geometry_signal(), z: geometry_signal() },

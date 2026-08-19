@@ -50,9 +50,8 @@
   > = $props()
 
   interface SpectrumPanelDatum {
-    kind: `ir` | `raman`
+    kind: string
     response: TrajectorySpectrumCurve
-    response_label: string
   }
 
   const nearest_power = (curve: TrajectorySpectrumCurve, frequency: number): number => {
@@ -74,8 +73,10 @@
   }
   const error_band = (series_id: string, error: number[] | null): ErrorBand[] =>
     error ? [{ series: { type: `series`, series_id }, error }] : []
-  const reference_lines = (kind: `ir` | `raman`): RefLine[] => {
-    if (result.frequency_unit === `1/frame`) return []
+  const is_response_panel = (kind: string): kind is `ir` | `raman` =>
+    kind === `ir` || kind === `raman`
+  const reference_lines = (kind: string): RefLine[] => {
+    if (!is_response_panel(kind) || result.frequency_unit === `1/frame`) return []
     return (reference?.modes ?? []).map((mode) => {
       const frequency =
         result.frequency_unit === `cm^-1`
@@ -143,17 +144,13 @@
     if (typeof peak_idx === `number`) selected_peak_idx = peak_idx
   }
 
-  let selected_raman_curve = $derived(
-    raman_channel === `polarized`
-      ? (result.raman?.polarized ?? null)
-      : (result.raman?.[raman_channel] ?? null),
-  )
+  let selected_raman_curve = $derived(result.raman?.[raman_channel] ?? null)
   let response_panels = $derived.by(() => {
     const panels: FacetPanel<SpectrumPanelDatum>[] = []
     if (result.ir) {
       panels.push({
         key: `ir`,
-        data: { kind: `ir`, response: result.ir, response_label: `Relative IR intensity` },
+        data: { kind: `ir`, response: result.ir },
       })
     }
     if (selected_raman_curve) {
@@ -162,11 +159,12 @@
         data: {
           kind: `raman`,
           response: selected_raman_curve,
-          response_label: `Raman ${raman_channel}`,
         },
       })
     }
-    return panels
+    return panels.length
+      ? panels
+      : [{ key: `vdos`, data: { kind: `vdos`, response: result.vdos } }]
   })
   let grid_style = $derived(style ?? `height: ${Math.max(1, response_panels.length) * 290}px;`)
   let spectroscopy_legend = $derived(
@@ -181,20 +179,24 @@
 </script>
 
 {#snippet spectrum_panel(
-  kind: `ir` | `raman`,
+  kind: string,
   response: TrajectorySpectrumCurve,
-  response_label: string,
   facet_layout: FacetPanelContext<SpectrumPanelDatum>,
 )}
+  {@const response_label = kind === `ir` ? `Relative IR intensity` : `Raman ${raman_channel}`}
   {@const series = [
-    {
-      id: `${kind}-response`,
-      x: response.frequencies,
-      y: response.normalized_power,
-      label: response_label,
-      markers: `line` as const,
-      line_style: { stroke: PLOT_COLORS[0], stroke_width: 2 },
-    },
+    ...(!is_response_panel(kind)
+      ? []
+      : [
+          {
+            id: `${kind}-response`,
+            x: response.frequencies,
+            y: response.normalized_power,
+            label: response_label,
+            markers: `line` as const,
+            line_style: { stroke: PLOT_COLORS[0], stroke_width: 2 },
+          },
+        ]),
     {
       id: `${kind}-vdos`,
       x: result.vdos.frequencies,
@@ -203,14 +205,15 @@
       markers: `line` as const,
       line_style: { stroke: PLOT_COLORS[1], stroke_width: 2, line_dash: `6 4` },
     },
-    ...experimental_series(kind),
+    ...(is_response_panel(kind) ? experimental_series(kind) : []),
     peak_series(response),
   ] satisfies DataSeries[]}
-  {@const response_error = uncertainty(response)}
   {@const vdos_error = uncertainty(result.vdos)}
   {@const error_bands = show_uncertainty
     ? [
-        ...error_band(`${kind}-response`, response_error),
+        ...(!is_response_panel(kind)
+          ? []
+          : error_band(`${kind}-response`, uncertainty(response))),
         ...error_band(`${kind}-vdos`, vdos_error),
       ]
     : []}
@@ -223,7 +226,11 @@
     ref_lines={reference_lines(kind)}
     on_point_click={handle_point_click}
     x_axis={{ label: `Frequency (${result.frequency_unit})`, range: frequency_range }}
-    y_axis={{ label: `Independent normalized power` }}
+    y_axis={{
+      label: is_response_panel(kind)
+        ? `Independent normalized power`
+        : `Normalized vibrational power`,
+    }}
     styles={{ show_lines: true, show_points: true }}
     {facet_layout}
     fullscreen_toggle={false}
@@ -232,48 +239,20 @@
 {/snippet}
 
 <div class="trajectory-spectrum-plots">
-  {#if response_panels.length > 0}
-    <FacetGrid
-      panels={response_panels}
-      columns={1}
-      gap={8}
-      axis_modes={{ x: `shared`, y: `free` }}
-      axis_visibility={{ x: `outer`, x2: `none`, y: `outer`, y2: `none` }}
-      style={grid_style}
-    >
-      {#snippet children(context)}
-        {@render spectrum_panel(
-          context.data.kind,
-          context.data.response,
-          context.data.response_label,
-          context,
-        )}
-      {/snippet}
-    </FacetGrid>
-  {:else}
-    {@const vdos_error = uncertainty(result.vdos)}
-    <ScatterPlot
-      {...rest}
-      legend={spectroscopy_legend}
-      bind:show_controls
-      series={[
-        {
-          id: `vdos`,
-          x: result.vdos.frequencies,
-          y: result.vdos.normalized_power,
-          label: `Mass-weighted VDOS`,
-          markers: `line`,
-        },
-        peak_series(result.vdos),
-      ]}
-      error_bands={show_uncertainty ? error_band(`vdos`, vdos_error) : []}
-      on_point_click={handle_point_click}
-      x_axis={{ label: `Frequency (${result.frequency_unit})`, range: frequency_range }}
-      y_axis={{ label: `Normalized vibrational power` }}
-      styles={{ show_lines: true, show_points: true }}
-      style={grid_style}
-    />
-    {#if show_summary}<p>Vibrational spectrum; IR/Raman activity unavailable.</p>{/if}
+  <FacetGrid
+    panels={response_panels}
+    columns={1}
+    gap={8}
+    axis_modes={{ x: `shared`, y: `free` }}
+    axis_visibility={{ x: `outer`, x2: `none`, y: `outer`, y2: `none` }}
+    style={grid_style}
+  >
+    {#snippet children(context)}
+      {@render spectrum_panel(context.data.kind, context.data.response, context)}
+    {/snippet}
+  </FacetGrid>
+  {#if !result.ir && !selected_raman_curve && show_summary}
+    <p>Vibrational spectrum; IR/Raman activity unavailable.</p>
   {/if}
 </div>
 

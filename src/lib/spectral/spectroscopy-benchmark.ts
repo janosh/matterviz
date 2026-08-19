@@ -317,9 +317,7 @@ export function benchmark_spectroscopy(
     base_rows.map(({ reference_cm1 }) => reference_cm1),
   )
   const spacing_shift = absolute?.mean_signed_error_cm1 ?? 0
-  const selected_raman = result.raman
-    ? (result.raman[result.raman.selected_channel] ?? null)
-    : null
+  const selected_raman = result.raman?.[result.raman.selected_channel] ?? null
   const resolution_cm1 = Math.max(
     frequency_to_cm1(result.vdos.rayleigh_resolution, result.frequency_unit),
     result.ir ? frequency_to_cm1(result.ir.rayleigh_resolution, result.frequency_unit) : 0,

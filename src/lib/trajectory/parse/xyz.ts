@@ -1,4 +1,3 @@
-// XYZ / extxyz trajectory parsing
 import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import { coerce_elem_symbol } from '$lib/element/helpers'
@@ -13,28 +12,18 @@ import { get_traj_parse_warnings, traj_warn } from './diagnostics'
 import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import { normalize_scientific_notation } from '$lib/utils'
 
-// `type` is the extxyz type letter, lowercased: `s` string, `r` real, `i` integer, `l` logical.
-// Needed to decide whether a declared column reads back as a number, a string or a boolean.
 export type ExtxyzColumn = { offset: number; ncols: number; type: string }
 export type ExtxyzColumns = {
   species_col: number
   pos_col: number
   forces_col: number
   min_cols: number
-  // Every declared column by lowercased name, so callers can read properties beyond the three
-  // resolved above (move_mask, selective_dynamics, charges, ...) without re-parsing the string.
-  // Null when Properties was absent or malformed and the conventional layout was assumed.
   layout: Record<string, ExtxyzColumn> | null
 }
 
-// Resolve species/pos/forces column offsets from an extxyz Properties string of
-// name:type:ncols triples (e.g. "species:S:1:pos:R:3:forces:R:3"), falling back
-// to the conventional "symbol x y z" layout when absent or malformed
 export function parse_extxyz_columns(comment: string): ExtxyzColumns {
   const fields =
     /Properties\s*=\s*"?(?<properties>[^"\s]+)"?/i.exec(comment)?.[1].split(`:`) ?? []
-  // Well-formed Properties is name:type:ncols triples; a non-multiple of 3 is malformed,
-  // so bail to the conventional default rather than trusting a partial layout
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
   for (let idx = 0, offset = 0; layout && idx + 3 <= fields.length; idx += 3) {
     const ncols = Math.trunc(Number(fields[idx + 2]))
@@ -59,11 +48,6 @@ export function parse_extxyz_columns(comment: string): ExtxyzColumns {
   }
 }
 
-// Parse Lattice="ax ay az bx by bz cx cy cz" from an extxyz comment line.
-// Values go through normalize_scientific_notation so Fortran-style exponents (1.0D+00) and
-// Mathematica's `*^` survive, matching how the atom coordinates themselves are read.
-// Undefined means the file declared no cell (a molecule); a declared but unreadable cell
-// throws instead, since silently rendering a crystal as an isolated molecule hides the defect.
 export function parse_extxyz_lattice(comment: string): math.Matrix3x3 | undefined {
   const raw = /Lattice\s*=\s*"(?<lattice>[^"]*)"/i.exec(comment)?.[1]
   if (raw === undefined) return undefined
@@ -96,11 +80,6 @@ function lookup_extxyz_bools(tokens: string[]): Pbc | undefined {
 
 const MOVE_FLAG_COLUMNS = [`move_mask`, `selective_dynamics`] as const
 
-// Read a declared boolean column as per-axis motion flags (T = free to move).
-// ASE writes `move_mask:L:3` for a per-axis FixCartesian and `move_mask:L:1` for a whole-atom
-// FixAtoms, so both arities are accepted and the 1-column form broadcasts. `selective_dynamics`
-// is read as a fallback for files written by tools that use the VASP name. Anything else
-// (missing column, short line, unrecognized token) yields undefined so callers fall through.
 export function read_extxyz_move_flags(
   tokens: string[],
   layout: Record<string, ExtxyzColumn> | null,
@@ -123,10 +102,8 @@ export function read_extxyz_move_flags(
   return undefined
 }
 
-// Structural fields, normalized motion flags, and forces handled with frame-level statistics.
 const RESERVED_EXTXYZ_COLUMNS = new Set([`species`, `pos`, `forces`, ...MOVE_FLAG_COLUMNS])
 
-// Canonical site-property names shared with LAMMPS and exporters.
 const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
   velocities: `velocity`,
   momenta: `momentum`,
@@ -134,10 +111,6 @@ const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
   masses: `mass`,
 }
 
-// Read one declared column of an atom line as a site property value. Logical columns
-// become booleans, string columns strings, everything else numbers. Returns undefined
-// when the line is too short or any component fails to parse, so a malformed column is
-// dropped for that atom rather than written as NaN.
 function read_extxyz_column(tokens: string[], column: ExtxyzColumn): unknown {
   const { offset, ncols, type } = column
   if (tokens.length < offset + ncols) return undefined
@@ -159,7 +132,6 @@ export function parse_extxyz_pbc(comment: string): Pbc | undefined {
     )
   const raw = (match?.groups?.double ?? match?.groups?.single ?? match?.groups?.bare)?.trim()
   if (!raw) return undefined
-  // Stop before a following `Key=` token that bare matching may have swallowed
   const split = raw.split(/\s+/u)
   const cut = split.findIndex((word) => word.includes(`=`))
   const words = cut === -1 ? split : split.slice(0, cut)
@@ -176,7 +148,6 @@ export function parse_extxyz_pbc(comment: string): Pbc | undefined {
   return lookup_extxyz_bools(words.slice(0, 3))
 }
 
-// Keys anchored at ^|\s and followed by [=:] so single-letter keys (E/V/P/T) don't match mid-word
 const make_pattern = (keys: string): RegExp =>
   new RegExp(`(?:^|\\s)(?:${keys})\\s*[=:]\\s*([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)`, `i`)
 
@@ -187,11 +158,9 @@ const METADATA_PATTERNS = {
   temperature: make_pattern(`temperature|temp|T`),
   force_max: make_pattern(`max_force|force_max|fmax`),
   bandgap: make_pattern(`bandgap|E_gap|gap`),
-  // Absolute snapshot time; derive_time_step divides out the step interval.
   time: make_pattern(`time`),
 } as const
 
-// Extract step number and scalar properties from an (ext)XYZ comment line
 export function parse_xyz_comment_metadata(comment: string): {
   step?: number
   properties: Record<string, number>
@@ -205,9 +174,6 @@ export function parse_xyz_comment_metadata(comment: string): {
   return { step: step ? Math.trunc(Number(step)) : undefined, properties }
 }
 
-// Parse quoted frame-level numerical vectors/tensors without interpreting unrelated
-// extXYZ strings such as Properties, Lattice, or pbc. Three values become a vec3 and nine
-// values a row-major 3x3 tensor, matching trajectory spectroscopy signal shapes.
 export function parse_xyz_comment_signals(
   comment: string,
 ): Record<string, number[] | number[][]> {
@@ -233,12 +199,6 @@ export function parse_xyz_comment_signals(
 
 type ForceStats = { forces: number[][]; force_max: number; force_norm: number }
 
-// Parse num_atoms atom lines starting at lines[start], reading species/pos/forces from
-// their Properties-declared column offsets; invalid atoms are skipped with a warning.
-// force_stats holds raw forces plus max and RMS force magnitudes when forces are present.
-// move_flags is populated only when every kept atom declared one, so a partially-annotated
-// file doesn't silently report unconstrained axes for the atoms that were missing flags.
-// Other declared columns become per-site properties under their canonical or declared name.
 function parse_xyz_atom_lines(
   lines: string[],
   start: number,
@@ -308,8 +268,6 @@ function parse_xyz_atom_lines(
   }
 }
 
-// Assemble a TrajectoryFrame from the XYZ frame starting at lines[start] (count line,
-// comment line, atom lines). Shared by the eager parser and the indexed frame reader.
 export function build_xyz_frame(
   lines: string[],
   frame: { start: number; num_atoms: number; comment: string },
@@ -345,7 +303,6 @@ export function build_xyz_frame(
     step ?? opts.default_step,
     metadata,
   )
-  // Attach per-atom data to sites. Forces are all-or-nothing and use the canonical singular key.
   const { sites } = built.structure
   const forces = force_stats?.forces.length === sites.length ? force_stats.forces : null
   for (const [idx, site] of sites.entries()) {
@@ -369,7 +326,6 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     )
   }
 
-  // extXYZ does not state the time unit, so do not guess time_unit.
   const time_step = derive_time_step(
     frames.map(({ metadata }) => (typeof metadata?.time === `number` ? metadata.time : null)),
     frames.map(({ step }) => step),

@@ -211,16 +211,15 @@ describe(`one_sided_periodogram`, () => {
   })
 
   it.each([
-    [`DC signal`, Float64Array.from({ length: 16 }, () => 4), 1, 0],
-    [`zero signal`, new Float64Array(16), 1, 0],
+    [`DC signal`, Float64Array.from({ length: 16 }, () => 4), 0],
+    [`zero signal`, new Float64Array(16), 0],
     [
       `Nyquist signal`,
       Float64Array.from({ length: 16 }, (_unused, idx) => (idx % 2 === 0 ? 1 : -1)),
-      1,
       8,
     ],
-  ] as const)(`handles a %s`, (_label, values, interval, peak_idx) => {
-    const result = one_sided_periodogram(values, 1, interval, {
+  ] as const)(`handles a %s`, (_label, values, peak_idx) => {
+    const result = one_sided_periodogram(values, 1, 1, {
       window: `none`,
       zero_pad_factor: 1,
     })
