@@ -239,7 +239,7 @@
 {#snippet download_button(
   format: StructureFormat | TableFormat,
   hint: string,
-  aria_label?: string,
+  aria_label: string,
 )}
   <button
     type="button"
@@ -291,7 +291,7 @@
     {#each [{ label: `extXYZ`, format: `extxyz`, hint: `All frames ${start_frame}–${end_frame} as one extended XYZ file` }, { label: `POSCAR ZIP`, format: `poscar`, hint: `One numbered POSCAR per frame, zipped` }] as const as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
         {label}
-        {@render download_button(format, hint)}
+        {@render download_button(format, hint, `Download ${label}`)}
       </div>
     {/each}
   </div>

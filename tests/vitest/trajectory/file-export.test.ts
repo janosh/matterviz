@@ -445,6 +445,11 @@ describe(`TrajectoryExportPane property export`, () => {
     return content.split(`\n`)
   }
 
+  test.each([`extXYZ`, `POSCAR ZIP`])(`names the %s download action`, (label) => {
+    open_pane({ trajectory })
+    expect(document.querySelector(`button[aria-label="Download ${label}"]`)).not.toBeNull()
+  })
+
   test(`downloads the whole frame range as CSV`, async () => {
     open_pane({ trajectory })
     await tick()
