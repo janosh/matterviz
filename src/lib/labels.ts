@@ -204,8 +204,8 @@ const formatter_precision = (formatter: string): number =>
 const longest_label = (labels: readonly string[]): number =>
   Math.max(...labels.map((label) => label.length))
 
-// Retain compact adaptive labels until two distinct tick values would render identically, then
-// add just enough precision to make every numeric label unambiguous. Explicit formats remain
+// Retain compact adaptive labels until adjacent distinct tick values would render identically,
+// then add just enough precision to distinguish neighbouring ticks. Explicit formats remain
 // authoritative: callers may intentionally request rounded or categorical-looking labels.
 export const format_tick_values = (
   values: readonly number[],
