@@ -187,8 +187,8 @@
     bind:show_controls
     {series}
     on_point_click={handle_point_click}
-    {header_controls}
-    {controls_extra}
+    header_controls={facet_layout.index === 0 ? header_controls : undefined}
+    controls_extra={facet_layout.index === 0 ? controls_extra : undefined}
     x_axis={{
       label: `Frequency (${frequency_unit_label(result.frequency_unit)})`,
       range: visible_frequency_range,

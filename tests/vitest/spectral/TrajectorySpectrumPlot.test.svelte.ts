@@ -317,6 +317,11 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   await tick()
   await vi.waitFor(() => expect(inline_props.result).toBeDefined())
   expect(inline_target.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()
+  const settings_headings = [...inline_target.querySelectorAll(`h4`)].filter(
+    (heading) => heading.textContent === `Spectroscopy analysis settings`,
+  )
+  expect(settings_headings).toHaveLength(1)
+  expect(inline_target.querySelectorAll(`.spectroscopy-details-toggle`)).toHaveLength(1)
   const settings_pane = inline_target.querySelector(`.plot-controls-pane`)
   expect(settings_pane?.classList).not.toContain(`pane-open`)
   const settings_toggle =
