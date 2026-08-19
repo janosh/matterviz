@@ -348,7 +348,7 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
-    padding: 0 1ex;
+    padding: 0.5rem 1ex 0;
     overflow: visible;
     container-type: inline-size;
     box-sizing: border-box;

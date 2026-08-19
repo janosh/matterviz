@@ -984,6 +984,16 @@ describe(`Trajectory`, () => {
     expect([style.zIndex, style.color]).toEqual([`5`, `rgb(255, 0, 0)`])
   })
 
+  test.each([
+    [`without a prop`, undefined],
+    [`with an object config`, { hidden: [] }],
+  ])(`shows the control bar by default %s`, async (_description, show_controls) => {
+    const target = mount_traj({ trajectory: energy_traj(-1.5), show_controls })
+    await flush_render()
+
+    expect(target.querySelector(`.trajectory-controls.always-visible`)).not.toBeNull()
+  })
+
   test(`controller navigates without mounted controls`, async () => {
     const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
     const on_step_change = vi.fn()

@@ -4,6 +4,7 @@ import {
   convert_atomic_numbers,
   count_elements,
   create_packed_frame_loader,
+  load_packed_frame_preview,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type {
@@ -391,18 +392,11 @@ export const parse_reference_md_h5_file = (
     signals,
   }
   const frame_loader = create_packed_frame_loader(frame_store)
-  const load_frame_sync = frame_loader.load_frame_sync
-  if (!load_frame_sync)
-    throw new Error(`Reference MD packed loader must support synchronous frames`)
-  const frames = Array.from(
-    { length: Math.min(n_frames, PREVIEW_FRAME_COUNT) },
-    (_unused, frame_idx) => {
-      const frame = load_frame_sync(frame_idx)
-      if (!frame) {
-        throw new Error(`Reference MD packed loader could not reconstruct frame ${frame_idx}`)
-      }
-      return frame
-    },
+  const frames = load_packed_frame_preview(
+    frame_loader,
+    n_frames,
+    PREVIEW_FRAME_COUNT,
+    `Reference MD packed`,
   )
   return {
     frames,

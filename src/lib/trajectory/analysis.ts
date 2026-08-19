@@ -1,7 +1,14 @@
 // Frame accounting shared by trajectory analyses. Indexed trajectories keep only a small
 // frame window in memory, so treating `frames.length` as the total silently truncates them.
-import type { FrameLoader, TrajectoryType } from '$lib/trajectory'
+import type {
+  FrameLoader,
+  ParseProgress,
+  PositionStreamOptions,
+  TrajectoryPositionStream,
+  TrajectoryType,
+} from '$lib/trajectory'
 import { to_error } from '$lib/utils'
+import { accumulate_positions } from './frame-reader'
 
 export function trajectory_total_frames(trajectory: TrajectoryType): number {
   if (trajectory.total_frames != null) return trajectory.total_frames
@@ -40,6 +47,48 @@ export const has_frame_loader_data = (
   Boolean(
     trajectory?.frame_loader && frame_loader_data(trajectory.frame_loader, raw_data) !== null,
   )
+
+export const collect_trajectory_positions = async (
+  trajectory: TrajectoryType,
+  raw_data: string | ArrayBuffer | null,
+  options: PositionStreamOptions,
+  on_progress: ((progress: ParseProgress) => void) | undefined,
+  analysis_name: string,
+): Promise<TrajectoryPositionStream> => {
+  const total_frames = trajectory_total_frames(trajectory)
+  if (total_frames > 0 && trajectory.frames.length >= total_frames) {
+    return accumulate_positions(
+      trajectory.frames.length,
+      (frame_number) => trajectory.frames[frame_number] ?? null,
+      options,
+      on_progress,
+    )
+  }
+  const loaded_frames = trajectory.frames.length
+  const indexed = `Trajectory is indexed (${loaded_frames} of ${total_frames} frames in memory)`
+  const loader = trajectory.frame_loader
+  if (!loader) {
+    throw new Error(
+      `Trajectory reports ${total_frames} frames but only ${loaded_frames} are in memory and it has no ` +
+        `frame_loader. ${analysis_name} needs every frame; re-load the file without indexing ` +
+        `(loading_options.use_indexing = false) to analyse it.`,
+    )
+  }
+  if (!loader.stream_positions) {
+    throw new Error(
+      `${indexed} and its frame_loader does not implement stream_positions, so a full pass is ` +
+        `impossible. ${analysis_name} would otherwise be computed over just ${loaded_frames} frames.`,
+    )
+  }
+  const loader_data = frame_loader_data(loader, raw_data)
+  if (loader_data === null) {
+    throw new Error(
+      `${indexed} so ${analysis_name} needs the raw file bytes to stream the remaining frames, ` +
+        `but raw_data was missing or empty. Pass the payload Trajectory.svelte keeps in orig_data.`,
+    )
+  }
+  return loader.stream_positions(loader_data, options, on_progress)
+}
 
 // Frame counts and stride advice for trajectory analysis panes. Setup errors are returned
 // so a pane can render them without taking down the viewer.

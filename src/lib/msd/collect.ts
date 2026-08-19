@@ -3,12 +3,10 @@
 // trajectory can never be silently analysed over its 10-frame in-memory window.
 import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
 import {
-  frame_loader_data,
-  has_all_frames_in_memory,
+  collect_trajectory_positions,
   trajectory_total_frames,
 } from '$lib/trajectory/analysis'
 import {
-  accumulate_positions,
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   suggest_frame_stride,
 } from '$lib/trajectory/frame-reader'
@@ -52,38 +50,11 @@ export async function collect_msd_positions(
     )
   }
 
-  if (!has_all_frames_in_memory(trajectory)) {
-    const loader = trajectory.frame_loader
-    const loaded = trajectory.frames.length
-    const indexed = `Trajectory is indexed (${loaded} of ${total} frames in memory)`
-    if (!loader) {
-      throw new Error(
-        `Trajectory reports ${total} frames but only ${loaded} are in memory and it has no ` +
-          `frame_loader. MSD needs every frame; re-load the file without indexing ` +
-          `(loading_options.use_indexing = false) to analyse it.`,
-      )
-    }
-    if (!loader.stream_positions) {
-      throw new Error(
-        `${indexed} and its frame_loader does not implement stream_positions, so a full pass ` +
-          `is impossible. MSD would otherwise be computed over just ${loaded} frames.`,
-      )
-    }
-    const loader_data = frame_loader_data(loader, raw_data)
-    if (loader_data === null) {
-      throw new Error(
-        `${indexed} so MSD needs the raw file bytes to stream the remaining frames, but ` +
-          `raw_data was missing or empty. Pass the payload Trajectory.svelte keeps in orig_data.`,
-      )
-    }
-    return loader.stream_positions(loader_data, { frame_stride, max_bytes }, on_progress)
-  }
-
-  const { frames } = trajectory
-  return accumulate_positions(
-    frames.length,
-    (frame_number) => frames[frame_number] ?? null,
+  return collect_trajectory_positions(
+    trajectory,
+    raw_data,
     { frame_stride, max_bytes },
     on_progress,
+    `MSD`,
   )
 }

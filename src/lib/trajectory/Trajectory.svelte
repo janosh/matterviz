@@ -250,8 +250,8 @@
       // Custom error snippet for advanced error handling
       error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
       // Controls visibility configuration.
-      // - 'always': controls always visible
-      // - 'hover': controls visible on component hover (default)
+      // - 'always': controls always visible (default)
+      // - 'hover': controls visible on component hover
       // - 'never': controls never visible
       // - object: { mode, hidden, style } for fine-grained control
       // Control names: 'filename', 'nav', 'step', 'fps', 'info-pane', 'export-pane', 'msd-pane', 'vacf-pane', 'structure-id-pane', 'data-inspector-pane', 'x-axis', 'view-mode', 'fullscreen'
@@ -365,7 +365,7 @@
     loading = false
   })
 
-  let controls_config = $derived(normalize_show_controls(show_controls))
+  let controls_config = $derived(normalize_show_controls(show_controls, `always`))
 
   // Reactive layout based on the size of the box actually being split (for auto
   // mode). Measured on .content-area, not the wrapper: a mounted controls bar is

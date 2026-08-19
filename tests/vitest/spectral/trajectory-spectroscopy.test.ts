@@ -118,6 +118,7 @@ const tumbling_spectra = (
   const stationary_velocities = new Float64Array(n_frames * n_atoms * 3)
   const rotating_tensors = new Float64Array(n_frames * 9)
   const stationary_tensors = new Float64Array(n_frames * 9)
+  const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
   const angular_speed = 2 * Math.PI * 0.03
   for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
     const angle = angular_speed * frame_idx
@@ -156,20 +157,20 @@ const tumbling_spectra = (
       pbc: [false, false, false],
       coords_unwrapped: true,
       frame_stride: 1,
-      steps: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx),
+      steps,
     },
     masses: Float64Array.from(masses),
     velocities: {
       values: velocities,
       sample_shape: [n_atoms, 3],
-      steps: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx),
+      steps,
     },
     raman_signal: {
       kind: `polarizability`,
       series: {
         values: tensors,
         sample_shape: [3, 3],
-        steps: Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx),
+        steps,
       },
     },
   })

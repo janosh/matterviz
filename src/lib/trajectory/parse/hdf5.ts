@@ -8,6 +8,7 @@ import {
   create_packed_frame_loader,
   create_trajectory_frame,
   is_supported_trajectory_signal_shape,
+  load_packed_frame_preview,
   validate_3x3_matrix,
 } from '$lib/trajectory/helpers'
 import type {
@@ -589,16 +590,12 @@ function parse_torch_sim_h5_file(
       ...(Object.keys(matching_vectors).length > 0 ? { vectors: matching_vectors } : {}),
       ...(Object.keys(signals).length > 0 ? { signals } : {}),
     }
-    const packed_loader = create_packed_frame_loader(frame_store)
-    frame_loader = packed_loader
-    frames = Array.from(
-      { length: Math.min(valid_frame_count, PACKED_PREVIEW_FRAME_COUNT) },
-      (_unused, frame_idx) => {
-        const frame = packed_loader.load_frame_sync?.(frame_idx)
-        if (!frame)
-          throw new Error(`Packed HDF5 loader could not reconstruct frame ${frame_idx}`)
-        return frame
-      },
+    frame_loader = create_packed_frame_loader(frame_store)
+    frames = load_packed_frame_preview(
+      frame_loader,
+      valid_frame_count,
+      PACKED_PREVIEW_FRAME_COUNT,
+      `Packed HDF5`,
     )
   }
 

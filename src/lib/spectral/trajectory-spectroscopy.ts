@@ -1404,10 +1404,9 @@ export function standard_masses_for_elements(elements: string[]): Float64Array {
   })
 }
 
-const calc_trajectory_spectroscopy_impl = (
+export const calc_trajectory_spectroscopy = (
   input: TrajectorySpectroscopyInput,
   options: TrajectorySpectroscopyOptions = {},
-  include_peaks = true,
 ): TrajectorySpectroscopyResult => {
   const { positions: stream, masses } = input
   if (stream.n_atoms < 1 || stream.n_frames < 3) {
@@ -1618,9 +1617,14 @@ const calc_trajectory_spectroscopy_impl = (
       )
     : null
   const raman_curve = raman ? selected_raman_curve(raman) : null
-  const peaks = include_peaks
-    ? detect_peaks(vdos, ir, raman_curve, prepared.positions, input, calculation_options)
-    : []
+  const peaks = detect_peaks(
+    vdos,
+    ir,
+    raman_curve,
+    prepared.positions,
+    input,
+    calculation_options,
+  )
   return {
     vdos,
     ir,
@@ -1637,8 +1641,3 @@ const calc_trajectory_spectroscopy_impl = (
     metadata: { ...input.metadata },
   }
 }
-
-export const calc_trajectory_spectroscopy = (
-  input: TrajectorySpectroscopyInput,
-  options: TrajectorySpectroscopyOptions = {},
-): TrajectorySpectroscopyResult => calc_trajectory_spectroscopy_impl(input, options)

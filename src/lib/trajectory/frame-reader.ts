@@ -395,9 +395,6 @@ export const parse_frame_signal = (
   if (flat_values) {
     const values = flat_values as number[]
     if (!values.every(Number.isFinite)) return null
-    if (values.length === n_atoms && per_atom_key && !tensor_key) {
-      return { values, sample_shape: [n_atoms] }
-    }
     if (values.length === 9 && (n_atoms !== 3 || tensor_key)) {
       return { values, sample_shape: [3, 3] }
     }

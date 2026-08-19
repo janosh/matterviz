@@ -1,11 +1,6 @@
-import {
-  frame_loader_data,
-  has_all_frames_in_memory,
-  trajectory_total_frames,
-} from '$lib/trajectory/analysis'
+import { collect_trajectory_positions } from '$lib/trajectory/analysis'
 import type { ParseProgress, TrajectoryPositionStream, TrajectoryType } from '$lib/trajectory'
 import {
-  accumulate_positions,
   DEFAULT_POSITION_STREAM_MAX_BYTES,
   parse_frame_signal,
 } from '$lib/trajectory/frame-reader'
@@ -125,29 +120,13 @@ export async function collect_trajectory_spectroscopy_input(
       : {}),
     ...(frame_signal_keys.length > 0 ? { signal_keys: frame_signal_keys } : {}),
   }
-  let stream: TrajectoryPositionStream
-  if (has_all_frames_in_memory(trajectory)) {
-    stream = await accumulate_positions(
-      trajectory.frames.length,
-      (frame_number) => trajectory.frames[frame_number] ?? null,
-      collect_options,
-      on_progress,
-    )
-  } else {
-    const total = trajectory_total_frames(trajectory)
-    const loader = trajectory.frame_loader
-    if (!loader?.stream_positions) {
-      throw new Error(
-        `Trajectory has ${trajectory.frames.length} of ${total} frames in memory and its ` +
-          `frame loader cannot stream positions`,
-      )
-    }
-    const loader_data = frame_loader_data(loader, raw_data)
-    if (loader_data === null) {
-      throw new Error(`Indexed trajectory spectroscopy requires the original raw_data payload`)
-    }
-    stream = await loader.stream_positions(loader_data, collect_options, on_progress)
-  }
+  const stream: TrajectoryPositionStream = await collect_trajectory_positions(
+    trajectory,
+    raw_data,
+    collect_options,
+    on_progress,
+    `Spectroscopy`,
+  )
 
   const streamed_velocities = velocity_key ? stream.vectors?.[velocity_key] : null
   const velocities =
