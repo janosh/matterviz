@@ -745,12 +745,16 @@ describe(`clean_multi_series`, () => {
 
 describe(`clean_xyz`, () => {
   it(`cleans 3D correlated data with interpolation`, () => {
-    const result = clean_xyz([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, NaN, 4, 6, 8], {
-      invalid_values: `interpolate`,
-    })
+    const result = clean_xyz(
+      [0, NaN, 2, 3, 4],
+      [0, Number.POSITIVE_INFINITY, 2, 3, 4],
+      [0, NaN, 4, 6, 8],
+      { invalid_values: `interpolate` },
+    )
     expect(result.x).toHaveLength(5)
     expect(result.y).toHaveLength(5)
     expect(result.z).toHaveLength(5)
+    expect(result.quality.invalid_values_found).toBe(3)
   })
 
   it.each([`x`, `y`, `z`] as const)(`respects primary_axis=%s option`, (axis) => {

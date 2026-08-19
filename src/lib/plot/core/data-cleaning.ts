@@ -372,11 +372,11 @@ export function clean_xyz(
   const kept_indices: number[] = []
   let invalid_count = 0
   for (let idx = 0; idx < length; idx++) {
-    const is_valid =
-      Number.isFinite(x_values[idx]) &&
-      Number.isFinite(y_values[idx]) &&
-      Number.isFinite(z_values[idx])
-    if (!is_valid) invalid_count++
+    const x_is_valid = Number.isFinite(x_values[idx])
+    const y_is_valid = Number.isFinite(y_values[idx])
+    const z_is_valid = Number.isFinite(z_values[idx])
+    invalid_count += Number(!x_is_valid) + Number(!y_is_valid) + Number(!z_is_valid)
+    const is_valid = x_is_valid && y_is_valid && z_is_valid
     if (is_valid || invalid_mode !== `remove`) kept_indices.push(idx)
   }
 

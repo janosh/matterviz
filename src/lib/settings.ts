@@ -50,8 +50,10 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 const SHOW_BONDS_ENUM = Object.fromEntries(
   SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
 ) as Readonly<Record<ShowBonds, string>>
-const self_labeled_enum = (values: readonly string[]): Readonly<Record<string, string>> =>
-  Object.fromEntries(values.map((value) => [value, value]))
+const self_labeled_enum = <Value extends string>(
+  values: readonly Value[],
+): Readonly<Record<Value, Value>> =>
+  Object.fromEntries(values.map((value) => [value, value])) as Record<Value, Value>
 const COLOR_SCHEME_NAMES = [`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const
 
 // Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
