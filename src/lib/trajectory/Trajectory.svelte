@@ -1639,6 +1639,7 @@
       <div
         class="hdf5-group-options"
         class:flat={hdf5_path_groups.length === 1}
+        style="flex: initial"
         role="group"
         aria-label="HDF5 trajectory groups"
       >
@@ -1665,7 +1666,9 @@
           </div>
         {/each}
       </div>
-      <button onclick={() => (hdf5_group_selection = undefined)}>Cancel</button>
+      <button style="margin-top: 0.5rem" onclick={() => (hdf5_group_selection = undefined)}>
+        Cancel
+      </button>
     </EmptyState>
   {:else if loading}
     {@const text = parsing_progress
@@ -2140,8 +2143,6 @@
   }
   .hdf5-group-options {
     display: grid;
-    flex: 1;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
     align-content: start;
     min-height: 0;
     overflow-y: auto;
