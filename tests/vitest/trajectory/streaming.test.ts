@@ -407,8 +407,8 @@ describe(`Trajectory Streaming`, () => {
     })
 
     it.each([
-      [`scalar`, `scalar_energy`, 4, 7, 1],
-      [`vec3`, `dipole`, 2, [1, 2, 3], 3],
+      [`scalar`, `scalar_energy`, 4, 7, 1, []],
+      [`vec3`, `dipole`, 2, [1, 2, 3], 3, [3]],
       [
         `tensor`,
         `polarizability`,
@@ -419,9 +419,17 @@ describe(`Trajectory Streaming`, () => {
           [7, 8, 9],
         ],
         9,
+        [3, 3],
       ],
-      [`nine-atom scalar`, `atomic_charge`, 9, Array.from({ length: 9 }, (_, idx) => idx), 9],
-      [`per-atom scalar`, `atomic_charge`, 4, [1, 2, 3, 4], 4],
+      [
+        `nine-atom scalar`,
+        `atomic_charge`,
+        9,
+        Array.from({ length: 9 }, (_, idx) => idx),
+        9,
+        [3, 3],
+      ],
+      [`per-atom scalar`, `atomic_charge`, 4, [1, 2, 3, 4], 4, [4]],
       [
         `per-atom vector`,
         `atomic_force`,
@@ -433,10 +441,11 @@ describe(`Trajectory Streaming`, () => {
           [10, 11, 12],
         ],
         12,
+        [4, 3],
       ],
     ])(
       `budgets an exact %s frame signal without a temporary number array`,
-      async (_kind, key, n_atoms, value, sample_size) => {
+      async (_kind, key, n_atoms, value, sample_size, sample_shape) => {
         const frames = [0, 1].map((step) => {
           const frame = make_trajectory_frame(step, n_atoms)
           frame.metadata = { [key]: value }
@@ -444,12 +453,12 @@ describe(`Trajectory Streaming`, () => {
         })
         const exact_bytes = 2 * (n_atoms * 3 + sample_size) * Float64Array.BYTES_PER_ELEMENT
         const load_frame = (frame_idx: number) => frames[frame_idx] ?? null
-        await expect(
-          accumulate_positions(2, load_frame, {
-            signal_keys: [key, key],
-            max_bytes: exact_bytes,
-          }),
-        ).resolves.toMatchObject({ n_frames: 2, signals: { [key]: {} } })
+        const stream = await accumulate_positions(2, load_frame, {
+          signal_keys: [key, key],
+          max_bytes: exact_bytes,
+        })
+        expect(stream).toMatchObject({ n_frames: 2, signals: { [key]: {} } })
+        expect(stream.signals?.[key]?.sample_shape).toEqual(sample_shape)
         await expect(
           accumulate_positions(2, load_frame, {
             signal_keys: [key],

@@ -4,33 +4,17 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`BarChart component`, () => {
-  test(`uses the requested size`, () => {
+  test(`renders sized, non-interactive segments for each element`, () => {
     const size = 400
     mount(BarChart, {
       target: document.body,
-      props: { composition: { H: 2, O: 1 }, size },
+      props: { composition: { H: 2, O: 1, C: 1 }, size },
     })
 
     const container = document.querySelector(`.bar-chart`)
     expect(container).toBeInstanceOf(SVGSVGElement)
     expect(container?.getAttribute(`viewBox`)).toContain(`0 0 ${size}`)
-  })
-
-  test(`renders segments for each element`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: { composition: { H: 2, O: 1, C: 1 }, size: 300 },
-    })
-
     expect(document.querySelectorAll(`rect.bar-segment`)).toHaveLength(3)
-  })
-
-  test(`does not expose segments as buttons`, () => {
-    mount(BarChart, {
-      target: document.body,
-      props: { composition: { H: 2, O: 1 } },
-    })
-
     expect(document.querySelectorAll(`rect.bar-segment[role="button"]`)).toHaveLength(0)
   })
 

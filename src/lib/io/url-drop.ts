@@ -120,21 +120,18 @@ export async function handle_trajectory_url_drop(
   return true
 }
 
-export async function load_from_url(
+export const load_from_url = (
   url: string,
   callback: FileLoadCallback,
   signal?: AbortSignal,
-): Promise<void> {
-  return load_url_content(url, callback as TrajectoryFileLoadCallback, false, signal)
-}
+): Promise<void> =>
+  load_url_content(url, callback as TrajectoryFileLoadCallback, false, signal)
 
-export async function load_trajectory_from_url(
+export const load_trajectory_from_url = (
   url: string,
   callback: TrajectoryFileLoadCallback,
   signal?: AbortSignal,
-): Promise<void> {
-  return load_url_content(url, callback, true, signal)
-}
+): Promise<void> => load_url_content(url, callback, true, signal)
 
 async function load_url_content(
   url: string,

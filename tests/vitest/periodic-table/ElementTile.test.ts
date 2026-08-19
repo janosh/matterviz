@@ -25,6 +25,7 @@ describe(`ElementTile`, () => {
 
       const number = doc_query(`.number`)
       expect(number.textContent).toBe(rand_element.number.toString())
+      expect(document.querySelector(`.value`)).toBeNull()
     })
 
     test(`renders as anchor when href is provided`, () => {
@@ -61,21 +62,15 @@ describe(`ElementTile`, () => {
   })
 
   describe(`segment values`, () => {
-    test(`shows value instead of name when value is provided`, () => {
-      const value = 42.5
+    test.each([
+      [42.5, `42.5`],
+      [0, `0`],
+    ])(`shows value %s instead of the name`, (value, expected) => {
       mount_tile({ segments: [{ value }] })
 
       const value_element = doc_query(`.value`)
-      expect(value_element.textContent).toBe(`42.5`)
+      expect(value_element.textContent).toBe(expected)
       expect(document.querySelector(`.name`)).toBeNull()
-    })
-
-    test(`shows name without a segment value`, () => {
-      mount_tile()
-
-      const name_element = doc_query(`.name`)
-      expect(name_element.textContent).toBe(rand_element.name)
-      expect(document.querySelector(`.value`)).toBeNull()
     })
 
     test(`formats value with float_fmt`, () => {
@@ -197,14 +192,6 @@ describe(`ElementTile`, () => {
   })
 
   describe(`edge cases`, () => {
-    test(`handles zero value correctly`, () => {
-      mount_tile({ segments: [{ value: 0 }] })
-
-      const value_element = doc_query(`.value`)
-      expect(value_element.textContent).toBe(`0`)
-      expect(document.querySelector(`.name`)).toBeNull()
-    })
-
     test(`handles empty string float_fmt`, () => {
       mount_tile({ segments: [{ value: 42.123 }], float_fmt: `` })
 

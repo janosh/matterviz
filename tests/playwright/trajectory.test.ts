@@ -116,7 +116,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
   })
 
-  test(`lazy HDF5 worker streams exactly match the eager parser`, async ({ page }) => {
+  test(`MEMFS and WORKERFS HDF5 loaders stream exactly matching data`, async ({ page }) => {
     const source_url = `/trajectories/gold-nanoparticle-md.h5`
     const comparison = await page.evaluate(async (url) => {
       const worker_module_path = `/src/lib/file-viewer/parse-in-worker.ts`
@@ -126,20 +126,23 @@ test.describe(`Trajectory Component`, () => {
         import(hdf5_module_path) as Promise<typeof Hdf5Module>,
       ])
       const source = await (await fetch(url)).blob()
-      const eager = await parse_hdf5_trajectory(await source.arrayBuffer(), `gold.h5`)
-      const lazy = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
+      const memfs = await parse_hdf5_trajectory(await source.arrayBuffer(), `gold.h5`)
+      const workerfs = await parse_trajectory_in_worker(source, `gold.h5`, undefined, {})
       const request = { signal_keys: [`velocity`, `forces`] }
-      const eager_stream = await eager.frame_loader?.stream_positions?.(``, request)
-      const lazy_stream = await lazy.frame_loader?.stream_positions?.(``, request)
-      if (!eager_stream || !lazy_stream) throw new Error(`missing HDF5 position stream`)
-      const eager_loader = eager.frame_loader
-      const lazy_loader = lazy.frame_loader
-      if (!eager_loader || !lazy_loader) throw new Error(`missing HDF5 frame loader`)
-      const serialize_frame = (frame: (typeof eager.frames)[number] | null | undefined) =>
+      const memfs_stream = await memfs.frame_loader?.stream_positions?.(``, request)
+      const workerfs_stream = await workerfs.frame_loader?.stream_positions?.(``, request)
+      if (!memfs_stream || !workerfs_stream) throw new Error(`missing HDF5 position stream`)
+      const memfs_loader = memfs.frame_loader
+      const workerfs_loader = workerfs.frame_loader
+      if (!memfs_loader || !workerfs_loader) throw new Error(`missing HDF5 frame loader`)
+      const serialize_frame = (frame: (typeof memfs.frames)[number] | null | undefined) =>
         frame
           ? {
               step: frame.step,
-              sites: frame.structure.sites.map(({ xyz, species }) => ({ xyz, species })),
+              sites: frame.structure.sites.map(({ xyz, species }) => ({
+                xyz,
+                species,
+              })),
               lattice:
                 `lattice` in frame.structure
                   ? {
@@ -152,11 +155,11 @@ test.describe(`Trajectory Component`, () => {
           : null
       const frame_indices = [
         0,
-        Math.floor((eager.total_frames ?? 1) / 2),
-        (eager.total_frames ?? 1) - 1,
+        Math.floor((memfs.total_frames ?? 1) / 2),
+        (memfs.total_frames ?? 1) - 1,
       ]
-      const [eager_frames, lazy_frames] = await Promise.all(
-        [eager_loader, lazy_loader].map((loader) =>
+      const [memfs_frames, workerfs_frames] = await Promise.all(
+        [memfs_loader, workerfs_loader].map((loader) =>
           Promise.all(
             frame_indices.map((frame_idx) =>
               loader.load_frame(``, frame_idx).then(serialize_frame),
@@ -165,33 +168,25 @@ test.describe(`Trajectory Component`, () => {
         ),
       )
       const errors = [
-        ...eager_stream.positions.map((value, value_idx) =>
-          Math.abs(value - lazy_stream.positions[value_idx]),
+        ...memfs_stream.positions.map((value, value_idx) =>
+          Math.abs(value - workerfs_stream.positions[value_idx]),
         ),
-        ...Object.entries(eager_stream.signals ?? {}).flatMap(([key, signal]) =>
+        ...Object.entries(memfs_stream.signals ?? {}).flatMap(([key, signal]) =>
           [...signal.values].map((value, value_idx) =>
-            Math.abs(value - (lazy_stream.signals?.[key]?.values[value_idx] ?? Number.NaN)),
+            Math.abs(
+              value - (workerfs_stream.signals?.[key]?.values[value_idx] ?? Number.NaN),
+            ),
           ),
         ),
       ]
       const expected = [
-        ...eager_stream.positions,
-        ...Object.values(eager_stream.signals ?? {}).flatMap(({ values }) => [...values]),
+        ...memfs_stream.positions,
+        ...Object.values(memfs_stream.signals ?? {}).flatMap(({ values }) => [...values]),
       ]
       const relative_errors = errors.map((error, value_idx) =>
         expected[value_idx] === 0 ? error : error / Math.abs(expected[value_idx]),
       )
-      const descriptor_oracle = Object.fromEntries(
-        Object.entries(eager.signals ?? {}).map(([key, signal]) => [
-          key,
-          {
-            sample_shape: signal.sample_shape,
-            sample_count: signal.steps.length,
-            ...(signal.unit ? { unit: signal.unit } : {}),
-          },
-        ]),
-      )
-      const stream_metadata = (stream: typeof eager_stream) => ({
+      const stream_metadata = (stream: typeof memfs_stream) => ({
         n_frames: stream.n_frames,
         n_atoms: stream.n_atoms,
         elements: stream.elements,
@@ -212,27 +207,28 @@ test.describe(`Trajectory Component`, () => {
       const exact = (left: unknown, right: unknown) =>
         JSON.stringify(left) === JSON.stringify(right)
       const preview_equal = exact(
-        eager.frames.map(serialize_frame),
-        lazy.frames.map(serialize_frame),
+        memfs.frames.map(serialize_frame),
+        workerfs.frames.map(serialize_frame),
       )
-      const plot_metadata_equal = exact(eager.plot_metadata, lazy.plot_metadata)
+      const plot_metadata_equal = exact(memfs.plot_metadata, workerfs.plot_metadata)
       const stream_metadata_equal = exact(
-        stream_metadata(eager_stream),
-        stream_metadata(lazy_stream),
+        stream_metadata(memfs_stream),
+        stream_metadata(workerfs_stream),
       )
-      const random_frames_equal = exact(eager_frames, lazy_frames)
-      const descriptors_equal = exact(descriptor_oracle, lazy.signal_descriptors)
-      lazy_loader.dispose?.()
-      eager_loader.dispose?.()
-      const disposed_error = await lazy_loader
+      const random_frames_equal = exact(memfs_frames, workerfs_frames)
+      const descriptors_equal = exact(memfs.signal_descriptors, workerfs.signal_descriptors)
+      workerfs_loader.dispose?.()
+      memfs_loader.dispose?.()
+      const disposed_error = await workerfs_loader
         .load_frame(``, 0)
         .then(() => `missing error`, String)
       return {
         max_absolute_error: Math.max(...errors),
         max_relative_error: Math.max(...relative_errors),
-        lazy_frame_store: Boolean(lazy.frame_store),
-        lazy_loaded_signals: Boolean(lazy.signals),
-        descriptors: Object.keys(lazy.signal_descriptors ?? {}).toSorted(),
+        memfs_frame_store: Boolean(memfs.frame_store),
+        workerfs_frame_store: Boolean(workerfs.frame_store),
+        loaded_signals: Boolean(memfs.signals ?? workerfs.signals),
+        descriptors: Object.keys(workerfs.signal_descriptors ?? {}).toSorted(),
         descriptors_equal,
         disposed: disposed_error.includes(`disposed`),
         plot_metadata_equal,
@@ -245,8 +241,9 @@ test.describe(`Trajectory Component`, () => {
     expect(comparison).toEqual({
       max_absolute_error: 0,
       max_relative_error: 0,
-      lazy_frame_store: false,
-      lazy_loaded_signals: false,
+      memfs_frame_store: false,
+      workerfs_frame_store: false,
+      loaded_signals: false,
       descriptors: [`forces`, `velocity`],
       descriptors_equal: true,
       disposed: true,
@@ -556,7 +553,9 @@ test.describe(`Trajectory Component`, () => {
       // Wait for the plot, not the controls: controls render as soon as the
       // trajectory loads, but the scatter only appears once plot metadata is
       // sampled, and both panes have to exist before either can be measured.
-      await expect(trajectory.locator(`.scatter`)).toBeVisible({ timeout: 30000 })
+      await expect(trajectory.locator(`.scatter`)).toBeVisible({
+        timeout: 30000,
+      })
 
       // 500px tall is what a chat sidebar card really measures, and minHeight has
       // to go for any height below that to stick: .trajectory's own 500px floor
@@ -610,8 +609,12 @@ test.describe(`Trajectory Component`, () => {
         const viewer = page.locator(selector)
         await expect(viewer).toBeVisible()
         await expect(viewer).toHaveClass(new RegExp(orientation))
-        await expect(viewer.locator(`.structure`)).toBeVisible({ timeout: LOAD_TIMEOUT })
-        await expect(viewer.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
+        await expect(viewer.locator(`.structure`)).toBeVisible({
+          timeout: LOAD_TIMEOUT,
+        })
+        await expect(viewer.locator(`.scatter`)).toBeVisible({
+          timeout: LOAD_TIMEOUT,
+        })
         const pane_dimensions = () =>
           viewer.locator(`.content-area`).evaluate((element) => {
             const structure = element.querySelector(`.structure`)

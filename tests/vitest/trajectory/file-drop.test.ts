@@ -2,7 +2,9 @@
 // payload (e.g. the file path). The text/plain fallback must not run after a
 // file was successfully loaded, else it clobbers the trajectory with a parse error.
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
+import * as parse_worker from '$lib/file-viewer/parse-in-worker'
 import * as trajectory_parse from '$lib/trajectory/parse'
+import { parse_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
 import { mount, unmount, type ComponentProps } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
@@ -15,6 +17,23 @@ import {
 } from '../setup'
 
 const mounted: ReturnType<typeof mount>[] = []
+let restore_hdf5_parse_worker: (() => void) | undefined
+
+const stub_hdf5_parse_worker = (): void => {
+  const worker_spy = vi
+    .spyOn(parse_worker, `parse_trajectory_in_worker`)
+    .mockImplementation(async (data, filename, _on_progress, options) => {
+      if (!(data instanceof Blob || data instanceof ArrayBuffer)) {
+        throw new Error(`Expected HDF5 worker source, got ${typeof data}`)
+      }
+      return parse_hdf5_trajectory(
+        data instanceof Blob ? await data.arrayBuffer() : data,
+        filename,
+        options.hdf5_group_path,
+      )
+    })
+  restore_hdf5_parse_worker = () => worker_spy.mockRestore()
+}
 
 const drop_file = (
   file: File,
@@ -37,6 +56,7 @@ const drop_ambiguous_hdf5 = async () => {
   const on_file_load = vi.fn()
   const on_error = vi.fn()
   const file = new File([await make_ambiguous_hdf5()], `ambiguous.h5`)
+  stub_hdf5_parse_worker()
   const viewer = drop_file(file, { on_file_load, on_error })
   await vi.waitFor(() =>
     expect(document.querySelectorAll(`button[data-hdf5-group]`)).toHaveLength(8),
@@ -45,6 +65,8 @@ const drop_ambiguous_hdf5 = async () => {
 }
 
 afterEach(async () => {
+  restore_hdf5_parse_worker?.()
+  restore_hdf5_parse_worker = undefined
   for (const app of mounted.splice(0)) await unmount(app)
 })
 

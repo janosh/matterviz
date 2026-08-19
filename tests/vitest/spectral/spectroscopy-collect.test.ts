@@ -1,5 +1,4 @@
 import type { PositionStreamOptions, TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
-import { accumulate_positions } from '$lib/trajectory/frame-reader'
 import { create_packed_frame_loader } from '$lib/trajectory/helpers'
 import {
   calc_trajectory_spectroscopy,
@@ -38,39 +37,6 @@ const make_trajectory = (): TrajectoryType => ({
 })
 
 describe(`collect_trajectory_spectroscopy_input`, () => {
-  it(`streams scalar, vector, tensor, and per-atom numeric metadata signals`, async () => {
-    const frames = Array.from({ length: 4 }, (_unused, frame_idx) => {
-      const frame = make_frame(frame_idx)
-      frame.structure.sites = Array.from({ length: 4 }, (_site, atom_idx) => ({
-        ...frame.structure.sites[0],
-        label: `H${atom_idx + 1}`,
-        xyz: [atom_idx, 0, 0],
-        abc: [atom_idx, 0, 0],
-      }))
-      frame.metadata = {
-        scalar: frame_idx,
-        dipole: [frame_idx, 0, 0],
-        polarizability: Array.from({ length: 9 }, (_value, value_idx) => value_idx),
-        charges: [1, -1, 1, -1],
-        atom_vectors: Array.from({ length: 4 }, (_atom, atom_idx) => [atom_idx, 0, 0]),
-      }
-      return frame
-    })
-    const stream = await accumulate_positions(
-      frames.length,
-      (frame_idx) => frames[frame_idx],
-      {
-        signal_keys: [`scalar`, `dipole`, `polarizability`, `charges`, `atom_vectors`],
-      },
-    )
-    expect(stream.signals?.scalar.sample_shape).toEqual([])
-    expect(stream.signals?.dipole.sample_shape).toEqual([3])
-    expect(stream.signals?.dipole.values).toHaveLength(12)
-    expect(stream.signals?.polarizability.sample_shape).toEqual([3, 3])
-    expect(stream.signals?.charges.sample_shape).toEqual([4])
-    expect(stream.signals?.atom_vectors.sample_shape).toEqual([4, 3])
-  })
-
   it(`collects frame response signals, site velocities, masses, and time provenance together`, async () => {
     const input = await collect_trajectory_spectroscopy_input(make_trajectory())
     expect(input.positions.n_frames).toBe(8)

@@ -10,16 +10,12 @@
 import type {
   FrameLoader,
   ParseProgress,
-  TrajectoryPositionStream,
   TrajectorySource,
   TrajectoryType,
 } from '$lib/trajectory'
-import { packed_frame_transferables } from '$lib/trajectory/helpers'
+import { trajectory_data_transferables } from '$lib/trajectory/helpers'
 import { parse_trajectory_async } from '$lib/trajectory/parse'
-import {
-  Hdf5TrajectoryGroupSelectionError,
-  parse_hdf5_trajectory,
-} from '$lib/trajectory/parse/hdf5'
+import { Hdf5TrajectoryGroupSelectionError } from '$lib/trajectory/parse/hdf5'
 import { parse_file_content, type ParseResult } from './parse'
 import type {
   AnyParseWorkerRequest,
@@ -34,21 +30,9 @@ const error_message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
 const is_trajectory_request = (
-  value: AnyParseWorkerRequest,
-): value is TrajectoryParseWorkerRequest => `kind` in value && value.kind === `trajectory`
-
-const position_stream_transferables = (stream: TrajectoryPositionStream): ArrayBuffer[] => {
-  const buffers: ArrayBuffer[] = []
-  const add = (values: Float64Array): void => {
-    const buffer = values.buffer as ArrayBuffer
-    if (!buffers.includes(buffer)) buffers.push(buffer)
-  }
-  add(stream.positions)
-  for (const values of Object.values(stream.scalars ?? {})) add(values)
-  for (const values of Object.values(stream.vectors ?? {})) add(values)
-  for (const signal of Object.values(stream.signals ?? {})) add(signal.values)
-  return buffers
-}
+  request: AnyParseWorkerRequest,
+): request is TrajectoryParseWorkerRequest =>
+  `kind` in request && request.kind === `trajectory`
 
 const create_frame_loader_port = (
   frame_loader: FrameLoader,
@@ -120,7 +104,7 @@ const create_frame_loader_port = (
             on_progress,
           )
           result = stream
-          transfer = position_stream_transferables(stream)
+          transfer = trajectory_data_transferables(stream)
         } else {
           throw new Error(`Unsupported indexed frame worker method: ${method}`)
         }
@@ -146,7 +130,10 @@ export const prepare_parse_result = (
   const { frame_loader, frame_store } = trajectory
   trajectory.frame_loader = undefined
   if (frame_store) {
-    return { response: { id, result }, transfer: packed_frame_transferables(frame_store) }
+    return {
+      response: { id, result },
+      transfer: trajectory_data_transferables(frame_store),
+    }
   }
   const frame_port = create_frame_loader_port(frame_loader, content)
   return { response: { id, result, frame_port }, transfer: [frame_port] }
@@ -182,10 +169,7 @@ export const handle_any_parse_worker_request = async (
   }
   const { id, data, filename, options } = request
   try {
-    const trajectory =
-      data instanceof Blob
-        ? await parse_hdf5_trajectory(data, filename, options.hdf5_group_path)
-        : await parse_trajectory_async(data, filename, on_progress, options)
+    const trajectory = await parse_trajectory_async(data, filename, on_progress, options)
     return prepare_parse_result(id, { type: `trajectory`, data: trajectory, filename }, data)
   } catch (error) {
     return {

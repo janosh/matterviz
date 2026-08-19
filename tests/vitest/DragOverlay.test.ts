@@ -4,9 +4,15 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`DragOverlay`, () => {
-  test(`renders only when visible and forwards style (used for stacking by ConvexHullChrome)`, () => {
+  test(`renders only when visible, with its default/custom messages and forwarded style`, () => {
     mount(DragOverlay, { target: document.body, props: { visible: false } })
     expect(document.querySelector(`.drag-overlay`)).toBeNull()
+
+    document.body.innerHTML = ``
+    mount(DragOverlay, { target: document.body, props: { visible: true } })
+    expect(doc_query<HTMLDivElement>(`.drag-overlay`).textContent).toContain(
+      `Drop file to load`,
+    )
 
     document.body.innerHTML = ``
     mount(DragOverlay, {
@@ -16,11 +22,5 @@ describe(`DragOverlay`, () => {
     const overlay = doc_query<HTMLDivElement>(`.drag-overlay`)
     expect(overlay.style.zIndex).toBe(`1`)
     expect(overlay.textContent).toContain(`Drop it`)
-  })
-
-  test(`uses a neutral default message (not phase-diagram specific)`, () => {
-    mount(DragOverlay, { target: document.body, props: { visible: true } })
-    const overlay = doc_query<HTMLDivElement>(`.drag-overlay`)
-    expect(overlay.textContent).toContain(`Drop file to load`)
   })
 })

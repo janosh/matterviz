@@ -431,14 +431,16 @@ export const load_packed_frame_preview = (
   })
 }
 
-export const packed_frame_transferables = (store: TrajectoryFrameStore): ArrayBuffer[] => {
+export const trajectory_data_transferables = (
+  data: TrajectoryFrameStore | TrajectoryPositionStream,
+): ArrayBuffer[] => {
   const buffers = new Set<ArrayBuffer>()
   const add = (values: Float64Array) => buffers.add(values.buffer as ArrayBuffer)
-  add(store.positions)
-  if (store.lattice_matrices) add(store.lattice_matrices)
-  for (const values of Object.values(store.scalars ?? {})) add(values)
-  for (const values of Object.values(store.vectors ?? {})) add(values)
-  for (const signal of Object.values(store.signals ?? {})) add(signal.values)
+  add(data.positions)
+  if (data.lattice_matrices instanceof Float64Array) add(data.lattice_matrices)
+  for (const values of Object.values(data.scalars ?? {})) add(values)
+  for (const values of Object.values(data.vectors ?? {})) add(values)
+  for (const signal of Object.values(data.signals ?? {})) add(signal.values)
   return [...buffers]
 }
 

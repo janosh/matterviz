@@ -20,6 +20,8 @@ const compress = async (
   return new Response(stream.pipeThrough(new CompressionStream(format))).arrayBuffer()
 }
 
+const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
+
 describe(`decompress utility functions`, () => {
   describe(`detect_compression_format`, () => {
     test.each([
@@ -84,54 +86,36 @@ describe(`decompress utility functions`, () => {
   // decompress_file returns string | ArrayBuffer: text decodes to a string, binary payloads
   // (by extension or magic bytes) stay ArrayBuffer so a lossy UTF-8 decode can't corrupt them
   describe(`decompress_file`, () => {
-    test(`keeps an uncompressed HDF5 File as a Blob without reading its full buffer`, async () => {
-      const file = new File(
-        [new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])],
-        `trajectory.h5`,
-      )
+    test.each([
+      [`named`, `trajectory.h5`, `trajectory.h5`],
+      [`extensionless`, `download`, `download.h5`],
+    ])(`keeps a %s HDF5 File Blob-backed`, async (_label, filename, expected_filename) => {
+      const file = new File([hdf5_signature], filename)
       const array_buffer = vi.spyOn(file, `arrayBuffer`)
-      const result = await decompress_trajectory_file(file)
-
-      expect(result).toEqual({ content: file, filename: `trajectory.h5` })
-      expect(array_buffer).not.toHaveBeenCalled()
-    })
-
-    test(`gives an extensionless HDF5 File a parseable logical filename`, async () => {
-      const file = new File(
-        [new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])],
-        `download`,
-      )
       expect(await decompress_trajectory_file(file)).toEqual({
         content: file,
-        filename: `download.h5`,
+        filename: expected_filename,
       })
-    })
-
-    test(`decompresses HDF5 gzip into one Blob and preserves the logical name`, async () => {
-      const bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
-      const compressed = await compress(bytes)
-      const result = await decompress_trajectory_file(
-        new File([compressed], `trajectory.h5.gz`),
-      )
-
-      expect(result.filename).toBe(`trajectory.h5`)
-      expect(result.content).toBeInstanceOf(Blob)
-      expect(new Uint8Array(await (result.content as Blob).arrayBuffer())).toEqual(bytes)
-    })
-
-    test(`recognizes HDF5 after decompressing a generically named gzip File`, async () => {
-      const bytes = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
-      const compressed = await compress(bytes)
-      const file = new File([compressed], `download.gz`)
-      const array_buffer = vi.spyOn(file, `arrayBuffer`)
-
-      const result = await decompress_trajectory_file(file)
-
-      expect(result.filename).toBe(`download.h5`)
-      expect(result.content).toBeInstanceOf(Blob)
-      expect(new Uint8Array(await (result.content as Blob).arrayBuffer())).toEqual(bytes)
       expect(array_buffer).not.toHaveBeenCalled()
     })
+
+    test.each([
+      [`named`, `trajectory.h5.gz`, `trajectory.h5`],
+      [`generically named`, `download.gz`, `download.h5`],
+    ])(
+      `decompresses a %s HDF5 gzip File into one Blob`,
+      async (_label, filename, expected_filename) => {
+        const bytes = new Uint8Array([...hdf5_signature, 1, 2])
+        const file = new File([await compress(bytes)], filename)
+        const array_buffer = vi.spyOn(file, `arrayBuffer`)
+        const result = await decompress_trajectory_file(file)
+
+        expect(result.filename).toBe(expected_filename)
+        expect(result.content).toBeInstanceOf(Blob)
+        expect(new Uint8Array(await (result.content as Blob).arrayBuffer())).toEqual(bytes)
+        expect(array_buffer).not.toHaveBeenCalled()
+      },
+    )
 
     test.each([
       [`zip`, `ZIP`],
