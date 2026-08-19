@@ -2442,7 +2442,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
       `4 0 0 avec`,
       `1 5 0 bvec`,
       `0.5 0.25 6 cvec`,
-      `-2 -3 -4 abc origin`,
+      `-2 -3 -4 abc   origin`,
       ``,
       `Masses`,
       ``,

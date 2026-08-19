@@ -113,6 +113,7 @@ export const delay_file_read = async (
   const content = await file.arrayBuffer()
   const delayed_read = Promise.withResolvers<ArrayBuffer>()
   const array_buffer_spy = vi.spyOn(file, `arrayBuffer`).mockReturnValue(delayed_read.promise)
+  onTestFinished(() => array_buffer_spy.mockRestore())
   return {
     release: () => delayed_read.resolve(content),
     restore: () => array_buffer_spy.mockRestore(),

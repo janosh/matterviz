@@ -405,7 +405,6 @@ class Trajectory(MatterViz):
         property_labels: dict | None = None,
         scatter_props: dict | None = None,
         show_controls: Any | None = None,
-        spectroscopy_harmonic_modes: Any | None = None,
         spectroscopy_pane_open: bool | None = None,
         spinner_props: dict | None = None,
         step_labels: list[float] | None = None,
@@ -475,8 +474,6 @@ class Trajectory(MatterViz):
             mv_props["scatter_props"] = scatter_props
         if show_controls is not None:
             mv_props["show_controls"] = show_controls
-        if spectroscopy_harmonic_modes is not None:
-            mv_props["spectroscopy_harmonic_modes"] = spectroscopy_harmonic_modes
         if spectroscopy_pane_open is not None:
             mv_props["spectroscopy_pane_open"] = spectroscopy_pane_open
         if spinner_props is not None:

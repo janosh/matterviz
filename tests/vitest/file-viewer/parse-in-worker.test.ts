@@ -739,6 +739,19 @@ describe(`parse_in_worker`, () => {
     })
     expect(stream_values.byteLength).toBe(0)
     expect(stream_scalars.byteLength).toBe(0)
+    const failed_transfer_response = new Promise<FrameWorkerResponse>((resolve) => {
+      compact_frame_port.addEventListener(
+        `message`,
+        (event: MessageEvent<FrameWorkerResponse>) => resolve(event.data),
+        { once: true },
+      )
+    })
+    // oxlint-disable-next-line eslint-plugin-unicorn/require-post-message-target-origin -- MessagePort has no targetOrigin argument.
+    compact_frame_port.postMessage({ id: 8, method: `stream_positions`, args: [{}] })
+    await expect(failed_transfer_response).resolves.toMatchObject({
+      id: 8,
+      error: expect.stringMatching(/detach|clone|transfer/i),
+    })
     cloned_compact.frame_port?.close()
 
     const packed_positions = new Float64Array([0, 0, 0, 1, 2, 3])

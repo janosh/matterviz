@@ -42,7 +42,6 @@
     MAIN_THREAD_FALLBACK_BINARY_MAX_BYTES,
     parse_trajectory_in_worker,
   } from '$lib/file-viewer/parse-in-worker'
-  import type { PhononModeData } from '$lib/spectral/types'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
@@ -215,7 +214,6 @@
     msd_pane_open = $bindable(false),
     vacf_pane_open = $bindable(false),
     spectroscopy_pane_open = $bindable(false),
-    spectroscopy_harmonic_modes,
     structure_id_pane_open = $bindable(false),
     data_inspector_open = $bindable(false),
     wrapper = $bindable(),
@@ -309,8 +307,6 @@
       vacf_pane_open?: boolean
       // bindable: whether the finite-temperature IR / Raman / VDOS pane is open
       spectroscopy_pane_open?: boolean
-      // optional harmonic eigenvectors for trajectory-mode overlap matching
-      spectroscopy_harmonic_modes?: PhononModeData
       // bindable: whether the structure identification (CNA / centrosymmetry) pane is open
       structure_id_pane_open?: boolean
       // bindable: whether the per-frame data inspector pane is currently open
@@ -795,20 +791,7 @@
     if (current_frame?.structure) current_structure = current_frame.structure
     else if (!trajectory) current_structure = undefined
   })
-  let spectroscopy_mode_trajectory = $state<TrajectoryType | null>(null)
-  let spectroscopy_mode_frame_idx = $state(0)
-  $effect(() => {
-    void spectroscopy_mode_trajectory
-    spectroscopy_mode_frame_idx = 0
-  })
-  let showing_spectroscopy_mode = $derived(
-    spectroscopy_pane_open && Boolean(spectroscopy_mode_trajectory?.frames.length),
-  )
-  let displayed_structure = $derived(
-    showing_spectroscopy_mode
-      ? spectroscopy_mode_trajectory?.frames[spectroscopy_mode_frame_idx]?.structure
-      : current_structure,
-  )
+  let displayed_structure = $derived(current_structure)
 
   // Track hidden elements (persists across frame changes)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
@@ -1165,37 +1148,16 @@
     },
     on_loop: () => emit_playback(on_loop),
   })
-  const spectroscopy_playback = create_sequence_player({
-    count: () => spectroscopy_mode_trajectory?.frames.length ?? 0,
-    index: () => spectroscopy_mode_frame_idx,
-    set_index: (value) => (spectroscopy_mode_frame_idx = value),
-    fps: () => fps,
-    set_fps: (value) => (fps = value),
-    fps_range: () => fps_range,
-    should_auto_play: () => auto_play && showing_spectroscopy_mode,
+  let active_sequence = $derived({
+    playback,
+    index: current_step_idx,
+    count: total_frames,
+    step_label_positions,
+    item_name: `step`,
+    on_index_input: queue_scrub_step,
   })
-  let active_sequence = $derived(
-    showing_spectroscopy_mode
-      ? {
-          playback: spectroscopy_playback,
-          index: spectroscopy_mode_frame_idx,
-          count: spectroscopy_mode_trajectory?.frames.length ?? 0,
-          step_label_positions: [],
-          item_name: `mode frame`,
-          on_index_input: spectroscopy_playback.go_to,
-        }
-      : {
-          playback,
-          index: current_step_idx,
-          count: total_frames,
-          step_label_positions,
-          item_name: `step`,
-          on_index_input: queue_scrub_step,
-        },
-  )
   $effect(() => {
     if (spectroscopy_pane_open) playback.pause()
-    else spectroscopy_playback.pause()
   })
 
   async function select_hdf5_group(path: string): Promise<void> {
@@ -1977,9 +1939,7 @@
         inline
         {trajectory}
         raw_data={orig_data}
-        harmonic_modes={spectroscopy_harmonic_modes}
         bind:pane_open={spectroscopy_pane_open}
-        bind:mode_trajectory={spectroscopy_mode_trajectory}
       />
 
       {#if show_plot && !spectroscopy_pane_open}

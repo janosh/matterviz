@@ -24,7 +24,7 @@ export const create_trajectory_spectroscopy_async_runner =
     >({
       label: `trajectory spectroscopy`,
       create_worker: () =>
-        new Worker(new URL(`./trajectory-spectroscopy-worker.js`, import.meta.url), {
+        new Worker(new URL(`./trajectory-spectroscopy-worker.ts`, import.meta.url), {
           type: `module`,
         }),
       compute_sync: calc_trajectory_spectroscopy,

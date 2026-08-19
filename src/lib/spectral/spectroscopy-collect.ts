@@ -7,7 +7,9 @@ import type { ParseProgress, TrajectoryPositionStream, TrajectoryType } from '$l
 import {
   accumulate_positions,
   DEFAULT_POSITION_STREAM_MAX_BYTES,
+  parse_frame_signal,
 } from '$lib/trajectory/frame-reader'
+import { SvelteSet } from 'svelte/reactivity'
 import {
   standard_masses_for_elements,
   type InfraredSignal,
@@ -41,10 +43,33 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
   return normalized_key.includes(`current`) ? `current` : `dipole`
 }
 
-const select_default_key = (
-  available: Record<string, unknown>,
-  preferred: string[],
-): string | null => preferred.find((key) => Object.hasOwn(available, key)) ?? null
+const matching_shape = (shape: number[] | undefined, expected_shape: number[]): boolean =>
+  shape?.length === expected_shape.length &&
+  shape.every((size, idx) => size === expected_shape[idx])
+
+export const trajectory_signal_keys = (
+  trajectory: TrajectoryType | undefined,
+  expected_shape?: number[],
+): string[] => {
+  if (!trajectory) return []
+  const signal_keys = Object.entries(trajectory.signals ?? {}).flatMap(
+    ([key, { sample_shape }]) =>
+      !expected_shape || matching_shape(sample_shape, expected_shape) ? [key] : [],
+  )
+  const metadata = trajectory.frames[0]?.metadata ?? {}
+  if (!expected_shape)
+    return [...new SvelteSet([...signal_keys, ...Object.keys(metadata)])].toSorted()
+  const n_atoms = trajectory.frames[0]?.structure.sites.length ?? 0
+  const metadata_keys = Object.entries(metadata).flatMap(([key, value]) =>
+    matching_shape(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape)
+      ? [key]
+      : [],
+  )
+  return [...new SvelteSet([...signal_keys, ...metadata_keys])].toSorted()
+}
+
+const select_default_key = (keys: string[], preferred: string[]): string | null =>
+  preferred.find((key) => keys.includes(key)) ?? null
 
 const recorded_masses = (trajectory: TrajectoryType): number[] | null => {
   const sites = trajectory.frames[0]?.structure.sites ?? []
@@ -80,14 +105,14 @@ export async function collect_trajectory_spectroscopy_input(
     velocity_key = `velocity`,
     mass_source = `auto`,
   } = options
-  const available = { ...trajectory.signals, ...trajectory.frames[0]?.metadata }
+  const available_keys = trajectory_signal_keys(trajectory)
   const infrared_key =
     options.infrared_key === undefined
-      ? select_default_key(available, [`dipole`, `polarization`, `current`])
+      ? select_default_key(available_keys, [`dipole`, `polarization`, `current`])
       : options.infrared_key
   const raman_key =
     options.raman_key === undefined
-      ? select_default_key(available, [`polarizability`])
+      ? select_default_key(available_keys, [`polarizability`])
       : options.raman_key
   const trajectory_velocity = velocity_key ? trajectory.signals?.[velocity_key] : null
   const frame_signal_keys = [infrared_key, options.raman_signal ? null : raman_key].filter(
@@ -164,6 +189,7 @@ export async function collect_trajectory_spectroscopy_input(
   }
 
   let raman_signal = options.raman_signal ?? null
+  const raman_source_key = raman_signal ? null : raman_key
   if (!raman_signal && raman_key) {
     const series = trajectory.signals?.[raman_key] ?? stream.signals?.[raman_key]
     if (!series) throw new Error(`No trajectory signal named '${raman_key}'`)
@@ -180,6 +206,20 @@ export async function collect_trajectory_spectroscopy_input(
     metadata: {
       ...trajectory.metadata,
       mass_source: mass_values ? `recorded` : `standard`,
+      signal_sources: {
+        velocity: velocities
+          ? trajectory_velocity
+            ? velocity_key
+            : `site:${velocity_key}`
+          : null,
+        infrared: infrared_signal ? { key: infrared_key, kind: infrared_signal.kind } : null,
+        raman: raman_signal
+          ? {
+              key: raman_signal.kind === `polarizability` ? raman_source_key : null,
+              kind: raman_signal.kind,
+            }
+          : null,
+      },
     },
   }
 }

@@ -21,7 +21,6 @@ import type { TrajectoryPositionStream, TrajectorySignal } from '$lib/trajectory
 import { central_difference_velocities } from '$lib/vacf/calc-vacf'
 import { thz_per_inverse_time } from '$lib/vacf/units'
 import { unwrap_flat_positions } from '$lib/msd/calc-msd'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 export type TrajectoryFrequencyUnit = `THz` | `cm^-1` | `1/frame`
 export type SpectralActivity = `active` | `inactive` | `unknown`
@@ -90,16 +89,12 @@ export interface TrajectorySpectroscopyOptions {
   activity_relative_threshold?: number
   activity_snr?: number
   raman_geometry?: RamanGeometry
-  // Duration of each independent ensemble segment, in time_unit or frames for 1/frame.
-  // Required when ensemble members have unequal position lengths.
-  ensemble_segment_duration?: number
 }
 
 export interface TrajectorySpectrumCurve {
   frequencies: number[]
   power: number[]
   normalized_power: number[]
-  standard_error?: number[]
   frequency_unit: TrajectoryFrequencyUnit
   sample_interval: number
   frequency_spacing: number
@@ -133,16 +128,6 @@ export interface TrajectorySpectralPeak {
   potentially_mixed: boolean
   displacement?: Complex[][]
   displacement_unavailable_reason?: string
-  harmonic_matches?: HarmonicModeMatch[]
-}
-
-export interface HarmonicModeMatch {
-  qpoint_idx: number
-  mode_indices: number[]
-  frequency: number
-  frequency_difference: number
-  overlap: number
-  accepted: boolean
 }
 
 export interface TrajectorySpectroscopyResult {
@@ -158,8 +143,6 @@ export interface TrajectorySpectroscopyResult {
   masses: number[]
   pbc: Pbc
   reference_lattice: Matrix3x3 | null
-  n_trajectories: number
-  n_segments: number
   metadata: Record<string, unknown>
 }
 
@@ -740,7 +723,7 @@ const prepare_positions = (
 }
 
 const step_index_map = (steps: number[]) =>
-  new SvelteMap(steps.map((step, step_idx) => [step, step_idx]))
+  new Map(steps.map((step, step_idx) => [step, step_idx]))
 
 const rotations_for_steps = (
   position_steps: number[],
@@ -1070,26 +1053,24 @@ const calculate_raman = (
     isotropic_values[sample_idx] = (xx + yy + zz) / 3
     anisotropic_values.set([xx - yy, yy - zz, zz - xx, xy, yz, xz], sample_idx * 6)
   }
-  const isotropic = build_curve(
-    isotropic_values,
-    1,
-    polarizability.steps,
-    input,
-    options,
-    `Raman polarizability`,
-    undefined,
-    true,
-  )
-  const anisotropic = build_curve(
-    anisotropic_values,
-    6,
-    polarizability.steps,
-    input,
-    options,
-    `Raman polarizability`,
-    RAMAN_ANISOTROPIC_WEIGHTS,
-    true,
-  )
+  const raman_curve = (
+    values: Float64Array,
+    n_components: number,
+    component_weights?: Float64Array,
+    label = `Raman polarizability`,
+  ) =>
+    build_curve(
+      values,
+      n_components,
+      polarizability.steps,
+      input,
+      options,
+      label,
+      component_weights,
+      true,
+    )
+  const isotropic = raman_curve(isotropic_values, 1)
+  const anisotropic = raman_curve(anisotropic_values, 6, RAMAN_ANISOTROPIC_WEIGHTS)
   const vv = combine_curves(isotropic, anisotropic, 45, 4)
   const vh = combine_curves(isotropic, anisotropic, 0, 3)
   const unpolarized = combine_curves(isotropic, anisotropic, 45, 7)
@@ -1109,16 +1090,7 @@ const calculate_raman = (
       }
       projected[sample_idx] = projection
     }
-    polarized = build_curve(
-      projected,
-      1,
-      polarizability.steps,
-      input,
-      options,
-      `Raman polarized response`,
-      undefined,
-      true,
-    )
+    polarized = raman_curve(projected, 1, undefined, `Raman polarized response`)
   }
   const selected_channel: RamanChannel =
     options.raman_geometry?.kind === `polarized`
@@ -1379,7 +1351,7 @@ const detect_peaks = (
     options.frequency_unit,
     options.window,
   )
-  const displacement_by_frequency = new SvelteMap(
+  const displacement_by_frequency = new Map(
     frequencies_with_displacements.map((frequency, frequency_idx) => [
       frequency,
       displacements[frequency_idx],
@@ -1416,7 +1388,7 @@ const detect_peaks = (
       vdos_prominence: prominence(`vdos`),
       ir_prominence: ir_score.prominence,
       raman_prominence: raman_score.prominence,
-      potentially_mixed: new SvelteSet(group.map(({ source }) => source)).size < group.length,
+      potentially_mixed: new Set(group.map(({ source }) => source)).size < group.length,
       ...(displacement
         ? { displacement }
         : {
@@ -1666,8 +1638,6 @@ const calc_trajectory_spectroscopy_impl = (
     masses: Array.from(masses),
     pbc,
     reference_lattice: stream.lattice_matrices?.[0] ?? null,
-    n_trajectories: 1,
-    n_segments: 1,
     metadata: { ...input.metadata },
   }
 }
@@ -1676,323 +1646,3 @@ export const calc_trajectory_spectroscopy = (
   input: TrajectorySpectroscopyInput,
   options: TrajectorySpectroscopyOptions = {},
 ): TrajectorySpectroscopyResult => calc_trajectory_spectroscopy_impl(input, options)
-
-const average_curves = (curves: TrajectorySpectrumCurve[]): TrajectorySpectrumCurve => {
-  const first = curves[0]
-  for (const [curve_idx, curve] of curves.entries()) {
-    if (
-      curve.frequency_unit !== first.frequency_unit ||
-      curve.sample_interval !== first.sample_interval ||
-      !arrays_equal(curve.frequencies, first.frequencies)
-    ) {
-      fail(`ensemble curve ${curve_idx} has a different frequency grid`)
-    }
-  }
-  const power = first.power.map(
-    (_, frequency_idx) =>
-      curves.reduce((total, curve) => total + curve.power[frequency_idx], 0) / curves.length,
-  )
-  const standard_error = first.power.map((_, frequency_idx) => {
-    if (curves.length < 2) return 0
-    const sum_squared = curves.reduce(
-      (total, curve) => total + (curve.power[frequency_idx] - power[frequency_idx]) ** 2,
-      0,
-    )
-    return Math.sqrt(sum_squared / (curves.length * (curves.length - 1)))
-  })
-  return { ...first, power, normalized_power: normalize_power(power), standard_error }
-}
-
-const slice_signal = (
-  signal: TrajectorySignal | null | undefined,
-  start_step: number,
-  end_step: number,
-  label: string,
-): TrajectorySignal | null => {
-  if (!signal) return null
-  const sample_size = sample_size_of(signal.sample_shape)
-  const selected_indices: number[] = []
-  for (const [sample_idx, step] of signal.steps.entries()) {
-    if (step >= start_step && step < end_step) selected_indices.push(sample_idx)
-  }
-  if (selected_indices.length < 2) {
-    fail(
-      `${label} has only ${selected_indices.length} samples in ensemble segment ` +
-        `[${start_step}, ${end_step}); need at least 2`,
-    )
-  }
-  const values = new Float64Array(selected_indices.length * sample_size)
-  for (const [output_idx, sample_idx] of selected_indices.entries()) {
-    values.set(
-      signal.values.subarray(sample_idx * sample_size, (sample_idx + 1) * sample_size),
-      output_idx * sample_size,
-    )
-  }
-  return {
-    values,
-    sample_shape: [...signal.sample_shape],
-    steps: selected_indices.map((sample_idx) => signal.steps[sample_idx]),
-    unit: signal.unit,
-  }
-}
-
-const all_or_none = <Value>(
-  values: (Value | null | undefined)[],
-  error_message: string,
-): Value[] => {
-  const present = values.filter((value): value is Value => value != null)
-  if (present.length > 0 && present.length !== values.length) fail(error_message)
-  return present
-}
-
-const slice_axis_signals = (
-  signals: FieldAxisSignals,
-  start_step: number,
-  end_step: number,
-  label: string,
-): FieldAxisSignals => {
-  const x_signal = slice_signal(signals.x, start_step, end_step, `${label} x`)
-  const y_signal = slice_signal(signals.y, start_step, end_step, `${label} y`)
-  const z_signal = slice_signal(signals.z, start_step, end_step, `${label} z`)
-  if (!(x_signal && y_signal && z_signal)) return fail(`${label} is incomplete`)
-  return { x: x_signal, y: y_signal, z: z_signal }
-}
-
-const slice_field_axis_pair = (
-  signals: FieldResponseGeometry,
-  start_step: number,
-  end_step: number,
-  kind: `response` | `geometry`,
-): FieldResponseGeometry => ({
-  plus: slice_axis_signals(signals.plus, start_step, end_step, `Raman plus ${kind}`),
-  minus: slice_axis_signals(signals.minus, start_step, end_step, `Raman minus ${kind}`),
-})
-
-const slice_ir = (
-  signal: InfraredSignal | null | undefined,
-  start_step: number,
-  end_step: number,
-): InfraredSignal | null => {
-  if (!signal) return null
-  const series = slice_signal(signal.series, start_step, end_step, `IR ${signal.kind}`)
-  if (!series) return null
-  return signal.kind === `polarization`
-    ? { kind: signal.kind, series, branch_continuous: true }
-    : { kind: signal.kind, series }
-}
-
-const slice_raman = (
-  signal: RamanSignal | null | undefined,
-  start_step: number,
-  end_step: number,
-): RamanSignal | null => {
-  if (!signal) return null
-  if (signal.kind === `polarizability`) {
-    const series = slice_signal(signal.series, start_step, end_step, `Raman polarizability`)
-    return series ? { kind: signal.kind, series } : null
-  }
-  const response = slice_field_axis_pair(signal, start_step, end_step, `response`)
-  return {
-    ...signal,
-    ...response,
-    geometry: slice_field_axis_pair(signal.geometry, start_step, end_step, `geometry`),
-  }
-}
-
-const segment_input = (
-  input: TrajectorySpectroscopyInput,
-  n_position_samples: number,
-): TrajectorySpectroscopyInput[] => {
-  const { positions: stream } = input
-  const position_step_delta = uniform_step_delta(stream.steps, `ensemble positions`)
-  const n_segments = Math.floor(stream.n_frames / n_position_samples)
-  if (n_segments < 1) {
-    fail(
-      `trajectory has ${stream.n_frames} position samples, fewer than the requested ` +
-        `${n_position_samples}-sample ensemble segment`,
-    )
-  }
-  return Array.from({ length: n_segments }, (_unused, segment_idx) => {
-    const start_idx = segment_idx * n_position_samples
-    const stop_idx = start_idx + n_position_samples
-    const start_step = stream.steps[start_idx]
-    const end_step = stream.steps[stop_idx - 1] + position_step_delta
-    const component_start = start_idx * stream.n_atoms * 3
-    const component_stop = stop_idx * stream.n_atoms * 3
-    const positions: TrajectoryPositionStream = {
-      positions: stream.positions.slice(component_start, component_stop),
-      n_frames: n_position_samples,
-      n_atoms: stream.n_atoms,
-      elements: [...stream.elements],
-      lattice_matrices: stream.lattice_matrices?.slice(start_idx, stop_idx) ?? null,
-      pbc: stream.pbc,
-      coords_unwrapped: stream.coords_unwrapped,
-      frame_stride: stream.frame_stride,
-      steps: stream.steps.slice(start_idx, stop_idx),
-    }
-    return {
-      ...input,
-      positions,
-      velocities: slice_signal(input.velocities, start_step, end_step, `velocities`),
-      infrared_signal: slice_ir(input.infrared_signal, start_step, end_step),
-      raman_signal: slice_raman(input.raman_signal, start_step, end_step),
-      metadata: { ...input.metadata, ensemble_segment_idx: segment_idx },
-    }
-  })
-}
-
-export function calc_trajectory_spectroscopy_ensemble(
-  inputs: TrajectorySpectroscopyInput[],
-  options: TrajectorySpectroscopyOptions = {},
-): TrajectorySpectroscopyResult {
-  if (inputs.length < 1) fail(`ensemble needs at least one trajectory`)
-  const first_input = inputs[0]
-  for (const [input_idx, input] of inputs.entries()) {
-    if (
-      input.positions.n_atoms !== first_input.positions.n_atoms ||
-      !arrays_equal(input.positions.elements, first_input.positions.elements) ||
-      input.time_step !== first_input.time_step ||
-      input.time_unit !== first_input.time_unit ||
-      !arrays_equal(input.masses, first_input.masses)
-    ) {
-      fail(`ensemble input ${input_idx} has incompatible atoms, masses, timestep, or units`)
-    }
-    if (input.infrared_signal?.kind !== first_input.infrared_signal?.kind) {
-      fail(
-        `ensemble input ${input_idx} has incompatible IR signal kind ` +
-          `'${input.infrared_signal?.kind ?? `none`}', expected ` +
-          `'${first_input.infrared_signal?.kind ?? `none`}'`,
-      )
-    }
-  }
-  const lengths = new SvelteSet(inputs.map(({ positions }) => positions.n_frames))
-  const segment_duration = options.ensemble_segment_duration
-  if (lengths.size > 1 && segment_duration === undefined) {
-    fail(`unequal trajectory lengths require an explicit ensemble_segment_duration`)
-  }
-  let analysis_inputs = inputs
-  if (segment_duration !== undefined) {
-    if (!(segment_duration > 0) || !Number.isFinite(segment_duration)) {
-      fail(`ensemble_segment_duration must be finite and > 0`)
-    }
-    const time_per_position = sample_interval(
-      first_input.positions.steps,
-      options.frequency_unit ??
-        (first_input.time_step && first_input.time_unit ? `cm^-1` : `1/frame`),
-      first_input.time_step,
-      `ensemble positions`,
-    )
-    const n_position_samples = Math.round(segment_duration / time_per_position)
-    if (n_position_samples < 3) {
-      fail(
-        `ensemble_segment_duration gives ${n_position_samples} position samples, need at least 3`,
-      )
-    }
-    const represented_duration = n_position_samples * time_per_position
-    if (Math.abs(represented_duration - segment_duration) > 1e-10 * segment_duration) {
-      fail(
-        `ensemble_segment_duration ${segment_duration} is not an integer multiple of ` +
-          `the ${time_per_position} position sampling interval`,
-      )
-    }
-    analysis_inputs = inputs.flatMap((input) => segment_input(input, n_position_samples))
-  }
-  const results = analysis_inputs.map((input) =>
-    calc_trajectory_spectroscopy_impl(input, options, false),
-  )
-  const first = results[0]
-  for (const [result_idx, result] of results.entries()) {
-    if (
-      !arrays_equal(result.elements, first.elements) ||
-      result.preprocessing !== first.preprocessing ||
-      result.velocity_source !== first.velocity_source
-    ) {
-      fail(`ensemble result ${result_idx} has incompatible atoms or preprocessing`)
-    }
-  }
-  const vdos = average_curves(results.map(({ vdos: curve }) => curve))
-  const ir_curves = all_or_none(
-    results.map(({ ir: curve }) => curve),
-    `every ensemble member must either have IR data or omit it`,
-  )
-  const ir = ir_curves.length > 0 ? average_curves(ir_curves) : null
-  const raman_results = all_or_none(
-    results.map(({ raman: value }) => value),
-    `every ensemble member must either have Raman data or omit it`,
-  )
-  let raman: RamanSpectrumResult | null = null
-  if (raman_results.length > 0) {
-    const first_raman = raman_results[0]
-    if (
-      raman_results.some(
-        ({ selected_channel }) => selected_channel !== first_raman.selected_channel,
-      )
-    ) {
-      fail(`every ensemble Raman result must use the same selected channel`)
-    }
-    const polarized_curves = all_or_none(
-      raman_results.map(({ polarized }) => polarized),
-      `every ensemble Raman result must use the same geometry`,
-    )
-    const field_responses = all_or_none(
-      raman_results.map(({ field_response }) => field_response),
-      `every ensemble Raman result must use the same response source`,
-    )
-    const first_field_response = field_responses[0]
-    raman = {
-      ...first_raman,
-      isotropic: average_curves(raman_results.map(({ isotropic }) => isotropic)),
-      anisotropic: average_curves(raman_results.map(({ anisotropic }) => anisotropic)),
-      vv: average_curves(raman_results.map(({ vv }) => vv)),
-      vh: average_curves(raman_results.map(({ vh }) => vh)),
-      unpolarized: average_curves(raman_results.map(({ unpolarized }) => unpolarized)),
-      ...(polarized_curves.length > 0 ? { polarized: average_curves(polarized_curves) } : {}),
-      ...(first_field_response
-        ? {
-            field_response: {
-              max_geometry_deviation: Math.max(
-                ...field_responses.map(({ max_geometry_deviation }) => max_geometry_deviation),
-              ),
-            },
-          }
-        : {}),
-    }
-  }
-  return {
-    ...first,
-    vdos,
-    ir,
-    raman,
-    peaks: detect_peaks(
-      vdos,
-      ir,
-      raman ? selected_raman_curve(raman) : null,
-      prepare_positions(
-        analysis_inputs[0].positions,
-        analysis_inputs[0].masses,
-        first.preprocessing,
-      ).positions,
-      analysis_inputs[0],
-      {
-        frequency_unit: first.frequency_unit,
-        window: options.window ?? `hann`,
-        peak_prominence: options.peak_prominence ?? 0.02,
-        activity_relative_threshold: options.activity_relative_threshold ?? 0.01,
-        activity_snr: options.activity_snr ?? 6,
-      },
-    ),
-    n_trajectories: inputs.length,
-    n_segments: results.length,
-    metadata: {
-      ...first.metadata,
-      ensemble_trajectories: inputs.length,
-      ensemble_segments: results.length,
-      ...(segment_duration !== undefined && { ensemble_segment_duration: segment_duration }),
-      mode_displacement_source: `first ensemble segment`,
-      ensemble_members: inputs.map(({ metadata }, trajectory_idx) => ({
-        trajectory_idx,
-        ...metadata,
-      })),
-    },
-  }
-}

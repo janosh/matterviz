@@ -173,7 +173,7 @@
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
-      onclick={on_mouse_click}
+      onclick={(event) => event.detail <= 1 && on_mouse_click?.(event)}
       onwheel={pan_zoom.on_wheel}
       ontouchstart={pan_zoom.on_touch_start}
       ontouchmove={pan_zoom.on_touch_move}

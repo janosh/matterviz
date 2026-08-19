@@ -47,13 +47,9 @@
     {clip_path_id}
     {hovered_line_idx}
     annotation_placement={get_reference_annotation_placement(decoration_solution, line.idx)}
-    on_click={(event) => {
-      line.on_click?.(event)
-      on_click?.(event)
-    }}
+    {on_click}
     on_hover={(event) => {
       hovered_line_idx = event?.line_idx ?? null
-      line.on_hover?.(event)
       on_hover?.(event)
     }}
   />

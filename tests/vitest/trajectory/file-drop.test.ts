@@ -160,8 +160,7 @@ test(`does not replace a newer drop when a chosen HDF5 group finishes late`, asy
       ),
     )
     delayed_read.release()
-    await Promise.resolve()
-    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(on_file_load).toHaveBeenCalledOnce()
     expect(on_error).not.toHaveBeenCalled()

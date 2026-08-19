@@ -1,11 +1,7 @@
 import {
   TrajectorySpectroscopyPane,
-  TrajectorySpectroscopyExplorer,
   TrajectorySpectrumPlot,
-  type TrajectorySpectrumCurve,
   type TrajectorySpectroscopyResult,
-  type VibrationalReferenceEntry,
-  type PhononModeData,
 } from '$lib/spectral'
 import type { TrajectoryType } from '$lib/trajectory'
 import { flushSync, mount, tick, unmount, type Component } from 'svelte'
@@ -15,7 +11,6 @@ const curve = {
   frequencies: [0, 1, 2, 3, 4],
   power: [0, 1, 0, 0.5, 0],
   normalized_power: [0, 1, 0, 0.5, 0],
-  standard_error: [0, 0.1, 0, 0.05, 0],
   frequency_unit: `THz` as const,
   sample_interval: 1,
   frequency_spacing: 1,
@@ -63,44 +58,8 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
   masses: [1],
   pbc: [false, false, false],
   reference_lattice: null,
-  n_trajectories: 1,
-  n_segments: 1,
   metadata: {},
 })
-
-const synthetic_reference: VibrationalReferenceEntry = {
-  id: `synthetic`,
-  name: `Synthetic`,
-  formula: `X`,
-  isotopologue: `X-1`,
-  phase: `gas`,
-  frequency_unit: `cm^-1`,
-  cas_number: `0-00-0`,
-  inchikey: `SYNTHETIC`,
-  citations: [
-    {
-      id: `source`,
-      title: `Synthetic source`,
-      authors: `MatterViz tests`,
-      year: 2026,
-      url: `https://example.com`,
-      locator: `fixture`,
-      access_date: `2026-08-17`,
-      redistribution_rationale: `Synthetic test data`,
-    },
-  ],
-  modes: [
-    {
-      mode_id: `mode-1`,
-      label: `ν1`,
-      degeneracy: 1,
-      wavenumber_cm1: 2,
-      ir_activity: `active`,
-      raman_activity: `active`,
-      citation_id: `source`,
-    },
-  ],
-}
 
 const render = <Props extends Record<string, unknown>>(
   component: Component<Props>,
@@ -141,7 +100,7 @@ const set_select = (select: HTMLSelectElement, value: string): void => {
 }
 
 describe(`TrajectorySpectrumPlot`, () => {
-  it(`renders synchronized IR/VDOS and Raman/VDOS panels with uncertainty bands`, async () => {
+  it(`renders synchronized IR/VDOS and Raman/VDOS panels`, async () => {
     const target = render(TrajectorySpectrumPlot, {
       result: result(),
       style: `height: 240px`,
@@ -152,7 +111,6 @@ describe(`TrajectorySpectrumPlot`, () => {
     expect(target.textContent).toContain(`Relative IR intensity`)
     expect(target.textContent).toContain(`Raman unpolarized`)
     expect(target.textContent).toContain(`Mass-weighted VDOS`)
-    expect(target.querySelectorAll(`.fill-region`).length).toBeGreaterThan(0)
     await vi.waitFor(() => {
       const legend_y = target.querySelector<HTMLElement>(`.legend`)?.dataset.decorationY
       expect(Number(legend_y)).toBeGreaterThanOrEqual(72)
@@ -163,7 +121,6 @@ describe(`TrajectorySpectrumPlot`, () => {
     const target = render(TrajectorySpectrumPlot, { result: result(false) })
     await tick()
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(1)
-    expect(target.querySelectorAll(`.fill-region`)).toHaveLength(1)
     expect(target.querySelector(`.fullscreen-button`)).toBeNull()
     expect(target.textContent).toContain(`Vibrational spectrum; IR/Raman activity unavailable`)
     expect(target.textContent).not.toContain(`Relative IR intensity`)
@@ -171,10 +128,8 @@ describe(`TrajectorySpectrumPlot`, () => {
     const plot_only_target = render(TrajectorySpectrumPlot, {
       result: result(false),
       show_summary: false,
-      show_uncertainty: false,
     })
     await tick()
-    expect(plot_only_target.querySelector(`.fill-region`)).toBeNull()
     expect(plot_only_target.textContent).not.toContain(
       `Vibrational spectrum; IR/Raman activity unavailable`,
     )
@@ -187,7 +142,6 @@ describe(`TrajectorySpectrumPlot`, () => {
       frequencies: [0, 1, 2],
       power: [0, 1, 0],
       normalized_power: [0, 1, 0],
-      standard_error: [0, 0.1, 0],
       nyquist: 2,
     }
     truncated_response.peaks.push({
@@ -203,87 +157,6 @@ describe(`TrajectorySpectrumPlot`, () => {
     expect(
       ir_plot.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
     ).toHaveLength(1)
-  })
-})
-
-it(`explorer exposes the selected complex mode without mounting another trajectory viewer`, async () => {
-  const props = $state({
-    result: result(),
-    mode_trajectory: null as TrajectoryType | null,
-  })
-  const target = render(TrajectorySpectroscopyExplorer, props)
-  await vi.waitFor(() => {
-    expect(target.textContent).toContain(`Detected finite-temperature modes`)
-    expect(props.mode_trajectory?.frames).toHaveLength(48)
-    expect(target.querySelector(`.trajectory`)).toBeNull()
-    expect(target.querySelector(`.spectrum-plot`)).not.toBeNull()
-    expect(target.querySelector(`.trajectory-spectroscopy-explorer > table`)).toBeNull()
-    const explorer = target.querySelector<HTMLElement>(`.trajectory-spectroscopy-explorer`)
-    expect(explorer?.style.paddingTop).toBe(`0px`)
-  })
-  const details_pane = target.querySelector(`.spectroscopy-details-pane`)
-  expect(details_pane?.classList).not.toContain(`pane-open`)
-  const details_toggle = target.querySelector<HTMLButtonElement>(
-    `.spectroscopy-details-toggle`,
-  )
-  if (!details_toggle) throw new Error(`missing spectroscopy details toggle`)
-  expect(details_toggle.style.right).toBe(`2.55em`)
-  expect(details_toggle.style.fontSize).toBe(`1.2em`)
-  expect(details_toggle.style.width).toBe(`1.8em`)
-  details_toggle.click()
-  await tick()
-  expect(details_pane?.classList).toContain(`pane-open`)
-  expect(details_pane?.textContent).toContain(`Detected finite-temperature modes`)
-})
-
-it(`keeps MD animation and benchmarking available when harmonic matching fails`, async () => {
-  const props = $state({
-    result: result(),
-    reference: synthetic_reference,
-    harmonic_modes: {
-      n_atoms: 1,
-      atoms: [{ symbol: `O`, mass: 16, coordinates: [0, 0, 0] }],
-      lattice: null,
-      reciprocal_lattice: null,
-      qpoints: [
-        {
-          q_position: [0, 0, 0],
-          distance: null,
-          modes: [
-            {
-              frequency: 1,
-              eigenvector: [
-                [
-                  [1, 0],
-                  [0, 0],
-                  [0, 0],
-                ],
-              ],
-            },
-          ],
-        },
-      ],
-      path_segments: [],
-    } satisfies PhononModeData,
-    mode_trajectory: null as TrajectoryType | null,
-  })
-  const target = render(TrajectorySpectroscopyExplorer, props)
-  await vi.waitFor(() => {
-    expect(props.mode_trajectory?.frames).toHaveLength(48)
-    expect(target.textContent).toMatch(/Atom 0 is H in MD but O in harmonic data/)
-    expect(target.textContent).toContain(`Raw MAE`)
-  })
-})
-
-it(`explorer normalizes stale peak and Raman-channel selections`, async () => {
-  const target = render(TrajectorySpectroscopyExplorer, {
-    result: result(),
-    selected_peak_idx: 99,
-    raman_channel: `polarized`,
-  })
-  await vi.waitFor(() => {
-    expect(target.querySelector(`[aria-label="Select mode 1"]`)).not.toBeNull()
-    expect(target.textContent).toContain(`Raman unpolarized`)
   })
 })
 
@@ -360,7 +233,6 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   expect(kind_select.value).toBe(`dipole`)
   pane_props.result = result()
   await tick()
-  expect(target.querySelector(`.explorer-controls`)).toBeNull()
 
   const inline_props = $state({
     trajectory,
@@ -370,51 +242,31 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   })
   const inline_target = render(TrajectorySpectroscopyPane, inline_props)
   await tick()
-  const settings_pane = inline_target.querySelector(`.spectroscopy-analysis-controls-pane`)
+  await vi.waitFor(() => expect(inline_props.result).toBeDefined())
+  expect(inline_target.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()
+  const settings_pane = inline_target.querySelector(`.plot-controls-pane`)
   expect(settings_pane?.classList).not.toContain(`pane-open`)
-  expect(settings_pane?.getAttribute(`style`)).toContain(`--pane-width: min(64em, 94cqw)`)
-  expect(settings_pane?.getAttribute(`style`)).toContain(`--pane-padding: 16px`)
-  const settings_toggle = inline_target.querySelector<HTMLButtonElement>(
-    `.spectroscopy-analysis-controls-toggle`,
-  )
+  const settings_toggle =
+    inline_target.querySelector<HTMLButtonElement>(`.plot-controls-toggle`)
   if (!settings_toggle) throw new Error(`missing spectroscopy settings toggle`)
-  expect(settings_toggle.style.right).toBe(`0.65em`)
-  expect(settings_toggle.style.fontSize).toBe(`1.2em`)
-  expect(settings_toggle.style.width).toBe(`1.8em`)
   settings_toggle.click()
   await tick()
   expect(settings_pane?.classList).toContain(`pane-open`)
+  const settings_text = settings_pane?.textContent ?? ``
+  expect(settings_text.indexOf(`Spectroscopy analysis settings`)).toBeLessThan(
+    settings_text.indexOf(`Markers`),
+  )
   expect(labeled_select(inline_target, `Preprocessing`).value).toBe(`body_fixed`)
-  await vi.waitFor(() => expect(inline_props.result).toBeDefined())
-  expect(inline_target.querySelector(`.explorer-controls`)).toBeNull()
-  expect(inline_target.querySelector(`.spectrum-plot`)).not.toBeNull()
+  const details_toggle = inline_target.querySelector<HTMLButtonElement>(
+    `.spectroscopy-details-toggle`,
+  )
+  if (!details_toggle) throw new Error(`missing spectroscopy details toggle`)
+  expect(details_toggle.parentElement?.classList).toContain(`header-controls`)
+  details_toggle.click()
+  await tick()
+  expect(inline_target.querySelector(`.spectroscopy-details-pane`)?.textContent).toContain(
+    `VDOS is derived from atomic velocities`,
+  )
+  expect(inline_target.querySelector(`.trajectory-spectrum-plots`)).not.toBeNull()
   expect(inline_target.querySelector(`.trajectory`)).toBeNull()
-})
-
-it(`explorer exposes scaled x-axis comparison while retaining raw mode frequencies`, async () => {
-  const cm_result = result()
-  const to_cm = (value: TrajectorySpectrumCurve): TrajectorySpectrumCurve => ({
-    ...value,
-    frequency_unit: `cm^-1`,
-  })
-  cm_result.frequency_unit = `cm^-1`
-  cm_result.vdos = to_cm(cm_result.vdos)
-  cm_result.ir = cm_result.ir ? to_cm(cm_result.ir) : null
-  if (cm_result.raman) {
-    for (const channel of [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`] as const) {
-      cm_result.raman[channel] = to_cm(cm_result.raman[channel])
-    }
-  }
-  const target = render(TrajectorySpectroscopyExplorer, {
-    result: cm_result,
-    reference: synthetic_reference,
-    comparison: `scaled`,
-    scale_factor: 2,
-  })
-  await vi.waitFor(() => {
-    expect(target.textContent).toContain(`Spectrum x-axis: scaled`)
-    expect(target.textContent).toContain(`Raw frequency`)
-    expect(target.textContent).toContain(`1 cm^-1`)
-    expect(target.textContent).toContain(`+0 cm⁻¹`)
-  })
 })

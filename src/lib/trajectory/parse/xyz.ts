@@ -174,9 +174,7 @@ export function parse_xyz_comment_metadata(comment: string): {
   return { step: step ? Math.trunc(Number(step)) : undefined, properties }
 }
 
-export function parse_xyz_comment_signals(
-  comment: string,
-): Record<string, number[] | number[][]> {
+function parse_xyz_comment_signals(comment: string): Record<string, number[] | number[][]> {
   const signals: Record<string, number[] | number[][]> = {}
   const pattern =
     /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/gu

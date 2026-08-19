@@ -17,7 +17,6 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from './index'
-import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
@@ -26,7 +25,7 @@ const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
 // scf_energy_delta lives in its own axis group (see trajectory_property_config), so
 // listing it here only surfaces it when higher-priority groups (energy/force/stress)
 // don't fill both axes — i.e. single-point SCF convergence views.
-const DEFAULT_VISIBLE = new SvelteSet([
+const DEFAULT_VISIBLE = new Set([
   `energy`,
   `force_max`,
   `stress_frobenius`,
@@ -35,7 +34,7 @@ const DEFAULT_VISIBLE = new SvelteSet([
 // Values already represented by the horizontal axis are navigation coordinates, not
 // observables. Plotting them again on y produces tautologies such as Time vs Time and can
 // consume one of the two default-visible axes before a scientific quantity does.
-const AXIS_COORDINATE_PROPERTIES = new SvelteSet([
+const AXIS_COORDINATE_PROPERTIES = new Set([
   `frame`,
   `frame index`,
   `frame id`,
@@ -320,7 +319,7 @@ function extract_property_statistics(
   trajectory: TrajectoryType,
   data_extractor: TrajectoryDataExtractor,
 ): PropertyStats {
-  const property_stats = new SvelteMap<string, { values: number[]; frame_indices: number[] }>()
+  const property_stats = new Map<string, { values: number[]; frame_indices: number[] }>()
 
   // Extract all data in single pass
   trajectory.frames.forEach((frame, frame_idx) => {
@@ -343,7 +342,7 @@ function extract_property_statistics(
   })
 
   // Convert to final format with variation detection
-  const result: PropertyStats = new SvelteMap()
+  const result: PropertyStats = new Map()
 
   for (const [key, stat] of property_stats) {
     if (stat.values.length <= 1) continue
@@ -560,7 +559,7 @@ export function generate_streaming_plot_series(
       (metadata, idx, sorted_metadata) =>
         idx === 0 || metadata.frame_number !== sorted_metadata[idx - 1].frame_number,
     )
-  const all_properties = new SvelteSet<string>()
+  const all_properties = new Set<string>()
   ordered_metadata.forEach((metadata) => {
     Object.keys(metadata.properties).forEach((property_key) => {
       if (!is_axis_coordinate_property(property_key)) all_properties.add(property_key)

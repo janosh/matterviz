@@ -80,7 +80,10 @@
   const handle_mouse_leave = () => emit_hover(null)
   const handle_mouse_move = (event: MouseEvent) =>
     is_hovered && emit_hover(construct_event(event))
-  const handle_click = (event: MouseEvent) => emit_click(construct_event(event))
+  const handle_click = (event: MouseEvent) => {
+    event.stopPropagation()
+    emit_click(construct_event(event))
+  }
 
   // Keyboard handler - creates event with default coordinates since no mouse position
   function handle_keydown(event: KeyboardEvent) {

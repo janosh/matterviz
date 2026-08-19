@@ -144,6 +144,20 @@ describe(`validate_trajectory`, () => {
     expect(validate_trajectory(trajectory)).toEqual([])
   })
 
+  test(`reports only the first non-finite value in a malformed signal`, () => {
+    const trajectory = make_trajectory(1)
+    trajectory.signals = {
+      dipole: {
+        sample_shape: [3],
+        values: Float64Array.from([Number.NaN, Number.POSITIVE_INFINITY, 0]),
+        steps: [0],
+      },
+    }
+    expect(
+      validate_trajectory(trajectory).filter((error) => error.includes(`values[`)),
+    ).toEqual([`signals.dipole.values[0] is not finite`])
+  })
+
   test.each([
     { sample_shape: [2] },
     { sample_shape: [2, 2] },

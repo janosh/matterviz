@@ -159,8 +159,12 @@ export const parse_lammps_data = (content: string): ParsedStructure | null =>
 
     const general_box_keywords = [`avec`, `bvec`, `cvec`, `abc origin`] as const
     const general_box = general_box_keywords.map((keyword) => {
+      const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
       const groups = header_groups(
-        new RegExp(`^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword}\\s*$`, `i`),
+        new RegExp(
+          `^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword_pattern}\\s*$`,
+          `i`,
+        ),
       )
       return groups ? ([Number(groups.x), Number(groups.y), Number(groups.z)] as Vec3) : null
     })

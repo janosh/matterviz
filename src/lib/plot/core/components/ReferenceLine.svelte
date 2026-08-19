@@ -149,6 +149,7 @@
       on_hover?.(null)
     }}
     onclick={(evt) => {
+      evt.stopPropagation()
       const ref_evt = make_event(evt)
       ref_line.on_click?.(ref_evt)
       on_click?.(ref_evt)

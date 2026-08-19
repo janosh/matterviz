@@ -2,20 +2,12 @@
   import { PLOT_COLORS } from '$lib/colors'
   import type {
     DataSeries,
-    ErrorBand,
     FacetPanel,
     FacetPanelContext,
-    RefLine,
     ScatterHandlerEvent,
   } from '$lib/plot'
   import { FacetGrid, ScatterPlot } from '$lib/plot'
-  import { THZ_TO_INVERSE_CM } from '$lib/constants'
-  import { array_max } from '$lib/math'
   import type { ComponentProps } from 'svelte'
-  import type {
-    ExperimentalSpectrum,
-    VibrationalReferenceEntry,
-  } from './spectroscopy-reference'
   import type {
     RamanChannel,
     TrajectorySpectrumCurve,
@@ -24,23 +16,19 @@
 
   let {
     result,
-    reference,
-    experimental_spectra = [],
     raman_channel = result.raman?.selected_channel ?? `unpolarized`,
     selected_peak_idx = $bindable(),
-    show_uncertainty = true,
     show_summary = true,
     show_controls = $bindable(true),
     frequency_range,
     style,
+    header_controls,
+    controls_extra,
     ...rest
   }: {
     result: TrajectorySpectroscopyResult
-    reference?: VibrationalReferenceEntry
-    experimental_spectra?: ExperimentalSpectrum[]
     raman_channel?: RamanChannel
     selected_peak_idx?: number
-    show_uncertainty?: boolean
     show_summary?: boolean
     show_controls?: boolean
     frequency_range?: [number, number]
@@ -64,60 +52,8 @@
     )
     return curve.normalized_power[bin_idx] ?? 0
   }
-  const uncertainty = (curve: TrajectorySpectrumCurve): number[] | null => {
-    if (!curve.standard_error) return null
-    const maximum = array_max(curve.power)
-    return maximum > 0
-      ? curve.standard_error.map((value) => value / maximum)
-      : curve.standard_error
-  }
-  const error_band = (series_id: string, error: number[] | null): ErrorBand[] =>
-    error ? [{ series: { type: `series`, series_id }, error }] : []
   const is_response_panel = (kind: string): kind is `ir` | `raman` =>
     kind === `ir` || kind === `raman`
-  const reference_lines = (kind: string): RefLine[] => {
-    if (!is_response_panel(kind) || result.frequency_unit === `1/frame`) return []
-    return (reference?.modes ?? []).map((mode) => {
-      const frequency =
-        result.frequency_unit === `cm^-1`
-          ? mode.wavenumber_cm1
-          : mode.wavenumber_cm1 / THZ_TO_INVERSE_CM
-      const activity = kind === `ir` ? mode.ir_activity : mode.raman_activity
-      return {
-        type: `vertical` as const,
-        x: frequency,
-        label: `${mode.label} (${activity})`,
-        style: {
-          color: activity === `active` ? `#c85a00` : activity === `inactive` ? `#777` : `#999`,
-          width: activity === `active` ? 2 : 1,
-          dash: activity === `active` ? `` : `5 4`,
-          opacity: 0.8,
-        },
-        annotation: { text: mode.label, position: `end` as const, side: `left` as const },
-      }
-    })
-  }
-  const experimental_series = (kind: `ir` | `raman`): DataSeries[] => {
-    if (result.frequency_unit === `1/frame`) return []
-    return experimental_spectra
-      .filter((spectrum) => spectrum.kind === kind)
-      .map((spectrum) => {
-        const maximum = array_max(spectrum.intensities)
-        return {
-          id: `experimental-${kind}-${spectrum.source}`,
-          x: spectrum.frequencies_cm1.map((frequency) =>
-            result.frequency_unit === `cm^-1` ? frequency : frequency / THZ_TO_INVERSE_CM,
-          ),
-          y:
-            maximum > 0
-              ? spectrum.intensities.map((intensity) => intensity / maximum)
-              : spectrum.intensities,
-          label: `Experiment: ${spectrum.source}`,
-          markers: `line` as const,
-          line_style: { stroke: `#555`, stroke_width: 1, line_dash: `4 3` },
-        }
-      })
-  }
   const peak_series = (curve: TrajectorySpectrumCurve): DataSeries => {
     const min_frequency = curve.frequencies[0] ?? 0
     const max_frequency = curve.frequencies.at(-1) ?? min_frequency
@@ -205,26 +141,16 @@
       markers: `line` as const,
       line_style: { stroke: PLOT_COLORS[1], stroke_width: 2, line_dash: `6 4` },
     },
-    ...(is_response_panel(kind) ? experimental_series(kind) : []),
     peak_series(response),
   ] satisfies DataSeries[]}
-  {@const vdos_error = uncertainty(result.vdos)}
-  {@const error_bands = show_uncertainty
-    ? [
-        ...(!is_response_panel(kind)
-          ? []
-          : error_band(`${kind}-response`, uncertainty(response))),
-        ...error_band(`${kind}-vdos`, vdos_error),
-      ]
-    : []}
   <ScatterPlot
     {...rest}
     legend={spectroscopy_legend}
     bind:show_controls
     {series}
-    {error_bands}
-    ref_lines={reference_lines(kind)}
     on_point_click={handle_point_click}
+    {header_controls}
+    {controls_extra}
     x_axis={{ label: `Frequency (${result.frequency_unit})`, range: frequency_range }}
     y_axis={{
       label: is_response_panel(kind)

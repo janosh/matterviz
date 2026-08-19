@@ -66,7 +66,19 @@ const create_frame_loader_port = (
     if (!state) return
     try {
       channel.port1.postMessage(response, { transfer })
-    } catch {
+    } catch (error) {
+      if (
+        transfer.length > 0 &&
+        response &&
+        typeof response === `object` &&
+        `id` in response
+      ) {
+        try {
+          channel.port1.postMessage({ id: response.id, error: error_message(error) })
+        } catch {
+          // The port itself is unusable; disposal below releases the retained source.
+        }
+      }
       dispose()
     }
   }

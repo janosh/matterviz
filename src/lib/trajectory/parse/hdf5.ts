@@ -351,9 +351,10 @@ function parse_torch_sim_h5_file(
       `HDF5 cells have ${cells.length} frames for ${positions.length} position frames; expected 1 or ${positions.length}`,
     )
   }
-  const pbc_values = flatten_numeric(
-    find_dataset(pbc_path) ?? inherited_attribute(PBC_ALIASES),
-  )
+  const pbc_dataset_values = find_dataset(pbc_path)
+  const pbc_source =
+    pbc_dataset_values == null ? `attribute ${PBC_ALIASES.join(`/`)}` : `dataset ${pbc_path}`
+  const pbc_values = flatten_numeric(pbc_dataset_values ?? inherited_attribute(PBC_ALIASES))
   const as_pbc = (values: number[]): Pbc => [
     Boolean(values[0]),
     Boolean(values[1]),
@@ -362,7 +363,7 @@ function parse_torch_sim_h5_file(
   let pbc_frames: Pbc[] | null = null
   if (pbc_values) {
     if (pbc_values.some((value) => value !== 0 && value !== 1)) {
-      throw new Error(`HDF5 PBC dataset ${pbc_path} must contain only 0/1 values`)
+      throw new Error(`HDF5 PBC ${pbc_source} must contain only 0/1 values`)
     }
     if (pbc_values.length === 1) {
       const flag = Boolean(pbc_values[0])
@@ -374,7 +375,7 @@ function parse_torch_sim_h5_file(
       )
     } else {
       throw new Error(
-        `HDF5 PBC dataset ${pbc_path} has ${pbc_values.length} values; expected 1, 3, or ` +
+        `HDF5 PBC ${pbc_source} has ${pbc_values.length} values; expected 1, 3, or ` +
           `${positions.length * 3}`,
       )
     }

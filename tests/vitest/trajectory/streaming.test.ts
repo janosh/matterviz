@@ -188,8 +188,12 @@ describe(`Trajectory Streaming`, () => {
     })
     document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
     await settle_frame_load()
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    await settle_frame_load()
+    await vi.waitFor(async () => {
+      await settle_frame_load()
+      expect(
+        load_events.some(({ frame_idx, inflight }) => frame_idx === 1 && inflight === 1),
+      ).toBe(true)
+    })
 
     expect(document.querySelector(`[data-testid="pending-loads"]`)?.textContent).toBe(`0,1`)
     expect(load_events).toEqual(
@@ -416,6 +420,7 @@ describe(`Trajectory Streaming`, () => {
         ],
         9,
       ],
+      [`nine-atom scalar`, `atomic_charge`, 9, Array.from({ length: 9 }, (_, idx) => idx), 9],
       [`per-atom scalar`, `atomic_charge`, 4, [1, 2, 3, 4], 4],
       [
         `per-atom vector`,

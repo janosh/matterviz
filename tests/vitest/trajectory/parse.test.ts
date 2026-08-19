@@ -1059,11 +1059,26 @@ describe(`HDF5 Format`, () => {
     const { FS } = await h5wasm.ready
     const temp_filename = `${prefix}-${Math.random().toString(36).slice(2)}.h5`
     const file = new h5wasm.File(temp_filename, `w`)
-    write(file)
-    file.close()
-    const bytes = FS.readFile(temp_filename)
-    FS.unlink(temp_filename)
-    return Uint8Array.from(bytes).buffer
+    let file_closed = false
+    try {
+      write(file)
+      file.close()
+      file_closed = true
+      return Uint8Array.from(FS.readFile(temp_filename)).buffer
+    } finally {
+      if (!file_closed) {
+        try {
+          file.close()
+        } catch {
+          // Preserve the writer error if cleanup also fails.
+        }
+      }
+      try {
+        FS.unlink(temp_filename)
+      } catch {
+        // The writer may fail before h5wasm creates a filesystem entry.
+      }
+    }
   }
 
   const make_h5_buffer = (
@@ -1157,6 +1172,7 @@ describe(`HDF5 Format`, () => {
   const make_reference_md_h5_buffer = (
     global_ids = [100, 101],
     n_frames = 3,
+    cell_matrix = [10, 0, 0, 0, 10, 0, 0, 0, 10],
   ): Promise<ArrayBuffer> =>
     h5_bytes(`reference-md`, (file) => {
       const frames = file.create_group(`frames`)
@@ -1201,7 +1217,7 @@ describe(`HDF5 Format`, () => {
       })
       initial_state.create_dataset({
         name: `cells_angstrom`,
-        data: [10, 0, 0, 0, 10, 0, 0, 0, 10, 10, 0, 0, 0, 10, 0, 0, 0, 10],
+        data: [...cell_matrix, ...cell_matrix],
         shape: [2, 3, 3],
       })
 
@@ -1482,6 +1498,17 @@ describe(`HDF5 Format`, () => {
     ).rejects.toThrow(/\/replicas\/global_ids.*expected \[2\]/)
   })
 
+  it(`rejects a singular Reference MD cell`, async () => {
+    await expect(
+      parse_trajectory_data(
+        await make_reference_md_h5_buffer([100, 101], 3, [10, 0, 0, 0, 10, 0, 0, 0, 0]),
+        `reference-md-singular.h5`,
+        undefined,
+        `/molecules/h2o/replicas/0`,
+      ),
+    ).rejects.toThrow(`Reference MD HDF5 cell volume must be positive`)
+  })
+
   it(`prefers the canonical TorchSim /data structure over unrelated complete groups`, async () => {
     const trajectory = await parse_trajectory_data(
       await make_grouped_h5_buffer([
@@ -1638,6 +1665,17 @@ describe(`HDF5 Format`, () => {
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([false, false, false])
   })
 
+  it(`identifies an inherited PBC attribute in validation errors`, async () => {
+    const content = await h5_bytes(`invalid-pbc-attribute`, (file) => {
+      file.create_dataset({ name: `positions`, data: [0, 0, 0], shape: [1, 1, 3] })
+      file.create_dataset({ name: `atomic_numbers`, data: [1], shape: [1] })
+      file.create_attribute(`pbc`, [0, 2, 1])
+    })
+    await expect(parse_trajectory_data(content, `invalid-pbc.h5`)).rejects.toThrow(
+      `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`,
+    )
+  })
+
   it(`reuses a singleton framed HDF5 cell across every position frame`, async () => {
     const buffer = await make_h5_buffer([
       { name: `positions`, data: [1, 2, 3].flatMap(() => frame_positions), shape: [3, 2, 3] },
@@ -1758,6 +1796,21 @@ describe(`ASE Trajectory Format`, () => {
         [0, 0, 3],
       ],
     })
+  })
+
+  it(`skips malformed ASE ndarray descriptors without dropping scalar results`, () => {
+    const results = ase_calculator_data(
+      {
+        [`calculator.`]: {
+          energy: -1.25,
+          [`dipole.`]: { ndarray: [`not-a-shape`, `float64`, 0] },
+        },
+      },
+      () => {
+        throw new Error(`malformed descriptors must not be read`)
+      },
+    )
+    expect(results).toEqual({ energy: -1.25 })
   })
 
   it.each([

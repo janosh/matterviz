@@ -254,14 +254,16 @@ describe(`ScatterPlot`, () => {
 
     test(`keeps SVG markers when point handlers require DOM events`, async () => {
       const on_point_click = vi.fn()
+      const on_plot_click = vi.fn()
       const on_keydown = vi.fn()
-      let plot = await mount_canvas({ on_point_click })
+      let plot = await mount_canvas({ on_point_click, on_plot_click })
       expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
       plot
         .querySelector(`path.marker`)
         ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       expect(on_point_click).toHaveBeenCalledOnce()
+      expect(on_plot_click).not.toHaveBeenCalled()
       const interactive_point = plot.querySelector<SVGGElement>(`[role="button"]`)
       expect(interactive_point?.getAttribute(`tabindex`)).toBe(`0`)
       expect(interactive_point?.getAttribute(`aria-label`)).toBe(`Select series 1 point 1`)
@@ -384,6 +386,90 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelectorAll(`.legend .legend-item`)).toHaveLength(expected_entries)
     },
   )
+
+  test(`x hover resolves duplicate x-values by vertical distance`, async () => {
+    const on_point_hover = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 1, 1], y: [0, 0.5, 1], markers: `points` }],
+      x_axis: { range: [0, 2] },
+      y_axis: { range: [0, 1] },
+      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+      point_tween: { duration: 0 },
+      on_point_hover,
+      legend: null,
+    })
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const marker = plot.querySelectorAll<SVGPathElement>(`.marker`).item(2)
+    const transform = marker.parentElement?.getAttribute(`transform`) ?? ``
+    const match = /translate\((?<x>[-\d.]+) (?<y>[-\d.]+)\)/.exec(transform)
+    if (!svg || !match?.groups) throw new Error(`expected the last duplicate-x marker`)
+    Object.defineProperty(svg, `getBoundingClientRect`, {
+      value: () => DOMRect.fromRect({ width: 500, height: 300 }),
+    })
+    svg.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        bubbles: true,
+        clientX: Number(match.groups.x),
+        clientY: Number(match.groups.y),
+      }),
+    )
+    await next_animation_frame()
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+  })
+
+  test(`child marks and rectangle zoom do not trigger plot clicks`, async () => {
+    const on_plot_click = vi.fn()
+    const on_fill_click = vi.fn()
+    const on_ref_line_click = vi.fn()
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      fill_regions: [{ lower: 0, upper: 4, on_click: on_fill_click }],
+      ref_lines: [{ type: `vertical`, x: 2, on_click: on_ref_line_click }],
+      on_plot_click,
+      point_tween: { duration: 0 },
+    })
+    plot
+      .querySelector(`.fill-region`)
+      ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    plot
+      .querySelector(`.reference-line`)
+      ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_fill_click).toHaveBeenCalledOnce()
+    expect(on_ref_line_click).toHaveBeenCalledOnce()
+    expect(on_plot_click).not.toHaveBeenCalled()
+
+    const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
+    const clip = scatter_clip_rect(plot)
+    if (!svg) throw new Error(`scatter SVG not found`)
+    svg.dispatchEvent(
+      new MouseEvent(`mousedown`, {
+        bubbles: true,
+        button: 0,
+        clientX: clip.x + 10,
+        clientY: clip.y + 10,
+      }),
+    )
+    window.dispatchEvent(
+      new MouseEvent(`mousemove`, {
+        buttons: 1,
+        clientX: clip.x + 80,
+        clientY: clip.y + 80,
+      }),
+    )
+    window.dispatchEvent(
+      new MouseEvent(`mouseup`, { clientX: clip.x + 80, clientY: clip.y + 80 }),
+    )
+    svg.dispatchEvent(
+      new MouseEvent(`click`, {
+        bubbles: true,
+        detail: 1,
+        clientX: clip.x + 80,
+        clientY: clip.y + 80,
+      }),
+    )
+    expect(on_plot_click).not.toHaveBeenCalled()
+  })
 
   test(`does not render a colorbar in a zero-sized plot`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)

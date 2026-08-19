@@ -351,11 +351,10 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
             `of shape [${numeric_sample_shape.join(`, `)}]`,
         )
       }
-      values.forEach((value, value_idx) => {
-        if (!Number.isFinite(value)) {
-          errors.push(`signals.${key}.values[${value_idx}] is not finite`)
-        }
-      })
+      const bad_value_idx = values.findIndex((value) => !Number.isFinite(value))
+      if (bad_value_idx !== -1) {
+        errors.push(`signals.${key}.values[${bad_value_idx}] is not finite`)
+      }
       steps.forEach((step: unknown, step_idx) => {
         if (typeof step !== `number` || !Number.isFinite(step)) {
           errors.push(`signals.${key}.steps[${step_idx}] is not finite`)

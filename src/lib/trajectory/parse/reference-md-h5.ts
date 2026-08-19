@@ -332,6 +332,9 @@ export const parse_reference_md_h5_file = (
   )
   const ensemble = string_value(attribute_value(simulation_group, [`ensemble`]))
   const volume = calc_lattice_params(lattice_matrix).volume
+  if (!(volume > 0)) {
+    throw new Error(`Reference MD HDF5 cell volume must be positive, got ${volume}`)
+  }
   const reconstructed_positions = new Float64Array(n_frames * velocity_sample_size)
   const frame_metadata: Record<string, unknown>[] = []
   const plot_metadata: TrajectoryMetadata[] = []

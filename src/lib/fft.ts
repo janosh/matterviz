@@ -99,6 +99,13 @@ export interface PeriodogramResult {
   nyquist: number
 }
 
+const gaussian_width = (gaussian_alpha: number, label: string): number => {
+  if (!Number.isFinite(gaussian_alpha) || !(gaussian_alpha > 0)) {
+    throw new Error(`${label}: gaussian_alpha must be finite and > 0, got ${gaussian_alpha}`)
+  }
+  return gaussian_alpha
+}
+
 // Full window for a sampled time series. This is intentionally separate from
 // correlation_window, whose Hann definition is only the right half of a symmetric window.
 export function time_series_window(
@@ -120,12 +127,7 @@ export function time_series_window(
     return weights
   }
   if (type === `gaussian`) {
-    const { gaussian_alpha = 3 } = options
-    if (!Number.isFinite(gaussian_alpha) || !(gaussian_alpha > 0)) {
-      throw new Error(
-        `time_series_window: gaussian_alpha must be finite and > 0, got ${gaussian_alpha}`,
-      )
-    }
+    const gaussian_alpha = gaussian_width(options.gaussian_alpha ?? 3, `time_series_window`)
     const midpoint = (n_samples - 1) / 2
     const scale = gaussian_alpha / midpoint
     for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
@@ -266,13 +268,9 @@ export function correlation_window(
     return weights
   }
   if (type === `gaussian`) {
-    if (!Number.isFinite(gaussian_alpha) || !(gaussian_alpha > 0)) {
-      throw new Error(
-        `correlation_window: gaussian_alpha must be finite and > 0, got ${gaussian_alpha}`,
-      )
-    }
+    const width = gaussian_width(gaussian_alpha, `correlation_window`)
     for (let lag = 0; lag < n_lags; lag++) {
-      const scaled = (gaussian_alpha * lag) / (n_lags - 1)
+      const scaled = (width * lag) / (n_lags - 1)
       weights[lag] = Math.exp(-0.5 * scaled * scaled)
     }
     return weights

@@ -1,6 +1,5 @@
 import {
   calc_trajectory_spectroscopy,
-  calc_trajectory_spectroscopy_ensemble,
   type RamanGeometry,
   type RamanSignal,
   type TrajectorySpectroscopyInput,
@@ -854,89 +853,4 @@ describe(`calc_trajectory_spectroscopy`, () => {
       expect(Math.max(...rotating.vdos.power)).toBeLessThan(1e-20)
     },
   )
-})
-
-describe(`calc_trajectory_spectroscopy_ensemble`, () => {
-  it(`returns the per-bin mean and standard error of independent spectra`, () => {
-    const options = RAW_SPECTRUM
-    const first = calc_trajectory_spectroscopy(make_input(0.125, 1), options)
-    const second = calc_trajectory_spectroscopy(make_input(0.125, 2), options)
-    const ensemble = calc_trajectory_spectroscopy_ensemble(
-      [make_input(0.125, 1), make_input(0.125, 2)],
-      options,
-    )
-    const peak_idx = first.vdos.power.indexOf(Math.max(...first.vdos.power))
-    const expected_mean = (first.vdos.power[peak_idx] + second.vdos.power[peak_idx]) / 2
-    const expected_sem = Math.abs(second.vdos.power[peak_idx] - first.vdos.power[peak_idx]) / 2
-    expect(ensemble.vdos.power[peak_idx]).toBe(expected_mean)
-    expect(ensemble.vdos.standard_error?.[peak_idx]).toBe(expected_sem)
-    expect(ensemble.n_trajectories).toBe(2)
-    expect(ensemble.n_segments).toBe(2)
-  })
-
-  it(`requires explicit segmentation for unequal lengths and counts resulting segments`, () => {
-    const long = make_input(0.125, 1, 128)
-    const short = make_input(0.125, 1, 96)
-    const options = RAW_SPECTRUM
-    expect(() => calc_trajectory_spectroscopy_ensemble([long, short], options)).toThrow(
-      /unequal trajectory lengths require an explicit ensemble_segment_duration/,
-    )
-    const ensemble = calc_trajectory_spectroscopy_ensemble([long, short], {
-      ...options,
-      ensemble_segment_duration: 64,
-    })
-    expect(ensemble.n_trajectories).toBe(2)
-    expect(ensemble.n_segments).toBe(3)
-    expect(ensemble.metadata).toMatchObject({
-      ensemble_trajectories: 2,
-      ensemble_segments: 3,
-      ensemble_segment_duration: 64,
-    })
-  })
-
-  it(`rejects members that use different IR observables`, () => {
-    const dipole_input = make_input()
-    const current_input = make_input()
-    dipole_input.infrared_signal = {
-      kind: `dipole`,
-      series: signal(128, [3], () => [0, 0, 0]),
-    }
-    current_input.infrared_signal = {
-      kind: `current`,
-      series: signal(128, [3], () => [0, 0, 0]),
-    }
-    expect(() =>
-      calc_trajectory_spectroscopy_ensemble([dipole_input, current_input], RAW_SPECTRUM),
-    ).toThrow(/incompatible IR signal kind 'current', expected 'dipole'/)
-  })
-
-  it(`interprets 1/frame ensemble durations on the recorded position-step axis`, () => {
-    const inputs = [make_input(), make_input()]
-    for (const input of inputs) {
-      input.positions.steps = input.positions.steps.map((step) => step * 2)
-      if (input.velocities) input.velocities.steps = [...input.positions.steps]
-    }
-    const ensemble = calc_trajectory_spectroscopy_ensemble(inputs, {
-      ...RAW_SPECTRUM,
-      ensemble_segment_duration: 64,
-    })
-    expect(ensemble.n_segments).toBe(8)
-  })
-
-  it(`retains the worst finite-field geometry diagnostic across members`, () => {
-    const make_field_input = (geometry_deviation: number): TrajectorySpectroscopyInput => {
-      const input = make_input()
-      const plus = clone_geometry(input)
-      plus.values[0] += geometry_deviation
-      input.raman_signal = dipole_field_raman(input, {
-        plus: { x: plus, y: clone_geometry(input), z: clone_geometry(input) },
-      })
-      return input
-    }
-    const result = calc_trajectory_spectroscopy_ensemble(
-      [make_field_input(1e-12), make_field_input(8e-11)],
-      RAW_SPECTRUM,
-    )
-    expect(result.raman?.field_response?.max_geometry_deviation).toBeCloseTo(8e-11, 14)
-  })
 })

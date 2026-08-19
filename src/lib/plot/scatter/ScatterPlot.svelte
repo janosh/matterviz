@@ -1116,6 +1116,18 @@
         }
         candidate_start = Math.max(0, lower_idx - 1)
         candidate_end = Math.min(points.length, lower_idx + 1)
+        while (
+          candidate_start > 0 &&
+          points[candidate_start - 1].x === points[candidate_start].x
+        ) {
+          candidate_start--
+        }
+        while (
+          candidate_end < points.length &&
+          points[candidate_end].x === points[candidate_end - 1].x
+        ) {
+          candidate_end++
+        }
       }
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
         const point = points[point_idx]
@@ -1187,7 +1199,14 @@
   }
 
   function handle_plot_click(evt: MouseEvent) {
-    if (!on_plot_click || pan_zoom.is_panning) return
+    if (
+      !on_plot_click ||
+      pan_zoom.is_panning ||
+      pan_zoom.drag_start ||
+      pan_zoom.suppress_click
+    ) {
+      return
+    }
     const coords = get_relative_coords(evt)
     if (!coords) return
     const point = closest_point_at(coords.x, coords.y)
@@ -1359,6 +1378,7 @@
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
+    event.stopPropagation()
     point_events?.onclick?.({ point, event })
     const props = construct_handler_props(point)
     tooltip_point = point
@@ -1415,13 +1435,9 @@
         {y_scale_fn}
         tween_options={effective_line_tween}
         is_hovered={hovered_fill_key === fill.hover_key}
-        on_click={(event: FillHandlerEvent) => {
-          fill.on_click?.(event)
-          on_fill_click?.(event)
-        }}
+        on_click={on_fill_click}
         on_hover={(event: FillHandlerEvent | null) => {
           hovered_fill_key = event ? fill.hover_key : null
-          fill.on_hover?.(event)
           on_fill_hover?.(event)
         }}
       />

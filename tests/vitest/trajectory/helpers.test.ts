@@ -1,5 +1,6 @@
 import {
   convert_atomic_numbers,
+  create_packed_frame_loader,
   create_structure,
   read_ndarray_from_view,
 } from '$lib/trajectory/helpers'
@@ -106,5 +107,32 @@ describe(`trajectory helpers`, () => {
 
   it(`throws for unknown atomic numbers`, () => {
     expect(() => convert_atomic_numbers([999])).toThrow(/Unknown atomic number/)
+  })
+
+  it.each([
+    {
+      signal: { sample_shape: [0], values: new Float64Array(), steps: [0] },
+      error: `invalid sample shape`,
+    },
+    {
+      signal: { sample_shape: [3], values: new Float64Array(5), steps: [0, 1] },
+      error: `5 values for 2 steps of shape [3]`,
+    },
+  ])(`rejects a packed signal with $error`, ({ signal, error }) => {
+    expect(() =>
+      create_packed_frame_loader({
+        positions: new Float64Array(6),
+        elements: [`H`],
+        steps: [0, 1],
+        metadata: [{}, {}],
+        plot_metadata: [0, 1].map((frame_number) => ({
+          frame_number,
+          step: frame_number,
+          properties: {},
+        })),
+        signals: { dipole: signal },
+        coords_unwrapped: false,
+      }),
+    ).toThrow(error)
   })
 })

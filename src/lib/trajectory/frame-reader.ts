@@ -3,7 +3,6 @@ import * as math from '$lib/math'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
-import { SvelteSet } from 'svelte/reactivity'
 import type {
   FrameIndex,
   FrameLoader,
@@ -43,6 +42,7 @@ const suggested_stride = (
   n_frames: number,
   frame_bytes: number,
   max_bytes: number,
+  frame_label = `a single frame`,
 ): number => {
   if (!(max_bytes > 0)) {
     throw new Error(`max_bytes must be positive, got ${max_bytes}`)
@@ -51,7 +51,7 @@ const suggested_stride = (
   const affordable_frames = Math.floor(max_bytes / frame_bytes)
   if (affordable_frames < 1) {
     throw new Error(
-      `a single frame needs ${frame_bytes} bytes, over the ${max_bytes} byte budget`,
+      `${frame_label} needs ${frame_bytes} bytes, over the ${max_bytes} byte budget`,
     )
   }
   return Math.max(1, Math.ceil(n_frames / affordable_frames))
@@ -83,16 +83,12 @@ export function suggest_frame_stride(
   channels: StreamChannels = NO_CHANNELS,
 ): number {
   if (n_frames < 1 || n_atoms < 1) return 1
-  const frame_bytes = bytes_per_frame(n_atoms, channels)
-  if (!(max_bytes > 0)) throw new Error(`max_bytes must be positive, got ${max_bytes}`)
-  const affordable_frames = Math.floor(max_bytes / frame_bytes)
-  if (affordable_frames < 1) {
-    throw new Error(
-      `suggest_frame_stride: a single frame of ${n_atoms} atoms needs ` +
-        `${frame_bytes} bytes, over the ${max_bytes} byte budget`,
-    )
-  }
-  return Math.max(1, Math.ceil(n_frames / affordable_frames))
+  return suggested_stride(
+    n_frames,
+    bytes_per_frame(n_atoms, channels),
+    max_bytes,
+    `suggest_frame_stride: a single frame of ${n_atoms} atoms`,
+  )
 }
 
 const frame_lattice = (frame: TrajectoryFrame): Matrix3x3 | null =>
@@ -400,6 +396,9 @@ export const parse_frame_signal = (
   if (flat_values) {
     const values = flat_values as number[]
     if (!values.every(Number.isFinite)) return null
+    if (values.length === n_atoms && per_atom_key && !tensor_key) {
+      return { values, sample_shape: [n_atoms] }
+    }
     if (values.length === 9 && (n_atoms !== 3 || tensor_key)) {
       return { values, sample_shape: [3, 3] }
     }
@@ -447,9 +446,9 @@ export async function accumulate_positions(
     signal_keys = [],
   } = options
   const channels: StreamChannels = {
-    scalar_keys: [...new SvelteSet(scalar_keys)],
-    vector_keys: [...new SvelteSet(vector_keys)],
-    signal_keys: [...new SvelteSet(signal_keys)],
+    scalar_keys: [...new Set(scalar_keys)],
+    vector_keys: [...new Set(vector_keys)],
+    signal_keys: [...new Set(signal_keys)],
   }
   if (!Number.isInteger(frame_stride) || frame_stride < 1) {
     throw new Error(

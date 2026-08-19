@@ -41,6 +41,7 @@ export interface PanZoomOptions {
 export function create_pan_zoom(opts: PanZoomOptions): {
   readonly drag_start: Point2D | null
   readonly drag_current: Point2D | null
+  readonly suppress_click: boolean
   readonly is_panning: boolean
   readonly cursor: string
   set_focused: (focused: boolean) => void
@@ -94,7 +95,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       // Ignore minuscule drag rects (e.g. accidental clicks)
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (dx > 5 && dy > 5) opts.on_rect_zoom(drag_state.start, drag_state.current)
+      if (dx > 5 && dy > 5) {
+        suppress_click = true
+        opts.on_rect_zoom(drag_state.start, drag_state.current)
+        setTimeout(() => (suppress_click = false), 0)
+      }
     }
     cancel_rect_drag()
   }
@@ -129,6 +134,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // short window after the last notch. Consumers use this to drop animation for the duration
   // of an interaction, and a tween restarted per notch would otherwise trail the axes.
   let wheel_panning = $state(false)
+  let suppress_click = $state(false)
   let wheel_pan_timer: ReturnType<typeof setTimeout> | undefined
   const mark_wheel_panning = () => {
     wheel_panning = true
@@ -299,6 +305,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     },
     get drag_current() {
       return drag_state?.current ?? null
+    },
+    get suppress_click() {
+      return suppress_click
     },
     // All three pan gestures, not just the shift-drag: a wheel or two-finger pan retargets
     // every marker per frame too, and animating that leaves them trailing the axes while

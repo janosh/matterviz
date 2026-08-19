@@ -1,17 +1,15 @@
 <script lang="ts">
   import { StatusMessage } from '$lib/feedback'
   import { format_num } from '$lib/labels'
-  import { ControlPane, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
+  import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryType } from '$lib/trajectory'
-  import { parse_frame_signal } from '$lib/trajectory/frame-reader'
   import { to_error } from '$lib/utils'
   import { Graph } from 'svelte-widgets/icons'
-  import { SvelteSet } from 'svelte/reactivity'
   import {
     collect_trajectory_spectroscopy_input,
     infrared_kind_from_key,
+    trajectory_signal_keys,
   } from './spectroscopy-collect'
-  import type { PhononModeData } from './types'
   import { create_trajectory_spectroscopy_async_runner } from './trajectory-spectroscopy-async.svelte'
   import type {
     SpectroscopyPreprocessing,
@@ -19,36 +17,13 @@
     TrajectorySpectroscopyOptions,
     TrajectorySpectroscopyResult,
   } from './trajectory-spectroscopy'
-  import TrajectorySpectroscopyExplorer from './TrajectorySpectroscopyExplorer.svelte'
-
-  const response_keys = (
-    value: TrajectoryType | undefined,
-    expected_shape: number[],
-  ): string[] => {
-    if (!value) return []
-    const shape_matches = (shape: number[] | null | undefined): boolean =>
-      shape?.length === expected_shape.length &&
-      shape.every((size, idx) => size === expected_shape[idx])
-    const keys = new SvelteSet<string>()
-    for (const [key, signal] of Object.entries(value.signals ?? {})) {
-      if (shape_matches(signal.sample_shape)) keys.add(key)
-    }
-    const n_atoms = value.frames[0]?.structure.sites.length ?? 0
-    for (const [key, metadata_value] of Object.entries(value.frames[0]?.metadata ?? {})) {
-      if (shape_matches(parse_frame_signal(metadata_value, key, n_atoms)?.sample_shape)) {
-        keys.add(key)
-      }
-    }
-    return [...keys].toSorted()
-  }
+  import TrajectorySpectrumPlot from './TrajectorySpectrumPlot.svelte'
 
   let {
     trajectory,
     raw_data = null,
     pane_open = $bindable(false),
     result = $bindable(),
-    mode_trajectory = $bindable(null),
-    harmonic_modes,
     inline = false,
     ...pane_options
   }: ViewerPaneOptions & {
@@ -56,8 +31,6 @@
     raw_data?: string | ArrayBuffer | null
     pane_open?: boolean
     result?: TrajectorySpectroscopyResult
-    mode_trajectory?: TrajectoryType | null
-    harmonic_modes?: PhononModeData
     inline?: boolean
   } = $props()
 
@@ -68,16 +41,16 @@
   let preprocessing = $state<SpectroscopyPreprocessing>(`body_fixed`)
   let analysis_time_step = $state<number>()
   let analysis_time_unit = $state(`fs`)
-  let settings_open = $state(false)
   let calculation_phase = $state<`idle` | `collecting` | `computing`>(`idle`)
+  let details_open = $state(false)
   let calculation_busy = $derived(calculation_phase !== `idle`)
   let progress = $state<ParseProgress | null>(null)
   let error_msg = $state<string>()
 
   const spectroscopy_runner = create_trajectory_spectroscopy_async_runner()
 
-  let infrared_keys = $derived(response_keys(trajectory, [3]))
-  let raman_keys = $derived(response_keys(trajectory, [3, 3]))
+  let infrared_keys = $derived(trajectory_signal_keys(trajectory, [3]))
+  let raman_keys = $derived(trajectory_signal_keys(trajectory, [3, 3]))
   let has_physical_time = $derived(
     Boolean(analysis_time_step && analysis_time_step > 0 && analysis_time_unit.trim()),
   )
@@ -124,12 +97,12 @@
     request_generation++
     spectroscopy_runner.cancel(`Trajectory spectroscopy superseded by a new trajectory`)
     result = undefined
-    mode_trajectory = null
     auto_calculation_owner = undefined
     error_msg = undefined
     completed_settings = undefined
     calculation_phase = `idle`
     progress = null
+    details_open = false
     const default_ir =
       [`dipole`, `polarization`, `current`].find((key) => infrared_keys.includes(key)) ?? ``
     infrared_key = default_ir
@@ -145,7 +118,6 @@
       first_structure.lattice.pbc.some(Boolean)
         ? `remove_com`
         : `body_fixed`
-    settings_open = false
   })
 
   $effect(() => {
@@ -192,7 +164,6 @@
     } catch (error) {
       if (request_is_current()) {
         result = undefined
-        mode_trajectory = null
         error_msg = to_error(error).message
       }
     } finally {
@@ -298,6 +269,29 @@
   {/if}
 {/snippet}
 
+{#snippet details_content()}
+  <h4 style="margin-top: 0">Spectroscopy details</h4>
+  <p>
+    VDOS is derived from atomic velocities; IR spectra use the selected dipole, polarization,
+    or current signal.
+  </p>
+  <p>Choose preprocessing and response channels in the plot controls, then recompute.</p>
+{/snippet}
+
+{#snippet header_controls()}
+  <ViewerPane
+    bind:open={details_open}
+    pane_name="spectroscopy details"
+    class_prefix="spectroscopy-details"
+    closed_icon={info_pane_icon}
+    max_width="min(32em, 90cqw)"
+    toggle_props={{ 'aria-label': `Spectroscopy details` }}
+    pane_props={{ style: `--pane-z-index: 21` }}
+  >
+    {@render details_content()}
+  </ViewerPane>
+{/snippet}
+
 {#snippet result_content()}
   {#if result}
     {#if settings_dirty}
@@ -307,7 +301,13 @@
         class="settings-dirty"
       />
     {/if}
-    <TrajectorySpectroscopyExplorer {result} {harmonic_modes} bind:mode_trajectory />
+    <TrajectorySpectrumPlot
+      {result}
+      controls_extra={inline ? settings_content : undefined}
+      {header_controls}
+      show_summary={false}
+      style="height: 100%; min-height: 0"
+    />
   {:else if error_msg}
     <StatusMessage type="error" message={error_msg} />
   {:else if trajectory && calculation_busy}
@@ -325,20 +325,7 @@
     hidden={!pane_open}
     aria-label="Trajectory IR, Raman, and vibrational DOS analysis"
   >
-    <div class="spectroscopy-analysis-surface">
-      <ControlPane
-        bind:controls_open={settings_open}
-        controls_name="spectroscopy-analysis"
-        toggle_title="spectroscopy analysis"
-        toggle_props={{ 'aria-label': `Spectroscopy analysis settings` }}
-        max_width="min(64em, 94cqw)"
-        toggle_style="position: absolute; top: 4pt; right: 0.65em; z-index: 20; width: 1.8em; height: 1.8em; padding: 0.14em; font-size: 1.2em"
-        pane_style="--pane-width: min(64em, 94cqw); --pane-padding: 16px; --pane-gap: 8px; max-height: calc(100% - 2ex); overflow: auto; z-index: 21"
-      >
-        {@render settings_content()}
-      </ControlPane>
-      {@render result_content()}
-    </div>
+    {@render result_content()}
   </section>
 {:else}
   <ViewerPane
@@ -362,20 +349,13 @@
     min-width: 0;
     min-height: 0;
     padding: var(--viewer-buttons-top, 1ex) 1ex 0;
-    overflow: hidden;
+    overflow: visible;
     container-type: inline-size;
     box-sizing: border-box;
     background: var(--plot-bg, var(--surface-bg));
     &[hidden] {
       display: none;
     }
-  }
-  .spectroscopy-analysis-surface {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
   }
   .spectroscopy-controls {
     display: grid;

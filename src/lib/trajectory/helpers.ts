@@ -6,7 +6,6 @@ import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import { SvelteSet } from 'svelte/reactivity'
 import type {
   FrameLoader,
   ParseProgress,
@@ -155,6 +154,24 @@ const required_packed_channel = <Value>(
   return channel
 }
 
+const copy_packed_channels = (
+  channels: Record<string, Float64Array> | undefined,
+  keys: string[],
+  kind: `scalar` | `vector`,
+  frame_indices: number[],
+  values_per_frame: number,
+): Record<string, Float64Array> =>
+  Object.fromEntries(
+    keys.map((key) => [
+      key,
+      copy_packed_samples(
+        required_packed_channel(channels, key, kind),
+        frame_indices,
+        values_per_frame,
+      ),
+    ]),
+  )
+
 const validate_packed_channels = (
   channels: Record<string, Float64Array> | undefined,
   expected_length: number,
@@ -224,6 +241,18 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
   }
   validate_packed_channels(store.scalars, n_frames * n_atoms, `scalar`)
   validate_packed_channels(store.vectors, n_frames * position_values_per_frame, `vector`)
+  for (const [key, signal] of Object.entries(store.signals ?? {})) {
+    if (!signal.sample_shape.every((size) => Number.isInteger(size) && size > 0)) {
+      throw new Error(`Packed trajectory signal ${key} has an invalid sample shape`)
+    }
+    const values_per_sample = signal.sample_shape.reduce((product, size) => product * size, 1)
+    if (signal.values.length !== signal.steps.length * values_per_sample) {
+      throw new Error(
+        `Packed trajectory signal ${key} has ${signal.values.length} values for ` +
+          `${signal.steps.length} steps of shape [${signal.sample_shape.join(`, `)}]`,
+      )
+    }
+  }
 
   const lattice_for_frame = (frame_number: number): math.Matrix3x3 | undefined => {
     if (!store.lattice_matrices) return store.lattice_matrix
@@ -296,9 +325,9 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
       on_progress?: (progress: ParseProgress) => void,
     ): Promise<TrajectoryPositionStream> => {
       const frame_indices = packed_frame_indices(n_frames, options.frame_stride)
-      const scalar_keys = [...new SvelteSet(options.scalar_keys)]
-      const vector_keys = [...new SvelteSet(options.vector_keys)]
-      const signal_keys = [...new SvelteSet(options.signal_keys)]
+      const scalar_keys = [...new Set(options.scalar_keys)]
+      const vector_keys = [...new Set(options.vector_keys)]
+      const signal_keys = [...new Set(options.signal_keys)]
       const missing_channels = [
         ...scalar_keys.filter((key) => !store.scalars?.[key]),
         ...vector_keys.filter((key) => !store.vectors?.[key]),
@@ -321,7 +350,7 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
       const needed_bytes =
         frame_indices.length * values_per_frame * Float64Array.BYTES_PER_ELEMENT
       const max_bytes = options.max_bytes ?? Number.POSITIVE_INFINITY
-      if (!(max_bytes > 0) || Number.isNaN(max_bytes)) {
+      if (!(max_bytes > 0)) {
         throw new Error(`Packed trajectory max_bytes must be positive, got ${max_bytes}`)
       }
       if (needed_bytes > max_bytes) {
@@ -338,25 +367,19 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
             `bytes, over the ${max_bytes} byte budget. Use frame_stride >= ${minimum_stride}.`,
         )
       }
-      const scalars = Object.fromEntries(
-        scalar_keys.map((key) => [
-          key,
-          copy_packed_samples(
-            required_packed_channel(store.scalars, key, `scalar`),
-            frame_indices,
-            n_atoms,
-          ),
-        ]),
+      const scalars = copy_packed_channels(
+        store.scalars,
+        scalar_keys,
+        `scalar`,
+        frame_indices,
+        n_atoms,
       )
-      const vectors = Object.fromEntries(
-        vector_keys.map((key) => [
-          key,
-          copy_packed_samples(
-            required_packed_channel(store.vectors, key, `vector`),
-            frame_indices,
-            position_values_per_frame,
-          ),
-        ]),
+      const vectors = copy_packed_channels(
+        store.vectors,
+        vector_keys,
+        `vector`,
+        frame_indices,
+        position_values_per_frame,
       )
       const signals = Object.fromEntries(
         signal_keys.map((key) => [
@@ -401,7 +424,7 @@ export const create_packed_frame_loader = (store: TrajectoryFrameStore): FrameLo
 }
 
 export const packed_frame_transferables = (store: TrajectoryFrameStore): ArrayBuffer[] => {
-  const buffers = new SvelteSet<ArrayBuffer>()
+  const buffers = new Set<ArrayBuffer>()
   const add = (values: Float64Array) => buffers.add(values.buffer as ArrayBuffer)
   add(store.positions)
   if (store.lattice_matrices) add(store.lattice_matrices)

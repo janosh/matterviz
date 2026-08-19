@@ -178,8 +178,10 @@ describe(`trajectory spectroscopy worker code path`, () => {
   })
 
   it(`targets the spectroscopy worker module and reuses one module worker`, async () => {
+    const count_before = construction_count
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
+    expect(construction_count - count_before).toBeLessThanOrEqual(1)
     expect(construction_count).toBe(1)
     expect(last_worker_url).toMatch(
       /\/src\/lib\/spectral\/trajectory-spectroscopy-worker\.ts\?worker_file/,

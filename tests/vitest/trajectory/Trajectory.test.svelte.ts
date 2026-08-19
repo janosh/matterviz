@@ -90,8 +90,6 @@ const spectroscopy_result: TrajectorySpectroscopyResult = {
   masses: [1],
   pbc: [false, false, false],
   reference_lattice: null,
-  n_trajectories: 1,
-  n_segments: 1,
   metadata: {},
 }
 const make_stepped_traj = (time_step?: number) => ({
@@ -834,6 +832,12 @@ describe(`Trajectory`, () => {
   // its own bindable open flag rather than all of them sharing one. MSD also must not
   // reappear as a top-level toggle outside the menu.
   test(`analysis menu opens each pane`, async () => {
+    spectroscopy_mocks.collect.mockResolvedValue({})
+    spectroscopy_mocks.compute.mockResolvedValue(spectroscopy_result)
+    onTestFinished(() => {
+      spectroscopy_mocks.collect.mockReset()
+      spectroscopy_mocks.compute.mockReset()
+    })
     const options = [
       [`Mean squared displacement`, `msd_pane_open`],
       [`Velocity autocorrelation & VDOS`, `vacf_pane_open`],
@@ -865,19 +869,23 @@ describe(`Trajectory`, () => {
       expect(props[open_prop]).toBe(true)
       expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
       if (open_prop === `spectroscopy_pane_open`) {
-        const settings_pane = doc_query(`.spectroscopy-analysis-controls-pane`)
-        expect(settings_pane.classList).not.toContain(`pane-open`)
-        const settings_toggle = doc_query<HTMLButtonElement>(
-          `.spectroscopy-analysis-controls-toggle`,
+        const spectroscopy = doc_query(`.trajectory-spectroscopy-inline`)
+        await vi.waitFor(() =>
+          expect(spectroscopy.querySelector(`.plot-controls-toggle`)).not.toBeNull(),
         )
+        expect(spectroscopy.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()
+        const settings_pane = spectroscopy.querySelector<HTMLElement>(`.plot-controls-pane`)
+        if (!settings_pane) throw new Error(`missing spectroscopy plot controls`)
+        expect(settings_pane.classList).not.toContain(`pane-open`)
+        const settings_toggle =
+          spectroscopy.querySelector<HTMLButtonElement>(`.plot-controls-toggle`)
+        if (!settings_toggle) throw new Error(`missing spectroscopy settings toggle`)
         settings_toggle.click()
         await tick()
         expect(settings_pane.classList).toContain(`pane-open`)
-        expect(target.textContent).toContain(`IR response`)
-        expect(target.textContent).toContain(`Raman tensor`)
-        expect(target.textContent).toContain(`Preprocessing`)
-        settings_toggle.click()
-        await tick()
+        expect(settings_pane.textContent).toContain(`IR response`)
+        expect(settings_pane.textContent).toContain(`Raman tensor`)
+        expect(settings_pane.textContent).toContain(`Preprocessing`)
       }
     }
   })

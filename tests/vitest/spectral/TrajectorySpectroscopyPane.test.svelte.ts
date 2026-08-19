@@ -90,8 +90,6 @@ const make_result = (name: string): TrajectorySpectroscopyResult => {
     masses: [1],
     pbc: [false, false, false],
     reference_lattice: null,
-    n_trajectories: 1,
-    n_segments: 1,
     metadata: { name },
   }
 }
@@ -117,15 +115,17 @@ beforeEach(() => {
   mocks.cancel.mockReset()
 })
 
-test(`snapshots settings before collection and marks a changed result as stale`, async () => {
-  const collection = Promise.withResolvers<TrajectorySpectroscopyInput>()
-  mocks.collect.mockReturnValue(collection.promise)
-  mocks.compute.mockResolvedValue(make_result(`first`))
+test(`recomputes from changed settings and marks the prior result as stale`, async () => {
+  const recomputation = Promise.withResolvers<TrajectorySpectroscopyResult>()
+  mocks.collect.mockResolvedValue(make_input())
+  mocks.compute
+    .mockResolvedValueOnce(make_result(`first`))
+    .mockReturnValueOnce(recomputation.promise)
   const target = render_pane({ trajectory: make_trajectory() })
 
-  await vi.waitFor(() => expect(mocks.collect).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
   const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
-  expect(fieldset?.disabled).toBe(true)
+  expect(fieldset?.disabled).toBe(false)
   const timestep = target.querySelector<HTMLInputElement>(
     `input[aria-label="Simulation timestep"]`,
   )
@@ -133,18 +133,26 @@ test(`snapshots settings before collection and marks a changed result as stale`,
   timestep.value = `2`
   timestep.dispatchEvent(new Event(`input`, { bubbles: true }))
 
-  collection.resolve(make_input())
-  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  const [calculation_input, calculation_options] = mocks.compute.mock.calls[0]
-  expect(calculation_input).toMatchObject({ time_step: 1, time_unit: `fs` })
+  await vi.waitFor(() =>
+    expect(target.textContent).toContain(
+      `Spectroscopy settings changed. Recompute to update the displayed result.`,
+    ),
+  )
+  const button = [...target.querySelectorAll(`button`)].find((element) =>
+    element.textContent?.includes(`Recompute spectroscopy`),
+  )
+  if (!button) throw new Error(`missing recompute button`)
+  button.click()
+  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
+  const [calculation_input, calculation_options] = mocks.compute.mock.calls[1]
+  expect(calculation_input).toMatchObject({ time_step: 2, time_unit: `fs` })
   expect(calculation_options).toMatchObject({
     frequency_unit: `cm^-1`,
     preprocessing: `body_fixed`,
   })
+  expect(fieldset?.disabled).toBe(true)
+  recomputation.resolve(make_result(`second`))
   await vi.waitFor(() => expect(fieldset?.disabled).toBe(false))
-  expect(target.textContent).toContain(
-    `Spectroscopy settings changed. Recompute to update the displayed result.`,
-  )
 })
 
 test(`marks spectra stale when the indexed source changes`, async () => {

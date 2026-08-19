@@ -13,7 +13,6 @@ import {
   should_hide_plot,
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
-import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame } from '../setup'
 
@@ -89,7 +88,7 @@ describe(`generate_plot_series`, () => {
       test_extractor,
       {
         property_config: DEFAULT_PROPERTY_CONFIG,
-        default_visible_properties: new SvelteSet([`energy`, `force_max`]),
+        default_visible_properties: new Set([`energy`, `force_max`]),
       },
     )
     expect(series).toHaveLength(3)
@@ -132,7 +131,7 @@ describe(`generate_plot_series`, () => {
           same_group: { label: `Same group`, unit: `shared` },
           hidden_group: { label: `Hidden group`, unit: `other` },
         },
-        default_visible_properties: new SvelteSet([`selected`]),
+        default_visible_properties: new Set([`selected`]),
       }),
       expected: {
         Selected: { visible: true, y_axis: `y1` },
@@ -152,7 +151,7 @@ describe(`generate_plot_series`, () => {
           force: { label: `Force`, unit: `eV/Å` },
           energy: { label: `Energy`, unit: `eV` },
         },
-        default_visible_properties: new SvelteSet([`temperature`, `force`, `energy`]),
+        default_visible_properties: new Set([`temperature`, `force`, `energy`]),
       }),
       expected: {
         Energy: { visible: true, y_axis: `y1` },
@@ -171,7 +170,7 @@ describe(`generate_plot_series`, () => {
           temperature: { label: `Temperature`, unit: `K` },
           energy: { label: `Energy`, unit: `eV` },
         },
-        default_visible_properties: new SvelteSet(),
+        default_visible_properties: new Set(),
       }),
       expected: {
         Energy: { visible: true, y_axis: `y1` },
@@ -394,7 +393,7 @@ describe(`streaming visibility characterization`, () => {
       .toSorted((left, right) => left.label?.localeCompare(right.label ?? ``) ?? -1)
 
   it(`keeps eager and streaming axis assignment in parity for matching visibility inputs`, () => {
-    const default_visible_properties = new SvelteSet(Object.keys(property_config))
+    const default_visible_properties = new Set(Object.keys(property_config))
     const eager = generate_plot_series(create_trajectory(property_frames), test_extractor, {
       property_config,
       default_visible_properties,
@@ -409,7 +408,7 @@ describe(`streaming visibility characterization`, () => {
   it(`limits default visibility to two prioritized axis groups`, () => {
     const series = generate_streaming_plot_series(plot_metadata, {
       property_config,
-      default_visible_properties: new SvelteSet([`energy`]),
+      default_visible_properties: new Set([`energy`]),
     })
     const axis_assignments = series
       .map(({ label, visible, y_axis }) => ({ label, visible, y_axis }))

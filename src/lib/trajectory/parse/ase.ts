@@ -36,7 +36,13 @@ export const ase_calculator_data = (
     }
     if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
     const reference = value as { ndarray: unknown[] }
-    const shape = reference.ndarray[0] as number[]
+    const shape = reference.ndarray[0]
+    if (
+      !Array.isArray(shape) ||
+      !shape.every((dimension) => Number.isInteger(dimension) && dimension > 0)
+    ) {
+      continue
+    }
     const size = shape.reduce((total, dimension) => total * dimension, 1)
     if (![3, 9].includes(size)) continue
     const result_key = key.endsWith(`.`) ? key.slice(0, -1) : key

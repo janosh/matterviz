@@ -202,6 +202,10 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     })
     expect(input.velocities).toBe(trajectory.signals.velocity)
     expect(input.raman_signal).toBe(explicit_raman)
+    expect(input.metadata?.signal_sources).toMatchObject({
+      velocity: `velocity`,
+      raman: { key: null, kind: `polarizability` },
+    })
   })
 
   it(`requires explicit continuity before accepting polarization as IR input`, async () => {
