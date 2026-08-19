@@ -21,6 +21,7 @@
   import {
     compute_element_placement,
     constrain_tooltip_position,
+    controls_toggle_with_offset,
     filter_padding,
   } from '$lib/plot/core/layout'
   import type { Sides } from '$lib/plot/core/layout'
@@ -584,12 +585,7 @@
 
   {#if show_controls}
     <SankeyControls
-      toggle_props={{
-        ...controls_toggle_props,
-        style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
-          controls_toggle_props?.style ?? ``
-        }`,
-      }}
+      toggle_props={controls_toggle_with_offset(controls_toggle_props)}
       pane_props={controls_pane_props}
       bind:show_controls
       bind:controls_open

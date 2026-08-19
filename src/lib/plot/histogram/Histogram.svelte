@@ -30,7 +30,7 @@
     legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
+  import { AXIS_TITLE_OFFSET, controls_toggle_with_offset } from '$lib/plot/core/layout'
   import { build_obstacles_norm, clip_bar } from '$lib/plot/core/decorations'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
@@ -579,12 +579,7 @@
 
     {#if show_controls}
       <HistogramControls
-        toggle_props={{
-          ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
-            controls_toggle_props?.style ?? ``
-          }`,
-        }}
+        toggle_props={controls_toggle_with_offset(controls_toggle_props)}
         pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open

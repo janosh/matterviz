@@ -38,7 +38,11 @@
     create_legend_visibility,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
+  import {
+    controls_toggle_with_offset,
+    DEFAULT_PLOT_PADDING,
+    filter_padding,
+  } from '$lib/plot/core/layout'
   import { LOG_EPS } from '$lib/math'
   import type { IndexedRefLine } from '$lib/plot/core/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/core/reference-line'
@@ -940,12 +944,7 @@
 
     {#if show_controls}
       <BoxPlotControls
-        toggle_props={{
-          ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
-            controls_toggle_props?.style ?? ``
-          }`,
-        }}
+        toggle_props={controls_toggle_with_offset(controls_toggle_props)}
         pane_props={controls_pane_props}
         bind:show_controls
         bind:controls_open

@@ -50,6 +50,14 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 const SHOW_BONDS_ENUM = Object.fromEntries(
   SHOW_BONDS_OPTIONS.map((key) => [key, key[0].toUpperCase() + key.slice(1)]),
 ) as Readonly<Record<ShowBonds, string>>
+const color_scheme_enum = () => ({
+  Vesta: `Vesta`,
+  Jmol: `Jmol`,
+  Alloy: `Alloy`,
+  Pastel: `Pastel`,
+  Muted: `Muted`,
+  'Dark Mode': `Dark Mode`,
+})
 
 // Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
 // resolve_legend_visibility rule so single-entry plots don't grow a pointless legend.
@@ -120,22 +128,16 @@ type DisplayConfigType = {
   y_zero_line: SettingType<boolean>
 }
 
-type BarStyleType = {
+type ColorStrokeStyleType = {
   color: SettingType<string>
   opacity: SettingType<number>
   stroke_width: SettingType<number>
   stroke_color: SettingType<string>
-  stroke_opacity: SettingType<number>
 }
 
-type PointStyleType = {
-  size: SettingType<number>
-  color: SettingType<string>
-  opacity: SettingType<number>
-  stroke_width: SettingType<number>
-  stroke_color: SettingType<string>
-  stroke_opacity: SettingType<number>
-}
+type MarkStyleType = ColorStrokeStyleType & { stroke_opacity: SettingType<number> }
+type BarStyleType = MarkStyleType
+type PointStyleType = MarkStyleType & { size: SettingType<number> }
 
 type LineStyleType = {
   width: SettingType<number>
@@ -152,13 +154,7 @@ type SimpleBarStyleType = {
 
 type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
 
-type BoxStyleType = {
-  color: SettingType<string>
-  opacity: SettingType<number>
-  stroke_width: SettingType<number>
-  stroke_color: SettingType<string>
-  border_radius: SettingType<number>
-}
+type BoxStyleType = ColorStrokeStyleType & { border_radius: SettingType<number> }
 
 type BoxWhiskerStyleType = {
   width: SettingType<number>
@@ -166,7 +162,7 @@ type BoxWhiskerStyleType = {
   cap_fraction: SettingType<number>
 }
 
-type BoxLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+type BoxLineStyleType = SimpleLineStyleType
 
 type BoxOutlierStyleType = {
   radius: SettingType<number>
@@ -637,14 +633,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   color_scheme: {
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
-    enum: {
-      Vesta: `Vesta`,
-      Jmol: `Jmol`,
-      Alloy: `Alloy`,
-      Pastel: `Pastel`,
-      Muted: `Muted`,
-      'Dark Mode': `Dark Mode`,
-    },
+    enum: color_scheme_enum(),
   },
   background_color: {
     value: `#000000`,
@@ -1478,14 +1467,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     color_scheme: {
       value: `Vesta`,
       description: `Color scheme for composition visualization`,
-      enum: {
-        Vesta: `Vesta`,
-        Jmol: `Jmol`,
-        Alloy: `Alloy`,
-        Pastel: `Pastel`,
-        Muted: `Muted`,
-        'Dark Mode': `Dark Mode`,
-      },
+      enum: color_scheme_enum(),
     },
   },
 

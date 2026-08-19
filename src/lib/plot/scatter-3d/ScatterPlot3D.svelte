@@ -7,7 +7,7 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { build_legend_items, get_series_color } from '$lib/plot/core/data-transform'
-  import type { Sides } from '$lib/plot/core/layout'
+  import { controls_toggle_with_offset, type Sides } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -317,12 +317,7 @@
       <ScatterPlot3DControls
         bind:show_controls
         bind:controls_open
-        toggle_props={{
-          ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 32px); ${
-            controls_toggle_props?.style ?? ``
-          }`,
-        }}
+        toggle_props={controls_toggle_with_offset(controls_toggle_props, 32)}
         pane_props={{
           ...controls_pane_props,
           // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
