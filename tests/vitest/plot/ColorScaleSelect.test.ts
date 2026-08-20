@@ -55,7 +55,7 @@ describe(`ColorScaleSelect`, () => {
   test(`passes color_bar props to ColorBar snippet`, async () => {
     // Verifies that props passed via the color_bar prop are applied to the ColorBar component.
     const custom_color_bar_props = {
-      tick_align: `secondary` as const,
+      tick_side: `secondary` as const,
       title_side: `right` as const,
       wrapper_style: `border: 1px dashed red;`,
     }

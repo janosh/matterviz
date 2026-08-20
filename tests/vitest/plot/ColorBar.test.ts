@@ -349,22 +349,19 @@ describe(`ColorBar Numeric Formatting`, () => {
 })
 
 describe(`ColorBar Other Features`, () => {
-  test(`uses explicit tick_labels array`, () => {
-    const explicit_ticks = [10, 25, 50, 75, 90]
+  test(`uses explicit tick_labels array, dropping duplicates and non-numbers`, () => {
     mount(ColorBar, {
       target: document.body,
       props: {
         range: [0, 100],
-        tick_labels: explicit_ticks,
+        tick_labels: [10, 25, `50`, 50, `n/a`, 75, 90],
         snap_ticks: true, // snap_ticks should be ignored when array is passed
       },
     })
-
-    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans).toHaveLength(explicit_ticks.length)
-    explicit_ticks.forEach((tick_value, idx) => {
-      expect(tick_label_spans[idx].textContent).toBe(tick_value.toString())
-    })
+    const texts = [...document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)].map(
+      (span) => span.textContent,
+    )
+    expect(texts).toEqual([`10`, `25`, `50`, `75`, `90`])
   })
 
   test(`snap_ticks=false generates exact number of ticks`, () => {
@@ -398,6 +395,52 @@ describe(`ColorBar Other Features`, () => {
     // Title row should have top class
     const title_row = doc_query(`.colorbar .title-row`)
     expect(title_row.classList.contains(`top`)).toBe(true)
+  })
+
+  test.each([
+    {
+      scale_type: `log`,
+      range: [1, 1000],
+      ticks: [`1`, `10`, `100`, `1k`],
+      left: [0, 100 / 3, 200 / 3, 100],
+    },
+    // nice() widens the log domain to whole decades: [0.05, 3] -> [0.01, 10]
+    {
+      scale_type: `log`,
+      range: [0.05, 3],
+      ticks: [`0.01`, `0.1`, `1`, `10`],
+      left: [0, 100 / 3, 200 / 3, 100],
+    },
+    {
+      scale_type: `linear`,
+      range: [100, 0],
+      ticks: [`100`, `80`, `60`, `40`, `20`, `0`],
+      left: [0, 20, 40, 60, 80, 100],
+    },
+  ] as const)(`$scale_type ticks for range $range`, ({ scale_type, range, ticks, left }) => {
+    mount(ColorBar, {
+      target: document.body,
+      props: { range: [...range], scale_type, tick_labels: 4, snap_ticks: true },
+    })
+    const spans = [...document.querySelectorAll<HTMLElement>(`.colorbar .tick-label`)]
+    expect(spans.map((span) => span.textContent)).toEqual(ticks)
+    spans.forEach((span, idx) =>
+      expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(left[idx], 6),
+    )
+  })
+
+  test(`descending range reverses the gradient and reports the niced range`, async () => {
+    const state = { nice_range: [0, 1] as Vec2 }
+    mount(ColorBar, {
+      target: document.body,
+      props: bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state),
+    })
+    await tick()
+    expect(state.nice_range).toEqual([100, 0])
+    const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
+    const [first, , last] = gradient.match(/#[0-9a-f]{6}/g) ?? []
+    expect(first).toBe(d3_sc.interpolateViridis(1)) // value 99 sits at the left end
+    expect(last).toBe(d3_sc.interpolateViridis(0))
   })
 
   test(`accepts a custom interpolator`, () => {

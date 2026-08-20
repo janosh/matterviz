@@ -1,34 +1,6 @@
-import {
-  build_gizmo_props,
-  build_orbit_props,
-  mirror_scene_props,
-  GIZMO_DEFAULT_STYLES,
-  page_visibility,
-} from '$lib/scene'
+import { build_orbit_props, mirror_scene_props, page_visibility } from '$lib/scene'
 import { DEFAULTS } from '$lib/settings'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-
-describe(`build_gizmo_props`, () => {
-  test(`shared axis defaults`, () => {
-    expect(build_gizmo_props(true)).toEqual({ offset: { left: 5, bottom: 5 } })
-    // negative axes render denser than positive ones
-    const { nx, x: px } = GIZMO_DEFAULT_STYLES
-    expect([nx.opacity, nx.hover?.opacity]).toEqual([0.9, 1])
-    expect([px.opacity, px.hover?.opacity]).toEqual([0.8, 0.9])
-  })
-
-  test(`object gizmo overrides axes and merges offset over the defaults`, () => {
-    const props = build_gizmo_props({
-      size: 42,
-      x: { color: `#abc` },
-      offset: { right: 10, bottom: 20 },
-    }) as Record<string, unknown>
-    expect(props.size).toBe(42)
-    expect(props.x).toEqual({ color: `#abc` })
-    // caller edges win; edges it left out keep their defaults
-    expect(props.offset).toEqual({ left: 5, bottom: 20, right: 10 })
-  })
-})
 
 describe(`build_orbit_props`, () => {
   const opts: Parameters<typeof build_orbit_props>[0] = {
@@ -54,11 +26,6 @@ describe(`build_orbit_props`, () => {
     expect([props.autoRotate, props.enableDamping]).toEqual([false, true])
     expect(props.zoomSpeed).toBe(0.5)
     expect(build_orbit_props({ ...opts, camera_projection: `orthographic` }).zoomSpeed).toBe(1)
-    // onstart/onend are safe when set_camera_is_moving is omitted
-    expect(() => {
-      props.onstart()
-      props.onend()
-    }).not.toThrow()
   })
 
   // Rotation feel is easy to regress by nudging one default, and neither number reads as

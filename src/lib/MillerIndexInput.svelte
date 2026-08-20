@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Compact single-field input for Miller indices (hkl).
-  // Accepts "001", "111", "-101", "1 0 1", "10, 0, 1" and emits a Vec3 tuple.
   import type { Vec3 } from '$lib/math'
   import type { HTMLInputAttributes } from 'svelte/elements'
 
@@ -11,44 +9,63 @@
     label = `hkl`,
     ...rest
     // Omit `value`: HTMLInputAttributes types it as string|number|string[], which would
-    // intersect with Vec3 to an unusable type and make `.every()` infer `any`
+    // intersect with Vec3 to an unusable type
   }: { value?: Vec3; label?: string } & Omit<HTMLInputAttributes, `value`> = $props()
 
-  // Format: compact "001" for single-digit, spaced "10 0 1" for multi-digit
-  let hkl_text = $derived(
-    value.every((component) => Math.abs(component) < 10) ? value.join(``) : value.join(` `),
-  )
+  // Crystallographic bar notation: combining macron U+0304 or overline U+0305 after a digit
+  const BAR = /[\u0304\u0305]/g
+  // A barred index is negative: "1̄2̄" and "12̄" both mean -12
+  const unbar = (part: string): string => {
+    const digits = part.replaceAll(BAR, ``)
+    return digits === part ? part : `-${digits}`
+  }
 
-  // Parse hkl string: supports compact "001"/"-101" and spaced/comma "10, 0, 1"
+  // Parse Miller indices typed as compact single digits ("001", "-101", "1̄01") or as three
+  // whitespace/comma-separated integers ("10 0 1", "10, 0, -1", "1̄2̄ 0 1"). Returns null for
+  // anything that is not exactly three integers, so partial input never emits a value.
   function parse_hkl(input: string): Vec3 | null {
-    // Try spaced/comma format first (handles multi-digit)
-    const spaced = input.trim().split(/[,\s]+/)
-    if (spaced.length === 3) {
-      const nums = spaced.map(Number)
-      if (nums.every((num) => !isNaN(num))) return nums as Vec3
-    }
-    // Fall back to compact single-digit format: "001", "-101"
-    const compact = input.replaceAll(/\s+/g, ``)
-    const match = compact.match(/^(?<h>-?\d)(?<k>-?\d)(?<l>-?\d)$/)
-    if (match) return [Number(match[1]), Number(match[2]), Number(match[3])] as Vec3
-    return null
+    const text = input.trim()
+    const parts = /[\s,]/.test(text)
+      ? text.split(/[\s,]+/).map(unbar)
+      : (text
+          .match(
+            /^(?<h>-?\d[\u0304\u0305]?)(?<k>-?\d[\u0304\u0305]?)(?<l>-?\d[\u0304\u0305]?)$/,
+          )
+          ?.slice(1)
+          .map(unbar) ?? [])
+    if (parts.length !== 3 || !parts.every((part) => /^-?\d+$/.test(part))) return null
+    return parts.map(Number) as Vec3
   }
 
-  function oninput(event: Event & { currentTarget: HTMLInputElement }) {
-    const parsed = parse_hkl(event.currentTarget.value)
-    if (parsed) value = parsed
-  }
+  // Compact "001" when every index is a single digit, else spaced "10 0 1"
+  const format_hkl = (hkl: Vec3): string =>
+    hkl.every((idx) => Math.abs(idx) < 10) ? hkl.join(``) : hkl.join(` `)
+
+  let input_el: HTMLInputElement | undefined = $state()
+
+  // Sync the text from `value` only when the two disagree, so an external change (preset,
+  // parent reset) re-renders but the user's own typing ("10 0", "1, 0, 1") is never rewritten
+  $effect(() => {
+    if (!input_el) return
+    const typed = parse_hkl(input_el.value)
+    if (!typed || typed.some((idx, dim) => idx !== value[dim])) {
+      input_el.value = format_hkl(value)
+    }
+  })
 </script>
 
 <label class="miller-input">
   <span>{label}</span>
   <input
+    bind:this={input_el}
     type="text"
-    value={hkl_text}
-    {oninput}
+    oninput={(event) => {
+      const parsed = parse_hkl(event.currentTarget.value)
+      if (parsed) value = parsed
+    }}
     placeholder="001"
     maxlength="12"
-    title="{label} indices (e.g. 001, -101, or 10 0 1)"
+    title="{label} indices (e.g. 001, -101 or 10 0 1)"
     {...rest}
   />
 </label>

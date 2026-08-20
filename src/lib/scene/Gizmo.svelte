@@ -10,25 +10,22 @@
   import { untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-  import { create_fly_to } from './fly-to'
+  import { create_fly_to, DEFAULT_FLY_TO_DURATION_MS } from './fly-to'
   import type { GizmoAxisKey, GizmoAxisStyle, GizmoOptions } from './gizmo'
-  import { GIZMO_AXES, GIZMO_DEFAULT_STYLES, GIZMO_LAYOUT } from './gizmo'
+  import { GIZMO_AXES, GIZMO_DEFAULT_STYLES, GIZMO_LAYOUT, gizmo_rect } from './gizmo'
 
   let {
     visible = true,
-    placement = `bottom-left`,
+    placement,
     size,
-    offset = {},
-    animation_duration = 400,
+    offset,
+    animation_duration = DEFAULT_FLY_TO_DURATION_MS,
     fade_duration = 200,
-    controls,
     onstart,
     onchange,
     onend,
     ...axis_styles
   }: GizmoOptions & {
-    // Defaults to the parent object, matching upstream's <OrbitControls><Gizmo /> nesting.
-    controls?: OrbitControls
     onstart?: () => void
     onchange?: () => void
     onend?: () => void
@@ -43,8 +40,9 @@
     shouldRender,
     size: canvas_size,
   } = useThrelte<THREE.WebGPURenderer>()
+  // The orbit controls are the parent object, matching upstream's <OrbitControls><Gizmo /> nesting
   const parent = useParent()
-  const active_controls = $derived(controls ?? ($parent as OrbitControls | undefined))
+  const active_controls = $derived($parent as OrbitControls | undefined)
 
   const gizmo_scene = new THREE.Scene()
   const gizmo_camera = new THREE.OrthographicCamera(
@@ -171,23 +169,9 @@
     invalidate()
   })
 
-  // Where the gizmo draws, in CSS px from the canvas's top-left — the origin both
-  // Renderer.setViewport/setScissor and pointer coordinates use
-  const rect = $derived.by(() => {
-    const { width, height } = $canvas_size
-    if (placement === `fill`) return { x: 0, y: 0, width, height }
-    // Unsized gizmos scale with the viewport, as the old DOM gizmo did via CSS clamp()
-    const responsive = Math.min(100, Math.max(70, 0.18 * Math.min(width, height)))
-    const box = Math.min(size ?? responsive, width, height)
-    const gap = 5
-    const x = placement.endsWith(`-left`)
-      ? (offset.left ?? gap)
-      : width - box - (offset.right ?? gap)
-    const y = placement.startsWith(`top`)
-      ? (offset.top ?? gap)
-      : height - box - (offset.bottom ?? gap)
-    return { x, y, width: box, height: box }
-  })
+  const rect = $derived(
+    gizmo_rect({ placement, size, offset }, $canvas_size.width, $canvas_size.height),
+  )
 
   // Point the gizmo camera like the scene camera so handles read as the scene's world axes.
   // Distance is fixed; the ortho frustum sets the on-screen size.
@@ -321,8 +305,10 @@
         invalidate()
       }
 
-      // `initialized` guards the frames before the GPU device resolves; render() throws then
-      if (fade <= 0 || !shouldRender() || !renderer?.initialized) return
+      // `initialized` guards the frames before the GPU device resolves; render() throws then.
+      // A pre-layout 0x0 canvas has nowhere to draw, and WebGPU rejects an empty viewport.
+      if (fade <= 0 || rect.width <= 0 || rect.height <= 0) return
+      if (!shouldRender() || !renderer?.initialized) return
 
       for (const handle of handles) {
         handle.mesh.material.opacity = handle.base_opacity * fade

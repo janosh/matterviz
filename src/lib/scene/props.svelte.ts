@@ -40,17 +40,6 @@ export type SceneControlProps = {
   camera?: Camera // bindable: active camera for external use
 }
 
-// ScatterPlot3DScene keeps its own gizmo/orbit props on purpose: its gizmo offset is
-// ColorBar-aware and its orbit controls differ by design (no zoom-to-cursor / ortho
-// zoom-doubling / camera-moving tracking).
-
-// Shared Gizmo config; per-axis appearance comes from GIZMO_DEFAULT_STYLES inside the gizmo
-export function build_gizmo_props(gizmo: boolean | GizmoOptions): GizmoOptions {
-  const overrides = typeof gizmo === `object` ? gizmo : {}
-  // offset is merged, not replaced, so callers can nudge one edge (e.g. to clear a ColorBar)
-  return { ...overrides, offset: { left: 5, bottom: 5, ...overrides.offset } }
-}
-
 // Fit must stay reachable: it becomes the zoom-out floor and lifts a too-low ceiling.
 // Infinity (OrbitControls' own default) rather than undefined, which would clamp to NaN.
 export const get_orthographic_zoom_bounds = (
@@ -133,7 +122,8 @@ export function create_orthographic_zoom(opts: {
   }
 }
 
-// Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving (e.g. StructureScene closes hover tooltips/context menus)
+// Shared OrbitControls config; `onstart_extra` runs extra cleanup when the camera starts moving
+// (e.g. StructureScene closes hover tooltips/context menus).
 export function build_orbit_props(opts: {
   camera_projection: CameraProjection
   target: Vec3
@@ -152,7 +142,6 @@ export function build_orbit_props(opts: {
 }) {
   const is_ortho = opts.camera_projection === `orthographic`
   return {
-    position: [0, 0, 0] as Vec3,
     target: opts.target,
     enableRotate: opts.rotate_speed > 0,
     rotateSpeed: opts.rotate_speed,

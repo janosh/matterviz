@@ -6,7 +6,7 @@
   import { load_from_url, type FileLoadMeta } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { format_num } from '$lib/labels'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import { replace_url } from '$site/state.svelte'
   import type {
@@ -59,7 +59,7 @@
         return
       }
 
-      structure = parse_any_structure(text, filename)
+      structure = parse_structure_file(text, filename)
       volumetric_data = undefined
     } catch (exc) {
       error_msg = `Failed to parse ${filename}: ${to_error(exc).message}`

@@ -5,18 +5,12 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  // Delay for distinguishing click from double-click (ms)
-  const CLICK_DELAY = 250
-
   let {
     files = [],
     active_files = [],
     show_category_filters = false,
-    layout = `wrap`,
     on_drag_start,
-    on_drag_end,
     on_click,
-    on_dblclick,
     type_mapper,
     file_type_paints = DEFAULT_FILE_TYPE_PAINTS,
     ...rest
@@ -24,11 +18,8 @@
     files?: FileInfo[]
     active_files?: string[]
     show_category_filters?: boolean
-    layout?: `wrap` | `vertical`
     on_drag_start?: (file: FileInfo, event: DragEvent) => void
-    on_drag_end?: () => void
     on_click?: (file: FileInfo, event: MouseEvent | KeyboardEvent) => void
-    on_dblclick?: (file: FileInfo, event: MouseEvent) => void
     type_mapper?: (file: FileInfo) => string
     // Per-file-type fills. `badge` paints the uppercase type chip, `item` the file row.
     // Build them with `file_type_paint(badge)` to derive the row wash from the badge.
@@ -51,127 +42,88 @@
     update()
     return watch_css_color(node, update)
   }
-  let active_category_filter = $state<string | null>(null)
-  let active_type_filter = $state<string | null>(null)
-  type FilterKind = `category` | `type`
-
-  // Timer for distinguishing click from double-click (per-component state)
-  let click_timer: ReturnType<typeof setTimeout> | null = null
-  let click_timer_file: string | null = null
-  const file_key = (file: FileInfo): string => file.url || file.name
-
-  const clear_click_timer = () => {
-    if (click_timer !== null) clearTimeout(click_timer)
-    click_timer = null
-    click_timer_file = null
-  }
-  const is_activation_key = (event: KeyboardEvent): boolean =>
-    event.key === `Enter` || event.key === ` `
-
-  const schedule_single_click = (file: FileInfo, event: MouseEvent) => {
-    click_timer_file = file_key(file)
-    click_timer = setTimeout(() => {
-      clear_click_timer()
-      on_click?.(file, event)
-    }, CLICK_DELAY)
+  // At most one filter is active at a time: category and type filters are mutually exclusive
+  let active_filter = $state<{ kind: `category` | `type`; value: string } | null>(null)
+  const is_filter_active = (kind: `category` | `type`, value: string) =>
+    active_filter?.kind === kind && active_filter.value === value
+  const toggle_filter = (kind: `category` | `type`, value: string) => {
+    active_filter = is_filter_active(kind, value) ? null : { kind, value }
   }
 
-  // Helper function to get the base file type (removing .gz extension)
+  // File type from the explicit `type`, else the extension (ignoring a trailing .gz)
   const get_base_file_type = (file: FileInfo): string => {
     if (type_mapper) return type_mapper(file)
     if (file.type) return file.type.toLowerCase()
-
-    let base_name = file.name.toLowerCase()
-    if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
+    const base_name = file.name.toLowerCase().replace(/\.gz$/, ``)
     return base_name.split(`.`).pop() || `file`
   }
+  const get_category_id = (file: FileInfo): string =>
+    file.category ? `${file.category_icon ?? ``} ${file.category}`.trim() : `(uncategorized)`
 
-  // Helper function to create normalized category identifier for filtering
-  const get_category_id = (file: FileInfo): string => {
-    if (!file.category) return `(uncategorized)`
-    return `${file.category_icon ?? ``} ${file.category}`.trim()
-  }
-
-  // Filter files based on active filters
   let filtered_files = $derived(
     files.filter((file) => {
-      if (active_category_filter) {
-        return get_category_id(file) === active_category_filter
-      }
-      if (active_type_filter) {
-        const normalized_type = get_base_file_type(file)
-        return normalized_type === active_type_filter
-      }
-      return true
+      if (!active_filter) return true
+      const file_value =
+        active_filter.kind === `category` ? get_category_id(file) : get_base_file_type(file)
+      return file_value === active_filter.value
     }),
   )
-
-  const toggle_filter = (kind: FilterKind, filter: string) => {
-    const active_filter = kind === `category` ? active_category_filter : active_type_filter
-    active_category_filter = kind === `category` && active_filter !== filter ? filter : null
-    active_type_filter = kind === `type` && active_filter !== filter ? filter : null
-  }
+  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].toSorted())
+  let uniq_categories = $derived([...new Set(files.map(get_category_id))].toSorted())
 
   const handle_drag_start = (file: FileInfo) => (event: DragEvent) => {
-    const url = file_key(file)
-    event.dataTransfer?.setData(
-      `application/json`,
-      JSON.stringify({
-        name: file.name,
-        url,
-        type: file.type || get_base_file_type(file),
-        category: file.category,
-      }),
-    )
+    const url = file.url || file.name
+    const payload = {
+      name: file.name,
+      url,
+      type: get_base_file_type(file),
+      category: file.category,
+    }
+    event.dataTransfer?.setData(`application/json`, JSON.stringify(payload))
     event.dataTransfer?.setData(`text/plain`, url)
     on_drag_start?.(file, event)
   }
-
-  // Get unique file types/categories for format/category filters
-  let uniq_formats = $derived([...new Set(files.map(get_base_file_type))].toSorted())
-  let uniq_categories = $derived([...new Set(files.map(get_category_id))].toSorted())
 </script>
 
-<div bind:this={root} class="file-picker" class:vertical={layout === `vertical`} {...rest}>
-  <div class="legend">
+<div bind:this={root} class="file-picker" {...rest}>
+  <div class="legend" role="group" aria-label="Filter files">
     {#each show_category_filters ? uniq_categories : [] as category (category)}
-      {@const is_active = active_category_filter === category}
-      <span
+      {@const is_active = is_filter_active(`category`, category)}
+      <button
+        type="button"
         class={['legend-item', { active: is_active }]}
         onclick={() => toggle_filter(`category`, category)}
-        onkeydown={(event) => is_activation_key(event) && toggle_filter(`category`, category)}
-        role="button"
-        tabindex="0"
         aria-pressed={is_active}
         {@attach tooltip({ content: `Filter to show only ${category}` })}
       >
         {category}
-      </span>
+      </button>
     {/each}
     {#if show_category_filters && uniq_categories.length > 0 && uniq_formats.length > 0}
       <span class="divider"></span>
     {/if}
 
     {#each uniq_formats as format (format)}
-      {@const is_active = active_type_filter === format}
-      <span
+      {@const is_active = is_filter_active(`type`, format)}
+      <button
+        type="button"
         class={['legend-item format-item', { active: is_active }]}
         onclick={() => toggle_filter(`type`, format)}
-        onkeydown={(event) => is_activation_key(event) && toggle_filter(`type`, format)}
-        role="button"
-        tabindex="0"
+        aria-pressed={is_active}
         {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
       >
         <span class="format-circle" style:background-color={paint_for(format).badge}></span>
         {format.toUpperCase()}
-      </span>
+      </button>
     {/each}
 
-    {#if active_category_filter || active_type_filter}
+    {#if active_filter}
       <button
-        {@attach tooltip({ content: `Clear all filters` })}
+        type="button"
         class="clear-filter"
-        onclick={() => ([active_category_filter, active_type_filter] = [null, null])}
+        aria-label="Clear file filter"
+        onclick={() => (active_filter = null)}
+        {@attach tooltip({ content: `Clear all filters` })}
       >
         ✕
       </button>
@@ -181,32 +133,21 @@
   {#each filtered_files as file (file.name)}
     {@const base_type = get_base_file_type(file)}
     {@const paint = paint_for(base_type)}
+    {@const is_active = active_files.includes(file.name)}
     <div
-      class={['file-item', { active: active_files.includes(file.name) }]}
+      class={['file-item', { active: is_active }]}
       style:background-color={paint.item}
       draggable="true"
       ondragstart={handle_drag_start(file)}
-      ondragend={() => on_drag_end?.()}
-      onclick={(event) => {
-        clear_click_timer()
-        if (on_dblclick) schedule_single_click(file, event)
-        else on_click?.(file, event)
-      }}
-      ondblclick={(event) => {
-        const pending = click_timer_file
-        clear_click_timer()
-        if (pending !== null && pending === file_key(file)) on_dblclick?.(file, event)
-        else schedule_single_click(file, event)
-      }}
+      onclick={(event) => on_click?.(file, event)}
       onkeydown={(event) => {
-        if (is_activation_key(event)) {
-          event.preventDefault()
-          clear_click_timer()
-          on_click?.(file, event)
-        }
+        if (event.key !== `Enter` && event.key !== ` `) return
+        event.preventDefault()
+        on_click?.(file, event)
       }}
       role="button"
       tabindex="0"
+      aria-current={is_active || undefined}
       title={on_click
         ? `Click to load or drag this ${base_type.toUpperCase()} file`
         : `Drag this ${base_type.toUpperCase()} file`}
@@ -236,21 +177,6 @@
     -webkit-user-select: text;
     user-select: text;
   }
-  .file-picker.vertical {
-    flex-direction: column;
-    flex-wrap: nowrap;
-    gap: 2px;
-    overflow-y: auto;
-  }
-  .file-picker.vertical .file-item {
-    border-radius: 4px;
-    padding: 3px 8px;
-  }
-  .file-picker.vertical .legend {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    margin-bottom: 0.3em;
-  }
   .legend {
     width: 100%;
     display: flex;
@@ -268,31 +194,34 @@
     margin-inline: 0.3em;
   }
   .legend-item {
+    font: inherit;
+    color: inherit;
+    background: transparent;
     cursor: pointer;
     padding: 0.2em 0.4em;
     border-radius: 3px;
     transition: all 0.2s ease;
     border: 1px solid transparent;
-  }
-  .legend-item:hover {
-    opacity: 1;
-    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-    border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
-  }
-  .legend-item.active {
-    opacity: 1;
-    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
-    border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
-    font-weight: bold;
+    &:hover {
+      opacity: 1;
+      background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
+      border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
+    }
+    &.active {
+      opacity: 1;
+      background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
+      border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
+      font-weight: bold;
+    }
   }
   .clear-filter {
     background-color: var(--btn-bg);
     border-radius: 50%;
     display: flex;
     place-content: center;
-  }
-  .clear-filter:hover {
-    background-color: var(--btn-bg-hover);
+    &:hover {
+      background-color: var(--btn-bg-hover);
+    }
   }
   .format-item {
     display: flex;
@@ -318,19 +247,19 @@
     &:has(.file-type-badge) {
       padding-left: 3pt;
     }
-  }
-  .file-item.active {
-    border-color: var(--success-color, #00ff00);
-    background: light-dark(rgba(0, 255, 0, 0.12), rgba(0, 255, 0, 0.2));
-    box-shadow: 0 0 8px light-dark(rgba(0, 255, 0, 0.25), rgba(0, 255, 0, 0.35));
-  }
-  .file-item:active {
-    cursor: grabbing;
-  }
-  .file-item:hover {
-    border-color: var(--accent-color, #007acc);
-    background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
-    filter: brightness(1.1);
+    &.active {
+      border-color: var(--success-color, #00ff00);
+      background: light-dark(rgba(0, 255, 0, 0.12), rgba(0, 255, 0, 0.2));
+      box-shadow: 0 0 8px light-dark(rgba(0, 255, 0, 0.25), rgba(0, 255, 0, 0.35));
+    }
+    &:active {
+      cursor: grabbing;
+    }
+    &:hover {
+      border-color: var(--accent-color, #007acc);
+      background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
+      filter: brightness(1.1);
+    }
   }
   .file-type-badge {
     font-size: 0.5em;

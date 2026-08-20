@@ -76,21 +76,19 @@ export interface JsonTreeContext {
   }
   collapsed: Set<string>
   force_expanded: Set<string>
-  search_query: string
-  search_matches: Set<string>
   current_match_path: string | null
   focused_path: string | null
+  selected_paths: Set<string>
+  diff_map: Map<string, DiffEntry> | null
+  ghost_map: Map<string, GhostEntry[]>
   prev_values: Map<string, unknown>
   toggle_collapse: (path: string, is_currently_collapsed: boolean) => void
   toggle_collapse_recursive: (path: string, collapse: boolean) => void
-  expand_all: () => void
-  collapse_all: () => void
-  collapse_to_level: (level: number) => void
+  collapse_children_only: (path: string) => void
   set_focused: (path: string | null) => void
+  toggle_select: (path: string, shift: boolean) => void
   copy_value: (path: string, value: unknown, event?: CopyEventPosition) => Promise<void>
   copy_path: (path: string, event?: CopyEventPosition) => Promise<void>
-  register_path: (path: string) => void
-  unregister_path: (path: string) => void
   show_context_menu: (
     event: MouseEvent,
     path: string,
@@ -98,14 +96,6 @@ export interface JsonTreeContext {
     expandable: boolean,
     is_collapsed: boolean,
   ) => void
-  pinned_paths: Set<string>
-  toggle_pin: (path: string) => void
-  selected_paths: Set<string>
-  toggle_select: (path: string, shift: boolean) => void
-  copy_selected: () => void
-  diff_map: Map<string, DiffEntry> | null
-  ghost_map: Map<string, GhostEntry[]>
-  collapse_children_only: (path: string) => void
   onchange?: (path: string, new_value: unknown, old_value: unknown) => void
 }
 

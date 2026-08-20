@@ -1,5 +1,5 @@
 // Components reached through this barrel. The rest of core/components (AxisLabel,
-// CartesianFrame, Hierarchy{ColorBar,Controls,Shell}, InteractiveAxisLabel, PlotAxes,
+// CartesianFrame, Hierarchy{Controls,Shell}, PlotAxes,
 // PlotLegendLayer, PlotTitle, PortalSelect, ReferenceLine{,3D}, ReferenceLinesLayer and
 // ReferencePlane) are imported from their .svelte path by the few files that use them.
 export { default as ColorBar } from './ColorBar.svelte'

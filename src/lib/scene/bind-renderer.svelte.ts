@@ -81,27 +81,22 @@ export function create_renderer(
   return renderer
 }
 
-// Mirror the Threlte scene + active camera into bindable props (for export panes etc.) and register the canvas->renderer/scene mappings so PNG-export and element-capture helpers can find them. Creates an $effect (call during component init). Returns the Threlte context for further use (e.g. clipping planes).
-export function bind_renderer(
-  on_bind: (scene: Scene, camera: Camera) => void,
-  on_renderer?: (renderer: WebGPURenderer) => void,
-) {
+// Mirror the Threlte scene + active camera into bindable props (for export panes etc.) and
+// register the canvas -> renderer/scene mappings so PNG-export and element-capture helpers can
+// find them. Creates an $effect (call during component init). Returns the Threlte context for
+// further use (e.g. clipping planes). The registries are WeakMaps keyed by canvas, so an
+// unmounted <Canvas> drops out with its element; the renderer itself is disposed by Threlte.
+export function bind_renderer(on_bind: (scene: Scene, camera: Camera) => void) {
   // Threlte's context defaults to WebGLRenderer; every <Canvas> here comes from create_renderer
   const threlte = useThrelte<WebGPURenderer>()
   $effect(() => {
     const renderer = threlte.renderer
+    if (renderer) renderer_registry.set(renderer.domElement, renderer)
     // `camera.current` is not reactive, so subscribe to be notified when the active camera changes
-    const unsubscribe = threlte.camera.subscribe((camera) => {
+    return threlte.camera.subscribe((camera) => {
       on_bind(threlte.scene, camera)
-      if (renderer) {
-        scene_registry.set(renderer.domElement, { scene: threlte.scene, camera })
-      }
+      if (renderer) scene_registry.set(renderer.domElement, { scene: threlte.scene, camera })
     })
-    if (renderer) {
-      on_renderer?.(renderer)
-      renderer_registry.set(renderer.domElement, renderer)
-    }
-    return unsubscribe
   })
   return threlte
 }

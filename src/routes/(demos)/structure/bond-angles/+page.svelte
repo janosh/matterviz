@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { Crystal } from '$lib'
   import { SETTINGS_CONFIG } from '$lib'
-  import type { NormalizeMode, SplitMode } from '$lib/bond-angles'
+  import type { BondAngleNormalizeMode, BondAngleSplitMode } from '$lib/bond-angles'
   import {
     BondAnglePlot,
-    DEFAULT_BIN_WIDTH,
-    NORMALIZE_MODES,
-    SPLIT_MODES,
+    BOND_ANGLE_DEFAULT_BIN_WIDTH,
+    BOND_ANGLE_BOND_ANGLE_NORMALIZE_MODES,
+    BOND_ANGLE_SPLIT_MODES,
   } from '$lib/bond-angles'
   import FilePicker from '$lib/FilePicker.svelte'
   import { Structure } from '$lib/structure'
@@ -23,14 +23,14 @@
   let single_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
-  let single_split_mode = $state<SplitMode>(`by_triplet`)
-  let bin_width = $state(DEFAULT_BIN_WIDTH)
+  let single_split_mode = $state<BondAngleSplitMode>(`by_triplet`)
+  let bin_width = $state(BOND_ANGLE_DEFAULT_BIN_WIDTH)
 
   const single_struct = $derived<Crystal | null>(structure_map.get(single_id) ?? null)
   const single_scene_props = $derived({ bonding_strategy: single_strategy })
 
   let selected_ids = $state([`mp-1`, `mp-2`, `mp-1234`])
-  let multi_normalize = $state<NormalizeMode>(`density`)
+  let multi_normalize = $state<BondAngleNormalizeMode>(`density`)
   let multi_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
@@ -50,7 +50,7 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
-    <EnumSelect label="Split Mode" options={SPLIT_MODES} bind:value={single_split_mode} />
+    <EnumSelect label="Split Mode" options={BOND_ANGLE_SPLIT_MODES} bind:value={single_split_mode} />
     <label>
       Bin width:
       <input type="range" min="0.5" max="10" step="0.5" bind:value={bin_width} />
@@ -84,7 +84,7 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
-    <EnumSelect label="Normalization" options={NORMALIZE_MODES} bind:value={multi_normalize} />
+    <EnumSelect label="Normalization" options={BOND_ANGLE_NORMALIZE_MODES} bind:value={multi_normalize} />
   </div>
 
   <StructurePicker bind:selected={selected_ids} />

@@ -1,21 +1,18 @@
-<script lang="ts">
+<script lang="ts" generics="Card extends InfoPaneCard">
+  // Filterable label/value cards for info panes (trajectory, convex hull, Brillouin zone,
+  // structure sites). Long lists page through `page_size` cards at a time; hosts can decorate
+  // cards via `card_attrs` and replace a row's value markup (e.g. with an input) via `row_value`.
+  import {
+    create_clipboard_feedback,
+    type InfoPaneCard,
+    type InfoPaneRow,
+  } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
-  import type { HTMLAttributes } from 'svelte/elements'
-  import { create_clipboard_feedback } from '$lib/overlays'
+  import type { Snippet } from 'svelte'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
+  import type { HTMLAttributes } from 'svelte/elements'
   import CopyButton from './CopyButton.svelte'
-
-  type InfoPaneRow = {
-    label: string
-    value: string | number
-    key?: string
-    tooltip?: string
-  }
-  type InfoPaneCard = {
-    title: string
-    rows: InfoPaneRow[]
-  }
 
   let {
     cards,
@@ -26,9 +23,12 @@
     show_filter = true,
     show_copy = true,
     heading_level = 4,
+    page_size = Infinity,
+    card_attrs,
+    row_value,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    cards: InfoPaneCard[]
+    cards: Card[]
     filter_placeholder?: string
     empty_label: string
     title?: string
@@ -36,28 +36,39 @@
     show_filter?: boolean
     show_copy?: boolean
     heading_level?: 4 | 5
+    page_size?: number // cards per page; pager controls appear once the filtered list exceeds it
+    card_attrs?: (card: Card) => HTMLAttributes<HTMLElement>
+    row_value?: Snippet<[InfoPaneRow, Card]>
   } = $props()
 
   let filter = $state(``)
+  let filter_open = $state(false)
   const { copied, copy } = create_clipboard_feedback()
-  const row_key = (card_title: string, row: InfoPaneRow, row_idx: number): string =>
-    row.key ?? `${card_title}:${row.label}:${row.value}:${row_idx}`
+  const row_key = (card: Card, row: InfoPaneRow, row_idx: number): string =>
+    row.key ?? `${card.title}:${row.label}:${row.value}:${row_idx}`
 
-  let filtered_cards = $derived.by(() => {
+  const filtered_cards = $derived.by(() => {
     const normalized_filter = filter.trim().toLowerCase()
     if (!normalized_filter) return cards
-    return cards
-      .map((card) => ({
-        ...card,
-        rows: card.rows.filter(({ label, value }) =>
-          `${card.title} ${label} ${value}`.toLowerCase().includes(normalized_filter),
-        ),
-      }))
-      .filter(({ rows }) => rows.length > 0)
+    return cards.flatMap((card) => {
+      const rows = card.rows.filter(({ label, value }: InfoPaneRow) =>
+        `${card.title} ${card.subtitle ?? ``} ${label} ${value}`
+          .toLowerCase()
+          .includes(normalized_filter),
+      )
+      return rows.length ? [{ ...card, rows }] : []
+    })
   })
-  const copy_row = (card_title: string, row: InfoPaneRow, row_idx: number): Promise<boolean> =>
-    copy(`${row.label}: ${row.value}`, row_key(card_title, row, row_idx))
-  let filter_open = $state(false)
+  // Requested page start, clamped so a shrinking list never leaves an empty page
+  let page_start = $state(0)
+  const last_page_start = $derived(Math.max(0, filtered_cards.length - page_size))
+  const first_idx = $derived(Math.min(page_start, last_page_start))
+  const page_end = $derived(Math.min(first_idx + page_size, filtered_cards.length))
+  const paged_cards = $derived(
+    filtered_cards.length > page_size
+      ? filtered_cards.slice(first_idx, page_end)
+      : filtered_cards,
+  )
 </script>
 
 {#if title || (filter_placeholder && (show_filter || filter))}
@@ -71,6 +82,7 @@
           class="info-filter"
           type="search"
           bind:value={filter}
+          oninput={() => (page_start = 0)}
           placeholder={filter_placeholder}
           aria-label={filter_placeholder}
           onblur={() => (filter_open = Boolean(filter))}
@@ -93,20 +105,47 @@
 {#if filtered_cards.length === 0}
   <p class="empty-filter">No {empty_label} matches "{filter}".</p>
 {:else}
+  {#if filtered_cards.length > page_size}
+    <nav class="pager" aria-label="{empty_label} pages">
+      <button
+        type="button"
+        disabled={first_idx === 0}
+        onclick={() => (page_start = Math.max(0, first_idx - page_size))}
+      >
+        Previous
+      </button>
+      <span>{first_idx + 1}-{page_end} of {filtered_cards.length}</span>
+      <button
+        type="button"
+        disabled={page_end >= filtered_cards.length}
+        onclick={() => (page_start = Math.min(last_page_start, first_idx + page_size))}
+      >
+        Next
+      </button>
+    </nav>
+  {/if}
   <div {...rest} class={[`info-cards`, rest.class]}>
-    {#each filtered_cards as card (card.title)}
-      <section class="info-card">
-        <svelte:element this={`h${heading_level}`}>{card.title}</svelte:element>
-        {#each card.rows as row, row_idx (row_key(card.title, row, row_idx))}
+    {#each paged_cards as card (card.key ?? card.title)}
+      {@const attrs = card_attrs?.(card) ?? {}}
+      <section {...attrs} class={[`info-card`, attrs.class]}>
+        <svelte:element this={`h${heading_level}`}>
+          {card.title}
+          {#if card.subtitle}<span class="subtitle">{card.subtitle}</span>{/if}
+        </svelte:element>
+        {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
-            <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
+            {#if row_value}
+              {@render row_value(row, card)}
+            {:else}
+              <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
+            {/if}
             {#if show_copy}
               <CopyButton
                 label="Copy {row.label}: {row.value}"
                 title="Copy {row.label}"
-                copied={copied.has(row_key(card.title, row, row_idx))}
-                onclick={() => copy_row(card.title, row, row_idx)}
+                copied={copied.has(row_key(card, row, row_idx))}
+                onclick={() => copy(`${row.label}: ${row.value}`, row_key(card, row, row_idx))}
               />
             {/if}
           </div>
@@ -149,6 +188,19 @@
   }
   .empty-filter {
     margin: 0.25em 0;
+    opacity: 0.75;
+  }
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5pt;
+    margin-bottom: 5pt;
+    font-size: 0.9em;
+  }
+  .subtitle {
+    margin-left: 0.5em;
+    font-weight: normal;
     opacity: 0.75;
   }
   .info-cards {

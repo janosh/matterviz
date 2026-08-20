@@ -6,11 +6,7 @@ import {
   resize_orthographic_zoom,
 } from '$lib/scene/props.svelte'
 import type { ZoneAxisMode } from '$lib/scene/zone-axis'
-import {
-  is_valid_zone_axis,
-  reciprocal_lattice_rows,
-  zone_axis_direction,
-} from '$lib/scene/zone-axis'
+import { is_valid_zone_axis, zone_axis_direction } from '$lib/scene/zone-axis'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 
@@ -123,16 +119,6 @@ describe(`zone axis directions`, () => {
     }
   })
 
-  test(`builds reciprocal rows satisfying a_i . b_j = delta_ij`, () => {
-    const recip = reciprocal_lattice_rows(triclinic)
-    for (const [row_idx, direct_row] of triclinic.entries()) {
-      for (const [col_idx, recip_row] of recip.entries()) {
-        const expected = row_idx === col_idx ? 1 : 0
-        expect(dot_3d(direct_row, recip_row)).toBeCloseTo(expected, 14)
-      }
-    }
-  })
-
   test(`makes each (hkl) normal perpendicular to lattice vectors lying in that plane`, () => {
     // (110) contains c and the in-plane vector a - b
     const normal = zone_axis_direction(triclinic, [1, 1, 0], `hkl`)
@@ -170,13 +156,14 @@ describe(`zone axis directions`, () => {
     },
   )
 
-  test.each([[`all-zero indices`, [0, 0, 0] as Vec3, /must not be all zero/]])(
-    `refuses %s`,
-    (_name, indices, pattern) => {
-      expect(() => zone_axis_direction(triclinic, indices, `uvw`)).toThrow(pattern)
-      expect(() => zone_axis_direction(triclinic, indices, `hkl`)).toThrow(pattern)
-    },
-  )
+  test.each([
+    [`all-zero indices`, [0, 0, 0] as Vec3, /must not be all zero/],
+    [`a NaN index`, [Number.NaN, 0, 1] as Vec3, /Degenerate/],
+    [`an infinite index`, [1, Number.POSITIVE_INFINITY, 0] as Vec3, /Degenerate/],
+  ])(`refuses %s`, (_name, indices, pattern) => {
+    expect(() => zone_axis_direction(triclinic, indices, `uvw`)).toThrow(pattern)
+    expect(() => zone_axis_direction(triclinic, indices, `hkl`)).toThrow(pattern)
+  })
 
   test(`refuses a singular lattice when the reciprocal lattice is required`, () => {
     const flat: Matrix3x3 = [
@@ -207,6 +194,7 @@ describe(`camera fly-to`, () => {
     camera_pos: Vec3 = [0, 0, 10],
     target_pos: Vec3 = [0, 0, 0],
     up: Vec3 = [0, 1, 0],
+    duration_ms = 400,
   ) => {
     const camera = new PerspectiveCamera()
     camera.position.set(...camera_pos)
@@ -221,14 +209,16 @@ describe(`camera fly-to`, () => {
     const fly = create_fly_to({
       camera: () => camera,
       controls: () => controls,
-      duration_ms: () => 400,
+      duration_ms: () => duration_ms,
       invalidate: () => (invalidations += 1),
       onstart: () => hook_calls.push(`start`),
       onchange: () => hook_calls.push(`change`),
       onend: () => hook_calls.push(`end`),
     })
-    return { camera, controls, fly, hook_calls, invalidations: () => invalidations }
+    const offset = () => camera.position.clone().sub(controls.target)
+    return { camera, controls, fly, hook_calls, invalidations: () => invalidations, offset }
   }
+  const to_array = (vec: Vector3): Vec3 => [vec.x, vec.y, vec.z]
 
   test.each([
     [0, 0],
@@ -237,72 +227,134 @@ describe(`camera fly-to`, () => {
     [0.75, 0.875],
     [1, 1],
   ])(`eases progress %s to %s`, (progress, expected) => {
-    expect(ease_in_out(progress)).toBeCloseTo(expected, 14)
+    expect(ease_in_out(progress)).toBe(expected) // exact: these are dyadic rationals
   })
 
-  test(`rises monotonically over the whole flight`, () => {
-    let previous = -1
-    for (let step_idx = 0; step_idx <= 100; step_idx += 1) {
-      const eased = ease_in_out(step_idx / 100)
+  test(`easing is monotone, symmetric about the midpoint and never overshoots`, () => {
+    let previous = 0
+    for (let step_idx = 1; step_idx <= 1000; step_idx += 1) {
+      const progress = step_idx / 1000
+      const eased = ease_in_out(progress)
       expect(eased).toBeGreaterThanOrEqual(previous)
+      expect(eased).toBeLessThanOrEqual(1)
+      expect(eased + ease_in_out(1 - progress)).toBeCloseTo(1, 15)
       previous = eased
     }
   })
 
   test(`keeps the viewing distance constant while swinging the direction`, () => {
-    const { camera, controls, fly } = make_rig([0, 0, 10], [1, 2, 3])
+    const { camera, controls, fly, offset } = make_rig([0, 0, 10], [1, 2, 3])
     const distance_before = camera.position.distanceTo(controls.target)
     fly.start([1, 0, 0])
     fly.step(10) // far past the 400 ms duration, so the flight lands
     expect(camera.position.distanceTo(controls.target)).toBeCloseTo(distance_before, 10)
-    // landed looking down +x from the target
-    expect(camera.position.x - controls.target.x).toBeCloseTo(distance_before, 10)
-    expect(camera.position.y - controls.target.y).toBeCloseTo(0, 10)
-    expect(camera.position.z - controls.target.z).toBeCloseTo(0, 10)
+    // landed exactly on +x from the target: an off-pole direction gets no nudge
+    for (const [idx, expected] of [distance_before, 0, 0].entries()) {
+      expect(offset()[[`x`, `y`, `z`][idx] as `x` | `y` | `z`]).toBeCloseTo(expected, 10)
+    }
   })
 
-  // Offsets from the orbit target partway through a 400 ms swing from +z to +x. Each is
-  // ease_in_out(elapsed/400) of the way from (0,0,10) to (10,0,0), renormalized to radius 10 —
-  // a linear ramp or an instant snap to the destination lands nowhere near these.
+  // Offsets from the orbit target partway through a 400 ms swing from +z to +x: the camera has
+  // turned ease_in_out(elapsed / 400) of the 90 degrees at radius 10. A lerp of the endpoints
+  // would sit at atan(1/7) = 8.1 degrees instead of 11.25 after the first quarter.
   test.each([
-    // 25% of the flight, eased to 12.5%: unit(0.125 * (10,0,0) + 0.875 * (0,0,10)) * 10
-    [0.1, [Math.SQRT2, 0, 7 * Math.SQRT2]],
-    [0.2, [5 * Math.SQRT2, 0, 5 * Math.SQRT2]], // halfway: the exact 45 degree bisector
-    [0.3, [7 * Math.SQRT2, 0, Math.SQRT2]], // 75% of the flight, eased to 87.5%
-  ] as [number, Vec3][])(
-    `holds the viewing radius and eases the direction %s s into the flight`,
-    (elapsed_s, expected_offset) => {
-      const { camera, controls, fly } = make_rig([0, 0, 10])
-      fly.start([1, 0, 0])
-      fly.step(elapsed_s)
-      expect(fly.active).toBe(true) // still mid-flight, so this is a real intermediate frame
-      expect(camera.position.distanceTo(controls.target)).toBeCloseTo(10, 12)
-      const offset = camera.position.clone().sub(controls.target)
-      for (const [idx, axis] of ([`x`, `y`, `z`] as const).entries()) {
-        expect(offset[axis]).toBeCloseTo(expected_offset[idx], 12)
+    [0.1, 11.25], // 25% of the flight, eased to 12.5%
+    [0.2, 45], // halfway: the exact bisector
+    [0.3, 78.75], // 75% of the flight, eased to 87.5%
+  ])(`has swept the eased share of the angle %s s into the flight`, (elapsed_s, angle_deg) => {
+    const { camera, controls, fly, offset } = make_rig([1, 2, 13], [1, 2, 3]) // offset (0,0,10)
+    fly.start([1, 0, 0])
+    fly.step(elapsed_s)
+    expect(fly.active).toBe(true) // still mid-flight, so this is a real intermediate frame
+    expect(camera.position.distanceTo(controls.target)).toBeCloseTo(10, 12)
+    const angle_rad = (angle_deg * Math.PI) / 180
+    expect(to_array(offset())).toEqual([
+      expect.closeTo(10 * Math.sin(angle_rad), 12),
+      0,
+      expect.closeTo(10 * Math.cos(angle_rad), 12),
+    ])
+    // and stays aimed at the target mid-flight, not only on landing. Distance, not angleTo:
+    // acos amplifies a 1e-16 dot-product rounding to 1.5e-8
+    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    const to_target = controls.target.clone().sub(camera.position).normalize()
+    expect(forward.distanceTo(to_target)).toBeLessThan(1e-12)
+  })
+
+  // A lerp between opposite offsets passes through zero: the camera held still, spent a frame
+  // on the orbit target (radius 0, scene gone) and snapped to the far side. The flight has to
+  // orbit the whole way round at full radius, around the camera's up axis so it stays level.
+  test.each([
+    [`+x to -x`, [10, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, -10]],
+    [`+z to -z`, [0, 0, 10], [0, 0, -1], [0, 1, 0], [10, 0, 0]],
+    [`+x to -x with z up`, [10, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 10, 0]],
+    // pole to pole has no level path; the off-pole nudge on the destination picks the plane
+    [`+y to -y`, [0, 10, 0], [0, -1, 0], [0, 1, 0], [0, 0, 10]],
+  ] as [string, Vec3, Vec3, Vec3, Vec3][])(
+    `orbits antipodal handles at full radius: %s`,
+    (_name, camera_pos, dir, up, expected_midpoint) => {
+      const { camera, controls, fly, offset } = make_rig(camera_pos, [0, 0, 0], up)
+      fly.start(dir)
+      let swept_deg = 0
+      for (let frame = 0; frame < 20; frame += 1) {
+        fly.step(0.01) // 200 ms in: eased progress 0.5, i.e. the 90 degree midpoint
+        expect(camera.position.distanceTo(controls.target)).toBeCloseTo(10, 10)
+        const next_deg = (new Vector3(...camera_pos).angleTo(offset()) * 180) / Math.PI
+        expect(next_deg).toBeGreaterThanOrEqual(swept_deg) // monotone, no back-swing
+        swept_deg = next_deg
       }
+      expect(swept_deg).toBeCloseTo(90, 1)
+      for (const [idx, axis] of ([`x`, `y`, `z`] as const).entries()) {
+        expect(offset()[axis]).toBeCloseTo(expected_midpoint[idx], 2)
+      }
+      fly.step(1) // lands on `dir` (up to the 1e-3 pole nudge for +y to -y)
+      expect(to_array(offset().normalize())).toEqual(dir.map((val) => expect.closeTo(val, 2)))
     },
   )
 
-  test(`keeps the camera aimed at the orbit target mid-flight, not only on landing`, () => {
-    const { camera, controls, fly } = make_rig([0, 0, 10], [1, 2, 3])
-    fly.start([1, 0, 0])
-    fly.step(0.1)
-    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
-    const to_target = controls.target.clone().sub(camera.position).normalize()
-    expect(forward.angleTo(to_target)).toBeCloseTo(0, 12)
-  })
-
-  test(`reports the flight through the start, change and end hooks`, () => {
+  test(`reports through the hooks, repaints each frame and suspends orbiting until landing`, () => {
     const rig = make_rig()
+    expect(rig.controls.enabled).toBe(true)
     rig.fly.start([1, 0, 0])
     expect(rig.hook_calls).toEqual([`start`])
-    rig.fly.step(0.1)
+    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
+      1,
+      false,
+      true,
+    ])
+    rig.fly.step(0.1) // 100 ms of a 400 ms flight
     expect(rig.hook_calls).toEqual([`start`, `change`])
-    rig.fly.step(10) // lands
+    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
+      2,
+      false,
+      true,
+    ])
+    rig.fly.step(0.4) // lands
     expect(rig.hook_calls).toEqual([`start`, `change`, `change`, `end`])
+    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
+      3,
+      true,
+      false,
+    ])
     rig.fly.step(0.1) // nothing left to animate, so nothing more is reported
     expect(rig.hook_calls).toEqual([`start`, `change`, `change`, `end`])
+    expect(rig.invalidations()).toBe(3)
+  })
+
+  test(`a new flight takes over mid-air from the current pose without a jump`, () => {
+    const { fly, hook_calls, offset, controls } = make_rig([0, 0, 10])
+    fly.start([1, 0, 0])
+    fly.step(0.2) // 45 degrees round
+    const mid_flight = offset()
+    fly.start([0, 0, -1])
+    fly.step(0) // first frame of the second flight: still exactly where the first left off
+    expect(to_array(offset())).toEqual(
+      to_array(mid_flight).map((val) => expect.closeTo(val, 12)),
+    )
+    expect(hook_calls).toEqual([`start`, `change`, `start`, `change`]) // no end in between
+    expect(controls.enabled).toBe(false)
+    fly.step(10)
+    expect(to_array(offset())).toEqual([expect.closeTo(0, 10), 0, expect.closeTo(-10, 10)])
+    expect(controls.enabled).toBe(true)
   })
 
   test(`normalizes the requested direction, so index magnitude does not move the camera`, () => {
@@ -312,40 +364,20 @@ describe(`camera fly-to`, () => {
     const long = make_rig()
     long.fly.start([37, 37, 37])
     long.fly.step(10)
-    for (const axis of [`x`, `y`, `z`] as const) {
-      expect(long.camera.position[axis]).toBeCloseTo(short.camera.position[axis], 10)
-    }
+    expect(to_array(long.camera.position)).toEqual(
+      to_array(short.camera.position).map((val) => expect.closeTo(val, 10)),
+    )
+    expect(short.camera.position.length()).toBeCloseTo(10, 10)
   })
 
   test(`nudges off the pole when asked to look straight down the camera up axis`, () => {
-    const { camera, controls, fly } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0])
+    const { fly, offset } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0])
     fly.start([0, 1, 0])
     fly.step(10)
-    const offset = camera.position.clone().sub(controls.target)
     // still essentially along +y, but with a sliver of z so OrbitControls' polar angle is defined
-    expect(offset.y).toBeGreaterThan(9.9)
-    expect(offset.z).toBeGreaterThan(0)
-    expect(offset.z).toBeLessThan(0.05)
-  })
-
-  test(`leaves an off-pole direction untouched`, () => {
-    const { camera, controls, fly } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0])
-    fly.start([1, 0, 0])
-    fly.step(10)
-    const offset = camera.position.clone().sub(controls.target)
-    expect(offset.y).toBeCloseTo(0, 12)
-    expect(offset.z).toBeCloseTo(0, 12)
-  })
-
-  test(`suspends orbit controls for the duration of a flight and restores them on landing`, () => {
-    const { controls, fly } = make_rig()
-    expect(controls.enabled).toBe(true)
-    fly.start([1, 0, 0])
-    expect([controls.enabled, fly.active]).toEqual([false, true])
-    fly.step(0.1) // 100 ms of a 400 ms flight
-    expect([controls.enabled, fly.active]).toEqual([false, true])
-    fly.step(0.4)
-    expect([controls.enabled, fly.active]).toEqual([true, false])
+    expect(offset().y).toBeGreaterThan(9.9)
+    expect(offset().z).toBeGreaterThan(0)
+    expect(offset().z).toBeLessThan(0.05)
   })
 
   test(`restores orbit controls when released mid-flight`, () => {
@@ -367,14 +399,21 @@ describe(`camera fly-to`, () => {
     const { camera, fly } = make_rig([0, 0, 10])
     fly.start(direction)
     expect(fly.active).toBe(false)
-    expect([camera.position.x, camera.position.y, camera.position.z]).toEqual([0, 0, 10])
+    expect(to_array(camera.position)).toEqual([0, 0, 10])
   })
 
-  test(`requests a repaint on start and on every step`, () => {
-    const rig = make_rig()
-    rig.fly.start([1, 0, 0])
-    expect(rig.invalidations()).toBe(1)
-    rig.fly.step(0.1)
-    expect(rig.invalidations()).toBe(2)
+  test(`a camera sitting on the target lands one unit out along the direction`, () => {
+    const { camera, fly } = make_rig([1, 2, 3], [1, 2, 3])
+    fly.start([0, 0, 2])
+    fly.step(10)
+    expect(to_array(camera.position)).toEqual([1, 2, 4])
+  })
+
+  test(`a zero duration snaps to the destination on the first frame`, () => {
+    const { fly, offset, controls } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0], 0)
+    fly.start([1, 0, 0])
+    fly.step(0)
+    expect(to_array(offset())).toEqual([expect.closeTo(10, 12), 0, expect.closeTo(0, 12)])
+    expect([fly.active, controls.enabled]).toEqual([false, true])
   })
 })

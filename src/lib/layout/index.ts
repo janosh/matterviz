@@ -1,6 +1,5 @@
-export { SettingsGroup, SettingsSearch } from 'svelte-widgets'
+export { SettingsGroup, SettingsSearch, SettingsSection } from 'svelte-widgets'
 export { default as FullscreenButton } from './FullscreenButton.svelte'
-export { default as SettingsSection } from './SettingsSection.svelte'
 export { default as InfoCard } from './InfoCard.svelte'
 export { default as InfoTag } from './InfoTag.svelte'
 export { default as NumberRangeInput } from './NumberRangeInput.svelte'

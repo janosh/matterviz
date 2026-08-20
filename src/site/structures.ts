@@ -1,8 +1,10 @@
-import type { Crystal, FileInfo } from '$lib'
+import type { AnyStructure, FileInfo } from '$lib'
 import {
   detect_structure_type,
-  is_optimade_json,
-  parse_optimade_json,
+  is_optimade_raw,
+  is_structure_like,
+  parse_optimade_from_raw,
+  structure_from_json,
 } from '$lib/structure/parse'
 import { glob_text } from '$site/imports'
 import { SvelteMap } from 'svelte/reactivity'
@@ -10,24 +12,16 @@ import { SvelteMap } from 'svelte/reactivity'
 export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
 )
-  .map(([path, data]) => {
+  .flatMap(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
-    const data_str = JSON.stringify(data)
-    // Convert OPTIMADE to pymatgen format
-    if (is_optimade_json(data_str)) {
-      const parsed = parse_optimade_json(data_str)
-      if (parsed) return { ...parsed, id } as Crystal
-    }
-
-    // Assume pymatgen format
-    const structure = data as Crystal
-    structure.id = id
-    return structure
+    // annotated: `Crystal | Molecule` would otherwise subtype-reduce to Molecule here
+    const structure: AnyStructure | null = is_optimade_raw(data)
+      ? parse_optimade_from_raw(data)
+      : is_structure_like(data)
+        ? structure_from_json(data)
+        : null
+    return structure && `lattice` in structure ? [{ ...structure, id }] : []
   })
-  .filter(
-    (structure): structure is Crystal =>
-      structure && `sites` in structure && Array.isArray(structure.sites),
-  )
   .toSorted((struct_a, struct_b) =>
     (struct_a.id?.split(`-`)[1] ?? ``)
       .padStart(6, `0`)

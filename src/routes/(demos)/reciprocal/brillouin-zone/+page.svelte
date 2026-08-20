@@ -2,7 +2,7 @@
   import { BrillouinZone } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import type { FileInfo } from '$lib/io/types'
-  import { parse_any_structure } from '$lib/structure/parse'
+  import { parse_structure_file } from '$lib/structure/parse'
   import type { Crystal } from '$lib/structure'
   import { structure_files, structure_map } from '$site/structures'
 
@@ -147,7 +147,7 @@
     on_file_drop={(content, filename) => {
       const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
       try {
-        const parsed = parse_any_structure(text, filename)
+        const parsed = parse_structure_file(text, filename)
         if (`lattice` in parsed) dropped_structure = parsed
       } catch (exc) {
         console.error(`Failed to parse dropped file ${filename}:`, exc)

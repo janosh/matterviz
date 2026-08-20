@@ -8,13 +8,6 @@
   const electronic_dos = dos_spin_polarization
 
   const mock_band_structure: BaseBandStructure = {
-    recip_lattice: {
-      matrix: [
-        [0.15915494, 0.0, 0.0],
-        [0.0, 0.15915494, 0.0],
-        [0.0, 0.0, 0.09459882],
-      ],
-    },
     qpoints: [
       { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
       { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },

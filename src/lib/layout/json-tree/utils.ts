@@ -2,6 +2,8 @@
 import { build_path, format_path, parse_path } from '../../json-path'
 import type { DiffEntry, JsonValueType } from './types'
 
+export type JsonChild = { key: string | number; value: unknown }
+
 // Circular-safe JSON.stringify helper (hoisted for reuse)
 function safe_stringify(val: unknown): string {
   const seen = new WeakSet()
@@ -68,6 +70,48 @@ export function get_child_count(value: unknown): number {
   if (type === `map`) return (value as Map<unknown, unknown>).size
   if (type === `set`) return (value as Set<unknown>).size
   return 0
+}
+
+// The single definition of what a node's children are, shared by rendering, path lookup,
+// search, collapse bookkeeping and diffing so they can never disagree. Map entries are
+// wrapped as { key, value } objects under numeric indices so non-string keys stay
+// expandable; Set members get numeric indices.
+export function get_children(value: unknown, sort_keys = false): JsonChild[] {
+  const type = get_value_type(value)
+  if (type === `array`)
+    return (value as unknown[]).map((val, idx) => ({ key: idx, value: val }))
+  if (type === `object`) {
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record)
+    if (sort_keys) keys.sort()
+    return keys.map((key) => ({ key, value: record[key] }))
+  }
+  if (type === `map`) {
+    return Array.from(value as Map<unknown, unknown>, ([key, val], idx) => ({
+      key: idx,
+      value: { key, value: val },
+    }))
+  }
+  if (type === `set`)
+    return Array.from(value as Set<unknown>, (val, idx) => ({ key: idx, value: val }))
+  return []
+}
+
+// Resolve a dot/bracket path (optionally prefixed by root_label) against root
+export function get_value_at_path(root: unknown, path: string, root_label?: string): unknown {
+  const segments = parse_path(path)
+  const start = root_label && segments[0] === root_label ? 1 : 0
+  let current = root
+  for (let idx = start; idx < segments.length; idx++) {
+    const segment = segments[idx]
+    const type = get_value_type(current)
+    if (type === `map` || type === `set`) {
+      current = get_children(current)[Number(segment)]?.value
+    } else if (type === `object` || type === `array`) {
+      current = (current as Record<string | number, unknown>)[segment]
+    } else return undefined
+  }
+  return current
 }
 
 // Format a primitive/special value to string (shared by serialize and preview)
@@ -153,94 +197,54 @@ export function matches_search(
   )
 }
 
-// Iterate over children of an expandable value, calling visitor for each
-function for_each_child(
+// Depth-first pre-order walk in render order, skipping already-visited objects so cycles
+// terminate. visit returns false to stop descending into a node.
+function walk_tree(
   value: unknown,
-  type: JsonValueType,
-  visitor: (child_value: unknown, key: string | number, map_key?: unknown) => void,
+  current_path: string,
+  sort_keys: boolean,
+  visit: (value: unknown, path: string, key: string | number | null, depth: number) => boolean,
 ): void {
-  if (type === `array`) {
-    ;(value as unknown[]).forEach((val, idx) => visitor(val, idx))
-  } else if (type === `object`) {
-    for (const key of Object.keys(value as Record<string, unknown>)) {
-      visitor((value as Record<string, unknown>)[key], key)
-    }
-  } else if (type === `map`) {
-    let idx = 0
-    for (const [map_key, map_value] of value as Map<unknown, unknown>) {
-      visitor(map_value, idx, map_key)
-      idx++
-    }
-  } else if (type === `set`) {
-    let idx = 0
-    for (const set_value of value as Set<unknown>) {
-      visitor(set_value, idx)
-      idx++
+  const seen = new WeakSet<object>()
+  const recurse = (val: unknown, path: string, key: string | number | null, depth: number) => {
+    if (!visit(val, path, key, depth)) return
+    if (!is_expandable(val)) return
+    if (seen.has(val as object)) return
+    seen.add(val as object)
+    for (const child of get_children(val, sort_keys)) {
+      recurse(child.value, build_path(path, child.key), child.key, depth + 1)
     }
   }
+  recurse(value, current_path, null, 0)
 }
 
-// Collect all expandable paths in a value tree
+// Collect all expandable paths (render order), starting at current_path when non-empty
 export function collect_all_paths(
   value: unknown,
   current_path: string = ``,
   max_depth: number = Infinity,
-  current_depth: number = 0,
-  seen = new WeakSet<object>(),
 ): string[] {
-  if (current_depth >= max_depth) return []
-  const type = get_value_type(value)
-  if (!is_expandable_type(type)) return []
-  if (typeof value === `object` && value !== null) {
-    if (seen.has(value)) return []
-    seen.add(value)
-  }
-
-  const paths: string[] = current_path ? [current_path] : []
-  for_each_child(value, type, (child_value, key) => {
-    const child_path = build_path(current_path, key)
-    paths.push(
-      ...collect_all_paths(child_value, child_path, max_depth, current_depth + 1, seen),
-    )
+  const paths: string[] = []
+  walk_tree(value, current_path, false, (val, path, _key, depth) => {
+    if (depth >= max_depth || !is_expandable(val)) return false
+    if (path) paths.push(path)
+    return true
   })
   return paths
 }
 
-// Find all paths that match a search query
+// Paths whose key, path or primitive value contains query, in render order
 export function find_matching_paths(
   value: unknown,
   query: string,
   current_path: string = ``,
-  current_key: string | number | null = null,
-  seen = new WeakSet<object>(),
-): Set<string> {
-  const matches = new Set<string>()
+  sort_keys = false,
+): string[] {
+  const matches: string[] = []
   if (!query) return matches
-
-  const lower_query = query.toLowerCase()
-  if (matches_search(current_path, current_key, value, query)) {
-    matches.add(current_path)
-  }
-
-  const type = get_value_type(value)
-  if (!is_expandable_type(type)) return matches
-  if (typeof value === `object` && value !== null) {
-    if (seen.has(value)) return matches
-    seen.add(value)
-  }
-
-  for_each_child(value, type, (child_value, key, map_key) => {
-    const child_path = build_path(current_path, key)
-    // Also check if Map key matches
-    if (
-      map_key !== undefined &&
-      serialize_for_copy(map_key).toLowerCase().includes(lower_query)
-    ) {
-      matches.add(child_path)
-    }
-    for (const match of find_matching_paths(child_value, query, child_path, key, seen)) {
-      matches.add(match)
-    }
+  walk_tree(value, current_path, sort_keys, (val, path, key) => {
+    if (matches_search(path, key, val, query)) matches.push(path)
+    return true
   })
   return matches
 }
@@ -455,78 +459,30 @@ export function compute_diff(
   }
 
   // Prevent circular references
-  if (typeof old_val === `object` && old_val !== null) {
-    if (seen.has(old_val)) return result
-    seen.add(old_val)
-  }
+  if (seen.has(old_val as object)) return result
+  seen.add(old_val as object)
 
-  // Diff two indexed lists element-by-element (shared by array, map, set)
-  function diff_indexed(old_items: unknown[], new_items: unknown[]): void {
-    const max_len = Math.max(old_items.length, new_items.length)
-    for (let idx = 0; idx < max_len; idx++) {
-      const child_path = build_path(current_path, idx)
-      if (idx >= old_items.length) {
-        result.set(child_path, {
-          status: `added`,
-          path: child_path,
-          new_value: new_items[idx],
-        })
-      } else if (idx >= new_items.length) {
-        result.set(child_path, {
-          status: `removed`,
-          path: child_path,
-          old_value: old_items[idx],
-        })
-      } else {
-        compute_diff(old_items[idx], new_items[idx], child_path, result, seen)
-      }
+  // Objects diff by key; arrays, Maps and Sets diff by index (Map entries wrapped as
+  // { key, value }, matching how get_children renders them)
+  const old_children = new Map(get_children(old_val).map(({ key, value }) => [key, value]))
+  const new_children = new Map(get_children(new_val).map(({ key, value }) => [key, value]))
+  for (const key of new Set([...old_children.keys(), ...new_children.keys()])) {
+    const child_path = build_path(current_path, key)
+    if (!old_children.has(key)) {
+      result.set(child_path, {
+        status: `added`,
+        path: child_path,
+        new_value: new_children.get(key),
+      })
+    } else if (!new_children.has(key)) {
+      result.set(child_path, {
+        status: `removed`,
+        path: child_path,
+        old_value: old_children.get(key),
+      })
+    } else {
+      compute_diff(old_children.get(key), new_children.get(key), child_path, result, seen)
     }
   }
-
-  if (old_type === `array`) {
-    diff_indexed(old_val as unknown[], new_val as unknown[])
-    return result
-  }
-
-  // Objects: compare key sets and recurse
-  if (old_type === `object`) {
-    const old_obj = old_val as Record<string, unknown>
-    const new_obj = new_val as Record<string, unknown>
-    const all_keys = new Set([...Object.keys(old_obj), ...Object.keys(new_obj)])
-    for (const key of all_keys) {
-      const child_path = build_path(current_path, key)
-      const in_old = key in old_obj
-      const in_new = key in new_obj
-      if (!in_old) {
-        result.set(child_path, {
-          status: `added`,
-          path: child_path,
-          new_value: new_obj[key],
-        })
-      } else if (!in_new) {
-        result.set(child_path, {
-          status: `removed`,
-          path: child_path,
-          old_value: old_obj[key],
-        })
-      } else {
-        compute_diff(old_obj[key], new_obj[key], child_path, result, seen)
-      }
-    }
-    return result
-  }
-
-  // Maps: wrap entries as { key, value } to match JsonNode.get_children() rendering
-  if (old_type === `map`) {
-    const wrap_entries = (map: unknown) =>
-      Array.from(map as Map<unknown, unknown>, ([key, value]) => ({ key, value }))
-    diff_indexed(wrap_entries(old_val), wrap_entries(new_val))
-    return result
-  }
-  if (old_type === `set`) {
-    diff_indexed(Array.from(old_val as Set<unknown>), Array.from(new_val as Set<unknown>))
-    return result
-  }
-
   return result
 }

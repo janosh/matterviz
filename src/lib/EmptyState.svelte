@@ -2,16 +2,12 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
+  // `children` takes precedence over the plain-text `message`
   let {
     message,
     children,
     ...rest
-  }: {
-    // Simple text message to display. Ignored if children snippet is provided.
-    message?: string
-    // Custom content to render. Takes precedence over message prop.
-    children?: Snippet
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  }: { message?: string; children?: Snippet } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
 <div {...rest} class={[`empty-state`, rest.class]}>
@@ -34,9 +30,6 @@
     min-height: inherit;
     text-align: center;
     box-sizing: border-box;
-  }
-  .empty-state :global(.status-message) {
-    --status-message-border: none; /* Remove inner border from StatusMessage */
   }
   .empty-state > :global(:is(p, h3, ul, strong)),
   .empty-state > .message {

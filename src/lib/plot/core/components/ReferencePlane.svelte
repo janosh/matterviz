@@ -20,30 +20,25 @@
   let [scene_x, scene_y, scene_z] = $derived(scene_size)
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
 
-  // Transform data coords to Three.js Vector3
-  let to_vec3 = $derived.by(() => {
-    const transform = create_to_threejs({
-      scene_x,
-      scene_y,
-      scene_z,
-      x_range,
-      y_range,
-      z_range,
-    })
-    return (ux: number, uy: number, uz: number) => {
-      const { x, y, z } = transform(ux, uy, uz)
-      return new THREE.Vector3(x, y, z)
-    }
-  })
+  // Transform data coords to Three.js coordinates
+  const to_coords = $derived(
+    create_to_threejs({ scene_x, scene_y, scene_z, x_range, y_range, z_range }),
+  )
 
   // Apply span constraints or use full range
   let [x_min, x_max] = $derived(span_or(ref_plane.x_span, x_range))
   let [y_min, y_max] = $derived(span_or(ref_plane.y_span, y_range))
   let [z_min, z_max] = $derived(span_or(ref_plane.z_span, z_range))
 
-  // Helper to create quad from 4 corner coords
-  const quad = (coords: Vec3[]) =>
-    create_quad_geometry(coords.map(([ux, uy, uz]) => to_vec3(ux, uy, uz)))
+  // Quad geometry from 4 data-space corners (two triangles: 0-1-2 and 0-2-3)
+  const quad = (corners: Vec3[]): THREE.BufferGeometry => {
+    const [c0, c1, c2, c3] = corners.map((corner) => to_coords(...corner))
+    const verts = [c0, c1, c2, c0, c2, c3].flatMap((corner) => [corner.x, corner.y, corner.z])
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute(`position`, new THREE.BufferAttribute(new Float32Array(verts), 3))
+    geo.computeVertexNormals()
+    return geo
+  }
 
   // Compute plane geometry based on type - returns result to use in $effect
   function compute_geometry(): THREE.BufferGeometry | null {
@@ -100,16 +95,6 @@
     return () => geo?.dispose()
   })
 
-  // Create a quad geometry from 4 corners (two triangles: 0-1-2 and 0-2-3)
-  function create_quad_geometry(corners: THREE.Vector3[]): THREE.BufferGeometry {
-    const geo = new THREE.BufferGeometry()
-    const [c0, c1, c2, c3] = corners
-    const verts = [c0, c1, c2, c0, c2, c3].flatMap((corner) => [corner.x, corner.y, corner.z])
-    geo.setAttribute(`position`, new THREE.BufferAttribute(new Float32Array(verts), 3))
-    geo.computeVertexNormals()
-    return geo
-  }
-
   // Create plane from normal and point, scaled to cover bounding box
   function create_plane_from_normal(normal: Vec3, point: Vec3): THREE.BufferGeometry {
     const normalized = normalize_vec(normal)
@@ -127,13 +112,12 @@
       py + u_dir[1] * su + v_dir[1] * sv,
       pz + u_dir[2] * su + v_dir[2] * sv,
     ]
-    const corners = [
+    return quad([
       corner(-scale, -scale),
       corner(scale, -scale),
       corner(scale, scale),
       corner(-scale, scale),
-    ]
-    return create_quad_geometry(corners.map(([ux, uy, uz]) => to_vec3(ux, uy, uz)))
+    ])
   }
 
   // Material properties (with defaults)

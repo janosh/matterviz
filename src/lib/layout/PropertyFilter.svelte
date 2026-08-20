@@ -14,12 +14,10 @@
     title,
     histogram_data,
     histogram_height = 30,
-    histogram_color = `rgba(0, 0, 0, 0.2)`,
     histogram_position = `top`,
     log = false,
     disabled = false,
     unit,
-    show_clear_button = true,
     onchange,
     onclear,
     ...rest
@@ -31,29 +29,20 @@
     title?: string // Tooltip title for the label
     histogram_data?: number[] // Data array for histogram visualization
     histogram_height?: number // Height of histogram in pixels
-    histogram_color?: string // Color for histogram bars (unfilled data)
     histogram_position?: `top` | `bottom` | `none` // Position of histogram relative to inputs, or 'none' to hide
     log?: boolean // Use logarithmic scale for histogram y-axis
     disabled?: boolean // Disable all inputs
     unit?: string // Unit label to display after inputs
-    show_clear_button?: boolean // Show clear button when filters are active
     onchange?: (min: number | undefined, max: number | undefined) => void // Callback when filter values change
     onclear?: () => void // Callback when clear button is clicked (fires before onchange)
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  } & Omit<HTMLAttributes<HTMLDivElement>, `onchange`> = $props()
 
-  let show_histogram = $derived(histogram_position !== `none` && histogram_data?.length)
-
+  const show_histogram = $derived(
+    histogram_position !== `none` && Boolean(histogram_data?.length),
+  )
   // Active when either bound is set (undefined = unbounded)
-  let active = $derived(min_value !== undefined || max_value !== undefined)
-  let plain_label = $derived(label.replaceAll(/<[^>]*>/g, ``))
-
-  let filtered_data = $derived.by(() => {
-    if (!histogram_data) return []
-    // undefined means unbounded (-Infinity for min, +Infinity for max)
-    const min = min_value ?? -Infinity
-    const max = max_value ?? Infinity
-    return histogram_data.filter((val) => val >= min && val <= max)
-  })
+  const active = $derived(min_value !== undefined || max_value !== undefined)
+  const plain_label = $derived(label.replaceAll(/<[^>]*>/g, ``))
 
   function onkeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }): void {
     if (event.key === `Enter`) {
@@ -81,15 +70,19 @@
   }
 
   // x: [] satisfies DataSeries type requirement; Histogram bins on y values only
-  const series: DataSeries[] = $derived([
-    { y: histogram_data ?? [], color: histogram_color, label: `All`, x: [] },
-    {
-      y: filtered_data,
-      color: `var(--accent-color, #228be6)`,
-      label: `Filtered`,
-      x: [],
-    },
-  ])
+  const series: DataSeries[] = $derived.by(() => {
+    const all = histogram_data ?? []
+    const [min, max] = [min_value ?? -Infinity, max_value ?? Infinity]
+    return [
+      { y: all, color: `rgba(0, 0, 0, 0.2)`, label: `All`, x: [] },
+      {
+        y: all.filter((val) => val >= min && val <= max),
+        color: `var(--accent-color, #228be6)`,
+        label: `Filtered`,
+        x: [],
+      },
+    ]
+  })
 </script>
 
 {#snippet histogram_snippet()}
@@ -144,7 +137,7 @@
         aria-label="{plain_label} maximum"
       />
       {#if unit}<span class="unit-label">{unit}</span>{/if}
-      {#if show_clear_button && active && !disabled}
+      {#if active && !disabled}
         <button
           type="button"
           class="clear-btn"
@@ -171,13 +164,13 @@
     border-radius: 6px;
     transition: all 0.15s;
     background: var(--filter-bg, rgba(128, 128, 128, 0.05));
-  }
-  .filter-container.active {
-    background: var(--filter-active-bg, rgba(77, 182, 255, 0.08));
-  }
-  .filter-container.disabled {
-    opacity: 0.5;
-    pointer-events: none;
+    &.active {
+      background: var(--filter-active-bg, rgba(77, 182, 255, 0.08));
+    }
+    &.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
   }
   .filter-row {
     display: flex;
@@ -202,23 +195,23 @@
     gap: 4pt;
     flex: 1;
     min-width: 0;
-  }
-  .filter-inputs input {
-    flex: 1;
-    min-width: 0;
-    border: 1px solid rgba(128, 128, 128, 0.2);
-    border-radius: 4px;
-    padding: 3pt 6pt;
-    background: color-mix(in srgb, currentColor 2%, transparent);
-    color: inherit;
-    font-family: var(--mono-font, monospace);
-  }
-  .filter-inputs input::placeholder {
-    opacity: 0.4;
-  }
-  .filter-inputs input:focus {
-    outline: none;
-    border-color: var(--highlight, #4db6ff);
+    input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid rgba(128, 128, 128, 0.2);
+      border-radius: 4px;
+      padding: 3pt 6pt;
+      background: color-mix(in srgb, currentColor 2%, transparent);
+      color: inherit;
+      font-family: var(--mono-font, monospace);
+      &::placeholder {
+        opacity: 0.4;
+      }
+      &:focus {
+        outline: none;
+        border-color: var(--highlight, #4db6ff);
+      }
+    }
   }
   .unit-label {
     font-size: 0.8em;
@@ -236,9 +229,9 @@
     border-radius: 4px;
     color: inherit;
     opacity: 0.5;
-  }
-  .clear-btn:hover {
-    opacity: 1;
-    background: rgba(128, 128, 128, 0.15);
+    &:hover {
+      opacity: 1;
+      background: rgba(128, 128, 128, 0.15);
+    }
   }
 </style>

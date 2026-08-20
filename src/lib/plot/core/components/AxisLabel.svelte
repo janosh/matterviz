@@ -1,9 +1,13 @@
 <script lang="ts">
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { AXIS_LABEL_CONTAINER } from '$lib/plot/core/axis-utils'
+  import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
   import type { AxisOption } from '$lib/plot/core/types'
-  import InteractiveAxisLabel from '$lib/plot/core/components/InteractiveAxisLabel.svelte'
 
+  // Axis title centered on (x, y). Static titles are SVG text wrapped by the same
+  // measured layout auto-padding reserves for them; titles with selectable `options`
+  // render a PortalSelect trigger inside a foreignObject sized to the closed trigger.
   let {
     x,
     y,
@@ -32,25 +36,58 @@
     width?: number
   } = $props()
 
-  let use_svg_text = $derived(rotate && !options?.length && !loading)
-  let wrap_width = $derived(width || AXIS_TITLE_WRAP_WIDTH)
-  const resolve_layout = () =>
-    resolve_axis_title_layout({ label, options, selected_key }, wrap_width)
-  // Text measurement fills a shared cache, so resolve outside $derived and refresh before DOM
-  // updates. This mirrors PlotTitle and avoids Svelte's unsafe-mutation guard.
-  let title_layout = $state.raw(resolve_layout())
-  $effect.pre(() => {
-    title_layout = resolve_layout()
-  })
-  // Keep browser wrapping from splitting titles when canvas metrics under-estimate page fonts.
-  let container_width = $derived(Math.max(wrap_width, title_layout.width))
-  let first_line_y = $derived(
+  const wrap_width = $derived(width || AXIS_TITLE_WRAP_WIDTH)
+  const title_layout = $derived(
+    resolve_axis_title_layout({ label, options, selected_key }, wrap_width),
+  )
+  const first_line_y = $derived(
     y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
   )
+  // Keep browser wrapping from splitting the trigger when canvas metrics under-estimate page fonts.
+  const trigger_width = $derived(Math.max(wrap_width, title_layout.width))
+
+  const stop = (evt: Event) => evt.stopPropagation()
+  // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
+  const stop_key = (evt: KeyboardEvent) => {
+    if (![`Tab`, `Escape`].includes(evt.key)) evt.stopPropagation()
+  }
 </script>
 
 <g transform={rotate ? `rotate(-90, ${x}, ${y})` : undefined}>
-  {#if use_svg_text}
+  {#if options?.length}
+    <foreignObject
+      x={x - trigger_width / 2}
+      y={y - title_layout.height / 2}
+      width={trigger_width}
+      height={title_layout.height}
+      style="overflow: visible; pointer-events: none"
+    >
+      <!-- handlers only keep trigger clicks from starting a pan/zoom drag on the host plot -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class={[`interactive-axis-label`, `axis-label`, `${axis_type}-label`, { loading }]}
+        style:color
+        onmousedown={stop}
+        onmouseup={stop}
+        onclick={stop}
+        onkeydown={stop_key}
+        role="group"
+      >
+        <PortalSelect
+          {options}
+          {selected_key}
+          {on_select}
+          disabled={loading}
+          class="axis-trigger"
+        />
+        {#if loading}
+          <Spinner
+            style="--spinner-size: 0.9em; --spinner-border-width: 2px; --spinner-margin: 0 0 0 0.3em"
+          />
+        {/if}
+      </div>
+    </foreignObject>
+  {:else if title_layout.lines.length}
     <text
       class={[`axis-label`, `${axis_type}-label`]}
       dominant-baseline="central"
@@ -61,38 +98,33 @@
       {x}
       {y}
     >
+      <!-- contiguous markup keeps textContent free of layout whitespace -->
       {#each title_layout.lines as line, line_idx}
-        <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true">
-          {#each line.segments as segment}
-            <tspan
+        <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true"
+          >{#each line.segments as segment}<tspan
               baseline-shift={segment.shift}
-              font-size={segment.shift ? `75%` : undefined}
-            >
-              {segment.text}
-            </tspan>
-          {/each}{line_idx < title_layout.lines.length - 1 ? ` ` : ``}
-        </tspan>
+              font-size={segment.shift ? `75%` : undefined}>{segment.text}</tspan
+            >{/each}{line_idx < title_layout.lines.length - 1 ? ` ` : ``}</tspan
+        >
       {/each}
     </text>
-  {:else}
-    <foreignObject
-      x={x - container_width / 2}
-      y={y - title_layout.height / 2}
-      width={container_width}
-      height={title_layout.height}
-      style="overflow: visible; pointer-events: none"
-    >
-      <InteractiveAxisLabel
-        {label}
-        {options}
-        {selected_key}
-        {loading}
-        {axis_type}
-        {color}
-        {on_select}
-        line_segments={title_layout.lines.map(({ segments }) => segments)}
-        class={[`axis-label`, `${axis_type}-label`]}
-      />
-    </foreignObject>
   {/if}
 </g>
+
+<style>
+  .interactive-axis-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    :global(.axis-trigger) {
+      pointer-events: auto;
+    }
+    &.loading :global(.axis-trigger) {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+  }
+</style>

@@ -5,7 +5,6 @@ import scatter_plot_3d_source from '$lib/plot/scatter-3d/ScatterPlot3D.svelte?ra
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls } from '../setup'
-import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'
 
 // Smoke tests to ensure component mounts without errors.
 // Meaningful 3D rendering tests require Playwright visual regression testing,
@@ -147,15 +146,27 @@ describe(`ScatterPlot3D smoke tests`, () => {
     )
   })
 
-  test(`legend toggles series visibility and reports the change`, async () => {
-    const on_series_visibility_change = vi.fn()
-    await mount_plot({ series: multi_series, on_series_visibility_change })
-    const first_item = container.querySelector<HTMLElement>(`.legend-item`)
-    if (!first_item) throw new Error(`legend item not rendered`)
-    first_item.click()
-    flushSync()
-    expect(first_item.classList.contains(`hidden`)).toBe(true)
-    expect(on_series_visibility_change).toHaveBeenCalledWith(0, false)
+  test(`legend click hides the series and writes visible=false into a bound series`, async () => {
+    const click_first_item = () => {
+      const first_item = container.querySelector<HTMLElement>(`.legend-item`)
+      if (!first_item) throw new Error(`legend item not rendered`)
+      first_item.click()
+      flushSync()
+      return first_item
+    }
+    // unbound: the component owns visibility and greys out the legend entry
+    await mount_plot({ series: multi_series })
+    expect(click_first_item().classList.contains(`hidden`)).toBe(true)
+    // original series objects are replaced, never mutated
+    expect(multi_series[0].visible).toBeUndefined()
+    if (mounted_component) await unmount(mounted_component)
+
+    // bound: the toggle is written back into the caller's series array (plain state here, so
+    // the DOM can't re-render from it - that path is covered above)
+    const state = { series: multi_series }
+    await mount_plot(bind_props({}, state))
+    click_first_item()
+    expect(state.series.map((srs) => srs.visible ?? true)).toEqual([false, true])
   })
 
   test(`browser exit updates the fullscreen binding`, async () => {
@@ -165,32 +176,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await document.exitFullscreen()
     flushSync()
     expect(state.fullscreen).toBe(false)
-  })
-
-  test.each([
-    [`no-id replacement preserves visibility by index`, `none`, 2],
-    [`stable-id replacement preserves visibility`, `unique`, 2],
-    [`duplicate-id visibility does not leak between series`, `duplicate`, 2],
-    [`duplicate-id key cannot collide with a real id`, `duplicate_collision`, 3],
-  ] as const)(`%s`, async (_name, id_mode, item_count) => {
-    mounted_component = mount(ScatterPlot3DHarness, {
-      target: container,
-      props: { id_mode },
-    })
-    await tick()
-    const legend_items = () => container.querySelectorAll<HTMLElement>(`.legend-item`)
-    const hidden_states = () =>
-      Array.from(legend_items(), (item) => item.classList.contains(`hidden`))
-    const expected_visibility = [true, ...Array(item_count - 1).fill(false)]
-
-    expect(legend_items()).toHaveLength(expected_visibility.length)
-    legend_items()[0].click()
-    flushSync()
-    expect(hidden_states()).toEqual(expected_visibility)
-
-    container.querySelector<HTMLButtonElement>(`[data-testid="replace-series"]`)?.click()
-    flushSync()
-    expect(hidden_states()).toEqual(expected_visibility)
   })
 
   // The standalone controls component is exported from $lib/plot, so its prop names are

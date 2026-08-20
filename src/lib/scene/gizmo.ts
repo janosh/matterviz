@@ -1,5 +1,6 @@
-// Types + geometry constants for Gizmo.svelte, kept out of the component so build_gizmo_props
-// (props.svelte.ts) can type its return value without importing a .svelte module.
+// Types, layout math and constants for Gizmo.svelte, kept out of the component so callers
+// (SceneControlProps, StructureViewport) can type and size a gizmo without importing a .svelte
+// module, and so the layout is unit-testable without a Threlte context.
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 
@@ -32,6 +33,31 @@ export type GizmoOptions = {
   // Duration in ms of the opacity fade when `visible` flips. 0 appears/disappears instantly.
   fade_duration?: number
 } & Partial<Record<GizmoAxisKey, GizmoAxisStyle>>
+
+export type GizmoRect = { x: number; y: number; width: number; height: number }
+
+// Where the gizmo draws, in CSS px from the canvas's top-left — the origin WebGPU viewports,
+// Renderer.setViewport/setScissor and pointer coordinates all share. Kept inside the canvas:
+// a viewport poking past the attachment fails WebGPU validation and drops the render pass.
+export function gizmo_rect(
+  { placement = `bottom-left`, size, offset = {} }: GizmoOptions,
+  width: number,
+  height: number,
+): GizmoRect {
+  if (placement === `fill`) return { x: 0, y: 0, width, height }
+  // Unsized gizmos scale with the viewport, as the old DOM gizmo did via CSS clamp()
+  const responsive = Math.min(100, Math.max(70, 0.18 * Math.min(width, height)))
+  const box = Math.min(size ?? responsive, width, height)
+  const gap = 5
+  const x = placement.endsWith(`-left`)
+    ? (offset.left ?? gap)
+    : width - box - (offset.right ?? gap)
+  const y = placement.startsWith(`top`)
+    ? (offset.top ?? gap)
+    : height - box - (offset.bottom ?? gap)
+  const clamp = (value: number, max: number) => Math.min(Math.max(0, value), max)
+  return { x: clamp(x, width - box), y: clamp(y, height - box), width: box, height: box }
+}
 
 // Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed
 // single-view size would dominate them: scale with the pane's short side instead, clamped to

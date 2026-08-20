@@ -2,7 +2,7 @@ import { PlotTooltip } from '$lib/plot'
 import { color as d3_color } from 'd3-color'
 import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, trigger_resize_observer } from '../setup'
 
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
@@ -97,6 +97,44 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.position).toBe(position)
     expect(tooltip.style.left).toBe(`40px`)
     expect(tooltip.style.top).toBe(`35px`)
+  })
+
+  // Fixed tooltips are bounded by the viewport: anchors near its right/bottom edges flip the
+  // tooltip to the other side instead of letting it overflow off-screen.
+  test.each([
+    [`inside`, 100, 100, 110, 105],
+    [`right edge flips left`, innerWidth - 20, 100, innerWidth - 20 - 10 - 60, 105],
+    [`bottom edge flips up`, 100, innerHeight - 10, 110, innerHeight - 10 - 5 - 30],
+    [`corner clamps`, innerWidth + 50, innerHeight + 50, innerWidth - 60, innerHeight - 30],
+  ])(`fixed placement at viewport %s`, (_desc, x, y, left, top) => {
+    const tooltip = mount_tooltip({
+      x,
+      y,
+      fixed: true,
+      offset: { x: 10, y: 5 },
+      fallback_size: { width: 60, height: 30 },
+    })
+    expect(tooltip.style.left).toBe(`${left}px`)
+    expect(tooltip.style.top).toBe(`${top}px`)
+  })
+
+  test(`re-measures when its content resizes`, () => {
+    const tooltip = mount_tooltip({
+      x: 80,
+      y: 50,
+      offset: { x: 0, y: 0 },
+      constrain_to: { width: 100, height: 100 },
+      fallback_size: { width: 10, height: 10 },
+    })
+    expect(tooltip.style.left).toBe(`80px`)
+    const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(50)
+    try {
+      trigger_resize_observer(tooltip)
+      flushSync()
+      expect(tooltip.style.left).toBe(`30px`) // 50px wide no longer fits right of x=80
+    } finally {
+      width_spy.mockRestore()
+    }
   })
 
   test(`uses fallback size for decoration-aware placement before measurement`, () => {

@@ -8,18 +8,14 @@
   let {
     fullscreen = $bindable(false),
     wrapper,
-    placement = `inline`,
     bg_css_var = `--fullscreen-bg`,
     on_change,
-    on_request_error,
     ...rest
   }: HTMLButtonAttributes & {
     fullscreen?: boolean
     wrapper?: HTMLElement
-    placement?: `inline` | `corner`
-    bg_css_var?: string
+    bg_css_var?: string // wrapper CSS var that receives the page background while fullscreen
     on_change?: (fullscreen: boolean) => void
-    on_request_error?: (error: unknown) => void
   } = $props()
 
   const label = $derived(fullscreen ? `Exit fullscreen` : `Enter fullscreen`)
@@ -30,7 +26,6 @@
     set_fullscreen: (value) => (fullscreen = value),
     get_bg_css_var: () => bg_css_var,
     on_change: (value) => on_change?.(value),
-    on_request_error: (error) => on_request_error?.(error),
   })
 
   async function request_toggle(): Promise<void> {
@@ -47,7 +42,6 @@
       }
     } catch (error) {
       console.error(`Fullscreen operation failed:`, error)
-      on_request_error?.(error)
     }
   }
 </script>
@@ -58,7 +52,7 @@
   aria-label={label}
   {...rest}
   aria-pressed={fullscreen}
-  class={[`fullscreen-btn`, placement === `corner` && `corner`, rest.class]}
+  class={[`fullscreen-btn`, rest.class]}
   onclick={chain_handlers(() => void request_toggle(), rest.onclick)}
 >
   <Icon icon={fullscreen ? ExitFullscreen : Fullscreen} />
@@ -78,12 +72,6 @@
     transition:
       background 0.2s,
       opacity 0.2s;
-  }
-  .fullscreen-btn.corner {
-    position: var(--fullscreen-btn-position, absolute);
-    top: var(--fullscreen-btn-top, 5pt);
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
   }
   .fullscreen-btn:hover,
   .fullscreen-btn:focus-visible {

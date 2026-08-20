@@ -17,6 +17,20 @@ export type ViewerPaneOptions = Omit<
 
 export { Info as info_pane_icon } from 'svelte-widgets/icons'
 
+// Label/value rows grouped into titled cards, as rendered by InfoPaneCards
+export type InfoPaneRow = {
+  label: string
+  value: string | number
+  key?: string
+  tooltip?: string
+}
+export type InfoPaneCard = {
+  title: string
+  subtitle?: string
+  key?: string // defaults to title; required when titles repeat
+  rows: InfoPaneRow[]
+}
+
 // Info panes stay usable when clipboard access is denied, so log rather than reject.
 export const create_clipboard_feedback = (
   duration = 1000,

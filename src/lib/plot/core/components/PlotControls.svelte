@@ -41,15 +41,6 @@
     pane_props = {},
   }: PlotControlsProps = $props()
 
-  // Range input state
-  let range_inputs: Record<AxisKey, [number | null, number | null]> = $state({
-    x: [null, null],
-    x2: [null, null],
-    y: [null, null],
-    y2: [null, null],
-  })
-  let range_els = $state<Record<string, HTMLInputElement>>({})
-
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
   const range_spans_zero = (lo: number, hi: number): boolean =>
     Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
@@ -62,11 +53,11 @@
     >
   const axis_values = <Value>(suffix: string, get_value: (axis: AxisKey) => Value) =>
     Object.fromEntries(all_axes.map((axis) => [`${axis}_${suffix}`, get_value(axis)]))
+  // secondary axes have no zero line / x2 grid defaults in the schema
   const zero_line_default = (axis: AxisKey): boolean =>
-    (axis === `x` && DEFAULTS.plot.show_x_zero_line) ||
-    (axis === `y` && DEFAULTS.plot.show_y_zero_line)
+    (axis === `x` || axis === `y`) && DEFAULTS.plot.display[`${axis}_zero_line`]
   const grid_default = (axis: AxisKey): boolean =>
-    axis !== `x2` && DEFAULTS.scatter.display[`${axis}_grid`]
+    axis !== `x2` && DEFAULTS.plot.display[`${axis}_grid`]
   const display_values = (): Record<string, boolean> =>
     Object.fromEntries(
       all_axes.flatMap((axis) => [
@@ -152,32 +143,33 @@
     update_axis(format_type, { format: input.value })
   }
 
-  // Handle range input changes
+  // Range inputs mirror the axis configs; a partial or inverted entry stays local (and
+  // flagged invalid) until it resolves or the config changes from outside.
+  type RangeInput = [number | null, number | null]
+  let range_inputs = $derived(
+    axis_record((axis): RangeInput => {
+      const { range } = axis_config(axis)
+      return [range?.[0] ?? null, range?.[1] ?? null]
+    }),
+  )
+  const range_invalid = ([min, max]: RangeInput): boolean =>
+    min !== null && max !== null && min >= max
   const update_range = (axis: AxisKey, bound: 0 | 1, value: string) => {
     const parsed = value === `` ? null : Number(value)
-    range_inputs[axis][bound] = Number.isFinite(parsed) ? parsed : null
-    const [min, max] = range_inputs[axis]
+    const next: RangeInput = [...range_inputs[axis]]
+    next[bound] = Number.isFinite(parsed) ? parsed : null
+    range_inputs = { ...range_inputs, [axis]: next }
+    if (range_invalid(next)) return
+    const [min, max] = next
     const auto = auto_ranges[axis]
-    const invalid = min !== null && max !== null && min >= max
-    range_els[`${axis}-min`]?.classList.toggle(`invalid`, invalid)
-    range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
-    if (invalid) return
+    // Without an auto range, only a complete min/max pair can be applied
+    if (!auto && (min === null || max === null)) return
     const next_range =
       min === null && max === null
         ? undefined
         : ([min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2)
-    // If auto range is undefined, only set if both min and max are provided
-    if (!auto && (min === null || max === null)) return
     update_axis(axis, { range: next_range })
   }
-
-  // Sync range inputs from props
-  $effect(() => {
-    for (const axis of all_axes) {
-      const { range } = axis_config(axis)
-      range_inputs[axis] = [range?.[0] ?? null, range?.[1] ?? null]
-    }
-  })
 
   let ctrl_state = $derived({
     show_controls,
@@ -250,33 +242,25 @@
         current_values={axis_values(`range`, (axis) => axis_config(axis).range)}
         on_reset={() => {
           for (const axis of all_axes) update_axis(axis, { range: initial_ranges[axis] })
-          Object.values(range_els).forEach((element) => element?.classList.remove(`invalid`))
         }}
         layout="grid"
       >
         {#each visible_axes as [axis, label] (axis)}
+          {@const invalid = range_invalid(range_inputs[axis])}
           <label>
             <span>{label}</span>
             <span class="range-pair">
-              <input
-                type="number"
-                value={range_inputs[axis][0] ?? ``}
-                bind:this={range_els[`${axis}-min`]}
-                placeholder="auto"
-                class="range-input"
-                oninput={(evt) => update_range(axis, 0, evt.currentTarget.value)}
-                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
-              />
-              <span>to</span>
-              <input
-                type="number"
-                value={range_inputs[axis][1] ?? ``}
-                bind:this={range_els[`${axis}-max`]}
-                placeholder="auto"
-                class="range-input"
-                oninput={(evt) => update_range(axis, 1, evt.currentTarget.value)}
-                onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
-              />
+              {#each [0, 1] as const as bound (bound)}
+                {#if bound === 1}<span>to</span>{/if}
+                <input
+                  type="number"
+                  value={range_inputs[axis][bound] ?? ``}
+                  placeholder="auto"
+                  class={[`range-input`, { invalid }]}
+                  oninput={(evt) => update_range(axis, bound, evt.currentTarget.value)}
+                  onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget.blur()}
+                />
+              {/each}
             </span>
           </label>
         {/each}

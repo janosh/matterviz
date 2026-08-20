@@ -1,7 +1,8 @@
 // Shared camera fly-to, used by the orientation gizmo (axis handles) and the zone-axis
-// control (crystallographic directions). Interpolating the camera's OFFSET from the orbit
-// target rather than its absolute position keeps the viewing distance constant while the
-// direction swings around, so the structure neither zooms nor drifts during the flight.
+// control (crystallographic directions). The camera's OFFSET from the orbit target is rotated
+// about a fixed axis at constant radius, so the structure neither zooms nor drifts during the
+// flight and the swing covers its angle at the eased rate. A lerp of the endpoints would cut
+// the corner (dolly in and back out) and, between opposite handles, pass through the target.
 import type { Vec3 } from '$lib/math'
 import * as THREE from 'three/webgpu'
 
@@ -26,47 +27,57 @@ export type FlyToHooks = {
   onend?: () => void
 }
 
-// Matches the orientation gizmo's default so gizmo clicks and zone-axis jumps feel identical.
 export const DEFAULT_FLY_TO_DURATION_MS = 400
 
 // Quadratic ease so the swing starts and lands gently instead of snapping.
 export const ease_in_out = (progress: number): number =>
   progress < 0.5 ? 2 * progress * progress : 1 - (-2 * progress + 2) ** 2 / 2
 
-const FLY_TO_ORIGIN = new THREE.Vector3()
+const ORIGIN = new THREE.Vector3()
 // Below this, `dir` carries no usable direction (e.g. Miller indices 000)
 const MIN_DIR_LENGTH = 1e-12
+// sin of the angle between start and end direction below which they count as (anti)parallel
+const MIN_SIN_ANGLE = 1e-6
 
 // `start` takes a direction that need not be normalized; only its direction is used.
 export function create_fly_to(hooks: FlyToHooks) {
-  let animation: {
-    from: THREE.Vector3
-    to: THREE.Vector3
-    distance: number
-    elapsed: number
-  } | null = null
-  const lerped = new THREE.Vector3()
+  let animation: { angle: number; distance: number; elapsed: number } | null = null
+  const from_dir = new THREE.Vector3()
+  const to_dir = new THREE.Vector3()
+  const axis = new THREE.Vector3()
+  const rotation = new THREE.Quaternion()
+  const offset = new THREE.Vector3()
 
   function start(dir: Vec3): void {
     const camera = hooks.camera()
     if (!camera) return
     const dir_length = Math.hypot(...dir)
     if (dir_length < MIN_DIR_LENGTH) return
-    const unit: Vec3 = [dir[0] / dir_length, dir[1] / dir_length, dir[2] / dir_length]
+    to_dir.set(...dir).divideScalar(dir_length)
 
     const controls = hooks.controls()
     const { up } = camera
-    const target = controls?.target ?? FLY_TO_ORIGIN
+    const target = controls?.target ?? ORIGIN
     const distance = camera.position.distanceTo(target) || 1
-    const to = new THREE.Vector3(...unit).multiplyScalar(distance)
-    // `unit` is normalized, so this dot is its cosine to the camera's up vector. Looking
-    // straight down `up` is degenerate for OrbitControls (polar angle 0), so tilt off the pole.
-    if (Math.abs(unit[0] * up.x + unit[1] * up.y + unit[2] * up.z) > 0.999) {
-      if (Math.abs(up.z) > 0.5) to.y += 1e-3 * distance
-      else to.z += 1e-3 * distance
+    // Looking straight down `up` is degenerate for OrbitControls (polar angle 0), so tilt off
+    // the pole. `to_dir` is a unit vector, so the dot is its cosine to the up vector.
+    if (Math.abs(to_dir.dot(up)) > 0.999) {
+      if (Math.abs(up.z) > 0.5) to_dir.y += 1e-3
+      else to_dir.z += 1e-3
+      to_dir.normalize()
     }
 
-    animation = { from: camera.position.clone().sub(target), to, distance, elapsed: 0 }
+    from_dir.copy(camera.position).sub(target).normalize()
+    // A camera sitting on the target has no direction to swing from; land directly.
+    if (from_dir.lengthSq() === 0) from_dir.copy(to_dir)
+    axis.crossVectors(from_dir, to_dir)
+    // Opposite handles share no unique great circle: orbit around the camera's up axis so
+    // the flight stays level. (Parallel directions land here too; their angle is 0.)
+    if (axis.length() < MIN_SIN_ANGLE)
+      axis.copy(up).addScaledVector(from_dir, -up.dot(from_dir))
+    axis.normalize()
+
+    animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0 }
     if (controls) controls.enabled = false
     hooks.onstart?.()
     hooks.invalidate()
@@ -80,16 +91,10 @@ export function create_fly_to(hooks: FlyToHooks) {
     animation.elapsed += delta_seconds * 1000
     const duration = hooks.duration_ms()
     const progress = duration > 0 ? Math.min(1, animation.elapsed / duration) : 1
-    const target = controls?.target ?? FLY_TO_ORIGIN
-    // setLength, because a straight lerp between two equally long offsets cuts the corner:
-    // halfway through a 90-degree swing the camera would sit at cos(45) = 0.707 of the
-    // starting radius, a 29% dolly-in and back out. Renormalizing makes the flight the pure
-    // rotation this module promises.
-    lerped
-      .copy(animation.from)
-      .lerp(animation.to, ease_in_out(progress))
-      .setLength(animation.distance)
-    camera.position.copy(target).add(lerped)
+    const target = controls?.target ?? ORIGIN
+    rotation.setFromAxisAngle(axis, animation.angle * ease_in_out(progress))
+    offset.copy(from_dir).applyQuaternion(rotation).multiplyScalar(animation.distance)
+    camera.position.copy(target).add(offset)
     camera.lookAt(target)
     controls?.update()
     hooks.onchange?.()

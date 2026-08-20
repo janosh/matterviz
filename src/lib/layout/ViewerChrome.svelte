@@ -10,15 +10,14 @@
 
   let {
     controls_config,
-    filename = undefined,
+    filename,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    fullscreen_btn_style = undefined,
+    fullscreen_btn_style,
     fullscreen_bg_css_var = `--fullscreen-bg`,
     on_fullscreen_change,
-    wrapper = undefined,
-    before = undefined,
-    children = undefined,
+    wrapper,
+    children,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
     controls_config: ShowControlsState
@@ -30,7 +29,6 @@
     on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
     style?: string // extra styles/CSS vars for the section (user config style wins)
-    before?: Snippet // rendered before filename/fullscreen
     children?: Snippet // rendered after the fullscreen toggle (panes, controls, ...)
   } = $props()
 
@@ -44,8 +42,6 @@
   style={[rest.style, controls_config.style].filter(Boolean).join(`; `)}
 >
   {#if controls_config.mode !== `never`}
-    {@render before?.()}
-
     {#if filename && controls_config.visible(`filename`)}
       <span class="filename">{filename}</span>
     {/if}
@@ -79,38 +75,29 @@
     pointer-events: none;
     transition: opacity 0.2s ease;
     align-items: var(--viewer-buttons-align, center);
-  }
-  /* Mode: always - controls always visible */
-  section.control-buttons.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: hover - controls visible while the parent viewer is hovered/focused */
-  :global(.structure:hover) > section.control-buttons.hover-visible,
-  :global(.structure:focus-within) > section.control-buttons.hover-visible,
-  :global(.brillouin-zone:hover) > section.control-buttons.hover-visible,
-  :global(.brillouin-zone:focus-within) > section.control-buttons.hover-visible,
-  :global(.fermi-surface:hover) > section.control-buttons.hover-visible,
-  :global(.fermi-surface:focus-within) > section.control-buttons.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: never - stays hidden (default state, no additional CSS needed) */
-  section.control-buttons > :global(button) {
-    background-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--viewer-buttons-btn-padding, 4px);
-    border-radius: var(--border-radius, 3pt);
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
-  }
-  section.control-buttons :global(button:hover) {
-    background-color: var(
-      --viewer-buttons-hover-bg,
-      color-mix(in srgb, currentColor 8%, transparent)
-    );
-    color: var(--viewer-buttons-hover-color, currentColor);
+    /* always: visible; hover: visible while the parent viewer is hovered/focused; never: hidden */
+    &.always-visible,
+    :global(:is(.structure, .brillouin-zone, .fermi-surface):is(:hover, :focus-within))
+      > &.hover-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    > :global(button) {
+      background-color: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--viewer-buttons-btn-padding, 4px);
+      border-radius: var(--border-radius, 3pt);
+      font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
+    }
+    :global(button:hover) {
+      background-color: var(
+        --viewer-buttons-hover-bg,
+        color-mix(in srgb, currentColor 8%, transparent)
+      );
+      color: var(--viewer-buttons-hover-color, currentColor);
+    }
   }
   .filename {
     font-family: monospace;

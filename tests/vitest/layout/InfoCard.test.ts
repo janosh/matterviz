@@ -1,79 +1,54 @@
 import { InfoCard } from '$lib/layout'
-import { mount } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
+type Item = NonNullable<ComponentProps<typeof InfoCard>[`data`]>[number]
+
 describe(`InfoCard`, () => {
-  test(`renders numeric values through format_num`, () => {
-    mount(InfoCard, {
-      target: document.body,
-      props: { data: [{ title: `Energy`, value: Math.PI, fmt: `.2f` }] },
-    })
-    expect(doc_query(`strong`).textContent?.trim()).toBe(`3.14`)
-  })
+  const value_text = () => doc_query(`strong`).textContent?.replaceAll(/\s+/g, ` `).trim()
 
-  test(`sanitizes HTML in string values`, () => {
-    mount(InfoCard, {
-      target: document.body,
-      props: { data: [{ title: `Label`, value: `Fe<sub>2</sub>O<sub>3</sub>` }] },
-    })
-    const strong = doc_query(`strong`)
-    expect(strong.querySelectorAll(`sub`)).toHaveLength(2)
-    expect(strong.textContent?.trim()).toBe(`Fe2O3`)
-  })
-
-  test(`strips dangerous HTML from values`, () => {
-    mount(InfoCard, {
-      target: document.body,
-      props: { data: [{ title: `XSS`, value: `<script>alert(1)</script>safe` }] },
-    })
+  test.each<[Item, string]>([
+    [{ title: `Energy`, value: Math.PI, fmt: `.2f` }, `3.14`],
+    [{ title: `Energy`, value: Math.PI }, `3.142`], // card-level fmt
+    [{ title: `Magmom`, value: [1.2, -1.2, 0], unit: `μB` }, `1.200, −1.200, 0.000 μB`],
+    [{ title: `Label`, value: `Fe<sub>2</sub>O<sub>3</sub>` }, `Fe2O3`],
+    [{ title: `XSS`, value: `<script>alert(1)</script>safe` }, `safe`],
+    [{ title: `Band gap`, value: 1.5, unit: `eV` }, `1.500 eV`],
+  ])(`renders %j as %p`, (item, expected) => {
+    mount(InfoCard, { target: document.body, props: { data: [item], fmt: `.3f` } })
+    expect(value_text()).toBe(expected)
     expect(document.querySelector(`script`)).toBeNull()
-    expect(doc_query(`strong`).textContent?.trim()).toBe(`safe`)
+    if (item.unit) expect(doc_query(`strong small`).textContent).toBe(item.unit)
   })
 
-  test(`filters out null and undefined values`, () => {
+  test(`hides null/undefined values and falsy conditions, falls back when nothing remains`, () => {
     mount(InfoCard, {
       target: document.body,
       props: {
+        title: `E<sub>hull</sub>`,
         data: [
-          { title: `Present`, value: `yes` },
+          { title: `Present`, value: `yes`, condition: 1 },
           { title: `Null`, value: null },
           { title: `Undef`, value: undefined },
+          { title: `Off`, value: `no`, condition: false },
+          { title: `Zero`, value: `no`, condition: 0 },
         ],
         fallback: `No data`,
       },
     })
-    const divs = document.querySelectorAll(`.info-card div`)
-    expect(divs).toHaveLength(1)
-    expect(doc_query(`strong`).textContent?.trim()).toBe(`yes`)
-  })
+    expect(doc_query(`h2 sub`).textContent).toBe(`hull`)
+    expect(document.querySelectorAll(`.info-card div`)).toHaveLength(1)
+    expect(value_text()).toBe(`yes`)
+    expect(document.body.textContent).not.toContain(`No data`)
 
-  test(`shows fallback when all data is filtered out`, () => {
+    document.body.innerHTML = ``
     mount(InfoCard, {
       target: document.body,
-      props: {
-        data: [{ title: `Gone`, value: null }],
-        fallback: `No data available`,
-      },
+      props: { data: [{ title: `Gone`, value: null }], fallback: `No data available` },
     })
     expect(document.querySelectorAll(`.info-card div`)).toHaveLength(0)
-    expect(doc_query(`.info-card`).textContent).toContain(`No data available`)
-  })
-
-  test(`renders unit suffix`, () => {
-    mount(InfoCard, {
-      target: document.body,
-      props: { data: [{ title: `Band gap`, value: 1.5, unit: `eV` }] },
-    })
-    const small = doc_query(`strong small`)
-    expect(small.textContent).toBe(`eV`)
-  })
-
-  test(`sanitizes HTML in title`, () => {
-    mount(InfoCard, {
-      target: document.body,
-      props: { title: `E<sub>hull</sub>`, data: [] },
-    })
-    expect(doc_query(`h2 sub`).textContent).toBe(`hull`)
+    expect(document.querySelector(`h2`)).toBeNull()
+    expect(doc_query(`.info-card`).textContent?.trim()).toBe(`No data available`)
   })
 })

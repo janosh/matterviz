@@ -11,7 +11,7 @@
   import { strip_html } from '$lib/table'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
   const instance_id = unique_id()
@@ -22,7 +22,6 @@
     layout_tracks = 1, // Default to 1 column/row
     available_edge_length = Number.POSITIVE_INFINITY,
     item_extents,
-    estimated_item_extent,
     style = ``,
     item_style = ``,
     collapsed_groups = $bindable(new SvelteSet<string>()),
@@ -53,7 +52,6 @@
     available_edge_length?: number
     // Optional measured grid-cell extents in rendered child order (including group/filter cells).
     item_extents?: readonly (LegendItemExtent | undefined)[]
-    estimated_item_extent?: LegendItemExtent
     style?: string // Inline styles forwarded to wrapper div
     item_style?: string
     // Bindable set of collapsed group names (pass initial values to collapse groups by default)
@@ -125,8 +123,8 @@
       )
       const measured = item_extents?.[cell_idx]
       return {
-        width: measured?.width ?? estimated_item_extent?.width ?? estimate.width,
-        height: measured?.height ?? estimated_item_extent?.height ?? estimate.height,
+        width: measured?.width ?? estimate.width,
+        height: measured?.height ?? estimate.height,
       }
     })
   })
@@ -145,6 +143,18 @@
       : layout_tracks,
   )
 
+  // Group header cells look up their members here instead of re-filtering series_data per cell
+  const items_by_group = $derived.by(() => {
+    const groups = new SvelteMap<string, LegendItem[]>()
+    for (const item of series_data) {
+      if (item.legend_group == null) continue
+      const members = groups.get(item.legend_group)
+      if (members) members.push(item)
+      else groups.set(item.legend_group, [item])
+    }
+    return groups
+  })
+
   function toggle_group_collapse(group_name: string) {
     // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
     if (!(collapsed_groups instanceof SvelteSet)) {
@@ -159,56 +169,47 @@
   const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
     on_group_toggle?.(group_name, group_indices(items))
 
+  // Window listeners live only for the duration of a drag
   let drag_controller: AbortController | undefined
-  function cleanup_drag_listeners() {
-    if (!drag_controller) return
-    drag_controller.abort()
+  const end_drag = () => {
+    drag_controller?.abort()
     drag_controller = undefined
-    document.body.style.cursor = `default`
-    document.body.style.userSelect = `auto`
+    is_dragging = false
   }
   onDestroy(() => {
-    cleanup_drag_listeners()
+    end_drag()
     on_item_hover?.(null)
   })
 
   function handle_legend_mouse_down(event: MouseEvent) {
     if (!draggable) return
-
     // Only start drag from non-interactive legend areas
     const target = event.target
     if (target instanceof Element && target.closest(`.legend-item, .legend-group-header`))
       return
-
     event.preventDefault()
     event.stopPropagation()
-
+    end_drag()
     is_dragging = true
-
     on_drag_start(event)
-
-    drag_controller?.abort()
     drag_controller = new AbortController()
     const { signal } = drag_controller
-    window.addEventListener(`mousemove`, handle_window_mouse_move, { signal })
-    window.addEventListener(`mouseup`, handle_window_mouse_up, { signal })
-  }
-
-  function handle_window_mouse_move(event: MouseEvent) {
-    if (!is_dragging) return
-
-    event.preventDefault()
-    on_drag(event)
-  }
-
-  function handle_window_mouse_up(event: MouseEvent) {
-    if (!is_dragging) return
-
-    is_dragging = false
-
-    on_drag_end(event)
-
-    cleanup_drag_listeners()
+    window.addEventListener(
+      `mousemove`,
+      (move_event) => {
+        move_event.preventDefault()
+        on_drag(move_event)
+      },
+      { signal },
+    )
+    window.addEventListener(
+      `mouseup`,
+      (up_event) => {
+        end_drag()
+        on_drag_end(up_event)
+      },
+      { signal },
+    )
   }
 
   let div_style = $derived(
@@ -400,9 +401,7 @@
         >No legend items</span
       >
     {:else if cell.kind === `group`}
-      {@const group_items = series_data.filter(
-        ({ legend_group }) => legend_group === cell.group,
-      )}
+      {@const group_items = items_by_group.get(cell.group) ?? []}
       {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
       <div

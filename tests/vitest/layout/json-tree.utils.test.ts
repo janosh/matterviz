@@ -9,6 +9,8 @@ import {
   format_preview,
   get_ancestor_paths,
   get_child_count,
+  get_children,
+  get_value_at_path,
   get_value_type,
   is_css_color,
   is_expandable,
@@ -363,7 +365,7 @@ describe(`collect_all_paths`, () => {
 
   it(`respects max_depth`, () => {
     const obj = { a: { b: { c: { d: 1 } } } }
-    const paths = collect_all_paths(obj, `root`, 2, 0)
+    const paths = collect_all_paths(obj, `root`, 2)
     expect(paths).toContain(`root`)
     expect(paths).toContain(`root.a`)
     expect(paths).not.toContain(`root.a.b`)
@@ -388,37 +390,86 @@ describe(`collect_all_paths`, () => {
 })
 
 describe(`find_matching_paths`, () => {
-  it(`returns empty set for empty query`, () => {
-    const result = find_matching_paths({ a: 1 }, ``)
-    expect(result.size).toBe(0)
+  const obj = {
+    users: [{ name: `Alice` }, { name: `Bob` }],
+    alice: `x`,
+    other: `Alice is here`,
+  }
+  it.each([
+    [``, []],
+    [`bob`, [`users[1].name`]],
+    // key, path and value matches, in render order
+    [`alice`, [`users[0].name`, `alice`, `other`]],
+  ])(`query %p finds %j in render order`, (query, expected) => {
+    expect(find_matching_paths(obj, query)).toEqual(expected)
   })
 
-  it(`finds matching paths in nested object`, () => {
-    const obj = {
-      users: [{ name: `Alice` }, { name: `Bob` }],
-    }
-    const result = find_matching_paths(obj, `Alice`)
-    expect(result.has(`users[0].name`)).toBe(true)
-  })
-
-  it(`finds matches in Map keys (case-insensitive)`, () => {
+  it(`matches Map keys through their { key, value } wrapper`, () => {
     const map = new Map([
       [`Alice_Key`, `value1`],
       [`bob_key`, `value2`],
     ])
-    const result = find_matching_paths({ data: map }, `alice`)
-    expect(result.has(`data[0]`)).toBe(true)
-    expect(result.has(`data[1]`)).toBe(false)
+    expect(find_matching_paths({ data: map }, `alice`)).toEqual([`data[0].key`])
   })
 
-  it(`finds matches in keys and values`, () => {
-    const obj = {
-      alice: `not a name`,
-      other: `Alice is here`,
-    }
-    const result = find_matching_paths(obj, `alice`)
-    expect(result.has(`alice`)).toBe(true)
-    expect(result.has(`other`)).toBe(true)
+  it(`follows sort_keys so match order tracks the rendered order`, () => {
+    const value = { zeta: `hit`, alpha: `hit` }
+    expect(find_matching_paths(value, `hit`)).toEqual([`zeta`, `alpha`])
+    expect(find_matching_paths(value, `hit`, ``, true)).toEqual([`alpha`, `zeta`])
+  })
+})
+
+describe(`get_children / get_value_at_path`, () => {
+  const map = new Map<unknown, unknown>([[{ id: 1 }, `v1`]])
+  const root = { arr: [10, 20], map, set: new Set([`s0`]), obj: { b: 1, a: 2 } }
+
+  it.each([
+    [
+      root.arr,
+      false,
+      [
+        { key: 0, value: 10 },
+        { key: 1, value: 20 },
+      ],
+    ],
+    [
+      root.obj,
+      false,
+      [
+        { key: `b`, value: 1 },
+        { key: `a`, value: 2 },
+      ],
+    ],
+    [
+      root.obj,
+      true,
+      [
+        { key: `a`, value: 2 },
+        { key: `b`, value: 1 },
+      ],
+    ],
+    [map, false, [{ key: 0, value: { key: { id: 1 }, value: `v1` } }]],
+    [root.set, false, [{ key: 0, value: `s0` }]],
+    [`leaf`, false, []],
+  ])(`get_children(%j, sort=%s)`, (value, sort_keys, expected) => {
+    expect(get_children(value, sort_keys)).toEqual(expected)
+  })
+
+  it.each([
+    [``, undefined, root],
+    [`arr[1]`, undefined, 20],
+    [`obj.a`, undefined, 2],
+    // Map entries resolve through the same wrapper JsonNode renders
+    [`map[0]`, undefined, { key: { id: 1 }, value: `v1` }],
+    [`map[0].value`, undefined, `v1`],
+    [`map[0].key.id`, undefined, 1],
+    [`set[0]`, undefined, `s0`],
+    [`arr[1].nope`, undefined, undefined],
+    [`missing.deeper`, undefined, undefined],
+    [`data.obj.b`, `data`, 1],
+    [`data`, `data`, root],
+  ])(`get_value_at_path(%p, root_label=%p) = %j`, (path, root_label, expected) => {
+    expect(get_value_at_path(root, path, root_label)).toEqual(expected)
   })
 })
 

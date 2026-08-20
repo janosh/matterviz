@@ -1,8 +1,8 @@
 <script lang="ts">
   import { type Crystal, SETTINGS_CONFIG } from '$lib'
   import { PLOT_COLORS } from '$lib/colors'
-  import type { SplitMode } from '$lib/coordination'
-  import { CoordinationBarPlot, SPLIT_MODES } from '$lib/coordination'
+  import type { CoordinationSplitMode } from '$lib/coordination'
+  import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '$lib/coordination'
   import { type AtomColorConfig, Structure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { structure_map } from '$site/structures'
@@ -18,7 +18,7 @@
   let single_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
-  let single_split_mode = $state<SplitMode>(`by_element`)
+  let single_split_mode = $state<CoordinationSplitMode>(`by_element`)
 
   const single_struct = $derived<Crystal | null>(structure_map.get(single_id) ?? null)
 
@@ -40,7 +40,7 @@
     `mp-12712`,
     `mp-1183089-Ac4Mg2-monoclinic`,
   ])
-  let multi_split_mode = $state<SplitMode>(`by_element`)
+  let multi_split_mode = $state<CoordinationSplitMode>(`by_element`)
   let multi_strategy = $state<BondingStrategy>(
     SETTINGS_CONFIG.structure.bonding_strategy.value,
   )
@@ -66,7 +66,7 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
-    <EnumSelect label="Split Mode" options={SPLIT_MODES} bind:value={single_split_mode} />
+    <EnumSelect label="Split Mode" options={COORDINATION_SPLIT_MODES} bind:value={single_split_mode} />
   </div>
 
   <StructurePicker bind:selected={single_id} />
@@ -92,7 +92,7 @@
 
   <div class="demo-controls">
     <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
-    <EnumSelect label="Split Mode" options={SPLIT_MODES} bind:value={multi_split_mode} />
+    <EnumSelect label="Split Mode" options={COORDINATION_SPLIT_MODES} bind:value={multi_split_mode} />
   </div>
 
   <StructurePicker bind:selected={selected_ids} />

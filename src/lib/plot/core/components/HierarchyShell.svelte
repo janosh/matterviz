@@ -10,10 +10,11 @@
   // lives on the HierarchyChartState the chart passes in.
   import { format_value } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
-  import HierarchyColorBar from '$lib/plot/core/components/HierarchyColorBar.svelte'
+  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
   import { compute_element_placement } from '$lib/plot/core/layout'
+  import { COLOR_BAR_GAP, observe_size } from '$lib/plot/core/utils/hierarchy-chart'
   import type { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
   import type { SunburstNodeHandlerProps } from '$lib/plot/sunburst/sunburst'
   import type { Snippet } from 'svelte'
@@ -74,6 +75,18 @@
   $effect(() => {
     const { arcs } = chart_state.layout
     untrack(() => chart_state.reset_for_layout(arcs))
+  })
+
+  // Color bar anchored beside (vertical) or below (horizontal) the chart; `--<chart>-colorbar-*`
+  // CSS variables override each placement value
+  const colorbar_style = $derived.by(() => {
+    const { cbar: layout, chart } = chart_state
+    const cbar_var = (name: string, fallback: string) =>
+      `var(--${chart}-colorbar-${name}, ${fallback})`
+    if (layout.is_vertical) {
+      return `position: absolute; top: ${cbar_var(`top`, `50%`)}; ${layout.side}: ${cbar_var(layout.side, `${layout.offset_px}px`)}; transform: ${cbar_var(`transform`, `translateY(-50%)`)}; width: ${cbar_var(`width`, `auto`)}; min-width: ${cbar_var(`min-width`, `0`)}; pointer-events: auto;`
+    }
+    return `position: absolute; bottom: ${cbar_var(`bottom`, `${COLOR_BAR_GAP}px`)}; left: ${cbar_var(`left`, `50%`)}; transform: ${cbar_var(`transform`, `translateX(-50%)`)}; width: ${cbar_var(`width`, `40%`)}; min-width: 120px; pointer-events: auto;`
   })
 
   let slot_args = $derived({
@@ -195,13 +208,17 @@
 {/if}
 
 {#if chart_state.metric && chart_state.color_bar}
-  <HierarchyColorBar
-    color_bar={chart_state.color_bar}
+  {@const { cbar, chart, color_bar } = chart_state}
+  <ColorBar
+    scale={chart_state.color_scale}
     range={chart_state.metric.range}
-    color_scale={chart_state.color_scale}
-    layout={chart_state.cbar}
-    css_prefix={chart_state.chart}
-    on_measure={(size) => (chart_state.colorbar_size = size)}
+    {...color_bar}
+    tick_side={cbar.tick_side}
+    wrapper_style="{cbar.is_vertical
+      ? `--cbar-height: var(--${chart}-colorbar-height, 150px); --cbar-padding: ${cbar.tick_padding};`
+      : ``} {color_bar.wrapper_style ?? ``}"
+    style="{colorbar_style} {color_bar.style ?? ``}"
+    {@attach observe_size((size) => (chart_state.colorbar_size = size))}
   />
 {/if}
 
