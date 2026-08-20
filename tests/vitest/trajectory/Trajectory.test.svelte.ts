@@ -332,7 +332,7 @@ describe(`Trajectory`, () => {
 
       // A host rebuilding structure_props (anywidget trait sync, PhononModeExplorer's
       // show_vectors toggle) without a show_trajectory_lines entry must not reset the toggle
-      props.structure_props = { show_controls: `always`, scene_props: { show_bonds: false } }
+      props.structure_props = { show_controls: `always`, scene_props: { show_bonds: `never` } }
       await flush_render()
       expect(trail_toggle.checked).toBe(true)
       expect(document.body.textContent).toContain(`Trail length`)
